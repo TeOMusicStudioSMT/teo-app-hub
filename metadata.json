@@ -1,0 +1,8 @@
+{
+  "name": "TeO App HUB",
+  "description": "Your personal mission control center for the TeO ecosystem. Manage your $GRV assets, subscriptions, and rewards from an immersive, animated cockpit.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}

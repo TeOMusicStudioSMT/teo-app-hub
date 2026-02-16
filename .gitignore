@@ -1,0 +1,24 @@
+# --- SECURITY & ENV ---
+.env
+.env.local
+.env.production
+.env.test
+*.pem
+*.key
+
+# --- LOGS & DEBUG ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+# Ignore backend and demo directories
+backend/
+supermaster_client_demo/
+employee_dashboard_demo/
+node_modules/
+.vite/
+
+public/models/*.bin
+public/models/*.task
+public/models/*.h5
+public/models/*.bin

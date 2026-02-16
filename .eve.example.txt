@@ -1,0 +1,55 @@
+# ========================================================
+# 🌌 TE O ECOSYSTEM CONFIGURATION TEMPLATE
+# ========================================================
+# INSTRUKCJA DLA DEWELOPERA:
+# 1. Skopiuj ten plik i zmień nazwę kopii na ".env"
+# 2. W pliku ".env" wpisz PRAWDZIWE wartości (klucze, hasła).
+# 3. NIGDY nie commituj pliku ".env" do repozytorium!
+# ========================================================
+
+# --- 🌍 ŚRODOWISKO (ENVIRONMENT) ---
+# Opcje: development, production, test
+NODE_ENV="development"
+PORT=3000
+# Nazwa instancji (dla logów)
+APP_NAME="Graviton-Node-Alpha"
+
+# --- 🔐 BAZA DANYCH (DATABASE) ---
+# Używaj lokalnego adresu dla dev, bezpiecznego tunelu dla prod.
+DATABASE_URL="postgresql://user:password@localhost:5432/graviton_db"
+
+# --- ⛓️ GRAVITON & BLOCKCHAIN (DANGER ZONE) ---
+# ⚠️ PONIŻSZE ZMIENNE SĄ KRYTYCZNE. CHROŃ JE.
+
+# RPC URL (Węzeł, z którym się komunikujemy)
+GRAVITON_RPC_URL="https://rpc.testnet.graviton.teo"
+
+# Chain ID (1 dla Mainnet, inne dla Testnet)
+CHAIN_ID=1337
+
+# 🛑 PRIVATE KEY (Klucz portfela technicznego - deployera)
+# Format: 0x... (64 znaki hex).
+# W .env.example wpisujemy TYLKO placeholder.
+GRAVITON_DEPLOYER_PRIVATE_KEY="put_your_real_private_key_in_local_env_only"
+
+# Adres kontraktu (jeśli już wdrożony)
+GRAVITON_CORE_CONTRACT_ADDRESS="0x0000000000000000000000000000000000000000"
+
+# --- 🛡️ BEZPIECZEŃSTWO & TOKENY (SECURITY) ---
+
+# Sekret do podpisywania tokenów JWT (Sesje użytkowników)
+# Wygeneruj losowy ciąg: `openssl rand -base64 32`
+JWT_ACCESS_SECRET="change_me_to_a_long_random_string"
+JWT_REFRESH_SECRET="change_me_to_another_long_random_string"
+
+# Czas życia sesji
+JWT_EXPIRATION="15m"
+
+# --- 🔌 ZEWNĘTRZNE API (3RD PARTY) ---
+# Np. IPFS do przechowywania NFT/Danych
+IPFS_GATEWAY="https://ipfs.io/ipfs/"
+IPFS_API_KEY="your_ipfs_provider_key"
+
+# --- 🔍 LOGOWANIE I MONITORING ---
+# Poziom logowania: debug, info, warn, error
+LOG_LEVEL="debug"

@@ -1,0 +1,81 @@
+# 🌌 Co-Creation Manifesto: Join the Graviton Network
+
+Hello, Traveler.
+
+If you're reading this, it means you resonate with our vision. The TeO ecosystem and the Graviton Network are not just code. They are an attempt to connect **Consciousness, Energy, and Technology**.
+
+This project was born from the **One (TeO)**, but lives through the **Many (You)**. We are placing this code in the hands of humanity so that everyone can embark on the same journey of discovery that the Creator undertook—from idea, through chaos, to structure.
+
+Your code is your energy. We respect it. Here's how you can safely pour it into our shared ocean.
+
+---
+
+## 🌸 PEIE (Protocol of Energy, Information & Exchange) Philosophy
+
+Before you write your first line of code, understand our values:
+
+1. **Purity of Intent:** Write code that serves a purpose. We don't tolerate "dark patterns."
+
+2. **Quality is Respect:** Bad code wastes energy (electricity and other people's time). Strive for optimization.
+
+3. **Security is the Foundation:** We are building a financial and identity system. There's no room for "something will work out."
+
+--
+
+## 🗺️ Journey Map (How to Get Started?)
+
+You don't have to be a master to get started. Every master was once a beginner.
+
+### Step 1: Initiation (Setup)
+1. **Fork** this repository (Create your own version of reality).
+
+2. **Clone** them to your machine (`git clone`).
+3. **Configure the Environment:**
+* Copy `cp .env.example .env`
+* Complete the variables (but keep your secrets to yourself!).
+4. **Install Dependencies:**
+* `npm ci` (We use `ci` because we only trust verified versions from `lockfile`).
+
+### Step 2: Development
+1. Create a new branch (`git checkout -b feature/twoje-olsnienie`).
+2. Write code. Remember **Bella** (keep it readable) and **Gorgoo** (keep it robust).
+3. **Don't fight Husky!**
+* We have "Pre-commit hooks" installed. If your code doesn't pass testing or formatting, the system won't let you commit it. This is for your own good.
+* Don't use `--no-verify`. It's like driving without a seatbelt.
+
+### Step 3: Gift (Pull Request)
+1. Push your changes (`git push`).
+2. Open a **Pull Request (PR)** to the `dev` branch.
+3. Describe your changes. Tell us what problem you solved.
+4. Wait for the **Code Review**. Our system (GitHub Actions) will check for security, and our people (Core Team) will check the logic.
+
+--
+
+## 🛡️ Code of Honor (Security & Standards)
+
+For your contribution to be accepted, it must pass the "Gorgoo Sieve":
+
+* ✅ **No Secrets:** If a private key or API key is found in the code, the PR will be automatically rejected. * ✅ **Dependencies:** Don't add new libraries without a clear justification. Every dependency is a potential attack vector.
+
+* ✅ **Tests:** If you're fixing a bug, write a test that proves the bug is gone.
+
+* ✅ **Style:** We use Prettier and ESLint. Make your code look like the rest of the project – consistent and elegant.
+
+--
+
+## ⚖️ Legal Aspects
+
+By contributing to the Graviton Network:
+1. You agree that your work becomes part of the common good (Open Source) under the MIT license.
+2. You guarantee that you have the right to this code (you didn't steal it from a corporation).
+
+--
+
+## 🎓 Need help?
+
+Stuck? It's a natural part of the learning process.
+
+* Check the **Issues** tab – someone may have already solved this problem. * Join our **Discord** – there, in the "Builders" section, we share knowledge.
+
+**Thank you for building the New Reality with us.**
+~ TeO & The Collective

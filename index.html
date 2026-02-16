@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="description" content="TeO Graviton HUB - Your personal mission control center for the TeO ecosystem.">
+    <title>TeO Hub</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <style>
+        /* Firefox scrollbar */
+        html {
+            scrollbar-width: thin;
+            scrollbar-color: #0891b2 #0f172a;
+        }
+
+        /* Custom scrollbar for a more futuristic feel */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #0891b2;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #06b6d4;
+        }
+
+        /* --- Cosmic Cockpit Background --- */
+        #cosmic-bg-container {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            overflow: hidden;
+            background-color: #030409;
+            /* Even darker base */
+        }
+
+        #cosmic-gradient {
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(160deg,
+                    hsl(245, 40%, 8%) 0%,
+                    hsl(280, 50%, 12%) 50%,
+                    hsl(300, 45%, 10%) 100%);
+            background-size: 200% 200%;
+            animation: nebula-flow 180s ease-in-out infinite;
+            transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+            filter: blur(60px);
+            opacity: 0.7;
+            will-change: background-position;
+        }
+
+        @keyframes nebula-flow {
+            0% {
+                background-position: 10% 0%;
+            }
+
+            50% {
+                background-position: 90% 100%;
+            }
+
+            100% {
+                background-position: 10% 0%;
+            }
+        }
+
+        #starfield {
+            position: absolute;
+            inset: -50%;
+            width: 200%;
+            height: 200%;
+            transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+            opacity: 0.7;
+        }
+
+        /* --- Grawiton Core & Field Orb --- */
+        #grawiton-core-container,
+        #field-orb-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 0.5s ease-in-out;
+        }
+
+        #grawiton-core-container {
+            width: 9.2vmax;
+            height: 9.2vmax;
+            max-width: 115px;
+            max-height: 115px;
+        }
+
+        #grawiton-core {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: radial-gradient(circle at center, hsla(220, 100%, 90%, 0.15) 0%, transparent 50%);
+            box-shadow: 0 0 20px -5px hsla(220, 100%, 80%, 0.4), inset 0 0 10px hsla(220, 100%, 95%, 0.1);
+            animation: grawiton-core-pulse 8s ease-in-out infinite alternate;
+        }
+
+        #field-orb-container {
+            width: 19.5vmax;
+            height: 19.5vmax;
+            max-width: 240px;
+            max-height: 240px;
+        }
+
+        #field-orb {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: radial-gradient(circle at center, var(--orb-color-1, hsla(280, 80%, 60%, 0.1)) 0%, var(--orb-color-2, hsla(300, 80%, 40%, 0.03)) 70%);
+            animation: field-orb-pulse 12s ease-in-out infinite alternate;
+            will-change: transform, opacity;
+            transition: background 0.8s ease-in-out;
+        }
+
+        .field-ripple {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 1.5px solid var(--ripple-color, hsla(290, 100%, 80%, 0.25));
+            box-shadow: 0 0 15px 2px var(--ripple-glow, hsla(290, 100%, 80%, 0.15));
+            animation: field-ripple-expand 8s ease-out infinite;
+            opacity: 0;
+            will-change: transform, opacity;
+            transition: border 0.8s ease, box-shadow 0.8s ease;
+        }
+
+        .field-ripple:nth-child(2) {
+            animation-delay: -4s;
+        }
+
+        @keyframes grawiton-core-pulse {
+            from {
+                transform: scale(0.98);
+                opacity: 0.8;
+            }
+
+            to {
+                transform: scale(1.02);
+                opacity: 1;
+            }
+        }
+
+        @keyframes field-orb-pulse {
+            from {
+                transform: scale(0.98);
+                opacity: 0.7;
+            }
+
+            to {
+                transform: scale(1.02);
+                opacity: 0.8;
+            }
+        }
+
+        @keyframes field-ripple-expand {
+            0% {
+                transform: scale(1);
+                opacity: 0;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
+
+            100% {
+                transform: scale(2.5);
+                opacity: 0;
+            }
+        }
+
+        /* --- Dynamic Grawiton States --- */
+        .risk-low {
+            --orb-color-1: hsla(280, 80%, 60%, 0.1);
+            --orb-color-2: hsla(300, 80%, 40%, 0.03);
+            --ripple-color: hsla(290, 100%, 80%, 0.25);
+            --ripple-glow: hsla(290, 100%, 80%, 0.15);
+        }
+
+        .risk-medium {
+            --orb-color-1: hsla(40, 90%, 60%, 0.15);
+            --orb-color-2: hsla(30, 80%, 50%, 0.05);
+            --ripple-color: hsla(40, 100%, 70%, 0.3);
+            --ripple-glow: hsla(40, 100%, 70%, 0.2);
+        }
+
+        .risk-high {
+            --orb-color-1: hsla(0, 80%, 60%, 0.2);
+            --orb-color-2: hsla(10, 80%, 50%, 0.1);
+            --ripple-color: hsla(0, 100%, 70%, 0.35);
+            --ripple-glow: hsla(0, 100%, 70%, 0.25);
+        }
+
+        .risk-high #grawiton-core {
+            animation: grawiton-core-pulse 2s ease-in-out infinite alternate;
+        }
+
+        /* --- Frequency Tier Visualization --- */
+        .tier-superposition #grawiton-core {
+            box-shadow: 0 0 30px -5px hsla(45, 100%, 70%, 0.6), inset 0 0 15px hsla(45, 100%, 80%, 0.2);
+            animation: grawiton-core-pulse 4s ease-in-out infinite alternate;
+        }
+
+        .tier-superposition #field-orb {
+            --orb-color-1: hsla(45, 90%, 60%, 0.18);
+            --orb-color-2: hsla(35, 80%, 50%, 0.08);
+        }
+
+        .tier-superposition .field-ripple {
+            --ripple-color: hsla(45, 100%, 70%, 0.4);
+            --ripple-glow: hsla(45, 100%, 70%, 0.3);
+        }
+
+
+        /* --- Voice Assistant Animations --- */
+        @keyframes assistant-breathing {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        .assistant-listening #grawiton-core {
+            animation: assistant-breathing 4s ease-in-out infinite;
+        }
+
+        /* Stop background animations when assistant is active */
+        .assistant-listening #field-orb,
+        .assistant-listening .field-ripple,
+        .assistant-speaking #field-orb,
+        .assistant-speaking .field-ripple,
+        .assistant-thinking #field-orb,
+        .assistant-thinking .field-ripple {
+            animation-name: none;
+        }
+
+        #equalizer {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .assistant-speaking #equalizer {
+            opacity: 1;
+        }
+
+        .eq-bar {
+            width: 4px;
+            height: 10%;
+            background-color: #a78bfa;
+            border-radius: 2px;
+            animation: eq-dance 1.5s ease-in-out infinite;
+        }
+
+        .eq-bar:nth-child(2) {
+            animation-delay: -0.2s;
+        }
+
+        .eq-bar:nth-child(3) {
+            animation-delay: -0.4s;
+        }
+
+        .eq-bar:nth-child(4) {
+            animation-delay: -0.6s;
+        }
+
+        .eq-bar:nth-child(5) {
+            animation-delay: -0.8s;
+        }
+
+        @keyframes eq-dance {
+
+            0%,
+            100% {
+                height: 10%;
+            }
+
+            50% {
+                height: 60%;
+            }
+        }
+
+        /* New 'Thinking' state for Energetic Value analysis */
+        @keyframes thinking-glow {
+            0% {
+                box-shadow: 0 0 25px 5px hsla(290, 100%, 80%, 0.2);
+            }
+
+            25% {
+                box-shadow: 0 0 35px 10px hsla(25, 100%, 75%, 0.3);
+            }
+
+            50% {
+                box-shadow: 0 0 25px 5px hsla(170, 100%, 70%, 0.28);
+            }
+
+            75% {
+                box-shadow: 0 0 35px 10px hsla(230, 100%, 80%, 0.3);
+            }
+
+            100% {
+                box-shadow: 0 0 25px 5px hsla(290, 100%, 80%, 0.2);
+            }
+        }
+
+        .assistant-thinking #field-orb {
+            animation: thinking-glow 4s ease-in-out infinite;
+        }
+
+        /* --- End Background --- */
+
+        /* --- Kapsuły Nawigacyjne (Navigation Capsules) --- */
+        .capsule-button {
+            position: relative;
+            overflow: hidden;
+            padding: 0.6rem 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 9999px;
+            background: rgba(15, 23, 42, 0.5);
+            -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(8px);
+            color: #e2e8f0;
+            font-weight: bold;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+            transform-style: preserve-3d;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .capsule-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: rgba(51, 65, 85, 0.5);
+        }
+
+        .capsule-button:not(:disabled):hover {
+            color: white;
+            transform: scale(1.05) translateY(-2px);
+            animation: capsule-pulse 2s infinite ease-in-out;
+        }
+
+        .capsule-button:not(:disabled):active::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 200%;
+            padding-bottom: 200%;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 60%);
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 0;
+            animation: capsule-flash 0.6s ease-out;
+        }
+
+        @keyframes capsule-pulse {
+            50% {
+                transform: scale(1.08) translateY(-3px);
+            }
+        }
+
+        @keyframes capsule-flash {
+            from {
+                transform: translate(-50%, -50%) scale(0);
+                opacity: 1;
+            }
+
+            to {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 0;
+            }
+        }
+
+        .capsule-cyan:not(:disabled):hover {
+            background: #06b6d4;
+            border-color: #22d3ee;
+            box-shadow: 0 8px 25px -5px rgba(6, 182, 212, 0.6);
+        }
+
+        .capsule-rose:not(:disabled):hover {
+            background: #f43f5e;
+            border-color: #fb7185;
+            box-shadow: 0 8px 25px -5px rgba(244, 63, 94, 0.6);
+        }
+
+        .capsule-green:not(:disabled):hover {
+            background: #22c55e;
+            border-color: #4ade80;
+            box-shadow: 0 8px 25px -5px rgba(34, 197, 94, 0.6);
+        }
+
+        .capsule-violet:not(:disabled):hover {
+            background: #8b5cf6;
+            border-color: #a78bfa;
+            box-shadow: 0 8px 25px -5px rgba(139, 92, 246, 0.6);
+        }
+
+        .capsule-lime:not(:disabled):hover {
+            background: #84cc16;
+            border-color: #a3e635;
+            box-shadow: 0 8px 25px -5px rgba(132, 204, 22, 0.6);
+        }
+
+        .capsule-light {
+            background: rgba(226, 232, 240, 0.8);
+            color: #0f172a;
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .capsule-light:not(:disabled):hover {
+            background: white;
+            box-shadow: 0 8px 25px -5px rgba(255, 255, 255, 0.6);
+        }
+
+        /* --- Event Horizon (Central Orb) --- */
+        .event-horizon-container {
+            transform-style: preserve-3d;
+            transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        .event-horizon-container:hover {
+            transform: scale(1.05);
+        }
+
+        .crystal-sphere {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.15) 0%, transparent 40%);
+            box-shadow: inset 0 0 25px 8px rgba(255, 215, 170, 0.1), 0 0 10px -4px rgba(255, 190, 100, 0.5);
+        }
+
+        .mini-nebula {
+            position: absolute;
+            width: 95%;
+            height: 95%;
+            border-radius: 50%;
+            background-image: radial-gradient(ellipse at 50% 50%, hsla(25, 100%, 60%, 0.6) 0%, transparent 50%), radial-gradient(ellipse at 20% 80%, hsla(10, 80%, 55%, 0.5) 0%, transparent 50%), radial-gradient(ellipse at 80% 30%, hsla(40, 100%, 70%, 0.7) 0%, transparent 50%);
+            background-size: 150% 150%, 120% 120%, 130% 130%;
+            background-repeat: no-repeat;
+            filter: blur(20px);
+            mix-blend-mode: screen;
+            animation: nebula-swirl-warm 30s ease-in-out infinite alternate;
+        }
+
+        .core-pulse-warm {
+            position: absolute;
+            width: 70%;
+            height: 70%;
+            border-radius: 50%;
+            background: radial-gradient(circle, hsla(35, 100%, 80%, 0.8), transparent 60%);
+            filter: blur(10px);
+            animation: core-breathing 5s ease-in-out infinite;
+        }
+
+        @keyframes nebula-swirl-warm {
+            0% {
+                background-position: 0% 0%, 100% 100%, 0% 100%;
+            }
+
+            100% {
+                background-position: 100% 100%, 0% 0%, 100% 0%;
+            }
+        }
+
+        @keyframes core-breathing {
+
+            0%,
+            100% {
+                transform: scale(0.95);
+                opacity: 0.8;
+            }
+
+            50% {
+                transform: scale(1.05);
+                opacity: 1;
+            }
+        }
+
+        @keyframes orbit {
+            from {
+                transform: rotate(0deg) translateX(var(--orbit-radius)) rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg) translateX(var(--orbit-radius)) rotate(-360deg);
+            }
+        }
+
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes fade-out {
+            from {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            to {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+        }
+
+        @keyframes slide-in-bottom {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes text-focus-in {
+            0% {
+                filter: blur(8px);
+                opacity: 0;
+            }
+
+            100% {
+                filter: blur(0px);
+                opacity: 1;
+            }
+        }
+
+        .animate-text-focus-in {
+            animation: text-focus-in 0.6s cubic-bezier(0.550, 0.085, 0.680, 0.530) both;
+        }
+
+        body {
+            background-color: #030409;
+        }
+
+        /* --- New Neo-Fluid Abstraction Styles --- */
+
+        /* --- Claim Modal Glow --- */
+        .claim-modal-container {
+            background: rgba(15, 23, 42, 0.6);
+            /* translucent dark */
+            -webkit-backdrop-filter: blur(24px);
+            backdrop-filter: blur(24px);
+            /* heavy blur */
+            border-radius: 28px;
+            /* large border-radius */
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            position: relative;
+            overflow: hidden;
+            /* To contain the pseudo-element glow */
+        }
+
+        .claim-modal-container::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 28px;
+            /* Match container's border-radius */
+            padding: 2px;
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.7), rgba(139, 92, 246, 0.7));
+            -webkit-mask:
+                linear-gradient(#fff 0 0) content-box,
+                linear-gradient(#fff 0 0);
+            mask:
+                linear-gradient(#fff 0 0) content-box,
+                linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            z-index: -1;
+            animation: border-pulse 8s ease-in-out infinite;
+        }
+
+        @keyframes border-pulse {
+            50% {
+                background: linear-gradient(135deg, rgba(139, 92, 246, 0.7), rgba(6, 182, 212, 0.7));
+                filter: brightness(1.2);
+            }
+        }
+
+        /* --- Resonance Color Themes (Overrides risk levels for personalization) --- */
+        .resonance-nebula {
+            --orb-color-1: hsla(280, 80%, 60%, 0.1);
+            --orb-color-2: hsla(300, 80%, 40%, 0.03);
+            --ripple-color: hsla(290, 100%, 80%, 0.25);
+            --ripple-glow: hsla(290, 100%, 80%, 0.15);
+        }
+
+        .resonance-supernova {
+            --orb-color-1: hsla(30, 90%, 65%, 0.15);
+            --orb-color-2: hsla(10, 85%, 55%, 0.05);
+            --ripple-color: hsla(25, 100%, 75%, 0.3);
+            --ripple-glow: hsla(25, 100%, 75%, 0.2);
+        }
+
+        .resonance-aurora {
+            --orb-color-1: hsla(160, 80%, 50%, 0.12);
+            --orb-color-2: hsla(180, 70%, 40%, 0.04);
+            --ripple-color: hsla(170, 100%, 70%, 0.28);
+            --ripple-glow: hsla(170, 100%, 70%, 0.18);
+        }
+
+        .resonance-quasar {
+            --orb-color-1: hsla(220, 90%, 70%, 0.15);
+            --orb-color-2: hsla(240, 80%, 60%, 0.05);
+            --ripple-color: hsla(230, 100%, 80%, 0.3);
+            --ripple-glow: hsla(230, 100%, 80%, 0.2);
+        }
+
+        /* --- Pulse Intensity --- */
+        .pulse-slow #grawiton-core {
+            animation-duration: 12s;
+        }
+
+        .pulse-slow #field-orb {
+            animation-duration: 18s;
+        }
+
+        .pulse-medium #grawiton-core {
+            animation-duration: 8s;
+        }
+
+        .pulse-medium #field-orb {
+            animation-duration: 12s;
+        }
+
+        .pulse-dynamic #grawiton-core {
+            animation-duration: 4s;
+        }
+
+        .pulse-dynamic #field-orb {
+            animation-duration: 6s;
+        }
+
+        /* Override high-risk faster pulse if personalized */
+        .risk-high.pulse-slow #grawiton-core,
+        .risk-high.pulse-medium #grawiton-core,
+        .risk-high.pulse-dynamic #grawiton-core {
+            animation-name: grawiton-core-pulse;
+        }
+
+        /* --- Custom Slider --- */
+        input[type=range].pulse-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: linear-gradient(90deg, #38bdf8, #8b5cf6, #ec4899);
+            border-radius: 3px;
+            outline: none;
+            opacity: 0.8;
+            transition: opacity .2s;
+        }
+
+        input[type=range].pulse-slider:hover {
+            opacity: 1;
+        }
+
+        input[type=range].pulse-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #e2e8f0;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #334155;
+            transition: transform .2s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        input[type=range].pulse-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        input[type=range].pulse-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #e2e8f0;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #334155;
+        }
+
+        /* --- Claiming Animation --- */
+        .claiming-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.9);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.3s;
+            border-radius: 28px;
+        }
+
+        @keyframes scanner-beam {
+
+            0%,
+            100% {
+                top: 10%;
+            }
+
+            50% {
+                top: 90%;
+            }
+        }
+
+        .scanner-animation {
+            width: 80px;
+            height: 80px;
+            border: 2px solid #06b6d4;
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.5);
+        }
+
+        .scanner-animation::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: #22d3ee;
+            box-shadow: 0 0 10px #22d3ee;
+            animation: scanner-beam 2.5s ease-in-out infinite;
+        }
+
+        /* --- Superposition Balance Effect --- */
+        @keyframes superposition-glow {
+            0% {
+                text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #f59e0b, 0 0 20px #f59e0b, 0 0 25px #f59e0b, 0 0 30px #f59e0b, 0 0 35px #f59e0b;
+            }
+
+            50% {
+                text-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #fbbf24, 0 0 40px #fbbf24, 0 0 50px #fbbf24, 0 0 60px #fbbf24, 0 0 70px #fbbf24;
+            }
+
+            100% {
+                text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #f59e0b, 0 0 20px #f59e0b, 0 0 25px #f59e0b, 0 0 30px #f59e0b, 0 0 35px #f59e0b;
+            }
+        }
+
+        .superposition-text {
+            animation: superposition-glow 3s ease-in-out infinite;
+        }
+    </style>
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.1",
+    "react-dom": "https://esm.sh/react-dom@^19.1.1",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.1/",
+    "react/": "https://esm.sh/react@^19.1.1/",
+    "@google/genai": "https://esm.sh/@google/genai",
+    "framer-motion": "https://esm.sh/framer-motion@^11.3.1",
+    "jotai": "https://esm.sh/jotai@^2.9.1",
+    "react-hot-toast": "https://esm.sh/react-hot-toast@^2.4.1",
+    "ethers": "https://esm.sh/ethers@^6.13.1",
+    "express": "https://esm.sh/express@^5.1.0",
+    "firebase-admin": "https://esm.sh/firebase-admin@^13.4.0",
+    "firebase-functions": "https://esm.sh/firebase-functions@^6.4.0",
+    "firebase/app": "https://esm.sh/firebase@10.12.2/app",
+    "firebase/auth": "https://esm.sh/firebase@10.12.2/auth",
+    "cors": "https://esm.sh/cors@^2.8.5",
+    "jsonwebtoken": "https://esm.sh/jsonwebtoken@^9.0.2",
+    "body-parser": "https://esm.sh/body-parser@^2.2.0",
+    "firebase-functions/": "https://esm.sh/firebase-functions@^6.4.0/",
+    "jotai/": "https://esm.sh/jotai@^2.13.1/",
+    "clsx": "https://esm.sh/clsx@^2.1.1",
+    "tailwind-merge": "https://esm.sh/tailwind-merge@^2.4.0",
+    "recharts": "https://esm.sh/recharts@^2.12.7?external=react,react-dom",
+    "uuid": "https://esm.sh/uuid@^11.1.0",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
+    "lodash": "https://esm.sh/lodash@4.17.21"
+  }
+}
+</script>
+    <script>
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('SW registered:', registration);
+                    })
+                    .catch(error => {
+                        console.log('SW registration failed:', error);
+                    });
+            });
+        }
+    </script>
+    <link rel="stylesheet" href="/index.css">
+</head>
+
+<body class="bg-slate-900 text-slate-100 font-sans antialiased overflow-hidden">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+
+</html>

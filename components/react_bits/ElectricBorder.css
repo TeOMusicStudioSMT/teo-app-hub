@@ -1,0 +1,17 @@
+.electric-border {
+    --electric-light-color: okloh(from var(--electric-border-color) l c h);
+    position: relative;
+    border-radius: inherit;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.eb-canvas-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 2;
+    display: block;
+}
