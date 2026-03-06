@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes pulse {
+    0% {
+        opacity: 0.4;
+        transform: scale(0.8);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+
+    100% {
+        opacity: 0.4;
+        transform: scale(0.8);
+    }
+}
+
 /* --- Cosmic Cockpit Background --- */
 #cosmic-bg-container {
     position: fixed;
@@ -742,4 +759,64 @@ input[type=range].pulse-slider::-moz-range-thumb {
 
 .superposition-text {
     animation: superposition-glow 3s ease-in-out infinite;
+}
+
+/* --- Quantum Journal Custom Scrollbar --- */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.5);
+    border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: linear-gradient(to bottom, #06b6d4, #8b5cf6);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(to bottom, #22d3ee, #a78bfa);
+}
+
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #06b6d4 rgba(15, 23, 42, 0.5);
+}
+
+/* --- Pirate Ship Button Animations --- */
+@keyframes wave-move {
+    0% {
+        transform: translateX(0);
+    }
+
+    100% {
+        transform: translateX(-50%);
+    }
+}
+
+@keyframes ship-rock {
+
+    0%,
+    100% {
+        transform: rotate(-8deg) translateY(0);
+    }
+
+    50% {
+        transform: rotate(8deg) translateY(-6px);
+    }
+}
+
+.animate-wave-slow {
+    animation: wave-move 12s linear infinite;
+}
+
+.animate-wave-fast {
+    animation: wave-move 8s linear infinite;
+}
+
+.animate-ship-rock {
+    animation: ship-rock 3.5s ease-in-out infinite;
 }

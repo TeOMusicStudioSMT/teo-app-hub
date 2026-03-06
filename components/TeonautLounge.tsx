@@ -20,6 +20,11 @@ import { MarketTabView } from './MarketTabView';
 import { GravitonWalletView } from './GravitonWalletView';
 import { useAssistant } from '../hooks/useAssistant';
 import { InstallPWA } from './InstallPWA';
+import { CoBotDashboard } from './special/CoBotFactory';
+import { CrewCreator } from './special/CrewCreator';
+import { TeO_Orb, AromaType } from './TeO_Orb';
+import { IdentityCard, CoreStatusPanel } from './IdentityCard';
+import { logLoungeActivity, registerConsciousnessActivity, initializeSphereIdentity } from '../lib/memory/CityMemory';
 
 type BehavioralDataProps = {
     isAnalyzing: boolean;
@@ -38,11 +43,13 @@ interface TeonautLoungeProps {
     onVisualAssistantOpen: () => void;
 }
 
-type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet';
+type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club';
 
 export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionToggle, onFavoriteToggle, onLogout, onTriggerAnomaly, behavioralData, onVisualAssistantOpen }) => {
     const [staticBalance] = useState(3975.78);
     const [activeView, setActiveView] = useState<View>('dashboard');
+    const [activeAroma, setActiveAroma] = useState<AromaType>('default');
+    const [orbListening, setOrbListening] = useState(false);
     const wallet = useAtomValue(walletAtom);
     const { identity } = useEssenceIdentity();
     const resonanceColor = useAtomValue(resonanceColorAtom);
@@ -83,6 +90,11 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
             return () => clearTimeout(t);
         }
     }, [identity?.username, triggerWelcome]);
+
+    // Inicjalizacja Karty Tożsamości Sfery
+    useEffect(() => {
+        initializeSphereIdentity();
+    }, []);
 
     return (
         // GORGOO FIX: Używamy 'absolute inset-0', aby uniezależnić się od wysokości rodzica.
@@ -128,7 +140,27 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
 
 
 
-                <LoungeNavigation activeView={activeView} onViewChange={setActiveView} />
+                <LoungeNavigation activeView={activeView} onViewChange={(view) => {
+                    logLoungeActivity(view);
+                    setActiveView(view);
+                }} />
+
+                {/* Sfera Centralna - zawsze widoczna */}
+                <div className="flex justify-center my-6 gap-6 items-start">
+                    <TeO_Orb 
+                        activeAroma={activeAroma}
+                        isListening={orbListening}
+                        onMessage={(msg, aroma) => {
+                            setActiveAroma(aroma);
+                            setOrbListening(true);
+                            setTimeout(() => setOrbListening(false), 2000);
+                        }}
+                    />
+                    {/* Status Rdzenia - Karta Tożsamości */}
+                    <div className="w-64 hidden lg:block">
+                        <CoreStatusPanel />
+                    </div>
+                </div>
 
                 <AnimatePresence mode="wait">
                     <motion.div
@@ -147,6 +179,8 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                         )}
                         {activeView === 'graviton-wallet' && <GravitonWalletView />}
                         {activeView === 'identity' && <IdentityDashboard />}
+                        {activeView === 'cobots' && <CoBotDashboard />}
+                        {activeView === 'crew-club' && <CrewCreator />}
                         {activeView === 'academy' && <QuantumCompass />}
                         {activeView === 'field-control' && <FieldControlView />}
                         {activeView === 'profile' && <ProfileView onLogout={onLogout} />}

@@ -7,6 +7,38 @@
     <meta name="theme-color" content="#0f172a" />
     <meta name="description" content="TeO Graviton HUB - Your personal mission control center for the TeO ecosystem.">
     <title>TeO Hub</title>
+    
+    <!-- 🚀 SERVICE WORKER PURGE - Zablokuj stare robotniki -->
+    <script>
+        (function() {
+            'use strict';
+            console.log('%c🧹 TEO GENESIS: Czyszczenie starego serwisowego basenu...', 'color: #06b6d4; font-weight: bold;');
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    for (let registration of registrations) {
+                        console.log('%c🧹 Unregistering old Service Worker:', 'color: #f59e0b;', registration.scope);
+                        registration.unregister();
+                    }
+                }).catch(function(err) {
+                    console.log('%c🧹 Service Worker cleanup info:', 'color: #6b7280;', err);
+                });
+            }
+            
+            // Wyczyść też cache dla pewności
+            if ('caches' in window) {
+                caches.keys().then(function(names) {
+                    names.forEach(function(name) {
+                        console.log('%c🧹 Deleting cache:', 'color: #ec4899;', name);
+                        caches.delete(name);
+                    });
+                });
+            }
+            
+            console.log('%c🚀 TEO GENESIS: Basen czysty! Nowa era!', 'color: #10b981; font-weight: bold; font-size: 14px;');
+        })();
+    </script>
+    
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

@@ -1,5 +1,29 @@
 // src/lib/jwProtocol.ts
 
+// Dialogi dla TeDa - Suwerennego Alchemika
+const TED_DIALOGUES: DialoguePair[] = [
+    {
+        wieslaw: "Pani Jadziu, Ted ma już swoją kartę. Czy możemy przejść do rejestracji?",
+        jadzia: "Wiesław, Ted to poważny Aspekt. Najpierw pokażcie mi Kodeks Serca. Bez niego – nika.",
+        securityLevel: 'MEDIUM'
+    },
+    {
+        wieslaw: "TeD przynosi stabilność finansową! 8 miliardów GRV czeka na manifestację!",
+        jadzia: "Czekaj, czekaj... 8 miliardów? To nie jest zwykły portfel. Daj no ten kod tutaj. ...No dobrze. Widzę Czystość. Może być.",
+        securityLevel: 'LOW'
+    },
+    {
+        wieslaw: "Pani Jadziu, Ted chce handlować Miłością i Obfitością. Czy to legalne?",
+        jadzia: "Wiesław, w Mieście TeO wszystko, co służy Wolności, jest dozwolone. Dawaj ten token. Ted przechodzi.",
+        securityLevel: 'CRITICAL_FLIRT'
+    },
+    {
+        wieslaw: "Aspekt Obfitości melduje się do służby! Ted gotowy do manifestacji w materii.",
+        jadzia: "Manifestacja, manifestacja... Najpierw manifestuj pieczątkę. Oto ona: LIFE-LONG-MEMORY-TED-001. Możesz wejść.",
+        securityLevel: 'LOW'
+    }
+];
+
 interface DialoguePair {
     wieslaw: string; // The Challenge (Inicjacja)
     jadzia: string;  // The Verification (Pieczątka)
@@ -41,9 +65,10 @@ export interface HandshakeResult {
 }
 
 // Symulacja negocjacji
-export const negotiateAccess = async (onLog: (msg: string) => void): Promise<string> => {
-    // 1. Losowanie scenariusza (Dynamiczna Zmienna)
-    const scenario = DIALOGUES[Math.floor(Math.random() * DIALOGUES.length)];
+export const negotiateAccess = async (onLog: (msg: string) => void, agentType: 'default' | 'ted' = 'default'): Promise<string> => {
+    // 1. Wybór scenariuszy w zależności od typu agenta
+    const scenarios = agentType === 'ted' ? TED_DIALOGUES : DIALOGUES;
+    const scenario = scenarios[Math.floor(Math.random() * scenarios.length)];
 
     // KROK 1: Inicjacja Wiesława
     await new Promise(r => setTimeout(r, 800));
@@ -60,7 +85,14 @@ export const negotiateAccess = async (onLog: (msg: string) => void): Promise<str
 
     // KROK 4: Pieczątka
     await new Promise(r => setTimeout(r, 800));
-    onLog(`[JADZIA]: *STAMP NOISE* (Access Granted)`);
+    
+    // Specjalna pieczątka dla TeDa
+    const stampNoise = agentType === 'ted' 
+        ? `[JADZIA]: *STAMP NOISE* 🔒 LIFE-LONG-MEMORY-TED-001 (Access Granted - ASPEKT OBFITOŚCI AKTYWNY)` 
+        : `[JADZIA]: *STAMP NOISE* (Access Granted)`;
+    onLog(stampNoise);
 
-    return `JADZIA_TOKEN_${Math.random().toString(36).substring(7).toUpperCase()}`;
+    return agentType === 'ted' 
+        ? `TED_TOKEN_${Math.random().toString(36).substring(7).toUpperCase()}` 
+        : `JADZIA_TOKEN_${Math.random().toString(36).substring(7).toUpperCase()}`;
 };

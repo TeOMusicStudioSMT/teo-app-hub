@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import DashboardCard from '../DashboardCard';
 import { CameraIcon, StarIcon, PaperClipIcon } from '../icons'; // Upewnij się, że masz te ikony
 import { motion, AnimatePresence } from 'framer-motion';
-import { generateContent as apiCall } from '../../services/geminiService'; // CHMURA
+import { generateContent as apiCall } from '../../services/cloudService'; // CHMURA
 import { generateOnDevice } from '../../services/mediaPipeService'; // LOKALNY MÓZG (Musisz mieć ten plik!)
 import { saveManifestation } from '../../services/manifestHistoryService';
 import { useAtomValue } from 'jotai';

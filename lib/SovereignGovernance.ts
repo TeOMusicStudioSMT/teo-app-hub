@@ -32,6 +32,26 @@ export const GENESIS_PIONEERS_LIMIT = 144;
 /** Grant dla każdego Pioniera */
 export const PIONEER_GRANT = 1.5;
 
+/** Wir 26 - Model 2x13 */
+export const VORTEX_26_CONTAINERS = 26;
+export const EXPANSION_CONTAINERS = 13; // Ekspansja
+export const CONTRACTION_CONTAINERS = 13; // Kontrakcja
+
+/** Hymn Inicjacyjny */
+export const INITIALIZATION_HYMN = {
+  title: "Solar Punk - The Concrete Cracks",
+  artist: "Jason",
+  frequency: "stała częstotliwość nośna portalu",
+};
+
+/** Pioneer #1 Bypass - TeO zawsze ma dostęp */
+export const PIONEER_BYPASS_EMAIL = 'arkadiusz.szczepaniak@gmail.com';
+
+/** Sprawdź czy email ma bypass */
+export function hasPioneerBypass(email: string | null | undefined): boolean {
+  return email === PIONEER_BYPASS_EMAIL;
+}
+
 /** Poziom coherence (zaufania systemu) */
 export type CoherenceLevel = 'dormant' | 'awakening' | 'active' | 'harmonic' | 'transcendent';
 
@@ -108,6 +128,11 @@ class SovereignGovernance {
     updatedAt: Date.now(),
   };
   
+  // === WIR 26: Model 2x13 ===
+  // 13 kontenerów Ekspansji vs 13 kontenerów Kontrakcji
+  private expansionContainers: number[] = new Array(EXPANSION_CONTAINERS).fill(0);
+  private contractionContainers: number[] = new Array(CONTRACTION_CONTAINERS).fill(0);
+  
   private managedAgents: Map<string, ManagedAgent> = new Map();
   private pendingOnboarding: Map<string, EnergySignature> = new Map();
   private silentReports: SilentReport[] = [];
@@ -119,6 +144,109 @@ class SovereignGovernance {
   constructor() {
     console.log('🏛️ [SovereignGovernance] SUWERENNY EKOSYSTEM ZAINICJALIZOWANY');
     console.log(`💰 Limit Skarbca: ${TREASURY_LIMIT.toLocaleString()} GRV`);
+    console.log(`🌀 Wir 26: ${EXPANSION_CONTAINERS} Ekspansji + ${CONTRACTION_CONTAINERS} Kontrakcji`);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🌀 WIR 26: Model 2x13
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Wrzuć GRV do Wiru 26
+   * Automatycznie balansuje między Ekspansją a Kontrakcją
+   */
+  public addToVortex(amount: number, type: 'expansion' | 'contraction'): number {
+    if (type === 'expansion') {
+      // Znajdź kontener z najmniejszą ilością (least filled)
+      const minIndex = this.expansionContainers.indexOf(Math.min(...this.expansionContainers));
+      this.expansionContainers[minIndex] += amount;
+      console.log(`🌀 [WIR 26] +${amount} GRV → Ekspansja[${minIndex + 1}]`);
+      return minIndex;
+    } else {
+      const minIndex = this.contractionContainers.indexOf(Math.min(...this.contractionContainers));
+      this.contractionContainers[minIndex] += amount;
+      console.log(`🌀 [WIR 26] +${amount} GRV → Kontrakcja[${minIndex + 1}]`);
+      return minIndex;
+    }
+  }
+
+  /**
+   * Pobierz stan Wiru 26
+   */
+  public getVortexStatus(): { 
+    expansion: number[]; 
+    contraction: number[]; 
+    totalExpansion: number;
+    totalContraction: number;
+    balance: number;
+  } {
+    const totalExpansion = this.expansionContainers.reduce((a, b) => a + b, 0);
+    const totalContraction = this.contractionContainers.reduce((a, b) => a + b, 0);
+    
+    return {
+      expansion: [...this.expansionContainers],
+      contraction: [...this.contractionContainers],
+      totalExpansion,
+      totalContraction,
+      balance: totalExpansion - totalContraction, // Powinno dążyć do 0
+    };
+  }
+
+  /**
+   * Oblicz koherencję między dwiema 13-tkami
+   * Im bardziej zbalansowane, tym wyższa koherencja
+   */
+  calculateVortexCoherence(): number {
+    const status = this.getVortexStatus();
+    const total = status.totalExpansion + status.totalContraction;
+    if (total === 0) return 0.5;
+    
+    const ratio = Math.min(status.totalExpansion, status.totalContraction) / 
+                  Math.max(status.totalExpansion, status.totalContraction);
+    return ratio; // 0 = niezbalansowane, 1 = idealnie zbalansowane
+  }
+
+  /**
+   * Release GRV promujący koherencję
+   * Jeśli Wir jest zbalansowany, więcej GRV może krążyć
+   */
+  releaseFromVortex(amount: number): { success: boolean; coherence: number } {
+    const coherence = this.calculateVortexCoherence();
+    
+    // Minimalna koherencja 0.3 dla jakiegokolwiek release
+    if (coherence < 0.3) {
+      this.logSilent({
+        type: 'alert',
+        priority: 'high',
+        message: `🌀 [WIR 26] Release zablokowany - za niska koherencja: ${(coherence * 100).toFixed(1)}%`,
+        needsHumanAttention: true,
+      });
+      return { success: false, coherence };
+    }
+
+    // Pobierz z kontenerów (proporcjonalnie)
+    const expansionRatio = this.expansionContainers.reduce((a, b) => a + b, 0) / 
+                          (this.expansionContainers.reduce((a, b) => a + b, 0) + 
+                           this.contractionContainers.reduce((a, b) => a + b, 0) || 1);
+    
+    const fromExpansion = Math.floor(amount * expansionRatio);
+    const fromContraction = amount - fromExpansion;
+
+    // Pobierz z najbardziej wypchanych kontenerów
+    const maxExpIndex = this.expansionContainers.indexOf(Math.max(...this.expansionContainers));
+    const maxContIndex = this.contractionContainers.indexOf(Math.max(...this.contractionContainers));
+
+    this.expansionContainers[maxExpIndex] = Math.max(0, this.expansionContainers[maxExpIndex] - fromExpansion);
+    this.contractionContainers[maxContIndex] = Math.max(0, this.contractionContainers[maxContIndex] - fromContraction);
+
+    this.logSilent({
+      type: 'decision',
+      priority: 'medium',
+      message: `🌀 [WIR 26] Zwolniono ${amount} GRV (koherencja: ${(coherence * 100).toFixed(1)}%)`,
+      needsHumanAttention: false,
+    });
+
+    return { success: true, coherence };
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -408,7 +536,7 @@ class SovereignGovernance {
   // 📊 API
   // ═══════════════════════════════════════════════════════════════
 
-  getTreasuryStatus(): { current: number; limit: number; releaseable: number } {
+  public getTreasuryStatus(): { current: number; limit: number; releaseable: number } {
     return {
       current: this.treasury,
       limit: TREASURY_LIMIT,

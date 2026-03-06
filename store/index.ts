@@ -5,6 +5,9 @@ import { PROJECTS } from '../constants';
 import { v4 as uuidv4 } from 'uuid';
 import { PeerNode } from '../services/meshNetwork';
 
+// Eksport GRV i Wallet
+export { walletAtom, grvEnergyAtom, unlockGrvAtom, consumeGrvAtom } from './wallet';
+
 export const PROJECTS_STORAGE_KEY = 'teo_projects_state';
 
 // Function to load initial state from localStorage or use defaults

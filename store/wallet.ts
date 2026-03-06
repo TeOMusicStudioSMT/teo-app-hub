@@ -4,6 +4,66 @@ import { WalletState } from '../types';
 import { calculateRevenueSplit, createISO20022Message } from '../lib/graviton/economics';
 import { v4 as uuidv4 } from 'uuid';
 
+// --- GRV Energy Atom (Obfitość Ludzkości) ---
+// Domyślna wartość: 8.000.000.000 GRV (symbol potencjału ludzkości)
+// Ta energia jest "uśpiona" dopóki użytkownik nie włoży kluczy do Kibla
+export const grvEnergyAtom = atom<{
+    total: number;        // Całkowita energia (8Mrd)
+    active: number;       // Aktywna energia (do wykorzystania po włożeniu kluczy)
+    unlocked: boolean;    // Czy klucze zostały włożone do Kibla
+    lastActivity: number; // Timestamp ostatniej aktywności
+}>({
+    total: 8000000000,     // 8.000.000.000 GRV - OBFFITOŚĆ!
+    active: 0,            // 0 dopóki nie odblokowane
+    unlocked: false,      // Domyślnie zablokowane
+    lastActivity: Date.now(),
+});
+
+// --- Odblokuj GRV po włożeniu kluczy ---
+export const unlockGrvAtom = atom(
+    null,
+    (get, set) => {
+        const grv = get(grvEnergyAtom);
+        // Odblokuj 50% energii (4Mrd) - reszta do odkrywania!
+        const unlockedAmount = Math.floor(grv.total * 0.5);
+        
+        set(grvEnergyAtom, {
+            ...grv,
+            active: unlockedAmount,
+            unlocked: true,
+            lastActivity: Date.now(),
+        });
+        
+        console.log('%c 🔥 [GRV] ENERGY UNLOCKED! 4,000,000,000 GRV available!', 'color: #f59e0b; font-size: 14px; font-weight: bold;');
+    }
+);
+
+// --- Zużyj GRV (przy korzystaniu z AI) ---
+export const consumeGrvAtom = atom(
+    null,
+    (get, set, amount: number) => {
+        const grv = get(grvEnergyAtom);
+        
+        if (!grv.unlocked) {
+            console.warn('⚠️ [GRV] Energy still locked! Insert API keys first.');
+            return false;
+        }
+        
+        if (grv.active < amount) {
+            console.warn('⚠️ [GRV] Insufficient energy!');
+            return false;
+        }
+        
+        set(grvEnergyAtom, {
+            ...grv,
+            active: grv.active - amount,
+            lastActivity: Date.now(),
+        });
+        
+        return true;
+    }
+);
+
 export const walletAtom = atom<WalletState>({
     address: null,
     balance: null,

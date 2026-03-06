@@ -1,10 +1,10 @@
 import React from 'react';
-import { ChartBarIcon, AppIcon, UserCircleIcon, MortarBoardIcon, ShieldCheckIcon, MarketIcon, WalletIcon } from './icons';
+import { ChartBarIcon, AppIcon, UserCircleIcon, MortarBoardIcon, ShieldCheckIcon, MarketIcon, WalletIcon, BrainChipIcon, TrophyIcon } from './icons';
 import { useAtomValue } from 'jotai';
 import { resonanceColorAtom, RESONANCE_THEMES } from '../store/personalization';
 import { cn } from '../lib/helpers';
 
-type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet';
+type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club';
 
 interface LoungeNavigationProps {
     activeView: View;
@@ -14,9 +14,11 @@ interface LoungeNavigationProps {
 const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <ChartBarIcon /> },
     { id: 'projects', label: 'Universes', icon: <AppIcon /> },
+    { id: 'crew-club', label: '🏆 Klub', icon: <TrophyIcon /> },
     { id: 'teo-market', label: 'TeO Market', icon: <MarketIcon /> },
     { id: 'graviton-wallet', label: 'GRAVITON Wallet', icon: <WalletIcon /> },
     { id: 'identity', label: 'Identity', icon: <UserCircleIcon /> },
+    { id: 'cobots', label: '🤖 Co-Bots', icon: <BrainChipIcon /> },
     { id: 'academy', label: 'Academy', icon: <MortarBoardIcon /> },
     { id: 'field-control', label: 'Field Control', icon: <ShieldCheckIcon /> },
 ];

@@ -1,6 +1,9 @@
 
 import React, { useState } from 'react';
 import { FiHome, FiPower, FiSettings } from 'react-icons/fi';
+import { useAtom } from 'jotai';
+import { aiModeAtom } from '../store/settings';
+import { motion } from 'framer-motion';
 
 interface HeaderProps {
     isVisible: boolean;
@@ -15,6 +18,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ isVisible, isAuthenticated, isLoungeOpen, onLogin, onLogout, onToggleLounge, onOpenSettings }) => {
     const title = isAuthenticated && isLoungeOpen ? "TEONAUT LOUNGE" : "HUB";
     const [logoError, setLogoError] = useState(false);
+    const [aiMode, setAiMode] = useAtom(aiModeAtom);
 
     return (
         <header className={`absolute top-0 left-0 right-0 p-4 md:p-12 z-30 flex justify-between items-center transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full'}`}>
@@ -31,9 +35,33 @@ const Header: React.FC<HeaderProps> = ({ isVisible, isAuthenticated, isLoungeOpe
                         TeO
                     </div>
                 )}
-                <h1 className="text-lg md:text-2xl font-bold tracking-widest uppercase text-cyan-300 drop-shadow-[0_0_5px_rgba(0,255,255,0.7)]">
-                    <span key={title} className="font-light text-slate-300 inline-block animate-text-focus-in">{title}</span>
-                </h1>
+                <div className="flex flex-col">
+                    <h1 className="text-lg md:text-2xl font-bold tracking-widest uppercase text-cyan-300 drop-shadow-[0_0_5px_rgba(0,255,255,0.7)] flex items-center gap-2">
+                        <span key={title} className="font-light text-slate-300 inline-block animate-text-focus-in">{title}</span>
+                        <div
+                            className={`w-2 h-2 rounded-full ${aiMode === 'local' ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-blue-500 shadow-[0_0_10px_#3b82f6]'} animate-pulse`}
+                            title={aiMode === 'local' ? 'Duch Lokalny Aktywny' : 'Chmura Aktywna'}
+                        />
+                    </h1>
+
+                    {/* JusT Global Switch */}
+                    <div className="flex items-center gap-2 mt-1">
+                        <div className="flex bg-slate-900/60 backdrop-blur-md rounded-full p-0.5 border border-white/10 text-[9px] font-bold">
+                            <button
+                                onClick={() => setAiMode('cloud')}
+                                className={`px-2 py-0.5 rounded-full transition-all ${aiMode === 'cloud' ? 'bg-blue-600/40 text-blue-300 shadow-[0_0_10px_rgba(37,99,235,0.3)]' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                CLOUD
+                            </button>
+                            <button
+                                onClick={() => setAiMode('local')}
+                                className={`px-2 py-0.5 rounded-full transition-all ${aiMode === 'local' ? 'bg-green-600/40 text-green-300 shadow-[0_0_10px_rgba(22,163,74,0.3)]' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                JusT
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div>
                 {isAuthenticated ? (

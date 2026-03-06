@@ -11,7 +11,7 @@ import * as marketClient from '../lib/market/client';
 import { useEssenceIdentity } from './useEssenceIdentity';
 import { COSMIC_VENTURES } from '../constants';
 import { walletAtom } from '../store/wallet';
-import { SYSTEM_INSTRUCTION_VISEL, getGeminiApiKey } from '../services/geminiService';
+import { SYSTEM_INSTRUCTION_VISEL, getCloudProvider } from '../services/cloudService';
 import { userApiKeyAtom } from '../store/settings';
 
 // --- Function Declarations ---
@@ -308,8 +308,8 @@ export const useAssistant = () => {
     }, [setAssistantState]);
 
     useEffect(() => {
-        const apiKey = getGeminiApiKey();
-        if (apiKey) {
+        const { provider, apiKey } = getCloudProvider();
+        if (provider === 'gemini' && apiKey) {
             try {
                 aiRef.current = new GoogleGenAI({ apiKey });
                 hasLoggedMissingKey.current = false;
