@@ -13,6 +13,7 @@
  */
 
 import { simpleEncode, simpleDecode } from './crypto';
+import { retrieveKey } from './kibel';
 
 // Prefix dla Vault w LocalStorage
 const VAULT_PREFIX = 'vault_';
@@ -162,7 +163,12 @@ export const vaultRetrieve = (key: string): string | null => {
     const encrypted = localStorage.getItem(vaultKey);
 
     if (!encrypted) {
-      // console.log(`[VaultStorage] 📭 Brak klucza w Vault: ${key}`);
+      // 🔄 FALLBACK DO KIBLA: Jeśli nie ma w Vault, szukaj w Kiblu (dla Cloud Routera)
+      if (key === 'ANTHROPIC_API_KEY' || key === 'CLAUDE_API_KEY') return retrieveKey('anthropic');
+      if (key === 'OPENAI_API_KEY' || key === 'GPT_API_KEY') return retrieveKey('openai');
+      if (key === 'GROQ_API_KEY') return retrieveKey('groq');
+      if (key === 'GEMINI_API_KEY') return retrieveKey('gemini');
+
       return null;
     }
 

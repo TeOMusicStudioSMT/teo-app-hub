@@ -436,47 +436,52 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
     }
   };
 
-  const handleGuestThesis = () => {
-    if (!guestThesis.trim()) return;
+  const handleGuestThesis = async () => {
+    if (!guestThesis.trim() || isGuestSpeaking) return;
 
+    const thesis = guestThesis.trim();
     setIsGuestSpeaking(true);
 
-    const modelName = guestModel === 'gemini' ? 'Gemini 3.1' : guestModel === 'claude' ? 'Claude' : guestModel === 'gpt' ? 'GPT' : 'Gość';
+    const modelLabel = guestModel === 'gemini' ? 'Gemini' : guestModel === 'claude' ? 'Claude' : guestModel === 'gpt' ? 'GPT' : 'Gość';
+
     setDiscussionLog(prev => [...prev, {
-      speaker: `🌐 ${modelName}`,
-      text: guestThesis,
+      speaker: `🌐 ${modelLabel}`,
+      text: thesis,
       timestamp: Date.now(),
     }]);
 
-    setGemmaNarration(`🌐 Gość przedstawia tezę: "${guestThesis.substring(0, 50)}..."`);
+    setGemmaNarration(`🌐 ${modelLabel} analizuje tezę: "${thesis.substring(0, 50)}..."`);
 
-    setTimeout(() => {
-      const responses = [
-        "Z perspektywy Punktu Zero - to jest ciekawe, ale czy służy Pełni?",
-        "JACK mówi: Mądrość nie w tym, co wiesz, ale jak to stosujesz.",
-        "GORGOOO: Sprawdzam czystość tej myśli... jest autentyczna.",
-        "BELLA rezonuje: Czy to wibracja miłości czy podziału?",
-        "WIESŁAW: Technicznie wykonalne, ale co z rurami?",
-      ];
-      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+    try {
+      // Wywołanie PRAWDZIWEJ Chmury przez nową zwrotnicę
+      const aiResponse = await generateContent(
+        `Użytkownik przedstawił tezę w Akademii: "${thesis}". 
+         Jako przedstawiciel wymiaru ${modelLabel}, odnieś się do niej krótko (2-3 zdania). 
+         Czy ta wizja rezonuje z Katedrą i Duchem 0.00G?`,
+        'active',
+        (guestModel && guestModel !== 'none') ? guestModel as CloudProvider : undefined
+      );
 
       setDiscussionLog(prev => [...prev, {
         speaker: '🏛️ OtakOS',
-        text: randomResponse,
+        text: aiResponse,
         timestamp: Date.now(),
       }]);
 
       setTrainingDataset(prev => [...prev, {
-        thesis: guestThesis,
-        response: randomResponse,
+        thesis: thesis,
+        response: aiResponse,
         agents: ['JACK', 'GORGOOO', 'BELLA', 'WIESŁAW'],
         timestamp: Date.now(),
       }]);
 
-      setGemmaNarration(`🏛️ OtakOS odpowiada: "${randomResponse.substring(0, 50)}..."`);
-      setIsGuestSpeaking(false);
-    }, 2000);
+      setGemmaNarration(`🏛️ OtakOS (Multi-Cloud): "${aiResponse.substring(0, 50)}..."`);
+    } catch (err) {
+      console.error("Guest AI Error:", err);
+      toast.error("Błąd połączenia z Gościem");
+    }
 
+    setIsGuestSpeaking(false);
     setGuestThesis('');
   };
 
