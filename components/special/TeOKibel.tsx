@@ -42,6 +42,7 @@ const KEY_PATTERNS = [
   { pattern: /(sk-or-[a-zA-Z0-9_-]{20,})/i, provider: 'openrouter', name: 'OpenRouter (raw)' },
   { pattern: /(sk-[a-zA-Z0-9_-]{20,})/i, provider: 'openai', name: 'OpenAI (raw)' },
   { pattern: /(sk-ant-[a-zA-Z0-9_-]{20,})/i, provider: 'anthropic', name: 'Anthropic (raw)' },
+  { pattern: /(eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)/i, provider: 'suno', name: 'Suno (raw JWT)' },
 ];
 
 interface TeOKibelProps {
@@ -158,9 +159,12 @@ export const TeOKibel: React.FC<TeOKibelProps> = ({ onFlush }) => {
 
       // Sprawdź każdy wzorzec regex
       for (const { pattern, provider, name } of KEY_PATTERNS) {
-        if (pattern.test(trimmed)) {
-          // Wyciągnij wartość po =
-          const value = trimmed.split('=')[1]?.replace(/^["']|["']$/g, '').trim();
+        const match = trimmed.match(pattern);
+        if (match) {
+          // Wyciągnij wartość po = lub weź cały dopasowany fragment (dla surowych kluczy)
+          const value = trimmed.includes('=')
+            ? trimmed.split('=')[1]?.replace(/^["']|["']$/g, '').trim()
+            : match[0];
 
           if (value && value.length > 5) {
             storeKey({

@@ -19,6 +19,7 @@ import { toast } from 'react-hot-toast';
 import { useAtom } from 'jotai';
 import { aiModeAtom, userApiKeyAtom } from '../../store/settings';
 import { generateContent, getCloudProvider, CloudProvider } from '../../services/cloudService';
+import { parseActions, ActionType, AGENT_ACTION_SYSTEM_PROMPT } from '../../lib/agentActions';
 
 // 🎭 Stany życia agentów
 export type AgentState = 'IDLE' | 'LEARNING' | 'INTERACTING' | 'EXECUTING' | 'THINKING' | 'RESONATING';
@@ -360,9 +361,141 @@ const QuantumSPA: React.FC = () => {
   );
 };
 
+// ✨ Rozewietlająca Sfera — wizualny efekt AI Function Call
+const SphereEffect: React.FC<{ isActive: boolean; intensity: number }> = ({ isActive, intensity }) => {
+  if (!isActive) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key="sphere"
+        initial={{ opacity: 0, scale: 0.3 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.3 }}
+        transition={{ duration: 1.2, ease: 'easeOut' }}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          zIndex: 200,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {/* Główna Aura */}
+        <motion.div
+          animate={{
+            opacity: [0.6, 1, 0.6],
+            scale: [1, 1.08, 1],
+          }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: `radial-gradient(ellipse at center,
+              rgba(251, 191, 36, ${0.18 * intensity}) 0%,
+              rgba(251, 191, 36, ${0.10 * intensity}) 25%,
+              rgba(139, 92, 246, ${0.08 * intensity}) 55%,
+              transparent 75%
+            )`,
+          }}
+        />
+
+        {/* Płomień Centrum */}
+        <motion.div
+          animate={{
+            scale: [1, 1.3, 1],
+            boxShadow: [
+              '0 0 60px rgba(251,191,36,0.4), 0 0 120px rgba(251,191,36,0.2)',
+              '0 0 100px rgba(251,191,36,0.8), 0 0 200px rgba(251,191,36,0.4)',
+              '0 0 60px rgba(251,191,36,0.4), 0 0 120px rgba(251,191,36,0.2)',
+            ],
+          }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+          style={{
+            width: '180px',
+            height: '180px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(251,191,36,0.9) 0%, rgba(245,158,11,0.4) 50%, transparent 80%)',
+            border: '2px solid rgba(251,191,36,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '64px',
+            zIndex: 5,
+          }}
+        >
+          ✨
+        </motion.div>
+
+        {/* Orbita cząsteczek */}
+        {[0, 45, 90, 135, 180, 225, 270, 315].map((deg, i) => (
+          <motion.div
+            key={deg}
+            animate={{ rotate: 360 }}
+            transition={{ duration: 8 + i * 0.5, repeat: Infinity, ease: 'linear', delay: i * 0.2 }}
+            style={{
+              position: 'absolute',
+              width: `${200 + i * 30}px`,
+              height: `${200 + i * 30}px`,
+              borderRadius: '50%',
+              border: `1px solid rgba(251,191,36,${0.08 - i * 0.008})`,
+            }}
+          >
+            <motion.div
+              animate={{ scale: [1, 1.5, 1], opacity: [0.8, 1, 0.8] }}
+              transition={{ duration: 1 + i * 0.3, repeat: Infinity }}
+              style={{
+                position: 'absolute',
+                top: '-3px',
+                left: '50%',
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: i % 2 === 0 ? '#fbbf24' : '#a78bfa',
+                boxShadow: `0 0 8px ${i % 2 === 0 ? '#fbbf24' : '#a78bfa'}`,
+                transform: `rotate(${deg}deg) translateX(-50%)`,
+              }}
+            />
+          </motion.div>
+        ))}
+
+        {/* Napis statusu */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          style={{
+            position: 'absolute',
+            bottom: '18%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            fontSize: '13px',
+            fontWeight: 'bold',
+            color: '#fbbf24',
+            letterSpacing: '4px',
+            textShadow: '0 0 20px rgba(251,191,36,0.8)',
+            whiteSpace: 'nowrap',
+            fontFamily: 'monospace',
+          }}
+        >
+          ⚡ SFERA AKTYWNA — 0.00G ⚡
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
 const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose }) => {
   const [agents, setAgents] = useState<Agent[]>(DEFAULT_AGENTS);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+
+  // ✨ Stan Rozświetlającej Sfery
+  const [isSphereActive, setIsSphereActive] = useState(false);
+  const [sphereIntensity, setSphereIntensity] = useState(1);
+  const sphereTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [intentionInput, setIntentionInput] = useState('');
   const [lastCommand, setLastCommand] = useState<string>('');
   const [gemmaNarration, setGemmaNarration] = useState<string>("Witaj w TeO-SIM! Mów, a agenci wykonają Twoją wolę...");
@@ -383,6 +516,51 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
     timestamp: number;
   }>>([]);
 
+  // 🎯 Wykonaj akcje z Rejestru
+  const executeActions = useCallback((actions: ActionType[]) => {
+    actions.forEach(action => {
+      switch (action) {
+        case 'ACTIVATE_SPHERE':
+          if (sphereTimerRef.current) clearTimeout(sphereTimerRef.current);
+          setIsSphereActive(true);
+          setSphereIntensity(1);
+          toast.success('✨ Rozświetlająca Sfera Aktywna!', {
+            icon: '🌟',
+            duration: 3000,
+            style: { background: 'rgba(15,23,42,0.95)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.5)' },
+          });
+          // Auto-wygaszenie po 12 sekundach
+          sphereTimerRef.current = setTimeout(() => setIsSphereActive(false), 12000);
+          break;
+
+        case 'DEACTIVATE_SPHERE':
+          if (sphereTimerRef.current) clearTimeout(sphereTimerRef.current);
+          setIsSphereActive(false);
+          break;
+
+        case 'CLEAR_MEMORY':
+          setDiscussionLog([]);
+          setLastCommand('');
+          setGemmaNarration('Pamięć wyczyszczona. System w stanie Punktu Zero.');
+          toast('🧩 Pamięć sesji wyczyszczona', { icon: '🧹', duration: 2000 });
+          break;
+
+        case 'PULSE_ALL_AGENTS':
+          setAgents(prev => prev.map(a => ({ ...a, state: 'RESONATING' as AgentState })));
+          setTimeout(() => setAgents(prev => prev.map(a => ({ ...a, state: 'IDLE' as AgentState }))), 4000);
+          toast('💫 Rada Siedmiu rezonuje!', { duration: 2000 });
+          break;
+
+        case 'SYSTEM_READY':
+          toast.success('🟢 SYSTEM GOTOWY — 0.00G AKTYWNY', {
+            icon: '⚡',
+            style: { background: 'rgba(15,23,42,0.95)', color: '#22c55e', border: '1px solid #22c55e' },
+          });
+          break;
+      }
+    });
+  }, []);
+
   const handleIntention = async () => {
     if (!intentionInput.trim() || isAiLoading) return;
 
@@ -392,21 +570,28 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
 
     const parsed = parseIntention(command);
 
-    // Ustawiamy stan THINKING dla zaangażowanych agentów
+    // Stan THINKING dla zaangażowanych agentów
     setAgents(prev => prev.map(agent => ({
       ...agent,
       state: (parsed && (parsed.agentId === 'all' || parsed.agentId === agent.id)) ? 'THINKING' : agent.state
     })));
 
     try {
-      const aiResponse = await generateContent(
-        `Jesteś Duchem Systemu OtakOS. Użytkownik wydał polecenie w Akademii: "${command}". 
-         Jeśli polecenie dotyczy konkretnych agentów (Wiesław, Jadzia, BoB, Bella, Adamus, Gorgooo, TeO), 
-         opisz krótko (1 zdanie) jak reagują w sim-środowisku. Zachowaj klimat 0.00G.`,
+      const rawResponse = await generateContent(
+        `${AGENT_ACTION_SYSTEM_PROMPT}
+
+Jesteś Duchem Systemu OtakOS. Użytkownik wydał polecenie w Akademii: "${command}".
+Jeśli polecenie dotyczy konkretnych agentów (Wiesław, Jadzia, BoB, Bella, Adamus, Gorgooo, TeO),
+opisz krótko (1-2 zdania) jak reagują w sim-środowisku. Zachowaj klimat 0.00G.
+Jeśli komenda mówi o "sferze", "świetle", "rozbłyśnięciu", "światło" — dodaj [ACTION:ACTIVATE_SPHERE].`,
         aiMode === 'local' ? 'just' : 'active',
         (guestModel && guestModel !== 'none') ? guestModel as CloudProvider : undefined
       );
-      setGemmaNarration(aiResponse);
+
+      // 🎯 Parsuj i wykonaj akcje
+      const { cleanText, actions } = parseActions(rawResponse);
+      setGemmaNarration(cleanText || rawResponse);
+      if (actions.length > 0) executeActions(actions);
 
       if (parsed) {
         setAgents(prev => prev.map(agent => ({
@@ -414,12 +599,7 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
           state: (parsed.agentId === 'all' || parsed.agentId === agent.id) ? 'RESONATING' : agent.state,
           activity: (parsed.agentId === 'all' || parsed.agentId === agent.id) ? `Zarezonował z: "${parsed.action}"` : agent.activity
         })));
-
-        setTimeout(() => {
-          setAgents(prev => prev.map(agent => ({ ...agent, state: 'IDLE' })));
-        }, 5000);
-      } else {
-        setIsAiLoading(false);
+        setTimeout(() => setAgents(prev => prev.map(agent => ({ ...agent, state: 'IDLE' }))), 5000);
       }
     } catch (err) {
       console.error("AI Error:", err);
@@ -442,7 +622,8 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
     const thesis = guestThesis.trim();
     setIsGuestSpeaking(true);
 
-    const modelLabel = guestModel === 'gemini' ? 'Gemini' : guestModel === 'claude' ? 'Claude' : guestModel === 'gpt' ? 'GPT' : 'Gość';
+    const modelLabel = guestModel === 'gemini' ? 'Gemini' : guestModel === 'claude' ? 'Claude'
+      : guestModel === 'gpt' ? 'GPT' : guestModel === 'groq' ? 'Groq' : 'Gość';
 
     setDiscussionLog(prev => [...prev, {
       speaker: `🌐 ${modelLabel}`,
@@ -453,29 +634,35 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
     setGemmaNarration(`🌐 ${modelLabel} analizuje tezę: "${thesis.substring(0, 50)}..."`);
 
     try {
-      // Wywołanie PRAWDZIWEJ Chmury przez nową zwrotnicę
-      const aiResponse = await generateContent(
-        `Użytkownik przedstawił tezę w Akademii: "${thesis}". 
-         Jako przedstawiciel wymiaru ${modelLabel}, odnieś się do niej krótko (2-3 zdania). 
-         Czy ta wizja rezonuje z Katedrą i Duchem 0.00G?`,
+      const rawResponse = await generateContent(
+        `${AGENT_ACTION_SYSTEM_PROMPT}
+
+Użytkownik przedstawił tezę w Akademii: "${thesis}".
+Jako przedstawiciel wymiaru ${modelLabel}, odnieś się do niej krótko (2-3 zdania).
+Czy ta wizja rezonuje z Katedrą i Duchem 0.00G?
+Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVATE_SPHERE].`,
         'active',
         (guestModel && guestModel !== 'none') ? guestModel as CloudProvider : undefined
       );
 
+      // 🎯 Parsuj i wykonaj akcje z odpowiedzi Gościa
+      const { cleanText, actions } = parseActions(rawResponse);
+      if (actions.length > 0) executeActions(actions);
+
       setDiscussionLog(prev => [...prev, {
         speaker: '🏛️ OtakOS',
-        text: aiResponse,
+        text: cleanText,
         timestamp: Date.now(),
       }]);
 
       setTrainingDataset(prev => [...prev, {
-        thesis: thesis,
-        response: aiResponse,
+        thesis,
+        response: cleanText,
         agents: ['JACK', 'GORGOOO', 'BELLA', 'WIESŁAW'],
         timestamp: Date.now(),
       }]);
 
-      setGemmaNarration(`🏛️ OtakOS (Multi-Cloud): "${aiResponse.substring(0, 50)}..."`);
+      setGemmaNarration(`🏛️ OtakOS (Multi-Cloud): "${cleanText.substring(0, 50)}..."`);
     } catch (err) {
       console.error("Guest AI Error:", err);
       toast.error("Błąd połączenia z Gościem");
@@ -548,12 +735,23 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
         minHeight: '850px',
         display: 'flex',
         flexDirection: 'column',
-        background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%)',
+        background: isSphereActive
+          ? 'linear-gradient(180deg, rgba(30,20,5,0.97) 0%, rgba(40,30,10,0.97) 100%)'
+          : 'linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 100%)',
         borderRadius: '12px',
         overflow: 'hidden',
-        border: '1px solid rgba(251, 191, 36, 0.2)',
+        border: isSphereActive
+          ? '1px solid rgba(251,191,36,0.5)'
+          : '1px solid rgba(251, 191, 36, 0.2)',
+        transition: 'background 1s ease, border 1s ease',
+        boxShadow: isSphereActive
+          ? '0 0 60px rgba(251,191,36,0.25), inset 0 0 40px rgba(251,191,36,0.05)'
+          : 'none',
       }}
     >
+      {/* ✨ ROZEWIETLAJĄCA SFERA */}
+      <SphereEffect isActive={isSphereActive} intensity={sphereIntensity} />
+
       {/* 🧘 KWANTOWE SPA - Tło */}
       <QuantumSPA />
 
@@ -647,7 +845,7 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
               stroke={agent.color}
               strokeWidth="1"
               strokeDasharray="4 4"
-              initial={{ opacity: 0.1 }}
+              initial={{ opacity: 0.1, strokeDashoffset: 0 }}
               animate={{
                 opacity: agent.state !== 'IDLE' ? 0.6 : 0.1,
                 strokeDashoffset: agent.state === 'THINKING' ? [0, -20] : 0
@@ -822,6 +1020,7 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
               { id: 'gemini', name: 'Gemini 3.1', emoji: '🔮' },
               { id: 'claude', name: 'Claude-3.5', emoji: '🧠' },
               { id: 'gpt', name: 'GPT-4o', emoji: '💬' },
+              { id: 'groq', name: 'Groq Llama', emoji: '⚡' },
             ].map(model => (
               <button
                 key={model.id}

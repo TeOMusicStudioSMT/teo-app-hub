@@ -111,7 +111,8 @@ const obfuscate = (data: string, key: string): string => {
 /**
  * 🔓 Odszyfruj dane
  */
-const deobfuscate = (data: string, key: string): string => {
+const deobfuscate = (data: string, key: string): string | null => {
+  if (typeof data !== 'string') return null;
   try {
     const decoded = atob(data);
     let result = '';
@@ -120,7 +121,7 @@ const deobfuscate = (data: string, key: string): string => {
     }
     return result;
   } catch {
-    return '';
+    return null;
   }
 };
 
@@ -145,7 +146,7 @@ export const vaultStore = (key: string, value: string): boolean => {
   }
 };
 
-export const vaultRetrieve = (key: string): string | null => {
+export const vaultRetrieve = async (key: string): Promise<string | null> => {
   // Tryb Ducha - nie wymagaj pełnej struktury Vault
   if (typeof window !== 'undefined' && localStorage.getItem('pathway_duch_mode') === 'true') {
     return null;
@@ -164,10 +165,10 @@ export const vaultRetrieve = (key: string): string | null => {
 
     if (!encrypted) {
       // 🔄 FALLBACK DO KIBLA: Jeśli nie ma w Vault, szukaj w Kiblu (dla Cloud Routera)
-      if (key === 'ANTHROPIC_API_KEY' || key === 'CLAUDE_API_KEY') return retrieveKey('anthropic');
-      if (key === 'OPENAI_API_KEY' || key === 'GPT_API_KEY') return retrieveKey('openai');
-      if (key === 'GROQ_API_KEY') return retrieveKey('groq');
-      if (key === 'GEMINI_API_KEY') return retrieveKey('gemini');
+      if (key === 'ANTHROPIC_API_KEY' || key === 'CLAUDE_API_KEY') return await retrieveKey('anthropic');
+      if (key === 'OPENAI_API_KEY' || key === 'GPT_API_KEY') return await retrieveKey('openai');
+      if (key === 'GROQ_API_KEY') return await retrieveKey('groq');
+      if (key === 'GEMINI_API_KEY') return await retrieveKey('gemini');
 
       return null;
     }

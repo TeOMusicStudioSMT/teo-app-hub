@@ -20,9 +20,9 @@ async function deriveKey(password: string): Promise<CryptoKey> {
     false,
     ['deriveBits', 'deriveKey']
   );
-  
+
   const salt = encoder.encode('KibelSalt_v1'); // Statyczna sól
-  
+
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
@@ -45,18 +45,18 @@ export async function encryptData(data: string, password: string): Promise<strin
     const key = await deriveKey(password);
     const encoder = new TextEncoder();
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    
+
     const encrypted = await crypto.subtle.encrypt(
       { name: ALGORITHM, iv },
       key,
       encoder.encode(data)
     );
-    
+
     // Łącz IV + zaszyfrowane dane
     const combined = new Uint8Array(iv.length + encrypted.byteLength);
     combined.set(iv);
     combined.set(new Uint8Array(encrypted), iv.length);
-    
+
     return btoa(String.fromCharCode(...combined));
   } catch (error) {
     console.error('[Crypto] Błąd szyfrowania:', error);
@@ -71,22 +71,22 @@ export async function decryptData(encryptedData: string, password: string): Prom
   try {
     const key = await deriveKey(password);
     const encoder = new TextEncoder();
-    
+
     // Dekoduj z base64
     const combined = new Uint8Array(
       atob(encryptedData).split('').map(c => c.charCodeAt(0))
     );
-    
+
     // Wyciągnij IV
     const iv = combined.slice(0, 12);
     const data = combined.slice(12);
-    
+
     const decrypted = await crypto.subtle.decrypt(
       { name: ALGORITHM, iv },
       key,
       data
     );
-    
+
     return new TextDecoder().decode(decrypted);
   } catch (error) {
     console.error('[Crypto] Błąd deszyfrowania:', error);
@@ -102,6 +102,11 @@ export function simpleEncode(data: string): string {
   return btoa(data);
 }
 
-export function simpleDecode(encoded: string): string {
-  return atob(encoded);
+export function simpleDecode(encoded: string): string | null {
+  if (typeof encoded !== 'string') return null;
+  try {
+    return atob(encoded);
+  } catch (e) {
+    return null;
+  }
 }

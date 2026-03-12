@@ -45,10 +45,10 @@ export interface KwantowaKotwicaState {
  * @param pathway - wybrana ścieżka
  * @returns stan kotwicy
  */
-export const initializeKwantowaKotwica = (
+export const initializeKwantowaKotwica = async (
   userId: string,
   pathway: 'duch' | 'materia'
-): KwantowaKotwicaState => {
+): Promise<KwantowaKotwicaState> => {
   // ⚡ KROK 0: Ustawienie Klucza Tożsamości - ABSOLUTNY PRIORYTET
   setIdentityKey(userId);
 
@@ -75,7 +75,7 @@ export const initializeKwantowaKotwica = (
     }
 
     // Zapisz HardwareID do Vault jeśli to pierwsze uruchomienie
-    if (!vaultRetrieve('hardware_id')) {
+    if (!(await vaultRetrieve('hardware_id'))) {
       vaultStore('hardware_id', hwId);
       console.log('[KwantowaKotwica] 💾 Zapisano HardwareID w Vault');
     }
@@ -96,8 +96,8 @@ export const initializeKwantowaKotwica = (
  * GORGOOO - Wykrywanie klonowania
  * Sprawdza czy urządzenie się nie zmieniło
  */
-export const detectClone = (): { isCloned: boolean; message: string } => {
-  const savedHwId = vaultRetrieve('hardware_id');
+export const detectClone = async (): Promise<{ isCloned: boolean; message: string }> => {
+  const savedHwId = await vaultRetrieve('hardware_id');
   const currentHwId = generateHardwareID();
 
   if (!savedHwId) {
@@ -127,11 +127,11 @@ export const detectClone = (): { isCloned: boolean; message: string } => {
 /**
  * WALIDUJ integralność sesji
  */
-export const validateSession = (): {
+export const validateSession = async (): Promise<{
   isValid: boolean;
   needsFlush: boolean;
   message: string;
-} => {
+}> => {
   // Najpierw sprawdź weryfikację sesji
   const sessionCheck = verifySessionIntegrity();
 
@@ -144,7 +144,7 @@ export const validateSession = (): {
   }
 
   // Potem sprawdź czy nie ma klonowania
-  const cloneCheck = detectClone();
+  const cloneCheck = await detectClone();
 
   if (cloneCheck.isCloned) {
     return {
@@ -164,13 +164,13 @@ export const validateSession = (): {
 /**
  * PRZYWRACAJ tożsamość z Vault
  */
-export const restoreIdentity = (): {
+export const restoreIdentity = async (): Promise<{
   success: boolean;
   keys: string[];
   hardwareId: string | null;
-} => {
+}> => {
   const keys = vaultList();
-  const hwId = vaultRetrieve('hardware_id');
+  const hwId = await vaultRetrieve('hardware_id');
 
   console.log('[KwantowaKotwica] 🔄 Przywracanie tożsamości...');
   console.log('[KwantowaKotwica]   Klucze:', keys.length);
@@ -211,12 +211,12 @@ export const anchorKey = (keyName: string, keyValue: string): boolean => {
 /**
  * POBIERZ klucz z Vault (tylko Materia)
  */
-export const retrieveAnchoredKey = (keyName: string): string | null => {
+export const retrieveAnchoredKey = async (keyName: string): Promise<string | null> => {
   // Tryb Ducha - nie wymagaj pełnej struktury Vault
   if (localStorage.getItem('pathway_duch_mode') === 'true') {
     return null;
   }
-  return vaultRetrieve(keyName);
+  return await vaultRetrieve(keyName);
 };
 
 /**
@@ -274,12 +274,12 @@ export const getWelcomeLesson = (pathway: 'duch' | 'materia'): {
 /**
  * STATUS Kwantowej Kotwicy
  */
-export const getKotwicaStatus = (): {
+export const getKotwicaStatus = async (): Promise<{
   vaultReady: boolean;
   keyCount: number;
   hardwareId: string | null;
   pathway: string | null;
-} => {
+}> => {
   // Tryb Ducha - uproszczony status
   if (localStorage.getItem('pathway_duch_mode') === 'true') {
     return {
@@ -291,7 +291,7 @@ export const getKotwicaStatus = (): {
   }
 
   const vaultStatus = getVaultStatus();
-  const lastPathway = vaultRetrieve('last_pathway');
+  const lastPathway = await vaultRetrieve('last_pathway');
 
   return {
     vaultReady: vaultStatus.hasIdentity,

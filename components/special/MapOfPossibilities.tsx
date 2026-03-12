@@ -16,6 +16,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
+import { sendWriteFileCommand } from '../../lib/bridgeService';
 
 interface Possibility {
   id: string;
@@ -160,15 +161,32 @@ const MapOfPossibilities: React.FC<MapOfPossibilitiesProps> = ({
   };
 
   // ✅ Wybierz możliwość
-  const handleSelect = (possibility: Possibility) => {
+  const handleSelect = async (possibility: Possibility) => {
     setSelectedId(possibility.id);
     if (onSelect) {
       onSelect(possibility);
     }
-    toast.success(`${possibility.icon} ${possibility.title}`, {
-      icon: '🗺️',
-      duration: 2000,
-    });
+
+    // Test fizycznej śluzy wymiarowej dla "Most Międzywymiarowy"
+    if (possibility.id === 'most') {
+      const loadingId = toast.loading('Uruchamiam wiertarkę Wiesława...', { icon: '🪛' });
+      try {
+        const res = await sendWriteFileCommand('Wizja_Suwerena_001.txt', 'Ten plik został stworzony siłą woli z poziomu Katedry 0.00G. Most Czasoprzestrzenny działa!');
+        if (res.success) {
+          toast.success(res.message, { id: loadingId, duration: 4000, style: { background: 'rgba(15,23,42,0.95)', color: '#10b981', border: '1px solid #10b981' } });
+          toast(`Plik w: ${res.filePath}`, { icon: '📁', duration: 4000, style: { background: 'rgba(15,23,42,0.95)', color: '#94a3b8', fontSize: '10px' } });
+        } else {
+          toast.error(res.message, { id: loadingId, duration: 5000, style: { background: 'rgba(15,23,42,0.95)', color: '#ef4444', border: '1px solid #ef4444' } });
+        }
+      } catch (err) {
+        toast.error('Grawitacja zawiodła. Śluza nie odpowiada.', { id: loadingId });
+      }
+    } else {
+      toast.success(`${possibility.icon} ${possibility.title}`, {
+        icon: '🗺️',
+        duration: 2000,
+      });
+    }
   };
 
   // 🌀 Rotacja całej konstelacji

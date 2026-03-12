@@ -4,6 +4,8 @@ import { assistantStateAtom } from '../store/assistant';
 import { cn } from '../lib/helpers';
 import { resonanceColorAtom, pulseIntensityAtom } from '../store/personalization';
 import { walletAtom } from '../store/wallet';
+import { useKatedraRadio } from '../context/KatedraRadioContext';
+import { KatedraOrbita } from './KatedraOrbita';
 
 interface CosmicBackgroundProps {
     riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
@@ -17,6 +19,7 @@ export const CosmicBackground: React.FC<CosmicBackgroundProps> = ({ riskLevel })
     const resonanceColor = useAtomValue(resonanceColorAtom);
     const pulseIntensityValue = useAtomValue(pulseIntensityAtom);
     const { frequencyTier } = useAtomValue(walletAtom);
+    const radio = useKatedraRadio();
 
 
     const riskClass = `risk-${riskLevel.toLowerCase()}`;
@@ -136,13 +139,8 @@ export const CosmicBackground: React.FC<CosmicBackgroundProps> = ({ riskLevel })
         <div ref={containerRef} id="cosmic-bg-container" className={cn(riskClass, assistantClass, resonanceClass, pulseClass, tierClass)}>
              <div ref={gradientRef} id="cosmic-gradient"></div>
              
-             <div id="field-orb-container">
-                <div id="field-orb"></div>
-                 <div id="equalizer">
-                    <div className="eq-bar"></div><div className="eq-bar"></div><div className="eq-bar"></div><div className="eq-bar"></div><div className="eq-bar"></div>
-                </div>
-                <div className="field-ripple"></div>
-                <div className="field-ripple"></div>
+             <div className="absolute inset-0 w-full h-full pointer-events-none">
+                <KatedraOrbita staticMode={!radio.isPlaying} className="w-full h-full" />
              </div>
              
              <div id="grawiton-core-container">

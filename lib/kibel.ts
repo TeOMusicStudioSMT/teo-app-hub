@@ -16,13 +16,18 @@ import { encryptData, decryptData } from './crypto';
  * 🔒 sanitizeLog - Ukryj środek klucza przed logowaniem
  * Zmienia środek stringu na "****"
  */
-export const sanitizeLog = (value: string, showChars: number = 4): string => {
+export const sanitizeLog = (value: string, showChars: number = 4): string | null => {
+  if (typeof value !== 'string') return null;
   if (!value || value.length <= showChars * 2) {
     return '****';
   }
-  const start = value.substring(0, showChars);
-  const end = value.substring(value.length - showChars);
-  return `${start}****${end}`;
+  try {
+    const start = value.substring(0, showChars);
+    const end = value.substring(value.length - showChars);
+    return `${start}****${end}`;
+  } catch (e) {
+    return '****';
+  }
 };
 
 // Prefix dla kluczy w LocalStorage
@@ -64,36 +69,44 @@ export interface DetectedKey {
  */
 export function detectKeyProvider(key: string): DetectedKey {
   const trimmed = key.trim();
-  
+
   if (!trimmed || trimmed.length < 10) {
     return { provider: 'unknown', isValid: false, format: 'too_short' };
   }
-  
+
   // Groq: gsk_...
   if (trimmed.startsWith('gsk_')) {
     return { provider: 'groq', isValid: true, format: 'gsk_*' };
   }
-  
+
   // Gemini: AIza...
   if (trimmed.startsWith('AIza')) {
     return { provider: 'gemini', isValid: true, format: 'AIza*' };
   }
-  
+
   // Anthropic/Claude: sk-ant-...
   if (trimmed.startsWith('sk-ant-')) {
     return { provider: 'anthropic', isValid: true, format: 'sk-ant-*' };
   }
-  
+
   // OpenRouter: sk-or-...
   if (trimmed.startsWith('sk-or-')) {
     return { provider: 'openai', isValid: true, format: 'sk-or-*' };
   }
-  
+
   // OpenAI: sk-...
   if (trimmed.startsWith('sk-')) {
     return { provider: 'openai', isValid: true, format: 'sk-*' };
   }
-  
+
+  // Suno (JWT): eyJ...
+  if (trimmed.startsWith('eyJ') && trimmed.includes('.')) {
+    const jwtParts = trimmed.split('.');
+    if (jwtParts.length === 3) {
+      return { provider: 'suno', isValid: true, format: 'jwt' };
+    }
+  }
+
   return { provider: 'unknown', isValid: false, format: 'unknown' };
 }
 
@@ -102,11 +115,11 @@ export function detectKeyProvider(key: string): DetectedKey {
  */
 export function validateAndStoreKey(rawKey: string): { success: boolean; provider?: ProviderType; message: string } {
   const detection = detectKeyProvider(rawKey);
-  
+
   if (!detection.isValid) {
     return { success: false, message: 'Nie rozpoznano formatu klucza API' };
   }
-  
+
   // Zapisz do Kibel
   storeKey({
     id: crypto.randomUUID(),
@@ -116,9 +129,9 @@ export function validateAndStoreKey(rawKey: string): { success: boolean; provide
     createdAt: Date.now(),
     lastUsed: Date.now(),
   });
-  
-  return { 
-    success: true, 
+
+  return {
+    success: true,
     provider: detection.provider,
     message: `✅ Rozpoznano ${detection.provider.toUpperCase()}! Klucz zapisany w Kiblu.`
   };
@@ -130,10 +143,10 @@ export function validateAndStoreKey(rawKey: string): { success: boolean; provide
 export function flushKibel(): { systemReady: boolean; providers: ProviderType[]; message: string } {
   // Wyczyść stare klucze (opcjonalnie)
   // clearKibel();
-  
+
   // Sprawdź jakie mamy klucze
   const availableProviders: ProviderType[] = [];
-  
+
   // 🔄 FALLBACK: Najpierw sprawdź localStorage (najszybsze)
   // Te klucze są zapisywane bezpośrednio z ApiKeyModal
   const localStorageKeys = [
@@ -143,7 +156,7 @@ export function flushKibel(): { systemReady: boolean; providers: ProviderType[];
     { key: 'kibel_key_anthropic', provider: 'anthropic' as ProviderType },
     { key: 'kibel_key_suno', provider: 'suno' as ProviderType },
   ];
-  
+
   for (const item of localStorageKeys) {
     const value = localStorage.getItem(item.key);
     if (value && !availableProviders.includes(item.provider)) {
@@ -151,7 +164,7 @@ export function flushKibel(): { systemReady: boolean; providers: ProviderType[];
       console.log(`[Kibel] Znaleziono w localStorage: ${item.provider}`);
     }
   }
-  
+
   // 🔄 FALLBACK: Spróbuj też listKeys() z Kibel (jeśli działa)
   try {
     const keys = listKeys();
@@ -164,15 +177,15 @@ export function flushKibel(): { systemReady: boolean; providers: ProviderType[];
   } catch (e) {
     console.warn('[Kibel] IndexedDB niedostępne, używam localStorage');
   }
-  
+
   const isReady = availableProviders.length > 0;
-  
-  const message = isReady 
+
+  const message = isReady
     ? `🔐 SYSTEM_READY = TRUE! Dostępne dostawcy: ${availableProviders.join(', ')}`
     : '🔐 SYSTEM_READY = FALSE. Brak kluczy API.';
-  
+
   console.log(`[Kibel] flushKibel(): ${message}`);
-  
+
   return {
     systemReady: isReady,
     providers: availableProviders,
@@ -193,19 +206,19 @@ export function getKeyDirect(provider: ProviderType): string | null {
     suno: 'kibel_key_suno',
     unknown: '',
   };
-  
+
   const localKey = keyMap[provider];
   if (!localKey) return null;
-  
+
   const value = localStorage.getItem(localKey);
   if (!value) return null;
-  
+
   // ✅ STERYLIZACJA: Sprawdź czy to surowy klucz (nie JSON)
   if (typeof value === 'string' && (value.startsWith('gsk_') || value.startsWith('AIza') || value.startsWith('sk-') || value.startsWith('sk-ant-') || value.startsWith('sk-or-'))) {
     console.log(`[Kibel] 💎 Wykryto surowy klucz ${provider}: ${sanitizeLog(value)}`);
     return value;
   }
-  
+
   // Próbuj sparsować JSON tylko jeśli wygląda jak JSON
   try {
     if (value && (value.startsWith('{') || value.startsWith('['))) {
@@ -214,7 +227,7 @@ export function getKeyDirect(provider: ProviderType): string | null {
   } catch {
     // To surowy string - zwróć jak jest
   }
-  
+
   return value;
 }
 
@@ -241,7 +254,7 @@ export function initializeKibel(): { storage: 'indexedDB' | 'localStorage'; read
     console.warn('[Kibel] ⚠️ localStorage niedostępne! Używam pamięci wirtualnej.');
     return { storage: 'localStorage', ready: false };
   }
-  
+
   console.log('[Kibel] ✅ Storage dostępny (localStorage + IndexedDB fallback)');
   return { storage: 'indexedDB', ready: true };
 }
@@ -258,19 +271,21 @@ function getEncryptionKey(): string {
 /**
  * Zapisz klucz API do Kibel
  */
-export function storeKey(key: KibelKey): void {
+export async function storeKey(key: KibelKey): Promise<void> {
   const keyName = `${KIBEL_PREFIX}key_${key.provider}_${key.id}`;
-  const encrypted = encryptData(key.value, getEncryptionKey());
-  
+
+  // ✔️ await - bez tego zapisywaliśmy "[object Promise]" zamiast danych!
+  const encrypted = await encryptData(key.value, getEncryptionKey());
+
   const storedKey = {
     ...key,
     value: encrypted,
     createdAt: Date.now(),
   };
-  
+
   localStorage.setItem(keyName, JSON.stringify(storedKey));
   console.log(`[Kibel] 🔐 Zapisano klucz: ${key.provider}/${sanitizeLog(key.value)}`);
-  
+
   // ✅ BACKUP do starych lokalizacji (dla kompatybilności z flushKibel)
   const legacyKeyMap: Record<string, string> = {
     gemini: 'teo_gemini_api_key',
@@ -279,7 +294,7 @@ export function storeKey(key: KibelKey): void {
     anthropic: 'kibel_key_anthropic',
     suno: 'kibel_key_suno',
   };
-  
+
   const legacyKey = legacyKeyMap[key.provider];
   if (legacyKey) {
     localStorage.setItem(legacyKey, key.value);
@@ -290,24 +305,34 @@ export function storeKey(key: KibelKey): void {
 /**
  * Pobierz klucz API z Kibel (tylko do użytku!)
  */
-export function retrieveKey(provider: string, keyId?: string): string | null {
+export async function retrieveKey(provider: string, keyId?: string): Promise<string | null> {
   const prefix = `${KIBEL_PREFIX}key_${provider}`;
-  
+
   // Szukaj klucza
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && key.startsWith(prefix)) {
       if (keyId && !key.includes(keyId)) continue;
-      
+
       const rawValue = localStorage.getItem(key);
       if (!rawValue) continue;
-      
+
       // ✅ STERYLIZACJA: Sprawdź czy to JSON czy surowy string
       let decrypted: string;
       try {
         if (rawValue.startsWith('{') || rawValue.startsWith('[')) {
           const stored = JSON.parse(rawValue);
-          decrypted = decryptData(stored.value, getEncryptionKey());
+
+          // Guard: jeśli stored.value wygląda jak surowy klucz API (nie Base64),
+          // zwróć go bezpośrednio — to dane z przed naprawy storeKey
+          const v = stored.value;
+          if (typeof v === 'string' && (v.startsWith('gsk_') || v.startsWith('AIza') || v.startsWith('sk-') || v.startsWith('sk-ant-'))) {
+            console.log(`[Kibel] 📎 Legacy surowy klucz w JSON: ${provider}`);
+            decrypted = v;
+          } else {
+            decrypted = await decryptData(stored.value, getEncryptionKey());
+          }
+
           // Update lastUsed
           stored.lastUsed = Date.now();
           localStorage.setItem(key, JSON.stringify(stored));
@@ -316,15 +341,28 @@ export function retrieveKey(provider: string, keyId?: string): string | null {
           decrypted = rawValue;
         }
       } catch (e) {
-        console.warn(`[Kibel] ⚠️ Błąd parsowania klucza ${provider}:`, e);
-        decrypted = rawValue;
+        console.warn(`[Kibel] ⚠️ Błąd deszyfrowania klucza ${provider}:`, e);
+        // 🔄 FALLBACK: spróbuj dobyć klucz z legacy localStorage
+        const legacy = getKeyDirect(provider as ProviderType);
+        if (legacy) {
+          console.log(`[Kibel] 🔄 Fallback do legacy dla: ${provider}`);
+          return legacy;
+        }
+        return null;
       }
-      
-  console.log(`[Kibel] 🔑 Pobrano klucz: ${provider} [${sanitizeLog(decrypted)}]`);
+
+      console.log(`[Kibel] 🔑 Pobrano klucz: ${provider} [${sanitizeLog(decrypted)}]`);
       return decrypted;
     }
   }
-  
+
+  // Nie znaleziono w Kiblu - spróbuj legacy
+  const legacyFallback = getKeyDirect(provider as ProviderType);
+  if (legacyFallback) {
+    console.log(`[Kibel] 🔄 Fallback legacy dla: ${provider}`);
+    return legacyFallback;
+  }
+
   console.warn(`[Kibel] ⚠️ Klucz nie znaleziony: ${provider}`);
   return null;
 }
@@ -334,13 +372,13 @@ export function retrieveKey(provider: string, keyId?: string): string | null {
  */
 export function listKeys(): Omit<KibelKey, 'value'>[] {
   const keys: Omit<KibelKey, 'value'>[] = [];
-  
+
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && key.startsWith(KIBEL_PREFIX + 'key_')) {
       const rawValue = localStorage.getItem(key);
       if (!rawValue) continue;
-      
+
       // ✅ STERYLIZACJA: Sprawdź czy to JSON czy surowy string
       try {
         if (rawValue.startsWith('{') || rawValue.startsWith('[')) {
@@ -349,7 +387,7 @@ export function listKeys(): Omit<KibelKey, 'value'>[] {
             keys.push({
               id: stored.id,
               name: stored.name || 'Unknown',
-              provider: stored.provider || 'unknown',
+              provider: (stored.provider as KibelKey['provider']) || 'custom',
               createdAt: stored.createdAt || Date.now(),
               lastUsed: stored.lastUsed || Date.now(),
             });
@@ -360,7 +398,7 @@ export function listKeys(): Omit<KibelKey, 'value'>[] {
           keys.push({
             id: 'legacy',
             name: `${provider?.toUpperCase() || 'Unknown'} Key (legacy)`,
-            provider: provider || 'unknown',
+            provider: (provider as KibelKey['provider']) || 'custom',
             createdAt: Date.now(),
             lastUsed: Date.now(),
           });
@@ -370,7 +408,7 @@ export function listKeys(): Omit<KibelKey, 'value'>[] {
       }
     }
   }
-  
+
   return keys;
 }
 
@@ -379,18 +417,18 @@ export function listKeys(): Omit<KibelKey, 'value'>[] {
  */
 export function deleteKey(provider: string, keyId?: string): boolean {
   const prefix = `${KIBEL_PREFIX}key_${provider}`;
-  
+
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && key.startsWith(prefix)) {
       if (keyId && !key.includes(keyId)) continue;
-      
+
       localStorage.removeItem(key);
       console.log(`[Kibel] 🗑️ Usunięto klucz: ${provider}`);
       return true;
     }
   }
-  
+
   return false;
 }
 
@@ -399,14 +437,14 @@ export function deleteKey(provider: string, keyId?: string): boolean {
  */
 export function clearKibel(): void {
   const keysToRemove: string[] = [];
-  
+
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && key.startsWith(KIBEL_PREFIX)) {
       keysToRemove.push(key);
     }
   }
-  
+
   keysToRemove.forEach(key => localStorage.removeItem(key));
   console.log('[Kibel] 🧹 Wyczyszczono wszystkie klucze');
 }
@@ -416,29 +454,29 @@ export function clearKibel(): void {
  */
 export function hasKey(provider: string): boolean {
   const prefix = `${KIBEL_PREFIX}key_${provider}`;
-  
+
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && key.startsWith(prefix)) {
       return true;
     }
   }
-  
+
   return false;
 }
 
 /**
  * SPECJALNE: Pobierz Suno Cookie
  */
-export function getSunoKey(): string | null {
-  return retrieveKey('suno');
+export async function getSunoKey(): Promise<string | null> {
+  return await retrieveKey('suno');
 }
 
 /**
  * SPECJALNE: Pobierz Gemini API Key
  */
-export function getGeminiKey(): string | null {
-  return retrieveKey('gemini');
+export async function getGeminiKey(): Promise<string | null> {
+  return await retrieveKey('gemini');
 }
 
 /**

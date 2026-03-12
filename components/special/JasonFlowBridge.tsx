@@ -37,9 +37,9 @@ interface JasonFlowBridgeProps {
   demoMode?: boolean;
 }
 
-export const JasonFlowBridge: React.FC<JasonFlowBridgeProps> = ({ 
+export const JasonFlowBridge: React.FC<JasonFlowBridgeProps> = ({
   onCreate,
-  demoMode = false 
+  demoMode = false
 }) => {
   const [params, setParams] = useState<JasonFlowParams | null>(demoMode ? {
     style: 'Synthwave',
@@ -49,7 +49,7 @@ export const JasonFlowBridge: React.FC<JasonFlowBridgeProps> = ({
     generationId: 'jason_demo_001',
     timestamp: Date.now(),
   } : null);
-  
+
   const [isCreating, setIsCreating] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [iskaInput, setIskaInput] = useState('');
@@ -63,15 +63,15 @@ export const JasonFlowBridge: React.FC<JasonFlowBridgeProps> = ({
   }, [params]);
 
   const triggerSuno = useCallback(async (flowParams: JasonFlowParams) => {
-    const sunoCookie = getSunoCookie();
+    const sunoCookie = await getSunoCookie();
     console.log('[JasonFlowBridge] 🎵 Triggering Suno with params:', flowParams);
     console.log('[Suno API] Cookie present:', !!sunoCookie);
-    
+
     try {
       const fullPrompt = `${flowParams.prompt} [${flowParams.tags.join(', ')}] | Style: ${flowParams.style}`;
       console.log('[Suno API] Model:', flowParams.model);
       console.log('[Suno API] Prompt:', fullPrompt);
-      
+
       // Wyślij przez proxy /api/suno
       const response = await fetch('/api/suno/api/generate', {
         method: 'POST',
@@ -136,7 +136,7 @@ export const JasonFlowBridge: React.FC<JasonFlowBridgeProps> = ({
 
     setIsCreating(true);
     console.log('[JasonFlowBridge] ⚡ ISKRA ZAPALONA! Teleportuję do Music V2...');
-    
+
     // TELEPORT: Wyślij parametry do Music V2
     teleportToMusic({
       style: params.style,
@@ -145,19 +145,19 @@ export const JasonFlowBridge: React.FC<JasonFlowBridgeProps> = ({
       prompt: params.prompt,
       generationId: params.generationId,
     });
-    
+
     // Zarejestruj próbę generacji (koherencja wzrośnie po sukcesie)
     // Na razie pokaż sukces - Music V2 odeśle wynik
     onCreate?.(params);
     setShowSuccess(true);
-    
+
     setTimeout(() => {
       setShowSuccess(false);
       setParams(null);
       setIskaVerified(false);
       setIskaInput('');
     }, 5000);
-    
+
     setIsCreating(false);
   }, [params, isCreating, iskaInput, iskaVerified, onCreate]);
 
@@ -236,13 +236,13 @@ export const JasonFlowBridge: React.FC<JasonFlowBridgeProps> = ({
                   {isCreating ? <span>🔮 Tworzę...</span> : <><span style={sparkIconStyle}>⚡</span><span>CREATE</span></>}
                 </button>
 
-                <p style={hitlNoteStyle}>✦ HUMAN IN THE LOOP ✦<br/><small>Ty decydujesz. Ja przygotowuję.</small></p>
+                <p style={hitlNoteStyle}>✦ HUMAN IN THE LOOP ✦<br /><small>Ty decydujesz. Ja przygotowuję.</small></p>
               </motion.div>
             ) : (
               <motion.div key="success" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} style={successStyle}>
                 <div style={successIconStyle}>🎵</div>
                 <h3 style={successTitleStyle}>MUZYKA W DRODZE!</h3>
-                <p style={successTextStyle}>Suno otrzymał parametry<br/>Generowanie rozpoczęte...</p>
+                <p style={successTextStyle}>Suno otrzymał parametry<br />Generowanie rozpoczęte...</p>
               </motion.div>
             )}
           </AnimatePresence>

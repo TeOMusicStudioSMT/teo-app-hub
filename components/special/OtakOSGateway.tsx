@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "react-hot-toast";
+import { executeBridgeCommand } from "../../lib/bridgeService";
 
 interface OtakOSGatewayProps {
   onInitiate: () => void;
@@ -12,9 +14,9 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
 
   const handleInitiate = () => {
     if (isInitiating) return;
-    
+
     setIsInitiating(true);
-    
+
     // Delay to allow for fade-out animation
     setTimeout(() => {
       setIsVisible(false);
@@ -26,7 +28,7 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
 
   // Subtle pulse animation for background glow
   const [pulsePhase, setPulsePhase] = useState(0);
-  
+
   useEffect(() => {
     const interval = setInterval(() => {
       setPulsePhase((prev) => (prev + 0.02) % (Math.PI * 2));
@@ -38,7 +40,7 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
 
   if (!isVisible) {
     return (
-      <div 
+      <div
         className="fixed inset-0 bg-slate-950 transition-opacity duration-800 ease-in-out opacity-0"
         style={{ pointerEvents: "none" }}
       />
@@ -46,7 +48,7 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
   }
 
   return (
-    <div 
+    <div
       className={`fixed inset-0 overflow-hidden transition-all duration-800 ease-in-out ${isInitiating ? 'opacity-0 scale-105' : 'opacity-100 scale-100'}`}
       style={{
         background: `
@@ -57,7 +59,7 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
       }}
     >
       {/* Subtle grid overlay for tech feel */}
-      <div 
+      <div
         className="absolute inset-0 opacity-[0.03]"
         style={{
           backgroundImage: `
@@ -138,7 +140,7 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
           }}
         >
           {/* Inner glow on hover */}
-          <span 
+          <span
             className={`
               absolute inset-0 rounded-full opacity-0 transition-opacity duration-500
               group-hover:opacity-100
@@ -150,7 +152,7 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
               `,
             }}
           />
-          
+
           {/* Text with glow effect */}
           <span className="relative z-10 drop-shadow-[0_0_10px_rgba(6,182,212,0.3)] group-hover:drop-shadow-[0_0_20px_rgba(6,182,212,0.5)]">
             INICJACJA OtakOS
@@ -158,15 +160,45 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
         </button>
       </div>
 
-      {/* Bottom info text */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2">
+      {/* Bottom info text & Bridge Tester */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4">
         <p className="text-slate-600 text-xs tracking-[0.3em] uppercase font-light">
           System Gotowy • 0.00G • Ω
         </p>
+
+        {/* Testowy przycisk Śluzy AntiGravity */}
+        <button
+          onClick={async () => {
+            const loadingToast = toast.loading('Wysyłam sygnał do Śluzy...');
+            try {
+              const res = await executeBridgeCommand('TEST PING: Czy Wiesław żyje?');
+              if (res.success) {
+                toast.success(res.message, { id: loadingToast, duration: 4000, style: { background: 'rgba(15,23,42,0.95)', color: '#10b981', border: '1px solid #10b981' } });
+              } else {
+                toast.error(res.message, { id: loadingToast, duration: 5000, style: { background: 'rgba(15,23,42,0.95)', color: '#ef4444', border: '1px solid #ef4444' } });
+              }
+            } catch (err) {
+              toast.error('Błąd połączenia z LOKALNĄ ŚLUZĄ', { id: loadingToast });
+            }
+          }}
+          className={`
+            px-4 py-2 mt-2
+            bg-slate-900/60
+            border border-cyan-500/30
+            rounded-md
+            text-cyan-400 text-[10px] tracking-widest
+            hover:bg-cyan-900/40 hover:border-cyan-400
+            transition-all duration-300
+            flex items-center gap-2
+            shadow-[0_0_15px_rgba(6,182,212,0.15)]
+          `}
+        >
+          <span className="text-xs">🔌</span> ŚLUZA ANTIGRAVITY
+        </button>
       </div>
 
       {/* CSS for custom animations */}
-      <style jsx>{`
+      <style>{`
         @keyframes float {
           0%, 100% { 
             transform: translateY(0) translateX(0);

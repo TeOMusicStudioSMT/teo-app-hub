@@ -18,6 +18,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
+import { useLocalStorage } from '../../lib/hooks/useLocalStorage';
 import {
   getAgentName,
   setAgentName,
@@ -63,11 +64,11 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   const [kotwicaStatus, setKotwicaStatus] = useState<any>(null);
   const [kibelKeys, setKibelKeys] = useState<number>(0);
 
-  // StoryBoard state
-  const [stories, setStories] = useState<string[]>([]);
-  const [currentStory, setCurrentStory] = useState<string>('');
+  // StoryBoard state — trwała pamięć między sesjami
+  const [stories, setStories] = useLocalStorage<string[]>('teodash_stories', []);
+  const [currentStory, setCurrentStory] = useLocalStorage<string>('teodash_current_story', '');
   const [isStoryPlaying, setIsStoryPlaying] = useState<boolean>(false);
-  const [storyText, setStoryText] = useState<string>('');
+  const [storyText, setStoryText] = useLocalStorage<string>('teodash_story_text', '');
 
   // Wnioski Mistrza
   const [wnioski, setWnioski] = useState<any[]>([]);
@@ -79,9 +80,9 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   const [authKey, setAuthKey] = useState<string>('---');
   const [keyPulse, setKeyPulse] = useState<number>(0);
 
-  // Gemma-Vision
-  const [gemmaVision, setGemmaVision] = useState<string>('Gemma skanuje przestrzeń Klubu...');
-  const [isGemmaActive, setIsGemmaActive] = useState<boolean>(false);
+  // Gemma-Vision — trwała pamięć
+  const [gemmaVision, setGemmaVision] = useLocalStorage<string>('teodash_gemma_vision', 'Gemma skanuje przestrzeń Klubu...');
+  const [isGemmaActive, setIsGemmaActive] = useLocalStorage<boolean>('teodash_gemma_active', false);
 
   // TeO-Renderer - wizualizacje
   const [currentVisualization, setCurrentVisualization] = useState<any>(null);
@@ -98,7 +99,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
 
   // Pobierz statystyki
   useEffect(() => {
-    const refreshStats = () => {
+    const refreshStats = async () => {
       try {
         setAgentNames(getAllAgentNames() || {} as AgentNames);
       } catch (e) {
@@ -132,7 +133,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
 
       // Status Kwantowej Kotwicy
       try {
-        const status = getKotwicaStatus();
+        const status = await getKotwicaStatus();
         setKotwicaStatus(typeof status === 'string' ? status : JSON.stringify(status));
       } catch (e) {
         setKotwicaStatus(' Niedostępny');
@@ -148,9 +149,9 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
 
       // Pobierz klucz autentyczności - TYLKO jeśli Vault jest gotowy
       try {
-        const stats = getKotwicaStatus();
+        const stats = await getKotwicaStatus();
         if (stats.vaultReady) {
-          const key = retrieveAnchoredKey('authenticity_key');
+          const key = await retrieveAnchoredKey('authenticity_key');
           setAuthKey(key && typeof key === 'string' ? key.substring(0, 8) + '****' : '---');
         } else {
           setAuthKey('⏳ INICJACJA...');

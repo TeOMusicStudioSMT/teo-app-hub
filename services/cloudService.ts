@@ -28,10 +28,10 @@ export interface RouterConfig {
 /**
  * 🔍 Wykrywanie aktywnego dostawcy i klucza
  */
-export const getCloudProvider = (requestedProvider?: CloudProvider): { provider: CloudProvider, apiKey: string | null } => {
+export const getCloudProvider = async (requestedProvider?: CloudProvider): Promise<{ provider: CloudProvider, apiKey: string | null }> => {
     // 1. Jeśli wymuszono konkretnego dostawcę (np. z Portu Dyplomatycznego)
     if (requestedProvider && requestedProvider !== 'unknown') {
-        const key = retrieveKey(requestedProvider);
+        const key = await retrieveKey(requestedProvider);
         if (key) return { provider: requestedProvider, apiKey: key };
     }
 
@@ -51,10 +51,10 @@ export const getCloudProvider = (requestedProvider?: CloudProvider): { provider:
     }
 
     // 3. Szukaj w dedykowanych skrytkach Kibla
-    const geminiKibel = retrieveKey('gemini');
+    const geminiKibel = await retrieveKey('gemini');
     if (geminiKibel && geminiKibel.startsWith('AIza')) return { provider: 'gemini', apiKey: geminiKibel };
 
-    const groqKibel = retrieveKey('groq');
+    const groqKibel = await retrieveKey('groq');
     if (groqKibel && groqKibel.startsWith('gsk_')) return { provider: 'groq', apiKey: groqKibel };
 
     return { provider: 'unknown', apiKey: null };
@@ -217,7 +217,7 @@ export async function cloudRouter(
         case 'claude':
             await callClaude(
                 messages,
-                vaultRetrieve('ANTHROPIC_API_KEY') || '',
+                (await vaultRetrieve('ANTHROPIC_API_KEY')) || '',
                 onChunk,
                 config.model ?? 'claude-sonnet-4-20250514',
                 config.systemPrompt
@@ -228,7 +228,7 @@ export async function cloudRouter(
         case 'openai':
             await callOpenAICompatible(
                 messages,
-                vaultRetrieve('OPENAI_API_KEY') || '',
+                (await vaultRetrieve('OPENAI_API_KEY')) || '',
                 onChunk,
                 'https://api.openai.com/v1',
                 config.model ?? 'gpt-4o-mini',
@@ -239,7 +239,7 @@ export async function cloudRouter(
         case 'groq':
             await callOpenAICompatible(
                 messages,
-                vaultRetrieve('GROQ_API_KEY') || '',
+                (await vaultRetrieve('GROQ_API_KEY')) || '',
                 onChunk,
                 'https://api.groq.com/openai/v1',
                 config.model ?? 'llama-3.3-70b-versatile',
@@ -287,11 +287,11 @@ export const generateContent = async (prompt: string, mode: string, providerOver
         return "Lokalny Duch śpi.";
     }
 
-    const { provider: detectedProvider } = getCloudProvider(providerOverride);
+    const { provider: detectedProvider } = await getCloudProvider(providerOverride);
     const provider = providerOverride || detectedProvider;
 
     if (provider === 'gemini') {
-        const { apiKey } = getCloudProvider('gemini');
+        const { apiKey } = await getCloudProvider('gemini');
         if (!apiKey) return "Resonance Failed: Brak klucza Gemini.";
 
         try {

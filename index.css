@@ -70,8 +70,7 @@
 }
 
 /* --- Grawiton Core & Field Orb --- */
-#grawiton-core-container,
-#field-orb-container {
+#grawiton-core-container {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -95,38 +94,6 @@
     animation: grawiton-core-pulse 8s ease-in-out infinite alternate;
 }
 
-#field-orb-container {
-    width: 19.5vmax;
-    height: 19.5vmax;
-    max-width: 240px;
-    max-height: 240px;
-}
-
-#field-orb {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: radial-gradient(circle at center, var(--orb-color-1, hsla(280, 80%, 60%, 0.1)) 0%, var(--orb-color-2, hsla(300, 80%, 40%, 0.03)) 70%);
-    animation: field-orb-pulse 12s ease-in-out infinite alternate;
-    will-change: transform, opacity;
-    transition: background 0.8s ease-in-out;
-}
-
-.field-ripple {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    border: 1.5px solid var(--ripple-color, hsla(290, 100%, 80%, 0.25));
-    box-shadow: 0 0 15px 2px var(--ripple-glow, hsla(290, 100%, 80%, 0.15));
-    animation: field-ripple-expand 8s ease-out infinite;
-    opacity: 0;
-    will-change: transform, opacity;
-    transition: border 0.8s ease, box-shadow 0.8s ease;
-}
-
-.field-ripple:nth-child(2) {
-    animation-delay: -4s;
-}
 
 @keyframes grawiton-core-pulse {
     from {

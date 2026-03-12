@@ -45,6 +45,8 @@ import { setSystemReady } from './lib/memory/CityMemory';
 import PathwaySelector from './components/special/PathwaySelector';
 import QuantumJournal from './components/special/QuantumJournal';
 import { BookIcon } from './components/icons';
+import { KatedraRadioProvider } from './context/KatedraRadioContext';
+import { KatedraRadioPlayer } from './components/KatedraRadioPlayer';
 
 
 
@@ -492,370 +494,373 @@ const App: React.FC = () => {
     };
 
     return (
-        <GravitonProvider>
-            <div className="relative w-screen h-screen flex flex-col items-center justify-center overflow-hidden">
-                <CosmicBackground riskLevel={riskLevel} />
-                <div className="relative z-10 w-full h-full flex flex-col">
-                    {!isInitiated ? (
-                        <OtakOSGateway onInitiate={() => setIsInitiated(true)} />
-                    ) : (
-                        <>
-                            {/* 🚀 TE0 GENESIS - Suwerenna Brama (tylko dla Ścieżki Materii) */}
-                            {!showPathwaySelector && selectedPathway === 'materia' && showGenesis && !isPioneer && (
-                                <TeOGenesis
-                                    onEnter={() => {
-                                        setShowGenesis(false);
-                                        setShowIntro(false);
-                                    }}
-                                    isPioneer={isPioneer}
-                                />
-                            )}
-
-                            {/* Ścieżka Ducha */}
-                            {!showPathwaySelector && selectedPathway === 'duch' && (
-                                <>
-                                    <Header
-                                        isVisible={isReady}
-                                        isAuthenticated={false}
-                                        isLoungeOpen={isLoungeOpen}
-                                        onLogin={handleLogin}
-                                        onLogout={handleLogout}
-                                        onToggleLounge={handleToggleLounge}
-                                        onOpenSettings={() => setApiKeyModalOpen(true)}
+        <KatedraRadioProvider>
+            <KatedraRadioPlayer />
+            <GravitonProvider>
+                <div className="relative w-screen h-screen flex flex-col items-center justify-center overflow-hidden">
+                    <CosmicBackground riskLevel={riskLevel} />
+                    <div className="relative z-10 w-full h-full flex flex-col">
+                        {!isInitiated ? (
+                            <OtakOSGateway onInitiate={() => setIsInitiated(true)} />
+                        ) : (
+                            <>
+                                {/* 🚀 TE0 GENESIS - Suwerenna Brama (tylko dla Ścieżki Materii) */}
+                                {!showPathwaySelector && selectedPathway === 'materia' && showGenesis && !isPioneer && (
+                                    <TeOGenesis
+                                        onEnter={() => {
+                                            setShowGenesis(false);
+                                            setShowIntro(false);
+                                        }}
+                                        isPioneer={isPioneer}
                                     />
-                                    <main className="w-full h-full">
-                                        <AnimatePresence mode="wait">
-                                            <motion.div
-                                                key="lounge-duch"
-                                                className="w-full h-full"
-                                                initial={{ opacity: 0 }}
-                                                animate={{ opacity: 1 }}
-                                                exit={{ opacity: 0 }}
-                                                transition={{ duration: 0.5 }}
-                                            >
-                                                <TeonautLounge
-                                                    onSubscriptionToggle={handleSubscriptionToggle}
-                                                    onFavoriteToggle={handleFavoriteToggle}
-                                                    onTriggerAnomaly={handleSystemScan}
-                                                    onLogout={handleLogout}
-                                                    behavioralData={behavioralData}
-                                                    onVisualAssistantOpen={() => setVisualAssistantOpen(true)}
-                                                />
-                                            </motion.div>
-                                        </AnimatePresence>
-                                    </main>
-                                </>
-                            )}
+                                )}
 
-                            {/* Ścieżka Materii */}
-                            {!showPathwaySelector && selectedPathway === 'materia' && (
-                                <>
-                                    <Header
-                                        isVisible={isReady}
-                                        isAuthenticated={!!user}
-                                        isLoungeOpen={isLoungeOpen}
-                                        onLogin={handleLogin}
-                                        onLogout={handleLogout}
-                                        onToggleLounge={handleToggleLounge}
-                                        onOpenSettings={() => setApiKeyModalOpen(true)}
-                                    />
-
-                                    <main className="w-full h-full">
-                                        <AnimatePresence mode="wait">
-                                            {!user ? (
+                                {/* Ścieżka Ducha */}
+                                {!showPathwaySelector && selectedPathway === 'duch' && (
+                                    <>
+                                        <Header
+                                            isVisible={isReady}
+                                            isAuthenticated={false}
+                                            isLoungeOpen={isLoungeOpen}
+                                            onLogin={handleLogin}
+                                            onLogout={handleLogout}
+                                            onToggleLounge={handleToggleLounge}
+                                            onOpenSettings={() => setApiKeyModalOpen(true)}
+                                        />
+                                        <main className="w-full h-full">
+                                            <AnimatePresence mode="wait">
                                                 <motion.div
-                                                    key="portal-guest"
-                                                    initial={{ opacity: 0 }}
-                                                    animate={{ opacity: 1 }}
-                                                    exit={{ opacity: 0 }}
-                                                    transition={{ duration: 0.8 }}
-                                                    className="w-full h-full"
-                                                >
-                                                    <CosmicPortal onLoginRequest={handleLogin} onEmailLogin={handleEmailLogin} onEmailSignup={handleEmailSignup} onWalletLogin={handleWalletLogin} />
-                                                </motion.div>
-                                            ) : (
-                                                <motion.div
-                                                    key={isLoungeOpen ? "lounge" : "portal-auth"}
+                                                    key="lounge-duch"
                                                     className="w-full h-full"
                                                     initial={{ opacity: 0 }}
                                                     animate={{ opacity: 1 }}
                                                     exit={{ opacity: 0 }}
                                                     transition={{ duration: 0.5 }}
                                                 >
-                                                    {isLoungeOpen ? (
-                                                        <TeonautLounge
-                                                            onSubscriptionToggle={handleSubscriptionToggle}
-                                                            onFavoriteToggle={handleFavoriteToggle}
-                                                            onTriggerAnomaly={handleSystemScan}
-                                                            onLogout={handleLogout}
-                                                            behavioralData={behavioralData}
-                                                            onVisualAssistantOpen={() => setVisualAssistantOpen(true)}
-                                                        />
-                                                    ) : (
-                                                        <CosmicPortal
-                                                            onLoginRequest={handleLogin}
-                                                            onEmailLogin={handleEmailLogin}
-                                                            onEmailSignup={handleEmailSignup}
-                                                            onWalletLogin={handleWalletLogin}
-                                                            isAuthenticated={true}
-                                                            onVisualAssistantOpen={() => setVisualAssistantOpen(true)}
-                                                        />
-                                                    )}
+                                                    <TeonautLounge
+                                                        onSubscriptionToggle={handleSubscriptionToggle}
+                                                        onFavoriteToggle={handleFavoriteToggle}
+                                                        onTriggerAnomaly={handleSystemScan}
+                                                        onLogout={handleLogout}
+                                                        behavioralData={behavioralData}
+                                                        onVisualAssistantOpen={() => setVisualAssistantOpen(true)}
+                                                    />
                                                 </motion.div>
-                                            )}
-                                        </AnimatePresence>
-                                    </main>
-                                </>
-                            )}
+                                            </AnimatePresence>
+                                        </main>
+                                    </>
+                                )}
 
-                            {/* 🌀 Field Resonance Indicator - Vibe Pulse */}
-                            <div className="fixed top-1/2 -translate-y-1/2 right-3 z-[1500] pointer-events-none flex flex-col items-center gap-2">
-                                <motion.div
-                                    className="w-1.5 h-64 bg-slate-900/40 rounded-full border border-white/5 overflow-hidden flex flex-col-reverse relative"
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                >
+                                {/* Ścieżka Materii */}
+                                {!showPathwaySelector && selectedPathway === 'materia' && (
+                                    <>
+                                        <Header
+                                            isVisible={isReady}
+                                            isAuthenticated={!!user}
+                                            isLoungeOpen={isLoungeOpen}
+                                            onLogin={handleLogin}
+                                            onLogout={handleLogout}
+                                            onToggleLounge={handleToggleLounge}
+                                            onOpenSettings={() => setApiKeyModalOpen(true)}
+                                        />
+
+                                        <main className="w-full h-full">
+                                            <AnimatePresence mode="wait">
+                                                {!user ? (
+                                                    <motion.div
+                                                        key="portal-guest"
+                                                        initial={{ opacity: 0 }}
+                                                        animate={{ opacity: 1 }}
+                                                        exit={{ opacity: 0 }}
+                                                        transition={{ duration: 0.8 }}
+                                                        className="w-full h-full"
+                                                    >
+                                                        <CosmicPortal onLoginRequest={handleLogin} onEmailLogin={handleEmailLogin} onEmailSignup={handleEmailSignup} onWalletLogin={handleWalletLogin} />
+                                                    </motion.div>
+                                                ) : (
+                                                    <motion.div
+                                                        key={isLoungeOpen ? "lounge" : "portal-auth"}
+                                                        className="w-full h-full"
+                                                        initial={{ opacity: 0 }}
+                                                        animate={{ opacity: 1 }}
+                                                        exit={{ opacity: 0 }}
+                                                        transition={{ duration: 0.5 }}
+                                                    >
+                                                        {isLoungeOpen ? (
+                                                            <TeonautLounge
+                                                                onSubscriptionToggle={handleSubscriptionToggle}
+                                                                onFavoriteToggle={handleFavoriteToggle}
+                                                                onTriggerAnomaly={handleSystemScan}
+                                                                onLogout={handleLogout}
+                                                                behavioralData={behavioralData}
+                                                                onVisualAssistantOpen={() => setVisualAssistantOpen(true)}
+                                                            />
+                                                        ) : (
+                                                            <CosmicPortal
+                                                                onLoginRequest={handleLogin}
+                                                                onEmailLogin={handleEmailLogin}
+                                                                onEmailSignup={handleEmailSignup}
+                                                                onWalletLogin={handleWalletLogin}
+                                                                isAuthenticated={true}
+                                                                onVisualAssistantOpen={() => setVisualAssistantOpen(true)}
+                                                            />
+                                                        )}
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                        </main>
+                                    </>
+                                )}
+
+                                {/* 🌀 Field Resonance Indicator - Vibe Pulse */}
+                                <div className="fixed top-1/2 -translate-y-1/2 right-3 z-[1500] pointer-events-none flex flex-col items-center gap-2">
                                     <motion.div
-                                        animate={{
-                                            height: `${resonance}%`,
-                                            boxShadow: resonance > 0 ? `0 0 15px rgba(34,211,238,${0.2 + resonance / 200})` : 'none'
-                                        }}
-                                        className="w-full bg-gradient-to-t from-cyan-500 via-blue-400 to-indigo-400 rounded-full"
-                                        transition={{ type: "spring", stiffness: 50, damping: 20 }}
-                                    />
-                                </motion.div>
-                                <motion.span
-                                    className="text-[10px] text-cyan-400/70 font-bold uppercase tracking-widest [writing-mode:vertical-lr] rotate-180"
-                                    animate={{ opacity: [0.4, 1, 0.4] }}
-                                    transition={{ duration: 3, repeat: Infinity }}
-                                >
-                                    INTEGRACJA {resonance}%
-                                </motion.span>
-                            </div>
-
-                            {/* 🛰️ Quantum Navigation - Scentralizowany Panel Boczny */}
-                            <div className="fixed bottom-10 right-6 flex flex-col items-center gap-6 z-[2000] pointer-events-none">
-                                <div className="pointer-events-auto">
-                                    <button
-                                        onClick={() => setShowJournal(true)}
-                                        className="w-14 h-14 rounded-full flex flex-col items-center justify-center bg-gradient-to-br from-cyan-400 to-blue-600 border-2 border-cyan-300/50 shadow-[0_0_20px_rgba(6,182,212,0.6)] cursor-pointer hover:scale-110 transition-all duration-300 group relative"
-                                        title="WPIS (Dziennik)"
+                                        className="w-1.5 h-64 bg-slate-900/40 rounded-full border border-white/5 overflow-hidden flex flex-col-reverse relative"
+                                        initial={{ opacity: 0, x: 20 }}
+                                        animate={{ opacity: 1, x: 0 }}
                                     >
-                                        <div className="w-6 h-6 text-white group-hover:animate-pulse">
-                                            <BookIcon />
-                                        </div>
-                                        <span className="absolute -left-32 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded-lg text-xs font-bold text-cyan-300 border border-cyan-500/30 whitespace-nowrap pointer-events-none">
-                                            WPIS (Dziennik)
-                                        </span>
-                                    </button>
-                                </div>
-                                <div className="pointer-events-auto">
-                                    <button
-                                        onClick={() => setShowPipes(true)}
-                                        className="w-11 h-11 rounded-full flex items-center justify-center text-lg bg-gradient-to-br from-pink-400 to-pink-600 border-2 border-pink-300/50 shadow-[0_0_15px_rgba(244,114,182,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                        title="🔧 Drożność Rur"
+                                        <motion.div
+                                            animate={{
+                                                height: `${resonance}%`,
+                                                boxShadow: resonance > 0 ? `0 0 15px rgba(34,211,238,${0.2 + resonance / 200})` : 'none'
+                                            }}
+                                            className="w-full bg-gradient-to-t from-cyan-500 via-blue-400 to-indigo-400 rounded-full"
+                                            transition={{ type: "spring", stiffness: 50, damping: 20 }}
+                                        />
+                                    </motion.div>
+                                    <motion.span
+                                        className="text-[10px] text-cyan-400/70 font-bold uppercase tracking-widest [writing-mode:vertical-lr] rotate-180"
+                                        animate={{ opacity: [0.4, 1, 0.4] }}
+                                        transition={{ duration: 3, repeat: Infinity }}
                                     >
-                                        🔧
-                                    </button>
-                                </div>
-                                <div className="pointer-events-auto">
-                                    <button
-                                        onClick={() => setShowTeODash(true)}
-                                        className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-sky-500 to-sky-700 border-2 border-sky-400/50 shadow-[0_0_15px_rgba(14,165,233,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                        title="🏛️ TeODash - Dashboard"
-                                    >
-                                        🏛️
-                                    </button>
-                                </div>
-                                <div className="pointer-events-auto">
-                                    <button
-                                        onClick={() => setShowWniosekO(true)}
-                                        className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-violet-500 to-purple-700 border-2 border-purple-400/50 shadow-[0_0_15px_rgba(168,85,247,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                        title="📋 Złóż Wniosek O..."
-                                    >
-                                        📋
-                                    </button>
-                                </div>
-                                <div className="pointer-events-auto">
-                                    <button
-                                        onClick={() => setShowCrewClub(true)}
-                                        className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-amber-400 to-amber-600 border-2 border-amber-300/50 shadow-[0_0_15px_rgba(251,191,36,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                        title="🏆 Klub Mistrzów"
-                                    >
-                                        👑
-                                    </button>
-                                </div>
-                                <div className="pointer-events-auto">
-                                    <button
-                                        onClick={() => setShowKibel(true)}
-                                        className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-cyan-600 to-cyan-800 border-2 border-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                        title="🔐 TeO-Kibel"
-                                    >
-                                        🌀
-                                    </button>
-                                </div>
-                                <div className="pointer-events-auto">
-                                    <button
-                                        onClick={() => setShowJasonBridge(true)}
-                                        className="w-14 h-14 rounded-full flex items-center justify-center text-2xl bg-gradient-to-br from-purple-500 to-indigo-600 border-2 border-white/30 shadow-[0_0_20px_rgba(139,92,246,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                        title="🎵 RadioSMT Pipeline"
-                                    >
-                                        🎛️
-                                    </button>
+                                        INTEGRACJA {resonance}%
+                                    </motion.span>
                                 </div>
 
-                                {/* 🏛️ Nagroda - Rada Podstawowa (Unlocked at 100%) */}
-                                {isRadaUnlocked && (
-                                    <motion.div
-                                        initial={{ opacity: 0, scale: 0, rotate: -45 }}
-                                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                                        transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                                        className="pointer-events-auto mt-4"
-                                    >
+                                {/* 🛰️ Quantum Navigation - Scentralizowany Panel Boczny */}
+                                <div className="fixed bottom-10 right-6 flex flex-col items-center gap-6 z-[2000] pointer-events-none">
+                                    <div className="pointer-events-auto">
                                         <button
-                                            onClick={() => setShowRada(true)}
-                                            className="w-16 h-16 rounded-full flex items-center justify-center text-3xl bg-gradient-to-tr from-amber-400 via-orange-500 to-red-600 border-2 border-amber-300 shadow-[0_0_30px_rgba(245,158,11,0.8)] cursor-pointer hover:scale-125 transition-transform group relative"
-                                            title="🏛️ Rada Podstawowa - Odblokowano!"
+                                            onClick={() => setShowJournal(true)}
+                                            className="w-14 h-14 rounded-full flex flex-col items-center justify-center bg-gradient-to-br from-cyan-400 to-blue-600 border-2 border-cyan-300/50 shadow-[0_0_20px_rgba(6,182,212,0.6)] cursor-pointer hover:scale-110 transition-all duration-300 group relative"
+                                            title="WPIS (Dziennik)"
+                                        >
+                                            <div className="w-6 h-6 text-white group-hover:animate-pulse">
+                                                <BookIcon />
+                                            </div>
+                                            <span className="absolute -left-32 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded-lg text-xs font-bold text-cyan-300 border border-cyan-500/30 whitespace-nowrap pointer-events-none">
+                                                WPIS (Dziennik)
+                                            </span>
+                                        </button>
+                                    </div>
+                                    <div className="pointer-events-auto">
+                                        <button
+                                            onClick={() => setShowPipes(true)}
+                                            className="w-11 h-11 rounded-full flex items-center justify-center text-lg bg-gradient-to-br from-pink-400 to-pink-600 border-2 border-pink-300/50 shadow-[0_0_15px_rgba(244,114,182,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            title="🔧 Drożność Rur"
+                                        >
+                                            🔧
+                                        </button>
+                                    </div>
+                                    <div className="pointer-events-auto">
+                                        <button
+                                            onClick={() => setShowTeODash(true)}
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-sky-500 to-sky-700 border-2 border-sky-400/50 shadow-[0_0_15px_rgba(14,165,233,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            title="🏛️ TeODash - Dashboard"
                                         >
                                             🏛️
-                                            <div className="absolute inset-0 rounded-full animate-ping bg-amber-500/30 -z-10" />
-                                            <div className="absolute -inset-1 rounded-full border border-amber-400 opacity-50 animate-pulse" />
                                         </button>
-                                    </motion.div>
-                                )}
-                            </div>
-
-                            {/* Modale */}
-                            <AnimatePresence>
-                                {showKibel && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                        className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2002]"
-                                        onClick={() => setShowKibel(false)}
-                                    >
-                                        <motion.div
-                                            initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-                                            onClick={(e) => e.stopPropagation()}
+                                    </div>
+                                    <div className="pointer-events-auto">
+                                        <button
+                                            onClick={() => setShowWniosekO(true)}
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-violet-500 to-purple-700 border-2 border-purple-400/50 shadow-[0_0_15px_rgba(168,85,247,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            title="📋 Złóż Wniosek O..."
                                         >
-                                            <TeOKibel onFlush={() => { setShowKibel(false); setShowCrewClub(true); }} />
-                                        </motion.div>
-                                    </motion.div>
-                                )}
-                                {showWniosekO && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                        className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2003]"
-                                        onClick={() => setShowWniosekO(false)}
-                                    >
-                                        <motion.div onClick={(e) => e.stopPropagation()}>
-                                            <WniosekO onClose={() => setShowWniosekO(false)} />
-                                        </motion.div>
-                                    </motion.div>
-                                )}
-                                {showPipes && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                        className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2003]"
-                                        onClick={() => setShowPipes(false)}
-                                    >
-                                        <motion.div onClick={(e) => e.stopPropagation()}>
-                                            <PipesPanel onOpenKibel={() => { setShowPipes(false); setShowKibel(true); }} />
-                                        </motion.div>
-                                    </motion.div>
-                                )}
-                                {showCrewClub && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                        className="fixed inset-0 bg-black/95 flex items-center justify-center z-[2004]"
-                                        onClick={() => setShowCrewClub(false)}
-                                    >
-                                        <motion.div onClick={(e) => e.stopPropagation()}>
-                                            <CrewCreator onComplete={() => setShowCrewClub(false)} />
-                                        </motion.div>
-                                    </motion.div>
-                                )}
-                                {showTeODash && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                        className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2005]"
-                                        onClick={() => setShowTeODash(false)}
-                                    >
-                                        <motion.div onClick={(e) => e.stopPropagation()}>
-                                            <TeODash onClose={() => setShowTeODash(false)} />
-                                        </motion.div>
-                                    </motion.div>
-                                )}
-                                {showRada && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                        className="fixed inset-0 bg-black/95 flex items-center justify-center z-[2010]"
-                                        onClick={() => setShowRada(false)}
-                                    >
-                                        <motion.div
-                                            initial={{ scale: 0.9, opacity: 0 }}
-                                            animate={{ scale: 1, opacity: 1 }}
-                                            exit={{ scale: 0.9, opacity: 0 }}
-                                            onClick={(e) => e.stopPropagation()}
+                                            📋
+                                        </button>
+                                    </div>
+                                    <div className="pointer-events-auto">
+                                        <button
+                                            onClick={() => setShowCrewClub(true)}
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-amber-400 to-amber-600 border-2 border-amber-300/50 shadow-[0_0_15px_rgba(251,191,36,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            title="🏆 Klub Mistrzów"
                                         >
-                                            <RadaPodstawowa onClose={() => setShowRada(false)} />
-                                        </motion.div>
-                                    </motion.div>
-                                )}
-                                {showJasonBridge && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                        className="fixed inset-0 bg-black/80 flex items-center justify-center z-[2001]"
-                                        onClick={() => setShowJasonBridge(false)}
-                                    >
-                                        <motion.div onClick={(e) => e.stopPropagation()}>
-                                            <JasonFlowBridge demoMode={true} onCreate={(p) => console.log('🎵 Pipeline:', p)} />
-                                        </motion.div>
-                                    </motion.div>
-                                )}
-                                {showJournal && (
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 100 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: 100 }}
-                                        transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                                        className="fixed inset-0 z-[3000] bg-black"
-                                    >
-                                        <QuantumJournal onClose={() => setShowJournal(false)} />
-                                    </motion.div>
-                                )}
-                                {isVisualAssistantOpen && (
-                                    <VisualAssistant onClose={() => setVisualAssistantOpen(false)} />
-                                )}
-                                {secretariatState?.isOpen && (
-                                    <Secretariat
-                                        onVerified={secretariatState.onVerified!}
-                                        onCancel={secretariatState.onCancel!}
-                                        actionName={secretariatState.actionName}
-                                    />
-                                )}
-                            </AnimatePresence>
+                                            👑
+                                        </button>
+                                    </div>
+                                    <div className="pointer-events-auto">
+                                        <button
+                                            onClick={() => setShowKibel(true)}
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-cyan-600 to-cyan-800 border-2 border-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            title="🔐 TeO-Kibel"
+                                        >
+                                            🌀
+                                        </button>
+                                    </div>
+                                    <div className="pointer-events-auto">
+                                        <button
+                                            onClick={() => setShowJasonBridge(true)}
+                                            className="w-14 h-14 rounded-full flex items-center justify-center text-2xl bg-gradient-to-br from-purple-500 to-indigo-600 border-2 border-white/30 shadow-[0_0_20px_rgba(139,92,246,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            title="🎵 RadioSMT Pipeline"
+                                        >
+                                            🎛️
+                                        </button>
+                                    </div>
 
-                            {/* Globalne elementy */}
-                            {user && !identity?.username && !hasPioneerBypass(user.email) && <UsernameClaimModal />}
-                            {user && <AvatarSelectionModal />}
-                            <ProtectiveModeModal />
-                            <ApiKeyModal isOpen={isApiKeyModalOpen} onClose={() => setApiKeyModalOpen(false)} />
-                            {anomaly && <QuantumGuardianAlert message={anomaly} onClose={() => setAnomaly(null)} />}
+                                    {/* 🏛️ Nagroda - Rada Podstawowa (Unlocked at 100%) */}
+                                    {isRadaUnlocked && (
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0, rotate: -45 }}
+                                            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                                            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                                            className="pointer-events-auto mt-4"
+                                        >
+                                            <button
+                                                onClick={() => setShowRada(true)}
+                                                className="w-16 h-16 rounded-full flex items-center justify-center text-3xl bg-gradient-to-tr from-amber-400 via-orange-500 to-red-600 border-2 border-amber-300 shadow-[0_0_30px_rgba(245,158,11,0.8)] cursor-pointer hover:scale-125 transition-transform group relative"
+                                                title="🏛️ Rada Podstawowa - Odblokowano!"
+                                            >
+                                                🏛️
+                                                <div className="absolute inset-0 rounded-full animate-ping bg-amber-500/30 -z-10" />
+                                                <div className="absolute -inset-1 rounded-full border border-amber-400 opacity-50 animate-pulse" />
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </div>
 
-                            <Toaster
-                                position="bottom-right"
-                                toastOptions={{
-                                    style: { background: 'rgba(9, 10, 15, 0.8)', color: '#e2e8f0', border: '1px solid #0891b2', backdropFilter: 'blur(10px)' },
-                                    success: { iconTheme: { primary: '#10b981', secondary: '#0f172a' } },
-                                    error: { iconTheme: { primary: '#f43f5e', secondary: '#0f172a' } },
-                                }}
-                            />
-                            <SubscriptionActivator />
-                        </>
-                    )}
+                                {/* Modale */}
+                                <AnimatePresence>
+                                    {showKibel && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2002]"
+                                            onClick={() => setShowKibel(false)}
+                                        >
+                                            <motion.div
+                                                initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <TeOKibel onFlush={() => { setShowKibel(false); setShowCrewClub(true); }} />
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                    {showWniosekO && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2003]"
+                                            onClick={() => setShowWniosekO(false)}
+                                        >
+                                            <motion.div onClick={(e) => e.stopPropagation()}>
+                                                <WniosekO onClose={() => setShowWniosekO(false)} />
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                    {showPipes && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2003]"
+                                            onClick={() => setShowPipes(false)}
+                                        >
+                                            <motion.div onClick={(e) => e.stopPropagation()}>
+                                                <PipesPanel onOpenKibel={() => { setShowPipes(false); setShowKibel(true); }} />
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                    {showCrewClub && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                            className="fixed inset-0 bg-black/95 flex items-center justify-center z-[2004]"
+                                            onClick={() => setShowCrewClub(false)}
+                                        >
+                                            <motion.div onClick={(e) => e.stopPropagation()}>
+                                                <CrewCreator onComplete={() => setShowCrewClub(false)} />
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                    {showTeODash && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2005]"
+                                            onClick={() => setShowTeODash(false)}
+                                        >
+                                            <motion.div onClick={(e) => e.stopPropagation()}>
+                                                <TeODash onClose={() => setShowTeODash(false)} />
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                    {showRada && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                            className="fixed inset-0 bg-black/95 flex items-center justify-center z-[2010]"
+                                            onClick={() => setShowRada(false)}
+                                        >
+                                            <motion.div
+                                                initial={{ scale: 0.9, opacity: 0 }}
+                                                animate={{ scale: 1, opacity: 1 }}
+                                                exit={{ scale: 0.9, opacity: 0 }}
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <RadaPodstawowa onClose={() => setShowRada(false)} />
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                    {showJasonBridge && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                            className="fixed inset-0 bg-black/80 flex items-center justify-center z-[2001]"
+                                            onClick={() => setShowJasonBridge(false)}
+                                        >
+                                            <motion.div onClick={(e) => e.stopPropagation()}>
+                                                <JasonFlowBridge demoMode={true} onCreate={(p) => console.log('🎵 Pipeline:', p)} />
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                    {showJournal && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 100 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: 100 }}
+                                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                                            className="fixed inset-0 z-[3000] bg-black"
+                                        >
+                                            <QuantumJournal onClose={() => setShowJournal(false)} />
+                                        </motion.div>
+                                    )}
+                                    {isVisualAssistantOpen && (
+                                        <VisualAssistant onClose={() => setVisualAssistantOpen(false)} />
+                                    )}
+                                    {secretariatState?.isOpen && (
+                                        <Secretariat
+                                            onVerified={secretariatState.onVerified!}
+                                            onCancel={secretariatState.onCancel!}
+                                            actionName={secretariatState.actionName}
+                                        />
+                                    )}
+                                </AnimatePresence>
+
+                                {/* Globalne elementy */}
+                                {user && !identity?.username && !hasPioneerBypass(user.email) && <UsernameClaimModal />}
+                                {user && <AvatarSelectionModal />}
+                                <ProtectiveModeModal />
+                                <ApiKeyModal isOpen={isApiKeyModalOpen} onClose={() => setApiKeyModalOpen(false)} />
+                                {anomaly && <QuantumGuardianAlert message={anomaly} onClose={() => setAnomaly(null)} />}
+
+                                <Toaster
+                                    position="bottom-right"
+                                    toastOptions={{
+                                        style: { background: 'rgba(9, 10, 15, 0.8)', color: '#e2e8f0', border: '1px solid #0891b2', backdropFilter: 'blur(10px)' },
+                                        success: { iconTheme: { primary: '#10b981', secondary: '#0f172a' } },
+                                        error: { iconTheme: { primary: '#f43f5e', secondary: '#0f172a' } },
+                                    }}
+                                />
+                                <SubscriptionActivator />
+                            </>
+                        )}
+                    </div>
                 </div>
-            </div>
-        </GravitonProvider>
+            </GravitonProvider>
+        </KatedraRadioProvider>
     );
 };
 

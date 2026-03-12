@@ -308,17 +308,18 @@ export const useAssistant = () => {
     }, [setAssistantState]);
 
     useEffect(() => {
-        const { provider, apiKey } = getCloudProvider();
-        if (provider === 'gemini' && apiKey) {
-            try {
-                aiRef.current = new GoogleGenAI({ apiKey });
-                hasLoggedMissingKey.current = false;
-            } catch (e) {
-                console.error("AI Init Failed", e);
+        getCloudProvider().then(({ provider, apiKey }) => {
+            if (provider === 'gemini' && apiKey) {
+                try {
+                    aiRef.current = new GoogleGenAI({ apiKey });
+                    hasLoggedMissingKey.current = false;
+                } catch (e) {
+                    console.error("AI Init Failed", e);
+                }
+            } else {
+                aiRef.current = null;
             }
-        } else {
-            aiRef.current = null;
-        }
+        });
         return () => {
             sessionPromiseRef.current?.then((session: any) => session.close());
             cleanup();

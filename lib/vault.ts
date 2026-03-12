@@ -18,13 +18,13 @@ interface VaultCredentials {
 
 let cachedCredentials: VaultCredentials | null = null;
 
-export function openVault(): VaultCredentials {
+export async function openVault(): Promise<VaultCredentials> {
   if (cachedCredentials) {
     return cachedCredentials;
   }
 
   // Pobierz z Kibla (lokalnie!)
-  const sunoCookie = getSunoFromKibel();
+  const sunoCookie = await getSunoFromKibel();
   const iskaKey = localStorage.getItem('kibel_iska_key'); // Proste przechowanie
 
   cachedCredentials = {
@@ -47,9 +47,9 @@ export function openVault(): VaultCredentials {
 export function isVaultUnlocked(): boolean {
   const geminiKey = getGeminiKey();
   const isUnlocked = !!geminiKey && geminiKey.trim().length > 0;
-  
+
   console.log('🔐 [Vault] isVaultUnlocked():', isUnlocked ? 'TRUE - SYSTEM_READY!' : 'FALSE - locked');
-  
+
   return isUnlocked;
 }
 
@@ -64,16 +64,16 @@ export function unlockVault(): void {
   }
 }
 
-export function getSunoCookie(): string | null {
+export async function getSunoCookie(): Promise<string | null> {
   // Zawsze pobieraj na świeżo (nie cacheuj!)
-  return getSunoFromKibel();
+  return await getSunoFromKibel();
 }
 
 export function getGeminiKey(): string | null {
   // Pobierz Gemini API key z localStorage
   const stored = localStorage.getItem('teo_gemini_api_key');
   if (!stored) return null;
-  
+
   try {
     // Spróbuj sparsować JSON
     return JSON.parse(stored);
