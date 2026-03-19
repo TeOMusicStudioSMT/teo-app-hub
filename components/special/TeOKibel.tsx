@@ -29,19 +29,23 @@ const AROMATS = [
 
 // Mapa kluczy do rozpoznawania
 const KEY_PATTERNS = [
-  { pattern: /SUNO_COOKIE|SUNO_TOKEN/i, provider: 'suno', name: 'Suno Cookie' },
-  { pattern: /GEMINI_API_KEY|GEMINI_KEY/i, provider: 'gemini', name: 'Gemini API' },
-  { pattern: /ANTHROPIC_API_KEY|CLAUDE_KEY/i, provider: 'anthropic', name: 'Anthropic API' },
-  { pattern: /OPENAI_API_KEY|OPENAI_KEY/i, provider: 'openai', name: 'OpenAI API' },
-  { pattern: /GROQ_API_KEY|GROQ_KEY/i, provider: 'groq', name: 'Groq API' },
-  { pattern: /NVIDIA_API_KEY|NVIDIA_KEY|NIM_KEY/i, provider: 'nvidia', name: 'NVIDIA API' },
-  { pattern: /OPENROUTER_API_KEY|OPENROUTER_KEY/i, provider: 'openrouter', name: 'OpenRouter API' },
-  // 🆕 SUROWE KLUCZE - bez nazwy zmiennej
-  { pattern: /(gsk_[a-zA-Z0-9_-]{20,})/i, provider: 'groq', name: 'Groq (raw)' },
-  { pattern: /(AIzaSy[a-zA-Z0-9_-]{33})/i, provider: 'gemini', name: 'Gemini (raw)' },
-  { pattern: /(sk-or-[a-zA-Z0-9_-]{20,})/i, provider: 'openrouter', name: 'OpenRouter (raw)' },
-  { pattern: /(sk-[a-zA-Z0-9_-]{20,})/i, provider: 'openai', name: 'OpenAI (raw)' },
-  { pattern: /(sk-ant-[a-zA-Z0-9_-]{20,})/i, provider: 'anthropic', name: 'Anthropic (raw)' },
+  // ── Nazwane klucze (format NAZWA=wartość) ─────────────────────
+  { pattern: /SUNO_COOKIE|SUNO_TOKEN/i,                    provider: 'suno',        name: 'Suno Cookie' },
+  { pattern: /GEMINI_API_KEY|GEMINI_KEY/i,                 provider: 'gemini',      name: 'Gemini API' },
+  { pattern: /ANTHROPIC_API_KEY|CLAUDE_KEY|CLAUDE_API/i,   provider: 'anthropic',   name: 'Anthropic API' },
+  { pattern: /OPENAI_API_KEY|OPENAI_KEY/i,                 provider: 'openai',      name: 'OpenAI API' },
+  { pattern: /GROQ_API_KEY|GROQ_KEY/i,                     provider: 'groq',        name: 'Groq API' },
+  { pattern: /NVIDIA_API_KEY|NVIDIA_KEY|NIM_KEY/i,         provider: 'nvidia',      name: 'NVIDIA API' },
+  { pattern: /OPENROUTER_API_KEY|OPENROUTER_KEY/i,         provider: 'openrouter',  name: 'OpenRouter API' },
+
+  // ── Surowe klucze (format: sam klucz bez nazwy) ───────────────
+  // ⚠️ KRYTYCZNA KOLEJNOŚĆ: bardziej specyficzne prefiky MUSZĄ być
+  // przed ogólnymi! sk-ant- i sk-or- PRZED sk- !
+  { pattern: /(gsk_[a-zA-Z0-9_-]{20,})/i,                 provider: 'groq',        name: 'Groq (raw)' },
+  { pattern: /(AIzaSy[a-zA-Z0-9_-]{33})/i,                provider: 'gemini',      name: 'Gemini (raw)' },
+  { pattern: /(sk-ant-[a-zA-Z0-9_-]{20,})/i,              provider: 'anthropic',   name: 'Anthropic (raw)' }, // ← PRZED sk-or- i sk-
+  { pattern: /(sk-or-[a-zA-Z0-9_-]{20,})/i,               provider: 'openrouter',  name: 'OpenRouter (raw)' }, // ← PRZED sk-
+  { pattern: /(sk-[a-zA-Z0-9_-]{20,})/i,                  provider: 'openai',      name: 'OpenAI (raw)' },    // ← ostatni sk-*
   { pattern: /(eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)/i, provider: 'suno', name: 'Suno (raw JWT)' },
 ];
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import MonolithCard from './MonolithCard';
 import { JOURNAL_ENTRIES } from '../../lib/journal/entries';
+import { ArtOfSoulCinema } from './ArtOfSoulCinema';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Lang = 'pl' | 'en';
@@ -23,6 +24,7 @@ interface QuantumJournalProps {
 
 const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [isCinemaOpen, setIsCinemaOpen] = useState(false);
   const [lang, setLang] = useState<Lang>(() => {
     try { return (localStorage.getItem('qj_lang') as Lang) || 'pl'; } catch { return 'pl'; }
   });
@@ -35,6 +37,21 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
     if (next === lang) return;
     setExpandedId(null); // collapse before language switch → forces YouTube iframe reload
     setLang(next);
+  };
+
+  const handleScanSubconscious = async () => {
+    try {
+        const res = await fetch('http://localhost:3001/wiesio/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'INDEX_KRONIKI' })
+        });
+        if (res.ok) {
+            console.log("🧠 Podświadomość zaktualizowana!");
+        }
+    } catch (err) {
+        console.error("Błąd połączenia z Mózgiem Wiesława:", err);
+    }
   };
 
   // Build a localized entry for MonolithCard, auto-falling back to PL when EN is empty
@@ -114,6 +131,23 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
           WPIS 0.00G
           <span className="h-px w-10 bg-gradient-to-l from-transparent to-cyan-500/40" />
         </div>
+
+        {/* 📺 ArtOfSoul TV & 🧠 Skanuj Podświadomość Buttons */}
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <button 
+              onClick={() => setIsCinemaOpen(true)} 
+              className="bg-indigo-900/40 hover:bg-indigo-800 text-indigo-300 px-4 py-2 rounded-lg border border-indigo-700/50 transition-all shadow-[0_0_15px_rgba(79,70,229,0.3)] flex items-center gap-2 text-sm font-medium"
+          >
+             <span className="text-lg">📺</span> ArtOfSoul TV
+          </button>
+          
+          <button 
+              onClick={handleScanSubconscious} 
+              className="bg-fuchsia-900/40 hover:bg-fuchsia-800 text-fuchsia-300 px-4 py-2 rounded-lg border border-fuchsia-700/50 transition-all shadow-[0_0_15px_rgba(217,70,239,0.3)] flex items-center gap-2 text-sm font-medium"
+          >
+             <span className="text-lg">🧠</span> Skanuj Podświadomość
+          </button>
+        </div>
         {/* Delikatna linia separatora */}
         <div className="mt-6 h-px w-full max-w-xl bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
       </header>
@@ -155,6 +189,7 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
         <div className="text-cyan-500/30">OTAKOS_QUANTUM_RESONANCE: 100%</div>
         <div>LANG: {lang.toUpperCase()}</div>
       </footer>
+      <ArtOfSoulCinema isOpen={isCinemaOpen} onClose={() => setIsCinemaOpen(false)} />
     </div>
   );
 };

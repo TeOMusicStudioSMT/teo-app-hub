@@ -3,6 +3,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { Provider } from 'jotai';
+import { KatedraRadioProvider } from './context/KatedraRadioContext';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -13,8 +14,10 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <Provider>
-      <App />
-    </Provider>
+    <KatedraRadioProvider>
+      <Provider>
+        <App />
+      </Provider>
+    </KatedraRadioProvider>
   </React.StrictMode>
 );

@@ -48,12 +48,15 @@ const BalanceTimer = () => {
 
 export const AssistantLogCard: React.FC = () => {
     const { conversationHistory } = useAtomValue(assistantStateAtom);
-    const recentHistory = conversationHistory.slice(-4);
+    const recentHistory = conversationHistory.slice(-10);
 
     return (
-        <DashboardCard title="Resonance History / Assistant Log" icon={<BrainCircuitIcon />}>
+        <DashboardCard 
+            title="Resonance History / Assistant Log" 
+            icon={<BrainCircuitIcon />}
+        >
              <BalanceTimer />
-            <div className="space-y-3 pr-2 overflow-y-auto h-full max-h-72">
+            <div className="space-y-3 pr-2 overflow-y-auto h-full max-h-72 custom-scrollbar">
                 {recentHistory.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
                         <p className="text-slate-400 text-center py-8">No recent conversations with your Essence Companion.</p>

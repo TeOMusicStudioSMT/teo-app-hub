@@ -45,7 +45,6 @@ import { setSystemReady } from './lib/memory/CityMemory';
 import PathwaySelector from './components/special/PathwaySelector';
 import QuantumJournal from './components/special/QuantumJournal';
 import { BookIcon } from './components/icons';
-import { KatedraRadioProvider } from './context/KatedraRadioContext';
 import { KatedraRadioPlayer } from './components/KatedraRadioPlayer';
 
 
@@ -494,9 +493,7 @@ const App: React.FC = () => {
     };
 
     return (
-        <KatedraRadioProvider>
-            <KatedraRadioPlayer />
-            <GravitonProvider>
+        <GravitonProvider>
                 <div className="relative w-screen h-screen flex flex-col items-center justify-center overflow-hidden">
                     <CosmicBackground riskLevel={riskLevel} />
                     <div className="relative z-10 w-full h-full flex flex-col">
@@ -857,10 +854,11 @@ const App: React.FC = () => {
                                 <SubscriptionActivator />
                             </>
                         )}
+                        <KatedraRadioPlayer />
                     </div>
                 </div>
             </GravitonProvider>
-        </KatedraRadioProvider>
+
     );
 };
 

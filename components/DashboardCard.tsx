@@ -8,9 +8,10 @@ interface DashboardCardProps {
     icon: React.ReactNode;
     children: React.ReactNode;
     className?: string;
+    extra?: React.ReactNode;
 }
 
-const DashboardCard: React.FC<DashboardCardProps> = ({ title, icon, children, className = '' }) => {
+const DashboardCard: React.FC<DashboardCardProps> = ({ title, icon, children, className = '', extra }) => {
     const resonanceColor = useAtomValue(resonanceColorAtom);
     const theme = RESONANCE_THEMES[resonanceColor];
 
@@ -20,9 +21,12 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ title, icon, children, cl
             theme.tw.border,
             className
         )}>
-            <div className={cn("flex items-center mb-4", theme.tw.text)}>
-                <div className={cn("w-7 h-7 mr-3", theme.tw.dropShadow)}>{icon}</div>
-                <h3 className={cn("text-xl font-bold tracking-wider uppercase", theme.tw.dropShadow.replace('8px', '4px'))}>{title}</h3>
+            <div className={cn("flex items-center justify-between mb-4", theme.tw.text)}>
+                <div className="flex items-center">
+                    <div className={cn("w-7 h-7 mr-3", theme.tw.dropShadow)}>{icon}</div>
+                    <h3 className={cn("text-xl font-bold tracking-wider uppercase", theme.tw.dropShadow.replace('8px', '4px'))}>{title}</h3>
+                </div>
+                {extra && <div className="flex items-center">{extra}</div>}
             </div>
             <div className="flex-grow text-slate-300">
                 {children}

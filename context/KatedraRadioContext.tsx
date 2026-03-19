@@ -4,7 +4,7 @@ import React, {
 } from 'react';
 import bridgeService from '../lib/bridgeService';
 
-// ── Typy ────────────────────────────────────────────────────────────
+// ── Typy ─────────────────────────────────────────────────────────────
 
 export interface SunoTrack {
     id: string;
@@ -16,16 +16,31 @@ export interface SunoTrack {
     filename?: string;
 }
 
+// Aura agenta — trafia do KatedraOrbita jako kolor wibracyjny
+export interface AgentAura {
+    agentId:   string;
+    agentName: string;
+    color:     string;   // CSS color np. '#22d3ee'
+    message:   string;   // treść wypowiedzi
+    timestamp: number;
+}
+
 interface RadioState {
-    tracks: SunoTrack[];
+    tracks:       SunoTrack[];
     currentIndex: number;
-    isPlaying: boolean;
-    isLoading: boolean;
-    error: string | null;
-    volume: number;
-    currentTime: number;
-    duration: number;
-    bassLevel: number;  // 0–100, z FFT analizatora
+    isPlaying:    boolean;
+    isLoading:    boolean;
+    error:        string | null;
+    volume:       number;
+    currentTime:  number;
+    duration:     number;
+    bassLevel:    number;
+    // ── Nowe pola aury ──
+    activeAura:   AgentAura | null;   // aktywna aura agenta
+    isSpeaking:   boolean;            // czy Sfera właśnie czyta komunikat
+    isRecording:  boolean;            // czy trwa nagrywanie PoDCaT
+    wiesioAlive:  boolean;            // czy Wiesio-Bridge żyje
+    isMinimized:  boolean;            // czy odtwarzacz jest zwinięty
 }
 
 interface RadioContextValue extends RadioState {
@@ -39,9 +54,15 @@ interface RadioContextValue extends RadioState {
     loadPlaylist: (playlistId?: string) => Promise<void>;
     currentTrack: SunoTrack | null;
     analyserRef:  React.RefObject<AnalyserNode | null>;
+    // ── Nowe metody ──
+    speakMessage: (aura: Omit<AgentAura, 'timestamp'>) => void;
+    clearAura:    () => void;
+    seekTo:       (time: number) => void;
+    toggleRecording: () => void;
+    setIsMinimized:  (m: boolean) => void;
 }
 
-// ── Context ──────────────────────────────────────────────────────────
+// ── Context ───────────────────────────────────────────────────────────
 
 const KatedraRadioContext = createContext<RadioContextValue | null>(null);
 
@@ -51,7 +72,10 @@ export function useKatedraRadio(): RadioContextValue {
     return ctx;
 }
 
-// ── Provider ─────────────────────────────────────────────────────────
+// ── Czas trwania aury w ms (potem Orbita wraca do złotego) ───────────
+const AURA_DURATION_MS = 8000;
+
+// ── Provider ──────────────────────────────────────────────────────────
 
 export function KatedraRadioProvider({ children }: { children: React.ReactNode }) {
     const audioRef    = useRef<HTMLAudioElement | null>(null);
@@ -59,20 +83,27 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
     const audioCtxRef = useRef<AudioContext | null>(null);
     const sourceRef   = useRef<MediaElementAudioSourceNode | null>(null);
     const animRef     = useRef<number>(0);
+    const auraTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+    const recordedChunksRef = useRef<Blob[]>([]);
+    const currentFilenameRef = useRef<string>('');
 
     const [state, setState] = useState<RadioState>({
         tracks: [], currentIndex: 0,
         isPlaying: false, isLoading: false,
         error: null, volume: 0.7,
         currentTime: 0, duration: 0, bassLevel: 0,
+        activeAura: null, isSpeaking: false, isRecording: false, wiesioAlive: false,
+        isMinimized: true,
     });
 
     // ── Singleton Audio ───────────────────────────────────────────────
     useEffect(() => {
         const audio = new Audio();
-        audio.crossOrigin = 'anonymous'; // wymagane dla Web Audio API cross-origin
+        audio.crossOrigin = 'anonymous';
         audio.volume = 0.7;
-        audio.preload = 'auto';
+        audio.preload = 'metadata'; // Pije po kropelce, nie połyka jeziora (zapobiega RAM overflow)
 
         audio.addEventListener('ended', () =>
             setState(s => ({ ...s, currentIndex: (s.currentIndex + 1) % Math.max(s.tracks.length, 1) }))
@@ -83,41 +114,70 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
         audio.addEventListener('loadedmetadata', () =>
             setState(s => ({ ...s, duration: audio.duration || 0 }))
         );
-        audio.addEventListener('error', (e) => {
-            console.error('🔥 [Radio] KRYTYCZNY BŁĄD AUDIO!');
-            console.error('🔥 [Radio] Próbowano odtworzyć URL:', audio.src);
-            console.error('🔥 [Radio] Sprawdź w przeglądarce, czy ten link działa!');
-            // Twarde zatrzymanie, ZERO Auto-skipu!
-            setState(s => ({ ...s, error: 'BŁĄD SYSTEMU', isPlaying: false }));
+        audio.addEventListener('error', () => {
+            setState(s => ({ ...s, error: 'Błąd pliku — skip', isPlaying: false }));
+            setTimeout(() =>
+                setState(s => ({
+                    ...s, error: null,
+                    currentIndex: (s.currentIndex + 1) % Math.max(s.tracks.length, 1),
+                    isPlaying: true,
+                })), 2000
+            );
         });
 
         audioRef.current = audio;
         return () => {
             cancelAnimationFrame(animRef.current);
+            if (auraTimerRef.current) clearTimeout(auraTimerRef.current);
             audio.pause();
             audio.src = '';
         };
     }, []);
 
-    // ── Zmiana ścieżki → załaduj ─────────────────────────────────────
+    // ── Wiesio-Pulsometr ──────────────────────────────────────────────
+    useEffect(() => {
+        const checkWiesioPulse = async () => {
+            try {
+                const res = await fetch('http://localhost:3001/wiesio/ping');
+                setState(s => s.wiesioAlive !== res.ok ? { ...s, wiesioAlive: res.ok } : s);
+            } catch (err) {
+                setState(s => s.wiesioAlive !== false ? { ...s, wiesioAlive: false } : s);
+            }
+        };
+        checkWiesioPulse(); 
+        const interval = setInterval(checkWiesioPulse, 3000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // ── Zmiana ścieżki ────────────────────────────────────────────────
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio || state.tracks.length === 0) return;
         const track = state.tracks[state.currentIndex];
-        if (!track?.audio_url) return;
+        if (!track) return;
 
-        audio.src = track.audio_url;
-        audio.load();
+        // Konstrukcja bezpośredniego strumienia wg Rozkazu Suwerena
+        const streamUrl = track.filename 
+            ? `http://localhost:3001/music/${track.filename.split('/').map(encodeURIComponent).join('/')}`
+            : track.audio_url;
+
+        if (!streamUrl) return;
+
+        setupAudioContext(); // Upewnienie się, że AudioContext żyje przed nowym źródłem
+
+        audio.src = streamUrl;
+        audio.load(); // Wymuszenie przeładowania strumienia
+
         if (state.isPlaying) {
-            audio.play().catch(err => {
-                console.warn('[Radio] Autoplay zablokowany:', err);
+            audio.play().catch(e => {
+                console.error("[Radio] Błąd odtwarzania strumienia:", e);
                 setState(s => ({ ...s, isPlaying: false }));
             });
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [state.currentIndex, state.tracks]);
 
-    // ── Play / Pause ─────────────────────────────────────────────────
+    // ── Play / Pause ──────────────────────────────────────────────────
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio) return;
@@ -128,7 +188,7 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
         }
     }, [state.isPlaying]);
 
-    // ── Głośność ─────────────────────────────────────────────────────
+    // ── Głośność ──────────────────────────────────────────────────────
     useEffect(() => {
         if (audioRef.current) audioRef.current.volume = state.volume;
     }, [state.volume]);
@@ -140,13 +200,10 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
             setState(s => s.bassLevel !== 0 ? { ...s, bassLevel: 0 } : s);
             return;
         }
-
         const analyser  = analyserRef.current;
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
         const tick = () => {
             analyser.getByteFrequencyData(dataArray);
-            // Bins 0–7 = bas (ok. 0–300Hz przy fftSize=256)
             let sum = 0;
             for (let i = 0; i < 8; i++) sum += dataArray[i];
             const bass = (sum / 8 / 255) * 100;
@@ -154,128 +211,178 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
             animRef.current = requestAnimationFrame(tick);
         };
         animRef.current = requestAnimationFrame(tick);
-
         return () => cancelAnimationFrame(animRef.current);
     }, [state.isPlaying]);
 
-    // ── Web Audio Context (lazy, po interakcji użytkownika) ──────────
+    // ── Web Audio Context ─────────────────────────────────────────────
     const setupAudioContext = useCallback(() => {
         if (!audioRef.current) return;
-
         if (!audioCtxRef.current) {
             const AC = window.AudioContext || (window as any).webkitAudioContext;
             const ctx = new AC();
             const analyser = ctx.createAnalyser();
             analyser.fftSize = 256;
-
+            const dest = ctx.createMediaStreamDestination();
             try {
                 const source = ctx.createMediaElementSource(audioRef.current);
                 source.connect(analyser);
                 analyser.connect(ctx.destination);
+                analyser.connect(dest);
                 audioCtxRef.current = ctx;
                 analyserRef.current = analyser;
                 sourceRef.current   = source;
-                console.log('[Radio] Web Audio API gotowe 🎛️');
+                audioDestinationRef.current = dest;
             } catch (e) {
-                console.warn('[Radio] Błąd Web Audio:', e);
+                console.warn('[Radio] Web Audio błąd:', e);
             }
         }
-
         if (audioCtxRef.current?.state === 'suspended') {
             audioCtxRef.current.resume();
         }
     }, []);
 
-    // ── loadPlaylist — naprawiony! ────────────────────────────────────
+    // ── Akcje audio ───────────────────────────────────────────────────
+    const play  = useCallback(() => { setupAudioContext(); setState(s => ({ ...s, isPlaying: true })); }, [setupAudioContext]);
+    const pause = useCallback(() => setState(s => ({ ...s, isPlaying: false })), []);
+    const toggle = useCallback(() => { setupAudioContext(); setState(s => ({ ...s, isPlaying: !s.isPlaying })); }, [setupAudioContext]);
+    const next  = useCallback(() => setState(s => ({ ...s, currentIndex: (s.currentIndex + 1) % Math.max(s.tracks.length, 1), isPlaying: true })), []);
+    const prev  = useCallback(() => setState(s => ({ ...s, currentIndex: (s.currentIndex - 1 + s.tracks.length) % Math.max(s.tracks.length, 1), isPlaying: true })), []);
+    const setVolume = useCallback((v: number) => setState(s => ({ ...s, volume: Math.max(0, Math.min(1, v)) })), []);
+    const setTrack  = useCallback((index: number) => { setupAudioContext(); setState(s => ({ ...s, currentIndex: Math.max(0, Math.min(index, s.tracks.length - 1)), isPlaying: true })); }, [setupAudioContext]);
+
+    const seekTo = useCallback((time: number) => {
+        if (audioRef.current) {
+            audioRef.current.currentTime = time;
+            setState(s => ({ ...s, currentTime: time }));
+        }
+    }, []);
+
+    const toggleRecording = useCallback(async () => {
+        if (!state.isRecording) {
+            setupAudioContext();
+
+            const canvas = document.querySelector('canvas[aria-label="Wizualizator orbity Katedry"]') as HTMLCanvasElement;
+            if (!canvas) {
+                console.error("[PodCaT] Canvas nie znaleziony!");
+                return;
+            }
+
+            try {
+                const canvasStream = (canvas as any).captureStream(60);
+                const audioStream = audioDestinationRef.current?.stream;
+                
+                const tracks = [...canvasStream.getVideoTracks()];
+                if (audioStream) {
+                    tracks.push(...audioStream.getAudioTracks());
+                }
+                
+                const mixedStream = new MediaStream(tracks);
+                const recorder = new MediaRecorder(mixedStream, { mimeType: 'video/webm' });
+                
+                // Generujemy jedną, stałą nazwę pliku dla tej sesji
+                currentFilenameRef.current = `PodCaT_${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+                
+                recorder.ondataavailable = async (e) => {
+                    if (e.data && e.data.size > 0) {
+                        // Natychmiast ślemy do Wiesława!
+                        const reader = new FileReader();
+                        reader.readAsDataURL(e.data);
+                        reader.onloadend = async () => {
+                            try {
+                                await fetch('http://localhost:3001/wiesio/action', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        action: 'APPEND_CHUNK',
+                                        payload: { 
+                                            filename: currentFilenameRef.current, 
+                                            chunkData: reader.result 
+                                        }
+                                    })
+                                });
+                            } catch (err) { 
+                                console.error("[PodCaT] Błąd taśmociągu!", err); 
+                            }
+                        };
+                    }
+                };
+                
+                recorder.onstop = async () => {
+                    setState(s => ({ ...s, isRecording: false }));
+                    // Mówimy Wiesławowi: "To wszystko, odpalaj Rafinerię!"
+                    try {
+                        const res = await fetch('http://localhost:3001/wiesio/action', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'FINISH_PODCAT',
+                                payload: { filename: currentFilenameRef.current }
+                            })
+                        });
+                        const data = await res.json();
+                        console.log(`[PodCaT] 🏁 Taśmociąg zatrzymany. Wiesio: ${data.status}`);
+                    } catch (err) {
+                        console.error("[PodCaT] Błąd przy finalizacji!", err);
+                    }
+                };
+
+                // WYMUSZENIE CIĘCIA CO 10 SEKUND
+                recorder.start(10000);
+                mediaRecorderRef.current = recorder;
+                setState(s => ({ ...s, isRecording: true }));
+            } catch (err) {
+                console.error("Recording error:", err);
+            }
+        } else {
+            // STOP RECORDING
+            if (mediaRecorderRef.current) {
+                mediaRecorderRef.current.stop();
+                mediaRecorderRef.current = null;
+            }
+        }
+    }, [state.isRecording, setupAudioContext]);
+
     const loadPlaylist = useCallback(async (_playlistId?: string) => {
         setupAudioContext();
         setState(s => ({ ...s, isLoading: true, error: null }));
-
         try {
-            // Uderzamy do Wiesia po lokalne pliki muzyczne
             const response = await bridgeService.sendCommand('GET_LOCAL_PLAYLIST', {});
-
-            if (!response.success) {
-                throw new Error(response.message ?? 'Wiesław nie odpowiada');
-            }
-
+            if (!response.success) throw new Error(response.message ?? 'Wiesław nie odpowiada');
             const tracks: SunoTrack[] = response.tracks ?? [];
-
-            if (tracks.length === 0) {
-                throw new Error(`Brak plików w _AntiGravity_Muzyka/ — wrzuć tam muzykę!`);
-            }
-
-            console.log(`[Radio] Załadowano ${tracks.length} utworów od Wiesia 🎵`);
-
-            setState(s => ({
-                ...s,
-                tracks,
-                currentIndex: 0,
-                isLoading: false,
-                isPlaying: true,
-                error: null,
-            }));
+            if (tracks.length === 0) throw new Error('Brak plików w _AntiGravity_Muzyka/');
+            setState(s => ({ ...s, tracks, currentIndex: 0, isLoading: false, isPlaying: true, error: null }));
         } catch (e: any) {
-            console.error('[Radio] Błąd ładowania:', e);
             setState(s => ({ ...s, isLoading: false, error: e.message }));
         }
     }, [setupAudioContext]);
 
-    // ── Akcje ─────────────────────────────────────────────────────────
-    const play = useCallback(() => {
-        setupAudioContext();
-        setState(s => {
-            // Jeśli z jakiegoś powodu playlista jest pusta, pobierz ją najpierw!
-            if (s.tracks.length === 0) {
-                setTimeout(() => loadPlaylist(), 0);
-                return { ...s, isLoading: true };
-            }
-            return { ...s, isPlaying: true };
-        });
-    }, [setupAudioContext, loadPlaylist]);
+    // ── speakMessage — NOWE ───────────────────────────────────────────
+    // Wywołaj to po każdej odpowiedzi agenta.
+    // Orbita zmieni kolor na aurę agenta przez AURA_DURATION_MS ms.
+    const speakMessage = useCallback((aura: Omit<AgentAura, 'timestamp'>) => {
+        // Wyczyść poprzedni timer aury
+        if (auraTimerRef.current) clearTimeout(auraTimerRef.current);
 
-    const pause = useCallback(() => setState(s => ({ ...s, isPlaying: false })), []);
+        const full: AgentAura = { ...aura, timestamp: Date.now() };
 
-    const toggle = useCallback(() => {
-        setupAudioContext();
-        setState(s => {
-            // Zabezpieczenie przed kliknięciem toggle na pustym odtwarzaczu
-            if (s.tracks.length === 0) {
-                setTimeout(() => loadPlaylist(), 0);
-                return { ...s, isLoading: true };
-            }
-            return { ...s, isPlaying: !s.isPlaying };
-        });
-    }, [setupAudioContext, loadPlaylist]);
+        setState(s => ({ ...s, activeAura: full, isSpeaking: true }));
 
-    const next = useCallback(() => {
-        setState(s => ({
-            ...s,
-            currentIndex: (s.currentIndex + 1) % Math.max(s.tracks.length, 1),
-            isPlaying: true,
-        }));
+        console.log(
+            `%c[Sfera] ${aura.agentName} mówi:`,
+            `color: ${aura.color}; font-weight: bold`,
+            aura.message.substring(0, 80) + '...'
+        );
+
+        // Po czasie aura gaśnie, Orbita wraca do złotego
+        auraTimerRef.current = setTimeout(() => {
+            setState(s => ({ ...s, activeAura: null, isSpeaking: false }));
+        }, AURA_DURATION_MS);
     }, []);
 
-    const prev = useCallback(() => {
-        setState(s => ({
-            ...s,
-            currentIndex: (s.currentIndex - 1 + s.tracks.length) % Math.max(s.tracks.length, 1),
-            isPlaying: true,
-        }));
+    const clearAura = useCallback(() => {
+        if (auraTimerRef.current) clearTimeout(auraTimerRef.current);
+        setState(s => ({ ...s, activeAura: null, isSpeaking: false }));
     }, []);
-
-    const setVolume = useCallback((v: number) =>
-        setState(s => ({ ...s, volume: Math.max(0, Math.min(1, v)) })), []);
-
-    const setTrack = useCallback((index: number) => {
-        setupAudioContext();
-        setState(s => ({
-            ...s,
-            currentIndex: Math.max(0, Math.min(index, s.tracks.length - 1)),
-            isPlaying: true,
-        }));
-    }, [setupAudioContext]);
-
 
     const currentTrack = state.tracks[state.currentIndex] ?? null;
 
@@ -284,6 +391,8 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
             ...state, currentTrack, analyserRef,
             play, pause, toggle, next, prev,
             setVolume, setTrack, loadPlaylist,
+            speakMessage, clearAura, seekTo, toggleRecording,
+            setIsMinimized: (m: boolean) => setState(s => ({ ...s, isMinimized: m })),
         }}>
             {children}
         </KatedraRadioContext.Provider>

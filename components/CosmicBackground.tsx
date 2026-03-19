@@ -38,7 +38,7 @@ export const CosmicBackground: React.FC<CosmicBackgroundProps> = ({ riskLevel })
 
         let animationFrameId: number;
         let particles: any[] = [];
-        const numParticles = 150; 
+        const numParticles = 150;
 
         const resizeCanvas = () => {
             canvas.width = window.innerWidth * 2;
@@ -76,8 +76,8 @@ export const CosmicBackground: React.FC<CosmicBackgroundProps> = ({ riskLevel })
                     const yc = (p.trail[i].y + p.trail[i + 1].y) / 2;
                     ctx.quadraticCurveTo(p.trail[i].x, p.trail[i].y, xc, yc);
                 }
-                if(p.trail.length > 2) {
-                     ctx.quadraticCurveTo(
+                if (p.trail.length > 2) {
+                    ctx.quadraticCurveTo(
                         p.trail[p.trail.length - 2].x,
                         p.trail[p.trail.length - 2].y,
                         p.trail[p.trail.length - 1].x,
@@ -109,7 +109,7 @@ export const CosmicBackground: React.FC<CosmicBackgroundProps> = ({ riskLevel })
                 }
             });
         };
-        
+
         const animate = () => {
             draw();
             update();
@@ -137,17 +137,17 @@ export const CosmicBackground: React.FC<CosmicBackgroundProps> = ({ riskLevel })
 
     return (
         <div ref={containerRef} id="cosmic-bg-container" className={cn(riskClass, assistantClass, resonanceClass, pulseClass, tierClass)}>
-             <div ref={gradientRef} id="cosmic-gradient"></div>
-             
-             <div className="absolute inset-0 w-full h-full pointer-events-none">
-                <KatedraOrbita staticMode={!radio.isPlaying} className="w-full h-full" />
-             </div>
-             
-             <div id="grawiton-core-container">
-                <div id="grawiton-core"></div>
-             </div>
+            <div ref={gradientRef} id="cosmic-gradient"></div>
 
-             <canvas ref={canvasRef} id="starfield"></canvas>
+            <div className="absolute inset-0 w-full h-full pointer-events-none">
+                <KatedraOrbita staticMode={!radio.isPlaying} className="w-full h-full" />
+            </div>
+
+            <div id="grawiton-core-container">
+                <div id="grawiton-core"></div>
+            </div>
+
+            <canvas ref={canvasRef} id="starfield"></canvas>
         </div>
     );
 };

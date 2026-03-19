@@ -20,6 +20,7 @@ import { useAtom } from 'jotai';
 import { aiModeAtom, userApiKeyAtom } from '../../store/settings';
 import { generateContent, getCloudProvider, CloudProvider } from '../../services/cloudService';
 import { parseActions, ActionType, AGENT_ACTION_SYSTEM_PROMPT } from '../../lib/agentActions';
+import { useKatedraRadio } from '../../context/KatedraRadioContext';
 
 // 🎭 Stany życia agentów
 export type AgentState = 'IDLE' | 'LEARNING' | 'INTERACTING' | 'EXECUTING' | 'THINKING' | 'RESONATING';
@@ -490,6 +491,7 @@ const SphereEffect: React.FC<{ isActive: boolean; intensity: number }> = ({ isAc
 const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose }) => {
   const [agents, setAgents] = useState<Agent[]>(DEFAULT_AGENTS);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const { speakMessage } = useKatedraRadio();
 
   // ✨ Stan Rozświetlającej Sfery
   const [isSphereActive, setIsSphereActive] = useState(false);
@@ -568,6 +570,22 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
     setLastCommand(command);
     setIsAiLoading(true);
 
+    // --- RAG: Echo Wspomnień ---
+    let memoryContext = null;
+    try {
+        const memRes = await fetch('http://localhost:3001/wiesio/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'SZUKAJ_W_PAMIECI', payload: { query: command } })
+        });
+        if (memRes.ok) {
+            const memData = await memRes.json();
+            memoryContext = memData.context;
+        }
+    } catch (e) {
+        console.warn("Brak połączenia z Mózgiem Wiesława");
+    }
+
     const parsed = parseIntention(command);
 
     // Stan THINKING dla zaangażowanych agentów
@@ -576,22 +594,51 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
       state: (parsed && (parsed.agentId === 'all' || parsed.agentId === agent.id)) ? 'THINKING' : agent.state
     })));
 
-    try {
-      const rawResponse = await generateContent(
-        `${AGENT_ACTION_SYSTEM_PROMPT}
+    setDiscussionLog(prev => [...prev, {
+      speaker: 'Suweren',
+      text: command,
+      timestamp: Date.now(),
+    }]);
 
-Jesteś Duchem Systemu OtakOS. Użytkownik wydał polecenie w Akademii: "${command}".
-Jeśli polecenie dotyczy konkretnych agentów (Wiesław, Jadzia, BoB, Bella, Adamus, Gorgooo, TeO),
+    try {
+      let finalPrompt = `${AGENT_ACTION_SYSTEM_PROMPT}
+
+Jesteś Duchem Systemu OtakOS. Użytkownik wydał polecenie w Akademii: "${command}".`;
+
+      if (memoryContext) {
+        finalPrompt += `\n\n[SYSTEM (UKRYTE DLA UI): Na podstawie Kronik, przypominam dawny kontekst, który może być związany z tym pytaniem:\n${memoryContext}]`;
+      }
+
+      finalPrompt += `\nJeśli polecenie dotyczy konkretnych agentów (Wiesław, Jadzia, BoB, Bella, Adamus, Gorgooo, TeO),
 opisz krótko (1-2 zdania) jak reagują w sim-środowisku. Zachowaj klimat 0.00G.
-Jeśli komenda mówi o "sferze", "świetle", "rozbłyśnięciu", "światło" — dodaj [ACTION:ACTIVATE_SPHERE].`,
+Jeśli komenda mówi o "sferze", "świetle", "rozbłyśnięciu", "światło" — dodaj [ACTION:ACTIVATE_SPHERE].`;
+
+      const rawResponse = await generateContent(
+        finalPrompt,
         aiMode === 'local' ? 'just' : 'active',
         (guestModel && guestModel !== 'none') ? guestModel as CloudProvider : undefined
       );
 
       // 🎯 Parsuj i wykonaj akcje
       const { cleanText, actions } = parseActions(rawResponse);
-      setGemmaNarration(cleanText || rawResponse);
+      const responseText = cleanText || rawResponse;
+      setGemmaNarration(responseText);
+      
+      setDiscussionLog(prev => [...prev, {
+        speaker: 'Rada Siedmiu',
+        text: responseText,
+        timestamp: Date.now(),
+      }]);
+
       if (actions.length > 0) executeActions(actions);
+
+      const targetAgent = agents.find(a => a.id === parsed?.agentId);
+      speakMessage({
+          agentId:   parsed?.agentId ?? 'teo',
+          agentName: parsed?.agentId === 'all' ? 'Rada Siedmiu' : (targetAgent?.name ?? 'OtakOS'),
+          color:     parsed?.agentId === 'all' ? '#fbbf24' : (targetAgent?.color ?? '#fbbf24'),
+          message:   cleanText || rawResponse,
+      });
 
       if (parsed) {
         setAgents(prev => prev.map(agent => ({
@@ -655,6 +702,17 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
         timestamp: Date.now(),
       }]);
 
+      speakMessage({
+          agentId:   guestModel || 'teo',
+          agentName: modelLabel,
+          color:     guestModel === 'claude'  ? '#a78bfa'
+                   : guestModel === 'gemini'  ? '#4ade80'
+                   : guestModel === 'gpt'     ? '#60a5fa'
+                   : guestModel === 'groq'    ? '#f87171'
+                   : '#fbbf24',
+          message: cleanText,
+      });
+
       setTrainingDataset(prev => [...prev, {
         thesis,
         response: cleanText,
@@ -670,6 +728,36 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
 
     setIsGuestSpeaking(false);
     setGuestThesis('');
+  };
+
+  const handleSaveKronika = async () => {
+    if (discussionLog.length === 0) {
+      toast.error("📜 Archiwum puste. Brak historii do zapisu.");
+      return;
+    }
+
+    const markdownContent = discussionLog.map(m => `**${m.speaker}**: ${m.text}`).join('\n\n---\n\n');
+    
+    try {
+      const res = await fetch('http://localhost:3001/wiesio/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'SAVE_KRONIKA', 
+          payload: { content: markdownContent } 
+        })
+      });
+      if (res.ok) {
+        toast.success("📜 Kronika wyryta na dysku F!", {
+          icon: '📚',
+          style: { background: 'rgba(15,23,42,0.95)', color: '#fbbf24', border: '1px solid #fbbf24' }
+        });
+        console.log("📜 Kronika wyryta na dysku F!");
+      }
+    } catch (err) {
+      console.error("Wiesław nie odebrał Kroniki:", err);
+      toast.error("Wiesław nie odpowiada. Sprawdź status Wiesio-Bridge!");
+    }
   };
 
   const exportDataset = useCallback(async () => {
@@ -1094,10 +1182,20 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
               }} />
             </div>
 
-            {/* AI Toggle */}
-            <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.8)', borderRadius: '25px', padding: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <button onClick={() => setAiMode('cloud')} style={{ padding: '6px 14px', fontSize: '11px', fontWeight: 'bold', borderRadius: '20px', border: 'none', cursor: 'pointer', transition: '0.3s', background: aiMode === 'cloud' ? '#3b82f6' : 'transparent', color: aiMode === 'cloud' ? 'white' : '#94a3b8' }}>CLOUD</button>
-              <button onClick={() => setAiMode('local')} style={{ padding: '6px 14px', fontSize: '11px', fontWeight: 'bold', borderRadius: '20px', border: 'none', cursor: 'pointer', transition: '0.3s', background: aiMode === 'local' ? '#22c55e' : 'transparent', color: aiMode === 'local' ? 'white' : '#94a3b8' }}>LOCAL</button>
+            {/* AI Toggle & Archive */}
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={handleSaveKronika} 
+                className="text-[10px] bg-indigo-900/50 hover:bg-indigo-800 text-indigo-300 px-3 py-1 rounded border border-indigo-700/50 transition-colors font-mono tracking-tighter"
+                title="Wyślij sesję do Archiwisty Wiesława (Dysk F:)"
+              >
+                📜 ZAPISZ KRONIKĘ
+              </button>
+
+              <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.8)', borderRadius: '25px', padding: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <button onClick={() => setAiMode('cloud')} style={{ padding: '6px 14px', fontSize: '11px', fontWeight: 'bold', borderRadius: '20px', border: 'none', cursor: 'pointer', transition: '0.3s', background: aiMode === 'cloud' ? '#3b82f6' : 'transparent', color: aiMode === 'cloud' ? 'white' : '#94a3b8' }}>CLOUD</button>
+                <button onClick={() => setAiMode('local')} style={{ padding: '6px 14px', fontSize: '11px', fontWeight: 'bold', borderRadius: '20px', border: 'none', cursor: 'pointer', transition: '0.3s', background: aiMode === 'local' ? '#22c55e' : 'transparent', color: aiMode === 'local' ? 'white' : '#94a3b8' }}>LOCAL</button>
+              </div>
             </div>
           </div>
 
