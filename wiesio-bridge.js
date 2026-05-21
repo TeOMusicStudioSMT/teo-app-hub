@@ -157,9 +157,25 @@ app.post('/api/bridge/autosync', async (req, res) => {
 
     try {
         // 1. Znalezienie fizycznego pliku
-        const fullAudioPath = path.isAbsolute(audioPath)
-            ? audioPath
-            : path.join(process.cwd(), audioPath.replace('http://127.0.0.1:3001/music/', '_AntiGravity_Muzyka/'));
+        // NAPRAWA URL: obsługujemy localhost, 127.0.0.1 i bare filename (relatywny do muzyki)
+        const MUSIC_URL_PATTERNS = [
+            'http://127.0.0.1:3001/music/',
+            'http://localhost:3001/music/',
+        ];
+        let resolvedPath = audioPath;
+        for (const pattern of MUSIC_URL_PATTERNS) {
+            if (resolvedPath.includes(pattern)) {
+                resolvedPath = resolvedPath.replace(pattern, '_AntiGravity_Muzyka/');
+                break;
+            }
+        }
+        // Jeśli to bare filename (np. "Artysta/Song.mp3") bez prefiksu muzyki — dodaj go
+        if (!path.isAbsolute(resolvedPath) && !resolvedPath.startsWith('_AntiGravity_Muzyka') && !resolvedPath.startsWith('http')) {
+            resolvedPath = path.join('_AntiGravity_Muzyka', resolvedPath);
+        }
+        const fullAudioPath = path.isAbsolute(resolvedPath)
+            ? resolvedPath
+            : path.join(process.cwd(), resolvedPath);
 
         if (!fsSync.existsSync(fullAudioPath)) {
             console.error(`[Wiesio-AI] ❌ Plik nie istnieje: ${fullAudioPath}`);
@@ -215,10 +231,13 @@ app.post('/api/bridge/autosync', async (req, res) => {
         const aiOutput = JSON.parse(fsSync.readFileSync(jsonFilePath, 'utf8'));
 
         // Helper do formatowania czasu LRC: [mm:ss.xx]
+        // NAPRAWA NaN: explicit cast + guard przed NaN/Infinity
         const formatLRCTime = (seconds) => {
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            const ms = Math.floor((seconds % 1) * 100);
+            const s = Number(seconds);
+            if (!Number.isFinite(s) || s < 0) return '[00:00.00]';
+            const mins = Math.floor(s / 60);
+            const secs = Math.floor(s % 60);
+            const ms   = Math.floor((s % 1) * 100);
             return `[${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}]`;
         };
 
@@ -248,7 +267,8 @@ app.post('/api/bridge/autosync', async (req, res) => {
             }
 
             if (foundIdx !== -1) {
-                const startTime = allWords[foundIdx].t0 / 100; // Whisper.cpp używa centysekund w JSON t0/t1
+                // NAPRAWA NaN: t0 może być undefined gdy token nie ma timestampu — fallback 0
+                const startTime = (allWords[foundIdx].t0 ?? 0) / 100; // Whisper.cpp: centysekudy → sekundy
                 syncedLines.push({
                     time: startTime,
                     timestamp: formatLRCTime(startTime),

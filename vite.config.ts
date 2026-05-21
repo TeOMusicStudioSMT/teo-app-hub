@@ -53,5 +53,21 @@ export default defineConfig({
       "Cross-Origin-Resource-Policy": "cross-origin"
     }
   },
-  assetsInclude: ['**/*.bin']
+  assetsInclude: ['**/*.bin'],
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-motion': ['framer-motion'],
+          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+          'vendor-ui': ['lucide-react', 'recharts'],
+          'vendor-ai': ['@google/generative-ai', '@google/genai'],
+          'vendor-state': ['jotai', 'zustand'],
+          'vendor-util': ['ethers', 'uuid', 'axios'],
+        },
+      },
+    },
+  },
 })

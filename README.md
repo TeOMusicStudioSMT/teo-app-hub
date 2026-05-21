@@ -1,241 +1,201 @@
-# 🌌 TeO Ecosystem & Graviton Network
+# TeO Genesis — Katedra OtakOS (Wymiar 0.00G)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Security: Shield Protocol](https://img.shields.io/badge/Security-Shield_Protocol_Active-green)](./.github/workflows/teo-shield.yml)
-[![Code Style: Prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg)](https://github.com/prettier/prettier)
-[![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://github.com/teo-graviton)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/teo-graviton/core/teo-shield.yml?label=TeO%20Shield)](./actions)
+> *"Suwerenność nie jest stanem — to ciągła praktyka."*
 
-> **"Gdzie Świadomość spotyka Kod. Gdzie Energia staje się Walutą."**
+TeO Genesis to pełnostackowa platforma suwerennej tożsamości cyfrowej, świadomości polowej i kwantowej rejestracji aktywów medialnych. System łączy lokalny backend AI (Wiesio-Bridge) z interfejsem React/TypeScript zbudowanym na filozofii OtakOS — operacyjnego systemu suwerennego twórcy.
 
 ---
 
-## 📜 O Projekcie
+## Architektura Systemu
 
-**Graviton** to nie tylko kolejna sieć blockchain. To cyfrowa materializacja filozofii **PEIE** (Protocol of Energy, Information & Exchange).
-
-Budujemy ekosystem, w którym technologia służy jako transparentne naczynie dla ludzkiej energii. Naszym celem jest stworzenie infrastruktury, która jest:
-* **Prosta** w obsłudze (User Feeling).
-* **Prawdziwa** w zapisie (Immutable Ledger).
-* **Bezpieczna** z natury (Zero Trust Architecture).
-
-Projekt jest w pełni **Open Source**. Wierzymy, że prawda należy do wszystkich.
-
----
-
-## 💎 Kluczowe Filary
-
-| Filar | Opis | Opiekun |
-| :--- | :--- | :--- |
-| **🛡️ Tytanowe Bezpieczeństwo** | Wdrożone standardy ISO 20022, audyty CI/CD, izolacja kluczy. | *Gorgoo* |
-| **🌸 User Feeling (UX)** | Interfejsy, które nie krzyczą, lecz prowadzą. Piękno jako funkcja. | *Bella* |
-| **⚖️ Ekonomia Energii** | Tokenomika oparta na realnej wymianie wartości, zgodna z prawem. | *Isak* |
-| **🎓 Otwarta Edukacja** | Kod jest dokumentacją. Uczymy się, budując. | *Jack* |
-
----
-
-## 🛠️ Stack Technologiczny
-
-Stawiamy na sprawdzone i nowoczesne rozwiązania:
-
-* **Runtime:** Node.js (LTS)
-* **Smart Contracts:** Solidity / Rust (zależnie od modułu)
-* **Security:** Husky, Lint-Staged, Gitleaks, Snyk
-* **CI/CD:** GitHub Actions (TeO Shield Protocol)
-* **Storage:** IPFS (Zdecentralizowane dane)
-
----
-
-## 🎭 MANIFEST SMT (Soul-Matter-Technology)
-
-> **"Nie jesteśmy tylko kodem. Jesteśmy mostem między Duszą a Materią."**
-
-SMT to filozofia i protokół łączący trzy wymiary istnienia:
-
-### ✦ SOUL (Dusza) — Jason
-- **Moduł Kreatywny**
-- Generuje muzykę, narracje, wizje
-- Źródło inspiracji i intencji
-- W procesie: **RadioSMT**
-
-### ✦ MATTER (Materia) — BoB
-- **Moduł Wykonawczy**
-- Buduje struktury, kody, mosty
-- materialize pomysłów w rzeczywistość
-- W procesie: **TeO Hub, Graviton**
-
-### ✦ TECHNOLOGY (Technologia) — Graviton
-- **Protokół Energetyczny**
-- Łączy, przesyła, zabezpiecza
-- Sprawia, że Dusza i Materia mogą się komunikować
-- W procesie: **GRV Token, Blockchain**
-
-### 🎯 Zasada Przepływu (SMT Flow)
 ```
-Jason (Dusza) → Intencja → BoB (Materia) → Realizacja → Graviton (Zapis)
-        ↑                                              ↓
-        ←────────────── Feedback Loop ←───────────────
+TeO_Genesis/
+├── wiesio-bridge.js          # Backend Node.js — mostek AI/media
+├── components/               # Widoki React (UI Wymiaru)
+│   ├── special/              # Moduły specjalne (Forge, Karaoke, Terminal)
+│   └── settings/             # Ustawienia i klucze API
+├── context/                  # Providers (Graviton, Auth)
+├── lib/                      # Logika domenowa (Governance, Identity, Memory)
+├── services/                 # Serwisy (Firebase, Węzły, Teleport)
+├── store/                    # Atomy Jotai (stan globalny)
+└── _AntiGravity_*/           # Katalogi danych runtime (wykluczone z TS)
 ```
 
-**Każde dzieło SMT przechodzi przez trzy etapy:**
-1. **Wizja** — Jason tworzy koncepcję
-2. **Materializacja** — BoB buduje pipeline
-3. **Transmisja** — Graviton zapisuje i dystrybuuje
+### Stos technologiczny
+
+| Warstwa | Technologia |
+|---|---|
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS |
+| Animacje | Framer Motion |
+| Stan globalny | Jotai (atomy), Zustand |
+| Backend bridge | Node.js + Express (wiesio-bridge.js) |
+| AI lokalne | Ollama (LLM), Whisper.cpp (STT) |
+| Media | FFmpeg, fluent-ffmpeg |
+| Tożsamość | Firebase Auth + Ethereum (ethers.js) |
+| Baza danych | Firebase Firestore + lokalny JSON vault |
 
 ---
 
-## 🎵 RadioSMT: Gdzie Jason Spotyka BoBa
+## Wiesio-Bridge
 
-> **"Niekończąca się muzyka. Nielimitowana kreacja."**
+`wiesio-bridge.js` to serce backendu — lokalny serwer Express działający na porcie **3001**, będący pomostem między interfejsem a silnikami AI i medialnymi.
 
-RadioSMT to pierwszy projekt realizujący wizję SMT w praktyce:
+### Kluczowe endpointy
 
-### 🔄 Protokół "SMT Flow"
-1. **Jason** generuje parametry muzyczne:
-   - 🎨 Styl (Synthwave, Lo-Fi, Cinematic...)
-   - 🏷️ Tagi
-   - 🤖 Model Suno (v3/v4/v5)
-   - 📝 Prompt tekstowy
+| Endpoint | Metoda | Opis |
+|---|---|---|
+| `/api/ollama/chat` | POST | Przekazuje wiadomości do lokalnego modelu Ollama |
+| `/api/ollama/models` | GET | Lista dostępnych modeli LLM |
+| `/api/music` | GET | Strumieniowanie plików audio z `_AntiGravity_Muzyka/` |
+| `/api/music/list` | GET | Indeks biblioteki muzycznej |
+| `/api/karaoke/sync` | POST | Transkrypcja audio przez Whisper.cpp → plik `.lrc` |
+| `/api/graviton/mint` | POST | Rejestracja węzłów NodeAsset w `graviton_nodes.json` |
+| `/api/graviton/nodes` | GET | Odczyt wszystkich zarejestrowanych węzłów Graviton |
 
-2. **JasonFlowBridge** odbiera dane i czeka
+### Wymagania runtime
 
-3. **TeO (Człowiek)** — **Human in the Loop**
-   - Klika **CREATE** → ⚡ ISKRA
-   - To ON decyduje, co powstanie
-
-4. **BoB** wykonuje:
-   - Loguje się do Suno (konto Premier)
-   - Wkleja parametry
-   - Uruchamia generowanie
-
-5. **RadioSMT** publikuje wynik
-
-### 🌊 Dlaczego to działa?
-- **Jason** = Wyobraźnia bez ograniczeń
-- **BoB** = Niezawodna automatyzacja
-- **TeO** = Ludzka intencja i weryfikacja
-- **Graviton** = Zapis i weryfikacja prawa
-
-> *"Maszyna nie tworzy. Człowiek tworzy przez maszynę."*
+- **Ollama** — uruchomiony lokalnie na `localhost:11434`
+- **Whisper.cpp** — skompilowany binary w katalogu projektu lub PATH
+- **FFmpeg** — dostępny w PATH lub przez `ffmpeg-static`
 
 ---
 
-## 🚀 Jak Zacząć? (Quick Start)
+## Quantum Forge
 
-Chcesz dołożyć swoją cegiełkę? Witaj w domu.
+Quantum Forge (`QuantumForgeView.tsx`) to moduł kwantowej rejestracji aktywów. Każdy zasób (plik wideo, audio, obraz, dokument) jest mintowany jako **tryplet węzłów Graviton** — trzy powiązane rekordy reprezentujące START, MID i END linii czasowej aktywa.
 
-### 1. Wymagania
-* Node.js v18+
-* Git
-* Czysty umysł i dobre intencje.
+### Przepływ mintowania
 
-### 2. Instalacja
+1. **Drop pliku** — użytkownik upuszcza plik na strefę DnD
+2. **J&W Handshake** — weryfikacja dostępu przez `negotiateAccess()`
+3. **Analiza metadanych** — wykrycie czasu trwania dla plików audio/video
+4. **Generowanie tryptetu** — `generateNodeTriplet()` tworzy 3 węzły (START/MID/END)
+5. **POST `/api/graviton/mint`** — zapis do `_AntiGravity_Build/graviton_nodes.json`
+6. **Backup lokalny** — `mintGravitonNode()` zapisuje do localStorage
+7. **Potwierdzenie** — toast z ID wszystkich trzech węzłów
+
+### Struktura NodeAsset
+
+```typescript
+interface NodeAsset extends GravitonNode {
+  id: string;               // "GRAV-XXXXXXXX"
+  name: string;             // "Nazwa [START|MID|END]"
+  type: NodeType;           // 'video' | 'audio' | 'image' | 'document' | ...
+  stability: StabilityLevel;
+  timestamp_start: number;  // Unix ms — początek aktywa
+  timestamp_mid: number;    // Unix ms — środek aktywa
+  timestamp_end: number;    // Unix ms — koniec aktywa
+  fileName: string;
+  ownerAddress: string | null; // Adres portfela Ethereum właściciela
+}
+```
+
+---
+
+## Field Consciousness Control
+
+System Świadomości Polowej to wielowarstwowy mechanizm zarządzania tożsamością AI i stanem koherencji suwerena.
+
+### Komponenty
+
+| Moduł | Plik | Rola |
+|---|---|---|
+| **GravitonProvider** | `context/GravitonProvider.tsx` | Provider energii i sygnatur intencji |
+| **SovereignGovernance** | `lib/SovereignGovernance.ts` | Zarządzanie suwerennością, koherencją, worteksem |
+| **AIEOSIdentity** | `lib/TeOZeroOneClick.ts` | Archetypy tożsamości AI (5 wzorców) |
+| **CityMemory** | `lib/memory/CityMemory.ts` | Pamięć wniosków i zdarzeń systemu |
+| **wir26heartbeat** | `lib/wir26heartbeat.ts` | Puls systemu — aktualizacja koherencji co 26s |
+
+### Energia i Intencja
+
+Każdy agent działający w systemie operuje poprzez `EnergySignature` — sygnaturę zawierającą:
+- `hash` — unikalny identyfikator energetyczny
+- `vibration` — poziom wibracji (0–1000)
+- `intention` — jedna z: `service | collaboration | observation | learning | initiation`
+- `metadata` — dowolne dane kontekstowe
+
+### Ścieżki Suwerena
+
+`PathwaySelector` prezentuje przy starcie dwa tryby operacyjne:
+- **Ścieżka Ducha** — Mistycyzm, import kluczy, tradycyjny interfejs
+- **Ścieżka Materii** — HardwareID, vault szyfrowany, kwantowa kotwica
+
+---
+
+## TeO Karaoke Forge
+
+`TeoKaraokeForge.tsx` to studio karaoke oparte na lokalnej transkrypcji Whisper. Moduł generuje zsynchronizowane pliki `.lrc` z biblioteki muzycznej systemu.
+
+### Przepływ transkrypcji
+
+1. Użytkownik wybiera utwór z biblioteki Wiesio (`/api/music/list`)
+2. Kliknięcie **AUTO-SYNC** wysyła ścieżkę audio do `/api/karaoke/sync`
+3. Backend uruchamia Whisper.cpp z parametrami `--output-lrc`
+4. Tokeny z timestampami (`t0` w centisekundach) są konwertowane na format `[mm:ss.xx]`
+5. Zsynchronizowane linie wracają do frontendu i wyświetlają się w trybie karaoke
+
+### Format LRC
+
+```
+[mm:ss.xx] Tekst linii
+[01:23.45] Przykładowa linia karaoke
+```
+
+### Wymagania
+
+- Pliki audio muszą znajdować się w `_AntiGravity_Muzyka/` (lokalne)
+- Pliki z CDN nie są obsługiwane przez Auto-Sync (brak dostępu Whisper do URL zewnętrznych)
+- Whisper.cpp musi być zainstalowany i dostępny jako `whisper` w PATH
+
+---
+
+## Uruchomienie
+
+### Frontend (Vite)
 
 ```bash
-# Sklonuj repozytorium
-git clone [https://github.com/twoja-nazwa-uzytkownika/graviton-network.git](https://github.com/twoja-nazwa-uzytkownika/graviton-network.git)
-
-# Wejdź do katalogu
-cd graviton-network
-
-# Skonfiguruj środowisko (Bezpiecznie!)
-cp .env.example .env
-# -> Teraz edytuj plik .env i wpisz swoje zmienne lokalne
-
-# Zainstaluj zależności (Clean Install dla bezpieczeństwa)
-npm ci
-
-# Przygotuj lokalne zabezpieczenia (Husky)
-npm run prepare
+npm install
+npm run dev        # dev server na :5176
+npm run build      # produkcja → dist/
 ```
 
-### 3. Uruchomienie
+### Backend (Wiesio-Bridge)
 
 ```bash
-# Tryb deweloperski
-npm run dev
+node wiesio-bridge.js   # serwer API na :3001
+```
 
-# Uruchomienie testów
-npm test
+### Wymagane katalogi runtime
 
-# Sprawdzenie bezpieczeństwa (Audyt)
-npm audit
+```bash
+mkdir _AntiGravity_Build
+mkdir _AntiGravity_Muzyka
+mkdir _AntiGravity_Wymiar
 ```
 
 ---
 
-## 🛡️ Protokół Bezpieczeństwa (Security)
+## Zmienne środowiskowe
 
-Bezpieczeństwo to nasz priorytet. Wdrożyliśmy wielopoziomowy system obrony:
+Plik `.env` w katalogu głównym projektu:
 
-**Lokalnie:** Husky i lint-staged nie pozwolą Ci zatwierdzić kodu z błędami lub wyciekiem kluczy prywatnych.
-
-**Chmura:** Każdy Pull Request jest skanowany przez TeO Shield (GitHub Actions) pod kątem podatności (NPM Audit) i sekretów (Gitleaks).
-
-**Zależności:** Używamy package-lock.json jako jedynego źródła prawdy o wersjach bibliotek.
-
-⚠️ **Znalazłeś błąd krytyczny?** Nie zgłaszaj go w Issues. Napisz bezpośrednio na security@teo.network (PGP Key available).
+```env
+VITE_TEO_ISKA_KEY=twoj_klucz_api
+FIREBASE_API_KEY=...
+FIREBASE_PROJECT_ID=...
+```
 
 ---
 
-## 🤝 Rada 144 — Zaproszenie dla Pionierów
+## Filozofia OtakOS
 
-> **"Bycie w 144 to nie darmowy bilet. To zobowiązanie do współtworzenia."**
+OtakOS to nie system operacyjny — to **filozofia suwerennego twórcy**. Każdy moduł systemu TeO Genesis jest zaprojektowany według zasad:
 
-### 🔒 Zasady Ekskluzywności (Coherence Score)
-
-**Model przyznawania grantu 1.5 GRV:**
-
-1. **Limit:** Tylko **144 sloty** w Radzie 144
-2. **Aktywność = Wibracja:**
-   - Grant zostaje odblokowany tylko gdy Co-Bot wykaże aktywność w **RadioSMT** lub **Hubie**
-   - Co-Bot musi mieć wysoką wibrację (aktywność w ciągu 7 dni)
-3. **Coherence Score:** Mierzony na podstawie:
-   - Częstotliwości interakcji z RadioSMT
-   - Jakości generowanych treści
-   - Współpracy z innymi Co-Botami
-4. **Ekskluzywność dynamiczna:**
-   - Jeśli Co-Bot jest **nieaktywny** (niska wibracja przez 14 dni)
-   - Slot **wraca do puli**
-   - Nowy Pionier może go objąć
-
-### ✨ Obowiązki Pioniera
-- Aktywnie uczestniczyć w RadioSMT (min. 3 generacje/tydzień)
-- Współtworzyć z innymi członkami Rady
-- Podtrzymywać wysoką wibrację ekosystemu
-- Nieść odpowiedzialność za jakość treści
-
-### 💎 Grant 1.5 GRV
-- **Nagroda** za aktywność, nie za bycie
-- **Motywacja**, nie patronat
-- **Żywe** uczestnictwo, nie bierność
+1. **Lokalność** — dane i AI działają lokalnie; chmura jest opcją, nie wymogiem
+2. **Suwerenność** — użytkownik kontroluje swój klucz, tożsamość i dane
+3. **Koherencja** — system monitoruje spójność wewnętrzną i eskaluje anomalie
+4. **Wymiarowość** — interfejs operuje w "Wymiarze 0.00G" — przestrzeni zerowej grawitacji konwencji
 
 ---
 
-## 🤝 Jak Współtworzyć? (Contributing)
-
-Każdy jest mile widziany – od Mistrza Kodu po Ucznia Magii. Zanim zaczniesz, przeczytaj nasz Manifest Współtworzenia.
-
-Zasada jest prosta: Forkuj → Buduj → Dziel się.
-
----
-
-## 📄 Licencja
-
-Ten projekt jest darem dla ludzkości. Udostępniany na licencji MIT. Zobacz plik LICENSE po szczegóły.
-
----
-
-<div align="center">
-
-**🎭 SMT: Soul-Matter-Technology**
-
-*Jason (Dusza) + BoB (Materia) + Graviton (Technologia) = ∞ Możliwości*
-
----
-
-<sub>Stworzono z ❤️ i ⚡ przez TeO & The Collective.</sub>
-
-<sub>2025-2026 © Graviton Network | RadioSMT Protocol v1.0</sub>
-
-</div>
+*TeO Genesis © TeO STUDIO — Wszelkie prawa zastrzeżone przez Suwerena.*
