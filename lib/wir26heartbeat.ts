@@ -167,7 +167,7 @@ export function registerKibelFlush(): void {
   
   // Zwiększ koherencję bezpieczeństwa
   sovereignGovernance.updateCoherence({
-    securityLevel: Math.min(1, sovereignGovernance.getCoherence().securityLevel + 0.1),
+    security: Math.min(1, sovereignGovernance.getCoherence().security + 0.1),
   });
   
   console.log(`[WIR26] 🔐 Bezpieczeństwo wzmocnione!`);
@@ -215,7 +215,7 @@ export function isHeartBeatRunning(): boolean {
  * Diagnostyka Wiru 26
  */
 export function diagnoseVortex(): void {
-  const vortexStatus = getVortexStatus();
+  const vortexStatus = sovereignGovernance.getVortexStatus();
   const coherence = sovereignGovernance.getCoherence();
   const treasuryStatus = sovereignGovernance.getTreasuryStatus();
   const agents = sovereignGovernance.getAgents();

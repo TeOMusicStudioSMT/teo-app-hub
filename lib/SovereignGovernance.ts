@@ -593,11 +593,4 @@ class SovereignGovernance {
 export const sovereignGovernance = new SovereignGovernance();
 export default sovereignGovernance;
 
-// Eksport typów
-export type { 
-  CoherenceFactor, 
-  GRVTransaction, 
-  ManagedAgent, 
-  SilentReport,
-  CoherenceLevel 
-};
+// Typy eksportowane inline przy deklaracji (export interface / export type powyżej)

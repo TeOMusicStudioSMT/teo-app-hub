@@ -31,12 +31,12 @@ const PathwaySelector: React.FC<PathwaySelectorProps> = ({ onSelectPath }) => {
     setSelected(path);
 
     // Logowanie wyboru
-    logWniosek({
-      typ: 'SCIEZKA',
-      tytul: `Wybór ścieżki: ${path === 'duch' ? 'Duch' : 'Materia'}`,
-      status: 'aktywny',
-      tags: ['pathway', path],
-    });
+    logWniosek(
+      'SYSTEM',
+      `Wybór ścieżki: ${path === 'duch' ? 'Duch' : 'Materia'}`,
+      `Suweren wybrał ścieżkę: ${path}`,
+      { tags: ['pathway', path] },
+    );
 
     // Czekaj na animację dymu
     setTimeout(() => {

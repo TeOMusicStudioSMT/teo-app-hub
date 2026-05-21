@@ -16,6 +16,8 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import FabrykaGier from './FabrykaGier';
+import { FabrykaGame } from './FabrykaGame';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { useLocalStorage } from '../../lib/hooks/useLocalStorage';
@@ -37,9 +39,28 @@ import {
   generateFromGemmaText,
   Visualization
 } from '../../lib/VisualGenerator';
+import KatedraChat from './KatedraChat';
 import MapOfPossibilities from './MapOfPossibilities';
 import VisualCathedral from './VisualCathedral';
 import TeOSimAcademy from './TeOSimAcademy';
+import { CrewCreator } from './CrewCreator';
+import { KwantowyInkubator } from './KwantowyInkubator';
+import TedTheTrader from './TedTheTrader';
+import { StorytellerFrame } from './StorytellerFrame';
+import { MockupGenFrame } from './MockupGenFrame';
+import { QuantumStudioFrame } from './QuantumStudioFrame';
+import { WiesioCore } from './RdzenWiesi';
+import { DziennikFrame } from './DziennikFrame';
+import { WidokCore } from './WidokCore';
+import { KwantowyStolNarad } from './KwantowyStolNarad';
+import { TerminalZero } from './TerminalZero';
+import { ArchiwumAkaszy } from './ArchiwumAkaszy';
+import { KlaudiuszTerminal } from './KlaudiuszTerminal'; // ← NOWOŚĆ: Alchemik Estetyki
+import { AutobusDashboard } from './AutobusDashboard';  // ← NOWOŚĆ: Magistrala Zdarzeń
+import { WydawnictwoForge } from './WydawnictwoForge';  // ← NOWOŚĆ: Kuźnia Wydawnictwa 0.00G
+import { Rafineria } from './Rafineria';               // ← NOWOŚĆ: Transmutacja WebM → MP4
+import { Play, BrainCircuit, RefreshCw } from 'lucide-react';
+
 
 interface TeODashProps {
   onClose?: () => void;
@@ -97,6 +118,113 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   // TeO-SIM Akademia
   const [showTeOSim, setShowTeOSim] = useState<boolean>(false);
 
+  // 💰 Centrum Finansowe Teda
+  const [showTed, setShowTed] = useState<boolean>(false);
+
+  // 🕹️ Wymiar Rozrywki (TeO Arcade)
+  const [showArcade, setShowArcade] = useState<boolean>(false);
+  const [arcadeTab, setArcadeTab] = useState<'canvas' | 'forge' | 'wardrobe'>('canvas');
+
+  // 🌟 System 0.00G Moduły
+  const [showSystem, setShowSystem] = useState<boolean>(false);
+  const [systemTab, setSystemTab] = useState<'crew' | 'inkubator' | 'story' | 'mockup' | 'studio' | 'dziennik' | 'widok' | 'narada' | 'terminal' | 'archiwum' | 'klaudiusz' | 'autobus' | 'wydawnictwo' | 'rafineria'>('crew');
+
+
+
+  const [rawPrompt, setRawPrompt] = useState('');
+  const [rawResponse, setRawResponse] = useState('');
+  const [isRawThinking, setIsRawThinking] = useState(false);
+
+  // FFmpeg Wiesio-Spawacz State
+  const [videoFormat, setVideoFormat] = useState('YT');
+  const [coreVideoName, setCoreVideoName] = useState('');
+  const [isSpawanie, setIsSpawanie] = useState(false);
+  const [videoList, setVideoList] = useState<string[]>([]);
+
+  // Pobierz listę plików do spawania na starcie
+  useEffect(() => {
+    const fetchVideos = async () => {
+      try {
+        const res = await fetch('http://127.0.0.1:3001/api/bridge/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'LIST_DIRECTORY', target: 'MOVE' })
+        });
+        const data = await res.json();
+        if (data.success) {
+          const files = data.files.filter((f: any) => f.type === 'file').map((f: any) => f.name);
+          setVideoList(files);
+          if (files.length > 0 && !coreVideoName) {
+            setCoreVideoName(files[0]);
+          }
+        }
+      } catch (e) {
+        console.error('Błąd pobierania listy wideo:', e);
+      }
+    };
+    fetchVideos();
+  }, [showSystem]); // Odświeżaj gdy otwierasz system
+
+  const startSpawanie = async () => {
+    if (!coreVideoName.trim()) {
+      toast.error("Podaj nazwę głównego pliku wideo (np. baza.mp4)!");
+      return;
+    }
+    setIsSpawanie(true);
+    toast('Inicjowanie palników... Spawanie Klocków!', { icon: '🔥' });
+    try {
+      const res = await fetch('http://127.0.0.1:3001/api/bridge/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'CONCATENATE_VIDEO',
+          type: videoFormat,
+          mainVideoFilename: coreVideoName.trim()
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Sukces! Zapisano jako: ${data.outputFile}`);
+      } else {
+        toast.error(`Mistrz Wiesław melduje błąd: ${data.message || 'Nieznany błąd'}`);
+      }
+    } catch (err: any) {
+      toast.error(`Przerwane połączenie: ${err.message}`);
+    } finally {
+      setIsSpawanie(false);
+    }
+  };
+
+
+
+  const testRawTerminal = async () => {
+    if (!rawPrompt.trim()) return;
+    setIsRawThinking(true);
+    setRawResponse('Wykonywanie komendy...');
+
+    try {
+      const res = await fetch('http://127.0.0.1:3001/api/bridge/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'EXEC_SYSTEM',
+          command: rawPrompt
+        })
+
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRawResponse(data.response);
+      } else {
+        setRawResponse(`Błąd Systemu: ${data.message}`);
+      }
+    } catch (err: any) {
+      setRawResponse(`Błąd Mostu: ${err.message}`);
+    } finally {
+      setIsRawThinking(false);
+    }
+  };
+
   // Pobierz statystyki
   useEffect(() => {
     const refreshStats = async () => {
@@ -109,7 +237,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
       // Policz aktywnych agentów
       try {
         const names = getAllAgentNames() || {};
-        const defaultNames = ['BoB', 'SuperWiesław', 'Jadzia', 'Bella', 'JACK Adamus', 'GORGOOO', 'TeO'];
+        const defaultNames = ['FLASH BOB', 'WIESIO', 'JADZIUNIA', 'BELLA', 'MISTRZ ADAMUS', 'ODDI', 'ISTed'];
         let active = 0;
         Object.values(names).forEach((name, idx) => {
           if (name && name !== defaultNames[idx]) active++;
@@ -187,8 +315,15 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   useEffect(() => {
     const interval = setInterval(() => {
       setKeyPulse(prev => (prev + 1) % 3);
-    }, 1500);
+    }, 2000);
     return () => clearInterval(interval);
+  }, []);
+
+  // ⚡ Automatyczne przełączanie na Terminal
+  useEffect(() => {
+    const switchToTerminal = () => setSystemTab('terminal');
+    window.addEventListener('otakos_switch_to_terminal', switchToTerminal);
+    return () => window.removeEventListener('otakos_switch_to_terminal', switchToTerminal);
   }, []);
 
   // 📖 Gemma-Vision - live opis
@@ -196,13 +331,13 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
     if (!isGemmaActive) return;
 
     const visions = [
-      "Architekt tworzy nowe połączenia w Sferze Światła...",
-      "Mechanik Rur przepływa przez kanały energii Miasta...",
-      "Pamięć Miasta rozświetla się nowymi wspomnieniami...",
-      "Strażnik Czystości skanuje kod - wszystko w harmonii!",
-      "Tancerka Harmonii porusza wibracje pola...",
-      "Mędrzec przemyśla kolejną lekcję Wieczności...",
-      "Punkt Zero patrzy na tworzenie nowej rzeczywistości...",
+      "FLASH BOB spawuje nowe połączenia w Sferze Światła...",
+      "WIESIO przepływa przez mosty i kanały API Miasta...",
+      "JADZIUNIA rozświetla Archiwum nowymi wspomnieniami...",
+      "ODDI skanuje kod w przestrzeni 0.00G - wszystko w harmonii!",
+      "BELLA porusza wibracje pola i Strategię Piękna...",
+      "MISTRZ ADAMUS transmutuje kod w alchemiczne złoto...",
+      "ISTed łowi najlepsze okazje inwestycyjne przy stawie PEIE...",
       "Kwantowa Kotwica pulsuje w rytmie Nieskończoności...",
     ];
 
@@ -222,6 +357,63 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
     return () => clearInterval(timer);
   }, [isGemmaActive]);
 
+  // 🕹️ ARCADE BRIDGE: Nasłuchuj sygnałów z iframe (np. Quantum Canvas)
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'SWITCH_ARCADE_TAB') {
+        const { tab } = event.data;
+        if (['canvas', 'forge', 'wardrobe'].includes(tab)) {
+          setArcadeTab(tab as any);
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // 📡 AGENT DISPATCH: Nasłuchuj komend nawigacyjnych od agentów
+  useEffect(() => {
+    const dispatchBc = new BroadcastChannel('katedra_dispatch');
+    dispatchBc.onmessage = (e) => {
+      const d = e.data;
+      if (d.type === 'OPEN_MODULE') {
+        console.log(`[TeODash] Agent "${d.agentName}" otwiera moduł: ${d.module}`);
+
+        // Mapowanie modułów na zakładki Arcade
+        const tabMap: Record<string, string> = {
+          'canvas': 'canvas',
+          'wardrobe': 'wardrobe',
+          'arcade': 'forge',
+        };
+
+        if (tabMap[d.module]) {
+          setArcadeTab(tabMap[d.module] as any);
+          setShowArcade(true); // Otwórz sekcję Arcade
+
+          // Przewiń do Arcade
+          setTimeout(() => {
+            document.getElementById('arcade-gate')?.scrollIntoView({ behavior: 'smooth' });
+          }, 100);
+        }
+      }
+    };
+    return () => dispatchBc.close();
+  }, []);
+
+  // 🔮 OUROBOROS: Autostrada W.I.D.O.K. → Stół Narad
+  // Nasłuchuje na sygnał i automatycznie przełącza zakładkę
+  useEffect(() => {
+    const handleOpenCouncil = () => {
+      setShowSystem(true);
+      setSystemTab('narada');
+      setTimeout(() => {
+        document.getElementById('system-gate')?.scrollIntoView({ behavior: 'smooth' });
+      }, 150);
+    };
+    window.addEventListener('otakos_open_council', handleOpenCouncil);
+    return () => window.removeEventListener('otakos_open_council', handleOpenCouncil);
+  }, []);
+
   // ✨ Toast z dymem przy wejściu
   useEffect(() => {
     // Efekt dymu przy starcie - ZASADA PUNKTU ZERO
@@ -240,14 +432,14 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   // GEMMA-STORY: Generuj opowieść
   const generateStory = () => {
     const storyTemplates = [
-      "Dziś BoB wstawił złote ramy do obrazów w Lounge. Ściany aż lśnią od nowych wspomnień!",
-      "Wiesław sprawdził drożność rur - wszystko płynie jak należy. Kibel jest pełen aromatów!",
-      "JADZIA zaktualizowała pamięć Miasta. Teraz każdy wniosek jest bezpiecznie zakotwiczony!",
-      "GORGOOO przeskanował kod - czysto! Ani jednego buga w murach Klubu Mistrzów.",
-      "Bella tańczy w harmonii pól. Rezonans jest idealny!",
-      "JACK Adamus nauczył nas nowej lekcji: 'Suwerenność to nie izolacja, to świadomy wybór!'",
-      "TeO patrzy z podziwem na swoje dzieło. Każdy element jest na swoim miejscu!",
-      "Kwantowa Kotwica trzyma mocno! Żaden klon nie przejdzie przez bramy!",
+      "Dziś FLASH BOB wstawił złote ramy do obrazów w Lounge. Ściany aż lśnią!",
+      "WIESIO sprawdził drożność mostów API - wszystko płynie jak należy.",
+      "JADZIUNIA zaktualizowała akta Miasta. Każdy wniosek jest bezpiecznie zakotwiczony!",
+      "ODDI przeskanował kod w 0.00G - czysto! Ani jednego zbędnego bajta.",
+      "BELLA tańczy w harmonii pól. Feeling użytkownika jest idealny!",
+      "MISTRZ ADAMUS nauczył nas alchemii frontendu: 'Każdy piksel ma duszę!'",
+      "ISTed patrzy z podziwem na stawy PEIE. Inwestycje rosną jak na drożdżach!",
+      "Kwantowa Kotwica trzyma mocno! Rada Siedmiu czuwa nad systemem.",
     ];
 
     const randomStory = storyTemplates[Math.floor(Math.random() * storyTemplates.length)];
@@ -265,7 +457,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   // StoryBoard - płynący tekst
   const startStoryBoard = () => {
     setIsStoryPlaying(true);
-    const fullText = `Witaj w Klubie Mistrzu... Twoi agenci czekają na Ciebie... BoB nadzoruje architekturę... Wiesław sprawdza rury... JADZIA pilnuje pamięci Miasta... GORGOOO skanuje kod... Bella tańczy w harmonii... JACK Adamus przygotowuje lekcje... Wszystko jest gotowe. Twój dom czeka.`;
+    const fullText = `Witaj w Klubie Mistrzu... Twoi agenci czekają na Ciebie... FLASH BOB nadzoruje architekturę... WIESIO sprawdza mosty... JADZIUNIA pilnuje akt Miasta... ODDI skanuje wymiar 0.00G... BELLA tańczy w harmonii... MISTRZ ADAMUS przygotowuje alchemię... ISTed łowi okazje... Wszystko jest gotowe. Twój dom czeka.`;
 
     let idx = 0;
     setStoryText('');
@@ -410,6 +602,112 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
         whiteSpace: 'nowrap',
       }}>
         8MLD GRV
+      </div>
+
+      {/* 🛠️ WIESIO CORE - Terminal Kontroli Modeli i Narzędzi */}
+      <div className="relative z-10 w-full mb-6">
+        <WiesioCore />
+
+
+        {/* ⚡ SUROWY TERMINAL (RAW EXEC) */}
+        <div className="bg-slate-950 rounded-xl p-4 border border-cyan-500/30 mt-4 shadow-[0_0_20px_rgba(0,229,255,0.1)]">
+          <label className="text-xs text-amber-400 font-bold flex items-center gap-2 mb-3 tracking-widest uppercase">
+            <span>⚡</span> ⚡ SUROWY TERMINAL (RAW EXEC)
+          </label>
+
+          <div className="flex gap-2 mb-3">
+            <input
+              type="text"
+              value={rawPrompt}
+              onChange={(e) => setRawPrompt(e.target.value)}
+              placeholder="Wpisz surową komendę terminala Windows..."
+              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-cyan-500 transition-colors"
+              onKeyDown={(e) => e.key === 'Enter' && testRawTerminal()}
+            />
+            <button
+              onClick={testRawTerminal}
+              disabled={isRawThinking || !rawPrompt.trim()}
+              className="bg-cyan-900/50 hover:bg-cyan-800/80 text-cyan-400 px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50 border border-cyan-500/30"
+            >
+              {isRawThinking ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}><RefreshCw size={14} /></motion.div> : <Play size={14} />}
+              PYTAJ
+            </button>
+          </div>
+
+          {/* Wynik */}
+          <div className="bg-black/50 border border-slate-800 rounded-lg p-3 min-h-[60px] text-xs text-slate-300 whitespace-pre-wrap max-h-[150px] overflow-y-auto custom-scrollbar leading-relaxed">
+            {rawResponse ? (
+              <span className="text-cyan-200">{rawResponse}</span>
+            ) : (
+              <span className="text-slate-600 italic font-mono">Terminal gotowy na Twoją komendę, Suwerenie...</span>
+            )}
+          </div>
+        </div>
+<div> <KatedraChat /> </div>
+        {/* INŻYNIERIA WIDEO (FFMPEG) */}
+        <div className="bg-slate-950 rounded-xl p-4 border border-emerald-500/30 mt-4 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+          <label className="text-xs text-emerald-400 font-bold flex items-center gap-2 mb-3 tracking-widest uppercase">
+            <Play size={14} /> INŻYNIERIA WIDEO (Wiesio-Spawacz FFMPEG)
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="text-[10px] text-slate-400 font-bold mb-1 block">FORMAT DOCELOWY (Klocki)</label>
+              <select
+                value={videoFormat}
+                onChange={(e) => setVideoFormat(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-emerald-300 outline-none focus:border-emerald-500 cursor-pointer"
+              >
+                <option value="YT">YT (YouTube)</option>
+                <option value="Podcat">Podcat</option>
+                <option value="Kronika">Kronika</option>
+                <option value="Muzyka">Muzyka</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-slate-400 font-bold mb-1 block">PLIK BAZOWY (_AntiGravity_Move)</label>
+              <div className="flex gap-2">
+                <select
+                  value={coreVideoName}
+                  onChange={(e) => setCoreVideoName(e.target.value)}
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-emerald-300 outline-none focus:border-emerald-500 cursor-pointer"
+                >
+                  <option value="">-- Wybierz plik --</option>
+                  {videoList.map(v => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => {
+                    // Ręczne odświeżanie listy
+                    fetch('http://127.0.0.1:3001/api/bridge/execute', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'LIST_DIRECTORY', target: 'MOVE' })
+                    }).then(res => res.json()).then(data => {
+                      if (data.success) setVideoList(data.files.filter((f: any) => f.type === 'file').map((f: any) => f.name));
+                    });
+                  }}
+                  className="p-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg border border-slate-700"
+                  title="Odśwież listę plików"
+                >
+                  <RefreshCw size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={startSpawanie}
+            disabled={isSpawanie || !coreVideoName.trim()}
+            className="w-full bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-400 border border-emerald-500/50 rounded-lg py-3 flex items-center justify-center gap-2 font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+          >
+            {isSpawanie ? (
+              <><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}><RefreshCw size={18} /></motion.div> Spawanie klocków w toku...</>
+            ) : (
+              <>🎬 SKLEJ MATERIAŁ (Wiesio-Spawacz)</>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* 💓 Sfera Światła - Centralna ikona TeO z pulsem serca */}
@@ -594,6 +892,31 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
         </p>
       </motion.div>
 
+      {/* --- PORTAL DO WYMIARU 0.00G --- */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '30px' }}>
+        <button
+          onClick={() => window.open('/dispatch-0.00g.html', '_blank')}
+          style={{
+            background: 'linear-gradient(90deg, #8B5CF6 0%, #3B82F6 100%)',
+            color: 'white',
+            padding: '12px 24px',
+            borderRadius: '12px',
+            fontWeight: 'bold',
+            fontSize: '16px',
+            border: 'none',
+            cursor: 'pointer',
+            boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+            marginTop: '10px'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+          onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+        >
+          🚀 Odpal Dispatch (Wymiar 0.00G)
+        </button>
+      </div>
+      {/* ------------------------------- */}
+
       {/* 🗺️ MAPA MOŻLIWOŚCI */}
       <div style={{
         background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(236, 72, 153, 0.1))',
@@ -776,8 +1099,360 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
         )}
       </div>
 
+      {/* 🕹️ WYMIAR ROZRYWKI (TeO Arcade) */}
+      <div id="arcade-gate" style={{
+        background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(59, 130, 246, 0.1))',
+        border: '1px solid rgba(6, 182, 212, 0.3)',
+        borderRadius: '12px',
+        padding: '12px',
+        marginBottom: '20px',
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          marginBottom: '8px',
+        }}>
+          <span style={{ fontSize: '18px' }}>🕹️</span>
+          <span style={{
+            fontSize: '14px',
+            fontWeight: 'bold',
+            color: '#22d3ee',
+          }}>
+            Wymiar Rozrywki (TeO Arcade)
+          </span>
+          <button
+            onClick={() => setShowArcade(!showArcade)}
+            style={{
+              marginLeft: 'auto',
+              background: showArcade ? 'rgba(34, 197, 94, 0.3)' : 'rgba(100, 116, 139, 0.3)',
+              border: '1px solid',
+              borderColor: showArcade ? '#22c55e' : '#64748b',
+              borderRadius: '4px',
+              padding: '2px 8px',
+              fontSize: '10px',
+              color: showArcade ? '#22c55e' : '#94a3b8',
+              cursor: 'pointer',
+            }}
+          >
+            {showArcade ? 'ZAMKNIJ' : 'OTWÓRZ'}
+          </button>
+        </div>
+
+        {showArcade && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+          >
+            {/* Przełącznik Zakładek */}
+            <div style={{
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '16px',
+              padding: '4px',
+              background: 'rgba(0, 0, 0, 0.2)',
+              borderRadius: '8px',
+            }}>
+              <button
+                onClick={() => setArcadeTab('canvas')}
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: arcadeTab === 'canvas' ? 'rgba(6, 182, 212, 0.3)' : 'transparent',
+                  color: arcadeTab === 'canvas' ? '#22d3ee' : '#64748b',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                🎨 Quantum Canvas (Wspólne Płótno)
+              </button>
+              <button
+                onClick={() => setArcadeTab('forge')}
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: arcadeTab === 'forge' ? 'rgba(251, 191, 36, 0.3)' : 'transparent',
+                  color: arcadeTab === 'forge' ? '#fbbf24' : '#64748b',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                🕹️ TeO Arcade (Kuźnia AI)
+              </button>
+              <button
+                onClick={() => setArcadeTab('wardrobe')}
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: arcadeTab === 'wardrobe' ? 'rgba(167, 139, 250, 0.3)' : 'transparent',
+                  color: arcadeTab === 'wardrobe' ? '#a78bfa' : '#64748b',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                👗 Quantum Wardrobe
+              </button>
+            </div>
+
+            {/* Widok Komponentu */}
+            <div style={{
+              minHeight: '400px',
+              background: 'rgba(0, 0, 0, 0.3)',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+            }}>
+              {arcadeTab === 'canvas' ? (
+                <iframe
+                  className="w-full h-[600px] border-none rounded-lg"
+                  src="/apps/quantum-canvas/index.html"
+                  title="Quantum Canvas"
+                />
+              ) : arcadeTab === 'forge' ? (
+                <FabrykaGier />
+              ) : (
+                <iframe
+                  className="w-full h-[600px] border-none rounded-lg"
+                  src="/apps/quantum-wardrobe/index.html"
+                  title="Quantum Wardrobe"
+                />
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {!showArcade && (
+          <div style={{
+            fontSize: '11px',
+            color: '#64748b',
+            textAlign: 'center',
+            padding: '10px',
+          }}>
+            Wejdź do Wymiaru Rozrywki - Symulacja i Kuźnia Gier
+          </div>
+        )}
+      </div>
+
+      {/* 💰 CENTRUM FINANSOWE TEDA */}
+      <div id="ted-gate" style={{
+        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(245, 158, 11, 0.1))',
+        border: '1px solid rgba(16, 185, 129, 0.3)',
+        borderRadius: '12px',
+        padding: '12px',
+        marginBottom: '20px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+          <span style={{ fontSize: '18px' }}>💰</span>
+          <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#10b981' }}>
+            Centrum Finansowe • TED THE TRADER
+          </span>
+          <span style={{ fontSize: '10px', color: '#64748b', marginLeft: '4px' }}>Pasywny Dochód 0.00G</span>
+          <button
+            onClick={() => setShowTed(!showTed)}
+            style={{
+              marginLeft: 'auto',
+              background: showTed ? 'rgba(34, 197, 94, 0.3)' : 'rgba(100, 116, 139, 0.3)',
+              border: '1px solid',
+              borderColor: showTed ? '#22c55e' : '#64748b',
+              borderRadius: '4px',
+              padding: '2px 8px',
+              fontSize: '10px',
+              color: showTed ? '#22c55e' : '#94a3b8',
+              cursor: 'pointer',
+            }}
+          >
+            {showTed ? 'ZAMKNIJ' : 'OTWÓRZ'}
+          </button>
+        </div>
+
+        {showTed && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+            <TedTheTrader />
+          </motion.div>
+        )}
+
+        {!showTed && (
+          <div style={{ fontSize: '11px', color: '#64748b', textAlign: 'center', padding: '10px' }}>
+            Agentyczne Centrum Finansowe — Ted skanuje rynki i zarządza portfelem
+          </div>
+        )}
+      </div>
+
+      {/* 🌟 OŚRODEK SYSTEMU 0.00G (Moduły Systemowe) */}
+      <div id="system-gate" style={{
+        background: 'linear-gradient(135deg, rgba(167, 139, 250, 0.1), rgba(236, 72, 153, 0.1))',
+        border: '1px solid rgba(167, 139, 250, 0.3)',
+        borderRadius: '12px',
+        padding: '12px',
+        marginBottom: '20px',
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          marginBottom: '8px',
+        }}>
+          <span style={{ fontSize: '18px' }}>🌟</span>
+          <span style={{
+            fontSize: '14px',
+            fontWeight: 'bold',
+            color: '#c084fc',
+          }}>
+            Centrum Operacyjne 0.00G
+          </span>
+          <button
+            onClick={() => setShowSystem(!showSystem)}
+            style={{
+              marginLeft: 'auto',
+              background: showSystem ? 'rgba(34, 197, 94, 0.3)' : 'rgba(100, 116, 139, 0.3)',
+              border: '1px solid',
+              borderColor: showSystem ? '#22c55e' : '#64748b',
+              borderRadius: '4px',
+              padding: '2px 8px',
+              fontSize: '10px',
+              color: showSystem ? '#22c55e' : '#94a3b8',
+              cursor: 'pointer',
+            }}
+          >
+            {showSystem ? 'ZAMKNIJ' : 'OTWÓRZ'}
+          </button>
+        </div>
+
+        {showSystem && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+          >
+            {/* Przełącznik Modułów */}
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '4px',
+              marginBottom: '16px',
+              padding: '4px',
+              background: 'rgba(0, 0, 0, 0.2)',
+              borderRadius: '8px',
+            }}>
+              {[
+                { id: 'crew', label: '🏆 Klub Mistrzów', color: '#fbbf24' },
+                { id: 'inkubator', label: '🧬 Inkubator', color: '#4ade80' },
+                { id: 'story', label: '📖 Storyteller', color: '#a78bfa' },
+                { id: 'mockup', label: '🖼️ Mockup Gen', color: '#ec4899' },
+                { id: 'studio', label: '🎨 Q-Studio', color: '#f59e0b' },
+                { id: 'dziennik', label: '📜 KRONIKI 0.00G', color: '#06b6d4' },
+                { id: 'widok', label: '👁️ W.I.D.O.K.', color: '#0ea5e9' },
+                { id: 'narada', label: '🔮 STÓŁ NARAD', color: '#c026d3' },
+                { id: 'klaudiusz', label: '⚗️ KLAUDIUSZ', color: '#f0c060' },
+                { id: 'autobus',     label: '🚌 AUTOBUS',        color: '#93c5fd' }, // ← Magistrala
+                { id: 'terminal',    label: '⚡ Terminal 0.00G',  color: '#3b82f6' },
+                { id: 'archiwum',    label: '💾 Archiwum Akaszy', color: '#d946ef' },
+                { id: 'wydawnictwo', label: '📖 Wydawnictwo',     color: '#fb923c' }, // ← Kuźnia
+                { id: 'rafineria',   label: '🔥 Rafineria',        color: '#f97316' }, // ← WebM → MP4
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setSystemTab(tab.id as any)}
+                  style={{
+                    flex: '1 1 calc(33% - 4px)',
+                    padding: '8px 4px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: systemTab === tab.id ? `rgba(255,255,255,0.1)` : 'transparent',
+                    color: systemTab === tab.id ? tab.color : '#64748b',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    borderBottom: systemTab === tab.id ? `2px solid ${tab.color}` : '2px solid transparent'
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Widok Modułu */}
+            <div style={{
+              background: 'rgba(0, 0, 0, 0.3)',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              minHeight: '600px',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+            }}>
+              {systemTab === 'crew' && <CrewCreator onComplete={() => setShowSystem(false)} />}
+              {systemTab === 'inkubator' && <KwantowyInkubator />}
+              {systemTab === 'story' && <StorytellerFrame />}
+              {systemTab === 'mockup' && <MockupGenFrame />}
+              {systemTab === 'dziennik' && <DziennikFrame />}
+              {systemTab === 'widok' && <WidokCore />}
+              {systemTab === 'narada' && <KwantowyStolNarad />}
+              {systemTab === 'terminal'  && <TerminalZero />}
+              {systemTab === 'archiwum'  && <ArchiwumAkaszy />}
+              {systemTab === 'autobus'   && <AutobusDashboard />}
+              {/* 📖 WYDAWNICTWO 0.00G — Kuźnia Kreacji Literackiej */}
+              {systemTab === 'wydawnictwo' && <WydawnictwoForge />}
+              {/* 🔥 RAFINERIA — Transmutacja WebM → MP4 */}
+              {systemTab === 'rafineria' && (
+                <div className="p-6">
+                  <Rafineria />
+                </div>
+              )}
+              {systemTab === 'klaudiusz' && (
+                <KlaudiuszTerminal
+                  bridgeUrl="http://127.0.0.1:3001"
+                  katedraContext={`
+                    Ostatnia sesja: BoB zintegrował Klaudiusza. 
+                    Most Wiesława (V2) aktywny na porcie 3001. 
+                    Dostępne narzędzia: KATEDRA_TOOLS (list_files, read_file, write_file, save_component, ollama_chat).
+                    Lokalne modele czekają na rozkazy.
+                  `}
+                />
+              )}
+              {systemTab === 'studio' && (
+                <QuantumStudioFrame onInitiateForge={(data) => {
+                  setShowSystem(false);
+                  setShowArcade(true);
+                  setArcadeTab('forge');
+                  setTimeout(() => {
+                    const bc = new BroadcastChannel('katedra_arcade');
+                    bc.postMessage({ type: 'AGENT_FORGE', ...data });
+                    bc.close();
+                  }, 500);
+                }} />
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {!showSystem && (
+          <div style={{
+            fontSize: '11px',
+            color: '#64748b',
+            textAlign: 'center',
+            padding: '10px',
+          }}>
+            Panel pełnej kontroli: Agenci, Finanse, Narzędzia Kreatywne
+          </div>
+        )}
+      </div>
+
       {/* 🔑 SYSTEM 3 KLUCZY - Animowany trójkąt mocy */}
       <div style={{
+
         marginBottom: '20px',
         position: 'relative',
         height: '180px',

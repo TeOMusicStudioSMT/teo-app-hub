@@ -33,3 +33,13 @@ export const aiModeAtom = atomWithStorage<'cloud' | 'local'>(
     'cloud',
     getRobustStorage<'cloud' | 'local'>()
 );
+
+/**
+ * Global Active Local Model (Ollama) - persisted in localStorage
+ */
+export const globalActiveLocalModel = atomWithStorage<string>(
+    'otakos_active_model',
+    'gemma4:e2b',
+    getRobustStorage<string>()
+);
+

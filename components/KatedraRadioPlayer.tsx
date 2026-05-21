@@ -1,8 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Disc3 } from 'lucide-react';
 import { useKatedraRadio } from '../context/KatedraRadioContext';
+import { QuantumForgeView } from './special/QuantumForgeView';
+import { Camera } from 'lucide-react';
+import { useAtom } from 'jotai';
+import { currentLyricAtom, isKaraokeEnabledAtom } from '../store/visualizerStore';
+import { Mic, FileText, Hammer } from 'lucide-react';
+import { TeoKaraokeForge } from './special/TeoKaraokeForge';
+
+
 
 // Helper do formatowania czasu
 const formatTime = (seconds: number) => {
@@ -10,6 +19,12 @@ const formatTime = (seconds: number) => {
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
+
+interface ParsedLyric {
+    time: number;
+    text: string;
+}
+
 
 // Minimalistyczna wizualizacja — słupki audio reaktywne
 function AudioBars({ isPlaying, bassLevel }: { isPlaying: boolean; bassLevel: number }) {
@@ -46,7 +61,123 @@ export function KatedraRadioPlayer() {
     const [expanded, setExpanded] = useState(false);
     const [msg, setMsg] = useState('');
     
+    // Jotai State for Lyrics
+    const [, setCurrentLyricGlobal] = useAtom(currentLyricAtom);
+    
+    React.useEffect(() => {
+        setCurrentLyricGlobal(radio.currentLyric);
+    }, [radio.currentLyric, setCurrentLyricGlobal]);
+    
+    // Quantum Forge States
+    const [showQuantumForge, setShowQuantumForge] = useState(false);
+    const [forgedDNAFile, setForgedDNAFile] = useState<File | null>(null);
+    // Karaoke States
+    const [isKaraokeEnabled, setIsKaraokeEnabled] = useAtom(isKaraokeEnabledAtom);
+    const [showKaraokeForge, setShowKaraokeForge] = useState(false);
+    const [syncLyrics, setSyncLyrics] = useState<ParsedLyric[]>([]);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+
+
+    const crystallizeDNA = async () => {
+        const canvas = document.getElementById('katedra-canvas') as HTMLCanvasElement;
+        if (!canvas) {
+            console.error('Canvas not found!');
+            return;
+        }
+
+        try {
+            // Capture PNG
+            const dataUrl = canvas.toDataURL('image/png');
+            
+            // Convert Base64 to Blob
+            const response = await fetch(dataUrl);
+            const blob = await response.blob();
+            
+            // Create File
+            const file = new File([blob], `VectorDNA_Snapshot_${Date.now()}.png`, { type: 'image/png' });
+            
+            setForgedDNAFile(file);
+            setShowQuantumForge(true);
+        } catch (error) {
+            console.error('Crystallization failed:', error);
+        }
+    };
+
+    // --- LOGIKA PARSOWANIA I SYNCHRONIZACJI LRC ---
+    const parseLRC = (text: string) => {
+        const lines = text.split('\n');
+        const lrcRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/;
+        const parsed: ParsedLyric[] = [];
+
+        lines.forEach(line => {
+            const match = line.match(lrcRegex);
+            if (match) {
+                const mins = parseInt(match[1]);
+                const secs = parseInt(match[2]);
+                const ms = parseInt(match[3]);
+                const time = mins * 60 + secs + ms / (match[3].length === 3 ? 1000 : 100);
+                const text = match[4].trim();
+                parsed.push({ time, text });
+            }
+        });
+        
+        parsed.sort((a, b) => a.time - b.time);
+        setSyncLyrics(parsed);
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const content = event.target?.result as string;
+            parseLRC(content);
+            setIsKaraokeEnabled(true); // Auto-enable karaoke on upload
+        };
+        reader.readAsText(file);
+    };
+
+    // Synchronizacja w czasie rzeczywistym
+    React.useEffect(() => {
+        if (!syncLyrics.length || !isKaraokeEnabled) return;
+        
+        // Znajdź ostatnią linię, której czas jest mniejszy lub równy aktualnemu czasowi
+        let currentLine = null;
+        for (let i = syncLyrics.length - 1; i >= 0; i--) {
+            if (radio.currentTime >= syncLyrics[i].time) {
+                currentLine = syncLyrics[i];
+                break;
+            }
+        }
+
+        let currentText = "";
+        if (currentLine) {
+            // Jeśli minęło więcej niż 5 sekund od startu linii, wygaś ją (chyba że to długa fraza, ale 5s to bezpieczny standard)
+            if (radio.currentTime < currentLine.time + 5) {
+                currentText = currentLine.text;
+            }
+        }
+
+        if (currentText !== radio.currentLyric) {
+            radio.setCurrentLyric(currentText);
+        }
+    }, [radio.currentTime, syncLyrics, isKaraokeEnabled, radio]);
+
+    
+    // Resetuj napisy przy zmianie utworu (Ochrona Stanu)
+    React.useEffect(() => {
+        setSyncLyrics([]);
+        radio.setCurrentLyric("");
+        if (fileInputRef.current) {
+            fileInputRef.current.value = ""; // Umożliwia ponowne wgranie tego samego pliku
+        }
+    }, [radio.currentIndex]);
+
+
     // Jeśli nic nie załadowano, pokaż przycisk startu
+
     if (radio.tracks.length === 0 && !radio.isLoading && !radio.error) {
         return (
             <button onClick={() => radio.loadPlaylist()} style={launchButtonStyle}>
@@ -79,45 +210,6 @@ export function KatedraRadioPlayer() {
     return (
         <div style={containerStyle}>
             <style>{playerCSS}</style>
-            
-            <AnimatePresence>
-                {expanded && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 20, scale: 0.95 }}
-                        style={playlistPanelStyle}
-                    >
-                        <div style={playlistHeaderStyle}>
-                            <span>BIBLIOTEKA 0.00G</span>
-                            <button onClick={() => setExpanded(false)} style={closeBtnStyle}>✕</button>
-                        </div>
-                        <div style={playlistScrollStyle}>
-                            {radio.tracks.map((track, index) => (
-                                <div 
-                                    key={track.id} 
-                                    style={{
-                                        ...trackItemStyle,
-                                        backgroundColor: radio.currentIndex === index ? 'rgba(180, 100, 255, 0.15)' : 'transparent',
-                                        borderLeft: radio.currentIndex === index ? '2px solid #a78bfa' : '2px solid transparent'
-                                    }}
-                                    onClick={() => radio.setTrack(index)}
-                                >
-                                    <div style={trackIndexStyle}>{(index + 1).toString().padStart(2, '0')}</div>
-                                    <div style={trackNameStyle}>
-                                        <div style={{ color: radio.currentIndex === index ? '#e9d5ff' : '#a1a1aa' }}>
-                                            {track.title}
-                                        </div>
-                                    </div>
-                                    {radio.currentIndex === index && radio.isPlaying && (
-                                        <div style={playingDotStyle} />
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
 
             <motion.div
                 style={playerShellStyle}
@@ -221,7 +313,85 @@ export function KatedraRadioPlayer() {
                             >
                                 🔴 <span style={{ fontSize: '7px', position: 'absolute', bottom: -2, left: '50%', transform: 'translateX(-50%)' }}>REC</span>
                             </button>
+
+                            <button 
+                                style={{ ...btnStyle, color: 'rgba(255,255,255,0.6)' }}
+                                onClick={crystallizeDNA}
+                                title="Krystalizuj DNA (Screenshot)"
+                            >
+                                <Camera size={16} />
+                            </button>
                         </div>
+
+                        {/* --- MODUŁ KARAOKE --- */}
+                        <div className="flex flex-col gap-2 p-3 bg-white/5 rounded-xl border border-white/5">
+                            <button 
+                                onClick={() => setIsKaraokeEnabled(!isKaraokeEnabled)}
+                                style={{
+                                    ...btnStyle,
+                                    width: '100%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 8,
+                                    fontSize: '9px',
+                                    fontWeight: 'bold',
+                                    border: `1px solid ${isKaraokeEnabled ? '#22d3ee' : 'rgba(255,255,255,0.1)'}`,
+                                    background: isKaraokeEnabled ? 'rgba(34, 211, 238, 0.1)' : 'transparent',
+                                    color: isKaraokeEnabled ? '#22d3ee' : 'rgba(255,255,255,0.4)',
+                                    letterSpacing: '0.1em'
+                                }}
+                            >
+                                <Mic size={12} />
+                                [ KARAOKE: {isKaraokeEnabled ? 'ON' : 'OFF'} ]
+                            </button>
+                            
+                            <button 
+                                style={{
+                                    ...btnStyle,
+                                    width: '100%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 8,
+                                    fontSize: '8px',
+                                    opacity: 0.6,
+                                    border: '1px dashed rgba(255,255,255,0.2)',
+                                }}
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                <FileText size={10} />
+                                [ 📄 WGRAJ PLIK .LRC ]
+                            </button>
+                            <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                accept=".lrc" 
+                                onChange={handleFileUpload} 
+                                style={{ display: 'none' }} 
+                            />
+
+
+                            <button 
+                                style={{
+                                    ...btnStyle,
+                                    width: '100%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 8,
+                                    fontSize: '8px',
+                                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                                    color: '#10b981',
+                                }}
+                                onClick={() => setShowKaraokeForge(true)}
+                            >
+                                <Hammer size={10} />
+                                [ 🔨 KREATOR LRC (SYNC) ]
+                            </button>
+                        </div>
+
+
                     </div>
                 </div>
 
@@ -259,6 +429,12 @@ export function KatedraRadioPlayer() {
                                 title={`Aura: ${aura.toUpperCase()}`}
                             />
                     ))}
+                    <button 
+                        onClick={() => radio.setIsAutoAura(!radio.isAutoAura)}
+                        style={{ ...btnStyle, fontSize: '9px', marginLeft: 8, padding: '2px 6px', color: radio.isAutoAura ? '#22d3ee' : 'rgba(255,255,255,0.4)', border: radio.isAutoAura ? '1px solid #22d3ee' : '1px solid rgba(255,255,255,0.1)' }}
+                    >
+                        🔄 AUTO-AURA
+                    </button>
                 </div>
 
                 {/* Konsola Komunikacyjna Rady */}
@@ -326,6 +502,66 @@ export function KatedraRadioPlayer() {
                     </div>
                 </div>
             </motion.div>
+
+            {/* ── Biblioteka 0.00G — wyjeżdża W PRAWO od playera ─────── */}
+            <AnimatePresence>
+                {expanded && (
+                    <motion.div
+                        key="playlist-panel"
+                        initial={{ opacity: 0, x: -24, scale: 0.97 }}
+                        animate={{ opacity: 1, x: 0,   scale: 1    }}
+                        exit={{   opacity: 0, x: -24, scale: 0.97 }}
+                        transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+                        style={playlistPanelStyle}
+                    >
+                        <div style={playlistHeaderStyle}>
+                            <span>BIBLIOTEKA 0.00G</span>
+                            <button onClick={() => setExpanded(false)} style={closeBtnStyle}>✕</button>
+                        </div>
+                        <div style={playlistScrollStyle}>
+                            {radio.tracks.map((track, index) => (
+                                <div
+                                    key={track.id}
+                                    style={{
+                                        ...trackItemStyle,
+                                        backgroundColor: radio.currentIndex === index ? 'rgba(180, 100, 255, 0.15)' : 'transparent',
+                                        borderLeft: radio.currentIndex === index ? '2px solid #a78bfa' : '2px solid transparent',
+                                    }}
+                                    onClick={() => radio.setTrack(index)}
+                                >
+                                    <div style={trackIndexStyle}>{(index + 1).toString().padStart(2, '0')}</div>
+                                    <div style={trackNameStyle}>
+                                        <div style={{ color: radio.currentIndex === index ? '#e9d5ff' : '#a1a1aa' }}>
+                                            {track.title}
+                                        </div>
+                                    </div>
+                                    {radio.currentIndex === index && radio.isPlaying && (
+                                        <div style={playingDotStyle} />
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {showQuantumForge && (
+                    <QuantumForgeView 
+                        onClose={() => { 
+                            setShowQuantumForge(false); 
+                            setForgedDNAFile(null); 
+                        }} 
+                        initialFile={forgedDNAFile} 
+                    />
+                )}
+                {showKaraokeForge && (
+                    <TeoKaraokeForge 
+                        onClose={() => setShowKaraokeForge(false)}
+                    />
+                )}
+            </AnimatePresence>
+
         </div>
     );
 }
@@ -338,8 +574,10 @@ const containerStyle: React.CSSProperties = {
     left: 24,
     zIndex: 999999,
     display: 'flex',
-    flexDirection: 'column',
+    flexDirection: 'row',   // ← playlist wyjeżdża W PRAWO
+    alignItems: 'flex-end', // ← wyrównaj do dołu (do poziomu playera)
     gap: 12,
+    pointerEvents: 'none',
 };
 
 const launchButtonStyle: React.CSSProperties = {
@@ -352,6 +590,7 @@ const launchButtonStyle: React.CSSProperties = {
     boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(180,100,255,0.15)',
     transition: 'all 0.3s cubic-bezier(0.23, 1, 0.32, 1)',
     fontFamily: "'JetBrains Mono', monospace",
+    pointerEvents: 'auto',
 };
 
 const playerShellStyle: React.CSSProperties = {
@@ -362,18 +601,21 @@ const playerShellStyle: React.CSSProperties = {
     boxShadow: '0 12px 48px rgba(0,0,0,0.5)',
     overflow: 'hidden',
     fontFamily: "'JetBrains Mono', monospace",
+    pointerEvents: 'auto',
 };
 
 const playlistPanelStyle: React.CSSProperties = {
-    width: 320,
-    maxHeight: 400,
-    background: 'rgba(10, 10, 15, 0.98)',
-    border: '1px solid rgba(180, 100, 255, 0.2)',
+    width: 340,             // trochę szerzej — miejsce na tytuły i przyszłe okładki
+    maxHeight: 520,         // dopasowane do wysokości playera z marginesem
+    background: 'rgba(10, 10, 15, 0.97)',
+    border: '1px solid rgba(180, 100, 255, 0.25)',
     borderRadius: 16,
     backdropFilter: 'blur(32px)',
+    boxShadow: '0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(180,100,255,0.08)',
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
+    pointerEvents: 'auto',
 };
 
 const playlistHeaderStyle: React.CSSProperties = {

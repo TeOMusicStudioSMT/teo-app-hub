@@ -25,5 +25,13 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "_AntiGravity_Build",
+    "_AntiGravity_Components",
+    "_AntiGravity_Wymiar",
+    "_temp",
+    "dist"
+  ]
 }

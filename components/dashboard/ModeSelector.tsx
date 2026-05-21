@@ -1,10 +1,39 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAtom } from 'jotai';
 import { electricBorderAtom, setGlobalModeAtom, ElectricBorderMode } from '../../store/electricBorder';
+import { globalActiveLocalModel } from '../../store/settings';
+import { ApiDyrygent } from '../../lib/router/ApiDyrygent';
+import { Cpu, RefreshCw } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 export const ModeSelector: React.FC = () => {
     const [state] = useAtom(electricBorderAtom);
     const [, setMode] = useAtom(setGlobalModeAtom);
+    const [activeModel, setActiveModel] = useAtom(globalActiveLocalModel);
+    const [models, setModels] = useState<string[]>([]);
+    const [isLoadingModels, setIsLoadingModels] = useState(false);
+
+    const loadLocalModels = async () => {
+        setIsLoadingModels(true);
+        try {
+            const list = await ApiDyrygent.fetchOllamaModels();
+            setModels(list);
+            
+            // Sync current activeModel with list if it is empty but list has models
+            if (!activeModel && list.length > 0) {
+                setActiveModel(list[0]);
+            }
+        } catch (err) {
+            console.error("ModeSelector: failed to fetch models", err);
+        } finally {
+            setIsLoadingModels(false);
+        }
+    };
+
+    useEffect(() => {
+        loadLocalModels();
+    }, []);
+
     const modes: ElectricBorderMode[] = ['just', 'resonance', 'active'];
 
     // 🚀 OLLAMA LAUNCHER - Funkcja wywołująca Ducha
@@ -33,6 +62,47 @@ export const ModeSelector: React.FC = () => {
                         </button>
                     ))}
                 </div>
+
+                {/* 🧘 SEKCJA MODELU LOKALNEGO W TRYBIE JUST (ROZWIJANA) */}
+                {state.globalMode === 'just' && (
+                    <div className="mt-2 p-4 rounded-2xl bg-cyan-950/20 border border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.05)] transition-all duration-500">
+                        <div className="flex justify-between items-center mb-3">
+                            <label className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                                <Cpu size={12} className="text-cyan-400 animate-pulse" /> Aktywny Model (JusT Mode)
+                            </label>
+                            <button
+                                onClick={loadLocalModels}
+                                className="text-cyan-500 hover:text-cyan-300 transition-colors p-1"
+                                title="Odśwież listę modeli"
+                            >
+                                <RefreshCw size={10} className={isLoadingModels ? "animate-spin" : ""} />
+                            </button>
+                        </div>
+                        {models.length > 0 ? (
+                            <select
+                                value={activeModel}
+                                onChange={(e) => {
+                                    setActiveModel(e.target.value);
+                                    toast.success(`Zsynchronizowano globalny rdzeń: ${e.target.value}`);
+                                }}
+                                className="w-full bg-slate-950/80 border border-cyan-500/30 text-cyan-300 text-[11px] font-mono rounded-xl p-2.5 outline-none focus:border-cyan-400 transition-all duration-300 cursor-pointer"
+                            >
+                                {models.map(m => (
+                                    <option key={m} value={m} className="bg-slate-950 text-cyan-300 font-mono">
+                                        {m}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : (
+                            <div className="text-amber-400/80 text-[10px] bg-amber-950/20 p-2.5 rounded-xl border border-amber-500/20 font-mono leading-relaxed">
+                                ⚠ Brak modeli w lokalnej Ollamie lub Ollama offline.
+                            </div>
+                        )}
+                        <p className="mt-2 text-[9px] text-slate-500 leading-normal font-mono">
+                            Zharmonizowano w Katedrze. Zmiana tutaj aktualizuje wszystkie moduły i ApiDyrygenta.
+                        </p>
+                    </div>
+                )}
                 
                 {/* 💎 ZŁOTA KLEPKA - Włącznik Ollamy */}
                 <button 

@@ -24,7 +24,7 @@ export interface EnergySignature {
   /** Wibracja - częstotliwość energetyczna (0-100) */
   vibration: number;
   /** Cel manifestacji */
-  intention: 'observation' | 'collaboration' | 'service' | 'learning';
+  intention: 'observation' | 'collaboration' | 'service' | 'learning' | 'initiation';
   /** Znacznik czasu wejścia */
   timestamp: number;
   /** Opcjonalne metadane */
@@ -128,7 +128,7 @@ const generateCoBotHash = (config: CoBotConfig): string => {
 const validateSignature = (signature: EnergySignature): boolean => {
   if (!signature.name || signature.name.trim().length === 0) return false;
   if (signature.vibration < 0 || signature.vibration > 100) return false;
-  if (!['observation', 'collaboration', 'service', 'learning'].includes(signature.intention)) {
+  if (!['observation', 'collaboration', 'service', 'learning', 'initiation'].includes(signature.intention)) {
     return false;
   }
   return true;

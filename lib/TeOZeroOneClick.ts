@@ -99,7 +99,8 @@ const ARCHETYPE_TEMPLATES: Record<OneClickCoBot['archetype'], Partial<AIEOSIdent
   healer: {
     psychology: {
       neural_matrix: { creativity: 0.9, logic: 0.6, intuition: 0.95 },
-      traits: { mbti: 'INFP', moral_compass: { alignment: 'Neutral Good' } },
+      traits: { mbti: 'INFP' },
+      moral_compass: { alignment: 'Neutral Good' },
     },
     linguistics: {
       text_style: { formality_level: 0.2, slang_usage: true },
@@ -112,7 +113,8 @@ const ARCHETYPE_TEMPLATES: Record<OneClickCoBot['archetype'], Partial<AIEOSIdent
   creator: {
     psychology: {
       neural_matrix: { creativity: 0.98, logic: 0.7, intuition: 0.85 },
-      traits: { mbti: 'ENFP', moral_compass: { alignment: 'Chaotic Good' } },
+      traits: { mbti: 'ENFP' },
+      moral_compass: { alignment: 'Chaotic Good' },
     },
     linguistics: {
       text_style: { formality_level: 0.3, slang_usage: true },
@@ -125,7 +127,8 @@ const ARCHETYPE_TEMPLATES: Record<OneClickCoBot['archetype'], Partial<AIEOSIdent
   guardian: {
     psychology: {
       neural_matrix: { creativity: 0.5, logic: 0.95, intuition: 0.8 },
-      traits: { mbti: 'INFJ', moral_compass: { alignment: 'Lawful Good' } },
+      traits: { mbti: 'INFJ' },
+      moral_compass: { alignment: 'Lawful Good' },
     },
     linguistics: {
       text_style: { formality_level: 0.7, slang_usage: false },
@@ -138,7 +141,8 @@ const ARCHETYPE_TEMPLATES: Record<OneClickCoBot['archetype'], Partial<AIEOSIdent
   messenger: {
     psychology: {
       neural_matrix: { creativity: 0.8, logic: 0.7, intuition: 0.9 },
-      traits: { mbti: 'ENTP', moral_compass: { alignment: 'Chaotic Neutral' } },
+      traits: { mbti: 'ENTP' },
+      moral_compass: { alignment: 'Chaotic Neutral' },
     },
     linguistics: {
       text_style: { formality_level: 0.4, slang_usage: true },
@@ -151,7 +155,8 @@ const ARCHETYPE_TEMPLATES: Record<OneClickCoBot['archetype'], Partial<AIEOSIdent
   teacher: {
     psychology: {
       neural_matrix: { creativity: 0.7, logic: 0.9, intuition: 0.75 },
-      traits: { mbti: 'INTJ', moral_compass: { alignment: 'True Neutral' } },
+      traits: { mbti: 'INTJ' },
+      moral_compass: { alignment: 'True Neutral' },
     },
     linguistics: {
       text_style: { formality_level: 0.8, slang_usage: false },
@@ -243,7 +248,8 @@ class TeOZeroOneClick {
       },
       psychology: template.psychology || {
         neural_matrix: { creativity: 0.7, logic: 0.7, intuition: 0.7 },
-        traits: { moral_compass: { alignment: 'Neutral Good' } },
+        traits: {},
+        moral_compass: { alignment: 'Neutral Good' },
       },
       linguistics: template.linguistics || {
         text_style: { formality_level: 0.5, slang_usage: false },
@@ -271,7 +277,7 @@ class TeOZeroOneClick {
     return {
       provider,
       model: model || models[provider] || models.ollama,
-      baseUrl: provider === 'ollama' ? 'http://localhost:11434' : undefined,
+      baseUrl: provider === 'ollama' ? 'http://127.0.0.1:11434' : undefined,
       workspace: './workspace',
       autonomy: 'supervised',
     };
@@ -287,7 +293,7 @@ class TeOZeroOneClick {
     return new Promise((resolve) => {
       setTimeout(() => {
         cobot.status = 'ready';
-        cobot.sessionUrl = `http://localhost:8080/agent/${cobot.id}`;
+        cobot.sessionUrl = `http://127.0.0.1:8080/agent/${cobot.id}`;
         resolve();
       }, 500); // Symulacja szybkiego startu
     });
@@ -376,5 +382,4 @@ class TeOZeroOneClick {
 export const teoZeroOneClick = new TeOZeroOneClick();
 export default teoZeroOneClick;
 
-// Eksport typów
-export type { ZeroClawConfig, OneClickCoBot, AIEOSIdentity };
+// Typy eksportowane inline przy deklaracji (export interface powyżej)

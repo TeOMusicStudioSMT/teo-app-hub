@@ -21,42 +21,49 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
     const [isSyncing, setIsSyncing] = useState(false);
     const [showDepozyt, setShowDepozyt] = useState(false);
 
-    const [unlockGrv] = useAtom(unlockGrvAtom);
+    const [, unlockGrv] = useAtom(unlockGrvAtom);
+
+    // Mapa: provider → localStorage key (musi zgadzać się z kibel.ts getKeyDirect)
+    const PROVIDER_STORAGE_MAP: Record<string, string> = {
+        gemini:    'teo_gemini_api_key',
+        anthropic: 'kibel_key_anthropic',
+        groq:      'kibel_key_groq',
+        openai:    'kibel_key_openai',
+        suno:      'kibel_key_suno',
+    };
 
     const handleSave = () => {
         const trimmedKey = inputValue.trim();
         if (!trimmedKey) {
-            toast.error('Please enter a valid API key.');
+            toast.error('Wpisz klucz API.');
             return;
         }
 
-        // 🔍 ROZPOZNAJ typ klucza przed zapisem
         const detection = detectKeyProvider(trimmedKey);
-        
+
         if (!detection.isValid) {
-            toast.error('N rozpoznano formatu klucza API!');
+            toast.error('Nie rozpoznano formatu klucza API! (AIza... / sk-ant-... / gsk_... / sk-...)');
             return;
         }
 
         setIsSyncing(true);
-        setApiKey(trimmedKey);
 
-        // GORGOO FIX: Zapisujemy jako JSON string, aby atomWithStorage mógł to odczytać po reboocie!
-        localStorage.setItem('teo_gemini_api_key', JSON.stringify(trimmedKey));
+        // Zapisz do właściwego klucza localStorage dla danego providera
+        const storageKey = PROVIDER_STORAGE_MAP[detection.provider] ?? 'kibel_key_custom';
+        localStorage.setItem(storageKey, trimmedKey);
 
-        // 🔐 SYSTEM_READY: Ustaw status na true
+        // Dla Gemini - też zaktualizuj atom (używany przez resztę apki)
+        if (detection.provider === 'gemini') {
+            setApiKey(trimmedKey);
+        }
+
         setSystemReady(true);
-        
-        // 🔥 GRV: Odblokuj energię po włożeniu kluczy
         unlockGrv();
 
-        // 🔍 FLUSH KIBEL: Sprawdź i pokaż status
         const flushResult = flushKibel();
         console.log(`[ApiKeyModal] ${flushResult.message}`);
-        
-        toast.success(`🔐 ${detection.provider.toUpperCase()} rozpoznany! SYSTEM_READY = TRUE`, { duration: 4000 });
 
-        // 🌟 Pokaż Depozyt Obfitości zamiast zwykłego toasta
+        toast.success(`🔐 ${detection.provider.toUpperCase()} zapisany w Kiblu! SYSTEM_READY = TRUE`, { duration: 4000 });
         setShowDepozyt(true);
     };
 
@@ -115,21 +122,34 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
                                 </div>
 
                                 <div className={isSyncing ? 'opacity-50 pointer-events-none transition-opacity' : ''}>
-                                    <p className="text-slate-300 text-sm mb-6 leading-relaxed">
-                                        To unlock the full power of TeO's AI features, you need to provide your own Gemini API key.
-                                        Your key is stored securely in your browser.
+                                    <p className="text-slate-300 text-sm mb-4 leading-relaxed">
+                                        Wrzuć klucz do Kibla — system rozpozna providera automatycznie.
+                                        Klucz nigdy nie opuszcza Twojej przeglądarki.
                                     </p>
+
+                                    <div className="flex flex-wrap gap-1.5 mb-4">
+                                        {[
+                                            { label: 'Gemini', prefix: 'AIza...', color: 'text-yellow-400 border-yellow-400/30 bg-yellow-400/5' },
+                                            { label: 'Claude', prefix: 'sk-ant-...', color: 'text-orange-400 border-orange-400/30 bg-orange-400/5' },
+                                            { label: 'Groq', prefix: 'gsk_...', color: 'text-green-400 border-green-400/30 bg-green-400/5' },
+                                            { label: 'OpenAI', prefix: 'sk-...', color: 'text-blue-400 border-blue-400/30 bg-blue-400/5' },
+                                        ].map(p => (
+                                            <span key={p.label} className={`text-xs px-2 py-0.5 rounded border font-mono ${p.color}`}>
+                                                {p.label}: {p.prefix}
+                                            </span>
+                                        ))}
+                                    </div>
 
                                     <div className="mb-4">
                                         <label className="block text-sm font-semibold text-cyan-300 mb-2">
-                                            Gemini API Key
+                                            Klucz API (Kibel)
                                         </label>
                                         <div className="relative">
                                             <input
                                                 type={showKey ? 'text' : 'password'}
                                                 value={inputValue}
                                                 onChange={(e) => setInputValue(e.target.value)}
-                                                placeholder="Enter your Gemini API key..."
+                                                placeholder="AIza... / sk-ant-... / gsk_... / sk-..."
                                                 className="w-full px-4 py-3 pr-12 bg-slate-800/50 border border-cyan-500/30 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                                             />
                                             <button
@@ -146,9 +166,9 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
                                         href="https://aistudio.google.com/apikey"
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-2 text-sm text-lime-400 hover:text-lime-300 transition-colors mb-6"
+                                        className="inline-flex items-center gap-2 text-sm text-lime-400 hover:text-lime-300 transition-colors mb-2"
                                     >
-                                        <span>Get your free Gemini Key here</span>
+                                        <span>Gemini — darmowy klucz</span>
                                         <FiExternalLink size={14} />
                                     </a>
 
