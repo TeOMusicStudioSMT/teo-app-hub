@@ -65,7 +65,7 @@ export default defineConfig({
           'vendor-ui': ['lucide-react', 'recharts'],
           'vendor-ai': ['@google/generative-ai', '@google/genai'],
           'vendor-state': ['jotai', 'zustand'],
-          'vendor-util': ['ethers', 'uuid', 'axios'],
+          'vendor-util': ['ethers', 'uuid'],
         },
       },
     },
