@@ -56,6 +56,21 @@ const CodeBlock: React.FC<{ lang: string; code: string }> = ({ lang, code }) => 
         );
         if (!filePath?.trim()) return;
 
+        // Ochrona — lista plików krytycznych, których "Wdróż" nie może nadpisać
+        const PROTECTED_FILES = [
+            'App.tsx', 'main.tsx', 'index.tsx',
+            'wiesio-bridge.js', 'vite.config.ts', 'tsconfig.json',
+            'components/special/WniosekO.tsx',
+            'components/special/KatedraChat.tsx',
+            'context/GravitonProvider.tsx',
+            'lib/router/ApiDyrygent.ts',
+        ];
+        const normalized = filePath.trim().replace(/\\/g, '/');
+        if (PROTECTED_FILES.some(p => normalized.endsWith(p))) {
+            toast.error(`🛡️ Plik chroniony — nie można nadpisać przez Wdróż: ${normalized}`);
+            return;
+        }
+
         setDeploying(true);
         try {
             const res = await fetch('http://127.0.0.1:3001/api/bridge/execute', {
