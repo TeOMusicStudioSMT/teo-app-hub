@@ -551,7 +551,7 @@ app.post('/api/ollama', async (req, res) => {
         const resp = await fetch('http://localhost:11434/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model, messages: ollamaMessages, stream: true }),
+            body: JSON.stringify({ model, messages: ollamaMessages, stream: true, options: { num_ctx: 8192 } }),
         });
 
         if (!resp.ok) {

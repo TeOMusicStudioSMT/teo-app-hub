@@ -253,11 +253,35 @@ const KatedraChat: React.FC = () => {
     const saveCloudFastModel = (m: string) => { setCloudFastModel(m); localStorage.setItem('otakos_cloud_fast_model', m); };
     const saveCloudHeavyModel = (m: string) => { setCloudHeavyModel(m); localStorage.setItem('otakos_cloud_heavy_model', m); };
 
+    // ── Historia konwersacji (dla multi-turn context) ─────────────
+    /**
+     * Buduje tablicę {role, content} ze stanu messages.
+     * Uwzględnia tylko faktyczne wypowiedzi (human/klaudiusz/adamus),
+     * pomija system/moderator/terminal i wiadomości aktualnie streamowane.
+     * Każda wiadomość skrócona do 2000 znaków by nie przekroczyć limitu payload.
+     */
+    const buildHistory = useCallback(
+        (): Array<{ role: 'user' | 'assistant'; content: string }> =>
+            messages
+                .filter(m =>
+                    (m.sender === 'human' || m.sender === 'klaudiusz' || m.sender === 'adamus') &&
+                    !m.streaming &&
+                    m.content.trim().length > 0,
+                )
+                .map(m => ({
+                    role:    (m.sender === 'human' ? 'user' : 'assistant') as 'user' | 'assistant',
+                    content: m.content.substring(0, 2000),
+                })),
+        [messages],
+    );
+
     // ── Getter dyspozytora ─────────────────────────────────────────
     /**
      * Zwraca właściwą funkcję dispatch na podstawie:
      *   sourceMode: 'ollama' | 'cloud'
      *   heavy: false → Klaudiusz, true → Adamus
+     *
+     * Czwarty argument `hist` — opcjonalna historia multi-turn.
      *
      * ROUTING CHMURY:
      *   model.startsWith('gemini-') → /api/gemini (klucz Google z Kibla)
@@ -268,13 +292,22 @@ const KatedraChat: React.FC = () => {
             // ← NAPRAWKA: każda rola ma SWÓJ model chmury
             const model = heavy ? cloudHeavyModel : cloudFastModel;
             const sys   = heavy ? SYSTEM_PROMPTS.adamus : SYSTEM_PROMPTS.klaudiusz;
-            return (msg: string, cb: (t: string) => void, sig?: AbortSignal) =>
-                ApiDyrygent.dispatchCloud(msg, model, sys, cb, sig);
+            return (
+                msg:  string,
+                cb:   (t: string) => void,
+                sig?: AbortSignal,
+                hist?: Array<{ role: 'user' | 'assistant'; content: string }>,
+            ) => ApiDyrygent.dispatchCloud(msg, model, sys, cb, sig, undefined, hist);
         }
         // Ollama
         const model = heavy ? heavyModel : fastModel;
-        return (msg: string, cb: (t: string) => void, sig?: AbortSignal) =>
-            ApiDyrygent.dispatchViaWieslaw(msg, model, cb, sig);
+        const sys   = heavy ? SYSTEM_PROMPTS.adamus : SYSTEM_PROMPTS.klaudiusz;
+        return (
+            msg:  string,
+            cb:   (t: string) => void,
+            sig?: AbortSignal,
+            hist?: Array<{ role: 'user' | 'assistant'; content: string }>,
+        ) => ApiDyrygent.dispatchViaWieslaw(msg, model, cb, sig, hist, sys);
     }, [sourceMode, cloudFastModel, cloudHeavyModel, fastModel, heavyModel]);
 
     // ── Helpers ───────────────────────────────────────────────────
@@ -432,6 +465,8 @@ const KatedraChat: React.FC = () => {
         try {
             let fullText = '';
             const dispatch = getDispatch(false); // false = Klaudiusz zawsze
+            const history  = buildHistory();     // ← cała historia konwersacji
+
             // Dla chmury przekazujemy obrazy; dla Ollamy tylko tekst (brak vision API w /api/ollama)
             if (sourceMode === 'cloud' && attachmentsToSend.length > 0) {
                 await ApiDyrygent.dispatchCloud(
@@ -441,6 +476,7 @@ const KatedraChat: React.FC = () => {
                     tok => { fullText += tok; updateMessage(replyId, { content: fullText }); },
                     ctrl.signal,
                     attachmentsToSend,
+                    history,   // ← historia przy obrazach
                 );
             } else {
                 await dispatch(
@@ -450,6 +486,7 @@ const KatedraChat: React.FC = () => {
                         : ''),
                     (tok: string) => { fullText += tok; updateMessage(replyId, { content: fullText }); },
                     ctrl.signal,
+                    history,   // ← historia multi-turn
                 );
             }
             updateMessage(replyId, { streaming: false });
@@ -472,7 +509,7 @@ const KatedraChat: React.FC = () => {
             setIsLoading(false);
         }
     }, [currentInput, isLoading, sourceMode, cloudFastModel, fastModel,
-        getDispatch, handleOllamaResponse, runModerator, scrollToBottom]);
+        buildHistory, getDispatch, handleOllamaResponse, runModerator, scrollToBottom]);
 
     // ── Konsultacja z Radą (Adamus) ────────────────────────────────
     /**
@@ -481,16 +518,14 @@ const KatedraChat: React.FC = () => {
      * Jeśli użytkownik chce "zostać z Radą" może kliknąć przycisk ponownie.
      */
     const handleCouncilConsultation = useCallback(async () => {
-        // ── Pełna historia konwersacji dla Rady ──────────────────────
-        // Filtrujemy wiadomości systemowe/moderatora — Adamus dostaje
-        // tylko faktyczne wypowiedzi uczestników rozmowy (maks. 600 znaków/msg).
-        const historyLines = messages
-            .filter(m => m.sender !== 'system' && m.sender !== 'moderator')
-            .map(m => `**${SENDER_LABELS[m.sender]}**: ${m.content.substring(0, 600)}`);
+        // ── Pełna historia konwersacji dla Rady (strukturalna, multi-turn) ──
+        // Adamus dostaje całą historię jako tablicę {role, content},
+        // a nie sformatowany string — LLM "widzi" poprzednie tury natywnie.
+        const history = buildHistory();
 
-        const context = historyLines.length > 0
-            ? `Historia konwersacji:\n\n${historyLines.join('\n\n')}\n\n` +
-              `---\nJako Adamus — przeanalizuj powyższą rozmowę i doradź Suwerenowi.`
+        const context = history.length > 0
+            ? 'Przeanalizuj powyższą rozmowę i doradź Suwerenowi. ' +
+              'Odpowiedz jako Adamus — architekt systemu OtakOS.'
             : 'Jako Adamus, przedstaw się i powiedz co możesz zrobić dla Suwerena.';
 
         setIsCouncilMode(true);
@@ -518,6 +553,7 @@ const KatedraChat: React.FC = () => {
                     updateMessage(councilId, { content: fullText });
                 },
                 ctrl.signal,
+                history,   // ← historia multi-turn dla Adamusa
             );
             updateMessage(councilId, { streaming: false });
             scrollToBottom(true); // ← SMART SCROLL: wymuś zjazd po końcu streamingu Adamusa
@@ -539,7 +575,7 @@ const KatedraChat: React.FC = () => {
             setIsLoading(false);
             setIsCouncilMode(false);  // ← NAPRAWKA: reset po zakończeniu
         }
-    }, [messages, sourceMode, cloudHeavyModel, heavyModel,
+    }, [buildHistory, sourceMode, cloudHeavyModel, heavyModel,
         getDispatch, handleOllamaResponse, runModerator, scrollToBottom]);
 
     // ── Zapis / upload ────────────────────────────────────────────

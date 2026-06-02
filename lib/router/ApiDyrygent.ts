@@ -300,14 +300,16 @@ export const ApiDyrygent = {
         message:  string,
         onToken?: (token: string) => void,
         signal?:  AbortSignal,
+        history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+        system?:  string,
     ): Promise<string> {
         const model = this.getFastModel();
         console.log(`[Dyrygent] ⚡ Fast dispatch → ${model}`);
         try {
-            return await this.dispatchViaWieslaw(message, model, onToken, signal);
+            return await this.dispatchViaWieslaw(message, model, onToken, signal, history, system);
         } catch (err: any) {
             console.error('[Dyrygent] Fast dispatch failed:', err.message);
-            return await this.dispatchDirectOllama(message, model, onToken, signal);
+            return await this.dispatchDirectOllama(message, model, onToken, signal, history);
         }
     },
 
@@ -319,14 +321,16 @@ export const ApiDyrygent = {
         message:  string,
         onToken?: (token: string) => void,
         signal?:  AbortSignal,
+        history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+        system?:  string,
     ): Promise<string> {
         const model = this.getHeavyModel();
         console.log(`[Dyrygent] 🏛️ Heavy dispatch → ${model}`);
         try {
-            return await this.dispatchViaWieslaw(message, model, onToken, signal);
+            return await this.dispatchViaWieslaw(message, model, onToken, signal, history, system);
         } catch (err: any) {
             console.error('[Dyrygent] Heavy dispatch failed:', err.message);
-            return await this.dispatchDirectOllama(message, model, onToken, signal);
+            return await this.dispatchDirectOllama(message, model, onToken, signal, history);
         }
     },
 
@@ -339,15 +343,21 @@ export const ApiDyrygent = {
         model:    string,
         onToken?: (token: string) => void,
         signal?:  AbortSignal,
+        history?: Array<{ role: 'user' | 'assistant'; content: string }>,
     ): Promise<string> {
         console.log(`[Dyrygent] 🔌 Direct Ollama fallback → ${model}`);
+        const prunedHistory = (history ?? []).slice(-MAX_CLOUD_HISTORY);
         const res = await fetch('http://127.0.0.1:11434/api/chat', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({
                 model,
-                messages: [{ role: 'user', content: message }],
-                stream: true,
+                messages: [
+                    ...prunedHistory,
+                    { role: 'user', content: message },
+                ],
+                stream:  true,
+                options: { num_ctx: 8192 },
             }),
             signal,
         });
@@ -397,6 +407,7 @@ export const ApiDyrygent = {
         onToken?: (token: string) => void,
         signal?:  AbortSignal,
         images?:  ImageAttachment[],
+        history?: Array<{ role: 'user' | 'assistant'; content: string }>,
     ): Promise<string> {
         // Rozwiązanie fizycznego ID modelu (np. gemini-3.1-pro → gemini-1.5-pro)
         const resolvedModel = resolveModelApiId(model);
@@ -443,7 +454,12 @@ export const ApiDyrygent = {
             userContent = message;
         }
 
-        const messages = [{ role: 'user', content: userContent }];
+        // Buduj multi-turn messages: historia + aktualna wiadomość
+        const prunedHistory = (history ?? []).slice(-MAX_CLOUD_HISTORY);
+        const messages = [
+            ...prunedHistory,
+            { role: 'user', content: userContent },
+        ];
 
         // ── Tarcza: Blokada gigantycznych paczek ──────────────────────
         const bodyStr = JSON.stringify({
