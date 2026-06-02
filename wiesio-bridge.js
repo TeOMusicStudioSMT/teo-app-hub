@@ -844,24 +844,32 @@ app.post('/api/bridge/execute', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Brak filename lub content' });
         }
         try {
-            // Ochrona przed zdublowaną ścieżką:
-            // Jeśli filename zawiera już prefiks _AntiGravity_Wymiar (np. z innych komponentów),
-            // path.join(ANTIGRAVITY_DIR, filename) dałby podwójny folder.
-            // Rozwiązanie: wytnij prefiks jeśli jest, przed join.
+            // Wyczyść ewentualny prefiks _AntiGravity_Wymiar i leading slash
             const cleanFilename = filename
                 .replace(/^[/\\]?_AntiGravity_Wymiar[/\\]/i, '')
                 .replace(/^[/\\]/, '');
 
-            const filePath = path.join(ANTIGRAVITY_DIR, cleanFilename);
+            // ── ROUTING KATALOGÓW ─────────────────────────────────────
+            // Pliki kodu źródłowego aplikacji → rdzeń projektu (__dirname)
+            // Notatki, konwersacje, dane       → _AntiGravity_Wymiar
+            const SOURCE_PREFIXES = [
+                'components/', 'lib/', 'store/', 'styles/',
+                'context/', 'hooks/', 'services/', 'pages/',
+            ];
+            const isSourceCode = SOURCE_PREFIXES.some(p => cleanFilename.startsWith(p));
+            const baseDir  = isSourceCode ? __dirname : ANTIGRAVITY_DIR;
+            const filePath = path.join(baseDir, cleanFilename);
 
-            // Utwórz katalog docelowy jeśli nie istnieje (naprawa ENOENT)
+            console.log(`[Wiesio-Bridge] 📂 WRITE_FILE → ${isSourceCode ? 'SRC' : 'DATA'}: ${filePath}`);
+
+            // Utwórz katalog docelowy (fs = fs/promises, await gwarantuje sekwencję)
             await fs.mkdir(path.dirname(filePath), { recursive: true });
 
             // Pobieramy kodowanie z payloadu (np. 'base64'), domyślnie 'utf8'
             const encoding = payload.encoding || 'utf8';
 
             await fs.writeFile(filePath, content, encoding);
-            console.log(`[Wiesio-Bridge] 📝 Zmaterializowano (${encoding}): ${filePath}`);
+            console.log(`[Wiesio-Bridge] ✅ Zmaterializowano: ${filePath}`);
             return res.json({ success: true, message: 'Zmaterializowano.', filePath, timestamp: Date.now() });
         } catch (e) {
             console.error(`[Wiesio-Bridge] ❌ Błąd zapisu:`, e);
