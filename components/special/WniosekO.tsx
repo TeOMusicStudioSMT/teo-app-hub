@@ -11,8 +11,10 @@
 
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAtom } from 'jotai';
 import { negotiateAccess } from '../../lib/jwProtocol';
 import { registerConsciousnessActivity } from '../../lib/wir26heartbeat';
+import { visualizerLayoutAtom, VisualizerType } from '../../store/visualizerStore';
 
 type WniosekType = 'muzyka' | 'kod' | 'cuda' | 'inne';
 
@@ -26,6 +28,7 @@ export const WniosekO: React.FC<WniosekOProps> = ({ onClose }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [jwLogs, setJwLogs] = useState<string[]>([]);
   const [result, setResult] = useState<{ type: WniosekType; message: string; destination: string } | null>(null);
+  const [vizLayout, setVizLayout] = useAtom(visualizerLayoutAtom);
 
   const jadziaLog = useCallback((msg: string) => {
     console.log(`[JADZIA]: ${msg}`);
@@ -121,6 +124,14 @@ export const WniosekO: React.FC<WniosekOProps> = ({ onClose }) => {
     setIsSubmitting(false);
   };
 
+  const vizOptions: { value: VisualizerType; label: string; icon: string; color: string }[] = [
+    { value: 'PUSTKA',           label: 'PUSTKA',     icon: '⬛', color: '#334155' },
+    { value: 'STORYTELLER',      label: 'STORY',      icon: '📜', color: '#22d3ee' },
+    { value: 'QUANTUM_EQUALIZER',label: 'QUANTUM',    icon: '🌊', color: '#a855f7' },
+    { value: 'GRAVITON_GRID',    label: 'GRAVITON',   icon: '🔷', color: '#f59e0b' },
+    { value: 'MATRIX_RAIN',      label: 'MATRIX',     icon: '🟩', color: '#22c55e' },
+  ];
+
   const typeOptions: { value: WniosekType; label: string; icon: string; color: string }[] = [
     { value: 'muzyka', label: 'Muzyka', icon: '🎵', color: '#8b5cf6' },
     { value: 'kod', label: 'Kod', icon: '💻', color: '#22d3ee' },
@@ -163,6 +174,29 @@ export const WniosekO: React.FC<WniosekOProps> = ({ onClose }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Wizualizator Picker */}
+      <div style={vizSectionStyle}>
+        <p style={vizTitleStyle}>🖥️ WIZUALIZATOR</p>
+        <div style={vizGridStyle}>
+          {vizOptions.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setVizLayout(prev => ({ ...prev, left: opt.value }))}
+              title={`Lewy panel: ${opt.label}`}
+              style={{
+                ...vizButtonStyle,
+                borderColor: vizLayout.left === opt.value ? opt.color : 'rgba(255,255,255,0.1)',
+                background: vizLayout.left === opt.value ? `${opt.color}25` : 'rgba(0,0,0,0.3)',
+                boxShadow: vizLayout.left === opt.value ? `0 0 12px ${opt.color}50` : 'none',
+              }}
+            >
+              <span style={{ fontSize: '16px' }}>{opt.icon}</span>
+              <span style={{ fontSize: '9px', marginTop: '3px', letterSpacing: '1px' }}>{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Form */}
       {!result && (
@@ -347,6 +381,42 @@ const submitButtonStyle: React.CSSProperties = {
   letterSpacing: '2px',
   cursor: 'pointer',
   boxShadow: '0 0 20px rgba(168, 85, 247, 0.4)',
+};
+
+const vizSectionStyle: React.CSSProperties = {
+  marginBottom: '16px',
+  padding: '12px',
+  background: 'rgba(0,0,0,0.25)',
+  borderRadius: '12px',
+  border: '1px solid rgba(255,255,255,0.06)',
+};
+
+const vizTitleStyle: React.CSSProperties = {
+  fontSize: '10px',
+  color: '#64748b',
+  letterSpacing: '3px',
+  fontFamily: 'monospace',
+  marginBottom: '8px',
+  margin: '0 0 8px 0',
+};
+
+const vizGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(5, 1fr)',
+  gap: '6px',
+};
+
+const vizButtonStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  padding: '8px 4px',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: '8px',
+  background: 'rgba(0,0,0,0.3)',
+  color: '#fff',
+  cursor: 'pointer',
+  transition: 'all 0.25s ease',
 };
 
 export default WniosekO;

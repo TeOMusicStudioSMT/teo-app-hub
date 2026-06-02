@@ -6,8 +6,14 @@
  * Gdy aura wygaśnie → wraca do złotego.
  */
 
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useAtomValue } from 'jotai';
+import { visualizerLayoutAtom, currentLyricAtom, isKaraokeEnabledAtom } from '../store/visualizerStore';
+
+import { motion, AnimatePresence } from 'framer-motion';
 import { useKatedraRadio } from '../context/KatedraRadioContext';
+import QuantumEqualizer from './special/QuantumEqualizer';
+import MatrixRainSkin from './special/MatrixRainSkin';
 
 interface KatedraOrbitaProps {
     showParticles?: boolean;
@@ -24,30 +30,44 @@ const CONFIG = {
     ROTATION_SPEED:  0.001,
 };
 
-// Kolory domyślne (złoty)
-const DEFAULT_RGB = { r1: 255, g1: 210, b1: 100, r2: 201, g2: 149, b2: 58 };
+// Kolory domyślne HSL (złoty)
+const DEFAULT_HSL = { h: 43, s: 100, l: 70 };
 
-// Mapa agentId → kolor RGB na potrzeby Canvas
-const AGENT_COLORS: Record<string, { r1: number; g1: number; b1: number; r2: number; g2: number; b2: number }> = {
-    wieslaw: { r1: 255, g1: 150, b1:  50, r2: 220, g2:  90, b2:  20 }, // Miedź
-    jadzia:  { r1: 180, g1: 100, b1: 255, r2: 130, g2:  50, b2: 220 }, // Różowo-fiolet
-    bob:     { r1: 100, g1: 220, b1: 255, r2:  60, g2: 180, b2: 255 }, // Cyjan
-    bella:   { r1: 255, g1:  80, b1: 180, r2: 200, g2:  40, b2: 140 }, // Różowy
-    jack:    { r1: 200, g1: 120, b1: 255, r2: 150, g2:  60, b2: 255 }, // Fiolet
-    gorg:    { r1: 255, g1: 200, b1:  50, r2: 200, g2: 140, b2:  20 }, // Złoto-żółty
-    teo:     { r1: 255, g1: 255, b1: 255, r2: 200, g2: 200, b2: 255 }, // Biel/srebro
-    // Modele zewnętrzne
-    claude:  { r1: 210, g1: 160, b1: 255, r2: 160, g2: 100, b2: 230 }, // Lawendowy
-    gemini:  { r1:  80, g1: 200, b1: 120, r2:  40, g2: 150, b2:  80 }, // Zielony
-    gpt:     { r1: 100, g1: 200, b1: 255, r2:  50, g2: 150, b2: 220 }, // Błękit
-    groq:    { r1: 255, g1: 100, b1:  80, r2: 200, g2:  60, b2:  40 }, // Czerwony
+// Mapa agentId → HSL
+const AGENT_COLORS: Record<string, { h: number; s: number; l: number }> = {
+    wieslaw: { h: 30,  s: 100, l: 60 }, // Miedź
+    jadzia:  { h: 280, s: 100, l: 70 }, // Różowo-fiolet
+    bob:     { h: 195, s: 100, l: 70 }, // Cyjan
+    bella:   { h: 330, s: 100, l: 65 }, // Różowy
+    jack:    { h: 270, s: 100, l: 60 }, // Fiolet
+    gorg:    { h: 45,  s: 100, l: 60 }, // Złoto-żółty
+    teo:     { h: 0,   s: 0,   l: 95 }, // Biel/srebro
+    claude:  { h: 260, s: 80,  l: 80 }, // Lawendowy
+    gemini:  { h: 145, s: 100, l: 55 }, // Zielony
+    gpt:     { h: 200, s: 100, l: 70 }, // Błękit
+    groq:    { h: 10,  s: 100, l: 65 }, // Czerwony
 };
 
-function parseColor(hex: string) {
-    // Parsuje CSS hex color → {r,g,b}
+function hexToHSL(hex: string) {
+    let r = 0, g = 0, b = 0;
     const m = hex.replace('#', '').match(/.{2}/g);
-    if (!m || m.length < 3) return null;
-    return { r: parseInt(m[0], 16), g: parseInt(m[1], 16), b: parseInt(m[2], 16) };
+    if (!m || m.length < 3) return { h: 43, s: 100, l: 70 };
+    r = parseInt(m[0], 16) / 255;
+    g = parseInt(m[1], 16) / 255;
+    b = parseInt(m[2], 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return { h: h * 360, s: s * 100, l: l * 100 };
 }
 
 function createParticles(count: number, radius: number) {
@@ -70,25 +90,64 @@ export function KatedraOrbita({
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef    = useRef<HTMLCanvasElement>(null);
     const [squareSize, setSquareSize] = useState(0);
+    
+    // UI States dla Modułów (Jotai)
+    const layout = useAtomValue(visualizerLayoutAtom);
+    const currentLyricGlobal = useAtomValue(currentLyricAtom);
+    const isKaraokeEnabled = useAtomValue(isKaraokeEnabledAtom);
+
 
     const stateRef = useRef({
         rotation:     0,
         smoothBass:   0,
-        // Wygładzony kolor (lerp między złotym a aurą)
-        smoothR1: DEFAULT_RGB.r1, smoothG1: DEFAULT_RGB.g1, smoothB1: DEFAULT_RGB.b1,
-        smoothR2: DEFAULT_RGB.r2, smoothG2: DEFAULT_RGB.g2, smoothB2: DEFAULT_RGB.b2,
+        // Wygładzony kolor HSL
+        smoothH: DEFAULT_HSL.h,
+        smoothS: DEFAULT_HSL.s,
+        smoothL: DEFAULT_HSL.l,
         particles: createParticles(CONFIG.PARTICLE_COUNT, 200),
+        vocalParticles: [] as { x: number; y: number; vx: number; vy: number; life: number; h: number; s: number; l: number }[],
+        hueOffset: 0,
+        storyScroll: 0, // Przewijanie Matrix Storytellera
         animId:    0,
     });
 
     const radio      = useKatedraRadio();
     const bassLevel  = staticMode ? 0 : radio.bassLevel;
     const activeAura = radio.activeAura;
+    const vocalLevel = staticMode ? 0 : radio.vocalLevel;
 
     const bassRef = useRef(bassLevel);
     const auraRef = useRef(activeAura);
+    const vocalRef = useRef(vocalLevel);
+    const lyricRef = useRef(radio.currentLyric);
+    const introRef = useRef(radio.showIntro);
+    const outroRef = useRef(radio.showOutro);
+
+    const leftModuleRef = useRef(layout.left);
+    const rightModuleRef = useRef(layout.right);
+
+    // --- Ghost Cursor Trail ---
+    const mouseTrail = useRef<{ x: number; y: number; life: number }[]>([]);
+
+    // Sync state to refs for the animation loop
+    useEffect(() => {
+        leftModuleRef.current = layout.left;
+        rightModuleRef.current = layout.right;
+    }, [layout]);
+
+    useEffect(() => {
+        lyricRef.current = currentLyricGlobal;
+    }, [currentLyricGlobal]);
+
     bassRef.current = bassLevel;
     auraRef.current = activeAura;
+    vocalRef.current = vocalLevel;
+    introRef.current = radio.showIntro;
+    outroRef.current = radio.showOutro;
+
+    // Pamięć DNA - dzieli krawędzie na 100 pionowych sektorów (binów)
+    const leftDNA = useRef(new Array(100).fill(0));
+    const rightDNA = useRef(new Array(100).fill(0));
 
     // ── ResizeObserver ────────────────────────────────────────────────
     useEffect(() => {
@@ -96,12 +155,13 @@ export function KatedraOrbita({
         if (!container) return;
 
         const applySize = (w: number, h: number) => {
-            const size = Math.floor(Math.min(w, h));
-            if (size < 10) return;
             const canvas = canvasRef.current;
-            if (canvas) { canvas.width = size; canvas.height = size; }
-            setSquareSize(size);
-            stateRef.current.particles = createParticles(CONFIG.PARTICLE_COUNT, size * 0.15);
+            if (canvas) { 
+                canvas.width = 1920; 
+                canvas.height = 1080; 
+            }
+            setSquareSize(w); // Używamy szerokości do skalowania CSS
+            stateRef.current.particles = createParticles(CONFIG.PARTICLE_COUNT, 1920 * 0.15);
         };
 
         const ro = new ResizeObserver(entries => {
@@ -121,10 +181,16 @@ export function KatedraOrbita({
         if (!ctx) return;
 
         const s   = stateRef.current;
-        const W   = canvas.width;
-        const H   = canvas.height;
-        const cx  = W / 2;
-        const cy  = H / 2;
+        const W   = canvas.width;  // 1920
+        const H   = canvas.height; // 1080
+        const cx  = W / 2; // 960
+        const cy  = H / 2; // 540
+
+        // --- TARCZA SUWERENA: Dynamiczny Hue i optymalizacja FPS ---
+        if (radio.isAutoAura) {
+            s.hueOffset = (s.hueOffset + 0.3) % 360;
+        }
+
         const b   = (() => {
             s.smoothBass += (bassRef.current - s.smoothBass) * 0.22;
             return s.smoothBass / 100;
@@ -132,46 +198,92 @@ export function KatedraOrbita({
 
         // ── Docelowy kolor zależny od activeAura ─────────────────────
         const aura = auraRef.current;
-        let targetRGB = DEFAULT_RGB;
+        let targetHSL = DEFAULT_HSL;
 
         if (aura) {
-            // Najpierw sprawdzamy mapę agentId
             if (AGENT_COLORS[aura.agentId]) {
-                const c = AGENT_COLORS[aura.agentId];
-                targetRGB = { r1: c.r1, g1: c.g1, b1: c.b1, r2: c.r2, g2: c.g2, b2: c.b2 };
+                targetHSL = AGENT_COLORS[aura.agentId];
             } else if (aura.color) {
-                // Fallback: parsuj hex color agenta
-                const parsed = parseColor(aura.color);
-                if (parsed) {
-                    targetRGB = {
-                        r1: parsed.r, g1: parsed.g, b1: parsed.b,
-                        r2: Math.floor(parsed.r * 0.7), g2: Math.floor(parsed.g * 0.7), b2: Math.floor(parsed.b * 0.7),
-                    };
-                }
+                targetHSL = hexToHSL(aura.color);
             }
         }
 
-        // Wygładzony przejazd kolorów (lerp 0.04 = powolna zmiana)
-        const lerpSpeed = aura ? 0.04 : 0.02; // szybciej do aury, wolniej z powrotem
-        s.smoothR1 += (targetRGB.r1 - s.smoothR1) * lerpSpeed;
-        s.smoothG1 += (targetRGB.g1 - s.smoothG1) * lerpSpeed;
-        s.smoothB1 += (targetRGB.b1 - s.smoothB1) * lerpSpeed;
-        s.smoothR2 += (targetRGB.r2 - s.smoothR2) * lerpSpeed;
-        s.smoothG2 += (targetRGB.g2 - s.smoothG2) * lerpSpeed;
-        s.smoothB2 += (targetRGB.b2 - s.smoothB2) * lerpSpeed;
+        // Wygładzony przejazd kolorów HSL
+        const lerpSpeed = aura ? 0.05 : 0.02;
+        
+        // Specjalny lerp dla Hue (żeby nie skakał przez 360/0)
+        let hueDiff = targetHSL.h - s.smoothH;
+        if (hueDiff > 180) hueDiff -= 360;
+        if (hueDiff < -180) hueDiff += 360;
+        
+        s.smoothH = (s.smoothH + hueDiff * lerpSpeed + 360) % 360;
+        s.smoothS += (targetHSL.s - s.smoothS) * lerpSpeed;
+        s.smoothL += (targetHSL.l - s.smoothL) * lerpSpeed;
 
-        const r1 = Math.round(s.smoothR1), g1 = Math.round(s.smoothG1), b1 = Math.round(s.smoothB1);
-        const r2 = Math.round(s.smoothR2), g2 = Math.round(s.smoothG2), b2 = Math.round(s.smoothB2);
+        // Finalny Hue z uwzględnieniem Auto-Aury
+        const finalH = (s.smoothH + s.hueOffset) % 360;
+        const finalS = s.smoothS;
+        const finalL = s.smoothL;
 
-        ctx.clearRect(0, 0, W, H);
+        // Smuga tła (Trail Effect) zamiast clearRect - oszczędza CPU i wygląda lepiej
+        ctx.fillStyle = `hsla(${(230 + s.hueOffset) % 360}, 50%, 5%, 0.2)`;
+        ctx.fillRect(0, 0, W, H);
 
-        // Mgławica tła
+        // --- 1. AUTOMATIC AURA FOG ---
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        
+        const bExpand = b * 200;
+        
+        // Fog 1 (Główna mgławica)
+        const fog1 = ctx.createRadialGradient(cx - 150, cy - 100, 0, cx - 150, cy - 100, W * 0.4 + bExpand);
+        fog1.addColorStop(0, `hsla(${finalH}, ${finalS}%, ${finalL}%, ${0.08 + b * 0.05})`);
+        fog1.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = fog1;
+        ctx.fillRect(0, 0, W, H);
+
+        // Fog 2 (Przeciwległa mgławica, przesunięty hue)
+        const fog2 = ctx.createRadialGradient(cx + 200, cy + 150, 0, cx + 200, cy + 150, W * 0.35 + bExpand);
+        fog2.addColorStop(0, `hsla(${(finalH + 30) % 360}, ${finalS}%, ${finalL}%, ${0.06 + b * 0.04})`);
+        fog2.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = fog2;
+        ctx.fillRect(0, 0, W, H);
+        
+        ctx.restore();
+
+        // Mgławica tła (stała baza)
         const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.5);
-        bg.addColorStop(0,   `rgba(${r2},${g2},${b2},${0.05 + b * 0.12})`);
-        bg.addColorStop(0.5, `rgba(${Math.floor(r2/2)},${Math.floor(g2/2)},${Math.floor(b2/2)},${0.04 + b * 0.06})`);
+        bg.addColorStop(0,   `hsla(${finalH}, ${finalS}%, ${finalL * 0.4}%, ${0.05 + b * 0.12})`);
+        bg.addColorStop(0.5, `hsla(${finalH}, ${finalS}%, ${finalL * 0.2}%, ${0.04 + b * 0.06})`);
         bg.addColorStop(1,   'rgba(0,0,0,0)');
         ctx.fillStyle = bg;
         ctx.fillRect(0, 0, W, H);
+
+        // --- 1.2 Central Morphing Sphere ---
+        const coreDistortion = b * 30;
+        const coreRadius = 50 + coreDistortion;
+        
+        ctx.save();
+        ctx.beginPath();
+        for (let i = 0; i <= Math.PI * 2; i += 0.1) {
+            const noise = (Math.random() - 0.5) * b * 20;
+            const px = cx + Math.cos(i) * (coreRadius + noise);
+            const py = cy + Math.sin(i) * (coreRadius + noise);
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        
+        const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreRadius);
+        coreGrad.addColorStop(0, '#ffffff');
+        coreGrad.addColorStop(0.2, `hsl(${finalH}, 100%, 80%)`);
+        coreGrad.addColorStop(1, `hsl(${finalH}, ${finalS}%, ${finalL}%)`);
+        
+        ctx.fillStyle = coreGrad;
+        ctx.shadowBlur = 40 + b * 60;
+        ctx.shadowColor = `hsl(${finalH}, 100%, 60%)`;
+        ctx.fill();
+        ctx.restore();
 
         const baseR = W * 0.15 + b * CONFIG.BASS_EXPAND;
 
@@ -182,7 +294,7 @@ export function KatedraOrbita({
             if (op <= 0) continue;
             ctx.beginPath();
             ctx.arc(cx, cy, rr, 0, Math.PI * 2);
-            ctx.strokeStyle = `rgba(${r1},${g1},${b1},${op})`;
+            ctx.strokeStyle = `hsla(${finalH}, ${finalS}%, ${finalL}%, ${op})`;
             ctx.lineWidth = 1;
             ctx.stroke();
         }
@@ -190,13 +302,13 @@ export function KatedraOrbita({
         // Główny pierścień
         ctx.save();
         ctx.shadowBlur  = 18 + b * 35;
-        ctx.shadowColor = `rgba(${r1},${g1},${b1},${0.18 + b * 0.3})`;
+        ctx.shadowColor = `hsla(${finalH}, ${finalS}%, ${finalL}%, ${0.18 + b * 0.3})`;
         const grad = ctx.createLinearGradient(cx - baseR, cy, cx + baseR, cy);
-        grad.addColorStop(0,    `rgb(${r2},${g2},${b2})`);
-        grad.addColorStop(0.25, `rgb(${r1},${g1},${b1})`);
-        grad.addColorStop(0.5,  `rgba(${r1},${g1},${b1},${0.8 + b * 0.2})`);
-        grad.addColorStop(0.75, `rgb(${r1},${g1},${b1})`);
-        grad.addColorStop(1,    `rgb(${r2},${g2},${b2})`);
+        grad.addColorStop(0,    `hsl(${finalH}, ${finalS}%, ${finalL * 0.6}%)`);
+        grad.addColorStop(0.25, `hsl(${finalH}, ${finalS}%, ${finalL}%)`);
+        grad.addColorStop(0.5,  `hsla(${finalH}, ${finalS}%, ${finalL}%, ${0.8 + b * 0.2})`);
+        grad.addColorStop(0.75, `hsl(${finalH}, ${finalS}%, ${finalL}%)`);
+        grad.addColorStop(1,    `hsl(${finalH}, ${finalS}%, ${finalL * 0.6}%)`);
         ctx.beginPath();
         ctx.arc(cx, cy, baseR, 0, Math.PI * 2);
         ctx.strokeStyle = grad;
@@ -207,8 +319,8 @@ export function KatedraOrbita({
         // Wypełnienie pulsujące
         if (b > 0.05) {
             const ig = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR);
-            ig.addColorStop(0,   `rgba(${r1},${g1},${b1},${b * 0.06})`);
-            ig.addColorStop(0.7, `rgba(${r2},${g2},${b2},${b * 0.03})`);
+            ig.addColorStop(0,   `hsla(${finalH}, ${finalS}%, ${finalL}%, ${b * 0.06})`);
+            ig.addColorStop(0.7, `hsla(${finalH}, ${finalS}%, ${finalL * 0.8}%, ${b * 0.03})`);
             ig.addColorStop(1,   'rgba(0,0,0,0)');
             ctx.fillStyle = ig;
             ctx.beginPath();
@@ -219,7 +331,7 @@ export function KatedraOrbita({
         // Orbita wewnętrzna
         ctx.beginPath();
         ctx.arc(cx, cy, W * 0.08 + b * 12, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(${r2},${g2},${b2},${0.12 + b * 0.2})`;
+        ctx.strokeStyle = `hsla(${finalH}, ${finalS}%, ${finalL * 0.6}%, ${0.12 + b * 0.2})`;
         ctx.lineWidth = 1;
         ctx.stroke();
 
@@ -227,14 +339,14 @@ export function KatedraOrbita({
         s.rotation += CONFIG.ROTATION_SPEED * (1 + b * 3);
         ctx.save();
         ctx.shadowBlur  = 20 + b * 30;
-        ctx.shadowColor = `rgba(${r1},${g1},${b1},${0.6 + b * 0.4})`;
+        ctx.shadowColor = `hsla(${finalH}, ${finalS}%, ${finalL}%, ${0.6 + b * 0.4})`;
         ctx.beginPath();
         ctx.arc(
             cx + Math.cos(s.rotation) * baseR,
             cy + Math.sin(s.rotation) * baseR,
             3 + b * 4, 0, Math.PI * 2
         );
-        ctx.fillStyle = `rgba(${r1},${g1},${b1},${0.7 + b * 0.3})`;
+        ctx.fillStyle = `hsla(${finalH}, ${finalS}%, ${finalL}%, ${0.7 + b * 0.3})`;
         ctx.fill();
         ctx.restore();
 
@@ -248,52 +360,327 @@ export function KatedraOrbita({
                 ctx.save();
                 if (b > 0.3) {
                     ctx.shadowBlur  = 6 + b * 10;
-                    ctx.shadowColor = `rgba(${r1},${g1},${b1},${b * 0.5})`;
+                    ctx.shadowColor = `hsla(${finalH}, ${finalS}%, ${finalL}%, ${b * 0.5})`;
                 }
                 ctx.beginPath();
                 ctx.arc(ppx, ppy, p.size * (1 + b * 1.5), 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(${r1},${g1},${b1},${p.opacity * (0.4 + b * 0.8)})`;
+                ctx.fillStyle = `hsla(${finalH}, ${finalS}%, ${finalL}%, ${p.opacity * (0.4 + b * 0.8)})`;
                 ctx.fill();
                 ctx.restore();
             });
+
+            // Wokalny Pył (Spektrometria Głosowa)
+            const vl = vocalRef.current;
+            if (vl > 50) {
+                // Wystrzel nowe szybkie cząsteczki
+                const spawnCount = Math.floor((vl - 50) / 10);
+                for (let i = 0; i < spawnCount; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 2 + Math.random() * 4 + (vl / 20);
+                    s.vocalParticles.push({
+                        x: cx, y: cy,
+                        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                        life: 1.0,
+                        h: finalH, s: finalS, l: Math.min(100, finalL + 20)
+                    });
+                }
+            }
+
+            // Rysowanie i aktualizacja wokalnego pyłu
+            const captureZone = 100;
+            const sectionHeight = H / 100;
+
+            for (let i = s.vocalParticles.length - 1; i >= 0; i--) {
+                const vp = s.vocalParticles[i];
+                vp.x += vp.vx;
+                vp.y += vp.vy;
+                vp.life -= 0.015 + Math.random() * 0.01;
+
+                // TARCZA SUWERENA: Przechwytywanie DNA na krawędziach
+                const binIndex = Math.floor((vp.y / H) * 100);
+                if (binIndex >= 0 && binIndex < 100) {
+                    if (vp.x < captureZone) {
+                        leftDNA.current[binIndex] += vp.life * 15;
+                        vp.life = 0; // Cząsteczka wchłonięta
+                    } else if (vp.x > W - captureZone) {
+                        rightDNA.current[binIndex] += vp.life * 15;
+                        vp.life = 0;
+                    }
+                }
+
+                if (vp.life <= 0) {
+                    s.vocalParticles.splice(i, 1);
+                    continue;
+                }
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(vp.x, vp.y, 2 + Math.random() * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${vp.h}, ${vp.s}%, ${vp.l}%, ${vp.life})`;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsla(${vp.h}, ${vp.s}%, ${vp.l}%, ${vp.life})`;
+                ctx.fill();
+                ctx.restore();
+            }
         }
 
         // Centrum
         const coreR = 6 + b * 12;
         const cg    = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR * 3);
-        cg.addColorStop(0,   `rgba(${r1},${g1},${b1},${0.15 + b * 0.35})`);
-        cg.addColorStop(0.5, `rgba(${r2},${g2},${b2},${0.05 + b * 0.15})`);
+        cg.addColorStop(0,   `hsla(${finalH}, ${finalS}%, ${finalL}%, ${0.15 + b * 0.35})`);
+        cg.addColorStop(0.5, `hsla(${finalH}, ${finalS}%, ${finalL * 0.6}%, ${0.05 + b * 0.15})`);
         cg.addColorStop(1,   'rgba(0,0,0,0)');
         ctx.save();
         ctx.shadowBlur  = 15 + b * 25;
-        ctx.shadowColor = `rgba(${r2},${g2},${b2},${0.2 + b * 0.4})`;
+        ctx.shadowColor = `hsla(${finalH}, ${finalS}%, ${finalL * 0.6}%, ${0.2 + b * 0.4})`;
         ctx.fillStyle   = cg;
-        ctx.beginPath();
-        ctx.arc(cx, cy, coreR * 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${r1},${g1},${b1},${0.3 + b * 0.5})`;
-        ctx.fill();
+        // --- TARCZA SUWERENA: Reżyseria Napisów na Canvasie ---
+
+        // Funkcja pomocnicza do rysowania wyśrodkowanego tekstu z poświatą (Glow)
+        const drawCenteredTextWithGlow = (text: string, yPos: number, font: string, fillStyle: string, shadowColor: string, shadowBlur: number, xOffset = 0, yOffset = 0) => {
+            ctx.save();
+            ctx.font = font;
+            ctx.fillStyle = fillStyle;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = shadowColor;
+            ctx.shadowBlur = shadowBlur;
+            
+            ctx.fillText(text, cx + xOffset, yPos + yOffset);
+            // Drugi pass dla silniejszego efektu glow
+            ctx.fillText(text, cx + xOffset, yPos + yOffset); 
+            ctx.restore();
+        };
+
+
+        // 1. 🎬 INTRO (Tytuł Utworu)
+        if (introRef.current) {
+            drawCenteredTextWithGlow(
+                radio.currentTrack?.title || "NIEZNANA TRANSMISJA",
+                cy,
+                `900 50px "Inter", sans-serif`,
+                `hsla(${(30 + s.hueOffset) % 360}, 100%, 80%, 1)`, 
+                'rgba(245, 158, 11, 0.8)',
+                30
+            );
+            // Podtytuł Intro
+            drawCenteredTextWithGlow(
+                "0.00G STUDIO",
+                cy + W * 0.08,
+                `400 ${Math.floor(W * 0.02)}px "Space Mono", sans-serif`,
+                'rgba(252, 211, 77, 0.8)',
+                'rgba(245, 158, 11, 0.4)',
+                10
+            );
+        }
+
+
+
+        // 3. 🎬 OUTRO (Sygnatura Suwerena)
+        if (outroRef.current) {
+            // Pociemnienie tła Canvasu dla efektu Outro
+            ctx.save();
+            ctx.fillStyle = 'rgba(2, 2, 5, 0.85)'; 
+            ctx.fillRect(0, 0, W, H);
+            ctx.restore();
+
+            // Cinematic Glitch Logic
+            const glitchX = (Math.random() - 0.5) * 4;
+            const glitchY = (Math.random() - 0.5) * 4;
+            const intenseGlow = 30 + Math.random() * 20;
+
+            // Sygnatura TeO Production
+            drawCenteredTextWithGlow(
+                "TeO Production",
+                cy - 20,
+                `900 ${Math.floor(W * 0.07)}px "Inter", sans-serif`,
+                'rgba(6, 182, 212, 1)',
+                '#00FFFF', // intense cyan glow
+                intenseGlow,
+                glitchX,
+                glitchY
+            );
+
+            // Sygnatura Studio
+            drawCenteredTextWithGlow(
+                "OtakOS Engine Studio 0.00G",
+                cy + 40,
+                `400 ${Math.floor(W * 0.02)}px "Space Mono", sans-serif`,
+                'rgba(148, 163, 184, 0.8)',
+                '#00FFFF',
+                intenseGlow / 2,
+                glitchX * 0.5,
+                glitchY * 0.5
+            );
+        }
+
+
+        // --- RYSOWANIE WEKTOROWEGO DNA NA KRAWĘDZIACH ---
+        const dnaSectionHeight = H / 100;
+        const dnaCaptureZone = 80;
+
+        ctx.save();
+        ctx.shadowBlur = 12;
+        
+        for (let i = 0; i < 100; i++) {
+            // Lewe DNA (Cyan/Chłodne)
+            if (leftDNA.current[i] > 0) {
+                const width = Math.min(leftDNA.current[i], dnaCaptureZone);
+                ctx.fillStyle = `hsla(${(200 + s.hueOffset) % 360}, 100%, 60%, 0.7)`;
+                ctx.shadowColor = `hsla(${(200 + s.hueOffset) % 360}, 100%, 50%, 0.5)`;
+                ctx.fillRect(0, i * dnaSectionHeight, width, dnaSectionHeight - 1);
+                leftDNA.current[i] *= 0.98; // Powolny zanik
+            }
+
+            // Prawe DNA (Magenta/Gorące)
+            if (rightDNA.current[i] > 0) {
+                const width = Math.min(rightDNA.current[i], dnaCaptureZone);
+                ctx.fillStyle = `hsla(${(320 + s.hueOffset) % 360}, 100%, 60%, 0.7)`;
+                ctx.shadowColor = `hsla(${(320 + s.hueOffset) % 360}, 100%, 50%, 0.5)`;
+                ctx.fillRect(W - width, i * dnaSectionHeight, width, dnaSectionHeight - 1);
+                rightDNA.current[i] *= 0.98;
+            }
+        }
         ctx.restore();
 
-        // ── Napis agenta gdy aktywna aura ─────────────────────────────
-        if (aura && (r1 !== DEFAULT_RGB.r1 || g1 !== DEFAULT_RGB.g1)) {
-            const elapsed = Date.now() - aura.timestamp;
-            const fadeOut = Math.max(0, 1 - elapsed / 8000);
+        // --- LEWA WIEŻA: Matrix Storyteller ---
+        if (leftModuleRef.current === 'STORYTELLER') {
+            const panelWidth = 400;
             ctx.save();
-            ctx.globalAlpha = fadeOut * 0.7;
-            ctx.font        = `bold ${Math.floor(W * 0.028)}px 'JetBrains Mono', monospace`;
-            ctx.fillStyle   = `rgb(${r1},${g1},${b1})`;
-            ctx.textAlign   = 'center';
-            ctx.shadowBlur  = 10;
-            ctx.shadowColor = `rgb(${r1},${g1},${b1})`;
-            ctx.fillText(aura.agentName.toUpperCase(), cx, cy - W * 0.18);
+            ctx.fillStyle = 'rgba(5, 5, 10, 0.85)';
+            ctx.fillRect(0, 0, panelWidth, H);
+            
+            // Granica Wieży (Cyan/Blue Glow)
+            ctx.strokeStyle = `hsla(${(200 + s.hueOffset) % 360}, 100%, 50%, 0.8)`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(panelWidth, 0);
+            ctx.lineTo(panelWidth, H);
+            ctx.stroke();
+
+            // Matrix Scrolling Text
+            s.storyScroll += 0.5;
+            const lore = [
+                '[ SYSTEM BOOT ]',
+                'Initiating TeOgoCHi...',
+                'Analyzing quantum baselines...',
+                'Synthesizing audio vectors...',
+                'Collapse of the wave function detected...',
+                'Generating lore...',
+                'Accessing Akashic records...',
+                'Syncing with BoB core...',
+                'Vector DNA crystallized.'
+            ];
+            
+            ctx.font = '16px "Space Mono", monospace';
+            ctx.fillStyle = `hsla(${(180 + s.hueOffset) % 360}, 100%, 60%, 0.9)`;
+            ctx.textAlign = 'left';
+            
+            const lineHeight = 30;
+            const totalHeight = lore.length * lineHeight;
+            
+            lore.forEach((line, index) => {
+                let y = (index * lineHeight + s.storyScroll) % (H + lineHeight);
+                if (y > H) y -= (H + lineHeight);
+                ctx.fillText(line, 30, y);
+            });
             ctx.restore();
         }
 
+        // --- PRAWA WIEŻA: Graviton Node Exchange ---
+        if (rightModuleRef.current === 'GRAVITON_GRID') {
+            const panelWidth = 400;
+            ctx.save();
+            ctx.fillStyle = 'rgba(10, 5, 10, 0.85)';
+            ctx.fillRect(W - panelWidth, 0, panelWidth, H);
+
+            // Granica Wieży (Magenta/Gold Glow)
+            ctx.strokeStyle = `hsla(${(320 + s.hueOffset) % 360}, 100%, 50%, 0.8)`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(W - panelWidth, 0);
+            ctx.lineTo(W - panelWidth, H);
+            ctx.stroke();
+
+            // Header
+            ctx.font = '700 18px "Inter", sans-serif';
+            ctx.fillStyle = `hsla(${(320 + s.hueOffset) % 360}, 100%, 70%, 1)`;
+            ctx.textAlign = 'center';
+            ctx.fillText("[ GRAVITON NODE AUCTION ]", W - panelWidth / 2, 50);
+
+            // Grid Pattern
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            const gridSize = 30;
+            for (let x = W - panelWidth + 20; x < W - 20; x += gridSize) {
+                for (let y = 100; y < H - 20; y += gridSize) {
+                    if (Math.random() > 0.98) {
+                        ctx.fillStyle = `hsla(${(320 + s.hueOffset) % 360}, 100%, 50%, 0.2)`;
+                        ctx.fillRect(x, y, gridSize - 2, gridSize - 2);
+                    }
+                    ctx.strokeRect(x, y, gridSize - 2, gridSize - 2);
+                }
+            }
+
+            // --- DUMMY GRAVITON NODES ---
+            const drawNode = (x: number, y: number, color: string, label: string) => {
+                ctx.fillStyle = color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = color;
+                ctx.fillRect(x, y, gridSize - 2, gridSize - 2);
+                
+                ctx.font = '10px "Space Mono", monospace';
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.textAlign = 'left';
+                ctx.shadowBlur = 0;
+                ctx.fillText(label, x + gridSize + 5, y + 15);
+            };
+
+            drawNode(W - 350, 200, 'hsla(200, 100%, 50%, 0.8)', '[NODE: #GRV-8A21] ACTIVE');
+            drawNode(W - 250, 400, 'hsla(300, 100%, 50%, 0.8)', '[NODE: #GRV-11B9] SYNC...');
+            drawNode(W - 150, 700, 'hsla(40, 100%, 50%, 0.8)',  '[NODE: #GRV-99ZZ] SECURE');
+            drawNode(W - 320, 850, 'hsla(150, 100%, 50%, 0.6)', '[NODE: #GRV-ALPHA] MINING');
+
+            ctx.restore();
+        }
+
+        // --- 2. AUTOMATIC AURA GHOST TRAIL ---
+        for (let i = mouseTrail.current.length - 1; i >= 0; i--) {
+            const pt = mouseTrail.current[i];
+            pt.life -= 0.015;
+            if (pt.life <= 0) {
+                mouseTrail.current.splice(i, 1);
+                continue;
+            }
+            
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 3 + pt.life * 8, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${finalH}, ${finalS}%, ${finalL}%, ${pt.life * 0.4})`;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = `hsla(${finalH}, ${finalS}%, ${finalL}%, ${pt.life * 0.8})`;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // --- 3. SUBTITLES (Lyrics - bottom standalone) ---
+        if (isKaraokeEnabled && lyricRef.current) {
+            ctx.save();
+            ctx.font = '700 36px "Inter", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Subtitle shadow/glow
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = `hsla(${finalH}, 100%, 50%, 0.9)`;
+            ctx.fillStyle = 'white';
+            
+            ctx.fillText(lyricRef.current, cx, cy + 250);
+            ctx.restore();
+        }
+
+
         s.animId = requestAnimationFrame(draw);
-    }, [showParticles]);
+    }, [showParticles, radio.isAutoAura, radio.showIntro, radio.showOutro, radio.currentLyric, radio.currentTrack]);
 
     useEffect(() => {
         stateRef.current.animId = requestAnimationFrame(draw);
@@ -301,31 +688,75 @@ export function KatedraOrbita({
     }, [draw]);
 
     return (
-        <div
-            ref={containerRef}
-            className={className}
-            style={{
-                position:  'relative',
-                width:     '100%',
-                height:    '100%',
-                minHeight: '300px',
-                overflow:  'hidden',
-                ...style,
-            }}
-        >
-            <canvas
-                ref={canvasRef}
+        <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '300px', overflow: 'hidden' }}>
+
+            <div
+                ref={containerRef}
+                className={`${className || ''}`}
                 style={{
                     position:  'absolute',
-                    top:       '50%',
-                    left:      '50%',
-                    transform: 'translate(-50%, -50%)',
-                    width:     squareSize > 0 ? `${squareSize}px` : '100%',
-                    height:    squareSize > 0 ? `${squareSize}px` : '100%',
-                    display:   'block',
+                    top: 0,
+                    left: 0,
+                    width:     '100%',
+                    height:    '100%',
+                    ...style,
                 }}
-                aria-label="Wizualizator orbity Katedry"
-            />
+            >
+                <canvas
+                    ref={canvasRef}
+                    id="katedra-canvas"
+                    style={{
+                        position:  'absolute',
+                        top:       '50%',
+                        left:      '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width:     '100%',
+                        height:    'auto',
+                        aspectRatio: '16 / 9',
+                        display:   'block',
+                        pointerEvents: 'auto',
+                    }}
+                    onMouseMove={(e) => {
+                        const canvas = canvasRef.current;
+                        if (!canvas) return;
+                        const rect = canvas.getBoundingClientRect();
+                        const scaleX = canvas.width / rect.width;
+                        const scaleY = canvas.height / rect.height;
+                        const x = (e.clientX - rect.left) * scaleX;
+                        const y = (e.clientY - rect.top) * scaleY;
+                        mouseTrail.current.push({ x, y, life: 1.0 });
+                    }}
+                    aria-label="Wizualizator orbity Katedry"
+                />
+
+                {/* Left Module Slot */}
+                <div className="absolute left-0 top-0 h-full z-10 pointer-events-none flex items-center">
+                    {layout.left === 'QUANTUM_EQUALIZER' && (
+                        <div className="pointer-events-auto w-full h-full">
+                            <QuantumEqualizer />
+                        </div>
+                    )}
+                    {layout.left === 'MATRIX_RAIN' && (
+                        <div className="pointer-events-auto w-full h-full">
+                            <MatrixRainSkin width={squareSize || 400} colorScheme="cyan" />
+                        </div>
+                    )}
+                </div>
+
+                {/* Right Module Slot */}
+                <div className="absolute right-0 top-0 h-full z-10 pointer-events-none flex items-center">
+                    {layout.right === 'QUANTUM_EQUALIZER' && (
+                        <div className="pointer-events-auto w-full h-full">
+                            <QuantumEqualizer />
+                        </div>
+                    )}
+                    {layout.right === 'MATRIX_RAIN' && (
+                        <div className="pointer-events-auto w-full h-full">
+                            <MatrixRainSkin width={squareSize || 400} colorScheme="magenta" />
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }
