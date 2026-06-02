@@ -21,7 +21,139 @@ import {
     Brain, Sparkles, Terminal, Zap, Settings, RefreshCw,
     Cloud, Cpu, X, Eye,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { ApiDyrygent, CLOUD_MODELS, ImageAttachment } from '../../lib/router/ApiDyrygent';
+
+// ══════════════════════════════════════════════════════════════════
+// BLOK KODU z przyciskiem "⚡ Wdróż do Katedry"
+// ══════════════════════════════════════════════════════════════════
+
+/** Domyślna ścieżka wdrożenia na podstawie języka */
+const defaultDeployPath = (lang: string): string => {
+    const l = lang.toLowerCase();
+    if (l === 'tsx' || l === 'jsx')  return 'components/special/';
+    if (l === 'ts'  || l === 'js')   return 'lib/';
+    if (l === 'css' || l === 'scss') return 'styles/';
+    if (l === 'json')                return '_AntiGravity_Wymiar/';
+    return 'components/special/';
+};
+
+const CodeBlock: React.FC<{ lang: string; code: string }> = ({ lang, code }) => {
+    const [copied, setCopied] = useState(false);
+    const [deploying, setDeploying] = useState(false);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(code);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handleDeploy = async () => {
+        const suggested = defaultDeployPath(lang);
+        const filePath = window.prompt(
+            'Podaj ścieżkę pliku (np. components/special/Nazwa.tsx):',
+            suggested,
+        );
+        if (!filePath?.trim()) return;
+
+        setDeploying(true);
+        try {
+            const res = await fetch('http://127.0.0.1:3001/api/bridge/execute', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({
+                    action:   'WRITE_FILE',
+                    filename: filePath.trim(),
+                    content:  code,
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success(`⚡ Zmaterializowano: ${filePath.trim()}`);
+            } else {
+                toast.error(`❌ Wdróż błąd: ${data.message}`);
+            }
+        } catch (err: any) {
+            toast.error(`❌ Wiesław offline: ${err.message}`);
+        } finally {
+            setDeploying(false);
+        }
+    };
+
+    return (
+        <div className="my-2 rounded-lg overflow-hidden bg-slate-950 border border-slate-700/60">
+            {/* Pasek nagłówka */}
+            <div className="flex items-center justify-between px-3 py-1.5
+                            bg-slate-800/90 border-b border-slate-700/50">
+                <span className="text-[10px] font-mono text-slate-400 tracking-wider uppercase">
+                    {lang || 'kod'}
+                </span>
+                <div className="flex items-center gap-1.5">
+                    {/* Kopiuj */}
+                    <button
+                        onClick={handleCopy}
+                        className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded
+                                   bg-slate-700/60 hover:bg-slate-600 text-slate-300
+                                   transition-colors border border-slate-600/40"
+                    >
+                        {copied ? '✓ Skopiowano' : '📋 Kopiuj'}
+                    </button>
+                    {/* Wdróż */}
+                    <button
+                        onClick={handleDeploy}
+                        disabled={deploying}
+                        className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded
+                                   bg-purple-700/70 hover:bg-purple-600 text-purple-100
+                                   transition-colors border border-purple-500/40
+                                   disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Zapisz ten kod do pliku w projekcie przez Wiesława"
+                    >
+                        {deploying ? '⏳ Wdrażam...' : '⚡ Wdróż do Katedry'}
+                    </button>
+                </div>
+            </div>
+            {/* Kod */}
+            <pre className="p-3 overflow-x-auto text-xs font-mono text-emerald-300
+                            leading-relaxed max-h-[480px] overflow-y-auto">
+                <code>{code}</code>
+            </pre>
+        </div>
+    );
+};
+
+/**
+ * Renderuje treść wiadomości — zwykły tekst i bloki kodu (``` ... ```)
+ * Dla streamujących wiadomości: plain text (szybciej, bez parsowania)
+ */
+const MessageContent: React.FC<{ content: string; streaming?: boolean }> = ({
+    content,
+    streaming,
+}) => {
+    if (streaming || !content) {
+        return <span className="whitespace-pre-wrap">{content}</span>;
+    }
+
+    // Podziel po blokach kodu — match backtick fence z opcjonalnym językiem
+    const parts = content.split(/(```(?:[^\n`]*)?\n[\s\S]*?```)/g);
+
+    return (
+        <>
+            {parts.map((part, i) => {
+                const match = part.match(/^```([^\n`]*?)?\n([\s\S]*?)```$/);
+                if (match) {
+                    const lang = (match[1] ?? '').trim();
+                    const code = match[2] ?? '';
+                    return <CodeBlock key={i} lang={lang} code={code} />;
+                }
+                return (
+                    <span key={i} className="whitespace-pre-wrap">
+                        {part}
+                    </span>
+                );
+            })}
+        </>
+    );
+};
 
 // ── Progi tokenów Claude (tryb high-res: 1750 tokenów/kafelek 512x512 + 85 bazowych) ──
 const estimateClaudeTokens = (w: number, h: number): number =>
@@ -890,8 +1022,11 @@ const KatedraChat: React.FC = () => {
                                 </span>
                             </div>
 
-                            <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                                {msg.content || (msg.streaming ? '' : '—')}
+                            <div className="text-sm leading-relaxed">
+                                {msg.content
+                                    ? <MessageContent content={msg.content} streaming={msg.streaming} />
+                                    : (msg.streaming ? '' : '—')
+                                }
                             </div>
 
                             {msg.attachments && msg.attachments.length > 0 && (

@@ -840,17 +840,28 @@ app.post('/api/bridge/execute', async (req, res) => {
 
     // ── WRITE_FILE ───────────────────────────────────────────────────
     if (action === 'WRITE_FILE') {
-        if (!filename || !content) {
+        if (!filename || content === undefined || content === null) {
             return res.status(400).json({ success: false, message: 'Brak filename lub content' });
         }
         try {
-            const filePath = path.join(ANTIGRAVITY_DIR, filename);
+            // Ochrona przed zdublowaną ścieżką:
+            // Jeśli filename zawiera już prefiks _AntiGravity_Wymiar (np. z innych komponentów),
+            // path.join(ANTIGRAVITY_DIR, filename) dałby podwójny folder.
+            // Rozwiązanie: wytnij prefiks jeśli jest, przed join.
+            const cleanFilename = filename
+                .replace(/^[/\\]?_AntiGravity_Wymiar[/\\]/i, '')
+                .replace(/^[/\\]/, '');
 
-            // KRYTYCZNA POPRAWKA: Pobieramy kodowanie z payloadu (np. 'base64'), domyślnie 'utf8'
+            const filePath = path.join(ANTIGRAVITY_DIR, cleanFilename);
+
+            // Utwórz katalog docelowy jeśli nie istnieje (naprawa ENOENT)
+            await fs.mkdir(path.dirname(filePath), { recursive: true });
+
+            // Pobieramy kodowanie z payloadu (np. 'base64'), domyślnie 'utf8'
             const encoding = payload.encoding || 'utf8';
 
             await fs.writeFile(filePath, content, encoding);
-            console.log(`[Wiesio-Bridge] 📝 Zapisano (${encoding}): ${filePath}`);
+            console.log(`[Wiesio-Bridge] 📝 Zmaterializowano (${encoding}): ${filePath}`);
             return res.json({ success: true, message: 'Zmaterializowano.', filePath, timestamp: Date.now() });
         } catch (e) {
             console.error(`[Wiesio-Bridge] ❌ Błąd zapisu:`, e);
