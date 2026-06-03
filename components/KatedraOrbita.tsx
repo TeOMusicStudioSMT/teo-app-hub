@@ -729,33 +729,37 @@ export function KatedraOrbita({
                     aria-label="Wizualizator orbity Katedry"
                 />
 
-                {/* Left Module Slot */}
-                <div className="absolute left-0 top-0 h-full z-10 pointer-events-none flex items-center">
-                    {layout.left === 'QUANTUM_EQUALIZER' && (
-                        <div className="pointer-events-auto w-full h-full">
-                            <QuantumEqualizer />
-                        </div>
-                    )}
-                    {layout.left === 'MATRIX_RAIN' && (
-                        <div className="pointer-events-auto w-full h-full">
-                            <MatrixRainSkin width={squareSize || 400} colorScheme="cyan" />
-                        </div>
-                    )}
-                </div>
+                {/* Left Module Slot — unmounted entirely when PUSTKA */}
+                {layout.left !== 'PUSTKA' && (
+                    <div className="absolute left-0 top-0 h-full z-10 pointer-events-none flex items-center">
+                        {layout.left === 'QUANTUM_EQUALIZER' && (
+                            <div className="pointer-events-auto w-full h-full">
+                                <QuantumEqualizer />
+                            </div>
+                        )}
+                        {layout.left === 'MATRIX_RAIN' && (
+                            <div className="pointer-events-auto w-full h-full">
+                                <MatrixRainSkin width={squareSize || 400} colorScheme="cyan" />
+                            </div>
+                        )}
+                    </div>
+                )}
 
-                {/* Right Module Slot */}
-                <div className="absolute right-0 top-0 h-full z-10 pointer-events-none flex items-center">
-                    {layout.right === 'QUANTUM_EQUALIZER' && (
-                        <div className="pointer-events-auto w-full h-full">
-                            <QuantumEqualizer />
-                        </div>
-                    )}
-                    {layout.right === 'MATRIX_RAIN' && (
-                        <div className="pointer-events-auto w-full h-full">
-                            <MatrixRainSkin width={squareSize || 400} colorScheme="magenta" />
-                        </div>
-                    )}
-                </div>
+                {/* Right Module Slot — unmounted entirely when PUSTKA */}
+                {layout.right !== 'PUSTKA' && (
+                    <div className="absolute right-0 top-0 h-full z-10 pointer-events-none flex items-center">
+                        {layout.right === 'QUANTUM_EQUALIZER' && (
+                            <div className="pointer-events-auto w-full h-full">
+                                <QuantumEqualizer />
+                            </div>
+                        )}
+                        {layout.right === 'MATRIX_RAIN' && (
+                            <div className="pointer-events-auto w-full h-full">
+                                <MatrixRainSkin width={squareSize || 400} colorScheme="magenta" />
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

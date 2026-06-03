@@ -37,6 +37,7 @@ import { initializeKwantowaKotwica } from './lib/KwantowaKotwica';
 import OtakOSGateway from './components/special/OtakOSGateway';
 import { RadaPodstawowa } from './components/special/RadaPodstawowa';
 import { WniosekO } from './components/special/WniosekO';
+import ScenographyManager from './components/special/ScenographyManager';
 import { PipesPanel } from './components/special/PipesPanel';
 import { hasPioneerBypass } from './lib/SovereignGovernance';
 import { startHeartBeat } from './lib/wir26heartbeat';
@@ -46,16 +47,18 @@ import PathwaySelector from './components/special/PathwaySelector';
 import QuantumJournal from './components/special/QuantumJournal';
 import { BookIcon } from './components/icons';
 import { KatedraRadioPlayer } from './components/KatedraRadioPlayer';
+import { TestKoherencji } from './components/special/TestKoherencji';
+import KwantowaCzytelnia from './components/KwantowaCzytelnia';
 
 
 
 const App: React.FC = () => {
     const [isInitiated, setIsInitiated] = useState(false);
-    const [showIntro, setShowIntro] = useState(true);
-    const [showGenesis, setShowGenesis] = useState(true); // TeOGenesis - suwerenna brama
-    const [isPioneer, setIsPioneer] = useState(false);
-    const [isReady, setIsReady] = useState(false);
-    const [isLoungeOpen, setIsLoungeOpen] = useState(false); // New state for lounge visibility
+    const [showIntro, setShowIntro] = useState(false);
+    const [showGenesis, setShowGenesis] = useState(false); // TeOGenesis - suwerenna brama
+    const [isPioneer, setIsPioneer] = useState(true);
+    const [isReady, setIsReady] = useState(true);
+    const [isLoungeOpen, setIsLoungeOpen] = useState(true); // New state for lounge visibility
     const [anomaly, setAnomaly] = useState<string | null>(null);
     const [ai, setAi] = useState<GoogleGenAI | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -85,18 +88,27 @@ const App: React.FC = () => {
     // --- Kibel State ---
     const [showKibel, setShowKibel] = useState(false);
     const [showCrewClub, setShowCrewClub] = useState(false); // 🏆 Klub Mistrzów
-    const [showTeODash, setShowTeODash] = useState(false); // 🏛️ TeODash
+    const [showTeODash, setShowTeODash] = useState(false); // ⚙️ TeODash
     const [showWniosekO, setShowWniosekO] = useState(false);
+    const [showScenography, setShowScenography] = useState(false);
     const [showPipes, setShowPipes] = useState(false);
     const [showJournal, setShowJournal] = useState(false); // 📓 Kwantowy Dziennik
+    const [isWiesioOnline, setIsWiesioOnline] = useState<boolean | null>(null);
 
     // --- Real Auth State ---
     const [user, setUser] = useState<User | null>(null);
     const setEssenceIdentity = useSetAtom(essenceIdentityAtom);
 
     // --- Pathway State (Duch / Materia) ---
-    const [selectedPathway, setSelectedPathway] = useState<'duch' | 'materia' | null>(null);
-    const [showPathwaySelector, setShowPathwaySelector] = useState(true);
+    const [selectedPathway, setSelectedPathway] = useState<'duch' | 'materia' | null>('duch');
+    const [showPathwaySelector, setShowPathwaySelector] = useState(false);
+
+    // ── KWANTOWA CZYTELNIA — Most Danych ─────────────────────────────────────────
+    // Nasłuchuje na teo_active_story w localStorage (wypełniane przez WydawnictwoForge).
+    // Gdy klucz jest obecny, przysłania cały interfejs pełnoekranową Czytelnią.
+    const [activeStory, setActiveStory] = useState<string | null>(() =>
+        localStorage.getItem('teo_active_story')
+    );
 
     // --- PIONEER BYPASS - NATYCHMIAST do Lounge ---
     useEffect(() => {
@@ -167,7 +179,7 @@ const App: React.FC = () => {
 
                     // Dla Pioneera #1 automatycznie otwórz Lounge
                     if (hasPioneerBypass(user.email)) {
-                        console.log('[BoB] 🚀 Pioneer #1 detected - Auto-opening Lounge');
+                        console.log('[FLASH BOB] 🚀 Pioneer #1 detected - Auto-opening Lounge');
                         setIsLoungeOpen(true);
                     }
                 })
@@ -199,7 +211,7 @@ const App: React.FC = () => {
 
     // 5. Uruchom tętno Wiru 26 i sprawdź Kibel
     useEffect(() => {
-        console.log('[BoB] 🫀 Inicjacja tętna Wiru 26...');
+        console.log('[FLASH BOB] 🫀 Inicjacja tętna Wiru 26...');
 
         // Sprawdź czy to tryb Ducha (bez logowania)
         const isDuchMode = localStorage.getItem('pathway_duch_mode') === 'true';
@@ -210,7 +222,7 @@ const App: React.FC = () => {
         const path = isDuch ? 'duch' : isMateria ? 'materia' : null;
 
         if (path) {
-            console.log(`[BoB] ⚓ Wczesna Inicjalizacja Kotwicy (${path})`);
+            console.log(`[FLASH BOB] ⚓ Wczesna Inicjalizacja Kotwicy (${path})`);
             initializeKwantowaKotwica('anonymous', path as 'duch' | 'materia');
         }
 
@@ -235,6 +247,63 @@ const App: React.FC = () => {
         startHeartBeat(30000); // Co 30 sekund
     }, []);
 
+    // 5a. KWANTOWA CZYTELNIA — nasłuchiwacz mostów danych
+    useEffect(() => {
+        // Aktywuj Czytelnię gdy WydawnictwoForge wyzwoli event
+        const onStoryReady = () => {
+            const story = localStorage.getItem('teo_active_story');
+            if (story) setActiveStory(story);
+        };
+
+        // Obsługa cross-tab (gdy Wydawnictwo jest w innej karcie)
+        const onStorageChange = (e: StorageEvent) => {
+            if (e.key === 'teo_active_story') {
+                if (e.newValue) {
+                    setActiveStory(e.newValue);
+                } else {
+                    setActiveStory(null); // klucz wyczyszczony — zamknij Czytelnię
+                }
+            }
+        };
+
+        window.addEventListener('story_ready', onStoryReady);
+        window.addEventListener('storage', onStorageChange);
+        return () => {
+            window.removeEventListener('story_ready', onStoryReady);
+            window.removeEventListener('storage', onStorageChange);
+        };
+    }, []);
+
+    /** Zamknięcie Czytelni — czyści klucz i wraca do normalnego widoku */
+    const handleCzytelniaClosed = () => {
+        localStorage.removeItem('teo_active_story');
+        setActiveStory(null);
+    };
+
+    // 5b. STRAŻNIK WYMIARÓW: Sprawdź czy Wiesio (Local Bridge) żyje
+    useEffect(() => {
+        const checkWiesio = async () => {
+            try {
+                const res = await fetch('http://127.0.0.1:3001/wiesio/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'PING' })
+                });
+                const data = await res.json();
+                if (data.status === 'AHOJ') {
+                    console.log('%c[Strażnik] 🟢 Wymiar 0.00G Stabilny. WIESIO obecny.', 'color: #22d3ee; font-weight: bold;');
+                    setIsWiesioOnline(true);
+                } else {
+                    setIsWiesioOnline(false);
+                }
+            } catch (e) {
+                console.warn('[Strażnik] 🔴 Lokalny Most WIESIA przerwany. Inicjacja Testu Koherencji.');
+                setIsWiesioOnline(false);
+            }
+        };
+        checkWiesio();
+    }, []);
+
     // 6. Przywróć Kotwicę (Vault Identity) po odświeżeniu
     useEffect(() => {
         const isDuch = localStorage.getItem('pathway_duch_mode') === 'true';
@@ -243,7 +312,7 @@ const App: React.FC = () => {
 
         if (path) {
             const userId = user?.email || 'anonymous';
-            console.log(`[BoB] ⚓ Przywracanie Kotwicy (${path}) dla: ${userId}`);
+            console.log(`[FLASH BOB] ⚓ Przywracanie Kotwicy (${path}) dla: ${userId}`);
             initializeKwantowaKotwica(userId, path as 'duch' | 'materia');
         }
     }, [user]);
@@ -323,7 +392,7 @@ const App: React.FC = () => {
 
     // --- Handler wyboru ścieżki ---
     const handlePathwaySelect = (path: 'duch' | 'materia') => {
-        console.log(`[BoB] 🌀 Wybrano ścieżkę: ${path}`);
+        console.log(`[FLASH BOB] 🌀 Wybrano ścieżkę: ${path}`);
         setSelectedPathway(path);
         setShowPathwaySelector(false);
 
@@ -333,7 +402,7 @@ const App: React.FC = () => {
 
         // Dla Ścieżki Ducha - całkowicie POMIŃ logowanie!
         if (path === 'duch') {
-            console.log('[BoB] 🌙 Ścieżka Ducha - POMIJAM logowanie, wchodzę do TeODash!');
+            console.log('[FLASH BOB] 🌙 Ścieżka Ducha - POMIJAM logowanie, wchodzę do TeODash!');
 
             // Ustaw specjalny tryb "Gość Ducha"
             localStorage.setItem('pathway_duch_mode', 'true');
@@ -361,7 +430,7 @@ const App: React.FC = () => {
         }
         // Dla Ścieżki Materii - przejdź do Genesis (logowanie)
         else {
-            console.log('[BoB] 💎 Ścieżka Materii - przechodzę do logowania');
+            console.log('[FLASH BOB] 💎 Ścieżka Materii - przechodzę do logowania');
             setShowGenesis(true);
             localStorage.setItem('pathway_materia_mode', 'true');
         }
@@ -499,6 +568,8 @@ const App: React.FC = () => {
                     <div className="relative z-10 w-full h-full flex flex-col">
                         {!isInitiated ? (
                             <OtakOSGateway onInitiate={() => setIsInitiated(true)} />
+                        ) : isWiesioOnline === false ? (
+                            <TestKoherencji />
                         ) : (
                             <>
                                 {/* 🚀 TE0 GENESIS - Suwerenna Brama (tylko dla Ścieżki Materii) */}
@@ -541,6 +612,7 @@ const App: React.FC = () => {
                                                         onLogout={handleLogout}
                                                         behavioralData={behavioralData}
                                                         onVisualAssistantOpen={() => setVisualAssistantOpen(true)}
+                                                        onOpenCrewClub={() => setShowCrewClub(true)}
                                                     />
                                                 </motion.div>
                                             </AnimatePresence>
@@ -591,6 +663,7 @@ const App: React.FC = () => {
                                                                 onLogout={handleLogout}
                                                                 behavioralData={behavioralData}
                                                                 onVisualAssistantOpen={() => setVisualAssistantOpen(true)}
+                                                                onOpenCrewClub={() => setShowCrewClub(true)}
                                                             />
                                                         ) : (
                                                             <CosmicPortal
@@ -661,20 +734,20 @@ const App: React.FC = () => {
                                     </div>
                                     <div className="pointer-events-auto">
                                         <button
-                                            onClick={() => setShowTeODash(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-sky-500 to-sky-700 border-2 border-sky-400/50 shadow-[0_0_15px_rgba(14,165,233,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                            title="🏛️ TeODash - Dashboard"
-                                        >
-                                            🏛️
-                                        </button>
-                                    </div>
-                                    <div className="pointer-events-auto">
-                                        <button
                                             onClick={() => setShowWniosekO(true)}
                                             className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-violet-500 to-purple-700 border-2 border-purple-400/50 shadow-[0_0_15px_rgba(168,85,247,0.5)] cursor-pointer hover:scale-110 transition-transform"
                                             title="📋 Złóż Wniosek O..."
                                         >
                                             📋
+                                        </button>
+                                    </div>
+                                    <div className="pointer-events-auto">
+                                        <button
+                                            onClick={() => setShowScenography(true)}
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-emerald-500 to-teal-700 border-2 border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            title="🎭 Scenografia Katedry"
+                                        >
+                                            🎭
                                         </button>
                                     </div>
                                     <div className="pointer-events-auto">
@@ -753,6 +826,17 @@ const App: React.FC = () => {
                                             </motion.div>
                                         </motion.div>
                                     )}
+                                    {showScenography && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                            className="fixed inset-0 bg-black/85 flex items-center justify-center z-[2003]"
+                                            onClick={() => setShowScenography(false)}
+                                        >
+                                            <motion.div onClick={(e) => e.stopPropagation()}>
+                                                <ScenographyManager onClose={() => setShowScenography(false)} />
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
                                     {showPipes && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -768,22 +852,8 @@ const App: React.FC = () => {
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                             className="fixed inset-0 bg-black/95 flex items-center justify-center z-[2004]"
-                                            onClick={() => setShowCrewClub(false)}
                                         >
-                                            <motion.div onClick={(e) => e.stopPropagation()}>
-                                                <CrewCreator onComplete={() => setShowCrewClub(false)} />
-                                            </motion.div>
-                                        </motion.div>
-                                    )}
-                                    {showTeODash && (
-                                        <motion.div
-                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2005]"
-                                            onClick={() => setShowTeODash(false)}
-                                        >
-                                            <motion.div onClick={(e) => e.stopPropagation()}>
-                                                <TeODash onClose={() => setShowTeODash(false)} />
-                                            </motion.div>
+                                            <TeODash onClose={() => setShowCrewClub(false)} />
                                         </motion.div>
                                     )}
                                     {showRada && (
@@ -857,6 +927,30 @@ const App: React.FC = () => {
                         <KatedraRadioPlayer />
                     </div>
                 </div>
+
+            {/* ══════════════════════════════════════════════════════════
+                🌌 KWANTOWA CZYTELNIA — Pełnoekranowy Overlay
+                Aktywowana przez WydawnictwoForge przez teo_active_story.
+                Z-index 9999 — ponad wszystkimi modałami i dashboardami.
+                ══════════════════════════════════════════════════════════ */}
+            <AnimatePresence>
+                {activeStory && (
+                    <motion.div
+                        key="kwantowa-czytelnia"
+                        initial={{ opacity: 0, scale: 1.03 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.97 }}
+                        transition={{ duration: 0.6, ease: 'easeInOut' }}
+                        className="fixed inset-0 z-[9999]"
+                    >
+                        <KwantowaCzytelnia
+                            text={activeStory}
+                            onClose={handleCzytelniaClosed}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             </GravitonProvider>
 
     );
