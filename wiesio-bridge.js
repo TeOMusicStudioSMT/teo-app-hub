@@ -532,7 +532,7 @@ async function scanDirectory(dirPath, maxDepth, currentDepth = 0) {
 
 // ── /api/ollama — Ollama proxy z SSE streamingiem ──────────────────────
 app.post('/api/ollama', async (req, res) => {
-    const { messages, system, model = 'gemma3:4b' } = req.body;
+    const { messages, system, model = 'gemma4' } = req.body;
     if (!messages?.length) return res.status(400).json({ error: 'Brak messages' });
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -1198,7 +1198,7 @@ app.post('/api/bridge/execute', async (req, res) => {
     if (action === 'EXEC_OLLAMA_CLI') {
         const prompt = payload.prompt;
         if (!prompt) return res.status(400).json({ error: 'Brak promptu' });
-        const modelToUseCLI = payload.modelName || 'llama3';
+        const modelToUseCLI = payload.modelName || 'gemma4';
         console.log(`[Wiesio-Mózg] 🧠 Przekazuję myśl do modelu ${modelToUseCLI} (CLI): "${prompt.substring(0, 30)}..."`);
 
         execFile('ollama', ['run', modelToUseCLI, prompt], { maxBuffer: 1024 * 1024 * 10, encoding: 'utf8' }, (error, stdout, stderr) => {

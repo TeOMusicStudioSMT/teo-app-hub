@@ -7,7 +7,7 @@ import { vaultRetrieve } from '../lib/VaultStorage';
 
 export const SYSTEM_INSTRUCTION_VISEL = VISEL_SYSTEM_INSTRUCTION;
 
-export type CloudProvider = 'gemini' | 'groq' | 'claude' | 'openai' | 'gpt' | 'ollama' | 'unknown';
+export type CloudProvider = 'gemini' | 'groq' | 'claude' | 'openai' | 'gpt' | 'ollama' | 'local' | 'unknown';
 
 export interface CloudMessage {
     role: 'user' | 'assistant' | 'system';
@@ -276,7 +276,7 @@ export async function cloudRouter(
             await callOpenAICompatible(
                 messages, 'ollama', onChunk,
                 'http://localhost:11434/v1',
-                config.model ?? 'llama3',
+                config.model ?? 'gemma4',
                 config.systemPrompt
             );
             break;
@@ -297,13 +297,38 @@ export const generateContent = async (
     console.log(`📡 Cloud Router: Mode=${mode}, Provider=${providerOverride || 'Auto'}`);
 
     // Tryb lokalny (Ollama/Gemma)
+    if (providerOverride === 'local') {
+        try {
+            const activeModel = localStorage.getItem('otakos_active_model') || 'gemma4';
+            const response = await fetch('http://localhost:11434/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: activeModel,
+                    prompt,
+                    system: SYSTEM_INSTRUCTION_VISEL,
+                    stream: false,
+                    options: { temperature: 0.7 }
+                })
+            });
+            
+            if (!response.ok) throw new Error('Ollama nie odpowiada. Sprawdź CORS.');
+            const data = await response.json();
+            return data.response;
+        } catch (error) {
+            console.error("Błąd lokalnego AI:", error);
+            throw new Error("Lokalny Model (Ollama) niedostępny. Czy ustawiłeś OLLAMA_ORIGINS=* ?");
+        }
+    }
+
     if (mode === 'just' || mode === 'local') {
         try {
+            const activeModel = localStorage.getItem('otakos_active_model') || 'gemma4';
             const response = await fetch(LOCAL_GEMMA_ENDPOINT, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    model: "gemma:2b",
+                    model: activeModel,
                     system: "Jesteś Lokalnym Duchem Katedry (SuperWiesławem). Bądź bystry, techniczny i rezonuj z intencjami Suwerena.",
                     prompt,
                     stream: false

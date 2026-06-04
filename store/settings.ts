@@ -39,7 +39,7 @@ export const aiModeAtom = atomWithStorage<'cloud' | 'local'>(
  */
 export const globalActiveLocalModel = atomWithStorage<string>(
     'otakos_active_model',
-    'gemma4:e2b',
+    'gemma4',
     getRobustStorage<string>()
 );
 

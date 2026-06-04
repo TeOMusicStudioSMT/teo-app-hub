@@ -268,7 +268,7 @@ class TeOZeroOneClick {
     model?: string
   ): ZeroClawConfig {
     const models: Record<string, string> = {
-      ollama: 'llama3.2:3b',
+      ollama: 'gemma4',
       openrouter: 'anthropic/claude-sonnet-4-20250514',
       anthropic: 'claude-sonnet-4-20250514',
       openai: 'gpt-4o',

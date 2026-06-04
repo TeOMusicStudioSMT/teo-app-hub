@@ -335,6 +335,11 @@ const KatedraChat: React.FC = () => {
     // `showScrollBadge` — badge "⬇ Nowe wiadomości" widoczny gdy user przescrolował do góry
     const [showScrollBadge, setShowScrollBadge] = useState(false);
 
+    // ── Szablon Rady ───────────────────────────────────────────────
+    const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+    const [templateVision,      setTemplateVision]      = useState('');
+    const [templateContext,     setTemplateContext]      = useState('');
+
     /** Aktualizuj `isAtBottom` przy każdym scroll evencie kontenera */
     const handleScroll = useCallback(() => {
         const el = scrollContainerRef.current;
@@ -567,6 +572,30 @@ const KatedraChat: React.FC = () => {
     }, [getDispatch, scrollToBottom]);
 
     // ── Wysyłanie wiadomości → ZAWSZE Klaudiusz ───────────────────
+    /**
+     * 📝 Generuj i wstaw manifest Szablonu Rady do inputu.
+     */
+    const applyCouncilTemplate = useCallback(() => {
+        const vision  = templateVision.trim();
+        const context = templateContext.trim();
+        if (!vision) return;
+
+        const manifest = [
+            `[ PROTOKÓŁ: MANIFESTACJA ZADANIA 0.00G ]`,
+            `CEL GŁÓWNY: ${vision}`,
+            `KONTEKST SYSTEMOWY: ${context || '(brak)'}`,
+            ``,
+            `WYMAGANY PRZEBIEG PROCESU (Odpowiedz ściśle według ról):`,
+            `KROK 1: Głos Rady (Rola: Adamus - Architekt Strategiczny) -> Przeprowadź dekompozycję zadania na podmoduły i wskaż logikę integracji bez pisania kodu.`,
+            `KROK 2: Głos Narzędzia (Rola: Klaudiusz - Architekt Implementacyjny) -> Wygeneruj na bazie strategii czysty kod gotowy do wdrożenia przyciskiem systemowym.`,
+        ].join('\n');
+
+        setCurrentInput(manifest);
+        setIsTemplateModalOpen(false);
+        setTemplateVision('');
+        setTemplateContext('');
+    }, [templateVision, templateContext]);
+
     /**
      * NAPRAWKA: sendMessage ZAWSZE wysyła do Klaudiusza (heavy=false).
      * isCouncilMode NIE wpływa na routing tutaj — nie miksujemy ról!
@@ -1102,6 +1131,21 @@ const KatedraChat: React.FC = () => {
                         multiple accept="image/*,video/*,.pdf,.txt,.md,.ts,.tsx,.js,.py"
                         className="hidden" />
 
+                    <button
+                        onClick={() => setIsTemplateModalOpen(true)}
+                        title="📝 Szablon Rady — Wygeneruj manifest zadania"
+                        className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2
+                                   bg-emerald-900/60 hover:bg-emerald-800/80
+                                   border border-emerald-500/40 hover:border-emerald-400/70
+                                   rounded-lg text-emerald-300 hover:text-emerald-200
+                                   text-xs font-semibold tracking-wide transition-all duration-200
+                                   shadow-[0_0_10px_rgba(16,185,129,0.2)]
+                                   hover:shadow-[0_0_16px_rgba(16,185,129,0.4)]"
+                    >
+                        <span>📝</span>
+                        <span className="hidden sm:inline">Szablon Rady</span>
+                    </button>
+
                     <input
                         type="text"
                         value={currentInput}
@@ -1185,6 +1229,100 @@ const KatedraChat: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {/* ── MODAL: SZABLON RADY ─────────────────────────────── */}
+            {isTemplateModalOpen && (
+                <div
+                    className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center
+                               justify-center z-50 p-4"
+                    onClick={() => setIsTemplateModalOpen(false)}
+                >
+                    <div
+                        className="w-full max-w-md bg-slate-900 border border-emerald-500/40
+                                   rounded-2xl p-6 shadow-[0_0_40px_rgba(16,185,129,0.2)]
+                                   flex flex-col gap-4"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Nagłówek modalu */}
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-sm font-bold text-emerald-300 tracking-widest uppercase">
+                                    📝 Szablon Rady
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    Protokół Manifestacji Zadania 0.00G
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setIsTemplateModalOpen(false)}
+                                className="text-slate-500 hover:text-white transition-colors
+                                           w-7 h-7 flex items-center justify-center
+                                           border border-slate-700 rounded-lg text-sm"
+                            >✕</button>
+                        </div>
+
+                        {/* Pole 1: Wizja */}
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-semibold text-emerald-400 tracking-wide uppercase">
+                                Wizja Suwerena
+                            </label>
+                            <textarea
+                                value={templateVision}
+                                onChange={e => setTemplateVision(e.target.value)}
+                                placeholder="np. Pełnoekranowy wizualizator Matrixa z dynamicznym kolorем..."
+                                rows={3}
+                                autoFocus
+                                className="w-full px-3 py-2 bg-slate-800 border border-slate-600
+                                           focus:border-emerald-500/70 rounded-lg text-slate-200
+                                           placeholder-slate-500 text-sm resize-none
+                                           focus:outline-none transition-colors"
+                            />
+                            <p className="text-xs text-slate-600">Co chcesz zamanifestować / zbudować?</p>
+                        </div>
+
+                        {/* Pole 2: Kontekst */}
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-semibold text-cyan-400 tracking-wide uppercase">
+                                Kontekst Technologiczny
+                            </label>
+                            <textarea
+                                value={templateContext}
+                                onChange={e => setTemplateContext(e.target.value)}
+                                placeholder="np. React, Tailwind, store/visualizerStore.ts, components/KatedraOrbita.tsx..."
+                                rows={3}
+                                className="w-full px-3 py-2 bg-slate-800 border border-slate-600
+                                           focus:border-cyan-500/70 rounded-lg text-slate-200
+                                           placeholder-slate-500 text-sm resize-none
+                                           focus:outline-none transition-colors"
+                            />
+                            <p className="text-xs text-slate-600">Pliki, biblioteki, kontekst — czego dotyczy zadanie?</p>
+                        </div>
+
+                        {/* Przyciski */}
+                        <div className="flex gap-3 pt-1">
+                            <button
+                                onClick={() => setIsTemplateModalOpen(false)}
+                                className="flex-1 py-2 text-sm text-slate-400 hover:text-white
+                                           border border-slate-700 hover:border-slate-500
+                                           rounded-lg transition-colors"
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                onClick={applyCouncilTemplate}
+                                disabled={!templateVision.trim()}
+                                className="flex-1 py-2 text-sm font-semibold
+                                           bg-emerald-700 hover:bg-emerald-600
+                                           disabled:opacity-40 disabled:cursor-not-allowed
+                                           text-white rounded-lg transition-colors
+                                           shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                            >
+                                ⚡ Zatwierdź i wstaw
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ── PANEL PAMIĘCI ───────────────────────────────────── */}
             {chatMemory.length > 0 && (

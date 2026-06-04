@@ -108,9 +108,9 @@ export const ApiDyrygent = {
         } catch { /* fallthrough */ }
 
         if (typeof window !== 'undefined') {
-            return localStorage.getItem('otakos_active_model') || 'gemma4:e2b';
+            return localStorage.getItem('otakos_active_model') || 'gemma4';
         }
-        return 'gemma4:e2b';
+        return 'gemma4';
     },
 
     /** Model ciężki (Adamus) — z localStorage, globalnego atomu lub default */
@@ -129,10 +129,10 @@ export const ApiDyrygent = {
         if (typeof window !== 'undefined') {
             return (
                 localStorage.getItem('otakos_active_model') ||
-                'gemma4:e4b'
+                'gemma4'
             );
         }
-        return 'gemma4:e4b';
+        return 'gemma4';
     },
 
     /**
@@ -663,7 +663,7 @@ export const ApiDyrygent = {
      */
     async fetchLocalOllama(message: string, config: DyrygentConfig): Promise<string> {
         const url   = config.ollamaUrl   || 'http://127.0.0.1:11435/api/generate';
-        const model = config.ollamaModel || 'qwen2.5-coder:7b';
+        const model = config.ollamaModel || 'gemma4';
 
         const response = await fetch(url, {
             method:  'POST',
