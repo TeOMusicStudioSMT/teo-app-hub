@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 interface InputAreaProps {
-  onGenerate: (prompt: string, file?: File, isLocal?: boolean) => void;
+  onGenerate: (prompt: string, file?: File) => void;
   isGenerating: boolean;
   disabled?: boolean;
 }
@@ -49,11 +49,10 @@ export const InputArea: React.FC<InputAreaProps> = ({ onGenerate, isGenerating, 
   const [isDragging, setIsDragging] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [inputText, setInputText] = useState('');
-  const [isLocalUpload, setIsLocalUpload] = useState(true);
 
   const handleFile = (file: File) => {
     if (file.type.startsWith('image/') || file.type === 'application/pdf') {
-      onGenerate(inputText, file, isLocalUpload);
+      onGenerate(inputText, file);
     } else {
       alert("Proszę wgrać obraz lub PDF.");
     }
@@ -72,6 +71,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onGenerate, isGenerating, 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFile(e.dataTransfer.files[0]);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disabled, isGenerating, inputText]);
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLLabelElement>) => {
@@ -89,7 +89,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onGenerate, isGenerating, 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputText.trim()) {
-        onGenerate(inputText, undefined, isLocalUpload);
+        onGenerate(inputText, undefined);
     }
   };
 
@@ -108,20 +108,15 @@ export const InputArea: React.FC<InputAreaProps> = ({ onGenerate, isGenerating, 
   };
 
   const handleAlchemikClick = () => {
-    if (isLocalUpload) {
-        // TODO: Podpięcie pod wiesio-bridge.js (UPLOAD_FILE)
-        console.log("Alchemik: Próba dostępu do Dysku F:\\");
-        // Otwieramy systemowy dialog wyboru pliku (lokalna materializacja)
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.onchange = (e: any) => {
-            const file = e.target.files[0];
-            if (file) handleFile(file);
-        };
-        input.click();
-    } else {
-        alert("Tryb Chmury aktywowany. Czekam na połączenie z API.");
-    }
+    // Lokalny dialog wyboru pliku (zawsze tryb lokalny — Gemma 4)
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,application/pdf';
+    input.onchange = (e: any) => {
+      const file = e.target.files?.[0];
+      if (file) handleFile(file);
+    };
+    input.click();
   };
 
   return (
@@ -150,30 +145,15 @@ export const InputArea: React.FC<InputAreaProps> = ({ onGenerate, isGenerating, 
                         <span>Skanuj Podświadomość</span>
                     </button>
 
-                    {/* ✨ Alchemik YouTube + Toggle */}
-                    <div className="flex flex-col items-center gap-3">
-                        <button 
-                            type="button"
-                            onClick={handleAlchemikClick}
-                            className="w-full flex flex-col items-center justify-center gap-3 p-4 bg-[#0c0e16]/60 backdrop-blur-md border border-gold/30 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-300 hover:scale-105 active:scale-95 shadow-gold/20 text-gold"
-                        >
-                            <Sparkles className="w-6 h-6" />
-                            <span>Alchemik YouTube</span>
-                        </button>
-                        
-                        {/* Local/Cloud Toggle integrated with Alchemik */}
-                        <div className="flex items-center gap-2 bg-slate-900/80 p-1 rounded-lg border border-white/5 w-full justify-center">
-                            <span className={`text-[8px] font-bold uppercase tracking-tighter ${!isLocalUpload ? 'text-cyan-400' : 'text-zinc-600'}`}>Cloud</span>
-                            <button 
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); setIsLocalUpload(!isLocalUpload); }}
-                                className="relative w-8 h-4 bg-slate-800 rounded-full border border-white/10 p-0.5"
-                            >
-                                <div className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${isLocalUpload ? 'translate-x-4 bg-[#c9953a]' : 'translate-x-0 bg-cyan-500'}`}></div>
-                            </button>
-                            <span className={`text-[8px] font-bold uppercase tracking-tighter ${isLocalUpload ? 'text-[#c9953a]' : 'text-zinc-600'}`}>Local (F:)</span>
-                        </div>
-                    </div>
+                    {/* ✨ Alchemik — lokalny (Gemma 4) */}
+                    <button
+                        type="button"
+                        onClick={handleAlchemikClick}
+                        className="flex flex-col items-center justify-center gap-3 p-4 bg-[#0c0e16]/60 backdrop-blur-md border border-amber-500/30 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-300 hover:scale-105 active:scale-95 text-amber-400"
+                    >
+                        <Sparkles className="w-6 h-6" />
+                        <span>Alchemik Pliku</span>
+                    </button>
 
                     {/* 💾 Przybij Pieczęć */}
                     <button 

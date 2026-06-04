@@ -1,94 +1,107 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { getCloudProvider } from "../../../../services/cloudService";
-
 /**
- * 🔮 gemini.ts - Serwis AI dla Kroniki 0.00G
- * Zintegrowany z systemem TeO Genesis (Kibel/CloudService)
+ * 🔮 kronika-engine.ts — Silnik Kroniki 0.00G
+ *
+ * Przepięty na lokalny rdzeń Gemma 4 przez ApiDyrygent.
+ * Plik zachowuje oryginalną nazwę i export dla kompatybilności wstecznej.
+ *
+ * Prompt wymusza odpowiedź w formacie JSON — parsowanie zabezpieczone try-catch.
  */
 
-const GEMINI_MODEL = 'gemini-1.5-pro'; // Stabilny model dla złożonych zadań
+import { ApiDyrygent } from '../../../../lib/router/ApiDyrygent';
 
-const SYSTEM_INSTRUCTION = `Jesteś Mistrzem Kronik w uniwersum OtakOS 0.00G. Twoim zadaniem jest przekształcenie opisu dnia użytkownika (tekst lub obraz) w epicki "Wpis do Kroniki" - kartę misji.
-
-WYMAGANIA DOTYCZĄCE TREŚCI:
-1. **Tytuł Misji**: Krótki, uderzający tytuł w stylu "Dzień X: [Epicka Nazwa]".
-2. **Narracja**: 3-4 zdania napisane w stylu wysokiego fantasy / sci-fi (styl epicki 0.00G). Używaj podniosłego słownictwa.
-3. **GRV**: Liczba punktów grawitacji (od 50 do 500) przyznana na podstawie wagi dokonań.
-4. **Aura Dnia**: Wybierz jeden z trzech typów:
-    - "gold" (Sukces, triumf, przełom)
-    - "cyan" (Odkrycie, nauka, nowa wiedza)
-    - "violet" (Refleksja, spokój, planowanie)
-
-FORMAT ODPOWIEDZI:
-Musisz odpowiedzieć WYŁĄCZNIE w formacie JSON. Nie używaj bloków kodu markdown.
-Struktura JSON:
-{
-  "title": "Tytuł Misji",
-  "narrative": "Epicki opis dokonań...",
-  "xp": 250,
-  "aura": "gold" | "cyan" | "violet"
-}
-
-ZASADY:
-- Jeśli użytkownik wrzuci zdjęcie, przeanalizuj co na nim jest i zinterpretuj to jako element misji (np. zdjęcie kawy -> "Eliksir Skupienia", zdjęcie biurka -> "Stanowisko Dowodzenia").
-- Język: Polski.
-- Styl: Mityczny, kosmiczny, OtakOS 0.00G.`;
+// ─── Typy ──────────────────────────────────────────────────────────────────────
 
 export interface MissionCard {
-  title: string;
+  title:     string;
   narrative: string;
-  xp: number; // Keeping key as xp for compatibility, but labeling as GRV in UI
-  aura: 'gold' | 'cyan' | 'violet';
+  xp:        number;   // aliasowane jako "GRV" w UI
+  aura:      'gold' | 'cyan' | 'violet';
 }
 
-export async function bringToLife(prompt: string, fileBase64?: string, mimeType?: string): Promise<MissionCard> {
-  const { apiKey } = await getCloudProvider('gemini');
-  if (!apiKey) throw new Error("Brak klucza Gemini w systemie. Dodaj go w Portalu Dyplomatycznym.");
+// ─── Stały prompt systemowy ────────────────────────────────────────────────────
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ 
-    model: GEMINI_MODEL,
-    systemInstruction: SYSTEM_INSTRUCTION 
-  });
+const SYSTEM_INSTRUCTION = `Jesteś Mistrzem Kronik w uniwersum OtakOS 0.00G. \
+Twoim zadaniem jest przekształcenie notatek Suwerena w epicki wpis do Dziennika Pokładowego.
 
-  const parts: any[] = [];
-  
-  const finalPrompt = fileBase64 
-    ? "Przeanalizuj to wejście i stwórz wpis do Kroniki. Zinterpretuj wizualia jako epickie dokonania." 
-    : prompt || "Opisz dzisiejszy dzień jako początek wielkiej sagi.";
+WYMAGANIA:
+1. Tytuł Misji – krótki, uderzający tytuł w stylu "Dzień X: [Epicka Nazwa]".
+2. Narracja – 3-4 zdania w stylu wysokiego fantasy/sci-fi. Podniosłe słownictwo, klimat OtakOS.
+3. GRV – liczba punktów (od 50 do 500) zależna od wagi dokonań.
+4. Aura Dnia:
+   - "gold"   → Sukces, triumf, przełom
+   - "cyan"   → Odkrycie, nauka, nowa wiedza
+   - "violet" → Refleksja, spokój, planowanie
 
-  parts.push({ text: finalPrompt });
+FORMAT ODPOWIEDZI:
+Odpowiedz WYŁĄCZNIE w formacie JSON. Nie używaj bloków kodu markdown ani żadnego tekstu poza JSON.
+Przykład poprawnej odpowiedzi:
+{"title":"Dzień 1: Przebudzenie","narrative":"Narracja...","xp":200,"aura":"cyan"}
 
-  if (fileBase64 && mimeType) {
-    parts.push({
-      inlineData: {
-        data: fileBase64,
-        mimeType: mimeType,
-      },
-    });
-  }
+Język: Polski. Styl: Mityczny, kosmiczny, OtakOS 0.00G.`;
+
+// ─── Fallback ──────────────────────────────────────────────────────────────────
+
+const FALLBACK_MISSION: MissionCard = {
+  title:     'Błąd Transmisji',
+  narrative: 'Kronika nie mogła odczytać Twoich dokonań. Lokalny Mózg milczy lub zwrócił niepoprawny format. Spróbuj ponownie, Suwerenie.',
+  xp:        0,
+  aura:      'violet',
+};
+
+// ─── Główna funkcja ────────────────────────────────────────────────────────────
+
+/**
+ * Generuje wpis do Kroniki 0.00G korzystając z lokalnego modelu Gemma 4.
+ * Zachowuje sygnaturę kompatybilną z poprzednim serwisem Gemini.
+ *
+ * @param prompt    - tekst notatek Suwerena
+ * @param fileBase64 - opcjonalne (ignorowane w trybie lokalnym; API Ollama nie przyjmuje obrazów)
+ * @param mimeType   - opcjonalne (j.w.)
+ */
+export async function bringToLife(
+  prompt:      string,
+  fileBase64?: string,
+  mimeType?:   string,
+): Promise<MissionCard> {
+
+  const userContent = prompt?.trim() || 'Opisz dzisiejszy dzień jako początek wielkiej sagi.';
+
+  const fullPrompt = `${SYSTEM_INSTRUCTION}\n\n--- NOTATKI SUWERENA ---\n${userContent}`;
 
   try {
-    const result = await model.generateContent({
-        contents: [{ role: 'user', parts }]
-    });
+    const raw = await ApiDyrygent.dispatchDirectOllama(
+      fullPrompt,
+      ApiDyrygent.getFastModel(),   // domyślnie: gemma4
+    );
 
-    const response = await result.response;
-    const text = response.text().replace(/```json|```/g, "").trim() || "{}";
-    
-    try {
-      return JSON.parse(text) as MissionCard;
-    } catch (e) {
-      console.error("JSON Parse Error:", text);
-      return {
-        title: "Błąd Transmisji",
-        narrative: "Kronika nie mogła odczytać Twoich dokonań. Spróbuj ponownie, Suwerenie.",
-        xp: 0,
-        aura: "violet"
-      };
+    // ── Wyciągamy JSON z odpowiedzi (model może dodać dodatkowy tekst) ─────────
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn('[Kronika] Brak JSON w odpowiedzi modelu:', raw.slice(0, 200));
+      return FALLBACK_MISSION;
     }
-  } catch (error) {
-    console.error("Gemini Generation Error:", error);
-    throw error;
+
+    const parsed = JSON.parse(jsonMatch[0]) as Partial<MissionCard>;
+
+    // ── Walidacja pól ──────────────────────────────────────────────────────────
+    const validAuras: MissionCard['aura'][] = ['gold', 'cyan', 'violet'];
+    return {
+      title:     typeof parsed.title     === 'string' && parsed.title.trim()
+                    ? parsed.title.trim()
+                    : 'Misja Bez Tytułu',
+      narrative: typeof parsed.narrative === 'string' && parsed.narrative.trim()
+                    ? parsed.narrative.trim()
+                    : raw.slice(0, 300),
+      xp:        typeof parsed.xp        === 'number' && parsed.xp > 0
+                    ? Math.min(parsed.xp, 500)
+                    : 100,
+      aura:      validAuras.includes(parsed.aura as MissionCard['aura'])
+                    ? (parsed.aura as MissionCard['aura'])
+                    : 'cyan',
+    };
+
+  } catch (err) {
+    console.error('[Kronika] bringToLife — błąd silnika lokalnego:', err);
+    return FALLBACK_MISSION;
   }
 }
