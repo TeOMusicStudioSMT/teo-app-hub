@@ -336,9 +336,53 @@ const KatedraChat: React.FC = () => {
     const [showScrollBadge, setShowScrollBadge] = useState(false);
 
     // ── Szablon Rady ───────────────────────────────────────────────
-    const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
-    const [templateVision,      setTemplateVision]      = useState('');
-    const [templateContext,     setTemplateContext]      = useState('');
+    const [isTemplateModalOpen,   setIsTemplateModalOpen]   = useState(false);
+    const [templateVision,        setTemplateVision]        = useState('');
+    const [templateContext,       setTemplateContext]        = useState('');
+    const [isAutoContextLoading,  setIsAutoContextLoading]  = useState(false);
+
+    // Quick tags — klocki technologiczne
+    const QUICK_TAGS = [
+        'React', 'TypeScript', 'Tailwind', 'Framer Motion', 'Jotai',
+        'visualizerStore.ts', 'KatedraOrbita.tsx', 'KatedraChat.tsx',
+        'wiesio-bridge.js', 'ApiDyrygent.ts', 'AudioContext', 'Vite',
+        'ScenographyManager.tsx', 'store/', 'components/special/',
+    ] as const;
+
+    const appendTag = useCallback((tag: string) => {
+        setTemplateContext(prev => {
+            const base = prev.trim();
+            if (!base) return tag;
+            if (base.split(/,\s*/).some(t => t.trim() === tag)) return prev; // bez duplikatów
+            return `${base}, ${tag}`;
+        });
+    }, []);
+
+    const fetchAutoContext = useCallback(async () => {
+        const vision = templateVision.trim();
+        if (!vision || isAutoContextLoading) return;
+
+        setIsAutoContextLoading(true);
+        setTemplateContext('⏳ Analizuję...');
+
+        try {
+            const prompt =
+                `Jesteś inżynierem systemu. Użytkownik chce zbudować: '${vision}'. ` +
+                `Wymień w jednym krótkim zdaniu (po przecinku) tylko kluczowe technologie ` +
+                `(React, Tailwind itp.) oraz prawdopodobne pliki systemu (np. components/...), ` +
+                `które będą do tego potrzebne. Bez wstępów, bez wyjaśnień — sama lista.`;
+
+            const result = await ApiDyrygent.dispatchDirectOllama(
+                prompt,
+                ApiDyrygent.getFastModel(),
+            );
+            setTemplateContext(result.trim());
+        } catch {
+            setTemplateContext(''); // wyczyść placeholder przy błędzie
+        } finally {
+            setIsAutoContextLoading(false);
+        }
+    }, [templateVision, isAutoContextLoading]);
 
     /** Aktualizuj `isAtBottom` przy każdym scroll evencie kontenera */
     const handleScroll = useCallback(() => {
@@ -1282,20 +1326,67 @@ const KatedraChat: React.FC = () => {
 
                         {/* Pole 2: Kontekst */}
                         <div className="flex flex-col gap-1.5">
-                            <label className="text-xs font-semibold text-cyan-400 tracking-wide uppercase">
-                                Kontekst Technologiczny
-                            </label>
+                            {/* Nagłówek z przyciskiem Auto-Kontekst */}
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-semibold text-cyan-400 tracking-wide uppercase">
+                                    Kontekst Technologiczny
+                                </label>
+                                <button
+                                    onClick={fetchAutoContext}
+                                    disabled={!templateVision.trim() || isAutoContextLoading}
+                                    title="Użyj lokalnego AI (gemma4) żeby wykryć kontekst automatycznie"
+                                    className="flex items-center gap-1 px-2 py-0.5
+                                               text-xs text-violet-300 hover:text-violet-100
+                                               border border-violet-500/40 hover:border-violet-400/70
+                                               bg-violet-900/30 hover:bg-violet-800/50
+                                               rounded-md transition-all duration-200
+                                               disabled:opacity-40 disabled:cursor-not-allowed
+                                               shadow-[0_0_8px_rgba(139,92,246,0.2)]"
+                                >
+                                    {isAutoContextLoading
+                                        ? <><span className="animate-spin inline-block">⟳</span> Analizuję...</>
+                                        : <>🪄 Auto-Kontekst</>
+                                    }
+                                </button>
+                            </div>
+
+                            {/* Textarea kontekstu */}
                             <textarea
-                                value={templateContext}
-                                onChange={e => setTemplateContext(e.target.value)}
+                                value={isAutoContextLoading ? '⏳ Analizuję...' : templateContext}
+                                onChange={e => !isAutoContextLoading && setTemplateContext(e.target.value)}
                                 placeholder="np. React, Tailwind, store/visualizerStore.ts, components/KatedraOrbita.tsx..."
                                 rows={3}
-                                className="w-full px-3 py-2 bg-slate-800 border border-slate-600
-                                           focus:border-cyan-500/70 rounded-lg text-slate-200
-                                           placeholder-slate-500 text-sm resize-none
-                                           focus:outline-none transition-colors"
+                                readOnly={isAutoContextLoading}
+                                className={`w-full px-3 py-2 bg-slate-800 rounded-lg text-sm resize-none
+                                           focus:outline-none transition-colors
+                                           ${isAutoContextLoading
+                                               ? 'border border-violet-500/50 text-violet-300/60 italic cursor-wait'
+                                               : 'border border-slate-600 focus:border-cyan-500/70 text-slate-200 placeholder-slate-500'
+                                           }`}
                             />
-                            <p className="text-xs text-slate-600">Pliki, biblioteki, kontekst — czego dotyczy zadanie?</p>
+
+                            {/* Quick Tags — klocki technologiczne */}
+                            <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                {QUICK_TAGS.map(tag => (
+                                    <button
+                                        key={tag}
+                                        onClick={() => appendTag(tag)}
+                                        title={`Dodaj "${tag}" do kontekstu`}
+                                        className="px-2 py-0.5 text-[10px] font-mono
+                                                   bg-slate-800 hover:bg-slate-700
+                                                   border border-slate-600/60 hover:border-cyan-500/50
+                                                   text-slate-400 hover:text-cyan-300
+                                                   rounded-md transition-all duration-150
+                                                   leading-relaxed"
+                                    >
+                                        {tag}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <p className="text-xs text-slate-600">
+                                Kliknij tag lub użyj 🪄 Auto-Kontekst — możesz też wpisać ręcznie.
+                            </p>
                         </div>
 
                         {/* Przyciski */}
