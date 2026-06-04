@@ -1,108 +1,90 @@
 /**
  * 📜 KronikaGenerator — Moduł Dziennika Pokładowego 0.00G
  *
- * Silnik: Gemma 4 (lokalny, przez ApiDyrygent.dispatchDirectOllama)
- * Zapis: Wiesław /api/bridge/execute → WRITE_FILE → _AntiGravity_Wymiar/Kronika/
+ * Silnik:     Gemma 4 (lokalny, przez ApiDyrygent.dispatchDirectOllama)
+ * Stan:       Jotai atomWithStorage → kronika_history w localStorage (trwały po F5)
+ * Zapis:      Wiesław /api/bridge/execute → WRITE_FILE → _AntiGravity_Wymiar/Kronika/
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { InputArea } from './components/InputArea';
+import { useAtom, useAtomValue } from 'jotai';
+import { InputArea }   from './components/InputArea';
 import { LivePreview } from './components/LivePreview';
-import { Creation } from './components/types';
+import { Creation }    from './components/types';
 import { bringToLife } from './services/gemini';
+import {
+  kronikaHistoryAtom,
+  totalGrvAtom,
+} from '../../../store/kronikaStore';
 
 const WIESLAW_URL = 'http://127.0.0.1:3001';
 
-// ─── Zapis fizyczny przez Wiesława ─────────────────────────────────────────────
+// ─── Starter wpis (wyświetlany gdy baza jest pusta) ───────────────────────────
 
-/**
- * Materializuje wpis do pliku JSON w _AntiGravity_Wymiar/Kronika/
- * przez akcję WRITE_FILE Wiesława.
- */
+const STARTER_ENTRY: Creation = {
+  id:        'ex-0',
+  name:      'Początek Sagi',
+  mission: {
+    title:     'Dzień 0: Przebudzenie Suwerena',
+    narrative: 'W mroku kosmicznej pustki narodziła się nowa świadomość. Twoje pierwsze kroki w Kronice 0.00G zostały odnotowane przez gwiazdy.',
+    xp:        100,
+    aura:      'cyan',
+  },
+  timestamp: new Date('2026-01-01T00:00:00.000Z'),
+};
+
+// ─── Fizyczny zapis przez Wiesława ────────────────────────────────────────────
+
 const sendToWieslaw = async (kreacja: Creation): Promise<void> => {
-  const timestamp = kreacja.timestamp instanceof Date
+  const ts = kreacja.timestamp instanceof Date
     ? kreacja.timestamp.toISOString().replace(/[:.]/g, '-')
     : new Date().toISOString().replace(/[:.]/g, '-');
 
-  const filename = `Kronika/wpis_${timestamp}_${kreacja.id.slice(0, 8)}.json`;
-
-  const payload = {
-    action:  'WRITE_FILE',
-    payload: {
-      filename,
-      content:  JSON.stringify(kreacja, null, 2),
-      encoding: 'utf-8',
-    },
-  };
+  const filename = `Kronika/wpis_${ts}_${kreacja.id.slice(0, 8)}.json`;
 
   try {
     const res = await fetch(`${WIESLAW_URL}/api/bridge/execute`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload),
+      body: JSON.stringify({
+        action:  'WRITE_FILE',
+        payload: {
+          filename,
+          content:  JSON.stringify(kreacja, null, 2),
+          encoding: 'utf-8',
+        },
+      }),
     });
     const data = await res.json();
     if (data.success) {
-      console.log(`[Kronika] ✅ Wpis zmaterializowany: ${data.filePath ?? filename}`);
+      console.log(`[Kronika] ✅ Zmaterializowany: ${data.filePath ?? filename}`);
     } else {
       console.warn('[Kronika] ⚠️ Wiesław nie zapisał wpisu:', data.message);
     }
   } catch (err) {
-    console.error('[Kronika] ❌ WRITE_FILE — połączenie z Wiesławem nieudane:', err);
+    console.error('[Kronika] ❌ WRITE_FILE nieudany:', err);
   }
 };
 
 // ─── Komponent ─────────────────────────────────────────────────────────────────
 
 const KronikaGenerator: React.FC = () => {
+  // ── Trwały stan (Jotai atomWithStorage → localStorage) ──────────────────────
+  const [history,   setHistory]   = useAtom(kronikaHistoryAtom);
+  const totalGrv                  = useAtomValue(totalGrvAtom);
+
+  // ── Stan lokalny ─────────────────────────────────────────────────────────────
   const [activeCreation, setActiveCreation] = useState<Creation | null>(null);
   const [isGenerating,   setIsGenerating]   = useState(false);
-  const [history,        setHistory]        = useState<Creation[]>([]);
   const importInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Wczytaj historię z localStorage ─────────────────────────────────────────
-
+  // ── Starter wpis przy pierwszym uruchomieniu (gdy baza pusta) ────────────────
   useEffect(() => {
-    const saved = localStorage.getItem('kronika_history');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        const loaded: Creation[] = parsed.map((item: any) => ({
-          ...item,
-          timestamp: new Date(item.timestamp),
-        }));
-        setHistory(loaded);
-        return;
-      } catch (e) {
-        console.error('[Kronika] Błąd odczytu historii:', e);
-      }
+    if (history.length === 0) {
+      setHistory([STARTER_ENTRY]);
     }
-
-    // Przykładowy wpis startowy
-    setHistory([{
-      id:        'ex-1',
-      name:      'Początek Sagi',
-      mission: {
-        title:     'Dzień 0: Przebudzenie Suwerena',
-        narrative: 'W mroku kosmicznej pustki narodziła się nowa świadomość. Twoje pierwsze kroki w Kronice 0.00G zostały odnotowane przez gwiazdy.',
-        xp:        100,
-        aura:      'cyan',
-      },
-      timestamp: new Date(),
-    }]);
-  }, []);
-
-  // ── Zapisuj historię w localStorage ─────────────────────────────────────────
-
-  useEffect(() => {
-    if (history.length > 0) {
-      try {
-        localStorage.setItem('kronika_history', JSON.stringify(history));
-      } catch (e) {
-        console.warn('[Kronika] localStorage pełne:', e);
-      }
-    }
-  }, [history]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // tylko przy montowaniu
 
   // ── Konwersja pliku do Base64 ────────────────────────────────────────────────
 
@@ -135,25 +117,27 @@ const KronikaGenerator: React.FC = () => {
         mimeType    = file.type.toLowerCase();
       }
 
-      // ── Lokalny silnik Gemma 4 ─────────────────────────────────────────────
       console.log('[Kronika] 🧠 Generuję wpis przez lokalny silnik Gemma 4...');
       const mission = await bringToLife(promptText, imageBase64, mimeType);
 
       const newCreation: Creation = {
         id:            crypto.randomUUID(),
-        name:          file ? file.name : promptText.slice(0, 40) || 'Nowy Wpis',
+        name:          file ? file.name : (promptText.slice(0, 40) || 'Nowy Wpis'),
         mission,
-        originalImage: imageBase64 && mimeType
-                          ? `data:${mimeType};base64,${imageBase64}`
-                          : undefined,
+        originalImage: (imageBase64 && mimeType)
+                         ? `data:${mimeType};base64,${imageBase64}`
+                         : undefined,
         timestamp:     new Date(),
       };
 
       setActiveCreation(newCreation);
+      // atomWithStorage automatycznie persystuje do localStorage
       setHistory(prev => [newCreation, ...prev]);
 
-      // ── Fizyczny zapis przez Wiesława ──────────────────────────────────────
-      await sendToWieslaw(newCreation);
+      // Fizyczny zapis pliku przez Wiesława (fire-and-forget)
+      sendToWieslaw(newCreation).catch(err =>
+        console.warn('[Kronika] Wiesław niedostępny, wpis żyje w localStorage:', err)
+      );
 
     } catch (error) {
       console.error('[Kronika] Błąd generowania:', error);
@@ -163,11 +147,9 @@ const KronikaGenerator: React.FC = () => {
     }
   };
 
-  // ── Import / Export ──────────────────────────────────────────────────────────
+  // ── Import JSON ───────────────────────────────────────────────────────────────
 
-  const handleReset           = () => { setActiveCreation(null); setIsGenerating(false); };
-  const handleSelectCreation  = (c: Creation) => setActiveCreation(c);
-  const handleImportClick     = () => importInputRef.current?.click();
+  const handleImportClick = () => importInputRef.current?.click();
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -195,6 +177,9 @@ const KronikaGenerator: React.FC = () => {
     };
     reader.readAsText(file);
   };
+
+  const handleReset          = () => { setActiveCreation(null); setIsGenerating(false); };
+  const handleSelectCreation = (c: Creation) => setActiveCreation(c);
 
   const isFocused = !!activeCreation || isGenerating;
 
@@ -231,19 +216,31 @@ const KronikaGenerator: React.FC = () => {
           </div>
         </div>
 
-        <div className="pb-6 mt-auto flex flex-col items-center gap-4">
-          {/* Przycisk importu */}
+        {/* Stopka z GRV i przyciskiem importu */}
+        <div className="pb-6 mt-auto flex flex-col items-center gap-3">
+          {/* Licznik GRV */}
+          <div className="flex items-center gap-3 px-4 py-2 bg-zinc-900/40 border border-white/5 rounded-xl">
+            <span className="text-[9px] font-mono uppercase tracking-[0.3em] text-zinc-600">
+              Łączne GRV
+            </span>
+            <span className="text-sm font-bold text-[#c9953a] font-mono">
+              {totalGrv.toLocaleString('pl-PL')}
+            </span>
+            <span className="text-[9px] font-mono text-zinc-700 uppercase tracking-widest">
+              / {history.length} wpisów
+            </span>
+          </div>
+
           <button
             onClick={handleImportClick}
             className="text-[9px] font-mono uppercase tracking-[0.4em] text-zinc-600 hover:text-zinc-400 transition-colors"
           >
             ⬆ Importuj wpis z pliku .json
           </button>
-          <div className="flex flex-col items-center gap-1 opacity-40">
-            <span className="text-zinc-700 text-[8px] font-mono uppercase tracking-[0.5em]">
-              Kronika 0.00G // Silnik: Gemma 4 // Lokalny
-            </span>
-          </div>
+
+          <span className="text-zinc-800 text-[8px] font-mono uppercase tracking-[0.5em]">
+            Kronika 0.00G // Silnik: Gemma 4 // Lokalny
+          </span>
         </div>
       </div>
 

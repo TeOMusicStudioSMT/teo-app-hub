@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Clock, ArrowRight, Sparkles, Image, ArrowUpDown, IdCard } from 'lucide-react';
+import React, { useState, useMemo, memo, useCallback } from 'react';
+import { Clock, Sparkles, Image, ArrowUpDown, IdCard } from 'lucide-react';
 import { type Creation } from './types';
 import { type MissionCard } from '../services/gemini';
 
@@ -11,10 +11,90 @@ interface CreationHistoryProps {
   selectedId?: string;
 }
 
+// ─── CreationCard — memoizowana karta wpisu ───────────────────────────────────
+// React.memo zapobiega re-renderowi gdy lista się powiększa, a dana karta
+// nie zmieniła swoich danych (id, mission, isSelected).
+
+interface CreationCardProps {
+  item:       Creation;
+  isSelected: boolean;
+  onSelect:   (c: Creation) => void;
+  innerRef?:  (el: HTMLButtonElement | null) => void;
+}
+
+const CreationCard = memo<CreationCardProps>(({ item, isSelected, onSelect, innerRef }) => {
+  const aura = item.mission?.aura || 'violet';
+
+  const auraColors = {
+    gold:   'border-[#c9953a]/30 text-[#c9953a]',
+    cyan:   'border-[#00e5ff]/30 text-[#00e5ff]',
+    violet: 'border-[#a78bfa]/30 text-[#a78bfa]',
+  };
+
+  return (
+    <button
+      ref={innerRef}
+      onClick={() => onSelect(item)}
+      className={`
+        group flex-shrink-0 relative flex flex-col text-left w-56 h-32
+        ${isSelected
+          ? 'bg-[#0c0e16] border-opacity-100 ring-1 ring-inset ring-white/10'
+          : 'bg-[#0c0e16]/50 border-opacity-30'
+        }
+        hover:bg-[#0c0e16]/80
+        border ${auraColors[aura]}
+        rounded-xl transition-all duration-300 overflow-hidden
+        hover:scale-[1.02] hover:shadow-2xl hover:shadow-black
+        ${isSelected ? 'scale-[1.02] shadow-xl shadow-black' : ''}
+      `}
+    >
+      <div className="p-4 flex flex-col h-full">
+        <div className="flex items-start justify-between mb-2">
+          <div className={`p-1.5 bg-black/50 rounded-lg border ${auraColors[aura]} transition-colors`}>
+            {item.originalImage ? (
+              <Image className="w-4 h-4" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
+          </div>
+          <span className="text-[9px] font-mono text-zinc-600 group-hover:text-zinc-400 uppercase tracking-widest">
+            {item.timestamp.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' })}
+          </span>
+        </div>
+
+        <div className="mt-auto">
+          <h3 className="text-sm font-bold text-zinc-200 group-hover:text-white truncate mb-1">
+            {item.mission?.title || item.name}
+          </h3>
+          <div className="flex items-center justify-between">
+            <span className={`text-[10px] font-mono uppercase tracking-widest ${auraColors[aura]}`}>
+              {item.mission?.xp || 0} GRV
+            </span>
+            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <span className="text-[9px] text-zinc-500 uppercase tracking-widest">Dossier</span>
+              <IdCard className="w-3 h-3 text-zinc-500" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Aura Glow */}
+      <div className={`absolute -bottom-8 -right-8 w-16 h-16 rounded-full blur-2xl opacity-20 bg-current ${auraColors[aura]}`} />
+    </button>
+  );
+});
+
+CreationCard.displayName = 'CreationCard';
+
+// ─── CreationHistory ──────────────────────────────────────────────────────────
+
 export const CreationHistory: React.FC<CreationHistoryProps> = ({ history, onSelect, selectedId }) => {
   const [sortBy, setSortBy] = useState<SortOption>('date-desc');
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
-  const itemRefs = React.useRef<Map<string, HTMLButtonElement>>(new Map());
+  const itemRefs           = React.useRef<Map<string, HTMLButtonElement>>(new Map());
+
+  // Stabilna referencja callbacku — nie powoduje re-mountu CreationCard
+  const handleSelect = useCallback((c: Creation) => onSelect(c), [onSelect]);
 
   const sortedHistory = useMemo(() => {
     return [...history].sort((a, b) => {
@@ -56,12 +136,6 @@ export const CreationHistory: React.FC<CreationHistoryProps> = ({ history, onSel
   }, [history]);
 
   if (history.length === 0) return null;
-
-  const auraColors = {
-    gold: 'border-[#c9953a]/30 text-[#c9953a]',
-    cyan: 'border-[#00e5ff]/30 text-[#00e5ff]',
-    violet: 'border-[#a78bfa]/30 text-[#a78bfa]'
-  };
 
   const maxAuraCount = Math.max(auraStats.gold, auraStats.cyan, auraStats.violet, 1);
 
@@ -114,62 +188,18 @@ export const CreationHistory: React.FC<CreationHistoryProps> = ({ history, onSel
         ref={scrollContainerRef}
         className="flex overflow-x-auto space-x-4 pb-4 px-2 scrollbar-hide"
       >
-        {sortedHistory.map((item) => {
-          const aura = item.mission?.aura || 'violet';
-          const isSelected = item.id === selectedId;
-          return (
-            <button
-              key={item.id}
-              ref={(el) => {
-                if (el) itemRefs.current.set(item.id, el);
-                else itemRefs.current.delete(item.id);
-              }}
-              onClick={() => onSelect(item)}
-              className={`
-                group flex-shrink-0 relative flex flex-col text-left w-56 h-32 
-                ${isSelected ? 'bg-[#0c0e16] border-opacity-100 ring-1 ring-inset ring-white/10' : 'bg-[#0c0e16]/50 border-opacity-30'}
-                hover:bg-[#0c0e16]/80 
-                border ${auraColors[aura]} 
-                rounded-xl transition-all duration-300 overflow-hidden
-                hover:scale-[1.02] hover:shadow-2xl hover:shadow-black
-                ${isSelected ? 'scale-[1.02] shadow-xl shadow-black' : ''}
-              `}
-            >
-              <div className="p-4 flex flex-col h-full">
-                <div className="flex items-start justify-between mb-2">
-                  <div className={`p-1.5 bg-black/50 rounded-lg border ${auraColors[aura]} transition-colors`}>
-                      {item.originalImage ? (
-                          <Image className="w-4 h-4" />
-                      ) : (
-                          <Sparkles className="w-4 h-4" />
-                      )}
-                  </div>
-                  <span className="text-[9px] font-mono text-zinc-600 group-hover:text-zinc-400 uppercase tracking-widest">
-                    {item.timestamp.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' })}
-                  </span>
-                </div>
-                
-                <div className="mt-auto">
-                  <h3 className="text-sm font-bold text-zinc-200 group-hover:text-white truncate mb-1">
-                    {item.mission?.title || item.name}
-                  </h3>
-                  <div className="flex items-center justify-between">
-                    <span className={`text-[10px] font-mono uppercase tracking-widest ${auraColors[aura]}`}>
-                        {item.mission?.xp || 0} GRV
-                    </span>
-                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="text-[9px] text-zinc-500 uppercase tracking-widest">Dossier</span>
-                        <IdCard className="w-3 h-3 text-zinc-500" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Subtle Aura Glow */}
-              <div className={`absolute -bottom-8 -right-8 w-16 h-16 rounded-full blur-2xl opacity-20 bg-current ${auraColors[aura]}`}></div>
-            </button>
-          );
-        })}
+        {sortedHistory.map((item) => (
+          <CreationCard
+            key={item.id}
+            item={item}
+            isSelected={item.id === selectedId}
+            onSelect={handleSelect}
+            innerRef={(el) => {
+              if (el) itemRefs.current.set(item.id, el);
+              else    itemRefs.current.delete(item.id);
+            }}
+          />
+        ))}
       </div>
       <style children={`
         .scrollbar-hide::-webkit-scrollbar {

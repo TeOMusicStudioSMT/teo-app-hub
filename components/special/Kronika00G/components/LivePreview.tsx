@@ -87,6 +87,61 @@ const CosmicCoordinates = ({ id }: { id: string }) => {
     );
 };
 
+// ─── Zastępczy Odtwarzacz Wideo ───────────────────────────────────────────────
+// Przeglądarka blokuje lokalne ścieżki C:/ w tagu <video>.
+// Zamiast rzucać błąd, wyświetlamy elegancki placeholder informacyjny.
+
+const VideoPlaceholder: React.FC<{ filePath: string }> = ({ filePath }) => {
+    const fileName = filePath.replace(/\\/g, '/').split('/').pop() ?? filePath;
+
+    return (
+        <div className="mt-10 w-full max-w-2xl px-4">
+            <div
+                className="relative flex flex-col items-center justify-center gap-4
+                           bg-[#06080f] border border-[#00e5ff]/20 rounded-2xl p-8
+                           overflow-hidden"
+            >
+                {/* Skan-linia */}
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#00e5ff]/40 to-transparent animate-pulse" />
+                <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[#00e5ff]/20 to-transparent" />
+
+                {/* Ikona */}
+                <div className="flex items-center justify-center w-16 h-16 rounded-2xl
+                                bg-[#00e5ff]/5 border border-[#00e5ff]/20">
+                    <span className="text-3xl">📼</span>
+                </div>
+
+                {/* Nazwa pliku */}
+                <div className="text-center space-y-1">
+                    <h4 className="text-sm font-bold text-[#00e5ff] tracking-widest uppercase truncate max-w-xs">
+                        {fileName}
+                    </h4>
+                    <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.3em]">
+                        Wideo zarchiwizowane lokalnie
+                    </p>
+                </div>
+
+                {/* Ścieżka */}
+                <div className="w-full bg-black/60 border border-zinc-800 rounded-lg px-4 py-2">
+                    <p className="text-[9px] font-mono text-zinc-600 uppercase tracking-widest mb-1">
+                        Lokalizacja pliku:
+                    </p>
+                    <code className="text-[10px] font-mono text-zinc-400 break-all">
+                        {filePath}
+                    </code>
+                </div>
+
+                {/* Info */}
+                <p className="text-[9px] font-mono text-zinc-700 uppercase tracking-widest text-center max-w-xs">
+                    Bezpośredni odtwarzacz zostanie aktywowany przez Wiesław Bridge w fazie 0.02G
+                </p>
+            </div>
+        </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const LivePreview: React.FC<LivePreviewProps> = ({ creation, history, isLoading, isFocused, onReset, onSelect }) => {
     const [copied, setCopied] = useState(false);
     const [notification, setNotification] = useState<{ show: boolean, message: string } | null>(null);
@@ -321,6 +376,11 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, history, isL
                                     <span className="text-[8px] font-mono text-zinc-800 uppercase tracking-[0.4em]">Kronika 0.00G</span>
                                 </div>
                             </div>
+                        )}
+
+                        {/* Local Video Placeholder — przeglądarka blokuje C:/ w <video> */}
+                        {creation.localVideoPath && (
+                            <VideoPlaceholder filePath={creation.localVideoPath} />
                         )}
                     </div>
                 ) : null}
