@@ -731,15 +731,19 @@ export function KatedraOrbita({
 
                 {/* Left Module Slot — unmounted entirely when PUSTKA */}
                 {layout.left !== 'PUSTKA' && (
-                    <div className="absolute left-0 top-0 h-full z-10 pointer-events-none flex items-center">
+                    <div className="absolute left-0 top-0 w-full h-full z-10 pointer-events-none">
                         {layout.left === 'QUANTUM_EQUALIZER' && (
                             <div className="pointer-events-auto w-full h-full">
                                 <QuantumEqualizer />
                             </div>
                         )}
                         {layout.left === 'MATRIX_RAIN' && (
-                            <div className="pointer-events-auto w-full h-full">
-                                <MatrixRainSkin width={squareSize || 400} colorScheme="cyan" />
+                            <div className="pointer-events-none absolute left-0 top-0 h-full">
+                                <MatrixRainSkin
+                                    width={squareSize || 400}
+                                    height="100%"
+                                    colorScheme="cyan"
+                                />
                             </div>
                         )}
                     </div>
@@ -747,15 +751,19 @@ export function KatedraOrbita({
 
                 {/* Right Module Slot — unmounted entirely when PUSTKA */}
                 {layout.right !== 'PUSTKA' && (
-                    <div className="absolute right-0 top-0 h-full z-10 pointer-events-none flex items-center">
+                    <div className="absolute right-0 top-0 w-full h-full z-10 pointer-events-none">
                         {layout.right === 'QUANTUM_EQUALIZER' && (
                             <div className="pointer-events-auto w-full h-full">
                                 <QuantumEqualizer />
                             </div>
                         )}
                         {layout.right === 'MATRIX_RAIN' && (
-                            <div className="pointer-events-auto w-full h-full">
-                                <MatrixRainSkin width={squareSize || 400} colorScheme="magenta" />
+                            <div className="pointer-events-none absolute right-0 top-0 h-full">
+                                <MatrixRainSkin
+                                    width={squareSize || 400}
+                                    height="100%"
+                                    colorScheme="magenta"
+                                />
                             </div>
                         )}
                     </div>

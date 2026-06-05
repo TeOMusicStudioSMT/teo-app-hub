@@ -1,69 +1,123 @@
-import React from 'react';
-import { motion, useMotionValue } from 'framer-motion';
+/**
+ * 🟩 MatrixRainSkin — Deszcz Matrixa
+ *
+ * NAPRAWKA:
+ *  - Próg resetu cząstek: containerRef.offsetHeight zamiast `height as unknown as number`
+ *    (poprzednia wersja: `'100vh' as unknown as number = NaN` → cząstki nigdy się nie resetowały,
+ *     padały poza ekran i znikały na stałe po ~2 sekundach)
+ *  - Cząstki resetują się na górę zaraz po przekroczeniu dolnej krawędzi kontenera
+ */
+
+import React, { useState, useEffect, useRef } from 'react';
+import type { FC } from 'react';
 
 interface MatrixRainProps {
-  width: number;
-  colorScheme: 'cyan' | 'magenta' | 'gold';
+    width:        number;                      // Szerokość (px) — dla rozmieszczenia cząstek
+    height?:      number | string;             // Wysokość CSS kontenera (string) lub próg resetu (number)
+    colorScheme:  'cyan' | 'magenta' | 'gold';
 }
 
-const MatrixRainSkin: React.FC<MatrixRainProps> = ({ width, colorScheme }) => {
-  // Używamy useMotionValue do dynamicznego generowania efektu glitchu
-  const glitchX = useMotionValue(0);
-  const glitchY = useMotionValue(0);
+interface RainParticle {
+    id:    number;
+    x:     number;
+    y:     number;
+    speed: number;   // px/ms — indywidualne tempo dla każdej cząstki
+    size:  number;   // px — długość strumienia
+    color: string;
+}
 
-  // Definicja elementów deszczu
-  const rainElements = Array.from({ length: 50 }).map((_, index) => ({
-    id: index,
-    // Początkowe, losowo rozmieszczone pozycje w obrębie szerokości ekranu
-    x: Math.random() * width,
-    y: Math.random() * 100,
-    size: Math.random() * 3 + 1, // Rozmiar cząstki
-    color: colorScheme === 'cyan'
-      ? 'rgba(0, 255, 255, 0.8)'
-      : colorScheme === 'magenta'
-      ? 'rgba(255, 0, 255, 0.8)'
-      : 'rgba(255, 215, 0, 0.8)', // gold
-  }));
+const PARTICLE_COUNT = 60;
 
-  // Generowanie animowanych cząstek deszczu
-  const rainParticles = rainElements.map(particle => {
-    // Aktualizacja pozycji na podstawie animacji (glitch) oraz efektu ruchu sinusoidalnego
-    const currentX = particle.x + glitchX.get();
-    const currentY = particle.y + glitchY.get();
+const colorMap: Record<MatrixRainProps['colorScheme'], string> = {
+    cyan:    'rgba(0, 255, 255, 0.85)',
+    magenta: 'rgba(255, 0, 255, 0.85)',
+    gold:    'rgba(255, 215, 0, 0.85)',
+};
 
-    // Dodanie subtelnego, chaotycznego ruchu
-    const offsetX = Math.sin(Date.now() / 500 + particle.id) * 2;
-    const offsetY = Math.cos(Date.now() / 600 + particle.id) * 2;
+const MatrixRainSkin: FC<MatrixRainProps> = ({ width, colorScheme, height = '100%' }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // Pozycje cząstek aktualizowane poza React (rAF nie triggeruje renderów)
+    const particlesRef = useRef<RainParticle[]>([]);
+    const animIdRef    = useRef<number>(0);
+    const lastTimeRef  = useRef<number>(0);
+
+    // Tylko "tick" jest stanem React — minimalizuje re-rendery
+    const [, forceUpdate] = useState(0);
+
+    useEffect(() => {
+        const color = colorMap[colorScheme];
+
+        // ── Inicjalizacja cząstek ──────────────────────────────────────────────
+        const containerH = containerRef.current?.offsetHeight ?? window.innerHeight;
+
+        particlesRef.current = Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
+            id:    i,
+            x:     Math.random() * width,
+            y:     Math.random() * -containerH,   // start rozłożony PONAD kontenerem
+            speed: 0.08 + Math.random() * 0.22,   // px/ms: 80–300 px/s (różne prędkości)
+            size:  Math.random() * 14 + 4,         // 4–18 px
+            color,
+        }));
+
+        lastTimeRef.current = performance.now();
+
+        // ── Pętla animacji ─────────────────────────────────────────────────────
+        const animate = (time: DOMHighResTimeStamp) => {
+            const dt = time - lastTimeRef.current;
+            lastTimeRef.current = time;
+
+            // Próg resetu: rzeczywista wysokość kontenera (lub fallback)
+            const resetH = containerRef.current?.offsetHeight ?? window.innerHeight;
+
+            particlesRef.current = particlesRef.current.map(p => {
+                let newY = p.y + dt * p.speed;
+
+                // ✅ Poprawny reset — gdy cząstka wychodzi poza dół, wraca na górę
+                if (newY > resetH + p.size) {
+                    newY = -(p.size + Math.random() * 40);
+                }
+
+                return { ...p, y: newY };
+            });
+
+            // Jeden setState co klatkę — minimalne koszty React
+            forceUpdate(n => n + 1);
+
+            animIdRef.current = requestAnimationFrame(animate);
+        };
+
+        animIdRef.current = requestAnimationFrame(animate);
+
+        return () => cancelAnimationFrame(animIdRef.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [width, colorScheme]); // reinicjalizuj tylko przy zmianie propów
 
     return (
-      <motion.div
-        key={particle.id}
-        className="absolute top-0 left-0 h-full w-px"
-        style={{
-          left: `${currentX}px`,
-          top: `${currentY}px`,
-          width: '1px',
-          height: `${particle.size}px`,
-          backgroundColor: particle.color,
-          opacity: 0.7,
-          boxShadow: `0 0 2px ${particle.color}`,
-          // Aplikacja glitchu i ruchu
-          transform: `translate(${offsetX}px, ${offsetY}px)`,
-        }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        // Indywidualne opóźnienia dla unikalnego efektu
-        transition
-        duration={1}
-      />
+        <div
+            ref={containerRef}
+            className="relative overflow-hidden"
+            style={{ width: `${width}px`, height }}
+        >
+            {particlesRef.current.map(p => (
+                <div
+                    key={p.id}
+                    style={{
+                        position:        'absolute',
+                        left:            `${p.x}px`,
+                        top:             `${p.y}px`,
+                        width:           '1px',
+                        height:          `${p.size}px`,
+                        backgroundColor: p.color,
+                        boxShadow:       `0 0 4px ${p.color}, 0 0 8px ${p.color}50`,
+                        opacity:         0.75,
+                        borderRadius:    '1px',
+                        pointerEvents:   'none',
+                    }}
+                />
+            ))}
+        </div>
     );
-  });
-
-  return (
-    <div className="relative w-full h-screen overflow-hidden">
-      {rainParticles}
-    </div>
-  );
 };
 
 export default MatrixRainSkin;
