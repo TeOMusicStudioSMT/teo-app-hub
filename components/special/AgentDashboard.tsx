@@ -21,7 +21,11 @@ interface TaskQueueItem {
     title:       string;
     description: string;
     priority:    'CRITICAL' | 'HIGH' | 'LOW';
-    status:      'READY_FOR_REVIEW' | 'IN_PROGRESS' | 'BLOCKED';
+    status:      'PENDING' | 'IN_PROGRESS' | 'READY_FOR_REVIEW' | 'BLOCKED' | 'FAILED';
+    patchFile?:  string;
+    createdAt?:  string;
+    updatedAt?:  string;
+    error?:      string;
 }
 
 interface ChaosEntry {
@@ -87,34 +91,75 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onAction }) => {
                 </span>
             </div>
 
-            {task.status === 'READY_FOR_REVIEW' && onAction && (
-                <div className="mt-3 flex justify-end gap-2">
-                    <button
-                        onClick={() => onAction(task.id, 'approve')}
-                        className="px-3 py-1 text-xs bg-green-600/80 hover:bg-green-500 transition border border-green-400/50 rounded"
-                        style={{ boxShadow: '0 0 8px rgba(0,255,100,0.2)' }}
+            {/* ── Status badges ─────────────────────────────────── */}
+            {task.status === 'PENDING' && (
+                <div className="mt-2 flex items-center gap-2">
+                    <motion.span
+                        animate={{ opacity: [0.4, 1, 0.4] }}
+                        transition={{ repeat: Infinity, duration: 1.4 }}
+                        className="text-[9px] text-slate-400 font-mono uppercase tracking-widest"
                     >
-                        ✅ Zatwierdź Patch
-                    </button>
-                    <button
-                        onClick={() => onAction(task.id, 'reject')}
-                        className="px-3 py-1 text-xs bg-red-800/80 hover:bg-red-700 transition border border-red-400/50 rounded"
-                        style={{ boxShadow: '0 0 8px rgba(255,50,50,0.2)' }}
-                    >
-                        ❌ Odrzuć
-                    </button>
+                        ⏳ OCZEKUJE W KOLEJCE
+                    </motion.span>
                 </div>
             )}
-
             {task.status === 'IN_PROGRESS' && (
-                <p className="mt-2 text-[9px] text-yellow-400 font-mono uppercase tracking-widest animate-pulse">
-                    ⚙️ W toku...
-                </p>
+                <div className="mt-2 flex items-center gap-2">
+                    <motion.span
+                        animate={{ rotate: 360 }}
+                        transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
+                        className="inline-block"
+                    >
+                        ⚙️
+                    </motion.span>
+                    <span className="text-[9px] text-yellow-400 font-mono uppercase tracking-widest animate-pulse">
+                        MECHANIK PRACUJE...
+                    </span>
+                </div>
             )}
             {task.status === 'BLOCKED' && (
                 <p className="mt-2 text-[9px] text-red-400 font-mono uppercase tracking-widest">
                     🔒 ZABLOKOWANE
                 </p>
+            )}
+            {task.status === 'FAILED' && (
+                <div className="mt-2 rounded p-2" style={{ background: 'rgba(180,0,0,0.12)', border: '1px solid rgba(255,50,50,0.2)' }}>
+                    <p className="text-[9px] text-red-400 font-mono uppercase tracking-widest mb-1">
+                        💀 BŁĄD MECHANIKA
+                    </p>
+                    {task.error && (
+                        <p className="text-[9px] text-red-300/70 font-mono leading-relaxed break-all">
+                            {task.error}
+                        </p>
+                    )}
+                </div>
+            )}
+            {task.status === 'READY_FOR_REVIEW' && onAction && (
+                <div className="mt-3">
+                    {task.patchFile && (
+                        <p className="text-[9px] font-mono text-cyan-700 mb-2 truncate"
+                           title={task.patchFile}
+                        >
+                            📄 <span className="text-cyan-600">{task.patchFile}</span>
+                        </p>
+                    )}
+                    <div className="flex justify-end gap-2">
+                        <button
+                            onClick={() => onAction(task.id, 'approve')}
+                            className="px-3 py-1 text-xs bg-green-600/80 hover:bg-green-500 transition border border-green-400/50 rounded"
+                            style={{ boxShadow: '0 0 8px rgba(0,255,100,0.2)' }}
+                        >
+                            ✅ Zatwierdź Patch
+                        </button>
+                        <button
+                            onClick={() => onAction(task.id, 'reject')}
+                            className="px-3 py-1 text-xs bg-red-800/80 hover:bg-red-700 transition border border-red-400/50 rounded"
+                            style={{ boxShadow: '0 0 8px rgba(255,50,50,0.2)' }}
+                        >
+                            ❌ Odrzuć
+                        </button>
+                    </div>
+                </div>
             )}
         </motion.div>
     );
@@ -133,17 +178,33 @@ const SCENARIO_LABELS: Record<string, string> = {
 
 const AgentDashboard: React.FC = () => {
 
-    // ── Statyczne zadania (mock) ──────────────────────────────────────────────
-    const baseTasks = useMemo<TaskQueueItem[]>(() => [
-        { id: 'T-001', title: 'Walidacja Protonowej Wtyczki',   description: 'Testowanie kompatybilności ESM/CJS na poziomie rdzenia. Krytyczny fail.', priority: 'CRITICAL', status: 'READY_FOR_REVIEW' },
-        { id: 'T-002', title: 'Optymalizacja RAM dla Cykli',    description: 'Zredukowanie overheadu cykli predykcji. Niskopriorytetowe usprawnienia.',  priority: 'LOW',      status: 'IN_PROGRESS'      },
-        { id: 'T-003', title: 'Raport Wycieku Świadomości',     description: 'Analiza niepowiązanych fraktali w strumieniach danych Katedry.',           priority: 'HIGH',     status: 'READY_FOR_REVIEW' },
-        { id: 'T-004', title: 'Debugowanie Pętli Czasowej',     description: 'Obserwacja anomalii w strumieniu danych historycznych.',                   priority: 'CRITICAL', status: 'BLOCKED'          },
-    ], []);
-
     // ── Stan dynamiczny ───────────────────────────────────────────────────────
-    const [liveTasks,     setLiveTasks]     = useState<TaskQueueItem[]>(baseTasks);
+    const [liveTasks,     setLiveTasks]     = useState<TaskQueueItem[]>([]);
+    const [queueLoading,  setQueueLoading]  = useState(true);
     const [newTaskIds,    setNewTaskIds]     = useState<Set<string>>(new Set());
+    const queuePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Odczyt kolejki z backendu
+    const fetchQueueTasks = useCallback(async () => {
+        try {
+            const res  = await fetch(`${BRIDGE_URL}/api/mechanic/queue`);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.success) {
+                setLiveTasks(data.tasks as TaskQueueItem[]);
+            }
+        } catch (_) { /* bridge niedostępny — zachowaj poprzedni stan */ }
+    }, []);
+
+    // Polling kolejki co 8 sekund
+    useEffect(() => {
+        setQueueLoading(true);
+        fetchQueueTasks().finally(() => setQueueLoading(false));
+        queuePollRef.current = setInterval(fetchQueueTasks, 8000);
+        return () => {
+            if (queuePollRef.current) clearInterval(queuePollRef.current);
+        };
+    }, [fetchQueueTasks]);
     const [chaosLog,      setChaosLog]       = useState<ChaosEntry[]>([]);
     const [isChaosActive, setIsChaosActive] = useState(false);
     const [showChaosLog,  setShowChaosLog]  = useState(false);
@@ -228,18 +289,26 @@ const AgentDashboard: React.FC = () => {
 
             setChaosLog(prev => [...prev.slice(-49), entry]);
 
-            // Jeśli błąd wychwycony — wstrzyknij task do kolejki
+            // Jeśli błąd wychwycony — enqueue do Mechanika (trwała kolejka)
             if (data.caught && data.taskId) {
-                const faultTask: TaskQueueItem = {
+                const faultTask = {
                     id:          data.taskId,
                     title:       `[FAULT] ${data.errorName ?? 'Error'} — Chaos Injection`,
                     description: data.errorMessage ?? 'Automatyczna detekcja błędu środowiskowego.',
                     priority:    data.errorName === 'TypeError' ? 'CRITICAL' : 'HIGH',
-                    status:      'READY_FOR_REVIEW',
+                    targetFiles: ['TestProxy/wiesio-bridge.ts', 'wiesio-bridge.js'],
                 };
 
-                setLiveTasks(prev => [faultTask, ...prev]);
+                // Wstrzyknij do trwałej kolejki Mechanika
+                await fetch(`${BRIDGE_URL}/api/mechanic/enqueue`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify(faultTask),
+                }).catch(() => {/* non-critical */});
+
                 setNewTaskIds(prev => new Set([...prev, data.taskId!]));
+                // Odśwież widok kolejki
+                setTimeout(fetchQueueTasks, 500);
             }
 
         } catch (err: any) {
@@ -382,18 +451,38 @@ const AgentDashboard: React.FC = () => {
                         </span>
                     </div>
 
-                    <AnimatePresence>
-                        {liveTasks.length > 0 ? (
-                            liveTasks.map(task => (
-                                <TaskCard
-                                    key={task.id}
-                                    task={task}
-                                    isNew={newTaskIds.has(task.id)}
-                                    onAction={handleTaskAction}
+                    <AnimatePresence mode="wait">
+                        {queueLoading && liveTasks.length === 0 ? (
+                            <motion.div
+                                key="queue-loading"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="flex flex-col items-center justify-center py-10 gap-3"
+                            >
+                                <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
+                                    className="w-6 h-6 rounded-full border-2 border-cyan-700 border-t-transparent"
                                 />
-                            ))
+                                <span className="text-[9px] font-mono text-slate-600 uppercase tracking-widest">
+                                    Łączę z Mechanikiem…
+                                </span>
+                            </motion.div>
+                        ) : liveTasks.length > 0 ? (
+                            <motion.div key="queue-tasks">
+                                {liveTasks.map(task => (
+                                    <TaskCard
+                                        key={task.id}
+                                        task={task}
+                                        isNew={newTaskIds.has(task.id)}
+                                        onAction={handleTaskAction}
+                                    />
+                                ))}
+                            </motion.div>
                         ) : (
                             <motion.div
+                                key="queue-empty"
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 className="text-slate-600 p-5 text-xs text-center border border-dashed border-slate-800 rounded-lg mt-4"

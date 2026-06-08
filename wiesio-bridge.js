@@ -19,6 +19,7 @@ const require = createRequire(import.meta.url);
 
 // ── ARCHIWISTA WIEDZY (KnowledgeGraphService) ────────────────────────────────
 import KnowledgeGraphService from './services/KnowledgeGraphService.js';
+import MechanicService       from './services/MechanicService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -2607,6 +2608,39 @@ app.get('/api/kg/nodes', async (req, res) => {
     }
 });
 
+// ── 🔧 MECHANIC — odczyt kolejki dla frontendu ───────────────────────────────
+/**
+ * GET /api/mechanic/queue
+ * Zwraca aktualną zawartość queue.json dla AgentDashboard.
+ */
+app.get('/api/mechanic/queue', async (req, res) => {
+    try {
+        const tasks = await MechanicService.getInstance().getQueue();
+        return res.json({ success: true, tasks, total: tasks.length });
+    } catch (err) {
+        console.error('[Mechanic-API] ❌ GET queue:', err.message);
+        return res.status(500).json({ success: false, tasks: [], message: err.message });
+    }
+});
+
+/**
+ * POST /api/mechanic/enqueue
+ * Ręczne dodanie zadania do kolejki (ciało: { id, title, description, priority, targetFiles }).
+ */
+app.post('/api/mechanic/enqueue', async (req, res) => {
+    try {
+        const task = req.body;
+        const entry = await MechanicService.getInstance().enqueueTask(task);
+        if (!entry) {
+            return res.status(409).json({ success: false, message: 'Zadanie już istnieje w kolejce.' });
+        }
+        return res.json({ success: true, task: entry });
+    } catch (err) {
+        console.error('[Mechanic-API] ❌ POST enqueue:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ── TASK COMPLETION HANDLER ──────────────────────────────────────────────────
 /**
  * NOWA LOGIKA: Zamiast wywoływania processKnowledgeGraph(task),
@@ -2627,6 +2661,8 @@ app.listen(PORT, () => {
     console.log(` 🎵 GET_LOCAL_PLAYLIST | GET /music/* (stream)`);
     console.log(` ⚡ EXEC_OLLAMA_CLI — Lokalny LLM przez Ollama CLI`);
     console.log(` ⬇️ PULL_MODEL — Pobieranie modeli w tle`);
+    console.log(` 🔧 MechanicService — Agent Mechanik (co 3 min)`);
+    console.log(` 🕸️  KnowledgeGraphService — Archiwista Wiedzy`);
     console.log(`================================================`);
     console.log(` 👉 Muzyka: _AntiGravity_Muzyka/`);
     console.log(` 🧠 LLM: POST /api/bridge/execute`);
@@ -2634,5 +2670,18 @@ app.listen(PORT, () => {
     console.log(` 🔵 POST /api/gemini  ← Gemini proxy (SSE)`);
     console.log(` 🎨 MCP_UI_BUILD      ← gotowy do akcji!`);
     console.log(` ⚡ EXEC_SYSTEM — Surowy Terminal (Raw Exec)`);
+    console.log(` 🔧 GET  /api/mechanic/queue`);
+    console.log(` 🔧 POST /api/mechanic/enqueue`);
+    console.log(` 🕸️  GET  /api/kg/nodes`);
+    console.log(` ☢️  POST /api/chaos/inject`);
     console.log(`================================================`);
+
+    // ── 🔧 Agent Mechanik — skan kolejki co 3 minuty ─────────────────────
+    // Lock (_isRunning) w MechanicService gwarantuje brak nakładania wywołań.
+    const MECHANIC_INTERVAL_MS = 180_000; // 3 minuty
+    setInterval(async () => {
+        await MechanicService.getInstance().processPendingTasks();
+    }, MECHANIC_INTERVAL_MS);
+
+    console.log(`[Mechanik] ⏰ Harmonogram: processPendingTasks() co ${MECHANIC_INTERVAL_MS / 1000}s.`);
 });
