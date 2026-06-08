@@ -59,7 +59,8 @@ import { KlaudiuszTerminal } from './KlaudiuszTerminal'; // ← NOWOŚĆ: Alchem
 import { AutobusDashboard } from './AutobusDashboard';  // ← NOWOŚĆ: Magistrala Zdarzeń
 import { WydawnictwoForge } from './WydawnictwoForge';  // ← NOWOŚĆ: Kuźnia Wydawnictwa 0.00G
 import { Rafineria } from './Rafineria';               // ← NOWOŚĆ: Transmutacja WebM → MP4
-import { Play, BrainCircuit, RefreshCw } from 'lucide-react';
+import { Play, BrainCircuit, RefreshCw, Eye, Terminal } from 'lucide-react';
+import AgentDashboard from './AgentDashboard';
 
 
 interface TeODashProps {
@@ -134,6 +135,10 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   const [rawPrompt, setRawPrompt] = useState('');
   const [rawResponse, setRawResponse] = useState('');
   const [isRawThinking, setIsRawThinking] = useState(false);
+
+  // 👁️ Panel Dowodzenia: aktywna zakładka (terminal vs oczy suwerena)
+  type CommandPanelTab = 'terminal' | 'eyes';
+  const [activeCommandPanel, setActiveCommandPanel] = useState<CommandPanelTab>('terminal');
 
   // FFmpeg Wiesio-Spawacz State
   const [videoFormat, setVideoFormat] = useState('YT');
@@ -609,39 +614,103 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
         <WiesioCore />
 
 
-        {/* ⚡ SUROWY TERMINAL (RAW EXEC) */}
-        <div className="bg-slate-950 rounded-xl p-4 border border-cyan-500/30 mt-4 shadow-[0_0_20px_rgba(0,229,255,0.1)]">
-          <label className="text-xs text-amber-400 font-bold flex items-center gap-2 mb-3 tracking-widest uppercase">
-            <span>⚡</span> ⚡ SUROWY TERMINAL (RAW EXEC)
-          </label>
+        {/* ═══════════════════════════════════════════════════════════
+            🎛️ PANEL DOWODZENIA — Zakładki: Terminal | Oczy Suwerena
+            ═══════════════════════════════════════════════════════════ */}
+        <div className="mt-4 rounded-xl overflow-hidden border border-cyan-500/20 shadow-[0_0_24px_rgba(0,229,255,0.08)]">
 
-          <div className="flex gap-2 mb-3">
-            <input
-              type="text"
-              value={rawPrompt}
-              onChange={(e) => setRawPrompt(e.target.value)}
-              placeholder="Wpisz surową komendę terminala Windows..."
-              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-cyan-500 transition-colors"
-              onKeyDown={(e) => e.key === 'Enter' && testRawTerminal()}
-            />
+          {/* ── Belka zakładek ── */}
+          <div className="flex bg-slate-950/90 border-b border-cyan-500/20">
             <button
-              onClick={testRawTerminal}
-              disabled={isRawThinking || !rawPrompt.trim()}
-              className="bg-cyan-900/50 hover:bg-cyan-800/80 text-cyan-400 px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50 border border-cyan-500/30"
+              onClick={() => setActiveCommandPanel('terminal')}
+              className={`
+                flex items-center gap-2 px-5 py-3 text-xs font-bold tracking-widest uppercase transition-all duration-300
+                ${activeCommandPanel === 'terminal'
+                  ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-500/5 shadow-[inset_0_-2px_8px_rgba(251,191,36,0.1)]'
+                  : 'text-slate-500 hover:text-slate-300 border-b-2 border-transparent'
+                }
+              `}
             >
-              {isRawThinking ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}><RefreshCw size={14} /></motion.div> : <Play size={14} />}
-              PYTAJ
+              <Terminal size={12} />
+              ⚡ Surowy Terminal
             </button>
+
+            <button
+              onClick={() => setActiveCommandPanel('eyes')}
+              className={`
+                flex items-center gap-2 px-5 py-3 text-xs font-bold tracking-widest uppercase transition-all duration-300
+                ${activeCommandPanel === 'eyes'
+                  ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5 shadow-[inset_0_-2px_8px_rgba(0,229,255,0.1)]'
+                  : 'text-slate-500 hover:text-slate-300 border-b-2 border-transparent'
+                }
+              `}
+            >
+              <Eye size={12} />
+              👁️ Oczy Suwerena
+            </button>
+
+            {/* Indykator aktywnego panelu */}
+            <div className="flex-1 flex items-center justify-end px-4">
+              <span className="text-[9px] font-mono text-slate-600 uppercase tracking-widest">
+                {activeCommandPanel === 'terminal' ? '⚡ RAW_EXEC' : '👁️ AGENT_VISION'}
+              </span>
+            </div>
           </div>
 
-          {/* Wynik */}
-          <div className="bg-black/50 border border-slate-800 rounded-lg p-3 min-h-[60px] text-xs text-slate-300 whitespace-pre-wrap max-h-[150px] overflow-y-auto custom-scrollbar leading-relaxed">
-            {rawResponse ? (
-              <span className="text-cyan-200">{rawResponse}</span>
-            ) : (
-              <span className="text-slate-600 italic font-mono">Terminal gotowy na Twoją komendę, Suwerenie...</span>
+          {/* ── Zawartość zakładek ── */}
+          <AnimatePresence mode="wait">
+            {activeCommandPanel === 'terminal' && (
+              <motion.div
+                key="terminal"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18 }}
+                className="bg-slate-950 p-4"
+              >
+                <div className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={rawPrompt}
+                    onChange={(e) => setRawPrompt(e.target.value)}
+                    placeholder="Wpisz surową komendę terminala Windows..."
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-amber-500 transition-colors"
+                    onKeyDown={(e) => e.key === 'Enter' && testRawTerminal()}
+                  />
+                  <button
+                    onClick={testRawTerminal}
+                    disabled={isRawThinking || !rawPrompt.trim()}
+                    className="bg-amber-900/40 hover:bg-amber-800/70 text-amber-400 px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50 border border-amber-500/30"
+                  >
+                    {isRawThinking
+                      ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}><RefreshCw size={14} /></motion.div>
+                      : <Play size={14} />
+                    }
+                    PYTAJ
+                  </button>
+                </div>
+
+                <div className="bg-black/60 border border-slate-800 rounded-lg p-3 min-h-[80px] text-xs text-slate-300 whitespace-pre-wrap max-h-[160px] overflow-y-auto custom-scrollbar leading-relaxed font-mono">
+                  {rawResponse
+                    ? <span className="text-amber-200">{rawResponse}</span>
+                    : <span className="text-slate-600 italic">Terminal gotowy na Twoją komendę, Suwerenie...</span>
+                  }
+                </div>
+              </motion.div>
             )}
-          </div>
+
+            {activeCommandPanel === 'eyes' && (
+              <motion.div
+                key="eyes"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18 }}
+              >
+                <AgentDashboard />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 <div> <KatedraChat /> </div>
         {/* INŻYNIERIA WIDEO (FFMPEG) */}
