@@ -16,6 +16,9 @@ const __dirname = path.dirname(__filename);
 // BRIDGE: Aby obsłużyć biblioteki CommonJS w środowisku ESM (jak youtube-transcript 1.0.6)
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
+
+// ── ARCHIWISTA WIEDZY (KnowledgeGraphService) ────────────────────────────────
+const KnowledgeGraphService = require('./services/KnowledgeGraphService');
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -2492,6 +2495,18 @@ app.post('/api/graviton/mint', async (req, res) => {
         return res.status(500).json({ success: false, message: `Błąd Forge: ${err.message}` });
     }
 });
+
+// ── TASK COMPLETION HANDLER ──────────────────────────────────────────────────
+/**
+ * NOWA LOGIKA: Zamiast wywoływania processKnowledgeGraph(task),
+ * emitujemy zdarzenie, które zostanie obsłużone przez wewnętrzną kolejkę Service.
+ */
+function handleTaskCompletion(completedTask) {
+    if (completedTask && completedTask.status === 'DONE') {
+        // DECOUPLING: Zamiast blokować wątek główny, dodajemy zadanie do kolejki Archiwisty.
+        KnowledgeGraphService.getInstance().emitTaskDoneEvent(completedTask);
+    }
+}
 
 app.listen(PORT, () => {
     console.log(`================================================`);
