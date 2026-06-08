@@ -2554,6 +2554,9 @@ app.post('/api/chaos/inject', async (req, res) => {
         errorName = error.name;
         errorMsg  = error.message;
         console.error(`[FAULT CAUGHT]: Wystąpiono symulowanego krytycznego błędu: ${error.name}. System przeżył.`);
+
+        // ── Zamknięcie Pętli: przekaż błąd do Archiwisty (Gemma4 + Graf) ──
+        KnowledgeGraphService.getInstance().emitErrorEvent(error);
     }
 
     // ── Auto-generacja zadania READY_FOR_REVIEW jeśli błąd złapany ─────────
@@ -2580,6 +2583,28 @@ app.post('/api/chaos/inject', async (req, res) => {
         taskId:       caught ? taskId : null,
         timestamp:    new Date().toISOString(),
     });
+});
+
+// ── KNOWLEDGE GRAPH — odczyt dla frontendu ───────────────────────────────────
+/**
+ * GET /api/kg/nodes
+ * Zwraca tablicę węzłów z knowledge_graph.json.
+ * Odczyt przez KGS zapewnia spójność z cache serwisu.
+ */
+app.get('/api/kg/nodes', async (req, res) => {
+    try {
+        const kgs   = KnowledgeGraphService.getInstance();
+        const graph = await kgs._loadGraph();
+        return res.json({
+            success:   true,
+            nodes:     graph.nodes,
+            updatedAt: graph.updatedAt,
+            total:     graph.nodes.length,
+        });
+    } catch (err) {
+        console.error('[KG-READ] ❌', err.message);
+        return res.status(500).json({ success: false, nodes: [], message: err.message });
+    }
 });
 
 // ── TASK COMPLETION HANDLER ──────────────────────────────────────────────────

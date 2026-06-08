@@ -35,6 +35,16 @@ interface ChaosEntry {
     taskId:    string | null;
 }
 
+interface KgNode {
+    id:        string;
+    timestamp: string;
+    errorType: string;
+    errorMsg?: string;
+    insight:   string;
+    status:    string;
+    aiSuccess: boolean;
+}
+
 // ─── Mapa priorytetów → style ──────────────────────────────────────────────────
 
 const PRIORITY_STYLES: Record<TaskQueueItem['priority'], { border: string; bg: string; badge: string }> = {
@@ -138,6 +148,39 @@ const AgentDashboard: React.FC = () => {
     const [isChaosActive, setIsChaosActive] = useState(false);
     const [showChaosLog,  setShowChaosLog]  = useState(false);
 
+    // ── Stan grafu wiedzy (live polling) ─────────────────────────────────────
+    const [kgNodes,     setKgNodes]     = useState<KgNode[]>([]);
+    const [kgUpdatedAt, setKgUpdatedAt] = useState<string | null>(null);
+    const [kgLoading,   setKgLoading]   = useState(false);
+    const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const fetchKgNodes = useCallback(async () => {
+        try {
+            const res  = await fetch(`${BRIDGE_URL}/api/kg/nodes`);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.success) {
+                // Pokaż tylko węzły typu błąd (mają pole insight)
+                const errorNodes: KgNode[] = (data.nodes as KgNode[])
+                    .filter(n => n.insight)
+                    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+                    .slice(0, 20);
+                setKgNodes(errorNodes);
+                setKgUpdatedAt(data.updatedAt ?? null);
+            }
+        } catch (_) { /* bridge niedostępny */ }
+    }, []);
+
+    // Polling co 5 sekund
+    useEffect(() => {
+        setKgLoading(true);
+        fetchKgNodes().finally(() => setKgLoading(false));
+        pollTimerRef.current = setInterval(fetchKgNodes, 5000);
+        return () => {
+            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+        };
+    }, [fetchKgNodes]);
+
     const chaosLogRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll logu
@@ -213,8 +256,11 @@ const AgentDashboard: React.FC = () => {
             }]);
         } finally {
             setIsChaosActive(false);
+            // Odśwież graf po ~3s (czas potrzebny Gemma4 na analizę)
+            setTimeout(fetchKgNodes, 3000);
+            setTimeout(fetchKgNodes, 8000);
         }
-    }, [isChaosActive]);
+    }, [isChaosActive, fetchKgNodes]);
 
     // ─────────────────────────────────────────────────────────────────────────
     return (
@@ -366,69 +412,142 @@ const AgentDashboard: React.FC = () => {
                         [ Knowledge_Graph ] Obszar Obserwacyjny
                     </h2>
 
-                    {/* Placeholder skanera */}
+                    {/* ── Graf Wiedzy — live węzły z knowledge_graph.json ── */}
                     <div
-                        className="flex-1 relative flex items-center justify-center p-8 overflow-hidden rounded-lg"
+                        className="flex-1 flex flex-col rounded-lg overflow-hidden"
                         style={{
-                            background: 'rgba(0,0,0,0.3)',
+                            background: 'rgba(0,0,0,0.35)',
                             border:     '2px solid rgba(0,229,255,0.12)',
-                            boxShadow:  '0 0 20px rgba(0,255,255,0.06)',
+                            boxShadow:  '0 0 20px rgba(0,255,255,0.05)',
                             minHeight:  '180px',
                         }}
                     >
-                        {/* Siatka skanowania */}
-                        <div
-                            className="absolute inset-0 opacity-15 pointer-events-none"
-                            style={{
-                                backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0px, rgba(0,255,255,0.07) 1px, transparent 2px)',
-                                backgroundSize:  '100% 28px',
-                            }}
-                        />
-
-                        <div className="text-center z-10">
-                            <svg
-                                className={`w-12 h-12 mx-auto mb-4 opacity-60 ${isChaosActive ? 'text-red-400 animate-pulse' : 'text-cyan-500'}`}
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                            >
-                                <circle cx="5"  cy="12" r="2" strokeWidth={1.5} />
-                                <circle cx="19" cy="5"  r="2" strokeWidth={1.5} />
-                                <circle cx="19" cy="19" r="2" strokeWidth={1.5} />
-                                <line x1="7"  y1="11" x2="17" y2="6"  strokeWidth={1.5} strokeLinecap="round" />
-                                <line x1="7"  y1="13" x2="17" y2="18" strokeWidth={1.5} strokeLinecap="round" />
-                            </svg>
-
-                            <p className={`text-sm font-mono ${isChaosActive ? 'text-red-300 animate-pulse' : 'text-cyan-200'}`}>
-                                {isChaosActive
-                                    ? '⚡ Chaos injection w toku...'
-                                    : chaosLog.length > 0
-                                        ? `${chaosLog.filter(e => e.caught).length} błędów wychwyconych`
-                                        : 'Archiwista skanuje warstwę kwantową...'
-                                }
-                            </p>
-
-                            {chaosLog.length > 0 && (
-                                <div className="mt-3 flex items-center justify-center gap-4 text-[10px] font-mono">
-                                    <span className="text-green-400">
-                                        🟢 {chaosLog.filter(e => e.survived && !e.caught).length} przeżyte
+                        {/* Nagłówek strefy */}
+                        <div className="flex items-center justify-between px-4 py-2"
+                             style={{ borderBottom: '1px solid rgba(0,229,255,0.1)' }}
+                        >
+                            <span className="text-[9px] font-mono text-cyan-600 uppercase tracking-widest">
+                                Wnioski Archiwisty — Gemma4
+                            </span>
+                            <div className="flex items-center gap-3">
+                                {kgUpdatedAt && (
+                                    <span className="text-[8px] font-mono text-slate-700">
+                                        sync: {new Date(kgUpdatedAt).toLocaleTimeString('pl-PL')}
                                     </span>
-                                    <span className="text-red-400">
-                                        🔴 {chaosLog.filter(e => e.caught).length} wychwycone
-                                    </span>
-                                    <span className="text-slate-500">
-                                        łącznie: {chaosLog.length}
-                                    </span>
+                                )}
+                                {isChaosActive && (
+                                    <motion.span
+                                        animate={{ opacity: [1, 0.3, 1] }}
+                                        transition={{ repeat: Infinity, duration: 0.8 }}
+                                        className="text-[9px] text-red-400 font-mono"
+                                    >
+                                        ⚡ CHAOS AKTYWNY
+                                    </motion.span>
+                                )}
+                                <span className="text-[9px] font-mono text-slate-600">
+                                    {kgNodes.length} węzłów
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Lista węzłów */}
+                        <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+                            {kgLoading && kgNodes.length === 0 ? (
+                                <div className="flex items-center justify-center h-full">
+                                    <motion.p
+                                        animate={{ opacity: [0.4, 1, 0.4] }}
+                                        transition={{ repeat: Infinity, duration: 1.5 }}
+                                        className="text-xs font-mono text-cyan-700"
+                                    >
+                                        Łączę z Archiwistą…
+                                    </motion.p>
                                 </div>
-                            )}
+                            ) : kgNodes.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full gap-3 py-6">
+                                    <svg className="w-10 h-10 text-cyan-900 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <circle cx="5"  cy="12" r="2" strokeWidth={1.5} />
+                                        <circle cx="19" cy="5"  r="2" strokeWidth={1.5} />
+                                        <circle cx="19" cy="19" r="2" strokeWidth={1.5} />
+                                        <line x1="7" y1="11" x2="17" y2="6"  strokeWidth={1.5} strokeLinecap="round" />
+                                        <line x1="7" y1="13" x2="17" y2="18" strokeWidth={1.5} strokeLinecap="round" />
+                                    </svg>
+                                    <p className="text-xs font-mono text-slate-600 text-center">
+                                        Graf wiedzy pusty.<br />
+                                        <span className="text-slate-700">Uruchom ☢️ INICJUJ CHAOS, aby zasilić Archiwistę.</span>
+                                    </p>
+                                </div>
+                            ) : (
+                                <AnimatePresence>
+                                    {kgNodes.map((node) => (
+                                        <motion.div
+                                            key={node.id}
+                                            layout
+                                            initial={{ opacity: 0, y: -8 }}
+                                            animate={{ opacity: 1,  y:  0 }}
+                                            transition={{ duration: 0.25 }}
+                                            className="rounded-lg p-3"
+                                            style={{
+                                                background:  node.aiSuccess
+                                                    ? 'rgba(0,229,255,0.04)'
+                                                    : 'rgba(255,100,0,0.04)',
+                                                border: `1px solid ${node.aiSuccess
+                                                    ? 'rgba(0,229,255,0.15)'
+                                                    : 'rgba(255,100,0,0.2)'}`,
+                                            }}
+                                        >
+                                            {/* Nagłówek węzła */}
+                                            <div className="flex items-start justify-between gap-2 mb-1">
+                                                <span className={`text-[9px] font-bold font-mono px-1.5 py-0.5 rounded ${
+                                                    node.errorType === 'TypeError'      ? 'bg-red-900/50 text-red-400' :
+                                                    node.errorType === 'ReferenceError' ? 'bg-orange-900/50 text-orange-400' :
+                                                    'bg-slate-800 text-slate-400'
+                                                }`}>
+                                                    {node.errorType}
+                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`text-[8px] font-mono ${node.aiSuccess ? 'text-cyan-700' : 'text-orange-800'}`}>
+                                                        {node.aiSuccess ? '🧠 AI' : '⚠️ FALLBACK'}
+                                                    </span>
+                                                    <span className="text-[8px] font-mono text-slate-700">
+                                                        {new Date(node.timestamp).toLocaleTimeString('pl-PL')}
+                                                    </span>
+                                                </div>
+                                            </div>
 
-                            <div className="mt-4 w-40 mx-auto h-1 rounded-full overflow-hidden bg-slate-800">
+                                            {/* Wniosek AI */}
+                                            <p className="text-xs text-slate-300 leading-relaxed mt-1">
+                                                {node.insight}
+                                            </p>
+
+                                            {/* Status */}
+                                            <div className="mt-2 flex items-center gap-1">
+                                                <span className="text-[8px] font-mono text-green-700 uppercase tracking-widest">
+                                                    ✓ {node.status}
+                                                </span>
+                                                <span className="text-[8px] font-mono text-slate-800">
+                                                    #{node.id}
+                                                </span>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </AnimatePresence>
+                            )}
+                        </div>
+
+                        {/* Pasek statusu */}
+                        <div className="px-4 py-2 flex items-center gap-3"
+                             style={{ borderTop: '1px solid rgba(0,229,255,0.08)' }}
+                        >
+                            <div className="flex-1 h-0.5 rounded-full overflow-hidden bg-slate-900">
                                 <motion.div
-                                    className={`h-full rounded-full ${isChaosActive ? 'bg-red-500' : 'bg-cyan-500'}`}
-                                    animate={{ width: isChaosActive ? '100%' : '60%' }}
-                                    transition={{ duration: 0.6 }}
+                                    className={`h-full rounded-full ${isChaosActive ? 'bg-red-500' : 'bg-cyan-700'}`}
+                                    animate={{ width: isChaosActive ? '100%' : kgNodes.length > 0 ? '75%' : '20%' }}
+                                    transition={{ duration: 0.8 }}
                                 />
                             </div>
+                            <span className="text-[8px] font-mono text-slate-700 uppercase tracking-widest">
+                                {isChaosActive ? 'CHAOS IN PROGRESS' : kgNodes.length > 0 ? 'GRAF AKTYWNY' : 'OCZEKIWANIE'}
+                            </span>
                         </div>
                     </div>
                 </div>
