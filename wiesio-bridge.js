@@ -2641,6 +2641,182 @@ app.post('/api/mechanic/enqueue', async (req, res) => {
     }
 });
 
+// ── 🔧 MECHANIC — podgląd i wdrażanie patchy ────────────────────────────────
+
+/**
+ * Parsuje plik .md i zwraca { targetFile, code }.
+ * Rzuca Error z opisem jeśli parsowanie niemożliwe (→ ręczne wdrożenie).
+ */
+function parsePatchFile(content) {
+    // Szukamy pierwszego pliku docelowego: > **Pliki docelowe:** `ścieżka`
+    const targetMatch = content.match(/\*\*Pliki docelowe:\*\*\s*`([^`]+)`/);
+    if (!targetMatch) {
+        throw new Error(
+            'PARSE_FAIL: Brak sekcji "Pliki docelowe" w patchu — wdróż ręcznie.'
+        );
+    }
+    const targetFile = targetMatch[1].trim();
+
+    // Szukamy bloku kodu w sekcji "Propozycja Naprawy"
+    const afterProposal = content.split(/## Propozycja Naprawy/)[1] ?? content;
+    const codeMatch = afterProposal.match(/```(?:\w+)?\n([\s\S]+?)\n```/);
+    if (!codeMatch) {
+        throw new Error(
+            'PARSE_FAIL: Nie znaleziono bloku kodu (```...```) — wdróż ręcznie.'
+        );
+    }
+
+    return { targetFile, code: codeMatch[1] };
+}
+
+/**
+ * GET /api/mechanic/patch/:id
+ * Zwraca surową treść pliku _AntiGravity_Wymiar/patches/patch_[id].md.
+ */
+app.get('/api/mechanic/patch/:id', async (req, res) => {
+    const { id } = req.params;
+    if (!id || !/^[\w.-]+$/.test(id)) {
+        return res.status(400).json({ success: false, message: 'Nieprawidłowe id.' });
+    }
+
+    const patchFile = path.join(ANTIGRAVITY_DIR, 'patches', `patch_${id}.md`);
+    try {
+        const content = await fs.readFile(patchFile, 'utf8');
+        console.log(`[Mechanic-API] 📄 GET patch/${id} (${content.length} znaków)`);
+        return res.json({ success: true, id, content });
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            return res.status(404).json({ success: false, message: `Patch ${id} nie istnieje.` });
+        }
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/mechanic/apply
+ * Body: { id: string }
+ *
+ * Parsuje patch_[id].md → wyciąga targetFile + blok kodu →
+ * tworzy backup [targetFile].bak → nadpisuje kod → zmienia status na DONE.
+ *
+ * Bezpieczeństwo:
+ *   - Ścieżka musi być wewnątrz process.cwd()
+ *   - Backup obowiązkowy (plik .bak)
+ *   - Jeśli parsing niemożliwy → 422 + instrukcja ręczna (NIE crashuje)
+ */
+app.post('/api/mechanic/apply', async (req, res) => {
+    const { id } = req.body ?? {};
+    if (!id) {
+        return res.status(400).json({ success: false, message: 'Brak id zadania.' });
+    }
+
+    const patchFile = path.join(ANTIGRAVITY_DIR, 'patches', `patch_${id}.md`);
+
+    let content;
+    try {
+        content = await fs.readFile(patchFile, 'utf8');
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            return res.status(404).json({ success: false, message: `Patch ${id} nie istnieje.` });
+        }
+        return res.status(500).json({ success: false, message: err.message });
+    }
+
+    // ── Parsowanie ────────────────────────────────────────────────────────────
+    let targetFile, code;
+    try {
+        ({ targetFile, code } = parsePatchFile(content));
+    } catch (parseErr) {
+        console.warn(`[Mechanic-API] ⚠️  apply ${id}: ${parseErr.message}`);
+        return res.status(422).json({
+            success:    false,
+            message:    parseErr.message,
+            manualHint: `Otwórz: _AntiGravity_Wymiar/patches/patch_${id}.md`,
+        });
+    }
+
+    // ── Walidacja ścieżki (path traversal guard) ──────────────────────────────
+    const targetAbsolute = path.resolve(process.cwd(), targetFile);
+    if (!targetAbsolute.startsWith(process.cwd())) {
+        console.error(`[Mechanic-API] 🛡️  apply ${id}: ścieżka poza projektem!`);
+        return res.status(403).json({
+            success: false,
+            message: 'Bezpieczeństwo: ścieżka docelowa poza projektem — odrzucono.',
+        });
+    }
+
+    // ── Backup (obowiązkowy) ──────────────────────────────────────────────────
+    const backupPath = targetAbsolute + '.bak';
+    let backupCreated = false;
+    try {
+        const existing = await fs.readFile(targetAbsolute, 'utf8');
+        await fs.writeFile(backupPath, existing, 'utf8');
+        backupCreated = true;
+        console.log(`[Mechanic-API] 💾 Backup: ${path.relative(process.cwd(), backupPath)}`);
+    } catch (backupErr) {
+        if (backupErr.code !== 'ENOENT') {
+            // Plik istnieje, ale backup się nie udał → bezpieczna odmowa
+            console.error(`[Mechanic-API] ❌ Błąd backupu: ${backupErr.message}`);
+            return res.status(500).json({
+                success: false,
+                message: `Backup nie powiódł się — wdrożenie anulowane. ${backupErr.message}`,
+            });
+        }
+        // Plik jeszcze nie istnieje — backup nie potrzebny, tworzymy nowy
+        console.log(`[Mechanic-API] 📝 Nowy plik (brak backupu potrzebny): ${targetFile}`);
+    }
+
+    // ── Zapis nowego kodu ─────────────────────────────────────────────────────
+    try {
+        await fs.mkdir(path.dirname(targetAbsolute), { recursive: true });
+        await fs.writeFile(targetAbsolute, code, 'utf8');
+        console.log(`[Mechanic-API] ✅ Wdrożono: ${targetFile} (${code.length} znaków)`);
+    } catch (writeErr) {
+        console.error(`[Mechanic-API] ❌ Zapis: ${writeErr.message}`);
+        return res.status(500).json({
+            success: false,
+            message: `Błąd zapisu pliku docelowego: ${writeErr.message}`,
+        });
+    }
+
+    // ── Zmiana statusu → DONE ─────────────────────────────────────────────────
+    try {
+        await MechanicService.getInstance().doneTask(id);
+    } catch (statusErr) {
+        // Kod już zapisany — logujemy, ale nie zwracamy błędu
+        console.warn(`[Mechanic-API] ⚠️  doneTask ${id}: ${statusErr.message}`);
+    }
+
+    return res.json({
+        success:       true,
+        id,
+        targetFile,
+        backupCreated,
+        backupPath:    backupCreated ? path.relative(process.cwd(), backupPath) : null,
+        bytesWritten:  code.length,
+    });
+});
+
+/**
+ * POST /api/mechanic/reject/:id
+ * Zmienia status zadania na REJECTED i usuwa je z widoku kolejki.
+ */
+app.post('/api/mechanic/reject/:id', async (req, res) => {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, message: 'Brak id.' });
+
+    try {
+        const result = await MechanicService.getInstance().rejectTask(id);
+        if (!result) {
+            return res.status(404).json({ success: false, message: `Zadanie ${id} nie istnieje.` });
+        }
+        return res.json({ success: true, id });
+    } catch (err) {
+        console.error(`[Mechanic-API] ❌ reject/${id}:`, err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ── TASK COMPLETION HANDLER ──────────────────────────────────────────────────
 /**
  * NOWA LOGIKA: Zamiast wywoływania processKnowledgeGraph(task),
@@ -2672,6 +2848,9 @@ app.listen(PORT, () => {
     console.log(` ⚡ EXEC_SYSTEM — Surowy Terminal (Raw Exec)`);
     console.log(` 🔧 GET  /api/mechanic/queue`);
     console.log(` 🔧 POST /api/mechanic/enqueue`);
+    console.log(` 🔧 GET  /api/mechanic/patch/:id`);
+    console.log(` 🔧 POST /api/mechanic/apply`);
+    console.log(` 🔧 POST /api/mechanic/reject/:id`);
     console.log(` 🕸️  GET  /api/kg/nodes`);
     console.log(` ☢️  POST /api/chaos/inject`);
     console.log(`================================================`);

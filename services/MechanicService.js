@@ -95,6 +95,40 @@ class MechanicService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // PUBLIC: odrzucenie zadania (READY_FOR_REVIEW → REJECTED)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    async rejectTask(id) {
+        if (!id) return null;
+        await this._ensureDirs();
+        const tasks = await this._readQueue();
+        if (!tasks.some(t => t.id === id)) {
+            console.warn(`[Mechanik] ⚠️  rejectTask: zadanie ${id} nie istnieje.`);
+            return null;
+        }
+        await this._updateStatus(id, tasks, 'REJECTED', { rejectedAt: new Date().toISOString() });
+        console.log(`[Mechanik] 🚫 Zadanie ${id} → REJECTED.`);
+        return id;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PUBLIC: oznacz jako wdrożone (READY_FOR_REVIEW → DONE)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    async doneTask(id) {
+        if (!id) return null;
+        await this._ensureDirs();
+        const tasks = await this._readQueue();
+        if (!tasks.some(t => t.id === id)) {
+            console.warn(`[Mechanik] ⚠️  doneTask: zadanie ${id} nie istnieje.`);
+            return null;
+        }
+        await this._updateStatus(id, tasks, 'DONE', { doneAt: new Date().toISOString() });
+        console.log(`[Mechanik] ✅ Zadanie ${id} → DONE (patch wdrożony).`);
+        return id;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // PUBLIC: ręczne dodanie zadania do kolejki (dla /api/chaos/inject etc.)
     // ─────────────────────────────────────────────────────────────────────────
 

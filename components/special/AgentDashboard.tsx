@@ -21,11 +21,19 @@ interface TaskQueueItem {
     title:       string;
     description: string;
     priority:    'CRITICAL' | 'HIGH' | 'LOW';
-    status:      'PENDING' | 'IN_PROGRESS' | 'READY_FOR_REVIEW' | 'BLOCKED' | 'FAILED';
+    status:      'PENDING' | 'IN_PROGRESS' | 'READY_FOR_REVIEW' | 'BLOCKED' | 'FAILED' | 'DONE' | 'REJECTED';
     patchFile?:  string;
     createdAt?:  string;
     updatedAt?:  string;
     error?:      string;
+}
+
+interface ApplyResult {
+    success:       boolean;
+    message?:      string;
+    manualHint?:   string;
+    targetFile?:   string;
+    backupCreated?: boolean;
 }
 
 interface ChaosEntry {
@@ -60,16 +68,71 @@ const PRIORITY_STYLES: Record<TaskQueueItem['priority'], { border: string; bg: s
 // ─── TaskCard ─────────────────────────────────────────────────────────────────
 
 interface TaskCardProps {
-    task:      TaskQueueItem;
-    isNew?:    boolean;
-    onAction?: (id: string, action: 'approve' | 'reject') => void;
+    task:     TaskQueueItem;
+    isNew?:   boolean;
+    onApply:  (id: string) => Promise<ApplyResult>;
+    onReject: (id: string) => Promise<void>;
 }
 
-const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onAction }) => {
+const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onApply, onReject }) => {
     const style = PRIORITY_STYLES[task.priority] ?? {
         border: 'border-gray-700',
         bg:     'bg-gray-900/20',
         badge:  'bg-gray-700',
+    };
+
+    // ── Stan lokalny podglądu patcha ──────────────────────────────────────────
+    const [patchContent,  setPatchContent]  = useState<string | null>(null);
+    const [patchOpen,     setPatchOpen]     = useState(false);
+    const [patchLoading,  setPatchLoading]  = useState(false);
+    const [applying,      setApplying]      = useState(false);
+    const [rejecting,     setRejecting]     = useState(false);
+    const [applyResult,   setApplyResult]   = useState<ApplyResult | null>(null);
+
+    const togglePatch = async () => {
+        if (patchOpen) { setPatchOpen(false); return; }
+        if (patchContent) { setPatchOpen(true); return; }
+        setPatchLoading(true);
+        try {
+            const res  = await fetch(`${BRIDGE_URL}/api/mechanic/patch/${task.id}`);
+            const data = await res.json();
+            if (data.success) {
+                setPatchContent(data.content as string);
+                setPatchOpen(true);
+            } else {
+                setPatchContent(`[Błąd pobierania] ${data.message ?? 'nieznany błąd'}`);
+                setPatchOpen(true);
+            }
+        } catch (e: any) {
+            setPatchContent(`[Błąd sieci] ${e.message}`);
+            setPatchOpen(true);
+        } finally {
+            setPatchLoading(false);
+        }
+    };
+
+    const handleApply = async () => {
+        if (applying) return;
+        setApplying(true);
+        setApplyResult(null);
+        try {
+            const result = await onApply(task.id);
+            setApplyResult(result);
+        } catch (e: any) {
+            setApplyResult({ success: false, message: e.message });
+        } finally {
+            setApplying(false);
+        }
+    };
+
+    const handleReject = async () => {
+        if (rejecting) return;
+        setRejecting(true);
+        try {
+            await onReject(task.id);
+        } finally {
+            setRejecting(false);
+        }
     };
 
     return (
@@ -81,6 +144,7 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onAction }) => {
             className={`p-4 mb-3 border-l-4 ${style.border} ${style.bg} transition duration-300 rounded-r-lg`}
             style={{ boxShadow: isNew ? '0 0 16px rgba(255,50,50,0.25)' : '0 0 8px rgba(0,255,255,0.08)' }}
         >
+            {/* ── Nagłówek ───────────────────────────────────────── */}
             <div className="flex justify-between items-start gap-3">
                 <div className="min-w-0">
                     <h3 className="text-sm font-mono text-cyan-300 truncate">{task.title}</h3>
@@ -134,31 +198,110 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onAction }) => {
                     )}
                 </div>
             )}
-            {task.status === 'READY_FOR_REVIEW' && onAction && (
+
+            {/* ── READY_FOR_REVIEW — hybrydowy panel wdrożenia ─── */}
+            {task.status === 'READY_FOR_REVIEW' && (
                 <div className="mt-3">
+                    {/* Ścieżka pliku patcha */}
                     {task.patchFile && (
-                        <p className="text-[9px] font-mono text-cyan-700 mb-2 truncate"
-                           title={task.patchFile}
-                        >
-                            📄 <span className="text-cyan-600">{task.patchFile}</span>
+                        <p className="text-[9px] font-mono text-cyan-800 mb-2 truncate" title={task.patchFile}>
+                            📄 <span className="text-cyan-700">{task.patchFile}</span>
                         </p>
                     )}
-                    <div className="flex justify-end gap-2">
+
+                    {/* Przyciski akcji */}
+                    <div className="flex flex-wrap gap-2 mb-2">
+                        {/* Podgląd kodu */}
                         <button
-                            onClick={() => onAction(task.id, 'approve')}
-                            className="px-3 py-1 text-xs bg-green-600/80 hover:bg-green-500 transition border border-green-400/50 rounded"
-                            style={{ boxShadow: '0 0 8px rgba(0,255,100,0.2)' }}
+                            onClick={togglePatch}
+                            disabled={patchLoading}
+                            className="px-3 py-1 text-[10px] font-mono bg-slate-800/80 hover:bg-slate-700 transition border border-slate-600/50 rounded flex items-center gap-1"
+                            style={{ boxShadow: '0 0 6px rgba(0,200,255,0.12)' }}
                         >
-                            ✅ Zatwierdź Patch
+                            {patchLoading ? (
+                                <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
+                                    ⚙️
+                                </motion.span>
+                            ) : patchOpen ? '🙈 Ukryj Kod' : '👀 Pokaż Kod'}
                         </button>
+
+                        {/* Auto-Deploy */}
                         <button
-                            onClick={() => onAction(task.id, 'reject')}
-                            className="px-3 py-1 text-xs bg-red-800/80 hover:bg-red-700 transition border border-red-400/50 rounded"
-                            style={{ boxShadow: '0 0 8px rgba(255,50,50,0.2)' }}
+                            onClick={handleApply}
+                            disabled={applying || !!applyResult?.success}
+                            className={`px-3 py-1 text-[10px] font-mono transition border rounded flex items-center gap-1
+                                ${applyResult?.success
+                                    ? 'bg-green-900/40 border-green-600/40 text-green-400 cursor-default'
+                                    : 'bg-violet-900/60 hover:bg-violet-800 border-violet-500/50 text-violet-300'
+                                }`}
+                            style={{ boxShadow: '0 0 8px rgba(140,80,255,0.2)' }}
                         >
-                            ❌ Odrzuć
+                            {applying ? (
+                                <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
+                                    ⚙️
+                                </motion.span>
+                            ) : applyResult?.success ? '✅ Wdrożono!' : '⚡ Wdróż Automatycznie'}
+                        </button>
+
+                        {/* Odrzuć */}
+                        <button
+                            onClick={handleReject}
+                            disabled={rejecting || !!applyResult?.success}
+                            className="px-3 py-1 text-[10px] font-mono bg-red-900/50 hover:bg-red-800 transition border border-red-600/50 text-red-400 rounded"
+                            style={{ boxShadow: '0 0 6px rgba(255,50,50,0.15)' }}
+                        >
+                            {rejecting ? '...' : '❌ Odrzuć'}
                         </button>
                     </div>
+
+                    {/* Wynik wdrożenia */}
+                    {applyResult && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className={`rounded p-2 text-[9px] font-mono leading-relaxed ${
+                                applyResult.success
+                                    ? 'bg-green-900/20 border border-green-600/30 text-green-400'
+                                    : 'bg-orange-900/20 border border-orange-600/30 text-orange-300'
+                            }`}
+                        >
+                            {applyResult.success ? (
+                                <>
+                                    ✅ Wdrożono do <span className="text-cyan-400">{applyResult.targetFile}</span>
+                                    {applyResult.backupCreated && (
+                                        <span className="text-slate-500"> · backup .bak utworzony</span>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    ⚠️ {applyResult.message}
+                                    {applyResult.manualHint && (
+                                        <div className="mt-1 text-slate-400">{applyResult.manualHint}</div>
+                                    )}
+                                </>
+                            )}
+                        </motion.div>
+                    )}
+
+                    {/* Podgląd kodu (rozwijany) */}
+                    <AnimatePresence>
+                        {patchOpen && patchContent && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.22 }}
+                                className="overflow-hidden mt-2"
+                            >
+                                <pre
+                                    className="text-[9px] font-mono text-slate-300 bg-black/60 rounded p-3 overflow-x-auto max-h-[260px] overflow-y-auto leading-relaxed whitespace-pre-wrap break-words"
+                                    style={{ border: '1px solid rgba(0,229,255,0.1)' }}
+                                >
+                                    {patchContent}
+                                </pre>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
             )}
         </motion.div>
@@ -184,14 +327,17 @@ const AgentDashboard: React.FC = () => {
     const [newTaskIds,    setNewTaskIds]     = useState<Set<string>>(new Set());
     const queuePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // Odczyt kolejki z backendu
+    // Odczyt kolejki z backendu — filtrujemy DONE i REJECTED (zakończone)
     const fetchQueueTasks = useCallback(async () => {
         try {
             const res  = await fetch(`${BRIDGE_URL}/api/mechanic/queue`);
             if (!res.ok) return;
             const data = await res.json();
             if (data.success) {
-                setLiveTasks(data.tasks as TaskQueueItem[]);
+                const active = (data.tasks as TaskQueueItem[]).filter(
+                    t => t.status !== 'DONE' && t.status !== 'REJECTED'
+                );
+                setLiveTasks(active);
             }
         } catch (_) { /* bridge niedostępny — zachowaj poprzedni stan */ }
     }, []);
@@ -251,12 +397,27 @@ const AgentDashboard: React.FC = () => {
         }
     }, [chaosLog]);
 
-    // ── Akcje na kartach ──────────────────────────────────────────────────────
-    const handleTaskAction = useCallback((id: string, action: 'approve' | 'reject') => {
-        console.log(`[ACTION_EXEC] ${action.toUpperCase()} dla zadania ${id}`);
-        setLiveTasks(prev => prev.filter(t => t.id !== id));
+    // ── Auto-Deploy: POST /api/mechanic/apply ────────────────────────────────
+    const applyPatch = useCallback(async (id: string): Promise<ApplyResult> => {
+        const res = await fetch(`${BRIDGE_URL}/api/mechanic/apply`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ id }),
+        });
+        const data: ApplyResult = await res.json();
+        if (data.success) {
+            setTimeout(fetchQueueTasks, 800);
+            setNewTaskIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+        }
+        return data;
+    }, [fetchQueueTasks]);
+
+    // ── Odrzucenie: POST /api/mechanic/reject/:id ────────────────────────────
+    const rejectTask = useCallback(async (id: string): Promise<void> => {
+        await fetch(`${BRIDGE_URL}/api/mechanic/reject/${id}`, { method: 'POST' });
         setNewTaskIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-    }, []);
+        setTimeout(fetchQueueTasks, 400);
+    }, [fetchQueueTasks]);
 
     // ── Wyzwalacz Chaosu ──────────────────────────────────────────────────────
     const triggerChaos = useCallback(async () => {
@@ -476,7 +637,8 @@ const AgentDashboard: React.FC = () => {
                                         key={task.id}
                                         task={task}
                                         isNew={newTaskIds.has(task.id)}
-                                        onAction={handleTaskAction}
+                                        onApply={applyPatch}
+                                        onReject={rejectTask}
                                     />
                                 ))}
                             </motion.div>
