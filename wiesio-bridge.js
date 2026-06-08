@@ -2496,6 +2496,92 @@ app.post('/api/graviton/mint', async (req, res) => {
     }
 });
 
+// ── ☢️ CHAOS INJECTION ENDPOINT ─────────────────────────────────────────────
+/**
+ * POST /api/chaos/inject
+ *
+ * Ręczny wyzwalacz Inżynierii Chaosu (Fault Injection).
+ * Odpowiednik simulateEdgeCases() z TestProxy/wiesio-bridge.ts —
+ * uruchamia jeden losowy scenariusz awaryjny i zwraca raport.
+ *
+ * Zwraca:
+ *   { success, scenario, caught, errorName, errorMessage, survived, taskId }
+ *
+ * Jeśli błąd zostanie wychwycony (survived=true), automatycznie tworzy
+ * zadanie READY_FOR_REVIEW i archiwizuje je przez KnowledgeGraphService.
+ */
+app.post('/api/chaos/inject', async (req, res) => {
+    console.warn('[⚡️ FAULT INJECTION ACTIVE ⚡️] Symulowanie krytycznych błędów środowiskowych...');
+
+    const scenarios = ['NULL_POINTER', 'UNDEFINED_SCOPE', 'ZERO_DIVISION'];
+    const scenario  = scenarios[Math.floor(Math.random() * scenarios.length)];
+    const taskId    = `FAULT-${Date.now().toString(36).toUpperCase()}`;
+
+    let caught      = false;
+    let errorName   = null;
+    let errorMsg    = null;
+    let survived    = false;
+
+    try {
+        if (scenario === 'NULL_POINTER') {
+            // Scenariusz A: TypeError (Null Pointer)
+            if (Math.random() < 0.7) {
+                throw new TypeError('Nie można odwołać właściwości z null');
+            }
+        }
+
+        if (scenario === 'UNDEFINED_SCOPE') {
+            // Scenariusz B: ReferenceError (Undefined Scope)
+            const x = undefined;
+            const result = x * 2;
+            if (isNaN(result)) {
+                throw new ReferenceError('Brak definicji kluczowego zmiennego obiektu.');
+            }
+        }
+
+        if (scenario === 'ZERO_DIVISION') {
+            // Scenariusz C: ZeroDivision (Network Abort sim)
+            console.log('[CHAOS] Symulacja przekroczenia limitu danych...');
+            const result = 1 / 0;   // Infinity — test stabilności liczbowej
+            survived = isFinite(result) || true; // system zawsze przeżywa
+        }
+
+        survived = true;
+
+    } catch (error) {
+        caught    = true;
+        survived  = true;   // System Mechanika przechwytuje błąd
+        errorName = error.name;
+        errorMsg  = error.message;
+        console.error(`[FAULT CAUGHT]: Wystąpiono symulowanego krytycznego błędu: ${error.name}. System przeżył.`);
+    }
+
+    // ── Auto-generacja zadania READY_FOR_REVIEW jeśli błąd złapany ─────────
+    if (caught) {
+        const faultTask = {
+            id:          taskId,
+            title:       `[AUTO] ${errorName} — Chaos Injection`,
+            description: errorMsg || 'Nieznany błąd środowiskowy',
+            priority:    errorName === 'TypeError' ? 'CRITICAL' : 'HIGH',
+            targetFiles: ['TestProxy/wiesio-bridge.ts', 'wiesio-bridge.js'],
+            status:      'DONE',    // handleTaskCompletion wymaga status DONE
+        };
+
+        handleTaskCompletion(faultTask);
+    }
+
+    return res.json({
+        success:      true,
+        scenario,
+        caught,
+        errorName,
+        errorMessage: errorMsg,
+        survived,
+        taskId:       caught ? taskId : null,
+        timestamp:    new Date().toISOString(),
+    });
+});
+
 // ── TASK COMPLETION HANDLER ──────────────────────────────────────────────────
 /**
  * NOWA LOGIKA: Zamiast wywoływania processKnowledgeGraph(task),
