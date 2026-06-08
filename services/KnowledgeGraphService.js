@@ -6,24 +6,28 @@
  * asynchronicznie — nie blokuje głównego wątku wiesio-bridge.js.
  *
  * Wzorzec: Singleton + EventEmitter (Node.js core, zero zależności zewnętrznych)
+ * Standard: ES Modules ("type": "module" w package.json)
  *
  * Użycie w wiesio-bridge.js:
- *   const KnowledgeGraphService = require('./services/KnowledgeGraphService');
+ *   import KnowledgeGraphService from './services/KnowledgeGraphService.js';
  *   KnowledgeGraphService.getInstance().emitTaskDoneEvent(completedTask);
  */
 
-'use strict';
+import EventEmitter from 'events';
+import path from 'path';
+import { promises as fs } from 'fs';
+import { fileURLToPath } from 'url';
 
-const EventEmitter = require('events');
-const path = require('path');
-const fs = require('fs').promises;
+// ESM nie ma __dirname — odtwarzamy przez import.meta.url
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
 
 // ─── Stałe ───────────────────────────────────────────────────────────────────
 const GRAPH_DIR  = path.join(process.cwd(), '_AntiGravity_Wymiar', 'KnowledgeGraph');
 const GRAPH_FILE = path.join(GRAPH_DIR, 'graph.json');
 const EVENT_TASK_DONE = 'TASK_DONE';
 
-// ─── Singleton ────────────────────────────────────────────────────────────────
+// ─── Klasa ────────────────────────────────────────────────────────────────────
 class KnowledgeGraphService extends EventEmitter {
     constructor() {
         super();
@@ -112,10 +116,10 @@ class KnowledgeGraphService extends EventEmitter {
     }
 }
 
-// ─── Singleton export ─────────────────────────────────────────────────────────
+// ─── Singleton — eksport ESM ──────────────────────────────────────────────────
 let _instance = null;
 
-module.exports = {
+const knowledgeGraphServiceSingleton = {
     getInstance() {
         if (!_instance) {
             _instance = new KnowledgeGraphService();
@@ -123,3 +127,5 @@ module.exports = {
         return _instance;
     }
 };
+
+export default knowledgeGraphServiceSingleton;

@@ -18,7 +18,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
 // ── ARCHIWISTA WIEDZY (KnowledgeGraphService) ────────────────────────────────
-const KnowledgeGraphService = require('./services/KnowledgeGraphService');
+import KnowledgeGraphService from './services/KnowledgeGraphService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
