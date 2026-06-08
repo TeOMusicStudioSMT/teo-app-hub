@@ -26,9 +26,12 @@ const TEMP_FILE        = path.join(GRAPH_DIR, 'temp_kg_update.json');
 const DEAD_LETTER_FILE = path.join(GRAPH_DIR, 'dead_letter_knowledge.json');
 
 // ─── Ollama ───────────────────────────────────────────────────────────────────
-const OLLAMA_URL = 'http://127.0.0.1:11434/api/generate';
-const GEMMA_MODEL = 'gemma4';
-const AI_TIMEOUT_MS = 30_000;
+const OLLAMA_URL    = 'http://127.0.0.1:11434/api/generate';
+const GEMMA_MODEL   = 'gemma4';
+
+// Zimny start dużego modelu (gemma4 12B) może zająć 60–90 sekund przy ładowaniu wag do VRAM.
+// Ustawiamy 120 s aby bezpiecznie pokryć oba scenariusze: zimny i ciepły start.
+const AI_TIMEOUT_MS = 120_000; // 120 s (wcześniej: 30 s — zbyt krótkie dla zimnego startu)
 
 // ─── Zdarzenia ────────────────────────────────────────────────────────────────
 const EVENT_TASK_DONE = 'TASK_DONE';
@@ -177,6 +180,9 @@ class KnowledgeGraphService extends EventEmitter {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
+        console.log(`[KGS] ⏳ Oczekiwanie na odpowiedź modelu ${GEMMA_MODEL} (może to potrwać przy zimnym starcie — timeout: ${AI_TIMEOUT_MS / 1000}s)...`);
+        console.log(`[KGS] 🎯 Endpoint: ${OLLAMA_URL}`);
+
         let raw = '';
         try {
             const resp = await fetch(OLLAMA_URL, {
@@ -193,6 +199,7 @@ class KnowledgeGraphService extends EventEmitter {
             if (!resp.ok) throw new Error(`Ollama HTTP ${resp.status}`);
             const json = await resp.json();
             raw = (json.response || '').trim();
+            console.log(`[KGS] ✅ Model odpowiedział (${raw.length} znaków).`);
 
         } finally {
             clearTimeout(timer);
