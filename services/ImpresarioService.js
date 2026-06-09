@@ -1,5 +1,5 @@
 /**
- * 🎙️ ImpresarioService — Agent Medialny Katedry
+ * 🎙️ ImpresarioService — Agent Medialny Katedry v2.0
  *
  * Zarządza kolejką wydawniczą i stanem kont na platformach muzycznych.
  * Wdrożone wzorce z analizy Rady (Adamus v1.0):
@@ -9,13 +9,18 @@
  *   ▸ Job Manager: PENDING → PROCESSING → COMPLETE/FAILED
  *   ▸ Singleton pattern
  *   ▸ Skarbiec sekretów (media_secrets.json) — nigdy w repozytorium!
+ *   ▸ OAuth2 streaming upload YouTube (fs.createReadStream → HTTPS resumable)
+ *   ▸ DistroKid Paczka Exportu: metadata.txt + audio + cover_placeholder.png
  *
  * Standard: ES Modules ("type": "module" w package.json)
  */
 
-import path          from 'path';
+import path              from 'path';
 import { promises as fs } from 'fs';
-import { fileURLToPath } from 'url';
+import { createReadStream, statSync } from 'fs'; // streaming dla YouTube
+import { fileURLToPath }  from 'url';
+import https              from 'https';
+import { URL }            from 'url';
 
 // ─── Ścieżki ──────────────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
@@ -24,7 +29,7 @@ const __dirname  = path.dirname(__filename);
 const MEDIA_DIR    = path.join(process.cwd(), '_AntiGravity_Wymiar', 'media');
 const QUEUE_FILE   = path.join(MEDIA_DIR, 'media_queue.json');
 const VAULT_FILE   = path.join(MEDIA_DIR, 'media_vault.json');
-const SECRETS_FILE = path.join(MEDIA_DIR, 'media_secrets.json'); // ← Skarbiec (tylko lokalne, NIE w repo)
+const SECRETS_FILE = path.join(MEDIA_DIR, 'media_secrets.json'); // NIE w repo!
 const QUEUE_TEMP   = path.join(MEDIA_DIR, 'temp_queue.json');
 const VAULT_TEMP   = path.join(MEDIA_DIR, 'temp_vault.json');
 
@@ -33,30 +38,33 @@ const SUPPORTED_PLATFORMS = ['youtube', 'spotify', 'soundcloud'];
 
 // ─── Symulacja — krok postępu ─────────────────────────────────────────────────
 const PROGRESS_STEP     = 18;   // % na jeden cykl
-const ERROR_PROBABILITY = 0.04; // 4% szansa na FAILED
+const ERROR_PROBABILITY = 0.04; // 4% szansa na FAILED (tylko symulacja)
+
+// ─── Minimalny prawidłowy PNG 1×1 px (biały piksel) ──────────────────────────
+// Użyty jako cover_placeholder.png w paczkach DistroKid
+const COVER_PNG_B64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=';
 
 // ─── Klasa ────────────────────────────────────────────────────────────────────
 class ImpresarioService {
     constructor() {
         this._isRunning = false; // Lock zapobiega nakładaniu cykli
-        console.log('[ImpresarioService] 🎙️ Agent Impresario zainicjalizowany.');
+        console.log('[ImpresarioService] 🎙️ Agent Impresario v2.0 zainicjalizowany.');
     }
 
-    // ── PUBLIC: Odczyt kolejki ────────────────────────────────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    //  PUBLIC API
+    // ════════════════════════════════════════════════════════════════════════
 
     async getQueue() {
         await this._ensureDir();
         return this._readQueue();
     }
 
-    // ── PUBLIC: Odczyt vault ──────────────────────────────────────────────────
-
     async getVault() {
         await this._ensureDir();
         return this._readVault();
     }
-
-    // ── PUBLIC: Odczyt pełnego statusu (dla GET /api/impresario/status) ───────
 
     async getStatus() {
         await this._ensureDir();
@@ -73,12 +81,12 @@ class ImpresarioService {
         };
     }
 
-    // ── PUBLIC: Dodaj publikację do kolejki ───────────────────────────────────
+    // ── Dodaj publikację do kolejki ───────────────────────────────────────────
     //
     // @param title     {string}       Tytuł utworu/albumu (wymagany)
     // @param album     {string|null}  Nazwa albumu (opcjonalny)
     // @param platforms {string[]}     Docelowe platformy (min. 1)
-    // @param filePath  {string|null}  Ścieżka do pliku .mp4/.wav (opcjonalna)
+    // @param filePath  {string|null}  Ścieżka do pliku .mp4/.wav/... (opcjonalna)
 
     async enqueuePublication(title, album, platforms, filePath = null) {
         if (!title || !title.trim()) {
@@ -88,22 +96,22 @@ class ImpresarioService {
             throw new Error('Wymagana przynajmniej jedna platforma docelowa.');
         }
 
-        // Sanityzacja platform — akceptujemy tylko znane
         const validPlatforms = platforms.filter(p => SUPPORTED_PLATFORMS.includes(p));
         if (validPlatforms.length === 0) {
             throw new Error(`Nieznane platformy: ${platforms.join(', ')}. Dozwolone: ${SUPPORTED_PLATFORMS.join(', ')}.`);
         }
 
-        // Walidacja filePath — jeśli podana, musi być stringiem i rozszerzeniem audio/video
+        // Walidacja filePath — jeśli podana, sprawdź rozszerzenie
         let resolvedFilePath = null;
-        if (filePath && typeof filePath === 'string') {
+        if (filePath && typeof filePath === 'string' && filePath.trim()) {
             const ext = path.extname(filePath).toLowerCase();
-            const ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.wav', '.mp3', '.flac', '.m4a', '.webm'];
-            if (!ALLOWED_EXTENSIONS.includes(ext)) {
-                throw new Error(`Niedozwolony typ pliku: ${ext}. Akceptowane: ${ALLOWED_EXTENSIONS.join(', ')}`);
+            const ALLOWED = ['.mp4', '.mov', '.wav', '.mp3', '.flac', '.m4a', '.webm'];
+            if (!ALLOWED.includes(ext)) {
+                throw new Error(`Niedozwolony typ pliku: ${ext}. Akceptowane: ${ALLOWED.join(', ')}`);
             }
-            // Normalizuj ścieżkę (nie sprawdzamy istnienia — plik może być przygotowywany asynchronicznie)
-            resolvedFilePath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
+            resolvedFilePath = path.isAbsolute(filePath)
+                ? filePath
+                : path.resolve(process.cwd(), filePath);
         }
 
         await this._ensureDir();
@@ -116,7 +124,7 @@ class ImpresarioService {
             status:           'PENDING',
             platforms:        validPlatforms,
             progress_percent: 0,
-            filePath:         resolvedFilePath, // null gdy brak pliku
+            filePath:         resolvedFilePath,
             createdAt:        new Date().toISOString(),
             last_updated:     new Date().toISOString(),
         };
@@ -124,38 +132,38 @@ class ImpresarioService {
         queue.push(newJob);
         await this._saveQueue(queue);
 
-        console.log(`[Impresario] ➕ Zlecenie "${newJob.title}" (${newJob.id}) → ${validPlatforms.join(', ')}${resolvedFilePath ? ` · plik: ${path.basename(resolvedFilePath)}` : ''}`);
+        console.log(`[Impresario] ➕ Zlecenie "${newJob.title}" (${newJob.id}) → ${validPlatforms.join(', ')}` +
+                    (resolvedFilePath ? ` · plik: ${path.basename(resolvedFilePath)}` : ''));
         return newJob;
     }
 
-    // ── PUBLIC: Aktualizacja metadanych konta ─────────────────────────────────
+    // ── Aktualizacja metadanych konta ─────────────────────────────────────────
 
     async updateVaultMetadata(platform, isConnected, extras = {}) {
         if (!SUPPORTED_PLATFORMS.includes(platform)) {
             throw new Error(`Nieznana platforma: ${platform}`);
         }
-
         await this._ensureDir();
         const vault = await this._readVault();
-
         vault[platform] = {
             ...vault[platform],
             ...extras,
             connected:    Boolean(isConnected),
             last_updated: new Date().toISOString(),
         };
-
         await this._saveVault(vault);
         console.log(`[Impresario] 🔌 Vault: ${platform} → ${isConnected ? 'POŁĄCZONO' : 'ODŁĄCZONO'}`);
         return vault[platform];
     }
 
-    // ── PUBLIC: Procesor zadań w tle (wywołuj co N sekund) ───────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    //  PROCESOR ZADAŃ W TLE
+    // ════════════════════════════════════════════════════════════════════════
     //
-    // Logika:
-    //   1. Jeśli jest zadanie PROCESSING → zwiększ postęp
-    //   2. Jeśli brak PROCESSING, ale jest PENDING → przenieś pierwsze do PROCESSING
-    //   3. Zapisz atomicznie
+    // Routing:
+    //   • youtube  + filePath  → uploadToYouTube()     (streaming OAuth2)
+    //   • spotify              → exportSpotifyPaczkowy() (DistroKid package)
+    //   • soundcloud / inne   → symulacja postępu
 
     async processNextJob() {
         if (this._isRunning) {
@@ -168,40 +176,67 @@ class ImpresarioService {
             await this._ensureDir();
             const queue = await this._readQueue();
 
-            // Szukamy aktywnego zadania
-            let activeIdx = queue.findIndex(j => j.status === 'PROCESSING');
-
-            if (activeIdx === -1) {
-                // Brak aktywnego — weź pierwszy PENDING (FIFO)
-                const pendingIdx = queue.findIndex(j => j.status === 'PENDING');
-                if (pendingIdx === -1) return; // Kolejka pusta
-                queue[pendingIdx].status      = 'PROCESSING';
-                queue[pendingIdx].startedAt   = new Date().toISOString();
-                queue[pendingIdx].last_updated = new Date().toISOString();
-                activeIdx = pendingIdx;
-                console.log(`[Impresario] ▶️  Rozpoczynam: "${queue[activeIdx].title}"`);
+            // ── 1. Kontynuacja symulacji dla PROCESSING (bez flagi _realUpload) ──
+            const simIdx = queue.findIndex(
+                j => j.status === 'PROCESSING' && !j._realUpload
+            );
+            if (simIdx !== -1) {
+                await this._advanceSimulation(queue, simIdx);
+                return;
             }
 
-            // Aktualizuj postęp
-            const job = queue[activeIdx];
-            const newProgress = Math.min(100, job.progress_percent + PROGRESS_STEP);
+            // ── 2. Weź następny PENDING (FIFO) ───────────────────────────────
+            const pendingIdx = queue.findIndex(j => j.status === 'PENDING');
+            if (pendingIdx === -1) return; // Kolejka pusta
 
-            if (newProgress >= 100) {
-                job.status           = 'COMPLETE';
-                job.progress_percent = 100;
-                job.completedAt      = new Date().toISOString();
-                console.log(`[Impresario] ✅ Ukończono: "${job.title}" na ${job.platforms.join(', ')}`);
-            } else if (Math.random() < ERROR_PROBABILITY && newProgress > PROGRESS_STEP) {
-                job.status       = 'FAILED';
-                job.failedAt     = new Date().toISOString();
-                job.error        = 'Błąd symulowanego połączenia z platformą. Ponów zlecenie.';
-                console.warn(`[Impresario] ❌ Błąd: "${job.title}"`);
-            } else {
-                job.progress_percent = newProgress;
-                job.last_updated     = new Date().toISOString();
+            const task = queue[pendingIdx];
+
+            // ── 3. Routing ────────────────────────────────────────────────────
+
+            // YouTube z filePath → realny upload strumieniowy
+            if (task.platforms.includes('youtube') && task.filePath) {
+                queue[pendingIdx] = {
+                    ...task,
+                    status:       'PROCESSING',
+                    _realUpload:  true,
+                    startedAt:    new Date().toISOString(),
+                    last_updated: new Date().toISOString(),
+                };
+                await this._saveQueue(queue);
+                console.log(`[Impresario] 🚀 Przekazuję "${task.title}" → uploadToYouTube()`);
+                // Non-blocking — upload może trwać minuty
+                setImmediate(() =>
+                    this.uploadToYouTube(task).catch(e =>
+                        console.error('[Impresario] uploadToYouTube crash:', e.message)
+                    )
+                );
+                return;
             }
 
+            // Spotify → paczka DistroKid (szybkie I/O)
+            if (task.platforms.includes('spotify') && !task.platforms.includes('youtube')) {
+                queue[pendingIdx] = {
+                    ...task,
+                    status:       'PROCESSING',
+                    startedAt:    new Date().toISOString(),
+                    last_updated: new Date().toISOString(),
+                };
+                await this._saveQueue(queue);
+                console.log(`[Impresario] 📦 Przekazuję "${task.title}" → exportSpotifyPaczkowy()`);
+                await this.exportSpotifyPaczkowy(task);
+                return;
+            }
+
+            // SoundCloud / inne → symulacja
+            queue[pendingIdx] = {
+                ...task,
+                status:       'PROCESSING',
+                startedAt:    new Date().toISOString(),
+                last_updated: new Date().toISOString(),
+            };
             await this._saveQueue(queue);
+            console.log(`[Impresario] ▶️  Symulacja: "${task.title}" (${task.platforms.join(', ')})`);
+
         } catch (err) {
             console.error(`[Impresario] ❌ processNextJob: ${err.message}`);
         } finally {
@@ -209,89 +244,381 @@ class ImpresarioService {
         }
     }
 
-    // ── PUBLIC: Szkielet uploadu YouTube (wymaga uzupełnienia media_secrets.json) ─
+    // ════════════════════════════════════════════════════════════════════════
+    //  UPLOAD YOUTUBE — OAuth2 + Resumable Streaming
+    // ════════════════════════════════════════════════════════════════════════
     //
-    // Gdy CLIENT_ID / CLIENT_SECRET / REFRESH_TOKEN są puste →
-    //   zmienia status zadania na FAILED z komunikatem dla Suwerena.
-    // Gdy tokeny obecne → gotowy szkielet do podłączenia google-auth-library.
+    // Flow:
+    //   1. Walidacja kluczy w media_secrets.json["youtube"]
+    //   2. POST oauth2.googleapis.com/token → access_token
+    //   3. POST googleapis.com/upload/youtube/v3/videos?uploadType=resumable → upload URL
+    //   4. PUT upload URL z fs.createReadStream (strumieniuje plik bez ładowania do RAM)
+    //   5. Status → COMPLETE z youtubeVideoId i youtubeUrl
+    //
+    // Prywatność: zawsze 'private' — Suweren decyduje o publikacji ręcznie.
 
-    async uploadVideoToYouTube(task) {
-        console.log(`[Impresario-YT] 📺 Próba uploadu: "${task.title}" (${task.id})`);
+    async uploadToYouTube(task) {
+        console.log(`[Impresario-YT] 📺 Upload: "${task.title}" (${task.id})`);
 
-        // 1. Wczytaj skarbiec
-        const secrets = await this._readSecrets();
-        const ytSecrets = secrets?.youtube ?? {};
-
-        // 2. Walidacja kluczy — wszystkie trzy pola muszą być niepuste
-        const missing = ['CLIENT_ID', 'CLIENT_SECRET', 'REFRESH_TOKEN']
-            .filter(field => !ytSecrets[field] || ytSecrets[field].trim() === '');
+        // ── 1. Walidacja skarbca ──────────────────────────────────────────────
+        const secrets  = await this._readSecrets();
+        const yt       = secrets?.youtube ?? {};
+        const missing  = ['CLIENT_ID', 'CLIENT_SECRET', 'REFRESH_TOKEN']
+            .filter(k => !yt[k]?.trim());
 
         if (missing.length > 0) {
-            const errMsg = `Brak autentykacji API. Uzupełnij plik media_secrets.json (brak: ${missing.join(', ')}).`;
-            console.error(`[Impresario-YT] ❌ ${errMsg}`);
-
-            // Zaktualizuj status zadania w kolejce
-            await this._ensureDir();
-            const queue = await this._readQueue();
-            await this._updateJobStatus(queue, task.id, 'FAILED', { error: errMsg });
-            return { success: false, reason: 'MISSING_SECRETS', message: errMsg };
+            const msg = `[YouTube] Brak kluczy API w media_secrets.json (brak: ${missing.join(', ')})`;
+            console.error(`[Impresario-YT] ❌ ${msg}`);
+            await this._failTask(task.id, msg);
+            return { success: false, reason: 'MISSING_SECRETS', message: msg };
         }
 
-        // 3. Sprawdź czy plik istnieje (jeśli task.filePath ustawiony)
+        // ── 2. Walidacja pliku ────────────────────────────────────────────────
+        if (!task.filePath) {
+            const msg = '[YouTube] Brak ścieżki do pliku wideo (filePath). Ustaw filePath w zleceniu.';
+            await this._failTask(task.id, msg);
+            return { success: false, reason: 'NO_FILE', message: msg };
+        }
+
+        let fileSize;
+        try {
+            fileSize = statSync(task.filePath).size;
+        } catch (_) {
+            const msg = `[YouTube] Plik nie istnieje: ${task.filePath}`;
+            console.error(`[Impresario-YT] ❌ ${msg}`);
+            await this._failTask(task.id, msg);
+            return { success: false, reason: 'FILE_NOT_FOUND', message: msg };
+        }
+
+        const ext        = path.extname(task.filePath).toLowerCase();
+        const MIME_MAP   = { '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm' };
+        const mimeType   = MIME_MAP[ext] ?? 'video/mp4';
+
+        try {
+            // ── 3. Pobierz access token (OAuth2 Refresh Flow) ─────────────────
+            console.log('[Impresario-YT] 🔑 Wymieniam refresh_token → access_token...');
+            const accessToken = await this._getYouTubeAccessToken(yt);
+
+            // ── 4. Inicjacja resumable upload ─────────────────────────────────
+            console.log('[Impresario-YT] 📡 Inicjuję sesję resumable upload...');
+            const uploadUrl = await this._initiateResumableUpload(
+                accessToken, task, fileSize, mimeType
+            );
+
+            // ── 5. Strumieniowanie pliku ──────────────────────────────────────
+            const sizeMB = (fileSize / 1024 / 1024).toFixed(1);
+            console.log(`[Impresario-YT] ⬆️  Strumieniuję plik (${sizeMB} MB)...`);
+            const result = await this._streamFileToYouTube(
+                uploadUrl, task.filePath, fileSize, mimeType
+            );
+
+            const videoId  = result?.id ?? result?.items?.[0]?.id ?? null;
+            const ytUrl    = videoId ? `https://youtu.be/${videoId}` : null;
+
+            console.log(`[Impresario-YT] ✅ Upload zakończony! videoId=${videoId}`);
+
+            // ── 6. Aktualizuj status → COMPLETE ──────────────────────────────
+            await this._ensureDir();
+            const queue = await this._readQueue();
+            await this._updateJobStatus(queue, task.id, 'COMPLETE', {
+                progress_percent: 100,
+                completedAt:      new Date().toISOString(),
+                youtubeVideoId:   videoId,
+                youtubeUrl:       ytUrl,
+                note:             ytUrl
+                    ? `Opublikowano (prywatnie) na YouTube: ${ytUrl}`
+                    : 'Upload zakończony. Sprawdź kanał YouTube.',
+            });
+
+            return { success: true, videoId, youtubeUrl: ytUrl };
+
+        } catch (err) {
+            console.error(`[Impresario-YT] ❌ Upload nieudany: ${err.message}`);
+            await this._failTask(task.id, `[YouTube] ${err.message}`);
+            return { success: false, reason: 'UPLOAD_ERROR', message: err.message };
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  EKSPORT SPOTIFY / DISTROKID — Paczka na dysku
+    // ════════════════════════════════════════════════════════════════════════
+    //
+    // Tworzy na dysku folder ${EXPORT_PATH}/${title}/ z:
+    //   • metadata.txt   — pełne metadane + placeholdery AI
+    //   • [plik audio]   — skopiowany z task.filePath (jeśli podany)
+    //   • cover_placeholder.png — minimalny 1×1 PNG (wymień na właściwą okładkę)
+    //
+    // Nie wymaga API — DistroKid akceptuje wgranie folderu ręcznie.
+
+    async exportSpotifyPaczkowy(task) {
+        console.log(`[Impresario-SP] 📦 Eksportuję paczkę: "${task.title}" (${task.id})`);
+
+        // ── 1. Czytaj ścieżkę eksportu ze skarbca ────────────────────────────
+        const secrets    = await this._readSecrets();
+        const exportBase = secrets?.spotify_distrokid?.EXPORT_PATH
+            || path.join(MEDIA_DIR, 'exports');
+
+        // Rozwiąż ścieżkę względem CWD jeśli nie jest absolutna
+        const resolvedBase = path.isAbsolute(exportBase)
+            ? exportBase
+            : path.resolve(process.cwd(), exportBase);
+
+        // Sanityzuj nazwę folderu (usuń znaki nielegalne w systemach plików)
+        const safeTitle = task.title
+            .replace(/[/\\?%*:|"<>]/g, '_')
+            .replace(/\s+/g, '_')
+            .trim()
+            .substring(0, 80);
+
+        const exportFolder = path.join(resolvedBase, safeTitle);
+        await fs.mkdir(exportFolder, { recursive: true });
+        console.log(`[Impresario-SP] 📁 Folder: ${exportFolder}`);
+
+        // ── 2. Generuj metadata.txt ───────────────────────────────────────────
+        const today  = new Date().toISOString().split('T')[0];
+        const tagList = [
+            safeTitle.toLowerCase().replace(/_/g, '-'),
+            ...(task.album ? [task.album.toLowerCase().replace(/\s+/g, '-')] : []),
+            ...task.platforms,
+            'katedra-otakos',
+            'antigravitatywna',
+        ].join(', ');
+
+        const metadata = [
+            `═══════════════════════════════════════════════════════`,
+            `  KATEDRA OTAKOS — PACZKA WYDAWNICZA (DistroKid)`,
+            `═══════════════════════════════════════════════════════`,
+            ``,
+            `TYTUŁ:     ${task.title}`,
+            `ALBUM:     ${task.album || '(single)'}`,
+            `DATA:      ${today}`,
+            `PLATFORMY: ${task.platforms.join(', ')}`,
+            `TAGI:      ${tagList}`,
+            `ID ZLECENIA: ${task.id}`,
+            ``,
+            `═══════════════════════════════════════════════════════`,
+            `OPIS UTWORU (generowany przez AI — Katedra OtakOS)`,
+            `═══════════════════════════════════════════════════════`,
+            ``,
+            `[Placeholder: Podłącz Gemma4/Claude do potoku wydawniczego,`,
+            ` aby automatycznie wygenerować opis z metadanych i kontekstu albumu.]`,
+            ``,
+            `Sugerowane pytanie do AI:`,
+            ` "Napisz opis YouTube/Spotify dla utworu '${task.title}'` +
+            (task.album ? ` z albumu '${task.album}'` : '') +
+            `. Styl: mroczna elektronika, antygrafitacyjna estetyka."`,
+            ``,
+            `═══════════════════════════════════════════════════════`,
+            `TEKST UTWORU (LYRICS)`,
+            `═══════════════════════════════════════════════════════`,
+            ``,
+            `[Placeholder: Wklej lub wygeneruj tekst utworu.]`,
+            ``,
+            `═══════════════════════════════════════════════════════`,
+            `META`,
+            `═══════════════════════════════════════════════════════`,
+            ``,
+            `WYGENEROWANO: ${new Date().toISOString()}`,
+            `SYSTEM:       Katedra OtakOS — ImpresarioService v2.0`,
+            `INSTRUKCJA:   Uzupełnij placeholdery, dodaj okładkę`,
+            `              (zastąp cover_placeholder.png), wgraj folder na DistroKid.`,
+            ``,
+        ].join('\n');
+
+        await fs.writeFile(path.join(exportFolder, 'metadata.txt'), metadata, 'utf8');
+        console.log(`[Impresario-SP] 📄 metadata.txt ✓`);
+
+        // ── 3. Kopiuj plik audio ──────────────────────────────────────────────
+        const copiedFiles = ['metadata.txt'];
         if (task.filePath) {
+            const destAudio = path.join(exportFolder, path.basename(task.filePath));
             try {
-                await fs.access(task.filePath);
-            } catch (_) {
-                const errMsg = `Plik nie istnieje: ${task.filePath}`;
-                console.error(`[Impresario-YT] ❌ ${errMsg}`);
-                const queue = await this._readQueue();
-                await this._updateJobStatus(queue, task.id, 'FAILED', { error: errMsg });
-                return { success: false, reason: 'FILE_NOT_FOUND', message: errMsg };
+                await fs.copyFile(task.filePath, destAudio);
+                copiedFiles.push(path.basename(task.filePath));
+                console.log(`[Impresario-SP] 🎵 Audio skopiowane: ${path.basename(task.filePath)} ✓`);
+            } catch (copyErr) {
+                console.warn(`[Impresario-SP] ⚠️  Kopiowanie audio nieudane: ${copyErr.message}`);
+                // Kontynuujemy — brak pliku audio nie uniemożliwia eksportu metadanych
             }
         }
 
-        // ══ SZKIELET UPLOADU ══════════════════════════════════════════════════
-        // Klucze gotowe. Poniżej należy wdrożyć pełną integrację z API Google.
-        //
-        // Wymagana paczka: npm install googleapis
-        //
-        // Przykładowy flow:
-        //
-        //   import { google } from 'googleapis';
-        //
-        //   const oauth2Client = new google.auth.OAuth2(
-        //       ytSecrets.CLIENT_ID,
-        //       ytSecrets.CLIENT_SECRET,
-        //       'urn:ietf:wg:oauth:2.0:oob'  // lub redirect URI
-        //   );
-        //   oauth2Client.setCredentials({ refresh_token: ytSecrets.REFRESH_TOKEN });
-        //
-        //   const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
-        //   const response = await youtube.videos.insert({
-        //       part: ['snippet', 'status'],
-        //       requestBody: {
-        //           snippet: { title: task.title, description: task.album ?? '' },
-        //           status:  { privacyStatus: 'private' },
-        //       },
-        //       media: { body: fs.createReadStream(task.filePath) },
-        //   });
-        //   const videoId = response.data.id;
-        //
-        // ═════════════════════════════════════════════════════════════════════
+        // ── 4. Stwórz cover_placeholder.png ──────────────────────────────────
+        const coverBuf = Buffer.from(COVER_PNG_B64, 'base64');
+        await fs.writeFile(path.join(exportFolder, 'cover_placeholder.png'), coverBuf);
+        copiedFiles.push('cover_placeholder.png');
+        console.log(`[Impresario-SP] 🖼️  cover_placeholder.png ✓`);
 
-        console.log(`[Impresario-YT] ✅ Klucze obecne — szkielet gotowy do podłączenia googleapis.`);
-        console.log(`[Impresario-YT] 💡 Zainstaluj: npm install googleapis, a następnie uzupełnij blok SZKIELET UPLOADU.`);
+        // ── 5. Aktualizuj status → COMPLETE ──────────────────────────────────
+        await this._ensureDir();
+        const queue = await this._readQueue();
+        await this._updateJobStatus(queue, task.id, 'COMPLETE', {
+            progress_percent: 100,
+            completedAt:      new Date().toISOString(),
+            exportPath:       exportFolder,
+            note:             'Wyeksportowano paczkę dla DistroKid!',
+        });
 
+        console.log(`[Impresario-SP] ✅ Paczka gotowa! (${copiedFiles.length} pliki)`);
         return {
-            success: true,
-            ready:   true,
-            message: 'Klucze API zweryfikowane. Zaimplementuj pełny upload w bloku SZKIELET UPLOADU w ImpresarioService.js.',
-            taskId:  task.id,
+            success:      true,
+            exportFolder,
+            filesCreated: copiedFiles,
         };
     }
 
-    // ── PRIVATE: Pomocnik zmiany statusu joba w kolejce ───────────────────────
+    // ════════════════════════════════════════════════════════════════════════
+    //  YOUTUBE HELPERS — OAuth2 + Resumable Upload
+    // ════════════════════════════════════════════════════════════════════════
 
+    // Wymień refresh_token na krótkotrwały access_token
+    async _getYouTubeAccessToken(ytSecrets) {
+        const body = new URLSearchParams({
+            client_id:     ytSecrets.CLIENT_ID,
+            client_secret: ytSecrets.CLIENT_SECRET,
+            refresh_token: ytSecrets.REFRESH_TOKEN,
+            grant_type:    'refresh_token',
+        });
+
+        const res = await fetch('https://oauth2.googleapis.com/token', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body:    body.toString(),
+        });
+
+        const data = await res.json();
+        if (!data.access_token) {
+            throw new Error(
+                `OAuth2 token error: ${data.error ?? 'unknown'} — ${data.error_description ?? JSON.stringify(data)}`
+            );
+        }
+        return data.access_token;
+    }
+
+    // Inicjuje sesję resumable upload, zwraca URL do wgrania danych
+    async _initiateResumableUpload(accessToken, task, fileSize, mimeType) {
+        const metadata = {
+            snippet: {
+                title:       task.title,
+                description: task.album ? `Album: ${task.album}\n\nKatedra OtakOS` : 'Katedra OtakOS',
+                categoryId:  '10', // Music
+                tags:        ['katedra', 'otakos', task.title, task.album].filter(Boolean),
+            },
+            status: {
+                privacyStatus: 'private', // Suweren decyduje o publikacji
+                selfDeclaredMadeForKids: false,
+            },
+        };
+
+        const res = await fetch(
+            'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
+            {
+                method:  'POST',
+                headers: {
+                    'Authorization':           `Bearer ${accessToken}`,
+                    'Content-Type':            'application/json; charset=UTF-8',
+                    'X-Upload-Content-Type':   mimeType,
+                    'X-Upload-Content-Length': String(fileSize),
+                },
+                body: JSON.stringify(metadata),
+            }
+        );
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(
+                `Inicjacja resumable upload nieudana: HTTP ${res.status} — ${err.substring(0, 300)}`
+            );
+        }
+
+        const uploadUrl = res.headers.get('Location');
+        if (!uploadUrl) {
+            throw new Error('YouTube nie zwrócił URL sesji (brak nagłówka Location).');
+        }
+
+        return uploadUrl;
+    }
+
+    // Strumieniuje plik do uploadUrl przez Node.js https (nie ładuje do RAM)
+    async _streamFileToYouTube(uploadUrl, filePath, fileSize, mimeType) {
+        return new Promise((resolve, reject) => {
+            const parsedUrl = new URL(uploadUrl);
+
+            const options = {
+                hostname: parsedUrl.hostname,
+                path:     parsedUrl.pathname + parsedUrl.search,
+                method:   'PUT',
+                headers:  {
+                    'Content-Type':   mimeType,
+                    'Content-Length': fileSize,
+                },
+            };
+
+            const req = https.request(options, (res) => {
+                let body = '';
+                res.on('data', chunk => { body += chunk; });
+                res.on('end', () => {
+                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                        try {
+                            resolve(JSON.parse(body));
+                        } catch (_) {
+                            resolve({ statusCode: res.statusCode, raw: body.substring(0, 200) });
+                        }
+                    } else {
+                        reject(new Error(
+                            `Przesył YouTube nieudany: HTTP ${res.statusCode} — ${body.substring(0, 300)}`
+                        ));
+                    }
+                });
+            });
+
+            req.on('error', (err) => reject(new Error(`HTTPS błąd połączenia: ${err.message}`)));
+
+            // Kluczowy moment — fs.createReadStream pipe do żądania HTTPS
+            createReadStream(filePath).pipe(req);
+        });
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  SIMULATION HELPER
+    // ════════════════════════════════════════════════════════════════════════
+
+    async _advanceSimulation(queue, idx) {
+        const job         = queue[idx];
+        const newProgress = Math.min(100, job.progress_percent + PROGRESS_STEP);
+
+        if (newProgress >= 100) {
+            queue[idx] = {
+                ...job,
+                status:           'COMPLETE',
+                progress_percent: 100,
+                completedAt:      new Date().toISOString(),
+                note:             'Symulacja ukończona.',
+            };
+            console.log(`[Impresario] ✅ Symulacja: "${job.title}" COMPLETE`);
+        } else if (Math.random() < ERROR_PROBABILITY && newProgress > PROGRESS_STEP) {
+            queue[idx] = {
+                ...job,
+                status:   'FAILED',
+                failedAt: new Date().toISOString(),
+                error:    'Błąd symulowanego połączenia z platformą. Ponów zlecenie.',
+            };
+            console.warn(`[Impresario] ❌ Symulacja: "${job.title}" FAILED`);
+        } else {
+            queue[idx] = {
+                ...job,
+                progress_percent: newProgress,
+                last_updated:     new Date().toISOString(),
+            };
+        }
+
+        await this._saveQueue(queue);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  PRIVATE HELPERS
+    // ════════════════════════════════════════════════════════════════════════
+
+    // Zmień status zadania w kolejce (atomowo)
     async _updateJobStatus(queue, jobId, newStatus, extras = {}) {
         const updated = queue.map(j =>
             j.id === jobId
@@ -301,27 +628,39 @@ class ImpresarioService {
         await this._saveQueue(updated);
     }
 
-    // ── PRIVATE: I/O ─────────────────────────────────────────────────────────
+    // Ustaw FAILED z komunikatem błędu
+    async _failTask(taskId, errorMessage) {
+        try {
+            await this._ensureDir();
+            const queue = await this._readQueue();
+            await this._updateJobStatus(queue, taskId, 'FAILED', {
+                error:    errorMessage,
+                failedAt: new Date().toISOString(),
+            });
+        } catch (e) {
+            console.error(`[Impresario] _failTask error (${taskId}): ${e.message}`);
+        }
+    }
 
+    // I/O — katalog
     async _ensureDir() {
         await fs.mkdir(MEDIA_DIR, { recursive: true });
     }
 
+    // I/O — queue (read with graceful fallback)
     async _readQueue() {
         try {
-            const raw = await fs.readFile(QUEUE_FILE, 'utf8');
-            return JSON.parse(raw);
+            return JSON.parse(await fs.readFile(QUEUE_FILE, 'utf8'));
         } catch (_) {
             return [];
         }
     }
 
+    // I/O — vault (read with graceful fallback)
     async _readVault() {
         try {
-            const raw = await fs.readFile(VAULT_FILE, 'utf8');
-            return JSON.parse(raw);
+            return JSON.parse(await fs.readFile(VAULT_FILE, 'utf8'));
         } catch (_) {
-            // Domyślny vault jeśli plik nie istnieje
             return {
                 youtube:    { connected: false, api_key_hash: null, last_updated: new Date().toISOString() },
                 spotify:    { connected: false, token_hash:   null, last_updated: new Date().toISOString() },
@@ -330,30 +669,27 @@ class ImpresarioService {
         }
     }
 
+    // I/O — queue (atomic write)
     async _saveQueue(queue) {
-        const payload = JSON.stringify(queue, null, 2);
-        await fs.writeFile(QUEUE_TEMP, payload, 'utf8');
-        await fs.rename(QUEUE_TEMP, QUEUE_FILE); // atomowe
+        await fs.writeFile(QUEUE_TEMP, JSON.stringify(queue, null, 2), 'utf8');
+        await fs.rename(QUEUE_TEMP, QUEUE_FILE);
     }
 
+    // I/O — vault (atomic write)
     async _saveVault(vault) {
-        const payload = JSON.stringify(vault, null, 2);
-        await fs.writeFile(VAULT_TEMP, payload, 'utf8');
-        await fs.rename(VAULT_TEMP, VAULT_FILE); // atomowe
+        await fs.writeFile(VAULT_TEMP, JSON.stringify(vault, null, 2), 'utf8');
+        await fs.rename(VAULT_TEMP, VAULT_FILE);
     }
 
-    // Odczyt Skarbca — nigdy nie rzuca wyjątku (graceful fallback)
+    // Skarbiec sekretów — nigdy nie rzuca wyjątku (graceful degradation)
     async _readSecrets() {
         try {
-            const raw = await fs.readFile(SECRETS_FILE, 'utf8');
-            const parsed = JSON.parse(raw);
-            // Pomiń pole _INSTRUKCJA (metadata)
+            const parsed = JSON.parse(await fs.readFile(SECRETS_FILE, 'utf8'));
             delete parsed._INSTRUKCJA;
             return parsed;
         } catch (_) {
-            // Plik nie istnieje lub błąd parsowania — zwróć puste obiekty
-            console.warn(`[Impresario] ⚠️  Skarbiec (media_secrets.json) niedostępny — upload API niemożliwy.`);
-            return { youtube: {}, spotify: {} };
+            console.warn('[Impresario] ⚠️  Skarbiec (media_secrets.json) niedostępny.');
+            return { youtube: {}, spotify_distrokid: {} };
         }
     }
 }
@@ -361,11 +697,9 @@ class ImpresarioService {
 // ─── Singleton ────────────────────────────────────────────────────────────────
 let _instance = null;
 
-const impresarioServiceSingleton = {
+export default {
     getInstance() {
         if (!_instance) _instance = new ImpresarioService();
         return _instance;
     }
 };
-
-export default impresarioServiceSingleton;

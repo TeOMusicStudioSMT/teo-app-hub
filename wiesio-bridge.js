@@ -2935,6 +2935,36 @@ app.post('/api/impresario/vault/update', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/impresario/export/spotify/:id
+ * Ręcznie wyzwól eksport paczki DistroKid dla konkretnego zadania.
+ * Zadanie musi istnieć w kolejce i mieć status PENDING lub PROCESSING.
+ */
+app.post('/api/impresario/export/spotify/:id', async (req, res) => {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, message: 'Brak id zadania.' });
+
+    try {
+        const queue = await ImpresarioService.getInstance().getQueue();
+        const task  = queue.find(j => j.id === id);
+
+        if (!task) {
+            return res.status(404).json({ success: false, message: `Zadanie ${id} nie istnieje w kolejce.` });
+        }
+        if (task.status === 'COMPLETE') {
+            return res.status(409).json({ success: false, message: `Zadanie ${id} już zostało ukończone.` });
+        }
+
+        // Uruchom eksport (może trwać chwilę — odpowiedź po zakończeniu)
+        const result = await ImpresarioService.getInstance().exportSpotifyPaczkowy(task);
+        return res.json({ success: true, id, ...result });
+
+    } catch (err) {
+        console.error('[Impresario-API] ❌ POST export/spotify:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ── TASK COMPLETION HANDLER ──────────────────────────────────────────────────
 /**
  * NOWA LOGIKA: Zamiast wywoływania processKnowledgeGraph(task),
@@ -2992,6 +3022,8 @@ app.listen(PORT, () => {
     console.log(`[Impresario] ⏰ Harmonogram: processNextJob() co ${IMPRESARIO_INTERVAL_MS / 1000}s.`);
     console.log(` 🎙️  GET  /api/impresario/status`);
     console.log(` 🎙️  GET  /api/impresario/queue`);
-    console.log(` 🎙️  POST /api/impresario/enqueue`);
+    console.log(` 🎙️  POST /api/impresario/enqueue         (filePath wymagane)`);
+    console.log(` 🎙️  POST /api/impresario/upload/:id       (YouTube OAuth2 streaming)`);
+    console.log(` 🎙️  POST /api/impresario/export/spotify/:id (DistroKid paczka)`);
     console.log(` 🎙️  POST /api/impresario/vault/update`);
 });

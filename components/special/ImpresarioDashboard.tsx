@@ -66,7 +66,13 @@ interface QueueJob {
     progress_percent: number;
     last_updated:     string;
     createdAt?:       string;
+    filePath?:        string | null;
     error?:           string;
+    // Pola wyników — wypełniane po zakończeniu
+    note?:            string;   // "Wyeksportowano paczkę dla DistroKid!" itp.
+    exportPath?:      string;   // Ścieżka do folderu paczki Spotify
+    youtubeUrl?:      string;   // "https://youtu.be/..."
+    youtubeVideoId?:  string;
 }
 
 // ─── ImpresarioDashboard ──────────────────────────────────────────────────────
@@ -82,6 +88,7 @@ const ImpresarioDashboard: React.FC = () => {
     // Formularz nowego zlecenia
     const [formTitle,     setFormTitle]     = useState('');
     const [formAlbum,     setFormAlbum]     = useState('');
+    const [formFilePath,  setFormFilePath]  = useState('');
     const [formPlatforms, setFormPlatforms] = useState<Set<string>>(new Set());
     const [submitting,    setSubmitting]    = useState(false);
     const [submitMsg,     setSubmitMsg]     = useState<{ ok: boolean; text: string } | null>(null);
@@ -146,6 +153,10 @@ const ImpresarioDashboard: React.FC = () => {
             setSubmitMsg({ ok: false, text: 'Wpisz tytuł i wybierz przynajmniej jedną platformę.' });
             return;
         }
+        if (!formFilePath.trim()) {
+            setSubmitMsg({ ok: false, text: '📁 Ścieżka do pliku jest wymagana (np. C:\\muzyka\\utwor.wav).' });
+            return;
+        }
         setSubmitting(true);
         setSubmitMsg(null);
         try {
@@ -156,6 +167,7 @@ const ImpresarioDashboard: React.FC = () => {
                     title:     formTitle.trim(),
                     album:     formAlbum.trim() || null,
                     platforms: [...formPlatforms],
+                    filePath:  formFilePath.trim(),
                 }),
             });
             const data = await res.json();
@@ -163,6 +175,7 @@ const ImpresarioDashboard: React.FC = () => {
                 setSubmitMsg({ ok: true, text: `✅ Zlecenie "${formTitle}" przyjęte do Katedry!` });
                 setFormTitle('');
                 setFormAlbum('');
+                setFormFilePath('');
                 setFormPlatforms(new Set());
                 setTimeout(fetchStatus, 600);
             } else {
@@ -309,6 +322,25 @@ const ImpresarioDashboard: React.FC = () => {
                                     placeholder="np. Cycles"
                                     className="w-full bg-black/60 border border-slate-700 focus:border-cyan-500 text-white text-xs font-mono rounded px-3 py-2 outline-none transition-colors placeholder-slate-600"
                                 />
+                            </div>
+
+                            {/* Ścieżka do pliku */}
+                            <div>
+                                <label className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block mb-1">
+                                    📁 Ścieżka do pliku na dysku (filePath) *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formFilePath}
+                                    onChange={e => setFormFilePath(e.target.value)}
+                                    placeholder="np. C:\muzyka\moj_utwór.wav lub /home/teo/tracks/song.mp4"
+                                    className="w-full bg-black/60 border border-slate-700 focus:border-yellow-500/70 text-white text-xs font-mono rounded px-3 py-2 outline-none transition-colors placeholder-slate-600"
+                                    required
+                                    spellCheck={false}
+                                />
+                                <p className="text-[8px] font-mono text-slate-600 mt-1">
+                                    Akceptowane: .mp4 .mov .wav .mp3 .flac .m4a .webm
+                                </p>
                             </div>
 
                             {/* Platformy */}
@@ -490,11 +522,49 @@ const ImpresarioDashboard: React.FC = () => {
                                                         )}
                                                     </div>
 
-                                                    {/* Błąd */}
+                                                    {/* Log błędu */}
                                                     {job.error && (
-                                                        <p className="text-[8px] text-red-400/70 font-mono mt-1 leading-relaxed">
-                                                            {job.error}
-                                                        </p>
+                                                        <div
+                                                            className="mt-2 rounded px-2 py-1.5"
+                                                            style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)' }}
+                                                        >
+                                                            <p className="text-[8px] font-mono text-red-400 leading-relaxed break-all">
+                                                                ✗ {job.error}
+                                                            </p>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Log sukcesu / wyniki */}
+                                                    {job.status === 'COMPLETE' && (job.note || job.exportPath || job.youtubeUrl) && (
+                                                        <div
+                                                            className="mt-2 rounded px-2 py-1.5 space-y-0.5"
+                                                            style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.18)' }}
+                                                        >
+                                                            {job.note && (
+                                                                <p className="text-[8px] font-mono text-green-400 leading-relaxed">
+                                                                    ✓ {job.note}
+                                                                </p>
+                                                            )}
+                                                            {job.exportPath && (
+                                                                <p
+                                                                    className="text-[7px] font-mono text-yellow-400/70 truncate leading-relaxed"
+                                                                    title={job.exportPath}
+                                                                >
+                                                                    📁 {job.exportPath}
+                                                                </p>
+                                                            )}
+                                                            {job.youtubeUrl && (
+                                                                <a
+                                                                    href={job.youtubeUrl}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="text-[7px] font-mono text-red-400/80 hover:text-red-300 block truncate leading-relaxed transition-colors"
+                                                                    title={job.youtubeUrl}
+                                                                >
+                                                                    ▶ {job.youtubeUrl}
+                                                                </a>
+                                                            )}
+                                                        </div>
                                                     )}
                                                 </motion.div>
                                             );
