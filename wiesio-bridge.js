@@ -20,6 +20,7 @@ const require = createRequire(import.meta.url);
 // ── ARCHIWISTA WIEDZY (KnowledgeGraphService) ────────────────────────────────
 import KnowledgeGraphService from './services/KnowledgeGraphService.js';
 import MechanicService       from './services/MechanicService.js';
+import ImpresarioService     from './services/ImpresarioService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -2817,6 +2818,84 @@ app.post('/api/mechanic/reject/:id', async (req, res) => {
     }
 });
 
+// ── 🎙️ IMPRESARIO — Agent Medialny ──────────────────────────────────────────
+
+/**
+ * GET /api/impresario/status
+ * Zwraca stan kont (vault) + kolejkę + metryki.
+ */
+app.get('/api/impresario/status', async (req, res) => {
+    try {
+        const status = await ImpresarioService.getInstance().getStatus();
+        return res.json({ success: true, ...status });
+    } catch (err) {
+        console.error('[Impresario-API] ❌ GET status:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * GET /api/impresario/queue
+ * Zwraca aktualną kolejkę wydawniczą.
+ */
+app.get('/api/impresario/queue', async (req, res) => {
+    try {
+        const queue = await ImpresarioService.getInstance().getQueue();
+        return res.json({ success: true, queue, total: queue.length });
+    } catch (err) {
+        console.error('[Impresario-API] ❌ GET queue:', err.message);
+        return res.status(500).json({ success: false, queue: [], message: err.message });
+    }
+});
+
+/**
+ * POST /api/impresario/enqueue
+ * Body: { title: string, album?: string, platforms: string[] }
+ * Dodaje nowe zlecenie publikacji do kolejki.
+ */
+app.post('/api/impresario/enqueue', async (req, res) => {
+    const { title, album, platforms } = req.body ?? {};
+
+    if (!title || !platforms) {
+        return res.status(400).json({
+            success: false,
+            message: 'Wymagane pola: title i platforms (tablica).',
+        });
+    }
+
+    try {
+        const job = await ImpresarioService.getInstance().enqueuePublication(title, album, platforms);
+        return res.status(201).json({ success: true, job, message: `Zlecenie "${title}" przyjęte do Katedry.` });
+    } catch (err) {
+        console.error('[Impresario-API] ❌ POST enqueue:', err.message);
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/impresario/vault/update
+ * Body: { platform: string, isConnected: boolean, ...extras }
+ * Aktualizuje metadane konta (połącz/rozłącz platformę).
+ */
+app.post('/api/impresario/vault/update', async (req, res) => {
+    const { platform, isConnected, ...extras } = req.body ?? {};
+
+    if (!platform || typeof isConnected === 'undefined') {
+        return res.status(400).json({
+            success: false,
+            message: 'Wymagane pola: platform i isConnected.',
+        });
+    }
+
+    try {
+        const updated = await ImpresarioService.getInstance().updateVaultMetadata(platform, isConnected, extras);
+        return res.json({ success: true, platform, updated });
+    } catch (err) {
+        console.error('[Impresario-API] ❌ POST vault/update:', err.message);
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
 // ── TASK COMPLETION HANDLER ──────────────────────────────────────────────────
 /**
  * NOWA LOGIKA: Zamiast wywoływania processKnowledgeGraph(task),
@@ -2863,4 +2942,17 @@ app.listen(PORT, () => {
     }, MECHANIC_INTERVAL_MS);
 
     console.log(`[Mechanik] ⏰ Harmonogram: processPendingTasks() co ${MECHANIC_INTERVAL_MS / 1000}s.`);
+
+    // ── 🎙️ Agent Impresario — procesor zadań co 15 sekund ────────────────
+    // Szybszy interwał bo to symulacja — widoczny postęp na dashboardzie.
+    const IMPRESARIO_INTERVAL_MS = 15_000; // 15 sekund
+    setInterval(async () => {
+        await ImpresarioService.getInstance().processNextJob();
+    }, IMPRESARIO_INTERVAL_MS);
+
+    console.log(`[Impresario] ⏰ Harmonogram: processNextJob() co ${IMPRESARIO_INTERVAL_MS / 1000}s.`);
+    console.log(` 🎙️  GET  /api/impresario/status`);
+    console.log(` 🎙️  GET  /api/impresario/queue`);
+    console.log(` 🎙️  POST /api/impresario/enqueue`);
+    console.log(` 🎙️  POST /api/impresario/vault/update`);
 });

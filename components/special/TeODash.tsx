@@ -60,7 +60,8 @@ import { AutobusDashboard } from './AutobusDashboard';  // ← NOWOŚĆ: Magistr
 import { WydawnictwoForge } from './WydawnictwoForge';  // ← NOWOŚĆ: Kuźnia Wydawnictwa 0.00G
 import { Rafineria } from './Rafineria';               // ← NOWOŚĆ: Transmutacja WebM → MP4
 import { Play, BrainCircuit, RefreshCw, Eye, Terminal } from 'lucide-react';
-import AgentDashboard from './AgentDashboard';
+import AgentDashboard      from './AgentDashboard';
+import ImpresarioDashboard from './ImpresarioDashboard';
 
 
 interface TeODashProps {
@@ -136,8 +137,8 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   const [rawResponse, setRawResponse] = useState('');
   const [isRawThinking, setIsRawThinking] = useState(false);
 
-  // 👁️ Panel Dowodzenia: aktywna zakładka (terminal vs oczy suwerena)
-  type CommandPanelTab = 'terminal' | 'eyes';
+  // 👁️ Panel Dowodzenia: aktywna zakładka
+  type CommandPanelTab = 'terminal' | 'eyes' | 'impresario';
   const [activeCommandPanel, setActiveCommandPanel] = useState<CommandPanelTab>('terminal');
 
   // FFmpeg Wiesio-Spawacz State
@@ -649,10 +650,25 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               👁️ Oczy Suwerena
             </button>
 
+            <button
+              onClick={() => setActiveCommandPanel('impresario')}
+              className={`
+                flex items-center gap-2 px-5 py-3 text-xs font-bold tracking-widest uppercase transition-all duration-300
+                ${activeCommandPanel === 'impresario'
+                  ? 'text-violet-400 border-b-2 border-violet-400 bg-violet-500/5 shadow-[inset_0_-2px_8px_rgba(167,139,250,0.1)]'
+                  : 'text-slate-500 hover:text-slate-300 border-b-2 border-transparent'
+                }
+              `}
+            >
+              🎙️ Impresario
+            </button>
+
             {/* Indykator aktywnego panelu */}
             <div className="flex-1 flex items-center justify-end px-4">
               <span className="text-[9px] font-mono text-slate-600 uppercase tracking-widest">
-                {activeCommandPanel === 'terminal' ? '⚡ RAW_EXEC' : '👁️ AGENT_VISION'}
+                {activeCommandPanel === 'terminal'   ? '⚡ RAW_EXEC'     :
+                 activeCommandPanel === 'eyes'       ? '👁️ AGENT_VISION' :
+                                                       '🎙️ IMPRESARIO'}
               </span>
             </div>
           </div>
@@ -708,6 +724,18 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
                 transition={{ duration: 0.18 }}
               >
                 <AgentDashboard />
+              </motion.div>
+            )}
+
+            {activeCommandPanel === 'impresario' && (
+              <motion.div
+                key="impresario"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18 }}
+              >
+                <ImpresarioDashboard />
               </motion.div>
             )}
           </AnimatePresence>
