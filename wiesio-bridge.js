@@ -2965,6 +2965,101 @@ app.post('/api/impresario/export/spotify/:id', async (req, res) => {
     }
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+//  AUTH GOOGLE — Przyszłościowy OAuth2 + Ekosystem Gemini Agent
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/auth/google
+ * Punkt wejścia OAuth2. Na tym etapie zwraca JSON z informacjami i planowanym URL.
+ * TODO: Po uzupełnieniu CLIENT_ID w media_secrets.json — przekieruj na ekran zgody Google.
+ */
+app.get('/api/auth/google', async (req, res) => {
+    try {
+        const secretsStatus = await ImpresarioService.getInstance().getYouTubeSecretsStatus();
+        const clientId = secretsStatus.filled.includes('CLIENT_ID')
+            ? '(skonfigurowany)'
+            : '(brak — uzupełnij media_secrets.json)';
+
+        const authUrl = secretsStatus.filled.includes('CLIENT_ID')
+            ? `https://accounts.google.com/o/oauth2/auth?` +
+              `response_type=code&` +
+              `scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fyoutube.upload&` +
+              `access_type=offline&prompt=consent`
+            : null;
+
+        return res.json({
+            success:       true,
+            status:        secretsStatus.allPresent ? 'READY' : 'NEEDS_CONFIGURATION',
+            clientId,
+            authUrl,
+            secretsStatus,
+            nextStep:      secretsStatus.allPresent
+                ? 'Klucze gotowe. Użyj POST /api/auth/google/simulate lub zaimplementuj redirect.'
+                : 'Uzupełnij CLIENT_ID, CLIENT_SECRET i REFRESH_TOKEN przez POST /api/impresario/secrets/youtube.',
+            note:          'Pełny redirect OAuth2 zostanie aktywowany po skonfigurowaniu CLIENT_ID w Katedrze.',
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/impresario/secrets/youtube
+ * Body: { clientId?: string, clientSecret?: string, refreshToken?: string }
+ * Zapisuje klucze API YouTube do media_secrets.json (atomowo) i łączy vault.
+ */
+app.post('/api/impresario/secrets/youtube', async (req, res) => {
+    const { clientId, clientSecret, refreshToken } = req.body ?? {};
+
+    if (!clientId && !clientSecret && !refreshToken) {
+        return res.status(400).json({
+            success: false,
+            message: 'Wymagane przynajmniej jedno pole: clientId, clientSecret lub refreshToken.',
+        });
+    }
+
+    try {
+        const result = await ImpresarioService.getInstance().saveYouTubeSecrets(
+            clientId, clientSecret, refreshToken
+        );
+
+        // Automatycznie połącz vault jeśli wszystkie klucze uzupełnione
+        if (result.missingFields.length === 0) {
+            await ImpresarioService.getInstance().updateVaultMetadata('youtube', true, {
+                api_key_hash: `sha256_${Date.now().toString(36)}`, // placeholder hash
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: result.missingFields.length === 0
+                ? '✅ Wszystkie klucze YouTube zapisane! Konto połączone.'
+                : `Klucze częściowo zapisane. Brakuje: ${result.missingFields.join(', ')}.`,
+            ...result,
+        });
+    } catch (err) {
+        console.error('[Impresario-API] ❌ POST secrets/youtube:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/auth/google/simulate
+ * Symuluje autoryzację przez Ekosystem Gemini Agent.
+ * Flagi vault: { connected: true, gemini_auth: true, auth_method: 'gemini_agent_ecosystem' }
+ * TODO: Zastąpić rzeczywistym OAuth2 callback po uzyskaniu Gemini API access.
+ */
+app.post('/api/auth/google/simulate', async (req, res) => {
+    try {
+        const result = await ImpresarioService.getInstance().simulateGeminiAgentConnect();
+        return res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('[Impresario-API] ❌ POST auth/google/simulate:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ── TASK COMPLETION HANDLER ──────────────────────────────────────────────────
 /**
  * NOWA LOGIKA: Zamiast wywoływania processKnowledgeGraph(task),
@@ -3026,4 +3121,7 @@ app.listen(PORT, () => {
     console.log(` 🎙️  POST /api/impresario/upload/:id       (YouTube OAuth2 streaming)`);
     console.log(` 🎙️  POST /api/impresario/export/spotify/:id (DistroKid paczka)`);
     console.log(` 🎙️  POST /api/impresario/vault/update`);
+    console.log(` 🤖  GET  /api/auth/google                  (OAuth2 placeholder)`);
+    console.log(` 🤖  POST /api/impresario/secrets/youtube   (Zapis kluczy API)`);
+    console.log(` 🤖  POST /api/auth/google/simulate         (Gemini Agent stub)`);
 });

@@ -32,6 +32,7 @@ const VAULT_FILE   = path.join(MEDIA_DIR, 'media_vault.json');
 const SECRETS_FILE = path.join(MEDIA_DIR, 'media_secrets.json'); // NIE w repo!
 const QUEUE_TEMP   = path.join(MEDIA_DIR, 'temp_queue.json');
 const VAULT_TEMP   = path.join(MEDIA_DIR, 'temp_vault.json');
+const SECRETS_TEMP = path.join(MEDIA_DIR, 'temp_secrets.json');
 
 // ─── Dostępne platformy ───────────────────────────────────────────────────────
 const SUPPORTED_PLATFORMS = ['youtube', 'spotify', 'soundcloud'];
@@ -679,6 +680,78 @@ class ImpresarioService {
     async _saveVault(vault) {
         await fs.writeFile(VAULT_TEMP, JSON.stringify(vault, null, 2), 'utf8');
         await fs.rename(VAULT_TEMP, VAULT_FILE);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  ZARZĄDZANIE SEKRETAMI — zapis kluczy API z poziomu UI
+    // ════════════════════════════════════════════════════════════════════════
+
+    // Zapisuje klucze YouTube API do media_secrets.json (atomowo)
+    async saveYouTubeSecrets(clientId, clientSecret, refreshToken) {
+        await this._ensureDir();
+        const current = await this._readSecrets();
+
+        const updated = {
+            _INSTRUKCJA: 'Uzupełnij pola kluczami API. Ten plik NIE MOŻE trafić do repozytorium (jest w .gitignore).',
+            ...current,
+            youtube: {
+                CLIENT_ID:     clientId?.trim()     ?? current.youtube?.CLIENT_ID     ?? '',
+                CLIENT_SECRET: clientSecret?.trim() ?? current.youtube?.CLIENT_SECRET ?? '',
+                REFRESH_TOKEN: refreshToken?.trim() ?? current.youtube?.REFRESH_TOKEN ?? '',
+            },
+        };
+
+        await fs.writeFile(SECRETS_TEMP, JSON.stringify(updated, null, 2), 'utf8');
+        await fs.rename(SECRETS_TEMP, SECRETS_FILE);
+
+        const filled  = ['CLIENT_ID', 'CLIENT_SECRET', 'REFRESH_TOKEN']
+            .filter(k => updated.youtube[k]?.trim());
+        console.log(`[Impresario] 🔐 Skarbiec YouTube zaktualizowany (${filled.length}/3 pól uzupełnionych).`);
+
+        return {
+            success:       true,
+            filledFields:  filled,
+            missingFields: ['CLIENT_ID', 'CLIENT_SECRET', 'REFRESH_TOKEN'].filter(k => !updated.youtube[k]?.trim()),
+        };
+    }
+
+    // Sprawdza czy klucze YouTube są uzupełnione (bez rzucania wyjątku)
+    async getYouTubeSecretsStatus() {
+        const secrets = await this._readSecrets();
+        const yt = secrets?.youtube ?? {};
+        const fields = ['CLIENT_ID', 'CLIENT_SECRET', 'REFRESH_TOKEN'];
+        const filled = fields.filter(k => yt[k]?.trim());
+        return {
+            allPresent: filled.length === fields.length,
+            filled,
+            missing:    fields.filter(k => !yt[k]?.trim()),
+        };
+    }
+
+    // Symuluje natywne połączenie przez Ekosystem Gemini Agent
+    // (placeholder: w przyszłości zastąpić pełnym OAuth2 redirect flow)
+    async simulateGeminiAgentConnect() {
+        await this._ensureDir();
+        const vault = await this._readVault();
+
+        vault.youtube = {
+            ...vault.youtube,
+            connected:       true,
+            gemini_auth:     true,
+            auth_method:     'gemini_agent_ecosystem',
+            auth_timestamp:  new Date().toISOString(),
+            last_updated:    new Date().toISOString(),
+        };
+
+        await this._saveVault(vault);
+        console.log('[Impresario] 🤖 Ekosystem Gemini Agent: symulowane połączenie YouTube OK.');
+
+        return {
+            success:     true,
+            method:      'gemini_agent_ecosystem',
+            platform:    'youtube',
+            note:        'Symulacja autoryzacji przez Ekosystem Gemini. Wdróż /api/auth/google dla pełnego OAuth2.',
+        };
     }
 
     // Skarbiec sekretów — nigdy nie rzuca wyjątku (graceful degradation)
