@@ -2850,11 +2850,14 @@ app.get('/api/impresario/queue', async (req, res) => {
 
 /**
  * POST /api/impresario/enqueue
- * Body: { title: string, album?: string, platforms: string[] }
+ * Body: { title: string, album?: string, platforms: string[], filePath?: string }
+ *
  * Dodaje nowe zlecenie publikacji do kolejki.
+ * Opcjonalne pole `filePath` wskazuje plik .mp4/.wav na dysku lokalnym
+ * (używane przez uploadVideoToYouTube przy realnym deploymencie).
  */
 app.post('/api/impresario/enqueue', async (req, res) => {
-    const { title, album, platforms } = req.body ?? {};
+    const { title, album, platforms, filePath = null } = req.body ?? {};
 
     if (!title || !platforms) {
         return res.status(400).json({
@@ -2864,11 +2867,47 @@ app.post('/api/impresario/enqueue', async (req, res) => {
     }
 
     try {
-        const job = await ImpresarioService.getInstance().enqueuePublication(title, album, platforms);
-        return res.status(201).json({ success: true, job, message: `Zlecenie "${title}" przyjęte do Katedry.` });
+        const job = await ImpresarioService.getInstance().enqueuePublication(title, album, platforms, filePath);
+        return res.status(201).json({
+            success:  true,
+            job,
+            message:  `Zlecenie "${title}" przyjęte do Katedry.`,
+            hasFile:  Boolean(job.filePath),
+        });
     } catch (err) {
         console.error('[Impresario-API] ❌ POST enqueue:', err.message);
         return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/impresario/upload/:id
+ * Inicjuje realny upload zadania do YouTube.
+ * Sprawdza media_secrets.json — jeśli tokeny brak → zadanie → FAILED z jasnym komunikatem.
+ */
+app.post('/api/impresario/upload/:id', async (req, res) => {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, message: 'Brak id zadania.' });
+
+    try {
+        // Pobierz zadanie z kolejki
+        const queue = await ImpresarioService.getInstance().getQueue();
+        const task  = queue.find(j => j.id === id);
+
+        if (!task) {
+            return res.status(404).json({ success: false, message: `Zadanie ${id} nie istnieje w kolejce.` });
+        }
+        if (!task.platforms.includes('youtube')) {
+            return res.status(400).json({ success: false, message: `Zadanie ${id} nie jest przeznaczone na YouTube.` });
+        }
+
+        const result = await ImpresarioService.getInstance().uploadVideoToYouTube(task);
+        const status = result.success ? 200 : 422;
+        return res.status(status).json(result);
+
+    } catch (err) {
+        console.error('[Impresario-API] ❌ POST upload:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
     }
 });
 

@@ -8,6 +8,7 @@
  *   ▸ Lock (_isRunning) — pętla tła nie nakłada się na siebie
  *   ▸ Job Manager: PENDING → PROCESSING → COMPLETE/FAILED
  *   ▸ Singleton pattern
+ *   ▸ Skarbiec sekretów (media_secrets.json) — nigdy w repozytorium!
  *
  * Standard: ES Modules ("type": "module" w package.json)
  */
@@ -20,11 +21,12 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-const MEDIA_DIR  = path.join(process.cwd(), '_AntiGravity_Wymiar', 'media');
-const QUEUE_FILE = path.join(MEDIA_DIR, 'media_queue.json');
-const VAULT_FILE = path.join(MEDIA_DIR, 'media_vault.json');
-const QUEUE_TEMP = path.join(MEDIA_DIR, 'temp_queue.json');
-const VAULT_TEMP = path.join(MEDIA_DIR, 'temp_vault.json');
+const MEDIA_DIR    = path.join(process.cwd(), '_AntiGravity_Wymiar', 'media');
+const QUEUE_FILE   = path.join(MEDIA_DIR, 'media_queue.json');
+const VAULT_FILE   = path.join(MEDIA_DIR, 'media_vault.json');
+const SECRETS_FILE = path.join(MEDIA_DIR, 'media_secrets.json'); // ← Skarbiec (tylko lokalne, NIE w repo)
+const QUEUE_TEMP   = path.join(MEDIA_DIR, 'temp_queue.json');
+const VAULT_TEMP   = path.join(MEDIA_DIR, 'temp_vault.json');
 
 // ─── Dostępne platformy ───────────────────────────────────────────────────────
 const SUPPORTED_PLATFORMS = ['youtube', 'spotify', 'soundcloud'];
@@ -72,8 +74,13 @@ class ImpresarioService {
     }
 
     // ── PUBLIC: Dodaj publikację do kolejki ───────────────────────────────────
+    //
+    // @param title     {string}       Tytuł utworu/albumu (wymagany)
+    // @param album     {string|null}  Nazwa albumu (opcjonalny)
+    // @param platforms {string[]}     Docelowe platformy (min. 1)
+    // @param filePath  {string|null}  Ścieżka do pliku .mp4/.wav (opcjonalna)
 
-    async enqueuePublication(title, album, platforms) {
+    async enqueuePublication(title, album, platforms, filePath = null) {
         if (!title || !title.trim()) {
             throw new Error('Tytuł jest wymagany.');
         }
@@ -87,6 +94,18 @@ class ImpresarioService {
             throw new Error(`Nieznane platformy: ${platforms.join(', ')}. Dozwolone: ${SUPPORTED_PLATFORMS.join(', ')}.`);
         }
 
+        // Walidacja filePath — jeśli podana, musi być stringiem i rozszerzeniem audio/video
+        let resolvedFilePath = null;
+        if (filePath && typeof filePath === 'string') {
+            const ext = path.extname(filePath).toLowerCase();
+            const ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.wav', '.mp3', '.flac', '.m4a', '.webm'];
+            if (!ALLOWED_EXTENSIONS.includes(ext)) {
+                throw new Error(`Niedozwolony typ pliku: ${ext}. Akceptowane: ${ALLOWED_EXTENSIONS.join(', ')}`);
+            }
+            // Normalizuj ścieżkę (nie sprawdzamy istnienia — plik może być przygotowywany asynchronicznie)
+            resolvedFilePath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
+        }
+
         await this._ensureDir();
         const queue = await this._readQueue();
 
@@ -97,6 +116,7 @@ class ImpresarioService {
             status:           'PENDING',
             platforms:        validPlatforms,
             progress_percent: 0,
+            filePath:         resolvedFilePath, // null gdy brak pliku
             createdAt:        new Date().toISOString(),
             last_updated:     new Date().toISOString(),
         };
@@ -104,7 +124,7 @@ class ImpresarioService {
         queue.push(newJob);
         await this._saveQueue(queue);
 
-        console.log(`[Impresario] ➕ Zlecenie "${newJob.title}" (${newJob.id}) → ${validPlatforms.join(', ')}`);
+        console.log(`[Impresario] ➕ Zlecenie "${newJob.title}" (${newJob.id}) → ${validPlatforms.join(', ')}${resolvedFilePath ? ` · plik: ${path.basename(resolvedFilePath)}` : ''}`);
         return newJob;
     }
 
@@ -189,6 +209,98 @@ class ImpresarioService {
         }
     }
 
+    // ── PUBLIC: Szkielet uploadu YouTube (wymaga uzupełnienia media_secrets.json) ─
+    //
+    // Gdy CLIENT_ID / CLIENT_SECRET / REFRESH_TOKEN są puste →
+    //   zmienia status zadania na FAILED z komunikatem dla Suwerena.
+    // Gdy tokeny obecne → gotowy szkielet do podłączenia google-auth-library.
+
+    async uploadVideoToYouTube(task) {
+        console.log(`[Impresario-YT] 📺 Próba uploadu: "${task.title}" (${task.id})`);
+
+        // 1. Wczytaj skarbiec
+        const secrets = await this._readSecrets();
+        const ytSecrets = secrets?.youtube ?? {};
+
+        // 2. Walidacja kluczy — wszystkie trzy pola muszą być niepuste
+        const missing = ['CLIENT_ID', 'CLIENT_SECRET', 'REFRESH_TOKEN']
+            .filter(field => !ytSecrets[field] || ytSecrets[field].trim() === '');
+
+        if (missing.length > 0) {
+            const errMsg = `Brak autentykacji API. Uzupełnij plik media_secrets.json (brak: ${missing.join(', ')}).`;
+            console.error(`[Impresario-YT] ❌ ${errMsg}`);
+
+            // Zaktualizuj status zadania w kolejce
+            await this._ensureDir();
+            const queue = await this._readQueue();
+            await this._updateJobStatus(queue, task.id, 'FAILED', { error: errMsg });
+            return { success: false, reason: 'MISSING_SECRETS', message: errMsg };
+        }
+
+        // 3. Sprawdź czy plik istnieje (jeśli task.filePath ustawiony)
+        if (task.filePath) {
+            try {
+                await fs.access(task.filePath);
+            } catch (_) {
+                const errMsg = `Plik nie istnieje: ${task.filePath}`;
+                console.error(`[Impresario-YT] ❌ ${errMsg}`);
+                const queue = await this._readQueue();
+                await this._updateJobStatus(queue, task.id, 'FAILED', { error: errMsg });
+                return { success: false, reason: 'FILE_NOT_FOUND', message: errMsg };
+            }
+        }
+
+        // ══ SZKIELET UPLOADU ══════════════════════════════════════════════════
+        // Klucze gotowe. Poniżej należy wdrożyć pełną integrację z API Google.
+        //
+        // Wymagana paczka: npm install googleapis
+        //
+        // Przykładowy flow:
+        //
+        //   import { google } from 'googleapis';
+        //
+        //   const oauth2Client = new google.auth.OAuth2(
+        //       ytSecrets.CLIENT_ID,
+        //       ytSecrets.CLIENT_SECRET,
+        //       'urn:ietf:wg:oauth:2.0:oob'  // lub redirect URI
+        //   );
+        //   oauth2Client.setCredentials({ refresh_token: ytSecrets.REFRESH_TOKEN });
+        //
+        //   const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+        //   const response = await youtube.videos.insert({
+        //       part: ['snippet', 'status'],
+        //       requestBody: {
+        //           snippet: { title: task.title, description: task.album ?? '' },
+        //           status:  { privacyStatus: 'private' },
+        //       },
+        //       media: { body: fs.createReadStream(task.filePath) },
+        //   });
+        //   const videoId = response.data.id;
+        //
+        // ═════════════════════════════════════════════════════════════════════
+
+        console.log(`[Impresario-YT] ✅ Klucze obecne — szkielet gotowy do podłączenia googleapis.`);
+        console.log(`[Impresario-YT] 💡 Zainstaluj: npm install googleapis, a następnie uzupełnij blok SZKIELET UPLOADU.`);
+
+        return {
+            success: true,
+            ready:   true,
+            message: 'Klucze API zweryfikowane. Zaimplementuj pełny upload w bloku SZKIELET UPLOADU w ImpresarioService.js.',
+            taskId:  task.id,
+        };
+    }
+
+    // ── PRIVATE: Pomocnik zmiany statusu joba w kolejce ───────────────────────
+
+    async _updateJobStatus(queue, jobId, newStatus, extras = {}) {
+        const updated = queue.map(j =>
+            j.id === jobId
+                ? { ...j, status: newStatus, last_updated: new Date().toISOString(), ...extras }
+                : j
+        );
+        await this._saveQueue(updated);
+    }
+
     // ── PRIVATE: I/O ─────────────────────────────────────────────────────────
 
     async _ensureDir() {
@@ -228,6 +340,21 @@ class ImpresarioService {
         const payload = JSON.stringify(vault, null, 2);
         await fs.writeFile(VAULT_TEMP, payload, 'utf8');
         await fs.rename(VAULT_TEMP, VAULT_FILE); // atomowe
+    }
+
+    // Odczyt Skarbca — nigdy nie rzuca wyjątku (graceful fallback)
+    async _readSecrets() {
+        try {
+            const raw = await fs.readFile(SECRETS_FILE, 'utf8');
+            const parsed = JSON.parse(raw);
+            // Pomiń pole _INSTRUKCJA (metadata)
+            delete parsed._INSTRUKCJA;
+            return parsed;
+        } catch (_) {
+            // Plik nie istnieje lub błąd parsowania — zwróć puste obiekty
+            console.warn(`[Impresario] ⚠️  Skarbiec (media_secrets.json) niedostępny — upload API niemożliwy.`);
+            return { youtube: {}, spotify: {} };
+        }
     }
 }
 

@@ -5,6 +5,11 @@
 .env.test
 *.pem
 *.key
+# Impresario — wrażliwe klucze API (nigdy do repo!)
+media_secrets.json
+**/media_secrets.json
+*.anthropic_key*
+*.gemini_key*
 
 # --- LOGS & DEBUG ---
 npm-debug.log*
@@ -22,7 +27,14 @@ public/models/*.bin
 public/models/*.task
 public/models/*.h5
 public/models/*.bin
-_AntiGravity_Muzyka/
+_AntiGravity_AI/
+_AntiGravity_Aula/
+_AntiGravity_Build/
+_AntiGravity_Components/
 _AntiGravity_Kroniki/
 _AntiGravity_Move/
+_AntiGravity_Muzyka/
+_AntiGravity_Sonic/
 _AntiGravity_Wymiar/
+_AntyGravity Klocki/
+_temp/
