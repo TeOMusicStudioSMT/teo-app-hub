@@ -60,6 +60,7 @@ class TostService {
             text:      this._encode(text || ''),
             image:     imageBase64 || null, // Base64 data URL (nie szyfrowane — zbyt duże)
             timestamp: new Date().toISOString(),
+            owner:     'local', // P2P: wiadomości z vault są zawsze lokalne
         };
 
         vault.messages.push(message);

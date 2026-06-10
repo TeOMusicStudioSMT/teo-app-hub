@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
+import crypto from 'crypto';
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
@@ -3184,6 +3185,109 @@ app.delete('/api/tost/messages', async (req, res) => {
     }
 });
 
+// ══════════════════════════════════════════════════════════════════
+//  TOST P2P RELAY — Szmaragdowy Tunel (SSE Bridge)
+//  Architektura: token → Set<SSE res> (RAM only, zero persistence)
+// ══════════════════════════════════════════════════════════════════
+
+const p2pSessions = new Map(); // Map<token, { clients: Set<res>, createdAt: number }>
+
+// TTL 4h — sprzątaj wygasłe sesje co godzinę
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, session] of p2pSessions) {
+        if (now - session.createdAt > 4 * 60 * 60 * 1000) {
+            session.clients.forEach(c => { try { c.end(); } catch { /* zamknięty */ } });
+            p2pSessions.delete(token);
+            console.log(`[TOST-P2P] 🧹 Token ${token} wygasł — sesja usunięta.`);
+        }
+    }
+}, 60 * 60 * 1000);
+
+/**
+ * POST /api/tost/p2p/init — generuj unikalny token sesji P2P
+ */
+app.post('/api/tost/p2p/init', (req, res) => {
+    const raw   = crypto.randomBytes(6).toString('hex');
+    const token = `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`.toUpperCase();
+    p2pSessions.set(token, { clients: new Set(), createdAt: Date.now() });
+    console.log(`[TOST-P2P] 🔑 Nowy token sesji: ${token}`);
+    return res.json({ success: true, token });
+});
+
+/**
+ * GET /api/tost/p2p/stream/:token — SSE strumień (Szmaragdowy Tunel)
+ * Każdy klient co łączy się tym tokenem wchodzi do tej samej sesji.
+ */
+app.get('/api/tost/p2p/stream/:token', (req, res) => {
+    const { token } = req.params;
+
+    // Auto-utwórz sesję (peer dołącza przez token generatora)
+    if (!p2pSessions.has(token)) {
+        p2pSessions.set(token, { clients: new Set(), createdAt: Date.now() });
+    }
+    const session = p2pSessions.get(token);
+
+    res.setHeader('Content-Type',                'text/event-stream');
+    res.setHeader('Cache-Control',               'no-cache');
+    res.setHeader('Connection',                  'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (res.flushHeaders) res.flushHeaders();
+
+    session.clients.add(res);
+    const peerCount = session.clients.size;
+    console.log(`[TOST-P2P] 🔌 Nowy klient (${token}) · peerów: ${peerCount}`);
+
+    // Powiadom wszystkich o nowym rdeniu
+    session.clients.forEach(client => {
+        try { client.write(`data: ${JSON.stringify({ type: 'peer_joined', peerCount })}\n\n`); } catch { /* skip */ }
+    });
+
+    // Heartbeat co 30s (podtrzymaj HTTP/1.1 keep-alive)
+    const heartbeat = setInterval(() => {
+        try { res.write('data: {"type":"ping"}\n\n'); } catch { clearInterval(heartbeat); }
+    }, 30_000);
+
+    req.on('close', () => {
+        clearInterval(heartbeat);
+        session.clients.delete(res);
+        const remaining = session.clients.size;
+        console.log(`[TOST-P2P] 🔌 Klient odłączył się (${token}) · pozostało: ${remaining}`);
+        session.clients.forEach(client => {
+            try { client.write(`data: ${JSON.stringify({ type: 'peer_left', peerCount: remaining })}\n\n`); } catch { /* skip */ }
+        });
+    });
+});
+
+/**
+ * POST /api/tost/p2p/message/:token — przekaż wiadomość do wszystkich w sesji
+ * RAM only — nie dotyka TostService ani vault.
+ */
+app.post('/api/tost/p2p/message/:token', (req, res) => {
+    const { token } = req.params;
+    const session   = p2pSessions.get(token);
+    if (!session) return res.status(404).json({ success: false, error: 'Token nieważny lub wygasł.' });
+
+    const { text, imageBase64, timestamp, senderId } = req.body ?? {};
+    const message = {
+        type:        'message',
+        id:          `p2p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
+        text:        text || '',
+        imageBase64: imageBase64 || null,
+        timestamp:   timestamp || new Date().toISOString(),
+        senderId:    senderId || 'unknown',
+        owner:       'remote',
+    };
+
+    // Broadcast do WSZYSTKICH (frontend filtruje własne wiadomości przez senderId)
+    session.clients.forEach(client => {
+        try { client.write(`data: ${JSON.stringify(message)}\n\n`); } catch { /* skip */ }
+    });
+
+    console.log(`[TOST-P2P] 📡 Wiadomość (${token}) · klientów: ${session.clients.size}`);
+    return res.json({ success: true, id: message.id });
+});
+
 // ── TASK COMPLETION HANDLER ──────────────────────────────────────────────────
 /**
  * NOWA LOGIKA: Zamiast wywoływania processKnowledgeGraph(task),
@@ -3248,6 +3352,9 @@ app.listen(PORT, () => {
     console.log(` 💬  GET  /api/tost/messages                (Historia zaszyfrowana)`);
     console.log(` 💬  POST /api/tost/send                   (Wyślij → Gemma4 LOCAL TeO)`);
     console.log(` 💬  DELETE /api/tost/messages             (Wyczyść historię)`);
+    console.log(` 🔗  POST /api/tost/p2p/init               (Generuj Szmaragdowy Token)`);
+    console.log(` 🔗  GET  /api/tost/p2p/stream/:token      (SSE Tunel P2P)`);
+    console.log(` 🔗  POST /api/tost/p2p/message/:token     (Relay wiadomości P2P)`);
     console.log(` 🤖  GET  /api/auth/google                  (OAuth2 placeholder)`);
     console.log(` 🤖  POST /api/impresario/secrets/youtube   (Zapis kluczy API)`);
     console.log(` 🤖  POST /api/auth/google/simulate         (Gemini Agent stub)`);
