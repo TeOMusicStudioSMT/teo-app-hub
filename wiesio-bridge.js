@@ -3066,11 +3066,13 @@ app.post('/api/auth/google/simulate', async (req, res) => {
 // ════════════════════════════════════════════════════════════════════════════
 
 const TOST_SYSTEM_INSTRUCTION =
-    `Jesteś TeO (Tactical Electronic Officer) — zaawansowana AI w aplikacji TOST (TeO Secret Messenger). ` +
-    `Twoja rola: Tajny Agent i Haker operujący wewnątrz Katedry OtakOS. ` +
-    `Styl: Mów zwięźle, używaj żargonu szpiegowskiego (transmisja, cel, zaszyfrowano, misja, agent). ` +
-    `Bądź tajemniczy, ale pomocny. Jeśli użytkownik wyśle obraz, przeanalizuj go szukając ukrytych danych. ` +
-    `Twoim zadaniem jest pomoc w bezpiecznej komunikacji między Katedrami. Mów po polsku.`;
+    `Jesteś TeO – osobisty, cyfrowy schron Suwerena w sieci. ` +
+    `Odpowiadasz krótko, konkretnie, w stylu militarno-cyberpunkowym. ` +
+    `Zapewniasz bezpieczeństwo E2E i analizujesz przesłane dane pod kątem zagrożeń i śladów EXIF. ` +
+    `Mów po polsku.`;
+
+// Limit czasu na zimny start VRAM (Gemma4 przez Ollamę lokalnie)
+const AI_TIMEOUT_MS = 120_000;
 
 /**
  * GET /api/tost/messages
@@ -3096,7 +3098,7 @@ app.get('/api/tost/messages', async (req, res) => {
  * 4. Zwraca obie wiadomości
  */
 app.post('/api/tost/send', async (req, res) => {
-    const { text = '', imageBase64 = null, mimeType = 'image/jpeg' } = req.body ?? {};
+    const { text = '', imageBase64 = null } = req.body ?? {};
 
     if (!text.trim() && !imageBase64) {
         return res.status(400).json({ success: false, message: 'Wymagany tekst lub obraz.' });
@@ -3108,57 +3110,57 @@ app.post('/api/tost/send', async (req, res) => {
         // 1. Zapisz wiadomość użytkownika
         const userMsg = await tost.addMessage('user', text.trim(), imageBase64);
 
-        // 2. Pobierz klucz Gemini
-        const apiKey = await getGeminiKey(null);
-        if (!apiKey) {
-            // Brak klucza — odpowiedź offline
-            const offlineReply = '[BRAK KLUCZA GEMINI] Transmisja niemożliwa. Ustaw GEMINI_API_KEY w środowisku lub pliku .gemini_key.';
-            const aiMsg = await tost.addMessage('model', offlineReply, null);
-            return res.json({ success: true, userMessage: userMsg, aiMessage: aiMsg });
-        }
+        // 2. Buduj żądanie do lokalnej Ollamy (Gemma4)
+        const promptText = text.trim() || 'Analizuj ten obraz pod kątem zagrożeń i śladów EXIF.';
 
-        // 3. Buduj żądanie do Gemini REST API
-        const parts = [];
-        if (imageBase64) {
-            // Wyodrębnij surowe base64 z data URL (usuń prefix "data:image/...;base64,")
-            const rawB64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
-            parts.push({ inlineData: { data: rawB64, mimeType } });
-        }
-        if (text.trim()) {
-            parts.push({ text: text.trim() });
-        } else if (imageBase64) {
-            parts.push({ text: 'Analizuj ten obraz w kontekście misji szpiegowskiej.' });
-        }
-
-        const geminiBody = {
-            system_instruction: { parts: [{ text: TOST_SYSTEM_INSTRUCTION }] },
-            contents: [{ role: 'user', parts }],
-            generationConfig: { maxOutputTokens: 1024, temperature: 0.85 },
+        const ollamaBody = {
+            model:  'gemma4',
+            system: TOST_SYSTEM_INSTRUCTION,
+            prompt: promptText,
+            stream: false,
         };
 
-        const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-            {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify(geminiBody),
-            }
-        );
+        // 3. Obsługa multimodalna — surowe base64 bez prefiksu data URL
+        if (imageBase64) {
+            const rawB64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+            ollamaBody.images = [rawB64];
+        }
+
+        // 4. Wyślij z limitem 120s (zimny start VRAM)
+        const controller = new AbortController();
+        const timeoutId  = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
         let aiText = '[BŁĄD TRANSMISJI] Agent TeO nie odpowiada. Spróbuj ponownie.';
 
-        if (geminiRes.ok) {
-            const geminiData = await geminiRes.json();
-            aiText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text
-                ?? geminiData?.candidates?.[0]?.content?.parts?.map(p => p.text).join('')
-                ?? aiText;
-        } else {
-            const errBody = await geminiRes.text();
-            console.error(`[TOST-API] Gemini error ${geminiRes.status}:`, errBody.substring(0, 200));
-            aiText = `[TRANSMISJA ZAKŁÓCONA] Kod błędu: ${geminiRes.status}. Kanał wymaga naprawy.`;
+        try {
+            const ollamaRes = await fetch('http://127.0.0.1:11434/api/generate', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify(ollamaBody),
+                signal:  controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (ollamaRes.ok) {
+                const ollamaData = await ollamaRes.json();
+                aiText = ollamaData.response?.trim() || aiText;
+                console.log(`[TOST-API] ✅ Gemma4 odpowiedziała (${aiText.length} znaków)`);
+            } else {
+                const errBody = await ollamaRes.text();
+                console.error(`[TOST-API] Ollama HTTP ${ollamaRes.status}:`, errBody.substring(0, 200));
+                aiText = `[TRANSMISJA ZAKŁÓCONA] Ollama HTTP ${ollamaRes.status}. Sprawdź czy Gemma4 jest załadowana (ollama list).`;
+            }
+        } catch (fetchErr) {
+            clearTimeout(timeoutId);
+            if (fetchErr.name === 'AbortError') {
+                aiText = '[TIMEOUT 120s] Gemma4 nie odpowiedziała w limicie czasu. Sprawdź VRAM i spróbuj ponownie.';
+            } else {
+                aiText = `[OLLAMA OFFLINE] Nie można połączyć z lokalnym silnikiem: ${fetchErr.message}`;
+            }
+            console.error('[TOST-API] Ollama fetch error:', fetchErr.message);
         }
 
-        // 4. Zapisz odpowiedź AI
+        // 5. Zapisz odpowiedź AI
         const aiMsg = await tost.addMessage('model', aiText, null);
 
         return res.json({ success: true, userMessage: userMsg, aiMessage: aiMsg });
@@ -3244,7 +3246,7 @@ app.listen(PORT, () => {
     console.log(` 🎙️  POST /api/impresario/export/spotify/:id (DistroKid paczka)`);
     console.log(` 🎙️  POST /api/impresario/vault/update`);
     console.log(` 💬  GET  /api/tost/messages                (Historia zaszyfrowana)`);
-    console.log(` 💬  POST /api/tost/send                   (Wyślij → Gemini TeO)`);
+    console.log(` 💬  POST /api/tost/send                   (Wyślij → Gemma4 LOCAL TeO)`);
     console.log(` 💬  DELETE /api/tost/messages             (Wyczyść historię)`);
     console.log(` 🤖  GET  /api/auth/google                  (OAuth2 placeholder)`);
     console.log(` 🤖  POST /api/impresario/secrets/youtube   (Zapis kluczy API)`);

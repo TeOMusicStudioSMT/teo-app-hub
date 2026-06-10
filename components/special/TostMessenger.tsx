@@ -2,7 +2,7 @@
  * 💬 TostMessenger — TOST: TeO Secret Messenger
  *
  * Szyfrowany komunikator wewnętrzny Katedry OtakOS.
- * AI: TeO (Tactical Electronic Officer) napędzany Gemini 2.0 Flash
+ * AI: TeO (Tactical Electronic Officer) napędzany Gemma 4 (Ollama LOCAL — 100% offline)
  * Skarbiec: _AntiGravity_Wymiar/secure/tost_vault.json
  *
  * Styl: Zielony cyberpunk / terminal szpiegowski — Tailwind CSS
@@ -206,12 +206,9 @@ const TostMessenger: React.FC = () => {
                 <div className="flex items-center gap-3">
                     {/* Status dot */}
                     <motion.div
-                        animate={bridgeOnline
-                            ? { scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }
-                            : { opacity: [1, 0.3, 1] }
-                        }
+                        animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
                         transition={{ repeat: Infinity, duration: 2 }}
-                        className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${bridgeOnline ? 'bg-green-400' : 'bg-red-600'}`}
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-green-400"
                     />
                     <div>
                         <span
@@ -223,7 +220,7 @@ const TostMessenger: React.FC = () => {
                             {' '}TeO
                         </span>
                         <p className="text-[8px] text-green-900 tracking-widest uppercase mt-0.5">
-                            {bridgeOnline ? '● SECURE CONNECTION ACTIVE' : '○ MOST OFFLINE'}
+                            ● LOCAL OFFLINE · GEMMA4 · SECURE
                         </p>
                     </div>
                 </div>
@@ -439,7 +436,7 @@ const TostMessenger: React.FC = () => {
 
                 {/* Stopka */}
                 <p className="text-[7px] font-mono text-green-950 mt-1.5 text-center tracking-widest">
-                    E2E · SZYFROWANIE BASE64 V1.0 · KATEDRA OTAKOS
+                    E2E · GEMMA4 LOCAL · OFFLINE · BRAK CHMURY · KATEDRA OTAKOS
                 </p>
             </div>
         </div>
