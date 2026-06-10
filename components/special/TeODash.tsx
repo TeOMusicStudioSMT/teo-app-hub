@@ -62,6 +62,7 @@ import { Rafineria } from './Rafineria';               // ← NOWOŚĆ: Transmut
 import { Play, BrainCircuit, RefreshCw, Eye, Terminal } from 'lucide-react';
 import AgentDashboard      from './AgentDashboard';
 import ImpresarioDashboard from './ImpresarioDashboard';
+import TostMessenger       from './TostMessenger';
 
 
 interface TeODashProps {
@@ -138,7 +139,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   const [isRawThinking, setIsRawThinking] = useState(false);
 
   // 👁️ Panel Dowodzenia: aktywna zakładka
-  type CommandPanelTab = 'terminal' | 'eyes' | 'impresario';
+  type CommandPanelTab = 'terminal' | 'eyes' | 'impresario' | 'tost';
   const [activeCommandPanel, setActiveCommandPanel] = useState<CommandPanelTab>('terminal');
 
   // FFmpeg Wiesio-Spawacz State
@@ -663,12 +664,26 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               🎙️ Impresario
             </button>
 
+            <button
+              onClick={() => setActiveCommandPanel('tost')}
+              className={`
+                flex items-center gap-2 px-5 py-3 text-xs font-bold tracking-widest uppercase transition-all duration-300
+                ${activeCommandPanel === 'tost'
+                  ? 'text-green-400 border-b-2 border-green-400 bg-green-500/5 shadow-[inset_0_-2px_8px_rgba(34,197,94,0.1)]'
+                  : 'text-slate-500 hover:text-slate-300 border-b-2 border-transparent'
+                }
+              `}
+            >
+              💬 TOST
+            </button>
+
             {/* Indykator aktywnego panelu */}
             <div className="flex-1 flex items-center justify-end px-4">
               <span className="text-[9px] font-mono text-slate-600 uppercase tracking-widest">
-                {activeCommandPanel === 'terminal'   ? '⚡ RAW_EXEC'     :
-                 activeCommandPanel === 'eyes'       ? '👁️ AGENT_VISION' :
-                                                       '🎙️ IMPRESARIO'}
+                {activeCommandPanel === 'terminal'   ? '⚡ RAW_EXEC'      :
+                 activeCommandPanel === 'eyes'       ? '👁️ AGENT_VISION'  :
+                 activeCommandPanel === 'impresario' ? '🎙️ IMPRESARIO'    :
+                                                       '💬 TOST_MESSENGER'}
               </span>
             </div>
           </div>
@@ -736,6 +751,18 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
                 transition={{ duration: 0.18 }}
               >
                 <ImpresarioDashboard />
+              </motion.div>
+            )}
+
+            {activeCommandPanel === 'tost' && (
+              <motion.div
+                key="tost"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18 }}
+              >
+                <TostMessenger />
               </motion.div>
             )}
           </AnimatePresence>

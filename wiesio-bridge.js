@@ -21,6 +21,7 @@ const require = createRequire(import.meta.url);
 import KnowledgeGraphService from './services/KnowledgeGraphService.js';
 import MechanicService       from './services/MechanicService.js';
 import ImpresarioService     from './services/ImpresarioService.js';
+import TostService           from './services/TostService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -3060,6 +3061,127 @@ app.post('/api/auth/google/simulate', async (req, res) => {
     }
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+//  TOST MESSENGER — Szyfrowany Komunikator Katedry
+// ════════════════════════════════════════════════════════════════════════════
+
+const TOST_SYSTEM_INSTRUCTION =
+    `Jesteś TeO (Tactical Electronic Officer) — zaawansowana AI w aplikacji TOST (TeO Secret Messenger). ` +
+    `Twoja rola: Tajny Agent i Haker operujący wewnątrz Katedry OtakOS. ` +
+    `Styl: Mów zwięźle, używaj żargonu szpiegowskiego (transmisja, cel, zaszyfrowano, misja, agent). ` +
+    `Bądź tajemniczy, ale pomocny. Jeśli użytkownik wyśle obraz, przeanalizuj go szukając ukrytych danych. ` +
+    `Twoim zadaniem jest pomoc w bezpiecznej komunikacji między Katedrami. Mów po polsku.`;
+
+/**
+ * GET /api/tost/messages
+ * Zwraca historię wiadomości z lokalnego skarbca (odszyfrowaną).
+ */
+app.get('/api/tost/messages', async (req, res) => {
+    try {
+        const messages = await TostService.getInstance().getMessages();
+        return res.json({ success: true, messages, count: messages.length });
+    } catch (err) {
+        console.error('[TOST-API] ❌ GET messages:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/tost/send
+ * Body: { text?: string, imageBase64?: string, mimeType?: string }
+ *
+ * 1. Zapisuje wiadomość użytkownika w skarbcu
+ * 2. Wysyła do Gemini z instrukcją systemu TeO
+ * 3. Zapisuje odpowiedź AI w skarbcu
+ * 4. Zwraca obie wiadomości
+ */
+app.post('/api/tost/send', async (req, res) => {
+    const { text = '', imageBase64 = null, mimeType = 'image/jpeg' } = req.body ?? {};
+
+    if (!text.trim() && !imageBase64) {
+        return res.status(400).json({ success: false, message: 'Wymagany tekst lub obraz.' });
+    }
+
+    try {
+        const tost = TostService.getInstance();
+
+        // 1. Zapisz wiadomość użytkownika
+        const userMsg = await tost.addMessage('user', text.trim(), imageBase64);
+
+        // 2. Pobierz klucz Gemini
+        const apiKey = await getGeminiKey(null);
+        if (!apiKey) {
+            // Brak klucza — odpowiedź offline
+            const offlineReply = '[BRAK KLUCZA GEMINI] Transmisja niemożliwa. Ustaw GEMINI_API_KEY w środowisku lub pliku .gemini_key.';
+            const aiMsg = await tost.addMessage('model', offlineReply, null);
+            return res.json({ success: true, userMessage: userMsg, aiMessage: aiMsg });
+        }
+
+        // 3. Buduj żądanie do Gemini REST API
+        const parts = [];
+        if (imageBase64) {
+            // Wyodrębnij surowe base64 z data URL (usuń prefix "data:image/...;base64,")
+            const rawB64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+            parts.push({ inlineData: { data: rawB64, mimeType } });
+        }
+        if (text.trim()) {
+            parts.push({ text: text.trim() });
+        } else if (imageBase64) {
+            parts.push({ text: 'Analizuj ten obraz w kontekście misji szpiegowskiej.' });
+        }
+
+        const geminiBody = {
+            system_instruction: { parts: [{ text: TOST_SYSTEM_INSTRUCTION }] },
+            contents: [{ role: 'user', parts }],
+            generationConfig: { maxOutputTokens: 1024, temperature: 0.85 },
+        };
+
+        const geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+            {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify(geminiBody),
+            }
+        );
+
+        let aiText = '[BŁĄD TRANSMISJI] Agent TeO nie odpowiada. Spróbuj ponownie.';
+
+        if (geminiRes.ok) {
+            const geminiData = await geminiRes.json();
+            aiText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text
+                ?? geminiData?.candidates?.[0]?.content?.parts?.map(p => p.text).join('')
+                ?? aiText;
+        } else {
+            const errBody = await geminiRes.text();
+            console.error(`[TOST-API] Gemini error ${geminiRes.status}:`, errBody.substring(0, 200));
+            aiText = `[TRANSMISJA ZAKŁÓCONA] Kod błędu: ${geminiRes.status}. Kanał wymaga naprawy.`;
+        }
+
+        // 4. Zapisz odpowiedź AI
+        const aiMsg = await tost.addMessage('model', aiText, null);
+
+        return res.json({ success: true, userMessage: userMsg, aiMessage: aiMsg });
+
+    } catch (err) {
+        console.error('[TOST-API] ❌ POST send:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * DELETE /api/tost/messages
+ * Czyści historię wiadomości ze skarbca.
+ */
+app.delete('/api/tost/messages', async (req, res) => {
+    try {
+        const result = await TostService.getInstance().clearMessages();
+        return res.json({ success: true, ...result });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ── TASK COMPLETION HANDLER ──────────────────────────────────────────────────
 /**
  * NOWA LOGIKA: Zamiast wywoływania processKnowledgeGraph(task),
@@ -3121,6 +3243,9 @@ app.listen(PORT, () => {
     console.log(` 🎙️  POST /api/impresario/upload/:id       (YouTube OAuth2 streaming)`);
     console.log(` 🎙️  POST /api/impresario/export/spotify/:id (DistroKid paczka)`);
     console.log(` 🎙️  POST /api/impresario/vault/update`);
+    console.log(` 💬  GET  /api/tost/messages                (Historia zaszyfrowana)`);
+    console.log(` 💬  POST /api/tost/send                   (Wyślij → Gemini TeO)`);
+    console.log(` 💬  DELETE /api/tost/messages             (Wyczyść historię)`);
     console.log(` 🤖  GET  /api/auth/google                  (OAuth2 placeholder)`);
     console.log(` 🤖  POST /api/impresario/secrets/youtube   (Zapis kluczy API)`);
     console.log(` 🤖  POST /api/auth/google/simulate         (Gemini Agent stub)`);
