@@ -23,7 +23,7 @@ export const useRoastStateMachine = () => {
 
     // Implementacja zaawansowanej logiki zmiany stanu (CORE LOGIC)
     const setLevelPolicy = useCallback((newLevel: number) => {
-        if (currentLevel >= newLevel) return; // Zapobieganie cofaniu się
+        if (currentLevel === newLevel) return; // Suwak działa w obie strony — Suweren kontroluje poziom
         
         console.log(`[STATE] Przejście z poziomu ${currentLevel} na ${newLevel}`);
 

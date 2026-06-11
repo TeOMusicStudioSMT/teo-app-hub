@@ -135,13 +135,10 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
 
 
 
-  const [rawPrompt, setRawPrompt] = useState('');
-  const [rawResponse, setRawResponse] = useState('');
-  const [isRawThinking, setIsRawThinking] = useState(false);
 
   // 👁️ Panel Dowodzenia: aktywna zakładka
-  type CommandPanelTab = 'terminal' | 'eyes' | 'impresario' | 'tost' | 'pralka';
-  const [activeCommandPanel, setActiveCommandPanel] = useState<CommandPanelTab>('terminal');
+  type CommandPanelTab = 'eyes' | 'impresario' | 'tost' | 'pralka';
+  const [activeCommandPanel, setActiveCommandPanel] = useState<CommandPanelTab>('eyes');
 
   // FFmpeg Wiesio-Spawacz State
   const [videoFormat, setVideoFormat] = useState('YT');
@@ -204,34 +201,6 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   };
 
 
-
-  const testRawTerminal = async () => {
-    if (!rawPrompt.trim()) return;
-    setIsRawThinking(true);
-    setRawResponse('Wykonywanie komendy...');
-
-    try {
-      const res = await fetch('http://127.0.0.1:3001/api/bridge/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'EXEC_SYSTEM',
-          command: rawPrompt
-        })
-
-      });
-      const data = await res.json();
-      if (data.success) {
-        setRawResponse(data.response);
-      } else {
-        setRawResponse(`Błąd Systemu: ${data.message}`);
-      }
-    } catch (err: any) {
-      setRawResponse(`Błąd Mostu: ${err.message}`);
-    } finally {
-      setIsRawThinking(false);
-    }
-  };
 
   // Pobierz statystyki
   useEffect(() => {
@@ -625,20 +594,6 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
           {/* ── Belka zakładek ── */}
           <div className="flex bg-slate-950/90 border-b border-cyan-500/20">
             <button
-              onClick={() => setActiveCommandPanel('terminal')}
-              className={`
-                flex items-center gap-2 px-5 py-3 text-xs font-bold tracking-widest uppercase transition-all duration-300
-                ${activeCommandPanel === 'terminal'
-                  ? 'text-amber-400 border-b-2 border-amber-400 bg-amber-500/5 shadow-[inset_0_-2px_8px_rgba(251,191,36,0.1)]'
-                  : 'text-slate-500 hover:text-slate-300 border-b-2 border-transparent'
-                }
-              `}
-            >
-              <Terminal size={12} />
-              ⚡ Surowy Terminal
-            </button>
-
-            <button
               onClick={() => setActiveCommandPanel('eyes')}
               className={`
                 flex items-center gap-2 px-5 py-3 text-xs font-bold tracking-widest uppercase transition-all duration-300
@@ -694,8 +649,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
             {/* Indykator aktywnego panelu */}
             <div className="flex-1 flex items-center justify-end px-4">
               <span className="text-[9px] font-mono text-slate-600 uppercase tracking-widest">
-                {activeCommandPanel === 'terminal'   ? '⚡ RAW_EXEC'      :
-                 activeCommandPanel === 'eyes'       ? '👁️ AGENT_VISION'  :
+                {activeCommandPanel === 'eyes'       ? '👁️ AGENT_VISION'  :
                  activeCommandPanel === 'impresario' ? '🎙️ IMPRESARIO'    :
                  activeCommandPanel === 'tost'       ? '💬 TOST_MESSENGER' :
                                                        '🧺 PRALKA_ROAST_STATION'}
@@ -705,46 +659,6 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
 
           {/* ── Zawartość zakładek ── */}
           <AnimatePresence mode="wait">
-            {activeCommandPanel === 'terminal' && (
-              <motion.div
-                key="terminal"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.18 }}
-                className="bg-slate-950 p-4"
-              >
-                <div className="flex gap-2 mb-3">
-                  <input
-                    type="text"
-                    value={rawPrompt}
-                    onChange={(e) => setRawPrompt(e.target.value)}
-                    placeholder="Wpisz surową komendę terminala Windows..."
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-amber-500 transition-colors"
-                    onKeyDown={(e) => e.key === 'Enter' && testRawTerminal()}
-                  />
-                  <button
-                    onClick={testRawTerminal}
-                    disabled={isRawThinking || !rawPrompt.trim()}
-                    className="bg-amber-900/40 hover:bg-amber-800/70 text-amber-400 px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50 border border-amber-500/30"
-                  >
-                    {isRawThinking
-                      ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }}><RefreshCw size={14} /></motion.div>
-                      : <Play size={14} />
-                    }
-                    PYTAJ
-                  </button>
-                </div>
-
-                <div className="bg-black/60 border border-slate-800 rounded-lg p-3 min-h-[80px] text-xs text-slate-300 whitespace-pre-wrap max-h-[160px] overflow-y-auto custom-scrollbar leading-relaxed font-mono">
-                  {rawResponse
-                    ? <span className="text-amber-200">{rawResponse}</span>
-                    : <span className="text-slate-600 italic">Terminal gotowy na Twoją komendę, Suwerenie...</span>
-                  }
-                </div>
-              </motion.div>
-            )}
-
             {activeCommandPanel === 'eyes' && (
               <motion.div
                 key="eyes"

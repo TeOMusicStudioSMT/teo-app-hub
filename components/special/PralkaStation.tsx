@@ -150,22 +150,36 @@ const StationInner: React.FC = () => {
                                 Seans nie rozpoczęty. Ustaw poziom i wyślij pierwszy przekaz, Suwerenie.
                             </p>
                         ) : (
-                            messages.map(msg => (
-                                <motion.div
-                                    key={msg.id}
-                                    initial={{ opacity: 0, x: 10 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    className="bg-gray-900/80 rounded px-3 py-2 border-l-2 border-orange-500/50"
-                                >
-                                    {msg.mediaUrl && (
-                                        <img src={msg.mediaUrl} alt="media" className="max-h-24 rounded mb-1.5 border border-orange-900/40" />
-                                    )}
-                                    <p className="text-xs text-slate-200">{msg.content}</p>
-                                    <p className="text-[7px] text-slate-600 mt-0.5">
-                                        {msg.timestamp.toLocaleTimeString('pl-PL')}
-                                    </p>
-                                </motion.div>
-                            ))
+                            messages.map(msg => {
+                                const isPralka = msg.sender === 'system';
+                                return (
+                                    <motion.div
+                                        key={msg.id}
+                                        initial={{ opacity: 0, x: isPralka ? -10 : 10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        className={`rounded px-3 py-2 border-l-2 ${
+                                            isPralka
+                                                ? 'bg-orange-950/40 border-orange-400'
+                                                : 'bg-gray-900/80 border-slate-600/50'
+                                        }`}
+                                    >
+                                        {isPralka && (
+                                            <p className="text-[8px] font-mono text-orange-400/80 uppercase tracking-widest mb-1">
+                                                🧺 PRALKA · GEMMA4
+                                            </p>
+                                        )}
+                                        {msg.mediaUrl && (
+                                            <img src={msg.mediaUrl} alt="media" className="max-h-24 rounded mb-1.5 border border-orange-900/40" />
+                                        )}
+                                        <p className={`text-xs ${isPralka ? 'text-orange-100' : 'text-slate-200'}`}>
+                                            {msg.content}
+                                        </p>
+                                        <p className="text-[7px] text-slate-600 mt-0.5">
+                                            {msg.timestamp.toLocaleTimeString('pl-PL')}
+                                        </p>
+                                    </motion.div>
+                                );
+                            })
                         )}
                     </div>
 

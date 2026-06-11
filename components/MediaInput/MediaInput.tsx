@@ -87,8 +87,13 @@ const MediaInput: React.FC = () => {
 
             <p className={`text-sm mb-3 ${policy.canSendMedia ? 'text-green-400' : 'text-red-400'}`}>
                 STATUS: {policy.stateDescription} (Kod Protokołu: {policy.requiredCodec})
-                {policy.canSendMedia && !cameraOn && <span className="text-yellow-400"> · kamera offline</span>}
+                {policy.canSendMedia && !cameraOn && <span className="text-yellow-400"> · kamera offline — sprawdź zgodę przeglądarki</span>}
             </p>
+            {!policy.canSendMedia && (
+                <p className="text-[10px] text-yellow-500/80 mb-3 font-mono">
+                    💡 Okno mediów odblokowuje się od poziomu 2+ — przesuń suwak Stopnia Roastowania w górę.
+                </p>
+            )}
 
             {/* Button jest aktywowany tylko, gdy policy na to pozwala */}
             <button
