@@ -63,6 +63,7 @@ import { Play, BrainCircuit, RefreshCw, Eye, Terminal } from 'lucide-react';
 import AgentDashboard      from './AgentDashboard';
 import ImpresarioDashboard from './ImpresarioDashboard';
 import TostMessenger       from './TostMessenger';
+import PralkaStation       from './PralkaStation';
 
 
 interface TeODashProps {
@@ -139,7 +140,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   const [isRawThinking, setIsRawThinking] = useState(false);
 
   // 👁️ Panel Dowodzenia: aktywna zakładka
-  type CommandPanelTab = 'terminal' | 'eyes' | 'impresario' | 'tost';
+  type CommandPanelTab = 'terminal' | 'eyes' | 'impresario' | 'tost' | 'pralka';
   const [activeCommandPanel, setActiveCommandPanel] = useState<CommandPanelTab>('terminal');
 
   // FFmpeg Wiesio-Spawacz State
@@ -677,13 +678,27 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               💬 TOST
             </button>
 
+            <button
+              onClick={() => setActiveCommandPanel('pralka')}
+              className={`
+                flex items-center gap-2 px-5 py-3 text-xs font-bold tracking-widest uppercase transition-all duration-300
+                ${activeCommandPanel === 'pralka'
+                  ? 'text-orange-400 border-b-2 border-orange-400 bg-orange-500/5 shadow-[inset_0_-2px_8px_rgba(249,115,22,0.1)]'
+                  : 'text-slate-500 hover:text-slate-300 border-b-2 border-transparent'
+                }
+              `}
+            >
+              🧺 PRALKA
+            </button>
+
             {/* Indykator aktywnego panelu */}
             <div className="flex-1 flex items-center justify-end px-4">
               <span className="text-[9px] font-mono text-slate-600 uppercase tracking-widest">
                 {activeCommandPanel === 'terminal'   ? '⚡ RAW_EXEC'      :
                  activeCommandPanel === 'eyes'       ? '👁️ AGENT_VISION'  :
                  activeCommandPanel === 'impresario' ? '🎙️ IMPRESARIO'    :
-                                                       '💬 TOST_MESSENGER'}
+                 activeCommandPanel === 'tost'       ? '💬 TOST_MESSENGER' :
+                                                       '🧺 PRALKA_ROAST_STATION'}
               </span>
             </div>
           </div>
@@ -763,6 +778,18 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
                 transition={{ duration: 0.18 }}
               >
                 <TostMessenger />
+              </motion.div>
+            )}
+
+            {activeCommandPanel === 'pralka' && (
+              <motion.div
+                key="pralka"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18 }}
+              >
+                <PralkaStation />
               </motion.div>
             )}
           </AnimatePresence>
