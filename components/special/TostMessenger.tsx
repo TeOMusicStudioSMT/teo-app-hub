@@ -97,6 +97,11 @@ const TostMessenger: React.FC = () => {
     const [isLoading,    setIsLoading]    = useState(true);
     const [clearing,     setClearing]     = useState(false);
 
+    // ── Pralka state ──────────────────────────────────────────────────────────
+    const [isWashing,    setIsWashing]    = useState(false);
+    const [cleanBase64,  setCleanBase64]  = useState<string | null>(null);
+    const [laundryLog,   setLaundryLog]   = useState<string[]>([]);
+
     // ── P2P state ─────────────────────────────────────────────────────────────
     const [showTerminal,   setShowTerminal]   = useState(false);
     const [myToken,        setMyToken]        = useState<string | null>(null);
@@ -233,29 +238,71 @@ const TostMessenger: React.FC = () => {
         } catch { /* no clipboard API */ }
     };
 
-    // ── Wybór pliku ───────────────────────────────────────────────────────────
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files?.[0]) {
-            const f = e.target.files[0];
-            setSelectedFile(f);
-            setPreviewUrl(URL.createObjectURL(f));
+    // ── Wybór pliku → cykl prania (Pralka EXIF Scrubber) ─────────────────────
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+
+        setSelectedFile(f);
+        setIsWashing(true);
+        setCleanBase64(null);
+        setPreviewUrl(null);
+
+        try {
+            // 1. Wczytaj brudny plik
+            const dirtyBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror   = reject;
+                reader.readAsDataURL(f);
+            });
+
+            // 2. Cykl prania w bridge
+            const res  = await fetch(`${BRIDGE_URL}/api/laundry/sanitize`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ imageBase64: dirtyBase64 }),
+            });
+            const data = await res.json();
+
+            if (data.success && data.cleanBase64) {
+                setCleanBase64(data.cleanBase64);
+                setPreviewUrl(data.cleanBase64); // podgląd ze STERYLNEGO pliku
+                const rep = data.report ?? {};
+                const logMsg = rep.sterile
+                    ? `[PRALKA] 🧼 Plik oczyszczony pomyślnie. Usunięto ślady EXIF/GPS (${rep.removed?.length ?? 0} segm. · ${rep.bytesRemoved ?? 0} B). Sterylność: 100%. Bezpieczny do transmisji.`
+                    : `[PRALKA] ⚠️ ${rep.note ?? 'Format nierozpoznany — plik przepuszczony bez prania.'}`;
+                setLaundryLog(prev => [...prev.slice(-4), logMsg]);
+                setShowTerminal(true); // pokaż komunikat sterylności w terminalu
+            } else {
+                // Pralka offline — użyj brudnego pliku, ale ostrzeż
+                setCleanBase64(dirtyBase64);
+                setPreviewUrl(dirtyBase64);
+                setLaundryLog(prev => [...prev.slice(-4), '[PRALKA] ❌ Bęben niedostępny — plik NIE został wyprany!']);
+            }
+        } catch {
+            setSelectedFile(null);
+            setLaundryLog(prev => [...prev.slice(-4), '[PRALKA] ❌ Błąd cyklu prania — plik odrzucony.']);
+        } finally {
+            setIsWashing(false);
         }
     };
 
     const clearFile = () => {
         setSelectedFile(null);
         setPreviewUrl(null);
+        setCleanBase64(null);
         if (fileRef.current) fileRef.current.value = '';
     };
 
     // ── Wyślij wiadomość ──────────────────────────────────────────────────────
     const handleSend = useCallback(async () => {
-        if ((!inputText.trim() && !selectedFile) || isSending) return;
+        if ((!inputText.trim() && !cleanBase64) || isSending || isWashing) return;
 
         const text     = inputText.trim();
-        const file     = selectedFile;
+        const sterile  = cleanBase64; // obraz po cyklu prania (Pralka)
         const preview  = previewUrl;
-        const mimeType = file?.type ?? 'image/jpeg';
+        const mimeType = selectedFile?.type ?? 'image/jpeg';
 
         setInputText('');
         clearFile();
@@ -281,15 +328,8 @@ const TostMessenger: React.FC = () => {
         setMessages(prev => [...prev, localUserMsg, typingMsg]);
 
         try {
-            let imageBase64: string | null = null;
-            if (file) {
-                imageBase64 = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.onerror   = reject;
-                    reader.readAsDataURL(file);
-                });
-            }
+            // Obraz już wyprany przez Pralkę przy wyborze pliku
+            const imageBase64: string | null = sterile;
 
             // 1. Lokalne vault + Gemma4 (zawsze)
             const bridgeRes  = await fetch(`${BRIDGE_URL}/api/tost/send`, {
@@ -331,7 +371,7 @@ const TostMessenger: React.FC = () => {
         } finally {
             setIsSending(false);
         }
-    }, [inputText, selectedFile, previewUrl, isSending, fetchHistory]);
+    }, [inputText, selectedFile, cleanBase64, previewUrl, isSending, isWashing, fetchHistory]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -567,12 +607,46 @@ const TostMessenger: React.FC = () => {
                             </div>
                         </div>
 
+                        {/* Log Pralki — sterylność transmisji */}
+                        <AnimatePresence>
+                            {laundryLog.length > 0 && (
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="px-4 py-1.5 space-y-0.5"
+                                    style={{
+                                        background: 'rgba(0,8,3,0.95)',
+                                        borderTop:  '1px dashed rgba(34,197,94,0.15)',
+                                    }}
+                                >
+                                    {laundryLog.map((line, i) => (
+                                        <motion.p
+                                            key={`${i}_${line.slice(0, 24)}`}
+                                            initial={{ opacity: 0, x: -8 }}
+                                            animate={{ opacity: i === laundryLog.length - 1 ? 0.9 : 0.4, x: 0 }}
+                                            className="text-[8px] font-mono leading-relaxed"
+                                            style={{
+                                                color: line.includes('❌') ? '#f87171'
+                                                     : line.includes('⚠️') ? '#facc15'
+                                                     : '#4ade80',
+                                                textShadow: i === laundryLog.length - 1 && line.includes('🧼')
+                                                    ? '0 0 6px rgba(74,222,128,0.4)'
+                                                    : 'none',
+                                            }}
+                                        >
+                                            {line}
+                                        </motion.p>
+                                    ))}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
                         {/* Stopka terminalu */}
                         <div
                             className="text-[7px] font-mono text-center py-1 tracking-[0.2em] uppercase"
                             style={{ color: '#14532d', background: 'rgba(0,5,2,0.9)' }}
                         >
-                            📟 SZMARAGDOWY TERMINAL DEKOMPOZYCJI LIVE · WebRTC-ready SSE Relay · E2E
+                            📟 SZMARAGDOWY TERMINAL DEKOMPOZYCJI LIVE · WebRTC-ready SSE Relay · 🧽 PRALKA v1.0 · E2E
                         </div>
                     </motion.div>
                 )}
@@ -730,22 +804,46 @@ const TostMessenger: React.FC = () => {
                         ref={fileRef}
                         onChange={handleFileSelect}
                     />
-                    <button
-                        onClick={() => fileRef.current?.click()}
-                        className="flex-shrink-0 p-2 rounded transition-colors"
-                        style={{
-                            background: 'transparent',
-                            border:     '1px solid rgba(34,197,94,0.3)',
-                            color:      '#22c55e',
-                        }}
-                        title="Załącz obraz"
-                    >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                            <circle cx="8.5" cy="8.5" r="1.5"/>
-                            <polyline points="21 15 16 10 5 21"/>
-                        </svg>
-                    </button>
+                    <div className="flex-shrink-0 flex flex-col items-center gap-0.5">
+                        <button
+                            onClick={() => fileRef.current?.click()}
+                            disabled={isWashing}
+                            className="p-2 rounded transition-colors disabled:opacity-60"
+                            style={{
+                                background: 'transparent',
+                                border:     '1px solid rgba(34,197,94,0.3)',
+                                color:      '#22c55e',
+                            }}
+                            title="Załącz obraz (przejdzie cykl prania EXIF)"
+                        >
+                            {isWashing ? (
+                                /* Wirujący bęben — cykl prania danych */
+                                <motion.svg
+                                    animate={{ rotate: 360 }}
+                                    transition={{ repeat: Infinity, duration: 0.9, ease: 'linear' }}
+                                    width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                                >
+                                    <circle cx="12" cy="12" r="9" strokeDasharray="42 14" />
+                                    <circle cx="12" cy="12" r="3.5" />
+                                </motion.svg>
+                            ) : (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                                    <polyline points="21 15 16 10 5 21"/>
+                                </svg>
+                            )}
+                        </button>
+                        <span
+                            className="text-[6px] font-mono tracking-tighter whitespace-nowrap uppercase"
+                            style={{
+                                color:      isWashing ? '#4ade80' : '#166534',
+                                textShadow: isWashing ? '0 0 6px rgba(74,222,128,0.6)' : 'none',
+                            }}
+                        >
+                            ⚙️ PRALKA {isWashing ? 'PIERZE...' : 'AKTYWNA'}
+                        </span>
+                    </div>
 
                     <textarea
                         ref={textareaRef}
@@ -773,7 +871,7 @@ const TostMessenger: React.FC = () => {
 
                     <motion.button
                         onClick={handleSend}
-                        disabled={isSending || (!inputText.trim() && !selectedFile)}
+                        disabled={isSending || isWashing || (!inputText.trim() && !cleanBase64)}
                         whileHover={{ scale: isSending ? 1 : 1.03 }}
                         whileTap={{ scale: 0.97 }}
                         className="flex-shrink-0 px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all disabled:opacity-40 disabled:cursor-not-allowed"

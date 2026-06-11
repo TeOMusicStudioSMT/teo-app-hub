@@ -23,6 +23,7 @@ import KnowledgeGraphService from './services/KnowledgeGraphService.js';
 import MechanicService       from './services/MechanicService.js';
 import ImpresarioService     from './services/ImpresarioService.js';
 import TostService           from './services/TostService.js';
+import LaundryService        from './services/LaundryService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -3186,6 +3187,44 @@ app.delete('/api/tost/messages', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════
+//  PRALKA — Data Laundering & Scrubbing Service
+// ══════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/laundry/sanitize
+ * Body: { imageBase64?: string, text?: string }
+ * Pierze obraz z EXIF/ICC/XMP i/lub tekst ze znaków zero-width.
+ */
+app.post('/api/laundry/sanitize', (req, res) => {
+    const { imageBase64 = null, text = null } = req.body ?? {};
+
+    if (!imageBase64 && text === null) {
+        return res.status(400).json({ success: false, message: 'Brak danych do prania (imageBase64 lub text).' });
+    }
+
+    try {
+        const laundry = LaundryService.getInstance();
+        const result  = {};
+
+        if (imageBase64) {
+            const { cleanBase64, report } = laundry.sanitizeImage(imageBase64);
+            result.cleanBase64 = cleanBase64;
+            result.report      = report;
+        }
+        if (text !== null) {
+            const { cleanText, removedChars } = laundry.sanitizeText(text);
+            result.cleanText    = cleanText;
+            result.removedChars = removedChars;
+        }
+
+        return res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('[PRALKA-API] ❌', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════
 //  TOST P2P RELAY — Szmaragdowy Tunel (SSE Bridge)
 //  Architektura: token → Set<SSE res> (RAM only, zero persistence)
 // ══════════════════════════════════════════════════════════════════
@@ -3355,6 +3394,7 @@ app.listen(PORT, () => {
     console.log(` 🔗  POST /api/tost/p2p/init               (Generuj Szmaragdowy Token)`);
     console.log(` 🔗  GET  /api/tost/p2p/stream/:token      (SSE Tunel P2P)`);
     console.log(` 🔗  POST /api/tost/p2p/message/:token     (Relay wiadomości P2P)`);
+    console.log(` 🧽  POST /api/laundry/sanitize            (Pralka: EXIF/ICC/XMP scrubber)`);
     console.log(` 🤖  GET  /api/auth/google                  (OAuth2 placeholder)`);
     console.log(` 🤖  POST /api/impresario/secrets/youtube   (Zapis kluczy API)`);
     console.log(` 🤖  POST /api/auth/google/simulate         (Gemini Agent stub)`);
