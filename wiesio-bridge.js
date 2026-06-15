@@ -86,9 +86,12 @@ const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.flac', '.m4a', '.ogg', '.opus'];
 
 // Podstawowe middlewares
 app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    origin:          '*',
+    methods:         ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders:  ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cache-Control'],
+    exposedHeaders:  ['Content-Type', 'X-Error-Code'],
+    credentials:     false,
+    maxAge:          86400,  // preflight cache 24h
 }));
 
 // Zwiększamy limit dla dużych plików video (Base64)
@@ -540,6 +543,14 @@ async function scanDirectory(dirPath, maxDepth, currentDepth = 0) {
 }
 
 // ── /api/ollama — Ollama proxy z SSE streamingiem ──────────────────────
+//
+// Diagnostyka błędów Ollamy:
+//   ECONNREFUSED  — ollama serve nie działa (port 11434 zamknięty)
+//   AbortError    — timeout 120s (zimny start VRAM gemma4)
+//   HTTP 4xx/5xx  — model nie istnieje lub błąd Ollamy
+//
+// UWAGA: używamy 127.0.0.1 (IPv4) zamiast localhost — Node 18+ rozwiązuje
+// localhost → ::1 (IPv6), co może failować gdy Ollama słucha tylko na IPv4.
 app.post('/api/ollama', async (req, res) => {
     const { messages, system, model = 'gemma4' } = req.body;
     if (!messages?.length) return res.status(400).json({ error: 'Brak messages' });
@@ -548,27 +559,39 @@ app.post('/api/ollama', async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('X-Accel-Buffering', 'no');  // wyłącz buforowanie nginxa jeśli jest proxy
 
-    const sendEvent = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+    const sendEvent = (data) => {
+        try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch { /* client rozłączony */ }
+    };
 
     const ollamaMessages = [
         ...(system ? [{ role: 'system', content: system }] : []),
         ...messages,
     ];
 
+    // ── Timeout: 120s pokrywa zimny start VRAM gemma4 ────────────────────────
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 120_000);
+
     try {
-        const resp = await fetch('http://localhost:11434/api/chat', {
-            method: 'POST',
+        const resp = await fetch('http://127.0.0.1:11434/api/chat', {
+            method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model, messages: ollamaMessages, stream: true, options: { num_ctx: 8192 } }),
+            signal:  controller.signal,
+            body:    JSON.stringify({ model, messages: ollamaMessages, stream: true, options: { num_ctx: 8192 } }),
         });
 
         if (!resp.ok) {
-            sendEvent({ type: 'error', error: `Ollama HTTP ${resp.status} — czy Ollama działa? (ollama serve)` });
+            sendEvent({
+                type:  'error',
+                error: `Ollama HTTP ${resp.status} — model "${model}" istnieje? Sprawdź: ollama list`,
+                code:  `HTTP_${resp.status}`,
+            });
             return res.end();
         }
 
-        const reader = resp.body.getReader();
+        const reader  = resp.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
 
@@ -582,17 +605,23 @@ app.post('/api/ollama', async (req, res) => {
                 if (!line.trim()) continue;
                 try {
                     const chunk = JSON.parse(line);
-                    if (chunk.message?.content) {
-                        sendEvent({ type: 'text', text: chunk.message.content });
-                    }
-                    if (chunk.done) {
-                        sendEvent({ type: 'done' });
-                    }
-                } catch { /* pomiń */ }
+                    if (chunk.message?.content) sendEvent({ type: 'text', text: chunk.message.content });
+                    if (chunk.done)             sendEvent({ type: 'done' });
+                } catch { /* pomiń złośliwy JSON */ }
             }
         }
     } catch (e) {
-        sendEvent({ type: 'error', error: `Ollama niedostępna: ${e.message}` });
+        const isAbort = e.name === 'AbortError';
+        // Wydobądź dokładny kod Node.js (ECONNREFUSED, ETIMEDOUT, itp.)
+        const errCode = e.code || e.cause?.code || (isAbort ? 'ABORT' : 'UNKNOWN');
+        const detail  = isAbort
+            ? `TIMEOUT — Ollama milczy >120s. Czy gemma4 jest załadowany? (ollama pull gemma4)`
+            : `${errCode}: ${e.message}`;
+
+        console.error(`[/api/ollama] ❌ ${detail}`);
+        sendEvent({ type: 'error', error: `Ollama niedostępna: ${detail}`, code: errCode });
+    } finally {
+        clearTimeout(timer);
     }
 
     res.end();
@@ -601,13 +630,14 @@ app.post('/api/ollama', async (req, res) => {
 // ── /api/ollama/models — lista dostępnych modeli ────────────────────────
 app.get('/api/ollama/models', async (req, res) => {
     try {
-        const resp = await fetch('http://localhost:11434/api/tags');
-        if (!resp.ok) return res.json({ models: [] });
+        const resp = await fetch('http://127.0.0.1:11434/api/tags');
+        if (!resp.ok) return res.json({ models: [], error: `Ollama HTTP ${resp.status}` });
         const data = await resp.json();
         const models = (data.models || []).map(m => m.name);
         res.json({ models });
-    } catch {
-        res.json({ models: [] });
+    } catch (e) {
+        const code = e.code || e.cause?.code || 'UNKNOWN';
+        res.json({ models: [], error: `${code}: ${e.message}` });
     }
 });
 
