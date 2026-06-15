@@ -11,6 +11,46 @@ import { Eye, Filter, CalendarDays, Moon, Sun, Zap, BrainCircuit, RefreshCw, Mes
 import { toast } from 'react-hot-toast';
 import { OtakOSBus, BUS } from '../../lib/otakosBus';
 
+// ─── Bridge helpers ────────────────────────────────────────────────────────────
+const BRIDGE_OLLAMA  = 'http://127.0.0.1:3001/api/ollama';
+const BRIDGE_EXEC    = 'http://127.0.0.1:3001/api/bridge/execute';
+const RADA_DECOMPOSE = 'http://127.0.0.1:3001/api/agent/rada-decompose';
+const WIDOK_SYSTEM   = 'Jesteś systemem W.I.D.O.K. w Katedrze OtakOS. Analizujesz dane i generujesz zwięzłe raporty po polsku.';
+
+/** Wysyła prompt do lokalnej Gemma4 przez Wiesio Bridge (SSE → pełny tekst). */
+async function callBridgeOllama(prompt: string, system: string): Promise<string> {
+    const model = localStorage.getItem('otakos_active_model') || 'gemma4';
+    const res = await fetch(BRIDGE_OLLAMA, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ model, system, messages: [{ role: 'user', content: prompt }] }),
+    });
+    if (!res.ok || !res.body) throw new Error(`Wiesio Bridge HTTP ${res.status} — czy most działa? (:3001)`);
+
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '', fullText = '';
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+                const evt = JSON.parse(line.slice(6));
+                if (evt.type === 'text' && evt.text) fullText += evt.text;
+                if (evt.type === 'error') throw new Error(evt.error);
+            } catch (e: any) {
+                if (e?.message && !e.message.includes('JSON')) throw e;
+            }
+        }
+    }
+    return fullText.trim();
+}
+
 // --- TYPY ---
 type TimeFrame = '1_DAY' | '13_DAYS' | '26_DAYS';
 
@@ -164,20 +204,14 @@ Odpowiedz po polsku.`;
         }
 
         try {
-            const response = await fetch('http://127.0.0.1:11434/api/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: activeModel, prompt: promptText, stream: false })
-            });
-            if (!response.ok) throw new Error('Ollama offline');
-            const data = await response.json();
+            const responseText = await callBridgeOllama(promptText, WIDOK_SYSTEM);
 
             const newReport: DistilledReport = {
                 id: `WDK-${Date.now()}`,
                 timeframe: activeTimeframe,
                 date: new Date().toLocaleString(),
                 baseNoise: uploadedFileContent ? `Plik: ${uploadedFileName}` : "Pobrano 1,402,012 nagłówków. Szum zdestylowany.",
-                baseReport: data.response.trim()
+                baseReport: responseText
             };
 
             setReports(prev => [newReport, ...prev]);
@@ -191,7 +225,7 @@ Odpowiedz po polsku.`;
             setActiveReportId(newReport.id);
             toast.success(`Destylacja dla ${activeTimeframe} zakończona!`, { icon: '🌪️' });
         } catch (error) {
-            toast.error("Błąd Krashera Danych. Sprawdź rdzeń Ollamy.");
+            toast.error("Błąd Krashera Danych. Sprawdź Wiesio Bridge (:3001) i Ollamę (gemma4).");
         } finally {
             setIsGenerating(false);
         }
@@ -215,18 +249,12 @@ Jak jego perspektywa zmienia ten raport? Jakie nowe wnioski z tego płyną?
 Napisz "ZAKTUALIZOWANA SYNTEZA W.I.D.O.K:" a następnie podaj 2-3 zdania głębokiej konkluzji uwzględniającej słowa Suwerena. Polskie tłumaczenie.`;
 
         try {
-            const response = await fetch('http://127.0.0.1:11434/api/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model: activeModel, prompt: promptText, stream: false })
-            });
-            if (!response.ok) throw new Error('Ollama offline');
-            const data = await response.json();
+            const synthesisText = await callBridgeOllama(promptText, WIDOK_SYSTEM);
 
             // Aktualizacja raportu o perspektywę i nową syntezę
             const updatedReports = reports.map(r => {
                 if (r.id === activeReport.id) {
-                    return { ...r, suwerenInput: suwerenInput, finalSynthesis: data.response.trim() };
+                    return { ...r, suwerenInput: suwerenInput, finalSynthesis: synthesisText };
                 }
                 return r;
             });
@@ -241,13 +269,31 @@ Napisz "ZAKTUALIZOWANA SYNTEZA W.I.D.O.K:" a następnie podaj 2-3 zdania głębo
         }
     };
 
-    const dispatchToCouncil = () => {
+    const dispatchToCouncil = async () => {
         if (!activeReport) return;
         const topicToDiscuss = activeReport.finalSynthesis || activeReport.baseReport;
         localStorage.setItem('otakos_current_topic', `Analiza WIDOK: ${topicToDiscuss}`);
         window.dispatchEvent(new Event('otakos_open_council'));
         OtakOSBus.emit('widok', BUS.WIDOK_COUNCIL, { topic: topicToDiscuss.substring(0, 200) });
         toast.success("Raport przekazany na Stół Narad!", { icon: '🔮' });
+
+        // ── Rada dekomponuje raport na pod-zadania (sesja izolowana) ──────────
+        try {
+            const decompRes = await fetch(RADA_DECOMPOSE, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({
+                    topic:   topicToDiscuss.substring(0, 500),
+                    context: `Raport W.I.D.O.K. ${activeReport.timeframe} · ${activeReport.date}`,
+                }),
+            });
+            if (decompRes.ok) {
+                const d = await decompRes.json();
+                if (d.success && d.tasks?.length) {
+                    toast.success(`🏛️ Rada rozłożyła na ${d.tasks.length} pod-zadań → ${d.sessionId}`, { duration: 4000 });
+                }
+            }
+        } catch { /* non-critical — bridge może być offline */ }
     };
 
     const getThemeColor = (tf: TimeFrame) => {

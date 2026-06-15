@@ -3327,6 +3327,97 @@ app.post('/api/tost/p2p/message/:token', (req, res) => {
     return res.json({ success: true, id: message.id });
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  🏛️ RADA DEKOMPOZYCJI — wieloagentowy potok operacyjny 0.00G
+//  POST /api/agent/rada-decompose
+//
+//  Sekwencja:
+//    1. W.I.D.O.K./Katedra wysyła temat
+//    2. Gemma4 (Rada) dekomponuje na 2-4 pod-zadania z przydziałem agentów
+//    3. Pod-zadania trafiają do kolejki MechanicService (sesja izolowana)
+//    4. Główny wątek rozmowy pozostaje wolny (Session Isolation)
+// ══════════════════════════════════════════════════════════════════════════════
+app.post('/api/agent/rada-decompose', async (req, res) => {
+    const { topic, context = '', sessionId = crypto.randomBytes(4).toString('hex') } = req.body;
+    if (!topic) return res.status(400).json({ error: 'Brak topic' });
+
+    console.log(`[Rada] 🏛️ Dekompozycja sesji ${sessionId}: "${topic.substring(0, 60)}..."`);
+
+    const systemPrompt =
+        'Jesteś RADĄ KATEDRY OTAKOS — centrum decyzyjnym systemu OtakOS. ' +
+        'Twoje zadanie: zdekompozuj poniższe zadanie na 2-4 pod-zadania i przydziel je do agentów. ' +
+        'Dostępni agenci: MECHANIK (naprawa kodu/błędów), IMPRESARIO (dystrybucja/media), ' +
+        'TOST (bezpieczeństwo/szyfrowanie), KLAUDIUSZ (implementacja kodu/feature). ' +
+        'Odpowiedz WYŁĄCZNIE w formacie JSON (bez markdown, bez wyjaśnień, bez niczego poza JSON): ' +
+        '{"tasks":[{"id":"t1","title":"...","description":"...","agent":"mechanik|impresario|tost|klaudiusz","priority":"HIGH|CRITICAL|LOW"}]}';
+
+    try {
+        const ollamaResp = await fetch('http://127.0.0.1:11434/api/generate', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model:  'gemma4',
+                system: systemPrompt,
+                prompt: `Temat: ${topic}\nKontekst: ${context || 'brak'}`,
+                stream: false,
+            }),
+        });
+
+        if (!ollamaResp.ok) throw new Error(`Ollama HTTP ${ollamaResp.status}`);
+        const ollamaData = await ollamaResp.json();
+
+        let tasks = [];
+        try {
+            const jsonMatch = (ollamaData.response || '').match(/\{[\s\S]*\}/);
+            const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : ollamaData.response);
+            tasks = (parsed.tasks || []).map((t, i) => ({
+                id:          t.id || `rad-${sessionId}-${i}`,
+                title:       t.title       || 'Pod-zadanie Rady',
+                description: t.description || topic.substring(0, 120),
+                agent:       (t.agent || 'klaudiusz').toLowerCase(),
+                priority:    t.priority    || 'HIGH',
+                sessionId,
+                status:      'PENDING',
+                createdAt:   new Date().toISOString(),
+            }));
+        } catch {
+            // Fallback: Rada nie zwróciła JSON → jedno zadanie ogólne
+            tasks = [{
+                id:          `rad-${sessionId}-0`,
+                title:       topic.substring(0, 80),
+                description: context || topic,
+                agent:       'klaudiusz',
+                priority:    'HIGH',
+                sessionId,
+                status:      'PENDING',
+                createdAt:   new Date().toISOString(),
+            }];
+        }
+
+        // ── Enqueue do MechanicService (Session Isolation: kolejka działa w tle) ──
+        for (const task of tasks) {
+            try {
+                await MechanicService.getInstance().enqueueTask({
+                    title:       `[RADA·${task.agent.toUpperCase()}] ${task.title}`,
+                    description: task.description,
+                    priority:    task.priority,
+                    targetFiles: [],
+                    sessionId,
+                });
+            } catch (enqErr) {
+                console.warn(`[Rada] ⚠️ Enqueue failed for ${task.id}: ${enqErr.message}`);
+            }
+        }
+
+        console.log(`[Rada] ✅ Sesja ${sessionId}: ${tasks.length} pod-zadań wstrzyknięto do kolejki.`);
+        return res.json({ success: true, sessionId, tasks, totalTasks: tasks.length });
+
+    } catch (e) {
+        console.error(`[Rada] ❌ Błąd dekompozycji: ${e.message}`);
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // ── TASK COMPLETION HANDLER ──────────────────────────────────────────────────
 /**
  * NOWA LOGIKA: Zamiast wywoływania processKnowledgeGraph(task),
@@ -3395,6 +3486,7 @@ app.listen(PORT, () => {
     console.log(` 🔗  GET  /api/tost/p2p/stream/:token      (SSE Tunel P2P)`);
     console.log(` 🔗  POST /api/tost/p2p/message/:token     (Relay wiadomości P2P)`);
     console.log(` 🧽  POST /api/laundry/sanitize            (Pralka: EXIF/ICC/XMP scrubber)`);
+    console.log(` 🏛️  POST /api/agent/rada-decompose        (Rada: dekompozycja → sesja izolowana)`);
     console.log(` 🤖  GET  /api/auth/google                  (OAuth2 placeholder)`);
     console.log(` 🤖  POST /api/impresario/secrets/youtube   (Zapis kluczy API)`);
     console.log(` 🤖  POST /api/auth/google/simulate         (Gemini Agent stub)`);
