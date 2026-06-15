@@ -49,6 +49,7 @@ import { BookIcon } from './components/icons';
 import { KatedraRadioPlayer } from './components/KatedraRadioPlayer';
 import { TestKoherencji } from './components/special/TestKoherencji';
 import KwantowaCzytelnia from './components/KwantowaCzytelnia';
+import AutoPanicSentinel from './components/special/AutoPanicSentinel';
 
 
 
@@ -950,6 +951,10 @@ const App: React.FC = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* 🚨 Pętla Samonaprawy Katedry — globalny chwytacz błędów + szmaragdowa notyfikacja.
+                Zawsze zamontowana (poza bramką auth), by łapać awarie w całej aplikacji. */}
+            <AutoPanicSentinel />
 
             </GravitonProvider>
 

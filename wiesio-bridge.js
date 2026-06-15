@@ -2740,6 +2740,88 @@ app.post('/api/mechanic/process', async (req, res) => {
     return res.json({ success: true, message: 'Mechanik wyzwolony — przetwarzam kolejkę w tle.' });
 });
 
+// ── 🚨 AUTO-PANIC — pętla samonaprawy Katedry ────────────────────────────────
+// Anty-sztorm: ten sam crash w krótkim oknie nie generuje nowego zadania.
+const autoPanicRecent = new Map();   // hash → { taskId, ts }
+const AUTO_PANIC_COOLDOWN_MS = 60_000;
+
+/** Deterministyczny, krótki hash crashu (dla deduplikacji). */
+function hashPanic(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) | 0; }
+    return Math.abs(h).toString(36);
+}
+
+/**
+ * POST /api/mechanic/auto-panic
+ * Body: { message, stack?, source? }
+ *
+ * Globalny Chwytacz Błędów z frontu zgłasza crash. Most:
+ *   1. Deduplikuje (ten sam błąd w 60s → zwraca istniejący taskId)
+ *   2. Wyciąga ze stack trace pliki źródłowe powiązane z błędem
+ *   3. Enkolejkuje zadanie [AUTO-PANIC] (CRITICAL) — MechanicService w _processTask
+ *      sam wzbogaca opis przez TurbovecService.enrichTaskDescription()
+ *   4. Wyzwala processPendingTasks() w tle → patch ląduje w READY_FOR_REVIEW
+ */
+app.post('/api/mechanic/auto-panic', async (req, res) => {
+    const { message = '', stack = '', source = 'unknown' } = req.body ?? {};
+    const errMsg = String(message).trim();
+    if (!errMsg) return res.status(400).json({ success: false, error: 'Brak treści błędu (message).' });
+
+    // ── Deduplikacja (anty-sztorm) ──────────────────────────────────────────
+    const sig  = hashPanic(errMsg.slice(0, 200) + '|' + String(stack).slice(0, 200));
+    const now  = Date.now();
+    const prev = autoPanicRecent.get(sig);
+    if (prev && (now - prev.ts) < AUTO_PANIC_COOLDOWN_MS) {
+        console.log(`[Auto-Panic] 🔁 Duplikat crashu (${sig}) w oknie cooldown — pomijam enqueue.`);
+        return res.json({ success: true, taskId: prev.taskId, deduped: true });
+    }
+
+    // ── Wyciągnij pliki źródłowe ze stack trace + message ───────────────────
+    const haystack = `${errMsg}\n${stack}`;
+    const fileMatches = [...haystack.matchAll(/([\w./-]+\.(?:tsx?|jsx?|js))/g)]
+        .map(m => m[1])
+        .map(f => f.replace(/^.*?(components|services|lib|hooks|context)\//, '$1/'))  // przytnij do ścieżki repo
+        .filter(f => !f.includes('node_modules') && !f.startsWith('http'));
+    const targetFiles = [...new Set(fileMatches)].slice(0, 5);
+
+    const taskId = `panic-${sig}-${now.toString(36)}`;
+    const description =
+        `[AUTO-PANIC — automatyczne zgłoszenie crashu z frontu]\n` +
+        `Źródło: ${source}\n` +
+        `Komunikat: ${errMsg}\n\n` +
+        `Stack trace:\n${String(stack).slice(0, 1500) || '(brak)'}\n\n` +
+        `Zadanie: zdiagnozuj przyczynę awarii i wygeneruj poprawkę dla wskazanych ` +
+        `plików źródłowych. Zachowaj istniejący styl i strukturę.`;
+
+    try {
+        await MechanicService.getInstance().enqueueTask({
+            id:       taskId,
+            title:    `[AUTO-PANIC] ${errMsg.slice(0, 70)}`,
+            description,
+            priority: 'CRITICAL',
+            targetFiles,
+        });
+
+        autoPanicRecent.set(sig, { taskId, ts: now });
+        // Sprzątanie starych wpisów (utrzymanie mapy małej)
+        for (const [k, v] of autoPanicRecent) {
+            if (now - v.ts > AUTO_PANIC_COOLDOWN_MS * 5) autoPanicRecent.delete(k);
+        }
+
+        // Wyzwól Mechanika natychmiast (fire-and-forget, Session Isolation)
+        MechanicService.getInstance().processPendingTasks()
+            .catch(e => console.error('[Auto-Panic] ❌ process (bg):', e.message));
+
+        console.log(`[Auto-Panic] 🚨 Crash przyjęty (${sig}) · taskId=${taskId} · pliki: ${targetFiles.join(', ') || '—'}`);
+        return res.json({ success: true, taskId, targetFiles });
+
+    } catch (e) {
+        console.error('[Auto-Panic] ❌ enqueue:', e.message);
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // ── 🔧 MECHANIC — podgląd i wdrażanie patchy ────────────────────────────────
 
 /**
