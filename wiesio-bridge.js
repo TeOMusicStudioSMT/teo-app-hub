@@ -2928,24 +2928,58 @@ app.post('/api/mechanic/apply', async (req, res) => {
         });
     }
 
-    // ── Backup (obowiązkowy) ──────────────────────────────────────────────────
+    // ── Odczyt istniejącego pliku (raz — dla bezpiecznika i backupu) ──────────
+    let existingContent = null;
+    try {
+        existingContent = await fs.readFile(targetAbsolute, 'utf8');
+    } catch (e) {
+        if (e.code !== 'ENOENT') {
+            return res.status(500).json({ success: false, message: `Odczyt pliku docelowego: ${e.message}` });
+        }
+        // ENOENT → plik nie istnieje (tworzymy nowy)
+    }
+
+    // ── 🛡️ BEZPIECZNIK ANTY-OKALECZENIE ───────────────────────────────────────
+    // Gemma4 często zwraca URYWEK ("Dodanie na początku pliku..."), a nie pełny
+    // plik. apply nadpisuje CAŁY plik treścią patcha → urywek skasowałby resztę
+    // kodu (tak zginął wiesio-bridge.js). Odmawiamy, gdy nowy kod wygląda na
+    // fragment: drastycznie mniejszy od oryginału LUB zawiera markery urywka.
+    if (existingContent !== null) {
+        const SNIPPET_MARKERS = /(\.\.\.|reszta kodu|pozostał[ay] kod|existing code|rest of (the )?code|unchanged|bez zmian|Dodanie (na początku|przed)|\/\/\s*reszta|truncated|powyżej|poniżej dodaj)/i;
+        const tooSmall        = existingContent.length > 1500 && code.length < existingContent.length * 0.5;
+        const looksLikeSnippet = SNIPPET_MARKERS.test(code);
+
+        if (tooSmall || looksLikeSnippet) {
+            const reason = tooSmall
+                ? `nowy kod (${code.length} zn.) to <50% istniejącego pliku (${existingContent.length} zn.) — prawdopodobny urywek`
+                : 'wykryto markery urywka w treści patcha';
+            console.warn(`[Mechanic-API] 🛡️ apply ${id} ZABLOKOWANE: ${reason}`);
+            return res.status(422).json({
+                success:    false,
+                code:       'PATCH_TRUNCATION_GUARD',
+                message:    `Wdrożenie wstrzymane — ${reason}. Patch wygląda na fragment, nie pełny plik. ` +
+                            `Plik źródłowy NIE został naruszony.`,
+                manualHint: `Przejrzyj ręcznie: _AntiGravity_Wymiar/patches/patch_${id}.md`,
+            });
+        }
+    }
+
+    // ── Backup (obowiązkowy gdy plik istnieje) ────────────────────────────────
     const backupPath = targetAbsolute + '.bak';
     let backupCreated = false;
-    try {
-        const existing = await fs.readFile(targetAbsolute, 'utf8');
-        await fs.writeFile(backupPath, existing, 'utf8');
-        backupCreated = true;
-        console.log(`[Mechanic-API] 💾 Backup: ${path.relative(process.cwd(), backupPath)}`);
-    } catch (backupErr) {
-        if (backupErr.code !== 'ENOENT') {
-            // Plik istnieje, ale backup się nie udał → bezpieczna odmowa
+    if (existingContent !== null) {
+        try {
+            await fs.writeFile(backupPath, existingContent, 'utf8');
+            backupCreated = true;
+            console.log(`[Mechanic-API] 💾 Backup: ${path.relative(process.cwd(), backupPath)}`);
+        } catch (backupErr) {
             console.error(`[Mechanic-API] ❌ Błąd backupu: ${backupErr.message}`);
             return res.status(500).json({
                 success: false,
                 message: `Backup nie powiódł się — wdrożenie anulowane. ${backupErr.message}`,
             });
         }
-        // Plik jeszcze nie istnieje — backup nie potrzebny, tworzymy nowy
+    } else {
         console.log(`[Mechanic-API] 📝 Nowy plik (brak backupu potrzebny): ${targetFile}`);
     }
 
