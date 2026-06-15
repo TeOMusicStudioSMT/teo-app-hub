@@ -2676,6 +2676,19 @@ app.post('/api/mechanic/enqueue', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/mechanic/process
+ * Natychmiastowy wyzwalacz cyklu Mechanika (bez czekania na harmonogram co 3 min).
+ * Fire-and-forget: zwraca od razu, przetwarzanie biegnie w tle (Session Isolation).
+ * Używane przez komendę /mechanik w czacie Katedry — Suweren widzi reakcję od razu.
+ */
+app.post('/api/mechanic/process', async (req, res) => {
+    // Nie czekamy na zakończenie — Mechanik pracuje w tle, główny wątek wolny.
+    MechanicService.getInstance().processPendingTasks()
+        .catch(e => console.error('[Mechanic-API] ❌ process (bg):', e.message));
+    return res.json({ success: true, message: 'Mechanik wyzwolony — przetwarzam kolejkę w tle.' });
+});
+
 // ── 🔧 MECHANIC — podgląd i wdrażanie patchy ────────────────────────────────
 
 /**

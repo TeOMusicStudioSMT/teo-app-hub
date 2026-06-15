@@ -215,7 +215,7 @@ async function compressImage(
 }
 
 // ── Typy ──────────────────────────────────────────────────────────
-type SenderType = 'human' | 'klaudiusz' | 'adamus' | 'system' | 'terminal' | 'moderator';
+type SenderType = 'human' | 'klaudiusz' | 'adamus' | 'system' | 'terminal' | 'moderator' | 'mechanik';
 
 interface Message {
     id:          string;
@@ -241,6 +241,7 @@ const SENDER_LABELS: Record<SenderType, string> = {
     system:    'System',
     terminal:  '⚙️ Terminal',
     moderator: '🔍 Moderator',
+    mechanik:  '⚙️ Mechanik Katedry',
 };
 
 const SENDER_STYLES: Record<SenderType, string> = {
@@ -250,6 +251,7 @@ const SENDER_STYLES: Record<SenderType, string> = {
     system:    'bg-blue-900/60 text-blue-100 border border-blue-500/30',
     terminal:  'bg-slate-900 text-green-400 border border-green-500/30 font-mono text-sm',
     moderator: 'bg-slate-800/80 text-cyan-300 border border-cyan-500/20 text-xs italic',
+    mechanik:  'bg-[#001a0d] text-emerald-300 border border-emerald-500/50 font-mono text-sm shadow-[0_0_18px_rgba(16,185,129,0.18)]',
 };
 
 // ── System prompty dla chmury ─────────────────────────────────────
@@ -640,14 +642,130 @@ const KatedraChat: React.FC = () => {
         setTemplateContext('');
     }, [templateVision, templateContext]);
 
+    // ── ⚙️ KOMENDA /mechanik — bezpośrednie wezwanie Agenta Mechanika ──────────
+    /**
+     * Przechwytuje `/mechanik <opis zadania>` i kieruje je BEZPOŚREDNIO do
+     * MechanicService (z pominięciem potoku rozmowy Klaudiusza/Adamusa).
+     *
+     * Potok:
+     *   /mechanik → POST /api/mechanic/enqueue (zadanie do kolejki)
+     *            → POST /api/mechanic/process  (natychmiastowy wyzwalacz)
+     *            → MechanicService: turbovec enrichment → Gemma4 → patch
+     *            → READY_FOR_REVIEW na Szmaragdowym Terminalu (AgentDashboard)
+     *            → bezpiecznik [ 🟢 ZATWIERDŹ ULEPSZENIA MECHANIKA ]
+     *
+     * Heurystyka W.I.D.O.K.: gdy opis dotyczy widoku/ollamy/cors/rurociągu —
+     * automatycznie dołącza pliki docelowe i specyfikację naprawy CORS + timeout.
+     */
+    const dispatchToMechanik = useCallback(async (rawCmd: string) => {
+        const taskText = rawCmd.replace(/^\/mechanik\s*/i, '').trim()
+            || 'Diagnostyka ogólna Katedry — przeskanuj kolejkę i zaproponuj ulepszenia.';
+
+        // Echo komendy Suwerena
+        addMessage({ sender: 'human', content: `/mechanik ${taskText}` });
+
+        // Szmaragdowy widget — Mechanik przejmuje kontrolę
+        const widgetId = addMessage({
+            sender:  'mechanik',
+            content: '⚙️ MECHANIK KATEDRY PRZEJMUJE KONTROLĘ...\n\n▸ Analizuję zlecenie...',
+        });
+        setStatus('⚙️ Mechanik Katedry przejmuje kontrolę...');
+
+        // Heurystyka: czy to naprawa rurociągu W.I.D.O.K. / Ollama / CORS?
+        const lc = taskText.toLowerCase();
+        const isWidokPipeline =
+            /widok|ollama|cors|rurociąg|rurociag|połącz|polacz|bridge|most|11434|3001/.test(lc);
+
+        const targetFiles = isWidokPipeline
+            ? ['wiesio-bridge.js', 'components/special/WidokCore.tsx']
+            : [];
+
+        const description = isWidokPipeline
+            ? `${taskText}\n\n[ZLECENIE SUWERENA — NAPRAWA RUROCIĄGU W.I.D.O.K.]\n` +
+              `a) wiesio-bridge.js: trasa POST /api/ollama oraz pre-flight OPTIONS muszą ` +
+              `zwracać Access-Control-Allow-Origin: * oraz Access-Control-Allow-Methods: POST, GET, OPTIONS.\n` +
+              `b) Timeout połączenia z lokalną Ollamą = 120000 ms (120s) — gemma4 potrzebuje ` +
+              `czasu na załadowanie do VRAM bez crashu.\n` +
+              `c) Adres Ollamy: http://127.0.0.1:11434 (IPv4, nie localhost/IPv6).`
+            : taskText;
+
+        const taskId = `mech-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
+        try {
+            // 1. Wstaw zadanie do kolejki
+            const enqRes = await fetch('http://127.0.0.1:3001/api/mechanic/enqueue', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({
+                    id:          taskId,
+                    title:       taskText.substring(0, 80),
+                    description,
+                    priority:    isWidokPipeline ? 'CRITICAL' : 'HIGH',
+                    targetFiles,
+                }),
+            });
+            const enqData = await enqRes.json();
+
+            if (!enqRes.ok || !enqData.success) {
+                updateMessage(widgetId, {
+                    content: `⚙️ MECHANIK KATEDRY\n\n❌ Nie udało się dodać zlecenia: ` +
+                             `${enqData.message || `HTTP ${enqRes.status}`}`,
+                });
+                setStatus('❌ Mechanik: błąd kolejki', true);
+                return;
+            }
+
+            // 2. Natychmiastowy wyzwalacz (fire-and-forget na backendzie)
+            await fetch('http://127.0.0.1:3001/api/mechanic/process', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    '{}',
+            }).catch(() => { /* harmonogram 3-min i tak przetworzy */ });
+
+            // 3. Zaktualizuj widget — zlecenie przyjęte, patch trafi na Terminal
+            updateMessage(widgetId, {
+                content:
+                    `⚙️ MECHANIK KATEDRY PRZEJMUJE KONTROLĘ...\n\n` +
+                    `🟢 Zlecenie przyjęte · ID: ${taskId}\n` +
+                    `📋 ${taskText.substring(0, 90)}\n` +
+                    (isWidokPipeline
+                        ? `🎯 Pliki: wiesio-bridge.js, WidokCore.tsx (CORS + timeout 120s)\n`
+                        : '') +
+                    `🔮 Turbovec wstrzykuje kontekst najbliższych plików...\n` +
+                    `🧠 Gemma4 generuje poprawkę (zimny start VRAM ≤120s)...\n\n` +
+                    `▸ Gdy patch będzie gotowy, pojawi się w panelu READY_FOR_REVIEW\n` +
+                    `▸ na Szmaragdowym Terminalu — czeka tam bezpiecznik:\n` +
+                    `   [ 🟢 ZATWIERDŹ ULEPSZENIA MECHANIKA ]`,
+            });
+            setStatus('✅ Mechanik pracuje — patch trafi na Szmaragdowy Terminal', true);
+            scrollToBottom(true);
+
+        } catch (err: any) {
+            updateMessage(widgetId, {
+                content: `⚙️ MECHANIK KATEDRY\n\n❌ Wiesław offline (:3001)? ${err.message}`,
+            });
+            setStatus('❌ Mechanik: most niedostępny', true);
+        }
+    }, [scrollToBottom]);
+
     /**
      * NAPRAWKA: sendMessage ZAWSZE wysyła do Klaudiusza (heavy=false).
      * isCouncilMode NIE wpływa na routing tutaj — nie miksujemy ról!
      * Konsultacja z Adamusem jest WYŁĄCZNIE przez przycisk "Rada".
+     *
+     * PRZECHWYT: komenda /mechanik omija potok rozmowy i idzie do MechanicService.
      */
     const sendMessage = useCallback(async () => {
         const text = currentInput.trim();
         if ((!text && pendingAttachments.length === 0) || isLoading) return;
+
+        // ── Przechwyt komendy /mechanik (przed normalnym potokiem) ──
+        if (/^\/mechanik\b/i.test(text)) {
+            setCurrentInput('');
+            await dispatchToMechanik(text);
+            return;
+        }
+
         setCurrentInput('');
         const attachmentsToSend = [...pendingAttachments];
         setPendingAttachments([]);
@@ -729,7 +847,8 @@ const KatedraChat: React.FC = () => {
             setIsLoading(false);
         }
     }, [currentInput, isLoading, sourceMode, cloudFastModel, fastModel,
-        buildHistory, getDispatch, handleOllamaResponse, runModerator, scrollToBottom]);
+        buildHistory, getDispatch, handleOllamaResponse, runModerator, scrollToBottom,
+        dispatchToMechanik, pendingAttachments]);
 
     // ── Konsultacja z Radą (Adamus) ────────────────────────────────
     /**
@@ -1083,6 +1202,9 @@ const KatedraChat: React.FC = () => {
                         <Brain size={48} className="text-purple-400" />
                         <p className="text-purple-200 text-sm">
                             Katedra gotowa. Enter → Klaudiusz · Rada → Adamus
+                        </p>
+                        <p className="text-emerald-300/70 text-xs">
+                            ⚙️ <span className="font-mono">/mechanik &lt;opis&gt;</span> → Agent Mechanik (naprawa kodu)
                         </p>
                         <p className="text-purple-400 text-xs text-center">
                             {sourceMode === 'cloud'
