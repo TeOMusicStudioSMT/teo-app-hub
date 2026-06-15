@@ -641,6 +641,57 @@ app.get('/api/ollama/models', async (req, res) => {
     }
 });
 
+// ── /api/ollama/diffusion — SZKIELET pod DiffusionGemma (26B MoE Text Diffusion) ──
+//
+// Status: PRZYGOTOWANIE PORTU. Silnik nieaktywny (DIFFUSION_ENGINE_ACTIVE: false
+// w models_config.json). W przyszłości ten endpoint NIE pójdzie do standardowego
+// /api/generate Ollamy, lecz do potoku odszumiania tekstu (text diffusion):
+//
+//   frontend → POST /api/ollama/diffusion
+//            → Python bridge (HuggingFace Transformers, denoising loop)
+//            → 4x szybsza generacja (równoległe odszumianie zamiast autoregresji)
+//            → SSE stream z powrotem
+//
+// Dopóki backend Pythona nie jest wpięty, endpoint odpowiada 503 z czytelnym
+// komunikatem — NIE crashuje mostu ani nie udaje że model działa.
+app.post('/api/ollama/diffusion', async (req, res) => {
+    const { messages, system, model = '__diffusion__' } = req.body ?? {};
+
+    // Wczytaj flagę z models_config.json (single source of truth)
+    let engineActive = false;
+    try {
+        const cfgRaw = await fs.readFile(path.join(__dirname, 'models_config.json'), 'utf8');
+        engineActive = JSON.parse(cfgRaw)?.engines?.diffusion?.DIFFUSION_ENGINE_ACTIVE === true;
+    } catch { /* brak configu → silnik traktujemy jako nieaktywny */ }
+
+    if (!engineActive) {
+        console.log('[Diffusion] 🧬 Zapytanie odrzucone — silnik nieaktywny (DIFFUSION_ENGINE_ACTIVE: false).');
+        return res.status(503).json({
+            success: false,
+            code:    'DIFFUSION_ENGINE_INACTIVE',
+            error:   'DiffusionGemma (26B MoE) jeszcze nie wpięty. Szkielet portu gotowy — ' +
+                     'aktywuj DIFFUSION_ENGINE_ACTIVE w models_config.json po podłączeniu backendu Python.',
+            engine:  'diffusion',
+            model,
+        });
+    }
+
+    // ── Przyszła implementacja (gdy backend Python wstanie) ──────────────────
+    // const resp = await fetch('http://127.0.0.1:8000/diffusion/denoise', {
+    //     method: 'POST',
+    //     headers: { 'Content-Type': 'application/json' },
+    //     body: JSON.stringify({ messages, system, model, steps: 8 }),
+    // });
+    // ... SSE streaming odszumionego tekstu ...
+    void messages; void system;  // placeholder — sygnalizuje przyszłe użycie
+
+    return res.status(501).json({
+        success: false,
+        code:    'NOT_IMPLEMENTED',
+        error:   'Potok odszumiania tekstu nie jest jeszcze zaimplementowany (backend Python wymagany).',
+    });
+});
+
 // ── /api/claude — Claude proxy z pełną pętlą agentyczną ────────────────
 app.post('/api/claude', async (req, res) => {
     const { messages, system, model = 'claude-sonnet-4-20250514', useTools = true, apiKey: reqApiKey } = req.body;

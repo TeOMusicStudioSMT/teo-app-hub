@@ -265,9 +265,11 @@ const SYSTEM_PROMPTS = {
 };
 
 // ── Mini select ───────────────────────────────────────────────────
+type SelectOption = { value: string; label?: string; disabled?: boolean };
+
 const DarkSelect: React.FC<{
     value: string; onChange: (v: string) => void;
-    options: { value: string; label?: string }[]; color?: string;
+    options: SelectOption[]; color?: string;
 }> = ({ value, onChange, options, color = '#c4b5fd' }) => (
     <select
         value={value}
@@ -281,10 +283,25 @@ const DarkSelect: React.FC<{
             <option value={value}>{value}</option>
         )}
         {options.map(o => (
-            <option key={o.value} value={o.value}>{o.label || o.value}</option>
+            <option
+                key={o.value}
+                value={o.value}
+                disabled={o.disabled}
+                style={o.disabled ? { color: '#7c6aae', fontStyle: 'italic' } : undefined}
+            >
+                {o.label || o.value}
+            </option>
         ))}
     </select>
 );
+
+// 🧬 Placeholder opcja modelu — silnik DiffusionGemma jeszcze nieaktywny.
+// Wyszarzona (disabled) + kursywa fioletowa; faktyczna pulsacja w panelu ustawień.
+const DIFFUSION_OPTION: SelectOption = {
+    value:    '__diffusion__',
+    label:    '🧬 DiffusionGemma (26B MoE - Experimental)',
+    disabled: true,
+};
 
 // ══════════════════════════════════════════════════════════════════
 // KOMPONENT GŁÓWNY
@@ -414,6 +431,14 @@ const KatedraChat: React.FC = () => {
     }, [messages, scrollToBottom]);
 
     useEffect(() => { loadOllamaModels(); }, []);
+
+    // 🧬 Inicjalizacja flagi silnika DiffusionGemma (domyślnie nieaktywny).
+    // Single source of truth: models_config.json (backend). Tu tylko cache UI.
+    useEffect(() => {
+        if (localStorage.getItem('DIFFUSION_ENGINE_ACTIVE') === null) {
+            localStorage.setItem('DIFFUSION_ENGINE_ACTIVE', 'false');
+        }
+    }, []);
 
     // ── Helpers wiadomości ────────────────────────────────────────
     const addMessage = (msg: Omit<Message, 'id' | 'timestamp'>): string => {
@@ -1012,7 +1037,8 @@ const KatedraChat: React.FC = () => {
     };
 
     // ── Opcje select ──────────────────────────────────────────────
-    const ollamaOpts  = ollamaModels.map(m => ({ value: m }));
+    // DiffusionGemma dopinana na końcu listy Ollamy jako wyszarzony placeholder.
+    const ollamaOpts  = [...ollamaModels.map(m => ({ value: m })), DIFFUSION_OPTION];
     const cloudOpts   = CLOUD_MODELS.map(m => ({ value: m.id, label: m.label }));
     const cloudFastOpts  = CLOUD_MODELS.map(m => ({ value: m.id, label: m.label }));
     const cloudHeavyOpts = CLOUD_MODELS.map(m => ({ value: m.id, label: m.label }));
@@ -1143,6 +1169,22 @@ const KatedraChat: React.FC = () => {
                             <span className="text-xs text-slate-400">Adamus:</span>
                             <DarkSelect value={heavyModel} onChange={saveHeavyModel}
                                 options={ollamaOpts} color="#fcd34d" />
+                        </div>
+
+                        {/* 🧬 DiffusionGemma — placeholder silnika (nieaktywny, pulsuje fioletowo) */}
+                        <div
+                            title="Silnik eksperymentalny — port przygotowany, backend Python jeszcze niewpięty (DIFFUSION_ENGINE_ACTIVE: false)"
+                            className="diffusion-pulse flex items-center gap-1.5 px-2 py-1 rounded-md
+                                       border border-purple-500/40 bg-purple-900/20 cursor-not-allowed
+                                       select-none opacity-60"
+                        >
+                            <span className="text-xs">🧬</span>
+                            <span className="text-[11px] font-mono text-purple-300/80 tracking-wide">
+                                DiffusionGemma (26B MoE)
+                            </span>
+                            <span className="text-[9px] uppercase tracking-widest text-purple-400/60">
+                                Experimental
+                            </span>
                         </div>
                     </>)}
 
@@ -1561,6 +1603,15 @@ const KatedraChat: React.FC = () => {
                     ))}
                 </div>
             )}
+
+            {/* 🧬 Pulsacja fioletowa placeholdera DiffusionGemma */}
+            <style>{`
+                @keyframes diffusionPulse {
+                    0%, 100% { box-shadow: 0 0 4px rgba(168,85,247,0.25); border-color: rgba(168,85,247,0.35); }
+                    50%      { box-shadow: 0 0 16px rgba(168,85,247,0.65); border-color: rgba(192,132,252,0.85); }
+                }
+                .diffusion-pulse { animation: diffusionPulse 2.2s ease-in-out infinite; }
+            `}</style>
         </div>
     );
 };
