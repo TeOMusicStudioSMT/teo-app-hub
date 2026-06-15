@@ -59,6 +59,7 @@ class AgentOrchestratorServiceClass {
     async startDecomposition(
         topic:       string,
         context      = '',
+        temperature  = 0.67,
         onProgress?: ProgressCallback,
         onComplete?: ProgressCallback,
     ): Promise<string> {
@@ -78,7 +79,7 @@ class AgentOrchestratorServiceClass {
             const res = await fetch(`${BRIDGE}/api/agent/rada-decompose`, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ topic, context }),
+                body:    JSON.stringify({ topic, context, temperature }),
             });
 
             if (!res.ok) throw new Error(`Bridge HTTP ${res.status}`);

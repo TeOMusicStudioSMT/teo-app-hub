@@ -21,6 +21,7 @@ const require = createRequire(import.meta.url);
 // ── ARCHIWISTA WIEDZY (KnowledgeGraphService) ────────────────────────────────
 import KnowledgeGraphService from './services/KnowledgeGraphService.js';
 import MechanicService       from './services/MechanicService.js';
+import TurbovecService       from './services/TurbovecService.js';
 import ImpresarioService     from './services/ImpresarioService.js';
 import TostService           from './services/TostService.js';
 import LaundryService        from './services/LaundryService.js';
@@ -3337,9 +3338,36 @@ app.post('/api/tost/p2p/message/:token', (req, res) => {
 //    3. Pod-zadania trafiają do kolejki MechanicService (sesja izolowana)
 //    4. Główny wątek rozmowy pozostaje wolny (Session Isolation)
 // ══════════════════════════════════════════════════════════════════════════════
+// ── TURBOVEC SEARCH ──────────────────────────────────────────────────────────
+app.get('/api/turbovec/search', async (req, res) => {
+    const { q = '', k = '5' } = req.query;
+    try {
+        const results = await TurbovecService.getInstance().search(String(q), parseInt(k) || 5);
+        return res.json({ success: true, results, status: TurbovecService.getInstance().getStatus() });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/turbovec/reindex', async (req, res) => {
+    try {
+        const result = await TurbovecService.getInstance().reindex();
+        return res.json({ success: true, ...result });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 app.post('/api/agent/rada-decompose', async (req, res) => {
-    const { topic, context = '', sessionId = crypto.randomBytes(4).toString('hex') } = req.body;
+    const {
+        topic,
+        context    = '',
+        sessionId  = crypto.randomBytes(4).toString('hex'),
+        temperature = 0.67,  // Stopień Rozwielmożnienia (znormalizowany 1-9 → /9)
+    } = req.body;
     if (!topic) return res.status(400).json({ error: 'Brak topic' });
+    // Clamp temperature do bezpiecznego zakresu Ollamy
+    const temp = Math.max(0.05, Math.min(2.0, Number(temperature) || 0.67));
 
     console.log(`[Rada] 🏛️ Dekompozycja sesji ${sessionId}: "${topic.substring(0, 60)}..."`);
 
@@ -3352,14 +3380,16 @@ app.post('/api/agent/rada-decompose', async (req, res) => {
         '{"tasks":[{"id":"t1","title":"...","description":"...","agent":"mechanik|impresario|tost|klaudiusz","priority":"HIGH|CRITICAL|LOW"}]}';
 
     try {
+        console.log(`[Rada] 🌡️ Temperatura Rozwielmożnienia: ${temp.toFixed(3)} (raw: ${temperature})`);
         const ollamaResp = await fetch('http://127.0.0.1:11434/api/generate', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model:  'gemma4',
-                system: systemPrompt,
-                prompt: `Temat: ${topic}\nKontekst: ${context || 'brak'}`,
-                stream: false,
+                model:   'gemma4',
+                system:  systemPrompt,
+                prompt:  `Temat: ${topic}\nKontekst: ${context || 'brak'}`,
+                stream:  false,
+                options: { temperature: temp },
             }),
         });
 
@@ -3392,6 +3422,18 @@ app.post('/api/agent/rada-decompose', async (req, res) => {
                 status:      'PENDING',
                 createdAt:   new Date().toISOString(),
             }];
+        }
+
+        // ── TurbovecService: wzbogać opisy pod-zadań o kontekst plików źródłowych ──
+        const turbovec = TurbovecService.getInstance();
+        for (const task of tasks) {
+            if (task.agent === 'mechanik' || task.agent === 'impresario' || task.agent === 'klaudiusz') {
+                try {
+                    task.description = await turbovec.enrichTaskDescription(task);
+                } catch (tvErr) {
+                    console.warn(`[Rada·Turbovec] ⚠️ Enrichment skipped (${task.id}): ${tvErr.message}`);
+                }
+            }
         }
 
         // ── Enqueue do MechanicService (Session Isolation: kolejka działa w tle) ──

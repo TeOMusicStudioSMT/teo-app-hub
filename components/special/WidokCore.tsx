@@ -73,9 +73,23 @@ export const WidokCore: React.FC = () => {
     const [isSynthesizing, setIsSynthesizing] = useState(false);
     const [suwerenInput, setSuwerenInput] = useState('');
     const [seedTopic, setSeedTopic] = useState('');
+    const [rozwielmoznienie, setRozwielmoznienie] = useState(6);
+    const [veilLog, setVeilLog] = useState<string[]>([]);
+    const [veilBlink, setVeilBlink] = useState(true);
 
     const [uploadedFileContent, setUploadedFileContent] = useState<string | null>(null);
     const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+
+    // ── Monitoring Veil — pulsacja statusu ────────────────────────────────────
+    React.useEffect(() => {
+        const blinkInterval = setInterval(() => setVeilBlink(b => !b), 800);
+        return () => clearInterval(blinkInterval);
+    }, []);
+
+    const addVeilLog = (msg: string) => {
+        const ts = new Date().toLocaleTimeString('pl-PL', { hour12: false });
+        setVeilLog(prev => [`[${ts}] ${msg}`, ...prev].slice(0, 12));
+    };
 
     // --- URL FETCHER ---
     const [urlInput, setUrlInput] = useState('');
@@ -278,22 +292,27 @@ Napisz "ZAKTUALIZOWANA SYNTEZA W.I.D.O.K:" a następnie podaj 2-3 zdania głębo
         toast.success("Raport przekazany na Stół Narad!", { icon: '🔮' });
 
         // ── Rada dekomponuje raport na pod-zadania (sesja izolowana) ──────────
+        const normTemp = parseFloat((rozwielmoznienie / 9).toFixed(3));
+        addVeilLog(`RADA DISPATCH · temp=${normTemp} · topic="${topicToDiscuss.substring(0, 40)}..."`);
         try {
             const decompRes = await fetch(RADA_DECOMPOSE, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({
-                    topic:   topicToDiscuss.substring(0, 500),
-                    context: `Raport W.I.D.O.K. ${activeReport.timeframe} · ${activeReport.date}`,
+                    topic:       topicToDiscuss.substring(0, 500),
+                    context:     `Raport W.I.D.O.K. ${activeReport.timeframe} · ${activeReport.date}`,
+                    temperature: normTemp,
                 }),
             });
             if (decompRes.ok) {
                 const d = await decompRes.json();
                 if (d.success && d.tasks?.length) {
                     toast.success(`🏛️ Rada rozłożyła na ${d.tasks.length} pod-zadań → ${d.sessionId}`, { duration: 4000 });
+                    addVeilLog(`SESJA ${d.sessionId} · ${d.tasks.length} agentów aktywnych`);
+                    d.tasks.forEach((t: any) => addVeilLog(`  ↳ [${t.agent?.toUpperCase()}] ${t.title?.substring(0, 50)}`));
                 }
             }
-        } catch { /* non-critical — bridge może być offline */ }
+        } catch { addVeilLog('BRIDGE OFFLINE — rada-decompose pominięta'); }
     };
 
     const getThemeColor = (tf: TimeFrame) => {
@@ -491,10 +510,43 @@ Napisz "ZAKTUALIZOWANA SYNTEZA W.I.D.O.K:" a następnie podaj 2-3 zdania głębo
                                             {activeReport.finalSynthesis}
                                         </div>
 
-                                        {/* NOWOŚĆ: PRZYCISK TRANSFERU */}
-                                        <button 
+                                        {/* ── MODULATOR TEMPERATURY — Stopień Rozwielmożnienia ── */}
+                                        <div className="mt-5 bg-black/40 border border-fuchsia-500/20 rounded-xl p-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-[10px] font-bold text-fuchsia-400/70 tracking-widest uppercase">
+                                                    ⚙ Stopień Rozwielmożnienia
+                                                </span>
+                                                <span className="text-[11px] font-mono font-bold text-fuchsia-300">
+                                                    {rozwielmoznienie}/9
+                                                    <span className="ml-2 text-[9px] text-fuchsia-500/60">
+                                                        {rozwielmoznienie <= 2 ? '(ASCETYCZNY)' : rozwielmoznienie <= 4 ? '(SKUPIONY)' : rozwielmoznienie <= 6 ? '(OBRAŻONY)' : rozwielmoznienie <= 8 ? '(EUFORYCZNY)' : '(SZALONY)'}
+                                                    </span>
+                                                </span>
+                                            </div>
+                                            <input
+                                                type="range"
+                                                min={1} max={9} step={1}
+                                                value={rozwielmoznienie}
+                                                onChange={(e) => setRozwielmoznienie(Number(e.target.value))}
+                                                className="w-full h-1.5 appearance-none rounded-full cursor-pointer"
+                                                style={{
+                                                    background: `linear-gradient(to right, #a855f7 0%, #a855f7 ${(rozwielmoznienie - 1) / 8 * 100}%, #4b5563 ${(rozwielmoznienie - 1) / 8 * 100}%, #4b5563 100%)`
+                                                }}
+                                            />
+                                            <div className="flex justify-between mt-1">
+                                                {[1,2,3,4,5,6,7,8,9].map(v => (
+                                                    <span key={v} className={`text-[8px] font-mono ${v === rozwielmoznienie ? 'text-fuchsia-400' : 'text-gray-600'}`}>{v}</span>
+                                                ))}
+                                            </div>
+                                            <p className="text-[9px] text-fuchsia-500/50 mt-2 font-mono">
+                                                temp={parseFloat((rozwielmoznienie / 9).toFixed(3))} → Ollama options.temperature
+                                            </p>
+                                        </div>
+
+                                        {/* ── PRZYCISK TRANSFERU ── */}
+                                        <button
                                             onClick={dispatchToCouncil}
-                                            className="mt-6 w-full py-3 bg-fuchsia-900/40 hover:bg-fuchsia-800/60 border border-fuchsia-500/50 text-fuchsia-400 rounded-xl font-bold tracking-widest flex items-center justify-center gap-2 transition-all"
+                                            className="mt-4 w-full py-3 bg-fuchsia-900/40 hover:bg-fuchsia-800/60 border border-fuchsia-500/50 text-fuchsia-400 rounded-xl font-bold tracking-widest flex items-center justify-center gap-2 transition-all"
                                         >
                                             <Users size={18} /> PRZEKAŻ RAPORT NA STÓŁ NARAD
                                         </button>
@@ -511,6 +563,66 @@ Napisz "ZAKTUALIZOWANA SYNTEZA W.I.D.O.K:" a następnie podaj 2-3 zdania głębo
                         )}
                     </AnimatePresence>
 
+                </div>
+            </div>
+
+            {/* ════════════════════════════════════════════════════════════════
+                  🔮 SYSTEM MONITORING VEIL — Fable 5 Diagnostic Panel
+               ════════════════════════════════════════════════════════════════ */}
+            <div className="mx-3 mb-3 bg-black border border-emerald-900/60 rounded-xl overflow-hidden font-mono">
+                {/* Header */}
+                <div className="flex items-center gap-2 px-4 py-2 bg-emerald-950/60 border-b border-emerald-900/40">
+                    <span
+                        className="inline-block w-2 h-2 rounded-full"
+                        style={{
+                            backgroundColor: veilBlink ? '#10b981' : '#064e3b',
+                            boxShadow: veilBlink ? '0 0 6px #10b981' : 'none',
+                            transition: 'all 0.3s ease',
+                        }}
+                    />
+                    <span className="text-[10px] font-bold text-emerald-400 tracking-[0.25em] uppercase">
+                        STATUS MONITORING VEIL: ANALIZA TRANSAKCYJNA TOŻSAMOŚCI
+                    </span>
+                    <span className="ml-auto text-[9px] text-emerald-600 tracking-widest">
+                        {veilBlink ? '[ STATUS: ENGAGED ]' : '[ STATUS: ENGAGED ]'.replace('ENGAGED', '-------')}
+                    </span>
+                </div>
+
+                {/* Log area */}
+                <div className="px-4 py-2 space-y-0.5 min-h-[52px]">
+                    {veilLog.length === 0 ? (
+                        <p className="text-[9px] text-emerald-900 tracking-wider">
+                            {`> `}
+                            <span style={{ opacity: veilBlink ? 1 : 0, transition: 'opacity 0.3s' }}>_</span>
+                            {` OCZEKUJĘ NA AKTYWNOŚĆ RADY...`}
+                        </p>
+                    ) : (
+                        veilLog.slice(0, 5).map((line, i) => (
+                            <p
+                                key={i}
+                                className="text-[9px] tracking-wider leading-relaxed"
+                                style={{ color: i === 0 ? '#34d399' : '#065f46' }}
+                            >
+                                {`> `}{line}
+                            </p>
+                        ))
+                    )}
+                </div>
+
+                {/* Footer metrics */}
+                <div className="flex items-center gap-4 px-4 py-1.5 bg-emerald-950/30 border-t border-emerald-900/30">
+                    <span className="text-[8px] text-emerald-800 tracking-widest">
+                        ROZWIELMOŻNIENIE: {rozwielmoznienie}/9
+                    </span>
+                    <span className="text-[8px] text-emerald-800 tracking-widest">
+                        TEMP: {parseFloat((rozwielmoznienie / 9).toFixed(3))}
+                    </span>
+                    <span className="text-[8px] text-emerald-800 tracking-widest">
+                        LOG: {veilLog.length} WPISÓW
+                    </span>
+                    <span className="ml-auto text-[8px] text-emerald-900 tracking-widest">
+                        TURBOVEC·KATEDRA·0.00G
+                    </span>
                 </div>
             </div>
 
