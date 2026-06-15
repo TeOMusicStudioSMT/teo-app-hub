@@ -199,58 +199,95 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onApply, onReject }) 
                 </div>
             )}
 
-            {/* ── READY_FOR_REVIEW — hybrydowy panel wdrożenia ─── */}
+            {/* ── READY_FOR_REVIEW — Szmaragdowy Terminal Zatwierdzenia ─── */}
             {task.status === 'READY_FOR_REVIEW' && (
-                <div className="mt-3">
-                    {/* Ścieżka pliku patcha */}
+                <div
+                    className="mt-3 rounded-xl overflow-hidden font-mono"
+                    style={{
+                        border: '1px solid rgba(16,185,129,0.35)',
+                        boxShadow: '0 0 12px rgba(16,185,129,0.08)',
+                        background: 'rgba(0,10,5,0.85)',
+                    }}
+                >
+                    {/* Terminal header */}
+                    <div
+                        className="flex items-center gap-2 px-3 py-1.5"
+                        style={{ borderBottom: '1px solid rgba(16,185,129,0.2)', background: 'rgba(6,30,15,0.7)' }}
+                    >
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"
+                            style={{ boxShadow: '0 0 5px #10b981', animation: 'pulse 1.4s infinite' }} />
+                        <span className="text-[9px] text-emerald-500 tracking-[0.22em] uppercase">
+                            SZMARAGDOWY TERMINAL · MECHANIK · OCZEKUJE NA ZATWIERDZENIE
+                        </span>
+                    </div>
+
+                    {/* Ścieżka patcha */}
                     {task.patchFile && (
-                        <p className="text-[9px] font-mono text-cyan-800 mb-2 truncate" title={task.patchFile}>
-                            📄 <span className="text-cyan-700">{task.patchFile}</span>
-                        </p>
+                        <div className="px-3 pt-2">
+                            <p className="text-[8px] font-mono text-emerald-900 mb-1">
+                                <span className="text-emerald-700">{'>'}</span>{' '}PATCH:{' '}
+                                <span className="text-emerald-600">{task.patchFile}</span>
+                            </p>
+                        </div>
                     )}
 
                     {/* Przyciski akcji */}
-                    <div className="flex flex-wrap gap-2 mb-2">
-                        {/* Podgląd kodu */}
+                    <div className="px-3 py-2 flex flex-wrap gap-2">
+                        {/* Podgląd */}
                         <button
                             onClick={togglePatch}
                             disabled={patchLoading}
-                            className="px-3 py-1 text-[10px] font-mono bg-slate-800/80 hover:bg-slate-700 transition border border-slate-600/50 rounded flex items-center gap-1"
-                            style={{ boxShadow: '0 0 6px rgba(0,200,255,0.12)' }}
+                            className="px-3 py-1.5 text-[10px] font-mono bg-slate-900/80 hover:bg-slate-800 transition rounded flex items-center gap-1"
+                            style={{ border: '1px solid rgba(16,185,129,0.2)', color: '#6ee7b7' }}
                         >
                             {patchLoading ? (
-                                <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
-                                    ⚙️
-                                </motion.span>
-                            ) : patchOpen ? '🙈 Ukryj Kod' : '👀 Pokaż Kod'}
+                                <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>⚙️</motion.span>
+                            ) : patchOpen ? '🙈 Ukryj' : '📋 Podgląd zmian'}
                         </button>
 
-                        {/* Auto-Deploy */}
+                        {/* GŁÓWNY BEZPIECZNIK: ZATWIERDŹ */}
                         <button
                             onClick={handleApply}
                             disabled={applying || !!applyResult?.success}
-                            className={`px-3 py-1 text-[10px] font-mono transition border rounded flex items-center gap-1
-                                ${applyResult?.success
-                                    ? 'bg-green-900/40 border-green-600/40 text-green-400 cursor-default'
-                                    : 'bg-violet-900/60 hover:bg-violet-800 border-violet-500/50 text-violet-300'
-                                }`}
-                            style={{ boxShadow: '0 0 8px rgba(140,80,255,0.2)' }}
+                            className="flex-1 px-3 py-1.5 text-[11px] font-bold font-mono transition rounded flex items-center justify-center gap-2"
+                            style={{
+                                border: applyResult?.success
+                                    ? '1px solid rgba(16,185,129,0.3)'
+                                    : '1px solid rgba(16,185,129,0.6)',
+                                background: applyResult?.success
+                                    ? 'rgba(6,78,59,0.3)'
+                                    : applying
+                                    ? 'rgba(6,30,15,0.8)'
+                                    : 'rgba(6,78,59,0.5)',
+                                color: applyResult?.success ? '#6ee7b7' : '#10b981',
+                                boxShadow: applyResult?.success ? 'none' : '0 0 10px rgba(16,185,129,0.25)',
+                                cursor: applying || !!applyResult?.success ? 'default' : 'pointer',
+                            }}
                         >
                             {applying ? (
-                                <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
-                                    ⚙️
-                                </motion.span>
-                            ) : applyResult?.success ? '✅ Wdrożono!' : '⚡ Wdróż Automatycznie'}
+                                <>
+                                    <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>⚙️</motion.span>
+                                    WDRAŻAM...
+                                </>
+                            ) : applyResult?.success ? (
+                                '✅ ULEPSZENIA WDROŻONE'
+                            ) : (
+                                '🟢 ZATWIERDŹ ULEPSZENIA MECHANIKA'
+                            )}
                         </button>
 
                         {/* Odrzuć */}
                         <button
                             onClick={handleReject}
                             disabled={rejecting || !!applyResult?.success}
-                            className="px-3 py-1 text-[10px] font-mono bg-red-900/50 hover:bg-red-800 transition border border-red-600/50 text-red-400 rounded"
-                            style={{ boxShadow: '0 0 6px rgba(255,50,50,0.15)' }}
+                            className="px-3 py-1.5 text-[10px] font-mono transition rounded"
+                            style={{
+                                border: '1px solid rgba(239,68,68,0.3)',
+                                background: 'rgba(30,0,0,0.6)',
+                                color: '#f87171',
+                            }}
                         >
-                            {rejecting ? '...' : '❌ Odrzuć'}
+                            {rejecting ? '...' : '🔴 ODRZUĆ'}
                         </button>
                     </div>
 

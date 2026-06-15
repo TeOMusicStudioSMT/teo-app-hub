@@ -17,6 +17,7 @@
 import path          from 'path';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
+import TurbovecService from './TurbovecService.js';
 
 // ─── Ścieżki ──────────────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
@@ -177,9 +178,20 @@ class MechanicService {
             startedAt: new Date().toISOString(),
         });
 
+        // 1b. TurbovecService: wzbogać opis o kontekst plików źródłowych
+        try {
+            const enriched = await TurbovecService.getInstance().enrichTaskDescription(task);
+            if (enriched !== task.description) {
+                task = { ...task, description: enriched };
+                console.log(`[Mechanik·Turbovec] 🔮 Opis zadania ${task.id} wzbogacony (${enriched.length} znaków).`);
+            }
+        } catch (tvErr) {
+            console.warn(`[Mechanik·Turbovec] ⚠️ Enrichment skipped: ${tvErr.message}`);
+        }
+
         let patchContent = null;
 
-        // 2. Wyślij do Gemma4
+        // 2. Wyślij do Gemma4 (teraz z kontekstem Turboveca w opisie)
         try {
             patchContent = await this._callGemma(task);
         } catch (aiErr) {
