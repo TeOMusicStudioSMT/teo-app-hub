@@ -33,7 +33,7 @@ const DEAD_LETTER_FILE = path.join(TASKS_DIR, 'dead_letter_mechanic.json');
 // ─── Ollama ───────────────────────────────────────────────────────────────────
 const OLLAMA_URL    = 'http://127.0.0.1:11434/api/generate';
 const GEMMA_MODEL   = 'gemma4';
-const AI_TIMEOUT_MS = 120_000;  // 120s — pokrywa zimny start VRAM
+const AI_TIMEOUT_MS = 300_000;  // 300s (VRAM Breathing v2) — pełna swoboda alokacji VRAM przy zimnym starcie gemma4
 
 // ─── Typy statusów ────────────────────────────────────────────────────────────
 const STATUS = {
@@ -195,12 +195,23 @@ class MechanicService {
         try {
             patchContent = await this._callGemma(task);
         } catch (aiErr) {
+            // Detekcja zatoru VRAM: abort = Ollama nie zdążyła załadować modelu w limicie.
+            const aborted = aiErr.name === 'AbortError' || /aborted|abort/i.test(aiErr.message || '');
+            const vramNote = '[MECHANIK] ⚠️ Wykryto zator pamięci VRAM. ' +
+                'Podnoszę limity magistrali i restartuję nasłuch rdzenia...';
+
+            if (aborted) {
+                console.warn(`[Mechanik] ${vramNote} (zadanie ${task.id}, timeout ${AI_TIMEOUT_MS / 1000}s)`);
+            }
             console.error(`[Mechanik] ❌ AI zawiedzie dla ${task.id}: ${aiErr.message}`);
+
+            // Odłóż do rejestru zadań jasny komunikat (widoczny na Szmaragdowym Terminalu).
             await this._updateStatus(task.id, allTasks, STATUS.FAILED, {
-                failedAt: new Date().toISOString(),
-                error:    aiErr.message,
+                failedAt:  new Date().toISOString(),
+                error:     aborted ? vramNote : aiErr.message,
+                vramStall: aborted || undefined,
             });
-            await this._writeDeadLetter({ task, error: aiErr.message });
+            await this._writeDeadLetter({ task, error: aborted ? `${vramNote} (${aiErr.message})` : aiErr.message });
             return;
         }
 

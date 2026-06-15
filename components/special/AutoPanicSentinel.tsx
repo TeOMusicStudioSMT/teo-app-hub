@@ -163,6 +163,58 @@ export const AutoPanicSentinel: React.FC = () => {
         };
     }, [reportPanic, stopPolling]);
 
+    // ── Fetch Interceptor — krytyczne crashe połączenia W.I.D.O.K. ↔ most ───────
+    // Łapie to, czego window.onerror nie widzi: TypeError: Failed to fetch,
+    // operacje przerwane (aborted) oraz puste/5xx statusy na wywołaniach mostu.
+    // Pomija własne wywołania /api/mechanic (anty-pętla).
+    useEffect(() => {
+        const originalFetch = window.fetch.bind(window);
+
+        const urlOf = (input: unknown): string => {
+            if (typeof input === 'string') return input;
+            if (input instanceof URL) return input.href;
+            return (input as Request)?.url ?? '';
+        };
+        const isWatchedBridgeCall = (url: string) =>
+            /127\.0\.0\.1:3001|localhost:3001/.test(url) && !/\/api\/mechanic/.test(url);
+        const isWidokCore = (url: string) =>
+            /\/api\/ollama|rada-decompose|\/api\/bridge\/execute/.test(url);
+        // Podpowiedź plików rdzenia → most wyciągnie je do targetFiles patcha.
+        const FILE_HINT = 'components/special/WidokCore.tsx wiesio-bridge.js';
+
+        window.fetch = async (input: any, init?: any) => {
+            const url = urlOf(input);
+            try {
+                const res = await originalFetch(input, init);
+                // Pusty / serwerowy błąd na obserwowanym wywołaniu mostu = krytyczny crash
+                if (isWatchedBridgeCall(url) && (res.status === 0 || res.status >= 500)) {
+                    reportPanic(
+                        `Krytyczny crash połączenia W.I.D.O.K. — most zwrócił status ` +
+                        `${res.status || 'EMPTY'} @ ${url}` +
+                        (isWidokCore(url) ? ` · ${FILE_HINT}` : ''),
+                        '', 'fetch-interceptor',
+                    );
+                }
+                return res;
+            } catch (err: any) {
+                if (isWatchedBridgeCall(url)) {
+                    const msg     = err?.message || String(err);
+                    const aborted = err?.name === 'AbortError' || /aborted|abort/i.test(msg);
+                    reportPanic(
+                        (aborted
+                            ? `This operation was aborted (zator VRAM?) @ ${url}`
+                            : `TypeError: Failed to fetch @ ${url} — ${msg}`) +
+                        (isWidokCore(url) ? ` · ${FILE_HINT}` : ''),
+                        '', 'fetch-interceptor',
+                    );
+                }
+                throw err;  // nie połykaj — wywołujący musi dostać swój błąd
+            }
+        };
+
+        return () => { window.fetch = originalFetch; };
+    }, [reportPanic]);
+
     // ── Akcja: zatwierdź i napraw ───────────────────────────────────────────
     const handleApprove = useCallback(async () => {
         if (!panic?.taskId) return;

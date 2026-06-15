@@ -570,9 +570,11 @@ app.post('/api/ollama', async (req, res) => {
         ...messages,
     ];
 
-    // ── Timeout: 120s pokrywa zimny start VRAM gemma4 ────────────────────────
+    // ── Timeout: 300s (VRAM Breathing v2) — pełna swoboda alokacji VRAM gemma4
+    // przy zimnym starcie na obciążonej maszynie. Podniesione ze 120s po teście
+    // bojowym, w którym Ollama przerywała operację podczas ładowania modelu.
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 120_000);
+    const timer = setTimeout(() => controller.abort(), 300_000);
 
     try {
         const resp = await fetch('http://127.0.0.1:11434/api/chat', {
@@ -3251,7 +3253,8 @@ const TOST_SYSTEM_INSTRUCTION =
     `Mów po polsku.`;
 
 // Limit czasu na zimny start VRAM (Gemma4 przez Ollamę lokalnie)
-const AI_TIMEOUT_MS = 120_000;
+// VRAM Breathing v2: 300s (5 min) — pełna swoboda alokacji na obciążonej maszynie.
+const AI_TIMEOUT_MS = 300_000;
 
 /**
  * GET /api/tost/messages

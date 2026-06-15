@@ -9,7 +9,7 @@
       "label": "Ollama (standardowe generowanie)",
       "endpoint": "http://127.0.0.1:11434/api/generate",
       "chatEndpoint": "http://127.0.0.1:11434/api/chat",
-      "timeoutMs": 120000
+      "timeoutMs": 300000
     },
     "diffusion": {
       "DIFFUSION_ENGINE_ACTIVE": false,
@@ -20,7 +20,7 @@
       "expectedSpeedup": "4x",
       "endpoint": "http://127.0.0.1:3001/api/ollama/diffusion",
       "backend": "HuggingFace Transformers / Python bridge (denoising pipeline)",
-      "timeoutMs": 120000,
+      "timeoutMs": 300000,
       "_note": "Silnik nieaktywny — szkielet przygotowany pod przyszły potok odszumiania tekstu. Ustaw DIFFUSION_ENGINE_ACTIVE=true dopiero po wpięciu backendu Python."
     }
   }
