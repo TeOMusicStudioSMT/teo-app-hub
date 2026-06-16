@@ -26,11 +26,12 @@ const ALGO         = 'aes-256-gcm';
 
 // ── Katalog znanych usług (dla wizualnego kokpitu) ─────────────────────────────
 export const SERVICE_CATALOG = {
-    github_bridge:    { label: 'GitHub Bridge',         fields: ['token'],      security: 'CRITICAL', glyph: '🐙' },
-    ollama_ecosystem: { label: 'Ollama Ecosystem',      fields: ['cloud_key'],  security: 'HIGH',     glyph: '🦙' },
-    voice_cloning:    { label: 'Voice Cloning Vector',  fields: ['api_key'],    security: 'HIGH',     glyph: '🎙️' },
-    anthropic:        { label: 'Klaudiusz (Anthropic)', fields: ['api_key'],    security: 'CRITICAL', glyph: '🧠' },
-    gemini:           { label: 'Gemini (Google)',       fields: ['api_key'],    security: 'HIGH',     glyph: '✦' },
+    github_bridge:    { label: 'GitHub Bridge',         fields: ['token'],              security: 'CRITICAL', glyph: '🐙' },
+    ollama_ecosystem: { label: 'Ollama Ecosystem',      fields: ['cloud_key'],          security: 'HIGH',     glyph: '🦙' },
+    voice_cloning:    { label: 'Voice Cloning Vector',  fields: ['api_key'],            security: 'HIGH',     glyph: '🎙️' },
+    apilayer_gateway: { label: 'APILayer Gateway',      fields: ['apilayer_free_key'],  security: 'HIGH',     glyph: '🌐' },
+    anthropic:        { label: 'Klaudiusz (Anthropic)', fields: ['api_key'],            security: 'CRITICAL', glyph: '🧠' },
+    gemini:           { label: 'Gemini (Google)',       fields: ['api_key'],            security: 'HIGH',     glyph: '✦' },
 };
 
 class VaultServiceClass {

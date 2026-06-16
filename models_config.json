@@ -23,5 +23,19 @@
       "timeoutMs": 300000,
       "_note": "Silnik nieaktywny — szkielet przygotowany pod przyszły potok odszumiania tekstu. Ustaw DIFFUSION_ENGINE_ACTIVE=true dopiero po wpięciu backendu Python."
     }
+  },
+
+  "gateways": {
+    "apilayer": {
+      "label": "🌐 APILayer Gateway",
+      "plan": "FREE",
+      "baseUrl": "https://api.apilayer.com",
+      "vaultService": "apilayer_gateway",
+      "vaultKey": "apilayer_free_key",
+      "rateLimitHeaders": ["X-RateLimit-Limit", "X-RateLimit-Remaining"],
+      "freePlanGuard": true,
+      "cacheTtlMs": 60000,
+      "_note": "Free-Only Network Client. Po wyczerpaniu limitu darmowych zapytań ruch jest automatycznie blokowany (ochrona przed 429). Klucz trzymany w Skarbcu 0.00G (AES-256-GCM)."
+    }
   }
 }

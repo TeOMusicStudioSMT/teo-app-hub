@@ -14,7 +14,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Lock, Shield, ShieldCheck, Github, Cpu, Mic, Brain, Sparkles, Key,
-    RefreshCw, Check, X, Eye, EyeOff, TrendingUp, AlertTriangle, Zap, Gauge,
+    RefreshCw, Check, X, Eye, EyeOff, TrendingUp, AlertTriangle, Zap, Gauge, Globe,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -38,6 +38,7 @@ const ICONS: Record<string, React.FC<{ size?: number; className?: string }>> = {
     github_bridge:    Github,
     ollama_ecosystem: Cpu,
     voice_cloning:    Mic,
+    apilayer_gateway: Globe,
     anthropic:        Brain,
     gemini:           Sparkles,
 };

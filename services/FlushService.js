@@ -7,6 +7,7 @@
  *   ETAP 2 — Temp logi (*.log, ts_errors.log, *.tmp).
  *   ETAP 3 — Stare kopie .bak (Mechanik / ręczne edycje) starsze niż próg wieku.
  *   ETAP 4 — Stare patche w _AntiGravity_Wymiar/patches starsze niż próg.
+ *   ETAP 5 — Reset sieci APILayer (cache + liczniki free-plan) → sterylność połączeń.
  *
  * Bezpieczeństwo:
  *   - Tylko ścieżki WEWNĄTRZ projektu (guard path-traversal).
@@ -21,6 +22,7 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import VaultService from './VaultService.js';
+import ApiLayerService from './ApiLayerService.js';
 
 const __dirname    = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.join(__dirname, '..');
@@ -137,6 +139,23 @@ export async function flushSystemResources(opts = {}) {
     }
     stages.push(`ETAP 4 — Stare patche (>${maxAgeHours}h): ${patchCount}`);
 
+    // ── ETAP 5: Reset sieci APILayer (cache + liczniki free-plan) ─────────────
+    // Przywraca pełną sterylność połączeń: czyści cache, zeruje limity, odblokowuje.
+    let network = { cacheCleared: 0, unblocked: false };
+    if (dryRun) {
+        const st = await ApiLayerService.getInstance().getStatus();
+        network = { cacheCleared: st.cacheSize, unblocked: st.blocked, dryRun: true };
+        stages.push(`ETAP 5 — APILayer (podgląd): cache ${st.cacheSize}, zablokowany=${st.blocked}`);
+    } else {
+        try {
+            network = ApiLayerService.getInstance().resetNetwork();
+            stages.push(`ETAP 5 — Reset APILayer: cache ${network.cacheCleared} wyczyszczony, liczniki wyzerowane, ruch odblokowany`);
+        } catch (e) {
+            errors.push({ file: 'apilayer-reset', error: e.message });
+            stages.push(`ETAP 5 — Reset APILayer: błąd (${e.message})`);
+        }
+    }
+
     console.log(`[FlushService] ✅ Flush ${dryRun ? '(dryRun) ' : ''}zakończony: ${removed.length} plików, ${errors.length} błędów.`);
 
     return {
@@ -148,6 +167,7 @@ export async function flushSystemResources(opts = {}) {
         removed,
         errors,
         vault,
+        network,
     };
 }
 

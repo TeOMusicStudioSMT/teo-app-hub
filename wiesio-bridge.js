@@ -29,6 +29,7 @@ import LaundryService        from './services/LaundryService.js';
 import VaultService          from './services/VaultService.js';
 import ProfileScoutService   from './services/ProfileScoutService.js';
 import FlushService          from './services/FlushService.js';
+import ApiLayerService       from './services/ApiLayerService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -2918,6 +2919,34 @@ app.post('/api/kibel/flush', async (req, res) => {
     } catch (e) {
         console.error('[Flush-API] ❌ flush:', e.message);
         return res.status(500).json({ success: false, error: `Flush Protocol Failure: ${e.message}` });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🌐 APILAYER GATEWAY — Free-Only Network Client
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/apilayer/status — konfiguracja + stan limitu free-plan + cache. */
+app.get('/api/apilayer/status', async (req, res) => {
+    try {
+        const status = await ApiLayerService.getInstance().getStatus();
+        return res.json({ success: true, ...status });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/** POST /api/apilayer/request — Body: { endpoint, method?, query?, ttlMs? }. Guard free-plan. */
+app.post('/api/apilayer/request', async (req, res) => {
+    const { endpoint, method, query, ttlMs } = req.body ?? {};
+    if (!endpoint) return res.status(400).json({ success: false, error: 'Brak endpoint.' });
+    try {
+        const result = await ApiLayerService.getInstance().request(endpoint, { method, query, ttlMs });
+        return res.json({ success: true, ...result });
+    } catch (e) {
+        // 429/limit → 429, reszta → 502 (błąd upstream)
+        const code = /429|limit|zablokowany/i.test(e.message) ? 429 : 502;
+        return res.status(code).json({ success: false, error: e.message });
     }
 });
 
