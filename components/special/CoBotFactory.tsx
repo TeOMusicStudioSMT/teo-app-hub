@@ -348,7 +348,7 @@ export const CoBotDashboard: React.FC = () => {
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-2xl font-bold text-white flex items-center gap-3">
-            <BrainCircuitIcon className="w-8 h-8 text-purple-400" />
+            <span className="w-8 h-8 text-purple-400"><BrainCircuitIcon /></span>
             Twoje Co-Boty
           </h3>
           <p className="text-slate-400">
@@ -397,7 +397,7 @@ export const CoBotDashboard: React.FC = () => {
                 </div>
                 {bot.isActive && (
                   <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full flex items-center gap-1">
-                    <CheckCircleIcon className="w-3 h-3" /> Aktywny
+                    <FaCheckCircle className="w-3 h-3" /> Aktywny
                   </span>
                 )}
               </div>

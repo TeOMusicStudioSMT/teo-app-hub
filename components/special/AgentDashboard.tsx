@@ -456,6 +456,23 @@ const AgentDashboard: React.FC = () => {
         setTimeout(fetchQueueTasks, 400);
     }, [fetchQueueTasks]);
 
+    // ── WYCZYŚĆ WSZYSTKO: POST /api/mechanic/clear ───────────────────────────
+    const [clearingQueue, setClearingQueue] = useState(false);
+    const clearAllTasks = useCallback(async (): Promise<void> => {
+        if (clearingQueue) return;
+        setClearingQueue(true);
+        try {
+            const res  = await fetch(`${BRIDGE_URL}/api/mechanic/clear`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                setNewTaskIds(new Set());
+                setLiveTasks([]);
+                setTimeout(fetchQueueTasks, 300);
+            }
+        } catch { /* most offline — następny poll i tak odświeży */ }
+        finally { setClearingQueue(false); }
+    }, [clearingQueue, fetchQueueTasks]);
+
     // ── Wyzwalacz Chaosu ──────────────────────────────────────────────────────
     const triggerChaos = useCallback(async () => {
         if (isChaosActive) return;
@@ -644,9 +661,21 @@ const AgentDashboard: React.FC = () => {
                         <h2 className="text-[10px] font-mono text-cyan-400 tracking-widest uppercase">
                             [ Queue_System ] Kolejka FIFO
                         </h2>
-                        <span className="text-[9px] font-mono text-slate-600">
-                            {liveTasks.length} zadań
-                        </span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-mono text-slate-600">
+                                {liveTasks.length} zadań
+                            </span>
+                            <button
+                                onClick={clearAllTasks}
+                                disabled={clearingQueue || liveTasks.length === 0}
+                                title="Usuń wszystkie zadania i zresetuj kolejkę do zera"
+                                className="px-2 py-1 text-[9px] font-mono font-bold tracking-widest uppercase rounded border transition-colors
+                                    bg-red-900/40 hover:bg-red-800/70 text-red-300 border-red-600/40
+                                    disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                                {clearingQueue ? '⏳…' : '🗑 WYCZYŚĆ WSZYSTKO'}
+                            </button>
+                        </div>
                     </div>
 
                     <AnimatePresence mode="wait">

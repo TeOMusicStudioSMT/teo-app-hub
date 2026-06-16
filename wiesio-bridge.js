@@ -2761,6 +2761,20 @@ app.post('/api/mechanic/process', async (req, res) => {
     return res.json({ success: true, message: 'Mechanik wyzwolony — przetwarzam kolejkę w tle.' });
 });
 
+/**
+ * POST /api/mechanic/clear — WYCZYŚĆ WSZYSTKO.
+ * Usuwa wszystkie wiszące/nieaktualne zadania i resetuje kolejkę do zera.
+ */
+app.post('/api/mechanic/clear', async (req, res) => {
+    try {
+        const cleared = await MechanicService.getInstance().clearQueue();
+        return res.json({ success: true, cleared, message: `Kolejka zresetowana — usunięto ${cleared} zadań.` });
+    } catch (e) {
+        console.error('[Mechanic-API] ❌ clear:', e.message);
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // ── 🚨 AUTO-PANIC — pętla samonaprawy Katedry ────────────────────────────────
 // Anty-sztorm: ten sam crash w krótkim oknie nie generuje nowego zadania.
 const autoPanicRecent = new Map();   // hash → { taskId, ts }

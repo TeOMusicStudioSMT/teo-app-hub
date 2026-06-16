@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { executeBridgeCommand } from "../../lib/bridgeService";
+import { auth } from "../../lib/firebaseConfig";
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 
 interface OtakOSGatewayProps {
   onInitiate: () => void;
@@ -12,18 +14,45 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
   const [isInitiating, setIsInitiating] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
 
-  const handleInitiate = () => {
+  const handleInitiate = async () => {
     if (isInitiating) return;
 
-    setIsInitiating(true);
+    const loader = toast.loading("Otwieram Bramę Katedry...");
 
-    // Delay to allow for fade-out animation
-    setTimeout(() => {
-      setIsVisible(false);
-      setTimeout(() => {
-        onInitiate();
-      }, 800); // Wait for fade-out to complete
-    }, 500);
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      
+      if (result.user) {
+        const { displayName, email, photoURL } = result.user;
+        
+        // Zapisz dane TeOnauty (Cel 3)
+        const teonauta = {
+          name: displayName || email?.split('@')[0] || "TeOnauta",
+          email: email,
+          avatar: photoURL
+        };
+        
+        localStorage.setItem('teonauta_data', JSON.stringify(teonauta));
+        // Także upewnij się, że username jest zapisany dla powitania
+        localStorage.setItem('otakos_username', teonauta.name);
+
+        toast.success(`Witaj, ${teonauta.name}! Wchodzisz do Lounge.`, { id: loader });
+        
+        setIsInitiating(true);
+
+        // Delay to allow for fade-out animation
+        setTimeout(() => {
+          setIsVisible(false);
+          setTimeout(() => {
+            onInitiate();
+          }, 800); // Wait for fade-out to complete
+        }, 500);
+      }
+    } catch (error: any) {
+      console.error("Błąd logowania Google:", error);
+      toast.error(`Brama stawia opór: ${error.message}`, { id: loader });
+    }
   };
 
   // Subtle pulse animation for background glow
@@ -155,7 +184,7 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
 
           {/* Text with glow effect */}
           <span className="relative z-10 drop-shadow-[0_0_10px_rgba(6,182,212,0.3)] group-hover:drop-shadow-[0_0_20px_rgba(6,182,212,0.5)]">
-            INICJACJA OtakOS
+            ENTER LOUNGE
           </span>
         </button>
       </div>

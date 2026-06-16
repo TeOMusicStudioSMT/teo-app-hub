@@ -59,7 +59,7 @@ import { KlaudiuszTerminal } from './KlaudiuszTerminal'; // ← NOWOŚĆ: Alchem
 import { AutobusDashboard } from './AutobusDashboard';  // ← NOWOŚĆ: Magistrala Zdarzeń
 import { WydawnictwoForge } from './WydawnictwoForge';  // ← NOWOŚĆ: Kuźnia Wydawnictwa 0.00G
 import { Rafineria } from './Rafineria';               // ← NOWOŚĆ: Transmutacja WebM → MP4
-import { Play, BrainCircuit, RefreshCw, Eye, Terminal } from 'lucide-react';
+import { Play, BrainCircuit, RefreshCw, Eye, Terminal, ChevronDown, ChevronUp } from 'lucide-react';
 import AgentDashboard      from './AgentDashboard';
 import ImpresarioDashboard from './ImpresarioDashboard';
 import TostMessenger       from './TostMessenger';
@@ -139,6 +139,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   // 👁️ Panel Dowodzenia: aktywna zakładka
   type CommandPanelTab = 'eyes' | 'impresario' | 'tost' | 'pralka';
   const [activeCommandPanel, setActiveCommandPanel] = useState<CommandPanelTab>('eyes');
+  const [isCommandPanelCollapsed, setIsCommandPanelCollapsed] = useState(false); // 🔽 Zwijanie panelu pod Interfejsem Wiesi
 
   // FFmpeg Wiesio-Spawacz State
   const [videoFormat, setVideoFormat] = useState('YT');
@@ -646,20 +647,29 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               🧺 PRALKA
             </button>
 
-            {/* Indykator aktywnego panelu */}
-            <div className="flex-1 flex items-center justify-end px-4">
+            {/* Indykator aktywnego panelu + zwijanie */}
+            <div className="flex-1 flex items-center justify-end gap-3 px-4">
               <span className="text-[9px] font-mono text-slate-600 uppercase tracking-widest">
                 {activeCommandPanel === 'eyes'       ? '👁️ AGENT_VISION'  :
                  activeCommandPanel === 'impresario' ? '🎙️ IMPRESARIO'    :
                  activeCommandPanel === 'tost'       ? '💬 TOST_MESSENGER' :
                                                        '🧺 PRALKA_ROAST_STATION'}
               </span>
+              <button
+                onClick={() => setIsCommandPanelCollapsed(c => !c)}
+                title={isCommandPanelCollapsed ? 'Rozwiń panel' : 'Zwiń panel'}
+                className="flex items-center gap-1 px-2 py-1 rounded-md bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-[9px] font-bold border border-cyan-500/30 hover:border-cyan-400 transition-all"
+              >
+                {isCommandPanelCollapsed
+                  ? <>Rozwiń <ChevronDown size={12} /></>
+                  : <>Zwiń <ChevronUp size={12} /></>}
+              </button>
             </div>
           </div>
 
-          {/* ── Zawartość zakładek ── */}
+          {/* ── Zawartość zakładek (zwijalna) ── */}
           <AnimatePresence mode="wait">
-            {activeCommandPanel === 'eyes' && (
+            {!isCommandPanelCollapsed && activeCommandPanel === 'eyes' && (
               <motion.div
                 key="eyes"
                 initial={{ opacity: 0, y: 6 }}
@@ -671,7 +681,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               </motion.div>
             )}
 
-            {activeCommandPanel === 'impresario' && (
+            {!isCommandPanelCollapsed && activeCommandPanel === 'impresario' && (
               <motion.div
                 key="impresario"
                 initial={{ opacity: 0, y: 6 }}
@@ -683,7 +693,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               </motion.div>
             )}
 
-            {activeCommandPanel === 'tost' && (
+            {!isCommandPanelCollapsed && activeCommandPanel === 'tost' && (
               <motion.div
                 key="tost"
                 initial={{ opacity: 0, y: 6 }}
@@ -695,7 +705,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               </motion.div>
             )}
 
-            {activeCommandPanel === 'pralka' && (
+            {!isCommandPanelCollapsed && activeCommandPanel === 'pralka' && (
               <motion.div
                 key="pralka"
                 initial={{ opacity: 0, y: 6 }}

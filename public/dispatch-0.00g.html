@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>DISPATCH 0.00G</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold:    #c9953a;
+    --gold-l:  #f0c060;
+    --gold-d:  #7a5a1a;
+    --void:    #06080f;
+    --ink:     #e8dfc8;
+    --cyan:    #00e5ff;
+    --purple:  #a78bfa;
+    --green:   #4ade80;
+    --red:     #f87171;
+    --panel:   rgba(12,10,20,0.96);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--void);
+    color: var(--ink);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Stars ── */
+  #stars {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse at 20% 30%, rgba(201,149,58,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 70%, rgba(0,229,255,0.04) 0%, transparent 60%),
+      var(--void);
+  }
+
+  /* ── Header ── */
+  header {
+    position: relative; z-index: 10;
+    padding: 20px 20px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid rgba(201,149,58,0.15);
+    background: rgba(6,8,15,0.8);
+    backdrop-filter: blur(20px);
+  }
+
+  .header-left { display: flex; flex-direction: column; gap: 2px; }
+
+  .dispatch-label {
+    font-size: 9px; letter-spacing: 0.4em;
+    color: var(--gold-d); text-transform: uppercase;
+  }
+
+  .dispatch-title {
+    font-family: 'Cinzel', serif;
+    font-size: 22px; font-weight: 600;
+    color: var(--gold-l);
+    text-shadow: 0 0 20px rgba(201,149,58,0.4);
+    letter-spacing: 0.1em;
+  }
+
+  .status-orb {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+
+  .orb {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #1a1208, #080510);
+    border: 1px solid var(--gold-d);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    box-shadow: 0 0 12px rgba(201,149,58,0.2);
+    animation: orb-pulse 3s ease-in-out infinite alternate;
+  }
+
+  @keyframes orb-pulse {
+    from { box-shadow: 0 0 8px rgba(201,149,58,0.2); }
+    to   { box-shadow: 0 0 24px rgba(201,149,58,0.5); }
+  }
+
+  .orb-status {
+    font-size: 7px; letter-spacing: 0.2em;
+    color: var(--green); text-align: center;
+  }
+
+  /* ── Connection bar ── */
+  #conn-bar {
+    position: relative; z-index: 10;
+    padding: 8px 20px;
+    background: rgba(6,8,15,0.6);
+    display: flex; align-items: center; gap: 8px;
+    font-size: 9px; letter-spacing: 0.15em;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .conn-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--red);
+    transition: background 0.3s;
+  }
+  .conn-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .conn-dot.connecting { background: var(--gold); animation: blink 0.8s infinite; }
+
+  @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+  #conn-text { color: rgba(255,255,255,0.4); flex: 1; }
+  #conn-url {
+    color: var(--cyan); font-size: 8px;
+    cursor: pointer; text-decoration: underline;
+    opacity: 0.6;
+  }
+
+  /* ── Main scroll area ── */
+  main {
+    position: relative; z-index: 10;
+    flex: 1; overflow-y: auto;
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 14px;
+    padding-bottom: 120px;
+  }
+
+  /* ── Section titles ── */
+  .section-title {
+    font-size: 8px; letter-spacing: 0.35em;
+    color: var(--gold-d); text-transform: uppercase;
+    padding: 0 0 6px;
+    border-bottom: 1px solid rgba(201,149,58,0.1);
+    margin-bottom: 2px;
+  }
+
+  /* ── Quick Commands Grid ── */
+  .cmd-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .cmd-btn {
+    background: rgba(12,10,20,0.8);
+    border: 1px solid rgba(201,149,58,0.2);
+    border-radius: 10px;
+    padding: 14px 12px;
+    color: var(--ink);
+    cursor: pointer;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
+    transition: all 0.2s ease;
+    text-align: left;
+    -webkit-user-select: none; user-select: none;
+  }
+
+  .cmd-btn:active {
+    transform: scale(0.96);
+    border-color: var(--gold);
+    box-shadow: 0 0 16px rgba(201,149,58,0.3);
+  }
+
+  .cmd-btn .icon { font-size: 20px; }
+  .cmd-btn .label {
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.1em; color: var(--gold-l);
+  }
+  .cmd-btn .desc {
+    font-size: 8px; color: rgba(255,255,255,0.35);
+    line-height: 1.4;
+  }
+
+  .cmd-btn.cyan  { border-color: rgba(0,229,255,0.2); }
+  .cmd-btn.cyan:active  { border-color: var(--cyan);  box-shadow: 0 0 16px rgba(0,229,255,0.25); }
+  .cmd-btn.cyan .label  { color: var(--cyan); }
+
+  .cmd-btn.purple { border-color: rgba(167,139,250,0.2); }
+  .cmd-btn.purple:active { border-color: var(--purple); box-shadow: 0 0 16px rgba(167,139,250,0.25); }
+  .cmd-btn.purple .label { color: var(--purple); }
+
+  .cmd-btn.green  { border-color: rgba(74,222,128,0.2); }
+  .cmd-btn.green:active  { border-color: var(--green);  box-shadow: 0 0 16px rgba(74,222,128,0.25); }
+  .cmd-btn.green .label  { color: var(--green); }
+
+  /* ── Agent selector ── */
+  .agent-row {
+    display: flex; gap: 8px; overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .agent-row::-webkit-scrollbar { display: none; }
+
+  .agent-chip {
+    flex-shrink: 0;
+    padding: 8px 14px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    font-size: 10px; letter-spacing: 0.1em;
+    cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px;
+    -webkit-user-select: none; user-select: none;
+  }
+
+  .agent-chip.active {
+    border-color: var(--gold);
+    background: rgba(201,149,58,0.15);
+    color: var(--gold-l);
+    box-shadow: 0 0 10px rgba(201,149,58,0.2);
+  }
+
+  .agent-chip:active { transform: scale(0.95); }
+
+  /* ── Intention input ── */
+  .intention-box {
+    background: rgba(12,10,20,0.9);
+    border: 1px solid rgba(201,149,58,0.2);
+    border-radius: 12px;
+    padding: 14px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+
+  .intention-box textarea {
+    background: transparent;
+    border: none; outline: none;
+    color: var(--ink);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px; line-height: 1.6;
+    resize: none; width: 100%;
+    min-height: 80px;
+    caret-color: var(--gold);
+  }
+
+  .intention-box textarea::placeholder { color: rgba(255,255,255,0.2); }
+
+  .intention-footer {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .char-count { font-size: 8px; color: rgba(255,255,255,0.2); }
+
+  .send-btn {
+    background: linear-gradient(135deg, var(--gold-d), var(--gold));
+    border: none; border-radius: 8px;
+    padding: 10px 20px;
+    color: #1a1208; font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; font-weight: bold; letter-spacing: 0.2em;
+    cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .send-btn:active { transform: scale(0.96); opacity: 0.85; }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Response panel ── */
+  #response-panel {
+    background: rgba(8,10,18,0.95);
+    border: 1px solid rgba(0,229,255,0.15);
+    border-radius: 12px;
+    padding: 14px;
+    display: none;
+    flex-direction: column; gap: 8px;
+    animation: slide-up 0.3s ease;
+  }
+
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  #response-panel.visible { display: flex; }
+
+  .response-header {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .response-agent {
+    font-size: 9px; letter-spacing: 0.2em;
+    color: var(--cyan);
+  }
+
+  .response-close {
+    background: none; border: none;
+    color: rgba(255,255,255,0.3); font-size: 14px;
+    cursor: pointer; padding: 2px 6px;
+  }
+
+  #response-text {
+    font-size: 12px; line-height: 1.7;
+    color: rgba(232,223,200,0.85);
+    min-height: 40px;
+    white-space: pre-wrap;
+  }
+
+  .cursor-blink {
+    display: inline-block; width: 8px; height: 14px;
+    background: var(--cyan); margin-left: 2px;
+    animation: blink 0.7s infinite;
+    vertical-align: text-bottom;
+  }
+
+  /* ── Wiesio file panel ── */
+  .file-list {
+    display: flex; flex-direction: column; gap: 6px;
+    max-height: 200px; overflow-y: auto;
+  }
+
+  .file-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.05);
+    font-size: 11px;
+  }
+
+  .file-icon { font-size: 14px; flex-shrink: 0; }
+  .file-name { flex: 1; color: rgba(255,255,255,0.7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-size { font-size: 9px; color: rgba(255,255,255,0.25); flex-shrink: 0; }
+
+  /* ── Bottom input bar (fixed) ── */
+  #bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(6,8,15,0.97);
+    border-top: 1px solid rgba(201,149,58,0.15);
+    padding: 10px 16px 20px;
+    backdrop-filter: blur(20px);
+    display: flex; gap: 8px; align-items: flex-end;
+  }
+
+  #quick-input {
+    flex: 1;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(201,149,58,0.2);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--ink);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    max-height: 100px; min-height: 42px;
+    resize: none;
+    caret-color: var(--gold);
+    line-height: 1.5;
+  }
+
+  #quick-input::placeholder { color: rgba(255,255,255,0.2); }
+
+  #fire-btn {
+    width: 42px; height: 42px; flex-shrink: 0;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--gold-d), var(--gold));
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    transition: all 0.2s;
+    box-shadow: 0 0 16px rgba(201,149,58,0.3);
+  }
+
+  #fire-btn:active { transform: scale(0.92); }
+  #fire-btn.loading { animation: spin 1s linear infinite; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+    z-index: 999;
+    background: rgba(12,10,20,0.95);
+    border: 1px solid var(--gold);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 11px; color: var(--gold-l);
+    letter-spacing: 0.1em;
+    opacity: 0; transition: opacity 0.3s;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+
+  /* ── Config modal ── */
+  #config-modal {
+    display: none;
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(10px);
+    align-items: flex-end;
+  }
+  #config-modal.open { display: flex; }
+
+  .config-sheet {
+    width: 100%; background: rgba(10,8,18,0.99);
+    border-top: 1px solid rgba(201,149,58,0.3);
+    border-radius: 20px 20px 0 0;
+    padding: 20px 20px 40px;
+    display: flex; flex-direction: column; gap: 16px;
+    animation: sheet-up 0.3s ease;
+  }
+
+  @keyframes sheet-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+
+  .config-title {
+    font-family: 'Cinzel', serif; font-size: 16px;
+    color: var(--gold-l); text-align: center;
+    letter-spacing: 0.1em;
+  }
+
+  .config-field { display: flex; flex-direction: column; gap: 6px; }
+
+  .config-label {
+    font-size: 9px; letter-spacing: 0.25em;
+    color: var(--gold-d); text-transform: uppercase;
+  }
+
+  .config-input {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(201,149,58,0.2);
+    border-radius: 8px; padding: 10px 12px;
+    color: var(--ink);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px; outline: none;
+  }
+
+  .config-input:focus { border-color: var(--gold); }
+
+  .config-save {
+    background: linear-gradient(135deg, var(--gold-d), var(--gold));
+    border: none; border-radius: 10px;
+    padding: 14px; color: #1a1208;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px; font-weight: bold; letter-spacing: 0.2em;
+    cursor: pointer;
+  }
+
+  .config-cancel {
+    background: none; border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 12px; color: rgba(255,255,255,0.4);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; letter-spacing: 0.1em; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="stars"></div>
+<div id="toast"></div>
+
+<!-- Config Modal -->
+<div id="config-modal">
+  <div class="config-sheet">
+    <div class="config-title">⚙ Konfiguracja Śluzy</div>
+    <div class="config-field">
+      <div class="config-label">Adres Wiesława (Bridge URL)</div>
+      <input class="config-input" id="cfg-bridge" type="url"
+             placeholder="http://localhost:3001" />
+    </div>
+    <div class="config-field">
+      <div class="config-label">Adres Katedry (Katedra URL)</div>
+      <input class="config-input" id="cfg-katedra" type="url"
+             placeholder="http://localhost:5173" />
+    </div>
+    <div class="config-field">
+      <div class="config-label">Klucz Iskra (opcjonalny)</div>
+      <input class="config-input" id="cfg-iskra" type="password"
+             placeholder="Twój klucz ISKRA..." />
+    </div>
+    <button class="config-save" onclick="saveConfig()">✦ ZAPISZ I ZAMKNIJ</button>
+    <button class="config-cancel" onclick="closeConfig()">Anuluj</button>
+  </div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="header-left">
+    <span class="dispatch-label">∴ Centrum Dowodzenia ∴</span>
+    <span class="dispatch-title">DISPATCH</span>
+  </div>
+  <div class="status-orb" onclick="openConfig()">
+    <div class="orb">⚗</div>
+    <div class="orb-status" id="orb-status">CONFIG</div>
+  </div>
+</header>
+
+<!-- Connection bar -->
+<div id="conn-bar">
+  <div class="conn-dot" id="conn-dot"></div>
+  <span id="conn-text">Łączę z Wiesławem...</span>
+  <span id="conn-url" onclick="openConfig()">⚙</span>
+</div>
+
+<!-- Main content -->
+<main>
+
+  <!-- Quick Commands -->
+  <div>
+    <div class="section-title">⚡ Szybkie Komendy</div>
+    <div class="cmd-grid">
+      <button class="cmd-btn" onclick="quickCmd('LIST_DIRECTORY')">
+        <span class="icon">📂</span>
+        <span class="label">SKANUJ WYMIAR</span>
+        <span class="desc">Lista plików w AntiGravity</span>
+      </button>
+      <button class="cmd-btn cyan" onclick="quickCmd('GET_LOCAL_PLAYLIST')">
+        <span class="icon">🎵</span>
+        <span class="label">PLAYLISTA</span>
+        <span class="desc">Utwory w Muzyce</span>
+      </button>
+      <button class="cmd-btn purple" onclick="sendToKatedra('PULSE_ALL_AGENTS')">
+        <span class="icon">💫</span>
+        <span class="label">PULSUJ RADĘ</span>
+        <span class="desc">Aktywuj wszystkich agentów</span>
+      </button>
+      <button class="cmd-btn green" onclick="sendToKatedra('SYSTEM_READY')">
+        <span class="icon">⚡</span>
+        <span class="label">SYSTEM GOTOWY</span>
+        <span class="desc">Reset do stanu 0.00G</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Agent selector -->
+  <div>
+    <div class="section-title">🎭 Wybierz Agenta</div>
+    <div class="agent-row" id="agent-row">
+      <div class="agent-chip active" data-id="teo" onclick="selectAgent(this)">🌀 TeO</div>
+      <div class="agent-chip" data-id="bob" onclick="selectAgent(this)">🦾 BoB</div>
+      <div class="agent-chip" data-id="adamus" onclick="selectAgent(this)">🎓 Adamus</div>
+      <div class="agent-chip" data-id="wieslaw" onclick="selectAgent(this)">🧹 Wiesław</div>
+      <div class="agent-chip" data-id="bella" onclick="selectAgent(this)">💃 Bella</div>
+      <div class="agent-chip" data-id="jadzia" onclick="selectAgent(this)">📚 Jadzia</div>
+      <div class="agent-chip" data-id="gorg" onclick="selectAgent(this)">🕵️ Gorgooo</div>
+      <div class="agent-chip" data-id="claude" onclick="selectAgent(this)">🧠 Claude</div>
+      <div class="agent-chip" data-id="gemini" onclick="selectAgent(this)">🔮 Gemini</div>
+    </div>
+  </div>
+
+  <!-- Intention input -->
+  <div>
+    <div class="section-title">✦ Intencja</div>
+    <div class="intention-box">
+      <textarea id="intention-text"
+        placeholder="Napisz intencję do Katedry...&#10;np. 'BoB, zbuduj komponent X'&#10;lub 'Wiesław, pokaż pliki'"
+        oninput="updateCharCount(this)"></textarea>
+      <div class="intention-footer">
+        <span class="char-count" id="char-count">0 znaków</span>
+        <button class="send-btn" id="send-intention-btn" onclick="sendIntention()">
+          <span>⚡</span> WYŚLIJ
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Response panel -->
+  <div id="response-panel">
+    <div class="response-header">
+      <span class="response-agent" id="response-agent">◈ KATEDRA ODPOWIADA</span>
+      <button class="response-close" onclick="closeResponse()">✕</button>
+    </div>
+    <div id="response-text"></div>
+  </div>
+
+  <!-- File browser (pokazuje się po LIST_DIRECTORY) -->
+  <div id="file-section" style="display:none">
+    <div class="section-title">📁 Zawartość Wymiaru</div>
+    <div class="file-list" id="file-list"></div>
+  </div>
+
+</main>
+
+<!-- Bottom quick bar -->
+<div id="bottom-bar">
+  <textarea id="quick-input" rows="1"
+    placeholder="Szybka komenda... (Enter = wyślij)"
+    onkeydown="handleQuickKey(event)"
+    oninput="autoResize(this)"></textarea>
+  <button id="fire-btn" onclick="fireQuickInput()">⚡</button>
+</div>
+
+<script>
+// ── Config ───────────────────────────────────────────────────────────
+let CFG = {
+  bridgeUrl:  localStorage.getItem('dispatch_bridge')  || 'http://localhost:3001',
+  katedraUrl: localStorage.getItem('dispatch_katedra') || 'http://localhost:5173',
+  iskra:      localStorage.getItem('dispatch_iskra')   || '',
+};
+
+let selectedAgent = 'teo';
+let isLoading = false;
+
+function openConfig() {
+  document.getElementById('cfg-bridge').value  = CFG.bridgeUrl;
+  document.getElementById('cfg-katedra').value = CFG.katedraUrl;
+  document.getElementById('cfg-iskra').value   = CFG.iskra;
+  document.getElementById('config-modal').classList.add('open');
+}
+
+function closeConfig() {
+  document.getElementById('config-modal').classList.remove('open');
+}
+
+function saveConfig() {
+  CFG.bridgeUrl  = document.getElementById('cfg-bridge').value.trim().replace(/\/$/, '');
+  CFG.katedraUrl = document.getElementById('cfg-katedra').value.trim().replace(/\/$/, '');
+  CFG.iskra      = document.getElementById('cfg-iskra').value.trim();
+  localStorage.setItem('dispatch_bridge',  CFG.bridgeUrl);
+  localStorage.setItem('dispatch_katedra', CFG.katedraUrl);
+  localStorage.setItem('dispatch_iskra',   CFG.iskra);
+  closeConfig();
+  toast('✦ Konfiguracja zapisana');
+  checkConnection();
+}
+
+// ── Connection check ─────────────────────────────────────────────────
+async function checkConnection() {
+  const dot  = document.getElementById('conn-dot');
+  const text = document.getElementById('conn-text');
+  dot.className = 'conn-dot connecting';
+  text.textContent = 'Sprawdzam połączenie...';
+
+  try {
+    const r = await fetch(`${CFG.bridgeUrl}/api/bridge/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'PING' }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (r.ok) {
+      dot.className  = 'conn-dot connected';
+      text.textContent = 'Wiesław online';
+      document.getElementById('orb-status').textContent = 'ONLINE';
+      document.getElementById('orb-status').style.color = '#4ade80';
+    } else {
+      throw new Error('bad status');
+    }
+  } catch {
+    dot.className  = 'conn-dot';
+    text.textContent = 'Wiesław offline — zmień URL';
+    document.getElementById('orb-status').textContent = 'OFFLINE';
+    document.getElementById('orb-status').style.color = '#f87171';
+  }
+}
+
+// ── Toast ────────────────────────────────────────────────────────────
+function toast(msg, dur = 2000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ── Agent select ─────────────────────────────────────────────────────
+function selectAgent(el) {
+  document.querySelectorAll('.agent-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  selectedAgent = el.dataset.id;
+  toast(`Agent: ${el.textContent.trim()}`);
+}
+
+// ── Quick commands → Wiesio Bridge ───────────────────────────────────
+async function quickCmd(action) {
+  if (isLoading) return;
+  setLoading(true);
+  toast(`⟳ ${action}...`);
+
+  try {
+    const r = await fetch(`${CFG.bridgeUrl}/api/bridge/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    const data = await r.json();
+
+    if (action === 'LIST_DIRECTORY' && data.files) {
+      showFiles(data.files);
+      showResponse('📂 WYMIAR', `Znaleziono ${data.files.length} elementów.`);
+    } else if (action === 'GET_LOCAL_PLAYLIST' && data.tracks) {
+      const names = data.tracks.map(t => `🎵 ${t.title}`).join('\n');
+      showResponse('🎵 PLAYLISTA', `${data.tracks.length} utworów:\n\n${names}`);
+    } else {
+      showResponse('⚗ WIESŁAW', data.message || JSON.stringify(data, null, 2));
+    }
+  } catch (e) {
+    showResponse('⚠ BŁĄD', `Wiesław nie odpowiada.\n${e.message}`);
+  }
+  setLoading(false);
+}
+
+// ── Send action to Katedra (via Bridge event) ─────────────────────────
+function sendToKatedra(action) {
+  // Używamy BroadcastChannel jeśli Katedra otwarta w tej samej przeglądarce
+  try {
+    const bc = new BroadcastChannel('katedra_dispatch');
+    bc.postMessage({ type: 'DISPATCH_ACTION', action, from: 'mobile' });
+    bc.close();
+    toast(`⚡ Wysłano: ${action}`);
+  } catch {
+    toast('⚠ BroadcastChannel niedostępny');
+  }
+}
+
+// ── Send intention → Katedra AI ──────────────────────────────────────
+async function sendIntention() {
+  const text = document.getElementById('intention-text').value.trim();
+  if (!text || isLoading) return;
+
+  setLoading(true);
+  showResponse(`🎭 ${selectedAgent.toUpperCase()} ← INTENCJA`, '');
+  startCursor();
+
+  try {
+    // Wysyłamy do Katedry przez BroadcastChannel (jeśli otwarta w tej samej przeglądarce)
+    const bc = new BroadcastChannel('katedra_dispatch');
+    bc.postMessage({
+      type: 'DISPATCH_INTENTION',
+      agentId: selectedAgent,
+      text,
+      iskra: CFG.iskra,
+      from: 'mobile',
+    });
+
+    // Nasłuchujemy odpowiedzi
+    bc.onmessage = (e) => {
+      if (e.data.type === 'DISPATCH_RESPONSE') {
+        stopCursor();
+        showResponse(`◈ ${e.data.agentName || 'KATEDRA'}`, e.data.text);
+        bc.close();
+        setLoading(false);
+      }
+    };
+
+    // Timeout — jeśli Katedra nie odpowie w 15s
+    setTimeout(() => {
+      stopCursor();
+      if (isLoading) {
+        showResponse('⚠ TIMEOUT',
+          'Katedra nie odpowiedziała w 15s.\nCzy jest otwarta w tej przeglądarce?');
+        setLoading(false);
+        bc.close();
+      }
+    }, 15000);
+
+  } catch (e) {
+    stopCursor();
+    showResponse('⚠ BŁĄD', e.message);
+    setLoading(false);
+  }
+}
+
+// ── Quick bottom bar ─────────────────────────────────────────────────
+function handleQuickKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    fireQuickInput();
+  }
+}
+
+async function fireQuickInput() {
+  const el  = document.getElementById('quick-input');
+  const txt = el.value.trim();
+  if (!txt || isLoading) return;
+
+  // Wrzuć do intention i wyślij
+  document.getElementById('intention-text').value = txt;
+  el.value = '';
+  el.style.height = 'auto';
+  await sendIntention();
+}
+
+// ── UI helpers ───────────────────────────────────────────────────────
+function setLoading(v) {
+  isLoading = v;
+  const btn  = document.getElementById('send-intention-btn');
+  const fire = document.getElementById('fire-btn');
+  btn.disabled = v;
+  fire.textContent = v ? '⟳' : '⚡';
+  if (v) fire.classList.add('loading');
+  else   fire.classList.remove('loading');
+}
+
+let cursorInterval = null;
+function startCursor() {
+  const el = document.getElementById('response-text');
+  el.innerHTML = '<span class="cursor-blink"></span>';
+}
+function stopCursor() {
+  const el = document.getElementById('response-text');
+  el.querySelector('.cursor-blink')?.remove();
+}
+
+function showResponse(agent, text) {
+  const panel = document.getElementById('response-panel');
+  document.getElementById('response-agent').textContent = agent;
+  document.getElementById('response-text').textContent = text;
+  panel.classList.add('visible');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeResponse() {
+  document.getElementById('response-panel').classList.remove('visible');
+}
+
+function showFiles(files) {
+  const section = document.getElementById('file-section');
+  const list    = document.getElementById('file-list');
+  section.style.display = 'block';
+  list.innerHTML = files.map(f => `
+    <div class="file-item">
+      <span class="file-icon">${f.type === 'directory' ? '📁' : getFileIcon(f.name)}</span>
+      <span class="file-name">${f.name}</span>
+      <span class="file-size">${f.size ? formatSize(f.size) : ''}</span>
+    </div>
+  `).join('');
+}
+
+function getFileIcon(name) {
+  const ext = name.split('.').pop()?.toLowerCase();
+  const map = { mp3:'🎵', wav:'🎵', flac:'🎵', m4a:'🎵', ogg:'🎵',
+                txt:'📄', json:'⚙', ts:'💻', tsx:'💻', js:'💻',
+                png:'🖼', jpg:'🖼', gif:'🖼', pdf:'📋' };
+  return map[ext] || '📄';
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1048576) return `${(bytes/1024).toFixed(1)}KB`;
+  return `${(bytes/1048576).toFixed(1)}MB`;
+}
+
+function updateCharCount(el) {
+  document.getElementById('char-count').textContent = `${el.value.length} znaków`;
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+// ── Stars background ─────────────────────────────────────────────────
+(function() {
+  const canvas = document.createElement('canvas');
+  const stars  = document.getElementById('stars');
+  canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;opacity:0.4';
+  stars.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  function draw() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < 80; i++) {
+      const x = Math.random() * canvas.width;
+      const y = Math.random() * canvas.height;
+      const r = Math.random() * 1.2;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(255,255,255,${Math.random()*0.5+0.1})`;
+      ctx.fill();
+    }
+  }
+  draw();
+  window.addEventListener('resize', draw);
+})();
+
+// ── Init ─────────────────────────────────────────────────────────────
+checkConnection();
+setInterval(checkConnection, 30000);
+
+// Nasłuchuj odpowiedzi z Katedry
+try {
+  const bc = new BroadcastChannel('katedra_dispatch');
+  bc.onmessage = (e) => {
+    if (e.data.type === 'DISPATCH_RESPONSE') {
+      showResponse(`◈ ${e.data.agentName || 'KATEDRA'}`, e.data.text);
+      stopCursor();
+      setLoading(false);
+    }
+  };
+} catch { /* BroadcastChannel niedostępny */ }
+</script>
+</body>
+</html>

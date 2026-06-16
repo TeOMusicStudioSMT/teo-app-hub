@@ -1,0 +1,5 @@
+/modules
+    |-- LLM_Adapter.js          // Interfejs do modelu AI
+    |-- KnowledgeGraphService.js // Koordynacja wiedzy
+/wiesio-bridge.js             // Główny punkt wejścia i monitorujący
+knowledge_graph.json          // State Storage (Wspomniany w treści zadania)

@@ -6,6 +6,9 @@ import { ValueClarityCard } from './dashboard/ValueClarityCard';
 import { UniverseCard } from './dashboard/UniverseCard';
 import { FiMusic, FiPackage, FiFeather } from 'react-icons/fi';
 import { ManifestHistoryCard } from './dashboard/ManifestHistoryCard';
+import { Biblioteka } from './special/Biblioteka';
+import DashboardCard from './DashboardCard';
+import { Library } from 'lucide-react';
 
 interface DashboardViewProps {
     onVisualAssistantOpen: () => void;
@@ -16,12 +19,12 @@ interface DashboardViewProps {
 export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantOpen }) => {
     return (
         <div className="flex flex-col gap-10 pb-20">
-            {/* 1. TOP: CREATIVE PORTAL (Portal Kreatywny) */}
+            {/* 1. TOP: CREATIVE PORTAL */}
             <div className="w-full">
                 <CreativeZoneCard onVisualAssistantOpen={onVisualAssistantOpen} />
             </div>
 
-            {/* 2. MIDDLE: KRONIKI + LOGI (Naprawiona sekcja) */}
+            {/* 2. MIDDLE: KRONIKI + LOGI */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <AssistantLogCard />
                 <ManifestHistoryCard />
@@ -37,7 +40,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
                 <PortfolioDashboard />
             </div>
 
-            {/* 5. UNIVERSES */}
+            {/* 5. BIBLIOTEKA ZWOJÓW */}
+            <div className="w-full">
+                <DashboardCard title="Kwantowa Biblioteka" icon={<Library className="w-full h-full" />}>
+                    <Biblioteka />
+                </DashboardCard>
+            </div>
+
+            {/* 6. UNIVERSES */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <UniverseCard title="Story Studio" subtitle="Construct Reality." onClick={() => { }} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
                 <UniverseCard title="Music Studio" subtitle="Audio Synthesis." onClick={() => { }} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />

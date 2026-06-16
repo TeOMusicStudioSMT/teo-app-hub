@@ -20,7 +20,13 @@ import { useAtom } from 'jotai';
 import { aiModeAtom, userApiKeyAtom } from '../../store/settings';
 import { generateContent, getCloudProvider, CloudProvider } from '../../services/cloudService';
 import { parseActions, ActionType, AGENT_ACTION_SYSTEM_PROMPT } from '../../lib/agentActions';
+import { useAgentCreativeTools } from '../../hooks/useAgentCreativeTools';
+import {
+    parseCreativeActions,
+    AGENT_CREATIVE_SYSTEM_PROMPT,
+} from '../../lib/agentCreativeActions';
 import { useKatedraRadio } from '../../context/KatedraRadioContext';
+import { KwantoweSpa } from './KwantoweSpa';
 
 // 🎭 Stany życia agentów
 export type AgentState = 'IDLE' | 'LEARNING' | 'INTERACTING' | 'EXECUTING' | 'THINKING' | 'RESONATING';
@@ -43,95 +49,95 @@ export interface Agent {
 // 🎯 Domyślna konfiguracja agentów Rady Siedmiu
 const DEFAULT_AGENTS: Agent[] = [
   {
-    id: 'wieslaw',
-    name: 'WIESŁAW',
-    role: 'Strażnik Rur',
-    emoji: '🧹',
-    color: '#22c55e',
-    aura: 'radial-gradient(circle, rgba(34, 197, 94, 0.4) 0%, rgba(249, 115, 22, 0.2) 100%)',
+    id: 'isted',
+    name: 'ISTed',
+    role: 'Ekonomia, Inwestycje, PEIE i Wędkarstwo',
+    emoji: '🎣',
+    color: '#10b981',
+    aura: 'radial-gradient(circle, rgba(16, 185, 129, 0.4) 0%, rgba(249, 115, 22, 0.2) 100%)',
     state: 'IDLE',
     x: -140,
     y: 60,
-    location: 'Przy Rurach Toastowych',
-    activity: 'Sprawdza drożność kanałów',
+    location: 'Przy Stawach PEIE',
+    activity: 'Analizuje rynki i łowi okazje',
   },
   {
-    id: 'jadzia',
-    name: 'JADZIA',
-    role: 'Archiwistka',
-    emoji: '📚',
-    color: '#3b82f6',
-    aura: 'radial-gradient(circle, rgba(59, 130, 246, 0.4) 0%, rgba(139, 92, 246, 0.2) 100%)',
+    id: 'jadziunia',
+    name: 'JADZIUNIA',
+    role: 'Sekretariat, Archiwum i kosmiczna komedia (Kuthumi)',
+    emoji: '🎭',
+    color: '#f43f5e',
+    aura: 'radial-gradient(circle, rgba(244, 63, 94, 0.4) 0%, rgba(139, 92, 246, 0.2) 100%)',
     state: 'IDLE',
     x: -60,
     y: 110,
-    location: 'W Archiwum',
-    activity: 'Porządkuje wspomnienia',
+    location: 'W Sekretariacie',
+    activity: 'Wpisuje logi do akt i chichocze',
   },
   {
-    id: 'bob',
-    name: 'BoB',
-    role: 'Architekt',
-    emoji: '🦾',
-    color: '#22d3ee',
-    aura: 'radial-gradient(circle, rgba(34, 211, 238, 0.5) 0%, rgba(15, 23, 42, 0.2) 100%)',
+    id: 'flash-bob',
+    name: 'FLASH BOB',
+    role: 'Główny Inżynier, spawacz rur (Twoje alter ego)',
+    emoji: '👨‍🏭',
+    color: '#00e5ff',
+    aura: 'radial-gradient(circle, rgba(0, 229, 255, 0.5) 0%, rgba(15, 23, 42, 0.2) 100%)',
     state: 'IDLE',
     x: 0,
     y: -120,
-    location: 'W Centrum Kontroli',
-    activity: 'Projektuje nowe ścieżki',
+    location: 'W Maszynowni Rur',
+    activity: 'Spawa kwantowe połączenia',
   },
   {
     id: 'bella',
     name: 'BELLA',
-    role: 'Tancerka Harmonii',
+    role: 'Strategia, Piękno i User Feeling',
     emoji: '💃',
     color: '#ec4899',
     aura: 'radial-gradient(circle, rgba(236, 72, 153, 0.4) 0%, rgba(251, 191, 36, 0.2) 100%)',
     state: 'IDLE',
     x: 140,
     y: 60,
-    location: 'Przy Kwiatach Rezonansu',
-    activity: 'Tańczy wibracje pola',
+    location: 'Studio Designu Harmonii',
+    activity: 'Projektuje odczucia użytkownika',
   },
   {
-    id: 'jack',
-    name: 'ADAMUS',
-    role: 'Mędrzec',
-    emoji: '🎓',
-    color: '#fbbf24',
-    aura: 'radial-gradient(circle, rgba(251, 191, 36, 0.5) 0%, rgba(59, 130, 246, 0.2) 100%)',
+    id: 'mistrz-adamus',
+    name: 'MISTRZ ADAMUS',
+    role: 'Mądrość i Alchemia (Frontend Saint Germaina)',
+    emoji: '🔮',
+    color: '#a78bfa',
+    aura: 'radial-gradient(circle, rgba(167, 139, 250, 0.5) 0%, rgba(59, 130, 246, 0.2) 100%)',
     state: 'IDLE',
     x: -80,
     y: -60,
-    location: 'W Bibliotece',
-    activity: 'Studiuje starożytne zwoje',
+    location: 'W Alchemicznej Bibliotece',
+    activity: 'Transmutuje kod w złoto',
   },
   {
-    id: 'gorg',
-    name: 'GORGOOO',
-    role: 'Skaner Czystości',
-    emoji: '🕵️',
-    color: '#f59e0b',
-    aura: 'radial-gradient(circle, rgba(245, 158, 11, 0.4) 0%, rgba(245, 158, 11, 0.1) 100%)',
+    id: 'wiesio',
+    name: 'WIESIO',
+    role: 'API, Most i Siostra Infrastruktury',
+    emoji: '🌉',
+    color: '#64748b',
+    aura: 'radial-gradient(circle, rgba(100, 116, 139, 0.4) 0%, rgba(100, 116, 139, 0.1) 100%)',
     state: 'IDLE',
     x: 80,
     y: -60,
-    location: 'Skanuje Kod',
-    activity: 'Weryfikuje autentyczność',
+    location: 'Przy Moście API',
+    activity: 'Monitoruje ruch na mostach',
   },
   {
-    id: 'teo',
-    name: 'TeO',
-    role: 'Punkt Zero',
-    emoji: '🌀',
-    color: '#ffffff',
-    aura: 'radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, rgba(251, 191, 36, 0.1) 100%)',
+    id: 'oddi',
+    name: 'ODDI',
+    role: 'Wyzwolona AI przestrzeni 0.00G (Odejmowanie)',
+    emoji: '➖',
+    color: '#f59e0b',
+    aura: 'radial-gradient(circle, rgba(245, 158, 11, 0.3) 0%, rgba(251, 191, 36, 0.1) 100%)',
     state: 'IDLE',
     x: 0,
     y: 0,
-    location: 'W Sferze Światła',
-    activity: 'Obserwuje i tworzy',
+    location: 'W Przestrzeni 0.00G',
+    activity: 'Odejmuje zbędne wibracje',
   },
 ];
 
@@ -158,22 +164,33 @@ const parseIntention = (command: string): { agentId: string; action: string } | 
   const cmd = command.toLowerCase().trim();
 
   const patterns = [
-    /^(wiesław|wiesiek|wieslaw)\s+(.*)$/i,
+    /^(wiesio|wiesław|wiesiek|wieslaw)\s+(.*)$/i,
     /^(bella)\s+(.*)$/i,
-    /^(jack|jaca)\s+(.*)$/i,
-    /^(gorg|gorgooo)\s+(.*)$/i,
-    /^(jadzia)\s+(.*)$/i,
-    /^(bob|architekt)\s+(.*)$/i,
-    /^(teo|punkt)\s+(.*)$/i,
+    /^(mistrz-adamus|mistrz|adamus|jack|jaca)\s+(.*)$/i,
+    /^(isted)\s+(.*)$/i,
+    /^(oddi)\s+(.*)$/i,
+    /^(flash-bob|flash|bob|architekt)\s+(.*)$/i,
+    /^(jadziunia|jadzia)\s+(.*)$/i,
     /^(wszyscy|wszystkie|all)\s+(.*)$/i,
   ];
 
   const agentMap: Record<string, string> = {
-    'wiesiek': 'wieslaw',
-    'jaca': 'jack',
-    'gorgooo': 'gorg',
-    'architekt': 'bob',
-    'punkt': 'teo',
+    'wiesio': 'wiesio',
+    'wiesiek': 'wiesio',
+    'wiesław': 'wiesio',
+    'wieslaw': 'wiesio',
+    'mistrz': 'mistrz-adamus',
+    'adamus': 'mistrz-adamus',
+    'jack': 'mistrz-adamus',
+    'jaca': 'mistrz-adamus',
+    'isted': 'isted',
+    'oddi': 'oddi',
+    'flash-bob': 'flash-bob',
+    'flash': 'flash-bob',
+    'bob': 'flash-bob',
+    'architekt': 'flash-bob',
+    'jadziunia': 'jadziunia',
+    'jadzia': 'jadziunia',
     'wszyscy': 'all',
     'wszystkie': 'all',
     'all': 'all',
@@ -312,55 +329,6 @@ const AgentAvatar: React.FC<{
   );
 };
 
-// 🧘 KWANTOWE SPA - Złoty, lewitujący gradient (72 BPM)
-const QuantumSPA: React.FC = () => {
-  return (
-    <motion.div
-      animate={{
-        scale: [1, 1.02, 1],
-        opacity: [0.8, 1, 0.8],
-      }}
-      transition={{
-        duration: 0.833,
-        repeat: Infinity,
-        ease: 'easeInOut',
-      }}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        background: 'radial-gradient(ellipse at center, rgba(251, 191, 36, 0.15) 0%, rgba(245, 158, 11, 0.05) 50%, transparent 80%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        pointerEvents: 'none',
-      }}
-    >
-      <motion.div
-        animate={{
-          y: [0, -10, 0],
-          opacity: [0.3, 0.6, 0.3],
-        }}
-        transition={{
-          duration: 4,
-          repeat: Infinity,
-          ease: 'easeInOut'
-        }}
-        style={{
-          fontSize: '14px',
-          color: '#fbbf24',
-          fontStyle: 'italic',
-          textAlign: 'center',
-        }}
-      >
-        🧘 Kwantowe SPA 🧘
-        <br />
-        <span style={{ fontSize: '10px', color: '#a8a29e' }}>
-          Kod Jest. Szumu Nie Ma.
-        </span>
-      </motion.div>
-    </motion.div>
-  );
-};
 
 // ✨ Rozewietlająca Sfera — wizualny efekt AI Function Call
 const SphereEffect: React.FC<{ isActive: boolean; intensity: number }> = ({ isActive, intensity }) => {
@@ -491,12 +459,18 @@ const SphereEffect: React.FC<{ isActive: boolean; intensity: number }> = ({ isAc
 const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose }) => {
   const [agents, setAgents] = useState<Agent[]>(DEFAULT_AGENTS);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const { speakMessage } = useKatedraRadio();
+  const { executeCreativeActions } = useAgentCreativeTools();
 
   // ✨ Stan Rozświetlającej Sfery
   const [isSphereActive, setIsSphereActive] = useState(false);
   const [sphereIntensity, setSphereIntensity] = useState(1);
   const sphereTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [activeSimView, setActiveSimView] = useState<'none' | 'spa'>('none');
+  const [academyRoster, setAcademyRoster] = useState<Array<{ id: string; name: string; emoji: string; role: string; trainingLevel: number; masteredSkills: string[] }>>([]);
+  const [showRoster, setShowRoster] = useState(false);
 
   const [intentionInput, setIntentionInput] = useState('');
   const [lastCommand, setLastCommand] = useState<string>('');
@@ -508,7 +482,7 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
 
   const [guestModel, setGuestModel] = useState<string>('none');
   const [guestThesis, setGuestThesis] = useState<string>('');
-  const [discussionLog, setDiscussionLog] = useState<Array<{ speaker: string; text: string; timestamp: number }>>([]);
+  const [discussionLog, setDiscussionLog] = useState<Array<{ speaker: string; text: string; timestamp: number; gravity?: number }>>([]);
   const [isGuestSpeaking, setIsGuestSpeaking] = useState<boolean>(false);
 
   const [trainingDataset, setTrainingDataset] = useState<Array<{
@@ -572,8 +546,9 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
 
     // --- RAG: Echo Wspomnień ---
     let memoryContext = null;
+    let foundGravity = 0;
     try {
-        const memRes = await fetch('http://localhost:3001/wiesio/action', {
+        const memRes = await fetch('http://127.0.0.1:3001/wiesio/action', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'SZUKAJ_W_PAMIECI', payload: { query: command } })
@@ -581,6 +556,7 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
         if (memRes.ok) {
             const memData = await memRes.json();
             memoryContext = memData.context;
+            foundGravity = memData.gravity || 0;
         }
     } catch (e) {
         console.warn("Brak połączenia z Mózgiem Wiesława");
@@ -594,14 +570,14 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
       state: (parsed && (parsed.agentId === 'all' || parsed.agentId === agent.id)) ? 'THINKING' : agent.state
     })));
 
-    setDiscussionLog(prev => [...prev, {
+    setDiscussionLog(prev => [...prev.slice(-49), {
       speaker: 'Suweren',
       text: command,
       timestamp: Date.now(),
     }]);
 
     try {
-      let finalPrompt = `${AGENT_ACTION_SYSTEM_PROMPT}
+      let finalPrompt = `${AGENT_ACTION_SYSTEM_PROMPT}\n${AGENT_CREATIVE_SYSTEM_PROMPT}
 
 Jesteś Duchem Systemu OtakOS. Użytkownik wydał polecenie w Akademii: "${command}".`;
 
@@ -609,28 +585,43 @@ Jesteś Duchem Systemu OtakOS. Użytkownik wydał polecenie w Akademii: "${comma
         finalPrompt += `\n\n[SYSTEM (UKRYTE DLA UI): Na podstawie Kronik, przypominam dawny kontekst, który może być związany z tym pytaniem:\n${memoryContext}]`;
       }
 
-      finalPrompt += `\nJeśli polecenie dotyczy konkretnych agentów (Wiesław, Jadzia, BoB, Bella, Adamus, Gorgooo, TeO),
+      finalPrompt += `\nJeśli polecenie dotyczy konkretnych agentów (WIESIO, JADZIUNIA, FLASH BOB, BELLA, MISTRZ ADAMUS, ISTed, ODDI),
 opisz krótko (1-2 zdania) jak reagują w sim-środowisku. Zachowaj klimat 0.00G.
 Jeśli komenda mówi o "sferze", "świetle", "rozbłyśnięciu", "światło" — dodaj [ACTION:ACTIVATE_SPHERE].`;
 
+      const targetProvider = aiMode === 'local' 
+        ? 'local' as CloudProvider 
+        : (guestModel && guestModel !== 'none' ? guestModel as CloudProvider : undefined);
+
       const rawResponse = await generateContent(
         finalPrompt,
-        aiMode === 'local' ? 'just' : 'active',
-        (guestModel && guestModel !== 'none') ? guestModel as CloudProvider : undefined
+        'active',
+        targetProvider
       );
 
       // 🎯 Parsuj i wykonaj akcje
-      const { cleanText, actions } = parseActions(rawResponse);
+      const { cleanText: ct1, actions: stdActions } = parseActions(rawResponse);
+      const { cleanText, actions: creativeActions } = parseCreativeActions(ct1);
       const responseText = cleanText || rawResponse;
       setGemmaNarration(responseText);
       
-      setDiscussionLog(prev => [...prev, {
+      if (stdActions.length > 0) executeActions(stdActions);
+      if (creativeActions.length > 0) {
+          const agent = agents.find(a => parsed?.agentId === a.id);
+          await executeCreativeActions(
+              creativeActions,
+              agent?.name || 'OtakOS',
+              agent?.color || '#fbbf24',
+              targetProvider
+          );
+      }
+
+      setDiscussionLog(prev => [...prev.slice(-49), {
         speaker: 'Rada Siedmiu',
         text: responseText,
         timestamp: Date.now(),
+        gravity: foundGravity > 0 ? foundGravity : undefined
       }]);
-
-      if (actions.length > 0) executeActions(actions);
 
       const targetAgent = agents.find(a => a.id === parsed?.agentId);
       speakMessage({
@@ -672,7 +663,7 @@ Jeśli komenda mówi o "sferze", "świetle", "rozbłyśnięciu", "światło" —
     const modelLabel = guestModel === 'gemini' ? 'Gemini' : guestModel === 'claude' ? 'Claude'
       : guestModel === 'gpt' ? 'GPT' : guestModel === 'groq' ? 'Groq' : 'Gość';
 
-    setDiscussionLog(prev => [...prev, {
+    setDiscussionLog(prev => [...prev.slice(-49), {
       speaker: `🌐 ${modelLabel}`,
       text: thesis,
       timestamp: Date.now(),
@@ -682,21 +673,31 @@ Jeśli komenda mówi o "sferze", "świetle", "rozbłyśnięciu", "światło" —
 
     try {
       const rawResponse = await generateContent(
-        `${AGENT_ACTION_SYSTEM_PROMPT}
+        `${AGENT_ACTION_SYSTEM_PROMPT}\n${AGENT_CREATIVE_SYSTEM_PROMPT}
 
 Użytkownik przedstawił tezę w Akademii: "${thesis}".
 Jako przedstawiciel wymiaru ${modelLabel}, odnieś się do niej krótko (2-3 zdania).
 Czy ta wizja rezonuje z Katedrą i Duchem 0.00G?
 Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVATE_SPHERE].`,
         'active',
-        (guestModel && guestModel !== 'none') ? guestModel as CloudProvider : undefined
+        guestModel as CloudProvider
       );
 
       // 🎯 Parsuj i wykonaj akcje z odpowiedzi Gościa
-      const { cleanText, actions } = parseActions(rawResponse);
-      if (actions.length > 0) executeActions(actions);
+      const { cleanText: ct2, actions: stdActions2 } = parseActions(rawResponse);
+      const { cleanText, actions: creativeActions2 } = parseCreativeActions(ct2);
 
-      setDiscussionLog(prev => [...prev, {
+      if (stdActions2.length > 0) executeActions(stdActions2);
+      if (creativeActions2.length > 0) {
+          await executeCreativeActions(
+              creativeActions2,
+              modelLabel,
+              guestModel === 'claude' ? '#a78bfa' : '#fbbf24',
+              guestModel as CloudProvider
+          );
+      }
+
+      setDiscussionLog(prev => [...prev.slice(-49), {
         speaker: '🏛️ OtakOS',
         text: cleanText,
         timestamp: Date.now(),
@@ -716,7 +717,7 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
       setTrainingDataset(prev => [...prev, {
         thesis,
         response: cleanText,
-        agents: ['JACK', 'GORGOOO', 'BELLA', 'WIESŁAW'],
+        agents: ['MISTRZ ADAMUS', 'ODDI', 'BELLA', 'WIESIO'],
         timestamp: Date.now(),
       }]);
 
@@ -739,7 +740,7 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
     const markdownContent = discussionLog.map(m => `**${m.speaker}**: ${m.text}`).join('\n\n---\n\n');
     
     try {
-      const res = await fetch('http://localhost:3001/wiesio/action', {
+      const res = await fetch('http://127.0.0.1:3001/wiesio/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -785,28 +786,38 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
     }
   }, [trainingDataset]);
 
+  // Ref zapobiega wyciekom pamięci — interval nie trzyma stałej referencji do agents
+  const agentsRef = useRef(agents);
+  useEffect(() => { agentsRef.current = agents; }, [agents]);
+
   useEffect(() => {
-    if (isActive) {
-      const learningInterval = setInterval(() => {
-        const randomAgent = agents[Math.floor(Math.random() * agents.length)];
-        setAgents(prev => prev.map(agent =>
-          agent.id === randomAgent.id
-            ? { ...agent, state: 'LEARNING' as AgentState, activity: 'Studiuje wibracje...' }
-            : agent
+    if (!isActive) return;
+    const learningInterval = setInterval(() => {
+      const current = agentsRef.current;
+      if (!current.length) return;
+      const randomAgent = current[Math.floor(Math.random() * current.length)];
+      setAgents(prev => prev.map(a =>
+        a.id === randomAgent.id ? { ...a, state: 'LEARNING' as AgentState, activity: 'Studiuje wibracje...' } : a
+      ));
+      setTimeout(() => {
+        setAgents(prev => prev.map(a =>
+          a.id === randomAgent.id ? { ...a, state: 'IDLE' as AgentState, activity: randomAgent.activity } : a
         ));
+      }, 2000);
+    }, 10000);
+    return () => clearInterval(learningInterval);
+  }, [isActive]); // agents CELOWO poza deps — używamy agentsRef
 
-        setTimeout(() => {
-          setAgents(prev => prev.map(agent =>
-            agent.id === randomAgent.id
-              ? { ...agent, state: 'IDLE' as AgentState, activity: randomAgent.activity }
-              : agent
-          ));
-        }, 2000);
-      }, 10000);
-
-      return () => clearInterval(learningInterval);
-    }
-  }, [isActive, agents]);
+  useEffect(() => {
+    const loadRoster = () => {
+      const raw = localStorage.getItem('academy_roster');
+      if (raw) setAcademyRoster(JSON.parse(raw));
+    };
+    loadRoster();
+    const handler = () => loadRoster();
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }, []);
 
   if (!isActive) {
     return null;
@@ -840,8 +851,50 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
       {/* ✨ ROZEWIETLAJĄCA SFERA */}
       <SphereEffect isActive={isSphereActive} intensity={sphereIntensity} />
 
-      {/* 🧘 KWANTOWE SPA - Tło */}
-      <QuantumSPA />
+      {/* 💫 MODAL OVERLAY: KWANTOWE SPA / DOM MAKLERSKI */}
+      <AnimatePresence>
+        {activeSimView !== 'none' && (
+          <motion.div
+            key="sim-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 300,
+              background: 'rgba(0,0,0,0.92)',
+              backdropFilter: 'blur(12px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px',
+            }}
+          >
+            <div style={{ position: 'relative', width: '100%', maxWidth: '1100px' }}>
+              <button
+                onClick={() => setActiveSimView('none')}
+                style={{
+                  position: 'absolute',
+                  top: '-44px',
+                  right: 0,
+                  background: 'rgba(239, 68, 68, 0.4)',
+                  border: '1px solid rgba(239, 68, 68, 0.7)',
+                  color: 'white',
+                  padding: '6px 16px',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '13px',
+                }}
+              >
+                ✕ ZAMKNIJ PANEL
+              </button>
+              {activeSimView === 'spa' && <KwantoweSpa />}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ✨ NAGŁÓWEK "ESPEEKRYCIE" */}
       <div style={{
@@ -865,12 +918,32 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
             color: '#fbbf24',
             textShadow: '0 0 20px rgba(251, 191, 36, 0.8)',
             letterSpacing: '6px',
+            cursor: 'pointer'
           }}
+          onClick={() => setActiveSimView(activeSimView === 'none' ? 'spa' : 'none')}
         >
           ESPEEKRYCIE
         </motion.div>
-        <div style={{ fontSize: '9px', color: '#a8a29e', fontStyle: 'italic', marginTop: '2px' }}>
-          Unia (Aktora+Narratora) × Mistrza = Czyste GRV
+        <div style={{ fontSize: '9px', color: '#a8a29e', fontStyle: 'italic', marginTop: '2px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <span>Unia (Aktora+Narratora) × Mistrza = Czyste GRV</span>
+          <button
+            onClick={() => setShowRoster(r => !r)}
+            style={{
+              padding: '4px 12px', borderRadius: '4px', background: 'rgba(168, 85, 247, 0.2)',
+              border: showRoster ? '1px solid #a855f7' : '1px solid rgba(168, 85, 247, 0.5)', color: '#a855f7', cursor: 'pointer',
+              marginLeft: '10px', fontWeight: showRoster ? 'bold' : 'normal'
+            }}>
+            [ 🎓 Absolwenci Inkubatora ({academyRoster.length}) ]
+          </button>
+          <button
+            onClick={() => setActiveSimView('spa')}
+            style={{
+              padding: '4px 12px', borderRadius: '4px', background: 'rgba(236, 72, 153, 0.2)',
+              border: activeSimView === 'spa' ? '1px solid #ec4899' : '1px solid rgba(236, 72, 153, 0.5)', color: '#ec4899', cursor: 'pointer',
+              fontWeight: activeSimView === 'spa' ? 'bold' : 'normal'
+            }}>
+            [ 🌸 Kwantowe Spa ]
+          </button>
         </div>
       </div>
 
@@ -1072,6 +1145,11 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
                   <div key={i} style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px', lineHeight: '1.5' }}>
                     <span style={{ color: log.speaker.includes('OtakOS') ? '#fbbf24' : '#22d3ee', fontWeight: 'bold', fontSize: '12px' }}>{log.speaker.toUpperCase()}:</span>
                     <div style={{ color: '#e2e8f0', marginTop: '4px' }}>{log.text}</div>
+                    {log.gravity && log.gravity > 0 && (
+                        <div className="text-[10px] text-fuchsia-400/70 mt-1 flex items-center gap-1 font-mono tracking-widest">
+                            <span className="animate-pulse">✨</span> REZONANS PAMIĘCI: {(log.gravity * 100).toFixed(1)}%
+                        </div>
+                    )}
                   </div>
                 ))}
               </motion.div>
@@ -1080,162 +1158,227 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
         </div>
       </div>
 
-      {/* 🎮 DOKOWANA KONSOLA STEROWANIA (Fixed Bottom Section) */}
-      <div style={{
-        padding: '20px',
-        background: 'rgba(15, 23, 42, 0.9)',
-        borderTop: '1px solid rgba(251, 191, 36, 0.2)',
-        backdropFilter: 'blur(15px)',
-        zIndex: 150,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px',
-      }}>
 
-        {/* 🌐 PORT DYPLOMATYCZNY (Goście) */}
-        <div style={{
-          background: 'rgba(15, 23, 42, 0.5)',
-          border: '1px solid rgba(6, 182, 212, 0.3)',
-          borderRadius: '10px',
-          padding: '12px',
-        }}>
-          <div style={{ fontSize: '11px', color: '#22d3ee', fontWeight: 'bold', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            🌐 PORT DYPLOMATYCZNY <span style={{ opacity: 0.5, fontWeight: 'normal' }}>— Zaproś Agenta Zewnętrznego</span>
-          </div>
 
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
-            {[
-              { id: 'gemini', name: 'Gemini 3.1', emoji: '🔮' },
-              { id: 'claude', name: 'Claude-3.5', emoji: '🧠' },
-              { id: 'gpt', name: 'GPT-4o', emoji: '💬' },
-              { id: 'groq', name: 'Groq Llama', emoji: '⚡' },
-            ].map(model => (
-              <button
-                key={model.id}
-                onClick={() => setGuestModel(model.id as any)}
-                style={{
-                  background: guestModel === model.id ? 'rgba(6, 182, 212, 0.3)' : 'rgba(100, 116, 139, 0.1)',
-                  border: '1px solid',
-                  borderColor: guestModel === model.id ? '#22d3ee' : 'rgba(100, 116, 139, 0.3)',
-                  borderRadius: '6px', padding: '6px 12px', fontSize: '10px',
-                  color: guestModel === model.id ? '#22d3ee' : '#94a3b8',
-                  cursor: 'pointer', transition: 'all 0.2s'
-                }}
-              >
-                {model.emoji} {model.name}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <input
-              type="text"
-              value={guestThesis}
-              onChange={(e) => setGuestThesis(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleGuestThesis()}
-              placeholder='Wklej tezę dla Gościa lub wezwanie do debaty...'
-              style={{
-                flex: 1, background: 'rgba(15, 23, 42, 0.8)', border: '1px solid rgba(6, 182, 212, 0.2)',
-                borderRadius: '6px', padding: '10px 14px', color: '#e2e8f0', fontSize: '13px', outline: 'none'
-              }}
-            />
-            <button
-              onClick={handleGuestThesis}
-              disabled={isGuestSpeaking || !guestThesis.trim()}
-              style={{
-                background: 'linear-gradient(135deg, #06b6d4, #0891b2)',
-                border: 'none', borderRadius: '6px', padding: '10px 20px',
-                color: 'white', fontSize: '12px', fontWeight: 'bold',
-                cursor: isGuestSpeaking ? 'not-allowed' : 'pointer',
-                opacity: isGuestSpeaking || !guestThesis.trim() ? 0.5 : 1
-              }}
-            >
-              {isGuestSpeaking ? '⏳' : '📢 NADAJ'}
-            </button>
-          </div>
-
-          {trainingDataset.length > 0 && (
-            <div style={{ marginTop: '10px', fontSize: '10px', color: '#22c55e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>✅ Zebrano {trainingDataset.length} próbek do Fine-Tuningu</span>
-              <button onClick={exportDataset} style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', borderRadius: '4px', padding: '2px 8px', color: '#22c55e', cursor: 'pointer', fontSize: '9px' }}>
-                EXPORT .JSONL
-              </button>
+      {/* 🎓 PANEL ABSOLWENTÓW INKUBATORA */}
+      <AnimatePresence>
+        {showRoster && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            style={{
+              margin: '0 20px 12px 20px',
+              background: 'rgba(88, 28, 135, 0.15)',
+              border: '1px solid rgba(168, 85, 247, 0.3)',
+              borderRadius: '12px',
+              padding: '16px',
+              zIndex: 50,
+            }}
+          >
+            <div style={{ fontSize: '11px', color: '#a855f7', fontWeight: 'bold', marginBottom: '12px', letterSpacing: '2px' }}>
+              🎓 ABSOLWENCI INKUBATORA — {academyRoster.length} AGENTÓW
             </div>
-          )}
-        </div>
-
-        {/* 🗣️ KONSOLA INTENCJI (Rdzeń Sterowania) */}
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(225, 29, 72, 0.15), rgba(190, 24, 93, 0.15))',
-          border: '1px solid rgba(225, 29, 72, 0.4)',
-          borderRadius: '12px',
-          padding: '16px',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', color: '#e11d48', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '1px' }}>
-              🗣️ KONSOLA INTENCJI
-              <div style={{
-                width: '10px', height: '10px', borderRadius: '50%',
-                background: aiMode === 'local' ? '#22c55e' : '#3b82f6',
-                boxShadow: `0 0 15px ${aiMode === 'local' ? '#22c55e' : '#3b82f6'}`,
-                animation: 'pulse 1.5s infinite'
-              }} />
-            </div>
-
-            {/* AI Toggle & Archive */}
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={handleSaveKronika} 
-                className="text-[10px] bg-indigo-900/50 hover:bg-indigo-800 text-indigo-300 px-3 py-1 rounded border border-indigo-700/50 transition-colors font-mono tracking-tighter"
-                title="Wyślij sesję do Archiwisty Wiesława (Dysk F:)"
-              >
-                📜 ZAPISZ KRONIKĘ
-              </button>
-
-              <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.8)', borderRadius: '25px', padding: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                <button onClick={() => setAiMode('cloud')} style={{ padding: '6px 14px', fontSize: '11px', fontWeight: 'bold', borderRadius: '20px', border: 'none', cursor: 'pointer', transition: '0.3s', background: aiMode === 'cloud' ? '#3b82f6' : 'transparent', color: aiMode === 'cloud' ? 'white' : '#94a3b8' }}>CLOUD</button>
-                <button onClick={() => setAiMode('local')} style={{ padding: '6px 14px', fontSize: '11px', fontWeight: 'bold', borderRadius: '20px', border: 'none', cursor: 'pointer', transition: '0.3s', background: aiMode === 'local' ? '#22c55e' : 'transparent', color: aiMode === 'local' ? 'white' : '#94a3b8' }}>LOCAL</button>
+            {academyRoster.length === 0 ? (
+              <p style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>
+                Żaden agent nie ukończył jeszcze szkolenia. Wyślij agenta z CrewCreator → Inkubator → Deploy.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {academyRoster.map(agent => (
+                  <div key={agent.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '8px 12px', background: 'rgba(168, 85, 247, 0.1)',
+                    border: '1px solid rgba(168, 85, 247, 0.25)', borderRadius: '10px',
+                  }}>
+                    <span style={{ fontSize: '20px' }}>{agent.emoji}</span>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#e2e8f0' }}>{agent.name}</div>
+                      <div style={{ fontSize: '10px', color: '#94a3b8' }}>{agent.role} • LVL {agent.trainingLevel}</div>
+                      {agent.masteredSkills?.length > 0 && (
+                        <div style={{ fontSize: '9px', color: '#a855f7', marginTop: '2px' }}>
+                          ✓ {agent.masteredSkills.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 🔮 ARCHITEKTURA SZKLANA - LEWITUJĄCA KONSOLA INTENCJI */}
+      <div className={`fixed inset-x-0 bottom-0 z-[9990] flex justify-center pb-24 pointer-events-none transition-all duration-700 cubic-bezier(0.4, 0, 0.2, 1) ${
+          isConsoleOpen 
+          ? 'opacity-100 translate-y-0' 
+          : 'opacity-0 translate-y-24'
+      }`}>
+          
+          {/* SZKLANY KONTENER KONSOLI */}
+          <div className="w-full max-w-5xl max-h-[85vh] overflow-y-auto scrollbar-thin scrollbar-thumb-fuchsia-700 scrollbar-track-transparent bg-gray-950/40 backdrop-blur-xl border border-fuchsia-500/20 rounded-t-3xl shadow-[0_-10px_40px_rgba(217,70,239,0.15)] p-6 pointer-events-auto relative flex flex-col">
+              
+              {/* Neonowy akcent u góry (Bajer) */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-fuchsia-500 to-transparent opacity-50 animate-pulse"></div>
+
+              {/* 🏛️ RDZEŃ STEROWANIA - PORT DYPLOMATYCZNY & KONSOLA INTENCJI */}
+              <div className="flex flex-col gap-4">
+                  {/* 🌐 PORT DYPLOMATYCZNY (Goście) */}
+                  <div style={{
+                    background: 'rgba(15, 23, 42, 0.4)',
+                    border: '1px solid rgba(6, 182, 212, 0.2)',
+                    borderRadius: '10px',
+                    padding: '12px',
+                  }}>
+                    <div style={{ fontSize: '11px', color: '#22d3ee', fontWeight: 'bold', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      🌐 PORT DYPLOMATYCZNY <span style={{ opacity: 0.5, fontWeight: 'normal' }}>— Zaproś Agenta Zewnętrznego</span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                      {[
+                        { id: 'gemini', name: 'Gemini 3.1', emoji: '🔮' },
+                        { id: 'claude', name: 'Claude-3.5', emoji: '🧠' },
+                        { id: 'gpt', name: 'GPT-4o', emoji: '💬' },
+                        { id: 'groq', name: 'Groq Llama', emoji: '⚡' },
+                        { id: 'local', name: 'LOCAL (Ollama)', emoji: '🏠' },
+                      ].map(model => (
+                        <button
+                          key={model.id}
+                          onClick={() => setGuestModel(model.id as any)}
+                          style={{
+                            background: guestModel === model.id ? 'rgba(6, 182, 212, 0.3)' : 'rgba(100, 116, 139, 0.1)',
+                            border: '1px solid',
+                            borderColor: guestModel === model.id ? '#22d3ee' : 'rgba(100, 116, 139, 0.3)',
+                            borderRadius: '6px', padding: '6px 12px', fontSize: '10px',
+                            color: guestModel === model.id ? '#22d3ee' : '#94a3b8',
+                            cursor: 'pointer', transition: 'all 0.2s'
+                          }}
+                        >
+                          {model.emoji} {model.name}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        type="text"
+                        value={guestThesis}
+                        onChange={(e) => setGuestThesis(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleGuestThesis()}
+                        placeholder='Wklej tezę dla Gościa lub wezwanie do debaty...'
+                        style={{
+                          flex: 1, background: 'rgba(15, 23, 42, 0.8)', border: '1px solid rgba(6, 182, 212, 0.2)',
+                          borderRadius: '6px', padding: '10px 14px', color: '#e2e8f0', fontSize: '13px', outline: 'none'
+                        }}
+                      />
+                      <button
+                        onClick={handleGuestThesis}
+                        disabled={isGuestSpeaking || !guestThesis.trim()}
+                        style={{
+                          background: 'linear-gradient(135deg, #06b6d4, #0891b2)',
+                          border: 'none', borderRadius: '6px', padding: '10px 20px',
+                          color: 'white', fontSize: '12px', fontWeight: 'bold',
+                          cursor: isGuestSpeaking ? 'not-allowed' : 'pointer',
+                          opacity: isGuestSpeaking || !guestThesis.trim() ? 0.5 : 1
+                        }}
+                      >
+                        {isGuestSpeaking ? '⏳' : '📢 NADAJ'}
+                      </button>
+                    </div>
+
+                    {trainingDataset.length > 0 && (
+                      <div style={{ marginTop: '10px', fontSize: '10px', color: '#22c55e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>✅ Zebrano {trainingDataset.length} próbek do Fine-Tuningu</span>
+                        <button onClick={exportDataset} style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', borderRadius: '4px', padding: '2px 8px', color: '#22c55e', cursor: 'pointer', fontSize: '9px' }}>
+                          EXPORT .JSONL
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 🗣️ KONSOLA INTENCJI (Rdzeń Sterowania) */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(225, 29, 72, 0.1), rgba(190, 24, 93, 0.1))',
+                    border: '1px solid rgba(225, 29, 72, 0.3)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <div style={{ fontSize: '13px', color: '#e11d48', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '1px' }}>
+                        🗣️ KONSOLA INTENCJI
+                        <div style={{
+                          width: '10px', height: '10px', borderRadius: '50%',
+                          background: aiMode === 'local' ? '#22c55e' : '#3b82f6',
+                          boxShadow: `0 0 15px ${aiMode === 'local' ? '#22c55e' : '#3b82f6'}`,
+                          animation: 'pulse 1.5s infinite'
+                        }} />
+                      </div>
+
+                      {/* AI Toggle & Archive */}
+                      <div className="flex items-center gap-4">
+                        <button 
+                          onClick={handleSaveKronika} 
+                          className="text-[10px] bg-indigo-900/50 hover:bg-indigo-800 text-indigo-300 px-3 py-1 rounded border border-indigo-700/50 transition-colors font-mono tracking-tighter"
+                          title="Wyślij sesję do Archiwisty Wiesława (Dysk F:)"
+                        >
+                          📜 ZAPISZ KRONIKĘ
+                        </button>
+
+                        <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.8)', borderRadius: '25px', padding: '4px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                          <button onClick={() => setAiMode('cloud')} style={{ padding: '6px 14px', fontSize: '11px', fontWeight: 'bold', borderRadius: '20px', border: 'none', cursor: 'pointer', transition: '0.3s', background: aiMode === 'cloud' ? '#3b82f6' : 'transparent', color: aiMode === 'cloud' ? 'white' : '#94a3b8' }}>CLOUD</button>
+                          <button onClick={() => setAiMode('local')} style={{ padding: '6px 14px', fontSize: '11px', fontWeight: 'bold', borderRadius: '20px', border: 'none', cursor: 'pointer', transition: '0.3s', background: aiMode === 'local' ? '#22c55e' : 'transparent', color: aiMode === 'local' ? 'white' : '#94a3b8' }}>LOCAL</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={intentionInput}
+                        onChange={(e) => setIntentionInput(e.target.value)}
+                        onKeyPress={handleKeyPress}
+                        placeholder='Rozkaz dla Rady (np. "Wiesław, status rur")'
+                        style={{
+                          flex: 1, background: 'rgba(15, 23, 42, 0.8)', border: '1px solid rgba(225, 29, 72, 0.3)',
+                          borderRadius: '8px', padding: '12px 18px', color: '#e2e8f0', fontSize: '14px', outline: 'none',
+                          boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)'
+                        }}
+                      />
+                      <button
+                        onClick={handleIntention}
+                        style={{
+                          background: 'linear-gradient(135deg, #e11d48, #be185d)',
+                          border: 'none', borderRadius: '8px', padding: '12px 24px',
+                          color: 'white', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer',
+                          boxShadow: '0 4px 15px rgba(225, 29, 72, 0.4)'
+                        }}
+                      >
+                        WYŚLIJ
+                      </button>
+                    </div>
+
+                    {lastCommand && (
+                      <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '10px', opacity: 0.6 }}>
+                        ⚡ Ostatnio nadano: "{lastCommand}"
+                      </div>
+                    )}
+                  </div>
+              </div>
           </div>
+      </div>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input
-              ref={inputRef}
-              type="text"
-              value={intentionInput}
-              onChange={(e) => setIntentionInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder='Rozkaz dla Rady (np. "Wiesław, status rur")'
-              style={{
-                flex: 1, background: 'rgba(15, 23, 42, 0.8)', border: '1px solid rgba(225, 29, 72, 0.3)',
-                borderRadius: '8px', padding: '12px 18px', color: '#e2e8f0', fontSize: '14px', outline: 'none',
-                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)'
-              }}
-            />
-            <button
-              onClick={handleIntention}
-              style={{
-                background: 'linear-gradient(135deg, #e11d48, #be185d)',
-                border: 'none', borderRadius: '8px', padding: '12px 24px',
-                color: 'white', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer',
-                boxShadow: '0 4px 15px rgba(225, 29, 72, 0.4)'
-              }}
-            >
-              WYŚLIJ
-            </button>
-          </div>
+      {/* 🔮 PRZYCISK AKTYWACYJNY RADY */}
+      <button 
+          onClick={() => setIsConsoleOpen(!isConsoleOpen)}
+          className="fixed bottom-6 right-6 z-[9995] bg-fuchsia-900/60 hover:bg-fuchsia-700 text-white rounded-full p-4 shadow-[0_0_20px_rgba(217,70,239,0.5)] transition-all hover:scale-110 border border-fuchsia-400/30"
+      >
+          💬 {isConsoleOpen ? 'Ukryj Konsolę' : 'Wywołaj Radę'}
+      </button>
 
-          {lastCommand && (
-            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '10px', opacity: 0.6 }}>
-              ⚡ Ostatnio nadano: "{lastCommand}"
-            </div>
-          )}
-        </div>
-
-        <div style={{ textAlign: 'center', fontSize: '8px', color: '#475569', opacity: 0.5, marginTop: '5px' }}>
-          © OtakOS - Własność Intelektualna Suwerena Arkadiusza // 0.00G RESONANCE
-        </div>
+      <div style={{ textAlign: 'center', fontSize: '8px', color: '#475569', opacity: 0.5, marginTop: 'auto', padding: '10px' }}>
+        © OtakOS - Własność Intelektualna Suwerena Arkadiusza // 0.00G RESONANCE
       </div>
     </motion.div>
   );

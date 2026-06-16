@@ -35,13 +35,21 @@ interface RadioState {
     currentTime:  number;
     duration:     number;
     bassLevel:    number;
+    vocalLevel:   number;
+    currentLyric: string;
+    isAutoAura:   boolean;
     // ── Nowe pola aury ──
     activeAura:   AgentAura | null;   // aktywna aura agenta
     isSpeaking:   boolean;            // czy Sfera właśnie czyta komunikat
     isRecording:  boolean;            // czy trwa nagrywanie PoDCaT
     wiesioAlive:  boolean;            // czy Wiesio-Bridge żyje
     isMinimized:  boolean;            // czy odtwarzacz jest zwinięty
+    showIntro:    boolean;            // czy pokazać intro (tytuł)
+    showOutro:    boolean;            // czy pokazać outro (napisy)
+    playbackRate: number;             // prędkość odtwarzania
 }
+
+
 
 interface RadioContextValue extends RadioState {
     play:         () => void;
@@ -60,7 +68,13 @@ interface RadioContextValue extends RadioState {
     seekTo:       (time: number) => void;
     toggleRecording: () => void;
     setIsMinimized:  (m: boolean) => void;
+    setCurrentLyric: (text: string) => void;
+    setIsAutoAura:   (auto: boolean) => void;
+    setShowIntro:    (s: boolean) => void;
+    setShowOutro:    (s: boolean) => void;
+    setPlaybackRate: (r: number) => void;
 }
+
 
 // ── Context ───────────────────────────────────────────────────────────
 
@@ -88,15 +102,23 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
     const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
     const currentFilenameRef = useRef<string>('');
+    
+    // Pamięć Wektorowa dla Muzycznego Agenta
+    const sonicVectors = useRef<any[]>([]);
+    const lastSampleTime = useRef<number>(0);
 
     const [state, setState] = useState<RadioState>({
         tracks: [], currentIndex: 0,
         isPlaying: false, isLoading: false,
         error: null, volume: 0.7,
-        currentTime: 0, duration: 0, bassLevel: 0,
+        currentTime: 0, duration: 0, bassLevel: 0, vocalLevel: 0, currentLyric: '', isAutoAura: false,
         activeAura: null, isSpeaking: false, isRecording: false, wiesioAlive: false,
-        isMinimized: true,
+        isMinimized: true, showIntro: false, showOutro: false,
+        playbackRate: 1.0,
     });
+
+
+    const currentTrack = state.tracks[state.currentIndex] ?? null;
 
     // ── Singleton Audio ───────────────────────────────────────────────
     useEffect(() => {
@@ -105,9 +127,10 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
         audio.volume = 0.7;
         audio.preload = 'metadata'; // Pije po kropelce, nie połyka jeziora (zapobiega RAM overflow)
 
-        audio.addEventListener('ended', () =>
-            setState(s => ({ ...s, currentIndex: (s.currentIndex + 1) % Math.max(s.tracks.length, 1) }))
-        );
+        audio.addEventListener('ended', () => {
+            handleStopSequence();
+            setState(s => ({ ...s, currentIndex: (s.currentIndex + 1) % Math.max(s.tracks.length, 1) }));
+        });
         audio.addEventListener('timeupdate', () =>
             setState(s => ({ ...s, currentTime: audio.currentTime }))
         );
@@ -115,6 +138,7 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
             setState(s => ({ ...s, duration: audio.duration || 0 }))
         );
         audio.addEventListener('error', () => {
+            handleStopSequence();
             setState(s => ({ ...s, error: 'Błąd pliku — skip', isPlaying: false }));
             setTimeout(() =>
                 setState(s => ({
@@ -138,7 +162,7 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
     useEffect(() => {
         const checkWiesioPulse = async () => {
             try {
-                const res = await fetch('http://localhost:3001/wiesio/ping');
+                const res = await fetch('http://127.0.0.1:3001/wiesio/ping');
                 setState(s => s.wiesioAlive !== res.ok ? { ...s, wiesioAlive: res.ok } : s);
             } catch (err) {
                 setState(s => s.wiesioAlive !== false ? { ...s, wiesioAlive: false } : s);
@@ -158,7 +182,7 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
 
         // Konstrukcja bezpośredniego strumienia wg Rozkazu Suwerena
         const streamUrl = track.filename 
-            ? `http://localhost:3001/music/${track.filename.split('/').map(encodeURIComponent).join('/')}`
+            ? `http://127.0.0.1:3001/music/${track.filename.split('/').map(encodeURIComponent).join('/')}`
             : track.audio_url;
 
         if (!streamUrl) return;
@@ -174,6 +198,14 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
                 setState(s => ({ ...s, isPlaying: false }));
             });
         }
+        
+        // Reset prędkości przy zmianie utworu
+        audio.playbackRate = 1.0;
+        setState(s => ({ ...s, playbackRate: 1.0 }));
+
+        // Zjazd danych przy zmianie utworu
+
+        handleStopSequence();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [state.currentIndex, state.tracks]);
 
@@ -207,7 +239,33 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
             let sum = 0;
             for (let i = 0; i < 8; i++) sum += dataArray[i];
             const bass = (sum / 8 / 255) * 100;
-            setState(s => ({ ...s, bassLevel: bass }));
+            
+            const vocalBand = dataArray.slice(10, 50); 
+            const vocalVolume = vocalBand.reduce((a, b) => a + b, 0) / vocalBand.length;
+            
+            // --- SONICZNY HARVESTER (Próbkowanie Wektorowe co 1s) ---
+            const now = Date.now();
+            if (now - lastSampleTime.current > 1000 && audioRef.current && !audioRef.current.paused) {
+                const getAverage = (arr: Uint8Array, start: number, end: number) => {
+                    let sum = 0;
+                    for (let i = start; i < end; i++) sum += arr[i];
+                    return Math.round(sum / (end - start));
+                };
+
+                const bassLvl = getAverage(dataArray, 0, 10);
+                const midLvl  = getAverage(dataArray, 10, 50);
+                const highLvl = getAverage(dataArray, 50, 120);
+
+                sonicVectors.current.push({
+                    s: sonicVectors.current.length,
+                    b: bassLvl,
+                    v: midLvl,
+                    h: highLvl
+                });
+                lastSampleTime.current = now;
+            }
+
+            setState(s => ({ ...s, bassLevel: bass, vocalLevel: vocalVolume }));
             animRef.current = requestAnimationFrame(tick);
         };
         animRef.current = requestAnimationFrame(tick);
@@ -289,7 +347,7 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
                         reader.readAsDataURL(e.data);
                         reader.onloadend = async () => {
                             try {
-                                await fetch('http://localhost:3001/wiesio/action', {
+                                await fetch('http://127.0.0.1:3001/wiesio/action', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
@@ -311,7 +369,7 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
                     setState(s => ({ ...s, isRecording: false }));
                     // Mówimy Wiesławowi: "To wszystko, odpalaj Rafinerię!"
                     try {
-                        const res = await fetch('http://localhost:3001/wiesio/action', {
+                        const res = await fetch('http://127.0.0.1:3001/wiesio/action', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -329,16 +387,28 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
                 // WYMUSZENIE CIĘCIA CO 10 SEKUND
                 recorder.start(10000);
                 mediaRecorderRef.current = recorder;
-                setState(s => ({ ...s, isRecording: true }));
+                setState(s => ({ ...s, isRecording: true, showIntro: true }));
+
+                // Auto-Intro: Zniknij po 5 sekundach
+                setTimeout(() => {
+                    setState(s => ({ ...s, showIntro: false }));
+                }, 5000);
+
             } catch (err) {
                 console.error("Recording error:", err);
             }
         } else {
-            // STOP RECORDING
-            if (mediaRecorderRef.current) {
-                mediaRecorderRef.current.stop();
-                mediaRecorderRef.current = null;
-            }
+            // STOP RECORDING z Auto-Outro
+            setState(s => ({ ...s, showOutro: true }));
+            
+            // Odczekaj 4 sekundy, by Outro się nagrało na ostatnim chunku
+            setTimeout(() => {
+                if (mediaRecorderRef.current) {
+                    mediaRecorderRef.current.stop();
+                    mediaRecorderRef.current = null;
+                }
+                setState(s => ({ ...s, showOutro: false }));
+            }, 4000);
         }
     }, [state.isRecording, setupAudioContext]);
 
@@ -355,6 +425,33 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
             setState(s => ({ ...s, isLoading: false, error: e.message }));
         }
     }, [setupAudioContext]);
+
+    // ── Sonic Harvester — Zrzut danych ──
+    const handleStopSequence = useCallback(async () => {
+        if (sonicVectors.current.length > 0) {
+            const trackTitle = currentTrack?.title || "Unknown_Track";
+            const timestamp  = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename   = `SonicVectors_${trackTitle.replace(/\s+/g, '_')}_${timestamp}.json`;
+
+            console.log(`💎 ZEJŚCIE DANYCH Z MEMBRAN: ${filename} (${sonicVectors.current.length} próbek)`);
+
+            try {
+                await fetch('http://127.0.0.1:3001/wiesio/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        action: 'SAVE_SONIC_VECTORS', 
+                        payload: { filename, vectors: sonicVectors.current } 
+                    })
+                });
+            } catch (err) {
+                console.error("[Sonic Harvester] ❌ Błąd zapisu do Wiesława!", err);
+            }
+
+            sonicVectors.current = [];
+            lastSampleTime.current = 0;
+        }
+    }, [currentTrack]);
 
     // ── speakMessage — NOWE ───────────────────────────────────────────
     // Wywołaj to po każdej odpowiedzi agenta.
@@ -384,8 +481,6 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
         setState(s => ({ ...s, activeAura: null, isSpeaking: false }));
     }, []);
 
-    const currentTrack = state.tracks[state.currentIndex] ?? null;
-
     return (
         <KatedraRadioContext.Provider value={{
             ...state, currentTrack, analyserRef,
@@ -393,7 +488,18 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
             setVolume, setTrack, loadPlaylist,
             speakMessage, clearAura, seekTo, toggleRecording,
             setIsMinimized: (m: boolean) => setState(s => ({ ...s, isMinimized: m })),
+            setCurrentLyric: (t: string) => setState(s => ({ ...s, currentLyric: t })),
+            setIsAutoAura: (a: boolean) => setState(s => ({ ...s, isAutoAura: a })),
+            setShowIntro: (s: boolean) => setState(state => ({ ...state, showIntro: s })),
+            setShowOutro: (s: boolean) => setState(state => ({ ...state, showOutro: s })),
+            setPlaybackRate: (r: number) => {
+                if (audioRef.current) {
+                    audioRef.current.playbackRate = r;
+                    setState(s => ({ ...s, playbackRate: r }));
+                }
+            },
         }}>
+
             {children}
         </KatedraRadioContext.Provider>
     );

@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>QUANTUM GAME STUDIO — Katedra OtakOS</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --void:#06080f; --gold:#c9953a; --gold-l:#f0c060; --gold-d:#7a5a1a;
+  --cyan:#00e5ff; --cyan-d:#006070; --purple:#a78bfa; --green:#4ade80;
+  --red:#f87171; --ink:#e8dfc8; --panel:rgba(8,6,18,0.97);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--void);color:var(--ink);font-family:'Share Tech Mono',monospace;
+  height:100dvh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+
+/* ── HEADER ── */
+#hdr{display:flex;align-items:center;justify-content:space-between;
+  padding:8px 16px;background:rgba(6,8,15,0.97);
+  border-bottom:1px solid rgba(201,149,58,0.2);flex-shrink:0;gap:12px}
+#hdr-left{display:flex;flex-direction:column}
+.hdr-eye{font-size:8px;letter-spacing:.4em;color:var(--gold-d)}
+.hdr-title{font-family:'Orbitron',monospace;font-size:15px;font-weight:700;
+  color:var(--gold-l);letter-spacing:.1em}
+#kwanty-badge{display:flex;align-items:center;gap:6px;
+  background:rgba(201,149,58,0.08);border:1px solid rgba(201,149,58,0.2);
+  border-radius:20px;padding:4px 12px;font-size:11px;color:var(--gold)}
+#agent-status{display:flex;align-items:center;gap:6px;font-size:9px;
+  color:rgba(255,255,255,.3);letter-spacing:.15em}
+.agent-dot{width:7px;height:7px;border-radius:50%;background:var(--green);
+  animation:blink .8s infinite alternate}
+@keyframes blink{from{opacity:1}to{opacity:.3}}
+
+/* ── TABS ── */
+#tabs{display:flex;background:rgba(6,8,15,.9);
+  border-bottom:1px solid rgba(255,255,255,.05);flex-shrink:0}
+.tab{flex:1;padding:10px 4px;background:none;border:none;cursor:pointer;
+  font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.1em;
+  color:rgba(255,255,255,.3);border-bottom:2px solid transparent;
+  transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:2px}
+.tab .tab-icon{font-size:16px}
+.tab.active{color:var(--gold-l);border-bottom-color:var(--gold);
+  background:rgba(201,149,58,.05)}
+.tab:hover:not(.active){color:rgba(255,255,255,.6)}
+
+/* ── PANELS ── */
+.panel{display:none;flex:1;overflow:hidden;flex-direction:column}
+.panel.active{display:flex}
+
+/* ── MAP EDITOR ── */
+#map-wrap{display:flex;flex:1;overflow:hidden}
+#map-sidebar{width:160px;flex-shrink:0;background:rgba(0,0,0,.4);
+  border-right:1px solid rgba(255,255,255,.05);padding:10px;
+  display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+#map-canvas-wrap{flex:1;overflow:auto;display:flex;align-items:flex-start;
+  justify-content:flex-start;padding:12px;background:rgba(0,0,0,.2)}
+#map-canvas{image-rendering:pixelated;cursor:crosshair;
+  border:1px solid rgba(201,149,58,.2)}
+.sidebar-title{font-size:8px;letter-spacing:.3em;color:var(--gold-d);
+  border-bottom:1px solid rgba(201,149,58,.1);padding-bottom:5px}
+.tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.tile-btn{padding:6px 4px;border-radius:5px;border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);cursor:pointer;font-family:'Share Tech Mono',monospace;
+  font-size:9px;color:rgba(255,255,255,.5);text-align:center;transition:all .15s;
+  display:flex;flex-direction:column;align-items:center;gap:2px}
+.tile-btn .tile-icon{font-size:16px}
+.tile-btn.active{border-color:var(--gold);background:rgba(201,149,58,.15);color:var(--gold-l)}
+.tile-btn:hover{border-color:rgba(255,255,255,.2);color:#fff}
+.map-toolbar{display:flex;gap:6px;padding:8px 12px;
+  background:rgba(0,0,0,.3);border-bottom:1px solid rgba(255,255,255,.04);flex-shrink:0}
+.map-tool-btn{padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);cursor:pointer;font-family:'Share Tech Mono',monospace;
+  font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.1em;transition:all .15s}
+.map-tool-btn.active{border-color:var(--cyan);background:rgba(0,229,255,.1);color:var(--cyan)}
+.map-tool-btn:hover{color:#fff}
+#map-info{padding:4px 12px;font-size:9px;color:rgba(255,255,255,.2);
+  letter-spacing:.1em;flex-shrink:0;border-top:1px solid rgba(255,255,255,.04)}
+.grid-size-row{display:flex;align-items:center;gap:6px;margin-top:6px}
+.grid-size-row input{width:45px;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:3px 5px;
+  color:var(--ink);font-family:'Share Tech Mono',monospace;font-size:10px;outline:none}
+.grid-size-row label{font-size:9px;color:rgba(255,255,255,.3)}
+
+/* ── CHARACTER EDITOR ── */
+#char-wrap{display:flex;flex:1;overflow:hidden;gap:0}
+#char-sidebar{width:180px;flex-shrink:0;background:rgba(0,0,0,.4);
+  border-right:1px solid rgba(255,255,255,.05);padding:12px;
+  display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+#char-main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#char-preview{flex:1;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.2);position:relative}
+#char-svg-wrap{position:relative}
+#char-controls{padding:10px 16px;background:rgba(0,0,0,.3);
+  border-top:1px solid rgba(255,255,255,.04);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.char-param{display:flex;flex-direction:column;gap:3px;min-width:80px}
+.char-param label{font-size:8px;letter-spacing:.2em;color:rgba(255,255,255,.3)}
+.char-param input[type=range]{width:100%;accent-color:var(--gold)}
+.char-param input[type=color]{width:100%;height:24px;border:none;border-radius:4px;cursor:pointer}
+.body-part-btn{padding:7px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);cursor:pointer;font-family:'Share Tech Mono',monospace;
+  font-size:9px;color:rgba(255,255,255,.4);width:100%;text-align:left;transition:all .15s}
+.body-part-btn.active{border-color:var(--purple);background:rgba(167,139,250,.1);color:var(--purple)}
+.anim-btn{padding:5px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);cursor:pointer;font-family:'Share Tech Mono',monospace;
+  font-size:9px;color:rgba(255,255,255,.4);transition:all .15s}
+.anim-btn.active{border-color:var(--green);background:rgba(74,222,128,.1);color:var(--green)}
+
+/* ── ASSETS ── */
+#assets-wrap{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:16px}
+.asset-section-title{font-size:9px;letter-spacing:.3em;color:var(--gold-d);
+  border-bottom:1px solid rgba(201,149,58,.08);padding-bottom:6px}
+.asset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
+.asset-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  border-radius:8px;padding:10px;cursor:pointer;transition:all .2s;
+  display:flex;flex-direction:column;align-items:center;gap:5px}
+.asset-card:hover{border-color:var(--gold);transform:scale(1.03)}
+.asset-card.selected{border-color:var(--gold);background:rgba(201,149,58,.1)}
+.asset-preview{width:60px;height:60px;display:flex;align-items:center;justify-content:center;
+  border-radius:6px;overflow:hidden}
+.asset-name{font-size:8px;color:rgba(255,255,255,.4);text-align:center;letter-spacing:.05em}
+.gen-btn{padding:10px 16px;border-radius:8px;border:1px solid rgba(0,229,255,.3);
+  background:rgba(0,229,255,.08);cursor:pointer;font-family:'Share Tech Mono',monospace;
+  font-size:10px;color:var(--cyan);letter-spacing:.15em;transition:all .2s;width:100%}
+.gen-btn:hover{background:rgba(0,229,255,.15);box-shadow:0 0 16px rgba(0,229,255,.2)}
+.gen-prompt{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+  border-radius:6px;padding:8px;color:var(--ink);font-family:'Share Tech Mono',monospace;
+  font-size:11px;outline:none;resize:vertical;min-height:60px}
+
+/* ── GDD ── */
+#gdd-wrap{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.gdd-header{background:rgba(201,149,58,.06);border:1px solid rgba(201,149,58,.15);
+  border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.gdd-title-row{display:flex;align-items:center;gap:10px}
+.gdd-label{font-family:'Orbitron',monospace;font-size:10px;letter-spacing:.2em;color:var(--gold)}
+.gdd-input{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+  border-radius:6px;padding:8px 10px;color:var(--ink);font-family:'Share Tech Mono',monospace;
+  font-size:12px;outline:none;width:100%}
+.gdd-input:focus{border-color:var(--gold)}
+.gdd-textarea{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  border-radius:6px;padding:10px;color:var(--ink);font-family:'Share Tech Mono',monospace;
+  font-size:11px;outline:none;resize:vertical;width:100%;line-height:1.7}
+.gdd-textarea:focus{border-color:var(--gold)}
+.gdd-section{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);
+  border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.gdd-sec-label{font-size:9px;letter-spacing:.25em;color:var(--cyan-d)}
+.gdd-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mechanic-tag{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;
+  border-radius:12px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.2);
+  font-size:9px;color:var(--purple);cursor:pointer;transition:all .15s;margin:3px}
+.mechanic-tag.active{background:rgba(167,139,250,.25);border-color:var(--purple)}
+.gdd-btn-row{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ── SHARED BUTTONS ── */
+.btn{padding:9px 16px;border-radius:8px;font-family:'Share Tech Mono',monospace;
+  font-size:10px;letter-spacing:.15em;cursor:pointer;transition:all .2s;
+  border:1px solid;display:flex;align-items:center;gap:6px}
+.btn-gold{background:linear-gradient(135deg,var(--gold-d),var(--gold));
+  border-color:var(--gold);color:#1a1208;font-weight:700}
+.btn-gold:hover{box-shadow:0 0 20px rgba(201,149,58,.35)}
+.btn-ghost{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.5)}
+.btn-ghost:hover{border-color:rgba(255,255,255,.25);color:#fff}
+.btn-cyan{background:rgba(0,229,255,.08);border-color:rgba(0,229,255,.3);color:var(--cyan)}
+.btn-purple{background:rgba(167,139,250,.08);border-color:rgba(167,139,250,.3);color:var(--purple)}
+
+/* ── FORGE PANEL (bottom) ── */
+#forge-panel{background:rgba(0,0,0,.5);border-top:1px solid rgba(201,149,58,.15);
+  padding:10px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap}
+#forge-status{font-size:10px;color:rgba(255,255,255,.3);letter-spacing:.1em;flex:1}
+#forge-log{flex:1;font-size:9px;color:rgba(255,255,255,.2);overflow:hidden;
+  white-space:nowrap;text-overflow:ellipsis;min-width:0}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:999;
+  background:rgba(10,8,20,.97);border:1px solid rgba(201,149,58,.3);border-radius:8px;
+  padding:7px 16px;font-size:11px;color:var(--gold-l);letter-spacing:.1em;
+  opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}
+
+@media(max-width:600px){
+  #map-sidebar{width:120px}
+  #char-sidebar{width:140px}
+  .gdd-grid-2{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div id="toast"></div>
+
+<!-- HEADER -->
+<div id="hdr">
+  <div id="hdr-left">
+    <span class="hdr-eye">∴ KATEDRA OTAKOS ∴</span>
+    <span class="hdr-title">⚡ QUANTUM GAME STUDIO</span>
+  </div>
+  <div id="agent-status">
+    <div class="agent-dot"></div>
+    <span id="active-agent-name">RADA GOTOWA</span>
+  </div>
+  <div id="kwanty-badge">⚡ <span id="kwanty-val">0</span> KWANTÓW</div>
+</div>
+
+<!-- TABS -->
+<div id="tabs">
+  <button class="tab active" onclick="switchTab('map')">
+    <span class="tab-icon">🗺</span>MAP EDITOR
+  </button>
+  <button class="tab" onclick="switchTab('char')">
+    <span class="tab-icon">🎭</span>POSTAĆ
+  </button>
+  <button class="tab" onclick="switchTab('assets')">
+    <span class="tab-icon">🎨</span>ASSETY
+  </button>
+  <button class="tab" onclick="switchTab('gdd')">
+    <span class="tab-icon">📋</span>GDD
+  </button>
+</div>
+
+<!-- ══════════════ MAP EDITOR ══════════════ -->
+<div class="panel active" id="panel-map">
+  <div class="map-toolbar">
+    <button class="map-tool-btn active" id="tool-draw" onclick="setMapTool('draw')">✏ RYSUJ</button>
+    <button class="map-tool-btn" id="tool-erase" onclick="setMapTool('erase')">◻ GUMKA</button>
+    <button class="map-tool-btn" id="tool-fill" onclick="setMapTool('fill')">▣ WYPEŁNIJ</button>
+    <button class="map-tool-btn" id="tool-select" onclick="setMapTool('select')">⊹ ZAZNACZ</button>
+    <div style="flex:1"></div>
+    <button class="map-tool-btn" onclick="clearMap()">✕ WYCZYŚĆ</button>
+    <button class="map-tool-btn" onclick="exportMapJSON()">⬇ JSON</button>
+    <button class="map-tool-btn" onclick="sendMapToForge()" style="border-color:rgba(201,149,58,.4);color:var(--gold)">⚡ DO KUŹNI</button>
+  </div>
+  <div id="map-wrap">
+    <div id="map-sidebar">
+      <div class="sidebar-title">KAFELKI</div>
+      <div class="tile-grid" id="tile-palette"></div>
+      <div class="sidebar-title" style="margin-top:8px">SIATKA</div>
+      <div class="grid-size-row">
+        <label>W</label><input type="number" id="grid-w" value="20" min="5" max="50" onchange="resizeGrid()">
+        <label>H</label><input type="number" id="grid-h" value="15" min="5" max="40" onchange="resizeGrid()">
+      </div>
+      <button class="map-tool-btn" style="width:100%;margin-top:6px" onclick="resizeGrid()">ZASTOSUJ</button>
+      <div class="sidebar-title" style="margin-top:8px">WARSTWY</div>
+      <div id="layer-list" style="display:flex;flex-direction:column;gap:4px"></div>
+      <button class="map-tool-btn" style="width:100%;margin-top:4px;font-size:8px" onclick="addLayer()">+ WARSTWA</button>
+    </div>
+    <div id="map-canvas-wrap">
+      <canvas id="map-canvas"></canvas>
+    </div>
+  </div>
+  <div id="map-info">Kliknij kafelek i rysuj mapę · Siatka: <span id="map-size-info">20×15</span> · Wybrany: <span id="selected-tile-info">—</span></div>
+</div>
+
+<!-- ══════════════ CHARACTER EDITOR ══════════════ -->
+<div class="panel" id="panel-char">
+  <div id="char-wrap">
+    <div id="char-sidebar">
+      <div class="sidebar-title">CZĘŚCI CIAŁA</div>
+      <div id="body-parts-list" style="display:flex;flex-direction:column;gap:4px"></div>
+      <div class="sidebar-title" style="margin-top:10px">ANIMACJE</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px" id="anim-list"></div>
+      <div class="sidebar-title" style="margin-top:10px">PREDEFINIOWANE</div>
+      <div style="display:flex;flex-direction:column;gap:4px" id="preset-list"></div>
+    </div>
+    <div id="char-main">
+      <div id="char-preview">
+        <div id="char-svg-wrap">
+          <svg id="char-svg" width="200" height="280" viewBox="0 0 200 280"></svg>
+        </div>
+        <div style="position:absolute;bottom:10px;right:10px;font-size:9px;color:rgba(255,255,255,.2);letter-spacing:.1em">
+          SVG WEKTOROWY
+        </div>
+      </div>
+      <div id="char-controls">
+        <div class="char-param">
+          <label>GŁOWA</label>
+          <input type="range" id="head-size" min="20" max="50" value="35" oninput="updateChar()">
+        </div>
+        <div class="char-param">
+          <label>CIAŁO</label>
+          <input type="range" id="body-h" min="40" max="100" value="70" oninput="updateChar()">
+        </div>
+        <div class="char-param">
+          <label>NOGI</label>
+          <input type="range" id="leg-h" min="30" max="90" value="60" oninput="updateChar()">
+        </div>
+        <div class="char-param">
+          <label>GŁÓWNY KOLOR</label>
+          <input type="color" id="char-color1" value="#c9953a" oninput="updateChar()">
+        </div>
+        <div class="char-param">
+          <label>AKCENT</label>
+          <input type="color" id="char-color2" value="#00e5ff" oninput="updateChar()">
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
+          <button class="btn btn-ghost" onclick="exportCharSVG()">⬇ SVG</button>
+          <button class="btn btn-gold" onclick="sendCharToForge()">⚡ DO KUŹNI</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ ASSETS ══════════════ -->
+<div class="panel" id="panel-assets">
+  <div id="assets-wrap">
+    <div>
+      <div class="asset-section-title">⚡ GENERUJ ASSET PRZEZ AI</div>
+      <textarea class="gen-prompt" id="asset-prompt"
+        placeholder="Opisz asset który chcesz... np. 'kosmiczny statek w stylu pixel art, złoty, 32x32px'"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <select id="asset-type" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+          border-radius:6px;padding:6px 10px;color:var(--ink);font-family:'Share Tech Mono',monospace;
+          font-size:10px;outline:none;flex:1">
+          <option value="sprite">Sprite postaci</option>
+          <option value="bg">Tło</option>
+          <option value="tile">Kafelek</option>
+          <option value="effect">Efekt / Cząsteczka</option>
+          <option value="ui">Element UI</option>
+        </select>
+        <button class="gen-btn" style="width:auto;padding:6px 14px" onclick="generateAsset()">⚡ GENERUJ SVG</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="asset-section-title">📦 BIBLIOTEKA ASSETÓW</div>
+      <div class="asset-grid" id="asset-grid"></div>
+    </div>
+
+    <div>
+      <div class="asset-section-title">🎨 TŁA PROCEDURALNE</div>
+      <div class="asset-grid" id="bg-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ GDD ══════════════ -->
+<div class="panel" id="panel-gdd">
+  <div id="gdd-wrap">
+
+    <div class="gdd-header">
+      <div class="gdd-title-row">
+        <span class="gdd-label">TYTUŁ GRY</span>
+        <input class="gdd-input" id="gdd-title" placeholder="Nazwa Twojej Gry..." style="flex:1">
+      </div>
+      <div class="gdd-grid-2">
+        <div>
+          <div class="gdd-label" style="font-size:8px;margin-bottom:4px">GATUNEK</div>
+          <select class="gdd-input" id="gdd-genre">
+            <option>Platformer</option><option>Puzzle</option><option>RPG</option>
+            <option>Shooter</option><option>Idle/Clicker</option><option>Roguelike</option>
+            <option>Strategy</option><option>Arcade</option>
+          </select>
+        </div>
+        <div>
+          <div class="gdd-label" style="font-size:8px;margin-bottom:4px">STYL WIZUALNY</div>
+          <select class="gdd-input" id="gdd-style">
+            <option>Pixel Art 8-bit</option><option>Wektorowy / Geometryczny</option>
+            <option>Kosmiczny 0.00G</option><option>Minimalistyczny</option>
+            <option>Neon Cyberpunk</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="gdd-section">
+      <div class="gdd-sec-label">📖 OPIS I KONCEPCJA</div>
+      <textarea class="gdd-textarea" id="gdd-concept" rows="3"
+        placeholder="Opisz koncepcję gry — o czym jest, co ją wyróżnia, jaka jest atmosfera..."></textarea>
+    </div>
+
+    <div class="gdd-section">
+      <div class="gdd-sec-label">🎮 MECHANIKI GRY</div>
+      <div id="mechanic-tags" style="margin-bottom:8px"></div>
+      <textarea class="gdd-textarea" id="gdd-mechanics" rows="3"
+        placeholder="Opisz mechaniki — jak gracz steruje, co może robić, jakie są zasady..."></textarea>
+    </div>
+
+    <div class="gdd-section">
+      <div class="gdd-sec-label">🌍 ŚWIAT I FABUŁA</div>
+      <textarea class="gdd-textarea" id="gdd-world" rows="3"
+        placeholder="Opisz świat gry — gdzie się dzieje, kim jest bohater, jaki jest cel..."></textarea>
+    </div>
+
+    <div class="gdd-section">
+      <div class="gdd-sec-label">⚡ CYKL GRY (GAME LOOP)</div>
+      <div class="gdd-grid-2">
+        <div>
+          <div class="gdd-label" style="font-size:8px;margin-bottom:4px">WARUNKI WYGRANEJ</div>
+          <textarea class="gdd-textarea" id="gdd-win" rows="2"
+            placeholder="Co gracz musi osiągnąć..."></textarea>
+        </div>
+        <div>
+          <div class="gdd-label" style="font-size:8px;margin-bottom:4px">WARUNKI PRZEGRANEJ</div>
+          <textarea class="gdd-textarea" id="gdd-lose" rows="2"
+            placeholder="Co kończy grę..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="gdd-section">
+      <div class="gdd-sec-label">🤖 WSKAZÓWKI DLA AGENTA</div>
+      <textarea class="gdd-textarea" id="gdd-agent-hints" rows="2"
+        placeholder="Specjalne instrukcje dla agenta który będzie kodował grę..."></textarea>
+    </div>
+
+    <div class="gdd-btn-row">
+      <button class="btn btn-ghost" onclick="exportGDD()">⬇ EKSPORTUJ GDD</button>
+      <button class="btn btn-purple" onclick="autoFillGDD()">🤖 AUTO-WYPEŁNIJ AI</button>
+      <button class="btn btn-gold" onclick="sendGDDToForge()">⚡ WYŚLIJ DO KUŹNI</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- FORGE STATUS BAR -->
+<div id="forge-panel">
+  <span id="forge-status">⚙ STUDIO GOTOWE</span>
+  <span id="forge-log"></span>
+  <button class="btn btn-gold" onclick="sendAllToForge()" style="padding:7px 14px;font-size:9px">
+    🔥 WYŚLIJ WSZYSTKO DO KUŹNI
+  </button>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════════
+let kwanty = parseInt(localStorage.getItem('qgs_kwanty') || '0');
+let mapTool = 'draw';
+let selectedTile = 0;
+let activeLayer  = 0;
+let mapData = [];
+let layers  = ['Podłoże', 'Ściany', 'Dekoracje'];
+let assets  = JSON.parse(localStorage.getItem('qgs_assets') || '[]');
+let charAnim = 'idle';
+let animFrame = 0;
+let animTimer = null;
+
+// ── Tile definitions ──────────────────────────────────────────────
+const TILES = [
+  { id:0,  name:'PUSTE',     color:'transparent', icon:'·',  char:' '  },
+  { id:1,  name:'MUR',       color:'#4a5568',     icon:'▪',  char:'#'  },
+  { id:2,  name:'PLATFORMA', color:'#c9953a',     icon:'▬',  char:'='  },
+  { id:3,  name:'START',     color:'#4ade80',     icon:'▶',  char:'S'  },
+  { id:4,  name:'CEL',       color:'#f0c060',     icon:'★',  char:'G'  },
+  { id:5,  name:'WRÓG',      color:'#f87171',     icon:'☠',  char:'E'  },
+  { id:6,  name:'PRZEDM.',   color:'#a78bfa',     icon:'◆',  char:'I'  },
+  { id:7,  name:'WODA',      color:'#00e5ff',     icon:'≈',  char:'W'  },
+  { id:8,  name:'OGIEŃ',     color:'#fb923c',     icon:'🔥', char:'F'  },
+  { id:9,  name:'PORTAL',    color:'#818cf8',     icon:'⊙',  char:'P'  },
+  { id:10, name:'SKRZYNIA',  color:'#d97706',     icon:'▣',  char:'B'  },
+  { id:11, name:'KOLEC',     color:'#94a3b8',     icon:'▲',  char:'X'  },
+];
+
+// ── Map setup ─────────────────────────────────────────────────────
+const TILE_SIZE = 24;
+let GRID_W = 20, GRID_H = 15;
+const mapCanvas = document.getElementById('map-canvas');
+const mapCtx    = mapCanvas.getContext('2d');
+
+function initMap() {
+  mapData = Array.from({length:GRID_H}, () => new Array(GRID_W).fill(0));
+  mapCanvas.width  = GRID_W * TILE_SIZE;
+  mapCanvas.height = GRID_H * TILE_SIZE;
+  drawMap();
+}
+
+function resizeGrid() {
+  GRID_W = Math.max(5, Math.min(50, parseInt(document.getElementById('grid-w').value) || 20));
+  GRID_H = Math.max(5, Math.min(40, parseInt(document.getElementById('grid-h').value) || 15));
+  document.getElementById('map-size-info').textContent = `${GRID_W}×${GRID_H}`;
+  const newMap = Array.from({length:GRID_H}, (_, r) =>
+    Array.from({length:GRID_W}, (_, c) => (mapData[r]?.[c] ?? 0))
+  );
+  mapData = newMap;
+  mapCanvas.width  = GRID_W * TILE_SIZE;
+  mapCanvas.height = GRID_H * TILE_SIZE;
+  drawMap();
+}
+
+function drawMap() {
+  mapCtx.fillStyle = '#06080f';
+  mapCtx.fillRect(0, 0, mapCanvas.width, mapCanvas.height);
+  for (let r=0; r<GRID_H; r++) {
+    for (let c=0; c<GRID_W; c++) {
+      const tid = mapData[r][c];
+      const tile = TILES[tid];
+      const x = c*TILE_SIZE, y = r*TILE_SIZE;
+      if (tid > 0) {
+        mapCtx.fillStyle = tile.color+'aa';
+        mapCtx.fillRect(x+1,y+1,TILE_SIZE-2,TILE_SIZE-2);
+        mapCtx.font = `${TILE_SIZE*0.55}px monospace`;
+        mapCtx.textAlign = 'center'; mapCtx.textBaseline = 'middle';
+        mapCtx.fillStyle = '#fff';
+        mapCtx.fillText(tile.icon, x+TILE_SIZE/2, y+TILE_SIZE/2+1);
+      }
+      mapCtx.strokeStyle = 'rgba(255,255,255,0.05)';
+      mapCtx.lineWidth = 0.5;
+      mapCtx.strokeRect(x,y,TILE_SIZE,TILE_SIZE);
+    }
+  }
+}
+
+function getMapCell(e) {
+  const r = mapCanvas.getBoundingClientRect();
+  const src = e.touches?.[0] ?? e;
+  const c = Math.floor((src.clientX - r.left) / TILE_SIZE);
+  const row = Math.floor((src.clientY - r.top) / TILE_SIZE);
+  return {c, row};
+}
+
+let isMapDrawing = false;
+
+mapCanvas.addEventListener('mousedown', e => {
+  isMapDrawing = true; paintTile(e);
+});
+mapCanvas.addEventListener('mousemove', e => { if(isMapDrawing) paintTile(e); });
+mapCanvas.addEventListener('mouseup', () => isMapDrawing = false);
+mapCanvas.addEventListener('touchstart', e => { e.preventDefault(); isMapDrawing=true; paintTile(e); }, {passive:false});
+mapCanvas.addEventListener('touchmove',  e => { e.preventDefault(); if(isMapDrawing) paintTile(e); }, {passive:false});
+mapCanvas.addEventListener('touchend', () => isMapDrawing = false);
+
+function paintTile(e) {
+  const {c, row} = getMapCell(e);
+  if (c<0||c>=GRID_W||row<0||row>=GRID_H) return;
+  if (mapTool === 'draw')  { mapData[row][c] = selectedTile; drawMap(); }
+  if (mapTool === 'erase') { mapData[row][c] = 0; drawMap(); }
+  if (mapTool === 'fill')  { floodFill(row, c, mapData[row][c], selectedTile); drawMap(); }
+  document.getElementById('selected-tile-info').textContent = TILES[mapData[row][c]].name;
+}
+
+function floodFill(r, c, from, to) {
+  if (r<0||r>=GRID_H||c<0||c>=GRID_W) return;
+  if (mapData[r][c] !== from || from === to) return;
+  mapData[r][c] = to;
+  floodFill(r-1,c,from,to); floodFill(r+1,c,from,to);
+  floodFill(r,c-1,from,to); floodFill(r,c+1,from,to);
+}
+
+function setMapTool(t) {
+  mapTool = t;
+  document.querySelectorAll('.map-tool-btn[id^=tool-]').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tool-'+t)?.classList.add('active');
+}
+
+function clearMap() {
+  mapData = Array.from({length:GRID_H},()=>new Array(GRID_W).fill(0));
+  drawMap(); toast('✕ Mapa wyczyszczona');
+}
+
+function exportMapJSON() {
+  const json = JSON.stringify({
+    width:GRID_W, height:GRID_H, tileSize:TILE_SIZE,
+    tiles:TILES.map(t=>({id:t.id,name:t.name,char:t.char,color:t.color})),
+    layers:[{name:'main',data:mapData}],
+    metadata:{created:Date.now(),studio:'Quantum Game Studio OtakOS'},
+  }, null, 2);
+  navigator.clipboard.writeText(json);
+  toast('📋 JSON mapy skopiowany!');
+}
+
+function buildTilePalette() {
+  const pal = document.getElementById('tile-palette');
+  TILES.forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = 'tile-btn' + (t.id===0?' active':'');
+    btn.dataset.id = t.id;
+    btn.innerHTML = `<span class="tile-icon">${t.icon}</span><span>${t.name}</span>`;
+    btn.onclick = () => {
+      selectedTile = t.id;
+      document.querySelectorAll('.tile-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+    pal.appendChild(btn);
+  });
+}
+
+function buildLayerList() {
+  const list = document.getElementById('layer-list');
+  list.innerHTML = '';
+  layers.forEach((l,i) => {
+    const btn = document.createElement('button');
+    btn.className = 'map-tool-btn' + (i===activeLayer?' active':'');
+    btn.textContent = l;
+    btn.onclick = () => { activeLayer=i; buildLayerList(); };
+    list.appendChild(btn);
+  });
+}
+
+function addLayer() {
+  layers.push('Warstwa '+layers.length);
+  buildLayerList();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  CHARACTER EDITOR
+// ══════════════════════════════════════════════════════════════════
+const BODY_PARTS = ['Głowa','Tułów','Lewa ręka','Prawa ręka','Lewa noga','Prawa noga'];
+const ANIMS = ['idle','run','jump','attack','hurt'];
+const PRESETS = [
+  {name:'BOHATER',   c1:'#c9953a',c2:'#00e5ff'},
+  {name:'WRÓG',      c1:'#f87171',c2:'#7a2020'},
+  {name:'ROBOT',     c1:'#94a3b8',c2:'#00e5ff'},
+  {name:'ALCHEMIK',  c1:'#a78bfa',c2:'#f0c060'},
+  {name:'KWANT',     c1:'#00e5ff',c2:'#ffffff'},
+];
+
+let selectedPart = 'Głowa';
+
+function buildCharSidebar() {
+  const pl = document.getElementById('body-parts-list');
+  BODY_PARTS.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'body-part-btn'+(p===selectedPart?' active':'');
+    btn.textContent = p;
+    btn.onclick = () => {
+      selectedPart = p;
+      document.querySelectorAll('.body-part-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+    pl.appendChild(btn);
+  });
+
+  const al = document.getElementById('anim-list');
+  ANIMS.forEach(a => {
+    const btn = document.createElement('button');
+    btn.className = 'anim-btn'+(a===charAnim?' active':'');
+    btn.textContent = a.toUpperCase();
+    btn.onclick = () => {
+      charAnim = a; charAnim=a;
+      document.querySelectorAll('.anim-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      playAnim(a);
+    };
+    al.appendChild(btn);
+  });
+
+  const preList = document.getElementById('preset-list');
+  PRESETS.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'body-part-btn';
+    btn.textContent = p.name;
+    btn.onclick = () => {
+      document.getElementById('char-color1').value = p.c1;
+      document.getElementById('char-color2').value = p.c2;
+      updateChar();
+      toast(`✦ Preset: ${p.name}`);
+    };
+    preList.appendChild(btn);
+  });
+}
+
+function getCharParams() {
+  return {
+    headR:  parseInt(document.getElementById('head-size').value)/2,
+    bodyH:  parseInt(document.getElementById('body-h').value),
+    legH:   parseInt(document.getElementById('leg-h').value),
+    c1: document.getElementById('char-color1').value,
+    c2: document.getElementById('char-color2').value,
+  };
+}
+
+function updateChar() {
+  const p = getCharParams();
+  const svg = document.getElementById('char-svg');
+  const W=200, H=280;
+  const cx=W/2;
+  let offset = {x:0,y:0};
+  if (charAnim==='run')    offset={x:Math.sin(animFrame*0.3)*4,y:0};
+  if (charAnim==='jump')   offset={x:0,y:-20};
+  if (charAnim==='attack') offset={x:8,y:0};
+  if (charAnim==='hurt')   offset={x:-5,y:0};
+
+  const headY  = 40+offset.y;
+  const bodyY  = headY+p.headR*2+4;
+  const legY   = bodyY+p.bodyH;
+
+  svg.innerHTML = `
+    <defs>
+      <radialGradient id="glow1" cx="50%" cy="40%">
+        <stop offset="0%" stop-color="${p.c1}" stop-opacity=".8"/>
+        <stop offset="100%" stop-color="${p.c1}" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <!-- Aura -->
+    <ellipse cx="${cx+offset.x}" cy="${H/2}" rx="70" ry="110" fill="url(#glow1)" opacity=".12"/>
+    <!-- Nogi -->
+    <rect x="${cx-14+offset.x}" y="${legY}" width="10" height="${p.legH}"
+      rx="4" fill="${p.c1}" opacity=".9"/>
+    <rect x="${cx+4+offset.x}" y="${legY}" width="10" height="${p.legH}"
+      rx="4" fill="${p.c1}" opacity=".9"/>
+    <!-- Stopy -->
+    <ellipse cx="${cx-9+offset.x}" cy="${legY+p.legH+4}" rx="10" ry="5" fill="${p.c1}"/>
+    <ellipse cx="${cx+9+offset.x}" cy="${legY+p.legH+4}" rx="10" ry="5" fill="${p.c1}"/>
+    <!-- Tułów -->
+    <rect x="${cx-18+offset.x}" y="${bodyY}" width="36" height="${p.bodyH}"
+      rx="6" fill="${p.c1}"/>
+    <!-- Pas -->
+    <rect x="${cx-18+offset.x}" y="${bodyY+p.bodyH*0.55}" width="36" height="6"
+      rx="2" fill="${p.c2}" opacity=".7"/>
+    <!-- Ręce -->
+    <rect x="${cx-30+offset.x+(charAnim==='attack'?-8:0)}" y="${bodyY+6}"
+      width="10" height="${p.bodyH*0.7}" rx="4" fill="${p.c1}" opacity=".85"/>
+    <rect x="${cx+20+offset.x}" y="${bodyY+6}"
+      width="10" height="${p.bodyH*0.7}" rx="4" fill="${p.c1}" opacity=".85"/>
+    <!-- Szyja -->
+    <rect x="${cx-5+offset.x}" y="${bodyY-6}" width="10" height="10" rx="3" fill="${p.c1}"/>
+    <!-- Głowa -->
+    <circle cx="${cx+offset.x}" cy="${headY+p.headR}" r="${p.headR}"
+      fill="${p.c1}" stroke="${p.c2}" stroke-width="2"/>
+    <!-- Oczy -->
+    <circle cx="${cx-p.headR*0.35+offset.x}" cy="${headY+p.headR*0.85}" r="${p.headR*0.18}"
+      fill="${p.c2}"/>
+    <circle cx="${cx+p.headR*0.35+offset.x}" cy="${headY+p.headR*0.85}" r="${p.headR*0.18}"
+      fill="${p.c2}"/>
+    <!-- Usta -->
+    <path d="M ${cx-p.headR*0.25+offset.x} ${headY+p.headR*1.3}
+             Q ${cx+offset.x} ${headY+p.headR*1.5} ${cx+p.headR*0.25+offset.x} ${headY+p.headR*1.3}"
+      stroke="${p.c2}" stroke-width="1.5" fill="none" opacity=".6"/>
+    <!-- Emiter kwantowy (detal) -->
+    <circle cx="${cx+offset.x}" cy="${bodyY+p.bodyH*0.3}" r="5" fill="${p.c2}" opacity=".8"/>
+    <circle cx="${cx+offset.x}" cy="${bodyY+p.bodyH*0.3}" r="3" fill="#fff" opacity=".6"/>
+  `;
+}
+
+let animRunning = false;
+function playAnim(anim) {
+  clearInterval(animTimer);
+  animFrame = 0;
+  animRunning = true;
+  animTimer = setInterval(() => {
+    animFrame++;
+    updateChar();
+  }, 80);
+  if (anim==='idle') { clearInterval(animTimer); updateChar(); }
+}
+
+function exportCharSVG() {
+  const svg = document.getElementById('char-svg').outerHTML;
+  navigator.clipboard.writeText(svg);
+  toast('📋 SVG postaci skopiowany!');
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  ASSETS
+// ══════════════════════════════════════════════════════════════════
+const BUILTIN_ASSETS = [
+  {name:'Gwiazda',   svg:`<svg viewBox="0 0 32 32"><polygon points="16,2 20,12 30,12 22,18 25,28 16,22 7,28 10,18 2,12 12,12" fill="#f0c060" opacity=".9"/></svg>`},
+  {name:'Kwant',     svg:`<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="10" fill="none" stroke="#00e5ff" stroke-width="2"/><circle cx="16" cy="16" r="4" fill="#00e5ff"/><circle cx="16" cy="16" r="14" fill="none" stroke="#00e5ff" stroke-width=".5" opacity=".3"/></svg>`},
+  {name:'Serce',     svg:`<svg viewBox="0 0 32 32"><path d="M16,28 C8,22 2,18 2,11 A7,7,0,0,1,16,8 A7,7,0,0,1,30,11 C30,18 24,22 16,28Z" fill="#f87171"/></svg>`},
+  {name:'Moneta',    svg:`<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#d97706"/><circle cx="16" cy="16" r="10" fill="#f0c060"/><text x="16" y="21" text-anchor="middle" font-size="12" fill="#7a5a1a" font-weight="bold">$</text></svg>`},
+  {name:'Tarcza',    svg:`<svg viewBox="0 0 32 32"><path d="M16,2 L28,6 L28,18 C28,24 22,28 16,30 C10,28 4,24 4,18 L4,6 Z" fill="#4a5568" stroke="#94a3b8" stroke-width="1.5"/><path d="M16,8 L22,10 L22,18 C22,22 19,24 16,25 C13,24 10,22 10,18 L10,10 Z" fill="#64748b"/></svg>`},
+  {name:'Portal',    svg:`<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="#818cf8" stroke-width="2"/><circle cx="16" cy="16" r="8" fill="none" stroke="#818cf8" stroke-width="1" opacity=".5"/><circle cx="16" cy="16" r="3" fill="#818cf8"/><ellipse cx="16" cy="16" rx="13" ry="5" fill="none" stroke="#818cf8" stroke-width=".5" opacity=".4"/></svg>`},
+  {name:'Klucz',     svg:`<svg viewBox="0 0 32 32"><circle cx="10" cy="12" r="7" fill="none" stroke="#d97706" stroke-width="2.5"/><rect x="15" y="11" width="14" height="3" rx="1.5" fill="#d97706"/><rect x="24" y="14" width="3" height="5" rx="1" fill="#d97706"/><rect x="19" y="14" width="3" height="4" rx="1" fill="#d97706"/></svg>`},
+  {name:'Bomba',     svg:`<svg viewBox="0 0 32 32"><circle cx="16" cy="18" r="11" fill="#1e293b" stroke="#475569" stroke-width="1.5"/><path d="M22,8 Q26,4 28,6" stroke="#f59e0b" stroke-width="2" fill="none"/><circle cx="22" cy="9" r="2" fill="#f59e0b"/></svg>`},
+];
+
+const BG_ASSETS = [
+  {name:'Kosmos',    svg:`<svg viewBox="0 0 80 50"><rect width="80" height="50" fill="#06080f"/>${Array.from({length:30},(_,i)=>`<circle cx="${Math.random()*80|0}" cy="${Math.random()*50|0}" r="${Math.random()*1.5|0}.${Math.random()*9|0}" fill="rgba(255,255,255,${(Math.random()*0.6+0.2).toFixed(1)})"/>`).join('')}</svg>`},
+  {name:'Dungeon',   svg:`<svg viewBox="0 0 80 50"><rect width="80" height="50" fill="#0f0a05"/><rect width="80" height="50" fill="url(#dp)"/><defs><pattern id="dp" width="20" height="20" patternUnits="userSpaceOnUse"><rect width="20" height="20" fill="none" stroke="#2d1f0a" stroke-width=".5"/></pattern></defs><rect x="0" y="35" width="80" height="15" fill="#1a1005"/></svg>`},
+  {name:'Neon City', svg:`<svg viewBox="0 0 80 50"><rect width="80" height="50" fill="#020617"/><rect x="0" y="25" width="80" height="25" fill="#050d1a"/>${[10,20,30,45,55,65].map(x=>`<rect x="${x}" y="${15+Math.random()*10|0}" width="8" height="${15+Math.random()*10|0}" fill="#1e293b" stroke="#00e5ff" stroke-width=".3" opacity=".8"/>`).join('')}<line x1="0" y1="50" x2="80" y2="50" stroke="#00e5ff" stroke-width=".5" opacity=".4"/></svg>`},
+  {name:'Łąka',      svg:`<svg viewBox="0 0 80 50"><rect width="80" height="35" fill="#0c1a3a"/><rect y="35" width="80" height="15" fill="#14532d"/>${Array.from({length:8},(_,i)=>`<circle cx="${10+i*10}" cy="${33-Math.random()*8|0}" r="${4+Math.random()*6|0}" fill="#166534" opacity=".7"/>`).join('')}</svg>`},
+];
+
+function buildAssets() {
+  const grid = document.getElementById('asset-grid');
+  const bgGrid = document.getElementById('bg-grid');
+  const all = [...BUILTIN_ASSETS, ...assets];
+  all.forEach(a => addAssetCard(grid, a));
+  BG_ASSETS.forEach(a => addAssetCard(bgGrid, a));
+}
+
+function addAssetCard(container, asset) {
+  const card = document.createElement('div');
+  card.className = 'asset-card';
+  card.innerHTML = `
+    <div class="asset-preview">${asset.svg}</div>
+    <div class="asset-name">${asset.name}</div>
+  `;
+  card.onclick = () => {
+    document.querySelectorAll('.asset-card').forEach(c=>c.classList.remove('selected'));
+    card.classList.add('selected');
+    navigator.clipboard.writeText(asset.svg);
+    toast(`📋 "${asset.name}" skopiowany!`);
+  };
+  container.appendChild(card);
+}
+
+async function generateAsset() {
+  const prompt = document.getElementById('asset-prompt').value.trim();
+  const type   = document.getElementById('asset-type').value;
+  if (!prompt) { toast('⚠ Wpisz opis assetu!'); return; }
+
+  toast('⚡ Generuję SVG przez Wiesława...');
+
+  try {
+    const r = await fetch('http://localhost:3001/api/bridge/execute', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        action: 'WRITE_FILE',
+        filename: `asset_request_${Date.now()}.txt`,
+        content: `Asset Request\nType: ${type}\nPrompt: ${prompt}\n\nWygeneruj SVG 32x32 opisujący: ${prompt}`,
+      })
+    });
+    if (r.ok) {
+      toast('✅ Zapytanie zapisane — agent może wygenerować SVG');
+      addKwanty(50);
+    }
+  } catch {
+    toast('⚠ Wiesław offline — zapisuję lokalnie');
+  }
+
+  // Broadcast do Fabryki Gier
+  broadcast('katedra_arcade', {
+    type: 'GENERATE_ASSET',
+    assetType: type,
+    prompt,
+    timestamp: Date.now(),
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  GDD
+// ══════════════════════════════════════════════════════════════════
+const MECHANICS = ['Skoki','Zbieranie','Walka','Dialogi','Craftowanie',
+  'Platforming','Bullet Hell','Turowe','Roguelike','Sandbox','Puzzle'];
+
+function buildGDD() {
+  const container = document.getElementById('mechanic-tags');
+  MECHANICS.forEach(m => {
+    const tag = document.createElement('span');
+    tag.className = 'mechanic-tag';
+    tag.textContent = m;
+    tag.onclick = () => tag.classList.toggle('active');
+    container.appendChild(tag);
+  });
+}
+
+function getGDDData() {
+  const mechanics = [...document.querySelectorAll('.mechanic-tag.active')]
+    .map(t=>t.textContent).join(', ');
+  return {
+    title:    document.getElementById('gdd-title').value,
+    genre:    document.getElementById('gdd-genre').value,
+    style:    document.getElementById('gdd-style').value,
+    concept:  document.getElementById('gdd-concept').value,
+    mechanics: mechanics + '\n' + document.getElementById('gdd-mechanics').value,
+    world:    document.getElementById('gdd-world').value,
+    win:      document.getElementById('gdd-win').value,
+    lose:     document.getElementById('gdd-lose').value,
+    hints:    document.getElementById('gdd-agent-hints').value,
+  };
+}
+
+function exportGDD() {
+  const d = getGDDData();
+  const text = `
+╔══════════════════════════════════════════╗
+║   GAME DESIGN DOCUMENT — KATEDRA OTAKOS  ║
+╚══════════════════════════════════════════╝
+
+TYTUŁ:   ${d.title || '[bez tytułu]'}
+GATUNEK: ${d.genre}
+STYL:    ${d.style}
+
+KONCEPCJA:
+${d.concept}
+
+MECHANIKI:
+${d.mechanics}
+
+ŚWIAT I FABUŁA:
+${d.world}
+
+WARUNKI WYGRANEJ:  ${d.win}
+WARUNKI PRZEGRANEJ: ${d.lose}
+
+WSKAZÓWKI DLA AGENTA:
+${d.hints}
+
+═══════════════════════════════════════════
+Wygenerowano: ${new Date().toLocaleString('pl-PL')}
+Studio: Quantum Game Studio | OtakOS 0.00G
+  `.trim();
+  navigator.clipboard.writeText(text);
+  toast('📋 GDD skopiowany!');
+}
+
+async function autoFillGDD() {
+  toast('🤖 Agent wypełnia GDD...');
+  const genre = document.getElementById('gdd-genre').value;
+  const style = document.getElementById('gdd-style').value;
+
+  // Broadcast do TeOSimAcademy — agent AI wypełni GDD
+  broadcast('katedra_dispatch', {
+    type: 'DISPATCH_INTENTION',
+    agentId: 'jack',
+    text: `Jesteś JACK ADAMUS. Wypełnij GDD dla gry: gatunek "${genre}", styl "${style}". 
+Podaj kreatywny tytuł, koncepcję (3-4 zdania), opis świata i bohatera oraz wskazówki techniczne dla programisty.
+Format odpowiedzi: TYTUŁ: ...\nKONCEPCJA: ...\nŚWIAT: ...\nWSKAZÓWKI: ...`,
+    from: 'gdd_studio',
+  });
+
+  // Nasłuchuj odpowiedzi
+  const bc = new BroadcastChannel('katedra_dispatch');
+  bc.onmessage = (e) => {
+    if (e.data.type === 'DISPATCH_RESPONSE') {
+      const text = e.data.text || '';
+      const titleM   = text.match(/TYTUŁ:\s*(.+)/);
+      const conceptM = text.match(/KONCEPCJA:\s*([\s\S]+?)(?=ŚWIAT:|WSKAZÓWKI:|$)/);
+      const worldM   = text.match(/ŚWIAT:\s*([\s\S]+?)(?=WSKAZÓWKI:|$)/);
+      const hintsM   = text.match(/WSKAZÓWKI:\s*([\s\S]+?)$/);
+      if (titleM)   document.getElementById('gdd-title').value   = titleM[1].trim();
+      if (conceptM) document.getElementById('gdd-concept').value = conceptM[1].trim();
+      if (worldM)   document.getElementById('gdd-world').value   = worldM[1].trim();
+      if (hintsM)   document.getElementById('gdd-agent-hints').value = hintsM[1].trim();
+      toast('✅ GDD wypełniony przez JACK ADAMUS!');
+      bc.close();
+    }
+  };
+  setTimeout(() => bc.close(), 15000);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  FORGE INTEGRATION
+// ══════════════════════════════════════════════════════════════════
+function broadcast(channel, data) {
+  try {
+    const bc = new BroadcastChannel(channel);
+    bc.postMessage(data);
+    bc.close();
+  } catch(e) {}
+}
+
+function buildForgePrompt() {
+  const d   = getGDDData();
+  const p   = getCharParams();
+  const mapStr = mapData.map(row => row.map(c => TILES[c].char).join('')).join('\n');
+  const charSvg = document.getElementById('char-svg').outerHTML;
+  return `
+GAME DESIGN DOCUMENT (z Quantum Game Studio):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Tytuł: ${d.title || 'Bez tytułu'}
+Gatunek: ${d.genre} | Styl: ${d.style}
+
+Koncepcja: ${d.concept}
+Mechaniki: ${d.mechanics}
+Świat: ${d.world}
+Win: ${d.win} | Lose: ${d.lose}
+
+MAPA POZIOMU (${GRID_W}×${GRID_H}):
+${mapStr}
+
+LEGENDA: ${TILES.filter(t=>t.id>0).map(t=>`${t.char}=${t.name}`).join(', ')}
+
+POSTAĆ GŁÓWNA (SVG): ${charSvg.substring(0,200)}...
+
+WSKAZÓWKI TECHNICZNE:
+${d.hints}
+Użyj HTML5 Canvas. Zaimplementuj powyższy układ mapy jako poziom gry.
+Klimat wizualny: ${d.style}. Jeden plik HTML z CSS i JS wewnątrz.
+  `.trim();
+}
+
+function sendMapToForge() {
+  broadcast('katedra_arcade', {
+    type: 'IMPORT_MAP',
+    mapData, GRID_W, GRID_H,
+    tiles: TILES,
+  });
+  forgeLog('📤 Mapa wysłana do Fabryki Gier');
+  addKwanty(100);
+  toast('⚡ Mapa wysłana do Fabryki!');
+}
+
+function sendCharToForge() {
+  const svg = document.getElementById('char-svg').outerHTML;
+  broadcast('katedra_arcade', {
+    type: 'IMPORT_CHARACTER',
+    svg, params: getCharParams(),
+  });
+  forgeLog('📤 Postać wysłana do Fabryki Gier');
+  addKwanty(80);
+  toast('⚡ Postać wysłana do Fabryki!');
+}
+
+function sendGDDToForge() {
+  const prompt = buildForgePrompt();
+  broadcast('katedra_arcade', {
+    type: 'AGENT_FORGE',
+    agentName: 'GORGOOO',
+    genre: document.getElementById('gdd-genre').value,
+    theme: prompt,
+    provider: 'claude',
+  });
+  forgeLog('📤 GDD wysłany — Kuźnia zainicjowana!');
+  addKwanty(200);
+  toast('🔥 GDD wysłany do Kuźni! Agenci zaczynają!');
+}
+
+function sendAllToForge() {
+  sendMapToForge();
+  setTimeout(sendCharToForge, 300);
+  setTimeout(sendGDDToForge, 600);
+  addKwanty(500);
+}
+
+function forgeLog(msg) {
+  document.getElementById('forge-log').textContent = msg;
+  document.getElementById('forge-status').textContent = '⚙ ' + msg.split(' ').slice(-3).join(' ');
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  KWANTY & MISC
+// ══════════════════════════════════════════════════════════════════
+function addKwanty(n) {
+  kwanty += n;
+  localStorage.setItem('qgs_kwanty', kwanty);
+  document.getElementById('kwanty-val').textContent = kwanty.toLocaleString();
+  toast(`⚡ +${n} KWANTÓW!`);
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('panel-'+tab).classList.add('active');
+  const tabs = ['map','char','assets','gdd'];
+  document.querySelectorAll('.tab')[tabs.indexOf(tab)]?.classList.add('active');
+}
+
+function toast(msg, dur=2200) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), dur);
+}
+
+// BroadcastChannel — nasłuchuj agentów
+try {
+  const agentBc = new BroadcastChannel('quantum_game_studio');
+  agentBc.onmessage = (e) => {
+    const d = e.data;
+    if (d.type === 'AGENT_SET_ACTIVE') {
+      document.getElementById('active-agent-name').textContent = d.agentName + ' AKTYWNY';
+      document.querySelector('.agent-dot').style.background = d.agentColor || '#4ade80';
+      forgeLog(`🤖 ${d.agentName} pracuje w Studio`);
+    }
+    if (d.type === 'AGENT_MAP_DATA') {
+      if (d.mapData) { mapData = d.mapData; GRID_W=d.width; GRID_H=d.height; drawMap(); }
+      toast(`🗺 ${d.agentName} wysłał mapę!`);
+    }
+  };
+} catch(e) {}
+
+// ══════════════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════════════
+buildTilePalette();
+buildLayerList();
+buildCharSidebar();
+buildGDD();
+buildAssets();
+initMap();
+updateChar();
+document.getElementById('kwanty-val').textContent = kwanty.toLocaleString();
+
+// Domyślna mapa — coś ciekawego na start
+setTimeout(() => {
+  // Podłoże
+  for (let c=0; c<GRID_W; c++) { mapData[GRID_H-1][c]=1; mapData[GRID_H-2][c]=1; }
+  // Platformy
+  [[3,4,5],[8,6,8],[12,5,5],[16,3,4]].forEach(([c,r,len])=>{
+    for(let i=0;i<len;i++) if(c+i<GRID_W&&r<GRID_H) mapData[r][c+i]=2;
+  });
+  // Elementy
+  mapData[GRID_H-3][1]=3;   // START
+  mapData[2][GRID_W-2]=4;   // CEL
+  [5,11,17].forEach(c=>{ if(c<GRID_W&&GRID_H-3>0) mapData[GRID_H-3][c]=6; }); // przedmioty
+  mapData[GRID_H-3][9]=5;   // wróg
+  drawMap();
+}, 100);
+</script>
+</body>
+</html>

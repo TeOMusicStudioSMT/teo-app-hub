@@ -97,6 +97,22 @@ class MechanicService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // PUBLIC: WYCZYŚĆ WSZYSTKO — zresetuj kolejkę zadań do zera
+    // ─────────────────────────────────────────────────────────────────────────
+    /**
+     * Usuwa WSZYSTKIE zadania z kolejki (wiszące, nieaktualne procesy) i zapisuje
+     * pustą tablicę. Zwraca liczbę usuniętych zadań.
+     */
+    async clearQueue() {
+        await this._ensureDirs();
+        const tasks = await this._readQueue();
+        const count = tasks.length;
+        await this._saveQueue([]);
+        console.log(`[Mechanik] 🧹 WYCZYŚĆ WSZYSTKO — usunięto ${count} zadań, kolejka zresetowana do zera.`);
+        return count;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // PUBLIC: Otak-Sync Watchdog — odkażanie komend powłoki dla zadań shell
     // ─────────────────────────────────────────────────────────────────────────
     /**

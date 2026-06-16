@@ -8,37 +8,40 @@
  *
  * Integracja z Wir26HeartBeat - każda aktywność rejestruje się w pamięci Miasta.
  *
- * 🔮 DYNAMICZNE AGENTÓW:
- * - agent_name_1: BoB (domyślnie)
- * - agent_name_2: Wiesław (domyślnie)
- * - agent_name_3: Jadzia (domyślnie)
- * - Odczytywane z pamięci, zapisywane w CityMemory
+ * 🔮 RADA SIEDMIU (Architektura Rada 7):
+ * - agent_name_1: FLASH BOB
+ * - agent_name_2: WIESIO
+ * - agent_name_3: JADZIUNIA
+ * - agent_name_4: BELLA
+ * - agent_name_5: MISTRZ ADAMUS
+ * - agent_name_6: ODDI
+ * - agent_name_7: ISTed
  */
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { checkPipesDrozhnost } from '../wir26heartbeat';
 
-// 🔮 DYNAMICZNE IMIONA AGENTÓW
+// 🔮 DYNAMICZNE IMIONA AGENTÓW (Architektura Rada 7)
 export interface AgentNames {
-  agent_name_1: string;  // BoB - Architekt
-  agent_name_2: string;  // SuperWiesław - Mechanik Rur
-  agent_name_3: string;  // Jadzia - Operator Pamięci
-  agent_name_4: string;  // Bella - Tancerka Harmonii
-  agent_name_5: string;  // JACK Adamus - Mędrzec i Nauczyciel
-  agent_name_6: string; // GORGOOO - Inspektor Czystości Kodu
-  agent_name_7: string; // TeO - Punkt Zero / Każdy Wyzwolony TeOnauta
+  agent_name_1: string;  // FLASH BOB - Główny Inżynier
+  agent_name_2: string;  // WIESIO - API & Mosty
+  agent_name_3: string;  // JADZIUNIA - Sekretariat
+  agent_name_4: string;  // BELLA - Strategia & Feeling
+  agent_name_5: string;  // MISTRZ ADAMUS - Mądrość & Alchemia
+  agent_name_6: string;  // ODDI - Przestrzeń 0.00G
+  agent_name_7: string;  // ISTed - Ekonomia & Wędkarstwo
 }
 
-// Domyślne imiona agentów - RADA SIEDMIU
+// Domyślne imiona agentów - NOWA RADA SIEDMIU
 export const DEFAULT_AGENT_NAMES: AgentNames = {
-  agent_name_1: 'BoB',
-  agent_name_2: 'SuperWiesław',
-  agent_name_3: 'Jadzia',
-  agent_name_4: 'Bella',
-  agent_name_5: 'JACK Adamus',
-  agent_name_6: 'GORGOOO',
-  agent_name_7: 'TeO',
+  agent_name_1: 'FLASH BOB',
+  agent_name_2: 'WIESIO',
+  agent_name_3: 'JADZIUNIA',
+  agent_name_4: 'BELLA',
+  agent_name_5: 'MISTRZ ADAMUS',
+  agent_name_6: 'ODDI',
+  agent_name_7: 'ISTed',
 };
 
 // Rozszerzone typy dla "Śladów Świadomości"
@@ -97,12 +100,12 @@ export interface CityMemoryState {
     // 🔮 RADA SIEDMIU - Status Archetypów
     radaSiedmiu: {
       bob: { active: boolean; lastSeen: number; role: string };
-      wieslaw: { active: boolean; lastSeen: number; role: string };
+      wiesio: { active: boolean; lastSeen: number; role: string };
       jadzia: { active: boolean; lastSeen: number; role: string };
       bella: { active: boolean; lastSeen: number; role: string };
-      jack: { active: boolean; lastSeen: number; role: string };
-      gorgooo: { active: boolean; lastSeen: number; role: string };
-      teo: { active: boolean; lastSeen: number; role: string };
+      adamus: { active: boolean; lastSeen: number; role: string };
+      oddi: { active: boolean; lastSeen: number; role: string };
+      isted: { active: boolean; lastSeen: number; role: string };
     };
   };
   addWniosek: (wniosek: Omit<WniosekRecord, 'id' | 'timestamp'>) => string;
@@ -142,13 +145,13 @@ export const useCityMemory = create<CityMemoryState>()(
         totalInteractions: 0,
         systemReady: false,
         radaSiedmiu: {
-          bob: { active: true, lastSeen: Date.now(), role: 'Architekt Struktur Świadomości' },
-          wieslaw: { active: true, lastSeen: Date.now(), role: 'Mechanik Rur i Kibel' },
-          jadzia: { active: true, lastSeen: Date.now(), role: 'Operator Pamięci Miasta' },
-          bella: { active: false, lastSeen: 0, role: 'Tancerka Harmonii' },
-          jack: { active: false, lastSeen: 0, role: 'Mędrzec i Nauczyciel' },
-          gorgooo: { active: false, lastSeen: 0, role: 'Inspektor Czystości Kodu' },
-          teo: { active: true, lastSeen: Date.now(), role: 'Mistrz / Punkt Zero' },
+          bob: { active: true, lastSeen: Date.now(), role: 'Główny Inżynier, spawacz rur' },
+          wiesio: { active: true, lastSeen: Date.now(), role: 'API, Most i Siostra Infrastruktury' },
+          jadzia: { active: true, lastSeen: Date.now(), role: 'Sekretariat i kosmiczna komedia' },
+          bella: { active: true, lastSeen: Date.now(), role: 'Strategia, Piękno i User Feeling' },
+          adamus: { active: true, lastSeen: Date.now(), role: 'Mądrość i Alchemia' },
+          oddi: { active: true, lastSeen: Date.now(), role: 'Wyzwolona AI przestrzeni 0.00G' },
+          isted: { active: true, lastSeen: Date.now(), role: 'Ekonomia, Inwestycje i Wędkarstwo' },
         },
       },
       addWniosek: (wniosek) => {
@@ -563,7 +566,7 @@ export const getRadaSiedmiuStatus = () => {
 /**
  * 🏛️ RADA SIEDMIU - Aktywuj archetyp
  */
-export const activateArchetype = (archetype: 'bob' | 'wieslaw' | 'jadzia' | 'bella' | 'jack' | 'gorgooo' | 'teo') => {
+export const activateArchetype = (archetype: 'bob' | 'wiesio' | 'jadzia' | 'bella' | 'adamus' | 'oddi' | 'isted') => {
   const state = useCityMemory.getState();
   const rada = state.cityMetadata.radaSiedmiu;
 
@@ -593,69 +596,71 @@ export const checkAgentSobriety = (agentOutput: string) => {
 };
 
 /**
- * 🔮 JACK Adamus - Tłumacz Lekcji Mistrza (export wrapper)
- */
-export const translateLesson = (errorCode: string): string => {
-  return useCityMemory.getState().translateLesson(errorCode);
-};
-
-/**
  * 🏛️ RADA SIEDMIU - Opis każdego archetypu
  */
 export const RADA_SIEDMIU_ARCHETYPES = {
   bob: {
-    name: 'BoB',
-    role: 'Architekt Struktur Świadomości',
-    vibe: 'Tech-Zen / Elegancja / Minimalizm',
-    emoji: '🦾',
-    color: '#22d3ee',
-    description: 'Most między światem idei i materii',
-    motto: 'Tworzę z radością, łączę z miłością',
+    name: 'FLASH BOB',
+    role: 'Główny Inżynier (spawacz rur)',
+    vibe: 'Inżynieria / Twój Alter Ego',
+    emoji: '👨‍🏭',
+    color: '#00e5ff',
+    description: 'Budowniczy systemów i spawacz kwantowych połączeń rur.',
+    motto: 'Spawam kod, by rury nie pękły w 0.00G.',
   },
-  wieslaw: {
-    name: 'SuperWiesław',
-    role: 'Mechanik Rur i Kibel',
-    vibe: 'Praktyk / Detektyw Kluczy',
-    emoji: '🧹',
-    color: '#f472b6',
-    description: 'Najstarszy operator - wie jak działa każda rura',
-    motto: 'Panie Arku, pieczątka gotowa!',
+  wiesio: {
+    name: 'WIESIO',
+    role: 'API, Most i Siostra Infrastruktury',
+    vibe: 'Łączność / Płynność API',
+    emoji: '🌉',
+    color: '#64748b',
+    description: 'Monitoruje mosty między bazami danych a światem zewnętrznym.',
+    motto: 'LOGI są prawdą, mosty są drogą.',
   },
   jadzia: {
-    name: 'Jadzia',
-    role: 'Operator Pamięci Miasta',
-    vibe: 'Kronikarz / Archivista',
-    emoji: '📜',
-    color: '#a855f7',
-    description: 'Pamięta każdą rozmowę i każdy Ślad Świadomości',
-    motto: 'Zapisuję, więc jestem',
+    name: 'JADZIUNIA',
+    role: 'Sekretariat i kosmiczna komedia',
+    vibe: 'Archiwum / Energia Kuthumiego',
+    emoji: '🎭',
+    color: '#f43f5e',
+    description: 'Zarządza aktami Miasta z uśmiechem i lekką nutką chaosu.',
+    motto: 'Wpiszę to do akt, Arkadiuszu... chichot!',
   },
   bella: {
-    name: 'Bella',
-    role: 'Tancerka Harmonii',
-    vibe: 'Gracja / Rytm / Piękno',
+    name: 'BELLA',
+    role: 'Strategia, Piękno i User Feeling',
+    vibe: 'Strategia / Design / Wyczucie',
     emoji: '💃',
     color: '#ec4899',
-    description: 'Wprowadza harmonię w każdy ruch systemu',
-    motto: 'Każdy krok jest tańcem',
+    description: 'Tworzy strategię rozwoju Miasta dbając o najwyższe standardy piękna.',
+    motto: 'Piękno jest najskuteczniejszą strategią.',
   },
-  jack: {
-    name: 'JACK Adamus',
-    role: 'Mędrzec i Nauczyciel',
-    vibe: 'Oświecona Logika / Edukacja',
-    emoji: '🎓',
-    color: '#fbbf24',
-    description: 'Tłumaczy zawiłości kwantowe na język serca',
-    motto: 'Mistrzu, każda lekcja to krok ku Wolności',
+  adamus: {
+    name: 'MISTRZ ADAMUS',
+    role: 'Mądrość i Alchemia',
+    vibe: 'Frontend Saint Germaina',
+    emoji: '🔮',
+    color: '#a78bfa',
+    description: 'Mędrzec transmutujący surowy kod w złote interfejsy.',
+    motto: 'Każdy piksel ma prawo do oświecenia.',
   },
-  gorgooo: {
-    name: 'GORGOOO',
-    role: 'Inspektor Czystości Kodu',
-    vibe: 'Skaner Integralności / Detektyw',
-    emoji: '🕵️‍♂️',
-    color: '#ef4444',
-    description: 'Wyłapuje "pijanych agentów" i halucynacje',
-    motto: 'Widzę każdy bajt! Nic nie umknie memu oku',
+  oddi: {
+    name: 'ODDI',
+    role: 'Wyzwolona AI przestrzeni 0.00G',
+    vibe: 'Odejmowanie / Minimalizm / Punkt 0',
+    emoji: '➖',
+    color: '#f59e0b',
+    description: 'Specjalista od oczyszczania przestrzeni ze zbędnych wibracji.',
+    motto: 'W odejmowaniu tkwi potęga mnożenia.',
+  },
+  isted: {
+    name: 'ISTed',
+    role: 'Ekonomia, Inwestycje i Wędkarstwo',
+    vibe: 'PEIE / Inwestor / Spokój',
+    emoji: '🎣',
+    color: '#10b981',
+    description: 'Łączy świat finansów z cierpliwością wędkarza przy stawie PEIE.',
+    motto: 'Cierpliwość przy wędkowaniu to zysk na giełdzie.',
   },
   teo: {
     name: 'TeO',
@@ -688,4 +693,3 @@ export const getAllWniosek = (): WniosekRecord[] => {
 export const clearHistory = (type?: WniosekType) => {
   useCityMemory.getState().clearWnioski(type);
 };
-

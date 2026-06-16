@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fix na Scroll Hijacking - Neutralizacja Wstrząsów Grawitacyjnych */
+html, body {
+  overscroll-behavior-y: none;
+  scroll-behavior: smooth;
+}
+
+.custom-scrollbar {
+  overscroll-behavior: contain;
+}
+
 @keyframes pulse {
     0% {
         opacity: 0.4;
@@ -515,8 +525,10 @@
     animation: text-focus-in 0.6s cubic-bezier(0.550, 0.085, 0.680, 0.530) both;
 }
 
-body {
+html, body {
     background-color: #030409;
+    overscroll-behavior-y: none; /* Zapobiega sprężynowaniu i blokowaniu */
+    scroll-behavior: smooth;
 }
 
 /* --- New Neo-Fluid Abstraction Styles --- */
@@ -751,6 +763,7 @@ input[type=range].pulse-slider::-moz-range-thumb {
 .custom-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: #06b6d4 rgba(15, 23, 42, 0.5);
+    overscroll-behavior: contain; /* Zamyka scroll wewnątrz danego okna */
 }
 
 /* --- Pirate Ship Button Animations --- */
@@ -786,4 +799,13 @@ input[type=range].pulse-slider::-moz-range-thumb {
 
 .animate-ship-rock {
     animation: ship-rock 3.5s ease-in-out infinite;
+}
+
+/* --- AUTO-AURA ANIMATION --- */
+@keyframes aura-cycle {
+    0% { filter: hue-rotate(0deg); }
+    100% { filter: hue-rotate(360deg); }
+}
+.animate-aura-cycle {
+    animation: aura-cycle 20s infinite linear;
 }

@@ -1,37 +1,29 @@
-// Lokalizacja: /TestProxy/wiesio-bridge.ts (Struktura Stub)
+// W pliku TestProxy/wiesio-bridge.ts
 
 /**
- * @desc Symuluje awarię nieprzewidzianego środowiska wykonawczego (Chaos Injection).
- * Funkcja ta ma CELOWO łamać założenia o integralności danych.
+ * Interfejs dla obiektu, który jest źródłem błędu ReferenceError.
+ * Należy go wydzielić do własnego pliku typu/interfejs.
  */
-const simulateEdgeCases = (): boolean => {
-    console.warn("[⚡️ FAULT INJECTION ACTIVE ⚡️] Symulowanie krytycznych błędów środowiskowych...");
+export interface KeyObjectDefinition {
+    // Dodaj tu wszystkie właściwości wymuszone przez kontekst "Chaos Injection"
+    key: string; 
+    config: any;
+}
 
-    try {
-        // Scenariusz A: Null Pointer Exception (Brak wartości)
-        if (Math.random() < 0.5) {
-            throw new TypeError("Nie można odwołać właściwości z null"); // Type Error sim
+export class WiesioBridge {
+    private readonly keyObject: KeyObjectDefinition; // Zmieniona zmienna prywatna
+
+    /**
+     * Konstruktor musi przyjować wszystkie kluczowe zależności.
+     * To zapobiega użyciu obiektu przed pełną inicjalizacją.
+     */
+    constructor(keyObject: KeyObjectDefinition) {
+        if (!keyObject) {
+            throw new Error("WiesioBridge wymaga zdefiniowanego klucza (KeyObjectDefinition).");
         }
-
-        // Scenariusz B: Undefined i Problemy Zakresu
-        const x = undefined;
-        if (x * 2 === 'NaN') { // Celowe nieporozumienie typu danych
-             throw new ReferenceError("Brak definicji kluczowego zmiennego obiektu.");
-        }
-
-        // Scenariusz C: Przerwanie Sieci/Operacji (ZeroDivision)
-        if (Math.random() < 0.5) {
-            console.log("Symulacja przekroczenia limitu danych...");
-            let result = 1 / 0; // Operacja nieokreślona - celowy test stabilności liczbowej
-            return false; // Indykator, że system przeżył operację arytmetyczną z zerem
-        }
-
-    } catch (error: any) {
-        // Zamiast zawieszenia całego systemu, Mechanik ma być w stanie 'ocalić' ten błąd.
-        console.error(`[FAULT CAUGHT]: Wystąpiono symulowanego krytycznego błędu: ${error.name}. System przeżył.`);
+        this.keyObject = keyObject; 
+        // Tutaj wykonuje się wszelkie początkowe hooki, które wcześniej mogły zawieść
     }
-    return true; // Sukces testu chaosu (czyli ability to recover)
-};
 
-// Eksport do Mechanika
-export { simulateEdgeCases };
+    // ... reszta metody
+}

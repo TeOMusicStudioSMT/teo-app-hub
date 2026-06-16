@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { RADA_SIEDMIU_ARCHETYPES, getRadaSiedmiuStatus } from '../../lib/memory/CityMemory';
+import { OtakOSBus, BUS } from '../../lib/otakosBus';
 
 interface RadaPodstawowaProps {
     onClose: () => void;
@@ -8,6 +9,11 @@ interface RadaPodstawowaProps {
 
 export const RadaPodstawowa: React.FC<RadaPodstawowaProps> = ({ onClose }) => {
     const status = getRadaSiedmiuStatus();
+
+    // 🚌 Emituj na Bus przy otwarciu
+    useEffect(() => {
+        OtakOSBus.emit('rada', BUS.RADA_OPENED, {});
+    }, []);
 
     return (
         <div className="w-full max-w-4xl bg-slate-900/95 border border-amber-500/30 rounded-3xl p-8 backdrop-blur-xl shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden relative">

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import MonolithCard from './MonolithCard';
 import { JOURNAL_ENTRIES } from '../../lib/journal/entries';
 import { ArtOfSoulCinema } from './ArtOfSoulCinema';
+import KronikaGenerator from './Kronika00G/KronikaGenerator';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Lang = 'pl' | 'en';
@@ -25,6 +26,7 @@ interface QuantumJournalProps {
 const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isCinemaOpen, setIsCinemaOpen] = useState(false);
+  const [isCreatorOpen, setIsCreatorOpen] = useState(false);
   const [lang, setLang] = useState<Lang>(() => {
     try { return (localStorage.getItem('qj_lang') as Lang) || 'pl'; } catch { return 'pl'; }
   });
@@ -37,21 +39,6 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
     if (next === lang) return;
     setExpandedId(null); // collapse before language switch → forces YouTube iframe reload
     setLang(next);
-  };
-
-  const handleScanSubconscious = async () => {
-    try {
-        const res = await fetch('http://localhost:3001/wiesio/action', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'INDEX_KRONIKI' })
-        });
-        if (res.ok) {
-            console.log("🧠 Podświadomość zaktualizowana!");
-        }
-    } catch (err) {
-        console.error("Błąd połączenia z Mózgiem Wiesława:", err);
-    }
   };
 
   // Build a localized entry for MonolithCard, auto-falling back to PL when EN is empty
@@ -117,40 +104,36 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
       )}
 
       {/* ── Header (sticky, nie scrolluje) ── */}
-      <header className="relative z-10 shrink-0 pt-20 pb-8 flex flex-col items-center text-center px-6">
-        <div className="inline-block relative group mb-3">
-          <div className="absolute -inset-2 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 rounded-xl blur-xl opacity-[0.18] group-hover:opacity-35 transition-all duration-1000" />
-          <h1 className="relative text-4xl md:text-6xl font-black bg-clip-text text-transparent bg-gradient-to-b from-white via-slate-200 to-slate-500 tracking-tighter leading-none">
-            {lang === 'pl' ? 'Dziennik Pokładowy' : "Captain's Log"}
-          </h1>
-        </div>
-        <div className="flex items-center gap-3 text-cyan-400/60 font-mono text-[10px] tracking-[0.25em] uppercase">
-          <span className="h-px w-10 bg-gradient-to-r from-transparent to-cyan-500/40" />
-          {lang === 'pl' ? 'Rada Kwantowego Kolektywu' : 'Quantum Collective Council'}
-          <span className="text-cyan-400/25">·</span>
-          WPIS 0.00G
-          <span className="h-px w-10 bg-gradient-to-l from-transparent to-cyan-500/40" />
-        </div>
+      {!isCreatorOpen && (
+        <header className="relative z-10 shrink-0 pt-20 pb-8 flex flex-col items-center text-center px-6">
+          <div className="inline-block relative group mb-3">
+            <div className="absolute -inset-2 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 rounded-xl blur-xl opacity-[0.18] group-hover:opacity-35 transition-all duration-1000" />
+            <h1 className="relative text-4xl md:text-6xl font-black bg-clip-text text-transparent bg-gradient-to-b from-white via-slate-200 to-slate-500 tracking-tighter leading-none">
+              {lang === 'pl' ? 'Dziennik Pokładowy' : "Captain's Log"}
+            </h1>
+          </div>
+          <div className="flex items-center gap-3 text-cyan-400/60 font-mono text-[10px] tracking-[0.25em] uppercase">
+            <span className="h-px w-10 bg-gradient-to-r from-transparent to-cyan-500/40" />
+            {lang === 'pl' ? 'Rada Kwantowego Kolektywu' : 'Quantum Collective Council'}
+            <span className="text-cyan-400/25">·</span>
+            WPIS 0.00G
+            <span className="h-px w-10 bg-gradient-to-l from-transparent to-cyan-500/40" />
+          </div>
 
-        {/* 📺 ArtOfSoul TV & 🧠 Skanuj Podświadomość Buttons */}
-        <div className="mt-4 flex flex-wrap justify-center gap-3">
-          <button 
-              onClick={() => setIsCinemaOpen(true)} 
-              className="bg-indigo-900/40 hover:bg-indigo-800 text-indigo-300 px-4 py-2 rounded-lg border border-indigo-700/50 transition-all shadow-[0_0_15px_rgba(79,70,229,0.3)] flex items-center gap-2 text-sm font-medium"
-          >
-             <span className="text-lg">📺</span> ArtOfSoul TV
-          </button>
-          
-          <button 
-              onClick={handleScanSubconscious} 
-              className="bg-fuchsia-900/40 hover:bg-fuchsia-800 text-fuchsia-300 px-4 py-2 rounded-lg border border-fuchsia-700/50 transition-all shadow-[0_0_15px_rgba(217,70,239,0.3)] flex items-center gap-2 text-sm font-medium"
-          >
-             <span className="text-lg">🧠</span> Skanuj Podświadomość
-          </button>
-        </div>
-        {/* Delikatna linia separatora */}
-        <div className="mt-6 h-px w-full max-w-xl bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
-      </header>
+          {/* 📺 ArtOfSoul TV & 🧠 Skanuj Podświadomość Buttons */}
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
+            <button 
+                // TODO: Integracja z YouTube API - automatyczna publikacja na playlistę.
+                onClick={() => setIsCinemaOpen(true)} 
+                className="bg-indigo-900/40 hover:bg-indigo-800 text-indigo-300 px-4 py-2 rounded-lg border border-indigo-700/50 transition-all shadow-[0_0_15px_rgba(79,70,229,0.3)] flex items-center gap-2 text-sm font-medium"
+            >
+               <span className="text-lg">📺</span> ArtOfSoul TV
+            </button>
+          </div>
+          {/* Delikatna linia separatora */}
+          <div className="mt-6 h-px w-full max-w-xl bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
+        </header>
+      )}
 
       {/* ── Scrollowalny obszar z griddem ── */}
       <section
@@ -166,19 +149,46 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
           [&::-webkit-scrollbar-thumb:hover]:bg-cyan-400/50
         "
       >
-        <main className="max-w-6xl mx-auto px-4 pt-2 pb-28 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-min">
-          {JOURNAL_ENTRIES.map((raw) => {
-            const localized = buildLocalizedEntry(raw);
-            return (
-              <MonolithCard
-                key={raw.id}
-                entry={localized as any}
-                isExpanded={expandedId === raw.id}
-                onToggle={() => setExpandedId(expandedId === raw.id ? null : raw.id)}
-                lang={lang}
-              />
-            );
-          })}
+        <main className="max-w-6xl mx-auto px-4 pt-2 pb-28">
+          {/* ✍️ Zmaterializuj Nowy Wpis (Kronika 0.00G) Button */}
+          <div className="w-full flex justify-center my-6 relative z-50">
+            <button
+              onClick={() => setIsCreatorOpen(!isCreatorOpen)}
+              className={`
+                relative px-8 py-4 rounded-xl font-bold text-lg tracking-widest uppercase transition-all duration-500
+                bg-gradient-to-r from-[#c9953a] via-[#a78bfa] to-[#c9953a] bg-[length:200%_auto]
+                hover:bg-right text-white shadow-[0_0_30px_rgba(201,149,58,0.3)]
+                border border-white/20 active:scale-95 group
+                ${isCreatorOpen ? 'ring-2 ring-amber-500/50' : ''}
+              `}
+            >
+              <span className="relative z-10 flex items-center gap-3">
+                {isCreatorOpen ? '✕ Zamknij Kreatora' : '✨ Zmaterializuj Nowy Wpis (Kronika 0.00G)'}
+              </span>
+              <div className="absolute inset-0 rounded-xl bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            </button>
+          </div>
+
+          {isCreatorOpen ? (
+            <div className="animate-in fade-in zoom-in duration-700">
+              <KronikaGenerator />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-min">
+              {JOURNAL_ENTRIES.map((raw) => {
+                const localized = buildLocalizedEntry(raw);
+                return (
+                  <MonolithCard
+                    key={raw.id}
+                    entry={localized as any}
+                    isExpanded={expandedId === raw.id}
+                    onToggle={() => setExpandedId(expandedId === raw.id ? null : raw.id)}
+                    lang={lang}
+                  />
+                );
+              })}
+            </div>
+          )}
         </main>
       </section>
 

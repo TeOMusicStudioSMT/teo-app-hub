@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>QUANTUM CANVAS — Katedra OtakOS</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold:   #c9953a;
+    --gold-l: #f0c060;
+    --gold-d: #7a5a1a;
+    --void:   #06080f;
+    --ink:    #e8dfc8;
+    --cyan:   #00e5ff;
+    --purple: #a78bfa;
+    --panel:  rgba(8,6,18,0.96);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  body {
+    background: var(--void);
+    color: var(--ink);
+    font-family: 'Share Tech Mono', monospace;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── Header ── */
+  #header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: rgba(6,8,15,0.95);
+    border-bottom: 1px solid rgba(201,149,58,0.2);
+    z-index: 50;
+    flex-shrink: 0;
+  }
+
+  #title-block { display: flex; flex-direction: column; }
+  #eyebrow { font-size: 8px; letter-spacing: 0.35em; color: var(--gold-d); }
+  #app-title {
+    font-family: 'Cinzel', serif;
+    font-size: 16px; font-weight: 600;
+    color: var(--gold-l);
+    letter-spacing: 0.08em;
+  }
+
+  #player-badge {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,229,255,0.08);
+    border: 1px solid rgba(0,229,255,0.2);
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-size: 10px; letter-spacing: 0.15em;
+    color: var(--cyan);
+  }
+
+  .player-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%,100% { opacity:1; }
+    50%      { opacity:0.4; }
+  }
+
+  /* ── Toolbar ── */
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: rgba(6,8,15,0.92);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    flex-wrap: wrap;
+    z-index: 40;
+    flex-shrink: 0;
+  }
+
+  .tool-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-right: 10px;
+    border-right: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .tool-group:last-child { border-right: none; }
+
+  .tool-btn {
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.5);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    position: relative;
+  }
+
+  .tool-btn:hover { background: rgba(255,255,255,0.08); color: #fff; }
+  .tool-btn.active {
+    background: rgba(201,149,58,0.2);
+    border-color: rgba(201,149,58,0.5);
+    color: var(--gold-l);
+    box-shadow: 0 0 10px rgba(201,149,58,0.2);
+  }
+
+  .tool-btn.cyan-active {
+    background: rgba(0,229,255,0.15);
+    border-color: rgba(0,229,255,0.4);
+    color: var(--cyan);
+  }
+
+  .tool-btn.purple-active {
+    background: rgba(167, 139, 250, 0.15);
+    border-color: rgba(167, 139, 250, 0.4);
+    color: var(--purple);
+  }
+
+  /* Size slider */
+  #size-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 80px; height: 3px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  #size-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--gold);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(201,149,58,0.4);
+  }
+
+  #size-val {
+    font-size: 10px; color: rgba(255,255,255,0.4);
+    min-width: 24px; text-align: center;
+  }
+
+  /* Opacity slider */
+  #opacity-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 60px; height: 3px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  #opacity-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--purple);
+    cursor: pointer;
+  }
+
+  /* Color swatches */
+  #color-row {
+    display: flex; gap: 5px; align-items: center;
+  }
+
+  .swatch {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .swatch:hover { transform: scale(1.15); }
+  .swatch.active { border-color: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.4); }
+
+  #custom-color {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    padding: 0; border: 2px solid rgba(255,255,255,0.2);
+    cursor: pointer; overflow: hidden;
+    background: transparent;
+  }
+
+  /* Kontener trzymający płótno w ryzach przy powiększeniu */
+  #canvas-wrap {
+    flex: 1; position: relative; overflow: hidden; 
+    background: var(--void); cursor: crosshair;
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* Kontener płótna, który będzie przyjmował klasę ramy */
+  #canvas-wrapper {
+    position: relative;
+    width: 100%; height: 100%;
+    transition: all 0.5s ease-in-out;
+    padding: 0;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  /* Ramy Belli */
+  .frame-gold {
+    padding: 4vmin;
+    background: linear-gradient(45deg, #7a5a1a, #f0c060, #7a5a1a);
+    box-shadow: 0 0 40px rgba(201,149,58,0.4), inset 0 0 20px rgba(0,0,0,0.8);
+  }
+  .frame-oak {
+    padding: 5vmin;
+    background: #1a120b;
+    box-shadow: inset 0 0 30px #000, 0 20px 50px rgba(0,0,0,0.9);
+    border: 2px solid #3e2723;
+  }
+  .frame-quantum {
+    padding: 2vmin;
+    background: transparent;
+    box-shadow: 0 0 30px var(--cyan), inset 0 0 30px var(--cyan);
+    border: 2px solid var(--cyan);
+  }
+  /* Fizyczne płótno, które będziemy transformować */
+  #main-canvas {
+    width: 100%; height: 100%;
+    touch-action: none;
+    transform-origin: 0 0; /* Ważne dla Zoomu! */
+    transition: transform 0.1s linear; /* Miękkie skalowanie */
+    background: #06080f; /* Tło pod obrazem */
+  }
+  /* Podgląd kursora musi skalować się razem z zoomem */
+  #cursor-preview {
+    position: absolute; border-radius: 50%; pointer-events: none;
+    border: 1px solid rgba(255,255,255,0.4);
+    transform: translate(-50%, -50%); z-index: 10;
+  }
+  /* Tryb przesuwania płótna (Pan) */
+  body.panning-mode #canvas-wrap { cursor: grab; }
+  body.panning-mode.is-panning #canvas-wrap { cursor: grabbing; }
+
+  /* Remote cursors */
+  .remote-cursor {
+    position: absolute;
+    pointer-events: none;
+    z-index: 20;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .remote-cursor-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+  }
+
+  .remote-cursor-name {
+    font-size: 9px;
+    background: rgba(0,0,0,0.7);
+    padding: 1px 5px;
+    border-radius: 4px;
+    white-space: nowrap;
+    letter-spacing: 0.1em;
+  }
+
+  /* Gallery overlay */
+  #gallery {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.9);
+    z-index: 100;
+    flex-direction: column;
+    backdrop-filter: blur(10px);
+  }
+
+  #gallery.open { display: flex; }
+
+  #gallery-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(201,149,58,0.2);
+    flex-shrink: 0;
+  }
+
+  #gallery-title {
+    font-family: 'Cinzel', serif;
+    font-size: 18px; color: var(--gold-l);
+    letter-spacing: 0.1em;
+  }
+
+  #gallery-close {
+    background: none; border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px; padding: 6px 14px;
+    color: rgba(255,255,255,0.5);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; cursor: pointer;
+    letter-spacing: 0.1em;
+  }
+
+  #gallery-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    padding: 20px;
+    overflow-y: auto;
+  }
+
+  .gallery-item {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.1);
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .gallery-item:hover {
+    border-color: var(--gold);
+    transform: scale(1.02);
+  }
+
+  .gallery-item img {
+    width: 100%; aspect-ratio: 16/9;
+    object-fit: cover;
+    display: block;
+  }
+
+  .gallery-item-meta {
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.04);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .gallery-item-date {
+    font-size: 9px; color: rgba(255,255,255,0.35);
+    letter-spacing: 0.1em;
+  }
+
+  .gallery-item-del {
+    background: none; border: none;
+    color: rgba(255,255,255,0.2);
+    cursor: pointer; font-size: 12px;
+    padding: 0 4px;
+  }
+
+  .gallery-empty {
+    grid-column: 1/-1;
+    text-align: center;
+    padding: 60px 20px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.2);
+    letter-spacing: 0.15em;
+  }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    background: rgba(10,8,20,0.97);
+    border: 1px solid rgba(201,149,58,0.3);
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 11px; color: var(--gold-l);
+    letter-spacing: 0.1em;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  #toast.show { opacity: 1; }
+
+  /* Smudge cursor */
+  body.smudge-mode { cursor: cell; }
+
+  @media (max-width: 600px) {
+    #size-slider { width: 60px; }
+    #opacity-slider { width: 50px; }
+    .tool-btn { width: 30px; height: 30px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<!-- Gallery -->
+<div id="gallery">
+  <div id="gallery-header">
+    <span id="gallery-title">✦ Galeria Dzieł</span>
+    <button id="gallery-close" onclick="closeGallery()">ZAMKNIJ</button>
+  </div>
+  <div id="gallery-grid"></div>
+</div>
+
+<!-- Header -->
+<div id="header">
+  <div id="title-block">
+    <span id="eyebrow">∴ KATEDRA OTAKOS ∴</span>
+    <span id="app-title">QUANTUM CANVAS</span>
+  </div>
+  <div id="player-badge">
+    <div class="player-dot" style="background:#c9953a"></div>
+    <span id="player-count">1 Twórca</span>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div id="toolbar">
+
+  <!-- Tools -->
+  <div class="tool-group">
+    <button class="tool-btn active" id="btn-brush" onclick="setTool('brush')" title="Pędzel">🖌</button>
+    <button class="tool-btn" id="btn-echo" onclick="setTool('echo')" title="Kwantowe Echo (Wstęga 3D)">🪞</button>
+    <button class="tool-btn" id="btn-water" onclick="setTool('water')" title="Kropla Wody (Mokra Farba)">💧</button>
+    <button class="tool-btn" id="btn-syn-mic" onclick="initSynesthesiaTool('mic')" title="Pędzel Synestezji (Mikrofon)">🎤</button>
+    <button class="tool-btn" id="btn-syn-sys" onclick="initSynesthesiaTool('system')" title="Pędzel Synestezji (Muzyka z Zakładki/Systemu)">🎧</button>
+    <button class="tool-btn" id="btn-eraser" onclick="setTool('eraser')" title="Gumka">◻</button>
+  </div>
+
+  <!-- Brush size -->
+  <div class="tool-group" style="gap:6px">
+    <span style="font-size:9px;color:rgba(255,255,255,0.3);letter-spacing:0.15em">⊙</span>
+    <input type="range" id="size-slider" min="2" max="80" value="12"
+           oninput="updateSize(this.value)">
+    <span id="size-val">12</span>
+  </div>
+
+  <!-- Opacity -->
+  <div class="tool-group" style="gap:6px">
+    <span style="font-size:9px;color:rgba(255,255,255,0.3)">α</span>
+    <input type="range" id="opacity-slider" min="5" max="100" value="85"
+           oninput="updateOpacity(this.value)">
+  </div>
+
+  <!-- Colors -->
+  <div class="tool-group">
+    <div id="color-row"></div>
+    <input type="color" id="custom-color" value="#c9953a"
+           onchange="setCustomColor(this.value)" title="Własny kolor">
+  </div>
+
+  <!-- Ramy i Style -->
+  <div class="tool-group">
+    <select id="frame-selector" onchange="changeFrame(this.value)" class="tool-btn" style="width:auto; font-size:12px; padding:0 8px;">
+      <option value="none">Rama: Brak</option>
+      <option value="frame-gold">Rama: Złoto Katedry</option>
+      <option value="frame-oak">Rama: Ciemny Dąb</option>
+      <option value="frame-quantum">Rama: Kwantowa</option>
+    </select>
+    
+    <select id="style-selector" onchange="setPaintStyle(this.value)" class="tool-btn" style="width:auto; font-size:12px; padding:0 8px;">
+      <option value="normal">Styl: Czysty</option>
+      <option value="impasto">Styl: Van Gogh (Impasto)</option>
+      <option value="pointillism">Styl: Seurat (Kropki)</option>
+      <option value="unknown">Styl: Nieznany (Chaos)</option>
+    </select>
+  </div>
+
+  <!-- Zoom -->
+  <div class="tool-group">
+    <button class="tool-btn" onclick="setZoom(zoom * 1.2)" title="Przybliż">+</button>
+    <button class="tool-btn" onclick="setZoom(1); panX=0; panY=0; updateTransform();" title="Reset (1:1)">1:1</button>
+    <button class="tool-btn" onclick="setZoom(zoom / 1.2)" title="Oddal">-</button>
+  </div>
+
+  <!-- Actions -->
+  <div class="tool-group">
+    <button class="tool-btn" onclick="clearCanvas()" title="Wyczyść płótno">✕</button>
+    <button class="tool-btn" onclick="saveWork()" title="Zapisz do galerii">💾</button>
+    <button class="tool-btn" onclick="saveToSubconscious()" title="Zapisz do Podświadomości (Dysk Lokalny)">🧠</button>
+    <button class="tool-btn" id="btn-wardrobe" onclick="sendToWardrobe()" title="Wyślij do Wardrobe">👗</button>
+    <button class="tool-btn" onclick="downloadCanvas()" title="Pobierz PNG">⬇</button>
+    <button class="tool-btn" onclick="openGallery()" title="Galeria dzieł">🖼</button>
+  </div>
+
+</div>
+
+<!-- Canvas -->
+<div id="canvas-wrap">
+  <div id="canvas-wrapper">
+    <canvas id="main-canvas"></canvas>
+  </div>
+  <div id="cursor-preview"></div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────
+let tool = 'brush';
+let brushSize = 12;
+let brushOpacity = 0.85;
+let brushColor = '#c9953a';
+let isDrawing = false;
+let lastX = 0, lastY = 0;
+let gallery = JSON.parse(localStorage.getItem('qc_gallery') || '[]');
+let playerName = 'Suweren';
+
+// State dla Synestezji
+let audioCtx, analyser, dataArray;
+let isAudioEnabled = false;
+let passiveX = 0;
+let passiveY = 0;
+let synesthesiaFrameId = null;
+
+// Zoom & Pan State
+let zoom = 1;
+let panX = 0, panY = 0;
+let isSpaceDown = false;
+let isPanning = false;
+let startPanX = 0, startPanY = 0;
+
+// Style malarskie State
+let currentPaintStyle = 'normal';
+
+// Bufor dla Echa i Kropli
+const smudgeBufferCanvas = document.createElement('canvas');
+const smudgeBufferCtx = smudgeBufferCanvas.getContext('2d', { willReadFrequently: true });
+let echoStartPoint = null;
+
+// ── Paleta kolorów ─────────────────────────────────────────────────
+const PALETTE = [
+  '#c9953a', '#f0c060', '#00e5ff', '#a78bfa',
+  '#4ade80', '#f87171', '#fb923c', '#ffffff',
+  '#e8dfc8', '#06080f',
+];
+
+// ── Canvas setup ───────────────────────────────────────────────────
+const canvas = document.getElementById('main-canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const wrap = document.getElementById('canvas-wrap');
+const wrapper = document.getElementById('canvas-wrapper');
+const cursorEl = document.getElementById('cursor-preview');
+
+// Inicjalizacja pasywnego śledzenia po definicji canvas
+passiveX = canvas.width / 2;
+passiveY = canvas.height / 2;
+
+canvas.addEventListener('mousemove', (e) => {
+  const pos = getPos(e);
+  passiveX = pos.x;
+  passiveY = pos.y;
+});
+
+function resizeCanvas() {
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  // Dopasuj do wewnętrznego wymiaru kontenera
+  canvas.width  = canvas.clientWidth;
+  canvas.height = canvas.clientHeight;
+  ctx.fillStyle = '#06080f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.putImageData(imageData, 0, 0);
+}
+
+function initCanvas() {
+  canvas.width  = wrap.offsetWidth;
+  canvas.height = wrap.offsetHeight;
+  ctx.fillStyle = '#06080f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'rgba(232,223,200,0.15)';
+  for (let i = 0; i < 120; i++) {
+    ctx.beginPath();
+    ctx.arc(Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+window.addEventListener('load', initCanvas);
+window.addEventListener('resize', () => {
+    const tmp = canvas.toDataURL();
+    resizeCanvas();
+    const img = new Image();
+    img.onload = () => ctx.drawImage(img, 0, 0);
+    img.src = tmp;
+});
+
+function buildPalette() {
+  const row = document.getElementById('color-row');
+  PALETTE.forEach(c => {
+    const s = document.createElement('div');
+    s.className = 'swatch' + (c === brushColor ? ' active' : '');
+    s.style.background = c;
+    s.style.border = c === '#06080f' ? '2px solid rgba(255,255,255,0.2)' : '2px solid transparent';
+    s.onclick = () => {
+      brushColor = c;
+      document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
+      s.classList.add('active');
+      document.getElementById('custom-color').value = c;
+      updateCursorColor();
+    };
+    row.appendChild(s);
+  });
+}
+
+function setCustomColor(c) {
+  brushColor = c;
+  document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
+  updateCursorColor();
+}
+
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll('.tool-btn[id^=btn-]').forEach(b => b.classList.remove('active', 'cyan-active', 'purple-active'));
+  
+  const btn = document.getElementById('btn-' + t);
+  if (btn) {
+    if (t === 'echo' || t === 'water') btn.classList.add('cyan-active');
+    else btn.classList.add('active');
+  } else if (t === 'synesthesia') {
+    // Podświetlamy oba jeśli tool to synestezja
+    document.getElementById('btn-syn-mic')?.classList.add('purple-active');
+    document.getElementById('btn-syn-sys')?.classList.add('purple-active');
+  }
+
+  document.body.classList.toggle('smudge-mode', t === 'echo' || t === 'water');
+  canvas.style.cursor = t === 'eraser' ? 'cell' : (t === 'echo' || t === 'water' || t === 'synesthesia') ? 'crosshair' : 'none';
+  cursorEl.style.display = (t === 'brush') ? 'block' : 'none';
+}
+
+function updateSize(v) {
+  brushSize = parseInt(v);
+  document.getElementById('size-val').textContent = v;
+  updateCursorSize();
+}
+
+function updateOpacity(v) {
+  brushOpacity = v / 100;
+}
+
+function updateCursorSize() {
+  cursorEl.style.width  = brushSize + 'px';
+  cursorEl.style.height = brushSize + 'px';
+}
+
+function updateCursorColor() {
+  cursorEl.style.borderColor = brushColor;
+}
+
+// Funkcja aktualizująca transformację CSS
+function updateTransform() {
+  canvas.style.transform = `matrix(${zoom}, 0, 0, ${zoom}, ${panX}, ${panY})`;
+}
+
+function setZoom(newZoom) {
+  zoom = Math.max(0.2, Math.min(newZoom, 10)); // Limit od 20% do 1000%
+  updateTransform();
+  toast(`Powiększenie: ${Math.round(zoom * 100)}%`);
+}
+
+// Funkcja do Ram
+function changeFrame(frameClass) {
+  wrapper.className = 'canvas-wrapper'; // Czyści stare ramy
+  if (frameClass !== 'none') {
+    wrapper.classList.add(frameClass);
+  }
+}
+
+// Funkcja do Stylów
+function setPaintStyle(style) {
+  currentPaintStyle = style;
+}
+
+function applyStyleModifiers(ctx, x, y) {
+  if (currentPaintStyle === 'impasto') {
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 2;
+  } else if (currentPaintStyle === 'unknown') {
+    ctx.globalAlpha = Math.random() * (1 - 0.2) + 0.2;
+    ctx.lineWidth = brushSize + (Math.random() * 4 - 2);
+  } else {
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.globalAlpha = brushOpacity;
+  }
+}
+
+// Zmodyfikowana funkcja getPos, obsługująca Matrix Pan/Zoom i Ramy
+function getPos(e) {
+  const r = canvas.getBoundingClientRect(); // Używamy canvas Rect!
+  const src = e.touches ? e.touches[0] : e;
+  
+  // Pozycja myszy względem płótna (uwzględnia ramy i zoom/pan w rect)
+  const x = (src.clientX - r.left) * (canvas.width / r.width);
+  const y = (src.clientY - r.top) * (canvas.height / r.height);
+  
+  return { x, y };
+}
+
+function startDraw(e) {
+  e.preventDefault();
+  isDrawing = true;
+  const {x, y} = getPos(e);
+  lastX = x; lastY = y;
+  
+  if (tool === 'echo') {
+    echoStartPoint = { x, y };
+  }
+
+  if (tool === 'brush' || tool === 'eraser') {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    drawDot(x, y);
+  }
+}
+
+function drawDot(x, y) {
+  ctx.save();
+  if (tool === 'eraser') {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+  } else {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = hexToRgba(brushColor, brushOpacity);
+  }
+  applyStyleModifiers(ctx, x, y);
+  ctx.beginPath();
+  ctx.arc(x, y, brushSize/2, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function draw(e) {
+  e.preventDefault();
+  const {x, y} = getPos(e);
+  cursorEl.style.left = (x / (canvas.width / wrap.offsetWidth)) + 'px';
+  cursorEl.style.top = (y / (canvas.height / wrap.offsetHeight)) + 'px';
+
+  if (!isDrawing) return;
+
+  if (tool === 'brush' || tool === 'eraser') {
+    ctx.save();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = brushSize;
+    if (tool === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out'; ctx.strokeStyle = 'rgba(0,0,0,1)';
+    } else {
+      ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = hexToRgba(brushColor, brushOpacity);
+    }
+    applyStyleModifiers(ctx, x, y);
+    ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(x, y); ctx.stroke(); ctx.restore();
+  }
+  
+  if (tool === 'echo' && echoStartPoint) {
+    applyEcho(echoStartPoint.x, echoStartPoint.y, x, y);
+    echoStartPoint = { x, y }; // Ciągnięcie wstęgi
+  } else if (tool === 'water') {
+    applyWaterDrop(x, y); // Miękkie mieszanie w miejscu / po śladzie
+  }
+
+  lastX = x; lastY = y;
+}
+
+function stopDraw() { isDrawing = false; }
+
+/**
+ * NARZĘDZIE 1: KWANTOWE ECHO (Stary, lubiany efekt)
+ */
+function applyEcho(startX, startY, endX, endY) {
+  const size = brushSize * 2.5;
+  const halfSize = size / 2;
+  smudgeBufferCanvas.width = size;
+  smudgeBufferCanvas.height = size;
+  
+  // Maskowanie
+  smudgeBufferCtx.beginPath();
+  smudgeBufferCtx.arc(halfSize, halfSize, brushSize, 0, Math.PI * 2);
+  smudgeBufferCtx.fillStyle = '#fff';
+  smudgeBufferCtx.fill();
+  
+  smudgeBufferCtx.globalCompositeOperation = 'source-in';
+  smudgeBufferCtx.drawImage(canvas, startX - halfSize, startY - halfSize, size, size, 0, 0, size, size);
+  
+  ctx.save();
+  ctx.globalAlpha = brushOpacity * 0.4; // Zależne od siły nacisku/suwaka
+  ctx.drawImage(smudgeBufferCanvas, endX - halfSize, endY - halfSize, size, size);
+  ctx.restore();
+}
+
+/**
+ * NARZĘDZIE 2: PRAWDZIWA KROPLA WODY (Miękkie rozmycie bez stempla)
+ */
+function applyWaterDrop(x, y) {
+  const s = brushSize * 2.5;
+  const half = s / 2;
+
+  smudgeBufferCanvas.width = s;
+  smudgeBufferCanvas.height = s;
+  smudgeBufferCtx.clearRect(0, 0, s, s);
+  // Pobierz czysty fragment bez maskowania
+  smudgeBufferCtx.drawImage(canvas, x - half, y - half, s, s, 0, 0, s, s);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, brushSize, 0, Math.PI * 2);
+  ctx.clip(); // Rozmywamy tylko to, co jest wewnątrz okręgu pędzla
+  
+  ctx.globalAlpha = 0.15; // Bardzo delikatne nakładanie
+  const offset = Math.max(1, brushSize * 0.15); // Siła rozmycia zależy od wielkości pędzla
+  
+  // Przesunięcie kierunkowe (wodne rozmycie)
+  ctx.drawImage(smudgeBufferCanvas, x - half - offset, y - half);
+  ctx.drawImage(smudgeBufferCanvas, x - half + offset, y - half);
+  ctx.drawImage(smudgeBufferCanvas, x - half, y - half - offset);
+  ctx.drawImage(smudgeBufferCanvas, x - half, y - half + offset);
+  
+  ctx.restore();
+}
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function clearCanvas() {
+  ctx.fillStyle = '#06080f'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'rgba(232,223,200,0.12)';
+  for (let i = 0; i < 120; i++) {
+    ctx.beginPath(); ctx.arc(Math.random()*canvas.width, Math.random()*canvas.height, Math.random()*1.2, 0, Math.PI*2); ctx.fill();
+  }
+  toast('✕ Płótno wyczyszczone');
+}
+
+function saveWork() {
+  const dataUrl = canvas.toDataURL('image/png');
+  const item = { id: Date.now(), url: dataUrl, date: new Date().toLocaleString() };
+  gallery.unshift(item); if (gallery.length > 30) gallery = gallery.slice(0, 30);
+  localStorage.setItem('qc_gallery', JSON.stringify(gallery));
+  toast('💾 Dzieło zapisane!');
+}
+
+function downloadCanvas() {
+  const link = document.createElement('a'); link.download = `QuantumCanvas_${Date.now()}.png`;
+  link.href = canvas.toDataURL('image/png'); link.click();
+  toast('⬇ Pobrano PNG');
+}
+
+function openGallery() { renderGallery(); document.getElementById('gallery').classList.add('open'); }
+function closeGallery() { document.getElementById('gallery').classList.remove('open'); }
+function renderGallery() {
+  const grid = document.getElementById('gallery-grid'); grid.innerHTML = '';
+  if (!gallery.length) { grid.innerHTML = '<div class="gallery-empty">Galeria pusta</div>'; return; }
+  gallery.forEach(item => {
+    const el = document.createElement('div'); el.className = 'gallery-item';
+    el.innerHTML = `<img src="${item.url}"><div class="gallery-item-meta"><span>${item.date}</span><button onclick="deleteWork(${item.id}, event)">✕</button></div>`;
+    el.onclick = () => loadWork(item.url); grid.appendChild(el);
+  });
+}
+
+function loadWork(url) {
+  closeGallery(); const img = new Image();
+  img.onload = () => { ctx.drawImage(img, 0, 0, canvas.width, canvas.height); };
+  img.src = url; toast('✦ Dzieło załadowane');
+}
+
+function deleteWork(id, e) {
+  e.stopPropagation(); gallery = gallery.filter(x => x.id !== id);
+  localStorage.setItem('qc_gallery', JSON.stringify(gallery)); renderGallery();
+}
+
+// ── Nasłuchiwanie komend agentów ──────────────────────────────────
+const agentBc = new BroadcastChannel('quantum_canvas');
+agentBc.onmessage = (e) => {
+    const d = e.data;
+
+    // Agent chce coś namalować
+    if (d.type === 'AGENT_PAINT' && d.instruction) {
+        executeAgentPainting(d.agentName, d.agentColor, d.instruction);
+    }
+
+    // Agent chce zapisać canvas
+    if (d.type === 'SAVE_REQUEST') {
+        saveWork();
+        toast(`💾 ${d.agentName} zapisał dzieło do galerii`);
+    }
+};
+
+function executeAgentPainting(agentName, agentColor, instruction) {
+    // Animowany toast
+    toast(`🎨 ${agentName} maluje...`);
+
+    // Ustaw tło jeśli podane
+    if (instruction.background) {
+        ctx.fillStyle = instruction.background;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // Rysuj każde pociągnięcie
+    instruction.strokes.forEach((stroke, i) => {
+        setTimeout(() => {
+            const x  = (stroke.x  / 100) * W;
+            const y  = (stroke.y  / 100) * H;
+            const x2 = stroke.x2 ? (stroke.x2 / 100) * W : x;
+            const y2 = stroke.y2 ? (stroke.y2 / 100) * H : y;
+            const r  = stroke.r || 20;
+
+            ctx.save();
+            ctx.globalAlpha = stroke.opacity;
+
+            if (stroke.type === 'circle') {
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.strokeStyle = stroke.color;
+                ctx.lineWidth = stroke.size;
+                ctx.stroke();
+            }
+
+            if (stroke.type === 'line') {
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = stroke.color;
+                ctx.lineWidth = stroke.size;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+
+            if (stroke.type === 'arc') {
+                ctx.beginPath();
+                const startAngle = Math.random() * Math.PI * 2;
+                const endAngle   = startAngle + Math.PI * (0.5 + Math.random() * 1.5);
+                ctx.arc(x, y, r, startAngle, endAngle);
+                ctx.strokeStyle = stroke.color;
+                ctx.lineWidth = stroke.size;
+                ctx.stroke();
+            }
+
+            if (stroke.type === 'splatter') {
+                // Rozbryzgi wokół punktu
+                for (let j = 0; j < 12; j++) {
+                    const angle = (j / 12) * Math.PI * 2;
+                    const dist  = Math.random() * r;
+                    ctx.beginPath();
+                    ctx.arc(
+                        x + Math.cos(angle) * dist,
+                        y + Math.sin(angle) * dist,
+                        stroke.size * Math.random() * 2,
+                        0, Math.PI * 2
+                    );
+                    ctx.fillStyle = stroke.color;
+                    ctx.fill();
+                }
+            }
+
+            ctx.restore();
+
+            // Finalne powiadomienie
+            if (i === instruction.strokes.length - 1) {
+                setTimeout(() => {
+                    toast(`✅ ${agentName}: "${instruction.message}"`);
+                }, 500);
+            }
+        }, i * 80); // 80ms między pociągnięciami — animacja widoczna
+    });
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast'); el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// 👗 Quantum Bridge to Wardrobe
+function sendToWardrobe() {
+  const dataURL = canvas.toDataURL('image/png');
+  localStorage.setItem('teo_wardrobe_bridge', dataURL);
+  
+  toast('👗 Transportowanie do Wardrobe...');
+  
+  // Przekaż sygnał do rodzica (TeODash), aby zmienił tab
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'SWITCH_ARCADE_TAB', tab: 'wardrobe' }, '*');
+  }
+}
+
+// 🧠 Zapis do Podświadomości (Most Wiesława)
+async function saveToSubconscious() {
+  // Pobieramy canvas bezpośrednio w funkcji, by uniknąć problemów ze scopem!
+  const myCanvas = document.getElementById('main-canvas');
+  if (!myCanvas) {
+    toast('⚠ Błąd: Nie znaleziono płótna (main-canvas)!');
+    return;
+  }
+  
+  const dataUrl = myCanvas.toDataURL('image/png');
+  const timestamp = Date.now();
+  try {
+    const response = await fetch('http://localhost:3001/api/bridge/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'WRITE_FILE',
+        filename: `podswiadomosc_canvas_${timestamp}.png`,
+        content: dataUrl.split(',')[1], // Tylko czysty base64 (bez prefiksu "data:image/png;base64,")
+        encoding: 'base64'
+      })
+    });
+    
+    if(response.ok) toast('🧠 Zapisano w Podświadomości (Dysk Lokalny)!');
+    else toast('⚠ Błąd Mostu Wiesława.');
+  } catch (e) {
+    console.error(e);
+    toast('⚠ Wiesio Bridge nie odpowiada!');
+  }
+}
+
+// 🎤 Pędzel Synestezji (Mikrofon / System)
+async function initSynesthesiaTool(type) {
+  // Jeśli coś już grało, zamykamy stary kontekst by nie robić nakładek
+  if (isAudioEnabled && audioCtx) {
+    try { await audioCtx.close(); } catch(e) {}
+    isAudioEnabled = false;
+  }
+
+  try {
+    let stream;
+    if (type === 'system') {
+      // Pobiera dźwięk z systemu/karty. Wymaga parametru video, by pokazać okno wyboru
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    } else {
+      // Pobiera dźwięk z fizycznego mikrofonu
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    }
+
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    const source = audioCtx.createMediaStreamSource(stream);
+    source.connect(analyser);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    isAudioEnabled = true;
+
+    toast(type === 'system' ? '🎧 Synestezja: Podłączono cyfrowe źródło!' : '🎤 Synestezja: Mikrofon aktywny!');
+    setTool('synesthesia');
+    synesthesiaLoop(); // Odpalenie autonomicznej pętli
+  } catch (err) {
+    console.error(err);
+    toast('⚠ Brak dostępu do źródła dźwięku. Upewnij się, że zaznaczyłeś udostępnianie audio!');
+  }
+}
+
+// Nowa pętla malująca (Autonomiczna)
+function synesthesiaLoop() {
+  if (!isAudioEnabled || tool !== 'synesthesia') {
+    if (synesthesiaFrameId) cancelAnimationFrame(synesthesiaFrameId);
+    return;
+  }
+
+  analyser.getByteFrequencyData(dataArray);
+  let sum = 0;
+  for(let i = 0; i < dataArray.length; i++) { sum += dataArray[i]; }
+  let avg = sum / dataArray.length;
+
+  if (avg > 15) { // Reaguj tylko gdy jest dźwięk
+    let dynamicSize = (avg / 255) * (brushSize * 3) + 1;
+    // Rozrzut farby wokół kursora w rytm głośności
+    let scatterX = passiveX + (Math.random() - 0.5) * (avg * 1.5);
+    let scatterY = passiveY + (Math.random() - 0.5) * (avg * 1.5);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(scatterX, scatterY, dynamicSize, 0, Math.PI * 2);
+    ctx.fillStyle = brushColor; 
+    ctx.globalAlpha = Math.min(1, avg / 200); 
+    ctx.fill();
+    ctx.restore();
+  }
+  synesthesiaFrameId = requestAnimationFrame(synesthesiaLoop);
+}
+
+// Obsługa kółka myszy dla Zoomu
+wrap.addEventListener('wheel', (e) => {
+  if (e.ctrlKey) {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+    setZoom(zoom * zoomFactor);
+  }
+}, { passive: false });
+
+// Obsługa klawisza Spacja dla przesuwania (Pan)
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && !isSpaceDown) {
+    isSpaceDown = true;
+    document.body.classList.add('panning-mode');
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'Space') {
+    isSpaceDown = false;
+    isPanning = false;
+    document.body.classList.remove('panning-mode', 'is-panning');
+  }
+});
+
+// Nasłuchiwacze dla kontenera wrap (Obsługa Pan & Draw)
+wrap.addEventListener('mousedown', (e) => {
+  if (isSpaceDown) {
+    isPanning = true;
+    startPanX = e.clientX - panX;
+    startPanY = e.clientY - panY;
+    document.body.classList.add('is-panning');
+  } else {
+    startDraw(e);
+  }
+});
+
+wrap.addEventListener('mousemove', (e) => {
+  if (isPanning) {
+    panX = e.clientX - startPanX;
+    panY = e.clientY - startPanY;
+    updateTransform();
+  } else {
+    draw(e);
+  }
+});
+
+window.addEventListener('mouseup', stopDraw);
+wrap.addEventListener('touchstart', startDraw);
+wrap.addEventListener('touchmove', draw);
+window.addEventListener('touchend', stopDraw);
+
+buildPalette();
+updateCursorSize();
+updateCursorColor();
+</script>
+</body>
+</html>

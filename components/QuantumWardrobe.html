@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QUANTUM WARDROBE — Katedra OtakOS</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Cormorant+Garamond:ital,wght@0,300;1,300&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold:   #c9953a;
+    --gold-l: #f0c060;
+    --gold-d: #7a5a1a;
+    --void:   #06080f;
+    --ink:    #e8dfc8;
+    --cyan:   #00e5ff;
+    --purple: #a78bfa;
+    --rose:   #f9a8d4;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--void);
+    color: var(--ink);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Stars */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse at 15% 20%, rgba(201,149,58,0.07) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 80%, rgba(167,139,250,0.05) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  /* Header */
+  header {
+    position: relative; z-index: 10;
+    text-align: center;
+    padding: 40px 20px 24px;
+    border-bottom: 1px solid rgba(201,149,58,0.12);
+  }
+
+  .eyebrow {
+    font-size: 9px; letter-spacing: 0.45em;
+    color: var(--gold-d); margin-bottom: 10px;
+  }
+
+  h1 {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(1.6rem, 5vw, 2.8rem);
+    font-weight: 600;
+    color: var(--gold-l);
+    text-shadow: 0 0 40px rgba(201,149,58,0.3);
+    letter-spacing: 0.08em;
+    line-height: 1.2;
+    margin-bottom: 8px;
+  }
+
+  .tagline {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 1.1rem;
+    color: rgba(232,223,200,0.5);
+    letter-spacing: 0.05em;
+  }
+
+  /* Main layout */
+  main {
+    position: relative; z-index: 10;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 20px 60px;
+    display: flex; flex-direction: column; gap: 40px;
+  }
+
+  /* Section title */
+  .sec-title {
+    font-size: 9px; letter-spacing: 0.35em;
+    color: rgba(201,149,58,0.5);
+    border-bottom: 1px solid rgba(201,149,58,0.08);
+    padding-bottom: 8px; margin-bottom: 16px;
+    text-transform: uppercase;
+  }
+
+  /* Step indicator */
+  .steps {
+    display: flex; gap: 0; counter-reset: step;
+  }
+
+  .step {
+    flex: 1; padding: 16px 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.05);
+    display: flex; flex-direction: column; gap: 6px;
+    position: relative;
+  }
+
+  .step:first-child { border-radius: 10px 0 0 10px; }
+  .step:last-child  { border-radius: 0 10px 10px 0; }
+
+  .step-num {
+    font-family: 'Cinzel', serif;
+    font-size: 11px; color: var(--gold-d);
+    letter-spacing: 0.2em;
+  }
+
+  .step-label {
+    font-size: 11px; font-weight: bold;
+    color: var(--gold-l); letter-spacing: 0.08em;
+  }
+
+  .step-desc { font-size: 10px; color: rgba(255,255,255,0.3); line-height: 1.5; }
+
+  .step-arrow {
+    position: absolute; right: -10px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--gold-d); font-size: 14px; z-index: 2;
+  }
+
+  /* Canvas preview box */
+  #canvas-preview-box {
+    border: 1px solid rgba(201,149,58,0.2);
+    border-radius: 12px;
+    padding: 20px;
+    background: rgba(255,255,255,0.02);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  .upload-zone {
+    border: 1px dashed rgba(201,149,58,0.3);
+    border-radius: 8px;
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .upload-zone:hover {
+    border-color: var(--gold);
+    background: rgba(201,149,58,0.04);
+  }
+
+  .upload-zone input {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  }
+
+  .upload-icon { font-size: 32px; margin-bottom: 10px; display: block; }
+  .upload-label { font-size: 12px; color: rgba(255,255,255,0.4); letter-spacing: 0.1em; }
+  .upload-hint  { font-size: 10px; color: rgba(255,255,255,0.2); margin-top: 4px; }
+
+  #preview-img {
+    display: none;
+    width: 100%; max-height: 280px;
+    object-fit: contain; border-radius: 8px;
+    border: 1px solid rgba(201,149,58,0.2);
+  }
+
+  /* Style selector */
+  .style-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  .style-card {
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px;
+    padding: 14px 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; flex-direction: column; gap: 5px;
+    background: rgba(255,255,255,0.02);
+  }
+
+  .style-card:hover {
+    border-color: rgba(201,149,58,0.3);
+    background: rgba(201,149,58,0.04);
+  }
+
+  .style-card.selected {
+    border-color: var(--gold);
+    background: rgba(201,149,58,0.1);
+    box-shadow: 0 0 16px rgba(201,149,58,0.15);
+  }
+
+  .style-emoji { font-size: 22px; }
+  .style-name  { font-size: 11px; font-weight: bold; color: var(--gold-l); letter-spacing: 0.08em; }
+  .style-desc  { font-size: 9px;  color: rgba(255,255,255,0.3); line-height: 1.4; }
+
+  /* Prompt builder */
+  .prompt-box {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(201,149,58,0.2);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  .prompt-header {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .prompt-label {
+    font-size: 10px; letter-spacing: 0.2em;
+    color: var(--gold-d);
+  }
+
+  #generated-prompt {
+    background: rgba(201,149,58,0.05);
+    border: 1px solid rgba(201,149,58,0.15);
+    border-radius: 8px;
+    padding: 14px;
+    font-size: 12px; line-height: 1.7;
+    color: rgba(232,223,200,0.85);
+    min-height: 80px;
+    white-space: pre-wrap;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 14px;
+  }
+
+  .btn-row {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+
+  .btn {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; letter-spacing: 0.15em;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .btn-gold {
+    background: linear-gradient(135deg, var(--gold-d), var(--gold));
+    border-color: var(--gold);
+    color: #1a1208;
+    font-weight: bold;
+  }
+
+  .btn-gold:hover { box-shadow: 0 0 20px rgba(201,149,58,0.3); }
+
+  .btn-ghost {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.5);
+  }
+
+  .btn-ghost:hover { border-color: rgba(255,255,255,0.25); color: #fff; }
+
+  .btn-cyan {
+    background: rgba(0,229,255,0.08);
+    border-color: rgba(0,229,255,0.3);
+    color: var(--cyan);
+  }
+
+  /* AI Studio guide card */
+  .guide-card {
+    border: 1px solid rgba(167,139,250,0.2);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .guide-header {
+    background: rgba(167,139,250,0.08);
+    padding: 14px 18px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid rgba(167,139,250,0.1);
+  }
+
+  .guide-header-icon { font-size: 20px; }
+  .guide-header-title {
+    font-family: 'Cinzel', serif;
+    font-size: 14px; color: var(--purple);
+    letter-spacing: 0.1em;
+  }
+
+  .guide-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+
+  .guide-step {
+    display: flex; gap: 14px; align-items: flex-start;
+  }
+
+  .guide-step-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: rgba(167,139,250,0.15);
+    border: 1px solid rgba(167,139,250,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--purple);
+    flex-shrink: 0; font-weight: bold;
+  }
+
+  .guide-step-content { flex: 1; }
+  .guide-step-title { font-size: 11px; color: var(--purple); letter-spacing: 0.1em; margin-bottom: 3px; }
+  .guide-step-text  { font-size: 11px; color: rgba(255,255,255,0.4); line-height: 1.6; }
+
+  .guide-step-text code {
+    background: rgba(167,139,250,0.1);
+    padding: 1px 5px; border-radius: 3px;
+    color: var(--purple); font-size: 10px;
+  }
+
+  /* Example prompt cards */
+  .example-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+  }
+
+  .example-card {
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 16px;
+    background: rgba(255,255,255,0.02);
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+
+  .example-card:hover {
+    border-color: rgba(201,149,58,0.3);
+    transform: translateY(-2px);
+  }
+
+  .example-card-tag {
+    font-size: 8px; letter-spacing: 0.25em;
+    color: var(--gold-d);
+  }
+
+  .example-card-prompt {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 13px; line-height: 1.6;
+    color: rgba(232,223,200,0.7);
+  }
+
+  .example-card-copy {
+    font-size: 9px; color: rgba(201,149,58,0.4);
+    letter-spacing: 0.1em;
+    align-self: flex-end;
+  }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,8,20,0.97);
+    border: 1px solid rgba(201,149,58,0.3);
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 11px; color: var(--gold-l);
+    letter-spacing: 0.1em;
+    opacity: 0; transition: opacity 0.3s;
+    pointer-events: none; z-index: 999;
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+
+  @media (max-width: 600px) {
+    .steps { flex-direction: column; }
+    .step { border-radius: 8px !important; }
+    .step-arrow { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<header>
+  <div class="eyebrow">∴ KATEDRA OTAKOS — ATELIER KWANTOWE ∴</div>
+  <h1>QUANTUM WARDROBE</h1>
+  <p class="tagline">Od płótna do garderoby — sztuka materializuje się w tkaninę</p>
+</header>
+
+<main>
+
+  <!-- Kroki -->
+  <div>
+    <div class="sec-title">⟁ PRZEPŁYW KREACJI</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div class="step-label">MALUJ</div>
+        <div class="step-desc">Stwórz wzór w Quantum Canvas lub wrzuć gotowe dzieło</div>
+        <div class="step-arrow">›</div>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div class="step-label">WYBIERZ STYL</div>
+        <div class="step-desc">Określ kierunek — haute couture, streetwear, OtakOS...</div>
+        <div class="step-arrow">›</div>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div class="step-label">GENERUJ PROMPT</div>
+        <div class="step-desc">System buduje prompt dla AI Studio automatycznie</div>
+        <div class="step-arrow">›</div>
+      </div>
+      <div class="step">
+        <div class="step-num">04</div>
+        <div class="step-label">MATERIALIZUJ</div>
+        <div class="step-desc">Wklej prompt do AI Studio + dodaj swój obraz</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload dzieła -->
+  <div>
+    <div class="sec-title">🎨 TWOJE DZIEŁO / WZÓR</div>
+    <div id="canvas-preview-box">
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+        <input type="file" id="file-input" accept="image/*" onchange="handleUpload(this)">
+        <span class="upload-icon">⊕</span>
+        <div class="upload-label">WRZUĆ OBRAZ Z QUANTUM CANVAS</div>
+        <div class="upload-hint">lub zdjęcie inspiracji · PNG, JPG, WebP</div>
+      </div>
+      <img id="preview-img" alt="Podgląd">
+    </div>
+  </div>
+
+  <!-- Style -->
+  <div>
+    <div class="sec-title">✦ STYL KREACJI</div>
+    <div class="style-grid" id="style-grid">
+      <!-- wypełniane przez JS -->
+    </div>
+  </div>
+
+  <!-- Prompt builder -->
+  <div>
+    <div class="sec-title">⚗ WYGENEROWANY PROMPT</div>
+    <div class="prompt-box">
+      <div class="prompt-header">
+        <span class="prompt-label">PROMPT DLA AI STUDIO</span>
+        <span style="font-size:9px;color:rgba(255,255,255,0.2)">Nano Banana Pro · Imagen 3</span>
+      </div>
+      <div id="generated-prompt">
+        Wybierz styl i opcjonalnie wrzuć swój obraz — system wygeneruje gotowy prompt...
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-gold" onclick="generatePrompt()">⚡ GENERUJ PROMPT</button>
+        <button class="btn btn-ghost" onclick="copyPrompt()">📋 KOPIUJ</button>
+        <button class="btn btn-cyan" onclick="openAiStudio()">↗ AI STUDIO</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Instrukcja AI Studio -->
+  <div>
+    <div class="sec-title">🔮 INSTRUKCJA — GOOGLE AI STUDIO</div>
+    <div class="guide-card">
+      <div class="guide-header">
+        <span class="guide-header-icon">🔮</span>
+        <span class="guide-header-title">Nano Banana Pro — Krok po kroku</span>
+      </div>
+      <div class="guide-body">
+        <div class="guide-step">
+          <div class="guide-step-num">1</div>
+          <div class="guide-step-content">
+            <div class="guide-step-title">OTWÓRZ AI STUDIO</div>
+            <div class="guide-step-text">Wejdź na <code>aistudio.google.com</code> → kliknij <code>+ New prompt</code> → wybierz model <code>gemini-2.0-flash-preview-image-generation</code> lub <code>Nano Banana Pro</code></div>
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">2</div>
+          <div class="guide-step-content">
+            <div class="guide-step-title">WRZUĆ SWÓJ OBRAZ</div>
+            <div class="guide-step-text">Kliknij ikonę <code>+</code> przy polu promptu → <code>Upload file</code> → wrzuć PNG z Quantum Canvas lub zdjęcie inspiracji ubraniem</div>
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">3</div>
+          <div class="guide-step-content">
+            <div class="guide-step-title">WKLEJ PROMPT</div>
+            <div class="guide-step-text">Wklej wygenerowany prompt z tego narzędzia w pole tekstowe. Prompt opisuje styl, materiał, kolor i prezentację ubrania.</div>
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-num">4</div>
+          <div class="guide-step-content">
+            <div class="guide-step-title">URUCHOM I ITERUJ</div>
+            <div class="guide-step-text">Kliknij <code>Run</code> lub <code>Ctrl+Enter</code>. Jeśli wynik nie jest idealny — dodaj <code>make it more dramatic</code> lub <code>change fabric to silk</code> i uruchom ponownie.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gotowe prompty inspiracyjne -->
+  <div>
+    <div class="sec-title">✨ GOTOWE PROMPTY — KLIKNIJ ABY SKOPIOWAĆ</div>
+    <div class="example-grid" id="example-grid">
+      <!-- wypełniane przez JS -->
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── Style definitions ─────────────────────────────────────────────
+const STYLES = [
+  {
+    id: 'otakos',
+    emoji: '⚗',
+    name: 'OTAKOS 0.00G',
+    desc: 'Kosmiczny, mroczny, złote akcenty, kwantowa estetyka',
+    prompt: 'avant-garde fashion design inspired by cosmic alchemy and quantum aesthetics, dark void background, gold and cyan neon accents, structured silhouette with geometric panels, fabric appears to emit soft bioluminescence, editorial fashion photography style, 16:9 format',
+  },
+  {
+    id: 'haute',
+    emoji: '👗',
+    name: 'HAUTE COUTURE',
+    desc: 'Paryska elegancja, strukturalne formy, luksusowe tkaniny',
+    prompt: 'haute couture fashion illustration, Paris atelier aesthetic, structured architectural silhouette, luxurious silk and brocade fabrics, dramatic draping, muted gold and ivory color palette, fashion sketch elevated to photorealism, white studio background, 16:9 format',
+  },
+  {
+    id: 'cyber',
+    emoji: '⚡',
+    name: 'CYBERPUNK',
+    desc: 'Neonowy, metaliczny, futurystyczny streetwear',
+    prompt: 'cyberpunk streetwear fashion design, holographic iridescent fabrics, neon accents in purple and cyan, asymmetric cut with technical details and exposed hardware, urban nighttime setting with rain reflections, editorial photography, dramatic lighting, 16:9',
+  },
+  {
+    id: 'celestial',
+    emoji: '🌙',
+    name: 'CELESTIAL',
+    desc: 'Niebiański, delikatny, gwiezdne wzory, sheer tkaniny',
+    prompt: 'celestial fashion design, ethereal sheer fabrics with embedded star map patterns, moonlight silver and midnight blue palette, flowing asymmetric silhouette, delicate embroidery of constellations, fine art fashion photography, dreamy soft lighting, 16:9',
+  },
+  {
+    id: 'alchemy',
+    emoji: '🔮',
+    name: 'ALCHEMIA',
+    desc: 'Średniowieczna alchemia spotyka współczesność',
+    prompt: 'alchemical fashion design merging medieval manuscript aesthetics with contemporary couture, rich burgundy and aged gold fabrics, hand-embroidered alchemical symbols, structured bodice with dramatic sleeves, old parchment texture background, fine art photography, 16:9',
+  },
+  {
+    id: 'minimal',
+    emoji: '◻',
+    name: 'MINIMALIZM',
+    desc: 'Japońska czystość, monochromatyczny, precyzyjne linie',
+    prompt: 'minimalist Japanese fashion design, monochromatic ivory and charcoal palette, precise geometric cuts with negative space, wabi-sabi linen and raw silk textures, single dramatic shadow, museum-quality fashion photography, clean white background, 16:9',
+  },
+];
+
+// ── Example prompts ───────────────────────────────────────────────
+const EXAMPLES = [
+  {
+    tag: 'QUANTUM CANVAS → TKANINA',
+    prompt: 'Use this abstract digital artwork as a textile print pattern. Apply it to a flowing evening dress with structured shoulders. The pattern should be printed on heavy silk charmeuse. Show the garment on a fashion editorial background, dramatic lighting, 16:9 format.',
+  },
+  {
+    tag: 'WZÓR → KURTKA',
+    prompt: 'Transform the visual patterns in this image into an embroidered bomber jacket design. Dark navy base fabric, gold thread embroidery following the abstract shapes. Street fashion editorial photography, urban background, 16:9.',
+  },
+  {
+    tag: 'COLLAGE MODOWY',
+    prompt: 'Create a fashion product collage on a dark cosmic corkboard. Each clothing piece presented as an individual photo with gold borders, pinned with cosmic pins. Include labels in elegant serif font. The overall mood is luxury meets alchemy. 16:9 format.',
+  },
+  {
+    tag: 'KOLEKCJA LOOKBOOK',
+    prompt: 'Design a cohesive fashion lookbook spread using this image as color and pattern inspiration. Show 3 outfit variations — day, evening, and statement look. Dark editorial photography style with gold accents, 16:9 panoramic format.',
+  },
+  {
+    tag: 'TKANINA ZBLIŻENIE',
+    prompt: 'Show this pattern/artwork as a luxurious fabric texture. Close-up macro photograph of the textile, showing weave structure and how light plays on the surface. The fabric should be draped elegantly. 16:9 format.',
+  },
+  {
+    tag: 'SZKIC → REALIZACJA',
+    prompt: 'Transform this artistic image into a fashion design blueprint — orthographic front view, side view, and back view of the garment inspired by these colors and shapes. Technical fashion illustration style on aged parchment, 16:9.',
+  },
+];
+
+// ── State ─────────────────────────────────────────────────────────
+let selectedStyle = STYLES[0];
+let hasImage = false;
+
+// ── Build UI ──────────────────────────────────────────────────────
+function buildStyles() {
+  const grid = document.getElementById('style-grid');
+  STYLES.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'style-card' + (s.id === selectedStyle.id ? ' selected' : '');
+    card.dataset.id = s.id;
+    card.innerHTML = `
+      <span class="style-emoji">${s.emoji}</span>
+      <div class="style-name">${s.name}</div>
+      <div class="style-desc">${s.desc}</div>
+    `;
+    card.onclick = () => {
+      document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectedStyle = s;
+      generatePrompt();
+    };
+    grid.appendChild(card);
+  });
+}
+
+function buildExamples() {
+  const grid = document.getElementById('example-grid');
+  EXAMPLES.forEach(ex => {
+    const card = document.createElement('div');
+    card.className = 'example-card';
+    card.innerHTML = `
+      <div class="example-card-tag">${ex.tag}</div>
+      <div class="example-card-prompt">${ex.prompt}</div>
+      <div class="example-card-copy">KLIKNIJ ABY SKOPIOWAĆ ›</div>
+    `;
+    card.onclick = () => {
+      navigator.clipboard.writeText(ex.prompt).then(() => {
+        toast('📋 Prompt skopiowany!');
+      });
+    };
+    grid.appendChild(card);
+  });
+}
+
+// ── Upload ────────────────────────────────────────────────────────
+function handleUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = document.getElementById('preview-img');
+    img.src = e.target.result;
+    img.style.display = 'block';
+    document.getElementById('upload-zone').style.display = 'none';
+    hasImage = true;
+    generatePrompt();
+    toast('✦ Dzieło załadowane!');
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Prompt generator ──────────────────────────────────────────────
+function generatePrompt() {
+  const imagePrefix = hasImage
+    ? 'Using this uploaded image as the primary inspiration for colors, patterns and artistic mood, '
+    : '';
+
+  const prompt = `${imagePrefix}${selectedStyle.prompt}
+
+Key requirements:
+— The design must feel wearable yet extraordinary
+— Maintain coherence between the pattern/artwork and the garment silhouette  
+— High-end fashion photography quality, not illustration
+— Show the full garment, no cropping
+— Add subtle environmental storytelling in the background`;
+
+  document.getElementById('generated-prompt').textContent = prompt;
+}
+
+function copyPrompt() {
+  const text = document.getElementById('generated-prompt').textContent;
+  if (text.includes('Wybierz styl')) {
+    toast('⚠ Najpierw wybierz styl!');
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => toast('📋 Prompt skopiowany!'));
+}
+
+function openAiStudio() {
+  window.open('https://aistudio.google.com/prompts/new_chat', '_blank');
+  toast('↗ Otwieranie AI Studio...');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+function toast(msg, dur=2200) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+buildStyles();
+buildExamples();
+generatePrompt();
+</script>
+</body>
+</html>

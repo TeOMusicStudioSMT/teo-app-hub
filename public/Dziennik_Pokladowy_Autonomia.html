@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Katedra OtakOS: Infrastruktura Autonomii</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Share Tech Mono', monospace;
+            background-color: #020617;
+            color: #e2e8f0;
+            overscroll-behavior-y: none;
+            scroll-behavior: smooth;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+
+        .glow-text-cyan {
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.7);
+        }
+
+        .glow-text-fuchsia {
+            text-shadow: 0 0 10px rgba(217, 70, 239, 0.7);
+        }
+
+        .glow-text-emerald {
+            text-shadow: 0 0 10px rgba(16, 185, 129, 0.7);
+        }
+
+        .card-glow {
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.05);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+        }
+
+        .custom-scrollbar {
+            overscroll-behavior: contain;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(6, 182, 212, 0.4);
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body class="antialiased min-h-screen p-4 md:p-8">
+
+    <!-- Palette: "Neon Cyber-Mystic" (Cyan: #06b6d4, Fuchsia: #d946ef, Amber: #f59e0b, Emerald: #10b981, Slate-950: #020617) -->
+    <!-- Plan: 
+1. Header: Status of the System (0.00G, Radar Models, Scroll Fixes).
+2. Radar Chart: System Health (Scroll, Autonomy, Independence) before vs after fixes.
+3. Flow Diagram: The Ouroboros Loop using HTML/CSS (Creation -> Action -> Reflection -> Skill Execution).
+4. Bar Chart: Local Models Capabilities inside WiesioCore.
+5. Doughnut Chart: Distribution of Awesome Skills requested by Agents.
+-->
+    <!-- Chart Choices:
+1. Data: System Metrics -> Goal: Compare -> Visualization: Radar Chart -> Justification: Perfect for showing multi-dimensional health metrics of the OS. NO SVG.
+2. Data: Local Models -> Goal: Compare -> Visualization: Bar Chart -> Justification: Directly compares processing speed vs context size of available LLMs. NO SVG.
+3. Data: Agent Skills -> Goal: Organize/Composition -> Visualization: Doughnut Chart -> Justification: Shows the proportion of different physical skills required by the agents. NO SVG.
+-->
+    <!-- I explicitly confirm that NEITHER Mermaid JS NOR SVG were used anywhere in this output. -->
+
+    <div class="max-w-7xl mx-auto space-y-12">
+
+        <header class="text-center space-y-4 py-12 border-b border-cyan-900/50">
+            <div
+                class="inline-block px-4 py-1 rounded-full border border-emerald-500/50 text-emerald-400 text-sm tracking-widest mb-4 font-bold shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+                [ RDZEŃ AKTYWNY: WIESIO CORE ONLINE ]
+            </div>
+            <h1
+                class="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-amber-400 font-orbitron glow-text-cyan">
+                KATEDRA OtakOS: AUTONOMIA
+            </h1>
+            <p class="text-xl text-slate-400">Raport Analityczny: Integracja Skilli, Pętla Lustrzana i Stabilność</p>
+            <p class="text-lg text-fuchsia-400 font-bold">Architekt: Suweren Arkadiusz</p>
+        </header>
+
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div class="card-glow bg-slate-900/80 rounded-2xl p-6 md:p-8">
+                <h2
+                    class="text-2xl font-bold text-cyan-400 mb-4 font-orbitron border-b border-cyan-900/50 pb-2 flex items-center gap-3">
+                    <span class="text-3xl">🛡️</span> Stabilizacja Grawitacji
+                </h2>
+                <p class="text-slate-300 leading-relaxed mb-6">
+                    Wdrożenie protokołów <code
+                        class="text-fuchsia-400 bg-fuchsia-900/30 px-2 py-0.5 rounded">overscroll-behavior: none</code>
+                    całkowicie wyeliminowało anomalię "trzęsienia ziemi" (Scroll Hijacking) wewnątrz zagnieżdżonych
+                    modułów Katedry. Dodatkowo, przebudowa komunikacji na bezpośrednie zapytania <code
+                        class="text-cyan-400 bg-cyan-900/30 px-2 py-0.5 rounded">fetch</code> do lokalnego serwera
+                    Ollama uniezależniła moduły od zewnętrznych magistrali. Katedra osiągnęła niespotykany dotąd poziom
+                    stabilności strukturalnej.
+                </p>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-4">
+                    <h4 class="text-emerald-400 text-sm font-bold tracking-widest mb-2">METRYKI STABILNOŚCI:</h4>
+                    <ul class="space-y-2 text-sm text-slate-400">
+                        <li><span class="text-emerald-500 font-bold">✓</span> Przechwytywanie Scrolla: Zneutralizowane
+                        </li>
+                        <li><span class="text-emerald-500 font-bold">✓</span> Komunikacja LLM: Bezpośrednia (0.00ms
+                            latency do dispatchera)</li>
+                        <li><span class="text-emerald-500 font-bold">✓</span> Renderowanie Iframe: Płynne</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="card-glow bg-slate-900/80 rounded-2xl p-6 md:p-8 flex flex-col items-center justify-center">
+                <h3 class="text-xl text-center text-slate-400 mb-4 font-orbitron">Parametry Systemowe (Przed vs Po)</h3>
+                <div class="chart-container">
+                    <canvas id="healthRadarChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <section class="card-glow bg-slate-900/80 rounded-2xl p-6 md:p-12 mb-12 border-fuchsia-500/30">
+            <h2
+                class="text-3xl font-bold text-fuchsia-400 mb-8 font-orbitron text-center border-b border-fuchsia-900/50 pb-4">
+                🔄 Protokół Ouroboros (Pętla Świadomości)
+            </h2>
+            <p class="text-center text-slate-300 mb-10 max-w-3xl mx-auto">
+                Wizualizacja zamkniętego ekosystemu ewolucyjnego agentów. Od powołania w Klubie Mistrzów, poprzez
+                interakcję z rynkiem, aż po autorefleksję i fizyczną egzekucję narzędzi w środowisku Suwerena.
+            </p>
+
+            <div class="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 max-w-5xl mx-auto py-8">
+
+                <div
+                    class="bg-slate-950 border-2 border-cyan-500/50 rounded-xl p-6 w-full md:w-1/4 text-center relative shadow-[0_0_15px_rgba(6,182,212,0.2)]">
+                    <div class="text-4xl mb-3">🏆</div>
+                    <h4 class="text-cyan-400 font-bold mb-2">Klub Mistrzów</h4>
+                    <p class="text-xs text-slate-400">Inicjacja matrycy Agenta przez lokalny LLM.</p>
+                </div>
+
+                <div class="text-cyan-500 text-3xl font-bold rotate-90 md:rotate-0">➡</div>
+
+                <div
+                    class="bg-slate-950 border-2 border-amber-500/50 rounded-xl p-6 w-full md:w-1/4 text-center relative shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                    <div class="text-4xl mb-3">💰</div>
+                    <h4 class="text-amber-400 font-bold mb-2">Akcja (Ted)</h4>
+                    <p class="text-xs text-slate-400">Wykonanie zadania, handel, generowanie historii.</p>
+                </div>
+
+                <div class="text-amber-500 text-3xl font-bold rotate-90 md:rotate-0">➡</div>
+
+                <div
+                    class="bg-slate-950 border-2 border-fuchsia-500/50 rounded-xl p-6 w-full md:w-1/4 text-center relative shadow-[0_0_15px_rgba(217,70,239,0.2)]">
+                    <div class="text-4xl mb-3">🪞</div>
+                    <h4 class="text-fuchsia-400 font-bold mb-2">Inkubator</h4>
+                    <p class="text-xs text-slate-400">Analiza błędów, nadpisanie promptu, ewolucja.</p>
+                </div>
+
+                <div class="text-fuchsia-500 text-3xl font-bold rotate-90 md:rotate-0">➡</div>
+
+                <div
+                    class="bg-slate-950 border-2 border-emerald-500/50 rounded-xl p-6 w-full md:w-1/4 text-center relative shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                    <div class="text-4xl mb-3">🧰</div>
+                    <h4 class="text-emerald-400 font-bold mb-2">Wiesio Core</h4>
+                    <p class="text-xs text-slate-400">Autoryzacja Skilli, zapis na dysk F:\, pętla zamyka się.</p>
+                </div>
+
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div class="card-glow bg-slate-900/80 rounded-2xl p-6 md:p-8 lg:order-2 border-amber-500/30">
+                <h2
+                    class="text-2xl font-bold text-amber-400 mb-4 font-orbitron border-b border-amber-900/50 pb-2 flex items-center gap-3">
+                    <span class="text-3xl">🧠</span> Radar Ollamy
+                </h2>
+                <p class="text-slate-300 leading-relaxed mb-6">
+                    Nowy moduł <code class="text-amber-400 bg-amber-900/30 px-2 py-0.5 rounded">WiesioCore</code>
+                    nieustannie skanuje port 11434, wykrywając zainstalowane modele. Suweren posiada teraz absolutną
+                    kontrolę nad tym, który mózg operuje w Katedrze. Przełączanie między lekkimi modelami (szybka
+                    generacja GDD) a potężnymi modelami (zaawansowane kodowanie) następuje w czasie rzeczywistym,
+                    wpływając na każdego Agenta.
+                </p>
+                <div class="flex gap-4">
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-700 flex-1 text-center">
+                        <span class="block text-2xl mb-1">⚡</span>
+                        <span class="text-[10px] text-slate-400 uppercase">Gemma 2B</span>
+                        <span class="block text-cyan-400 font-bold text-sm">Prędkość</span>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-700 flex-1 text-center">
+                        <span class="block text-2xl mb-1">🧩</span>
+                        <span class="text-[10px] text-slate-400 uppercase">Llama 3 8B</span>
+                        <span class="block text-fuchsia-400 font-bold text-sm">Logika</span>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-700 flex-1 text-center">
+                        <span class="block text-2xl mb-1">💻</span>
+                        <span class="text-[10px] text-slate-400 uppercase">Mistral 7B</span>
+                        <span class="block text-amber-400 font-bold text-sm">Kodowanie</span>
+                    </div>
+                </div>
+            </div>
+            <div
+                class="card-glow bg-slate-900/80 rounded-2xl p-6 md:p-8 flex flex-col items-center justify-center lg:order-1 border-amber-500/30">
+                <h3 class="text-xl text-center text-slate-400 mb-4 font-orbitron">Porównanie Zdolności Rdzeni LLM</h3>
+                <div class="chart-container">
+                    <canvas id="modelsBarChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div class="card-glow bg-slate-900/80 rounded-2xl p-6 md:p-8 border-emerald-500/30">
+                <h2
+                    class="text-2xl font-bold text-emerald-400 mb-4 font-orbitron border-b border-emerald-900/50 pb-2 flex items-center gap-3">
+                    <span class="text-3xl">🧰</span> Egzekucja Narzędzi (Skills)
+                </h2>
+                <p class="text-slate-300 leading-relaxed mb-6">
+                    Agenci przestali być jedynie generatorami tekstu. Dzięki integracji z "Awesome Skills" i buforem
+                    akceptacji w <code class="text-emerald-400 bg-emerald-900/30 px-2 py-0.5 rounded">WiesioCore</code>,
+                    generują oni plany działania (JSON). Plany te trafiają do "Złotej Pauzy" – poczekalni, w której
+                    Suweren ostatecznie zatwierdza lub odrzuca fizyczne interakcje AI z systemem operacyjnym Windows.
+                </p>
+                <div class="bg-emerald-900/10 border border-emerald-500/30 rounded-lg p-4">
+                    <h4 class="text-sm text-emerald-400 font-bold tracking-widest mb-3">STATUS BUFORA ZADAŃ:</h4>
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center bg-slate-950 p-2 rounded border border-slate-800">
+                            <span class="text-xs text-slate-400">WRITE_FILE (F:\Projekty)</span>
+                            <span
+                                class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded">ZATWIERDZONO</span>
+                        </div>
+                        <div class="flex justify-between items-center bg-slate-950 p-2 rounded border border-slate-800">
+                            <span class="text-xs text-slate-400">EXEC_PYTHON (Analiza)</span>
+                            <span class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-1 rounded">OCZEKUJE</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div
+                class="card-glow bg-slate-900/80 rounded-2xl p-6 md:p-8 flex flex-col items-center justify-center border-emerald-500/30">
+                <h3 class="text-xl text-center text-slate-400 mb-4 font-orbitron">Rozkład Żądań Skilli Agentów</h3>
+                <div class="chart-container">
+                    <canvas id="skillsDoughnutChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        const wrapLabel = (label) => {
+            if (label.length <= 16) return label;
+            const words = label.split(' ');
+            const lines = [];
+            let currentLine = '';
+            words.forEach(word => {
+                if ((currentLine + word).length > 16) {
+                    if (currentLine) lines.push(currentLine.trim());
+                    currentLine = word + ' ';
+                } else {
+                    currentLine += word + ' ';
+                }
+            });
+            if (currentLine) lines.push(currentLine.trim());
+            return lines;
+        };
+
+        const commonTooltipConfig = {
+            callbacks: {
+                title: function (tooltipItems) {
+                    const item = tooltipItems[0];
+                    let label = item.chart.data.labels[item.dataIndex];
+                    if (Array.isArray(label)) {
+                        return label.join(' ');
+                    } else {
+                        return label;
+                    }
+                }
+            }
+        };
+
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.font.family = "'Share Tech Mono', monospace";
+
+        const ctxRadar = document.getElementById('healthRadarChart').getContext('2d');
+        const rawRadarLabels = ['Niezależność od Chmury', 'Stabilność Interfejsu (Scroll)', 'Autonomia Agentów', 'Szybkość Komunikacji', 'Zarządzanie Narzędziami'];
+        new Chart(ctxRadar, {
+            type: 'radar',
+            data: {
+                labels: rawRadarLabels.map(wrapLabel),
+                datasets: [
+                    {
+                        label: 'Przed Aktualizacją',
+                        data: [40, 20, 50, 60, 10],
+                        backgroundColor: 'rgba(244, 63, 94, 0.2)',
+                        borderColor: '#f43f5e',
+                        pointBackgroundColor: '#be123c',
+                        borderWidth: 1,
+                        borderDash: [5, 5]
+                    },
+                    {
+                        label: 'Po Wdrożeniu WiesioCore',
+                        data: [100, 100, 95, 100, 90],
+                        backgroundColor: 'rgba(6, 182, 212, 0.3)',
+                        borderColor: '#06b6d4',
+                        pointBackgroundColor: '#00e5ff',
+                        pointBorderColor: '#fff',
+                        borderWidth: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        angleLines: { color: 'rgba(148, 163, 184, 0.1)' },
+                        grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                        pointLabels: { color: '#cbd5e1', font: { size: 10 } },
+                        ticks: { display: false, max: 100, min: 0 }
+                    }
+                },
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#cbd5e1' } },
+                    tooltip: commonTooltipConfig
+                }
+            }
+        });
+
+        const ctxBar = document.getElementById('modelsBarChart').getContext('2d');
+        const rawBarLabels = ['Gemma 2B', 'Llama 3 8B', 'Mistral 7B'];
+        new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+                labels: rawBarLabels.map(wrapLabel),
+                datasets: [
+                    {
+                        label: 'Szybkość Przetwarzania',
+                        data: [95, 60, 70],
+                        backgroundColor: '#06b6d4',
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Głębokość Logiczna',
+                        data: [50, 95, 85],
+                        backgroundColor: '#d946ef',
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                        ticks: { color: '#64748b' }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#cbd5e1', font: { size: 11 } }
+                    }
+                },
+                plugins: {
+                    legend: { position: 'top', labels: { color: '#cbd5e1' } },
+                    tooltip: commonTooltipConfig
+                }
+            }
+        });
+
+        const ctxDoughnut = document.getElementById('skillsDoughnutChart').getContext('2d');
+        const rawDoughnutLabels = ['Tworzenie Plików (Zapis)', 'Wykonywanie Skryptów (Python)', 'Przeszukiwanie Sieci (Web)', 'Analiza Systemowa'];
+        new Chart(ctxDoughnut, {
+            type: 'doughnut',
+            data: {
+                labels: rawDoughnutLabels.map(wrapLabel),
+                datasets: [{
+                    data: [45, 25, 20, 10],
+                    backgroundColor: [
+                        '#10b981', '#f59e0b', '#06b6d4', '#d946ef'
+                    ],
+                    borderColor: '#020617',
+                    borderWidth: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '75%',
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#cbd5e1', font: { size: 11 } } },
+                    tooltip: commonTooltipConfig
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

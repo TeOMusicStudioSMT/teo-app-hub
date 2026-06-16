@@ -5,7 +5,7 @@
  * nasłuchującego na lokalnym porcie 3001. 
  */
 
-const DEFAULT_BRIDGE_URL = 'http://localhost:3001/api/bridge/execute';
+const DEFAULT_BRIDGE_URL = 'http://127.0.0.1:3001/api/bridge/execute';
 
 const getBridgeUrl = (): string => {
     // Sprawdź czy jesteśmy w przeglądarce i czy jest ustawiony zewnętrzny tunel
@@ -47,7 +47,7 @@ export const executeBridgeCommand = async (command: string): Promise<BridgeRespo
         // Obsługa przypadku, w którym serwer Wiesia po prostu nie jest uruchomiony
         return {
             success: false,
-            message: 'Śluza zamknięta: Serwer Wiesława jest wyłączony lub nieosiągalny na localhost:3001.',
+            message: 'Śluza zamknięta: Serwer Wiesława jest wyłączony lub nieosiągalny na 127.0.0.1:3001.',
             error: error instanceof Error ? error.message : String(error)
         };
     }

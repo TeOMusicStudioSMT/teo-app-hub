@@ -93,11 +93,7 @@ const Header: React.FC<HeaderProps> = ({ isVisible, isAuthenticated, isLoungeOpe
                             <FiPower size={20} />
                         </button>
                     </div>
-                ) : (
-                    <button onClick={onLogin} className="capsule-button capsule-cyan text-sm md:text-base px-4 md:px-6">
-                        Enter Lounge
-                    </button>
-                )}
+                ) : null}
             </div>
         </header>
     );
