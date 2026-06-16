@@ -51,6 +51,7 @@ import { TestKoherencji } from './components/special/TestKoherencji';
 import KwantowaCzytelnia from './components/KwantowaCzytelnia';
 import AutoPanicSentinel from './components/special/AutoPanicSentinel';
 import VaultDashboard from './components/special/VaultDashboard';
+import SimulationDashboard from './components/special/SimulationDashboard';
 
 
 
@@ -96,6 +97,7 @@ const App: React.FC = () => {
     const [showPipes, setShowPipes] = useState(false);
     const [showJournal, setShowJournal] = useState(false); // 📓 Kwantowy Dziennik
     const [showVault, setShowVault] = useState(false); // 🔐 Skarbiec 0.00G
+    const [showTeoSim, setShowTeoSim] = useState(false); // 🧠 TeO-Sim Reasoning Loops
     const [isWiesioOnline, setIsWiesioOnline] = useState<boolean | null>(null);
 
     // --- Real Auth State ---
@@ -782,6 +784,15 @@ const App: React.FC = () => {
                                     </div>
                                     <div className="pointer-events-auto">
                                         <button
+                                            onClick={() => setShowTeoSim(true)}
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-green-500 to-emerald-800 border-2 border-green-300/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            title="🧠 TeO-Sim: Reasoning Loops"
+                                        >
+                                            🧠
+                                        </button>
+                                    </div>
+                                    <div className="pointer-events-auto">
+                                        <button
                                             onClick={() => setShowJasonBridge(true)}
                                             className="w-14 h-14 rounded-full flex items-center justify-center text-2xl bg-gradient-to-br from-purple-500 to-indigo-600 border-2 border-white/30 shadow-[0_0_20px_rgba(139,92,246,0.5)] cursor-pointer hover:scale-110 transition-transform"
                                             title="🎵 RadioSMT Pipeline"
@@ -917,6 +928,24 @@ const App: React.FC = () => {
                                                 onClick={(e) => e.stopPropagation()}
                                             >
                                                 <VaultDashboard onClose={() => setShowVault(false)} />
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                    {showTeoSim && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[3001] p-4"
+                                            onClick={() => setShowTeoSim(false)}
+                                        >
+                                            <motion.div
+                                                initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="w-full max-w-3xl"
+                                            >
+                                                <div className="flex justify-end mb-2">
+                                                    <button onClick={() => setShowTeoSim(false)} className="text-slate-400 hover:text-white text-sm border border-slate-700 rounded-lg px-3 py-1">✕ Zamknij</button>
+                                                </div>
+                                                <SimulationDashboard />
                                             </motion.div>
                                         </motion.div>
                                     )}
