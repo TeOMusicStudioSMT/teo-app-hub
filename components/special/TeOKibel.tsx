@@ -394,6 +394,7 @@ export const TeOKibel: React.FC<TeOKibelProps> = ({ onFlush }) => {
   };
 
   return (
+    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', justifyContent: 'center', flexWrap: 'wrap', width: '100%' }}>
     <div ref={containerRef} style={containerStyle}>
       {/* Header */}
       <div style={headerStyle}>
@@ -601,7 +602,7 @@ export const TeOKibel: React.FC<TeOKibelProps> = ({ onFlush }) => {
         )}
       </motion.button>
 
-      {/* 🔧 DROŻNOŚĆ RUR — scalone z Kiblem (rozwijane) */}
+      {/* 🔧 DROŻNOŚĆ RUR — scalone z Kiblem (rozwija się NA BOK) */}
       <button
         onClick={() => setShowPipes(p => !p)}
         style={{
@@ -609,7 +610,7 @@ export const TeOKibel: React.FC<TeOKibelProps> = ({ onFlush }) => {
           width: '100%',
           maxWidth: 320,
           padding: '10px',
-          background: 'rgba(244,114,182,0.08)',
+          background: showPipes ? 'rgba(244,114,182,0.18)' : 'rgba(244,114,182,0.08)',
           border: '1px solid rgba(244,114,182,0.3)',
           borderRadius: 12,
           color: '#f472b6',
@@ -619,21 +620,24 @@ export const TeOKibel: React.FC<TeOKibelProps> = ({ onFlush }) => {
           cursor: 'pointer',
         }}
       >
-        {showPipes ? '▲ ZWIŃ DROŻNOŚĆ RUR' : '🔧 DROŻNOŚĆ RUR'}
+        {showPipes ? '◀ ZWIŃ DROŻNOŚĆ RUR' : '🔧 DROŻNOŚĆ RUR ▶'}
       </button>
+    </div>{/* /kolumna Kibla */}
 
-      <AnimatePresence>
-        {showPipes && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            style={{ overflow: 'hidden', width: '100%', marginTop: 12 }}
-          >
-            <PipesPanel />
-          </motion.div>
-        )}
-      </AnimatePresence>
+    {/* Panel boczny — rozwija się obok (lub poniżej na wąskim ekranie) */}
+    <AnimatePresence>
+      {showPipes && (
+        <motion.div
+          initial={{ opacity: 0, x: -24 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -24 }}
+          transition={{ duration: 0.28 }}
+          style={{ flex: '0 0 auto', alignSelf: 'flex-start' }}
+        >
+          <PipesPanel />
+        </motion.div>
+      )}
+    </AnimatePresence>
     </div>
   );
 };
@@ -648,7 +652,9 @@ const containerStyle: React.CSSProperties = {
   borderRadius: '24px',
   border: '1px solid rgba(34, 211, 238, 0.3)',
   maxWidth: '420px',
-  margin: '20px auto',
+  width: '100%',
+  margin: 0,
+  flex: '1 1 360px',
 };
 
 const headerStyle: React.CSSProperties = {

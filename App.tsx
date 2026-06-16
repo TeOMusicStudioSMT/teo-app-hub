@@ -808,12 +808,14 @@ const App: React.FC = () => {
                                     {showKibel && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2002]"
+                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-[2002] p-4"
                                             onClick={() => setShowKibel(false)}
                                         >
                                             <motion.div
                                                 initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
                                                 onClick={(e) => e.stopPropagation()}
+                                                className="my-auto w-full"
+                                                style={{ maxWidth: 820 }}
                                             >
                                                 <TeOKibel onFlush={() => { setShowKibel(false); setShowCrewClub(true); }} />
                                             </motion.div>
