@@ -28,6 +28,7 @@ import TostService           from './services/TostService.js';
 import LaundryService        from './services/LaundryService.js';
 import VaultService          from './services/VaultService.js';
 import ProfileScoutService   from './services/ProfileScoutService.js';
+import FlushService          from './services/FlushService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -2891,6 +2892,32 @@ app.post('/api/scout/scan', async (req, res) => {
     } catch (e) {
         console.error('[Scout-API] ❌ scan:', e.message);
         return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🧯 REAKTOR FLUSH-CORE — sekwencyjne czyszczenie zasobów (intencja SystemController)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/kibel/flush — Body (opcjonalne): { dryRun?: boolean, maxAgeHours?: number }
+ *
+ * Sekwencja (odpowiednik SystemController z NestJS, natywnie w Express):
+ *   FAZA 1 — integralność Skarbca (reużycie VaultService AES-256-GCM)
+ *   FAZA 2 — flushSystemResources(): temp logi, .tmp, stare .bak, stare patche
+ *
+ * dryRun=true → zwraca listę "do usunięcia" bez kasowania (bezpieczny podgląd).
+ */
+app.post('/api/kibel/flush', async (req, res) => {
+    const dryRun      = req.body?.dryRun === true;
+    const maxAgeHours = req.body?.maxAgeHours;
+    console.log(`[API Gateway] 🧯 Żądanie Flush Resources (dryRun=${dryRun}).`);
+    try {
+        const result = await FlushService.flushSystemResources({ dryRun, maxAgeHours });
+        return res.json({ success: result.success, ...result });
+    } catch (e) {
+        console.error('[Flush-API] ❌ flush:', e.message);
+        return res.status(500).json({ success: false, error: `Flush Protocol Failure: ${e.message}` });
     }
 });
 
