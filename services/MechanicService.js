@@ -18,6 +18,7 @@ import path          from 'path';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import TurbovecService from './TurbovecService.js';
+import ShellSanitizer from './ShellSanitizer.js';
 
 // ─── Ścieżki ──────────────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
@@ -93,6 +94,23 @@ class MechanicService {
     async getQueue() {
         await this._ensureDirs();
         return this._readQueue();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PUBLIC: Otak-Sync Watchdog — odkażanie komend powłoki dla zadań shell
+    // ─────────────────────────────────────────────────────────────────────────
+    /**
+     * Hook Strażnika Powłoki: każda komenda, którą agent Mechanik miałby przekazać
+     * do powłoki Windows (cmd/PowerShell), przechodzi przez ten filtr — usuwa
+     * znaczniki promptu "$", /dev/null i Linux-izmy. UWAGA: NIE stosujemy tego do
+     * treści patchy/kodu (kod TS używa `${...}`); wyłącznie do komend shell.
+     * @param {string} rawCommand
+     * @returns {string} bezpieczna komenda pod powłokę Windows
+     */
+    sanitizeShellCommand(rawCommand) {
+        const { command, changed, notes } = ShellSanitizer.sanitizeShellCommand(rawCommand);
+        if (changed) console.log(`[Mechanik·Otak-Sync] 🧯 Komenda odkażona: ${notes.join(' ')}`);
+        return command;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

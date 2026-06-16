@@ -22,6 +22,7 @@ const require = createRequire(import.meta.url);
 import KnowledgeGraphService from './services/KnowledgeGraphService.js';
 import MechanicService       from './services/MechanicService.js';
 import TurbovecService       from './services/TurbovecService.js';
+import ShellSanitizer        from './services/ShellSanitizer.js';
 import ImpresarioService     from './services/ImpresarioService.js';
 import TostService           from './services/TostService.js';
 import LaundryService        from './services/LaundryService.js';
@@ -1355,8 +1356,13 @@ app.post('/api/bridge/execute', async (req, res) => {
 
     // ── NOWOŚĆ: EGZEKUCJA CZYSTYCH KOMEND W TERMINALU ───────────────
     if (action === 'EXEC_COMMAND') {
-        const cmd = payload.command;
-        if (!cmd) return res.status(400).json({ error: 'Brak komendy' });
+        const rawCmd = payload.command;
+        if (!rawCmd) return res.status(400).json({ error: 'Brak komendy' });
+
+        // 🧯 Otak-Sync Watchdog: odkaź komendę pod powłokę Windows ($ prompt, Linux-izmy)
+        const san = ShellSanitizer.sanitizeShellCommand(rawCmd);
+        const cmd = san.command;
+        if (san.changed) console.log(`[Otak-Sync] 🧯 EXEC_COMMAND odkażono: ${san.notes.join(' ')}`);
 
         console.log(`[Wiesio-Terminal] 💻 Wykonuję komendę: ${cmd}`);
 
@@ -1617,8 +1623,12 @@ app.post('/api/bridge/execute', async (req, res) => {
 
     // --- WYKONYWANIE KOMEND SYSTEMOWYCH (Skill: CMD) ---
     if (action === 'EXEC_SYSTEM_CMD') {
-        let cmd = payload.command;
-        if (!cmd) return res.status(400).json({ error: 'Brak komendy.' });
+        if (!payload.command) return res.status(400).json({ error: 'Brak komendy.' });
+
+        // 🧯 Otak-Sync Watchdog: odkaź skrypt pod PowerShell ($ prompt, /dev/null, "\" → "`")
+        const sanCmd = ShellSanitizer.sanitizeShellCommand(payload.command);
+        let cmd = sanCmd.command;
+        if (sanCmd.changed) console.log(`[Otak-Sync] 🧯 EXEC_SYSTEM_CMD odkażono: ${sanCmd.notes.join(' ')}`);
 
         console.log(`[Wiesio-Term] ⚡ Odpalam skrypt: ${cmd}`);
 
@@ -1745,9 +1755,14 @@ app.post('/api/bridge/execute', async (req, res) => {
     // ── EXEC_SYSTEM (Raw Terminal) — przeniesione z /wiesio/action ──────────
     if (action === 'EXEC_SYSTEM') {
         // Obsługa Uniwersalnej Paczki: command może być w body.command LUB body.payload.command
-        const command = payload.command || payload.payload?.command;
+        const rawCommand = payload.command || payload.payload?.command;
         const timeout  = payload.timeout || payload.payload?.timeout || 300000;
-        if (!command) return res.status(400).json({ success: false, message: 'Brak komendy (sprawdź body.command lub body.payload.command)' });
+        if (!rawCommand) return res.status(400).json({ success: false, message: 'Brak komendy (sprawdź body.command lub body.payload.command)' });
+
+        // 🧯 Otak-Sync Watchdog: odkaź surową komendę pod powłokę Windows
+        const sanSys = ShellSanitizer.sanitizeShellCommand(rawCommand);
+        const command = sanSys.command;
+        if (sanSys.changed) console.log(`[Otak-Sync] 🧯 EXEC_SYSTEM odkażono: ${sanSys.notes.join(' ')}`);
 
         console.log(`[Wiesio-Bridge] ⚡ EXEC_SYSTEM: ${command.substring(0, 80)}...`);
 
