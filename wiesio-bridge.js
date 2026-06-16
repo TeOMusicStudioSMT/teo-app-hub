@@ -71,18 +71,18 @@ const app = express();
 const PORT = 3001;
 
 // Ścieżki do folderów
-const ANTIGRAVITY_DIR = path.join(process.cwd(), '_AntiGravity_Wymiar');
-const MUSIC_DIR = path.join(process.cwd(), '_AntiGravity_Muzyka');
-const MOVE_DIR = path.join(process.cwd(), '_AntiGravity_Move');
-const SONIC_DIR = path.join(process.cwd(), '_AntiGravity_Sonic');
-const BUILD_DIR = path.join(process.cwd(), '_AntiGravity_Build');
-const AI_DIR = path.join(process.cwd(), '_AntiGravity_AI');
+const ANTIGRAVITY_DIR = path.join(process.cwd(), '_OtakOs_Wymiar');
+const MUSIC_DIR = path.join(process.cwd(), '_OtakOs_Muzyka');
+const MOVE_DIR = path.join(process.cwd(), '_OtakOs_Move');
+const SONIC_DIR = path.join(process.cwd(), '_OtakOs_Sonic');
+const BUILD_DIR = path.join(process.cwd(), '_OtakOs_Build');
+const AI_DIR = path.join(process.cwd(), '_OtakOs_AI');
 const MODELS_DIR = path.join(AI_DIR, 'models');
 const TEMP_DIR = path.join(AI_DIR, 'temp');
 const BIN_DIR = path.join(AI_DIR, 'bin');
 const WHISPER_EXE = path.join(BIN_DIR, 'whisper-cli.exe');
-const COMPONENTS_DIR = path.join(process.cwd(), '_AntiGravity_Components'); // ← NOWOŚĆ od Klaudiusza
-const AULA_DIR = path.join(process.cwd(), '_AntiGravity_Aula'); // ← NOWOŚĆ od Suwerena
+const COMPONENTS_DIR = path.join(process.cwd(), '_OtakOs_Components'); // ← NOWOŚĆ od Klaudiusza
+const AULA_DIR = path.join(process.cwd(), '_OtakOs_Aula'); // ← NOWOŚĆ od Suwerena
 const RAFINERIA_TEMP_DIR = path.join(process.cwd(), '_temp'); // ← Rafineria: pliki tymczasowe webm/mp4
 
 
@@ -112,7 +112,7 @@ app.use('/music', cors({ origin: '*' }), express.static(MUSIC_DIR, {
     }
 }));
 
-const moveDir = path.join(__dirname, '_AntiGravity_Move');
+const moveDir = path.join(__dirname, '_OtakOs_Move');
 app.use('/move', express.static(moveDir));
 app.use('/components', express.static(COMPONENTS_DIR));
 
@@ -182,13 +182,13 @@ app.post('/api/bridge/autosync', async (req, res) => {
         let resolvedPath = audioPath;
         for (const pattern of MUSIC_URL_PATTERNS) {
             if (resolvedPath.includes(pattern)) {
-                resolvedPath = resolvedPath.replace(pattern, '_AntiGravity_Muzyka/');
+                resolvedPath = resolvedPath.replace(pattern, '_OtakOs_Muzyka/');
                 break;
             }
         }
         // Jeśli to bare filename (np. "Artysta/Song.mp3") bez prefiksu muzyki — dodaj go
-        if (!path.isAbsolute(resolvedPath) && !resolvedPath.startsWith('_AntiGravity_Muzyka') && !resolvedPath.startsWith('http')) {
-            resolvedPath = path.join('_AntiGravity_Muzyka', resolvedPath);
+        if (!path.isAbsolute(resolvedPath) && !resolvedPath.startsWith('_OtakOs_Muzyka') && !resolvedPath.startsWith('http')) {
+            resolvedPath = path.join('_OtakOs_Muzyka', resolvedPath);
         }
         const fullAudioPath = path.isAbsolute(resolvedPath)
             ? resolvedPath
@@ -211,7 +211,7 @@ app.post('/api/bridge/autosync', async (req, res) => {
         if (!fsSync.existsSync(modelPath)) {
             return res.status(400).json({
                 success: false,
-                message: `Brak modelu: ${model}. Pobierz go do folderu _AntiGravity_AI/models/ jako ggml-${model}.bin`,
+                message: `Brak modelu: ${model}. Pobierz go do folderu _OtakOs_AI/models/ jako ggml-${model}.bin`,
                 hint: `https://huggingface.co/ggerganov/whisper.cpp/tree/main`
             });
         }
@@ -220,7 +220,7 @@ app.post('/api/bridge/autosync', async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "Brak silnika AI (whisper-cli.exe).",
-                hint: "Pobierz whisper.cpp binarki i wypakuj do _AntiGravity_AI/bin/."
+                hint: "Pobierz whisper.cpp binarki i wypakuj do _OtakOs_AI/bin/."
             });
         }
 
@@ -362,27 +362,27 @@ async function getGeminiKey(reqApiKey) {
 const KATEDRA_TOOLS = [
     {
         name: 'list_files',
-        description: 'Lista plików w _AntiGravity_Wymiar/',
+        description: 'Lista plików w _OtakOs_Wymiar/',
         input_schema: { type: 'object', properties: {}, required: [] },
     },
     {
         name: 'read_file',
-        description: 'Odczytaj plik z _AntiGravity_Wymiar/',
+        description: 'Odczytaj plik z _OtakOs_Wymiar/',
         input_schema: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] },
     },
     {
         name: 'write_file',
-        description: 'Zapisz plik do _AntiGravity_Build/',
+        description: 'Zapisz plik do _OtakOs_Build/',
         input_schema: { type: 'object', properties: { filename: { type: 'string' }, content: { type: 'string' } }, required: ['filename', 'content'] },
     },
     {
         name: 'list_components',
-        description: 'Lista zbudowanych komponentów w _AntiGravity_Components/',
+        description: 'Lista zbudowanych komponentów w _OtakOs_Components/',
         input_schema: { type: 'object', properties: {}, required: [] },
     },
     {
         name: 'save_component',
-        description: 'Zapisz gotowy komponent React/TSX do biblioteki _AntiGravity_Components/',
+        description: 'Zapisz gotowy komponent React/TSX do biblioteki _OtakOs_Components/',
         input_schema: {
             type: 'object',
             properties: {
@@ -941,14 +941,14 @@ app.post('/api/bridge/execute', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Brak filename lub content' });
         }
         try {
-            // Wyczyść ewentualny prefiks _AntiGravity_Wymiar i leading slash
+            // Wyczyść ewentualny prefiks _OtakOs_Wymiar i leading slash
             const cleanFilename = filename
-                .replace(/^[/\\]?_AntiGravity_Wymiar[/\\]/i, '')
+                .replace(/^[/\\]?_OtakOs_Wymiar[/\\]/i, '')
                 .replace(/^[/\\]/, '');
 
             // ── ROUTING KATALOGÓW ─────────────────────────────────────
             // Pliki kodu źródłowego aplikacji → rdzeń projektu (__dirname)
-            // Notatki, konwersacje, dane       → _AntiGravity_Wymiar
+            // Notatki, konwersacje, dane       → _OtakOs_Wymiar
             const SOURCE_PREFIXES = [
                 'components/', 'lib/', 'store/', 'styles/',
                 'context/', 'hooks/', 'services/', 'pages/',
@@ -1008,7 +1008,7 @@ app.post('/api/bridge/execute', async (req, res) => {
         }
     }
 
-    // ── LIST_DIRECTORY (Obsługa _AntiGravity_Wymiar / _AntiGravity_Move) ───────────────────────
+    // ── LIST_DIRECTORY (Obsługa _OtakOs_Wymiar / _OtakOs_Move) ───────────────────────
     if (action === 'LIST_DIRECTORY') {
         try {
             let scanDir = ANTIGRAVITY_DIR;
@@ -1054,7 +1054,7 @@ app.post('/api/bridge/execute', async (req, res) => {
         }
     }
 
-    // ── LIST_MOVE (Obsługa mobilna _AntiGravity_Move) ──────────────────────
+    // ── LIST_MOVE (Obsługa mobilna _OtakOs_Move) ──────────────────────
     if (action === 'LIST_MOVE') {
         try {
             const moveFiles = await fs.readdir(moveDir);
@@ -1069,7 +1069,7 @@ app.post('/api/bridge/execute', async (req, res) => {
     }
 
     // ── GET_LOCAL_PLAYLIST ───────────────────────────────────────────
-    // Sztuczka nr 4: skanuje _AntiGravity_Muzyka/ i zwraca playlistę
+    // Sztuczka nr 4: skanuje _OtakOs_Muzyka/ i zwraca playlistę
     // z gotowymi URL-ami do streamowania przez Wiesia
     if (action === 'GET_LOCAL_PLAYLIST') {
         try {
@@ -1675,7 +1675,7 @@ app.post('/api/bridge/execute', async (req, res) => {
             if (type === 'Podcat') klockiSubDir = 'Klocki do Podcatów';
             if (type === 'Kronika') klockiSubDir = 'Klocki do Kronik';
 
-            const klockiDir = path.join(process.cwd(), '_AntyGravity Klocki', klockiSubDir);
+            const klockiDir = path.join(process.cwd(), '_OtakOs_Klocki', klockiSubDir);
             const mainVideoPath = path.join(MOVE_DIR, mainVideoFilename);
 
             if (!fsSync.existsSync(mainVideoPath)) {
@@ -1883,11 +1883,11 @@ app.post('/wiesio/action', async (req, res) => {
     const { action, payload } = req.body;
 
     if (action === 'ZESPAWAJ_PODCAT') {
-        const moveDir = path.join(__dirname, '_AntiGravity_Move');
+        const moveDir = path.join(__dirname, '_OtakOs_Move');
 
         // 1. SZUKAMY NAJNOWSZEGO GŁÓWNEGO WIDEO
         if (!fsSync.existsSync(moveDir)) {
-            return res.status(404).json({ error: 'Folder _AntiGravity_Move nie istnieje!' });
+            return res.status(404).json({ error: 'Folder _OtakOs_Move nie istnieje!' });
         }
 
         const videos = fsSync.readdirSync(moveDir)
@@ -1896,7 +1896,7 @@ app.post('/wiesio/action', async (req, res) => {
                 return fsSync.statSync(path.join(moveDir, b)).mtime.getTime() - fsSync.statSync(path.join(moveDir, a)).mtime.getTime();
             });
 
-        if (videos.length === 0) return res.status(404).json({ error: 'Brak surowego wideo w _AntiGravity_Move' });
+        if (videos.length === 0) return res.status(404).json({ error: 'Brak surowego wideo w _OtakOs_Move' });
         const mainVideo = path.join(moveDir, videos[0]);
 
         // 2. SONAR WIBRACYJNY (Rozpoznawanie PodCaT vs Muzyka)
@@ -1910,7 +1910,7 @@ app.post('/wiesio/action', async (req, res) => {
             console.log(`[Wiesio-Sonar] 🎙️ Wykryto wibrację Słowa! Przełączam tory na: ${klockiSubDir}`);
         }
 
-        const klockiDir = path.join(__dirname, '_AntyGravity Klocki', klockiSubDir);
+        const klockiDir = path.join(__dirname, '_OtakOs_Klocki', klockiSubDir);
 
         // 3. MATEMATYKA WYMIARU 0.00G (Obliczanie 28-dniowego cyklu od 1 kwietnia)
         const now = new Date();
@@ -2059,7 +2059,7 @@ app.post('/wiesio/action', async (req, res) => {
     if (action === 'SZUKAJ_W_PAMIECI') {
         if (!wiesioBrain) return res.status(503).json({ error: 'Mózg śpi!' });
 
-        const memoryFile = path.join('F:', '5 stars', 'TeO STUDIO', 'TeO App HuB', 'ToO APP', 'TeO_Genesis', '_AntiGravity_Kroniki', '_podswiadomosc.json');
+        const memoryFile = path.join('F:', '5 stars', 'TeO STUDIO', 'TeO App HuB', 'ToO APP', 'TeO_Genesis', '_OtakOs_Kroniki', '_podswiadomosc.json');
 
         if (!fsSync.existsSync(memoryFile)) return res.status(200).json({ context: null });
 
@@ -2084,7 +2084,7 @@ app.post('/wiesio/action', async (req, res) => {
     }
 
     if (action === 'GET_LATEST_KRONIKA') {
-        const kronikiDir = path.join(__dirname, '_AntiGravity_Kroniki');
+        const kronikiDir = path.join(__dirname, '_OtakOs_Kroniki');
 
         if (!fsSync.existsSync(kronikiDir)) return res.status(404).json({ error: 'Brak biblioteki Kronik!' });
 
@@ -2104,7 +2104,7 @@ app.post('/wiesio/action', async (req, res) => {
     }
 
     if (action === 'SAVE_METADATA') {
-        const moveDir = path.join(__dirname, '_AntiGravity_Move');
+        const moveDir = path.join(__dirname, '_OtakOs_Move');
         if (!fsSync.existsSync(moveDir)) fsSync.mkdirSync(moveDir, { recursive: true });
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -2119,7 +2119,7 @@ app.post('/wiesio/action', async (req, res) => {
     }
 
     if (action === 'GET_LOCAL_PREMIERE') {
-        const moveDir = path.join(__dirname, '_AntiGravity_Move');
+        const moveDir = path.join(__dirname, '_OtakOs_Move');
         if (!fsSync.existsSync(moveDir)) return res.status(200).json({ file: null, metadata: null });
 
         const files = fsSync.readdirSync(moveDir);
@@ -2146,7 +2146,7 @@ app.post('/wiesio/action', async (req, res) => {
     }
 
     if (action === 'DELETE_LOCAL_PREMIERE') {
-        const moveDir = path.join(__dirname, '_AntiGravity_Move');
+        const moveDir = path.join(__dirname, '_OtakOs_Move');
         try {
             if (payload.video && fsSync.existsSync(path.join(moveDir, payload.video))) {
                 fsSync.unlinkSync(path.join(moveDir, payload.video));
@@ -2169,7 +2169,7 @@ app.post('/wiesio/action', async (req, res) => {
     if (action === 'INDEX_KRONIKI') {
         if (!wiesioBrain) return res.status(503).json({ error: 'Mózg jeszcze się ładuje!' });
 
-        const kronikiDir = path.join(__dirname, '_AntiGravity_Kroniki');
+        const kronikiDir = path.join(__dirname, '_OtakOs_Kroniki');
         const indexFile = path.join(kronikiDir, '_podswiadomosc.json');
 
         if (!fsSync.existsSync(kronikiDir)) {
@@ -2205,13 +2205,13 @@ app.post('/wiesio/action', async (req, res) => {
     if (action === 'SAVE_KRONIKA') {
         try {
             // Ścieżka do nowej Biblioteki
-            const kronikiDir = path.join(__dirname, '_AntiGravity_Kroniki');
+            const kronikiDir = path.join(__dirname, '_OtakOs_Kroniki');
 
             // Używamy fsSync dla operacji na ścieżkach fizycznych z literą dysku, 
             // jeśli fs.mkdir na p: w windows bywał wybredny
             if (!fsSync.existsSync(kronikiDir)) {
                 fsSync.mkdirSync(kronikiDir, { recursive: true });
-                console.log(`[Wiesio-Archiwista] 📚 Zbudowano nowe regały na dysku F: (_AntiGravity_Kroniki)`);
+                console.log(`[Wiesio-Archiwista] 📚 Zbudowano nowe regały na dysku F: (_OtakOs_Kroniki)`);
             }
 
             const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
@@ -2994,7 +2994,7 @@ function parsePatchFile(content) {
 
 /**
  * GET /api/mechanic/patch/:id
- * Zwraca surową treść pliku _AntiGravity_Wymiar/patches/patch_[id].md.
+ * Zwraca surową treść pliku _OtakOs_Wymiar/patches/patch_[id].md.
  */
 app.get('/api/mechanic/patch/:id', async (req, res) => {
     const { id } = req.params;
@@ -3054,7 +3054,7 @@ app.post('/api/mechanic/apply', async (req, res) => {
         return res.status(422).json({
             success:    false,
             message:    parseErr.message,
-            manualHint: `Otwórz: _AntiGravity_Wymiar/patches/patch_${id}.md`,
+            manualHint: `Otwórz: _OtakOs_Wymiar/patches/patch_${id}.md`,
         });
     }
 
@@ -3099,7 +3099,7 @@ app.post('/api/mechanic/apply', async (req, res) => {
                 code:       'PATCH_TRUNCATION_GUARD',
                 message:    `Wdrożenie wstrzymane — ${reason}. Patch wygląda na fragment, nie pełny plik. ` +
                             `Plik źródłowy NIE został naruszony.`,
-                manualHint: `Przejrzyj ręcznie: _AntiGravity_Wymiar/patches/patch_${id}.md`,
+                manualHint: `Przejrzyj ręcznie: _OtakOs_Wymiar/patches/patch_${id}.md`,
             });
         }
     }
@@ -3836,7 +3836,7 @@ app.listen(PORT, () => {
     console.log(` 🔧 MechanicService — Agent Mechanik (co 3 min)`);
     console.log(` 🕸️  KnowledgeGraphService — Archiwista Wiedzy`);
     console.log(`================================================`);
-    console.log(` 👉 Muzyka: _AntiGravity_Muzyka/`);
+    console.log(` 👉 Muzyka: _OtakOs_Muzyka/`);
     console.log(` 🧠 LLM: POST /api/bridge/execute`);
     console.log(` 🧠 POST /api/claude  ← Claude proxy (SSE)`);
     console.log(` 🔵 POST /api/gemini  ← Gemini proxy (SSE)`);

@@ -6,7 +6,7 @@
  *            NIE duplikujemy logiki kryptograficznej).
  *   ETAP 2 — Temp logi (*.log, ts_errors.log, *.tmp).
  *   ETAP 3 — Stare kopie .bak (Mechanik / ręczne edycje) starsze niż próg wieku.
- *   ETAP 4 — Stare patche w _AntiGravity_Wymiar/patches starsze niż próg.
+ *   ETAP 4 — Stare patche w _OtakOs_Wymiar/patches starsze niż próg.
  *   ETAP 5 — Reset sieci APILayer (cache + liczniki free-plan) → sterylność połączeń.
  *
  * Bezpieczeństwo:
@@ -26,7 +26,7 @@ import ApiLayerService from './ApiLayerService.js';
 
 const __dirname    = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.join(__dirname, '..');
-const ANTIGRAVITY  = path.join(PROJECT_ROOT, '_AntiGravity_Wymiar');
+const ANTIGRAVITY  = path.join(PROJECT_ROOT, '_OtakOs_Wymiar');
 const PATCHES_DIR  = path.join(ANTIGRAVITY, 'patches');
 
 // Płytkie katalogi do skanu temp/.bak (bez rekurencji w node_modules itp.)

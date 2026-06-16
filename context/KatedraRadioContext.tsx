@@ -419,7 +419,7 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
             const response = await bridgeService.sendCommand('GET_LOCAL_PLAYLIST', {});
             if (!response.success) throw new Error(response.message ?? 'Wiesław nie odpowiada');
             const tracks: SunoTrack[] = response.tracks ?? [];
-            if (tracks.length === 0) throw new Error('Brak plików w _AntiGravity_Muzyka/');
+            if (tracks.length === 0) throw new Error('Brak plików w _OtakOs_Muzyka/');
             setState(s => ({ ...s, tracks, currentIndex: 0, isLoading: false, isPlaying: true, error: null }));
         } catch (e: any) {
             setState(s => ({ ...s, isLoading: false, error: e.message }));

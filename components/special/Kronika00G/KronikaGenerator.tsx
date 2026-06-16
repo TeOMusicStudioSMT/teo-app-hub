@@ -3,7 +3,7 @@
  *
  * Silnik:     Gemma 4 (lokalny, przez ApiDyrygent.dispatchDirectOllama)
  * Stan:       Jotai atomWithStorage → kronika_history w localStorage (trwały po F5)
- * Zapis:      Wiesław /api/bridge/execute → WRITE_FILE → _AntiGravity_Wymiar/Kronika/
+ * Zapis:      Wiesław /api/bridge/execute → WRITE_FILE → _OtakOs_Wymiar/Kronika/
  */
 
 import React, { useState, useEffect, useRef } from 'react';

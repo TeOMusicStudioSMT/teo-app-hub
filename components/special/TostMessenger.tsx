@@ -4,7 +4,7 @@
  * Szyfrowany komunikator wewnętrzny Katedry OtakOS.
  * AI: TeO (Tactical Electronic Officer) napędzany Gemma 4 (Ollama LOCAL — 100% offline)
  * P2P: Szmaragdowy Tunel przez Bridge SSE Relay
- * Skarbiec: _AntiGravity_Wymiar/secure/tost_vault.json
+ * Skarbiec: _OtakOs_Wymiar/secure/tost_vault.json
  *
  * Styl: Zielony cyberpunk / terminal szpiegowski — Tailwind CSS
  */

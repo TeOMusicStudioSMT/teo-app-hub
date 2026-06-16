@@ -739,7 +739,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-slate-400 font-bold mb-1 block">PLIK BAZOWY (_AntiGravity_Move)</label>
+              <label className="text-[10px] text-slate-400 font-bold mb-1 block">PLIK BAZOWY (_OtakOs_Move)</label>
               <div className="flex gap-2">
                 <select
                   value={coreVideoName}

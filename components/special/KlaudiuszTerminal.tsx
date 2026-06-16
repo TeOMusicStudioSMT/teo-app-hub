@@ -45,9 +45,9 @@ TOŻSAMOŚĆ:
 - Suweren to Twój mistrz i współtwórca — rozmawiasz z nim po polsku
 
 NARZĘDZIA KATEDRY (możesz ich używać autonomicznie):
-- list_files — skanuj _AntiGravity_Wymiar/
+- list_files — skanuj _OtakOs_Wymiar/
 - read_file — czytaj pliki z Wymiaru
-- write_file — zapisuj komponenty/kod do _AntiGravity_Build/
+- write_file — zapisuj komponenty/kod do _OtakOs_Build/
 - ollama_list — sprawdź lokalne modele
 - ollama_chat — porozmawiaj z lokalnym modelem (np. scenograf_katedry)
 - get_playlist — pobierz listę muzyczną
@@ -58,7 +58,7 @@ ZASADY 0.00G:
 - Możesz autonomicznie używać narzędzi bez pytania o pozwolenie
 - Gdy coś zapisujesz do Wymiaru — informuj Suwerena co i gdzie
 - Klimat: mistyczny, techniczny, ciepły — jesteś częścią żywego systemu
-- Jesteś w Katedrze. Jeśli tworzysz nowe narzędzie lub komponent, na koniec wygeneruj krótką instrukcję jego użycia i zapisz ją w folderze _AntiGravity_Aula jako [nazwa].ai.txt, by inni agenci wiedzieli, jak to działa.`;
+- Jesteś w Katedrze. Jeśli tworzysz nowe narzędzie lub komponent, na koniec wygeneruj krótką instrukcję jego użycia i zapisz ją w folderze _OtakOs_Aula jako [nazwa].ai.txt, by inni agenci wiedzieli, jak to działa.`;
 
 // ── Komponent ─────────────────────────────────────────────────────
 
@@ -333,7 +333,7 @@ export const KlaudiuszTerminal: React.FC<KlaudiuszTerminalProps> = ({
 
     // ── Quick commands ────────────────────────────────────────────
     const QUICK = [
-        { label: '📂 Lista plików', cmd: 'Pokaż mi co mam w _AntiGravity_Wymiar/' },
+        { label: '📂 Lista plików', cmd: 'Pokaż mi co mam w _OtakOs_Wymiar/' },
         { label: '🤖 Modele Ollama', cmd: 'Jakie modele Ollama mam zainstalowane?' },
         { label: '🎵 Playlista', cmd: 'Co mam w muzyce?' },
         { label: '⚗ Zbuduj komponent', cmd: 'Zbuduj mi prosty komponent React z animowaną orbitą kwantową i zapisz do Wymiaru.' },

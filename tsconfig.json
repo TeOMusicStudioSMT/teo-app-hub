@@ -28,9 +28,9 @@
   },
   "exclude": [
     "node_modules",
-    "_AntiGravity_Build",
-    "_AntiGravity_Components",
-    "_AntiGravity_Wymiar",
+    "_OtakOs_Build",
+    "_OtakOs_Components",
+    "_OtakOs_Wymiar",
     "_temp",
     "dist"
   ]

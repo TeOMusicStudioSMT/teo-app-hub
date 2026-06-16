@@ -7,7 +7,7 @@
  *
  * Zasady bezpieczeństwa:
  *   - Mechanik NIGDY nie modyfikuje plików źródłowych (.tsx, .ts)
- *   - Wynik AI trafia do _AntiGravity_Wymiar/patches/patch_[TaskID].md (piaskownica)
+ *   - Wynik AI trafia do _OtakOs_Wymiar/patches/patch_[TaskID].md (piaskownica)
  *   - Atomowy zapis kolejki: temp_queue.json → fs.rename → queue.json
  *   - Lock (_isRunning) zapobiega nakładaniu się wywołań setInterval
  *
@@ -24,7 +24,7 @@ import ShellSanitizer from './ShellSanitizer.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-const ANTIGRAVITY_DIR = path.join(process.cwd(), '_AntiGravity_Wymiar');
+const ANTIGRAVITY_DIR = path.join(process.cwd(), '_OtakOs_Wymiar');
 const TASKS_DIR       = path.join(ANTIGRAVITY_DIR, 'tasks');
 const PATCHES_DIR     = path.join(ANTIGRAVITY_DIR, 'patches');
 const QUEUE_FILE      = path.join(TASKS_DIR,  'queue.json');

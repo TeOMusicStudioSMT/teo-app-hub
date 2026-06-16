@@ -2,7 +2,7 @@
  * 💬 TostService — Szyfrowany Komunikator Katedry
  *
  * Przechowuje lokalnie zaszyfrowane wiadomości między agentami.
- * Skarbiec: _AntiGravity_Wymiar/secure/tost_vault.json
+ * Skarbiec: _OtakOs_Wymiar/secure/tost_vault.json
  *
  * Szyfrowanie: Base64 (placeholder — warstwę TLS/E2E wdrożyć w v2.0)
  * Atomowy zapis: TEMP → rename (ochrona przed wyścigiem danych)
@@ -19,7 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
 // ─── Ścieżki ──────────────────────────────────────────────────────────────────
-const SECURE_DIR  = path.join(process.cwd(), '_AntiGravity_Wymiar', 'secure');
+const SECURE_DIR  = path.join(process.cwd(), '_OtakOs_Wymiar', 'secure');
 const VAULT_FILE  = path.join(SECURE_DIR, 'tost_vault.json');
 const VAULT_TEMP  = path.join(SECURE_DIR, 'tost_vault_temp.json');
 

@@ -26,7 +26,7 @@ import { URL }            from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-const MEDIA_DIR    = path.join(process.cwd(), '_AntiGravity_Wymiar', 'media');
+const MEDIA_DIR    = path.join(process.cwd(), '_OtakOs_Wymiar', 'media');
 const QUEUE_FILE   = path.join(MEDIA_DIR, 'media_queue.json');
 const VAULT_FILE   = path.join(MEDIA_DIR, 'media_vault.json');
 const SECRETS_FILE = path.join(MEDIA_DIR, 'media_secrets.json'); // NIE w repo!

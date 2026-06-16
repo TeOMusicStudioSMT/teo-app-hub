@@ -82,7 +82,7 @@ export const ENTITY_REGISTRY: NeuralEntity[] = [
             { id: 'laundry', label: 'Pralka EXIF',       icon: '🧽', x: 250, y:  80, dataPath: 'services/LaundryService.js',                      desc: 'Sterylizacja binarna: JPEG APP1/APP2/COM, PNG tEXt/eXIf/iCCP. 100% czystości.' },
             { id: 'bridge',  label: 'Wiesio Bridge',     icon: '🌉', x: 420, y: 170, dataPath: 'wiesio-bridge.js',                                desc: 'Express :3001 — endpointy /api/tost/*, /api/laundry/*, /api/tost/p2p/*.' },
             { id: 'gemma',   label: 'Gemma4 (Ollama)',   icon: '🤖', x: 620, y:  70, dataPath: 'http://127.0.0.1:11434/api/generate',             desc: 'Lokalny rdzeń AI — offline, zero chmury. Timeout 120s na zimny VRAM.' },
-            { id: 'vault',   label: 'TOST Vault',        icon: '🔐', x: 620, y: 170, dataPath: '_AntiGravity_Wymiar/secure/tost_vault.json',      desc: 'Skarbiec Base64, atomowy zapis, owner: local, max 200 wiadomości.' },
+            { id: 'vault',   label: 'TOST Vault',        icon: '🔐', x: 620, y: 170, dataPath: '_OtakOs_Wymiar/secure/tost_vault.json',      desc: 'Skarbiec Base64, atomowy zapis, owner: local, max 200 wiadomości.' },
             { id: 'p2p',     label: 'Szmaragdowy Tunel', icon: '🔗', x: 620, y: 270, dataPath: 'wiesio-bridge.js → /api/tost/p2p/stream/:token',  desc: 'SSE relay P2P. Token XXXX-XXXX-XXXX, RAM-only, TTL 4h, mergeLiveStreams.' },
         ],
         edges: [
@@ -101,10 +101,10 @@ export const ENTITY_REGISTRY: NeuralEntity[] = [
         theme: '#a78bfa',
         nodes: [
             { id: 'dash',    label: 'Dashboard',      icon: '🎛️', x:  80, y: 170, dataPath: 'components/special/ImpresarioDashboard.tsx',      desc: 'Formularz zleceń: tytuł, album, filePath, platformy.' },
-            { id: 'queue',   label: 'Kolejka Zadań',  icon: '📋', x: 280, y: 170, dataPath: '_AntiGravity_Wymiar/media/publish_queue.json',    desc: 'Atomowa kolejka publikacji — PENDING → PROCESSING → COMPLETE.' },
+            { id: 'queue',   label: 'Kolejka Zadań',  icon: '📋', x: 280, y: 170, dataPath: '_OtakOs_Wymiar/media/publish_queue.json',    desc: 'Atomowa kolejka publikacji — PENDING → PROCESSING → COMPLETE.' },
             { id: 'service', label: 'ImpresarioSvc',  icon: '🎙️', x: 460, y: 170, dataPath: 'services/ImpresarioService.js',                   desc: 'Procesor co 15s. OAuth2 refresh flow + streaming upload.' },
             { id: 'youtube', label: 'YouTube',        icon: '▶️', x: 650, y:  80, dataPath: 'services/ImpresarioService.js → uploadToYouTube', desc: 'Resumable upload: createReadStream → HTTPS, zero RAM bufora.' },
-            { id: 'spotify', label: 'DistroKid',      icon: '🎵', x: 650, y: 260, dataPath: '_AntiGravity_Wymiar/media/exports/',              desc: 'Eksport paczkowy: metadata.txt + audio + cover_placeholder.png.' },
+            { id: 'spotify', label: 'DistroKid',      icon: '🎵', x: 650, y: 260, dataPath: '_OtakOs_Wymiar/media/exports/',              desc: 'Eksport paczkowy: metadata.txt + audio + cover_placeholder.png.' },
         ],
         edges: [
             { from: 'dash',    to: 'queue' },

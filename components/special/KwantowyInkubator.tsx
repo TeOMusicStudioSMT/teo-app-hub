@@ -220,7 +220,7 @@ ${session.insight.slice(0, 600)}...
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         action: 'WRITE_FILE',
-                        payload: { path: `_AntiGravity_Wymiar/Inkubator/Raporty/${filename}`, content: reportContent }
+                        payload: { path: `_OtakOs_Wymiar/Inkubator/Raporty/${filename}`, content: reportContent }
                     })
                 }),
                 fetch('http://127.0.0.1:3001/api/bridge/execute', {
@@ -228,7 +228,7 @@ ${session.insight.slice(0, 600)}...
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         action: 'WRITE_FILE',
-                        payload: { path: `_AntiGravity_Wymiar/Inkubator/Agenci/${agentFile}`, content: agentSummary }
+                        payload: { path: `_OtakOs_Wymiar/Inkubator/Agenci/${agentFile}`, content: agentSummary }
                     })
                 }),
             ]);

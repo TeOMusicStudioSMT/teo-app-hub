@@ -34,7 +34,7 @@ const defaultDeployPath = (lang: string): string => {
     if (l === 'tsx' || l === 'jsx')  return 'components/special/';
     if (l === 'ts'  || l === 'js')   return 'lib/';
     if (l === 'css' || l === 'scss') return 'styles/';
-    if (l === 'json')                return '_AntiGravity_Wymiar/';
+    if (l === 'json')                return '_OtakOs_Wymiar/';
     return 'components/special/';
 };
 

@@ -20,7 +20,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-const GRAPH_DIR        = path.join(process.cwd(), '_AntiGravity_Wymiar', 'KnowledgeGraph');
+const GRAPH_DIR        = path.join(process.cwd(), '_OtakOs_Wymiar', 'KnowledgeGraph');
 const GRAPH_FILE       = path.join(GRAPH_DIR, 'graph.json');
 const TEMP_FILE        = path.join(GRAPH_DIR, 'temp_kg_update.json');
 const DEAD_LETTER_FILE = path.join(GRAPH_DIR, 'dead_letter_knowledge.json');

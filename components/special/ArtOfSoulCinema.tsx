@@ -146,7 +146,7 @@ export const ArtOfSoulCinema: React.FC<CinemaProps> = ({ isOpen, onClose }) => {
                             </div>
                         ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-500">
-                                Brak lokalnych premier w folderze _AntiGravity_Move.
+                                Brak lokalnych premier w folderze _OtakOs_Move.
                             </div>
                         )
                     ) : (

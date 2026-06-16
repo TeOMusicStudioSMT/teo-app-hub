@@ -39,14 +39,20 @@ public/models/*.bin
 public/models/*.task
 public/models/*.h5
 public/models/*.bin
-_AntiGravity_AI/
-_AntiGravity_Aula/
-_AntiGravity_Build/
-_AntiGravity_Components/
-_AntiGravity_Kroniki/
-_AntiGravity_Move/
-_AntiGravity_Muzyka/
-_AntiGravity_Sonic/
-_AntiGravity_Wymiar/
-_AntyGravity Klocki/
+# --- PIASKOWNICA OTAKOS (re-branding: _AntiGravity_* → _OtakOs_*) ---
+_OtakOs_AI/
+_OtakOs_Aula/
+_OtakOs_Build/
+_OtakOs_Components/
+_OtakOs_Kroniki/
+_OtakOs_Move/
+_OtakOs_Muzyka/
+_OtakOs_Sonic/
+_OtakOs_Wymiar/
+_OtakOs_Klocki/
+# wszelkie podkatalogi piaskownicy (np. _salvaged_drafts/)
+_OtakOs_Wymiar/**
+# Stare nazwy (gdyby coś zostało) — ignoruj na wszelki wypadek
+_AntiGravity_*/
+_AntyGravity*/
 _temp/
