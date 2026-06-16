@@ -8,6 +8,9 @@
 # Impresario — wrażliwe klucze API (nigdy do repo!)
 media_secrets.json
 **/media_secrets.json
+# Skarbiec 0.00G — zaszyfrowane klucze i klucz master (NIGDY do repo!)
+.vault-0.00g/
+**/.vault-0.00g/
 *.anthropic_key*
 *.gemini_key*
 

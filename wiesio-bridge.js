@@ -26,6 +26,8 @@ import ShellSanitizer        from './services/ShellSanitizer.js';
 import ImpresarioService     from './services/ImpresarioService.js';
 import TostService           from './services/TostService.js';
 import LaundryService        from './services/LaundryService.js';
+import VaultService          from './services/VaultService.js';
+import ProfileScoutService   from './services/ProfileScoutService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -2835,6 +2837,59 @@ app.post('/api/mechanic/auto-panic', async (req, res) => {
 
     } catch (e) {
         console.error('[Auto-Panic] ❌ enqueue:', e.message);
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🔐 SKARBIEC 0.00G — VaultService (izolacja .vault-0.00g/)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/vault/status — maski + drożność + poziom bezpieczeństwa (BEZ surowych kluczy). */
+app.get('/api/vault/status', async (req, res) => {
+    try {
+        const services = await VaultService.getInstance().getStatus();
+        return res.json({ success: true, services, catalog: VaultService.SERVICE_CATALOG });
+    } catch (e) {
+        console.error('[Vault-API] ❌ status:', e.message);
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/** POST /api/vault/set — Body: { service, field, value }. Zapisuje zaszyfrowany sekret. */
+app.post('/api/vault/set', async (req, res) => {
+    const { service, field, value } = req.body ?? {};
+    try {
+        const result = await VaultService.getInstance().setSecret(service, field, value);
+        return res.json({ success: true, ...result });
+    } catch (e) {
+        return res.status(400).json({ success: false, error: e.message });
+    }
+});
+
+/** DELETE /api/vault/:service/:field — usuwa pojedynczy sekret. */
+app.delete('/api/vault/:service/:field', async (req, res) => {
+    const { service, field } = req.params;
+    try {
+        const removed = await VaultService.getInstance().deleteSecret(service, field);
+        return res.json({ success: true, removed });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🧭 PROFILE SCOUT — Menedżer AI & Pralka Świadomości
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** POST /api/scout/scan — Body: { profile }. Mapuje pasje → przychodowe mikrousługi. */
+app.post('/api/scout/scan', async (req, res) => {
+    const { profile } = req.body ?? {};
+    try {
+        const result = await ProfileScoutService.getInstance().scan(profile);
+        return res.json({ success: true, ...result });
+    } catch (e) {
+        console.error('[Scout-API] ❌ scan:', e.message);
         return res.status(500).json({ success: false, error: e.message });
     }
 });
