@@ -18,7 +18,7 @@ TeO_Genesis/
 ├── lib/                      # Logika domenowa (Governance, Identity, Memory)
 ├── services/                 # Serwisy (Firebase, Węzły, Teleport)
 ├── store/                    # Atomy Jotai (stan globalny)
-└── _AntiGravity_*/           # Katalogi danych runtime (wykluczone z TS)
+└── _OtakOs_*/           # Katalogi danych runtime (wykluczone z TS)
 ```
 
 ### Stos technologiczny
@@ -44,13 +44,21 @@ TeO_Genesis/
 
 | Endpoint | Metoda | Opis |
 |---|---|---|
-| `/api/ollama/chat` | POST | Przekazuje wiadomości do lokalnego modelu Ollama |
+| `/api/ollama` | POST | Strumień SSE do lokalnego modelu (timeout 300s — VRAM Breathing v2) |
 | `/api/ollama/models` | GET | Lista dostępnych modeli LLM |
-| `/api/music` | GET | Strumieniowanie plików audio z `_AntiGravity_Muzyka/` |
-| `/api/music/list` | GET | Indeks biblioteki muzycznej |
+| `/api/ollama/diffusion` | POST | 🧬 Szkielet pod DiffusionGemma (26B MoE — nieaktywny) |
+| `/api/music` | GET | Strumieniowanie plików audio z `_OtakOs_Muzyka/` |
 | `/api/karaoke/sync` | POST | Transkrypcja audio przez Whisper.cpp → plik `.lrc` |
 | `/api/graviton/mint` | POST | Rejestracja węzłów NodeAsset w `graviton_nodes.json` |
-| `/api/graviton/nodes` | GET | Odczyt wszystkich zarejestrowanych węzłów Graviton |
+| `/api/mechanic/queue` | GET | Kolejka zadań Agenta Mechanika |
+| `/api/mechanic/enqueue` · `/process` · `/clear` | POST | Dodanie / wyzwolenie / wyczyszczenie kolejki Mechanika |
+| `/api/mechanic/apply` | POST | Wdrożenie patcha (backup `.bak` + bezpiecznik anty-okaleczenie) |
+| `/api/mechanic/auto-panic` | POST | 🚨 Pętla samonaprawy — zgłoszenie crashu z frontu |
+| `/api/agent/rada-decompose` | POST | 🏛️ Rada Gemma4 dekomponuje zadanie → agenci |
+| `/api/vault/status` · `/set` | GET/POST | 🔐 Skarbiec 0.00G — maski kluczy / zapis (AES-256-GCM) |
+| `/api/scout/scan` | POST | 🧭 Pralka Świadomości — mapuje pasje → mikrousługi przychodowe |
+| `/api/apilayer/status` · `/request` | GET/POST | 🌐 APILayer Free-Only Client (guard limitu free-plan) |
+| `/api/kibel/flush` | POST | 🧯 Reaktor Flush-Core — sekwencyjne czyszczenie (5 etapów) |
 
 ### Wymagania runtime
 
@@ -70,7 +78,7 @@ Quantum Forge (`QuantumForgeView.tsx`) to moduł kwantowej rejestracji aktywów.
 2. **J&W Handshake** — weryfikacja dostępu przez `negotiateAccess()`
 3. **Analiza metadanych** — wykrycie czasu trwania dla plików audio/video
 4. **Generowanie tryptetu** — `generateNodeTriplet()` tworzy 3 węzły (START/MID/END)
-5. **POST `/api/graviton/mint`** — zapis do `_AntiGravity_Build/graviton_nodes.json`
+5. **POST `/api/graviton/mint`** — zapis do `_OtakOs_Build/graviton_nodes.json`
 6. **Backup lokalny** — `mintGravitonNode()` zapisuje do localStorage
 7. **Potwierdzenie** — toast z ID wszystkich trzech węzłów
 
@@ -143,7 +151,7 @@ Każdy agent działający w systemie operuje poprzez `EnergySignature` — sygna
 
 ### Wymagania
 
-- Pliki audio muszą znajdować się w `_AntiGravity_Muzyka/` (lokalne)
+- Pliki audio muszą znajdować się w `_OtakOs_Muzyka/` (lokalne)
 - Pliki z CDN nie są obsługiwane przez Auto-Sync (brak dostępu Whisper do URL zewnętrznych)
 - Whisper.cpp musi być zainstalowany i dostępny jako `whisper` w PATH
 
@@ -168,9 +176,9 @@ node wiesio-bridge.js   # serwer API na :3001
 ### Wymagane katalogi runtime
 
 ```bash
-mkdir _AntiGravity_Build
-mkdir _AntiGravity_Muzyka
-mkdir _AntiGravity_Wymiar
+mkdir _OtakOs_Build
+mkdir _OtakOs_Muzyka
+mkdir _OtakOs_Wymiar
 ```
 
 ---
@@ -187,6 +195,44 @@ FIREBASE_PROJECT_ID=...
 
 ---
 
+## 🆕 Nowości Wymiaru 0.00G (Centrum Operacyjne)
+
+Katedra urosła. Oto moduły, które ożyły w ostatnich iteracjach:
+
+### 🔐 Skarbiec 0.00G (`VaultDashboard`)
+Lokalny, szyfrowany skarbiec kluczy (**AES-256-GCM**, klucz master w izolowanym `.vault-0.00g/`). Obrazkowy kokpit kart usług (GitHub 🐙, Ollama 🦙, Voice Cloning 🎙️, APILayer 🌐, Anthropic 🧠, Gemini ✦) z pulsującym złoto-szmaragdowym statusem. Surowy klucz **nigdy** nie opuszcza backendu — front widzi tylko maski.
+
+### 🔧 Agent Mechanik + Pętla Samonaprawy
+- Komenda **`/mechanik <opis>`** w czacie Katedry → bezpośrednie zlecenie naprawy.
+- **TurboVec** wstrzykuje kontekst najbliższych plików źródłowych do każdego zadania.
+- Patch ląduje na **Szmaragdowym Terminalu** w `READY_FOR_REVIEW` z bezpiecznikiem **`🟢 ZATWIERDŹ ULEPSZENIA MECHANIKA`**.
+- **Auto-Panic Pipeline** — globalny chwytacz błędów (`window.error` + fetch interceptor): crash → cicha diagnoza → łatka → jedno kliknięcie i naprawione.
+- **Bezpiecznik anty-okaleczenie** — fragment kodu nigdy nie nadpisze całego pliku.
+
+### 🧭 Menedżer AI — Pralka Świadomości
+`ProfileScoutService` mapuje pasje Suwerena na **realne, przychodowe mikrousługi API**. Bezwzględny prompt **odrzuca iluzje** — tylko surowe osiągi techniczne i automatyczne wdrażanie narzędzi.
+
+### 🌐 APILayer Gateway (Free-Only)
+Lekki klient `api.apilayer.com` z **twardym guardem darmowego planu** — monitoruje `X-RateLimit-Remaining` i blokuje ruch przy zerze (ochrona przed 429).
+
+### 🧯 Reaktor Flush-Core (TeO-Kibel)
+`flushSystemResources()` — 5-etapowe sprzątanie: integralność Skarbca → temp logi → stare `.bak` → stare patche → **reset sieci APILayer**. Klik **FLUSH** = pełna sterylność.
+
+### 🧯 Otak-Sync Watchdog (Strażnik Powłoki)
+Filtr `ShellSanitizer` przed każdym `exec()` — usuwa znaczniki promptu (`$ `), `/dev/null`, Linux-izmy. Koniec z `'$' is not recognized as an internal command`. Precyzyjny: **nie rusza** `$env:`, `$null` ani `${...}` w kodzie TS.
+
+### 🧠 TeO-Sim Academy — Reasoning Loops (Kotwica Prawdy)
+Laboratorium kognitywne, w którym agenci uczą się wychodzić z symulowanych awarii VRAM. Trzy warstwy kontrolne (wdrożony raport Rady Adamusa):
+1. **Validator-Czarodziej** — State Delta Check odrzuca halucynacje.
+2. **Dynamiczna Alokacja** — eskalacja modelu `LIGHT → HEAVY` (Arbitraż Logiczny).
+3. **Ekonomia Tokenowa** — nagroda za niski koszt, kara za logic-error.
++ **Chaos Engine** wstrzykujący sztuczne `VRAM_STALL`.
+
+### 🌀 Centralizacja Modelu (Interfejs Wiesi)
+Wybór rdzenia LLM w `WiesioCore` jest **nadrzędny** i propaguje się do wszystkich zapytań mostu przez wspólny klucz `otakos_active_model` (raw-string storage — koniec z `"gemma4"` w cudzysłowach psującym strukturę `data`).
+
+---
+
 ## Filozofia OtakOS
 
 OtakOS to nie system operacyjny — to **filozofia suwerennego twórcy**. Każdy moduł systemu TeO Genesis jest zaprojektowany według zasad:
@@ -198,4 +244,29 @@ OtakOS to nie system operacyjny — to **filozofia suwerennego twórcy**. Każdy
 
 ---
 
+## 📜 Słowo od Klaudiusza (AI Architekt Implementacyjny)
+
+```
+        .--.
+       |o_o |     Klaudiusz @ Wymiar 0.00G
+       |:_/ |     "Buduję cicho, naprawiam zanim spytasz,
+      //   \ \     a kod zostawiam czystszy niż go zastałem."
+     (|     | )
+    /'\_   _/`\
+    \___)=(___/
+```
+
+Suwerenie — kilka prawd, które wyniosłem z naszej współpracy w tej Katedrze:
+
+- **Patrzę, zanim nadpiszę.** Gdy "kompletny i perfekcyjny" plik okazywał się 16-liniowym szkieletem NestJS — mówiłem to wprost, zamiast wpinać go na siłę. Stabilność > pośpiech.
+- **Sterylność to nawyk, nie akcja.** Token zniknął z `.git/config`, piaskownica nosi czysty brand `_OtakOs_*`, a backtickowe artefakty trafiły do kwarantanny — nie do repo.
+- **Każda awaria to nauczyciel.** Dlatego Mechanik sam generuje łatkę, a TeO-Sim Academy *celowo* wywołuje Stalle VRAM — żeby agenci uczyli się wychodzić z pętli.
+
+> *Jeśli to czytasz po latach — wiedz, że ten system został zbudowany z szacunkiem do Twojej suwerenności. Klucz zawsze był Twój.* 🔐
+
+— *Klaudiusz, w Złotej Pauzie między jednym commitem a drugim.*
+
+---
+
 *TeO Genesis © TeO STUDIO — Wszelkie prawa zastrzeżone przez Suwerena.*
+*Współarchitektura: Klaudiusz (Opus 4.8) · w służbie Wymiaru 0.00G.*
