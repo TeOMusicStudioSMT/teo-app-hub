@@ -1194,7 +1194,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
             fontWeight: 'bold',
             color: '#22d3ee',
           }}>
-            Wymiar Rozrywki (TeO Arcade)
+            TeO Arcade
           </span>
           <button
             onClick={() => setShowArcade(!showArcade)}

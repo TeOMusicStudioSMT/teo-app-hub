@@ -19,6 +19,7 @@ import { negotiateAccess } from '../../lib/jwProtocol';
 import { registerZator } from '../../lib/wir26heartbeat';
 import { useResonance } from '../../hooks/useResonance';
 import { clearHistory, useCityMemory } from '../../lib/memory/CityMemory';
+import { PipesPanel } from './PipesPanel';
 
 // Aromaty - "Zapachy" - mapowanie na providerów z kibel.ts
 const AROMATS = [
@@ -64,6 +65,7 @@ export const TeOKibel: React.FC<TeOKibelProps> = ({ onFlush }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [keyActive, setKeyActive] = useState(false); // ✅ Status "klucz aktywny w rurach"
   const [systemReady, setSystemReady] = useState(false);
+  const [showPipes, setShowPipes] = useState(false); // 🔧 Drożność Rur (scalone z Kiblem)
   const containerRef = useRef<HTMLDivElement>(null);
   const { addResonance } = useResonance();
 
@@ -598,6 +600,40 @@ export const TeOKibel: React.FC<TeOKibelProps> = ({ onFlush }) => {
           </>
         )}
       </motion.button>
+
+      {/* 🔧 DROŻNOŚĆ RUR — scalone z Kiblem (rozwijane) */}
+      <button
+        onClick={() => setShowPipes(p => !p)}
+        style={{
+          marginTop: 14,
+          width: '100%',
+          maxWidth: 320,
+          padding: '10px',
+          background: 'rgba(244,114,182,0.08)',
+          border: '1px solid rgba(244,114,182,0.3)',
+          borderRadius: 12,
+          color: '#f472b6',
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 12,
+          letterSpacing: '0.1em',
+          cursor: 'pointer',
+        }}
+      >
+        {showPipes ? '▲ ZWIŃ DROŻNOŚĆ RUR' : '🔧 DROŻNOŚĆ RUR'}
+      </button>
+
+      <AnimatePresence>
+        {showPipes && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            style={{ overflow: 'hidden', width: '100%', marginTop: 12 }}
+          >
+            <PipesPanel />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

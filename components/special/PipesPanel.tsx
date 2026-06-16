@@ -12,6 +12,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { listKeys } from '../../lib/kibel';
+import RuryKiblaGame from './RuryKiblaGame';
 
 interface PipeProps {
   isActive: boolean;
@@ -80,6 +81,8 @@ interface PipesPanelProps {
 export const PipesPanel: React.FC<PipesPanelProps> = ({ onOpenKibel }) => {
   const [keys, setKeys] = useState<any[]>([]);
   const [coherence, setCoherence] = useState(0);
+  const [showGame, setShowGame] = useState(false);   // 🚽 zabawna rura z Arcade
+  void onOpenKibel;  // przejście do Kibla usunięte — Rury są teraz WEWNĄTRZ Kibla
   
   // Pobierz klucze
   useEffect(() => {
@@ -159,13 +162,22 @@ export const PipesPanel: React.FC<PipesPanelProps> = ({ onOpenKibel }) => {
         <span style={{ color: status.color }}>{keys.length}</span>
       </div>
       
-      {/* Przycisk otwarcia Kibla */}
+      {/* 🚽 Zabawna Rura — mini-gra z TeO Arcade (na temat kibla i rur) */}
       <button
-        onClick={onOpenKibel}
+        onClick={() => setShowGame(g => !g)}
         style={openKibelButtonStyle}
       >
-        🔐 OTWÓRZ KIBEL
+        {showGame ? '🔧 WRÓĆ DO RUR' : '🚽 ZAGRAJ: RURY KIBLA'}
       </button>
+
+      {showGame && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 9, letterSpacing: '0.2em', color: 'rgba(244,114,182,0.7)', marginBottom: 6, textAlign: 'center' }}>
+            🕹️ TEO ARCADE · FLUSH FRENZY 0.00G
+          </div>
+          <RuryKiblaGame />
+        </div>
+      )}
     </div>
   );
 };

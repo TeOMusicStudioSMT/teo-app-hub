@@ -38,7 +38,6 @@ import OtakOSGateway from './components/special/OtakOSGateway';
 import { RadaPodstawowa } from './components/special/RadaPodstawowa';
 import { WniosekO } from './components/special/WniosekO';
 import ScenographyManager from './components/special/ScenographyManager';
-import { PipesPanel } from './components/special/PipesPanel';
 import { hasPioneerBypass } from './lib/SovereignGovernance';
 import { startHeartBeat } from './lib/wir26heartbeat';
 import { initializeKibel, flushKibel } from './lib/kibel';
@@ -94,7 +93,6 @@ const App: React.FC = () => {
     const [showTeODash, setShowTeODash] = useState(false); // ⚙️ TeODash
     const [showWniosekO, setShowWniosekO] = useState(false);
     const [showScenography, setShowScenography] = useState(false);
-    const [showPipes, setShowPipes] = useState(false);
     const [showJournal, setShowJournal] = useState(false); // 📓 Kwantowy Dziennik
     const [showVault, setShowVault] = useState(false); // 🔐 Skarbiec 0.00G
     const [showTeoSim, setShowTeoSim] = useState(false); // 🧠 TeO-Sim Reasoning Loops
@@ -728,24 +726,7 @@ const App: React.FC = () => {
                                             </span>
                                         </button>
                                     </div>
-                                    <div className="pointer-events-auto">
-                                        <button
-                                            onClick={() => setShowPipes(true)}
-                                            className="w-11 h-11 rounded-full flex items-center justify-center text-lg bg-gradient-to-br from-pink-400 to-pink-600 border-2 border-pink-300/50 shadow-[0_0_15px_rgba(244,114,182,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                            title="🔧 Drożność Rur"
-                                        >
-                                            🔧
-                                        </button>
-                                    </div>
-                                    <div className="pointer-events-auto">
-                                        <button
-                                            onClick={() => setShowWniosekO(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-violet-500 to-purple-700 border-2 border-purple-400/50 shadow-[0_0_15px_rgba(168,85,247,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                            title="📋 Złóż Wniosek O..."
-                                        >
-                                            📋
-                                        </button>
-                                    </div>
+                                    {/* 🔧 Drożność Rur — przeniesione do TeO-Kibel · 📋 Wniosek O — ukryte na razie */}
                                     <div className="pointer-events-auto">
                                         <button
                                             onClick={() => setShowScenography(true)}
@@ -860,17 +841,7 @@ const App: React.FC = () => {
                                             </motion.div>
                                         </motion.div>
                                     )}
-                                    {showPipes && (
-                                        <motion.div
-                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2003]"
-                                            onClick={() => setShowPipes(false)}
-                                        >
-                                            <motion.div onClick={(e) => e.stopPropagation()}>
-                                                <PipesPanel onOpenKibel={() => { setShowPipes(false); setShowKibel(true); }} />
-                                            </motion.div>
-                                        </motion.div>
-                                    )}
+                                    {/* 🔧 Drożność Rur przeniesione do wnętrza TeO-Kibel (showKibel) */}
                                     {showCrewClub && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

@@ -296,28 +296,48 @@ export const generateContent = async (
 ): Promise<string> => {
     console.log(`📡 Cloud Router: Mode=${mode}, Provider=${providerOverride || 'Auto'}`);
 
-    // Tryb lokalny (Ollama/Gemma)
+    // Tryb lokalny (Ollama/Gemma) — 🌉 NOWA LOGIKA MOSTOWA
+    // Przez Wiesio Bridge (/api/ollama, SSE): 300s timeout, obsługa błędów,
+    // 127.0.0.1 (nie localhost/IPv6), brak wymogu OLLAMA_ORIGINS=*.
+    // Model z nadrzędnego Interfejsu Wiesi (otakos_active_model).
     if (providerOverride === 'local') {
+        const activeModel = localStorage.getItem('otakos_active_model') || 'gemma4';
         try {
-            const activeModel = localStorage.getItem('otakos_active_model') || 'gemma4';
-            const response = await fetch('http://localhost:11434/api/generate', {
+            const res = await fetch('http://127.0.0.1:3001/api/ollama', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model: activeModel,
-                    prompt,
                     system: SYSTEM_INSTRUCTION_VISEL,
-                    stream: false,
-                    options: { temperature: 0.7 }
+                    messages: [{ role: 'user', content: prompt }],
                 })
             });
-            
-            if (!response.ok) throw new Error('Ollama nie odpowiada. Sprawdź CORS.');
-            const data = await response.json();
-            return data.response;
+            if (!res.ok || !res.body) throw new Error(`Most HTTP ${res.status}`);
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '', full = '';
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, { stream: true });
+                const lines = buf.split('\n');
+                buf = lines.pop() ?? '';
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const evt = JSON.parse(line.slice(6));
+                        if (evt.type === 'text' && evt.text) full += evt.text;
+                        if (evt.type === 'error') throw new Error(evt.error);
+                    } catch (e: any) {
+                        if (e?.message && !e.message.includes('JSON')) throw e;
+                    }
+                }
+            }
+            return full.trim();
         } catch (error) {
-            console.error("Błąd lokalnego AI:", error);
-            throw new Error("Lokalny Model (Ollama) niedostępny. Czy ustawiłeś OLLAMA_ORIGINS=* ?");
+            console.error("Błąd lokalnego AI (most):", error);
+            throw new Error("Lokalny Model przez most niedostępny — czy działa wiesio-bridge.js (:3001) i Ollama?");
         }
     }
 
