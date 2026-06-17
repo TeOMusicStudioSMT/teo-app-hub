@@ -2776,6 +2776,21 @@ app.post('/api/mechanic/clear', async (req, res) => {
 });
 
 /**
+ * POST /api/verify/syntax — 🧪 weryfikacja składni kodu (esbuild, ten sam co Vite).
+ * Body: { code, filename? } → { ok, error?, loader }. Dla Katedralnego Klaudiusza.
+ */
+app.post('/api/verify/syntax', async (req, res) => {
+    const { code, filename } = req.body ?? {};
+    if (!code || !String(code).trim()) return res.status(400).json({ success: false, error: 'Brak kodu.' });
+    try {
+        const r = await MechanicService.getInstance().verifyCode(String(code), filename || '');
+        return res.json({ success: true, ...r });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
  * POST /api/mechanic/git-assist — 🧠 Context-Aware Git Assistant
  *
  * Analizuje git diff i generuje nagłówek commita w konwencji Conventional Commits

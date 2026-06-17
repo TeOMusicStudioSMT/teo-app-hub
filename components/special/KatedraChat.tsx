@@ -41,11 +41,31 @@ const defaultDeployPath = (lang: string): string => {
 const CodeBlock: React.FC<{ lang: string; code: string }> = ({ lang, code }) => {
     const [copied, setCopied] = useState(false);
     const [deploying, setDeploying] = useState(false);
+    const [verify, setVerify] = useState<{ state: 'idle' | 'checking' | 'ok' | 'err'; msg?: string }>({ state: 'idle' });
+
+    const isCodeLang = /^(t|j)sx?$/i.test(lang);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(code);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+    };
+
+    // 🧪 Weryfikacja składni przez most (esbuild — ten sam silnik co Vite)
+    const handleVerify = async () => {
+        setVerify({ state: 'checking' });
+        try {
+            const res = await fetch('http://127.0.0.1:3001/api/verify/syntax', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ code, filename: `snippet.${lang || 'ts'}` }),
+            });
+            const d = await res.json();
+            if (d.success && d.ok) setVerify({ state: 'ok' });
+            else setVerify({ state: 'err', msg: d.error || d.message || 'błąd składni' });
+        } catch {
+            setVerify({ state: 'err', msg: 'most offline (:3001)' });
+        }
     };
 
     const handleDeploy = async () => {
@@ -113,6 +133,23 @@ const CodeBlock: React.FC<{ lang: string; code: string }> = ({ lang, code }) => 
                     >
                         {copied ? '✓ Skopiowano' : '📋 Kopiuj'}
                     </button>
+                    {/* 🧪 Sprawdź składnię (tylko dla kodu TS/JS/TSX/JSX) */}
+                    {isCodeLang && (
+                        <button
+                            onClick={handleVerify}
+                            disabled={verify.state === 'checking'}
+                            className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded transition-colors border disabled:opacity-50
+                                ${verify.state === 'ok'  ? 'bg-emerald-700/60 text-emerald-200 border-emerald-500/40'
+                                : verify.state === 'err' ? 'bg-rose-800/60 text-rose-200 border-rose-500/40'
+                                : 'bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-300 border-emerald-600/40'}`}
+                            title="Zweryfikuj składnię przez esbuild (silnik Vite)"
+                        >
+                            {verify.state === 'checking' ? '🧪 Sprawdzam...'
+                                : verify.state === 'ok'  ? '✅ Składnia OK'
+                                : verify.state === 'err' ? '❌ Błąd składni'
+                                : '🧪 Sprawdź'}
+                        </button>
+                    )}
                     {/* Wdróż */}
                     <button
                         onClick={handleDeploy}
@@ -127,6 +164,12 @@ const CodeBlock: React.FC<{ lang: string; code: string }> = ({ lang, code }) => 
                     </button>
                 </div>
             </div>
+            {/* Linia błędu weryfikacji */}
+            {verify.state === 'err' && verify.msg && (
+                <div className="px-3 py-1 text-[9px] font-mono text-rose-300 bg-rose-950/30 border-b border-rose-500/20">
+                    🧪 {verify.msg}
+                </div>
+            )}
             {/* Kod */}
             <pre className="p-3 overflow-x-auto text-xs font-mono text-emerald-300
                             leading-relaxed max-h-[480px] overflow-y-auto">
@@ -773,6 +816,48 @@ const KatedraChat: React.FC = () => {
         }
     }, [scrollToBottom]);
 
+    // ── 🧠 GIT ASSISTANT — Conventional Commits z git diff + status sync ──────────
+    /**
+     * Komenda /git (lub przycisk): Katedralny Klaudiusz analizuje git diff przez
+     * most i proponuje nagłówek commita w konwencji Conventional Commits + status
+     * synchronizacji z origin/main. NIE commituje sam — to asystent dla Suwerena.
+     */
+    const dispatchGitAssist = useCallback(async () => {
+        const widgetId = addMessage({
+            sender:  'mechanik',
+            content: '🧠 GIT ASSISTANT\n\n▸ Analizuję git diff i synchronizację z origin/main...',
+        });
+        setStatus('🧠 Git Assistant analizuje zmiany...');
+        try {
+            const res = await fetch('http://127.0.0.1:3001/api/mechanic/git-assist', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    '{}',
+            });
+            const d = await res.json();
+            if (!d.success) throw new Error(d.error || 'błąd');
+            if (!d.message) {
+                updateMessage(widgetId, { content: '🧠 GIT ASSISTANT\n\n✨ Drzewo czyste — brak zmian do skomitowania.' });
+                setStatus('', true);
+                return;
+            }
+            updateMessage(widgetId, {
+                content:
+                    `🧠 GIT ASSISTANT — propozycja commita (${d.scope}):\n\n` +
+                    '```\n' + d.message + '\n```\n' +
+                    `📊 Sync: ahead ${d.ahead} · behind ${d.behind}\n` +
+                    `▸ ${d.syncHint}\n\n` +
+                    `_(skopiuj nagłówek z bloku powyżej — Klaudiusz nie commituje sam)_`,
+            });
+            try { await navigator.clipboard.writeText(d.message); toast.success('🧠 Nagłówek commita skopiowany!'); } catch { /* brak schowka */ }
+            setStatus('✅ Git Assistant gotowy', true);
+            scrollToBottom(true);
+        } catch (err: any) {
+            updateMessage(widgetId, { content: `🧠 GIT ASSISTANT\n\n❌ Most/Git niedostępny: ${err.message}` });
+            setStatus('❌ Git Assistant: błąd', true);
+        }
+    }, [scrollToBottom]);
+
     /**
      * NAPRAWKA: sendMessage ZAWSZE wysyła do Klaudiusza (heavy=false).
      * isCouncilMode NIE wpływa na routing tutaj — nie miksujemy ról!
@@ -788,6 +873,13 @@ const KatedraChat: React.FC = () => {
         if (/^\/mechanik\b/i.test(text)) {
             setCurrentInput('');
             await dispatchToMechanik(text);
+            return;
+        }
+
+        // ── Przechwyt komendy /git → Git Assistant ──
+        if (/^\/git\b/i.test(text)) {
+            setCurrentInput('');
+            await dispatchGitAssist();
             return;
         }
 
@@ -873,7 +965,7 @@ const KatedraChat: React.FC = () => {
         }
     }, [currentInput, isLoading, sourceMode, cloudFastModel, fastModel,
         buildHistory, getDispatch, handleOllamaResponse, runModerator, scrollToBottom,
-        dispatchToMechanik, pendingAttachments]);
+        dispatchToMechanik, dispatchGitAssist, pendingAttachments]);
 
     // ── Konsultacja z Radą (Adamus) ────────────────────────────────
     /**
@@ -1111,6 +1203,14 @@ const KatedraChat: React.FC = () => {
                             )}
                         </button>
 
+                        <button onClick={dispatchGitAssist} disabled={isLoading}
+                            title="🧠 Git Assistant — wygeneruj Conventional Commit z git diff (komenda: /git)"
+                            className="flex items-center gap-1 px-2.5 py-1 bg-emerald-800/70
+                                       hover:bg-emerald-700 rounded-md text-white text-xs
+                                       transition-colors disabled:opacity-50">
+                            🧠 Git
+                        </button>
+
                         {isLoading && (
                             <button onClick={stopGeneration}
                                 className="px-2.5 py-1 bg-red-700/70 hover:bg-red-700
@@ -1247,6 +1347,9 @@ const KatedraChat: React.FC = () => {
                         </p>
                         <p className="text-emerald-300/70 text-xs">
                             ⚙️ <span className="font-mono">/mechanik &lt;opis&gt;</span> → Agent Mechanik (naprawa kodu)
+                        </p>
+                        <p className="text-emerald-300/70 text-xs">
+                            🧠 <span className="font-mono">/git</span> → Git Assistant (Conventional Commit z diffu)
                         </p>
                         <p className="text-purple-400 text-xs text-center">
                             {sourceMode === 'cloud'

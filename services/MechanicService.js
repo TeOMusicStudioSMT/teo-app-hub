@@ -435,6 +435,11 @@ class MechanicService {
         await this._updateStatus(taskId, allTasks, STATUS.IN_PROGRESS, { stage });
     }
 
+    /** PUBLIC: weryfikacja składni dowolnego kodu (dla Katedralnego Klaudiusza w czacie). */
+    async verifyCode(code, filename = '') {
+        return this._verifySyntax(code, filename);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // PRIVATE: formatowanie pliku patch.md
     // ─────────────────────────────────────────────────────────────────────────
