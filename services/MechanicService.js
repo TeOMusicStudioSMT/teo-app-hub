@@ -212,7 +212,8 @@ class MechanicService {
             startedAt: new Date().toISOString(),
         });
 
-        // 1b. TurbovecService: wzbogać opis o kontekst plików źródłowych
+        // 1b. [🔍 SKANOWANIE STRUKTURY] TurbovecService wzbogaca opis o kontekst plików
+        await this._setStage(task.id, allTasks, 'SCANNING');
         try {
             const enriched = await TurbovecService.getInstance().enrichTaskDescription(task);
             if (enriched !== task.description) {
@@ -225,7 +226,8 @@ class MechanicService {
 
         let patchContent = null;
 
-        // 2. Wyślij do Gemma4 (teraz z kontekstem Turboveca w opisie)
+        // 2. [🛠️ GENEROWANIE ŁATKI] Wyślij do Gemma4 (z kontekstem Turboveca)
+        await this._setStage(task.id, allTasks, 'GENERATING');
         try {
             patchContent = await this._callGemma(task);
         } catch (aiErr) {
@@ -249,9 +251,20 @@ class MechanicService {
             return;
         }
 
+        // 2b. [🧪 WERYFIKACJA KOMPILACJI (Vite/esbuild)] — autonomiczny loop testowy
+        await this._setStage(task.id, allTasks, 'VERIFYING');
+        let verify = { ok: true, attempts: 0, planOnly: true };
+        try {
+            verify = await this._verifyAndRepair(task, patchContent);
+            patchContent = verify.patch;   // pętla mogła poprawić kod
+        } catch (vErr) {
+            console.warn(`[Mechanik·Verify] ⚠️ Weryfikacja pominięta: ${vErr.message}`);
+            verify = { ok: true, attempts: 0, skipped: true };
+        }
+
         // 3. Zapisz patch do piaskownicy (NIE modyfikuj src!)
         const patchFile = path.join(PATCHES_DIR, `patch_${task.id}.md`);
-        const patchBody = this._formatPatch(task, patchContent);
+        const patchBody = this._formatPatch(task, patchContent, verify);
 
         try {
             await fs.writeFile(patchFile, patchBody, 'utf8');
@@ -261,18 +274,27 @@ class MechanicService {
             await this._updateStatus(task.id, allTasks, STATUS.FAILED, {
                 failedAt: new Date().toISOString(),
                 error:    writeErr.message,
+                stage:    'FAILED',
             });
             await this._writeDeadLetter({ task, error: writeErr.message });
             return;
         }
 
-        // 4. Zamknij pętlę: IN_PROGRESS → READY_FOR_REVIEW
+        // 4. [🟢 GOTOWE DO ZATWIERDZENIA] IN_PROGRESS → READY_FOR_REVIEW
         await this._updateStatus(task.id, allTasks, STATUS.READY_FOR_REVIEW, {
-            completedAt: new Date().toISOString(),
-            patchFile:   `patches/patch_${task.id}.md`,
+            completedAt:   new Date().toISOString(),
+            patchFile:     `patches/patch_${task.id}.md`,
+            stage:         'READY',
+            verified:      verify.ok,
+            verifyAttempts: verify.attempts,
+            planOnly:      verify.planOnly || undefined,
+            verifyError:   verify.ok ? undefined : verify.error,
         });
 
-        console.log(`[Mechanik] ✅ Zadanie ${task.id} → READY_FOR_REVIEW. Patch gotowy.`);
+        const verdict = verify.planOnly ? 'plan (bez kodu)' : verify.ok
+            ? `składnia OK${verify.attempts ? ` po ${verify.attempts} naprawach` : ''}`
+            : `⚠️ nadal błąd po 3 próbach`;
+        console.log(`[Mechanik] ✅ Zadanie ${task.id} → READY_FOR_REVIEW (${verdict}).`);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -290,47 +312,142 @@ class MechanicService {
                 ? `Pliki docelowe: ${task.targetFiles.join(', ')}\n`
                 : '') +
             `\nWygeneruj konkretny kod naprawczy lub instrukcję refaktoryzacji. ` +
-            `Ogranicz tekst poboczny — podaj czysty kod lub Markdown. ` +
+            `Podaj kompletny kod w jednym bloku \`\`\`...\`\`\`. Ogranicz tekst poboczny. ` +
             `Jeśli nie ma wystarczającego kontekstu, opisz architektoniczny plan naprawy krok po kroku.`;
+        return this._callGemmaRaw(prompt, task.id);
+    }
 
+    /** Wspólny niski-poziom caller Gemma4 (reużywany przez napraw-loop i Git Assistant). */
+    async _callGemmaRaw(prompt, tag = 'raw') {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-
-        console.log(`[Mechanik] ⏳ Wysyłam zadanie ${task.id} do ${GEMMA_MODEL} (timeout: ${AI_TIMEOUT_MS / 1000}s)...`);
-        console.log(`[Mechanik] 🎯 Endpoint: ${OLLAMA_URL}`);
-
         let raw = '';
         try {
             const resp = await fetch(OLLAMA_URL, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 signal:  controller.signal,
-                body: JSON.stringify({
-                    model:  GEMMA_MODEL,
-                    prompt,
-                    stream: false,
-                }),
+                body: JSON.stringify({ model: GEMMA_MODEL, prompt, stream: false }),
             });
-
             if (!resp.ok) throw new Error(`Ollama HTTP ${resp.status}`);
             const json = await resp.json();
             raw = (json.response || '').trim();
-            console.log(`[Mechanik] ✅ Model odpowiedział (${raw.length} znaków) dla ${task.id}.`);
-
+            console.log(`[Mechanik] ✅ Model odpowiedział (${raw.length} znaków) [${tag}].`);
         } finally {
             clearTimeout(timer);
         }
-
         if (!raw) throw new Error('Gemma4 zwróciła pustą odpowiedź.');
         return raw;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PRIVATE: 🧪 AUTONOMICZNY LOOP TESTOWY (weryfikacja kompilacji + samonaprawa)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Wyciągnij pierwszy blok kodu z odpowiedzi Gemmy (```lang ... ```). */
+    _extractCode(text) {
+        const m = String(text || '').match(/```[a-zA-Z]*\n([\s\S]*?)```/);
+        return m ? m[1].trim() : null;
+    }
+
+    /**
+     * Cichy test syntaktyczny przez esbuild (ten sam silnik co Vite) — ms zamiast
+     * pełnego npm run build. Wykrywa błędy składni TS/TSX/JS bez wdrażania patcha.
+     */
+    async _verifySyntax(code, targetFile = '') {
+        const ext = (String(targetFile).match(/\.(\w+)$/) || [])[1]?.toLowerCase();
+        const loader = ext === 'tsx' ? 'tsx' : ext === 'ts' ? 'ts' : ext === 'jsx' ? 'jsx' : 'js';
+        try {
+            const esbuild = await import('esbuild');
+            await esbuild.transform(code, { loader, logLevel: 'silent' });
+            return { ok: true, engine: 'esbuild', loader };
+        } catch (e) {
+            const msg = (e.errors?.map(x => x.text).join('; ')) || e.message;
+            return { ok: false, error: msg, loader };
+        }
+    }
+
+    /** Przeproś Gemmę o naprawę WYŁĄCZNIE błędu składni (faza pętli). */
+    async _callGemmaFix(task, brokenCode, error, attempt) {
+        const prompt =
+            `Twój poprzedni patch dla "${task.title}" ma BŁĄD KOMPILACJI (próba ${attempt}/3).\n\n` +
+            `BŁĄD KOMPILATORA:\n${error}\n\n` +
+            `KOD:\n\`\`\`\n${String(brokenCode).slice(0, 2500)}\n\`\`\`\n\n` +
+            `Napraw WYŁĄCZNIE błąd składni. Zwróć POPRAWIONY, kompletny kod w jednym bloku \`\`\`...\`\`\`. ` +
+            `Bez wyjaśnień, bez tekstu poza blokiem kodu.`;
+        return this._callGemmaRaw(prompt, `fix#${attempt}`);
+    }
+
+    /**
+     * Pętla samonaprawy: generuj → testuj składnię → (jeśli błąd) popraw → powtórz (max 3).
+     * @returns {Promise<{ok, patch, attempts, error?, planOnly?}>}
+     */
+    async _verifyAndRepair(task, patchContent) {
+        const targetFile = task.targetFiles?.[0] || '';
+        let patch = patchContent, attempts = 0, lastError = null;
+
+        for (let i = 0; i < 3; i++) {
+            const code = this._extractCode(patch);
+            if (!code) {
+                // Brak bloku kodu → plan architektoniczny, nie ma czego kompilować.
+                return { ok: true, patch, attempts, planOnly: true };
+            }
+            const v = await this._verifySyntax(code, targetFile);
+            if (v.ok) {
+                console.log(`[Mechanik·Verify] 🟢 Składnia czysta (${v.loader}) po ${attempts} naprawach.`);
+                return { ok: true, patch, attempts };
+            }
+            attempts++;
+            lastError = v.error;
+            console.warn(`[Mechanik·Verify] 🧪 Próba ${attempts}/3 — błąd: ${String(v.error).slice(0, 120)}`);
+            if (i < 2) {
+                try { patch = await this._callGemmaFix(task, code, v.error, attempts); }
+                catch (e) { lastError = e.message; break; }
+            }
+        }
+        return { ok: false, patch, attempts, error: lastError };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PUBLIC: 🧠 CONTEXT-AWARE GIT ASSISTANT — Conventional Commits z git diff
+    // ─────────────────────────────────────────────────────────────────────────
+    /**
+     * Generuje nagłówek commita w konwencji Conventional Commits na bazie diffu.
+     * @param {string} diffText  surowy git diff (przycięty)
+     * @returns {Promise<string>} np. "fix(mechanic): naprawa pętli weryfikacji"
+     */
+    async generateCommitMessage(diffText) {
+        const prompt =
+            `Na podstawie poniższego git diff wygeneruj DOKŁADNIE JEDEN nagłówek commita w konwencji ` +
+            `Conventional Commits: "type(scope): opis".\n` +
+            `Typy: feat, fix, refactor, docs, chore, perf, test, style.\n` +
+            `Scope = obszar kodu (core, view, bridge, mechanic, vault, arcade, kibel, ui...).\n` +
+            `Maks 72 znaki, bez kropki na końcu, bez markdown, bez cudzysłowów. Odpowiedz TYLKO nagłówkiem.\n\n` +
+            `DIFF:\n${String(diffText).slice(0, 4000)}`;
+        const raw = await this._callGemmaRaw(prompt, 'git-msg');
+        // Pierwsza sensowna linia, oczyszczona z markdown/cudzysłowów.
+        const line = raw.split('\n').map(l => l.trim()).find(l => /^[a-z]+(\(.+\))?:/i.test(l)) || raw.split('\n')[0];
+        return line.replace(/^[`*>"'\s-]+/, '').replace(/["'`]+$/, '').slice(0, 100).trim();
+    }
+
+    /** Ustaw fazę operacyjną zadania (live-stepper na Szmaragdowym Terminalu). */
+    async _setStage(taskId, allTasks, stage) {
+        await this._updateStatus(taskId, allTasks, STATUS.IN_PROGRESS, { stage });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // PRIVATE: formatowanie pliku patch.md
     // ─────────────────────────────────────────────────────────────────────────
 
-    _formatPatch(task, aiContent) {
+    _formatPatch(task, aiContent, verify = {}) {
         const ts = new Date().toISOString();
+        const verifyLine = verify.planOnly
+            ? `> **🧪 Weryfikacja:** plan architektoniczny (brak kodu do kompilacji)`
+            : verify.skipped
+            ? `> **🧪 Weryfikacja:** pominięta`
+            : verify.ok
+            ? `> **🧪 Weryfikacja:** 🟢 składnia OK (esbuild)${verify.attempts ? ` po ${verify.attempts} auto-naprawach` : ''}`
+            : `> **🧪 Weryfikacja:** 🔴 błąd składni po 3 próbach — ${String(verify.error).slice(0, 160)}`;
         return [
             `# 🔧 Patch: ${task.title}`,
             ``,
@@ -338,6 +455,7 @@ class MechanicService {
             `> **Priorytet:** ${task.priority}`,
             `> **Status:** READY_FOR_REVIEW`,
             `> **Wygenerowano:** ${ts}`,
+            verifyLine,
             (task.targetFiles?.length
                 ? `> **Pliki docelowe:** ${task.targetFiles.map(f => `\`${f}\``).join(', ')}`
                 : ''),

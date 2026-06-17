@@ -26,7 +26,19 @@ interface TaskQueueItem {
     createdAt?:  string;
     updatedAt?:  string;
     error?:      string;
+    stage?:      'SCANNING' | 'GENERATING' | 'VERIFYING' | 'READY' | 'FAILED';
+    verified?:   boolean;
+    verifyAttempts?: number;
+    planOnly?:   boolean;
 }
+
+// 🧪 Kroki operacyjne Mechanika (live-stepper — architektura Claude Code CLI)
+const MECHANIK_STEPS: { key: string; label: string; icon: string }[] = [
+    { key: 'SCANNING',   label: 'SKANOWANIE STRUKTURY',      icon: '🔍' },
+    { key: 'GENERATING', label: 'GENEROWANIE ŁATKI',          icon: '🛠️' },
+    { key: 'VERIFYING',  label: 'WERYFIKACJA KOMPILACJI',     icon: '🧪' },
+    { key: 'READY',      label: 'GOTOWE DO ZATWIERDZENIA',    icon: '🟢' },
+];
 
 interface ApplyResult {
     success:       boolean;
@@ -167,20 +179,28 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onApply, onReject }) 
                     </motion.span>
                 </div>
             )}
-            {task.status === 'IN_PROGRESS' && (
-                <div className="mt-2 flex items-center gap-2">
-                    <motion.span
-                        animate={{ rotate: 360 }}
-                        transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
-                        className="inline-block"
-                    >
-                        ⚙️
-                    </motion.span>
-                    <span className="text-[9px] text-yellow-400 font-mono uppercase tracking-widest animate-pulse">
-                        MECHANIK PRACUJE...
-                    </span>
-                </div>
-            )}
+            {task.status === 'IN_PROGRESS' && (() => {
+                const curIdx = Math.max(0, MECHANIK_STEPS.findIndex(s => s.key === (task.stage || 'SCANNING')));
+                return (
+                    <div className="mt-2 rounded-lg p-2" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                        <div className="flex flex-col gap-1">
+                            {MECHANIK_STEPS.map((s, i) => {
+                                const done = i < curIdx, active = i === curIdx;
+                                return (
+                                    <div key={s.key} className="flex items-center gap-2 text-[9px] font-mono tracking-wider"
+                                        style={{ color: done ? '#34d399' : active ? '#fbbf24' : 'rgba(148,163,184,0.4)' }}>
+                                        <span>{done ? '✅' : active ? s.icon : '▫'}</span>
+                                        <span style={{ fontWeight: active ? 700 : 400 }}>[{s.icon} {s.label}]</span>
+                                        {active && (
+                                            <motion.span animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.1 }}>…</motion.span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            })()}
             {task.status === 'BLOCKED' && (
                 <p className="mt-2 text-[9px] text-red-400 font-mono uppercase tracking-widest">
                     🔒 ZABLOKOWANE
@@ -218,6 +238,24 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onApply, onReject }) 
                             style={{ boxShadow: '0 0 5px #10b981', animation: 'pulse 1.4s infinite' }} />
                         <span className="text-[9px] text-emerald-500 tracking-[0.22em] uppercase">
                             SZMARAGDOWY TERMINAL · MECHANIK · OCZEKUJE NA ZATWIERDZENIE
+                        </span>
+                    </div>
+
+                    {/* 🧪 Werdykt weryfikacji kompilacji (autonomiczny loop testowy) */}
+                    <div className="px-3 pt-2">
+                        <span className="text-[8px] font-mono px-2 py-0.5 rounded"
+                            style={
+                                task.planOnly
+                                    ? { background: 'rgba(148,163,184,0.12)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.3)' }
+                                    : task.verified
+                                    ? { background: 'rgba(16,185,129,0.12)', color: '#34d399', border: '1px solid rgba(16,185,129,0.4)' }
+                                    : { background: 'rgba(244,63,94,0.12)', color: '#fb7185', border: '1px solid rgba(244,63,94,0.4)' }
+                            }>
+                            {task.planOnly
+                                ? '🧪 PLAN (bez kodu do kompilacji)'
+                                : task.verified
+                                ? `🧪 KOMPILACJA OK (esbuild)${task.verifyAttempts ? ` · ${task.verifyAttempts} auto-naprawy` : ''}`
+                                : '🧪 BŁĄD SKŁADNI po 3 próbach — przejrzyj ręcznie'}
                         </span>
                     </div>
 

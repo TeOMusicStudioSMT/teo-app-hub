@@ -2775,6 +2775,62 @@ app.post('/api/mechanic/clear', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/mechanic/git-assist — 🧠 Context-Aware Git Assistant
+ *
+ * Analizuje git diff i generuje nagłówek commita w konwencji Conventional Commits
+ * (przez Mechanika/Gemma4) ORAZ weryfikuje status synchronizacji z origin/main.
+ * NIE commituje ani nie pushuje — to asystent decyzyjny dla Suwerena.
+ */
+app.post('/api/mechanic/git-assist', async (req, res) => {
+    try {
+        const opts = { cwd: process.cwd(), timeout: 15000, maxBuffer: 5 * 1024 * 1024 };
+        const run = async (cmd) => { try { return (await execAsync(cmd, opts)).stdout.trim(); } catch (e) { return (e.stdout || '').trim(); } };
+
+        // 1. Diff: najpierw staged, fallback working tree
+        let diff = await run('git diff --cached');
+        let scope = 'staged';
+        if (!diff) { diff = await run('git diff'); scope = 'working'; }
+        const stat = await run('git diff --cached --stat') || await run('git diff --stat');
+
+        if (!diff) {
+            return res.json({ success: true, message: null, note: 'Brak zmian do skomitowania.', ahead: 0, behind: 0, clean: true });
+        }
+
+        // 2. Conventional Commits message przez Mechanika
+        let message = null;
+        try {
+            message = await MechanicService.getInstance().generateCommitMessage(`${stat}\n\n${diff}`);
+        } catch (e) {
+            console.warn('[Git-Assist] ⚠️ Generator wiadomości:', e.message);
+            message = 'chore: aktualizacja (Mechanik offline — uzupełnij ręcznie)';
+        }
+
+        // 3. Status synchronizacji z origin/main
+        await run('git fetch origin main --quiet');
+        const counts = await run('git rev-list --left-right --count origin/main...HEAD'); // "behind\tahead"
+        const [behind = '0', ahead = '0'] = counts.split(/\s+/);
+
+        console.log(`[Git-Assist] 🧠 ${scope} → "${message}" · ahead ${ahead}, behind ${behind}`);
+        return res.json({
+            success: true,
+            scope,
+            message,
+            stat,
+            ahead:  Number(ahead),
+            behind: Number(behind),
+            syncHint: Number(behind) > 0
+                ? 'origin/main wyprzedza — najpierw git pull --rebase, potem push.'
+                : Number(ahead) > 0
+                ? `${ahead} commit(ów) gotowych do push origin main.`
+                : 'Zsynchronizowane z origin/main.',
+        });
+    } catch (e) {
+        console.error('[Git-Assist] ❌', e.message);
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // ── 🚨 AUTO-PANIC — pętla samonaprawy Katedry ────────────────────────────────
 // Anty-sztorm: ten sam crash w krótkim oknie nie generuje nowego zadania.
 const autoPanicRecent = new Map();   // hash → { taskId, ts }
