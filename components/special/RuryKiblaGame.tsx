@@ -48,7 +48,8 @@ canvas{border:1px solid rgba(34,211,238,.25);border-radius:10px;box-shadow:0 0 3
 const c=document.getElementById('c'),x=c.getContext('2d');
 const RAMP={chill:[0.30,0.020],normal:[0.45,0.040],endless:[0.65,0.060]};
 let mode='normal',paused=false;
-let pr=0,flush=0,hp=3,clogs=[],over=false,flash=0,t=0;
+let pr=0,flush=0,hp=3,clogs=[],over=false,flash=0,t=0,lastT=performance.now();
+const CLOG_MS={chill:7700,normal:6000,endless:6000};   // żywotność zatoru w MS (czas, nie klatki)
 const rand=(a,b)=>a+Math.random()*(b-a);
 const flush_=document.getElementById('flush'),pr_=document.getElementById('pr'),hp_=document.getElementById('hp'),msg=document.getElementById('msg');
 function upd(){flush_.textContent=flush;pr_.textContent=Math.floor(pr);hp_.textContent=hp;}
@@ -82,14 +83,16 @@ c.addEventListener('pointerdown',e=>{
   for(let i=0;i<clogs.length;i++){const k=clogs[i];if(Math.hypot(k.x-mx,k.y-my)<22){clogs.splice(i,1);msg.textContent='🧻 Odetkane!';return;}}
   doFlush();
 });
-function loop(){
-  t++;
+function loop(now){
+  now=now||performance.now();t++;
+  const dt=Math.min(now-lastT,100);lastT=now;   // delta-time (cap 100ms po pauzie/refocusie)
+  const f=dt/16.67;                             // 1.0 przy 60 FPS — fizyka niezależna od klatek
   if(!over&&!paused){
-    pr+=RAMP[mode][0]+flush*RAMP[mode][1];
+    pr+=(RAMP[mode][0]+flush*RAMP[mode][1])*f;
     if(pr>=100)loseLife('💥 RURA PĘKŁA!');
-    const clogRate=(mode==='chill'?0.008:mode==='endless'?0.016:0.012)+flush*0.001;
-    if(Math.random()<clogRate&&clogs.length<4)clogs.push({x:rand(60,300),y:rand(70,225),born:t});
-    for(const k of clogs){if(t-k.born>(mode==='chill'?460:360)){loseLife('🚫 Zator zatkał rurę!');break;}}
+    const clogRate=((mode==='chill'?0.008:mode==='endless'?0.016:0.012)+flush*0.001)*f;
+    if(Math.random()<clogRate&&clogs.length<4)clogs.push({x:rand(60,300),y:rand(70,225),born:now});
+    for(const k of clogs){if(now-k.born>(CLOG_MS[mode]||6000)){loseLife('🚫 Zator zatkał rurę!');break;}}
   }
   draw();requestAnimationFrame(loop);
 }
@@ -104,12 +107,12 @@ function draw(){
   x.beginPath();x.moveTo(cx,232);x.lineTo(cx,Math.max(top,40));x.stroke();
   x.font='32px serif';x.textAlign='center';x.fillText('🚽',cx,276);x.fillText('🛢️',cx,36);
   x.font='25px serif';
-  for(const k of clogs){const age=(t-k.born)/360;x.globalAlpha=age>0.7?(Math.sin(t*0.4)>0?1:.4):1;x.fillText('💩',k.x,k.y+9);x.globalAlpha=1;}
+  for(const k of clogs){const age=(performance.now()-k.born)/(CLOG_MS[mode]||6000);x.globalAlpha=age>0.7?(Math.sin(t*0.4)>0?1:.4):1;x.fillText('💩',k.x,k.y+9);x.globalAlpha=1;}
   if(flash>0){x.fillStyle='rgba(74,222,128,'+(flash/24)+')';x.fillRect(0,0,360,290);flash--;}
   x.fillStyle=pr>85?'#ef4444':pr>60?'#fbbf24':'#22d3ee';x.fillRect(10,285,(340*Math.min(pr,100)/100),4);
   if(paused){x.fillStyle='rgba(6,8,15,.72)';x.fillRect(0,0,360,290);x.fillStyle='#fbbf24';x.font='bold 20px monospace';x.fillText('⏸ PAUZA',180,150);}
 }
-reset();loop();
+reset();requestAnimationFrame(loop);
 </script></body></html>`;
 
 export const RuryKiblaGame: React.FC = () => {
