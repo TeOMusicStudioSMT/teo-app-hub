@@ -380,6 +380,8 @@ const KatedraChat: React.FC = () => {
 
     // Załączniki — przetworzone obrazy czekające na wysyłkę
     const [pendingAttachments, setPendingAttachments] = useState<ImageAttachment[]>([]);
+    // 📄 Auto-kontekst plików tekstowych — wstrzykiwany do wiadomości modelu (bez ręcznego wklejania)
+    const [fileContexts, setFileContexts] = useState<{ name: string; content: string }[]>([]);
     const [attachProcessing, setAttachProcessing]     = useState(false);
 
     // ── Refs ──────────────────────────────────────────────────────
@@ -867,7 +869,7 @@ const KatedraChat: React.FC = () => {
      */
     const sendMessage = useCallback(async () => {
         const text = currentInput.trim();
-        if ((!text && pendingAttachments.length === 0) || isLoading) return;
+        if ((!text && pendingAttachments.length === 0 && fileContexts.length === 0) || isLoading) return;
 
         // ── Przechwyt komendy /mechanik (przed normalnym potokiem) ──
         if (/^\/mechanik\b/i.test(text)) {
@@ -887,8 +889,20 @@ const KatedraChat: React.FC = () => {
         const attachmentsToSend = [...pendingAttachments];
         setPendingAttachments([]);
 
+        // 📄 Auto-kontekst: surowa treść wgranych plików wstrzyknięta do wiadomości modelu
+        const filesToSend = [...fileContexts];
+        setFileContexts([]);
+        const fileBlock = filesToSend.length
+            ? filesToSend.map(f => `[ZAWARTOŚĆ PLIKU: ${f.name}]\n${f.content}\n[/KONIEC PLIKU]`).join('\n\n') + '\n\n'
+            : '';
+        // Tekst wysyłany do modelu = treść plików + wiadomość Suwerena (model nie musi prosić o wklejanie)
+        const modelText = fileBlock + text;
+
         const totalTokens = attachmentsToSend.reduce((s, a) => s + a.estimatedTokens, 0);
-        const humanContent = text + (attachmentsToSend.length > 0
+        const humanContent = (filesToSend.length
+                ? `📄 ${filesToSend.map(f => f.name).join(', ')} (auto-kontekst)\n`
+                : '')
+            + text + (attachmentsToSend.length > 0
             ? `\n\n[📎 ${attachmentsToSend.length} obraz(y): ` +
               attachmentsToSend.map(a =>
                   `${a.width}×${a.height}px, ${a.compressedSizeKB}KB ~${a.estimatedTokens}tok`
@@ -925,7 +939,7 @@ const KatedraChat: React.FC = () => {
             // Dla chmury przekazujemy obrazy; dla Ollamy tylko tekst (brak vision API w /api/ollama)
             if (sourceMode === 'cloud' && attachmentsToSend.length > 0) {
                 await ApiDyrygent.dispatchCloud(
-                    text || '(opisz ten obraz)',
+                    modelText || '(opisz ten obraz)',
                     cloudFastModel,
                     SYSTEM_PROMPTS.klaudiusz,
                     tok => { fullText += tok; updateMessage(replyId, { content: fullText }); },
@@ -935,7 +949,7 @@ const KatedraChat: React.FC = () => {
                 );
             } else {
                 await dispatch(
-                    text + (attachmentsToSend.length > 0
+                    modelText + (attachmentsToSend.length > 0
                         ? `\n\n[Suweren dołączył ${attachmentsToSend.length} obraz(y), ` +
                           `ale tryb Ollama nie obsługuje vision — opisz co widzisz na podstawie tekstu]`
                         : ''),
@@ -965,7 +979,7 @@ const KatedraChat: React.FC = () => {
         }
     }, [currentInput, isLoading, sourceMode, cloudFastModel, fastModel,
         buildHistory, getDispatch, handleOllamaResponse, runModerator, scrollToBottom,
-        dispatchToMechanik, dispatchGitAssist, pendingAttachments]);
+        dispatchToMechanik, dispatchGitAssist, pendingAttachments, fileContexts]);
 
     // ── Konsultacja z Radą (Adamus) ────────────────────────────────
     /**
@@ -1114,8 +1128,14 @@ const KatedraChat: React.FC = () => {
                     setStatus(`❌ Błąd kompresji ${file.name}`, true);
                 }
             } else {
-                // Nie-obrazy: dodaj jako tekst
-                setCurrentInput(p => p + `[Plik: ${file.name}] `);
+                // 📄 Pliki tekstowe: CZYTAJ surową zawartość i wstrzyknij jako auto-kontekst
+                try {
+                    const content = await file.text();
+                    setFileContexts(prev => [...prev, { name: file.name, content }]);
+                    setStatus(`📄 Wczytano ${file.name} (${(content.length / 1024).toFixed(1)} KB) → auto-kontekst`, true);
+                } catch {
+                    setStatus(`❌ Nie udało się odczytać ${file.name}`, true);
+                }
             }
         }
         setAttachProcessing(false);
@@ -1481,6 +1501,28 @@ const KatedraChat: React.FC = () => {
                         <MessageSquare size={18} />
                     </button>
                 </div>
+
+                {/* ── Chipsy plików tekstowych (auto-kontekst) ─────────── */}
+                {fileContexts.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                        {fileContexts.map((f, i) => (
+                            <div key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs
+                                                    bg-emerald-900/40 border border-emerald-500/40 text-emerald-200">
+                                <span>📄</span>
+                                <span className="max-w-[160px] truncate">{f.name}</span>
+                                <span className="opacity-60">{(f.content.length / 1024).toFixed(1)}KB</span>
+                                <button
+                                    onClick={() => setFileContexts(prev => prev.filter((_, j) => j !== i))}
+                                    className="ml-1 text-emerald-500 hover:text-white transition-colors">
+                                    <X size={12} />
+                                </button>
+                            </div>
+                        ))}
+                        <span className="flex items-center text-[10px] text-emerald-400/50">
+                            → treść wstrzyknięta do następnej wiadomości
+                        </span>
+                    </div>
+                )}
 
                 {/* ── Chipsy załączników ─────────────────────────────── */}
                 {(pendingAttachments.length > 0 || attachProcessing) && (
