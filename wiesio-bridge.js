@@ -2775,6 +2775,17 @@ app.post('/api/mechanic/clear', async (req, res) => {
     }
 });
 
+/** POST /api/mechanic/purge-stalled — FIFO Clearer: usuń zakleszczone zombie/aborted. */
+app.post('/api/mechanic/purge-stalled', async (req, res) => {
+    const staleMinutes = Number(req.body?.staleMinutes) || 5;
+    try {
+        const removed = await MechanicService.getInstance().purgeStalledTasks({ staleMinutes });
+        return res.json({ success: true, removed, message: `Usunięto ${removed} zakleszczonych zadań (>${staleMinutes}min).` });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 /**
  * POST /api/verify/syntax — 🧪 weryfikacja składni kodu (esbuild, ten sam co Vite).
  * Body: { code, filename? } → { ok, error?, loader }. Dla Katedralnego Klaudiusza.
@@ -2786,6 +2797,88 @@ app.post('/api/verify/syntax', async (req, res) => {
         const r = await MechanicService.getInstance().verifyCode(String(code), filename || '');
         return res.json({ success: true, ...r });
     } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🗺️ MAPA MODUŁÓW — Lazy Drill-Down (warstwowe ładowanie zamiast całego drzewa)
+//  GET /api/modules/map?level=macro | mezo&parent=<path> | mikro&parent=<path>
+//  Skanuje TYLKO żądany poziom → mały kontekst, zero timeoutu na 3281 modułach.
+// ══════════════════════════════════════════════════════════════════════════════
+
+const MAP_SKIP = new Set(['node_modules', '.git', 'dist', '.claude', '.agent', '.vault-0.00g', '.vite']);
+const MAP_CODE_EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+
+/** Policz pliki kodu w katalogu (rekurencyjnie, z pominięciem śmieci). */
+async function countCodeFiles(dir, depth = 0) {
+    if (depth > 6) return 0;
+    let n = 0;
+    let entries;
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return 0; }
+    for (const e of entries) {
+        if (MAP_SKIP.has(e.name) || e.name.startsWith('_OtakOs_') || e.name.startsWith('_Anti')) continue;
+        if (e.isDirectory()) n += await countCodeFiles(path.join(dir, e.name), depth + 1);
+        else if (MAP_CODE_EXT.has(path.extname(e.name))) n++;
+    }
+    return n;
+}
+
+/** Zbuduj mapę dla jednego poziomu architektonicznego. */
+async function buildModuleMap(level, parentRel) {
+    const root = process.cwd();
+    // Guard path-traversal: parent musi zostać w projekcie.
+    const safeParent = (parentRel || '').replace(/\\/g, '/').replace(/^\/+|\.\.(\/|$)/g, '');
+    const absParent = path.resolve(root, safeParent);
+    if (!absParent.startsWith(root)) throw new Error('Ścieżka poza projektem.');
+
+    if (level === 'macro') {
+        // Tylko katalogi/pliki najwyższego poziomu projektu (warstwy architektury).
+        const entries = await fs.readdir(root, { withFileTypes: true });
+        const nodes = [];
+        for (const e of entries) {
+            if (MAP_SKIP.has(e.name) || e.name.startsWith('.') || e.name.startsWith('_OtakOs_') || e.name.startsWith('_Anti')) continue;
+            if (e.isDirectory()) {
+                const count = await countCodeFiles(path.join(root, e.name));
+                if (count > 0) nodes.push({ id: e.name, label: e.name, type: 'dir', count, path: e.name, hasChildren: true });
+            } else if (MAP_CODE_EXT.has(path.extname(e.name))) {
+                nodes.push({ id: e.name, label: e.name, type: 'file', count: 1, path: e.name, hasChildren: false });
+            }
+        }
+        nodes.sort((a, b) => b.count - a.count);
+        return { nodes, total: nodes.reduce((s, n) => s + n.count, 0) };
+    }
+
+    // mezo / mikro — listing JEDNEGO poziomu pod parent (bez rekursji w głąb).
+    const entries = await fs.readdir(absParent, { withFileTypes: true });
+    const nodes = [];
+    for (const e of entries) {
+        if (MAP_SKIP.has(e.name) || e.name.startsWith('_OtakOs_') || e.name.startsWith('_Anti')) continue;
+        const rel = path.posix.join(safeParent, e.name);
+        if (e.isDirectory()) {
+            const count = await countCodeFiles(path.join(absParent, e.name));
+            nodes.push({ id: rel, label: e.name, type: 'dir', count, path: rel, hasChildren: count > 0 });
+        } else if (MAP_CODE_EXT.has(path.extname(e.name))) {
+            let lines = 0;
+            try { lines = (await fs.readFile(path.join(absParent, e.name), 'utf8')).split('\n').length; } catch { /* skip */ }
+            nodes.push({ id: rel, label: e.name, type: 'file', count: 1, lines, path: rel, hasChildren: false });
+        }
+    }
+    nodes.sort((a, b) => (b.count - a.count) || a.label.localeCompare(b.label));
+    return { nodes, total: nodes.length };
+}
+
+app.get('/api/modules/map', async (req, res) => {
+    const level  = String(req.query.level || 'macro');
+    const parent = String(req.query.parent || '');
+    if (!['macro', 'mezo', 'mikro'].includes(level)) {
+        return res.status(400).json({ success: false, error: 'level musi być macro|mezo|mikro.' });
+    }
+    try {
+        const map = await buildModuleMap(level, parent);
+        return res.json({ success: true, level, parent, ...map });
+    } catch (e) {
+        console.error('[Module-Map] ❌', e.message);
         return res.status(500).json({ success: false, error: e.message });
     }
 });

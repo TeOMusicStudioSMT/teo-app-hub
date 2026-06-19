@@ -113,6 +113,36 @@ class MechanicService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // PUBLIC: FIFO Queue Clearer — usuwa zakleszczone zadania (zombie / aborted)
+    // ─────────────────────────────────────────────────────────────────────────
+    /**
+     * Usuwa z kolejki FIFO zadania zakleszczone, aby zatory (np. po timeout/abort
+     * Ollamy) nie blokowały kolejnych operacji. Cele:
+     *   - IN_PROGRESS starsze niż próg (zombie po crashu / abort'cie),
+     *   - FAILED z flagą vramStall starsze niż próg.
+     * Świeże wpisy (< staleMinutes) zostają — Suweren widzi ostatnią awarię.
+     * @param {{ staleMinutes?: number }} [opts]
+     * @returns {Promise<number>} liczba usuniętych zadań.
+     */
+    async purgeStalledTasks({ staleMinutes = 5 } = {}) {
+        await this._ensureDirs();
+        const tasks  = await this._readQueue();
+        const cutoff = Date.now() - staleMinutes * 60_000;
+        const isStalled = (t) => {
+            const ts  = Date.parse(t.updatedAt || t.startedAt || t.createdAt || '') || 0;
+            const old = ts < cutoff;
+            return old && (t.status === STATUS.IN_PROGRESS || (t.status === STATUS.FAILED && t.vramStall));
+        };
+        const kept    = tasks.filter(t => !isStalled(t));
+        const removed = tasks.length - kept.length;
+        if (removed > 0) {
+            await this._saveQueue(kept);
+            console.log(`[Mechanik] 🧹 FIFO Clearer: usunięto ${removed} zakleszczonych zadań (>${staleMinutes}min).`);
+        }
+        return removed;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // PUBLIC: Otak-Sync Watchdog — odkażanie komend powłoki dla zadań shell
     // ─────────────────────────────────────────────────────────────────────────
     /**
@@ -248,6 +278,12 @@ class MechanicService {
                 vramStall: aborted || undefined,
             });
             await this._writeDeadLetter({ task, error: aborted ? `${vramNote} (${aiErr.message})` : aiErr.message });
+
+            // FIFO Clearer: po wykryciu abortu usuń zakleszczone zombie, by nie blokowały kolejki.
+            if (aborted) {
+                try { await this.purgeStalledTasks({ staleMinutes: 5 }); }
+                catch (pErr) { console.warn(`[Mechanik] ⚠️ purgeStalled: ${pErr.message}`); }
+            }
             return;
         }
 
