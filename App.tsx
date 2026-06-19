@@ -29,7 +29,6 @@ import { useWeb3Auth } from './hooks/useWeb3Auth';
 import { ApiKeyModal } from './components/settings/ApiKeyModal';
 import { Secretariat } from './components/Secretariat';
 import { GravitonProvider, useGraviton } from './context/GravitonProvider';
-import { JasonFlowBridge } from './components/special/JasonFlowBridge';
 import { TeOKibel } from './components/special/TeOKibel';
 import { CrewCreator } from './components/special/CrewCreator';
 import TeODash from './components/special/TeODash';
@@ -51,8 +50,7 @@ import KwantowaCzytelnia from './components/KwantowaCzytelnia';
 import AutoPanicSentinel from './components/special/AutoPanicSentinel';
 import VaultDashboard from './components/special/VaultDashboard';
 import SimulationDashboard from './components/special/SimulationDashboard';
-import SimulatorMap from './components/special/SimulatorMap';
-import ModuleSieci from './components/special/ModuleSieci';
+import TeoLab from './components/special/TeoLab';
 
 
 
@@ -86,8 +84,6 @@ const App: React.FC = () => {
         actionName?: string;
     } | null>(null);
 
-    // --- JasonFlowBridge State ---
-    const [showJasonBridge, setShowJasonBridge] = useState(false);
 
     // --- Kibel State ---
     const [showKibel, setShowKibel] = useState(false);
@@ -98,8 +94,7 @@ const App: React.FC = () => {
     const [showJournal, setShowJournal] = useState(false); // 📓 Kwantowy Dziennik
     const [showVault, setShowVault] = useState(false); // 🔐 Skarbiec 0.00G
     const [showTeoSim, setShowTeoSim] = useState(false); // 🧠 TeO-Sim Reasoning Loops
-    const [showAgro, setShowAgro] = useState(false); // 🌾 Agro-Robotics Simulator
-    const [showSieci, setShowSieci] = useState(false); // 🗺️ Mapa Sieci Modułów
+    const [showLab, setShowLab] = useState(false); // 🧪 TeO Lab (Agro + RadioSMT)
     const [isWiesioOnline, setIsWiesioOnline] = useState<boolean | null>(null);
 
     // --- Real Auth State ---
@@ -776,31 +771,14 @@ const App: React.FC = () => {
                                             🧠
                                         </button>
                                     </div>
+                                    {/* 🧪 TeO Lab — hub: Agro-Robotics + RadioSMT Pipeline (🗺️ Mapa Sieci → w TeO-Sim) */}
                                     <div className="pointer-events-auto">
                                         <button
-                                            onClick={() => setShowAgro(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-lime-500 to-green-800 border-2 border-lime-300/50 shadow-[0_0_15px_rgba(132,204,22,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                            title="🌾 Agro-Robotics Simulator"
+                                            onClick={() => setShowLab(true)}
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-lime-500 to-emerald-800 border-2 border-lime-300/50 shadow-[0_0_15px_rgba(132,204,22,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            title="🧪 TeO Lab — Symulatory & Pipeline'y"
                                         >
-                                            🌾
-                                        </button>
-                                    </div>
-                                    <div className="pointer-events-auto">
-                                        <button
-                                            onClick={() => setShowSieci(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-cyan-500 to-violet-800 border-2 border-cyan-300/50 shadow-[0_0_15px_rgba(34,211,238,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                            title="🗺️ Mapa Sieci Modułów"
-                                        >
-                                            🗺️
-                                        </button>
-                                    </div>
-                                    <div className="pointer-events-auto">
-                                        <button
-                                            onClick={() => setShowJasonBridge(true)}
-                                            className="w-14 h-14 rounded-full flex items-center justify-center text-2xl bg-gradient-to-br from-purple-500 to-indigo-600 border-2 border-white/30 shadow-[0_0_20px_rgba(139,92,246,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                            title="🎵 RadioSMT Pipeline"
-                                        >
-                                            🎛️
+                                            🧪
                                         </button>
                                     </div>
 
@@ -890,17 +868,7 @@ const App: React.FC = () => {
                                             </motion.div>
                                         </motion.div>
                                     )}
-                                    {showJasonBridge && (
-                                        <motion.div
-                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/80 flex items-center justify-center z-[2001]"
-                                            onClick={() => setShowJasonBridge(false)}
-                                        >
-                                            <motion.div onClick={(e) => e.stopPropagation()}>
-                                                <JasonFlowBridge demoMode={true} onCreate={(p) => console.log('🎵 Pipeline:', p)} />
-                                            </motion.div>
-                                        </motion.div>
-                                    )}
+                                    {/* 🎛️ RadioSMT (JasonFlowBridge) przeniesione do 🧪 TeO Lab */}
                                     {showJournal && (
                                         <motion.div
                                             initial={{ opacity: 0, y: 100 }}
@@ -944,33 +912,18 @@ const App: React.FC = () => {
                                             </motion.div>
                                         </motion.div>
                                     )}
-                                    {showAgro && (
+                                    {showLab && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                             className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-[3001] p-4"
-                                            onClick={() => setShowAgro(false)}
+                                            onClick={() => setShowLab(false)}
                                         >
                                             <motion.div
                                                 initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
                                                 onClick={(e) => e.stopPropagation()}
                                                 className="my-auto w-full"
                                             >
-                                                <SimulatorMap onClose={() => setShowAgro(false)} />
-                                            </motion.div>
-                                        </motion.div>
-                                    )}
-                                    {showSieci && (
-                                        <motion.div
-                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-[3001] p-4"
-                                            onClick={() => setShowSieci(false)}
-                                        >
-                                            <motion.div
-                                                initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="my-auto w-full"
-                                            >
-                                                <ModuleSieci onClose={() => setShowSieci(false)} />
+                                                <TeoLab onClose={() => setShowLab(false)} />
                                             </motion.div>
                                         </motion.div>
                                     )}

@@ -9,6 +9,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useSimulationStore, type LogRole } from '../../store/simulationStore';
 import { reasoningLoopSimulator } from '../../services/teo-sim/ReasoningLoopSimulator';
+import ModuleSieci from './ModuleSieci';
 
 const ROLE_STYLE: Record<LogRole, { color: string; tag: string }> = {
     ACTION:     { color: '#34d399', tag: 'AKCJA' },
@@ -29,6 +30,7 @@ const SCENARIOS = [
 export const SimulationDashboard: React.FC = () => {
     const { logs, isRunning, result, activeAgent } = useSimulationStore();
     const [scenario, setScenario] = useState(SCENARIOS[0]);
+    const [tab, setTab] = useState<'reasoning' | 'sieci'>('reasoning');
     const logRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -41,7 +43,31 @@ export const SimulationDashboard: React.FC = () => {
         reasoningLoopSimulator.launchAutonomousTraining(agentId, scenario);
     };
 
+    // ── Zakładki hubu TeO-Sim: Reasoning Loops | Mapa Sieci ──
+    const tabBar = (
+        <div className="flex gap-2 mb-3">
+            {([['reasoning', '🧠 Reasoning Loops'], ['sieci', '🗺️ Mapa Sieci']] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setTab(k)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-colors border
+                        ${tab === k ? 'bg-emerald-700/60 text-white border-emerald-400/50' : 'bg-slate-900/60 text-slate-400 border-slate-700 hover:text-slate-200'}`}>
+                    {label}
+                </button>
+            ))}
+        </div>
+    );
+
+    if (tab === 'sieci') {
+        return (
+            <div className="w-full">
+                {tabBar}
+                <ModuleSieci />
+            </div>
+        );
+    }
+
     return (
+        <div className="w-full">
+        {tabBar}
         <div className="p-4 bg-slate-900/80 text-green-400 font-mono rounded-2xl border border-green-700/40 shadow-[0_0_24px_rgba(16,185,129,0.08)]">
             <div className="flex items-center justify-between mb-3 border-b border-green-800/50 pb-2">
                 <h2 className="text-base font-bold tracking-widest flex items-center gap-2">
@@ -100,6 +126,7 @@ export const SimulationDashboard: React.FC = () => {
                     </div>
                 </div>
             )}
+        </div>
         </div>
     );
 };
