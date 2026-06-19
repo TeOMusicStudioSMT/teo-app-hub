@@ -10,6 +10,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { useSimulationStore, type LogRole } from '../../store/simulationStore';
 import { reasoningLoopSimulator } from '../../services/teo-sim/ReasoningLoopSimulator';
 import ModuleSieci from './ModuleSieci';
+import VaultDashboard from './VaultDashboard';
 
 const ROLE_STYLE: Record<LogRole, { color: string; tag: string }> = {
     ACTION:     { color: '#34d399', tag: 'AKCJA' },
@@ -30,7 +31,7 @@ const SCENARIOS = [
 export const SimulationDashboard: React.FC = () => {
     const { logs, isRunning, result, activeAgent } = useSimulationStore();
     const [scenario, setScenario] = useState(SCENARIOS[0]);
-    const [tab, setTab] = useState<'reasoning' | 'sieci'>('reasoning');
+    const [tab, setTab] = useState<'reasoning' | 'sieci' | 'vault'>('reasoning');
     const logRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -45,8 +46,8 @@ export const SimulationDashboard: React.FC = () => {
 
     // ── Zakładki hubu TeO-Sim: Reasoning Loops | Mapa Sieci ──
     const tabBar = (
-        <div className="flex gap-2 mb-3">
-            {([['reasoning', '🧠 Reasoning Loops'], ['sieci', '🗺️ Mapa Sieci']] as const).map(([k, label]) => (
+        <div className="flex flex-wrap gap-2 mb-3">
+            {([['reasoning', '🧠 Reasoning Loops'], ['sieci', '🗺️ Mapa Sieci'], ['vault', '🔐 Skarbiec']] as const).map(([k, label]) => (
                 <button key={k} onClick={() => setTab(k)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-colors border
                         ${tab === k ? 'bg-emerald-700/60 text-white border-emerald-400/50' : 'bg-slate-900/60 text-slate-400 border-slate-700 hover:text-slate-200'}`}>
@@ -57,12 +58,10 @@ export const SimulationDashboard: React.FC = () => {
     );
 
     if (tab === 'sieci') {
-        return (
-            <div className="w-full">
-                {tabBar}
-                <ModuleSieci />
-            </div>
-        );
+        return <div className="w-full">{tabBar}<ModuleSieci /></div>;
+    }
+    if (tab === 'vault') {
+        return <div className="w-full">{tabBar}<VaultDashboard /></div>;
     }
 
     return (

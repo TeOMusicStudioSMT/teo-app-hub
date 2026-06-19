@@ -48,7 +48,7 @@ import { KatedraRadioPlayer } from './components/KatedraRadioPlayer';
 import { TestKoherencji } from './components/special/TestKoherencji';
 import KwantowaCzytelnia from './components/KwantowaCzytelnia';
 import AutoPanicSentinel from './components/special/AutoPanicSentinel';
-import VaultDashboard from './components/special/VaultDashboard';
+import NotebookTwinPanel from './components/special/NotebookTwinPanel';
 import SimulationDashboard from './components/special/SimulationDashboard';
 import TeoLab from './components/special/TeoLab';
 
@@ -92,7 +92,7 @@ const App: React.FC = () => {
     const [showWniosekO, setShowWniosekO] = useState(false);
     const [showScenography, setShowScenography] = useState(false);
     const [showJournal, setShowJournal] = useState(false); // 📓 Kwantowy Dziennik
-    const [showVault, setShowVault] = useState(false); // 🔐 Skarbiec 0.00G
+    const [showPodcast, setShowPodcast] = useState(false); // 🎙️ Podcast Twin
     const [showTeoSim, setShowTeoSim] = useState(false); // 🧠 TeO-Sim Reasoning Loops
     const [showLab, setShowLab] = useState(false); // 🧪 TeO Lab (Agro + RadioSMT)
     const [isWiesioOnline, setIsWiesioOnline] = useState<boolean | null>(null);
@@ -753,13 +753,14 @@ const App: React.FC = () => {
                                             🌀
                                         </button>
                                     </div>
+                                    {/* 🔐 Skarbiec → przeniesiony do zakładki w TeO-Sim (🧠) */}
                                     <div className="pointer-events-auto">
                                         <button
-                                            onClick={() => setShowVault(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-amber-500 to-emerald-700 border-2 border-amber-300/50 shadow-[0_0_15px_rgba(245,158,11,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                            title="🔐 Skarbiec 0.00G"
+                                            onClick={() => setShowPodcast(true)}
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-fuchsia-500 to-cyan-700 border-2 border-fuchsia-300/50 shadow-[0_0_15px_rgba(232,121,249,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            title="🎙️ Podcast Twin"
                                         >
-                                            🔐
+                                            🎙️
                                         </button>
                                     </div>
                                     <div className="pointer-events-auto">
@@ -880,17 +881,18 @@ const App: React.FC = () => {
                                             <QuantumJournal onClose={() => setShowJournal(false)} />
                                         </motion.div>
                                     )}
-                                    {showVault && (
+                                    {showPodcast && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[3001] p-4"
-                                            onClick={() => setShowVault(false)}
+                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-[3001] p-4"
+                                            onClick={() => setShowPodcast(false)}
                                         >
                                             <motion.div
                                                 initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
                                                 onClick={(e) => e.stopPropagation()}
+                                                className="my-auto w-full"
                                             >
-                                                <VaultDashboard onClose={() => setShowVault(false)} />
+                                                <NotebookTwinPanel onClose={() => setShowPodcast(false)} />
                                             </motion.div>
                                         </motion.div>
                                     )}
