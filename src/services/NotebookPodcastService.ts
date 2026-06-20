@@ -54,11 +54,14 @@ export class NotebookPodcastService {
     async generateTurn(context: string, history: PodcastTurn[] = []): Promise<PodcastTurn> {
         const model = NotebookPodcastService.getModel();
         const system = NotebookPodcastService.buildSystemPrompt();
-        const prior = history.slice(-3).map(t => `A: ${t.hostA}\nB: ${t.hostB}`).join('\n');
+        // Pamięć: ostatnie 6 tur jako kontekst, żeby gospodarze NIE kręcili się w kółko.
+        const prior = history.slice(-6).map((t, i) => `[tura ${history.length - Math.min(6, history.length) + i + 1}] A: ${t.hostA}\nB: ${t.hostB}`).join('\n');
         const userPrompt =
             `TEMAT ODCINKA: "${context}"\n` +
-            (prior ? `\nDOTYCHCZASOWA ROZMOWA:\n${prior}\n` : '') +
-            `\nWygeneruj KOLEJNĄ turę rozmowy (JSON).`;
+            (prior
+                ? `\nDOTYCHCZASOWA ROZMOWA (NIE powtarzaj tych wątków):\n${prior}\n` +
+                  `\nWygeneruj KOLEJNĄ turę — POSUŃ rozmowę DO PRZODU, wprowadź NOWY aspekt tematu, nawiąż do poprzedniej wypowiedzi. (JSON)`
+                : `\nWygeneruj PIERWSZĄ turę rozmowy — przywitajcie się i otwórzcie temat. (JSON)`);
 
         try {
             const res = await fetch(BRIDGE_OLLAMA, {

@@ -27,6 +27,7 @@ import {
 } from '../../lib/agentCreativeActions';
 import { useKatedraRadio } from '../../context/KatedraRadioContext';
 import { KwantoweSpa } from './KwantoweSpa';
+import NotebookTwinPanel from './NotebookTwinPanel';
 
 // 🎭 Stany życia agentów
 export type AgentState = 'IDLE' | 'LEARNING' | 'INTERACTING' | 'EXECUTING' | 'THINKING' | 'RESONATING';
@@ -468,7 +469,7 @@ const TeOSimAcademy: React.FC<TeOSimAcademyProps> = ({ isActive = false, onClose
   const [sphereIntensity, setSphereIntensity] = useState(1);
   const sphereTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [activeSimView, setActiveSimView] = useState<'none' | 'spa'>('none');
+  const [activeSimView, setActiveSimView] = useState<'none' | 'spa' | 'podcast'>('none');
   const [academyRoster, setAcademyRoster] = useState<Array<{ id: string; name: string; emoji: string; role: string; trainingLevel: number; masteredSkills: string[] }>>([]);
   const [showRoster, setShowRoster] = useState(false);
 
@@ -891,6 +892,7 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
                 ✕ ZAMKNIJ PANEL
               </button>
               {activeSimView === 'spa' && <KwantoweSpa />}
+              {activeSimView === 'podcast' && <NotebookTwinPanel />}
             </div>
           </motion.div>
         )}
@@ -943,6 +945,16 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
               fontWeight: activeSimView === 'spa' ? 'bold' : 'normal'
             }}>
             [ 🌸 Kwantowe Spa ]
+          </button>
+          <button
+            onClick={() => setActiveSimView('podcast')}
+            title="Rozczytelnia agentów — wideo-podcast dwóch gospodarzy (pamięć rozmowy)"
+            style={{
+              padding: '4px 12px', borderRadius: '4px', background: 'rgba(232, 121, 249, 0.2)',
+              border: activeSimView === 'podcast' ? '1px solid #e879f9' : '1px solid rgba(232, 121, 249, 0.5)', color: '#e879f9', cursor: 'pointer',
+              fontWeight: activeSimView === 'podcast' ? 'bold' : 'normal'
+            }}>
+            [ 🎙️ Rozczytelnia ]
           </button>
         </div>
       </div>

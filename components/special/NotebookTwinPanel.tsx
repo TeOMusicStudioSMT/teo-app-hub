@@ -12,6 +12,13 @@ import { Mic, Play, RotateCcw, X } from 'lucide-react';
 import { NotebookPodcastService, SOVEREIGN_WELCOME, type PodcastTurn, type TwinAnimation } from '../../src/services/NotebookPodcastService';
 
 const service = new NotebookPodcastService();
+const STORE_KEY = 'teo_podcast_twin_log';   // pamięć trwała rozmowy (Rozczytelnia agentów)
+
+interface PodcastMemory { topic: string; turns: PodcastTurn[]; }
+const loadMemory = (): PodcastMemory => {
+    try { const m = JSON.parse(localStorage.getItem(STORE_KEY) || ''); if (m && Array.isArray(m.turns)) return m; } catch { /* brak */ }
+    return { topic: 'Suwerenność danych i lokalne AI w Katedrze OtakOS', turns: [] };
+};
 
 /** Equalizer 5 słupków — animuje się gdy host „mówi". */
 const Equalizer: React.FC<{ active: boolean; color: string }> = ({ active, color }) => (
@@ -47,13 +54,19 @@ const HostAvatar: React.FC<HostProps> = ({ name, emoji, color, active }) => (
 );
 
 export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
-    const [topic, setTopic] = useState('Suwerenność danych i lokalne AI w Katedrze OtakOS');
-    const [turns, setTurns] = useState<PodcastTurn[]>([]);
+    const mem0 = loadMemory();
+    const [topic, setTopic] = useState(mem0.topic);
+    const [turns, setTurns] = useState<PodcastTurn[]>(mem0.turns);
     const [anim, setAnim]   = useState<TwinAnimation>('IDLE');
     const [busy, setBusy]   = useState(false);
     const logRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [turns]);
+
+    // 💾 Pamięć trwała — zapis rozmowy, by gospodarze kontynuowali zamiast zaczynać od nowa.
+    useEffect(() => {
+        try { localStorage.setItem(STORE_KEY, JSON.stringify({ topic, turns })); } catch { /* limit storage */ }
+    }, [topic, turns]);
 
     const generate = useCallback(async () => {
         if (busy || !topic.trim()) return;
@@ -70,7 +83,10 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
         }
     }, [busy, topic, turns]);
 
-    const reset = () => { setTurns([]); setAnim('IDLE'); };
+    const reset = () => {
+        setTurns([]); setAnim('IDLE');
+        try { localStorage.removeItem(STORE_KEY); } catch { /* noop */ }
+    };
 
     const aActive = busy || anim === 'A_SPEAKING' || anim === 'BOTH';
     const bActive = busy || anim === 'B_SPEAKING' || anim === 'BOTH';
@@ -85,7 +101,9 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
                     </div>
                     <div>
                         <h2 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 to-cyan-400">PODCAST TWIN</h2>
-                        <p className="text-[10px] text-slate-500 tracking-wider">Spectrum · dwójka gospodarzy · NotebookLM-style</p>
+                        <p className="text-[10px] text-slate-500 tracking-wider">
+                            Spectrum · Rozczytelnia agentów · {turns.length > 0 ? <span className="text-fuchsia-400/70">💾 {turns.length} tur w pamięci</span> : 'NotebookLM-style'}
+                        </p>
                     </div>
                 </div>
                 {onClose && (
@@ -116,7 +134,8 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
                     className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-fuchsia-700/70 hover:bg-fuchsia-600 text-white border border-fuchsia-400/40 disabled:opacity-40 transition-all">
                     <Play size={14} /> {busy ? 'GENERUJĘ...' : turns.length ? 'KOLEJNA TURA' : 'START ROZMOWY'}
                 </button>
-                <button onClick={reset} disabled={busy} className="px-3 py-2 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 disabled:opacity-40">
+                <button onClick={reset} disabled={busy} title="Nowy odcinek (wyczyść pamięć rozmowy)"
+                    className="px-3 py-2 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 disabled:opacity-40">
                     <RotateCcw size={14} />
                 </button>
             </div>
