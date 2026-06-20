@@ -8,8 +8,9 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Mic, Play, RotateCcw, X } from 'lucide-react';
+import { Mic, Play, RotateCcw } from 'lucide-react';
 import { NotebookPodcastService, SOVEREIGN_WELCOME, type PodcastTurn, type TwinAnimation } from '../../src/services/NotebookPodcastService';
+import KsiegaOdbioru from './KsiegaOdbioru';
 
 const service = new NotebookPodcastService();
 const STORE_KEY = 'teo_podcast_twin_log';   // pamięć trwała rozmowy (Rozczytelnia agentów)
@@ -59,6 +60,7 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
     const [turns, setTurns] = useState<PodcastTurn[]>(mem0.turns);
     const [anim, setAnim]   = useState<TwinAnimation>('IDLE');
     const [busy, setBusy]   = useState(false);
+    const [view, setView]   = useState<'rozmowa' | 'koom'>('rozmowa');
     const logRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [turns]);
@@ -91,8 +93,30 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
     const aActive = busy || anim === 'A_SPEAKING' || anim === 'BOTH';
     const bActive = busy || anim === 'B_SPEAKING' || anim === 'BOTH';
 
+    // Zakładki: 🎙️ Rozmowa (Rozczytelnia) | 📖 Księga KOOM
+    const tabBar = (
+        <div className="flex items-center gap-2 mb-2">
+            {([['rozmowa', '🎙️ Rozmowa'], ['koom', '📖 Księga KOOM']] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setView(k)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-colors border
+                        ${view === k ? 'bg-fuchsia-700/50 text-white border-fuchsia-400/50' : 'bg-slate-900/60 text-slate-400 border-slate-700 hover:text-slate-200'}`}>
+                    {label}
+                </button>
+            ))}
+            {onClose && (
+                <button onClick={onClose} className="ml-auto text-slate-400 hover:text-white text-sm border border-slate-700 rounded-lg px-3 py-1">✕ Zamknij</button>
+            )}
+        </div>
+    );
+
+    if (view === 'koom') {
+        return <div className="w-full max-w-3xl mx-auto">{tabBar}<KsiegaOdbioru /></div>;
+    }
+
     return (
-        <div className="w-full max-w-3xl mx-auto bg-[#05080d] border border-fuchsia-500/25 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.6)] font-sans text-slate-200">
+        <div className="w-full max-w-3xl mx-auto">
+        {tabBar}
+        <div className="bg-[#05080d] border border-fuchsia-500/25 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.6)] font-sans text-slate-200">
             {/* HEADER */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-fuchsia-500/20 bg-gradient-to-r from-[#140518] to-[#0a0814]">
                 <div className="flex items-center gap-3">
@@ -106,9 +130,6 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
                         </p>
                     </div>
                 </div>
-                {onClose && (
-                    <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-white border border-slate-700"><X size={15} /></button>
-                )}
             </div>
 
             {/* Powitanie Suwerena + awatary */}
@@ -160,6 +181,7 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
                 @keyframes eqPulse { 0%,100% { height: 5px; } 50% { height: 22px; } }
                 .eq-bar { animation: eqPulse 0.85s ease-in-out infinite; }
             `}</style>
+        </div>
         </div>
     );
 };
