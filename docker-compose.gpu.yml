@@ -1,0 +1,15 @@
+# ── Nakładka GPU (NVIDIA) — aktywuje akcelerację VRAM dla Ollamy ──
+# Wymaga: NVIDIA driver + nvidia-container-toolkit na hoście.
+# Użycie:  docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Bez tej nakładki stack działa na CPU (auto-tune dobiera mniejszy model).
+# Ollama sama wykrywa i wykorzystuje GPU, gdy dostanie do niego dostęp.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

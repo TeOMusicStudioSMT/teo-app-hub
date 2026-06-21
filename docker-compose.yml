@@ -1,0 +1,72 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  🏛️ KATEDRA OtakOS — Live-USB stack (Ollama + Wiesio-Bridge + Web)
+#
+#  Uruchomienie (CPU, działa wszędzie):   docker compose up -d
+#  Z GPU (NVIDIA):  docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+#  Persystencja (Live-USB): wszystko ląduje w ./data — przenoś z pendrive'em.
+#  Auto-skalowanie CPU/RAM/model: docker/autotune.sh (wykrywa maszynę przy starcie).
+# ══════════════════════════════════════════════════════════════════════════════
+name: katedra-otakos
+
+services:
+  # ── 🦙 Ollama — lokalny rdzeń AI (auto GPU/CPU + auto-tune zasobów) ──
+  ollama:
+    image: ollama/ollama:latest
+    container_name: katedra-ollama
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/opt/otakos/ollama-entry.sh"]
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OTAKOS_MODEL=${OTAKOS_MODEL:-}     # opcjonalne wymuszenie modelu (inaczej auto)
+    volumes:
+      - ./data/ollama:/root/.ollama        # 💾 modele — persystencja Live-USB
+      - ./docker/ollama-entry.sh:/opt/otakos/ollama-entry.sh:ro
+      - ./docker/autotune.sh:/opt/otakos/autotune.sh:ro
+    ports:
+      - "11434:11434"                      # WiesioCore (frontend) skanuje modele wprost
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 40s
+
+  # ── 🌉 Wiesio-Bridge — most API/media na :3001 ──
+  bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: bridge
+    container_name: katedra-bridge
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - OLLAMA_HOST=http://ollama:11434     # most → Ollama (env-driven, fallback w kodzie)
+    volumes:
+      - ./data/wymiar:/app/_OtakOs_Wymiar   # 💾 kolejka Mechanika, patche, knowledge graph
+      - ./data/vault:/app/.vault-0.00g      # 💾 zaszyfrowane klucze (AES-256-GCM)
+      - ./data/muzyka:/app/_OtakOs_Muzyka   # 💾 biblioteka muzyczna
+      - ./data/move:/app/_OtakOs_Move       # 💾 filmy
+    ports:
+      - "3001:3001"
+
+  # ── 🖥️ Web — statyczny frontend (nginx) na :8080 ──
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+      args:
+        VITE_GEMINI_API_KEY: ${VITE_GEMINI_API_KEY:-}
+    container_name: katedra-web
+    restart: unless-stopped
+    depends_on:
+      - bridge
+    ports:
+      - "8080:8080"
+
+# Brak top-level `volumes:` — używamy bind-mountów do ./data (przenośne na USB).

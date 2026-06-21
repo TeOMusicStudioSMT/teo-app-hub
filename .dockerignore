@@ -1,0 +1,26 @@
+# Nie kopiuj do kontekstu builda — szybciej i czyściej.
+node_modules
+dist
+.git
+.gitignore
+.claude
+.agent
+.vite
+.husky
+
+# Dane runtime / persystencja (montowane jako wolumeny)
+data
+_OtakOs_*
+.vault-0.00g
+**/media_secrets.json
+
+# Logi i kopie zapasowe
+*.log
+*.bak
+ts_errors.log
+npm-debug.log*
+
+# Pliki Dockera nie są potrzebne wewnątrz obrazu
+Dockerfile
+docker-compose*.yml
+README.md

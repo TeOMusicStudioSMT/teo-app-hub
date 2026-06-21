@@ -70,6 +70,9 @@ function calculateGravity(vecA, vecB) {
 const app = express();
 const PORT = 3001;
 
+// 🐳 Docker/Live-USB: adres Ollamy z env (fallback lokalny IPv4 — dev bez zmian).
+const OLLAMA_BASE = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
+
 // Ścieżki do folderów
 const ANTIGRAVITY_DIR = path.join(process.cwd(), '_OtakOs_Wymiar');
 const MUSIC_DIR = path.join(process.cwd(), '_OtakOs_Muzyka');
@@ -582,7 +585,7 @@ app.post('/api/ollama', async (req, res) => {
     const timer = setTimeout(() => controller.abort(), 300_000);
 
     try {
-        const resp = await fetch('http://127.0.0.1:11434/api/chat', {
+        const resp = await fetch(`${OLLAMA_BASE}/api/chat`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             signal:  controller.signal,
@@ -637,7 +640,7 @@ app.post('/api/ollama', async (req, res) => {
 // ── /api/ollama/models — lista dostępnych modeli ────────────────────────
 app.get('/api/ollama/models', async (req, res) => {
     try {
-        const resp = await fetch('http://127.0.0.1:11434/api/tags');
+        const resp = await fetch(`${OLLAMA_BASE}/api/tags`);
         if (!resp.ok) return res.json({ models: [], error: `Ollama HTTP ${resp.status}` });
         const data = await resp.json();
         const models = (data.models || []).map(m => m.name);
@@ -1188,7 +1191,7 @@ app.post('/api/bridge/execute', async (req, res) => {
 
         try {
             // Omijamy terminal (CMD) całkowicie! Uderzamy prosto do lokalnego mózgu Ollamy.
-            const response = await fetch('http://127.0.0.1:11434/api/generate', {
+            const response = await fetch(`${OLLAMA_BASE}/api/generate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1782,7 +1785,7 @@ app.post('/api/bridge/execute', async (req, res) => {
                 .replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\'/g, "'");
             console.log(`[Wiesio-Bridge] 🧠 ollama run → HTTP API (model: ${ollamaModel}, prompt: ${ollamaPrompt.substring(0,60)}...)`);
             try {
-                const ollamaResp = await fetch('http://127.0.0.1:11434/api/generate', {
+                const ollamaResp = await fetch(`${OLLAMA_BASE}/api/generate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ model: ollamaModel, prompt: ollamaPrompt, stream: false }),
@@ -3653,7 +3656,7 @@ app.post('/api/tost/send', async (req, res) => {
         let aiText = '[BŁĄD TRANSMISJI] Agent TeO nie odpowiada. Spróbuj ponownie.';
 
         try {
-            const ollamaRes = await fetch('http://127.0.0.1:11434/api/generate', {
+            const ollamaRes = await fetch(`${OLLAMA_BASE}/api/generate`, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify(ollamaBody),
@@ -3898,7 +3901,7 @@ app.post('/api/agent/rada-decompose', async (req, res) => {
 
     try {
         console.log(`[Rada] 🌡️ Temperatura Rozwielmożnienia: ${temp.toFixed(3)} (raw: ${temperature})`);
-        const ollamaResp = await fetch('http://127.0.0.1:11434/api/generate', {
+        const ollamaResp = await fetch(`${OLLAMA_BASE}/api/generate`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
