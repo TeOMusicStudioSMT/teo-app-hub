@@ -19,7 +19,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     Copy, Save, Archive, Upload, Users, MessageSquare,
     Brain, Sparkles, Terminal, Zap, Settings, RefreshCw,
-    Cloud, Cpu, X, Eye,
+    Cloud, Cpu, X, Eye, Play,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ApiDyrygent, CLOUD_MODELS, ImageAttachment } from '../../lib/router/ApiDyrygent';
@@ -346,6 +346,47 @@ const DIFFUSION_OPTION: SelectOption = {
     disabled: true,
 };
 
+// ── Autonomous AI Control Layer (AACL) ──
+const InferenceRouter = {
+    determineFinalPrompt(
+        userInput: string,
+        isContinuation: boolean,
+        contextSnippet?: string
+    ): string {
+        if (isContinuation && contextSnippet) {
+            return `[CONTEXT_WARNING] Uwaga Systemu: Ostatnia wypowiedź została ucięta (Token Limit/Timeout). Nie powtarzaj poprzedniej treści. Twoim zadaniem jest kontynuowanie myślowego i syntaktycznego strumienia danych bezpośrednio po poniższym punkcie zapięcia (anchor text).
+Punkty zaczepienia (ostatnie słowa): "${contextSnippet}"
+
+[TASK] Uzupełnij myśl w sposób najbardziej logiczny, naturalny i spójny z poprzednią częścią wypowiedzi. Zacznij bezpośrednio od brakującej części tekstu/kodu, aby płynnie połączyć się z anchor textem. Zachowaj ton rozmowy oraz ciągłość semantyczną. Proszę, kontynuuj w tym samym formacie.`;
+        }
+
+        const lowerInput = userInput.toLowerCase();
+
+        // N-02: Generacja Kodu/Komendy
+        const isCode = ['kod', 'funkcja', 'składnia', 'program', 'css', 'react', 'write', 'component', 'skrypt', 'wdroż', 'implementacja'].some(kw => lowerInput.includes(kw));
+        if (isCode) {
+            return `${userInput}\n\n[INSTRUCTION] Generujesz kod. Odpowiedz zwięźle, w bloku kodu (np. \`\`\`tsx). Unikaj zbędnego gadania.`;
+        }
+
+        // E-01: Błąd/Przypomnienie
+        const isFix = ['napraw', 'błąd', 'fix', 'error', 'skoryguj', 'zmień', 'popraw'].some(kw => lowerInput.includes(kw));
+        if (isFix) {
+            return `${userInput}\n\n[INSTRUCTION] Użytkownik zgłasza błąd lub potrzebę poprawy. Skup się wyłącznie na poprawieniu błędu i podaniu zwięzłego rozwiązania.`;
+        }
+
+        // N-01: Standardowa Konwersacja
+        return userInput;
+    }
+};
+
+const isCutOff = (text: string): boolean => {
+    const trimmed = text.trim();
+    if (!trimmed) return false;
+    const sentenceEndings = ['.', '?', '!', '"', '\'', '`', '}', ']', ')', '>', '*', '✓', '🎨', '🚀', '🏛️', '⚡', '✨', '\n'];
+    if (trimmed.endsWith('```')) return false;
+    return !sentenceEndings.includes(trimmed.slice(-1));
+};
+
 // ══════════════════════════════════════════════════════════════════
 // KOMPONENT GŁÓWNY
 // ══════════════════════════════════════════════════════════════════
@@ -529,17 +570,34 @@ const KatedraChat: React.FC = () => {
      * Każda wiadomość skrócona do 2000 znaków by nie przekroczyć limitu payload.
      */
     const buildHistory = useCallback(
-        (): Array<{ role: 'user' | 'assistant'; content: string }> =>
-            messages
+        (): Array<{ role: 'user' | 'assistant'; content: string }> => {
+            const filtered = messages
                 .filter(m =>
                     (m.sender === 'human' || m.sender === 'klaudiusz' || m.sender === 'adamus') &&
                     !m.streaming &&
                     m.content.trim().length > 0,
-                )
-                .map(m => ({
-                    role:    (m.sender === 'human' ? 'user' : 'assistant') as 'user' | 'assistant',
-                    content: m.content.substring(0, 2000),
-                })),
+                );
+
+            const mapped = filtered.map(m => ({
+                id: m.id,
+                role: (m.sender === 'human' ? 'user' : 'assistant') as 'user' | 'assistant',
+                content: m.content.substring(0, 2500),
+            }));
+
+            // SCB (Sliding Context Buffer) - Zachowaj pierwsze 3 tury i ostatnie 6 tur
+            const firstTurns = mapped.slice(0, 3);
+            const recentTurns = mapped.slice(-6);
+
+            // Złącz bez duplikacji
+            const combined = [...firstTurns];
+            for (const turn of recentTurns) {
+                if (!combined.some(c => c.id === turn.id)) {
+                    combined.push(turn);
+                }
+            }
+
+            return combined.map(c => ({ role: c.role, content: c.content }));
+        },
         [messages],
     );
 
@@ -936,20 +994,23 @@ const KatedraChat: React.FC = () => {
             const dispatch = getDispatch(false); // false = Klaudiusz zawsze
             const history  = buildHistory();     // ← cała historia konwersacji
 
+            // AACL Inference Router prompt routing
+            const finalPrompt = InferenceRouter.determineFinalPrompt(modelText, false);
+
             // Dla chmury przekazujemy obrazy; dla Ollamy tylko tekst (brak vision API w /api/ollama)
             if (sourceMode === 'cloud' && attachmentsToSend.length > 0) {
                 await ApiDyrygent.dispatchCloud(
-                    modelText || '(opisz ten obraz)',
+                    finalPrompt || '(opisz ten obraz)',
                     cloudFastModel,
                     SYSTEM_PROMPTS.klaudiusz,
                     tok => { fullText += tok; updateMessage(replyId, { content: fullText }); },
                     ctrl.signal,
-                    attachmentsToSend,
+                    attachmentsToSend as any,
                     history,   // ← historia przy obrazach
                 );
             } else {
                 await dispatch(
-                    modelText + (attachmentsToSend.length > 0
+                    finalPrompt + (attachmentsToSend.length > 0
                         ? `\n\n[Suweren dołączył ${attachmentsToSend.length} obraz(y), ` +
                           `ale tryb Ollama nie obsługuje vision — opisz co widzisz na podstawie tekstu]`
                         : ''),
@@ -958,6 +1019,40 @@ const KatedraChat: React.FC = () => {
                     history,   // ← historia multi-turn
                 );
             }
+
+            // ── AUTONOMICZNA KONTUNUACJA (AACL) dla Klaudiusza ──
+            let continuationCount = 0;
+            const MAX_AUTONOMIC_CONTINUATIONS = 2;
+
+            while (isCutOff(fullText) && continuationCount < MAX_AUTONOMIC_CONTINUATIONS) {
+                console.log(`[AACL] Wykryto ucięcie wypowiedzi Klaudiusza. Autonomiczna kontynuacja ${continuationCount + 1}/${MAX_AUTONOMIC_CONTINUATIONS}...`);
+                setStatus(`⚡ Autonomicznie uzupełniam uciętą wypowiedź... (próba ${continuationCount + 1})`);
+                
+                updateMessage(replyId, { streaming: true });
+
+                const lastWords = fullText.trim().split(/\s+/).slice(-8).join(' ');
+                const autoContinuationPrompt = InferenceRouter.determineFinalPrompt('', true, lastWords);
+                
+                const tempHistory = [
+                    ...history,
+                    { role: 'assistant' as const, content: fullText }
+                ];
+
+                let accumulatedText = '';
+                await dispatch(
+                    autoContinuationPrompt,
+                    (tok: string) => {
+                        accumulatedText += tok;
+                        updateMessage(replyId, { content: fullText + accumulatedText });
+                    },
+                    ctrl.signal,
+                    tempHistory
+                );
+
+                fullText += accumulatedText;
+                continuationCount++;
+            }
+
             updateMessage(replyId, { streaming: false });
             scrollToBottom(true); // ← SMART SCROLL: wymuś zjazd po końcu streamingu
             setStatus('', true);
@@ -983,8 +1078,6 @@ const KatedraChat: React.FC = () => {
 
     // ── Konsultacja z Radą (Adamus) ────────────────────────────────
     /**
-     * NAPRAWKA: resetuje isCouncilMode po zakończeniu.
-     * Jednorazowe wezwanie — po zakończeniu powraca do normalnego trybu.
      * Jeśli użytkownik chce "zostać z Radą" może kliknąć przycisk ponownie.
      */
     const handleCouncilConsultation = useCallback(async () => {
@@ -1016,7 +1109,8 @@ const KatedraChat: React.FC = () => {
 
         try {
             let fullText = '';
-            await getDispatch(true)(    // ← true = Adamus
+            const dispatch = getDispatch(true); // ← true = Adamus
+            await dispatch(
                 context,
                 tok => {
                     fullText += tok;
@@ -1025,6 +1119,40 @@ const KatedraChat: React.FC = () => {
                 ctrl.signal,
                 history,   // ← historia multi-turn dla Adamusa
             );
+
+            // ── AUTONOMICZNA KONTUNUACJA (AACL) dla Adamusa ──
+            let continuationCount = 0;
+            const MAX_AUTONOMIC_CONTINUATIONS = 2;
+
+            while (isCutOff(fullText) && continuationCount < MAX_AUTONOMIC_CONTINUATIONS) {
+                console.log(`[AACL] Wykryto ucięcie wypowiedzi Adamusa. Autonomiczna kontynuacja ${continuationCount + 1}/${MAX_AUTONOMIC_CONTINUATIONS}...`);
+                setStatus(`⚡ Autonomicznie uzupełniam uciętą wypowiedź Adamusa... (próba ${continuationCount + 1})`);
+                
+                updateMessage(councilId, { streaming: true });
+
+                const lastWords = fullText.trim().split(/\s+/).slice(-8).join(' ');
+                const autoContinuationPrompt = InferenceRouter.determineFinalPrompt('', true, lastWords);
+                
+                const tempHistory = [
+                    ...history,
+                    { role: 'assistant' as const, content: fullText }
+                ];
+
+                let accumulatedText = '';
+                await dispatch(
+                    autoContinuationPrompt,
+                    (tok: string) => {
+                        accumulatedText += tok;
+                        updateMessage(councilId, { content: fullText + accumulatedText });
+                    },
+                    ctrl.signal,
+                    tempHistory
+                );
+
+                fullText += accumulatedText;
+                continuationCount++;
+            }
+
             updateMessage(councilId, { streaming: false });
             scrollToBottom(true); // ← SMART SCROLL: wymuś zjazd po końcu streamingu Adamusa
             setStatus('', true);
@@ -1047,6 +1175,74 @@ const KatedraChat: React.FC = () => {
         }
     }, [buildHistory, sourceMode, cloudHeavyModel, heavyModel,
         getDispatch, handleOllamaResponse, runModerator, scrollToBottom]);
+
+    const handleContinue = useCallback(async (msg: Message) => {
+        if (isLoading || !msg.content) return;
+
+        const lastWords = msg.content.trim().split(/\s+/).slice(-8).join(' ');
+        if (!lastWords) {
+            toast.error("Brak treści do kontynuacji.");
+            return;
+        }
+
+        const continuationPrompt = InferenceRouter.determineFinalPrompt('', true, lastWords);
+
+        setIsLoading(true);
+        const isHeavy = msg.sender === 'adamus';
+        const modelLabel = isHeavy
+            ? (sourceMode === 'cloud' ? cloudHeavyModel : heavyModel)
+            : (sourceMode === 'cloud' ? cloudFastModel : fastModel);
+
+        setStatus(`⚡ Kontynuuję wypowiedź... (${modelLabel})`);
+
+        if (abortRef.current) abortRef.current.abort();
+        const ctrl = new AbortController();
+        abortRef.current = ctrl;
+
+        updateMessage(msg.id, { streaming: true });
+
+        const originalContent = msg.content;
+        let accumulatedText = '';
+
+        try {
+            const dispatch = getDispatch(isHeavy);
+            const history = buildHistory();
+
+            const tempHistory = [
+                ...history,
+                { role: 'assistant' as const, content: originalContent }
+            ];
+
+            await dispatch(
+                continuationPrompt,
+                (tok: string) => {
+                    accumulatedText += tok;
+                    updateMessage(msg.id, { content: originalContent + accumulatedText });
+                },
+                ctrl.signal,
+                tempHistory
+            );
+
+            updateMessage(msg.id, { streaming: false });
+            scrollToBottom(true);
+            setStatus('', true);
+
+            const finalFullText = originalContent + accumulatedText;
+            await handleOllamaResponse(finalFullText, msg.id, isHeavy);
+
+            runModerator(continuationPrompt, finalFullText);
+
+        } catch (err: any) {
+            if (err.name !== 'AbortError') {
+                updateMessage(msg.id, { streaming: false });
+                setStatus(`❌ ${err.message}`, true);
+                toast.error(`Błąd kontynuacji: ${err.message}`);
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    }, [isLoading, sourceMode, cloudFastModel, cloudHeavyModel, fastModel, heavyModel,
+        buildHistory, getDispatch, handleOllamaResponse, runModerator, scrollToBottom]);
 
     // ── Zapis / upload ────────────────────────────────────────────
     const handleCopyResponse = (c: string) => {
@@ -1432,6 +1628,13 @@ const KatedraChat: React.FC = () => {
                                                    hover:opacity-100 transition-opacity">
                                         <Save size={11} /> Zapisz
                                     </button>
+                                    {messages[messages.length - 1]?.id === msg.id && (
+                                        <button onClick={() => handleContinue(msg)}
+                                            disabled={isLoading}
+                                            className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 font-semibold transition-all duration-200 hover:shadow-[0_0_8px_rgba(192,132,252,0.6)] px-1.5 py-0.5 rounded border border-purple-500/30 hover:border-purple-400 bg-purple-950/20 active:scale-95 disabled:opacity-30 disabled:pointer-events-none">
+                                            <Play size={11} /> Dokończ... :)
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>
