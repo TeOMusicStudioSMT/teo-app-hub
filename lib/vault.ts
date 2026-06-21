@@ -25,7 +25,11 @@ export async function openVault(): Promise<VaultCredentials> {
 
   // Pobierz z Kibla (lokalnie!)
   const sunoCookie = await getSunoFromKibel();
-  const iskaKey = localStorage.getItem('kibel_iska_key'); // Proste przechowanie
+  let iskaKey = localStorage.getItem('kibel_iska_key'); // Proste przechowanie
+  if (!iskaKey && import.meta.env.VITE_TEO_ISKA_KEY) {
+    iskaKey = import.meta.env.VITE_TEO_ISKA_KEY;
+    localStorage.setItem('kibel_iska_key', iskaKey);
+  }
 
   cachedCredentials = {
     SUNO_COOKIE: sunoCookie,
@@ -88,7 +92,11 @@ export function getIskraKey(): string | null {
 }
 
 export function validateIskra(input: string): boolean {
-  const key = getIskraKey();
+  let key = getIskraKey();
+  if (!key && import.meta.env.VITE_TEO_ISKA_KEY) {
+    key = import.meta.env.VITE_TEO_ISKA_KEY;
+    localStorage.setItem('kibel_iska_key', key);
+  }
   if (!key) {
     console.warn('⚠️ [Vault] TEO_ISKA_KEY nie jest ustawiony!');
     return false;
