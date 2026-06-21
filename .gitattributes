@@ -1,0 +1,7 @@
+# Wymuś LF dla plików, które MUSZĄ mieć uniksowe końce linii (kontenery Linux).
+# CRLF w skrypcie .sh = "bad interpreter" w obrazie Docker.
+*.sh            text eol=lf
+docker/**       text eol=lf
+Dockerfile      text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
