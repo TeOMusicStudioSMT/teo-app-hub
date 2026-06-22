@@ -3574,6 +3574,51 @@ app.post('/api/video/edit', async (req, res) => {
     }
 });
 
+// ── 🏛️ AUTOMAT KATEDR — lokalny rejestr + "drukarka" co 10 min ───────────────
+// Suwerennie, bez backendu: most rejestruje WŁASNĄ Katedrę (+ sparowanych
+// rówieśników), drukuje snapshot do _OtakOs_Wymiar/cathedrals.local.json co
+// 10 min i wystawia go live na /api/cathedrals. Zero "liczb z dupy".
+const CATHEDRAL_BOOT = Date.now();
+function cathedralSelf() {
+    return {
+        id:        process.env.OTAKOS_NODE_ID   || String(process.env.COMPUTERNAME || 'katedra').toLowerCase(),
+        name:      process.env.OTAKOS_NODE_NAME || process.env.COMPUTERNAME || 'KATEDRA-0',
+        dimension: '0.00G',
+        bootAt:    CATHEDRAL_BOOT,
+        uptimeSec: Math.round((Date.now() - CATHEDRAL_BOOT) / 1000),
+    };
+}
+let cathedralSnapshot = { self: cathedralSelf(), peers: [], collectedAt: Date.now() };
+async function printCathedrals() {
+    cathedralSnapshot = { self: cathedralSelf(), peers: cathedralSnapshot.peers || [], collectedAt: Date.now() };
+    try {
+        await fs.writeFile(path.join(ANTIGRAVITY_DIR, 'cathedrals.local.json'),
+            JSON.stringify(cathedralSnapshot, null, 2), 'utf8');
+        console.log(`[Automat-Katedr] 🖨️  Wydrukowano rejestr (${1 + cathedralSnapshot.peers.length} katedr).`);
+    } catch (e) { /* katalog niedostępny — pomijamy cicho */ }
+}
+printCathedrals();
+setInterval(printCathedrals, 10 * 60 * 1000);
+
+app.get('/api/cathedrals', (req, res) => {
+    res.json({ success: true, self: cathedralSelf(), peers: cathedralSnapshot.peers,
+               count: 1 + cathedralSnapshot.peers.length, collectedAt: cathedralSnapshot.collectedAt });
+});
+
+/**
+ * POST /api/cathedrals/peer — dodaj zaufanego rówieśnika do rejestru (parowanie p2p).
+ * Body: { id, name?, url? }
+ */
+app.post('/api/cathedrals/peer', async (req, res) => {
+    const { id, name, url } = req.body ?? {};
+    if (!id) return res.status(400).json({ success: false, message: 'Brak id rówieśnika.' });
+    const peers = cathedralSnapshot.peers.filter(p => p.id !== id);
+    peers.push({ id, name: name || id, url: url || null, pairedAt: Date.now() });
+    cathedralSnapshot.peers = peers;
+    await printCathedrals();
+    return res.json({ success: true, count: 1 + peers.length });
+});
+
 /**
  * GET /api/agi/state — żywy stan lokalnej sieci neuronowej (dla mapy AGI na
  * otakos.wtf). Rdzeń realny (Ollama ping, kolejka Mechanika), reszta gotowość.
