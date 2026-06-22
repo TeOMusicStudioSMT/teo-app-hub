@@ -95,12 +95,34 @@ const RAFINERIA_TEMP_DIR = path.join(process.cwd(), '_temp'); // ← Rafineria: 
 const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.flac', '.m4a', '.ogg', '.opus'];
 
 // Podstawowe middlewares
+// 1. ROZBUDOWA OBSERWATORA PORTÓW W WIESIO-BRIDGE
+const LOCAL_CHANNELS = {
+  HUB: 'http://localhost:5176',
+  MUSIC: 'http://localhost:5173',
+  VIDEO: 'http://localhost:5174',
+  NODES: 'http://localhost:5175',
+  HUB_ALT: 'http://127.0.0.1:5176',
+  MUSIC_ALT: 'http://127.0.0.1:5173',
+  VIDEO_ALT: 'http://127.0.0.1:5174',
+  NODES_ALT: 'http://127.0.0.1:5175'
+};
+
 app.use(cors({
-    origin:          '*',
+    origin: [
+        LOCAL_CHANNELS.HUB, 
+        LOCAL_CHANNELS.MUSIC, 
+        LOCAL_CHANNELS.VIDEO, 
+        LOCAL_CHANNELS.NODES, 
+        LOCAL_CHANNELS.HUB_ALT, 
+        LOCAL_CHANNELS.MUSIC_ALT, 
+        LOCAL_CHANNELS.VIDEO_ALT, 
+        LOCAL_CHANNELS.NODES_ALT, 
+        'https://otakos.wtf'
+    ],
     methods:         ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders:  ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cache-Control'],
     exposedHeaders:  ['Content-Type', 'X-Error-Code'],
-    credentials:     false,
+    credentials:     true,
     maxAge:          86400,  // preflight cache 24h
 }));
 
@@ -2492,6 +2514,49 @@ ODPOWIEDZ TYLKO BLOKIEM KODU tsx. Żadnego tekstu przed ani po.`;
         }
     }
 
+    // ── UNLOCK_MODULE_PIPELINE ──────────────────────────────────────────
+    if (action === 'UNLOCK_MODULE_PIPELINE') {
+        try {
+            const { moduleId } = payload || {};
+            if (!moduleId) return res.status(400).json({ error: 'Brak moduleId' });
+
+            const configPath = path.join(ANTIGRAVITY_DIR, 'unlocked_pipelines.json');
+            let unlocked = [];
+            try {
+                if (fsSync.existsSync(configPath)) {
+                    unlocked = JSON.parse(fsSync.readFileSync(configPath, 'utf8'));
+                }
+            } catch (err) {
+                console.warn('[Wiesio-Skarbiec] Błąd odczytu skarbnika, resetowanie:', err.message);
+            }
+
+            if (!unlocked.includes(moduleId)) {
+                unlocked.push(moduleId);
+                fsSync.writeFileSync(configPath, JSON.stringify(unlocked, null, 2), 'utf8');
+            }
+
+            console.log(`[Wiesio-Skarbiec] 🔓 Pipeline odblokowany: ${moduleId}`);
+            return res.json({ success: true, message: `Pipeline ${moduleId} został trwale odblokowany.`, unlocked });
+        } catch (e) {
+            console.error(`[Wiesio-Skarbiec] ❌ Błąd odblokowania pipeline:`, e);
+            return res.status(500).json({ error: e.message });
+        }
+    }
+
+    // ── GET_UNLOCKED_PIPELINES ──────────────────────────────────────────
+    if (action === 'GET_UNLOCKED_PIPELINES') {
+        try {
+            const configPath = path.join(ANTIGRAVITY_DIR, 'unlocked_pipelines.json');
+            let unlocked = [];
+            if (fsSync.existsSync(configPath)) {
+                unlocked = JSON.parse(fsSync.readFileSync(configPath, 'utf8'));
+            }
+            return res.json({ success: true, unlocked });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    }
+
     res.status(400).json({ success: false, message: `Wiesław nie zna tej akcji: ${action}` });
 });
 
@@ -2646,6 +2711,53 @@ app.post('/api/graviton/mint', async (req, res) => {
  * Jeśli błąd zostanie wychwycony (survived=true), automatycznie tworzy
  * zadanie READY_FOR_REVIEW i archiwizuje je przez KnowledgeGraphService.
  */
+// BioResonanceEngine na serwerze - Ewolucja Wektorów z Nasiona (Suweren Style)
+const BioResonanceEngine = {
+    evolve: async (styleMetrics, baseSeed) => {
+        const seed = parseInt(baseSeed) || Math.floor(Math.random() * 1000000);
+        const points = 120; // 120 kroków (sekund)
+        const complexity = parseFloat(styleMetrics?.complexity ?? 0.5);
+        const resonance = parseFloat(styleMetrics?.resonance ?? 0.5);
+        const scale = parseFloat(styleMetrics?.scale ?? 1.0);
+
+        const vector = [];
+        for (let s = 0; s < points; s++) {
+            // Formuła generatywna oparta na seedzie i fazach sinusów
+            const angle = (s * Math.PI) / 30; // okres 60 sekund
+            
+            // Dodajemy pseudolosowość opartą na sinusie z nasiona
+            const seedOffset = Math.sin(seed + s) * 50;
+
+            const b = Math.min(255, Math.max(0, Math.floor(
+                (128 + 127 * Math.sin(angle * 2 + seed * 0.1)) * scale + seedOffset * complexity
+            )));
+
+            const v = Math.min(255, Math.max(0, Math.floor(
+                (128 + 127 * Math.cos(angle * 1.5 + seed * 0.2)) * scale + seedOffset * resonance
+            )));
+
+            const h = Math.min(255, Math.max(0, Math.floor(
+                (128 + 127 * Math.sin(angle * 3.3 + seed * 0.3)) * scale + seedOffset * (complexity * resonance)
+            )));
+
+            vector.push({ s, b, v, h });
+        }
+        return vector;
+    }
+};
+
+// 2. MECHANIZM REGENERACJI Z NASIONA (Samoulepszanie Pieśni)
+app.post('/api/sonic/mutate', async (req, res) => {
+    try {
+        const { styleMetrics, baseSeed } = req.body;
+        const mutatedVector = await BioResonanceEngine.evolve(styleMetrics, baseSeed);
+        console.log(`[Wiesio-Sonic] 🧬 Zmutowano wektor z nasiona: ${baseSeed}`);
+        return res.json({ success: true, message: "Pieśń o Suwerenie ewoluuje...", vector: mutatedVector });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.post('/api/chaos/inject', async (req, res) => {
     console.warn('[⚡️ FAULT INJECTION ACTIVE ⚡️] Symulowanie krytycznych błędów środowiskowych...');
 
