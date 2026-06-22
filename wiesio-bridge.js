@@ -1020,6 +1020,9 @@ app.post('/api/bridge/execute', async (req, res) => {
             if (payload.target === 'MOVE') {
                 scanDir = MOVE_DIR;
                 filterExtensions = ['.mp4', '.webm', '.mov'];
+            } else if (payload.target === 'SONIC') {
+                scanDir = SONIC_DIR;
+                filterExtensions = ['.json'];
             }
 
             const entries = await fs.readdir(scanDir, { withFileTypes: true });
@@ -2306,6 +2309,26 @@ app.post('/wiesio/action', async (req, res) => {
             return res.json({ success: true, message: 'Wektory zapisane.' });
         } catch (e) {
             console.error(`[Wiesio-Archiwista] ❌ Błąd zapisu wektorów:`, e);
+            return res.status(500).json({ error: e.message });
+        }
+    }
+
+    if (action === 'READ_SONIC_VECTORS') {
+        try {
+            const { filename } = payload || {};
+            if (!filename) return res.status(400).json({ error: 'Brak nazwy pliku' });
+
+            const filePath = path.join(SONIC_DIR, filename);
+            if (!fsSync.existsSync(filePath)) {
+                return res.status(404).json({ error: `Plik wektorów nie istnieje: ${filename}` });
+            }
+
+            const content = fsSync.readFileSync(filePath, 'utf8');
+            const vectors = JSON.parse(content);
+            console.log(`[Wiesio-Archiwista] 🔊 Wczytano wektory soniczne: ${filename}`);
+            return res.json({ success: true, filename, vectors });
+        } catch (e) {
+            console.error(`[Wiesio-Archiwista] ❌ Błąd odczytu wektorów:`, e);
             return res.status(500).json({ error: e.message });
         }
     }
