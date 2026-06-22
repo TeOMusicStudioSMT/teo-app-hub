@@ -57,6 +57,31 @@ export function teleportToMusic(params: {
   window.open(targetUrl, '_blank');
 }
 
+/** 🎬 Teleport do TeO Story V2 — z misją montażu VideO-Use.
+ *  Otwiera Story V2 (localhost:5174 dev / /story prod) i przemyca misję
+ *  edycji wideo w Query Params (omija SOP między portami). */
+export function teleportToStory(params: {
+  mission?: string;          // np. "zmontuj vlog ze spawania, napisy UPPERCASE"
+  sourceDir?: string;        // folder z surowym materiałem
+  subtitleStyle?: string;    // np. "UPPERCASE 2-word"
+  audioFadeMs?: number;      // np. 30
+  returnUrl?: string;
+}): void {
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const q = new URLSearchParams();
+  q.set('action', 'video_edit');
+  if (params.mission)       q.set('mission', params.mission);
+  if (params.sourceDir)     q.set('sourceDir', params.sourceDir);
+  if (params.subtitleStyle) q.set('subtitleStyle', params.subtitleStyle);
+  if (params.audioFadeMs != null) q.set('audioFadeMs', String(params.audioFadeMs));
+  if (params.returnUrl)     q.set('returnUrl', params.returnUrl);
+
+  const query = '?' + q.toString();
+  const targetUrl = isLocalhost ? `http://localhost:5174${query}` : `/story${query}`;
+  console.log('[Teleport] 🎬 Transport do Story V2 (VideO-Use):', params);
+  window.open(targetUrl, '_blank');
+}
+
 /** Nasłuchuj na parametry z Huba */
 export function onTeleportReceive(callback: (params: any) => void): () => void {
   const channel = new BroadcastChannel(TELEPORT_CHANNEL);

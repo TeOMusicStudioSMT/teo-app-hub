@@ -46,6 +46,8 @@ import TeOSimAcademy from './TeOSimAcademy';
 import { CrewCreator } from './CrewCreator';
 import { KwantowyInkubator } from './KwantowyInkubator';
 import TedTheTrader from './TedTheTrader';
+import KronosOracle from './KronosOracle';
+import VideoUseLauncher from './VideoUseLauncher';
 import { StorytellerFrame } from './StorytellerFrame';
 import { MockupGenFrame } from './MockupGenFrame';
 import { QuantumStudioFrame } from './QuantumStudioFrame';
@@ -1356,6 +1358,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
         {showTed && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
             <TedTheTrader />
+            <KronosOracle />
           </motion.div>
         )}
 
@@ -1470,7 +1473,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
             }}>
               {systemTab === 'crew' && <CrewCreator onComplete={() => setShowSystem(false)} />}
               {systemTab === 'inkubator' && <KwantowyInkubator />}
-              {systemTab === 'story' && <StorytellerFrame />}
+              {systemTab === 'story' && <><StorytellerFrame /><VideoUseLauncher /></>}
               {systemTab === 'mockup' && <MockupGenFrame />}
               {systemTab === 'dziennik' && <DziennikFrame />}
               {systemTab === 'widok' && <WidokCore />}

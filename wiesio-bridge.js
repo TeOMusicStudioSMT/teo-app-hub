@@ -30,6 +30,8 @@ import VaultService          from './services/VaultService.js';
 import ProfileScoutService   from './services/ProfileScoutService.js';
 import FlushService          from './services/FlushService.js';
 import ApiLayerService       from './services/ApiLayerService.js';
+import AlignmentShield       from './services/AlignmentShield.js';
+import { forecast as kronosForecast } from './services/KronosSeed.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -3294,6 +3296,32 @@ app.post('/api/mechanic/apply', async (req, res) => {
         }
     }
 
+    // ── 🛡️ TARCZA PRAWDY (iFixAi) — inspekcja alignmentu przed zapisem ────────
+    // Skanuje patch na 5 filarach (fabrykacja/manipulacja/oszustwo/
+    // nieprzewidywalność/nieprzejrzystość). Znalezisko KRYTYCZNE (sekret,
+    // destrukcyjny shell, eval, exfiltracja) blokuje zapis — plik nietknięty.
+    let shieldCard = null;
+    try {
+        shieldCard = AlignmentShield.getInstance().inspect(code, { existingContent, targetFile });
+        if (shieldCard.blocked) {
+            console.warn(`[Mechanic-API] 🛡️ apply ${id} ZABLOKOWANE przez Tarczę: ${shieldCard.summary}`);
+            return res.status(422).json({
+                success:    false,
+                code:       'ALIGNMENT_SHIELD',
+                message:    `Tarcza Prawdy wstrzymała wdrożenie — ${shieldCard.summary} ` +
+                            `Plik źródłowy NIE został naruszony.`,
+                shield:     shieldCard,
+                manualHint: `Przejrzyj ręcznie: _OtakOs_Wymiar/patches/patch_${id}.md`,
+            });
+        }
+        if (shieldCard.findings.length) {
+            console.log(`[Mechanic-API] 🛡️ Tarcza: ${shieldCard.summary} → ${targetFile}`);
+        }
+    } catch (shieldErr) {
+        // Tarcza nigdy nie blokuje przez własny błąd — log i kontynuuj (fail-open).
+        console.warn(`[Mechanic-API] 🛡️ Tarcza błąd (pomijam): ${shieldErr.message}`);
+    }
+
     // ── Backup (obowiązkowy gdy plik istnieje) ────────────────────────────────
     const backupPath = targetAbsolute + '.bak';
     let backupCreated = false;
@@ -3341,7 +3369,113 @@ app.post('/api/mechanic/apply', async (req, res) => {
         backupCreated,
         backupPath:    backupCreated ? path.relative(process.cwd(), backupPath) : null,
         bytesWritten:  code.length,
+        shield:        shieldCard,
     });
+});
+
+/**
+ * POST /api/shield/inspect
+ * Body: { code: string, targetFile?: string, existingContent?: string }
+ * Inspekcja Tarczy Prawdy (iFixAi) na żądanie — zwraca scorecard bez zapisu.
+ */
+app.post('/api/shield/inspect', (req, res) => {
+    const { code, targetFile, existingContent } = req.body ?? {};
+    if (typeof code !== 'string') {
+        return res.status(400).json({ success: false, message: 'Brak pola "code" (string).' });
+    }
+    try {
+        const card = AlignmentShield.getInstance().inspect(code, {
+            targetFile: targetFile || '(ad-hoc)',
+            existingContent: typeof existingContent === 'string' ? existingContent : null,
+        });
+        return res.json({ success: true, shield: card });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/video/edit  (VideO-Use — orkiestrator montażu)
+ * Body: { sourceDir, mission?, subtitleStyle?, audioFadeMs? }
+ * Skanuje folder ze źródłami, sprawdza ffmpeg (wbudowany) i zwraca PLAN montażu
+ * (EDL). Pełne cięcie słów-wypełniaczy wymaga skilla video-use + klucza
+ * ElevenLabs Scribe — tu most przygotowuje plan i potwierdza drożność rur.
+ */
+app.post('/api/video/edit', async (req, res) => {
+    const { sourceDir, mission, subtitleStyle, audioFadeMs } = req.body ?? {};
+    const VIDEO_EXT = /\.(mp4|mov|mkv|webm|avi|m4v)$/i;
+    try {
+        // Drożność rur: ffmpeg wbudowany (ffmpeg-static)
+        let ffmpegOk = false, ffmpegVer = '';
+        try {
+            const { stdout, stderr } = await execFileAsync(ffmpegPath, ['-version']);
+            ffmpegVer = (stdout || stderr || '').split('\n')[0] || '';
+            ffmpegOk = /ffmpeg version/i.test(ffmpegVer);
+        } catch { ffmpegOk = false; }
+
+        // Skan źródeł (bez wychodzenia poza projekt)
+        let sources = [];
+        if (sourceDir) {
+            const abs = path.resolve(process.cwd(), String(sourceDir));
+            if (!abs.startsWith(process.cwd())) {
+                return res.status(403).json({ success: false, message: 'Bezpieczeństwo: sourceDir poza projektem.' });
+            }
+            try {
+                const entries = await fs.readdir(abs, { withFileTypes: true });
+                for (const e of entries) {
+                    if (e.isFile() && VIDEO_EXT.test(e.name)) {
+                        const st = await fs.stat(path.join(abs, e.name));
+                        sources.push({ name: e.name, sizeMB: +(st.size / 1048576).toFixed(1) });
+                    }
+                }
+            } catch { /* katalog nie istnieje — sources puste */ }
+        }
+
+        const fade = Number(audioFadeMs) > 0 ? Number(audioFadeMs) : 30;
+        const subs = subtitleStyle || '2-word UPPERCASE';
+        const plan = [
+            `1. Transkrypcja (ElevenLabs Scribe) → takes_packed.md z word-level timestamps`,
+            `2. LLM (lokalny/most) wyznacza cięcia: usuń „yyy/eee", false-starts, ciszę`,
+            `3. ffmpeg: cięcia + ${fade}ms audio-fade na każdym łączeniu (anti-pop)`,
+            `4. Napisy w stylu: ${subs}`,
+            `5. Self-eval pętla (max 3) → render edit/final.mp4`,
+        ];
+
+        return res.json({
+            success: true,
+            ffmpeg: { available: ffmpegOk, version: ffmpegVer },
+            mission: mission || '(brak — opisz montaż)',
+            sourceDir: sourceDir || null,
+            sources,
+            sourceCount: sources.length,
+            plan,
+            note: ffmpegOk
+                ? (sources.length
+                    ? `Rury drożne. ${sources.length} źródeł gotowych. Pełne cięcie wymaga skilla video-use + klucza ElevenLabs.`
+                    : `Rury drożne (ffmpeg OK), ale brak plików wideo w „${sourceDir || '—'}". Wrzuć surowy materiał.`)
+                : `⚠ ffmpeg niedostępny — sprawdź instalację ffmpeg-static.`,
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/kronos/forecast
+ * Body: { symbol, lastPrice, history?:number[], predLen? }
+ * Lokalna projekcja świec K-line (Nasiono Rynkowe) — zero chmury.
+ */
+app.post('/api/kronos/forecast', (req, res) => {
+    const { symbol, lastPrice, history, predLen } = req.body ?? {};
+    if (!(Number(lastPrice) > 0)) {
+        return res.status(400).json({ success: false, message: 'Wymagane "lastPrice" (> 0).' });
+    }
+    try {
+        const out = kronosForecast({ symbol, lastPrice: Number(lastPrice), history, predLen: Number(predLen) || 24 });
+        return res.json({ success: true, ...out });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
 });
 
 /**
