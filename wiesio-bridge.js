@@ -116,8 +116,10 @@ app.use(cors({
         LOCAL_CHANNELS.HUB_ALT, 
         LOCAL_CHANNELS.MUSIC_ALT, 
         LOCAL_CHANNELS.VIDEO_ALT, 
-        LOCAL_CHANNELS.NODES_ALT, 
-        'https://otakos.wtf'
+        LOCAL_CHANNELS.NODES_ALT,
+        'https://otakos.wtf',
+        'http://localhost:3000',   // dev strony otakos.wtf (mapa AGI live)
+        'http://127.0.0.1:3000'
     ],
     methods:         ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders:  ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cache-Control'],
@@ -3570,6 +3572,48 @@ app.post('/api/video/edit', async (req, res) => {
     } catch (err) {
         return res.status(500).json({ success: false, message: err.message });
     }
+});
+
+/**
+ * GET /api/agi/state — żywy stan lokalnej sieci neuronowej (dla mapy AGI na
+ * otakos.wtf). Rdzeń realny (Ollama ping, kolejka Mechanika), reszta gotowość.
+ * Mapuje na id węzłów z agi.local.ts: ollama/bridge/mechanik/koom/podcast/
+ * scout/kronos/video/ted/music/shield/vault/quantum.
+ */
+app.get('/api/agi/state', async (req, res) => {
+    const nodes = {};
+    const set = (id, status, load = 0) => { nodes[id] = { status, load: Math.max(0, Math.min(1, load)) }; };
+
+    // BRIDGE — skoro odpowiada, żyje.
+    set('bridge', 'online', 0.4);
+
+    // OLLAMA — szybki ping (timeout 1.2s).
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 1200);
+        const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: ctrl.signal });
+        clearTimeout(t);
+        const data = r.ok ? await r.json().catch(() => ({})) : {};
+        const loaded = Array.isArray(data.models) ? data.models.length : 0;
+        set('ollama', r.ok ? 'online' : 'offline', r.ok ? Math.min(1, 0.3 + loaded * 0.1) : 0);
+    } catch { set('ollama', 'offline', 0); }
+
+    // MECHANIK — głębokość kolejki = obciążenie.
+    try {
+        const q = await MechanicService.getInstance().getQueue();
+        const pending = Array.isArray(q) ? q.filter(t => t && t.status !== 'DONE' && t.status !== 'REJECTED').length : 0;
+        set('mechanik', pending > 0 ? 'online' : 'idle', Math.min(1, pending / 5));
+    } catch { set('mechanik', 'idle', 0); }
+
+    // SHIELD — Tarcza zawsze czuwa (singleton dostępny).
+    set('shield', 'online', 0.5);
+
+    // Reszta węzłów — gotowość (idle), lekki oddech z czasu.
+    const breath = (Math.sin(Date.now() / 2500) + 1) / 2 * 0.4 + 0.1;
+    ['koom', 'podcast', 'scout', 'kronos', 'video', 'ted', 'music', 'vault', 'quantum']
+        .forEach(id => set(id, 'idle', +breath.toFixed(2)));
+
+    return res.json({ success: true, origin: 'local', dimension: '0.00G', ts: Date.now(), nodes });
 });
 
 /**
