@@ -17,6 +17,8 @@ export function teleportToMusic(params: {
   prompt: string;
   generationId?: string;
   returnUrl?: string; // URL do powrotu
+  intensity?: number;
+  confidence?: number;
 }): void {
   // Zapisz parametry
   localStorage.setItem('teo_music_params', JSON.stringify(params));
@@ -27,8 +29,32 @@ export function teleportToMusic(params: {
   
   console.log('[Teleport] 📤 Wysłano parametry do Music V2:', params);
   
+  // Wykryj localhost
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  
+  // Zbuduj parametry zapytania (Query Params) dla zachowania spójności przy zmianie portów
+  const qParams = new URLSearchParams();
+  qParams.set('style', params.style || '');
+  qParams.set('prompt', params.prompt || '');
+  qParams.set('model', params.model || '');
+  if (params.tags && params.tags.length > 0) {
+    qParams.set('tags', params.tags.join(','));
+  }
+  if (params.generationId) {
+    qParams.set('generationId', params.generationId);
+  }
+  if (params.intensity !== undefined) {
+    qParams.set('intensity', String(params.intensity));
+  }
+  if (params.confidence !== undefined) {
+    qParams.set('confidence', String(params.confidence));
+  }
+
+  const query = '?' + qParams.toString();
+  const targetUrl = isLocalhost ? `http://localhost:5173${query}` : `/music${query}`;
+  
   // Otwórz Music V2 w nowej karcie
-  window.open('/music', '_blank');
+  window.open(targetUrl, '_blank');
 }
 
 /** Nasłuchuj na parametry z Huba */
