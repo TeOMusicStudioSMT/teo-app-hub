@@ -26,73 +26,65 @@ const QuantumShieldControl = () => (
     </div>
 );
 
-// --- Offline Brain Component ---
-const OfflineBrainControl = () => {
-    const [isDownloaded, setIsDownloaded] = useState(false);
-    const [downloadProgress, setDownloadProgress] = useState(0);
-    const [isDownloading, setIsDownloading] = useState(false);
+// --- Rdzeń Lokalny (Gemma 4 / Gemma Diffusion) ---
+const BRIDGE = 'http://127.0.0.1:3001';
+const ENGINES = [
+    { id: 'gemma4',          label: 'Gemma 4',         main: true,  desc: 'Główny rdzeń Katedry — szybki, lokalny.' },
+    { id: 'gemma-diffusion', label: 'Gemma Diffusion', main: false, desc: 'Wariant dyfuzyjny (eksperymentalny).' },
+];
 
-    // Mock check for existing model
+const OfflineBrainControl = () => {
+    const [active, setActive] = useState<string>(() => localStorage.getItem('otakos_active_model') || 'gemma4');
+    const [status, setStatus] = useState<{ online?: boolean; hasGemma4?: boolean } | null>(null);
+    const [pulling, setPulling] = useState(false);
+
+    const loadStatus = async () => {
+        try { setStatus(await (await fetch(`${BRIDGE}/api/models/status`)).json()); }
+        catch { setStatus({ online: false }); }
+    };
     useEffect(() => {
-        const checkModel = async () => {
-            // Check logic
-        };
-        checkModel();
+        if (!localStorage.getItem('otakos_active_model')) localStorage.setItem('otakos_active_model', 'gemma4');
+        loadStatus();
+        const iv = setInterval(loadStatus, 8000);
+        return () => clearInterval(iv);
     }, []);
 
-    const handleDownload = () => {
-        setIsDownloading(true);
-        // Simulation of download trigger
-        // In a real app, this might call an electron bridge or local server endpoint
-        console.log("Triggering fetch-local-brain.ps1...");
-        
-        let progress = 0;
-        const interval = setInterval(() => {
-            progress += 5;
-            setDownloadProgress(progress);
-            if (progress >= 100) {
-                clearInterval(interval);
-                setIsDownloading(false);
-                setIsDownloaded(true);
-                toast.success("Gemma 270m (GGUF) download sequence initiated.");
-            }
-        }, 200);
+    const pick = (id: string) => { setActive(id); localStorage.setItem('otakos_active_model', id); toast.success(`Silnik: ${ENGINES.find(e => e.id === id)?.label}`); };
+    const pull = async () => {
+        setPulling(true);
+        try { await fetch(`${BRIDGE}/api/models/pull`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: active }) }); toast.success('Pobieranie modelu rozpoczęte (na USB).'); }
+        catch { toast.error('Most offline (:3001).'); }
+        finally { setPulling(false); }
     };
 
-    return (
-        <DashboardCard title="Offline Brain (Gemma 270m)" icon={<CpuIcon />}>
-            <div className="p-6 space-y-4">
-                <p className="text-slate-400 text-sm">
-                    Local LLM for offline intelligence. Zero latency, zero cost.
-                    <br /><span className="text-xs text-slate-600">Format: GGUF (Ollama/MediaPipe)</span>
-                </p>
+    const online = status?.online;
+    const has = status?.hasGemma4;
 
-                {isDownloaded ? (
-                    <div className="flex items-center gap-2 text-emerald-400 bg-emerald-900/20 p-3 rounded">
-                        <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                        <span className="font-mono text-sm">BRAIN: ONLINE (LOCAL)</span>
-                    </div>
-                ) : (
-                    <div>
-                        {isDownloading ? (
-                            <div className="w-full bg-slate-800 h-2 rounded overflow-hidden">
-                                <div 
-                                    className="bg-cyan-500 h-full transition-all duration-200" 
-                                    style={{ width: `${downloadProgress}%` }}
-                                />
-                            </div>
-                        ) : (
-                            <button 
-                                onClick={handleDownload}
-                                className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold transition-colors flex items-center justify-center gap-2"
-                            >
-                                <SignalIcon className="w-4 h-4" />
-                                Download Gemma 270m
-                            </button>
-                        )}
-                        {isDownloading && <p className="text-center text-xs text-cyan-400 mt-2 font-mono">Fetching GGUF... {downloadProgress}%</p>}
-                    </div>
+    return (
+        <DashboardCard title="Rdzeń Lokalny (Gemma 4)" icon={<CpuIcon />}>
+            <div className="p-6 space-y-4">
+                <p className="text-slate-400 text-sm">Lokalny silnik AI — zero latencji, zero kosztów, zero chmury.</p>
+                {/* Selektor silnika */}
+                <div className="flex gap-2">
+                    {ENGINES.map(e => (
+                        <button key={e.id} onClick={() => pick(e.id)} title={e.desc}
+                            className={`flex-1 py-2 rounded text-xs font-bold border transition-colors ${active === e.id ? 'border-cyan-500 text-cyan-300 bg-cyan-950/40' : 'border-slate-700 text-slate-400 hover:border-slate-500'}`}>
+                            {e.label}{e.main && <span className="block text-[8px] opacity-60">MAIN</span>}
+                        </button>
+                    ))}
+                </div>
+                {/* Status */}
+                <div className={`flex items-center gap-2 p-3 rounded ${online ? 'text-emerald-400 bg-emerald-900/20' : 'text-amber-400 bg-amber-900/20'}`}>
+                    <div className={`w-2 h-2 rounded-full animate-pulse ${online ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                    <span className="font-mono text-sm">{online ? `RDZEŃ ONLINE${has ? ' · Gemma OK' : ' · brak modelu'}` : 'RDZEŃ OFFLINE (uruchom Ollama / pobierz)'}</span>
+                </div>
+                {(!online || !has) && (
+                    <button onClick={pull} disabled={pulling}
+                        className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                        <SignalIcon className="w-4 h-4" /> {pulling ? 'Pobieranie...' : `⬇️ Pobierz ${ENGINES.find(e => e.id === active)?.label} (na USB)`}
+                    </button>
                 )}
+                <p className="text-[10px] text-slate-600">Pierwszy boot może pobrać model na pendrive (zalecane USB 25–64 GB). Domyślny silnik: Gemma 4.</p>
             </div>
         </DashboardCard>
     );

@@ -3725,6 +3725,28 @@ app.post('/api/wallet/portfolio', async (req, res) => {
     }
 });
 
+// ── 🧠 MODELE LOKALNE — status + realny pull (Gemma 4 / Gemma diffusion) ──────
+app.get('/api/models/status', async (req, res) => {
+    try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 2000);
+        const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: ctrl.signal }); clearTimeout(t);
+        const d = await r.json().catch(() => ({}));
+        const models = Array.isArray(d.models) ? d.models.map(m => m.name) : [];
+        const has = (n) => models.some(m => m.toLowerCase().startsWith(n));
+        res.json({ success: true, online: true, models, active: process.env.OTAKOS_MODEL || 'gemma4', hasGemma4: has('gemma4') || has('gemma3'), hasDiffusion: has('gemma') });
+    } catch { res.json({ success: true, online: false, models: [], hasGemma4: false }); }
+});
+app.post('/api/models/pull', (req, res) => {
+    const model = (req.body ?? {}).model;
+    if (!model) return res.status(400).json({ success: false, message: 'Brak "model".' });
+    // Fire-and-forget — pull leci w tle (duży model), front odpytuje /status.
+    fetch(`${OLLAMA_BASE}/api/pull`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: model, stream: false }) })
+        .then(() => console.log(`[Models] ✅ pull ${model} done`))
+        .catch(e => console.warn(`[Models] pull ${model}: ${e.message}`));
+    console.log(`[Models] ⬇️ pull ${model} started`);
+    res.json({ success: true, started: true, model });
+});
+
 // ── 📜 KRONIKA 0.00G — żywy wpis: narracja AI + równoległy feedback agentów ───
 async function genOllama(prompt, model, ms = 40000) {
     try {
