@@ -48,6 +48,7 @@ import { KwantowyInkubator } from './KwantowyInkubator';
 import TedTheTrader from './TedTheTrader';
 import KronosOracle from './KronosOracle';
 import VideoUseLauncher from './VideoUseLauncher';
+import TeledyskPanel from './TeledyskPanel';
 import { StorytellerFrame } from './StorytellerFrame';
 import { MockupGenFrame } from './MockupGenFrame';
 import { QuantumStudioFrame } from './QuantumStudioFrame';
@@ -1473,7 +1474,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
             }}>
               {systemTab === 'crew' && <CrewCreator onComplete={() => setShowSystem(false)} />}
               {systemTab === 'inkubator' && <KwantowyInkubator />}
-              {systemTab === 'story' && <><StorytellerFrame /><VideoUseLauncher /></>}
+              {systemTab === 'story' && <><StorytellerFrame /><VideoUseLauncher /><TeledyskPanel /></>}
               {systemTab === 'mockup' && <MockupGenFrame />}
               {systemTab === 'dziennik' && <DziennikFrame />}
               {systemTab === 'widok' && <WidokCore />}
