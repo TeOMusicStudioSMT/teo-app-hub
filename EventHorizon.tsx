@@ -1,4 +1,5 @@
 import React from 'react';
+import RingKey from './components/RingKey';
 
 interface EventHorizonProps {
     onLoginRequest: () => void;
@@ -41,6 +42,8 @@ const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onSovereign
                         Suwerennie = tożsamość lokalna (<span className="text-emerald-400">identity.json</span>), zero chmury.<br />
                         Sfera <span className="text-amber-200">TeO</span> = opcjonalne połączenie Firebase (jak chcesz).
                     </div>
+                    {/* 💍 Klucz Pierścienia — wejście dotknięciem NFC */}
+                    <RingKey onAuthSuccess={onSovereignEnter} />
                 </>
             )}
         </div>
