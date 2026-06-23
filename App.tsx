@@ -99,6 +99,9 @@ const App: React.FC = () => {
 
     // --- Real Auth State ---
     const [user, setUser] = useState<User | null>(null);
+    // Suwerenne wejście lokalne — tożsamość z identity.json, Firebase opcjonalny.
+    const [sovereignLocal, setSovereignLocal] = useState<boolean>(() => localStorage.getItem('otakos_sovereign_local') === 'true');
+    const handleEnterSovereign = () => { localStorage.setItem('otakos_sovereign_local', 'true'); setSovereignLocal(true); };
     const setEssenceIdentity = useSetAtom(essenceIdentityAtom);
 
     // --- Pathway State (Duch / Materia) ---
@@ -637,7 +640,7 @@ const App: React.FC = () => {
 
                                         <main className="w-full h-full">
                                             <AnimatePresence mode="wait">
-                                                {!user ? (
+                                                {(!user && !sovereignLocal) ? (
                                                     <motion.div
                                                         key="portal-guest"
                                                         initial={{ opacity: 0 }}
@@ -646,7 +649,7 @@ const App: React.FC = () => {
                                                         transition={{ duration: 0.8 }}
                                                         className="w-full h-full"
                                                     >
-                                                        <CosmicPortal onLoginRequest={handleLogin} onEmailLogin={handleEmailLogin} onEmailSignup={handleEmailSignup} onWalletLogin={handleWalletLogin} />
+                                                        <CosmicPortal onLoginRequest={handleLogin} onEmailLogin={handleEmailLogin} onEmailSignup={handleEmailSignup} onWalletLogin={handleWalletLogin} onSovereignEnter={handleEnterSovereign} />
                                                     </motion.div>
                                                 ) : (
                                                     <motion.div

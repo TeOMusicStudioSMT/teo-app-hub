@@ -11,9 +11,10 @@ interface CosmicPortalProps {
     onWalletLogin?: () => void;
     isAuthenticated?: boolean;
     onVisualAssistantOpen?: () => void;
+    onSovereignEnter?: () => void;
 }
 
-const CosmicPortal: React.FC<CosmicPortalProps> = ({ onLoginRequest, onEmailLogin, onEmailSignup, onWalletLogin, isAuthenticated, onVisualAssistantOpen }) => {
+const CosmicPortal: React.FC<CosmicPortalProps> = ({ onLoginRequest, onEmailLogin, onEmailSignup, onWalletLogin, isAuthenticated, onVisualAssistantOpen, onSovereignEnter }) => {
     const [time, setTime] = useState(0);
     const frameRef = useRef<number | null>(null);
 
@@ -49,7 +50,7 @@ const CosmicPortal: React.FC<CosmicPortalProps> = ({ onLoginRequest, onEmailLogi
     return (
         <div className="w-full h-full relative flex flex-col items-center justify-center p-4">
             <div className="w-full h-full flex items-center justify-center absolute top-0 left-0 transition-all duration-500">
-                {isAuthenticated ? <EssenceCenter /> : <EventHorizon onLoginRequest={onLoginRequest} onEmailLogin={onEmailLogin} onEmailSignup={onEmailSignup} onWalletLogin={onWalletLogin} />}
+                {isAuthenticated ? <EssenceCenter /> : <EventHorizon onLoginRequest={onLoginRequest} onEmailLogin={onEmailLogin} onEmailSignup={onEmailSignup} onWalletLogin={onWalletLogin} onSovereignEnter={onSovereignEnter} />}
 
                 {/* The orbiting assistants, only visible when authenticated */}
                 {isAuthenticated && (
