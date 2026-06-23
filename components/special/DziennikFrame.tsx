@@ -4,6 +4,7 @@
  * (LLM → szablon) → podgląd. Wklej transkrypcję albo wybierz folder podcastu.
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import KronikaGenerator from './KronikaGenerator';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
@@ -14,6 +15,8 @@ export const DziennikFrame: React.FC = () => {
   const [transcript, setTranscript] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [tab, setTab] = useState<'dziennik' | 'kronika'>('dziennik');
+  const tabCls = (on: boolean) => `px-4 py-1.5 rounded-lg text-xs font-bold font-mono border transition-colors ${on ? 'border-cyan-500 text-cyan-300 bg-cyan-950/40' : 'border-slate-700 text-slate-400 hover:border-slate-500'}`;
 
   const refresh = useCallback(async () => {
     try { const d = await (await fetch(`${BRIDGE}/api/dziennik/list`)).json(); if (d.success) { setPodcasts(d.podcasts || []); setDzienniki(d.dzienniki || []); } }
@@ -35,6 +38,20 @@ export const DziennikFrame: React.FC = () => {
 
   return (
     <div className="mt-4 space-y-3">
+      {/* Zakładki */}
+      <div className="flex gap-2">
+        <button onClick={() => setTab('dziennik')} className={tabCls(tab === 'dziennik')}>📜 Dziennik (infografika)</button>
+        <button onClick={() => setTab('kronika')} className={tabCls(tab === 'kronika')}>✨ Kronika Osobista</button>
+      </div>
+
+      {tab === 'kronika' && (
+        <div className="rounded-xl border border-fuchsia-500/20 bg-slate-950/60 p-4">
+          <div className="text-[10px] tracking-widest text-fuchsia-500/60 font-mono mb-2">∴ OSOBISTY DZIENNIK TEJ KATEDRY (lokalny, per węzeł) ∴</div>
+          <KronikaGenerator />
+        </div>
+      )}
+
+      {tab === 'dziennik' && <>
       {/* Operator */}
       <div className="rounded-xl border border-cyan-500/25 bg-slate-950/80 p-4 font-mono">
         <div className="text-[10px] tracking-widest text-cyan-500/60">∴ OPERATOR DZIENNIKA POKŁADOWEGO ∴</div>
@@ -78,6 +95,7 @@ export const DziennikFrame: React.FC = () => {
       <div className="w-full h-[75vh] border border-cyan-500/30 rounded-2xl bg-slate-950/80 overflow-hidden shadow-[0_0_40px_rgba(6,182,212,0.15)]">
         <iframe src={src} className="w-full h-full border-none" title="Dziennik Pokładowy Katedry" />
       </div>
+      </>}
     </div>
   );
 };

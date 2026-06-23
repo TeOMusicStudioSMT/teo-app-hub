@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import MonolithCard from './MonolithCard';
 import { JOURNAL_ENTRIES } from '../../lib/journal/entries';
 import { ArtOfSoulCinema } from './ArtOfSoulCinema';
-import KronikaGenerator from './Kronika00G/KronikaGenerator';
+import KronikaGenerator from './KronikaGenerator'; // wersja z agentami (Adamus/Bella/ODDI)
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Lang = 'pl' | 'en';
