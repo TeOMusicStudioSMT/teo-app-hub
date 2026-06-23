@@ -3613,16 +3613,24 @@ app.post('/api/teledysk/render', async (req, res) => {
         await fs.mkdir(work, { recursive: true });
         const parts = [];
         for (let i = 0; i < segs.length; i++) {
-            const dur = Math.max(0.2, +(segs[i].to - segs[i].from).toFixed(3));
+            // Cap 5s — by ostatni segment nie rozciągnął się do końca utworu.
+            const dur = Math.min(5, Math.max(0.25, +(segs[i].to - segs[i].from).toFixed(3)));
             const src = clips[i % clips.length];
             const out = path.join(work, `seg_${String(i).padStart(3, '0')}.mp4`);
             const vf = ['scale=1280:720:force_original_aspect_ratio=increase', 'crop=1280:720', `fps=${fps}`];
-            if (segs[i].fx === 'punch-zoom') { vf[0] = 'scale=1408:792:force_original_aspect_ratio=increase'; vf[1] = 'crop=1280:720'; }
+            if (segs[i].fx === 'punch-zoom') vf[0] = 'scale=1408:792:force_original_aspect_ratio=increase';
             else if (segs[i].fx === 'flash-cut') vf.push('eq=brightness=0.06:saturation=1.3');
             else vf.push('fade=t=in:st=0:d=0.12');
-            await execFileAsync(ffmpegPath, ['-y', '-t', String(dur), '-i', src, '-an', '-vf', vf.join(','), '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', out]);
-            parts.push(out);
+            try {
+                // Per-segment guard: uszkodzony klip (np. brak moov atom) NIE wywala renderu.
+                await execFileAsync(ffmpegPath, ['-y', '-t', String(dur), '-i', src, '-an', '-vf', vf.join(','), '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', out]);
+                parts.push(out);
+            } catch (segErr) {
+                console.warn(`[Teledysk] ⚠️ segment ${i} pominięty (źródło uszkodzone?): ${path.basename(src)}`);
+            }
         }
+        if (!parts.length)
+            return res.status(422).json({ success: false, message: 'Żaden segment się nie wyrenderował — źródła wideo mogą być uszkodzone.' });
 
         const listFile = path.join(work, 'list.txt');
         await fs.writeFile(listFile, parts.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n'), 'utf8');
