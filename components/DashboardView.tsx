@@ -21,6 +21,17 @@ interface DashboardViewProps {
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantOpen }) => {
     const { t, lang } = useT();
+    // Automat: odpala lokalne studio (jeśli nie działa) i przekierowuje.
+    const launchStudio = async (app: 'music' | 'story' | 'app', port: number) => {
+        const fallback = `http://localhost:${port}`;
+        try {
+            const r = await fetch('http://127.0.0.1:3001/api/launch', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app }),
+            });
+            const d = await r.json();
+            setTimeout(() => window.open(d.url || fallback, '_blank'), d.started ? 3500 : 200);
+        } catch { window.open(fallback, '_blank'); }
+    };
     return (
         <div className="flex flex-col gap-10 pb-20">
             {/* 0. Przełącznik języka (i18n) */}
@@ -57,9 +68,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
 
             {/* 6. UNIVERSES */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <UniverseCard title={t('studio.story')} subtitle={t('studio.storySub')} onClick={() => { }} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
-                <UniverseCard title={t('studio.music')} subtitle={t('studio.musicSub')} onClick={() => { }} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
-                <UniverseCard title={t('studio.app')} subtitle={t('studio.appSub')} onClick={() => { }} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
+                <UniverseCard title={t('studio.story')} subtitle={t('studio.storySub')} onClick={() => launchStudio('story', 5174)} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
+                <UniverseCard title={t('studio.music')} subtitle={t('studio.musicSub')} onClick={() => launchStudio('music', 5173)} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
+                <UniverseCard title={t('studio.app')} subtitle={t('studio.appSub')} onClick={() => launchStudio('app', 5175)} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
             </div>
 
             {/* 7. SIEĆ KATEDR — żywa mapa AGI (LIVE z mostu, same-origin) */}

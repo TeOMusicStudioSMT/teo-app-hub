@@ -5,7 +5,7 @@ import fsSync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
-import { exec, execFile } from 'child_process';
+import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import crypto from 'crypto';
 const execAsync = promisify(exec);
@@ -3561,6 +3561,36 @@ app.post('/api/teledysk/plan', async (req, res) => {
         });
     } catch (err) {
         return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ── 🚀 AUTOMAT URUCHAMIAJĄCY LOKALNE STUDIA (kafle dashboardu) ───────────────
+// Sprawdza czy lokalna strona działa; jak nie — odpala `npm run dev` (detached)
+// i zwraca URL do przekierowania. Suwerennie, lokalnie.
+const LAUNCH_APPS = {
+    music: { dir: 'TeO_Music_V2', port: 5173 },
+    story: { dir: 'TeO_Story_V2', port: 5174 },
+    app:   { dir: 'TeO_App_V2',   port: 5175 },
+};
+app.post('/api/launch', async (req, res) => {
+    const cfg = LAUNCH_APPS[(req.body ?? {}).app];
+    if (!cfg) return res.status(400).json({ success: false, message: 'Nieznana apka (music|story|app).' });
+    const url = `http://localhost:${cfg.port}`;
+    // Już działa?
+    try {
+        const c = new AbortController(); const t = setTimeout(() => c.abort(), 1000);
+        await fetch(url, { signal: c.signal }); clearTimeout(t);
+        return res.json({ success: true, url, running: true });
+    } catch { /* nie działa — uruchamiamy */ }
+    const dir = path.resolve(process.cwd(), '..', cfg.dir);
+    if (!fsSync.existsSync(dir)) return res.json({ success: true, url, running: false, message: `Katalog ${cfg.dir} nie istnieje — otwórz ręcznie.` });
+    try {
+        const child = spawn('npm', ['run', 'dev', '--', '--port', String(cfg.port)], { cwd: dir, detached: true, shell: true, stdio: 'ignore' });
+        child.unref();
+        console.log(`[Automat-Studia] 🚀 Uruchamiam ${cfg.dir} (:${cfg.port})`);
+        return res.json({ success: true, url, started: true, message: `Uruchamiam ${cfg.dir} (:${cfg.port}) — chwilę potrwa.` });
+    } catch (e) {
+        return res.json({ success: true, url, started: false, message: `Nie udało się uruchomić: ${e.message}` });
     }
 });
 
