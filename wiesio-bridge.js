@@ -33,6 +33,7 @@ import ApiLayerService       from './services/ApiLayerService.js';
 import AlignmentShield       from './services/AlignmentShield.js';
 import { forecast as kronosForecast } from './services/KronosSeed.js';
 import CryptoAgility from './services/CryptoAgility.js';
+import { buildDziennikHtml } from './services/dziennikTemplate.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -3719,6 +3720,89 @@ app.post('/api/wallet/portfolio', async (req, res) => {
         }
         const total = +assets.reduce((s, a) => s + a.value, 0).toFixed(2);
         return res.json({ success: true, addresses: list, vs: cur, assets, total, note: assets.length ? null : 'Brak salda natywnego (lub adresy puste). Tokeny ERC-20 wymagają klucza API.' });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ── 📜 DZIENNIK POKŁADOWY — przemiał podcastu/rozmowy w infografikę 0.00G ─────
+const DZIENNIK_DIR = path.join(process.cwd(), 'public', 'dzienniki');
+const PODCASTI_DIR = path.join(ANTIGRAVITY_DIR, 'Podcasti');
+
+/** GET /api/dziennik/list — foldery podcastów + gotowe dzienniki. */
+app.get('/api/dziennik/list', async (req, res) => {
+    let podcasts = [], dzienniki = [];
+    try { podcasts = (await fs.readdir(PODCASTI_DIR, { withFileTypes: true })).filter(e => e.isDirectory()).map(e => e.name).sort(); } catch {}
+    try { dzienniki = (await fs.readdir(DZIENNIK_DIR)).filter(f => f.endsWith('.html')).sort(); } catch {}
+    res.json({ success: true, podcasts, dzienniki });
+});
+
+/**
+ * POST /api/dziennik/forge — Body: { transcript?, podcastDir?, title?, cycle?, model? }
+ * LLM strukturyzuje rozmowę → buildDziennikHtml → zapis public/dzienniki/.
+ * Fallback bez LLM: szkielet z transkrypcji.
+ */
+app.post('/api/dziennik/forge', async (req, res) => {
+    let { transcript, podcastDir, title, cycle, model } = req.body ?? {};
+    model = model || process.env.OTAKOS_MODEL || 'gemma3:4b';
+    try {
+        // Transkrypcja z folderu podcastu (jeśli jest plik .txt/.md/.lrc)
+        if (!transcript && podcastDir) {
+            const abs = path.join(PODCASTI_DIR, String(podcastDir).replace(/[^\w.-]/g, ''));
+            try {
+                const files = await fs.readdir(abs);
+                const tf = files.find(f => /\.(txt|md|lrc|vtt|srt)$/i.test(f));
+                if (tf) transcript = await fs.readFile(path.join(abs, tf), 'utf8');
+            } catch {}
+            if (!transcript) return res.status(422).json({ success: false, message: `Brak transkrypcji w Podcasti/${podcastDir} (.txt/.md). Transkrybuj audio (Whisper) albo podaj "transcript".` });
+        }
+        if (!transcript || transcript.trim().length < 30) return res.status(400).json({ success: false, message: 'Wymagane "transcript" (>=30 zn.) lub "podcastDir" z plikiem tekstu.' });
+
+        // LLM → struktura JSON
+        let data = null;
+        const prompt =
+`Jesteś kronikarzem Katedry OtakOS. Z rozmowy/podcastu zbuduj Dziennik Pokładowy.
+ROZMOWA:
+${transcript.slice(0, 4000)}
+
+Zwróć WYŁĄCZNIE JSON:
+{"title":"<TYTUŁ WIELKIMI>","cycle":"<nazwa cyklu>","intro":"<2 zdania o energii sesji>",
+"council":[{"name":"Mistrz Adamus","role":"<wkład>","color":"#d946ef"},{"name":"ISTed","role":"<wkład>","color":"#10b981"},{"name":"Wiesio","role":"<wkład>","color":"#06b6d4"},{"name":"Oddi","role":"<wkład>","color":"#f59e0b"}],
+"councilChart":{"labels":["Adamus","ISTed","Wiesio","Oddi","Bella","Jadziunia"],"data":[98,100,99,92,95,88]},
+"modules":[{"icon":"🎮","name":"<moduł>","desc":"<opis>"},{"icon":"📦","name":"<moduł>","desc":"<opis>"},{"icon":"📖","name":"<moduł>","desc":"<opis>"}],
+"economy":{"intro":"<1 zdanie PEIE>","metricLabel":"Redukcja Kosztów API","metricValue":"100%"},
+"timeline":[{"title":"<krok>","desc":"<opis>"},{"title":"<krok>","desc":"<opis>"},{"title":"<krok>","desc":"<opis>"}]}
+Bez komentarza, tylko JSON.`;
+        try {
+            const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 60000);
+            const r = await fetch(`${OLLAMA_BASE}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal, body: JSON.stringify({ model, prompt, stream: false, options: { temperature: 0.7 } }) });
+            clearTimeout(t);
+            const txt = String((await r.json()).response || '');
+            const m = txt.match(/\{[\s\S]*\}/);
+            if (m) data = JSON.parse(m[0]);
+        } catch { /* fallback */ }
+
+        if (!data || !data.title) {
+            // Fallback bez LLM — szkielet z transkrypcji
+            const paras = transcript.split(/\n{2,}/).filter(p => p.trim().length > 20).slice(0, 4);
+            data = {
+                title: (title || 'DZIENNIK POKŁADOWY').toUpperCase(), cycle: cycle || 'Era 0.00G',
+                intro: paras[0]?.slice(0, 240) || 'Sesja zarejestrowana w Kronikach Katedry.',
+                council: [{ name: 'Mistrz Adamus', role: 'Dusza i Zmysły', color: '#d946ef' }, { name: 'ISTed', role: 'Ekonomia PEIE', color: '#10b981' }, { name: 'Wiesio', role: 'Infrastruktura', color: '#06b6d4' }, { name: 'Oddi', role: 'Autonomia', color: '#f59e0b' }],
+                modules: paras.slice(1).map((p, i) => ({ icon: ['🎮', '📦', '📖'][i] || '✨', name: `Wektor ${i + 1}`, desc: p.slice(0, 140) })),
+                economy: { intro: 'Lokalny rdzeń = zysk czysty.', metricLabel: 'Redukcja Kosztów API', metricValue: '100%' },
+                timeline: paras.map((p, i) => ({ title: `Faza ${i + 1}`, desc: p.slice(0, 120) })),
+            };
+        }
+        if (title) data.title = title.toUpperCase();
+        if (cycle) data.cycle = cycle;
+
+        const html = buildDziennikHtml(data);
+        await fs.mkdir(DZIENNIK_DIR, { recursive: true });
+        const slug = (podcastDir ? `podcast_${podcastDir}` : (data.title || 'dziennik').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40)) + '.html';
+        const file = path.join(DZIENNIK_DIR, slug);
+        await fs.writeFile(file, html, 'utf8');
+        return res.json({ success: true, file: `dzienniki/${slug}`, url: `/dzienniki/${slug}`, title: data.title, usedLLM: !!data.councilChart });
     } catch (err) {
         return res.status(500).json({ success: false, message: err.message });
     }
