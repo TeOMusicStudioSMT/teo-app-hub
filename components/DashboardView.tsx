@@ -10,7 +10,8 @@ import { Biblioteka } from './special/Biblioteka';
 import DashboardCard from './DashboardCard';
 import { Library } from 'lucide-react';
 import KatedraNeuralMap from './special/KatedraNeuralMap';
-import { detectLang } from '../lib/locale';
+import { useT } from '../lib/i18n';
+import LanguageToggle from './LanguageToggle';
 
 interface DashboardViewProps {
     onVisualAssistantOpen: () => void;
@@ -19,8 +20,13 @@ interface DashboardViewProps {
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantOpen }) => {
+    const { t, lang } = useT();
     return (
         <div className="flex flex-col gap-10 pb-20">
+            {/* 0. Przełącznik języka (i18n) */}
+            <div className="w-full flex justify-end">
+                <LanguageToggle />
+            </div>
             {/* 1. TOP: CREATIVE PORTAL */}
             <div className="w-full">
                 <CreativeZoneCard onVisualAssistantOpen={onVisualAssistantOpen} />
@@ -51,14 +57,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
 
             {/* 6. UNIVERSES */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <UniverseCard title="Story Studio" subtitle="Construct Reality." onClick={() => { }} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
-                <UniverseCard title="Music Studio" subtitle="Audio Synthesis." onClick={() => { }} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
-                <UniverseCard title="App Studio" subtitle="Code Tools." onClick={() => { }} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
+                <UniverseCard title={t('studio.story')} subtitle={t('studio.storySub')} onClick={() => { }} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
+                <UniverseCard title={t('studio.music')} subtitle={t('studio.musicSub')} onClick={() => { }} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
+                <UniverseCard title={t('studio.app')} subtitle={t('studio.appSub')} onClick={() => { }} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
             </div>
 
             {/* 7. SIEĆ KATEDR — żywa mapa AGI (LIVE z mostu, same-origin) */}
             <div className="w-full">
-                <KatedraNeuralMap lang={detectLang()} />
+                <h2 className="text-lg font-bold text-emerald-300 mb-3 font-mono">🧠 {t('dash.network')}</h2>
+                <KatedraNeuralMap lang={lang} />
             </div>
         </div>
     );

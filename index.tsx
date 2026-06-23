@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { Provider } from 'jotai';
 import { KatedraRadioProvider } from './context/KatedraRadioContext';
+import { I18nProvider } from './lib/i18n';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -16,7 +17,9 @@ root.render(
   <React.StrictMode>
     <KatedraRadioProvider>
       <Provider>
-        <App />
+        <I18nProvider>
+          <App />
+        </I18nProvider>
       </Provider>
     </KatedraRadioProvider>
   </React.StrictMode>
