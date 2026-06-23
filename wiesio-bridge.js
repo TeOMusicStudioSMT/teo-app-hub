@@ -3881,6 +3881,48 @@ Bez komentarza, tylko JSON.`;
     }
 });
 
+/**
+ * POST /api/podcast/transcribe — audio → tekst (Whisper.cpp), bez chmury.
+ * Body: { podcastDir? | audioPath?, model? }  (model whisper: small/base/tiny)
+ */
+app.post('/api/podcast/transcribe', async (req, res) => {
+    let { podcastDir, audioPath, model } = req.body ?? {};
+    model = model || 'small';
+    let wav = null, jsonFile = null;
+    try {
+        let audio = audioPath;
+        if (!audio && podcastDir) {
+            const dir = path.join(PODCASTI_DIR, String(podcastDir).replace(/[^\w.-]/g, ''));
+            const files = await getAudioFilesRecursive(dir);
+            if (!files.length) return res.status(404).json({ success: false, message: `Brak audio w Podcasti/${podcastDir}.` });
+            let best = files[0], bestSize = -1;            // największy plik = główne nagranie
+            for (const f of files) { try { const st = await fs.stat(f); if (st.size > bestSize) { bestSize = st.size; best = f; } } catch {} }
+            audio = best;
+        }
+        if (!audio) return res.status(400).json({ success: false, message: 'Podaj "podcastDir" lub "audioPath".' });
+        const audioAbs = path.isAbsolute(audio) ? audio : path.join(process.cwd(), audio);
+        if (!fsSync.existsSync(audioAbs)) return res.status(404).json({ success: false, message: 'Audio nie istnieje.' });
+
+        const modelPath = path.join(MODELS_DIR, `ggml-${model}.bin`);
+        if (!fsSync.existsSync(modelPath)) return res.status(424).json({ success: false, message: `Brak modelu Whisper: ggml-${model}.bin w _OtakOs_AI/models/.`, hint: 'https://huggingface.co/ggerganov/whisper.cpp/tree/main' });
+        if (!fsSync.existsSync(WHISPER_EXE)) return res.status(424).json({ success: false, message: 'Brak whisper-cli.exe w _OtakOs_AI/bin/.' });
+
+        wav = path.join(TEMP_DIR, `whisper_in_${Date.now()}.wav`);
+        await execFileAsync(ffmpegPath, ['-i', audioAbs, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', wav]);
+        const outBase = path.join(TEMP_DIR, 'whisper_tr_' + Date.now());
+        jsonFile = outBase + '.json';
+        await execFileAsync(WHISPER_EXE, ['-m', modelPath, '-f', wav, '--output-json-full', '-p', '4', '-l', 'pl', '-of', outBase], { cwd: BIN_DIR });
+        if (!fsSync.existsSync(jsonFile)) throw new Error('Whisper nie wygenerował wyniku.');
+        const out = JSON.parse(fsSync.readFileSync(jsonFile, 'utf8'));
+        const transcript = (out.transcription || []).map(s => String(s.text || '').trim()).join(' ').replace(/\s+/g, ' ').trim();
+        return res.json({ success: true, audio: path.relative(process.cwd(), audioAbs), chars: transcript.length, transcript });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    } finally {
+        try { if (wav) await fs.rm(wav, { force: true }); if (jsonFile) await fs.rm(jsonFile, { force: true }); } catch {}
+    }
+});
+
 // ── 🔐 CRYPTO-AGILITY — zwinność kryptograficzna (Dekret Kwantowy) ───────────
 app.get('/api/crypto/status', async (req, res) => {
     const c = CryptoAgility.getInstance(ANTIGRAVITY_DIR); await c.load();

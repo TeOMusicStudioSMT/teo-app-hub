@@ -36,6 +36,17 @@ export const DziennikFrame: React.FC = () => {
     finally { setBusy(false); }
   }, [refresh]);
 
+  const transcribe = useCallback(async (podcastDir: string) => {
+    setBusy(true); setStatus(`🎙️ Transkrybuję podcast ${podcastDir} (Whisper) — to chwilę potrwa...`);
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/podcast/transcribe`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ podcastDir }) })).json();
+      if (!d.success) throw new Error(d.message || 'błąd');
+      setTranscript(d.transcript);
+      setStatus(`✅ Transkrypcja gotowa (${d.chars} zn.) — naciśnij PRZEMIEL W DZIENNIK.`);
+    } catch (e: any) { setStatus(`⚠ Transkrypcja: ${e.message}`); }
+    finally { setBusy(false); }
+  }, []);
+
   return (
     <div className="mt-4 space-y-3">
       {/* Zakładki */}
@@ -59,10 +70,10 @@ export const DziennikFrame: React.FC = () => {
 
         {podcasts.length > 0 && (
           <>
-            <div className="text-[9px] text-slate-400 mb-1">FOLDERY PODCASTÓW ({podcasts.length}) — klik przemiela (wymaga pliku tekstu w folderze):</div>
+            <div className="text-[9px] text-slate-400 mb-1">FOLDERY PODCASTÓW ({podcasts.length}) — 🎙️ klik = transkrypcja audio (Whisper) → tekst do przemiału:</div>
             <div className="flex flex-wrap gap-1.5 mb-3 max-h-24 overflow-y-auto">
               {podcasts.map(p => (
-                <button key={p} onClick={() => forge({ podcastDir: p }, `Podcast ${p}`)} disabled={busy}
+                <button key={p} onClick={() => transcribe(p)} disabled={busy}
                   className="px-2 py-0.5 rounded border border-fuchsia-500/30 text-fuchsia-300 text-[10px] hover:bg-fuchsia-950/40 disabled:opacity-50">
                   {p}
                 </button>
