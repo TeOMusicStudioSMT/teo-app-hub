@@ -516,7 +516,10 @@ export function KatedraRadioPlayer() {
                     >
                         <div style={playlistHeaderStyle}>
                             <span>BIBLIOTEKA 0.00G</span>
-                            <button onClick={() => setExpanded(false)} style={closeBtnStyle}>✕</button>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <button onClick={() => radio.loadPlaylist()} title="Odśwież listę utworów z katalogu" style={closeBtnStyle}>🔄</button>
+                                <button onClick={() => setExpanded(false)} style={closeBtnStyle}>✕</button>
+                            </div>
                         </div>
                         <div style={playlistScrollStyle}>
                             {radio.tracks.map((track, index) => (
