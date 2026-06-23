@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import DashboardCard from './DashboardCard';
 import { WalletIcon, ShieldCheckIcon, BrainCircuitIcon } from './icons';
+import WalletConnect from './WalletConnect';
 import { useAtomValue } from 'jotai';
 import { walletAtom } from '../store/wallet';
 import { cn } from '../lib/helpers';
@@ -72,6 +73,7 @@ export const GravitonWalletView: React.FC = () => {
     const fGRV = (n: number) => n.toLocaleString('pl-PL');
 
     return (
+        <div className="flex flex-col gap-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* LEWA: Bilans + Crypto-Agility */}
             <div className="lg:col-span-1 flex flex-col gap-4">
@@ -172,6 +174,8 @@ export const GravitonWalletView: React.FC = () => {
                     </div>
                 </DashboardCard>
             </div>
+            </div>
+            <WalletConnect />
         </div>
     );
 };

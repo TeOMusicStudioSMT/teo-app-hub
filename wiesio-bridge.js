@@ -3679,6 +3679,51 @@ app.post('/api/grv/grant', async (req, res) => {
     res.json({ success: true, from, to, amount: amt, fromBalance: src.grv, toBalance: L.nodes[to].grv, infiniteSource: infinite });
 });
 
+// ── 💰 PORTFEL ZEWNĘTRZNY — read-only agregacja (MetaMask/Ledger przez adres) ──
+// Bezkluczowo: saldo NATYWNE (ETH/MATIC/BNB) przez publiczny RPC + cena CoinGecko.
+// Tokeny ERC-20 = przyszłość (opcjonalny klucz w Skarbcu). Zero podpisów, read-only.
+const WALLET_CHAINS = {
+    eth:     { name: 'Ethereum',  rpc: 'https://ethereum-rpc.publicnode.com',     sym: 'ETH',   cg: 'ethereum' },
+    polygon: { name: 'Polygon',   rpc: 'https://polygon-bor-rpc.publicnode.com',  sym: 'MATIC', cg: 'matic-network' },
+    bsc:     { name: 'BNB Chain',  rpc: 'https://bsc-rpc.publicnode.com',          sym: 'BNB',   cg: 'binancecoin' },
+};
+async function rpcBalance(rpc, address) {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 6000);
+    try {
+        const r = await fetch(rpc, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, signal: ctrl.signal,
+            body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_getBalance', params: [address, 'latest'], id: 1 }) });
+        const txt = await r.text();
+        if (!txt.trim().startsWith('{')) return 0; // ochrona przed HTML/proxy
+        const d = JSON.parse(txt);
+        return d.result ? Number(BigInt(d.result)) / 1e18 : 0;
+    } catch { return 0; } finally { clearTimeout(t); }
+}
+app.post('/api/wallet/portfolio', async (req, res) => {
+    const { addresses, vs } = req.body ?? {};
+    const list = Array.isArray(addresses) ? addresses.filter(a => /^0x[a-fA-F0-9]{40}$/.test(a)) : [];
+    if (!list.length) return res.status(400).json({ success: false, message: 'Podaj adres(y) 0x... (EVM).' });
+    const cur = (vs || 'eur').toLowerCase();
+    try {
+        // Ceny natywnych
+        const ids = Object.values(WALLET_CHAINS).map(c => c.cg).join(',');
+        let prices = {};
+        try { prices = await (await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=${cur}`)).json(); } catch {}
+        const assets = [];
+        for (const [chain, c] of Object.entries(WALLET_CHAINS)) {
+            let bal = 0;
+            for (const addr of list) bal += await rpcBalance(c.rpc, addr);
+            if (bal > 0) {
+                const price = prices?.[c.cg]?.[cur] || 0;
+                assets.push({ chain, name: c.name, symbol: c.sym, balance: +bal.toFixed(6), price, value: +(bal * price).toFixed(2) });
+            }
+        }
+        const total = +assets.reduce((s, a) => s + a.value, 0).toFixed(2);
+        return res.json({ success: true, addresses: list, vs: cur, assets, total, note: assets.length ? null : 'Brak salda natywnego (lub adresy puste). Tokeny ERC-20 wymagają klucza API.' });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ── 🔐 CRYPTO-AGILITY — zwinność kryptograficzna (Dekret Kwantowy) ───────────
 app.get('/api/crypto/status', async (req, res) => {
     const c = CryptoAgility.getInstance(ANTIGRAVITY_DIR); await c.load();
