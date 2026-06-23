@@ -3642,6 +3642,83 @@ Bez komentarza, tylko JSON.`;
 });
 
 /**
+ * POST /api/teledysk/scene — generator WŁASNYCH scen z opisu (3 tryby do wyboru).
+ * Body: { desc?, mood?, style?, mode:'proc'|'sd'|'gemini', duration?, fps?, sdUrl?, apiKey?, model? }
+ *   proc   = programmatic 0.00G (ffmpeg lavfi — zero AI, pełna suwerenność)
+ *   sd     = lokalny Stable Diffusion (txt2img) → Ken-Burns
+ *   gemini = chmura Imagen (wymaga klucza) → Ken-Burns
+ * Zwraca wygenerowany klip sceny (do użycia jako materiał w /api/teledysk/render).
+ */
+app.post('/api/teledysk/scene', async (req, res) => {
+    let { desc, mood, style, mode, duration, fps, sdUrl, apiKey } = req.body ?? {};
+    mode = mode || 'proc';
+    duration = Math.min(12, Math.max(0.5, Number(duration) || 3));
+    fps = Number(fps) > 0 ? Number(fps) : 30;
+    const SCENES_DIR = path.join(process.cwd(), '_OtakOs_Move', 'scenes');
+    const id = `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const out = path.join(SCENES_DIR, `scene_${id}.mp4`);
+    const rel = () => path.relative(process.cwd(), out);
+    try {
+        await fs.mkdir(SCENES_DIR, { recursive: true });
+
+        if (mode === 'proc') {
+            // Dobór proceduralnego źródła wg nastroju/stylu sceny.
+            const s = String(style || mood || desc || '').toLowerCase();
+            const src = /spok|calm|cisz|intro|wybrzmie/.test(s) ? 'gradients=s=1280x720:c0=0x0a0a2a:c1=0x1a4a6a:nb_colors=3:speed=0.008'
+                : /kulmin|peak|wybuch|moc|energ|siln/.test(s)   ? 'life=s=1280x720:mold=10:r=30:ratio=0.12:death_color=0x001a2a:life_color=0x00ffcc'
+                : /przeł|break|chaos|glitch/.test(s)            ? 'cellauto=s=1280x720:rule=110:scroll=1'
+                :                                                 'mandelbrot=s=1280x720:rate=30';
+            await execFileAsync(ffmpegPath, ['-y', '-f', 'lavfi', '-i', src, '-t', String(duration),
+                '-vf', `format=yuv420p,fps=${fps}`, '-c:v', 'libx264', '-preset', 'veryfast', out]);
+            return res.json({ success: true, mode: 'proc', output: rel(), style: s || 'auto' });
+        }
+
+        if (mode === 'sd') {
+            const url = (sdUrl || 'http://127.0.0.1:7860').replace(/\/$/, '');
+            const r = await fetch(`${url}/sdapi/v1/txt2img`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: desc || mood || 'abstract cinematic scene, cohesive lighting', steps: 20, width: 1280, height: 720 }),
+            }).catch(() => null);
+            if (!r || !r.ok) return res.status(503).json({ success: false, mode: 'sd', message: `Lokalny Stable Diffusion niedostępny (${url}). Uruchom ComfyUI/A1111 z --api.` });
+            const data = await r.json();
+            const b64 = Array.isArray(data.images) ? data.images[0] : null;
+            if (!b64) throw new Error('SD nie zwrócił obrazu.');
+            const img = path.join(SCENES_DIR, `sd_${id}.png`);
+            await fs.writeFile(img, Buffer.from(b64.replace(/^data:image\/\w+;base64,/, ''), 'base64'));
+            await execFileAsync(ffmpegPath, ['-y', '-loop', '1', '-i', img, '-t', String(duration),
+                '-vf', `scale=1600:900,zoompan=z='min(zoom+0.0015,1.2)':d=${Math.round(duration * fps)}:s=1280x720,format=yuv420p,fps=${fps}`,
+                '-c:v', 'libx264', '-preset', 'veryfast', out]);
+            await fs.rm(img, { force: true }).catch(() => {});
+            return res.json({ success: true, mode: 'sd', output: rel() });
+        }
+
+        if (mode === 'gemini') {
+            const key = apiKey || process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+            if (!key) return res.status(400).json({ success: false, mode: 'gemini', message: 'Brak klucza Gemini (apiKey / VITE_GEMINI_API_KEY).' });
+            const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${key}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ instances: [{ prompt: desc || mood || 'cinematic abstract scene' }], parameters: { sampleCount: 1, aspectRatio: '16:9' } }),
+            }).catch(() => null);
+            if (!r || !r.ok) return res.status(502).json({ success: false, mode: 'gemini', message: `Imagen niedostępny lub błąd klucza (HTTP ${r ? r.status : 'brak'}).` });
+            const data = await r.json();
+            const b64 = data?.predictions?.[0]?.bytesBase64Encoded;
+            if (!b64) throw new Error('Imagen nie zwrócił obrazu.');
+            const img = path.join(SCENES_DIR, `gem_${id}.png`);
+            await fs.writeFile(img, Buffer.from(b64, 'base64'));
+            await execFileAsync(ffmpegPath, ['-y', '-loop', '1', '-i', img, '-t', String(duration),
+                '-vf', `scale=1600:900,zoompan=z='min(zoom+0.0015,1.2)':d=${Math.round(duration * fps)}:s=1280x720,format=yuv420p,fps=${fps}`,
+                '-c:v', 'libx264', '-preset', 'veryfast', out]);
+            await fs.rm(img, { force: true }).catch(() => {});
+            return res.json({ success: true, mode: 'gemini', output: rel() });
+        }
+
+        return res.status(400).json({ success: false, message: 'Nieznany mode — użyj proc | sd | gemini.' });
+    } catch (err) {
+        return res.status(500).json({ success: false, mode, message: err.message });
+    }
+});
+
+/**
  * POST /api/teledysk/render — Punkt 4 cegła 2: realny render beat-sync ffmpegiem.
  * Body: { audioFile, sourceDir, vectors?|sonicFile?, fps?, maxCuts? }
  * Tnie źródła wideo na uderzenia basu, dokłada efekty per segment (zoom/flash/
