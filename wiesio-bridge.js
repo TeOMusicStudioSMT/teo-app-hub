@@ -3594,6 +3594,81 @@ app.post('/api/launch', async (req, res) => {
     }
 });
 
+// ── ⚖️ GENEZA GRV — Grawitacyjna Ekonomia Suwerennych Węzłów ─────────────────
+// TeO = węzeł zarządzający z NIESKOŃCZONYM GRV (dzieli jako system). Arek = 1M
+// founder. Pule do obdarowywania: 13×1M, 26×100k, 61×10k. Nowy węzeł = 1000.
+// (Haszowanie wsteczne rejestru — świadomie NA POTEM, decyzja Suwerena.)
+const GRV_NEW_NODE = 1000;
+const GRV_TIERS = { founder: { grv: 1_000_000, count: 13 }, pillar: { grv: 100_000, count: 26 }, herald: { grv: 10_000, count: 61 } };
+const GRV_GIFT_POOL = Object.values(GRV_TIERS).reduce((s, t) => s + t.grv * t.count, 0); // 16 210 000
+const GRV_LEDGER_FILE = path.join(ANTIGRAVITY_DIR, 'grv_ledger.json');
+let grvLedger = null;
+async function saveGrvLedger() { try { await fs.writeFile(GRV_LEDGER_FILE, JSON.stringify(grvLedger, null, 2), 'utf8'); } catch (e) { console.warn('[GRV] zapis:', e.message); } }
+async function loadGrvLedger() {
+    if (grvLedger) return grvLedger;
+    try { grvLedger = JSON.parse(await fs.readFile(GRV_LEDGER_FILE, 'utf8')); }
+    catch {
+        // Zasiew genezy (pierwsze uruchomienie)
+        grvLedger = {
+            nodes: {
+                TeO:  { grv: 'INFINITE', role: 'sovereign-manager', tier: null, registeredAt: Date.now() },
+                Arek: { grv: 1_000_000, role: 'founder', tier: 'founder', registeredAt: Date.now() },
+            },
+            pools: { founder: 1, pillar: 0, herald: 0 }, // Arek zajął 1 slot founder
+        };
+        await saveGrvLedger();
+        console.log('[GRV] 🌱 Geneza zasiana: TeO=∞, Arek=1M founder.');
+    }
+    return grvLedger;
+}
+
+app.get('/api/grv/genesis', async (req, res) => {
+    const L = await loadGrvLedger();
+    res.json({
+        success: true, manager: 'TeO', newNodeGrv: GRV_NEW_NODE, giftPool: GRV_GIFT_POOL,
+        tiers: Object.entries(GRV_TIERS).map(([tier, c]) => ({ tier, grv: c.grv, count: c.count, used: L.pools[tier] || 0, left: c.count - (L.pools[tier] || 0) })),
+        nodeCount: Object.keys(L.nodes).length,
+    });
+});
+app.get('/api/grv/:id', async (req, res) => {
+    const L = await loadGrvLedger(); const n = L.nodes[req.params.id];
+    if (!n) return res.status(404).json({ success: false, message: 'Węzeł nieznany.' });
+    res.json({ success: true, id: req.params.id, ...n });
+});
+app.post('/api/grv/register', async (req, res) => {
+    const { id, tier } = req.body ?? {};
+    if (!id) return res.status(400).json({ success: false, message: 'Brak id węzła.' });
+    const L = await loadGrvLedger();
+    if (L.nodes[id]) return res.json({ success: true, id, ...L.nodes[id], existed: true });
+    let grv = GRV_NEW_NODE, role = 'node', assignedTier = null;
+    if (tier && GRV_TIERS[tier]) {
+        const used = L.pools[tier] || 0;
+        if (used >= GRV_TIERS[tier].count) return res.status(409).json({ success: false, message: `Pula ${tier} wyczerpana (${GRV_TIERS[tier].count}).` });
+        grv = GRV_TIERS[tier].grv; role = tier; assignedTier = tier; L.pools[tier] = used + 1;
+    }
+    L.nodes[id] = { grv, role, tier: assignedTier, registeredAt: Date.now() };
+    await saveGrvLedger();
+    console.log(`[GRV] ➕ Węzeł ${id}: ${grv} GRV${assignedTier ? ` (${assignedTier})` : ''}.`);
+    res.json({ success: true, id, ...L.nodes[id] });
+});
+app.post('/api/grv/grant', async (req, res) => {
+    const { from, to, amount } = req.body ?? {};
+    const amt = Number(amount);
+    if (!from || !to || !(amt > 0)) return res.status(400).json({ success: false, message: 'Wymagane from, to, amount>0.' });
+    const L = await loadGrvLedger();
+    const src = L.nodes[from];
+    if (!src) return res.status(404).json({ success: false, message: `Węzeł ${from} nieznany.` });
+    if (!L.nodes[to]) L.nodes[to] = { grv: 0, role: 'node', tier: null, registeredAt: Date.now() };
+    const infinite = src.grv === 'INFINITE';
+    if (!infinite) {
+        if (Number(src.grv) < amt) return res.status(400).json({ success: false, message: 'Za mało GRV u nadawcy.' });
+        src.grv = Number(src.grv) - amt;
+    }
+    if (L.nodes[to].grv !== 'INFINITE') L.nodes[to].grv = Number(L.nodes[to].grv) + amt;
+    await saveGrvLedger();
+    res.json({ success: true, from, to, amount: amt, fromBalance: src.grv, toBalance: L.nodes[to].grv, infiniteSource: infinite });
+});
+
 /**
  * POST /api/teledysk/storyboard — GENERATOR OPOWIEŚCI do utworu (lokalny LLM).
  * Body: { title, lyricsFile?|lyrics?, vectors?|sonicFile?, sceneCount?, model? }
