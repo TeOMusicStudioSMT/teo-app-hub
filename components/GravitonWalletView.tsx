@@ -1,253 +1,173 @@
+/**
+ * ⚖️🔐 GravitonWalletView — Skarbiec Grawitacyjny (GRAVITON)
+ *
+ * Dopasowane do nowych założeń:
+ *   • GENEZA GRV — realne tiery z mostu (/api/grv/genesis): TeO=∞, Mistrz
+ *     Arkadiusz=1M, pule Founder/Filar/Herold, nowy węzeł=1000.
+ *   • CRYPTO-AGILITY — tryb post-kwantowy (/api/crypto/status, /mode, /selftest):
+ *     ML-KEM-768 (Kyber), ML-DSA-65 (Dilithium), AES-256-GCM.
+ */
 
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import DashboardCard from './DashboardCard';
 import { WalletIcon, ShieldCheckIcon, BrainCircuitIcon } from './icons';
 import { useAtomValue } from 'jotai';
 import { walletAtom } from '../store/wallet';
-import * as gravitonClient from '../lib/graviton/client';
-import { GravitonActivity } from '../lib/graviton/types';
 import { cn } from '../lib/helpers';
-import { GravitonNode, NetworkSimulator, ValidationStatus } from '../lib/graviton/node';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-const tierStyles: { [key: string]: string } = {
-    'Low': 'text-slate-400 border-slate-500',
-    'Medium': 'text-cyan-400 border-cyan-500 shadow-cyan-500/30',
-    'High': 'text-violet-400 border-violet-500 shadow-violet-500/30',
-    'Superposition': 'superposition-text border-amber-400 shadow-amber-400/30'
+const BRIDGE = 'http://127.0.0.1:3001';
+
+const tierStyles: Record<string, string> = {
+    Low: 'text-slate-400 border-slate-500',
+    Medium: 'text-cyan-400 border-cyan-500 shadow-cyan-500/30',
+    High: 'text-violet-400 border-violet-500 shadow-violet-500/30',
+    Superposition: 'superposition-text border-amber-400 shadow-amber-400/30',
 };
+const TIER_LABEL: Record<string, string> = { founder: '🏛️ Founder', pillar: '🗿 Filar', herald: '📯 Herold' };
+const TIER_COLOR: Record<string, string> = { founder: '#f59e0b', pillar: '#22d3ee', herald: '#a78bfa' };
+const MODE_LABEL: Record<string, string> = { classical: 'KLASYCZNY', pqc: 'POST-KWANT', hybrid: 'HYBRYDA' };
 
-const activityTypeStyles = {
-    INBOUND: { text: 'text-green-400', symbol: '+' },
-    OUTBOUND: { text: 'text-rose-400', symbol: '-' },
-    STAKE: { text: 'text-sky-400', symbol: 'S' },
-    YIELD: { text: 'text-amber-400', symbol: 'Y' },
-};
-
-const PlayIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-    </svg>
-);
-
-// --- Node Monitor Component ---
-const NodeMonitor: React.FC<{ isProcessing: boolean; stage: string; onSimulate: () => void }> = ({ isProcessing, stage, onSimulate }) => {
-    const [logs, setLogs] = useState<string[]>([]);
-
-    useEffect(() => {
-        if (isProcessing) {
-            setLogs(prev => [...prev.slice(-4), `> ${stage}`]);
-        }
-    }, [stage, isProcessing]);
-
-    return (
-        <div className="bg-black/90 rounded-lg p-4 font-mono text-xs border border-slate-700 h-full flex flex-col relative overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,1)]">
-            {/* Matrix/Scanlines Effect */}
-            <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,255,0,0.03)_1px,transparent_1px)] bg-[size:100%_3px] pointer-events-none"></div>
-            
-            <div className="flex justify-between items-center mb-2 border-b border-slate-800 pb-1">
-                <span className="text-green-500 font-bold flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    GRAVITON NODE
-                </span>
-                
-                <div className="flex items-center gap-2">
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onSimulate(); }}
-                        disabled={isProcessing}
-                        className="text-[10px] px-2 py-0.5 rounded border border-slate-700 hover:border-cyan-500 hover:text-cyan-400 transition-all flex items-center gap-1 disabled:opacity-50"
-                    >
-                        <PlayIcon /> Sim Tx
-                    </button>
-                    <span className="text-slate-500">v0.9.2</span>
-                </div>
-            </div>
-            
-            <div className="flex-grow space-y-1 text-slate-300">
-                <div className="flex justify-between">
-                    <span>STATUS:</span>
-                    <span className="text-cyan-400">SYNCED (MAINNET)</span>
-                </div>
-                <div className="flex justify-between">
-                    <span>PEERS:</span>
-                    <span className="text-cyan-400">12 ACTIVE</span>
-                </div>
-                <div className="flex justify-between">
-                    <span>PoBI SCORE:</span>
-                    <span className="text-green-400">98% (TRUSTED)</span>
-                </div>
-                <div className="mt-4 pt-2 border-t border-slate-800">
-                     {logs.map((log, i) => (
-                        <motion.div 
-                            key={i}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="text-green-400/80 truncate"
-                        >
-                            {log}
-                        </motion.div>
-                    ))}
-                    {isProcessing && (
-                        <motion.span 
-                            animate={{ opacity: [0, 1, 0] }} 
-                            transition={{ repeat: Infinity, duration: 0.8 }}
-                            className="text-green-500 font-bold"
-                        >
-                            _
-                        </motion.span>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
+interface Genesis { manager: string; newNodeGrv: number; giftPool: number; nodeCount: number; tiers: { tier: string; grv: number; count: number; used: number; left: number }[]; }
+interface Crypto { mode: string; modes: string[]; pqcAvailable: boolean; suite: Record<string, any>; library: string; }
+interface SelfTest { aes256gcm: boolean; mlkem768: boolean; mldsa65: boolean; allPass: boolean; }
 
 export const GravitonWalletView: React.FC = () => {
     const wallet = useAtomValue(walletAtom);
-    const [activity, setActivity] = useState<GravitonActivity[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [genesis, setGenesis] = useState<Genesis | null>(null);
+    const [crypto, setCrypto] = useState<Crypto | null>(null);
+    const [selftest, setSelftest] = useState<SelfTest | null>(null);
+    const [busy, setBusy] = useState(false);
+    const [offline, setOffline] = useState(false);
 
-    // Node Simulation State
-    const [node] = useState(new GravitonNode());
-    const [simState, setSimState] = useState({
-        isProcessing: false,
-        stage: 'IDLE',
-        status: 'IDLE' as ValidationStatus | 'IDLE'
-    });
-
-    useEffect(() => {
-        const fetchActivity = async () => {
-            setIsLoading(true);
-            const data = await gravitonClient.getActivity();
-            setActivity(data);
-            setIsLoading(false);
-        };
-        fetchActivity();
+    const loadCrypto = useCallback(async () => {
+        const r = await fetch(`${BRIDGE}/api/crypto/status`); const d = await r.json();
+        if (d.success) setCrypto(d);
     }, []);
 
-    const handleSimulateTransaction = async () => {
-        if (simState.isProcessing) return;
+    useEffect(() => {
+        (async () => {
+            try {
+                const g = await (await fetch(`${BRIDGE}/api/grv/genesis`)).json();
+                if (g.success) setGenesis(g);
+                await loadCrypto();
+            } catch { setOffline(true); }
+        })();
+    }, [loadCrypto]);
 
-        setSimState({ isProcessing: true, stage: 'INITIATING HANDSHAKE...', status: 'IDLE' });
-
-        // Phase 1: Biometric/Behavioral Scan
-        setTimeout(() => setSimState(prev => ({ ...prev, stage: 'SCANNING BEHAVIORAL BIOMETRICS...' })), 800);
-
-        // Phase 2: Validation
-        setTimeout(async () => {
-            setSimState(prev => ({ ...prev, stage: 'VALIDATING PoBI INTEGRITY...' }));
-            
-            // Call logic
-            const integrity = Math.floor(Math.random() * 20) + 80; // Random 80-100 score
-            const result = await node.validateTransaction({
-                senderDid: 'did:key:user',
-                recipientDid: 'did:key:shop',
-                amount: 50,
-                signature: 'mock_sig',
-                timestamp: Date.now()
-            }, integrity);
-
-            // Phase 3: Network Broadcast
-            setSimState(prev => ({ ...prev, stage: `CONSENSUS REACHED: ${result.status}` }));
-            await NetworkSimulator.broadcastToMesh(result);
-
-            setTimeout(() => {
-                setSimState(prev => ({ ...prev, stage: 'MINING BLOCK...', status: result.status }));
-                toast.success(`Block Mined! Kinetic Yield Applied.`);
-                
-                setTimeout(() => {
-                    setSimState({ isProcessing: false, stage: 'IDLE', status: 'IDLE' });
-                }, 2000);
-            }, 1000);
-
-        }, 2500);
+    const switchMode = async (mode: string) => {
+        setBusy(true);
+        try { await fetch(`${BRIDGE}/api/crypto/mode`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) }); await loadCrypto(); toast.success(`Tryb krypto: ${MODE_LABEL[mode]}`); }
+        catch { toast.error('Most niedostępny'); }
+        finally { setBusy(false); }
     };
+    const runSelfTest = async () => {
+        setBusy(true);
+        try { const d = await (await fetch(`${BRIDGE}/api/crypto/selftest`)).json(); setSelftest(d.result); toast[d.result?.allPass ? 'success' : 'error'](d.result?.allPass ? 'Self-test: wszystko OK ⚛️' : 'Self-test: błąd'); }
+        catch { toast.error('Most niedostępny'); }
+        finally { setBusy(false); }
+    };
+
+    const fGRV = (n: number) => n.toLocaleString('pl-PL');
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Panel: Balance & Node Visualizer */}
+            {/* LEWA: Bilans + Crypto-Agility */}
             <div className="lg:col-span-1 flex flex-col gap-4">
-                <DashboardCard title="Core Balance" icon={<WalletIcon />}>
+                <DashboardCard title="Skarbiec GRV" icon={<WalletIcon />}>
                     <div className="flex flex-col items-center justify-center text-center p-4">
-                        <p className="text-lg text-slate-400 uppercase tracking-widest">Frequency Tier</p>
-                        <p className={cn(
-                            "text-3xl font-bold my-2 transition-all duration-300 border-b-2 pb-2",
-                             tierStyles[wallet.frequencyTier] || tierStyles['Low']
-                        )}>
-                            {wallet.frequencyTier}
-                        </p>
-                        
-                        <div className="mt-4">
-                             <p className="text-lg text-slate-400 uppercase tracking-widest">Available Balance</p>
-                             <p className="text-4xl font-bold text-white">
-                                 {wallet.balance ? parseFloat(wallet.balance).toLocaleString() : '...'} GRV
-                             </p>
-                             {wallet.isGenesisNode && (
-                                 <span className="inline-block mt-2 px-2 py-0.5 bg-amber-900/30 border border-amber-500/50 rounded text-[10px] text-amber-400 uppercase font-bold tracking-wider">
-                                     Genesis Node
-                                 </span>
-                             )}
-                        </div>
+                        <p className="text-sm text-slate-400 uppercase tracking-widest">Tier Częstotliwości</p>
+                        <p className={cn('text-2xl font-bold my-2 border-b-2 pb-2', tierStyles[wallet.frequencyTier] || tierStyles.Low)}>{wallet.frequencyTier}</p>
+                        <p className="text-sm text-slate-400 uppercase tracking-widest mt-3">Saldo</p>
+                        <p className="text-4xl font-bold text-white">{wallet.balance ? parseFloat(wallet.balance).toLocaleString() : '...'} <span className="text-lg text-amber-400">GRV</span></p>
+                        {wallet.isGenesisNode && <span className="inline-block mt-2 px-2 py-0.5 bg-amber-900/30 border border-amber-500/50 rounded text-[10px] text-amber-400 uppercase font-bold tracking-wider">Węzeł Genezy</span>}
                     </div>
                 </DashboardCard>
 
-                {/* Node Simulator UI */}
-                <div className="h-64 relative group">
-                    <NodeMonitor isProcessing={simState.isProcessing} stage={simState.stage} onSimulate={handleSimulateTransaction} />
-                    
-                    {/* Flash Effect for Validation */}
-                    <AnimatePresence>
-                        {simState.status === 'FAST_LANE' && (
-                            <motion.div 
-                                initial={{ opacity: 0 }} 
-                                animate={{ opacity: [0, 0.8, 0] }} 
-                                exit={{ opacity: 0 }}
-                                className="absolute inset-0 bg-green-500/30 z-20 pointer-events-none rounded-lg mix-blend-screen"
-                            />
+                <DashboardCard title="Crypto-Agility" icon={<ShieldCheckIcon />}>
+                    <div className="p-3 font-mono text-xs">
+                        {!crypto ? <p className="text-slate-500 text-center py-4">{offline ? '⚠ Most offline (:3001)' : 'Ładowanie...'}</p> : (
+                            <>
+                                <div className="flex gap-1.5 mb-3">
+                                    {crypto.modes.map(m => (
+                                        <button key={m} onClick={() => switchMode(m)} disabled={busy}
+                                            className={cn('flex-1 px-2 py-1 rounded border text-[10px] font-bold transition-colors',
+                                                crypto.mode === m ? 'border-emerald-500 text-emerald-300 bg-emerald-950/40' : 'border-slate-700 text-slate-400 hover:border-slate-500')}>
+                                            {MODE_LABEL[m]}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="space-y-1 text-slate-300">
+                                    <div className="flex justify-between"><span>KEM:</span><span className="text-cyan-400">{crypto.suite?.pqc?.kem}</span></div>
+                                    <div className="flex justify-between"><span>Podpis:</span><span className="text-violet-400">{crypto.suite?.pqc?.sign}</span></div>
+                                    <div className="flex justify-between"><span>Symetria:</span><span className="text-emerald-400">AES-256-GCM</span></div>
+                                    <div className="flex justify-between"><span>PQC:</span><span className={crypto.pqcAvailable ? 'text-emerald-400' : 'text-rose-400'}>{crypto.pqcAvailable ? 'NIST gotowe ⚛️' : 'brak'}</span></div>
+                                </div>
+                                <button onClick={runSelfTest} disabled={busy} className="mt-3 w-full px-2 py-1.5 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-950/40 text-[11px] font-bold transition-colors disabled:opacity-50">
+                                    {busy ? '⟳ ...' : '🔬 SELF-TEST KRYPTO'}
+                                </button>
+                                {selftest && (
+                                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 grid grid-cols-2 gap-1 text-[10px]">
+                                        {[['AES-256-GCM', selftest.aes256gcm], ['ML-KEM-768', selftest.mlkem768], ['ML-DSA-65', selftest.mldsa65], ['RAZEM', selftest.allPass]].map(([k, v]) => (
+                                            <div key={k as string} className="flex justify-between bg-black/30 rounded px-2 py-0.5">
+                                                <span className="text-slate-400">{k}</span><span className={v ? 'text-emerald-400' : 'text-rose-400'}>{v ? '✓' : '✗'}</span>
+                                            </div>
+                                        ))}
+                                    </motion.div>
+                                )}
+                            </>
                         )}
-                        {simState.status === 'QUARANTINE' && (
-                            <motion.div 
-                                initial={{ opacity: 0 }} 
-                                animate={{ opacity: [0, 0.8, 0] }} 
-                                exit={{ opacity: 0 }}
-                                className="absolute inset-0 bg-rose-500/30 z-20 pointer-events-none rounded-lg mix-blend-screen"
-                            />
-                        )}
-                    </AnimatePresence>
-                </div>
+                    </div>
+                </DashboardCard>
             </div>
 
-            {/* Right Panel: Activity Log */}
+            {/* PRAWA: Geneza GRV */}
             <div className="lg:col-span-2">
-                <DashboardCard title="Distributed Ledger" icon={<ShieldCheckIcon />}>
-                    <div className="pr-2 space-y-2 overflow-y-auto max-h-[calc(100vh-22rem)]">
-                        {isLoading ? (
-                            <p className="text-slate-400 text-center py-8">Syncing with mainnet...</p>
-                        ) : (
-                            activity.map(tx => {
-                                const typeStyle = activityTypeStyles[tx.type];
-                                return (
-                                    <div key={tx.id} className="grid grid-cols-12 items-center p-3 bg-slate-800/50 rounded-md text-sm gap-2 border-l-2 border-transparent hover:border-cyan-500 transition-colors">
-                                        <div className="col-span-1 flex items-center justify-center">
-                                            <span className={`font-bold text-lg ${typeStyle.text}`}>{typeStyle.symbol}</span>
-                                        </div>
-                                        <div className="col-span-6">
-                                            <p className="font-semibold text-white truncate">{tx.peer}</p>
-                                            <div className="flex items-center gap-2">
-                                                <p className="text-[10px] text-slate-400 font-mono">{tx.id}</p>
-                                                <span className="text-[10px] bg-slate-700 px-1 rounded text-slate-300">
-                                                    {tx.type === 'YIELD' ? 'Kinetic' : 'Confirmed'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className={`col-span-5 text-right font-mono font-bold ${typeStyle.text}`}>
-                                             {tx.amount.toFixed(2)} GRV
-                                        </div>
+                <DashboardCard title="Geneza GRV — Ekonomia Suwerennych Węzłów" icon={<BrainCircuitIcon />}>
+                    <div className="p-4 font-mono text-sm">
+                        {!genesis ? <p className="text-slate-500 text-center py-8">{offline ? '⚠ Most niedostępny (:3001) — uruchom Wiesio-Bridge' : 'Ładowanie genezy...'}</p> : (
+                            <>
+                                <div className="grid grid-cols-3 gap-3 mb-5 text-center">
+                                    <div className="bg-amber-950/20 border border-amber-500/30 rounded-lg p-3">
+                                        <div className="text-[10px] text-amber-400/70 uppercase">Zarządca</div>
+                                        <div className="text-xl font-bold text-amber-300">{genesis.manager}</div>
+                                        <div className="text-[10px] text-amber-400/60">∞ GRV (dzieli)</div>
                                     </div>
-                                );
-                            })
+                                    <div className="bg-cyan-950/20 border border-cyan-500/30 rounded-lg p-3">
+                                        <div className="text-[10px] text-cyan-400/70 uppercase">Pula Obdarowań</div>
+                                        <div className="text-xl font-bold text-cyan-300">{fGRV(genesis.giftPool)}</div>
+                                        <div className="text-[10px] text-cyan-400/60">GRV</div>
+                                    </div>
+                                    <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-lg p-3">
+                                        <div className="text-[10px] text-emerald-400/70 uppercase">Nowy Węzeł</div>
+                                        <div className="text-xl font-bold text-emerald-300">{fGRV(genesis.newNodeGrv)}</div>
+                                        <div className="text-[10px] text-emerald-400/60">GRV na start</div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {genesis.tiers.map(t => {
+                                        const pct = (t.used / t.count) * 100;
+                                        return (
+                                            <div key={t.tier}>
+                                                <div className="flex justify-between items-center text-xs mb-1">
+                                                    <span style={{ color: TIER_COLOR[t.tier] }} className="font-bold">{TIER_LABEL[t.tier] || t.tier}</span>
+                                                    <span className="text-slate-400">{fGRV(t.grv)} GRV × {t.count} · <span className="text-slate-300">{t.left} wolnych</span></span>
+                                                </div>
+                                                <div className="h-2 rounded-full bg-black/40 overflow-hidden border border-white/5">
+                                                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: TIER_COLOR[t.tier], opacity: 0.7 }} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="mt-5 pt-3 border-t border-slate-800 flex justify-between text-[11px] text-slate-400">
+                                    <span>Węzłów w rejestrze: <span className="text-emerald-400 font-bold">{genesis.nodeCount}</span></span>
+                                    <span className="text-slate-500">grv_ledger.json · lokalnie, suwerennie</span>
+                                </div>
+                            </>
                         )}
                     </div>
                 </DashboardCard>
