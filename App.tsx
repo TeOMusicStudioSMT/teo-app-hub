@@ -4,6 +4,7 @@ import TeOGenesis from './components/special/TeOGenesis';
 import QuantumGuardianAlert from './components/AnomalyNotification';
 import TeonautLounge from './components/TeonautLounge';
 import CosmicPortal from './components/CosmicPortal';
+import Onboarding from './components/Onboarding';
 import SubscriptionActivator from './components/SubscriptionActivator';
 import { Toaster, toast } from 'react-hot-toast';
 import { GoogleGenAI } from '@google/genai';
@@ -102,6 +103,8 @@ const App: React.FC = () => {
     // Suwerenne wejście lokalne — tożsamość z identity.json, Firebase opcjonalny.
     const [sovereignLocal, setSovereignLocal] = useState<boolean>(() => localStorage.getItem('otakos_sovereign_local') === 'true');
     const handleEnterSovereign = () => { localStorage.setItem('otakos_sovereign_local', 'true'); setSovereignLocal(true); };
+    // Onboarding (pogawędka + głos) na pierwszym wejściu.
+    const [onboarded, setOnboarded] = useState<boolean>(() => localStorage.getItem('otakos_onboarded') === '1');
     const setEssenceIdentity = useSetAtom(essenceIdentityAtom);
 
     // --- Pathway State (Duch / Materia) ---
@@ -568,6 +571,7 @@ const App: React.FC = () => {
 
     return (
         <GravitonProvider>
+                {(!!user || sovereignLocal) && !onboarded && <Onboarding onDone={() => setOnboarded(true)} />}
                 <div className="relative w-screen h-screen flex flex-col items-center justify-center overflow-hidden">
                     <CosmicBackground riskLevel={riskLevel} />
                     <div className="relative z-10 w-full h-full flex flex-col">

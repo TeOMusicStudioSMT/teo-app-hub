@@ -3747,6 +3747,53 @@ app.post('/api/models/pull', (req, res) => {
     res.json({ success: true, started: true, model });
 });
 
+// ── 🎤 GŁOS SUWERENA — suwerenny klon głosu (lokalny silnik + fallback) ───────
+// Architektura: próbka głosu zapisana LOKALNIE (_OtakOs_AI/voices/). Mowa idzie
+// przez lokalny silnik klonu (XTTS/OpenVoice na VOICE_BASE) jeśli obecny; inaczej
+// front używa przeglądarki (speechSynthesis). Każdy może to mieć w swojej Katedrze.
+const VOICE_BASE = process.env.OTAKOS_VOICE_HOST || 'http://127.0.0.1:5002';
+const VOICES_DIR = path.join(AI_DIR, 'voices');
+
+app.get('/api/voice/status', async (req, res) => {
+    let available = false;
+    try { const c = new AbortController(); const t = setTimeout(() => c.abort(), 1500); const r = await fetch(`${VOICE_BASE}/`, { signal: c.signal }); clearTimeout(t); available = !!r; } catch {}
+    let voices = []; try { voices = (await fs.readdir(VOICES_DIR)).filter(f => f.endsWith('.wav')).map(f => f.replace('.wav', '')); } catch {}
+    res.json({ success: true, available, base: VOICE_BASE, voices, note: available ? 'Lokalny silnik klonu głosu gotowy.' : 'Brak lokalnego silnika — fallback przeglądarki (speechSynthesis). Zainstaluj XTTS/OpenVoice na :5002 dla suwerennego klonu Twojego głosu.' });
+});
+app.post('/api/voice/clone', async (req, res) => {
+    const { sample, voiceId } = req.body ?? {};
+    if (!sample) return res.status(400).json({ success: false, message: 'Brak "sample" (base64 audio).' });
+    try {
+        await fs.mkdir(VOICES_DIR, { recursive: true });
+        const id = String(voiceId || 'suweren').replace(/[^\w-]/g, '') || 'suweren';
+        const buf = Buffer.from(String(sample).replace(/^data:audio\/\w+;base64,/, ''), 'base64');
+        // Normalizacja do czystego WAV (MediaRecorder daje webm/ogg) — ffmpeg.
+        const tmp = path.join(TEMP_DIR, `voice_in_${Date.now()}`);
+        await fs.writeFile(tmp, buf);
+        const out = path.join(VOICES_DIR, `${id}.wav`);
+        try { await execFileAsync(ffmpegPath, ['-i', tmp, '-ar', '22050', '-ac', '1', '-y', out]); }
+        catch { await fs.writeFile(out, buf); } // gdyby ffmpeg padł — zapisz surowe
+        await fs.rm(tmp, { force: true }).catch(() => {});
+        const st = await fs.stat(out);
+        console.log(`[Głos] 🎤 Próbka zapisana lokalnie: ${id} (${st.size} B)`);
+        res.json({ success: true, voiceId: id, file: `voices/${id}.wav`, bytes: st.size });
+    } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+app.post('/api/voice/speak', async (req, res) => {
+    const { text, voiceId } = req.body ?? {};
+    if (!text) return res.status(400).json({ success: false, message: 'Brak "text".' });
+    const ref = path.join(VOICES_DIR, `${String(voiceId || 'suweren').replace(/[^\w-]/g, '')}.wav`);
+    try {
+        // Konwencja lokalnego silnika (XTTS/OpenVoice): POST {text, speaker_wav, language} → audio.
+        const r = await fetch(`${VOICE_BASE}/api/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, speaker_wav: fsSync.existsSync(ref) ? ref : undefined, language: 'pl' }) });
+        if (!r.ok) throw new Error('engine ' + r.status);
+        res.setHeader('Content-Type', 'audio/wav');
+        return res.send(Buffer.from(await r.arrayBuffer()));
+    } catch (e) {
+        return res.status(424).json({ success: false, fallback: 'browser', message: `Lokalny silnik głosu niedostępny (${e.message}). Front użyje przeglądarki.` });
+    }
+});
+
 // ── 📜 KRONIKA 0.00G — żywy wpis: narracja AI + równoległy feedback agentów ───
 async function genOllama(prompt, model, ms = 40000) {
     try {
