@@ -65,6 +65,24 @@ export interface AuraStats {
   violet: number;
 }
 
+// ─── Żywe wpisy Kroniki (narracja AI + feedback agentów) ──────────────────────
+
+export interface KronikaComment { agent: string; text: string; }
+export interface KronikaEntry {
+  id:         string;
+  title:      string;
+  narrative:  string;
+  xp:         number;
+  aura:       string;              // cyan | gold | magenta | violet
+  videoUrl?:  string | null;
+  comments:   KronikaComment[];
+  timestamp?: string;
+  type?:      string;
+}
+
+/** Żywe karty Kroniki — wykuwane przez /api/kronika/forge (Gemma4 + agenci). */
+export const kronikaEntriesAtom = atomWithStorage<KronikaEntry[]>('kronika_entries', []);
+
 export const auraStatsAtom = atom<AuraStats>((get) => {
   const stats: AuraStats = { gold: 0, cyan: 0, violet: 0 };
   get(kronikaHistoryAtom).forEach(c => {

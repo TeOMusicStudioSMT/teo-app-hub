@@ -3725,6 +3725,57 @@ app.post('/api/wallet/portfolio', async (req, res) => {
     }
 });
 
+// ── 📜 KRONIKA 0.00G — żywy wpis: narracja AI + równoległy feedback agentów ───
+async function genOllama(prompt, model, ms = 40000) {
+    try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms);
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal, body: JSON.stringify({ model, prompt, stream: false, options: { temperature: 0.85 } }) });
+        clearTimeout(t);
+        return String((await r.json()).response || '').trim();
+    } catch { return ''; }
+}
+app.post('/api/kronika/forge', async (req, res) => {
+    let { narrative, transcript, title, videoUrl, model } = req.body ?? {};
+    model = model || process.env.OTAKOS_MODEL || 'gemma3:4b';
+    const source = (narrative || transcript || '').trim();
+    if (source.length < 20) return res.status(400).json({ success: false, message: 'Wymagane "narrative" lub "transcript" (>=20 zn.).' });
+    try {
+        // 1. Narracja główna (lokalny Gemma 4)
+        const narr = await genOllama(
+            `Jesteś Kronikarzem Katedry OtakOS (mistyczno-cyberpunkowy ton, 0.00G). Z poniższej treści napisz JEDEN wpis Kroniki — 3-4 zdania, żywe, poetyckie, o intencji i kreacji. Bez nagłówków.\n\nTREŚĆ:\n${source.slice(0, 3000)}`, model);
+
+        // 2. Równoległy feedback 3 agentów
+        const base = narr || source.slice(0, 600);
+        const [adamus, bella, oddi] = await Promise.all([
+            genOllama(`Jako Mistrz Adamus (strategiczny mentor, alchemia intencji) skomentuj 1 zdaniem ten wpis Kroniki:\n"${base}"`, model, 25000),
+            genOllama(`Jako Bella (estetyka, wizja, piękno) skomentuj 1 zdaniem ten wpis Kroniki:\n"${base}"`, model, 25000),
+            genOllama(`Jako ODDI (bezwzględna czysta logika AI) skomentuj 1 zdaniem ten wpis Kroniki:\n"${base}"`, model, 25000),
+        ]);
+
+        const usedLLM = !!narr;
+        const clean = (s, fb) => (s && s.length > 2 ? s.replace(/^["'\s]+|["'\s]+$/g, '').split('\n')[0].slice(0, 240) : fb);
+        const auras = ['cyan', 'gold', 'magenta', 'violet'];
+        const entry = {
+            id: Date.now().toString(),
+            title: (title || 'WPIS KRONIKI').toUpperCase(),
+            narrative: clean(narr, source.slice(0, 280)),
+            xp: 50 + Math.floor(Math.random() * 50),
+            aura: auras[Math.floor(Math.random() * auras.length)],
+            videoUrl: videoUrl || null,
+            timestamp: new Date().toISOString(),
+            type: 'AI_GENERATED',
+            comments: [
+                { agent: 'Adamus', text: clean(adamus, 'Strategiczna głębia rośnie.') },
+                { agent: 'Bella', text: clean(bella, 'Estetyka rezonuje z wizją.') },
+                { agent: 'ODDI', text: clean(oddi, 'Logika spójna. Wektor stabilny.') },
+            ],
+        };
+        return res.json({ success: true, usedLLM, entry });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ── 📜 DZIENNIK POKŁADOWY — przemiał podcastu/rozmowy w infografikę 0.00G ─────
 const DZIENNIK_DIR = path.join(process.cwd(), 'public', 'dzienniki');
 const PODCASTI_DIR = path.join(ANTIGRAVITY_DIR, 'Podcasti');
