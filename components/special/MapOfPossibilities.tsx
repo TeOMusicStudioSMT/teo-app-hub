@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { sendWriteFileCommand } from '../../lib/bridgeService';
 import KatedraNeuralMap from './KatedraNeuralMap';
+import { detectLang } from '../../lib/locale';
 
 interface Possibility {
   id: string;
@@ -434,7 +435,7 @@ const MapOfPossibilities: React.FC<MapOfPossibilitiesProps> = ({
       </div>
     </motion.div>
     <div style={{ marginTop: 16 }}>
-      <KatedraNeuralMap lang="pl" />
+      <KatedraNeuralMap lang={detectLang()} />
     </div>
     </>
   );

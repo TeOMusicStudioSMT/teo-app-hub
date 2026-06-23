@@ -10,6 +10,7 @@ import { Biblioteka } from './special/Biblioteka';
 import DashboardCard from './DashboardCard';
 import { Library } from 'lucide-react';
 import KatedraNeuralMap from './special/KatedraNeuralMap';
+import { detectLang } from '../lib/locale';
 
 interface DashboardViewProps {
     onVisualAssistantOpen: () => void;
@@ -57,7 +58,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
 
             {/* 7. SIEĆ KATEDR — żywa mapa AGI (LIVE z mostu, same-origin) */}
             <div className="w-full">
-                <KatedraNeuralMap lang="pl" />
+                <KatedraNeuralMap lang={detectLang()} />
             </div>
         </div>
     );
