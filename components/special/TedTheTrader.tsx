@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { getWalletPortfolio, WalletAsset } from '../../services/walletPortfolioService';
 
 // ── CONFIG ────────────────────────────────────────────────────────
 const TED_CONFIG = {
@@ -162,6 +163,11 @@ export const TedTheTrader: React.FC = () => {
     const stateRef    = useRef(state);
     useEffect(() => { stateRef.current = state; }, [state]);
 
+    // Realny portfel (MetaMask/Ledger) — Ted radzi na bazie tego, co realnie trzymasz.
+    const realAssetsRef = useRef<WalletAsset[]>([]);
+    const [realAssets, setRealAssets] = useState<WalletAsset[]>([]);
+    useEffect(() => { getWalletPortfolio().then(p => { if (p) { realAssetsRef.current = p.assets; setRealAssets(p.assets); } }); }, []);
+
     // ── Persist ───────────────────────────────────────────────────
     useEffect(() => {
         const s  = localStorage.getItem('ted_state_v2');
@@ -264,8 +270,10 @@ export const TedTheTrader: React.FC = () => {
         const model = localStorage.getItem('otakos_active_model')||'gemma3:4b';
         const top5 = data.slice(0,5).map(a=>`${a.name} (${a.symbol.toUpperCase()}): ${a.current_price.toFixed(2)} EUR | 24h: ${fPct(a.price_change_percentage_24h)}`).join('\n');
         const stName = STRATEGIES.find(st=>st.id===s.activeStrategy)?.name||'ZŁOTY HODL';
+        const holds = realAssetsRef.current;
+        const holdStr = holds.length ? holds.map(a=>`${a.symbol}: ${a.balance.toFixed(4)} (${a.value.toLocaleString('pl-PL')} EUR)`).join(', ') : '';
         const prompt = `Jesteś ${analyst.name} — ekspertem finansowym z Inkubatora OtakOS${analyst.track?` (${analyst.track})`:''}.\n${analyst.instructions?`Wiedza z treningu: ${analyst.instructions}\n\n`:''}`+
-            `Dane rynkowe (EUR):\n${top5}\n\nStrategia: ${stName}\nIntencja: ${s.teoWord}\n\n`+
+            `Dane rynkowe (EUR):\n${top5}\n\n${holdStr?`Twoje REALNE zasoby (portfel Suwerena): ${holdStr}\nUwzględnij je w radzie.\n\n`:''}Strategia: ${stName}\nIntencja: ${s.teoWord}\n\n`+
             `Daj krótką rekomendację (3-4 zdania) który aktyw wybrać i dlaczego. Zakończ jednym słowem: KUPUJ, SPRZEDAJ lub OBSERWUJ.`;
         try {
             const res = await fetch('http://127.0.0.1:3001/api/ollama',{
@@ -476,6 +484,20 @@ export const TedTheTrader: React.FC = () => {
                     </div>
                 ))}
             </div>
+
+            {realAssets.length > 0 && (
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', padding:'8px 10px', marginBottom:8, borderRadius:8, background:'rgba(167,139,250,.08)', border:'1px solid rgba(167,139,250,.25)' }}>
+                    <span style={{ fontSize:9, color:'rgba(167,139,250,.8)', letterSpacing:'.1em', fontWeight:700 }}>💼 REALNY PORTFEL:</span>
+                    {realAssets.map(a=>(
+                        <span key={a.chain} style={{ fontSize:11, color:'#c4b5fd', fontFamily:"'JetBrains Mono',monospace" }}>
+                            {a.symbol} {a.balance.toFixed(3)} <span style={{color:'rgba(255,255,255,.4)'}}>({a.value.toLocaleString('pl-PL')}€)</span>
+                        </span>
+                    ))}
+                    <span style={{ marginLeft:'auto', fontSize:12, fontWeight:700, color:'#a78bfa' }}>
+                        Σ {realAssets.reduce((s,a)=>s+a.value,0).toLocaleString('pl-PL',{maximumFractionDigits:0})} €
+                    </span>
+                </div>
+            )}
 
             <AnimatePresence>
                 {state.isPaused && (

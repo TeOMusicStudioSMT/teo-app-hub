@@ -9,9 +9,10 @@
  * pełny model Kronos (Python/Qlib), most może podmienić silnik bez zmian UI.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { getWalletPortfolio, WalletAsset } from '../../services/walletPortfolioService';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
@@ -51,6 +52,25 @@ export const KronosOracle: React.FC = () => {
     const [fc, setFc]           = useState<Forecast | null>(null);
     const [loading, setLoading] = useState(false);
     const [status, setStatus]   = useState('');
+    const [held, setHeld]       = useState<WalletAsset[]>([]);
+
+    // Realny portfel (MetaMask/Ledger) → prognozuj co faktycznie trzymasz.
+    useEffect(() => { getWalletPortfolio().then(p => { if (p) setHeld(p.assets); }); }, []);
+
+    const runHeld = useCallback(async (a: WalletAsset) => {
+        setLoading(true); setStatus(`🔮 Prognoza dla ${a.symbol} (z portfela)...`); setFc(null);
+        try {
+            const r = await fetch(`${BRIDGE}/api/kronos/forecast`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol: a.symbol, lastPrice: a.price, predLen: horizon }),
+            });
+            const out = await r.json();
+            if (!out.success) throw new Error(out.message || 'błąd');
+            setFc(out);
+            setStatus(`✅ ${a.symbol} z Twojego portfela · ${a.balance.toFixed(4)} szt.`);
+        } catch (e: any) { setStatus(`⚠ ${e.message}`); }
+        finally { setLoading(false); }
+    }, [horizon]);
 
     const run = useCallback(async () => {
         setLoading(true); setStatus('⟳ Pobieram dane rynkowe...'); setFc(null);
@@ -149,6 +169,21 @@ export const KronosOracle: React.FC = () => {
                     {loading ? '⟳ PROJEKCJA...' : '🔮 PROGNOZUJ'}
                 </motion.button>
             </div>
+
+            {/* 💼 Twój portfel (MetaMask/Ledger) — prognozuj co realnie trzymasz */}
+            {held.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+                    <span style={{ fontSize: 9, color: 'rgba(167,139,250,.7)', letterSpacing: '.1em' }}>💼 TWÓJ PORTFEL:</span>
+                    {held.map(a => (
+                        <button key={a.chain} onClick={() => runHeld(a)} disabled={loading}
+                            title={`${a.balance.toFixed(4)} ${a.symbol} · ${a.value.toLocaleString('pl-PL')} €`}
+                            style={{ padding: '4px 10px', borderRadius: 6, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", cursor: loading ? 'default' : 'pointer',
+                                border: '1px solid rgba(167,139,250,.4)', background: 'rgba(167,139,250,.1)', color: '#c4b5fd' }}>
+                            {a.symbol} · {a.value.toLocaleString('pl-PL')} €
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* Wykres */}
             <div style={{ height: 200, background: 'rgba(0,0,0,.25)', borderRadius: 8, border: '1px solid rgba(255,255,255,.06)', padding: '8px 4px' }}>
