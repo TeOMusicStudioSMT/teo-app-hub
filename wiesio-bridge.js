@@ -3565,6 +3565,83 @@ app.post('/api/teledysk/plan', async (req, res) => {
 });
 
 /**
+ * POST /api/teledysk/storyboard — GENERATOR OPOWIEŚCI do utworu (lokalny LLM).
+ * Body: { title, lyricsFile?|lyrics?, vectors?|sonicFile?, sceneCount?, model? }
+ * Bierze tytuł + tekst (.lrc) + profil energii sonicznej i prosi lokalny model
+ * (Ollama) o storyboard scen zsynchronizowanych z narastaniem energii. Zwraca
+ * sceny {mood, opis, keywords[]} — mózg, który potem może dobierać/generować
+ * materiały. Fallback: szkielet bez LLM, gdy most-rdzeń offline.
+ */
+app.post('/api/teledysk/storyboard', async (req, res) => {
+    let { title, lyrics, lyricsFile, vectors, sonicFile, sceneCount, model } = req.body ?? {};
+    sceneCount = Math.max(3, Math.min(12, Number(sceneCount) || 6));
+    model = model || process.env.OTAKOS_MODEL || 'gemma3:4b';
+    try {
+        // Tekst z .lrc (usuń znaczniki [mm:ss.xx])
+        if (!lyrics && lyricsFile) {
+            const abs = path.resolve(process.cwd(), String(lyricsFile));
+            if (!abs.startsWith(process.cwd())) return res.status(403).json({ success: false, message: 'lyricsFile poza projektem.' });
+            const raw = await fs.readFile(abs, 'utf8').catch(() => '');
+            lyrics = raw.replace(/\[\d{1,2}:\d{2}(\.\d{1,2})?\]/g, '').replace(/\n{2,}/g, '\n').trim();
+        }
+        // Profil energii z wektorów
+        if (!Array.isArray(vectors) && sonicFile) {
+            const abs = path.resolve(process.cwd(), String(sonicFile));
+            if (abs.startsWith(process.cwd())) {
+                const parsed = JSON.parse(await fs.readFile(abs, 'utf8'));
+                vectors = Array.isArray(parsed) ? parsed : (parsed.vectors || parsed.steps || []);
+            }
+        }
+        let energy = 'nieznany';
+        if (Array.isArray(vectors) && vectors.length) {
+            const b = vectors.map(v => Number(v.b ?? v.bass ?? 0));
+            const max = Math.max(...b, 1), avg = b.reduce((a, x) => a + x, 0) / b.length / max;
+            const peaks = b.filter(x => x / max > 0.7).length;
+            energy = `średnia ${(avg * 100).toFixed(0)}%, ${peaks} silnych uderzeń, ${vectors.length} kroków`;
+        }
+
+        const prompt =
+`Jesteś reżyserem teledysków. Stwórz storyboard do utworu.
+TYTUŁ: ${title || '(bez tytułu)'}
+${lyrics ? `TEKST:\n${lyrics.slice(0, 1200)}\n` : ''}PROFIL ENERGII: ${energy}
+
+Zwróć WYŁĄCZNIE tablicę JSON ${sceneCount} scen narastających z energią utworu.
+Każda scena: {"mood":"<nastrój>","desc":"<opis wizualny 1 zdanie>","keywords":["k1","k2","k3"]}.
+Bez komentarza, tylko JSON.`;
+
+        // Wywołanie lokalnego modelu (Ollama, non-stream)
+        let scenes = null, usedLLM = false;
+        try {
+            const ctrl = new AbortController();
+            const tmo = setTimeout(() => ctrl.abort(), 45000);
+            const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+                body: JSON.stringify({ model, prompt, stream: false, options: { temperature: 0.8 } }),
+            });
+            clearTimeout(tmo);
+            const data = await r.json();
+            const txt = String(data.response || '');
+            const m = txt.match(/\[[\s\S]*\]/);
+            if (m) { scenes = JSON.parse(m[0]); usedLLM = true; }
+        } catch (e) { /* fallback poniżej */ }
+
+        if (!Array.isArray(scenes) || !scenes.length) {
+            // Fallback bez LLM — szkielet narastający
+            const moods = ['intro / cisza', 'budzenie', 'wzrost', 'kulminacja', 'przełom', 'wybrzmienie'];
+            scenes = Array.from({ length: sceneCount }, (_, i) => ({
+                mood: moods[Math.min(i, moods.length - 1)],
+                desc: `Scena ${i + 1} — wizualizacja energii utworu (${title || 'utwór'}).`,
+                keywords: ['abstrakcja', 'światło', 'ruch'],
+            }));
+        }
+
+        return res.json({ success: true, title: title || null, sceneCount: scenes.length, model: usedLLM ? model : 'fallback', usedLLM, energy, scenes });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
  * POST /api/teledysk/render — Punkt 4 cegła 2: realny render beat-sync ffmpegiem.
  * Body: { audioFile, sourceDir, vectors?|sonicFile?, fps?, maxCuts? }
  * Tnie źródła wideo na uderzenia basu, dokłada efekty per segment (zoom/flash/
@@ -3590,8 +3667,14 @@ app.post('/api/teledysk/render', async (req, res) => {
         const audioAbs = inCwd(audioFile);
         if (!fsSync.existsSync(audioAbs)) return res.status(404).json({ success: false, message: `Audio nie istnieje: ${audioFile}` });
         const srcAbs = inCwd(sourceDir);
-        const clips = (await fs.readdir(srcAbs)).filter(f => VIDEO_EXT.test(f)).map(f => path.join(srcAbs, f));
-        if (!clips.length) return res.status(400).json({ success: false, message: `Brak źródeł wideo w ${sourceDir}.` });
+        let clips = (await fs.readdir(srcAbs)).filter(f => VIDEO_EXT.test(f)).map(f => path.join(srcAbs, f));
+        // Kontrola materiałów: jawna lista (clips[]) albo filtr nazwy (clipFilter).
+        const clipList = req.body?.clips, clipFilter = req.body?.clipFilter;
+        if (Array.isArray(clipList) && clipList.length)
+            clips = clips.filter(p => clipList.some(n => path.basename(p) === n || p.endsWith(n)));
+        else if (typeof clipFilter === 'string' && clipFilter)
+            clips = clips.filter(p => path.basename(p).toLowerCase().includes(clipFilter.toLowerCase()));
+        if (!clips.length) return res.status(400).json({ success: false, message: `Brak źródeł wideo (po filtrze) w ${sourceDir}.` });
 
         // Cięcia na uderzenia basu (jak /api/teledysk/plan)
         const bass = vectors.map(v => Number(v.b ?? v.bass ?? 0));
