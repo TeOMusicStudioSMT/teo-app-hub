@@ -3565,6 +3565,83 @@ app.post('/api/teledysk/plan', async (req, res) => {
 });
 
 /**
+ * POST /api/teledysk/render — Punkt 4 cegła 2: realny render beat-sync ffmpegiem.
+ * Body: { audioFile, sourceDir, vectors?|sonicFile?, fps?, maxCuts? }
+ * Tnie źródła wideo na uderzenia basu, dokłada efekty per segment (zoom/flash/
+ * fade wg wokalu/sopranów), miksuje z audio → <sourceDir>/edit/teledysk.mp4.
+ */
+app.post('/api/teledysk/render', async (req, res) => {
+    let { audioFile, sourceDir, vectors, sonicFile, fps, maxCuts } = req.body ?? {};
+    fps = Number(fps) > 0 ? Number(fps) : 30;
+    maxCuts = Number(maxCuts) > 0 ? Number(maxCuts) : 40;
+    const inCwd = (p) => { const a = path.resolve(process.cwd(), String(p)); if (!a.startsWith(process.cwd())) throw new Error('ścieżka poza projektem'); return a; };
+    const VIDEO_EXT = /\.(mp4|mov|mkv|webm|avi|m4v)$/i;
+    let work = null;
+    try {
+        if (!audioFile)  return res.status(400).json({ success: false, message: '"audioFile" wymagany.' });
+        if (!sourceDir)  return res.status(400).json({ success: false, message: '"sourceDir" wymagany.' });
+        if (!Array.isArray(vectors) && sonicFile) {
+            const parsed = JSON.parse(await fs.readFile(inCwd(sonicFile), 'utf8'));
+            vectors = Array.isArray(parsed) ? parsed : (parsed.vectors || parsed.steps || []);
+        }
+        if (!Array.isArray(vectors) || vectors.length < 4)
+            return res.status(400).json({ success: false, message: 'Wymagane "vectors" (>=4) lub "sonicFile".' });
+
+        const audioAbs = inCwd(audioFile);
+        if (!fsSync.existsSync(audioAbs)) return res.status(404).json({ success: false, message: `Audio nie istnieje: ${audioFile}` });
+        const srcAbs = inCwd(sourceDir);
+        const clips = (await fs.readdir(srcAbs)).filter(f => VIDEO_EXT.test(f)).map(f => path.join(srcAbs, f));
+        if (!clips.length) return res.status(400).json({ success: false, message: `Brak źródeł wideo w ${sourceDir}.` });
+
+        // Cięcia na uderzenia basu (jak /api/teledysk/plan)
+        const bass = vectors.map(v => Number(v.b ?? v.bass ?? 0));
+        const mean = bass.reduce((a, b) => a + b, 0) / bass.length;
+        const std  = Math.sqrt(bass.reduce((a, b) => a + (b - mean) ** 2, 0) / bass.length);
+        const thr  = mean + 0.5 * std;
+        const cuts = [];
+        for (let i = 1; i < bass.length - 1; i++)
+            if (bass[i] > thr && bass[i] >= bass[i - 1] && bass[i] > bass[i + 1])
+                cuts.push({ t: Number(vectors[i].t ?? i / fps), v: Number(vectors[i].v ?? vectors[i].vocals ?? 0), h: Number(vectors[i].h ?? vectors[i].highs ?? 0) });
+        if (cuts.length < 2) return res.status(400).json({ success: false, message: 'Za mało uderzeń do montażu.' });
+
+        const segs = cuts.slice(0, maxCuts).map((c, idx, arr) => ({
+            from: c.t, to: arr[idx + 1] ? arr[idx + 1].t : vectors.length / fps,
+            fx: c.v > 0.6 ? 'punch-zoom' : c.h > 0.6 ? 'flash-cut' : 'soft-fade',
+        }));
+
+        work = path.join(TEMP_DIR, `teledysk_${Date.now()}`);
+        await fs.mkdir(work, { recursive: true });
+        const parts = [];
+        for (let i = 0; i < segs.length; i++) {
+            const dur = Math.max(0.2, +(segs[i].to - segs[i].from).toFixed(3));
+            const src = clips[i % clips.length];
+            const out = path.join(work, `seg_${String(i).padStart(3, '0')}.mp4`);
+            const vf = ['scale=1280:720:force_original_aspect_ratio=increase', 'crop=1280:720', `fps=${fps}`];
+            if (segs[i].fx === 'punch-zoom') { vf[0] = 'scale=1408:792:force_original_aspect_ratio=increase'; vf[1] = 'crop=1280:720'; }
+            else if (segs[i].fx === 'flash-cut') vf.push('eq=brightness=0.06:saturation=1.3');
+            else vf.push('fade=t=in:st=0:d=0.12');
+            await execFileAsync(ffmpegPath, ['-y', '-t', String(dur), '-i', src, '-an', '-vf', vf.join(','), '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', out]);
+            parts.push(out);
+        }
+
+        const listFile = path.join(work, 'list.txt');
+        await fs.writeFile(listFile, parts.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n'), 'utf8');
+        const editDir = path.join(srcAbs, 'edit');
+        await fs.mkdir(editDir, { recursive: true });
+        const teledysk = path.join(editDir, 'teledysk.mp4');
+        await execFileAsync(ffmpegPath, ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-i', audioAbs,
+            '-map', '0:v:0', '-map', '1:a:0', '-shortest', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', teledysk]);
+
+        return res.json({ success: true, output: path.relative(process.cwd(), teledysk), segments: segs.length, clipsUsed: clips.length, beats: cuts.length });
+    } catch (err) {
+        console.error(`[Teledysk] ❌ ${err.message}`);
+        return res.status(500).json({ success: false, message: err.message });
+    } finally {
+        if (work) { try { await fs.rm(work, { recursive: true, force: true }); } catch {} }
+    }
+});
+
+/**
  * POST /api/video/edit  (VideO-Use — orkiestrator montażu)
  * Body: { sourceDir, mission?, subtitleStyle?, audioFadeMs? }
  * Skanuje folder ze źródłami, sprawdza ffmpeg (wbudowany) i zwraca PLAN montażu
