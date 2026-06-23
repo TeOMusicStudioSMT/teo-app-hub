@@ -27,9 +27,10 @@ export const TEO_NODE = {
   note: 'Węzeł główny zarządzający (wczorajszy USB). Dzieli GRV jako system.',
 };
 
-/** Arek — fizyczny Avatar, premium, pierwszy z 13 founderów. */
-export const AREK_NODE = {
-  id: 'Arek',
+/** Mistrz Arkadiusz — fizyczny Avatar, premium, pierwszy z 13 founderów.
+ *  („Arek" był, gdy Suweren nie był aktywny — teraz: Mistrz Arkadiusz.) */
+export const MISTRZ_ARKADIUSZ_NODE = {
+  id: 'Mistrz Arkadiusz',
   role: 'founder',
   grv: 1_000_000,
   note: 'Fizyczny Avatar (dzisiejszy węzeł). Premium 1M. Founder #1 z 13.',

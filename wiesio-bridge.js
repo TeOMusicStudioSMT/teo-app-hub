@@ -32,6 +32,7 @@ import FlushService          from './services/FlushService.js';
 import ApiLayerService       from './services/ApiLayerService.js';
 import AlignmentShield       from './services/AlignmentShield.js';
 import { forecast as kronosForecast } from './services/KronosSeed.js';
+import CryptoAgility from './services/CryptoAgility.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -3606,18 +3607,27 @@ let grvLedger = null;
 async function saveGrvLedger() { try { await fs.writeFile(GRV_LEDGER_FILE, JSON.stringify(grvLedger, null, 2), 'utf8'); } catch (e) { console.warn('[GRV] zapis:', e.message); } }
 async function loadGrvLedger() {
     if (grvLedger) return grvLedger;
-    try { grvLedger = JSON.parse(await fs.readFile(GRV_LEDGER_FILE, 'utf8')); }
+    try {
+        grvLedger = JSON.parse(await fs.readFile(GRV_LEDGER_FILE, 'utf8'));
+        // Migracja: "Arek" → "Mistrz Arkadiusz" (szacunek i czysta Prawda).
+        if (grvLedger.nodes?.Arek && !grvLedger.nodes['Mistrz Arkadiusz']) {
+            grvLedger.nodes['Mistrz Arkadiusz'] = grvLedger.nodes.Arek;
+            delete grvLedger.nodes.Arek;
+            await saveGrvLedger();
+            console.log('[GRV] 🔁 Migracja: Arek → Mistrz Arkadiusz.');
+        }
+    }
     catch {
         // Zasiew genezy (pierwsze uruchomienie)
         grvLedger = {
             nodes: {
-                TeO:  { grv: 'INFINITE', role: 'sovereign-manager', tier: null, registeredAt: Date.now() },
-                Arek: { grv: 1_000_000, role: 'founder', tier: 'founder', registeredAt: Date.now() },
+                TeO: { grv: 'INFINITE', role: 'sovereign-manager', tier: null, registeredAt: Date.now() },
+                'Mistrz Arkadiusz': { grv: 1_000_000, role: 'founder', tier: 'founder', registeredAt: Date.now() },
             },
-            pools: { founder: 1, pillar: 0, herald: 0 }, // Arek zajął 1 slot founder
+            pools: { founder: 1, pillar: 0, herald: 0 }, // Mistrz Arkadiusz zajął 1 slot founder
         };
         await saveGrvLedger();
-        console.log('[GRV] 🌱 Geneza zasiana: TeO=∞, Arek=1M founder.');
+        console.log('[GRV] 🌱 Geneza zasiana: TeO=∞, Mistrz Arkadiusz=1M founder.');
     }
     return grvLedger;
 }
@@ -3667,6 +3677,19 @@ app.post('/api/grv/grant', async (req, res) => {
     if (L.nodes[to].grv !== 'INFINITE') L.nodes[to].grv = Number(L.nodes[to].grv) + amt;
     await saveGrvLedger();
     res.json({ success: true, from, to, amount: amt, fromBalance: src.grv, toBalance: L.nodes[to].grv, infiniteSource: infinite });
+});
+
+// ── 🔐 CRYPTO-AGILITY — zwinność kryptograficzna (Dekret Kwantowy) ───────────
+app.get('/api/crypto/status', async (req, res) => {
+    const c = CryptoAgility.getInstance(ANTIGRAVITY_DIR); await c.load();
+    res.json({ success: true, ...c.status() });
+});
+app.post('/api/crypto/mode', async (req, res) => {
+    try { const m = await CryptoAgility.getInstance(ANTIGRAVITY_DIR).setMode((req.body ?? {}).mode); res.json({ success: true, mode: m }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/crypto/selftest', (req, res) => {
+    res.json({ success: true, result: CryptoAgility.getInstance(ANTIGRAVITY_DIR).selfTest() });
 });
 
 /**
