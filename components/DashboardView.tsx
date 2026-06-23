@@ -9,6 +9,7 @@ import { ManifestHistoryCard } from './dashboard/ManifestHistoryCard';
 import { Biblioteka } from './special/Biblioteka';
 import DashboardCard from './DashboardCard';
 import { Library } from 'lucide-react';
+import KatedraNeuralMap from './special/KatedraNeuralMap';
 
 interface DashboardViewProps {
     onVisualAssistantOpen: () => void;
@@ -52,6 +53,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
                 <UniverseCard title="Story Studio" subtitle="Construct Reality." onClick={() => { }} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
                 <UniverseCard title="Music Studio" subtitle="Audio Synthesis." onClick={() => { }} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
                 <UniverseCard title="App Studio" subtitle="Code Tools." onClick={() => { }} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
+            </div>
+
+            {/* 7. SIEĆ KATEDR — żywa mapa AGI (LIVE z mostu, same-origin) */}
+            <div className="w-full">
+                <KatedraNeuralMap lang="pl" />
             </div>
         </div>
     );

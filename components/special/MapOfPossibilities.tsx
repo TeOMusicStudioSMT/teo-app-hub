@@ -17,6 +17,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { sendWriteFileCommand } from '../../lib/bridgeService';
+import KatedraNeuralMap from './KatedraNeuralMap';
 
 interface Possibility {
   id: string;
@@ -207,6 +208,7 @@ const MapOfPossibilities: React.FC<MapOfPossibilitiesProps> = ({
   }
 
   return (
+    <>
     <motion.div
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -431,6 +433,10 @@ const MapOfPossibilities: React.FC<MapOfPossibilitiesProps> = ({
         🗺️ MAPA MOŻLIWOŚCI
       </div>
     </motion.div>
+    <div style={{ marginTop: 16 }}>
+      <KatedraNeuralMap lang="pl" />
+    </div>
+    </>
   );
 };
 
