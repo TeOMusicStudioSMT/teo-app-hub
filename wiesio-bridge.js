@@ -3509,6 +3509,62 @@ app.post('/api/shield/inspect', (req, res) => {
 });
 
 /**
+ * POST /api/teledysk/plan — Music V2 × VideO-Use: wektory soniczne → beat-sync EDL.
+ * Body: { vectors?:[{t?,b,v,h}], sonicFile?, fps?, sourceDir? }
+ * Wykrywa uderzenia (piki basu) i generuje plan cięć zgranych co do beatu —
+ * fundament automatycznego teledysku (Punkt 4, cegła 1).
+ */
+app.post('/api/teledysk/plan', async (req, res) => {
+    let { vectors, sonicFile, fps, sourceDir } = req.body ?? {};
+    fps = Number(fps) > 0 ? Number(fps) : 30;
+    try {
+        if (!Array.isArray(vectors) && sonicFile) {
+            const abs = path.resolve(process.cwd(), String(sonicFile));
+            if (!abs.startsWith(process.cwd())) return res.status(403).json({ success: false, message: 'sonicFile poza projektem.' });
+            const parsed = JSON.parse(await fs.readFile(abs, 'utf8'));
+            vectors = Array.isArray(parsed) ? parsed : (parsed.vectors || parsed.steps || []);
+        }
+        if (!Array.isArray(vectors) || vectors.length < 4)
+            return res.status(400).json({ success: false, message: 'Wymagane "vectors" (>=4) lub "sonicFile".' });
+
+        const bass = vectors.map(v => Number(v.b ?? v.bass ?? 0));
+        const mean = bass.reduce((a, b) => a + b, 0) / bass.length;
+        const std  = Math.sqrt(bass.reduce((a, b) => a + (b - mean) ** 2, 0) / bass.length);
+        const thr  = mean + 0.5 * std;
+        const cuts = [];
+        for (let i = 1; i < bass.length - 1; i++) {
+            if (bass[i] > thr && bass[i] >= bass[i - 1] && bass[i] > bass[i + 1]) {
+                const t = Number(vectors[i].t ?? (i / fps));
+                cuts.push({
+                    i, t: +t.toFixed(3), bass: +bass[i].toFixed(3),
+                    vocals: +Number(vectors[i].v ?? vectors[i].vocals ?? 0).toFixed(3),
+                    highs:  +Number(vectors[i].h ?? vectors[i].highs ?? 0).toFixed(3),
+                });
+            }
+        }
+        const segments = cuts.map((c, idx) => {
+            const next = cuts[idx + 1];
+            const fx = c.vocals > 0.6 ? 'punch-zoom' : c.highs > 0.6 ? 'flash-cut' : 'soft-fade';
+            return { from: c.t, to: +(next ? next.t : vectors.length / fps).toFixed(3), fx, intensity: +Math.max(c.vocals, c.highs).toFixed(2) };
+        });
+
+        return res.json({
+            success: true,
+            engine: 'Music V2 × VideO-Use (Nasiono Teledysku)',
+            fps, cutCount: cuts.length, cuts, segments, sourceDir: sourceDir || null,
+            plan: [
+                `1. ${cuts.length} cięć zsynchronizowanych z uderzeniami basu (próg ${thr.toFixed(3)})`,
+                `2. Segmenty: punch-zoom (wokal>0.6), flash-cut (soprany>0.6), soft-fade (reszta)`,
+                `3. Przekaż do /api/video/edit (ffmpeg) → render edit/teledysk.mp4`,
+            ],
+            note: 'Plan beat-sync gotowy. Render wymaga źródeł wideo + ffmpeg (VideO-Use).',
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
  * POST /api/video/edit  (VideO-Use — orkiestrator montażu)
  * Body: { sourceDir, mission?, subtitleStyle?, audioFadeMs? }
  * Skanuje folder ze źródłami, sprawdza ffmpeg (wbudowany) i zwraca PLAN montażu
