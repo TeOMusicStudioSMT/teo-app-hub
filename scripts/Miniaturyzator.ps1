@@ -166,3 +166,4 @@ Write-Host "  ➜ Pamiętaj: stronę otakos.wtf trzeba zdeployować osobno (push
 
 
 
+

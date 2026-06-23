@@ -14,6 +14,7 @@ echo    %CYAN%   /  \      /  \  /  \  ^|  __^|^|  _ \ /  \   %PURPLE%
 echo    %CYAN%  / /\ \    / /\ \/ /\ \ ^| ^|_  ^| ^|_) ^| /\ \  %PURPLE%
 echo    %CYAN% / ____ \  / ____  ____ \^|  _^| ^|  _ ^< ____ \ %PURPLE%
 echo    %CYAN%/_/    \_\/_/    \____  \^|_^|   ^|_^| \_\    \_\%PURPLE%
+echo        %PURPLE%[ klasyfikacja: %CYAN%AAA Far A%PURPLE% - impuls Zlotej Pauzy 0.00G ]%RESET%
 echo.
 echo %PURPLE%=====[ %CYAN%KATEDRA OtakOS %PURPLE%]==============[ %CYAN%Wymiar 0.00G  (V_ZERO) %PURPLE%]=====%RESET%
 echo.
@@ -38,7 +39,7 @@ pause
 goto :eof
 
 :node
-echo %CYAN%[NODE]%RESET% %PURPLE%Instaluje zaleznosci (pierwszy raz ~1-2 min)...%RESET%
+echo %CYAN%[NODE]%RESET% %PURPLE%Instaluje zaleznosci (od 1 min... do wciul - Czekaj, Przyzwalaj)...%RESET%
 call npm install --legacy-peer-deps --no-audit
 echo %CYAN%[NODE]%RESET% Wiesio-Bridge (:3001)...
 start "Wiesio-Bridge" cmd /k node wiesio-bridge.js
