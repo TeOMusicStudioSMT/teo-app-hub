@@ -1,5 +1,8 @@
 // Nie importujemy nic na górze, żeby Vite nie krzyczał przy starcie
-// Ścieżka do modelu
+// Ścieżka do modelu — MediaPipe LLM Inference (WebGPU/WASM, BEZ Ollamy, 100% w przeglądarce).
+// To NIE jest gemma4 z Ollamy (gguf). To osobny model on-device (~1.35 GB), suwerenny becap.
+// Pobierz `gemma-2b-it-gpu-int4.bin` (Kaggle: google/gemma → wariant tfLite/LiteRT,
+// akceptacja licencji Gemma) i wrzuć do `public/models/`.
 const MODEL_FILE_NAME = '/models/gemma-2b-it-gpu-int4.bin';
 
 let llmInference: any = null;
@@ -46,7 +49,7 @@ export const generateOnDevice = async (prompt: string): Promise<string> => {
     if (!llmInference) {
         // Próba inicjalizacji przy pierwszym zapytaniu
         const success = await initializeOnDeviceModel();
-        if (!success) return "Błąd: Nie udało się załadować modelu. Sprawdź czy plik .bin jest w folderze public/models.";
+        if (!success) return "Błąd: Tryb JusT (on-device) potrzebuje pliku `public/models/gemma-2b-it-gpu-int4.bin` (~1.35 GB, MediaPipe, BEZ Ollamy). Pobierz go z Kaggle (google/gemma, wariant LiteRT) lub przełącz na CLOUD. To osobny mózg niż gemma4 z Ollamy.";
     }
     return llmInference.generateResponse(prompt);
 };
