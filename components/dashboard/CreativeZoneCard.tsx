@@ -62,13 +62,27 @@ export const CreativeZoneCard: React.FC<CreativeZoneCardProps> = ({ onVisualAssi
         try {
             let res = "";
 
-            // --- PRZEŁĄCZNIK MÓZGÓW ---
+            // --- PRZEŁĄCZNIK MÓZGÓW z AUTO-FALLBACKIEM (JusT → Ollama → Chmura) ---
+            // Żaden mózg nie jest „martwy": jeśli brak .bin, schodzimy do Ollamy,
+            // a gdy Ollama śpi — do Chmury. Suweren zawsze dostaje odpowiedź.
             if (globalMode === 'just') {
-                // TRYB JESTEM U SIEBIE (MediaPipe / Plik .bin)
-                toast("Budzenie lokalnego ducha...", { icon: '🧠' });
+                // 1) JESTEM U SIEBIE (MediaPipe / plik .bin, w przeglądarce, bez Ollamy)
+                toast("Budzenie lokalnego ducha (.bin)...", { icon: '🧠' });
                 res = await generateOnDevice(finalPrompt);
+
+                // 2) Fallback: brak .bin → Ollama (gemma4)
+                if (!res || res.startsWith('Błąd:')) {
+                    toast("Brak modelu .bin — próbuję Ollamę (gemma4)...", { icon: '🔁' });
+                    res = await apiCall(finalPrompt, 'local');
+
+                    // 3) Fallback: Ollama śpi → Chmura
+                    if (!res || res.includes('Lokalny Duch śpi')) {
+                        toast("Ollama niedostępna — łączę z Chmurą...", { icon: '☁️' });
+                        res = await apiCall(finalPrompt, 'cloud');
+                    }
+                }
             } else {
-                // TRYB REZONANS (Chmura Gemini)
+                // TRYB REZONANS (Chmura)
                 toast("Łączenie z polem globalnym...", { icon: '☁️' });
                 res = await apiCall(finalPrompt, globalMode);
             }
