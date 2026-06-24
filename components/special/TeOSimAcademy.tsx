@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Economis from './Economis';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import { useAtom } from 'jotai';
@@ -851,6 +852,11 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
     >
       {/* ✨ ROZEWIETLAJĄCA SFERA */}
       <SphereEffect isActive={isSphereActive} intensity={sphereIntensity} />
+
+      {/* 🎓 ECONOMIS — moduł ekonomii GRV (katalogowa wiedza + Rada) */}
+      <div style={{ position: 'relative', zIndex: 5, margin: '0 16px 16px' }}>
+        <Economis />
+      </div>
 
       {/* 💫 MODAL OVERLAY: KWANTOWE SPA / DOM MAKLERSKI */}
       <AnimatePresence>

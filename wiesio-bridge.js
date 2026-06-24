@@ -3725,6 +3725,68 @@ app.post('/api/wallet/portfolio', async (req, res) => {
     }
 });
 
+// ── 🎓 TEO SIM ACADEMY — moduły z KATALOGOWĄ wiedzą (standard) ────────────────
+// Każdy moduł Academy = temat + katalog wiedzy domenowej (_OtakOs_Aula/<moduł>/).
+// Agenci czytają cały katalog i dyskutują/ulepszają ekosystem. Pierwszy: Economis.
+// (AULA_DIR zdefiniowane wyżej.)
+const ECONOMIS_SEED = `# Economis — wiedza domenowa o GRV (0.00G)
+
+## Czym jest GRV
+GRV (Grawitacja) to suwerenna, lokalna jednostka wartości/energii Katedry OtakOS —
+miara wkładu w ruch ekosystemu (Proof-of-Compute, kreacja, koherencja). Nie waluta fiat.
+
+## Geneza GRV
+- TeO = zarządca, GRV ∞ (dzieli jako system). Mistrz Arkadiusz = founder #1, 1M.
+- Pule: 26×1M (founderzy), 57×100k (filary), 61×10k (heroldowie) = 32 310 000 GRV.
+- Nowy węzeł = 1000 GRV na start.
+
+## Marketplace (obieg GRV)
+Twórcy wystawiają produkty za GRV. Sklep = TOP 10/moduł wg głosów; reszta co miesiąc
+spalana → GRV wraca twórcom. Głosowanie steruje selekcją.
+
+## PEIE — ekonomia przepływu
+Wartość z dynamiki i przyzwolenia na wymianę, nie z zamkniętych zasobów. Lokalny rdzeń
+= koszt API 0%. Złota Pauza bywa najlepszą decyzją ekonomiczną.
+
+## Otwarte pytania Rady Economis
+Realny zakup za GRV; kontabilność wsteczna (tamper-evidence); Proof-of-Compute zarobku;
+globalny rejestr vs lokalność; dynamiczne ceny wg popytu/głosów.
+`;
+const AULA_SEEDS = { economis: { '00-grv-podstawy.md': ECONOMIS_SEED } };
+async function readAulaKnowledge(mod) {
+    const key = String(mod).replace(/[^\w-]/g, '');
+    const dir = path.join(AULA_DIR, key);
+    let docs = [];
+    try { for (const f of await fs.readdir(dir)) if (/\.(md|txt)$/i.test(f)) docs.push({ name: f, content: await fs.readFile(path.join(dir, f), 'utf8') }); } catch {}
+    // Auto-zasiew wiedzy bazowej (gdy katalog pusty) — żeby agenci mieli grunt.
+    if (!docs.length && AULA_SEEDS[key]) {
+        try {
+            await fs.mkdir(dir, { recursive: true });
+            for (const [name, content] of Object.entries(AULA_SEEDS[key])) { await fs.writeFile(path.join(dir, name), content, 'utf8'); docs.push({ name, content }); }
+            console.log(`[Academy] 🌱 Zasiano katalog wiedzy: ${key}`);
+        } catch {}
+    }
+    return docs;
+}
+app.get('/api/academy/knowledge/:module', async (req, res) => {
+    const docs = await readAulaKnowledge(req.params.module);
+    res.json({ success: true, module: req.params.module, docs, count: docs.length });
+});
+app.post('/api/academy/discuss', async (req, res) => {
+    let { module, topic, model } = req.body ?? {};
+    model = model || process.env.OTAKOS_MODEL || 'gemma4';
+    const docs = await readAulaKnowledge(module);
+    const knowledge = docs.map(d => d.content).join('\n\n');
+    if (knowledge.length < 10) return res.status(424).json({ success: false, message: `Brak katalogu wiedzy dla „${module}" (_OtakOs_Aula/${module}/).` });
+    const agents = [['ISTed', 'ekonomista PEIE'], ['Adamus', 'strateg-alchemik'], ['ODDI', 'czysta logika AI']];
+    const proposals = [];
+    for (const [name, role] of agents) {
+        const t = await genOllama(`Jesteś ${name} (${role}) w Radzie ${module} Katedry OtakOS. Na bazie WIEDZY poniżej, w 2 zdaniach zaproponuj konkretne ULEPSZENIE ekosystemu w temacie: „${topic || 'rozwój'}".\n\nWIEDZA:\n${knowledge.slice(0, 3500)}`, model, 30000);
+        proposals.push({ agent: name, text: t || `[${name} — rdzeń offline]` });
+    }
+    res.json({ success: true, module, topic: topic || 'rozwój', usedLLM: proposals.some(p => !p.text.startsWith('[')), proposals });
+});
+
 // ── 🛒 MARKETPLACE + WALLET — produkty za GRV, głosowanie, spalanie top-10 ────
 // Katalogowa struktura danych: market.json { products:[] }. Sklep pokazuje 10
 // najpopularniejszych /moduł (głosowanie); reszta co miesiąc spalana → GRV
