@@ -75,7 +75,15 @@ const app = express();
 const PORT = 3001;
 
 // 🐳 Docker/Live-USB: adres Ollamy z env (fallback lokalny IPv4 — dev bez zmian).
-const OLLAMA_BASE = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
+function normalizeOllamaBase(h) {
+    let b = (h && String(h).trim()) || 'http://127.0.0.1:11434';
+    if (!/^https?:\/\//i.test(b)) b = 'http://' + b;                       // brak protokołu
+    b = b.replace('0.0.0.0', '127.0.0.1');                                 // 0.0.0.0 = nasłuch, nie klient
+    const hostPort = b.replace(/^https?:\/\//i, '');
+    if (!/:\d+/.test(hostPort)) b = b.replace(/\/+$/, '') + ':11434';      // brak portu
+    return b.replace(/\/+$/, '');
+}
+const OLLAMA_BASE = normalizeOllamaBase(process.env.OLLAMA_HOST);
 
 // Ścieżki do folderów
 const ANTIGRAVITY_DIR = path.join(process.cwd(), '_OtakOs_Wymiar');
