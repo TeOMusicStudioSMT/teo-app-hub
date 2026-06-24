@@ -29,8 +29,8 @@ start "Wiesio-Bridge" cmd /k "node wiesio-bridge.js"
 echo %CYAN%[4/4]%RESET% %PURPLE%Rozpalanie silnikow UI (Vite :5176)...%RESET%
 start "Katedra Web" cmd /k "npm run dev"
 
-echo %CYAN%[GATEWAY]%RESET% %PURPLE%Czekam na stabilizacje wektorow...%RESET%
-timeout /t 8 /nobreak > nul
+echo %CYAN%[GATEWAY]%RESET% %PURPLE%Czekam az Vite wstanie (:5176)... moze potrwac na wolnym dysku%RESET%
+powershell -NoProfile -Command "$i=0; while(-not (Test-NetConnection -ComputerName localhost -Port 5176 -InformationLevel Quiet) -and $i -lt 90){Start-Sleep 1; $i++}; if($i -ge 90){Write-Host 'Timeout 90s — Vite chyba nie wstal, sprawdz okno Katedra Web.'}"
 start http://localhost:5176
 
 echo.
