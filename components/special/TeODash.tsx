@@ -143,13 +143,14 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   // 👁️ Panel Dowodzenia: aktywna zakładka
   type CommandPanelTab = 'eyes' | 'impresario' | 'tost' | 'pralka';
   const [activeCommandPanel, setActiveCommandPanel] = useState<CommandPanelTab>('eyes');
-  const [isCommandPanelCollapsed, setIsCommandPanelCollapsed] = useState(false); // 🔽 Zwijanie panelu pod Interfejsem Wiesi
+  const [isCommandPanelCollapsed, setIsCommandPanelCollapsed] = useState(true); // 🔽 Zwijanie panelu pod Interfejsem Wiesi — DOMYŚLNIE ZWINIĘTY
 
   // FFmpeg Wiesio-Spawacz State
   const [videoFormat, setVideoFormat] = useState('YT');
   const [coreVideoName, setCoreVideoName] = useState('');
   const [isSpawanie, setIsSpawanie] = useState(false);
   const [videoList, setVideoList] = useState<string[]>([]);
+  const [videoEngOpen, setVideoEngOpen] = useState(false); // 🔽 Inżynieria Wideo — DOMYŚLNIE ZWINIĘTA
 
   // Pobierz listę plików do spawania na starcie
   useEffect(() => {
@@ -725,9 +726,17 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
 <div> <KatedraChat /> </div>
         {/* INŻYNIERIA WIDEO (FFMPEG) */}
         <div className="bg-slate-950 rounded-xl p-4 border border-emerald-500/30 mt-4 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
-          <label className="text-xs text-emerald-400 font-bold flex items-center gap-2 mb-3 tracking-widest uppercase">
+          <button
+            onClick={() => setVideoEngOpen(o => !o)}
+            className="w-full text-xs text-emerald-400 font-bold flex items-center gap-2 mb-3 tracking-widest uppercase hover:text-emerald-300 transition-colors"
+            title={videoEngOpen ? 'Zwiń' : 'Rozwiń'}
+          >
             <Play size={14} /> INŻYNIERIA WIDEO (Wiesio-Spawacz FFMPEG)
-          </label>
+            <span className="ml-auto normal-case tracking-normal text-[10px] text-emerald-500/70 flex items-center gap-1">
+              {videoEngOpen ? <>Zwiń <ChevronUp size={12} /></> : <>Rozwiń <ChevronDown size={12} /></>}
+            </span>
+          </button>
+          {videoEngOpen && (<>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="text-[10px] text-slate-400 font-bold mb-1 block">FORMAT DOCELOWY (Klocki)</label>
@@ -786,6 +795,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               <>🎬 SKLEJ MATERIAŁ (Wiesio-Spawacz)</>
             )}
           </button>
+          </>)}
         </div>
       </div>
 
