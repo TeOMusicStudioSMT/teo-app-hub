@@ -14,6 +14,15 @@
 import React, { useState } from 'react';
 
 const KEY_STORE = 'otakos_ring_key';
+const BRIDGE = 'http://127.0.0.1:3001';
+
+/** Zaszyfrowany backup stanu walleta (auto przy wejściu pierścieniem). */
+function backupWallet() {
+  try {
+    const addresses = JSON.parse(localStorage.getItem('teo_wallet_addrs') || '[]');
+    fetch(`${BRIDGE}/api/wallet/backup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ addresses }) }).catch(() => {});
+  } catch { /* cicho — backup to bonus */ }
+}
 
 export const RingKey: React.FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) => {
     const supported = typeof window !== 'undefined' && 'NDEFReader' in window;
@@ -45,7 +54,7 @@ export const RingKey: React.FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess
                 for (const rec of e.message.records) {
                     try {
                         const txt = new TextDecoder(rec.encoding || 'utf-8').decode(rec.data);
-                        if (txt === registered) { setStatus('✅ Pierścień rozpoznany — otwieram Katedrę.'); setBusy(false); onAuthSuccess(); return; }
+                        if (txt === registered) { setStatus('✅ Pierścień rozpoznany — backup walleta + otwieram Katedrę.'); backupWallet(); setBusy(false); onAuthSuccess(); return; }
                     } catch { /* pomiń rekord */ }
                 }
                 setStatus('⚠ Obcy pierścień — token niezgodny.'); setBusy(false);

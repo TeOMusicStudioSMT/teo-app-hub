@@ -3725,6 +3725,47 @@ app.post('/api/wallet/portfolio', async (req, res) => {
     }
 });
 
+// ── 💾 BACKUP WALLETA — zaszyfrowany stan (auto przy logowaniu pierścieniem) ──
+const BACKUP_DIR = path.join(ANTIGRAVITY_DIR, 'backups');
+const BACKUP_KEYFILE = path.join(AI_DIR, '.backup_key');
+async function backupKey() {
+    try { return Buffer.from(await fs.readFile(BACKUP_KEYFILE, 'utf8'), 'hex'); }
+    catch { const k = crypto.randomBytes(32); await fs.mkdir(AI_DIR, { recursive: true }); await fs.writeFile(BACKUP_KEYFILE, k.toString('hex'), 'utf8'); return k; }
+}
+app.post('/api/wallet/backup', async (req, res) => {
+    try {
+        const L = await loadGrvLedger();
+        const m = await loadMarket();
+        const state = { ts: Date.now(), version: 'V_ZERO', grvLedger: L, market: m, addresses: (req.body ?? {}).addresses || [], extra: (req.body ?? {}).extra || null };
+        const key = await backupKey();
+        const iv = crypto.randomBytes(12);
+        const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+        const enc = Buffer.concat([c.update(JSON.stringify(state), 'utf8'), c.final()]);
+        const blob = Buffer.concat([iv, c.getAuthTag(), enc]);          // iv(12)+tag(16)+ciphertext
+        await fs.mkdir(BACKUP_DIR, { recursive: true });
+        const file = path.join(BACKUP_DIR, `wallet_${state.ts}.enc`);
+        await fs.writeFile(file, blob);
+        try { const files = (await fs.readdir(BACKUP_DIR)).filter(f => /^wallet_.*\.enc$/.test(f)).sort(); for (const f of files.slice(0, -10)) await fs.rm(path.join(BACKUP_DIR, f), { force: true }); } catch {}
+        console.log(`[Backup] 💾 Zaszyfrowany backup walleta: ${path.basename(file)} (${blob.length} B)`);
+        res.json({ success: true, file: `backups/${path.basename(file)}`, bytes: blob.length, encrypted: 'aes-256-gcm' });
+    } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+app.post('/api/wallet/restore', async (req, res) => {
+    const { file } = req.body ?? {};
+    try {
+        const target = file ? path.join(BACKUP_DIR, path.basename(file)) : null;
+        let chosen = target;
+        if (!chosen) { const files = (await fs.readdir(BACKUP_DIR)).filter(f => /^wallet_.*\.enc$/.test(f)).sort(); chosen = files.length ? path.join(BACKUP_DIR, files[files.length - 1]) : null; }
+        if (!chosen || !fsSync.existsSync(chosen)) return res.status(404).json({ success: false, message: 'Brak backupu.' });
+        const blob = await fs.readFile(chosen);
+        const key = await backupKey();
+        const iv = blob.subarray(0, 12), tag = blob.subarray(12, 28), data = blob.subarray(28);
+        const d = crypto.createDecipheriv('aes-256-gcm', key, iv); d.setAuthTag(tag);
+        const state = JSON.parse(Buffer.concat([d.update(data), d.final()]).toString('utf8'));
+        res.json({ success: true, restoredFrom: path.basename(chosen), ts: state.ts, nodes: Object.keys(state.grvLedger?.nodes || {}).length });
+    } catch (err) { res.status(500).json({ success: false, message: 'Odszyfrowanie nieudane: ' + err.message }); }
+});
+
 // ── 🎓 TEO SIM ACADEMY — moduły z KATALOGOWĄ wiedzą (standard) ────────────────
 // Każdy moduł Academy = temat + katalog wiedzy domenowej (_OtakOs_Aula/<moduł>/).
 // Agenci czytają cały katalog i dyskutują/ulepszają ekosystem. Pierwszy: Economis.
