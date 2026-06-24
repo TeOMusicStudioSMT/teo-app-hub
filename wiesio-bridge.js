@@ -3725,6 +3725,81 @@ app.post('/api/wallet/portfolio', async (req, res) => {
     }
 });
 
+// ── 🛒 MARKETPLACE + WALLET — produkty za GRV, głosowanie, spalanie top-10 ────
+// Katalogowa struktura danych: market.json { products:[] }. Sklep pokazuje 10
+// najpopularniejszych /moduł (głosowanie); reszta co miesiąc spalana → GRV
+// wraca twórcom. Pierwszy produkt: buton „Odpal Tu...Kurka!" w KatedraChat.
+const MARKET_FILE = path.join(ANTIGRAVITY_DIR, 'market.json');
+let market = null;
+async function saveMarket() { try { await fs.writeFile(MARKET_FILE, JSON.stringify(market, null, 2), 'utf8'); } catch (e) { console.warn('[Market]', e.message); } }
+async function loadMarket() {
+    if (market) return market;
+    try { market = JSON.parse(await fs.readFile(MARKET_FILE, 'utf8')); }
+    catch {
+        market = { products: [{
+            id: 'btn-odpal-kurka', module: 'katedra-chat', type: 'button',
+            name: 'Odpal Tu...Kurka!', desc: 'Buton w KatedraChat — odpala Klaudiusza (Claude Code) w Katedrze przez Ollamę, na bieżącym modelu.',
+            priceGrv: 0, creator: 'TeO', votes: 0, createdAt: Date.now(),
+            payload: { action: 'claude-launch' },
+        }] };
+        await saveMarket();
+        console.log('[Market] 🛒 Zasiano sklep: pierwszy produkt „Odpal Tu...Kurka!".');
+    }
+    return market;
+}
+app.get('/api/market/products', async (req, res) => {
+    const m = await loadMarket();
+    const mod = req.query.module;
+    let list = mod ? m.products.filter(p => p.module === mod) : m.products;
+    list = [...list].sort((a, b) => b.votes - a.votes).slice(0, 10);  // TOP 10 wg głosów
+    res.json({ success: true, products: list, total: m.products.length });
+});
+app.post('/api/market/create', async (req, res) => {
+    const { module, type, name, desc, priceGrv, creator, payload } = req.body ?? {};
+    if (!module || !name) return res.status(400).json({ success: false, message: 'Wymagane: module, name.' });
+    const m = await loadMarket();
+    const id = `${module}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36)}`.slice(0, 60);
+    const product = { id, module, type: type || 'item', name, desc: desc || '', priceGrv: Number(priceGrv) || 0, creator: creator || 'anon', votes: 0, createdAt: Date.now(), payload: payload || null };
+    m.products.push(product); await saveMarket();
+    res.json({ success: true, product });
+});
+app.post('/api/market/vote', async (req, res) => {
+    const { id } = req.body ?? {};
+    const m = await loadMarket();
+    const p = m.products.find(x => x.id === id);
+    if (!p) return res.status(404).json({ success: false, message: 'Produkt nieznany.' });
+    p.votes = (p.votes || 0) + 1; await saveMarket();
+    res.json({ success: true, id, votes: p.votes });
+});
+app.post('/api/market/burn', async (req, res) => {
+    // Co miesiąc: zostaw top 10/moduł, resztę spal → GRV wraca twórcom.
+    const m = await loadMarket();
+    const byMod = {};
+    for (const p of m.products) (byMod[p.module] = byMod[p.module] || []).push(p);
+    const keep = [], burned = [];
+    for (const mod in byMod) {
+        const sorted = byMod[mod].sort((a, b) => b.votes - a.votes);
+        keep.push(...sorted.slice(0, 10));
+        for (const b of sorted.slice(10)) {
+            burned.push(b.id);
+            if (b.priceGrv > 0 && b.creator) { try { const L = await loadGrvLedger(); if (L.nodes[b.creator] && L.nodes[b.creator].grv !== 'INFINITE') { L.nodes[b.creator].grv = Number(L.nodes[b.creator].grv) + b.priceGrv; await saveGrvLedger(); } } catch {} }
+        }
+    }
+    m.products = keep; await saveMarket();
+    res.json({ success: true, kept: keep.length, burned: burned.length, burnedIds: burned });
+});
+
+/** POST /api/claude/launch — odpala Claude Code w Katedrze (ollama launch claude). */
+app.post('/api/claude/launch', (req, res) => {
+    const model = (req.body ?? {}).model || process.env.OTAKOS_MODEL || 'gemma4';
+    try {
+        const child = spawn('ollama', ['launch', 'claude'], { detached: true, shell: true, stdio: 'ignore', env: { ...process.env, OTAKOS_MODEL: model } });
+        child.unref();
+        console.log(`[Claude] 🦀 Odpalono Claude Code (model: ${model}).`);
+        res.json({ success: true, started: true, model, note: 'Odpalono `ollama launch claude`. Jeśli komenda nieobsługiwana — zaktualizuj Ollamę.' });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 🧠 MODELE LOKALNE — status + realny pull (Gemma 4 / Gemma diffusion) ──────
 app.get('/api/models/status', async (req, res) => {
     try {

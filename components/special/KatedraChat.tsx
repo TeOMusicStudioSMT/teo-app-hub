@@ -16,6 +16,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import OdpalKurka from './OdpalKurka';
 import {
     Copy, Save, Archive, Upload, Users, MessageSquare,
     Brain, Sparkles, Terminal, Zap, Settings, RefreshCw,
@@ -1895,6 +1896,9 @@ const KatedraChat: React.FC = () => {
                                     </button>
                                 ))}
                             </div>
+
+                            {/* 🦀 Produkt #1 Marketplace — odpal Klaudiusza w Katedrze */}
+                            <OdpalKurka />
 
                             <p className="text-xs text-slate-600">
                                 Kliknij tag lub użyj 🪄 Auto-Kontekst — możesz też wpisać ręcznie.
