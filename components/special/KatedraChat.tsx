@@ -1381,6 +1381,7 @@ const KatedraChat: React.FC = () => {
 
                     {/* Akcje */}
                     <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <OdpalKurka />
                         <button onClick={() => setShowSettings(s => !s)}
                             title="Ustawienia modeli"
                             className={`p-1.5 rounded-md transition-colors ${
@@ -1896,9 +1897,6 @@ const KatedraChat: React.FC = () => {
                                     </button>
                                 ))}
                             </div>
-
-                            {/* 🦀 Produkt #1 Marketplace — odpal Klaudiusza w Katedrze */}
-                            <OdpalKurka />
 
                             <p className="text-xs text-slate-600">
                                 Kliknij tag lub użyj 🪄 Auto-Kontekst — możesz też wpisać ręcznie.

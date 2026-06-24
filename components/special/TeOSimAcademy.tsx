@@ -854,7 +854,7 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
       <SphereEffect isActive={isSphereActive} intensity={sphereIntensity} />
 
       {/* 🎓 ECONOMIS — moduł ekonomii GRV (katalogowa wiedza + Rada) */}
-      <div style={{ position: 'relative', zIndex: 5, margin: '0 16px 16px' }}>
+      <div style={{ position: 'relative', zIndex: 5, margin: '0 16px 16px', maxHeight: '60vh', overflowY: 'auto', overflowX: 'hidden' }}>
         <Economis />
       </div>
 
