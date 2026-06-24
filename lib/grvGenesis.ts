@@ -33,13 +33,13 @@ export const MISTRZ_ARKADIUSZ_NODE = {
   id: 'Mistrz Arkadiusz',
   role: 'founder',
   grv: 1_000_000,
-  note: 'Fizyczny Avatar (dzisiejszy węzeł). Premium 1M. Founder #1 z 13.',
+  note: 'Fizyczny Avatar (dzisiejszy węzeł). Premium 1M. Founder #1 z 26.',
 };
 
 /** Tiery genezy — pule startowe do obdarowywania. */
 export const GENESIS_TIERS: GrvTier[] = [
-  { tier: 'founder', label: '🏛️ Founder',  grv: 1_000_000, count: 13, note: 'Arek (#1) + 12 założycieli' },
-  { tier: 'pillar',  label: '🗿 Filar',     grv: 100_000,   count: 26, note: 'Filary sieci' },
+  { tier: 'founder', label: '🏛️ Founder',  grv: 1_000_000, count: 26, note: 'Mistrz Arkadiusz (#1) + 25 założycieli (13 + dosypane 13)' },
+  { tier: 'pillar',  label: '🗿 Filar',     grv: 100_000,   count: 57, note: 'Filary sieci (26 + dosypane 31)' },
   { tier: 'herald',  label: '📯 Herold',    grv: 10_000,    count: 61, note: 'Heroldowie — do obdarowywania' },
 ];
 
@@ -52,4 +52,4 @@ export const NEW_NODE_GRV = 1_000;
 
 /** Łączna pula obdarowań genezy (bez nieskończoności TeO). */
 export const GENESIS_GIFT_POOL = GENESIS_TIERS.reduce((sum, t) => sum + t.grv * t.count, 0);
-// = 13M + 2.6M + 610k = 16 210 000 GRV
+// = 26M + 5.7M + 610k = 32 310 000 GRV

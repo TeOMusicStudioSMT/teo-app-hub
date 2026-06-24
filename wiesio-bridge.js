@@ -3601,7 +3601,7 @@ app.post('/api/launch', async (req, res) => {
 // founder. Pule do obdarowywania: 13×1M, 26×100k, 61×10k. Nowy węzeł = 1000.
 // (Haszowanie wsteczne rejestru — świadomie NA POTEM, decyzja Suwerena.)
 const GRV_NEW_NODE = 1000;
-const GRV_TIERS = { founder: { grv: 1_000_000, count: 13 }, pillar: { grv: 100_000, count: 26 }, herald: { grv: 10_000, count: 61 } };
+const GRV_TIERS = { founder: { grv: 1_000_000, count: 26 }, pillar: { grv: 100_000, count: 57 }, herald: { grv: 10_000, count: 61 } };
 const GRV_GIFT_POOL = Object.values(GRV_TIERS).reduce((s, t) => s + t.grv * t.count, 0); // 16 210 000
 const GRV_LEDGER_FILE = path.join(ANTIGRAVITY_DIR, 'grv_ledger.json');
 let grvLedger = null;
