@@ -10,8 +10,30 @@ const mockMarketItems: MarketListing[] = [
     { id: 'item4', sellerDid: 'did:teo:seller4', itemName: 'Quantum Node Voucher', price: 5000, imageUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&q=80', description: 'A voucher for future staking on the GRV mainnet.' },
 ];
 
+const BRIDGE = 'http://127.0.0.1:3001';
+const FALLBACK_IMAGES = mockMarketItems.map(m => m.imageUrl);
+
+// Realne produkty z naszego sklepu (Marketplace 0.00G) — ładne karty, prawdziwe dane.
+// Most offline → atrapy (mockMarketItems) jako fallback.
 export const listListings = async (): Promise<MarketListing[]> => {
-    return mockFetch(mockMarketItems, 600);
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 2000);
+        const r = await fetch(`${BRIDGE}/api/market/products`, { signal: ctrl.signal });
+        clearTimeout(t);
+        const d = await r.json();
+        if (d.success && Array.isArray(d.products) && d.products.length) {
+            return d.products.map((p: any, i: number): MarketListing => ({
+                id: p.id,
+                sellerDid: `did:teo:${String(p.creator || 'anon').toLowerCase().replace(/\s+/g, '')}`,
+                itemName: p.name,
+                price: p.priceGrvDyn ?? p.priceGrv ?? 0,   // cena dynamiczna (popyt)
+                imageUrl: FALLBACK_IMAGES[i % FALLBACK_IMAGES.length],
+                description: p.desc || 'Asset Katedry OtakOS.',
+            }));
+        }
+    } catch { /* most offline → atrapy */ }
+    return mockFetch(mockMarketItems, 300);
 };
 
 export const createListing = async (data: CreateListingRequest): Promise<MarketListing> => {
