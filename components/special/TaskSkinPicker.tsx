@@ -48,11 +48,27 @@ export const TaskSkinPicker: React.FC<Props> = ({
     refresh();
   };
 
-  const toggleSale = (e: React.MouseEvent, skin: TaskSkin) => {
+  const toggleSale = async (e: React.MouseEvent, skin: TaskSkin) => {
     e.stopPropagation();
     const next = !skin.forSale;
-    setSkinForSale(skin.id, next, skin.priceGRV ?? 100);
+    const price = skin.priceGRV ?? 100;
+    setSkinForSale(skin.id, next, price);
     refresh();
+    // Zamknięcie pętli: wystawiona skórka trafia do Marketplace 0.00G (GRV).
+    if (next) {
+      try {
+        await fetch('http://127.0.0.1:3001/api/market/create', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            module: 'skorki', type: 'skin',
+            name: `${skin.icon} ${skin.name}`,
+            desc: skin.desc || 'Skórka zadania (system-prompt)',
+            priceGrv: price,
+            creator: skin.author || 'Mistrz Arkadiusz',
+          }),
+        });
+      } catch { /* most offline — skórka zostaje lokalnie oznaczona na sprzedaż */ }
+    }
   };
 
   return (
