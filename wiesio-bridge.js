@@ -3625,6 +3625,7 @@ async function loadGrvLedger() {
             await saveGrvLedger();
             console.log('[GRV] 🔁 Migracja: Arek → Mistrz Arkadiusz.');
         }
+        if (!Array.isArray(grvLedger.chain)) grvLedger.chain = []; // ⛓️ kontabilność wsteczna
     }
     catch {
         // Zasiew genezy (pierwsze uruchomienie)
@@ -3634,11 +3635,43 @@ async function loadGrvLedger() {
                 'Mistrz Arkadiusz': { grv: 1_000_000, role: 'founder', tier: 'founder', registeredAt: Date.now() },
             },
             pools: { founder: 1, pillar: 0, herald: 0 }, // Mistrz Arkadiusz zajął 1 slot founder
+            chain: [],
         };
+        const _gb = { seq: 0, ts: Date.now(), op: 'genesis', data: { TeO: 'INFINITE', 'Mistrz Arkadiusz': 1000000 }, prevHash: 'GENESIS' };
+        _gb.hash = grvBlockHash(_gb);
+        grvLedger.chain.push(_gb); // ⛓️ pierwszy blok pieczęci
         await saveGrvLedger();
         console.log('[GRV] 🌱 Geneza zasiana: TeO=∞, Mistrz Arkadiusz=1M founder.');
     }
     return grvLedger;
+}
+
+// ── ⛓️ KONTABILNOŚĆ WSTECZNA — hash-chain pieczętujący każdą zmianę księgi GRV ──
+// Każdy blok wiąże poprzedni (prevHash). Zmiana czegokolwiek wstecz łamie łańcuch.
+function grvBlockHash(b) {
+    return crypto.createHash('sha256')
+        .update(`${b.seq}|${b.ts}|${b.op}|${JSON.stringify(b.data)}|${b.prevHash}`)
+        .digest('hex');
+}
+async function sealGrv(op, data) {
+    const L = await loadGrvLedger();
+    if (!Array.isArray(L.chain)) L.chain = [];
+    const prev = L.chain[L.chain.length - 1];
+    const block = { seq: L.chain.length, ts: Date.now(), op, data, prevHash: prev ? prev.hash : 'GENESIS' };
+    block.hash = grvBlockHash(block);
+    L.chain.push(block); // zapis robi wołający (saveGrvLedger po mutacji)
+    return block;
+}
+function verifyGrvChain(L) {
+    const chain = L.chain || [];
+    for (let i = 0; i < chain.length; i++) {
+        const b = chain[i];
+        const expectedPrev = i === 0 ? 'GENESIS' : chain[i - 1].hash;
+        if (b.prevHash !== expectedPrev) return { ok: false, brokenAt: i, reason: 'prevHash', length: chain.length };
+        const recomputed = grvBlockHash({ seq: b.seq, ts: b.ts, op: b.op, data: b.data, prevHash: b.prevHash });
+        if (recomputed !== b.hash) return { ok: false, brokenAt: i, reason: 'hash', length: chain.length };
+    }
+    return { ok: true, length: chain.length };
 }
 
 app.get('/api/grv/genesis', async (req, res) => {
@@ -3666,6 +3699,7 @@ app.post('/api/grv/register', async (req, res) => {
         grv = GRV_TIERS[tier].grv; role = tier; assignedTier = tier; L.pools[tier] = used + 1;
     }
     L.nodes[id] = { grv, role, tier: assignedTier, registeredAt: Date.now() };
+    await sealGrv('register', { id, grv, tier: assignedTier });
     await saveGrvLedger();
     console.log(`[GRV] ➕ Węzeł ${id}: ${grv} GRV${assignedTier ? ` (${assignedTier})` : ''}.`);
     res.json({ success: true, id, ...L.nodes[id] });
@@ -3684,8 +3718,19 @@ app.post('/api/grv/grant', async (req, res) => {
         src.grv = Number(src.grv) - amt;
     }
     if (L.nodes[to].grv !== 'INFINITE') L.nodes[to].grv = Number(L.nodes[to].grv) + amt;
+    await sealGrv('grant', { from, to, amount: amt });
     await saveGrvLedger();
     res.json({ success: true, from, to, amount: amt, fromBalance: src.grv, toBalance: L.nodes[to].grv, infiniteSource: infinite });
+});
+// ⛓️ Weryfikacja integralności księgi (tamper-evidence) + podgląd łańcucha.
+app.get('/api/grv/verify', async (req, res) => {
+    const L = await loadGrvLedger();
+    res.json({ success: true, ...verifyGrvChain(L) });
+});
+app.get('/api/grv/ledger', async (req, res) => {
+    const L = await loadGrvLedger();
+    const chain = L.chain || [];
+    res.json({ success: true, length: chain.length, recent: chain.slice(-20), integrity: verifyGrvChain(L) });
 });
 
 // ── 💰 PORTFEL ZEWNĘTRZNY — read-only agregacja (MetaMask/Ledger przez adres) ──

@@ -20,9 +20,11 @@ export const Marketplace: React.FC = () => {
   const [balance, setBalance] = useState<number | 'INFINITE' | null>(null);
   const [owned, setOwned] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('otakos_owned_products') || '[]'); } catch { return []; } });
   const [nextBurn, setNextBurn] = useState<number | null>(null);
+  const [chainOk, setChainOk] = useState<boolean | null>(null);
 
   const fetchBurn = useCallback(async () => {
     try { const d = await (await fetch(`${BRIDGE}/api/market/status`)).json(); if (d.success) setNextBurn(d.nextBurnAt); } catch { /* offline */ }
+    try { const v = await (await fetch(`${BRIDGE}/api/grv/verify`)).json(); if (v.success) setChainOk(v.ok); } catch { /* offline */ }
   }, []);
 
   const burnNow = async () => {
@@ -97,6 +99,11 @@ export const Marketplace: React.FC = () => {
           <div className="text-[11px] font-bold text-amber-300" title="Saldo GRV Suwerena">
             💎 {balance === null ? '—' : balance === 'INFINITE' ? '∞' : balance.toLocaleString('pl-PL')} GRV
           </div>
+          {chainOk !== null && (
+            <div className={`text-[9px] font-mono ${chainOk ? 'text-emerald-400/80' : 'text-rose-400'}`} title="Integralność księgi GRV (hash-chain, kontabilność wsteczna)">
+              ⛓️ księga: {chainOk ? 'OK' : '⚠ NARUSZONA'}
+            </div>
+          )}
           <div className="flex gap-2">{tabBtn('shop', '🛒 Sklep')}{tabBtn('vote', '🗳️ Głosowanie')}{tabBtn('create', '➕ Dodaj')}</div>
         </div>
       </div>
