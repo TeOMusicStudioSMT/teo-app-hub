@@ -39,7 +39,8 @@ type View =
     | 'cobots'
     | 'crew-club'
     | 'teolab'
-    | 'robotics';
+    | 'robotics'
+    | 'sonic';
 
 interface LoungeNavigationProps {
     activeView: View;
@@ -58,6 +59,7 @@ const PRIMARY_NAV: { id: View; label: string; icon: React.ReactNode }[] = [
 
 // ── Pozycje schowane w panelu "Więcej" ────────────────────────────────
 const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string }[] = [
+    { id: 'sonic',         label: 'Kolektor Soniczny', icon: <span className="text-base">🎼</span>, desc: 'Zbiór wektorów z własnej muzyki (Filar I)' },
     { id: 'identity',      label: 'Identity',      icon: <UserCircleIcon />,  desc: 'Karta tożsamości Suwerena' },
     { id: 'cobots',        label: 'Co-Bots',        icon: <BrainChipIcon />,   desc: 'Fabryka autonomicznych agentów' },
     { id: 'academy',       label: 'Academy',        icon: <MortarBoardIcon />, desc: 'Quantum Compass & nauka' },

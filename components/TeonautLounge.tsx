@@ -19,6 +19,7 @@ import DashboardCard from './DashboardCard';
 import { MarketTabView } from './MarketTabView';
 import TeoLab from './special/TeoLab';
 import OtakosRobotics from './special/OtakosRobotics';
+import SonicCollector from './special/SonicCollector';
 import { GravitonWalletView } from './GravitonWalletView';
 import { useAssistant } from '../hooks/useAssistant';
 import { InstallPWA } from './InstallPWA';
@@ -47,7 +48,7 @@ interface TeonautLoungeProps {
     onOpenCrewClub?: () => void;
 }
 
-type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics';
+type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic';
 
 export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionToggle, onFavoriteToggle, onLogout, onTriggerAnomaly, behavioralData, onVisualAssistantOpen, onOpenCrewClub }) => {
     const [staticBalance] = useState(3975.78);
@@ -227,6 +228,7 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                             {activeView === 'field-control' && <FieldControlView />}
                             {activeView === 'teolab' && <TeoLab />}
                             {activeView === 'robotics' && <OtakosRobotics />}
+                            {activeView === 'sonic' && <SonicCollector />}
                             {activeView === 'profile' && <ProfileView onLogout={onLogout} />}
                         </motion.div>
                     )}
