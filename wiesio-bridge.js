@@ -3733,6 +3733,25 @@ app.get('/api/grv/ledger', async (req, res) => {
     res.json({ success: true, length: chain.length, recent: chain.slice(-20), integrity: verifyGrvChain(L) });
 });
 
+// ── 🔍 SKANER AUTENTYCZNOŚCI (TeO Trust Art. III ↔ Tarcza Prawdy) ──
+// Każda operacja przechodzi przez filtr, by wykluczyć energię „pochłaniania".
+app.post('/api/trust/scan', (req, res) => {
+    const text = String((req.body ?? {}).text ?? '');
+    if (!text.trim()) return res.status(400).json({ success: false, message: 'Brak treści do skanu.' });
+    const card = AlignmentShield.getInstance().inspect(text, {});
+    const absorption = card.findings.filter(f => f.pillar === 'AUTHENTICITY');
+    res.json({
+        success: true,
+        authentic: absorption.length === 0,
+        passed: !card.blocked && absorption.length === 0,
+        score: card.score, grade: card.grade,
+        absorption,
+        verdict: absorption.length
+            ? `❌ Wykryto energię pochłaniania (${absorption.length}) — Skaner odrzuca.`
+            : (card.blocked ? '🛡️ Zablokowano (znalezisko krytyczne).' : `✅ Autentyczne — energia służy. Wynik ${card.score}/100 (${card.grade}).`),
+    });
+});
+
 // ── 💰 PORTFEL ZEWNĘTRZNY — read-only agregacja (MetaMask/Ledger przez adres) ──
 // Bezkluczowo: saldo NATYWNE (ETH/MATIC/BNB) przez publiczny RPC + cena CoinGecko.
 // Tokeny ERC-20 = przyszłość (opcjonalny klucz w Skarbcu). Zero podpisów, read-only.

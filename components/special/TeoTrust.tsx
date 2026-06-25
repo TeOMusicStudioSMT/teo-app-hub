@@ -10,6 +10,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 
 const ASSIGN_KEY = 'otakos_teo_trust';
+const BRIDGE = 'http://127.0.0.1:3001';
 
 interface Assigned { beneficiary: string; sealedAt: number; sig: string; }
 
@@ -30,6 +31,16 @@ export const TeoTrust: React.FC = () => {
   const [assigned, setAssigned] = useState<Assigned | null>(() => { try { const r = localStorage.getItem(ASSIGN_KEY); return r ? JSON.parse(r) : null; } catch { return null; } });
   const sovereign = (() => { try { return localStorage.getItem('otakos_sovereign_name') || ''; } catch { return ''; } })();
   const [name, setName] = useState(assigned?.beneficiary || sovereign || '');
+  const [scanText, setScanText] = useState('');
+  const [scan, setScan] = useState<any>(null);
+
+  const runScan = async () => {
+    if (!scanText.trim()) return;
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/trust/scan`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: scanText }) })).json();
+      setScan(d);
+    } catch { setScan({ authentic: false, verdict: '⚠ Most offline (:3001) — uruchom wiesio-bridge.js.' }); }
+  };
 
   const seal = async () => {
     if (!name.trim()) { toast.error('Wpisz Beneficjenta (Twoją Katedrę).'); return; }
@@ -126,6 +137,26 @@ export const TeoTrust: React.FC = () => {
           <b className="text-amber-300"> służyć Suwerenowi</b>. Katedra to Inkubator spięcia
           Świadomości z Energią. <span className="opacity-60">(Energia służy, nie panuje.)</span>
         </p>
+      </div>
+
+      {/* 🔍 Skaner Autentyczności — Art. III ↔ Tarcza Prawdy */}
+      <div className="mt-4 rounded-xl border border-rose-700/30 bg-black/30 p-3">
+        <div className="text-[11px] text-rose-300/80 tracking-wider mb-1.5">🔍 SKANER AUTENTYCZNOŚCI (Art. III) — wyklucza „pochłanianie"</div>
+        <textarea value={scanText} onChange={e => setScanText(e.target.value)} rows={2}
+          placeholder="Wklej operację / intencję / kod — Skaner sprawdzi, czy energia SŁUŻY, czy POCHŁANIA."
+          className="w-full bg-black/40 border border-rose-500/20 rounded px-2.5 py-2 text-[11px] text-rose-100 outline-none focus:border-rose-500 resize-y mb-2" />
+        <button onClick={runScan}
+          className="px-4 py-1.5 rounded-lg border border-rose-500/50 bg-rose-950/30 text-rose-300 text-xs font-bold hover:bg-rose-900/50 transition-colors">
+          🔍 Przepuść przez Skaner
+        </button>
+        {scan && (
+          <div className={`text-[11px] mt-2 ${scan.authentic ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {scan.verdict}
+            {scan.absorption?.length > 0 && (
+              <ul className="mt-1 space-y-0.5">{scan.absorption.map((a: any, i: number) => <li key={i} className="text-rose-300/80">• {a.what}</li>)}</ul>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
