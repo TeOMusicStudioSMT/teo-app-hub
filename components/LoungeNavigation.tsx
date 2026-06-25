@@ -40,7 +40,8 @@ type View =
     | 'crew-club'
     | 'teolab'
     | 'robotics'
-    | 'sonic';
+    | 'sonic'
+    | 'kancelaria';
 
 interface LoungeNavigationProps {
     activeView: View;
@@ -66,6 +67,7 @@ const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string }
     { id: 'field-control', label: 'Field Control',  icon: <ShieldCheckIcon />, desc: 'Tarcza Pola i bezpieczeństwo' },
     { id: 'teolab',        label: 'TeO Lab',        icon: <span className="text-base">🧪</span>, desc: 'Laboratorium eksperymentów (Filar II)' },
     { id: 'robotics',      label: 'OtakOS Robotics', icon: <span className="text-base">🚜</span>, desc: 'Garaż: Agro Traktorek i flota (Filar II)' },
+    { id: 'kancelaria',    label: 'Kancelaria 0.00G', icon: <span className="text-base">⚖️</span>, desc: 'Tarcza prawna: licencje, prawa, zgodność (Filar II)' },
 ];
 
 // ── Komponent ─────────────────────────────────────────────────────────

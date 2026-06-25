@@ -54,7 +54,7 @@ export const MODULE_PILLAR: Record<string, 1 | 2 | 3> = {
 
   // ── Dashboard / Lounge (górna nawigacja) ──
   dashboard: 1, projects: 1, identity: 1, profile: 1, academy: 1,         // Filar I — dla wszystkich
-  'teo-market': 2, 'field-control': 2, cobots: 2, teolab: 2, robotics: 2, // Filar II — środkowy (kreacja, TeO Lab, Robotics)
+  'teo-market': 2, 'field-control': 2, cobots: 2, teolab: 2, robotics: 2, kancelaria: 2, // Filar II — środkowy (kreacja, TeO Lab, Robotics, Kancelaria)
   'crew-club': 3, 'graviton-wallet': 3,                                   // Filar III — mistrzowski
 };
 
