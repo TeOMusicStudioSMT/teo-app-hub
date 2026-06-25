@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 
 const BRIDGE = 'http://127.0.0.1:3001';
+const BUYER = 'Mistrz Arkadiusz'; // suwerenny węzeł-nabywca (genesis GRV)
 
 interface Product { id: string; module: string; type: string; name: string; desc: string; priceGrv: number; creator: string; votes: number; }
 
@@ -15,12 +16,37 @@ export const Marketplace: React.FC = () => {
   const [tab, setTab] = useState<'shop' | 'vote' | 'create'>('shop');
   const [status, setStatus] = useState('');
   const [form, setForm] = useState({ module: 'katedra-chat', name: '', desc: '', priceGrv: '100', creator: 'Mistrz Arkadiusz' });
+  const [balance, setBalance] = useState<number | 'INFINITE' | null>(null);
+  const [owned, setOwned] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('otakos_owned_products') || '[]'); } catch { return []; } });
+
+  const fetchBalance = useCallback(async () => {
+    try { const d = await (await fetch(`${BRIDGE}/api/grv/${encodeURIComponent(BUYER)}`)).json(); if (d.success) setBalance(d.grv); }
+    catch { /* most offline */ }
+  }, []);
 
   const load = useCallback(async () => {
     try { const d = await (await fetch(`${BRIDGE}/api/market/products`)).json(); if (d.success) setProducts(d.products); }
     catch { setStatus('⚠ Most offline (:3001)'); }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); fetchBalance(); }, [load, fetchBalance]);
+
+  const markOwned = (id: string) => {
+    setOwned(prev => { const next = prev.includes(id) ? prev : [...prev, id]; localStorage.setItem('otakos_owned_products', JSON.stringify(next)); return next; });
+  };
+
+  const buy = async (p: Product) => {
+    if (owned.includes(p.id)) return;
+    if (p.priceGrv <= 0) { markOwned(p.id); setStatus(`✅ Pobrano za darmo: ${p.name}`); return; }
+    if (p.creator === BUYER) { setStatus('⚠ To Twój produkt — już go masz.'); markOwned(p.id); return; }
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/grv/grant`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: BUYER, to: p.creator, amount: p.priceGrv }) })).json();
+      if (!d.success) throw new Error(d.message || 'Zakup nieudany');
+      markOwned(p.id);
+      setBalance(d.fromBalance);
+      setStatus(`✅ Kupiono „${p.name}" za ${p.priceGrv.toLocaleString('pl-PL')} GRV. Saldo: ${typeof d.fromBalance === 'number' ? d.fromBalance.toLocaleString('pl-PL') : d.fromBalance} GRV`);
+    } catch (e: any) { setStatus(`⚠ ${e.message}`); }
+  };
 
   const vote = async (id: string) => {
     try { await fetch(`${BRIDGE}/api/market/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); load(); }
@@ -47,7 +73,12 @@ export const Marketplace: React.FC = () => {
           <h3 className="text-lg font-bold text-amber-300">🛒 MARKETPLACE 0.00G</h3>
           <p className="text-[11px] text-zinc-400">Personalizuj Katedrę za GRV. TOP 10/moduł wg głosów — reszta co miesiąc spalana, GRV wraca twórcom.</p>
         </div>
-        <div className="flex gap-2">{tabBtn('shop', '🛒 Sklep')}{tabBtn('vote', '🗳️ Głosowanie')}{tabBtn('create', '➕ Dodaj')}</div>
+        <div className="flex flex-col items-end gap-2">
+          <div className="text-[11px] font-bold text-amber-300" title="Saldo GRV Suwerena">
+            💎 {balance === null ? '—' : balance === 'INFINITE' ? '∞' : balance.toLocaleString('pl-PL')} GRV
+          </div>
+          <div className="flex gap-2">{tabBtn('shop', '🛒 Sklep')}{tabBtn('vote', '🗳️ Głosowanie')}{tabBtn('create', '➕ Dodaj')}</div>
+        </div>
       </div>
 
       {tab === 'create' ? (
@@ -83,6 +114,14 @@ export const Marketplace: React.FC = () => {
                   className="px-3 py-1 rounded border border-emerald-500/40 text-emerald-300 text-xs font-bold hover:bg-emerald-950/40">
                   {tab === 'vote' ? '🗳️ Głosuj' : '▲'}
                 </button>
+                {tab !== 'vote' && (
+                  owned.includes(p.id)
+                    ? <span className="px-3 py-1 rounded border border-emerald-500/40 text-emerald-300 text-xs font-bold">✓ Masz</span>
+                    : <button onClick={() => buy(p)} title={p.priceGrv > 0 ? `Kup za ${p.priceGrv} GRV` : 'Pobierz za darmo'}
+                        className="px-3 py-1 rounded border border-amber-500/50 bg-amber-950/40 text-amber-300 text-xs font-bold hover:bg-amber-900/50">
+                        {p.priceGrv > 0 ? '🛒 Kup' : '⬇ Pobierz'}
+                      </button>
+                )}
               </div>
             </motion.div>
           ))}
