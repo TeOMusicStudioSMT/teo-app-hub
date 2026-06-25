@@ -11,6 +11,7 @@ const mockMarketItems: MarketListing[] = [
 ];
 
 const BRIDGE = 'http://127.0.0.1:3001';
+const BUYER = 'Mistrz Arkadiusz'; // suwerenny węzeł-nabywca (księga GRV = portfel prawdy)
 const FALLBACK_IMAGES = mockMarketItems.map(m => m.imageUrl);
 
 // Realne produkty z naszego sklepu (Marketplace 0.00G) — ładne karty, prawdziwe dane.
@@ -49,10 +50,28 @@ export const createListing = async (data: CreateListingRequest): Promise<MarketL
     return mockFetch(newListing);
 };
 
+// Realny zakup: przelew GRV z portfela Suwerena do twórcy (księga = portfel prawdy).
+// Atrapy (mock) lub produkty za 0 GRV / własne → przejście bez przelewu.
 export const createOrder = async (listingId: string): Promise<{success: boolean}> => {
-    console.log(`Creating order for listing ${listingId}`);
-    return mockFetch({ success: true });
-}
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 2500);
+        const d = await (await fetch(`${BRIDGE}/api/market/products`, { signal: ctrl.signal })).json();
+        clearTimeout(t);
+        const p = (d.products || []).find((x: any) => x.id === listingId);
+        if (!p) return { success: true };                       // atrapa — brak realnego twórcy
+        const price = p.priceGrvDyn ?? p.priceGrv ?? 0;
+        if (price <= 0 || p.creator === BUYER) return { success: true };
+        const g = await (await fetch(`${BRIDGE}/api/grv/grant`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from: BUYER, to: p.creator, amount: price }),
+        })).json();
+        if (!g.success) throw new Error(g.message || 'Brak GRV / zakup odrzucony');
+        return { success: true };
+    } catch (e: any) {
+        throw new Error(e?.message || 'Most offline — transakcja GRV nieudana');
+    }
+};
 
 export const confirmOrder = async (orderId: string): Promise<{success: boolean}> => {
     console.log(`Confirming order ${orderId}`);

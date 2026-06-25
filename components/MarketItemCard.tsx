@@ -65,20 +65,19 @@ export const MarketItemCard: React.FC<{ item: MarketListing }> = ({ item }) => {
 
     const handlePurchase = async (finalPrice: number) => {
         try {
-            // 1. Trigger the financial logic (Deduct balance & Log split)
+            // 1. REALNY przelew GRV (księga = portfel prawdy) — najpierw, by sprawdzić saldo.
+            await toast.promise(
+                marketClient.createOrder(item.id),
+                {
+                    loading: 'Executing Smart Contract (GRV)...',
+                    success: 'Asset acquired! GRV przelane twórcy.',
+                    error: (e: any) => e?.message || 'Transaction failed.',
+                }
+            );
+            // 2. Sukces → odznacz w lokalnym portfelu UI + stan karty.
             purchaseAsset(finalPrice);
             setIsPurchased(true);
             setShowDetails(false);
-            
-            // 2. Simulate backend processing
-            await toast.promise(
-                marketClient.createOrder(item.id).then(() => new Promise(resolve => setTimeout(resolve, 1500))),
-                {
-                    loading: 'Executing Smart Contract...',
-                    success: `Asset acquired! Revenue split executed.`,
-                    error: 'Transaction failed.'
-                }
-            );
         } catch (error: any) {
             toast.error(error.message || "Transaction failed");
         }
