@@ -37,7 +37,9 @@ type View =
     | 'profile'
     | 'graviton-wallet'
     | 'cobots'
-    | 'crew-club';
+    | 'crew-club'
+    | 'teolab'
+    | 'robotics';
 
 interface LoungeNavigationProps {
     activeView: View;
@@ -60,6 +62,8 @@ const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string }
     { id: 'cobots',        label: 'Co-Bots',        icon: <BrainChipIcon />,   desc: 'Fabryka autonomicznych agentów' },
     { id: 'academy',       label: 'Academy',        icon: <MortarBoardIcon />, desc: 'Quantum Compass & nauka' },
     { id: 'field-control', label: 'Field Control',  icon: <ShieldCheckIcon />, desc: 'Tarcza Pola i bezpieczeństwo' },
+    { id: 'teolab',        label: 'TeO Lab',        icon: <span className="text-base">🧪</span>, desc: 'Laboratorium eksperymentów (Filar II)' },
+    { id: 'robotics',      label: 'OtakOS Robotics', icon: <span className="text-base">🚜</span>, desc: 'Garaż: Agro Traktorek i flota (Filar II)' },
 ];
 
 // ── Komponent ─────────────────────────────────────────────────────────

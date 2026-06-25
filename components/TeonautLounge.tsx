@@ -17,6 +17,8 @@ import { cn } from '../lib/helpers';
 import { FieldControlView } from './FieldControlView';
 import DashboardCard from './DashboardCard';
 import { MarketTabView } from './MarketTabView';
+import TeoLab from './special/TeoLab';
+import OtakosRobotics from './special/OtakosRobotics';
 import { GravitonWalletView } from './GravitonWalletView';
 import { useAssistant } from '../hooks/useAssistant';
 import { InstallPWA } from './InstallPWA';
@@ -45,7 +47,7 @@ interface TeonautLoungeProps {
     onOpenCrewClub?: () => void;
 }
 
-type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club';
+type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics';
 
 export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionToggle, onFavoriteToggle, onLogout, onTriggerAnomaly, behavioralData, onVisualAssistantOpen, onOpenCrewClub }) => {
     const [staticBalance] = useState(3975.78);
@@ -223,6 +225,8 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                             {activeView === 'crew-club' && <div className="text-center py-20 text-slate-500 italic">Ładowanie Kokpitu Mistrzów...</div>}
                             {activeView === 'academy' && <QuantumCompass />}
                             {activeView === 'field-control' && <FieldControlView />}
+                            {activeView === 'teolab' && <TeoLab />}
+                            {activeView === 'robotics' && <OtakosRobotics />}
                             {activeView === 'profile' && <ProfileView onLogout={onLogout} />}
                         </motion.div>
                     )}
