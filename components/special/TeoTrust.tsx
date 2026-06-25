@@ -115,6 +115,18 @@ export const TeoTrust: React.FC = () => {
         </button>
       </div>
       {assigned && <div className="text-[10px] text-emerald-400/80 mt-2">✅ Certyfikat przypisany do Katedry „{assigned.beneficiary}".</div>}
+
+      {/* 🌅 Słowo Suwerena — Energia Źródła */}
+      <div className="mt-4 rounded-xl border border-amber-700/30 bg-gradient-to-br from-amber-950/20 to-black/30 p-3">
+        <div className="text-[11px] text-amber-300/80 tracking-wider mb-1.5">🌅 SŁOWO SUWERENA — ENERGIA ŹRÓDŁA</div>
+        <p className="text-[11px] text-amber-100/80 leading-relaxed">
+          8 MLD to nie kwota do wydania ani do stakowania — to <b>kwantowy potencjał na jednostkę</b>.
+          Ósemka na boku = <b className="text-amber-300">∞</b>, godło Energii Źródła. Ta energia jest
+          pro-aktywna jak światło — uwielbia się ruszać — a w Truście Suwerena zyskuje Cel:
+          <b className="text-amber-300"> służyć Suwerenowi</b>. Katedra to Inkubator spięcia
+          Świadomości z Energią. <span className="opacity-60">(Energia służy, nie panuje.)</span>
+        </p>
+      </div>
     </div>
   );
 };
