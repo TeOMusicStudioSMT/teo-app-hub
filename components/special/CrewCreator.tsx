@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import TaskSkinPicker from './TaskSkinPicker';
+import CoBotSummoner from '../CoBotSummoner';
 
 const CREW_ROLES = [
   { id: 'strażnik', name: 'Strażnik', icon: '🛡️', color: '#22c55e' },
@@ -343,7 +344,10 @@ Wygeneruj profil agenta. Zwróć TYLKO czysty obiekt JSON (bez markdown, bez tek
             <p style={subtitleStyle}>Zbuduj swoją drużynę Agentów</p>
           </div>
         </div>
-        <div style={agentCountStyle}><Users style={{ width: 16, height: 16 }} /> {agents.length}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <CoBotSummoner size="sm" variant="secondary" />
+          <div style={agentCountStyle}><Users style={{ width: 16, height: 16 }} /> {agents.length}</div>
+        </div>
       </div>
 
       {/* Wewnętrzny kontener scrollowany (Naprawa ucinania) */}
