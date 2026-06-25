@@ -3984,8 +3984,13 @@ async function runBurn() {
     m.products = keep; lastBurnAt = Date.now(); await saveMarket();
     return { kept: keep.length, burned: burned.length, burnedIds: burned };
 }
-// Auto-spalanie miesięczne (cron wewnętrzny).
-setInterval(() => { runBurn().then(r => console.log(`[Market] 🔥 Auto-spalanie: spalono ${r.burned}, zostało ${r.kept}.`)).catch(() => {}); }, BURN_PERIOD_MS);
+// Auto-spalanie miesięczne (cron wewnętrzny). UWAGA: setInterval > 2^31-1 ms przepełnia
+// się i odpala w pętli — dlatego sprawdzamy co 6h, a palimy dopiero po BURN_PERIOD_MS.
+const BURN_CHECK_MS = 6 * 3600 * 1000;
+setInterval(() => {
+    if (Date.now() - lastBurnAt < BURN_PERIOD_MS) return;
+    runBurn().then(r => console.log(`[Market] 🔥 Auto-spalanie: spalono ${r.burned}, zostało ${r.kept}.`)).catch(() => {});
+}, BURN_CHECK_MS);
 app.post('/api/market/burn', async (req, res) => {
     const r = await runBurn();
     res.json({ success: true, ...r });
