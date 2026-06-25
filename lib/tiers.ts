@@ -51,6 +51,11 @@ export const MODULE_PILLAR: Record<string, 1 | 2 | 3> = {
   story: 2, studio: 2, mockup: 2, teledysk: 2, forge: 2, market: 2, wydawnictwo: 2, widok: 2,
   // Filar III — Mistrzowski (pełnia)
   crew: 3, narada: 3, terminal: 3, archiwum: 3, klaudiusz: 3, autobus: 3, rafineria: 3, inkubator: 3, graviton: 3,
+
+  // ── Dashboard / Lounge (górna nawigacja) ──
+  dashboard: 1, projects: 1, identity: 1, profile: 1, academy: 1,         // Filar I — dla wszystkich
+  'teo-market': 2, 'field-control': 2, cobots: 2, teolab: 2, robotics: 2, // Filar II — środkowy (kreacja, TeO Lab, Robotics)
+  'crew-club': 3, 'graviton-wallet': 3,                                   // Filar III — mistrzowski
 };
 
 const TIER_KEY = 'otakos_tier';

@@ -25,6 +25,7 @@ import {
 import { useAtomValue } from 'jotai';
 import { resonanceColorAtom, RESONANCE_THEMES } from '../store/personalization';
 import { cn } from '../lib/helpers';
+import { canAccess, currentTier, requiredPillar } from '../lib/tiers';
 
 type View =
     | 'dashboard'
@@ -69,6 +70,7 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
 }) => {
     const resonanceColor = useAtomValue(resonanceColorAtom);
     const theme = RESONANCE_THEMES[resonanceColor];
+    const tier = currentTier(); // 🏛️ FILAR — bramkuje dostęp do widoków
 
     const [isMoreOpen, setIsMoreOpen] = useState(false);
     const moreRef = useRef<HTMLDivElement>(null);
@@ -95,23 +97,36 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
     return (
         <nav className="relative z-[100] mb-6 w-full max-w-5xl mx-auto flex items-center justify-center gap-1 md:gap-1.5 p-2 bg-slate-900/60 border border-slate-700/50 rounded-full backdrop-blur-lg">
 
+            {/* ── Godło FILARU ──────────────────────────────────────── */}
+            <div title={`${tier.name.pl} · ${tier.title.pl}`}
+                className="shrink-0 hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold font-mono mr-1"
+                style={{ color: tier.color, border: `1px solid ${tier.color}55`, background: `${tier.color}14` }}>
+                🏛️ {tier.title.pl}
+            </div>
+
             {/* ── Główne przyciski ──────────────────────────────────── */}
-            {PRIMARY_NAV.map(item => (
+            {PRIMARY_NAV.map(item => {
+                const locked = !canAccess(item.id, tier);
+                return (
                 <button
                     key={item.id}
-                    onClick={() => onViewChange(item.id)}
+                    onClick={() => { if (!locked) onViewChange(item.id); }}
+                    disabled={locked}
+                    title={locked ? `Odblokujesz na Filarze ${requiredPillar(item.id)}` : item.label}
                     className={cn(
                         'relative flex-1 md:flex-none flex items-center justify-center gap-2',
                         'px-3 py-2 rounded-full text-sm font-bold transition-all duration-300',
-                        activeView === item.id
-                            ? `${theme.tw.bg} text-slate-900 shadow-lg ${theme.tw.shadow}`
-                            : 'bg-transparent text-slate-300 hover:bg-slate-700/50 hover:text-white'
+                        locked
+                            ? 'opacity-40 cursor-not-allowed text-slate-500'
+                            : activeView === item.id
+                                ? `${theme.tw.bg} text-slate-900 shadow-lg ${theme.tw.shadow}`
+                                : 'bg-transparent text-slate-300 hover:bg-slate-700/50 hover:text-white'
                     )}
                 >
-                    <div className="w-5 h-5 shrink-0">{item.icon}</div>
+                    <div className="w-5 h-5 shrink-0 flex items-center justify-center">{locked ? '🔒' : item.icon}</div>
                     <span className="hidden md:inline whitespace-nowrap">{item.label}</span>
                 </button>
-            ))}
+            );})}
 
             {/* ── Separator ─────────────────────────────────────────── */}
             <div className="w-px h-6 bg-slate-700/60 shrink-0 mx-1" />
@@ -167,16 +182,21 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
                             </div>
 
                             {/* Pozycje */}
-                            {MORE_NAV.map((item, idx) => (
+                            {MORE_NAV.map((item, idx) => {
+                                const locked = !canAccess(item.id, tier);
+                                return (
                                 <motion.button
                                     key={item.id}
-                                    onClick={() => handleMoreItemClick(item.id)}
+                                    onClick={() => { if (!locked) handleMoreItemClick(item.id); }}
+                                    disabled={locked}
+                                    title={locked ? `Odblokujesz na Filarze ${requiredPillar(item.id)}` : item.desc}
                                     initial={{ opacity: 0, x: -8 }}
                                     animate={{ opacity: 1, x: 0 }}
                                     transition={{ delay: idx * 0.045, duration: 0.18 }}
                                     className={cn(
                                         'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl',
                                         'text-sm font-medium transition-all duration-200 text-left',
+                                        locked ? 'opacity-40 cursor-not-allowed text-slate-500' :
                                         activeView === item.id
                                             ? `bg-gradient-to-r ${theme.tw.bg} text-slate-900 shadow-md`
                                             : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
@@ -189,7 +209,7 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
                                             ? 'bg-black/20'
                                             : 'bg-slate-800/80'
                                     )}>
-                                        <div className="w-4 h-4">{item.icon}</div>
+                                        <div className="w-4 h-4 flex items-center justify-center">{locked ? '🔒' : item.icon}</div>
                                     </div>
 
                                     {/* Tekst */}
@@ -213,7 +233,7 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
                                         />
                                     )}
                                 </motion.button>
-                            ))}
+                            );})}
 
                             {/* Separator */}
                             <div className="mx-3 my-2 h-px bg-slate-700/50" />
