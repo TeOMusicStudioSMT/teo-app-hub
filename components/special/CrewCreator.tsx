@@ -26,6 +26,7 @@ import {
   Zap, Heart, Wand2, Edit3, Bot, Cpu
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import TaskSkinPicker from './TaskSkinPicker';
 
 const CREW_ROLES = [
   { id: 'strażnik', name: 'Strażnik', icon: '🛡️', color: '#22c55e' },
@@ -88,6 +89,7 @@ export const CrewCreator: React.FC<{ onComplete?: () => void }> = ({ onComplete 
 
   const EMOJIS = ['🦊', '🐺', '🦅', '🐉', '🦄', '🐙', '🦋', '🌙', '⭐', '🔥', '🌊', '💎', '🗡️', '🛡️', '🎭', '🎪', '💰', '⚖️'];
   const [selectedEmoji, setSelectedEmoji] = useState(EMOJIS[0]);
+  const [skinId, setSkinId] = useState<string | undefined>(undefined); // 🎴 Skórka specjalizacji
 
   useEffect(() => {
     const state = useCityMemory.getState();
@@ -429,6 +431,21 @@ Wygeneruj profil agenta. Zwróć TYLKO czysty obiekt JSON (bez markdown, bez tek
               🤖 AUTO-UTWÓRZ AGENTA
             </label>
           </div>
+        </div>
+
+        {/* 🎴 SKÓRKA SPECJALIZACJI — primuje duszę agenta */}
+        <div style={{ ...sectionBoxStyle, borderColor: 'rgba(196,181,253,0.2)' }}>
+          <label style={{ ...labelStyle, color: '#c4b5fd' }}>🎴 SKÓRKA SPECJALIZACJI (wlewa duszę w agenta)</label>
+          <TaskSkinPicker
+            selectedId={skinId}
+            allowSell={false}
+            onSelect={(s) => {
+              setSkinId(s.id);
+              setNewAgentInstructions(s.systemPrompt);
+              if (s.icon) setSelectedEmoji(s.icon);
+              toast.success(`🎴 Skórka „${s.name}" wlana w duszę agenta`);
+            }}
+          />
         </div>
 
         {/* Ręczne Dodawanie Agenta */}
