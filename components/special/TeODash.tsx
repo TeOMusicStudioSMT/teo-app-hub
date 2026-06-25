@@ -51,6 +51,7 @@ import VideoUseLauncher from './VideoUseLauncher';
 import TeledyskPanel from './TeledyskPanel';
 import { StorytellerFrame } from './StorytellerFrame';
 import Marketplace from './Marketplace';
+import AntiMatrixMirror from './AntiMatrixMirror';
 import { MockupGenFrame } from './MockupGenFrame';
 import { QuantumStudioFrame } from './QuantumStudioFrame';
 import { WiesioCore } from './RdzenWiesi';
@@ -135,7 +136,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
 
   // 🌟 System 0.00G Moduły
   const [showSystem, setShowSystem] = useState<boolean>(false);
-  const [systemTab, setSystemTab] = useState<'crew' | 'inkubator' | 'story' | 'mockup' | 'studio' | 'dziennik' | 'market' | 'widok' | 'narada' | 'terminal' | 'archiwum' | 'klaudiusz' | 'autobus' | 'wydawnictwo' | 'rafineria'>('crew');
+  const [systemTab, setSystemTab] = useState<'crew' | 'inkubator' | 'story' | 'mockup' | 'studio' | 'dziennik' | 'market' | 'lustro' | 'widok' | 'narada' | 'terminal' | 'archiwum' | 'klaudiusz' | 'autobus' | 'wydawnictwo' | 'rafineria'>('crew');
 
 
 
@@ -1445,6 +1446,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
                 { id: 'studio', label: '🎨 Q-Studio', color: '#f59e0b' },
                 { id: 'dziennik', label: '📜 KRONIKI 0.00G', color: '#06b6d4' },
                 { id: 'market', label: '🛒 Sklep', color: '#f59e0b' },
+                { id: 'lustro', label: '🪞 Lustro', color: '#d946ef' },
                 { id: 'widok', label: '👁️ W.I.D.O.K.', color: '#0ea5e9' },
                 { id: 'narada', label: '🔮 STÓŁ NARAD', color: '#c026d3' },
                 { id: 'klaudiusz', label: '⚗️ KLAUDIUSZ', color: '#f0c060' },
@@ -1488,6 +1490,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               {systemTab === 'inkubator' && <KwantowyInkubator />}
               {systemTab === 'story' && <><StorytellerFrame /><VideoUseLauncher /><TeledyskPanel /></>}
               {systemTab === 'market' && <Marketplace />}
+              {systemTab === 'lustro' && <AntiMatrixMirror />}
               {systemTab === 'mockup' && <MockupGenFrame />}
               {systemTab === 'dziennik' && <DziennikFrame />}
               {systemTab === 'widok' && <WidokCore />}

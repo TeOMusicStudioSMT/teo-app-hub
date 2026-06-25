@@ -3856,6 +3856,18 @@ async function loadMarket() {
         await saveMarket();
         console.log('[Market] 🛒 Zasiano sklep: pierwszy produkt „Odpal Tu...Kurka!".');
     }
+    // Zapewnij Tarczę Prywatności „Złote Taco" (idempotentnie)
+    if (market.products && !market.products.find(p => p.id === 'zlote-taco-antilustro')) {
+        market.products.push({
+            id: 'zlote-taco-antilustro', module: 'prywatnosc', type: 'shield',
+            name: '🌮 Złote Taco — Anty-Lustro Matrixa',
+            desc: 'Tarcza Prywatności: audyt śledzenia, czyszczenie lokalnych śladów i generator wabika (szum profilujący). „Niech coś mają."',
+            priceGrv: 0, creator: 'TeO', votes: 0, createdAt: Date.now(),
+            payload: { action: 'open-antimatrix' },
+        });
+        await saveMarket();
+        console.log('[Market] 🌮 Dodano Tarczę „Złote Taco — Anty-Lustro Matrixa".');
+    }
     return market;
 }
 app.get('/api/market/products', async (req, res) => {
