@@ -58,6 +58,9 @@ export const QuantumForgeView: React.FC<{
     const [droppedFile, setDroppedFile] = useState<File | null>(null);
     // Ostatnio zmintowany tryplet (do pokazania ID w toaście)
     const [lastMintedIds, setLastMintedIds] = useState<string[]>([]);
+    // 📤 Share to Hub — wystaw wykuty asset w Marketplace (GRV)
+    const [shareToHub, setShareToHub] = useState(true);
+    const [hubPriceGrv, setHubPriceGrv] = useState('0');
 
     // Protokół J&W
     const [jwLogs, setJwLogs] = useState<string[]>([]);
@@ -168,6 +171,25 @@ export const QuantumForgeView: React.FC<{
 
             // ── Krok 6: Lokalny zapis (backward compat) ────────────────────
             mintGravitonNode(name, finalContent, assetType, stability, globalMode);
+
+            // ── Krok 6.5: 📤 Share to Hub — wystaw asset w Marketplace (GRV) ──
+            if (shareToHub) {
+                try {
+                    const price = Math.max(0, Number(hubPriceGrv) || 0);
+                    const r = await fetch('http://localhost:3001/api/market/create', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            module: 'forge', type: assetType.toLowerCase(),
+                            name: `${name}`, desc: `Wykuty asset ${assetType} (${stability}) z Quantum Forge`,
+                            priceGrv: price, creator: 'Mistrz Arkadiusz',
+                        }),
+                    });
+                    const md = await r.json().catch(() => ({}));
+                    setJwLogs(prev => [...prev, md?.success ? `[HUB] ✓ Udostępniono w Marketplace${price > 0 ? ` (${price} GRV)` : ' (FREE)'}.` : '[HUB] ⚠ Hub nieosiągalny — asset zmintowany lokalnie.']);
+                } catch {
+                    setJwLogs(prev => [...prev, '[HUB] ⚠ Most offline — pomijam udostępnianie w Hubie.']);
+                }
+            }
 
             // ── Krok 7: Toast sukcesu ──────────────────────────────────────
             toast.custom(() => (
@@ -288,6 +310,23 @@ export const QuantumForgeView: React.FC<{
 
                     <label className="text-xs font-mono text-slate-500 uppercase">Klasa Stabilności Węzła</label>
                     <StabilitySelector selected={stability} onSelect={setStability} />
+
+                    {/* 📤 SHARE TO HUB — wystaw wykuty asset w Marketplace */}
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/25 bg-emerald-950/10 px-3 py-2">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-mono text-emerald-300 select-none">
+                            <input type="checkbox" checked={shareToHub} onChange={e => setShareToHub(e.target.checked)} className="accent-emerald-500 w-3.5 h-3.5" />
+                            📤 Udostępnij w Hubie (Marketplace)
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                            <input
+                                type="number" min={0} value={hubPriceGrv} onChange={e => setHubPriceGrv(e.target.value)}
+                                disabled={!shareToHub}
+                                className="w-24 bg-black/40 border border-emerald-500/20 rounded px-2 py-1 text-xs text-emerald-200 outline-none focus:border-emerald-500 disabled:opacity-40"
+                                title="Cena w GRV (0 = za darmo)"
+                            />
+                            <span className="text-[10px] text-emerald-500/70 font-mono">GRV</span>
+                        </div>
+                    </div>
 
                     <button
                         onClick={handleMint}
