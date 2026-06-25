@@ -9,7 +9,8 @@ import { motion } from 'framer-motion';
 const BRIDGE = 'http://127.0.0.1:3001';
 const BUYER = 'Mistrz Arkadiusz'; // suwerenny węzeł-nabywca (genesis GRV)
 
-interface Product { id: string; module: string; type: string; name: string; desc: string; priceGrv: number; creator: string; votes: number; }
+interface Product { id: string; module: string; type: string; name: string; desc: string; priceGrv: number; priceGrvDyn?: number; creator: string; votes: number; }
+const effPrice = (p: Product) => p.priceGrvDyn ?? p.priceGrv; // cena dynamiczna (popyt)
 
 export const Marketplace: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -18,6 +19,18 @@ export const Marketplace: React.FC = () => {
   const [form, setForm] = useState({ module: 'katedra-chat', name: '', desc: '', priceGrv: '100', creator: 'Mistrz Arkadiusz' });
   const [balance, setBalance] = useState<number | 'INFINITE' | null>(null);
   const [owned, setOwned] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('otakos_owned_products') || '[]'); } catch { return []; } });
+  const [nextBurn, setNextBurn] = useState<number | null>(null);
+
+  const fetchBurn = useCallback(async () => {
+    try { const d = await (await fetch(`${BRIDGE}/api/market/status`)).json(); if (d.success) setNextBurn(d.nextBurnAt); } catch { /* offline */ }
+  }, []);
+
+  const burnNow = async () => {
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/market/burn`, { method: 'POST' })).json();
+      if (d.success) { setStatus(`🔥 Spalono ${d.burned}, zostało ${d.kept}. GRV wróciło twórcom.`); load(); fetchBurn(); }
+    } catch { setStatus('⚠ Most offline'); }
+  };
 
   const fetchBalance = useCallback(async () => {
     try { const d = await (await fetch(`${BRIDGE}/api/grv/${encodeURIComponent(BUYER)}`)).json(); if (d.success) setBalance(d.grv); }
@@ -28,7 +41,7 @@ export const Marketplace: React.FC = () => {
     try { const d = await (await fetch(`${BRIDGE}/api/market/products`)).json(); if (d.success) setProducts(d.products); }
     catch { setStatus('⚠ Most offline (:3001)'); }
   }, []);
-  useEffect(() => { load(); fetchBalance(); }, [load, fetchBalance]);
+  useEffect(() => { load(); fetchBalance(); fetchBurn(); }, [load, fetchBalance, fetchBurn]);
 
   const markOwned = (id: string) => {
     setOwned(prev => { const next = prev.includes(id) ? prev : [...prev, id]; localStorage.setItem('otakos_owned_products', JSON.stringify(next)); return next; });
@@ -36,15 +49,16 @@ export const Marketplace: React.FC = () => {
 
   const buy = async (p: Product) => {
     if (owned.includes(p.id)) return;
-    if (p.priceGrv <= 0) { markOwned(p.id); setStatus(`✅ Pobrano za darmo: ${p.name}`); return; }
+    const price = effPrice(p); // dynamiczna (popyt)
+    if (price <= 0) { markOwned(p.id); setStatus(`✅ Pobrano za darmo: ${p.name}`); return; }
     if (p.creator === BUYER) { setStatus('⚠ To Twój produkt — już go masz.'); markOwned(p.id); return; }
     try {
       const d = await (await fetch(`${BRIDGE}/api/grv/grant`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: BUYER, to: p.creator, amount: p.priceGrv }) })).json();
+        body: JSON.stringify({ from: BUYER, to: p.creator, amount: price }) })).json();
       if (!d.success) throw new Error(d.message || 'Zakup nieudany');
       markOwned(p.id);
       setBalance(d.fromBalance);
-      setStatus(`✅ Kupiono „${p.name}" za ${p.priceGrv.toLocaleString('pl-PL')} GRV. Saldo: ${typeof d.fromBalance === 'number' ? d.fromBalance.toLocaleString('pl-PL') : d.fromBalance} GRV`);
+      setStatus(`✅ Kupiono „${p.name}" za ${price.toLocaleString('pl-PL')} GRV. Saldo: ${typeof d.fromBalance === 'number' ? d.fromBalance.toLocaleString('pl-PL') : d.fromBalance} GRV`);
     } catch (e: any) { setStatus(`⚠ ${e.message}`); }
   };
 
@@ -71,7 +85,13 @@ export const Marketplace: React.FC = () => {
         <div>
           <div className="text-[10px] tracking-[0.3em] text-amber-500/60">∴ KATEDRA OTAKOS ∴</div>
           <h3 className="text-lg font-bold text-amber-300">🛒 MARKETPLACE 0.00G</h3>
-          <p className="text-[11px] text-zinc-400">Personalizuj Katedrę za GRV. TOP 10/moduł wg głosów — reszta co miesiąc spalana, GRV wraca twórcom.</p>
+          <p className="text-[11px] text-zinc-400">Personalizuj Katedrę za GRV. TOP 10/moduł wg głosów — reszta co miesiąc spalana, GRV wraca twórcom. Ceny rosną z popytem 📈.</p>
+          {nextBurn && (
+            <div className="text-[10px] text-orange-400/80 mt-1 flex items-center gap-2">
+              🔥 Spalanie za {Math.max(0, Math.ceil((nextBurn - Date.now()) / 86400000))} dni
+              <button onClick={burnNow} className="px-2 py-0.5 rounded border border-orange-500/40 text-orange-300 hover:bg-orange-950/40 text-[9px] font-bold">Spal teraz</button>
+            </div>
+          )}
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="text-[11px] font-bold text-amber-300" title="Saldo GRV Suwerena">
@@ -105,7 +125,9 @@ export const Marketplace: React.FC = () => {
                 <div className="min-w-0">
                   <div className="text-sm font-bold text-amber-200 truncate">{p.name} <span className="text-[9px] text-zinc-500">· {p.module}</span></div>
                   <div className="text-[11px] text-zinc-400 truncate">{p.desc}</div>
-                  <div className="text-[9px] text-zinc-600">twórca: {p.creator} · {p.priceGrv > 0 ? `${p.priceGrv.toLocaleString('pl-PL')} GRV` : 'FREE'}</div>
+                  <div className="text-[9px] text-zinc-600">twórca: {p.creator} · {effPrice(p) > 0
+                    ? (<>{effPrice(p) > p.priceGrv && <span className="line-through text-zinc-700 mr-1">{p.priceGrv.toLocaleString('pl-PL')}</span>}<span className="text-amber-400/80">{effPrice(p).toLocaleString('pl-PL')} GRV</span>{effPrice(p) > p.priceGrv && <span className="text-emerald-400 ml-1" title="cena rośnie z popytem">📈</span>}</>)
+                    : 'FREE'}</div>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -117,9 +139,9 @@ export const Marketplace: React.FC = () => {
                 {tab !== 'vote' && (
                   owned.includes(p.id)
                     ? <span className="px-3 py-1 rounded border border-emerald-500/40 text-emerald-300 text-xs font-bold">✓ Masz</span>
-                    : <button onClick={() => buy(p)} title={p.priceGrv > 0 ? `Kup za ${p.priceGrv} GRV` : 'Pobierz za darmo'}
+                    : <button onClick={() => buy(p)} title={effPrice(p) > 0 ? `Kup za ${effPrice(p)} GRV` : 'Pobierz za darmo'}
                         className="px-3 py-1 rounded border border-amber-500/50 bg-amber-950/40 text-amber-300 text-xs font-bold hover:bg-amber-900/50">
-                        {p.priceGrv > 0 ? '🛒 Kup' : '⬇ Pobierz'}
+                        {effPrice(p) > 0 ? '🛒 Kup' : '⬇ Pobierz'}
                       </button>
                 )}
               </div>

@@ -3870,12 +3870,19 @@ async function loadMarket() {
     }
     return market;
 }
+// 📈 Cena DYNAMICZNA: popyt (głosy) podbija cenę. +5%/głos, sufit 3× bazy.
+function dynPriceGrv(p) {
+    const base = Number(p.priceGrv) || 0;
+    if (base <= 0) return 0;
+    const demand = 1 + Math.min(2, (p.votes || 0) * 0.05);
+    return Math.round(base * demand);
+}
 app.get('/api/market/products', async (req, res) => {
     const m = await loadMarket();
     const mod = req.query.module;
     let list = mod ? m.products.filter(p => p.module === mod) : m.products;
     list = [...list].sort((a, b) => b.votes - a.votes).slice(0, 10);  // TOP 10 wg głosów
-    res.json({ success: true, products: list, total: m.products.length });
+    res.json({ success: true, products: list.map(p => ({ ...p, priceGrvDyn: dynPriceGrv(p) })), total: m.products.length });
 });
 app.post('/api/market/create', async (req, res) => {
     const { module, type, name, desc, priceGrv, creator, payload } = req.body ?? {};
@@ -3894,8 +3901,10 @@ app.post('/api/market/vote', async (req, res) => {
     p.votes = (p.votes || 0) + 1; await saveMarket();
     res.json({ success: true, id, votes: p.votes });
 });
-app.post('/api/market/burn', async (req, res) => {
-    // Co miesiąc: zostaw top 10/moduł, resztę spal → GRV wraca twórcom.
+// 🔥 Spalanie: zostaw top 10/moduł, resztę spal → GRV (cena bazowa) wraca twórcom.
+const BURN_PERIOD_MS = 30 * 24 * 3600 * 1000;
+let lastBurnAt = Date.now();
+async function runBurn() {
     const m = await loadMarket();
     const byMod = {};
     for (const p of m.products) (byMod[p.module] = byMod[p.module] || []).push(p);
@@ -3908,8 +3917,17 @@ app.post('/api/market/burn', async (req, res) => {
             if (b.priceGrv > 0 && b.creator) { try { const L = await loadGrvLedger(); if (L.nodes[b.creator] && L.nodes[b.creator].grv !== 'INFINITE') { L.nodes[b.creator].grv = Number(L.nodes[b.creator].grv) + b.priceGrv; await saveGrvLedger(); } } catch {} }
         }
     }
-    m.products = keep; await saveMarket();
-    res.json({ success: true, kept: keep.length, burned: burned.length, burnedIds: burned });
+    m.products = keep; lastBurnAt = Date.now(); await saveMarket();
+    return { kept: keep.length, burned: burned.length, burnedIds: burned };
+}
+// Auto-spalanie miesięczne (cron wewnętrzny).
+setInterval(() => { runBurn().then(r => console.log(`[Market] 🔥 Auto-spalanie: spalono ${r.burned}, zostało ${r.kept}.`)).catch(() => {}); }, BURN_PERIOD_MS);
+app.post('/api/market/burn', async (req, res) => {
+    const r = await runBurn();
+    res.json({ success: true, ...r });
+});
+app.get('/api/market/status', (req, res) => {
+    res.json({ success: true, lastBurnAt, nextBurnAt: lastBurnAt + BURN_PERIOD_MS, periodMs: BURN_PERIOD_MS });
 });
 
 /** POST /api/claude/launch — odpala Claude Code w Katedrze (ollama launch claude). */
