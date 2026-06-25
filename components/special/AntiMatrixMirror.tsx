@@ -40,9 +40,35 @@ const DECOY_POOL = [
 const PROTECT = ['otakos', 'teo', 'aether', 'inkubator', 'grv', 'kronika', 'wallet', 'identity', 'market'];
 const isProtected = (k: string) => PROTECT.some(p => k.toLowerCase().includes(p));
 
+// ── 🤖 Agenci Szumu: Generator składa frazy, Kontroler ocenia. Czasem leży diament. ──
+const OFFERS = ['Wynajem', 'Subskrypcja', 'Kurs', 'Hodowla', 'Dostawa', 'Abonament', 'Warsztaty', 'Aukcja', 'Coaching', 'Naprawa'];
+const ABSURD = ['chmur dla kucyków', 'kwantowych skarpetek', 'mgły na wesela', 'snów na zamówienie', 'ciszy w słoiku', 'tęczy dla kretów', 'echa z jaskini', 'cieni do wynajęcia', 'grawitacji na raty'];
+// Ziarna „realne" — gdy Generator po nie sięgnie, Kontroler znajduje DIAMENT.
+const SEEDS_REAL = ['lokalnego studia muzycznego 0.00G', 'kursu suwerennego AI offline', 'archiwizacji rodzinnych nagrań', 'warsztatów montażu teledysków', 'hostingu bez chmury', 'naprawy starego sprzętu audio'];
+const TWISTS = ['— dostawa dronem', '— edycja 0.00G', '— tylko dziś', '— pakiet rodzinny', '— z gwarancją kosmiczną', ''];
+const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+
+interface NoiseItem { phrase: string; gem: boolean; verdict: string; }
+
+function generateNoise(n = 6): NoiseItem[] {
+  const out: NoiseItem[] = [];
+  for (let i = 0; i < n; i++) {
+    const gem = Math.random() < 0.22; // ~1 na 5 to ziarno realne
+    const core = gem ? pick(SEEDS_REAL) : pick(ABSURD);
+    const phrase = `${pick(OFFERS)} ${core} ${pick(TWISTS)}`.trim();
+    // Kontroler ocenia:
+    const verdict = gem
+      ? '💎 Kontroler: „To nie szum — to realny pomysł. Zachowaj!"'
+      : pick(['🗑️ Kontroler: czysty absurd, idealny wabik.', '🗑️ Kontroler: Matrix to schrupie, brawo.', '🗑️ Kontroler: bezużyteczne dla śledzących — czyli idealne.']);
+    out.push({ phrase, gem, verdict });
+  }
+  return out;
+}
+
 export const AntiMatrixMirror: React.FC = () => {
   const [cleared, setCleared] = useState<number | null>(null);
   const [decoys, setDecoys] = useState<string[]>([]);
+  const [noise, setNoise] = useState<NoiseItem[]>([]);
 
   const cleanTrace = () => {
     let n = 0;
@@ -65,6 +91,13 @@ export const AntiMatrixMirror: React.FC = () => {
     const shuffled = [...DECOY_POOL].sort(() => Math.random() - 0.5).slice(0, 5);
     setDecoys(shuffled);
     toast('🌮 Złote Taco upieczone — wabik gotowy.', { icon: '🌮' });
+  };
+
+  const runAgents = () => {
+    const items = generateNoise(6);
+    setNoise(items);
+    const gems = items.filter(i => i.gem).length;
+    toast(gems > 0 ? `💎 Kontroler znalazł ${gems} diament(y) w szumie!` : '🤖 Agenci wygenerowali świeży szum.', { icon: gems > 0 ? '💎' : '🤖' });
   };
 
   return (
@@ -105,6 +138,10 @@ export const AntiMatrixMirror: React.FC = () => {
           className="px-4 py-2 rounded-lg border border-amber-500/50 bg-amber-950/30 text-amber-300 text-xs font-bold hover:bg-amber-900/50 transition-colors">
           🌮 Upiecz Złote Taco (wabik)
         </button>
+        <button onClick={runAgents}
+          className="px-4 py-2 rounded-lg border border-fuchsia-500/50 bg-fuchsia-950/30 text-fuchsia-300 text-xs font-bold hover:bg-fuchsia-900/50 transition-colors">
+          🤖 Wpuść Agentów (Generator + Kontroler)
+        </button>
       </div>
 
       {/* Wabik */}
@@ -122,6 +159,27 @@ export const AntiMatrixMirror: React.FC = () => {
           <div className="text-[9px] text-zinc-500 mt-2 italic">
             Wabik wygenerowany lokalnie. Pełne zaśmiecanie profilu wymaga wpięcia w ruch tła (roadmap) — tu masz gotowy ładunek absurdu. 🌮
           </div>
+        </div>
+      )}
+
+      {/* 🤖 Agenci Szumu — Generator + Kontroler */}
+      {noise.length > 0 && (
+        <div className="mt-3 rounded-lg border border-fuchsia-900/50 bg-fuchsia-950/10 p-3">
+          <div className="text-[10px] text-fuchsia-400/80 tracking-wider mb-2">🤖 AGENCI SZUMU — Generator składa, Kontroler ocenia:</div>
+          <div className="space-y-1.5">
+            {noise.map((it, i) => (
+              <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}
+                className={`rounded px-2.5 py-1.5 border ${it.gem ? 'border-amber-400/50 bg-amber-950/20' : 'border-zinc-800/70 bg-black/30'}`}>
+                <div className={`text-[12px] ${it.gem ? 'text-amber-200 font-bold' : 'text-zinc-300'}`}>
+                  {it.gem ? '💎' : '🗑️'} {it.phrase}
+                </div>
+                <div className={`text-[10px] mt-0.5 ${it.gem ? 'text-amber-300/80' : 'text-zinc-500 italic'}`}>{it.verdict}</div>
+              </motion.div>
+            ))}
+          </div>
+          {noise.some(i => i.gem) && (
+            <div className="text-[10px] text-amber-400/80 mt-2 italic">💎 Diamenty zachowaj — z zabawy w szum rodzi się czasem realny pomysł.</div>
+          )}
         </div>
       )}
     </div>
