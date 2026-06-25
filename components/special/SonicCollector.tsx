@@ -11,9 +11,17 @@ import { toast } from 'react-hot-toast';
 
 interface SonicVector {
   name: string; durationSec: number; energy: number; peak: number; brightness: number; envelope: number[]; at: number;
+  tagged?: { owner: string; sig: string; at: number }; // Etap 2: prawa zatwierdzone
 }
 
 const STORE = 'otakos_sonic_vectors';
+
+async function sealSig(s: string): Promise<string> {
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 20);
+  } catch { return 'pieczec-zywa'; }
+}
 
 async function analyze(file: File): Promise<SonicVector> {
   const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -53,6 +61,15 @@ export const SonicCollector: React.FC = () => {
   const [busy, setBusy] = useState(false);
 
   const save = (list: SonicVector[]) => { setVectors(list); try { localStorage.setItem(STORE, JSON.stringify(list)); } catch { /* noop */ } };
+
+  // 🏷️ Etap 2: zatwierdź prawa do wektora — suwerenna pieczęć własności.
+  const tagVector = async (i: number) => {
+    const owner = (() => { try { return localStorage.getItem('otakos_sovereign_name') || 'Mistrz Arkadiusz'; } catch { return 'Mistrz Arkadiusz'; } })();
+    const v = vectors[i];
+    const sig = await sealSig(v.name + v.envelope.join(',') + owner + Date.now());
+    save(vectors.map((x, j) => j === i ? { ...x, tagged: { owner, sig, at: Date.now() } } : x));
+    toast.success(`🏷️ Prawa zatwierdzone (Etap 2): „${v.name}" → ${owner}`);
+  };
 
   const onFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('audio'));
@@ -115,6 +132,13 @@ export const SonicCollector: React.FC = () => {
                 <span>energia: <span className="text-cyan-400">{v.energy}</span></span>
                 <span>jasność: <span className="text-cyan-400">{v.brightness}</span></span>
                 <span>peak: <span className="text-cyan-400">{v.peak}</span></span>
+              </div>
+              <div className="mt-2">
+                {v.tagged ? (
+                  <span className="text-[9px] text-emerald-400" title={`Pieczęć: ${v.tagged.sig}`}>🏷️ Prawa zatwierdzone (Etap 2) · {v.tagged.owner}</span>
+                ) : (
+                  <button onClick={() => tagVector(i)} className="text-[9px] px-2 py-0.5 rounded border border-indigo-500/40 text-indigo-300 hover:bg-indigo-950/40 font-bold transition-colors">🏷️ Zatwierdź prawa (Etap 2)</button>
+                )}
               </div>
             </motion.div>
           ))}
