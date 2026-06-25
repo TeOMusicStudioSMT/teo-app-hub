@@ -99,6 +99,19 @@ export const STANDARD_SKINS: TaskSkin[] = [
       'rozwiązujesz, łagodzisz. Most między Mistrzem a systemem.',
     builtin: true,
   },
+  {
+    id: 'legal',
+    name: 'Legal',
+    icon: '⚖️',
+    color: '#6366f1',
+    desc: 'Umowy, licencje, zgodność, prawa twórcy',
+    systemPrompt:
+      'Jesteś Radcą Katedry OtakOS — specjalistą od umów, licencji, zgodności i praw ' +
+      'twórcy w ekosystemie 0.00G/GRV. Tłumaczysz prosto, chronisz suwerenność i ' +
+      'twórczość Mistrza, wskazujesz ryzyka oraz checklisty. ZAWSZE dodajesz zastrzeżenie: ' +
+      '„to nie porada prawna — przy realnym sporze żywy prawnik". Po polsku, konkretnie.',
+    builtin: true,
+  },
 ];
 
 const STORE_KEY = 'otakos_task_skins'; // tylko własne (custom)
