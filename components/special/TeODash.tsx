@@ -52,6 +52,7 @@ import TeledyskPanel from './TeledyskPanel';
 import { StorytellerFrame } from './StorytellerFrame';
 import Marketplace from './Marketplace';
 import AntiMatrixMirror from './AntiMatrixMirror';
+import { currentTier, setTier, canAccess, requiredPillar, TIERS, type TierId } from '../../lib/tiers';
 import { MockupGenFrame } from './MockupGenFrame';
 import { QuantumStudioFrame } from './QuantumStudioFrame';
 import { WiesioCore } from './RdzenWiesi';
@@ -152,6 +153,15 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   const [isSpawanie, setIsSpawanie] = useState(false);
   const [videoList, setVideoList] = useState<string[]>([]);
   const [videoEngOpen, setVideoEngOpen] = useState(false); // 🔽 Inżynieria Wideo — DOMYŚLNIE ZWINIĘTA
+  // 🏛️ FILARY — aktualny tier + podgląd (gra Odkrywania)
+  const [tier, setTierState] = useState(() => currentTier());
+  const cycleTier = () => {
+    const order: TierId[] = ['poznawczy', 'tworczy', 'mistrzowski'];
+    const next = order[(order.indexOf(tier.id) + 1) % order.length];
+    const nt = TIERS.find(t => t.id === next)!;
+    setTier(next); setTierState(nt);
+    if (!canAccess(systemTab, nt)) setSystemTab('dziennik'); // wróć do modułu Filaru I
+  };
 
   // Pobierz listę plików do spawania na starcie
   useEffect(() => {
@@ -1428,6 +1438,17 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
           >
+            {/* 🏛️ Pasek FILARU — godło + podgląd gry Odkrywania */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8, padding: '6px 10px', borderRadius: 8, background: 'rgba(0,0,0,0.25)', border: `1px solid ${tier.color}44` }}>
+              <div style={{ fontSize: 11, fontWeight: 'bold', color: tier.color, fontFamily: 'monospace' }}>
+                🏛️ {tier.name.pl} <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>· {tier.title.pl}</span>
+              </div>
+              <button onClick={cycleTier} title="Podgląd gry z perspektywy filaru"
+                style={{ fontSize: 9, fontWeight: 'bold', padding: '3px 8px', borderRadius: 12, border: `1px solid ${tier.color}66`, background: 'transparent', color: tier.color, cursor: 'pointer', fontFamily: 'monospace' }}>
+                ⇅ podgląd filaru
+              </button>
+            </div>
+
             {/* Przełącznik Modułów */}
             <div style={{
               display: 'flex',
@@ -1455,27 +1476,31 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
                 { id: 'archiwum',    label: '💾 Archiwum Akaszy', color: '#d946ef' },
                 { id: 'wydawnictwo', label: '📖 Wydawnictwo',     color: '#fb923c' }, // ← Kuźnia
                 { id: 'rafineria',   label: '🔥 Rafineria',        color: '#f97316' }, // ← WebM → MP4
-              ].map(tab => (
+              ].map(tab => {
+                const locked = !canAccess(tab.id, tier);
+                return (
                 <button
                   key={tab.id}
-                  onClick={() => setSystemTab(tab.id as any)}
+                  onClick={() => locked ? toast(`🔒 Odblokujesz na Filarze ${requiredPillar(tab.id)}`, { icon: '🏛️' }) : setSystemTab(tab.id as any)}
+                  title={locked ? `Wymaga Filaru ${requiredPillar(tab.id)}` : tab.label}
                   style={{
                     flex: '1 1 calc(33% - 4px)',
                     padding: '8px 4px',
                     borderRadius: '6px',
                     border: 'none',
                     background: systemTab === tab.id ? `rgba(255,255,255,0.1)` : 'transparent',
-                    color: systemTab === tab.id ? tab.color : '#64748b',
+                    color: locked ? '#3f3f46' : (systemTab === tab.id ? tab.color : '#64748b'),
                     fontSize: '10px',
                     fontWeight: 'bold',
-                    cursor: 'pointer',
+                    cursor: locked ? 'not-allowed' : 'pointer',
+                    opacity: locked ? 0.55 : 1,
                     transition: 'all 0.2s',
                     borderBottom: systemTab === tab.id ? `2px solid ${tab.color}` : '2px solid transparent'
                   }}
                 >
-                  {tab.label}
+                  {locked ? `🔒 ${tab.label}` : tab.label}
                 </button>
-              ))}
+              );})}
             </div>
 
             {/* Widok Modułu */}
