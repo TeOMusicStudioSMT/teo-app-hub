@@ -56,3 +56,5 @@ _OtakOs_Wymiar/**
 _AntiGravity_*/
 _AntyGravity*/
 _temp/
+# Runtime brief dla Claude Code (chat->agent)
+KURKA_BRIEF.md

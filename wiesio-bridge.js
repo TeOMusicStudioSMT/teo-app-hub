@@ -3901,13 +3901,25 @@ app.post('/api/market/burn', async (req, res) => {
 });
 
 /** POST /api/claude/launch — odpala Claude Code w Katedrze (ollama launch claude). */
-app.post('/api/claude/launch', (req, res) => {
-    const model = (req.body ?? {}).model || process.env.OTAKOS_MODEL || 'gemma4';
+app.post('/api/claude/launch', async (req, res) => {
+    const { model: m, task } = req.body ?? {};
+    const model = m || process.env.OTAKOS_MODEL || 'gemma4';
+    let brief = null;
     try {
+        // 🌉 Most chat→agent: zapisz zadanie z czatu jako brief, by odpalony
+        // Claude Code DZIAŁAŁ (czat-gemma tylko opisuje — nie ma narzędzi).
+        if (task && String(task).trim()) {
+            brief = path.join(process.cwd(), 'KURKA_BRIEF.md');
+            const body = `# 🦀 BRIEF dla Klaudiusza (Claude Code)\n\n` +
+                `_Z KatedraChat • ${new Date().toLocaleString('pl-PL')} • model: ${model}_\n\n` +
+                `## Zadanie od Suwerena\n\n${String(task).trim()}\n\n---\n` +
+                `Działaj REALNIE na repo (Read/Edit/Bash). To brief — nie opisuj, wykonaj.\n`;
+            await fs.writeFile(brief, body, 'utf8');
+        }
         const child = spawn('ollama', ['launch', 'claude'], { detached: true, shell: true, stdio: 'ignore', env: { ...process.env, OTAKOS_MODEL: model } });
         child.unref();
-        console.log(`[Claude] 🦀 Odpalono Claude Code (model: ${model}).`);
-        res.json({ success: true, started: true, model, note: 'Odpalono `ollama launch claude`. Jeśli komenda nieobsługiwana — zaktualizuj Ollamę.' });
+        console.log(`[Claude] 🦀 Odpalono Claude Code (model: ${model})${brief ? ' + brief (KURKA_BRIEF.md)' : ''}.`);
+        res.json({ success: true, started: true, model, brief, note: brief ? 'Odpalono. Zadanie zapisane w KURKA_BRIEF.md — Klaudiusz ma co robić.' : 'Odpalono `ollama launch claude`. Jeśli komenda nieobsługiwana — zaktualizuj Ollamę.' });
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

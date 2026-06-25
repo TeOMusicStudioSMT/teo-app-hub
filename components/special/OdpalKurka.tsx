@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
-export const OdpalKurka: React.FC = () => {
+export const OdpalKurka: React.FC<{ task?: string }> = ({ task }) => {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
 
@@ -16,9 +16,9 @@ export const OdpalKurka: React.FC = () => {
     try {
       const model = localStorage.getItem('otakos_active_model') || 'gemma4';
       const d = await (await fetch(`${BRIDGE}/api/claude/launch`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, task }),
       })).json();
-      setMsg(d.success ? `✅ Odpalono (model: ${d.model}).` : `⚠ ${d.message}`);
+      setMsg(d.success ? `✅ Odpalono (model: ${d.model}).${d.brief ? ' Zadanie przekazane 📋' : ''}` : `⚠ ${d.message}`);
     } catch (e: any) { setMsg(`⚠ ${e.message} — uruchom Wiesia (:3001) + Ollamę.`); }
     finally { setBusy(false); }
   };

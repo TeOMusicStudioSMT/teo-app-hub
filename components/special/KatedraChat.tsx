@@ -1387,7 +1387,7 @@ const KatedraChat: React.FC = () => {
 
                     {/* Akcje */}
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <OdpalKurka />
+                        <OdpalKurka task={[...messages].reverse().find(m => m.sender === 'human')?.content} />
                         <button onClick={() => setShowSettings(s => !s)}
                             title="Ustawienia modeli"
                             className={`p-1.5 rounded-md transition-colors ${
