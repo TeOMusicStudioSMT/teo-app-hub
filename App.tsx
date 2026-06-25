@@ -24,6 +24,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { AvatarSelectionModal } from './components/identity/AvatarSelectionModal';
 import { autoConnectWalletAtom, walletAtom } from './store/wallet';
 import { signInWithGoogle, signOut, subscribeToAuthChanges, signInWithEmail, signUpWithEmail, loginWithWallet } from './services/authService';
+import { applyAccountRole } from './lib/roles';
 import { initializeUserInFirestore } from './services/firebaseService';
 import { User } from 'firebase/auth';
 import { useWeb3Auth } from './hooks/useWeb3Auth';
@@ -146,6 +147,11 @@ const App: React.FC = () => {
     useEffect(() => {
         const unsubscribe = subscribeToAuthChanges((currentUser) => {
             setUser(currentUser);
+            // 🔐 Rola konta → Filar + tożsamość (TeO „łączy" / Mistrz Arkadiusz / węzeł).
+            if (currentUser?.email) {
+                const role = applyAccountRole(currentUser.email);
+                console.log(`[Role] ${role.label} · Filar: ${role.tier} · ingerencja w system: ${role.canInterfereSystem}`);
+            }
         });
         return () => unsubscribe();
     }, []);

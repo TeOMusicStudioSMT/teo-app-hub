@@ -8,6 +8,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
+import { currentRole } from '../../lib/roles';
 
 const ASSIGN_KEY = 'otakos_teo_trust';
 const BRIDGE = 'http://127.0.0.1:3001';
@@ -58,6 +59,11 @@ export const TeoTrust: React.FC = () => {
         <div className="text-[10px] tracking-[0.3em] text-amber-600/60">∴ PUNKT STARTOWY KAŻDEGO ∴</div>
         <h3 className="text-lg font-bold text-amber-300">🏛️ TeO Trust — Certyfikat Beneficjenta</h3>
         <p className="text-[11px] text-zinc-400">Twój suwerenny dokument startowy. Wypełnij Beneficjenta, zapieczętuj — pergamin przypisze się do Katedry.</p>
+        {(() => { const r = currentRole(); return r ? (
+          <div className="mt-2 inline-flex items-center gap-2 text-[10px] font-mono px-2.5 py-1 rounded-full border border-amber-600/40 bg-amber-950/20 text-amber-300" title={r.note}>
+            🔑 {r.label} · Filar: {r.tier}{!r.canInterfereSystem && <span className="text-zinc-500">· bez ingerencji w system</span>}
+          </div>
+        ) : null; })()}
       </div>
 
       {/* PERGAMIN */}
