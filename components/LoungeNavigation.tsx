@@ -43,7 +43,8 @@ type View =
     | 'sonic'
     | 'kancelaria'
     | 'trust'
-    | 'pralka';
+    | 'pralka'
+    | 'kompas';
 
 interface LoungeNavigationProps {
     activeView: View;
@@ -62,6 +63,7 @@ const PRIMARY_NAV: { id: View; label: string; icon: React.ReactNode }[] = [
 
 // ── Pozycje schowane w panelu "Więcej" ────────────────────────────────
 const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string }[] = [
+    { id: 'kompas',        label: 'Kompas Suwerena', icon: <span className="text-base">🧭</span>, desc: 'Mapa gry Odkrywania — od Karmy do Miłości 2.0' },
     { id: 'trust',         label: 'TeO Trust',      icon: <span className="text-base">🏛️</span>, desc: 'Certyfikat Beneficjenta — punkt startowy' },
     { id: 'pralka',        label: 'Pralka Kompasji', icon: <span className="text-base">🤍</span>, desc: 'Sumienie energetyczne — uzdrawia, nie karze (Filar I)' },
     { id: 'sonic',         label: 'Kolektor Soniczny', icon: <span className="text-base">🎼</span>, desc: 'Zbiór wektorów z własnej muzyki (Filar I)' },
