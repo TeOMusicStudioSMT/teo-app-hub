@@ -53,7 +53,7 @@ export const PralkaKompasji: React.FC = () => {
       </div>
 
       <textarea value={thought} onChange={e => { setThought(e.target.value); setOpen(false); }}
-        rows={2} placeholder="Co czujesz? Co chcesz zrobić? (np. „mam ochotę komuś coś zabrać", albo cokolwiek, co Ci ciąży)"
+        rows={2} placeholder="Co czujesz? Co chcesz zrobić? Cokolwiek, co Ci ciąży — włóż to tutaj."
         className="w-full bg-black/40 border border-sky-500/20 rounded-lg px-3 py-2 text-[12px] text-sky-100 outline-none focus:border-sky-500 resize-y mb-2" />
       <button onClick={wash}
         className="px-4 py-2 rounded-lg border border-sky-500/50 bg-sky-950/30 text-sky-300 text-xs font-bold hover:bg-sky-900/50 transition-colors">
