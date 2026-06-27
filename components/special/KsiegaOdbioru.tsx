@@ -64,6 +64,20 @@ export const KsiegaOdbioru: React.FC = () => {
         setBusyId(null);
     };
 
+    const toUE = async (plan: KoomPlan) => {
+        setBusyId(plan.id + '-ue');
+        try {
+            const model = localStorage.getItem('otakos_active_model') || 'gemma4';
+            const d = await (await fetch('http://127.0.0.1:3001/api/forge/ue-script', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: plan.text, model }),
+            })).json();
+            if (d.success) toast.success(`🎮 Wdrukowano w UE: ${String(d.file).split(/[\\/]/).pop()} — uruchom w Unreal.`, { duration: 5000 });
+            else toast.error(d.message || 'Generacja nieudana');
+        } catch { toast.error('Most/Ollama niedostępny (:3001).'); }
+        finally { setBusyId(null); }
+    };
+
     const multiModel = async (plan: KoomPlan) => {
         setBusyId(plan.id + '-mm');
         toast('🔀 Zwołuję radę lokalnych modeli (darmowe)...', { icon: '🧠' });
@@ -129,6 +143,10 @@ export const KsiegaOdbioru: React.FC = () => {
                             <button onClick={() => multiModel(plan)} disabled={busyId === plan.id + '-mm'}
                                 className="px-2.5 py-1 text-[10px] rounded-lg bg-violet-900/40 hover:bg-violet-800/60 text-violet-300 border border-violet-500/40 flex items-center gap-1 disabled:opacity-40">
                                 {busyId === plan.id + '-mm' ? <RefreshCw size={11} className="animate-spin" /> : <Network size={11} />} 🔀 Multi-Model
+                            </button>
+                            <button onClick={() => toUE(plan)} disabled={busyId === plan.id + '-ue'}
+                                className="px-2.5 py-1 text-[10px] rounded-lg bg-fuchsia-900/40 hover:bg-fuchsia-800/60 text-fuchsia-300 border border-fuchsia-500/40 flex items-center gap-1 disabled:opacity-40">
+                                {busyId === plan.id + '-ue' ? <RefreshCw size={11} className="animate-spin" /> : '🎮'} Wdrukuj w UE
                             </button>
                         </div>
 
