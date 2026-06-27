@@ -25,6 +25,7 @@ import TeoTrust from './special/TeoTrust';
 import PralkaKompasji from './special/PralkaKompasji';
 import KompasSuwerena from './special/KompasSuwerena';
 import TeoArcadeForge from './special/TeoArcadeForge';
+import AntresolaPanel from './special/AntresolaPanel';
 import { GravitonWalletView } from './GravitonWalletView';
 import { useAssistant } from '../hooks/useAssistant';
 import { InstallPWA } from './InstallPWA';
@@ -126,6 +127,7 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
         // To wymusza, że ten DIV zajmie cały ekran i będzie miał własny scrollbar.
         // 'z-0' upewnia się, że jest pod innymi elementami fixed (jak modale).
         <div className="absolute inset-0 w-full h-full p-4 md:p-8 pt-24 pb-40 text-slate-100 overflow-y-auto animate-[fade-in_1s_ease-out] z-0">
+            <AntresolaPanel />
             <div className="max-w-7xl mx-auto relative">
 
                 {isHudVisible && (
