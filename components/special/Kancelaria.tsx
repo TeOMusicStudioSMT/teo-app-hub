@@ -9,6 +9,7 @@
  */
 import React, { useState } from 'react';
 import { toast } from 'react-hot-toast';
+import StraznikLicencji from './StraznikLicencji';
 
 const WORK_TYPES = ['Muzyka', 'Wideo / Teledysk', 'Aplikacja / Kod', 'Tekst / Kronika', 'Grafika'];
 
@@ -133,6 +134,9 @@ Wymiar:  0.00G (suwerenny, lokalny)
           {allChecked ? '✅ Gotowe do wystawienia — sumienie czyste.' : '… uzupełnij listę, by wystawić bezpiecznie.'}
         </div>
       </div>
+
+      {/* 🛡️ Agent-limit licencji Unreal Engine (Game Forge) */}
+      <StraznikLicencji />
     </div>
   );
 };
