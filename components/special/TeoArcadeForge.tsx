@@ -7,7 +7,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { pickModelForTask, setActiveModel } from '../../lib/modelRouter';
+import { pickModelForTask, setActiveModel, getActiveModel } from '../../lib/modelRouter';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
@@ -20,6 +20,28 @@ const LEVELS = [
 export const TeoArcadeForge: React.FC = () => {
   const [models, setModels] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [scenePrompt, setScenePrompt] = useState(
+    'Zbuduj Poziom 1 — Cyber-Schron Emmerich (ciemna serwerownia cyberpunk). Przyciemnij DirectionalLight do intensywności 0.5. Dodaj 4 światła punktowe wzdłuż ścian: 2 fioletowe i 2 cyjanowe, intensywność 5000. Na środku dodaj sześcian jako biurko Konstruktora (skala 2,1,1) i mniejszy sześcian jako terminal na biurku.'
+  );
+  const [ueCode, setUeCode] = useState('');
+  const [ueFile, setUeFile] = useState('');
+  const [gen, setGen] = useState(false);
+
+  const generateScene = async () => {
+    if (!scenePrompt.trim()) return;
+    setGen(true); setUeCode(''); setUeFile('');
+    const model = pickModelForTask('design', models) || getActiveModel();
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/forge/ue-script`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: scenePrompt, model }),
+      })).json();
+      if (!d.success) throw new Error(d.message || 'Generacja nieudana');
+      setUeCode(d.code); setUeFile(d.file);
+      toast.success(`🐍 Skrypt UE gotowy (mózg: ${d.model}). Zapisany na dysku.`);
+    } catch (e: any) { toast.error(`⚠ ${e.message} — uruchom most + Ollamę.`); }
+    finally { setGen(false); }
+  };
 
   useEffect(() => {
     (async () => {
@@ -83,6 +105,29 @@ export const TeoArcadeForge: React.FC = () => {
           className="px-4 py-2 rounded-lg border border-cyan-500/50 bg-cyan-950/30 text-cyan-300 text-xs font-bold hover:bg-cyan-900/50 disabled:opacity-50 transition-colors">
           {busy ? '⟳ …' : '🎮 Otwórz Unreal Engine'}
         </button>
+      </div>
+
+      {/* 🐍 Agent buduje scenę (UE-Python, lokalnie) */}
+      <div className="rounded-lg border border-violet-900/50 bg-black/30 p-3 mb-3">
+        <div className="text-[11px] text-violet-300/80 tracking-wider mb-1.5">🐍 AGENT BUDUJE SCENĘ (UE-Python, lokalnie z Katedry)</div>
+        <textarea value={scenePrompt} onChange={e => setScenePrompt(e.target.value)} rows={3}
+          className="w-full bg-black/40 border border-violet-500/20 rounded px-2.5 py-2 text-[11px] text-violet-100 outline-none focus:border-violet-500 resize-y mb-2" />
+        <button onClick={generateScene} disabled={gen}
+          className="px-4 py-2 rounded-lg border border-violet-500/50 bg-violet-950/30 text-violet-300 text-xs font-bold hover:bg-violet-900/50 disabled:opacity-50 transition-colors">
+          {gen ? '⟳ Mózg pisze skrypt…' : '🐍 Niech Agent napisze skrypt UE'}
+        </button>
+        {ueCode && (
+          <div className="mt-2">
+            <div className="text-[9px] text-emerald-400/80 mb-1">✅ Zapisano na dysku: <span className="text-zinc-400">{ueFile}</span></div>
+            <pre className="text-[9px] text-violet-100/85 bg-black/50 border border-violet-900/50 rounded p-2 max-h-40 overflow-auto whitespace-pre-wrap">{ueCode}</pre>
+            <button onClick={() => navigator.clipboard?.writeText(ueCode).then(() => toast.success('Skopiowano skrypt.'))}
+              className="text-[10px] mt-1 px-2 py-0.5 rounded border border-violet-500/40 text-violet-300 hover:bg-violet-950/40">📋 Kopiuj</button>
+            <div className="text-[9px] text-zinc-500 mt-2 leading-relaxed">
+              ▶ Uruchom w UE: <b>Narzędzia → Wykonaj skrypt Pythona</b> (wskaż plik powyżej), lub w konsoli UE: <code className="text-cyan-400">py "{ueFile}"</code>.
+              <br />⚙ Najpierw RAZ: UE → Edycja → Wtyczki → włącz <b>„Python Editor Script Plugin"</b> → restart UE.
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Strażnicy aktywni */}

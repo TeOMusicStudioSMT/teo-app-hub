@@ -4051,6 +4051,36 @@ app.post('/api/uneng/launch', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+/** POST /api/forge/ue-script — lokalny agent (Ollama) pisze skrypt UE-Python budujący scenę. */
+app.post('/api/forge/ue-script', async (req, res) => {
+    const { prompt, model: m } = req.body ?? {};
+    if (!prompt || !String(prompt).trim()) return res.status(400).json({ success: false, message: 'Brak opisu sceny.' });
+    const model = m || 'gemma4';
+    const system =
+        'Jesteś generatorem automatyzacji Unreal Engine 5.8 w Pythonie (moduł `unreal`). ' +
+        'Zwróć WYŁĄCZNIE poprawny kod Python (bez markdown, bez wstępu), gotowy do uruchomienia w OTWARTYM edytorze UE. ' +
+        'Buduj scenę realnymi klasami UE5: spawn aktorów przez `unreal.EditorActorSubsystem` lub `unreal.EditorLevelLibrary.spawn_actor_from_class`, ' +
+        'światła `unreal.PointLight`/`unreal.DirectionalLight`, transformy przez `set_actor_location`/`unreal.Vector`, ' +
+        'kolory/intensywność świateł przez komponent `point_light_component`. Krótko, poprawnie, bez wymyślonych API.';
+    try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 120000);
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+            body: JSON.stringify({ model, system, prompt: String(prompt), stream: false, options: { temperature: 0.35 } }),
+        });
+        clearTimeout(t);
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status} — czy Ollama działa?`);
+        const d = await r.json();
+        let code = String(d.response || '').trim().replace(/^```(python)?\s*/i, '').replace(/```\s*$/, '').trim();
+        const dir = path.join(process.cwd(), 'TeO_Arcade_Forge', 'ue_scripts');
+        await fs.mkdir(dir, { recursive: true });
+        const file = path.join(dir, `scene_${Date.now()}.py`);
+        await fs.writeFile(file, code, 'utf8');
+        console.log(`[Forge] 🐍 Wygenerowano skrypt UE-Python: ${file} (model: ${model})`);
+        res.json({ success: true, code, file, model });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 🧠 MODELE LOKALNE — status + realny pull (Gemma 4 / Gemma diffusion) ──────
 app.get('/api/models/status', async (req, res) => {
     try {
