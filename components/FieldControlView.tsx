@@ -6,6 +6,7 @@ import { ModeSelector } from './dashboard/ModeSelector';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import MobilePocketBadge from './special/MobilePocketBadge';
+import LiveModelSwitcher from './special/LiveModelSwitcher';
 
 // --- Quantum Shield Mock Component ---
 const QuantumShieldControl = () => (
@@ -65,6 +66,7 @@ const OfflineBrainControl = () => {
         <DashboardCard title="Rdzeń Lokalny (Gemma 4)" icon={<CpuIcon />}>
             <div className="p-6 space-y-4">
                 <MobilePocketBadge />
+                <LiveModelSwitcher />
                 <p className="text-slate-400 text-sm">Lokalny silnik AI — zero latencji, zero kosztów, zero chmury.</p>
                 {/* Selektor silnika */}
                 <div className="flex gap-2">
