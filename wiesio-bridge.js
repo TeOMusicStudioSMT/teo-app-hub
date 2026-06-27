@@ -4034,6 +4034,23 @@ app.post('/api/claude/launch', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+/** POST /api/uneng/launch — odpala Unreal Engine (Game Forge). Ścieżka z env OTAKOS_UE_PATH. */
+app.post('/api/uneng/launch', async (req, res) => {
+    const candidates = [
+        process.env.OTAKOS_UE_PATH,
+        'F:\\5 stars\\UE6\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe',
+    ].filter(Boolean);
+    let exe = null;
+    for (const c of candidates) { try { await fs.access(c); exe = c; break; } catch { /* szukaj dalej */ } }
+    if (!exe) return res.json({ success: false, message: 'Nie znaleziono UnrealEditor.exe. Ustaw env OTAKOS_UE_PATH lub sprawdź F:\\5 stars\\UE6\\UE_5.8\\Engine\\Binaries\\Win64\\.' });
+    try {
+        const child = spawn(exe, [], { detached: true, stdio: 'ignore' });
+        child.unref();
+        console.log(`[UnEnG] 🎮 Odpalono Unreal Engine: ${exe}`);
+        res.json({ success: true, started: true, exe, note: 'Odpalono Unreal Engine — specjalna wersja Klaudiusza może tworzyć światy.' });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 🧠 MODELE LOKALNE — status + realny pull (Gemma 4 / Gemma diffusion) ──────
 app.get('/api/models/status', async (req, res) => {
     try {
