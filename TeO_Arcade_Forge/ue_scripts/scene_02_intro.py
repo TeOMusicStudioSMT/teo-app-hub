@@ -24,7 +24,7 @@ def intro():
     tc.set_text(unreal.Text("OtakOS"))
     tc.set_text_render_color(unreal.Color(0, 230, 255, 255))
     tc.set_world_size(150.0)
-    title.set_actor_rotation(unreal.Rotator(0.0, 180.0, 0.0), False)
+    title.set_actor_rotation(unreal.Rotator(0.0, 0.0, 0.0), False)  # czytelnie do gracza (jak lustrzane -> zmień yaw na 180)
 
     # 2) Podtytuł — Wymiar 0.00G, fiolet
     sub = find_or_spawn(unreal.TextRenderActor, "Title_Sub", unreal.Vector(600, 0, 200))
@@ -32,7 +32,7 @@ def intro():
     sc.set_text(unreal.Text("Wymiar 0.00G  -  budzisz sie..."))
     sc.set_text_render_color(unreal.Color(140, 0, 255, 255))
     sc.set_world_size(45.0)
-    sub.set_actor_rotation(unreal.Rotator(0.0, 180.0, 0.0), False)
+    sub.set_actor_rotation(unreal.Rotator(0.0, 0.0, 0.0), False)  # czytelnie do gracza (jak lustrzane -> zmień yaw na 180)
 
     # 3) Kamera kinowa na otwierające ujęcie
     cam = find_or_spawn(unreal.CineCameraActor, "Cine_Intro", unreal.Vector(150, 0, 220))

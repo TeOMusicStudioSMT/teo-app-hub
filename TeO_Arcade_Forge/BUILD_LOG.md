@@ -7,7 +7,8 @@
 ## Warstwy (kolejność)
 - ✅ **01 — Oświetlenie** (`scene_fix_lighting.py`): zmierzch + 4 neony fiolet/cyjan. ZROBIONE.
 - 🎬 **02 — Filmowe wejście** (`scene_02_intro.py`): tytuł „OtakOS" + podtytuł „budzisz się…" + kamera kinowa. Fade i animacja „otwarcia oczu" → Sequencer (patrz niżej).
-- 🏛️ **03 — Geometria Schronu** (`scene_03_geometry.py`): biurko Konstruktora, terminal „KATEDRA OtakOS", pancerne wrota EventHorizon (z PRZYPISANĄ siatką — inaczej niewidoczne!).
+- 🏛️ **03 — Oszklone ATRIUM** (`scene_03_atrium.py`): metalowa konstrukcja (pierścień słupów + sufitowe belki z `/Engine/BasicShapes/Cube`) + 4 kolorowe „witraże" (światła) + SphereReflectionCapture (odbicia). NASTĘPNA polerka: prawdziwe przeszklone panele (materiał translucent kolorowy, niska szorstkość = odbicia) — Material Editor lub generator.
+- 🏛️ **03b — Geometria Schronu** (`scene_03b_geometry.py`): biurko Konstruktora, terminal „KATEDRA OtakOS", pancerne wrota EventHorizon (z PRZYPISANĄ siatką — inaczej niewidoczne!).
 - 💍 **04 — Interakcja** (`scene_04_interaction.py`): trigger przy konsoli → „dotknięcie pierścienia" otwiera wrota. (Blueprint/Trigger).
 - 🍞 **05 — Most + TOST → AETHER** (`scene_05_aether.py`): platforma w kosmosie, gwiazdy NeuralMap, złoty TOST-portal, wybór specjalizacji.
 - 🛡️ **06 — Strażnicy** (`scene_06_guardians.py`): drony iFixAi, mechanika TELEPORTACJI zamiast kary.
