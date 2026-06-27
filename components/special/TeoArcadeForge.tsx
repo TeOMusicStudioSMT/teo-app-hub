@@ -8,6 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { pickModelForTask, setActiveModel, getActiveModel } from '../../lib/modelRouter';
+import PamiecHelper from './PamiecHelper';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
@@ -106,6 +107,9 @@ export const TeoArcadeForge: React.FC = () => {
           {busy ? '⟳ …' : '🎮 Otwórz Unreal Engine'}
         </button>
       </div>
+
+      {/* 🧹 Przygotuj pamięć na UE */}
+      <PamiecHelper />
 
       {/* 🐍 Agent buduje scenę (UE-Python, lokalnie) */}
       <div className="rounded-lg border border-violet-900/50 bg-black/30 p-3 mb-3">

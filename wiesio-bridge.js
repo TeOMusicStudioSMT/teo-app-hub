@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import crypto from 'crypto';
+import os from 'os';
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
@@ -4079,6 +4080,31 @@ app.post('/api/forge/ue-script', async (req, res) => {
         console.log(`[Forge] 🐍 Wygenerowano skrypt UE-Python: ${file} (model: ${model})`);
         res.json({ success: true, code, file, model });
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 🧹 PAMIĘĆ — raport RAM + bezpieczne zwolnienie (przygotowanie na UE) ──────
+app.get('/api/system/memory', (req, res) => {
+    const total = os.totalmem(), free = os.freemem();
+    const base = { success: true, totalGB: +(total / 1e9).toFixed(1), freeGB: +(free / 1e9).toFixed(1), usedGB: +((total - free) / 1e9).toFixed(1) };
+    exec(`powershell -NoProfile -Command "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 14 Name,@{N='MB';E={[int]($_.WorkingSet64/1MB)}} | ConvertTo-Json -Compress"`,
+        { timeout: 9000, windowsHide: true }, (err, stdout) => {
+            let procs = [];
+            try { const p = JSON.parse(stdout || '[]'); procs = Array.isArray(p) ? p : [p]; } catch { /* brak listy */ }
+            res.json({ ...base, processes: procs });
+        });
+});
+// Bezpieczne zamknięcie WSKAZANYCH procesów (krytyczne systemowe są blokowane).
+app.post('/api/system/free', async (req, res) => {
+    const BLOCK = /node|wiesio|powershell|cmd|explorer|system|svchost|csrss|winlogon|dwm|services|lsass|conhost/i;
+    const names = (req.body?.names || []).filter(n => typeof n === 'string' && n.trim() && !BLOCK.test(n));
+    if (!names.length) return res.json({ success: false, message: 'Brak bezpiecznych procesów do zamknięcia.' });
+    const closed = [];
+    await Promise.all(names.map(n => new Promise(resolve => {
+        const img = /\.exe$/i.test(n) ? n : `${n}.exe`;
+        exec(`taskkill /IM "${img}" /F`, { timeout: 6000, windowsHide: true }, (err) => { if (!err) closed.push(n); resolve(); });
+    })));
+    console.log(`[System] 🧹 Zwolniono pamięć — zamknięto: ${closed.join(', ') || '(nic)'}.`);
+    res.json({ success: true, closed });
 });
 
 // ── 🧠 MODELE LOKALNE — status + realny pull (Gemma 4 / Gemma diffusion) ──────
