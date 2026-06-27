@@ -4067,7 +4067,11 @@ app.post('/api/forge/ue-script', async (req, res) => {
         '(2) NIE ustawiaj DirectionalLight intensity na 0 — daj niską wartość (0.5-1.0), inaczej czarny ekran i clip ekspozycji; przyciemnij też SkyLight. ' +
         '(3) Dla PointLight ustaw `attenuation_radius` (np. 900) i mocną intensywność (np. 20000). ' +
         '(4) StaticMeshActor bez przypisanej siatki jest NIEWIDOCZNY — użyj go tylko jeśli przypiszesz mesh, inaczej pomiń. ' +
-        '(5) Na końcu: unreal.EditorLevelLibrary.save_current_level().';
+        '(5) Na końcu: unreal.EditorLevelLibrary.save_current_level(). ' +
+        'IDEMPOTENCJA (krytyczne, by nic się nie dublowało): zdefiniuj na początku funkcję ' +
+        '`find_or_spawn(cls,label,loc)` która szuka aktora po `get_actor_label()` w `get_all_level_actors()` ' +
+        'i tworzy TYLKO jeśli nie istnieje — używaj jej zawsze. Każdy aktor ma STAŁĄ, UNIKALNĄ etykietę wg ' +
+        'konwencji (Sun_/Neon_/Title_/Desk_/Terminal_/Gate_/Aether_/Guardian_/Cine_). JEDNA scena = JEDEN cel.';
     try {
         const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 120000);
         const r = await fetch(`${OLLAMA_BASE}/api/generate`, {

@@ -1,0 +1,31 @@
+# 🗺️ GENESIS OVERRIDE — Mapa Budowy (żeby się nie pogubić)
+
+> Zasada: **jeden krok = jeden skrypt**, ponumerowany. Każdy aktor ma **unikalną etykietę**.
+> Skrypty są **idempotentne** (find-or-spawn z `_forge_lib.py`) — możesz uruchamiać ponownie,
+> nic się nie zdubluje. Budujemy **warstwami**, od fundamentu po film.
+
+## Warstwy (kolejność)
+- ✅ **01 — Oświetlenie** (`scene_fix_lighting.py`): zmierzch + 4 neony fiolet/cyjan. ZROBIONE.
+- 🎬 **02 — Filmowe wejście** (`scene_02_intro.py`): tytuł „OtakOS" + podtytuł „budzisz się…" + kamera kinowa. Fade i animacja „otwarcia oczu" → Sequencer (patrz niżej).
+- 🏛️ **03 — Geometria Schronu** (`scene_03_geometry.py`): biurko Konstruktora, terminal „KATEDRA OtakOS", pancerne wrota EventHorizon (z PRZYPISANĄ siatką — inaczej niewidoczne!).
+- 💍 **04 — Interakcja** (`scene_04_interaction.py`): trigger przy konsoli → „dotknięcie pierścienia" otwiera wrota. (Blueprint/Trigger).
+- 🍞 **05 — Most + TOST → AETHER** (`scene_05_aether.py`): platforma w kosmosie, gwiazdy NeuralMap, złoty TOST-portal, wybór specjalizacji.
+- 🛡️ **06 — Strażnicy** (`scene_06_guardians.py`): drony iFixAi, mechanika TELEPORTACJI zamiast kary.
+
+## Jak pracować (rytm)
+1. W Katedrze → **TeO Arcade Forge → 🐍 Agent buduje scenę** → opisz JEDEN krok → generuj.
+2. Agent zapisuje skrypt do `ue_scripts/`. Uruchom w UE (**Narzędzia → Wykonaj skrypt Pythona**).
+3. Coś nie tak? Popraw prompt / skrypt, uruchom ponownie (idempotentnie — bez bałaganu).
+4. Działa? Odhacz krok tutaj, idź do następnego. **Nigdy nie rób dwóch warstw naraz.**
+
+## 🎬 Filmowe wejście — jak zrobić fade + „otwarcie oczu"
+Tytuł i kamerę stawia `scene_02_intro.py`. Sam **film** (przyciemnienie z czerni → tytuł → znika → grasz)
+robi się w **Sequencerze** (Okno → Cinematics → Add Level Sequence):
+- Dodaj **Camera Cut Track** + kamerę kinową.
+- **Fade Track**: czerń → przejrzystość (0→1 s).
+- Ścieżka widoczności tytułu „OtakOS" (pojawia się, znika).
+- Na końcu sekwencji → **oddanie sterowania graczowi** (Level Blueprint: po sekwencji `Set View Target` na gracza = „otwierasz oczy").
+- (Docelowo: generator napisze i to przez Python — Sequencer ma API.)
+
+## Konwencja etykiet (by wszystko się spinało)
+`Sun_*`, `Neon_*`, `Title_*`, `Desk_*`, `Terminal_*`, `Gate_*`, `Aether_*`, `Guardian_*`, `Cine_*`.
