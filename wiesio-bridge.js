@@ -3932,6 +3932,18 @@ async function loadMarket() {
         await saveMarket();
         console.log('[Market] 🌮 Dodano Tarczę „Złote Taco — Anty-Lustro Matrixa".');
     }
+    // Zapewnij „UnEnG" — Unreal Engine dla Game Forge (idempotentnie)
+    if (market.products && !market.products.find(p => p.id === 'uneng-unreal-engine')) {
+        market.products.push({
+            id: 'uneng-unreal-engine', module: 'forge', type: 'engine',
+            name: '🎮 UnEnG — Unreal Engine dla Game Forge',
+            desc: 'Specjalna wersja Klaudiusza tworzy grywalne ŚWIATY (i rozwija samą Katedrę) mocą Unreal Engine (Filar II). ⚠ Agenci pilnują limitów licencji Epic: darmowe < 1 MLN USD przychodu, potem 5% tantiem / opłata stanowiskowa. Odpowiedzialność = Komunikacja — nie obciążamy Katedry.',
+            priceGrv: 0, creator: 'TeO', votes: 0, createdAt: Date.now(),
+            payload: { action: 'launch-uneng' },
+        });
+        await saveMarket();
+        console.log('[Market] 🎮 Dodano „UnEnG — Unreal Engine dla Game Forge".');
+    }
     return market;
 }
 // 📈 Cena DYNAMICZNA: popyt (głosy) podbija cenę. +5%/głos, sufit 3× bazy.
