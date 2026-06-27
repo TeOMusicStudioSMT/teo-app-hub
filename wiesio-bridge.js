@@ -4062,7 +4062,12 @@ app.post('/api/forge/ue-script', async (req, res) => {
         'Zwróć WYŁĄCZNIE poprawny kod Python (bez markdown, bez wstępu), gotowy do uruchomienia w OTWARTYM edytorze UE. ' +
         'Buduj scenę realnymi klasami UE5: spawn aktorów przez `unreal.EditorActorSubsystem` lub `unreal.EditorLevelLibrary.spawn_actor_from_class`, ' +
         'światła `unreal.PointLight`/`unreal.DirectionalLight`, transformy przez `set_actor_location`/`unreal.Vector`, ' +
-        'kolory/intensywność świateł przez komponent `point_light_component`. Krótko, poprawnie, bez wymyślonych API.';
+        'kolory/intensywność świateł przez komponent `point_light_component`. Krótko, poprawnie, bez wymyślonych API. ' +
+        'WAŻNE PUŁAPKI: (1) `unreal.Color(r,g,b,a)` przyjmuje liczby 0-255, NIE 0-1 (np. fiolet=Color(140,0,255,255)). ' +
+        '(2) NIE ustawiaj DirectionalLight intensity na 0 — daj niską wartość (0.5-1.0), inaczej czarny ekran i clip ekspozycji; przyciemnij też SkyLight. ' +
+        '(3) Dla PointLight ustaw `attenuation_radius` (np. 900) i mocną intensywność (np. 20000). ' +
+        '(4) StaticMeshActor bez przypisanej siatki jest NIEWIDOCZNY — użyj go tylko jeśli przypiszesz mesh, inaczej pomiń. ' +
+        '(5) Na końcu: unreal.EditorLevelLibrary.save_current_level().';
     try {
         const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 120000);
         const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
