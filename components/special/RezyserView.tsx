@@ -52,6 +52,15 @@ export const RezyserView: React.FC = () => {
   const removeScene = (sceneId: string) =>
     setStory(s => s.scenes.length <= 1 ? s : ({ ...s, scenes: s.scenes.filter(sc => sc.id !== sceneId) }));
 
+  const moveScene = (idx: number, dir: -1 | 1) =>
+    setStory(s => {
+      const j = idx + dir;
+      if (j < 0 || j >= s.scenes.length) return s;
+      const arr = [...s.scenes];
+      [arr[idx], arr[j]] = [arr[j], arr[idx]];
+      return { ...s, scenes: arr };
+    });
+
   const togglePlugin = (sceneId: string, pid: string) =>
     setStory(s => ({
       ...s, scenes: s.scenes.map(sc => {
@@ -109,6 +118,10 @@ export const RezyserView: React.FC = () => {
               <span className="text-[10px] text-amber-500/60">#{i + 1}</span>
               <input value={sc.name} onChange={e => setScene(sc.id, { name: e.target.value })}
                 className="flex-1 bg-transparent border-b border-amber-900/40 text-[12px] text-amber-200 outline-none focus:border-amber-500" />
+              <button onClick={() => moveScene(i, -1)} disabled={i === 0} title="w górę"
+                className="text-[10px] text-amber-400/60 hover:text-amber-300 disabled:opacity-20">▲</button>
+              <button onClick={() => moveScene(i, 1)} disabled={i === story.scenes.length - 1} title="w dół"
+                className="text-[10px] text-amber-400/60 hover:text-amber-300 disabled:opacity-20">▼</button>
               <button onClick={() => removeScene(sc.id)} disabled={story.scenes.length <= 1}
                 className="text-[10px] text-rose-400/70 hover:text-rose-300 disabled:opacity-30">✕</button>
             </div>

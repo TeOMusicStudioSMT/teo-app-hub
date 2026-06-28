@@ -282,13 +282,33 @@ def compile_story():
             wk = origin + unreal.Vector(look[0], look[1], look[2])
             label = "Cine_%s_%d" % (sid, j)
             cine = fos(unreal.CineCameraActor, label, wl)
-            cine.set_actor_rotation(unreal.MathLibrary.find_look_at_rotation(wl, wk), False)
+            rot = unreal.MathLibrary.find_look_at_rotation(wl, wk)
+            cine.set_actor_rotation(rot, False)
             if cam.get("fov"):
                 try:
                     cine.camera_component.set_editor_property("current_focal_length",
                                                               max(4.0, 36.0 / math.tan(math.radians(cam["fov"]) / 2) / 2))
                 except Exception:
                     pass
+
+            # Podpis ujęcia — karta TextRender PRZED kamerą (czytelna w danym ujęciu).
+            caption = (shot.get("caption") or "").strip()
+            if caption:
+                fwd = unreal.MathLibrary.get_forward_vector(rot)
+                cap_loc = wl + fwd * 320 + unreal.Vector(0, 0, -30)
+                cap = fos(unreal.TextRenderActor, "Cap_%s_%d" % (sid, j), cap_loc)
+                tc = cap.text_render
+                tc.set_text(unreal.Text(caption))
+                tc.set_text_render_color(unreal.Color(255, 255, 255, 255))
+                tc.set_world_size(20.0)
+                cap_rot = unreal.Rotator()      # twarzą do kamery (yaw + 180)
+                cap_rot.yaw = rot.yaw + 180.0
+                cap.set_actor_rotation(cap_rot, False)
+                try:
+                    tc.set_horizontal_alignment(unreal.HorizTextAligment.EHTA_CENTER)
+                except Exception:
+                    pass
+
             cameras.append((cine, float(shot.get("durationS", 4) or 4)))
 
     ok, total = build_cinematic(cameras)
