@@ -4091,6 +4091,60 @@ app.post('/api/forge/ue-script', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 🎬 REŻYSER — manifest filmu (gra=Film=opowieść) + wtyczki/mody ────────────
+const STORIES_DIR = path.join(process.cwd(), 'TeO_Arcade_Forge', 'stories');
+const PLUGINS_DIR = path.join(process.cwd(), 'TeO_Arcade_Forge', 'forge_plugins');
+
+/** POST /api/forge/story — zapisuje manifest filmu na dysk (story_compiler.py go czyta). */
+app.post('/api/forge/story', async (req, res) => {
+    const story = req.body?.story;
+    const title = story?.meta?.title;
+    if (!story || !title || !Array.isArray(story.scenes) || story.scenes.length === 0)
+        return res.status(400).json({ success: false, message: 'Pusty manifest: brak tytułu lub scen.' });
+    try {
+        await fs.mkdir(STORIES_DIR, { recursive: true });
+        const slug = String(title).toLowerCase().replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 48) || 'film';
+        const file = path.join(STORIES_DIR, `${slug}-${Date.now()}.json`);
+        await fs.writeFile(file, JSON.stringify(story, null, 2), 'utf8');
+        console.log(`[Reżyser] 🎬 Zapisano film: ${file} (${story.scenes.length} scen)`);
+        res.json({ success: true, file, slug, scenes: story.scenes.length });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+/** GET /api/forge/stories — lista zapisanych manifestów. */
+app.get('/api/forge/stories', async (req, res) => {
+    try {
+        const files = (await fs.readdir(STORIES_DIR).catch(() => [])).filter(f => f.endsWith('.json'));
+        const items = [];
+        for (const f of files) {
+            try {
+                const j = JSON.parse(await fs.readFile(path.join(STORIES_DIR, f), 'utf8'));
+                items.push({ file: f, title: j?.meta?.title || f, scenes: (j?.scenes || []).length, createdAt: j?.meta?.createdAt || 0 });
+            } catch { /* uszkodzony plik — pomiń */ }
+        }
+        items.sort((a, b) => b.createdAt - a.createdAt);
+        res.json({ success: true, stories: items });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+/** GET /api/forge/plugins — lista wtyczek (modów) w forge_plugins/ z opisem. */
+app.get('/api/forge/plugins', async (req, res) => {
+    try {
+        const files = (await fs.readdir(PLUGINS_DIR).catch(() => [])).filter(f => f.endsWith('.py') && !f.startsWith('_'));
+        const items = [];
+        for (const f of files) {
+            let desc = '';
+            try {
+                const src = await fs.readFile(path.join(PLUGINS_DIR, f), 'utf8');
+                const doc = src.match(/def\s+apply\s*\([^)]*\):\s*"""(.+?)"""/s);
+                desc = doc ? doc[1].trim().split('\n')[0] : (src.match(/^#\s*(.+)$/m)?.[1] || '').trim();
+            } catch { /* brak opisu */ }
+            items.push({ id: f.replace(/\.py$/, ''), desc });
+        }
+        res.json({ success: true, plugins: items });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 🧹 PAMIĘĆ — raport RAM + bezpieczne zwolnienie (przygotowanie na UE) ──────
 app.get('/api/system/memory', (req, res) => {
     const total = os.totalmem(), free = os.freemem();
