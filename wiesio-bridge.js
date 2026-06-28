@@ -4237,6 +4237,32 @@ app.post('/api/forge/mod/install', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 🏝️ PORTALE GRV — szklane panele jako okna na wyspy innych suwerenów ──────
+/** GET /api/islands/random — 4 portale: slot 1 = OtakOS (kanon, stały), 2-4 = losowe wyspy z sieci GRV.
+ *  Katalogowanie przez nodową księgę GRV — łatwe, suwerenne. Format wyspy deterministyczny z id. */
+app.get('/api/islands/random', async (req, res) => {
+    const FORMATS = ['sandbox', 'rytm', 'logika', 'eksploracja', 'survival', 'opowieść'];
+    const fmtOf = (s) => FORMATS[Math.abs([...String(s)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)) % FORMATS.length];
+    try {
+        const L = await loadGrvLedger();
+        const CORE = new Set(['TeO', 'OtakOS']);
+        const others = Object.keys(L.nodes || {}).filter(id => !CORE.has(id));
+        for (let i = others.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[others[i], others[j]] = [others[j], others[i]]; }
+        const pick = others.slice(0, 3);
+        const panels = [{ slot: 1, canonical: true, id: 'OtakOS', label: 'OtakOS · rdzeń Katedry', format: 'core', grv: '∞' }];
+        for (let s = 0; s < 3; s++) {
+            const id = pick[s];
+            if (id) {
+                const n = L.nodes[id] || {};
+                panels.push({ slot: s + 2, canonical: false, id, label: `${id} · wyspa`, format: fmtOf(id), tier: n.tier || n.role || 'node', grv: n.grv });
+            } else {
+                panels.push({ slot: s + 2, canonical: false, id: null, label: 'Niezamieszkana wyspa', format: 'vacant', grv: 0 });
+            }
+        }
+        res.json({ success: true, panels, network: others.length });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 🧹 PAMIĘĆ — raport RAM + bezpieczne zwolnienie (przygotowanie na UE) ──────
 app.get('/api/system/memory', (req, res) => {
     const total = os.totalmem(), free = os.freemem();

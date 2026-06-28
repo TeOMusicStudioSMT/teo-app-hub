@@ -59,6 +59,14 @@ w Katedrze (TeO Arcade Forge → panel Reżyser), eksportuje JEDEN manifest, wrz
   RezyserView: wiersz „🏷️ wystaw → do Marketplace". `Marketplace.tsx` `buy()`: po zakupie modu (type=mod) auto-instalacja.
   TODO: TOP10/głosy dla modów (działa przez istniejący rynek), hash-chain autentyczności modu (Skaner) — na potem.
 
+## 🏝️ Portale GRV — szklane tafle = okna na wyspy (etap 1: podpisy)
+`scene_portals_grv.py` pobiera z mostu `GET /api/islands/random` (slot 1 = OtakOS kanon, 2-4 = losowe
+węzły z księgi GRV jako wyspy; format deterministyczny z id) i podpisuje 4 tafle `Atrium_Pane_*`
+(`Portal_GRV_1..4`, zwrócone do środka, złoto=OtakOS / cyjan=wyspa / szarość=pusta). Most offline →
+etykieta „portal offline". Wymaga `scene_03c_glass.py` + działającego mostu. Wpięte w `build_all` (krok 07).
+**Następny etap (roadmap):** dynamiczne miniatury (RenderTarget/UMG) + teleport pierścieniem. Patrz `wyspa-roadmap`.
+
 ## Konwencja etykiet (by wszystko się spinało)
 `Sun_*`, `Neon_*`, `Title_*`, `Desk_*`, `Terminal_*`, `Gate_*`, `Aether_*`, `Guardian_*`, `Cine_*`, `Atrium_Pane_*`, `Seq_Intro_Actor`, `M_Glass_*`.
 Reżyser: `Env_<scena>_*` (środowiska), `Cine_<scena>_<ujęcie>` (kamery), `Cap_<scena>_<ujęcie>` (podpisy), `Plugin_<id>_<scena>_*` (wtyczki), `Seq_Story_Actor`.
+Portale: `Portal_GRV_1..4` (podpisy na taflach `Atrium_Pane_*`).
