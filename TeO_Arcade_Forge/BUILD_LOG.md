@@ -17,8 +17,15 @@
 
 ## ⚡ Jeden klik = cała Katedra
 `build_all_genesis.py` odpala wszystkie warstwy 01→06 po kolei (idempotentnie, `try/except`
-per scena + raport). Narzędzia → Wykonaj skrypt → `build_all_genesis.py`. Do rekonstrukcji
-świata po reset/nowy poziom. Ręczne wiązania BP **04b** (overlap→Play wrót) i **06b**
+per scena + raport) i na końcu **strojenie świateł** (`fix_lights_vsm.py`). Narzędzia → Wykonaj
+skrypt → `build_all_genesis.py`. Do rekonstrukcji świata po reset/nowy poziom.
+
+## 💡 Pułapka VSM — „za dużo świateł" (fix `fix_lights_vsm.py`)
+Wiele lokalnych świateł **rzucających cień** nakłada się → Virtual Shadow Maps przepełnia
+single-pass (ostrzeżenie `[VSM] Przepełnienie...`) + przepalony obraz. FIX: dekoracyjne światła
+nie potrzebują dynamicznego cienia → `fix_lights_vsm.py` ustawia `cast_shadows=False` na wszystkich
+PointLight/SpotLight + przycina skrajne intensity/radius. Cień rzuca tylko DirectionalLight.
+Wbudowane w `build_all_genesis` (krok 99) i `story_compiler` (na końcu). Można puszczać samodzielnie. Ręczne wiązania BP **04b** (overlap→Play wrót) i **06b**
 (overlap→teleport) robisz raz osobno — Python nie autoryzuje grafu Blueprinta.
 
 ## Jak pracować (rytm)

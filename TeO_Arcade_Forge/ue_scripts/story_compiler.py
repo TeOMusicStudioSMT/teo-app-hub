@@ -66,6 +66,27 @@ def _text(label, content, loc, color255, size=18.0):
     return a
 
 
+def tame_local_lights():
+    # Dekoracyjne światła bez dynamicznego cienia (fix VSM single-pass) + anty-przepalenie.
+    for a in unreal.EditorLevelLibrary.get_all_level_actors():
+        comp = None
+        if isinstance(a, unreal.PointLight):
+            comp = a.get_component_by_class(unreal.PointLightComponent)
+        elif isinstance(a, unreal.SpotLight):
+            comp = a.get_component_by_class(unreal.SpotLightComponent)
+        if comp is None:
+            continue
+        try:
+            comp.set_editor_property("cast_shadows", False)
+        except Exception:
+            pass
+        try:
+            if comp.get_editor_property("intensity") > 4000.0:
+                comp.set_intensity(4000.0)
+        except Exception:
+            pass
+
+
 def ensure_baseline_light():
     # Minimum światła, by „pusto" nie było czarne (gotcha: NIE zeruj DirectionalLight).
     sun = fos(unreal.DirectionalLight, "Story_Baseline_Sun", unreal.Vector(0, 0, 1500))
@@ -312,6 +333,7 @@ def compile_story():
             cameras.append((cine, float(shot.get("durationS", 4) or 4)))
 
     ok, total = build_cinematic(cameras)
+    tame_local_lights()  # VSM OK + anty-przepalenie
     unreal.EditorLevelLibrary.save_current_level()
 
     unreal.log("=== GOTOWE: %d/%d scen, %d ujęć/kamer. Film: %s ===" %

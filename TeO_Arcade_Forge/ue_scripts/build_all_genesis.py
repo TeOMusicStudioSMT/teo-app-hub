@@ -21,6 +21,7 @@ ORDER = [
     ("04  Interakcja",         "scene_04_interaction.py"),
     ("05  AETHER",             "scene_05_aether.py"),
     ("06  Strażnicy iFixAi",   "scene_06_guardians.py"),
+    ("99  Strojenie świateł",  "fix_lights_vsm.py"),   # ostatni: VSM OK + anty-przepalenie
 ]
 
 
