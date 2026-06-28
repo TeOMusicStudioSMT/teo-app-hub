@@ -6,8 +6,10 @@
 
 ## Warstwy (kolejność)
 - ✅ **01 — Oświetlenie** (`scene_fix_lighting.py`): zmierzch + 4 neony fiolet/cyjan. ZROBIONE.
-- 🎬 **02 — Filmowe wejście** (`scene_02_intro.py`): tytuł „OtakOS" + podtytuł „budzisz się…" + kamera kinowa. Fade i animacja „otwarcia oczu" → Sequencer (patrz niżej).
-- 🏛️ **03 — Oszklone ATRIUM** (`scene_03_atrium.py`): metalowa konstrukcja (pierścień słupów + sufitowe belki z `/Engine/BasicShapes/Cube`) + 4 kolorowe „witraże" (światła) + SphereReflectionCapture (odbicia). NASTĘPNA polerka: prawdziwe przeszklone panele (materiał translucent kolorowy, niska szorstkość = odbicia) — Material Editor lub generator.
+- 🎬 **02 — Filmowe wejście** (`scene_02_intro.py`): tytuł „OtakOS" + podtytuł „budzisz się…" + kamera kinowa. ZROBIONE.
+- 🎞️ **02b — Wejście filmowe** (`scene_02b_intro_film.py`): ✅ polerka — Level Sequence `Cine_Intro_Film` (fade z czerni 0→1.5 s = „otwarcie oczu" + cięcie na `Cine_Intro`, auto_play). Defensywnie (Sequencer 5.8). ⚠ oddanie sterowania = 1 węzeł BP (On Finished → Set View Target).
+- 🏛️ **03 — Oszklone ATRIUM** (`scene_03_atrium.py`): metalowa konstrukcja (pierścień słupów + sufitowe belki z `/Engine/BasicShapes/Cube`) + 4 kolorowe „witraże" (światła) + SphereReflectionCapture (odbicia). ZROBIONE.
+- 🪟 **03c — Szklane panele** (`scene_03c_glass.py`): ✅ polerka — translucentny materiał emisyjny (`/Game/Genesis/Materials/M_Glass_*`, niska szorstkość = odbicia) na 4 taflach `Atrium_Pane_*`, przez które świecą neony. Defensywnie (Material API 5.8) — slaby stają nawet bez materiału.
 - 🏛️ **03b — Geometria Schronu** (`scene_03b_geometry.py`): biurko Konstruktora, terminal „KATEDRA OtakOS", pancerne wrota EventHorizon (z PRZYPISANĄ siatką — inaczej niewidoczne!).
 - 💍 **04 — Interakcja** (`scene_04_interaction.py`): strefa `Trigger_GateConsole` przy terminalu + Level Sequence `Cine_GateOpen` (skrzydła rozsuwają się 0→1.5 s) + `Seq_GateOpen_Actor` (auto_play). `open_gate_now()` = test natychmiastowy. SKRYPT GOTOWY — uruchom w UE. ⚠ **04b (raz, ręcznie):** w Level Blueprint zepnij `OnActorBeginOverlap(Trigger_GateConsole)` → `Play(Seq_GateOpen_Actor)` (Python nie autoryzuje grafu BP).
 - 🍞 **05 — Most + TOST → AETHER** (`scene_05_aether.py`): platforma w kosmosie, gwiazdy NeuralMap, złoty TOST-portal, wybór specjalizacji.
@@ -51,5 +53,5 @@ w Katedrze (TeO Arcade Forge → panel Reżyser), eksportuje JEDEN manifest, wrz
   TODO: TOP10/głosy dla modów (działa przez istniejący rynek), hash-chain autentyczności modu (Skaner) — na potem.
 
 ## Konwencja etykiet (by wszystko się spinało)
-`Sun_*`, `Neon_*`, `Title_*`, `Desk_*`, `Terminal_*`, `Gate_*`, `Aether_*`, `Guardian_*`, `Cine_*`.
+`Sun_*`, `Neon_*`, `Title_*`, `Desk_*`, `Terminal_*`, `Gate_*`, `Aether_*`, `Guardian_*`, `Cine_*`, `Atrium_Pane_*`, `Seq_Intro_Actor`, `M_Glass_*`.
 Reżyser: `Env_<scena>_*` (środowiska), `Cine_<scena>_<ujęcie>` (kamery), `Cap_<scena>_<ujęcie>` (podpisy), `Plugin_<id>_<scena>_*` (wtyczki), `Seq_Story_Actor`.

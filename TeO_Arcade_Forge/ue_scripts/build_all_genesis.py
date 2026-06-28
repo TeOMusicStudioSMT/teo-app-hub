@@ -14,7 +14,9 @@ import os
 ORDER = [
     ("01  Oświetlenie",        "scene_fix_lighting.py"),
     ("02  Filmowe wejście",    "scene_02_intro.py"),
+    ("02b Wejście filmowe",    "scene_02b_intro_film.py"),
     ("03  Atrium",             "scene_03_atrium.py"),
+    ("03c Szklane panele",     "scene_03c_glass.py"),
     ("03b Geometria Schronu",  "scene_03b_geometry.py"),
     ("04  Interakcja",         "scene_04_interaction.py"),
     ("05  AETHER",             "scene_05_aether.py"),
