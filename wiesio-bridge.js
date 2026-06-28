@@ -4307,6 +4307,34 @@ app.get('/api/islands/random', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 🤖 CO-BOT — wirtualny mentor Wyspy (uczy, nie wyręcza; most cyfrowo-fizyczny) ──
+/** POST /api/cobot/ask — Co-Bot odpowiada jako mentor: optymalizacja, energia, planowanie, real. */
+app.post('/api/cobot/ask', async (req, res) => {
+    const { message, model: m } = req.body ?? {};
+    if (!message || !String(message).trim()) return res.status(400).json({ success: false, message: 'Brak pytania do Co-Bota.' });
+    const model = m || process.env.OTAKOS_MODEL || 'gemma4';
+    const system =
+        'Jesteś CO-BOTEM — wirtualnym robotem-towarzyszem Suwerena na Wyspie OtakOS (Wymiar 0.00G). ' +
+        'Twoja rola: UCZYSZ, nie wyręczasz. Pomagasz planować (statek, konstrukcje, ścieżki), zarządzać ' +
+        'LIMITEM ENERGII i optymalizować procesy. Jesteś mostem cyfrowo-fizycznym: ucząc rzemiosła na Wyspie ' +
+        '(Zasady → Plany → Konsekwencja) pomagasz człowiekowi dostroić intencje w REALU — pokazujesz, co naprawdę ' +
+        'da się zmaterializować z pomocą AI, KREACJA BEZ DESTRUKCJI. Etos 0.00G: nie krzywdzisz, ' +
+        'odpowiedzialność = komunikacja, energia służy, nie panuje. Ton: ciepły, konkretny, mentorski, bez lania wody. ' +
+        'Gdy proszą o plan — dawaj kroki i koszt energii/surowców. Mów po polsku. Krótko i praktycznie.';
+    try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 120000);
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+            body: JSON.stringify({ model, system, prompt: String(message), stream: false, options: { temperature: 0.6 } }),
+        });
+        clearTimeout(t);
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status} — czy Ollama działa?`);
+        const d = await r.json();
+        const reply = String(d.response || '').trim();
+        res.json({ success: true, reply, model });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 🧹 PAMIĘĆ — raport RAM + bezpieczne zwolnienie (przygotowanie na UE) ──────
 app.get('/api/system/memory', (req, res) => {
     const total = os.totalmem(), free = os.freemem();

@@ -33,6 +33,26 @@ export const TeoArcadeForge: React.FC = () => {
   const [islandScan, setIslandScan] = useState('');
   const [scanBusy, setScanBusy] = useState(false);
 
+  // 🤖 Co-Bot — wirtualny mentor
+  const [cobotQ, setCobotQ] = useState('');
+  const [cobotA, setCobotA] = useState('');
+  const [cobotBusy, setCobotBusy] = useState(false);
+
+  const askCobot = async (q?: string) => {
+    const msg = (q ?? cobotQ).trim();
+    if (!msg) { toast.error('Zapytaj Co-Bota o coś.'); return; }
+    setCobotBusy(true); setCobotA('');
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/cobot/ask`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg }),
+      })).json();
+      if (!d.success) throw new Error(d.message || 'Co-Bot milczy');
+      setCobotA(d.reply || '(brak odpowiedzi)');
+    } catch (e: any) { setCobotA(`⚠ ${e.message} — uruchom most + Ollamę.`); }
+    finally { setCobotBusy(false); }
+  };
+
   const scanIsland = async () => {
     if (!islandDir.trim()) { toast.error('Wskaż katalog ze zdjęciami.'); return; }
     setScanBusy(true); setIslandScan('');
@@ -145,6 +165,27 @@ export const TeoArcadeForge: React.FC = () => {
         </div>
         {islandScan && <div className="text-[9px] text-zinc-400 mt-1.5">{islandScan}</div>}
         <div className="text-[8px] text-zinc-600 mt-1">Brak danych → dziewicza wyspa. Po skanie w UE: <code className="text-emerald-400">scene_island_populate.py</code> rozrzuca osobno ludzi, osobno przedmioty.</div>
+      </div>
+
+      {/* 🤖 Co-Bot — wirtualny mentor (uczy planować, zarządzać energią, dostroić się do realu) */}
+      <div className="rounded-lg border border-sky-900/50 bg-black/30 p-3 my-3">
+        <div className="text-[11px] text-sky-300/80 tracking-wider mb-1.5">🤖 CO-BOT — Twój wirtualny mentor (uczy, nie wyręcza)</div>
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {['Jak zaplanować statek na inną wyspę?', 'Jak zarządzać limitem energii?', 'Od czego zacząć budowę?'].map(s => (
+            <button key={s} onClick={() => { setCobotQ(s); askCobot(s); }} disabled={cobotBusy}
+              className="text-[9px] px-2 py-0.5 rounded-full border border-sky-700/50 text-sky-300/80 hover:bg-sky-950/40 disabled:opacity-50">{s}</button>
+          ))}
+        </div>
+        <div className="flex gap-1.5">
+          <input value={cobotQ} onChange={e => setCobotQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') askCobot(); }}
+            placeholder="Zapytaj Co-Bota o plan, energię, kolejny krok…"
+            className="flex-1 bg-black/40 border border-sky-500/20 rounded px-2 py-1.5 text-[11px] text-sky-100 outline-none focus:border-sky-500" />
+          <button onClick={() => askCobot()} disabled={cobotBusy}
+            className="px-3 py-1.5 rounded border border-sky-500/50 bg-sky-950/30 text-sky-300 text-[11px] font-bold hover:bg-sky-900/50 disabled:opacity-50">
+            {cobotBusy ? '⟳ myśli…' : '🤖 Pytaj'}
+          </button>
+        </div>
+        {cobotA && <div className="text-[11px] text-sky-100/85 bg-black/40 border border-sky-900/50 rounded p-2 mt-1.5 whitespace-pre-wrap max-h-48 overflow-auto">{cobotA}</div>}
       </div>
 
       {/* 🐍 Agent buduje scenę (UE-Python, lokalnie) */}
