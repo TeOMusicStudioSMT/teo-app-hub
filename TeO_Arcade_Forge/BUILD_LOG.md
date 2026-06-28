@@ -66,6 +66,15 @@ węzły z księgi GRV jako wyspy; format deterministyczny z id) i podpisuje 4 ta
 etykieta „portal offline". Wymaga `scene_03c_glass.py` + działającego mostu. Wpięte w `build_all` (krok 07).
 **Następny etap (roadmap):** dynamiczne miniatury (RenderTarget/UMG) + teleport pierścieniem. Patrz `wyspa-roadmap`.
 
+## 🗂️ Baza ze zdjęć → Wyspa (etap 1: karty-placeholdery)
+Iniekcja katalogów użytkownika: most `POST /api/island/scan {dir}` skanuje katalog zdjęć (rekurencyjnie),
+klasyfikuje **osobno ludzie / osobno przedmioty** — **podfolder = prawda** (`ludzie/`, `przedmioty/`),
+heurystyka dopełnia i flaguje (`by: folder|heurystyka`); zapis do `_OtakOs_Wymiar/island_db.json`.
+`GET /api/island/db` zwraca bazę. UI: panel „🗂️ Zasil Wyspę" w `TeoArcadeForge.tsx`.
+`scene_island_populate.py` (urllib) rozrzuca po wyspie: ludzie (cyjan, -Y) i przedmioty (amber, +Y) jako
+karty-stojaki z podpisami (`Island_Person_*`/`Island_Asset_*`, max 40/strefę). Brak danych → dziewicza wyspa.
+Samodzielny (nie w build_all — zależy od skanu). **Etap 2 (roadmap):** fototekstury na kartach + klasyfikacja modelem wizyjnym.
+
 ## Konwencja etykiet (by wszystko się spinało)
 `Sun_*`, `Neon_*`, `Title_*`, `Desk_*`, `Terminal_*`, `Gate_*`, `Aether_*`, `Guardian_*`, `Cine_*`, `Atrium_Pane_*`, `Seq_Intro_Actor`, `M_Glass_*`.
 Reżyser: `Env_<scena>_*` (środowiska), `Cine_<scena>_<ujęcie>` (kamery), `Cap_<scena>_<ujęcie>` (podpisy), `Plugin_<id>_<scena>_*` (wtyczki), `Seq_Story_Actor`.

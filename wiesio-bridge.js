@@ -4237,6 +4237,50 @@ app.post('/api/forge/mod/install', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 🗂️ BAZA ZE ZDJĘĆ — iniekcja katalogów użytkownika → Wyspa (ludzie vs przedmioty) ──
+const ISLAND_DB_FILE = path.join(ANTIGRAVITY_DIR, 'island_db.json');
+const IMG_EXT = /\.(jpe?g|png|webp|gif|bmp|tiff?)$/i;
+const RE_PEOPLE = /(ludzie|ludzi|osoby|osoba|people|person|portret|portrait|avatar|twarz|face|selfie|rodzina|family)/i;
+const RE_THINGS = /(przedmiot|przedmioty|rzecz|rzeczy|object|item|surowiec|surowce|asset|sprzet|sprzęt|narzedzi|tool|material)/i;
+
+/** POST /api/island/scan — skanuje lokalny katalog zdjęć → baza (ludzie / przedmioty). Podfolder = prawda. */
+app.post('/api/island/scan', async (req, res) => {
+    const dir = req.body?.dir;
+    if (!dir || typeof dir !== 'string') return res.status(400).json({ success: false, message: 'Podaj ścieżkę katalogu (dir).' });
+    try {
+        const st = await fs.stat(dir).catch(() => null);
+        if (!st || !st.isDirectory()) return res.status(404).json({ success: false, message: `Nie ma katalogu: ${dir}` });
+        const entries = await fs.readdir(dir, { withFileTypes: true, recursive: true });
+        const people = [], assets = [];
+        for (const e of entries) {
+            if (!e.isFile() || !IMG_EXT.test(e.name)) continue;
+            const rel = (e.parentPath || e.path || dir).replace(dir, '');
+            const hay = rel + '/' + e.name;
+            const name = e.name.replace(IMG_EXT, '');
+            const file = path.join(e.parentPath || e.path || dir, e.name);
+            let kind, by;
+            if (RE_PEOPLE.test(hay)) { kind = 'osoba'; by = 'folder'; }
+            else if (RE_THINGS.test(hay)) { kind = 'przedmiot'; by = 'folder'; }
+            else { kind = 'przedmiot'; by = 'heurystyka'; }   // domyślnie przedmiot, oflagowane
+            (kind === 'osoba' ? people : assets).push({ file, name, by });
+            if (people.length + assets.length >= 500) break;   // limit jednego skanu
+        }
+        const db = { generatedAt: Date.now(), dir, people, assets };
+        await fs.mkdir(ANTIGRAVITY_DIR, { recursive: true });
+        await fs.writeFile(ISLAND_DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+        console.log(`[Wyspa] 🗂️ Skan ${dir}: ${people.length} ludzi, ${assets.length} przedmiotów.`);
+        res.json({ success: true, dir, people: people.length, assets: assets.length, total: people.length + assets.length });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+/** GET /api/island/db — zwraca zapisaną bazę Wyspy (dla skryptu UE i podglądu). */
+app.get('/api/island/db', async (req, res) => {
+    try {
+        const db = JSON.parse(await fs.readFile(ISLAND_DB_FILE, 'utf8'));
+        res.json({ success: true, ...db });
+    } catch { res.json({ success: true, generatedAt: 0, dir: null, people: [], assets: [], empty: true }); }
+});
+
 // ── 🏝️ PORTALE GRV — szklane panele jako okna na wyspy innych suwerenów ──────
 /** GET /api/islands/random — 4 portale: slot 1 = OtakOS (kanon, stały), 2-4 = losowe wyspy z sieci GRV.
  *  Katalogowanie przez nodową księgę GRV — łatwe, suwerenne. Format wyspy deterministyczny z id. */

@@ -28,6 +28,25 @@ export const TeoArcadeForge: React.FC = () => {
   const [ueCode, setUeCode] = useState('');
   const [ueFile, setUeFile] = useState('');
   const [gen, setGen] = useState(false);
+  // 🗂️ Zasilanie Wyspy katalogiem zdjęć
+  const [islandDir, setIslandDir] = useState('');
+  const [islandScan, setIslandScan] = useState('');
+  const [scanBusy, setScanBusy] = useState(false);
+
+  const scanIsland = async () => {
+    if (!islandDir.trim()) { toast.error('Wskaż katalog ze zdjęciami.'); return; }
+    setScanBusy(true); setIslandScan('');
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/island/scan`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dir: islandDir.trim() }),
+      })).json();
+      if (!d.success) throw new Error(d.message || 'Skan nieudany');
+      setIslandScan(`✅ ${d.people} ludzi · ${d.assets} przedmiotów (${d.total}). W UE: scene_island_populate.py`);
+      toast.success(`🗂️ Wyspa zasilona: ${d.people} ludzi, ${d.assets} przedmiotów.`, { duration: 5000 });
+    } catch (e: any) { setIslandScan(`⚠ ${e.message}`); toast.error(`⚠ ${e.message}`); }
+    finally { setScanBusy(false); }
+  };
 
   const generateScene = async () => {
     if (!scenePrompt.trim()) return;
@@ -111,6 +130,22 @@ export const TeoArcadeForge: React.FC = () => {
 
       {/* 🧹 Przygotuj pamięć na UE */}
       <PamiecHelper />
+
+      {/* 🗂️ Zasil Wyspę swoimi katalogami zdjęć (ludzie / przedmioty) */}
+      <div className="rounded-lg border border-emerald-900/50 bg-black/30 p-3 my-3">
+        <div className="text-[11px] text-emerald-300/80 tracking-wider mb-1.5">🗂️ ZASIL WYSPĘ DANYMI (katalog zdjęć → ludzie / przedmioty)</div>
+        <div className="flex gap-1.5">
+          <input value={islandDir} onChange={e => setIslandDir(e.target.value)}
+            placeholder="ścieżka katalogu (podfoldery ludzie/ i przedmioty/ = pewna klasyfikacja)"
+            className="flex-1 bg-black/40 border border-emerald-500/20 rounded px-2 py-1.5 text-[11px] text-emerald-100 outline-none focus:border-emerald-500" />
+          <button onClick={scanIsland} disabled={scanBusy}
+            className="px-3 py-1.5 rounded border border-emerald-500/50 bg-emerald-950/30 text-emerald-300 text-[11px] font-bold hover:bg-emerald-900/50 disabled:opacity-50">
+            {scanBusy ? '⟳ skan…' : '🗂️ Skanuj'}
+          </button>
+        </div>
+        {islandScan && <div className="text-[9px] text-zinc-400 mt-1.5">{islandScan}</div>}
+        <div className="text-[8px] text-zinc-600 mt-1">Brak danych → dziewicza wyspa. Po skanie w UE: <code className="text-emerald-400">scene_island_populate.py</code> rozrzuca osobno ludzi, osobno przedmioty.</div>
+      </div>
 
       {/* 🐍 Agent buduje scenę (UE-Python, lokalnie) */}
       <div className="rounded-lg border border-violet-900/50 bg-black/30 p-3 mb-3">
