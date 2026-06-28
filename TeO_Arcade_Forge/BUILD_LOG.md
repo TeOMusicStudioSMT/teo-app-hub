@@ -9,7 +9,7 @@
 - 🎬 **02 — Filmowe wejście** (`scene_02_intro.py`): tytuł „OtakOS" + podtytuł „budzisz się…" + kamera kinowa. Fade i animacja „otwarcia oczu" → Sequencer (patrz niżej).
 - 🏛️ **03 — Oszklone ATRIUM** (`scene_03_atrium.py`): metalowa konstrukcja (pierścień słupów + sufitowe belki z `/Engine/BasicShapes/Cube`) + 4 kolorowe „witraże" (światła) + SphereReflectionCapture (odbicia). NASTĘPNA polerka: prawdziwe przeszklone panele (materiał translucent kolorowy, niska szorstkość = odbicia) — Material Editor lub generator.
 - 🏛️ **03b — Geometria Schronu** (`scene_03b_geometry.py`): biurko Konstruktora, terminal „KATEDRA OtakOS", pancerne wrota EventHorizon (z PRZYPISANĄ siatką — inaczej niewidoczne!).
-- 💍 **04 — Interakcja** (`scene_04_interaction.py`): trigger przy konsoli → „dotknięcie pierścienia" otwiera wrota. (Blueprint/Trigger).
+- 💍 **04 — Interakcja** (`scene_04_interaction.py`): strefa `Trigger_GateConsole` przy terminalu + Level Sequence `Cine_GateOpen` (skrzydła rozsuwają się 0→1.5 s) + `Seq_GateOpen_Actor` (auto_play). `open_gate_now()` = test natychmiastowy. SKRYPT GOTOWY — uruchom w UE. ⚠ **04b (raz, ręcznie):** w Level Blueprint zepnij `OnActorBeginOverlap(Trigger_GateConsole)` → `Play(Seq_GateOpen_Actor)` (Python nie autoryzuje grafu BP).
 - 🍞 **05 — Most + TOST → AETHER** (`scene_05_aether.py`): platforma w kosmosie, gwiazdy NeuralMap, złoty TOST-portal, wybór specjalizacji.
 - 🛡️ **06 — Strażnicy** (`scene_06_guardians.py`): drony iFixAi, mechanika TELEPORTACJI zamiast kary.
 
