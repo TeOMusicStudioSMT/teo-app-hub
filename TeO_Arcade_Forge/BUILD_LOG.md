@@ -13,6 +13,12 @@
 - 🍞 **05 — Most + TOST → AETHER** (`scene_05_aether.py`): platforma w kosmosie, gwiazdy NeuralMap, złoty TOST-portal, wybór specjalizacji.
 - 🛡️ **06 — Strażnicy** (`scene_06_guardians.py`): 3 drony iFixAi (kule + zielono-cyjanowy glow) patrolują bramy + `Guardian_Respawn` (TargetPoint przy konsoli) + `Guardian_TeleZone` (granica). Filozofia: brak damage — przekroczenie = łagodna teleportacja do Respawn. SKRYPT GOTOWY — uruchom w UE. ⚠ **06b (raz, ręcznie):** w Level Blueprint zepnij `OnActorBeginOverlap(Guardian_TeleZone)` → `SetActorLocation(OtherActor → Guardian_Respawn)`.
 
+## ⚡ Jeden klik = cała Katedra
+`build_all_genesis.py` odpala wszystkie warstwy 01→06 po kolei (idempotentnie, `try/except`
+per scena + raport). Narzędzia → Wykonaj skrypt → `build_all_genesis.py`. Do rekonstrukcji
+świata po reset/nowy poziom. Ręczne wiązania BP **04b** (overlap→Play wrót) i **06b**
+(overlap→teleport) robisz raz osobno — Python nie autoryzuje grafu Blueprinta.
+
 ## Jak pracować (rytm)
 1. W Katedrze → **TeO Arcade Forge → 🐍 Agent buduje scenę** → opisz JEDEN krok → generuj.
 2. Agent zapisuje skrypt do `ue_scripts/`. Uruchom w UE (**Narzędzia → Wykonaj skrypt Pythona**).
