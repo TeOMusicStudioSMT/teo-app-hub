@@ -34,17 +34,36 @@ export const RezyserView: React.FC = () => {
   const [story, setStory] = useState<StoryManifest>(load);
   const [plugins, setPlugins] = useState<{ id: string; desc: string }[]>([]);
   const [busy, setBusy] = useState(false);
+  // Generator modów (Etap II).
+  const [modPrompt, setModPrompt] = useState('');
+  const [modName, setModName] = useState('');
+  const [modBusy, setModBusy] = useState(false);
 
   // Autosave + odśwież version znacznik.
   useEffect(() => { try { localStorage.setItem(LS_KEY, JSON.stringify(story)); } catch { /* full */ } }, [story]);
 
   // Lista dostępnych wtyczek (modów) z mostu.
-  useEffect(() => {
-    (async () => {
-      try { const d = await (await fetch(`${BRIDGE}/api/forge/plugins`)).json(); setPlugins(d?.plugins || []); }
-      catch { /* most offline — bez modów */ }
-    })();
-  }, []);
+  const loadPlugins = async () => {
+    try { const d = await (await fetch(`${BRIDGE}/api/forge/plugins`)).json(); setPlugins(d?.plugins || []); }
+    catch { /* most offline — bez modów */ }
+  };
+  useEffect(() => { loadPlugins(); }, []);
+
+  const generateMod = async () => {
+    if (!modPrompt.trim()) { toast.error('Opisz mod, który ma powstać.'); return; }
+    setModBusy(true);
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/forge/plugin`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: modPrompt, name: modName }),
+      })).json();
+      if (!d.success) throw new Error(d.message || 'Generacja nieudana');
+      toast.success(`🔌 Mod „${d.id}" gotowy (mózg: ${d.model}). Dodaj go do sceny.`, { duration: 5000 });
+      setModPrompt(''); setModName('');
+      await loadPlugins();
+    } catch (e: any) { toast.error(`⚠ ${e.message} — uruchom most + Ollamę.`); }
+    finally { setModBusy(false); }
+  };
 
   const setScene = (sceneId: string, patch: Partial<StoryManifest['scenes'][0]>) =>
     setStory(s => ({ ...s, scenes: s.scenes.map(sc => sc.id === sceneId ? { ...sc, ...patch } : sc) }));
@@ -195,6 +214,23 @@ export const RezyserView: React.FC = () => {
         <button onClick={() => { if (confirm('Wyczyścić film i zacząć od nowa?')) setStory(emptyStory('Mój film 0.00G')); }}
           className="px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 text-[11px] hover:bg-zinc-900/40">↺ nowy</button>
       </div>
+      {/* 🔌 Generator modów (Etap II) — Ollama pisze wtyczkę wg kontraktu */}
+      <div className="rounded-lg border border-violet-900/50 bg-black/20 p-2.5 mt-3">
+        <div className="text-[10px] text-violet-300/80 tracking-wider mb-1.5">🔌 STWÓRZ MOD (Agent pisze wtyczkę do generatora)</div>
+        <div className="flex gap-1.5 mb-1.5">
+          <input value={modName} onChange={e => setModName(e.target.value)} placeholder="nazwa moda (np. mgla_swietlik)"
+            className="w-44 bg-black/40 border border-violet-500/20 rounded px-2 py-1 text-[10px] text-violet-100 outline-none focus:border-violet-500" />
+          <button onClick={generateMod} disabled={modBusy}
+            className="flex-1 px-3 py-1 rounded border border-violet-500/50 bg-violet-950/30 text-violet-300 text-[10px] font-bold hover:bg-violet-900/50 disabled:opacity-50">
+            {modBusy ? '⟳ mózg pisze mod…' : '🔌 Wygeneruj mod'}
+          </button>
+        </div>
+        <textarea value={modPrompt} onChange={e => setModPrompt(e.target.value)} rows={2}
+          placeholder="Opisz mod: co ma dodać do sceny? Np. rój świetlików: 20 małych żółtych świateł lewitujących losowo nad sceną."
+          className="w-full bg-black/40 border border-violet-500/20 rounded px-2 py-1.5 text-[10px] text-violet-100 outline-none focus:border-violet-500 resize-y" />
+        <div className="text-[8px] text-zinc-600 mt-1">Mod ląduje w <code className="text-violet-400">forge_plugins/</code> i pojawia się wyżej jako 🔌 do wpięcia w scenę. Etap II: sprzedaż za GRV w Marketplace (wkrótce).</div>
+      </div>
+
       <div className="text-[9px] text-zinc-600 mt-2 leading-relaxed">
         Po eksporcie w UE: <b>Narzędzia → Wykonaj skrypt Pythona → story_compiler.py</b> (bierze najnowszy film).
         Powstaje grywalny poziom + film (Cine_Story, auto_play). Mody dorzucasz w <code className="text-violet-400">forge_plugins/</code>.

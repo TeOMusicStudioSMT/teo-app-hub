@@ -4145,6 +4145,47 @@ app.get('/api/forge/plugins', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+/** POST /api/forge/plugin — Ollama pisze WTYCZKĘ (mod) wg kontraktu _PLUGIN_API.md → forge_plugins/. */
+app.post('/api/forge/plugin', async (req, res) => {
+    const { prompt, name, model: m } = req.body ?? {};
+    if (!prompt || !String(prompt).trim()) return res.status(400).json({ success: false, message: 'Brak opisu moda.' });
+    const model = m || 'gemma4';
+    // id moda: sanityzacja nazwy (snake_case); blokada nazw zarezerwowanych (_*, przykłady rdzeniowe).
+    let id = String(name || prompt).toLowerCase().replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32) || 'mod';
+    if (id.startsWith('_')) id = 'mod_' + id.replace(/^_+/, '');
+    const system =
+        'Jesteś generatorem WTYCZEK (modów) do Reżysera świata Unreal Engine 5.8 w Pythonie (moduł `unreal`). ' +
+        'Zwróć WYŁĄCZNIE poprawny kod Python (bez markdown, bez wstępu). ' +
+        'KONTRAKT (ścisły): zdefiniuj DOKŁADNIE jedną funkcję `def apply(ctx, params):` z docstringiem ' +
+        '(pierwsza linia = krótki opis moda). NIE wołaj jej, NIE pisz `import unreal` (bierz z `ctx.unreal`). ' +
+        'ctx daje: `ctx.unreal` (moduł), `ctx.fos(cls,label,loc)` (find-or-spawn aktora, idempotentne), ' +
+        '`ctx.find(label)`, `ctx.origin` (unreal.Vector — DODAWAJ do swoich pozycji), `ctx.scene_id` (str), `ctx.log(msg)`. ' +
+        'params to dict — czytaj z domyślnymi: `params.get("count", 6)`, NIGDY nie zakładaj klucza. ' +
+        'PUŁAPKI: (1) `unreal.Color(r,g,b,a)` to 0-255, NIE 0-1. (2) NIE zeruj DirectionalLight. ' +
+        '(3) PointLight: ustaw intensity (np. 3000) i attenuation_radius (np. 500). ' +
+        '(4) StaticMeshActor MUSI mieć przypisaną siatkę (np. `/Engine/BasicShapes/Sphere.Sphere` przez `ctx.unreal.load_asset`), inaczej niewidoczny. ' +
+        '(5) NIE zapisuj poziomu (robi to kompilator). ' +
+        'IDEMPOTENCJA: każdy aktor ma STAŁĄ etykietę z prefiksem `Plugin_' + id + '_%s_...` wstawiając `ctx.scene_id` ' +
+        '(by przy wielu scenach się nie dublowało). Krótko, poprawnie, bez wymyślonych API.';
+    try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 120000);
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+            body: JSON.stringify({ model, system, prompt: String(prompt), stream: false, options: { temperature: 0.3 } }),
+        });
+        clearTimeout(t);
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status} — czy Ollama działa?`);
+        const d = await r.json();
+        let code = String(d.response || '').trim().replace(/^```(python)?\s*/i, '').replace(/```\s*$/, '').trim();
+        if (!/def\s+apply\s*\(/.test(code)) throw new Error('Mózg nie zwrócił funkcji apply() — popraw opis i spróbuj ponownie.');
+        await fs.mkdir(PLUGINS_DIR, { recursive: true });
+        const file = path.join(PLUGINS_DIR, `${id}.py`);
+        await fs.writeFile(file, code, 'utf8');
+        console.log(`[Reżyser] 🔌 Wygenerowano mod: ${file} (model: ${model})`);
+        res.json({ success: true, id, code, file, model });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 🧹 PAMIĘĆ — raport RAM + bezpieczne zwolnienie (przygotowanie na UE) ──────
 app.get('/api/system/memory', (req, res) => {
     const total = os.totalmem(), free = os.freemem();

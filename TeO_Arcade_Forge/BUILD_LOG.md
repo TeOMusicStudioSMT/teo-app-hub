@@ -43,7 +43,9 @@ w Katedrze (TeO Arcade Forge → panel Reżyser), eksportuje JEDEN manifest, wrz
   (schron/atrium/aether/pusto), woła wtyczki, buduje `Cine_Story` (cięcia kamer, auto_play) = HYBRYDA film→gra.
   Uruchom: Narzędzia → Wykonaj skrypt → `story_compiler.py`. ⚠ oddanie sterowania graczowi = ręczny 1 węzeł BP (On Finished → Set View Target).
 - **Wtyczki/mody:** `forge_plugins/` — kontrakt `_PLUGIN_API.md` (`apply(ctx, params)`), przykłady `rain_neon.py`, `floating_props.py`.
-  Etap II: generator wtyczek (Ollama) + mody za GRV w Marketplace.
+- **Etap II — generator modów (✅ część a):** `POST /api/forge/plugin` (Ollama pisze wtyczkę wg kontraktu → zapis do `forge_plugins/`),
+  panel „🔌 Stwórz mod" w `RezyserView.tsx` (opis + nazwa → generuj → mod pojawia się jako chip do wpięcia). ⚠ restart mostu + Ollama.
+  TODO (część b): sprzedaż/instalacja modów za GRV w Marketplace.
 
 ## Konwencja etykiet (by wszystko się spinało)
 `Sun_*`, `Neon_*`, `Title_*`, `Desk_*`, `Terminal_*`, `Gate_*`, `Aether_*`, `Guardian_*`, `Cine_*`.
