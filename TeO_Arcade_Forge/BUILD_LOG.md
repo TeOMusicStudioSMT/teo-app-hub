@@ -11,7 +11,7 @@
 - 🏛️ **03b — Geometria Schronu** (`scene_03b_geometry.py`): biurko Konstruktora, terminal „KATEDRA OtakOS", pancerne wrota EventHorizon (z PRZYPISANĄ siatką — inaczej niewidoczne!).
 - 💍 **04 — Interakcja** (`scene_04_interaction.py`): strefa `Trigger_GateConsole` przy terminalu + Level Sequence `Cine_GateOpen` (skrzydła rozsuwają się 0→1.5 s) + `Seq_GateOpen_Actor` (auto_play). `open_gate_now()` = test natychmiastowy. SKRYPT GOTOWY — uruchom w UE. ⚠ **04b (raz, ręcznie):** w Level Blueprint zepnij `OnActorBeginOverlap(Trigger_GateConsole)` → `Play(Seq_GateOpen_Actor)` (Python nie autoryzuje grafu BP).
 - 🍞 **05 — Most + TOST → AETHER** (`scene_05_aether.py`): platforma w kosmosie, gwiazdy NeuralMap, złoty TOST-portal, wybór specjalizacji.
-- 🛡️ **06 — Strażnicy** (`scene_06_guardians.py`): drony iFixAi, mechanika TELEPORTACJI zamiast kary.
+- 🛡️ **06 — Strażnicy** (`scene_06_guardians.py`): 3 drony iFixAi (kule + zielono-cyjanowy glow) patrolują bramy + `Guardian_Respawn` (TargetPoint przy konsoli) + `Guardian_TeleZone` (granica). Filozofia: brak damage — przekroczenie = łagodna teleportacja do Respawn. SKRYPT GOTOWY — uruchom w UE. ⚠ **06b (raz, ręcznie):** w Level Blueprint zepnij `OnActorBeginOverlap(Guardian_TeleZone)` → `SetActorLocation(OtherActor → Guardian_Respawn)`.
 
 ## Jak pracować (rytm)
 1. W Katedrze → **TeO Arcade Forge → 🐍 Agent buduje scenę** → opisz JEDEN krok → generuj.
