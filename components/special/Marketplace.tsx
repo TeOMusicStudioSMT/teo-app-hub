@@ -9,7 +9,7 @@ import { motion } from 'framer-motion';
 const BRIDGE = 'http://127.0.0.1:3001';
 const BUYER = 'Mistrz Arkadiusz'; // suwerenny węzeł-nabywca (genesis GRV)
 
-interface Product { id: string; module: string; type: string; name: string; desc: string; priceGrv: number; priceGrvDyn?: number; creator: string; votes: number; }
+interface Product { id: string; module: string; type: string; name: string; desc: string; priceGrv: number; priceGrvDyn?: number; creator: string; votes: number; payload?: { action?: string; modId?: string; code?: string } | null; }
 const effPrice = (p: Product) => p.priceGrvDyn ?? p.priceGrv; // cena dynamiczna (popyt)
 
 export const Marketplace: React.FC = () => {
@@ -49,18 +49,31 @@ export const Marketplace: React.FC = () => {
     setOwned(prev => { const next = prev.includes(id) ? prev : [...prev, id]; localStorage.setItem('otakos_owned_products', JSON.stringify(next)); return next; });
   };
 
+  // 🔌 Mod (wtyczka Reżysera) — po zakupie INSTALUJ do forge_plugins/ (Tarcza skanuje kod).
+  const installIfMod = async (p: Product): Promise<string> => {
+    if (p.type !== 'mod' || p.payload?.action !== 'install-mod' || !p.payload?.modId || !p.payload?.code) return '';
+    try {
+      const r = await (await fetch(`${BRIDGE}/api/forge/mod/install`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.payload.modId, code: p.payload.code }),
+      })).json();
+      return r.success ? ` 🔌 mod „${r.id}" zainstalowany — użyj w Reżyserze.` : ` ⚠ instalacja moda: ${r.message}`;
+    } catch { return ' ⚠ instalacja moda: most offline.'; }
+  };
+
   const buy = async (p: Product) => {
     if (owned.includes(p.id)) return;
     const price = effPrice(p); // dynamiczna (popyt)
-    if (price <= 0) { markOwned(p.id); setStatus(`✅ Pobrano za darmo: ${p.name}`); return; }
-    if (p.creator === BUYER) { setStatus('⚠ To Twój produkt — już go masz.'); markOwned(p.id); return; }
+    if (price <= 0) { markOwned(p.id); setStatus(`✅ Pobrano za darmo: ${p.name}.${await installIfMod(p)}`); return; }
+    if (p.creator === BUYER) { markOwned(p.id); setStatus(`⚠ To Twój produkt — już go masz.${await installIfMod(p)}`); return; }
     try {
       const d = await (await fetch(`${BRIDGE}/api/grv/grant`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ from: BUYER, to: p.creator, amount: price }) })).json();
       if (!d.success) throw new Error(d.message || 'Zakup nieudany');
       markOwned(p.id);
       setBalance(d.fromBalance);
-      setStatus(`✅ Kupiono „${p.name}" za ${price.toLocaleString('pl-PL')} GRV. Saldo: ${typeof d.fromBalance === 'number' ? d.fromBalance.toLocaleString('pl-PL') : d.fromBalance} GRV`);
+      const inst = await installIfMod(p);
+      setStatus(`✅ Kupiono „${p.name}" za ${price.toLocaleString('pl-PL')} GRV. Saldo: ${typeof d.fromBalance === 'number' ? d.fromBalance.toLocaleString('pl-PL') : d.fromBalance} GRV${inst}`);
     } catch (e: any) { setStatus(`⚠ ${e.message}`); }
   };
 

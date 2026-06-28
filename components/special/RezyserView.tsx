@@ -38,6 +38,10 @@ export const RezyserView: React.FC = () => {
   const [modPrompt, setModPrompt] = useState('');
   const [modName, setModName] = useState('');
   const [modBusy, setModBusy] = useState(false);
+  // Wystawianie modu w Marketplace (Etap II b).
+  const [pubId, setPubId] = useState('');
+  const [pubPrice, setPubPrice] = useState('100');
+  const [pubBusy, setPubBusy] = useState(false);
 
   // Autosave + odśwież version znacznik.
   useEffect(() => { try { localStorage.setItem(LS_KEY, JSON.stringify(story)); } catch { /* full */ } }, [story]);
@@ -63,6 +67,21 @@ export const RezyserView: React.FC = () => {
       await loadPlugins();
     } catch (e: any) { toast.error(`⚠ ${e.message} — uruchom most + Ollamę.`); }
     finally { setModBusy(false); }
+  };
+
+  const publishMod = async () => {
+    const id = pubId || plugins[0]?.id;
+    if (!id) { toast.error('Brak modu do wystawienia — najpierw stwórz mod.'); return; }
+    setPubBusy(true);
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/forge/mod/publish`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, priceGrv: Math.max(0, +pubPrice || 0) }),
+      })).json();
+      if (!d.success) throw new Error(d.message || 'Publikacja nieudana');
+      toast.success(`🏷️ Mod „${id}" wystawiony w Marketplace za ${d.product.priceGrv} GRV.`, { duration: 5000 });
+    } catch (e: any) { toast.error(`⚠ ${e.message} — uruchom most (:3001).`); }
+    finally { setPubBusy(false); }
   };
 
   const setScene = (sceneId: string, patch: Partial<StoryManifest['scenes'][0]>) =>
@@ -228,7 +247,25 @@ export const RezyserView: React.FC = () => {
         <textarea value={modPrompt} onChange={e => setModPrompt(e.target.value)} rows={2}
           placeholder="Opisz mod: co ma dodać do sceny? Np. rój świetlików: 20 małych żółtych świateł lewitujących losowo nad sceną."
           className="w-full bg-black/40 border border-violet-500/20 rounded px-2 py-1.5 text-[10px] text-violet-100 outline-none focus:border-violet-500 resize-y" />
-        <div className="text-[8px] text-zinc-600 mt-1">Mod ląduje w <code className="text-violet-400">forge_plugins/</code> i pojawia się wyżej jako 🔌 do wpięcia w scenę. Etap II: sprzedaż za GRV w Marketplace (wkrótce).</div>
+        <div className="text-[8px] text-zinc-600 mt-1">Mod ląduje w <code className="text-violet-400">forge_plugins/</code> i pojawia się wyżej jako 🔌 do wpięcia w scenę.</div>
+
+        {/* 🏷️ Wystaw mod w Marketplace za GRV */}
+        {plugins.length > 0 && (
+          <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-violet-900/40">
+            <span className="text-[9px] text-amber-400/70">🏷️ wystaw:</span>
+            <select value={pubId || plugins[0]?.id} onChange={e => setPubId(e.target.value)}
+              className="bg-black/50 border border-amber-900/50 rounded px-1 py-0.5 text-[10px] text-amber-200 outline-none max-w-[40%]">
+              {plugins.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
+            </select>
+            <input type="number" min={0} value={pubPrice} onChange={e => setPubPrice(e.target.value)} title="cena GRV"
+              className="w-16 bg-black/50 border border-amber-900/50 rounded px-1 py-0.5 text-[10px] text-amber-200 outline-none" />
+            <span className="text-[9px] text-zinc-600">GRV</span>
+            <button onClick={publishMod} disabled={pubBusy}
+              className="px-2.5 py-0.5 rounded border border-amber-500/50 bg-amber-950/30 text-amber-300 text-[10px] font-bold hover:bg-amber-900/50 disabled:opacity-50">
+              {pubBusy ? '⟳…' : 'do Marketplace'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="text-[9px] text-zinc-600 mt-2 leading-relaxed">

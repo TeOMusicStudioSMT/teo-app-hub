@@ -4186,6 +4186,57 @@ app.post('/api/forge/plugin', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+const SAFE_MOD_ID = (s) => String(s || '').toLowerCase().replace(/[^\w]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32);
+
+/** POST /api/forge/mod/publish — wystaw lokalny mod (forge_plugins/<id>.py) w Marketplace za GRV.
+ *  Kod wędruje W PRODUKCIE (payload) — suwerennie: kupujący instaluje nawet, gdy plik twórcy zniknie. */
+app.post('/api/forge/mod/publish', async (req, res) => {
+    const { id, name, desc, priceGrv, creator } = req.body ?? {};
+    const safe = SAFE_MOD_ID(id);
+    if (!safe) return res.status(400).json({ success: false, message: 'Brak id moda.' });
+    try {
+        let code;
+        try { code = await fs.readFile(path.join(PLUGINS_DIR, `${safe}.py`), 'utf8'); }
+        catch { return res.status(404).json({ success: false, message: `Mod '${safe}' nie istnieje w forge_plugins/.` }); }
+        const doc = code.match(/def\s+apply\s*\([^)]*\):\s*"""(.+?)"""/s);
+        const autoDesc = doc ? doc[1].trim().split('\n')[0] : 'Mod do generatora światów Reżysera.';
+        const m = await loadMarket();
+        const pid = `forge-mod-${safe}`;
+        const existing = m.products.find(p => p.id === pid);
+        const product = {
+            id: pid, module: 'forge-mod', type: 'mod',
+            name: name || `🔌 ${safe}`, desc: desc || autoDesc,
+            priceGrv: Math.max(0, Number(priceGrv) || 0), creator: creator || 'Mistrz Arkadiusz',
+            votes: existing?.votes || 0, createdAt: existing?.createdAt || Date.now(),
+            payload: { action: 'install-mod', modId: safe, code },
+        };
+        if (existing) Object.assign(existing, product); else m.products.push(product);
+        await saveMarket();
+        console.log(`[Reżyser] 🏷️ Wystawiono mod w Marketplace: ${pid} (${product.priceGrv} GRV)`);
+        res.json({ success: true, product: { ...product, payload: { action: 'install-mod', modId: safe } } });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+/** POST /api/forge/mod/install — zapis modu do forge_plugins/ przy zakupie. Tarcza skanuje kod. */
+app.post('/api/forge/mod/install', async (req, res) => {
+    const { id, code } = req.body ?? {};
+    const safe = SAFE_MOD_ID(id);
+    if (!safe || !code || !/def\s+apply\s*\(/.test(String(code)))
+        return res.status(400).json({ success: false, message: 'Brak id lub poprawnego kodu moda (apply()).' });
+    try {
+        // 🛡️ Tarcza Prawdy skanuje kod przed zapisem (blokuje sabotaż/eval/exfiltrację).
+        const card = AlignmentShield.getInstance().inspect(String(code), {});
+        if (card.blocked) {
+            console.warn(`[Reżyser] 🛡️ Instalacja moda '${safe}' ZABLOKOWANA: ${card.summary}`);
+            return res.status(422).json({ success: false, code: 'ALIGNMENT_SHIELD', message: `Tarcza Prawdy wstrzymała mod — ${card.summary}`, shield: card });
+        }
+        await fs.mkdir(PLUGINS_DIR, { recursive: true });
+        await fs.writeFile(path.join(PLUGINS_DIR, `${safe}.py`), String(code), 'utf8');
+        console.log(`[Reżyser] ⬇️ Zainstalowano mod: ${safe}.py`);
+        res.json({ success: true, id: safe });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 🧹 PAMIĘĆ — raport RAM + bezpieczne zwolnienie (przygotowanie na UE) ──────
 app.get('/api/system/memory', (req, res) => {
     const total = os.totalmem(), free = os.freemem();

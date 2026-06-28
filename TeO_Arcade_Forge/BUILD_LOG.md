@@ -45,7 +45,10 @@ w Katedrze (TeO Arcade Forge → panel Reżyser), eksportuje JEDEN manifest, wrz
 - **Wtyczki/mody:** `forge_plugins/` — kontrakt `_PLUGIN_API.md` (`apply(ctx, params)`), przykłady `rain_neon.py`, `floating_props.py`.
 - **Etap II — generator modów (✅ część a):** `POST /api/forge/plugin` (Ollama pisze wtyczkę wg kontraktu → zapis do `forge_plugins/`),
   panel „🔌 Stwórz mod" w `RezyserView.tsx` (opis + nazwa → generuj → mod pojawia się jako chip do wpięcia). ⚠ restart mostu + Ollama.
-  TODO (część b): sprzedaż/instalacja modów za GRV w Marketplace.
+- **Etap II — mody za GRV (✅ część b):** `POST /api/forge/mod/publish` (kod modu wędruje W PRODUKCIE payload — suwerennie),
+  `POST /api/forge/mod/install` (zapis do `forge_plugins/`, **Tarcza Prawdy skanuje kod** przed zapisem — blokuje sabotaż/eval).
+  RezyserView: wiersz „🏷️ wystaw → do Marketplace". `Marketplace.tsx` `buy()`: po zakupie modu (type=mod) auto-instalacja.
+  TODO: TOP10/głosy dla modów (działa przez istniejący rynek), hash-chain autentyczności modu (Skaner) — na potem.
 
 ## Konwencja etykiet (by wszystko się spinało)
 `Sun_*`, `Neon_*`, `Title_*`, `Desk_*`, `Terminal_*`, `Gate_*`, `Aether_*`, `Guardian_*`, `Cine_*`.
