@@ -66,3 +66,6 @@ TeO_Arcade_Forge/OtakOS/
 # Śmieciowe skrypty scen z timestampem (ad-hoc generacje; trzymamy scene_NN_*.py / scene_fix_*.py)
 TeO_Arcade_Forge/ue_scripts/scene_[0-9][0-9][0-9][0-9][0-9][0-9]*.py
 TeO_Arcade_Forge/ue_scripts/__pycache__/
+TeO_Arcade_Forge/forge_plugins/__pycache__/
+# Manifesty filmów Reżysera (runtime użytkownika — generowane, nie do repo)
+TeO_Arcade_Forge/stories/

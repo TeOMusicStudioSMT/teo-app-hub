@@ -9,6 +9,7 @@ import React, { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { pickModelForTask, setActiveModel, getActiveModel } from '../../lib/modelRouter';
 import PamiecHelper from './PamiecHelper';
+import RezyserView from './RezyserView';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
@@ -133,6 +134,9 @@ export const TeoArcadeForge: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* 🎬 Reżyser — złóż film=grę ze scen i ujęć */}
+      <RezyserView />
 
       {/* Strażnicy aktywni */}
       <div className="flex flex-wrap gap-1.5 text-[9px]">

@@ -34,5 +34,17 @@ robi się w **Sequencerze** (Okno → Cinematics → Add Level Sequence):
 - Na końcu sekwencji → **oddanie sterowania graczowi** (Level Blueprint: po sekwencji `Set View Target` na gracza = „otwierasz oczy").
 - (Docelowo: generator napisze i to przez Python — Sequencer ma API.)
 
+## 🎬 REŻYSER — gra = Film = opowieść (Etap I)
+Warstwa kompozycji NAD pojedynczymi scenami: użytkownik składa film ze **scen i ujęć**
+w Katedrze (TeO Arcade Forge → panel Reżyser), eksportuje JEDEN manifest, wrzuca do UE.
+- **UI:** `components/special/RezyserView.tsx` (w `TeoArcadeForge.tsx`). Format: `lib/storyManifest.ts`.
+- **Most:** `POST /api/forge/story` (zapis do `stories/`), `GET /api/forge/stories`, `GET /api/forge/plugins`. ⚠ restart mostu.
+- **Kompilator:** `ue_scripts/story_compiler.py` — czyta najnowszy `stories/*.json`, stawia środowiska
+  (schron/atrium/aether/pusto), woła wtyczki, buduje `Cine_Story` (cięcia kamer, auto_play) = HYBRYDA film→gra.
+  Uruchom: Narzędzia → Wykonaj skrypt → `story_compiler.py`. ⚠ oddanie sterowania graczowi = ręczny 1 węzeł BP (On Finished → Set View Target).
+- **Wtyczki/mody:** `forge_plugins/` — kontrakt `_PLUGIN_API.md` (`apply(ctx, params)`), przykłady `rain_neon.py`, `floating_props.py`.
+  Etap II: generator wtyczek (Ollama) + mody za GRV w Marketplace.
+
 ## Konwencja etykiet (by wszystko się spinało)
 `Sun_*`, `Neon_*`, `Title_*`, `Desk_*`, `Terminal_*`, `Gate_*`, `Aether_*`, `Guardian_*`, `Cine_*`.
+Reżyser: `Env_<scena>_*` (środowiska), `Cine_<scena>_<ujęcie>` (kamery), `Plugin_<id>_<scena>_*` (wtyczki), `Seq_Story_Actor`.
