@@ -95,15 +95,24 @@ def ensure_baseline_light():
 
 
 # ── Środowiska (presety) — reużywają wygląd istniejących scen, offset = origin ─
-def build_schron(o, sid):
+def build_antresola(o, sid):
+    # Uniesiona platforma-punkt obserwacyjny z panelem OtakOS (biurko, terminal, neony, wrota).
+    _cube("Env_%s_Antresola" % sid, o + unreal.Vector(0, 0, 5),  unreal.Vector(7.0, 7.0, 0.3))  # platforma
     _cube("Env_%s_Desk" % sid,     o + unreal.Vector(0, 0, 45), unreal.Vector(2.4, 1.2, 0.15))
     _cube("Env_%s_DeskLeg" % sid,  o + unreal.Vector(0, 0, 20), unreal.Vector(2.0, 0.9, 0.4))
-    _cube("Env_%s_Terminal" % sid, o + unreal.Vector(0, 0, 75), unreal.Vector(0.5, 0.08, 0.45))
-    _text("Env_%s_TermLbl" % sid, "KATEDRA OtakOS", o + unreal.Vector(-2, 0, 90), (0, 230, 255, 255), 14.0)
-    _plight("Env_%s_NeonV" % sid, o + unreal.Vector(-200, 200, 120), (140, 0, 255, 255), 5000.0, 700.0)
-    _plight("Env_%s_NeonC" % sid, o + unreal.Vector(200, -200, 120), (0, 230, 255, 255), 5000.0, 700.0)
+    _cube("Env_%s_Panel" % sid,    o + unreal.Vector(0, 0, 75), unreal.Vector(0.5, 0.08, 0.45))  # panel OtakOS
+    _text("Env_%s_PanelLbl" % sid, "KATEDRA OtakOS", o + unreal.Vector(-2, 0, 90), (0, 230, 255, 255), 14.0)
+    _plight("Env_%s_NeonV" % sid, o + unreal.Vector(-200, 200, 120), (140, 0, 255, 255), 4000.0, 650.0)
+    _plight("Env_%s_NeonC" % sid, o + unreal.Vector(200, -200, 120), (0, 230, 255, 255), 4000.0, 650.0)
     _cube("Env_%s_GateL" % sid, o + unreal.Vector(700, -120, 200), unreal.Vector(0.4, 1.2, 4.0))
     _cube("Env_%s_GateR" % sid, o + unreal.Vector(700,  120, 200), unreal.Vector(0.4, 1.2, 4.0))
+
+
+def build_wyspa(o, sid):
+    # Punkt startu: ocean (wielka tafla) + wyspa (uniesiony teren) + Antresola na środku.
+    _cube("Env_%s_Ocean" % sid,  o + unreal.Vector(0, 0, -30), unreal.Vector(80.0, 80.0, 0.1))  # ocean
+    _cube("Env_%s_Island" % sid, o + unreal.Vector(0, 0, -5),  unreal.Vector(18.0, 18.0, 0.4))  # teren wyspy
+    build_antresola(o, sid)  # Antresola jako punkt obserwacyjny
 
 
 def build_atrium(o, sid):
@@ -130,10 +139,10 @@ def build_aether(o, sid):
         _plight("Env_%s_Star_%d" % (sid, i),
                 o + unreal.Vector(900 * math.cos(ang), 900 * math.sin(ang), 300 + (i % 3) * 150),
                 (200, 220, 255, 255), 1500.0, 500.0)
-    tost = fos(unreal.StaticMeshActor, "Env_%s_Tost" % sid, o + unreal.Vector(600, 0, 350))
+    tost = fos(unreal.StaticMeshActor, "Env_%s_Tost" % sid, o + unreal.Vector(600, 0, 200))  # wysokość wzroku
     tost.static_mesh_component.set_static_mesh(unreal.load_asset(SPHERE))
     tost.set_actor_scale3d(unreal.Vector(1.2, 1.2, 1.2))
-    _plight("Env_%s_TostGlow" % sid, o + unreal.Vector(600, 0, 350), (255, 200, 40, 255), 12000.0, 900.0)
+    _plight("Env_%s_TostGlow" % sid, o + unreal.Vector(600, 0, 200), (255, 200, 40, 255), 4000.0, 700.0)
 
 
 def build_pusto(o, sid):
@@ -141,10 +150,12 @@ def build_pusto(o, sid):
 
 
 ENV = {
-    "schron": build_schron,
-    "atrium": build_atrium,
-    "aether": build_aether,
-    "pusto":  build_pusto,
+    "wyspa":     build_wyspa,
+    "antresola": build_antresola,
+    "schron":    build_antresola,   # alias wstecz (stare manifesty)
+    "atrium":    build_atrium,
+    "aether":    build_aether,
+    "pusto":     build_pusto,
 }
 
 
@@ -271,9 +282,13 @@ def compile_story():
     if ver != SCHEMA_VERSION:
         unreal.log_warning("REŻYSER: wersja manifestu %s != %s — próbuję mimo to." % (ver, SCHEMA_VERSION))
 
-    title = (story.get("meta") or {}).get("title", "(bez tytułu)")
+    meta = story.get("meta") or {}
+    title = meta.get("title", "(bez tytułu)")
     scenes = story.get("scenes") or []
     unreal.log("=== REŻYSER kompiluje '%s' — %d scen ===" % (title, len(scenes)))
+    wp = (meta.get("worldPrompt") or "").strip()
+    if wp:
+        unreal.log("  Prompt Startowy Świata: %s  (modyfikatory dla ścieżki agenta — geometria bazowa bez zmian)" % wp)
 
     ensure_baseline_light()
     pdir = plugins_dir(here)
@@ -283,8 +298,8 @@ def compile_story():
     for idx, scene in enumerate(scenes):
         sid = scene.get("id", "s%d" % idx).replace("-", "_")
         origin = unreal.Vector(idx * SCENE_SPACING, 0, 0)
-        env = scene.get("environment", "pusto")
-        builder = ENV.get(env, build_pusto)
+        env = scene.get("environment", "wyspa")
+        builder = ENV.get(env, build_wyspa)
         try:
             builder(origin, sid)
             unreal.log("  + Scena %d '%s' — srodowisko: %s" % (idx + 1, scene.get("name", sid), env))

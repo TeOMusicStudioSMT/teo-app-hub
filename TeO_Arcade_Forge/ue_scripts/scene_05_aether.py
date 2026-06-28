@@ -26,20 +26,21 @@ def star(label, loc, color255, intensity=12000.0):
     return a
 
 def aether():
-    # Lewitujący złoty TOST (kula) + złota poświata
-    tost = fos(unreal.StaticMeshActor, "Golden_Toast_Portal", unreal.Vector(0, 0, 1200))
+    # Lewitujący złoty TOST (kula) — na WYSOKOŚCI WZROKU nad Antresolą, dostępny dla gracza.
+    TZ = 200  # wysokość TOSTu (eye-level), nie 1200
+    tost = fos(unreal.StaticMeshActor, "Golden_Toast_Portal", unreal.Vector(0, 0, TZ))
     tost.static_mesh_component.set_static_mesh(unreal.load_asset("/Engine/BasicShapes/Sphere.Sphere"))
-    tost.set_actor_scale3d(unreal.Vector(2.5, 2.5, 2.5))
-    star("Aether_Toast_Glow", unreal.Vector(0, 0, 1200), (255, 200, 60, 255), 25000.0)
+    tost.set_actor_scale3d(unreal.Vector(1.2, 1.2, 1.2))
+    star("Aether_Toast_Glow", unreal.Vector(0, 0, TZ), (255, 200, 60, 255), 12000.0)
 
-    # Gwiazdy NeuralMap (cyjanowe Node) wokół TOSTa
-    star("Aether_Star_N", unreal.Vector(600, 0, 1100), (0, 230, 255, 255))
-    star("Aether_Star_S", unreal.Vector(-600, 0, 1100), (0, 230, 255, 255))
-    star("Aether_Star_E", unreal.Vector(0, 600, 1100), (140, 0, 255, 255))
-    star("Aether_Star_W", unreal.Vector(0, -600, 1100), (140, 0, 255, 255))
+    # Gwiazdy NeuralMap (cyjanowe/fioletowe Node) — halo wokół TOSTa na wysokości wzroku
+    star("Aether_Star_N", unreal.Vector(420, 0, TZ + 80), (0, 230, 255, 255))
+    star("Aether_Star_S", unreal.Vector(-420, 0, TZ + 80), (0, 230, 255, 255))
+    star("Aether_Star_E", unreal.Vector(0, 420, TZ + 80), (140, 0, 255, 255))
+    star("Aether_Star_W", unreal.Vector(0, -420, TZ + 80), (140, 0, 255, 255))
 
-    # Napis portalu
-    lbl = fos(unreal.TextRenderActor, "Aether_Label", unreal.Vector(0, 0, 950))
+    # Napis portalu — tuż pod TOSTem
+    lbl = fos(unreal.TextRenderActor, "Aether_Label", unreal.Vector(0, 0, TZ - 110))
     lbl.text_render.set_text(unreal.Text("AETHER  -  arena Katedr"))
     lbl.text_render.set_text_render_color(unreal.Color(255, 200, 60, 255))
     lbl.text_render.set_world_size(40.0)

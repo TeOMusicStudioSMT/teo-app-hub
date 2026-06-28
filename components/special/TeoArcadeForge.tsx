@@ -14,8 +14,8 @@ import RezyserView from './RezyserView';
 const BRIDGE = 'http://127.0.0.1:3001';
 
 const LEVELS = [
-  { icon: '🏛️', name: 'Poziom 1 — Cyber-Schron Emmerich', desc: 'Odwzorowanie Katedry: Smart Ring → Web NFC → wrota EventHorizon.' },
-  { icon: '🍞', name: 'Poziom 2 — Most + lewitujący TOST', desc: 'Gwiazdy NeuralMap/Graviton → portal AETHER. Wybór Art → Beat-Sync z teledysk.mp4.' },
+  { icon: '🏝️', name: 'O TAK… Wyspa — punkt startu', desc: 'Brak danych → szablon wyspy + Antresola (punkt obserwacyjny). Z Twoimi katalogami zdjęć + danymi → ludzie/przedmioty/surowce materializują się na wyspie.' },
+  { icon: '🍞', name: 'Antresola + lewitujący TOST', desc: 'TOST na wysokości wzroku → portal AETHER. Szklane panele = okna na wyspy innych suwerenów (sieć GRV).' },
   { icon: '🛡️', name: 'Strażnicy Progu', desc: 'Drony iFixAi (Tarcza) + Radca (Legal). Naruszenie = TELEPORTACJA, nie kara.' },
 ];
 
@@ -23,7 +23,7 @@ export const TeoArcadeForge: React.FC = () => {
   const [models, setModels] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [scenePrompt, setScenePrompt] = useState(
-    'Zbuduj Poziom 1 — Cyber-Schron Emmerich (ciemna serwerownia cyberpunk). Przyciemnij DirectionalLight do intensywności 0.5. Dodaj 4 światła punktowe wzdłuż ścian: 2 fioletowe i 2 cyjanowe, intensywność 5000. Na środku dodaj sześcian jako biurko Konstruktora (skala 2,1,1) i mniejszy sześcian jako terminal na biurku.'
+    'Zbuduj punkt startu „O TAK… Wyspa": ocean wokół + wyspa (płaski teren). Na środku Antresola (uniesiona platforma — punkt obserwacyjny) z panelem OtakOS. Łagodne światło dnia (DirectionalLight 1.0), delikatne neony akcentowe. Bez nazw lokacji — czysta, dziewicza wyspa.'
   );
   const [ueCode, setUeCode] = useState('');
   const [ueFile, setUeFile] = useState('');
@@ -59,7 +59,7 @@ export const TeoArcadeForge: React.FC = () => {
     const command =
       'Wykuj świat gry „GENESIS OVERRIDE" wg blueprintu TeO_Arcade_Forge/GENESIS_OVERRIDE.md w Unreal Engine 5.8. ' +
       'Zachowaj reguły 0.00G: nie krzywdzi (TELEPORTACJA zamiast kary), agenci-limity Epic (Strażnik Licencji), ' +
-      'lokalnie/suwerennie. Poziomy: Cyber-Schron Emmerich, Most + TOST → AETHER, Strażnicy iFixAi.';
+      'lokalnie/suwerennie. Etapy: O TAK… Wyspa (start) + Antresola z panelem OtakOS, Most + TOST → AETHER, Strażnicy iFixAi.';
     const tasks = JSON.parse(localStorage.getItem('otakos_terminal_tasks') || '[]');
     tasks.unshift({ id: `forge-${Date.now()}`, title: '🔨 Wykuj świat: GENESIS OVERRIDE', command });
     localStorage.setItem('otakos_terminal_tasks', JSON.stringify(tasks));

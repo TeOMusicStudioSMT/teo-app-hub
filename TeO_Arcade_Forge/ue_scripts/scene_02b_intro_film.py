@@ -9,7 +9,8 @@ import unreal
 # ⚠ Oddanie sterowania graczowi po sekwencji = 1 ręczny węzeł BP (On Finished → Set View Target).
 
 FPS = 30
-DUR_S = 5.0
+DUR_S = 8.0          # dłużej — wcześniej „strasznie szybko mijało"
+FADE_S = 2.0         # wolniejsze otwarcie oczu
 SEQ_PATH = "/Game/Genesis"
 SEQ_NAME = "Cine_Intro_Film"
 
@@ -71,7 +72,24 @@ def intro_film():
         if bid is not None:
             cut_sec.set_camera_binding_id(bid)
 
-        # 2) Fade z czerni: 1.0 (czarne) → 0.0 (przejrzyste) w 1.5 s = „otwarcie oczu".
+        # 1b) Powolny obrót kamery = „rozgląda się gdzie jest" (opcjonalnie, własny try/except).
+        try:
+            tr = binding.add_track(unreal.MovieScene3DTransformTrack)
+            ts = tr.add_section()
+            ts.set_range(0, total)
+            ch = ts.get_channels()
+            cl = cam.get_actor_location()
+            _add_key(ch[0], 0, cl.x); _add_key(ch[0], total, cl.x)        # loc X (stałe)
+            _add_key(ch[1], 0, cl.y); _add_key(ch[1], total, cl.y)        # loc Y
+            _add_key(ch[2], 0, cl.z); _add_key(ch[2], total, cl.z)        # loc Z
+            _add_key(ch[4], 0, -8.0); _add_key(ch[4], total, -8.0)        # pitch (stały)
+            _add_key(ch[5], 0, 165.0)                                     # yaw: w lewo
+            _add_key(ch[5], int(total * 0.5), 195.0)                      #      → w prawo
+            _add_key(ch[5], total, 180.0)                                 #      → na panel OtakOS
+        except Exception as e:
+            unreal.log_warning("02b: pan kamery pominięty (%s) — ujęcie statyczne." % e)
+
+        # 2) Fade z czerni: 1.0 (czarne) → 0.0 (przejrzyste) = „otwarcie oczu".
         try:
             fade_track = seq.add_track(unreal.MovieSceneFadeTrack)
         except Exception:
@@ -92,7 +110,7 @@ def intro_film():
                 continue
         if chans:
             _add_key(chans[0], 0, 1.0)
-            _add_key(chans[0], int(1.5 * FPS), 0.0)
+            _add_key(chans[0], int(FADE_S * FPS), 0.0)
 
         unreal.EditorAssetLibrary.save_asset(path)
 

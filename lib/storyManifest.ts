@@ -15,12 +15,13 @@
 export const STORY_SCHEMA_VERSION = 1;
 
 /** Wbudowane środowiska (presety geometrii reużywające istniejące sceny GENESIS). */
-export type Environment = 'schron' | 'atrium' | 'aether' | 'pusto';
+export type Environment = 'wyspa' | 'antresola' | 'atrium' | 'aether' | 'pusto';
 
 export const ENVIRONMENTS: { id: Environment; name: string; icon: string; desc: string }[] = [
-  { id: 'schron', name: 'Cyber-Schron', icon: '🏛️', desc: 'Serwerownia: biurko, terminal, neony, wrota EventHorizon.' },
-  { id: 'atrium', name: 'Oszklone Atrium', icon: '🪟', desc: 'Metalowa konstrukcja + kolorowe witraże + odbicia.' },
-  { id: 'aether', name: 'Most AETHER', icon: '🍞', desc: 'Platforma w kosmosie, gwiazdy NeuralMap, złoty TOST-portal.' },
+  { id: 'wyspa', name: 'O TAK… Wyspa', icon: '🏝️', desc: 'Punkt startu: ocean + wyspa (teren). Dziewicza karta — z danymi zaludnia się Twoimi katalogami.' },
+  { id: 'antresola', name: 'Antresola + panel', icon: '🛖', desc: 'Uniesiona platforma-punkt obserwacyjny z panelem OtakOS (biurko, terminal, neony).' },
+  { id: 'atrium', name: 'Oszklone Atrium', icon: '🪟', desc: 'Metalowa konstrukcja + szklane panele/witraże + odbicia.' },
+  { id: 'aether', name: 'Most AETHER', icon: '🍞', desc: 'Platforma w kosmosie, gwiazdy NeuralMap, lewitujący TOST-portal (na wysokości wzroku).' },
   { id: 'pusto', name: 'Pustka', icon: '⚫', desc: 'Czysta scena — tylko Twoje wtyczki i ujęcia.' },
 ];
 
@@ -56,8 +57,9 @@ export interface StoryManifest {
   meta: {
     title: string;
     author: string;
-    version: number;     // = STORY_SCHEMA_VERSION przy eksporcie
+    version: number;       // = STORY_SCHEMA_VERSION przy eksporcie
     createdAt: number;
+    worldPrompt?: string;  // Prompt Startowy Świata — modyfikatory (np. „piasek na czarny bazalt")
   };
   scenes: Scene[];
 }
@@ -81,13 +83,13 @@ export function defaultShot(kind: ShotKind = 'establishing'): Shot {
   return { id: uid('shot'), kind, camera: cams[kind], durationS: 4 };
 }
 
-export function emptyScene(name = 'Scena 1', environment: Environment = 'schron'): Scene {
+export function emptyScene(name = 'Scena 1', environment: Environment = 'wyspa'): Scene {
   return { id: uid('scene'), name, environment, shots: [defaultShot('establishing')] };
 }
 
 export function emptyStory(title = 'Bez tytułu', author = 'Suweren'): StoryManifest {
   return {
-    meta: { title, author, version: STORY_SCHEMA_VERSION, createdAt: Date.now() },
+    meta: { title, author, version: STORY_SCHEMA_VERSION, createdAt: Date.now(), worldPrompt: '' },
     scenes: [emptyScene()],
   };
 }

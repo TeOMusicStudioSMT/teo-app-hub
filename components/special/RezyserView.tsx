@@ -146,7 +146,13 @@ export const RezyserView: React.FC = () => {
       <input value={story.meta.title}
         onChange={e => setStory(s => ({ ...s, meta: { ...s.meta, title: e.target.value } }))}
         placeholder="Tytuł filmu…"
-        className="w-full bg-black/40 border border-amber-500/20 rounded px-2.5 py-1.5 text-[12px] text-amber-100 outline-none focus:border-amber-500 mb-2" />
+        className="w-full bg-black/40 border border-amber-500/20 rounded px-2.5 py-1.5 text-[12px] text-amber-100 outline-none focus:border-amber-500 mb-1.5" />
+
+      {/* 🌍 Prompt Startowy Świata — modyfikatory przed wykuciem */}
+      <input value={story.meta.worldPrompt || ''}
+        onChange={e => setStory(s => ({ ...s, meta: { ...s.meta, worldPrompt: e.target.value } }))}
+        placeholder="🌍 Prompt Startowy Świata (np. piasek na czarny bazalt, neony Rose Gold)…"
+        className="w-full bg-black/30 border border-emerald-700/30 rounded px-2.5 py-1.5 text-[11px] text-emerald-100/90 outline-none focus:border-emerald-500 mb-2" />
 
       {/* Sceny */}
       <div className="space-y-2.5">

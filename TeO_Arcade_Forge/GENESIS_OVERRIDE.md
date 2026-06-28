@@ -7,14 +7,23 @@
 
 ---
 
-## 🏛️ Poziom 1: Cyber-Schron Emmerich (odwzorowanie Katedry Użytkownika)
-**Punkt startowy:** Budzisz się w surowej, cyberpunkowej serwerowni. Na ścianach pulsują neonowe
-fioletowe i cyjanowe światłowody. Na środku — biurko Konstruktora z terminalem, na którym miga:
-**„KATEDRA OtakOS — Wymiar 0.00G (V_ZERO)"**.
+## 🏝️ Poziom 1: O TAK… Wyspa (punkt startu — otwarta przestrzeń kreacji)
+> Aksjologia: zamknięty schron ustępuje **Wyspie** — otwartej przestrzeni kreacji i eksploracji
+> (Miłość 2.0, Tier III). Bez nazw lokacji — czysta karta.
 
-**Interakcja:** Na palcu postaci lśni **Smart Ring Gen 3**. Podejście do konsoli centralnej i
-zbliżenie dłoni (wirtualne Web NFC) zdejmuje osłony z wielkich, pancernych wrót oznaczonych
-symbolem **EventHorizon**.
+**Brak danych użytkownika:** spawn na mitycznej, uniesionej **Antresoli** (punkt obserwacyjny) z
+widokiem na dziewiczą, standardową **Wyspę** (ocean + geometria terenu). Na Antresoli miga panel
+**„KATEDRA OtakOS — Wymiar 0.00G"**.
+
+**Iniekcja danych (zdjęcia + tożsamość lokalna):** Katedra krystalizuje bazę danych — **osobno
+ludzie/awatary** (Baza Postaci), **osobno przedmioty/surowce** (Baza Assetów) — i rozrzuca je po
+wyspie proceduralnie, tworząc spersonalizowane, grywalne uniwersum.
+
+**Prompt Startowy Świata:** przed „Wykuj Świat" użytkownik może dopisać modyfikatory (np. „piasek na
+czarny bazalt, neony w odcieniu Rose Gold").
+
+**Interakcja:** na palcu lśni **Smart Ring**; zbliżenie dłoni (wirtualne Web NFC) do panelu OtakOS
+otwiera portale. (Symbolika wrót **EventHorizon** zostaje jako przejście do AETHER.)
 
 ## 🍞 Poziom 2: Most Międzywymiarowy i Lewitujący TOST
 Po przekroczeniu wrót — wisząca platforma w przestrzeni kosmicznej. Wokół rozciąga się żywa
