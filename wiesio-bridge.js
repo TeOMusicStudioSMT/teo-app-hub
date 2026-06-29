@@ -4052,6 +4052,51 @@ app.post('/api/uneng/launch', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 🛰️ UE HEADLESS — agent buduje świat BEZ okna edytora (komendlet, -nullrhi = zero renderu, mało RAM)
+const HEADLESS_LOG = path.join(TEMP_DIR, 'uneng_headless.log');
+let headless = { running: false, code: null, script: null, startedAt: 0 };
+
+function resolveUE() {
+    const editor = [process.env.OTAKOS_UE_PATH, 'F:\\5 stars\\UE6\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe'].filter(Boolean).find(p => fsSync.existsSync(p));
+    if (!editor) return { error: 'Nie znaleziono UnrealEditor — ustaw OTAKOS_UE_PATH.' };
+    const cmd = editor.replace(/UnrealEditor\.exe$/i, 'UnrealEditor-Cmd.exe');
+    const exe = fsSync.existsSync(cmd) ? cmd : editor;   // -Cmd to wariant konsolowy (lepszy headless)
+    const uproject = [process.env.OTAKOS_UE_PROJECT, path.join(process.cwd(), 'TeO_Arcade_Forge', 'GENESIS_OVERRIDE', 'GENESIS_OVERRIDE.uproject')].filter(Boolean).find(p => fsSync.existsSync(p));
+    if (!uproject) return { error: 'Nie znaleziono .uproject — ustaw OTAKOS_UE_PROJECT.' };
+    return { exe, uproject };
+}
+
+/** POST /api/uneng/run-headless {script?} — odpala skrypt Pythona w UE BEZ GUI. Fire-and-forget → status. */
+app.post('/api/uneng/run-headless', async (req, res) => {
+    if (headless.running) return res.status(409).json({ success: false, message: 'Headless build już w toku — sprawdź status.' });
+    const scriptName = String(req.body?.script || '_headless_build.py');
+    if (/[\\/]|\.\./.test(scriptName) || !/\.py$/.test(scriptName)) return res.status(400).json({ success: false, message: 'Zła nazwa skryptu (tylko plik .py z ue_scripts/).' });
+    const scriptPath = path.join(process.cwd(), 'TeO_Arcade_Forge', 'ue_scripts', scriptName);
+    if (!fsSync.existsSync(scriptPath)) return res.status(404).json({ success: false, message: `Brak skryptu: ${scriptName}` });
+    const ue = resolveUE();
+    if (ue.error) return res.json({ success: false, message: ue.error });
+    const args = [ue.uproject, '-run=pythonscript', `-script=${scriptPath}`, '-unattended', '-nosplash', '-nullrhi', '-nopause', '-stdout'];
+    try {
+        const log = fsSync.createWriteStream(HEADLESS_LOG, { flags: 'w' });
+        log.write(`[headless] ${new Date().toLocaleString('pl-PL')}\n${ue.exe}\n${args.join(' ')}\n\n`);
+        const child = spawn(ue.exe, args, { windowsHide: true });
+        headless = { running: true, code: null, script: scriptName, startedAt: Date.now() };
+        child.stdout.on('data', d => log.write(d));
+        child.stderr.on('data', d => log.write(d));
+        child.on('close', c => { headless.running = false; headless.code = c; log.end(`\n[headless] zakończono kod ${c}\n`); console.log(`[UnEnG] 🛰️ Headless ${scriptName} → kod ${c}`); });
+        child.on('error', e => { headless.running = false; headless.code = -1; log.end(`\n[headless] BŁĄD: ${e.message}\n`); });
+        console.log(`[UnEnG] 🛰️ Headless start: ${scriptName} (bez GUI, -nullrhi)`);
+        res.json({ success: true, started: true, script: scriptName, note: 'UE liczy bez okna. Sprawdzaj /api/uneng/headless-status. Cold start UE ~kilka minut.' });
+    } catch (e) { headless.running = false; res.status(500).json({ success: false, message: e.message }); }
+});
+
+/** GET /api/uneng/headless-status — stan + ogon logu headless. */
+app.get('/api/uneng/headless-status', async (req, res) => {
+    let log = '';
+    try { const t = await fs.readFile(HEADLESS_LOG, 'utf8'); log = t.split('\n').slice(-50).join('\n'); } catch { /* brak logu */ }
+    res.json({ success: true, running: headless.running, code: headless.code, script: headless.script, startedAt: headless.startedAt, log });
+});
+
 /** POST /api/forge/ue-script — lokalny agent (Ollama) pisze skrypt UE-Python budujący scenę. */
 app.post('/api/forge/ue-script', async (req, res) => {
     const { prompt, model: m } = req.body ?? {};

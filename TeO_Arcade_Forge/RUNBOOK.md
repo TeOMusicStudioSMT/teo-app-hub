@@ -32,6 +32,17 @@ To tu klikasz Reżysera, Co-Bota, Stocznię, „Zasil Wyspę", generujesz mody.
   `scene_island_populate.py` (po skanie katalogu w „Zasil Wyspę") → `scene_shipyard.py` (stocznia + surowce).
 - Jeśli UE marudzi „za dużo świateł" → `fix_lights_vsm.py` (już wpięte w build_all jako krok 99).
 
+### 🛰️ Build HEADLESS — bez okna UE (oszczędza RAM/GPU)
+Agent buduje świat, a UE liczy w tle BEZ GUI (`-nullrhi` = zero renderu). Nie musisz patrzeć —
+operujesz słowem; grę włączasz wizualnie dopiero do testu.
+- **Z apki:** Game Forge → „🛰️ Kuźnia Headless" → „Buduj świat headless" → „↻ Odśwież log".
+- **Wymaga env:** `OTAKOS_UE_PATH` (UnrealEditor.exe; most użyje obok `UnrealEditor-Cmd.exe`),
+  opcjonalnie `OTAKOS_UE_PROJECT` (.uproject) i `OTAKOS_UE_MAP` (ścieżka mapy, np. `/Game/FirstPerson/Maps/Lvl_FirstPerson`).
+- **Ręcznie (fallback / dla agenta w terminalu):**
+  `"...\UnrealEditor-Cmd.exe" "...\GENESIS_OVERRIDE.uproject" -run=pythonscript -script="...\ue_scripts\_headless_build.py" -unattended -nosplash -nullrhi -nopause -stdout`
+- ⚠ BLIND-BUILD: headless ładowanie poziomu + komendlet zależą od projektu/UE 5.8. Log mówi wprost, co poszło;
+  pewny fallback = build w otwartym edytorze (GUI). Cold start UE ~kilka minut.
+
 ### WEJDŹ DO GRY
 - **Najprościej — w edytorze:** naciśnij **Play** (przycisk ▶ na górze) = grasz od razu, chodzisz po świecie.
 - **Interakcje (raz, ręcznie — 1 węzeł w Level Blueprint każda):**

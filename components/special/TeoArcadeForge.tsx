@@ -33,6 +33,31 @@ export const TeoArcadeForge: React.FC = () => {
   const [islandScan, setIslandScan] = useState('');
   const [scanBusy, setScanBusy] = useState(false);
 
+  // 🛰️ UE Headless — buduj świat bez okna edytora
+  const [hlRunning, setHlRunning] = useState(false);
+  const [hlLog, setHlLog] = useState('');
+
+  const startHeadless = async () => {
+    setHlLog('🛰️ Start headless… (UE cold start ~kilka minut, bez okna)');
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/uneng/run-headless`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: '_headless_build.py' }),
+      })).json();
+      if (!d.success) throw new Error(d.message || 'Start nieudany');
+      setHlRunning(true);
+      toast.success('🛰️ UE buduje świat bez okna (zero renderu). Odświeżaj log.', { duration: 5000 });
+    } catch (e: any) { setHlLog(`⚠ ${e.message}`); }
+  };
+
+  const refreshHeadless = async () => {
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/uneng/headless-status`)).json();
+      setHlRunning(d.running);
+      setHlLog((d.running ? '⏳ w toku…\n' : `✅ zakończono (kod ${d.code})\n`) + (d.log || '(brak logu)'));
+    } catch { setHlLog('⚠ most offline (:3001)'); }
+  };
+
   // ⛵ Stocznia — recepty statków
   const [ships, setShips] = useState<{ id: string; name: string; needs: Record<string, number>; energy: number; range: string }[]>([]);
   const [craftPlan, setCraftPlan] = useState('');
@@ -173,6 +198,22 @@ export const TeoArcadeForge: React.FC = () => {
 
       {/* 🧹 Przygotuj pamięć na UE */}
       <PamiecHelper />
+
+      {/* 🛰️ Kuźnia Headless — agent buduje świat BEZ okna UE (oszczędza RAM/GPU) */}
+      <div className="rounded-lg border border-indigo-900/50 bg-black/30 p-3 my-3">
+        <div className="text-[11px] text-indigo-300/80 tracking-wider mb-1">🛰️ KUŹNIA HEADLESS — buduj świat bez okna UE (zero renderu)</div>
+        <div className="text-[9px] text-zinc-500 mb-2">UE liczy w tle (`-nullrhi`), nie otwiera GUI — oszczędza RAM/GPU. Operujesz słowem; grę włączasz wizualnie dopiero do testu.</div>
+        <div className="flex gap-1.5">
+          <button onClick={startHeadless} disabled={hlRunning}
+            className="px-3 py-1.5 rounded border border-indigo-500/50 bg-indigo-950/30 text-indigo-300 text-[11px] font-bold hover:bg-indigo-900/50 disabled:opacity-50">
+            {hlRunning ? '⏳ w toku…' : '🛰️ Buduj świat headless'}
+          </button>
+          <button onClick={refreshHeadless}
+            className="px-3 py-1.5 rounded border border-zinc-700 text-zinc-300 text-[11px] hover:bg-zinc-900/40">↻ Odśwież log</button>
+        </div>
+        {hlLog && <pre className="text-[9px] text-indigo-100/80 bg-black/50 border border-indigo-900/50 rounded p-2 mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap">{hlLog}</pre>}
+        <div className="text-[8px] text-zinc-600 mt-1">Wymaga env OTAKOS_UE_PATH (+ OTAKOS_UE_PROJECT / OTAKOS_UE_MAP jeśli inne). Cold start UE ~kilka minut.</div>
+      </div>
 
       {/* 🗂️ Zasil Wyspę swoimi katalogami zdjęć (ludzie / przedmioty) */}
       <div className="rounded-lg border border-emerald-900/50 bg-black/30 p-3 my-3">
