@@ -1,32 +1,40 @@
 import unreal
 import os
 
-# 🛰️ GENESIS OVERRIDE — Budowa HEADLESS (UE bez okna edytora, przez komendlet -run=pythonscript).
-# Headless NIE ma domyślnie otwartego poziomu — najpierw ŁADUJEMY mapę, potem budujemy, potem zapis.
-# Wywoływane przez most: POST /api/uneng/run-headless (z -nullrhi = zero renderu, mało RAM).
+# 🛰️ GENESIS OVERRIDE — Budowa HEADLESS (UE bez okna, komendlet -run=pythonscript).
+# Headless NIE ma otwartego poziomu → najpierw ŁADUJEMY mapę (z nazwą pliku!), potem budujemy, potem zapis.
+# Jeśli mapa się nie wczyta, świat ląduje w bezimiennym transient → save_current_level wywala się
+# „doesn't have a filename" (to był błąd 12×). Dlatego tu LOGUJEMY realnie, co jest wczytane.
 #
-# ⚠ BLIND-BUILD (najwyższy poziom): ścieżka mapy + zachowanie komendletu zależą od Twojego projektu/UE 5.8.
-# Ustaw env OTAKOS_UE_MAP jeśli mapa jest gdzie indziej. Jeśli headless nie wczyta poziomu — w logu zobaczysz
-# wprost dlaczego; fallback: odpal build_all_genesis.py w otwartym edytorze (GUI), to droga pewna.
+# Ustaw env OTAKOS_UE_MAP na ścieżkę-referencję TWOJEJ mapy (UE: prawy klik na poziomie w Content
+# Browser → Copy Reference → wklej, np. /Game/FirstPerson/Maps/Lvl_FirstPerson).
 
 MAP = os.environ.get("OTAKOS_UE_MAP", "/Game/FirstPerson/Maps/Lvl_FirstPerson")
 
 
+def world_path():
+    try:
+        w = unreal.EditorLevelLibrary.get_editor_world()
+        return w.get_path_name() if w else "(brak świata)"
+    except Exception as e:
+        return "(nieznany: %s)" % e
+
+
 def load_map():
-    # Próbujemy nowym API (LevelEditorSubsystem), potem starym (EditorLoadingAndSavingUtils).
-    for attempt in (
-        lambda: unreal.LevelEditorSubsystem().load_level(MAP),
-        lambda: unreal.EditorLoadingAndSavingUtils.load_map(MAP),
-    ):
-        try:
-            attempt()
-            unreal.log("Headless: załadowano mapę %s" % MAP)
-            return True
-        except Exception as e:
-            last = e
-    unreal.log_warning("Headless: nie udało się załadować mapy %s (%s). "
-                       "Ustaw OTAKOS_UE_MAP albo buduj w GUI." % (MAP, last))
-    return False
+    unreal.log("Headless: świat PRZED = %s" % world_path())
+    ok = False
+    try:
+        # EditorLoadingAndSavingUtils.load_map — standard headless. Zwraca World albo None.
+        w = unreal.EditorLoadingAndSavingUtils.load_map(MAP)
+        ok = w is not None
+    except Exception as e:
+        unreal.log_warning("Headless: load_map('%s') wyjątek: %s" % (MAP, e))
+    after = world_path()
+    unreal.log("Headless: świat PO = %s  (cel: %s, ok=%s)" % (after, MAP, ok))
+    if not ok and MAP.split("/")[-1] not in after:
+        unreal.log_warning("Headless: ⚠ MAPA NIE WCZYTANA. Ustaw OTAKOS_UE_MAP na referencję swojej "
+                           "mapy (Content Browser → prawy klik → Copy Reference). Bez tego świat nie zapisze się do Twojej mapy.")
+    return ok
 
 
 def run():
@@ -39,15 +47,13 @@ def run():
         exec(compile(code, target, "exec"), {"__name__": "__main__", "__file__": target})
     except Exception as e:
         unreal.log_warning("Headless: build_all_genesis błąd: %s" % e)
-    # Zapis wszystkich zmienionych pakietów (poziom + assety Materials/Sequences).
+    # Zapis headless-owy: po pakietach (działa dla World Partition; nie wymaga „current level filename").
     try:
         unreal.EditorLoadingAndSavingUtils.save_dirty_packages(True, True)
-    except Exception:
-        try:
-            unreal.EditorLevelLibrary.save_current_level()
-        except Exception:
-            pass
-    unreal.log("=== 🛰️ Headless: build zakończony, pakiety zapisane. ===")
+        unreal.log("Headless: save_dirty_packages OK.")
+    except Exception as e:
+        unreal.log_warning("Headless: save_dirty_packages błąd: %s" % e)
+    unreal.log("=== 🛰️ Headless: koniec. Sprawdź wyżej, czy MAPA się wczytała (świat PO). ===")
 
 
 run()
