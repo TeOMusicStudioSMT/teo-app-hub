@@ -34,6 +34,7 @@ def apply(ctx, params):
 1. **Idempotencja:** każdy aktor ma STAŁĄ, unikalną etykietę. Konwencja: `Plugin_<id>_<scene_id>_<co>`.
    Dzięki temu ponowne uruchomienie nie dubluje (kompilator może odpalać wielokrotnie).
 2. **Kolory 0-255:** `unreal.Color(r,g,b,a)` przyjmuje 0-255, NIE 0-1 (fiolet = `Color(140,0,255,255)`).
+   Kolor światła ustawiaj `comp.set_editor_property("light_color", unreal.Color(...))` — **NIE** `comp.set_light_color(...)` (ta chce LinearColor i wywala się na Color).
 3. **NIE zeruj DirectionalLight** (czarny ekran). Mesh musi mieć przypisaną siatkę, inaczej niewidoczny.
 4. **Nie zapisuj poziomu** (`save_current_level`) — robi to kompilator na końcu.
 5. Trzymaj się swojego prefiksu etykiet — nie ruszaj cudzych aktorów (`Sun_`, `Gate_`, `Aether_`…).
@@ -47,7 +48,7 @@ def apply(ctx, params):
     for i in range(n):
         loc = ctx.origin + u.Vector(0, i * 120, 400)
         orb = ctx.fos(u.PointLight, "Plugin_orb_%s_%d" % (ctx.scene_id, i), loc)
-        orb.get_component_by_class(u.PointLightComponent).set_light_color(u.Color(0, 255, 180, 255))
+        orb.get_component_by_class(u.PointLightComponent).set_editor_property("light_color", u.Color(0, 255, 180, 255))
     ctx.log("orb: postawiono %d kul." % n)
 ```
 

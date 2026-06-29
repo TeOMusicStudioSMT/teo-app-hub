@@ -25,7 +25,7 @@ def apply(ctx, params):
         loc = ctx.origin + u.Vector(-300 + i * 160, (i % 2) * 200 - 100, height + 8)
         puddle = ctx.fos(u.PointLight, "Plugin_rain_%s_puddle_%d" % (ctx.scene_id, i), loc)
         pc = puddle.get_component_by_class(u.PointLightComponent)
-        pc.set_light_color(palette[i % 2])
+        pc.set_editor_property("light_color", palette[i % 2])  # Color 0-255 (set_light_color chce LinearColor)
         pc.set_intensity(2600.0)
         pc.set_attenuation_radius(380.0)
 

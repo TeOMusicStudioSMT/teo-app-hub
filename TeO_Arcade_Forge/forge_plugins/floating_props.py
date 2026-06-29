@@ -29,7 +29,7 @@ def apply(ctx, params):
         # Świecący rdzeń obok rekwizytu — delikatna poświata.
         glow = ctx.fos(u.PointLight, "Plugin_props_%s_glow_%d" % (ctx.scene_id, i), loc)
         gc = glow.get_component_by_class(u.PointLightComponent)
-        gc.set_light_color(u.Color(180, 120, 255, 255))
+        gc.set_editor_property("light_color", u.Color(180, 120, 255, 255))  # Color 0-255 (set_light_color chce LinearColor)
         gc.set_intensity(1800.0)
         gc.set_attenuation_radius(300.0)
 

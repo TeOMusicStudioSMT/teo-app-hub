@@ -42,7 +42,7 @@ def drone(label, loc, color255=HEAL):
     core.set_actor_scale3d(unreal.Vector(0.6, 0.6, 0.6))
     glow = fos(unreal.PointLight, label + "_Glow", loc)
     gc = glow.get_component_by_class(unreal.PointLightComponent)
-    gc.set_light_color(unreal.Color(*color255))
+    gc.set_editor_property('light_color', unreal.Color(*color255))  # Color 0-255 (NIE set_light_color — chce LinearColor)
     gc.set_intensity(4500.0)
     gc.set_attenuation_radius(700.0)
     return core

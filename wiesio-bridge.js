@@ -4114,6 +4114,7 @@ app.post('/api/forge/ue-script', async (req, res) => {
         'WAŻNE PUŁAPKI: (1) `unreal.Color(r,g,b,a)` przyjmuje liczby 0-255, NIE 0-1 (np. fiolet=Color(140,0,255,255)). ' +
         '(2) NIE ustawiaj DirectionalLight intensity na 0 — daj niską wartość (0.5-1.0), inaczej czarny ekran i clip ekspozycji; przyciemnij też SkyLight. ' +
         '(3) Dla PointLight ustaw `attenuation_radius` (np. 900) i mocną intensywność (np. 20000). ' +
+        'Kolor światła: `comp.set_editor_property("light_color", unreal.Color(r,g,b,a))` — NIE `set_light_color()` (chce LinearColor, wywala się na Color). ' +
         '(4) StaticMeshActor bez przypisanej siatki jest NIEWIDOCZNY — użyj go tylko jeśli przypiszesz mesh, inaczej pomiń. ' +
         '(5) Na końcu: unreal.EditorLevelLibrary.save_current_level(). ' +
         'IDEMPOTENCJA (krytyczne, by nic się nie dublowało): zdefiniuj na początku funkcję ' +
@@ -4210,7 +4211,8 @@ app.post('/api/forge/plugin', async (req, res) => {
         '`ctx.find(label)`, `ctx.origin` (unreal.Vector — DODAWAJ do swoich pozycji), `ctx.scene_id` (str), `ctx.log(msg)`. ' +
         'params to dict — czytaj z domyślnymi: `params.get("count", 6)`, NIGDY nie zakładaj klucza. ' +
         'PUŁAPKI: (1) `unreal.Color(r,g,b,a)` to 0-255, NIE 0-1. (2) NIE zeruj DirectionalLight. ' +
-        '(3) PointLight: ustaw intensity (np. 3000) i attenuation_radius (np. 500). ' +
+        '(3) PointLight: ustaw intensity (np. 3000) i attenuation_radius (np. 500). KOLOR światła: ' +
+        'comp.set_editor_property("light_color", unreal.Color(r,g,b,a)) — NIGDY set_light_color() (wymaga LinearColor, wywala się na Color). ' +
         '(4) StaticMeshActor MUSI mieć przypisaną siatkę (np. `/Engine/BasicShapes/Sphere.Sphere` przez `ctx.unreal.load_asset`), inaczej niewidoczny. ' +
         '(5) NIE zapisuj poziomu (robi to kompilator). ' +
         'IDEMPOTENCJA: każdy aktor ma STAŁĄ etykietę z prefiksem `Plugin_' + id + '_%s_...` wstawiając `ctx.scene_id` ' +

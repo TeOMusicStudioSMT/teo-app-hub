@@ -51,7 +51,7 @@ def _cube(label, loc, scale):
 def _plight(label, loc, color255, intensity=9000.0, radius=750.0):
     a = fos(unreal.PointLight, label, loc)
     c = a.get_component_by_class(unreal.PointLightComponent)
-    c.set_light_color(unreal.Color(*color255))
+    c.set_editor_property('light_color', unreal.Color(*color255))  # Color 0-255 (set_light_color chce LinearColor)
     c.set_intensity(intensity)
     c.set_attenuation_radius(radius)
     return a
