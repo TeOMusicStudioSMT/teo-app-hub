@@ -4075,7 +4075,10 @@ app.post('/api/uneng/run-headless', async (req, res) => {
     if (!fsSync.existsSync(scriptPath)) return res.status(404).json({ success: false, message: `Brak skryptu: ${scriptName}` });
     const ue = resolveUE();
     if (ue.error) return res.json({ success: false, message: ue.error });
-    const args = [ue.uproject, '-run=pythonscript', `-script=${scriptPath}`, '-unattended', '-nosplash', '-nullrhi', '-nopause', '-stdout'];
+    // KRYTYCZNE: ukośniki w przód — backslashe w ścieżce (\5, \ue…) UE traktuje jak sekwencje ucieczki i je gubi.
+    const scriptFwd = scriptPath.replace(/\\/g, '/');
+    const uprojectFwd = ue.uproject.replace(/\\/g, '/');
+    const args = [uprojectFwd, '-run=pythonscript', `-script=${scriptFwd}`, '-unattended', '-nosplash', '-nullrhi', '-nopause', '-stdout'];
     try {
         const log = fsSync.createWriteStream(HEADLESS_LOG, { flags: 'w' });
         log.write(`[headless] ${new Date().toLocaleString('pl-PL')}\n${ue.exe}\n${args.join(' ')}\n\n`);
