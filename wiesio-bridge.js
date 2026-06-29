@@ -4426,6 +4426,81 @@ app.post('/api/craft/plan', (req, res) => {
     res.json({ success: true, target: ship.id, name: ship.name, energy: ship.energy, needs: ship.needs, steps });
 });
 
+// ── 📚 KSIĘGARNIA SKILI — księgozbiór powtarzalnych czynów; Jadziunia dobiera do zadania ──
+const SKILLE_DIR = path.join(process.cwd(), 'TeO_Skille');
+
+function parseSkill(src) {
+    const fm = src.match(/^---\s*\n([\s\S]*?)\n---/);
+    const body = fm ? fm[1] : src.slice(0, 1500);
+    const name = (body.match(/^name:\s*(.+)$/m)?.[1] || '').trim();
+    let desc = '';
+    const dm = body.match(/^description:\s*(.*)$/m);
+    if (dm) {
+        const first = dm[1].trim();
+        if (first && !['>', '|', '>-', '|-'].includes(first)) desc = first;
+        else {
+            const after = body.slice(body.indexOf(dm[0]) + dm[0].length).split('\n');
+            const out = [];
+            for (const l of after) { if (/^\s+\S/.test(l)) out.push(l.trim()); else if (l.trim() === '') continue; else break; }
+            desc = out.join(' ');
+        }
+    }
+    const engine = (body.match(/engine:\s*(.+)/)?.[1] || '').trim();
+    const difficulty = (body.match(/difficulty:\s*(.+)/)?.[1] || '').trim();
+    return { name, desc, engine, difficulty };
+}
+
+async function loadSkille() {
+    let entries = [];
+    try { entries = await fs.readdir(SKILLE_DIR, { withFileTypes: true, recursive: true }); } catch { return []; }
+    const out = [];
+    for (const e of entries) {
+        if (!e.isFile() || e.name !== 'SKILL.md') continue;
+        const dir = e.parentPath || e.path;
+        const rel = path.relative(SKILLE_DIR, dir).replace(/\\/g, '/');
+        const shelf = rel.split('/')[0] || 'inne';   // półka = top-level (silnik/dyscyplina)
+        try {
+            const s = parseSkill(await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8'));
+            out.push({ ...s, shelf, slug: rel, id: s.name || rel.split('/').pop() });
+        } catch { /* pomiń uszkodzony */ }
+    }
+    return out;
+}
+
+/** GET /api/skille/list — cały księgozbiór, pogrupowany po półkach (silnik/dyscyplina). */
+app.get('/api/skille/list', async (req, res) => {
+    const skille = await loadSkille();
+    const shelves = {};
+    for (const s of skille) shelves[s.shelf] = (shelves[s.shelf] || 0) + 1;
+    res.json({ success: true, total: skille.length, shelves, skille });
+});
+
+/** POST /api/skille/pick {task} — Jadziunia-bibliotekarka dobiera skille do zadania. */
+app.post('/api/skille/pick', async (req, res) => {
+    const task = String(req.body?.task || '').trim();
+    if (!task) return res.status(400).json({ success: false, message: 'Opisz zadanie dla Jadziuni.' });
+    const skille = await loadSkille();
+    if (!skille.length) return res.json({ success: false, message: 'Księgarnia pusta — zawenduj skille do TeO_Skille/.' });
+    const model = process.env.OTAKOS_MODEL || 'gemma4';
+    const katalog = skille.map(s => `- ${s.id} [${s.shelf}]: ${s.desc.slice(0, 110)}`).join('\n');
+    const system =
+        'Jesteś JADZIUNIA — barwna, ciepła bibliotekarka Księgarni Skili w Katedrze OtakOS. Mówisz „Panie Dyrektorze". ' +
+        'Z KATALOGU (poniżej) dobierasz 1-4 NAJTRAFNIEJSZE skille do zadania Suwerena. Podajesz DOKŁADNE id skilla z katalogu, ' +
+        'po każdym krótko (1 zdanie) CZEMU pasuje. Nie wymyślaj skili spoza katalogu. Na końcu 1 zdanie zachęty. Po polsku, zwięźle.\n\n' +
+        'KATALOG SKILI:\n' + katalog;
+    try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 120000);
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+            body: JSON.stringify({ model, system, prompt: `Zadanie: ${task}`, stream: false, options: { temperature: 0.5 } }),
+        });
+        clearTimeout(t);
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+        const d = await r.json();
+        res.json({ success: true, pick: String(d.response || '').trim(), considered: skille.length, model });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 🧹 PAMIĘĆ — raport RAM + bezpieczne zwolnienie (przygotowanie na UE) ──────
 app.get('/api/system/memory', (req, res) => {
     const total = os.totalmem(), free = os.freemem();

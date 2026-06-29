@@ -10,6 +10,7 @@ import { toast } from 'react-hot-toast';
 import { pickModelForTask, setActiveModel, getActiveModel } from '../../lib/modelRouter';
 import PamiecHelper from './PamiecHelper';
 import RezyserView from './RezyserView';
+import KsiegarniaSkili from './KsiegarniaSkili';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
@@ -293,6 +294,9 @@ export const TeoArcadeForge: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* 📚 Księgarnia Skili — Jadziunia dobiera powtarzalne czyny */}
+      <KsiegarniaSkili />
 
       {/* 🎬 Reżyser — złóż film=grę ze scen i ujęć */}
       <RezyserView />
