@@ -54,7 +54,9 @@ export const TeoArcadeForge: React.FC = () => {
     try {
       const d = await (await fetch(`${BRIDGE}/api/uneng/headless-status`)).json();
       setHlRunning(d.running);
-      setHlLog((d.running ? '⏳ w toku…\n' : `✅ zakończono (kod ${d.code})\n`) + (d.log || '(brak logu)'));
+      const head = d.running ? '⏳ w toku…' : `✅ zakończono (kod ${d.code})`;
+      const errs = (d.errors && d.errors.length) ? `\n\n🔴 BŁĘDY (${d.errors.length}):\n` + d.errors.join('\n') : '';
+      setHlLog(`${head}${errs}\n\n— ogon logu —\n${d.log || '(brak logu)'}`);
     } catch { setHlLog('⚠ most offline (:3001)'); }
   };
 

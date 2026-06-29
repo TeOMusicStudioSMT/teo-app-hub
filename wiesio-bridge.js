@@ -4093,11 +4093,18 @@ app.post('/api/uneng/run-headless', async (req, res) => {
     } catch (e) { headless.running = false; res.status(500).json({ success: false, message: e.message }); }
 });
 
-/** GET /api/uneng/headless-status — stan + ogon logu headless. */
+/** GET /api/uneng/headless-status — stan + ogon logu + WYŁUSKANE błędy (bez deprecation). */
 app.get('/api/uneng/headless-status', async (req, res) => {
-    let log = '';
-    try { const t = await fs.readFile(HEADLESS_LOG, 'utf8'); log = t.split('\n').slice(-50).join('\n'); } catch { /* brak logu */ }
-    res.json({ success: true, running: headless.running, code: headless.code, script: headless.script, startedAt: headless.startedAt, log });
+    let log = '', errors = [];
+    try {
+        const t = await fs.readFile(HEADLESS_LOG, 'utf8');
+        const lines = t.split('\n');
+        log = lines.slice(-50).join('\n');
+        // Prawdziwe błędy: linie z "Error"/"⨯"/"BŁĄD", ale NIE deprecation i nie samo "0 error".
+        errors = lines.filter(l => /(error|⨯|błąd|failure)/i.test(l) && !/deprecationwarning/i.test(l) && !/0 error/i.test(l))
+            .map(l => l.replace(/^\[[^\]]+\]\[\s*\d+\]/, '').trim()).filter(Boolean).slice(-30);
+    } catch { /* brak logu */ }
+    res.json({ success: true, running: headless.running, code: headless.code, script: headless.script, startedAt: headless.startedAt, log, errors });
 });
 
 /** POST /api/forge/ue-script — lokalny agent (Ollama) pisze skrypt UE-Python budujący scenę. */
