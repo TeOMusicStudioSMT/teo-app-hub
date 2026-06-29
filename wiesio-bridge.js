@@ -4335,6 +4335,40 @@ app.post('/api/cobot/ask', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── ⛵ STOCZNIA — surowce + recepty statków (pętla rzemiosła → podróż na inne wyspy) ──
+const CRAFT = {
+    resources: [
+        { id: 'drewno', name: 'Drewno', icon: '🪵', from: 'Drzewo' },
+        { id: 'kamien', name: 'Kamień', icon: '🪨', from: 'Skała' },
+        { id: 'lina', name: 'Lina', icon: '🪢', from: 'Włókno (trawa morska)' },
+        { id: 'zagiel', name: 'Żagiel', icon: '⛵', from: 'Tkanina (len)' },
+        { id: 'zywica', name: 'Żywica — Nowy Dodatek', icon: '🟡', from: 'Drzewo żywiczne' },
+    ],
+    ships: [
+        { id: 'tratwa', name: 'Tratwa', needs: { drewno: 8, lina: 4 }, energy: 20, range: 'najbliższa wyspa' },
+        { id: 'lodz', name: 'Łódź', needs: { drewno: 16, lina: 8, zagiel: 2, zywica: 4 }, energy: 55, range: 'wyspy w zasięgu' },
+        { id: 'statek', name: 'Statek', needs: { drewno: 40, kamien: 12, lina: 20, zagiel: 6, zywica: 12 }, energy: 140, range: 'dowolna wyspa sieci GRV' },
+    ],
+};
+
+/** GET /api/craft/recipes — surowce + recepty statków (źródło prawdy dla UI i skryptu UE). */
+app.get('/api/craft/recipes', (req, res) => res.json({ success: true, ...CRAFT }));
+
+/** POST /api/craft/plan {target} — Co-Bot rozpisuje plan budowy statku: kroki + koszt energii. */
+app.post('/api/craft/plan', (req, res) => {
+    const target = String(req.body?.target || 'tratwa');
+    const ship = CRAFT.ships.find(s => s.id === target);
+    if (!ship) return res.status(404).json({ success: false, message: `Nieznany cel: ${target}` });
+    const nameOf = (id) => (CRAFT.resources.find(r => r.id === id) || { name: id, from: '?', icon: '•' });
+    const steps = ['📐 Zrób PLAN (rysunek techniczny) — bez planu Strażnik nie pozwoli budować.'];
+    for (const [rid, qty] of Object.entries(ship.needs)) {
+        const r = nameOf(rid);
+        steps.push(`${r.icon} Pozyskaj ${qty}× ${r.name} — źródło: ${r.from}.`);
+    }
+    steps.push(`🔨 Złóż „${ship.name}" w Stoczni (koszt energii: ${ship.energy}). Zasięg: ${ship.range}.`);
+    res.json({ success: true, target: ship.id, name: ship.name, energy: ship.energy, needs: ship.needs, steps });
+});
+
 // ── 🧹 PAMIĘĆ — raport RAM + bezpieczne zwolnienie (przygotowanie na UE) ──────
 app.get('/api/system/memory', (req, res) => {
     const total = os.totalmem(), free = os.freemem();

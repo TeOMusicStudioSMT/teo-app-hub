@@ -75,6 +75,13 @@ heurystyka dopełnia i flaguje (`by: folder|heurystyka`); zapis do `_OtakOs_Wymi
 karty-stojaki z podpisami (`Island_Person_*`/`Island_Asset_*`, max 40/strefę). Brak danych → dziewicza wyspa.
 Samodzielny (nie w build_all — zależy od skanu). **Etap 2 (roadmap):** fototekstury na kartach + klasyfikacja modelem wizyjnym.
 
+## ⛵ Stocznia + rzemiosło → podróż (etap 1: dane + węzły)
+Most: `GET /api/craft/recipes` (surowce: drewno/kamień/lina/żagiel/żywica=Nowy Dodatek; statki: tratwa/łódź/statek
+z `needs`+`energy`+`range`) + `POST /api/craft/plan {target}` (kroki: PLAN → pozyskaj surowce → złóż, koszt energii).
+UI: panel „⛵ Stocznia" w `TeoArcadeForge` (recepty + przycisk Plan). `scene_shipyard.py` (urllib): węzły surowców
+po obrzeżu wyspy (`Ship_<res>_*`, podpisy kolorem), plansza `Shipyard_Board` z recepturą, `Ship_Raft` (cel przy brzegu).
+**Etap 2 (roadmap):** gameplay zbierania/inwentarz/budowa = blueprinty (harvest→inventory→craft), Strażnik „bez planu nie budujesz".
+
 ## Konwencja etykiet (by wszystko się spinało)
 `Sun_*`, `Neon_*`, `Title_*`, `Desk_*`, `Terminal_*`, `Gate_*`, `Aether_*`, `Guardian_*`, `Cine_*`, `Atrium_Pane_*`, `Seq_Intro_Actor`, `M_Glass_*`.
 Reżyser: `Env_<scena>_*` (środowiska), `Cine_<scena>_<ujęcie>` (kamery), `Cap_<scena>_<ujęcie>` (podpisy), `Plugin_<id>_<scena>_*` (wtyczki), `Seq_Story_Actor`.

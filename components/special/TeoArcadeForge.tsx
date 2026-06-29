@@ -33,6 +33,29 @@ export const TeoArcadeForge: React.FC = () => {
   const [islandScan, setIslandScan] = useState('');
   const [scanBusy, setScanBusy] = useState(false);
 
+  // ⛵ Stocznia — recepty statków
+  const [ships, setShips] = useState<{ id: string; name: string; needs: Record<string, number>; energy: number; range: string }[]>([]);
+  const [craftPlan, setCraftPlan] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      try { const d = await (await fetch(`${BRIDGE}/api/craft/recipes`)).json(); setShips(d?.ships || []); }
+      catch { /* most offline */ }
+    })();
+  }, []);
+
+  const planShip = async (target: string) => {
+    setCraftPlan('⟳ Co-Bot planuje…');
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/craft/plan`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target }),
+      })).json();
+      if (!d.success) throw new Error(d.message || 'Plan nieudany');
+      setCraftPlan(`⛵ ${d.name} (energia ${d.energy}):\n` + d.steps.map((s: string, i: number) => `${i + 1}. ${s}`).join('\n'));
+    } catch (e: any) { setCraftPlan(`⚠ ${e.message} — uruchom most (:3001).`); }
+  };
+
   // 🤖 Co-Bot — wirtualny mentor
   const [cobotQ, setCobotQ] = useState('');
   const [cobotA, setCobotA] = useState('');
@@ -187,6 +210,23 @@ export const TeoArcadeForge: React.FC = () => {
         </div>
         {cobotA && <div className="text-[11px] text-sky-100/85 bg-black/40 border border-sky-900/50 rounded p-2 mt-1.5 whitespace-pre-wrap max-h-48 overflow-auto">{cobotA}</div>}
       </div>
+
+      {/* ⛵ Stocznia — zbuduj statek, popłyń na inne wyspy (pętla rzemiosła) */}
+      {ships.length > 0 && (
+        <div className="rounded-lg border border-amber-900/50 bg-black/30 p-3 my-3">
+          <div className="text-[11px] text-amber-300/80 tracking-wider mb-1.5">⛵ STOCZNIA — zbuduj statek, popłyń na inne wyspy</div>
+          <div className="flex flex-wrap gap-1.5">
+            {ships.map(s => (
+              <button key={s.id} onClick={() => planShip(s.id)} title={`zasięg: ${s.range}`}
+                className="text-[10px] px-2.5 py-1 rounded border border-amber-700/50 text-amber-200 hover:bg-amber-950/40">
+                {s.name} <span className="text-zinc-500">· {Object.entries(s.needs).map(([k, v]) => `${k}×${v}`).join(' ')} · ⚡{s.energy}</span>
+              </button>
+            ))}
+          </div>
+          {craftPlan && <div className="text-[11px] text-amber-100/85 bg-black/40 border border-amber-900/50 rounded p-2 mt-1.5 whitespace-pre-wrap max-h-48 overflow-auto">{craftPlan}</div>}
+          <div className="text-[8px] text-zinc-600 mt-1">W UE: <code className="text-amber-400">scene_shipyard.py</code> stawia węzły surowców + planszę. Gameplay zbierania = blueprinty (runbook).</div>
+        </div>
+      )}
 
       {/* 🐍 Agent buduje scenę (UE-Python, lokalnie) */}
       <div className="rounded-lg border border-violet-900/50 bg-black/30 p-3 mb-3">
