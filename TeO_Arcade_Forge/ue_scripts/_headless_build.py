@@ -37,8 +37,19 @@ def load_map():
     return ok
 
 
+def hush_per_scene_saves():
+    # World Partition: per-scena save_current_level() wywala "no filename" (WP zapisuje aktorów jako
+    # ZEWNĘTRZNE pakiety, nie przez current level). Wyciszamy te wywołania — zapis raz na końcu (save_dirty_packages).
+    try:
+        unreal.EditorLevelLibrary.save_current_level = staticmethod(lambda *a, **k: None)
+        unreal.log("Headless: wyciszono per-scena save_current_level (World Partition — zapis zbiorczy na końcu).")
+    except Exception as e:
+        unreal.log_warning("Headless: nie udało się wyciszyć save_current_level (%s) — błędy WP są nieszkodliwe." % e)
+
+
 def run():
     load_map()
+    hush_per_scene_saves()
     here = os.path.dirname(os.path.abspath(__file__))
     target = os.path.join(here, "build_all_genesis.py")
     try:
