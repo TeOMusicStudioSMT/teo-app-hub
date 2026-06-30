@@ -12,7 +12,7 @@ Most domyślnie szuka `TeO_Vault/` w projekcie, gdy env nie ustawiony.
 <OTAKOS_ASSET_VAULT>/
   <rodzaj_gry>/        fpp · arpg · 2d · 3d · racing · survival · puzzle · shared
     <silnik>/          unreal · unity · godot · web
-      <typ_assetu>/    environments · characters · animations · vfx · audio · props · materials · ui · blueprints · templates
+      <typ_assetu>/    environments · characters · animations · vfx · audio · props · materials · ui · blueprints · templates · scans (fotogrametria: RealityScan/Meshroom → modele ze zdjęć)
         <paczka>/      (pobrana paczka/projekt, np. ElectricDreams, StackOBot, NiagaraExamples)
 ```
 Przykłady:
