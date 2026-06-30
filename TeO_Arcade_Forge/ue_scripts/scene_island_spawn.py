@@ -21,7 +21,8 @@ def fos(cls, label, loc):
 
 
 def spawn_point():
-    loc = unreal.Vector(-320, 0, 130)   # na wyspie, za antresolą, twarzą do środka (+X)
+    # Wyżej i z dala od antresoli-podestu (gracz spada czysto na grunt — bez artefaktów klipowania).
+    loc = unreal.Vector(-650, 0, 220)   # na wyspie, twarzą do środka/portali (+X)
     ps = next((a for a in unreal.EditorLevelLibrary.get_all_level_actors()
                if isinstance(a, unreal.PlayerStart)), None)
     if ps is None:

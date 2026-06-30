@@ -14,6 +14,7 @@ import os
 
 ORDER = [
     ("🎬 Film Wyspy (Reżyser)",        "story_compiler.py"),
+    ("🧹 Usuń ściany schronu",         "scene_island_clear_walls.py"),
     ("🌳 Zalesianie (natura)",         "scene_island_nature.py"),
     ("🪟 Szklane tafle",               "scene_03c_glass.py"),
     ("🏝️ Portale GRV (okna na wyspy)", "scene_portals_grv.py"),
