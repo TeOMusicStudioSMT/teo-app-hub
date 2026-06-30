@@ -80,6 +80,14 @@ z innego projektu — trzeba **Migrate**:
 4. Ustaw env `OTAKOS_NATURE_MESHES="/Game/.../SM_Tree,…"` → restart most → `build_island.py` (krok 🌳 sadzi Twoje drzewa).
 Bez migracji `build_island.py` sadzi placeholder-drzewa (cone+cylinder) — i tak zobaczysz kształt lasu.
 
+## 🌌 GRA = SILNIK = INTERFEJS („Pure Game Mode" — kanon 0.00G)
+NIE wydajemy .exe. Tryb Play (PIE) = trójwymiarowy monitor Katedry. Czyste granie bez dev-UI:
+- W trakcie Play (PIE) → **F11 = tryb immersyjny** (pełen ekran, znika Outliner/paski). Esc/F11 wychodzi.
+- Albo Play → strzałka przy ▶ → **„Nowe okno edytora"** (osobne okno gry).
+- **Co-Bot na żywo:** `/api/gameforge/mutate` zmienia świat w pamięci RAM bez restartu (silnik jak glina).
+- **Pełnia bez limitu sprzętu:** Cloud GPU / Pixel Streaming renderuje Megascany → podłączasz się jak do ekranu.
+- Basic tier lokalnie (16GB) = Twój prywatny panel; full tier = chmura.
+
 ## Skrót decyzji
 - **Chcę szybko pograć:** UE → Play (w edytorze).
 - **Chcę grę jako program na PC / USB:** UE → Package → Windows → .exe.
