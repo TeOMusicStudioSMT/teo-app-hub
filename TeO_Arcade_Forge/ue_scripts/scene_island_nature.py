@@ -45,19 +45,27 @@ def mesh_actor(label, loc, mesh, scale, yaw):
     return a
 
 
+# Domyślne drzewa/skały Electric Dreams (Megascans). Działają PO Migrate do GENESIS_OVERRIDE.
+# Gdy nie zmigrowane — load_asset zwróci None, lista pusta → placeholder. env OTAKOS_NATURE_MESHES nadpisuje.
+ED_DEFAULTS = [
+    "/Game/Megascans/3D_Assets/DeadTree/SM_DeadTree_01",
+    "/Game/Megascans/3D_Assets/DeadTree/SM_DeadTree_02",
+    "/Game/Megascans/3D_Assets/FallenSpruceTree/SM_FallenSpruceTree_01",
+    "/Game/Megascans/3D_Assets/BirchTreeStump/SM_BirchTreeStump_01",
+    "/Game/Megascans/3D_Assets/ForestRockFormation/SM_ForestRockFormation_01",
+    "/Game/Megascans/3D_Assets/ForestRockFormation/SM_ForestRockFormation_02",
+]
+
+
 def custom_meshes():
     raw = os.environ.get("OTAKOS_NATURE_MESHES", "").strip()
-    if not raw:
-        return []
+    paths = [p.strip() for p in raw.split(",") if p.strip()] if raw else ED_DEFAULTS
     out = []
-    for p in raw.split(","):
-        p = p.strip()
-        if not p:
-            continue
+    for p in paths:
         m = unreal.load_asset(p)
         if m:
             out.append(m)
-        else:
+        elif raw:
             unreal.log_warning("  natura: nie znaleziono siatki %s (pomijam)." % p)
     return out
 
