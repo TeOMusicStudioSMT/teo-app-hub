@@ -14,6 +14,7 @@ import os
 
 ORDER = [
     ("🎬 Film Wyspy (Reżyser)",        "story_compiler.py"),
+    ("🌳 Zalesianie (natura)",         "scene_island_nature.py"),
     ("🪟 Szklane tafle",               "scene_03c_glass.py"),
     ("🏝️ Portale GRV (okna na wyspy)", "scene_portals_grv.py"),
     ("🗂️ Zaludnienie (Twoje zdjęcia)", "scene_island_populate.py"),
