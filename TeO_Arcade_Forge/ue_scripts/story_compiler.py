@@ -87,6 +87,34 @@ def tame_local_lights():
             pass
 
 
+def _material(name, rgb01, emissive=False, hdr=1.0):
+    # Prosty materiał z KODU (0.00G — bez pobierania): base color lub emisyjny HDR. Defensywnie.
+    try:
+        p = "/Game/Genesis/Materials"
+        mat = unreal.load_asset(p + "/" + name)
+        if mat is None:
+            mat = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+                name, p, unreal.Material, unreal.MaterialFactoryNew())
+        mel = unreal.MaterialEditingLibrary
+        c = mel.create_material_expression(mat, unreal.MaterialExpressionConstant3Vector, -400, 0)
+        c.set_editor_property("constant", unreal.LinearColor(rgb01[0] * hdr, rgb01[1] * hdr, rgb01[2] * hdr, 1.0))
+        prop = unreal.MaterialProperty.MP_EMISSIVE_COLOR if emissive else unreal.MaterialProperty.MP_BASE_COLOR
+        mel.connect_material_property(c, "", prop)
+        mel.recompile_material(mat)
+        return mat
+    except Exception as e:
+        unreal.log_warning("  materiał %s pominięty (API 5.8?): %s" % (name, e))
+        return None
+
+
+def _set_mat(actor, mat):
+    if mat is not None:
+        try:
+            actor.static_mesh_component.set_material(0, mat)
+        except Exception:
+            pass
+
+
 def ensure_baseline_light():
     # Reużyj istniejącego słońca (template ma swoje) — NIE dubluj DirectionalLight
     # (inaczej warning „wiele świateł kierunkowych"). Tworzymy tylko, gdy żadnego nie ma.
@@ -152,10 +180,13 @@ def build_aether(o, sid):
         _plight("Env_%s_Star_%d" % (sid, i),
                 o + unreal.Vector(900 * math.cos(ang), 900 * math.sin(ang), 300 + (i % 3) * 150),
                 (200, 220, 255, 255), 1500.0, 500.0)
-    tost = fos(unreal.StaticMeshActor, "Env_%s_Tost" % sid, o + unreal.Vector(600, 0, 200))  # wysokość wzroku
-    tost.static_mesh_component.set_static_mesh(unreal.load_asset(SPHERE))
-    tost.set_actor_scale3d(unreal.Vector(1.2, 1.2, 1.2))
-    _plight("Env_%s_TostGlow" % sid, o + unreal.Vector(600, 0, 200), (255, 200, 40, 255), 4000.0, 700.0)
+    # 🍞 TOST = kromka chleba (slab) + galaktyczny rdzeń (dysk emisyjny) wg AssetTemplate.ts (Rada/BoB).
+    # Dims slabu = template (x200/y50/z250). Geometria z KODU, zero pobierania (0.00G).
+    bread = _cube("Env_%s_TostBread" % sid, o + unreal.Vector(600, 0, 200), unreal.Vector(2.0, 0.5, 2.5))
+    _set_mat(bread, _material("M_Toast_Bread", (0.82, 0.41, 0.12)))  # chlebowy brąz #D2691E
+    core = _cube("Env_%s_TostCore" % sid, o + unreal.Vector(555, 0, 200), unreal.Vector(0.1, 1.2, 1.6))  # dysk wiru z przodu
+    _set_mat(core, _material("M_Galaxy_Core", (0.0, 1.0, 1.0), emissive=True, hdr=6.0))  # cyjanowy wir HDR
+    _plight("Env_%s_TostGlow" % sid, o + unreal.Vector(555, 0, 200), (0, 230, 255, 255), 4000.0, 600.0)
 
 
 def build_pusto(o, sid):
