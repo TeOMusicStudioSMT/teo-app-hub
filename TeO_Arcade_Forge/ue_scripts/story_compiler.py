@@ -117,9 +117,14 @@ def build_antresola(o, sid):
 
 
 def build_wyspa(o, sid):
-    # Punkt startu: ocean (wielka tafla) + wyspa (uniesiony teren) + Antresola na środku.
-    _cube("Env_%s_Ocean" % sid,  o + unreal.Vector(0, 0, -30), unreal.Vector(80.0, 80.0, 0.1))  # ocean
-    _cube("Env_%s_Island" % sid, o + unreal.Vector(0, 0, -5),  unreal.Vector(18.0, 18.0, 0.4))  # teren wyspy
+    # BEZ OCEANU (woda UE = ~8GB VRAM → crash na 16GB). Wyspa LEWITUJE w Eterze (Rada, 2026-06-30).
+    _cube("Env_%s_Island" % sid, o + unreal.Vector(0, 0, -5), unreal.Vector(40.0, 40.0, 0.5))  # grunt wyspy (większy = bez oceanu)
+    # Eter pod wyspą — tanie pasma gwiezdnego pyłu (point-lighty cyjan/fiolet). Niagara = etap 2 (Content Examples).
+    for i in range(8):
+        ang = (2 * math.pi / 8) * i
+        col = (90, 60, 200, 255) if i % 2 else (40, 120, 220, 255)
+        _plight("Env_%s_Eter_%d" % (sid, i),
+                o + unreal.Vector(900 * math.cos(ang), 900 * math.sin(ang), -260), col, 2200.0, 750.0)
     build_antresola(o, sid)  # Antresola jako punkt obserwacyjny
 
 

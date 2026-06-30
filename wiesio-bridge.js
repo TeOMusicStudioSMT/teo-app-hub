@@ -4147,6 +4147,38 @@ app.post('/api/forge/ue-script', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+/** POST /api/gameforge/mutate — Co-Bot edytuje świat NA ŻYWO: instrukcja (głos/tekst) → mała mutacja UE-Python. */
+app.post('/api/gameforge/mutate', async (req, res) => {
+    const { instruction, model: m } = req.body ?? {};
+    if (!instruction || !String(instruction).trim()) return res.status(400).json({ success: false, message: 'Brak instrukcji mutacji.' });
+    const model = m || process.env.OTAKOS_MODEL || 'gemma4';
+    const system =
+        'Jesteś Co-Botem modyfikującym ISTNIEJĄCY świat Unreal Engine 5.8 na żywo (mowa→geometria). ' +
+        'Zwróć WYŁĄCZNIE krótki kod Python (bez markdown). To MUTACJA, NIE przebudowa: znajdź aktora po etykiecie ' +
+        '(`for a in unreal.EditorLevelLibrary.get_all_level_actors(): if a.get_actor_label()==...`) i ZMIEŃ go ' +
+        '(pozycja `set_actor_location`, skala `set_actor_scale3d`, kolor światła `comp.set_editor_property("light_color", unreal.Color(r,g,b,a))` 0-255), ' +
+        'albo dospawnuj JEDEN aktor (find-or-spawn, stała etykieta). PUŁAPKI: Color 0-255 nie 0-1; NIE set_light_color(); ' +
+        'na końcu `unreal.EditorLevelLibrary.save_current_level()`. Krótko, idempotentnie, bez wymyślonych API. ' +
+        'Etykiety świata: Golden_Toast_Portal, Aether_*, Env_*, Nature_*, Ship_*, Gate_*, Cine_*, Portal_GRV_*.';
+    try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 300000);
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+            body: JSON.stringify({ model, system, prompt: String(instruction), stream: false, options: { temperature: 0.3 } }),
+        });
+        clearTimeout(t);
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+        const d = await r.json();
+        let code = String(d.response || '').trim().replace(/^```(python)?\s*/i, '').replace(/```\s*$/, '').trim();
+        const dir = path.join(process.cwd(), 'TeO_Arcade_Forge', 'ue_scripts');
+        await fs.mkdir(dir, { recursive: true });
+        const file = path.join(dir, `mutate_${Date.now()}.py`);
+        await fs.writeFile(file, code, 'utf8');
+        console.log(`[Co-Bot] 🔧 Mutacja świata: "${String(instruction).slice(0, 50)}" → ${path.basename(file)}`);
+        res.json({ success: true, code, file, model });
+    } catch (e) { res.status(500).json({ success: false, message: e.name === 'AbortError' ? 'Ollama nie zdążyła (300s) — zamknij UE lub poczekaj na rozgrzanie modelu.' : e.message }); }
+});
+
 // ── 🎬 REŻYSER — manifest filmu (gra=Film=opowieść) + wtyczki/mody ────────────
 const STORIES_DIR = path.join(process.cwd(), 'TeO_Arcade_Forge', 'stories');
 const PLUGINS_DIR = path.join(process.cwd(), 'TeO_Arcade_Forge', 'forge_plugins');
