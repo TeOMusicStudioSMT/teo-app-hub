@@ -4129,7 +4129,7 @@ app.post('/api/forge/ue-script', async (req, res) => {
         'i tworzy TYLKO jeśli nie istnieje — używaj jej zawsze. Każdy aktor ma STAŁĄ, UNIKALNĄ etykietę wg ' +
         'konwencji (Sun_/Neon_/Title_/Desk_/Terminal_/Gate_/Aether_/Guardian_/Cine_). JEDNA scena = JEDEN cel.';
     try {
-        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 120000);
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 300000);  // VRAM Breathing: UE otwarte = wolny cold start
         const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
             body: JSON.stringify({ model, system, prompt: String(prompt), stream: false, options: { temperature: 0.35 } }),
@@ -4225,7 +4225,7 @@ app.post('/api/forge/plugin', async (req, res) => {
         'IDEMPOTENCJA: każdy aktor ma STAŁĄ etykietę z prefiksem `Plugin_' + id + '_%s_...` wstawiając `ctx.scene_id` ' +
         '(by przy wielu scenach się nie dublowało). Krótko, poprawnie, bez wymyślonych API.';
     try {
-        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 120000);
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 300000);  // VRAM Breathing: UE otwarte = wolny cold start
         const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
             body: JSON.stringify({ model, system, prompt: String(prompt), stream: false, options: { temperature: 0.3 } }),
@@ -4378,8 +4378,9 @@ app.post('/api/cobot/ask', async (req, res) => {
         'da się zmaterializować z pomocą AI, KREACJA BEZ DESTRUKCJI. Etos 0.00G: nie krzywdzisz, ' +
         'odpowiedzialność = komunikacja, energia służy, nie panuje. Ton: ciepły, konkretny, mentorski, bez lania wody. ' +
         'Gdy proszą o plan — dawaj kroki i koszt energii/surowców. Mów po polsku. Krótko i praktycznie.';
+    console.log(`[Co-Bot] 🤖 Pytanie: "${String(message).slice(0, 60)}" (model ${model})…`);
     try {
-        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 120000);
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 300000);  // VRAM Breathing: UE otwarte = wolny cold start
         const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
             body: JSON.stringify({ model, system, prompt: String(message), stream: false, options: { temperature: 0.6 } }),
@@ -4389,7 +4390,7 @@ app.post('/api/cobot/ask', async (req, res) => {
         const d = await r.json();
         const reply = String(d.response || '').trim();
         res.json({ success: true, reply, model });
-    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+    } catch (e) { res.status(500).json({ success: false, message: e.name === 'AbortError' ? 'Ollama nie zdążyła (300s) — model wstaje wolno przy otwartym UE (VRAM). Zamknij UE albo poczekaj na rozgrzanie i spróbuj ponownie.' : e.message }); }
 });
 
 // ── ⛵ STOCZNIA — surowce + recepty statków (pętla rzemiosła → podróż na inne wyspy) ──
@@ -4488,8 +4489,9 @@ app.post('/api/skille/pick', async (req, res) => {
         'Z KATALOGU (poniżej) dobierasz 1-4 NAJTRAFNIEJSZE skille do zadania Suwerena. Podajesz DOKŁADNE id skilla z katalogu, ' +
         'po każdym krótko (1 zdanie) CZEMU pasuje. Nie wymyślaj skili spoza katalogu. Na końcu 1 zdanie zachęty. Po polsku, zwięźle.\n\n' +
         'KATALOG SKILI:\n' + katalog;
+    console.log(`[Jadziunia] 📚 Dobieram skille do: "${task.slice(0, 60)}" (${skille.length} w katalogu, model ${model})…`);
     try {
-        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 120000);
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 300000);  // VRAM Breathing: UE otwarte = wolny cold start
         const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
             body: JSON.stringify({ model, system, prompt: `Zadanie: ${task}`, stream: false, options: { temperature: 0.5 } }),
@@ -4498,7 +4500,7 @@ app.post('/api/skille/pick', async (req, res) => {
         if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
         const d = await r.json();
         res.json({ success: true, pick: String(d.response || '').trim(), considered: skille.length, model });
-    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+    } catch (e) { res.status(500).json({ success: false, message: e.name === 'AbortError' ? 'Ollama nie zdążyła (300s) — model wstaje wolno przy otwartym UE (VRAM). Zamknij UE albo poczekaj na rozgrzanie i spróbuj ponownie.' : e.message }); }
 });
 
 // ── 🧹 PAMIĘĆ — raport RAM + bezpieczne zwolnienie (przygotowanie na UE) ──────
