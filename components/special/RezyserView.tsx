@@ -42,6 +42,20 @@ export const RezyserView: React.FC = () => {
   const [pubId, setPubId] = useState('');
   const [pubPrice, setPubPrice] = useState('100');
   const [pubBusy, setPubBusy] = useState(false);
+  // Wklejanie gotowego manifestu (film podany przez Klaudiusza).
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState('');
+
+  const importStory = () => {
+    try {
+      const parsed = JSON.parse(importText);
+      const errs = validateStory(parsed);
+      if (errs.length) { toast.error(`⚠ ${errs[0]}`); return; }
+      setStory(parsed);
+      setShowImport(false); setImportText('');
+      toast.success(`📋 Wczytano film „${parsed.meta?.title}" (${parsed.scenes.length} scen).`);
+    } catch (e: any) { toast.error('⚠ To nie jest poprawny JSON manifestu.'); }
+  };
 
   // Autosave + odśwież version znacznik.
   useEffect(() => { try { localStorage.setItem(LS_KEY, JSON.stringify(story)); } catch { /* full */ } }, [story]);
@@ -238,7 +252,20 @@ export const RezyserView: React.FC = () => {
         </button>
         <button onClick={() => { if (confirm('Wyczyścić film i zacząć od nowa?')) setStory(emptyStory('Mój film 0.00G')); }}
           className="px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 text-[11px] hover:bg-zinc-900/40">↺ nowy</button>
+        <button onClick={() => setShowImport(v => !v)}
+          className="px-3 py-1.5 rounded-lg border border-cyan-700/50 text-cyan-300 text-[11px] hover:bg-cyan-950/40">📋 Wklej film</button>
       </div>
+
+      {showImport && (
+        <div className="mt-2 rounded-lg border border-cyan-900/50 bg-black/30 p-2.5">
+          <div className="text-[10px] text-cyan-300/80 mb-1">📋 Wklej manifest filmu (JSON od Klaudiusza) → Wczytaj</div>
+          <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={4}
+            placeholder='{ "meta": {...}, "scenes": [...] }'
+            className="w-full bg-black/40 border border-cyan-500/20 rounded px-2 py-1.5 text-[10px] text-cyan-100 font-mono outline-none focus:border-cyan-500 resize-y" />
+          <button onClick={importStory}
+            className="mt-1 px-3 py-1 rounded border border-cyan-500/50 bg-cyan-950/30 text-cyan-300 text-[10px] font-bold hover:bg-cyan-900/50">Wczytaj film</button>
+        </div>
+      )}
       {/* 🔌 Generator modów (Etap II) — Ollama pisze wtyczkę wg kontraktu */}
       <div className="rounded-lg border border-violet-900/50 bg-black/20 p-2.5 mt-3">
         <div className="text-[10px] text-violet-300/80 tracking-wider mb-1.5">🔌 STWÓRZ MOD (Agent pisze wtyczkę do generatora)</div>

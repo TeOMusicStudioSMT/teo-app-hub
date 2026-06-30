@@ -20,6 +20,12 @@
 per scena + raport) i na końcu **strojenie świateł** (`fix_lights_vsm.py`). Narzędzia → Wykonaj
 skrypt → `build_all_genesis.py`. Do rekonstrukcji świata po reset/nowy poziom.
 
+## 🏝️ Budowniczy TWOJEJ Wyspy — `build_island.py` (GLUE)
+Spina w JEDEN świat: `story_compiler.py` (film Reżysera: ocean+wyspa+antresola z najnowszego manifestu)
+→ `scene_03c_glass` (tafle) → `scene_portals_grv` (portale) → `scene_island_populate` (Twoje zdjęcia)
+→ `scene_shipyard` (statek/surowce) → `fix_lights_vsm`. Wymaga: Reżyser→Eksportuj film (env Wyspa) +
+skan katalogu + działający most. Reżyser ma „📋 Wklej film" (import gotowego manifestu JSON).
+
 ## 💡 Pułapka VSM — „za dużo świateł" (fix `fix_lights_vsm.py`)
 Wiele lokalnych świateł **rzucających cień** nakłada się → Virtual Shadow Maps przepełnia
 single-pass (ostrzeżenie `[VSM] Przepełnienie...`) + przepalony obraz. FIX: dekoracyjne światła
