@@ -4432,24 +4432,25 @@ const CONTENT_DIR = process.env.OTAKOS_UE_CONTENT
     || (process.env.OTAKOS_UE_PROJECT ? path.join(path.dirname(process.env.OTAKOS_UE_PROJECT), 'Content') : null)
     || path.join(process.cwd(), 'TeO_Arcade_Forge', 'GENESIS_OVERRIDE', 'Content');
 
-/** GET /api/assets/list — skan Content projektu: foldery /Game + siatki SM_/SK_ z gotowymi ścieżkami. */
+/** GET /api/assets/list[?root=] — skan Content (domyślnie projektu, lub dowolnego folderu np. ElectricDreamsEva). */
 app.get('/api/assets/list', async (req, res) => {
+    const root = req.query.root ? String(req.query.root) : CONTENT_DIR;
     try {
         let entries = [];
-        try { entries = await fs.readdir(CONTENT_DIR, { withFileTypes: true, recursive: true }); }
-        catch { return res.json({ success: false, message: `Brak Content: ${CONTENT_DIR}. Ustaw OTAKOS_UE_PROJECT/_CONTENT.` }); }
+        try { entries = await fs.readdir(root, { withFileTypes: true, recursive: true }); }
+        catch { return res.json({ success: false, message: `Brak folderu: ${root}. (Projekt: ustaw OTAKOS_UE_PROJECT/_CONTENT; albo podaj ?root=ścieżka.)` }); }
         const folders = {}, meshes = [];
         for (const e of entries) {
             if (!e.isFile() || !/\.uasset$/i.test(e.name)) continue;
             const dir = e.parentPath || e.path;
-            const rel = path.relative(CONTENT_DIR, path.join(dir, e.name)).replace(/\\/g, '/');
+            const rel = path.relative(root, path.join(dir, e.name)).replace(/\\/g, '/');
             if (rel.startsWith('__External')) continue;            // World Partition wewnętrzne
             const top = rel.split('/')[0] || '/';
             folders[top] = (folders[top] || 0) + 1;
             if (/^(SM_|SK_)/i.test(e.name) && meshes.length < 300)
                 meshes.push('/Game/' + rel.replace(/\.uasset$/i, ''));
         }
-        res.json({ success: true, content: CONTENT_DIR, folders, meshes, meshCount: meshes.length });
+        res.json({ success: true, content: root, folders, meshes, meshCount: meshes.length });
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

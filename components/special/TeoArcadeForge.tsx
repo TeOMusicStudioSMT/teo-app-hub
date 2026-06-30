@@ -107,11 +107,13 @@ export const TeoArcadeForge: React.FC = () => {
   // 🧱 Assety projektu — co agent widzi
   const [assets, setAssets] = useState<{ folders: Record<string, number>; meshes: string[] } | null>(null);
   const [assetsBusy, setAssetsBusy] = useState(false);
+  const [assetRoot, setAssetRoot] = useState('');
 
   const loadAssets = async () => {
     setAssetsBusy(true);
     try {
-      const d = await (await fetch(`${BRIDGE}/api/assets/list`)).json();
+      const q = assetRoot.trim() ? `?root=${encodeURIComponent(assetRoot.trim())}` : '';
+      const d = await (await fetch(`${BRIDGE}/api/assets/list${q}`)).json();
       if (!d.success) throw new Error(d.message || 'Skan nieudany');
       setAssets({ folders: d.folders || {}, meshes: d.meshes || [] });
     } catch (e: any) { toast.error(`⚠ ${e.message}`); }
@@ -253,8 +255,11 @@ export const TeoArcadeForge: React.FC = () => {
         <div className="flex items-center justify-between mb-1">
           <div className="text-[11px] text-teal-300/80 tracking-wider">🧱 CO AGENT WIDZI (assety w projekcie)</div>
           <button onClick={loadAssets} disabled={assetsBusy}
-            className="text-[10px] px-2 py-0.5 rounded border border-teal-700/50 text-teal-300 hover:bg-teal-950/40 disabled:opacity-50">{assetsBusy ? '⟳…' : '↻ Skanuj Content'}</button>
+            className="text-[10px] px-2 py-0.5 rounded border border-teal-700/50 text-teal-300 hover:bg-teal-950/40 disabled:opacity-50">{assetsBusy ? '⟳…' : '↻ Skanuj'}</button>
         </div>
+        <input value={assetRoot} onChange={e => setAssetRoot(e.target.value)}
+          placeholder="pusto = Content projektu · albo ścieżka (np. ...\ElectricDreamsEva\Content)"
+          className="w-full bg-black/40 border border-teal-500/20 rounded px-2 py-1 text-[10px] text-teal-100 outline-none focus:border-teal-500 mb-1.5" />
         {!assets ? (
           <div className="text-[9px] text-zinc-600">Skanuje Content projektu UE. FAB (Electric Dreams itp.) pojawia się TUTAJ dopiero po pobraniu/Migrate — nie z konta Epic.</div>
         ) : (

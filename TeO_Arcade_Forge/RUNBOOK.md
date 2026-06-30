@@ -70,6 +70,16 @@ Czyli web-granie = strumień z maszyny z GPU, nie statyczny plik na hostingu.
 
 ---
 
+## 🌳 Natura Wyspy z Electric Dreams (osobny projekt FAB → GENESIS)
+FAB eksportuje Electric Dreams jako **osobny projekt** (`ElectricDreamsEva`). GENESIS nie załaduje assetów
+z innego projektu — trzeba **Migrate**:
+1. Otwórz **ElectricDreamsEva** w UE → Content Browser → znajdź siatki drzew/skał (SM_…).
+   (Podgląd bez otwierania: Forge → „🧱 Co agent widzi" → wpisz ścieżkę `...\ElectricDreamsEva\Content` → Skanuj.)
+2. Prawy klik na siatce → **Migrate…** → wskaż `…\GENESIS_OVERRIDE\Content`. Asset (z zależnościami) trafia do projektu.
+3. W GENESIS: Forge → „🧱 Co agent widzi" → Skanuj → kliknij siatkę (kopiuje ścieżkę `/Game/...`).
+4. Ustaw env `OTAKOS_NATURE_MESHES="/Game/.../SM_Tree,…"` → restart most → `build_island.py` (krok 🌳 sadzi Twoje drzewa).
+Bez migracji `build_island.py` sadzi placeholder-drzewa (cone+cylinder) — i tak zobaczysz kształt lasu.
+
 ## Skrót decyzji
 - **Chcę szybko pograć:** UE → Play (w edytorze).
 - **Chcę grę jako program na PC / USB:** UE → Package → Windows → .exe.

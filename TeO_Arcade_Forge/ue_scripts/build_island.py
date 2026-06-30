@@ -19,6 +19,7 @@ ORDER = [
     ("🏝️ Portale GRV (okna na wyspy)", "scene_portals_grv.py"),
     ("🗂️ Zaludnienie (Twoje zdjęcia)", "scene_island_populate.py"),
     ("⛵ Stocznia + surowce",          "scene_shipyard.py"),
+    ("🌅 Atmosfera świtu",             "scene_island_atmosphere.py"),
     ("💡 Strojenie świateł",           "fix_lights_vsm.py"),
 ]
 
