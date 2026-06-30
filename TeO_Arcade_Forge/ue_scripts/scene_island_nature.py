@@ -15,7 +15,7 @@ import random
 
 CONE = "/Engine/BasicShapes/Cone.Cone"
 CYL = "/Engine/BasicShapes/Cylinder.Cylinder"
-COUNT = int(os.environ.get("OTAKOS_NATURE_COUNT", "28"))
+COUNT = int(os.environ.get("OTAKOS_NATURE_COUNT", "44"))
 R_IN, R_OUT = 700.0, 1150.0   # pierścień zalesiania (środek wolny na rozgrywkę)
 
 
@@ -48,12 +48,20 @@ def mesh_actor(label, loc, mesh, scale, yaw):
 # Domyślne drzewa/skały Electric Dreams (Megascans). Działają PO Migrate do GENESIS_OVERRIDE.
 # Gdy nie zmigrowane — load_asset zwróci None, lista pusta → placeholder. env OTAKOS_NATURE_MESHES nadpisuje.
 ED_DEFAULTS = [
+    # Drzewa / pnie / gałęzie / korzenie
     "/Game/Megascans/3D_Assets/DeadTree/SM_DeadTree_01",
-    "/Game/Megascans/3D_Assets/DeadTree/SM_DeadTree_02",
     "/Game/Megascans/3D_Assets/FallenSpruceTree/SM_FallenSpruceTree_01",
     "/Game/Megascans/3D_Assets/BirchTreeStump/SM_BirchTreeStump_01",
+    "/Game/Megascans/3D_Assets/BrokenStump/SM_BrokenStump_01",
+    "/Game/Megascans/3D_Assets/BrokenTreeAssembly/SM_BrokenTreeAssembly_01",
+    "/Game/Megascans/3D_Assets/BrokenTreeBranch/SM_BrokenTreeBranch_01",
+    "/Game/Megascans/3D_Assets/FallenTreeAssembly/SM_FallenTreeAssembly_01",
+    "/Game/Megascans/3D_Assets/ForestRoots/SM_ForestRoots_01",
+    # Skały / głazy
     "/Game/Megascans/3D_Assets/ForestRockFormation/SM_ForestRockFormation_01",
-    "/Game/Megascans/3D_Assets/ForestRockFormation/SM_ForestRockFormation_02",
+    "/Game/Megascans/3D_Assets/ForestRockShelf/SM_ForestRockShelf_01",
+    "/Game/Megascans/3D_Assets/ForestRockSlab/SM_ForestRockSlab_01",
+    "/Game/Megascans/3D_Assets/ErodedRockyGround/SM_ErodedRockyGround_01",
 ]
 
 
