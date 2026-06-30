@@ -4061,7 +4061,7 @@ function resolveUE() {
     if (!editor) return { error: 'Nie znaleziono UnrealEditor — ustaw OTAKOS_UE_PATH.' };
     const cmd = editor.replace(/UnrealEditor\.exe$/i, 'UnrealEditor-Cmd.exe');
     const exe = fsSync.existsSync(cmd) ? cmd : editor;   // -Cmd to wariant konsolowy (lepszy headless)
-    const uproject = [process.env.OTAKOS_UE_PROJECT, path.join(process.cwd(), 'TeO_Arcade_Forge', 'GENESIS_OVERRIDE', 'GENESIS_OVERRIDE.uproject')].filter(Boolean).find(p => fsSync.existsSync(p));
+    const uproject = [process.env.OTAKOS_UE_PROJECT, path.join(GEN_DIR, 'GENESIS_OVERRIDE.uproject')].filter(Boolean).find(p => fsSync.existsSync(p));
     if (!uproject) return { error: 'Nie znaleziono .uproject — ustaw OTAKOS_UE_PROJECT.' };
     return { exe, uproject };
 }
@@ -4428,9 +4428,13 @@ app.post('/api/craft/plan', (req, res) => {
 });
 
 // ── 🧱 ASSETY PROJEKTU — co agent REALNIE widzi (Content projektu UE; FAB dopiero po pobraniu) ──
+// Preferuj projekt „5.8" (kompatybilny + ma Megascany), fallback na stary.
+const GEN_DIR = ['GENESIS_OVERRIDE 5.8', 'GENESIS_OVERRIDE']
+    .map(d => path.join(process.cwd(), 'TeO_Arcade_Forge', d))
+    .find(d => fsSync.existsSync(d)) || path.join(process.cwd(), 'TeO_Arcade_Forge', 'GENESIS_OVERRIDE');
 const CONTENT_DIR = process.env.OTAKOS_UE_CONTENT
     || (process.env.OTAKOS_UE_PROJECT ? path.join(path.dirname(process.env.OTAKOS_UE_PROJECT), 'Content') : null)
-    || path.join(process.cwd(), 'TeO_Arcade_Forge', 'GENESIS_OVERRIDE', 'Content');
+    || path.join(GEN_DIR, 'Content');
 
 /** GET /api/assets/list[?root=] — skan Content (domyślnie projektu, lub dowolnego folderu np. ElectricDreamsEva). */
 app.get('/api/assets/list', async (req, res) => {
