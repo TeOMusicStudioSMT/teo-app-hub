@@ -20,6 +20,7 @@ ORDER = [
     ("🗂️ Zaludnienie (Twoje zdjęcia)", "scene_island_populate.py"),
     ("⛵ Stocznia + surowce",          "scene_shipyard.py"),
     ("🌅 Atmosfera świtu",             "scene_island_atmosphere.py"),
+    ("🚶 Punkt startu gracza",         "scene_island_spawn.py"),
     ("💡 Strojenie świateł",           "fix_lights_vsm.py"),
 ]
 
