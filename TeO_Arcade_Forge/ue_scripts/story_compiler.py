@@ -88,10 +88,18 @@ def tame_local_lights():
 
 
 def ensure_baseline_light():
-    # Minimum światła, by „pusto" nie było czarne (gotcha: NIE zeruj DirectionalLight).
-    sun = fos(unreal.DirectionalLight, "Story_Baseline_Sun", unreal.Vector(0, 0, 1500))
-    sun.get_component_by_class(unreal.DirectionalLightComponent).set_intensity(0.6)
-    fos(unreal.SkyLight, "Story_Baseline_Sky", unreal.Vector(0, 0, 1200))
+    # Reużyj istniejącego słońca (template ma swoje) — NIE dubluj DirectionalLight
+    # (inaczej warning „wiele świateł kierunkowych"). Tworzymy tylko, gdy żadnego nie ma.
+    actors = unreal.EditorLevelLibrary.get_all_level_actors()
+    sun = next((a for a in actors if isinstance(a, unreal.DirectionalLight)), None)
+    if sun is None:
+        sun = fos(unreal.DirectionalLight, "Story_Baseline_Sun", unreal.Vector(0, 0, 1500))
+        try:
+            sun.get_component_by_class(unreal.DirectionalLightComponent).set_intensity(1.0)
+        except Exception:
+            pass
+    if not any(isinstance(a, unreal.SkyLight) for a in actors):
+        fos(unreal.SkyLight, "Story_Baseline_Sky", unreal.Vector(0, 0, 1200))
 
 
 # ── Środowiska (presety) — reużywają wygląd istniejących scen, offset = origin ─
