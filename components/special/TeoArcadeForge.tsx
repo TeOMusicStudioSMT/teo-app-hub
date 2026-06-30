@@ -104,6 +104,20 @@ export const TeoArcadeForge: React.FC = () => {
     finally { setCobotBusy(false); }
   };
 
+  // 🧱 Assety projektu — co agent widzi
+  const [assets, setAssets] = useState<{ folders: Record<string, number>; meshes: string[] } | null>(null);
+  const [assetsBusy, setAssetsBusy] = useState(false);
+
+  const loadAssets = async () => {
+    setAssetsBusy(true);
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/assets/list`)).json();
+      if (!d.success) throw new Error(d.message || 'Skan nieudany');
+      setAssets({ folders: d.folders || {}, meshes: d.meshes || [] });
+    } catch (e: any) { toast.error(`⚠ ${e.message}`); }
+    finally { setAssetsBusy(false); }
+  };
+
   const scanIsland = async () => {
     if (!islandDir.trim()) { toast.error('Wskaż katalog ze zdjęciami.'); return; }
     setScanBusy(true); setIslandScan('');
@@ -232,6 +246,33 @@ export const TeoArcadeForge: React.FC = () => {
         </div>
         {islandScan && <div className="text-[9px] text-zinc-400 mt-1.5">{islandScan}</div>}
         <div className="text-[8px] text-zinc-600 mt-1">Brak danych → dziewicza wyspa. Po skanie w UE: <code className="text-emerald-400">scene_island_populate.py</code> rozrzuca osobno ludzi, osobno przedmioty.</div>
+      </div>
+
+      {/* 🧱 Co agent widzi w projekcie (assety Content; FAB dopiero po pobraniu/Migrate) */}
+      <div className="rounded-lg border border-teal-900/50 bg-black/30 p-3 my-3">
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-[11px] text-teal-300/80 tracking-wider">🧱 CO AGENT WIDZI (assety w projekcie)</div>
+          <button onClick={loadAssets} disabled={assetsBusy}
+            className="text-[10px] px-2 py-0.5 rounded border border-teal-700/50 text-teal-300 hover:bg-teal-950/40 disabled:opacity-50">{assetsBusy ? '⟳…' : '↻ Skanuj Content'}</button>
+        </div>
+        {!assets ? (
+          <div className="text-[9px] text-zinc-600">Skanuje Content projektu UE. FAB (Electric Dreams itp.) pojawia się TUTAJ dopiero po pobraniu/Migrate — nie z konta Epic.</div>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-1 mb-1.5">
+              {Object.entries(assets.folders).sort((a, b) => b[1] - a[1]).map(([f, n]) => (
+                <span key={f} className="text-[9px] px-2 py-0.5 rounded-full border border-teal-800/50 text-teal-300/80">{f} ({n})</span>
+              ))}
+            </div>
+            <div className="text-[9px] text-zinc-500 mb-1">Siatki ({assets.meshes.length}) — klik kopiuje ścieżkę (do <code className="text-teal-400">OTAKOS_NATURE_MESHES</code>):</div>
+            <div className="max-h-32 overflow-auto space-y-0.5">
+              {assets.meshes.map(m => (
+                <div key={m} onClick={() => navigator.clipboard?.writeText(m).then(() => toast.success('Skopiowano ścieżkę.'))}
+                  className="text-[9px] text-teal-100/80 font-mono cursor-pointer hover:text-teal-300 truncate">{m}</div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* 🤖 Co-Bot — wirtualny mentor (uczy planować, zarządzać energią, dostroić się do realu) */}
