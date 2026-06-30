@@ -4454,6 +4454,48 @@ app.get('/api/assets/list', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 🗄️ SKŁADNICA ASSETÓW — workflow katalogowy drive-agnostyczny (gra/silnik/typ/paczka) ──
+const VAULT_DIR = process.env.OTAKOS_ASSET_VAULT || path.join(process.cwd(), 'TeO_Vault');
+
+async function subdirs(p) {
+    try { return (await fs.readdir(p, { withFileTypes: true })).filter(d => d.isDirectory()).map(d => d.name); }
+    catch { return []; }
+}
+
+/** GET /api/vault/catalog — drzewo Składnicy: rodzaj_gry → silnik → typ_assetu → [paczki]. */
+app.get('/api/vault/catalog', async (req, res) => {
+    const games = await subdirs(VAULT_DIR);
+    if (!games.length) return res.json({ success: false, vault: VAULT_DIR, message: `Składnica pusta/brak: ${VAULT_DIR}. Ustaw OTAKOS_ASSET_VAULT (dowolny dysk) i ułóż wg konwencji (ASSET_VAULT.md).` });
+    const tree = {}; let packs = 0;
+    for (const g of games) {
+        tree[g] = {};
+        for (const e of await subdirs(path.join(VAULT_DIR, g))) {
+            tree[g][e] = {};
+            for (const t of await subdirs(path.join(VAULT_DIR, g, e))) {
+                const ps = await subdirs(path.join(VAULT_DIR, g, e, t));
+                tree[g][e][t] = ps; packs += ps.length;
+            }
+        }
+    }
+    res.json({ success: true, vault: VAULT_DIR, tree, packs });
+});
+
+/** POST /api/vault/plan {gameType, engine} — paczki do wdruku (pasujące + shared) ze ścieżkami źródłowymi. */
+app.post('/api/vault/plan', async (req, res) => {
+    const gameType = String(req.body?.gameType || '').toLowerCase();
+    const engine = String(req.body?.engine || 'unreal').toLowerCase();
+    const out = [];
+    for (const g of [gameType, 'shared']) {
+        if (!g) continue;
+        for (const t of await subdirs(path.join(VAULT_DIR, g, engine))) {
+            for (const pack of await subdirs(path.join(VAULT_DIR, g, engine, t))) {
+                out.push({ gameType: g, engine, assetType: t, pack, source: path.join(VAULT_DIR, g, engine, t, pack) });
+            }
+        }
+    }
+    res.json({ success: true, vault: VAULT_DIR, target: process.env.OTAKOS_UE_PROJECT || '(OTAKOS_UE_PROJECT nieustawiony)', count: out.length, packs: out });
+});
+
 // ── 📚 KSIĘGARNIA SKILI — księgozbiór powtarzalnych czynów; Jadziunia dobiera do zadania ──
 const SKILLE_DIR = path.join(process.cwd(), 'TeO_Skille');
 

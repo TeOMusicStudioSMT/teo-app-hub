@@ -104,6 +104,20 @@ export const TeoArcadeForge: React.FC = () => {
     finally { setCobotBusy(false); }
   };
 
+  // 🗄️ Składnica Assetów — katalog drive-agnostyczny
+  const [vault, setVault] = useState<{ tree: Record<string, Record<string, Record<string, string[]>>>; packs: number; vault: string } | null>(null);
+  const [vaultBusy, setVaultBusy] = useState(false);
+
+  const loadVault = async () => {
+    setVaultBusy(true);
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/vault/catalog`)).json();
+      if (!d.success) { toast(`🗄️ ${d.message}`, { icon: '🗄️', duration: 6000 }); setVault(null); return; }
+      setVault({ tree: d.tree || {}, packs: d.packs || 0, vault: d.vault });
+    } catch (e: any) { toast.error(`⚠ ${e.message}`); }
+    finally { setVaultBusy(false); }
+  };
+
   // 🧱 Assety projektu — co agent widzi
   const [assets, setAssets] = useState<{ folders: Record<string, number>; meshes: string[] } | null>(null);
   const [assetsBusy, setAssetsBusy] = useState(false);
@@ -248,6 +262,39 @@ export const TeoArcadeForge: React.FC = () => {
         </div>
         {islandScan && <div className="text-[9px] text-zinc-400 mt-1.5">{islandScan}</div>}
         <div className="text-[8px] text-zinc-600 mt-1">Brak danych → dziewicza wyspa. Po skanie w UE: <code className="text-emerald-400">scene_island_populate.py</code> rozrzuca osobno ludzi, osobno przedmioty.</div>
+      </div>
+
+      {/* 🗄️ Składnica Assetów — katalog drive-agnostyczny (gra/silnik/typ/paczka) */}
+      <div className="rounded-lg border border-purple-900/50 bg-black/30 p-3 my-3">
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-[11px] text-purple-300/80 tracking-wider">🗄️ SKŁADNICA ASSETÓW (katalog dla Agentów)</div>
+          <button onClick={loadVault} disabled={vaultBusy}
+            className="text-[10px] px-2 py-0.5 rounded border border-purple-700/50 text-purple-300 hover:bg-purple-950/40 disabled:opacity-50">{vaultBusy ? '⟳…' : '↻ Katalog'}</button>
+        </div>
+        {!vault ? (
+          <div className="text-[9px] text-zinc-600">Drive-agnostyczna: ustaw <code className="text-purple-400">OTAKOS_ASSET_VAULT</code> (dowolny dysk), ułóż <code className="text-purple-400">rodzaj_gry/silnik/typ/paczka</code> (ASSET_VAULT.md). Agenci budują wiele projektów z tych samych bibliotek.</div>
+        ) : (
+          <div className="text-[10px]">
+            <div className="text-[9px] text-zinc-500 mb-1">{vault.packs} paczek · <span className="font-mono">{vault.vault}</span></div>
+            <div className="max-h-44 overflow-auto space-y-0.5">
+              {Object.entries(vault.tree).map(([game, engines]) => (
+                <div key={game}>
+                  <div className="text-purple-200 font-bold">🎮 {game}</div>
+                  {Object.entries(engines).map(([eng, types]) => (
+                    <div key={eng} className="ml-3">
+                      <span className="text-purple-300/80">⚙ {eng}</span>
+                      {Object.entries(types).map(([t, packs]) => (
+                        <div key={t} className="ml-4 text-[9px]">
+                          <span className="text-zinc-400">{t}:</span> <span className="text-purple-100/80">{packs.join(', ') || '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 🧱 Co agent widzi w projekcie (assety Content; FAB dopiero po pobraniu/Migrate) */}
