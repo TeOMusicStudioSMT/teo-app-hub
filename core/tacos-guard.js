@@ -58,7 +58,7 @@ export function initTacosGuard() {
 /**
  * Performs check and execution
  */
-function executeTacosGuard() {
+export function executeTacosGuard() {
     if (!isMonitoringActive) return;
 
     exec('nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader', (err, stdout) => {

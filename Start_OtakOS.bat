@@ -28,6 +28,15 @@ start "" /MIN ollama serve
 echo [2/4] Otwieranie Mostu ^(Wiesio-Bridge :3001^)...
 start "Wiesio-Bridge" cmd /k "node wiesio-bridge.js"
 
+REM --- Sprawdzenie Multica ---
+where multica >nul 2>nul
+if errorlevel 1 (
+    echo [UWAGA] Brak multica w PATH. Pominiecie uruchomienia demona Multica.
+) else (
+    echo [Most-Multica] Uruchamianie demona Multica...
+    start "Multica-Daemon" cmd /k "multica daemon start"
+)
+
 echo [3/4] Rozpalanie UI ^(Vite :5176^)...
 start "Katedra Web" cmd /k "npm run dev"
 

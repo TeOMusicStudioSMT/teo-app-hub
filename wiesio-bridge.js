@@ -6,8 +6,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
 import { exec, execFile, spawn } from 'child_process';
-import { initTacosGuard } from './core/tacos-guard.js';
-import { getAgentsList, getAgentPrompt } from './core/agents/index.js';
+import { initTacosGuard, executeTacosGuard } from './core/tacos-guard.js';
+import { runCodeReview } from './core/agents/ocr.js';
+import { getAgentsList, getAgentPrompt, getMergedSystemPrompt } from './core/agents/index.js';
 import { promisify } from 'util';
 import crypto from 'crypto';
 import os from 'os';
@@ -747,8 +748,18 @@ app.get('/api/agents', async (req, res) => {
     res.json({ success: true, agents });
 });
 
+// ── /api/ocr/review — Uruchomienie OpenCodeReview ─────────────────────
+app.post('/api/ocr/review', async (req, res) => {
+    const { from, to, commit, repo } = req.body;
+    const result = await runCodeReview({ from, to, commit, repo });
+    res.json(result);
+});
+
 // ── /api/claude — Claude proxy z pełną pętlą agentyczną ────────────────
 app.post('/api/claude', async (req, res) => {
+    // 🛡️ Samoczyszczenie VRAM przed alokacją kontekstu modelu
+    executeTacosGuard();
+
     const { messages, system, model = 'claude-sonnet-4-20250514', useTools = true, apiKey: reqApiKey, agent } = req.body;
     if (!messages?.length) return res.status(400).json({ error: 'Brak messages' });
 
@@ -763,13 +774,7 @@ app.post('/api/claude', async (req, res) => {
     const sendEvent = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
     try {
-        let finalSystem = system || '';
-        if (agent) {
-            const agentPrompt = await getAgentPrompt(agent);
-            if (agentPrompt) {
-                finalSystem = agentPrompt + (finalSystem ? '\n\n' + finalSystem : '');
-            }
-        }
+        const finalSystem = await getMergedSystemPrompt(agent, system);
 
         let currentMessages = [...messages];
         let rounds = 0;
@@ -866,6 +871,9 @@ app.post('/api/claude', async (req, res) => {
 // ── /api/gemini — Gemini proxy (Google Generative AI) ─────────────────
 // SSE format identyczny jak /api/claude: {type:'text'} / {type:'done'} / {type:'error'}
 app.post('/api/gemini', async (req, res) => {
+    // 🛡️ Samoczyszczenie VRAM przed alokacją kontekstu modelu
+    executeTacosGuard();
+
     const { messages, system, model = 'gemini-1.5-flash', apiKey: reqApiKey, agent } = req.body;
     if (!messages?.length) return res.status(400).json({ error: 'Brak messages' });
 
@@ -880,13 +888,7 @@ app.post('/api/gemini', async (req, res) => {
     const sendEvent = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
     try {
-        let finalSystem = system || '';
-        if (agent) {
-            const agentPrompt = await getAgentPrompt(agent);
-            if (agentPrompt) {
-                finalSystem = agentPrompt + (finalSystem ? '\n\n' + finalSystem : '');
-            }
-        }
+        const finalSystem = await getMergedSystemPrompt(agent, system);
 
         // Konwersja messages → Gemini contents format
         // Gemini wymaga: role 'user'|'model' (nie 'assistant')

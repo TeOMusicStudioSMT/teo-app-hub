@@ -81,3 +81,54 @@ export async function getAgentPrompt(id) {
         return null;
     }
 }
+
+// Helper to load config value asynchronously
+async function getEnvValue(key, defaultValue) {
+    if (process.env[key]) {
+        return process.env[key];
+    }
+    try {
+        const envPath = path.join(process.cwd(), '.env');
+        const content = await fs.readFile(envPath, 'utf8');
+        const lines = content.split('\n');
+        for (const line of lines) {
+            const match = line.match(/^\s*([^#=\s]+)\s*=\s*(.*)$/);
+            if (match && match[1] === key) {
+                let val = match[2].trim();
+                if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+                    val = val.slice(1, -1);
+                }
+                return val;
+            }
+        }
+    } catch (e) {
+        // ignore
+    }
+    return defaultValue;
+}
+
+/**
+ * Zwraca system prompt z dołączonym nadrzędnym filtrem (Master Agent), jeśli jest ustawiony.
+ */
+export async function getMergedSystemPrompt(id, baseSystem = '') {
+    let merged = baseSystem || '';
+    
+    // 1. Jeśli przekazano ID konkretnego agenta, pobieramy jego prompt
+    if (id) {
+        const agentPrompt = await getAgentPrompt(id);
+        if (agentPrompt) {
+            merged = agentPrompt + (merged ? '\n\n' + merged : '');
+        }
+    }
+    
+    // 2. Jeśli jest skonfigurowany globalny nadrzędny agent Multica, również go dołączamy
+    const masterAgent = await getEnvValue('MULTICA_MASTER_AGENT', '');
+    if (masterAgent && masterAgent !== id) {
+        const masterPrompt = await getAgentPrompt(masterAgent);
+        if (masterPrompt) {
+            merged = masterPrompt + (merged ? '\n\n' + masterPrompt : '');
+        }
+    }
+    
+    return merged;
+}
