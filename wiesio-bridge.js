@@ -755,6 +755,75 @@ app.post('/api/ocr/review', async (req, res) => {
     res.json(result);
 });
 
+// ── /v1/embeddings — OpenAI-compatible Embeddings zasilane Wiesio-Mózgiem ──
+app.post('/v1/embeddings', async (req, res) => {
+    if (!wiesioBrain) {
+        return res.status(503).json({ error: { message: 'Mózg wektorowy (Wiesio-Brain) się jeszcze ładuje!' } });
+    }
+
+    const { input, model } = req.body;
+    if (!input) {
+        return res.status(400).json({ error: { message: 'Brak pola input.' } });
+    }
+
+    try {
+        const inputs = Array.isArray(input) ? input : [input];
+        const data = [];
+
+        for (let i = 0; i < inputs.length; i++) {
+            const text = inputs[i];
+            const output = await wiesioBrain(text, { pooling: 'mean', normalize: true });
+            data.push({
+                object: 'embedding',
+                index: i,
+                embedding: Array.from(output.data)
+            });
+        }
+
+        res.json({
+            object: 'list',
+            data,
+            model: model || 'all-MiniLM-L6-v2'
+        });
+    } catch (e) {
+        console.error('[Embeddings API] Błąd:', e.message);
+        res.status(500).json({ error: { message: e.message } });
+    }
+});
+
+// ── /api/open-notebook/* — Proxy do REST API Open Notebook ────────────
+app.use('/api/open-notebook', cors({ origin: '*' }), async (req, res) => {
+    const host = process.env.OPEN_NOTEBOOK_HOST || 'http://localhost:5055';
+    const targetUrl = `${host}${req.url}`;
+    
+    try {
+        const options = {
+            method: req.method,
+            headers: {
+                ...req.headers,
+                host: undefined
+            }
+        };
+
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+            options.body = JSON.stringify(req.body);
+        }
+
+        const resp = await fetch(targetUrl, options);
+        
+        res.status(resp.status);
+        for (const [key, value] of resp.headers.entries()) {
+            res.setHeader(key, value);
+        }
+        
+        const text = await resp.text();
+        res.send(text);
+    } catch (e) {
+        console.error(`[OpenNotebook Proxy] Błąd:`, e.message);
+        res.status(502).json({ success: false, error: e.message });
+    }
+});
+
 // ── /api/claude — Claude proxy z pełną pętlą agentyczną ────────────────
 app.post('/api/claude', async (req, res) => {
     // 🛡️ Samoczyszczenie VRAM przed alokacją kontekstu modelu

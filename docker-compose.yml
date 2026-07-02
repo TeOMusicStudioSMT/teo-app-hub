@@ -46,6 +46,7 @@ services:
     environment:
       - NODE_ENV=production
       - OLLAMA_HOST=http://ollama:11434     # most → Ollama (env-driven, fallback w kodzie)
+      - OPEN_NOTEBOOK_HOST=http://open_notebook:5055
     volumes:
       - ./data/wymiar:/app/_OtakOs_Wymiar   # 💾 kolejka Mechanika, patche, knowledge graph
       - ./data/vault:/app/.vault-0.00g      # 💾 zaszyfrowane klucze (AES-256-GCM)
@@ -68,5 +69,37 @@ services:
       - bridge
     ports:
       - "8080:8080"
+
+  # ── 💾 SurrealDB — baza danych dla Open Notebook ──
+  surrealdb:
+    image: surrealdb/surrealdb:v2
+    container_name: katedra-surrealdb
+    command: start --log info --user root --pass root rocksdb:/mydata/mydatabase.db
+    user: root
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/surreal_data:/mydata
+    restart: always
+
+  # ── 📓 Open Notebook — lokalny NotebookLM ──
+  open_notebook:
+    image: lfnovo/open_notebook:v1-latest
+    container_name: katedra-open-notebook
+    ports:
+      - "8502:8502"
+      - "5055:5055"
+    environment:
+      - OPEN_NOTEBOOK_ENCRYPTION_KEY=change-me-to-a-secret-string-teo-genesis
+      - SURREAL_URL=ws://surrealdb:8000/rpc
+      - SURREAL_USER=root
+      - SURREAL_PASSWORD=root
+      - SURREAL_NAMESPACE=open_notebook
+      - SURREAL_DATABASE=open_notebook
+    volumes:
+      - ./data/notebook_data:/app/data
+    depends_on:
+      - surrealdb
+    restart: always
 
 # Brak top-level `volumes:` — używamy bind-mountów do ./data (przenośne na USB).
