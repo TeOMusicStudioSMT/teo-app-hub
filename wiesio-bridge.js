@@ -6,6 +6,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
 import { exec, execFile, spawn } from 'child_process';
+import { initTacosGuard } from './core/tacos-guard.js';
+import { getAgentsList, getAgentPrompt } from './core/agents/index.js';
 import { promisify } from 'util';
 import crypto from 'crypto';
 import os from 'os';
@@ -739,9 +741,15 @@ app.post('/api/ollama/diffusion', async (req, res) => {
     });
 });
 
+// ── /api/agents — Dynamiczny rejestr agentów z Agency 33 ───────────────
+app.get('/api/agents', async (req, res) => {
+    const agents = await getAgentsList();
+    res.json({ success: true, agents });
+});
+
 // ── /api/claude — Claude proxy z pełną pętlą agentyczną ────────────────
 app.post('/api/claude', async (req, res) => {
-    const { messages, system, model = 'claude-sonnet-4-20250514', useTools = true, apiKey: reqApiKey } = req.body;
+    const { messages, system, model = 'claude-sonnet-4-20250514', useTools = true, apiKey: reqApiKey, agent } = req.body;
     if (!messages?.length) return res.status(400).json({ error: 'Brak messages' });
 
     const apiKey = await getAnthropicKey(reqApiKey);
@@ -755,6 +763,14 @@ app.post('/api/claude', async (req, res) => {
     const sendEvent = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
     try {
+        let finalSystem = system || '';
+        if (agent) {
+            const agentPrompt = await getAgentPrompt(agent);
+            if (agentPrompt) {
+                finalSystem = agentPrompt + (finalSystem ? '\n\n' + finalSystem : '');
+            }
+        }
+
         let currentMessages = [...messages];
         let rounds = 0;
         const MAX_ROUNDS = 10;
@@ -764,7 +780,7 @@ app.post('/api/claude', async (req, res) => {
             const body = {
                 model, max_tokens: 8096, stream: true,
                 messages: currentMessages,
-                ...(system ? { system } : {}),
+                ...(finalSystem ? { system: finalSystem } : {}),
                 ...(useTools ? { tools: KATEDRA_TOOLS } : {}),
             };
 
@@ -850,7 +866,7 @@ app.post('/api/claude', async (req, res) => {
 // ── /api/gemini — Gemini proxy (Google Generative AI) ─────────────────
 // SSE format identyczny jak /api/claude: {type:'text'} / {type:'done'} / {type:'error'}
 app.post('/api/gemini', async (req, res) => {
-    const { messages, system, model = 'gemini-1.5-flash', apiKey: reqApiKey } = req.body;
+    const { messages, system, model = 'gemini-1.5-flash', apiKey: reqApiKey, agent } = req.body;
     if (!messages?.length) return res.status(400).json({ error: 'Brak messages' });
 
     const apiKey = await getGeminiKey(reqApiKey);
@@ -864,6 +880,14 @@ app.post('/api/gemini', async (req, res) => {
     const sendEvent = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
     try {
+        let finalSystem = system || '';
+        if (agent) {
+            const agentPrompt = await getAgentPrompt(agent);
+            if (agentPrompt) {
+                finalSystem = agentPrompt + (finalSystem ? '\n\n' + finalSystem : '');
+            }
+        }
+
         // Konwersja messages → Gemini contents format
         // Gemini wymaga: role 'user'|'model' (nie 'assistant')
         // Obsługuje zarówno content: string JAK I content: parts[] (vision z inlineData)
@@ -889,7 +913,7 @@ app.post('/api/gemini', async (req, res) => {
 
         const body = {
             contents,
-            ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+            ...(finalSystem ? { systemInstruction: { parts: [{ text: finalSystem }] } } : {}),
             generationConfig: { maxOutputTokens: 8192, temperature: 0.7 },
         };
 
@@ -6038,4 +6062,7 @@ app.listen(PORT, () => {
     console.log(` 🤖  GET  /api/auth/google                  (OAuth2 placeholder)`);
     console.log(` 🤖  POST /api/impresario/secrets/youtube   (Zapis kluczy API)`);
     console.log(` 🤖  POST /api/auth/google/simulate         (Gemini Agent stub)`);
+
+    // 🛡️ Strażnik VRAM - Tacos Guard
+    initTacosGuard();
 });
