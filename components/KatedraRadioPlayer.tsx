@@ -77,6 +77,56 @@ export function KatedraRadioPlayer() {
     const [syncLyrics, setSyncLyrics] = useState<ParsedLyric[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // 🎙️ Dyktowanie MELDUNKU głosem (zamiast pisania) — transkrypcja lokalnym Whisperem
+    const [isMsgRecording, setIsMsgRecording] = useState(false);
+    const [isMsgTranscribing, setIsMsgTranscribing] = useState(false);
+    const msgRecorderRef = useRef<MediaRecorder | null>(null);
+    const msgChunksRef = useRef<Blob[]>([]);
+
+    const toggleMsgRecording = async () => {
+        if (isMsgTranscribing) return;
+        if (isMsgRecording) {
+            msgRecorderRef.current?.stop();
+            return;
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const recorder = new MediaRecorder(stream);
+            msgChunksRef.current = [];
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) msgChunksRef.current.push(e.data); };
+            recorder.onstop = async () => {
+                stream.getTracks().forEach((t) => t.stop());
+                setIsMsgRecording(false);
+                setIsMsgTranscribing(true);
+                try {
+                    const blob = new Blob(msgChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+                    const base64 = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(String(reader.result));
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    });
+                    const res = await fetch('http://127.0.0.1:3001/api/voice/transcribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sample: base64 }),
+                    });
+                    const data = await res.json();
+                    if (data.success && data.transcript) setMsg(data.transcript);
+                } catch (err) {
+                    console.error('[Asystent Muzyczny] ❌ Transkrypcja nie powiodła się:', err);
+                } finally {
+                    setIsMsgTranscribing(false);
+                }
+            };
+            msgRecorderRef.current = recorder;
+            recorder.start();
+            setIsMsgRecording(true);
+        } catch {
+            console.error('[Asystent Muzyczny] ❌ Brak dostępu do mikrofonu.');
+        }
+    };
+
 
 
     const crystallizeDNA = async () => {
@@ -439,9 +489,9 @@ export function KatedraRadioPlayer() {
 
                 {/* Konsola Komunikacyjna Rady */}
                 <div style={commPanelStyle}>
-                    <input 
-                        type="text" 
-                        placeholder="MELDUNEK..." 
+                    <input
+                        type="text"
+                        placeholder={isMsgTranscribing ? 'Rozpoznaję mowę...' : 'MELDUNEK...'}
                         value={msg}
                         onChange={(e) => setMsg(e.target.value)}
                         style={commInputStyle}
@@ -457,6 +507,20 @@ export function KatedraRadioPlayer() {
                             }
                         }}
                     />
+                    <button
+                        type="button"
+                        onClick={toggleMsgRecording}
+                        disabled={isMsgTranscribing}
+                        title={isMsgRecording ? 'Zatrzymaj nagrywanie' : 'Dyktuj meldunek'}
+                        style={{
+                            ...commBtnStyle,
+                            borderColor: isMsgRecording ? '#ef4444' : 'rgba(255,255,255,0.2)',
+                            color: isMsgRecording ? '#ef4444' : 'rgba(255,255,255,0.6)',
+                            opacity: isMsgTranscribing ? 0.5 : 1,
+                        }}
+                    >
+                        <Mic size={12} />
+                    </button>
                     <div style={commBtnRowStyle}>
                         {(['adamus', 'bob', 'wieslaw'] as const).map(p => (
                             <button

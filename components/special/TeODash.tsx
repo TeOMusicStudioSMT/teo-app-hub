@@ -50,6 +50,7 @@ import KronosOracle from './KronosOracle';
 import VideoUseLauncher from './VideoUseLauncher';
 import TeledyskPanel from './TeledyskPanel';
 import { StorytellerFrame } from './StorytellerFrame';
+import { TeOgochi } from '../TeOgochi';
 import Marketplace from './Marketplace';
 import AntiMatrixMirror from './AntiMatrixMirror';
 import { currentTier, setTier, canAccess, requiredPillar, TIERS, type TierId } from '../../lib/tiers';
@@ -1525,7 +1526,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
             }}>
               {systemTab === 'crew' && <CrewCreator onComplete={() => setShowSystem(false)} />}
               {systemTab === 'inkubator' && <KwantowyInkubator />}
-              {systemTab === 'story' && <><StorytellerFrame /><VideoUseLauncher /><TeledyskPanel initialAudioFile={teledyskPrefill.audioFile} initialTitle={teledyskPrefill.title} /></>}
+              {systemTab === 'story' && <><TeOgochi /><StorytellerFrame /><VideoUseLauncher /><TeledyskPanel initialAudioFile={teledyskPrefill.audioFile} initialTitle={teledyskPrefill.title} /></>}
               {systemTab === 'market' && <Marketplace />}
               {systemTab === 'lustro' && <AntiMatrixMirror />}
               {systemTab === 'mockup' && <MockupGenFrame />}

@@ -4863,6 +4863,18 @@ async function genOllama(prompt, model, ms = 40000) {
         return String((await r.json()).response || '').trim();
     } catch { return ''; }
 }
+// ── 🐣 TEOGOCHI — mały kompan, live komentarz na to co gra ───────────────────
+app.post('/api/teogochi/comment', async (req, res) => {
+    const { track, lyric } = req.body ?? {};
+    const model = process.env.OTAKOS_MODEL || 'gemma3:4b';
+    const context = [track ? `Utwór: ${track}` : null, lyric ? `Aktualny wers: "${lyric}"` : null]
+        .filter(Boolean).join('\n');
+    if (!context) return res.status(400).json({ success: false, message: 'Brak "track" lub "lyric".' });
+    const prompt = `Jesteś TeOgochi — małym, ciekawskim cyfrowym stworkiem-kompanem w Katedrze OtakOS, słuchasz muzyki razem z Suwerenem. Zareaguj JEDNYM krótkim, żywym zdaniem (max 12 słów) na to, co teraz gra — ciepło, czasem zabawnie, czasem wzruszony. Bez cudzysłowów, bez wyjaśnień — samo zdanie.\n\n${context}`;
+    const comment = await genOllama(prompt, model, 8000);
+    return res.json({ success: true, comment: comment || null });
+});
+
 app.post('/api/kronika/forge', async (req, res) => {
     let { narrative, transcript, title, videoUrl, model } = req.body ?? {};
     model = model || process.env.OTAKOS_MODEL || 'gemma3:4b';

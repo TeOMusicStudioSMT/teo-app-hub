@@ -453,6 +453,31 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
         }
     }, [currentTrack]);
 
+    // 🔊 Głos Rady — realne odtworzenie tego, co agent "mówi" (lokalny klon głosu
+    // per agentId, fallback przeglądarki gdy silnik XTTS niedostępny).
+    const speakAloud = useCallback(async (agentId: string, text: string) => {
+        try {
+            const res = await fetch('http://127.0.0.1:3001/api/voice/speak', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, voiceId: agentId }),
+            });
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const audio = new Audio(url);
+                audio.onended = () => URL.revokeObjectURL(url);
+                await audio.play().catch(() => {});
+                return;
+            }
+        } catch { /* silnik lokalny niedostępny — spadamy na przeglądarkę */ }
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'pl-PL';
+            window.speechSynthesis.speak(utter);
+        }
+    }, []);
+
     // ── speakMessage — NOWE ───────────────────────────────────────────
     // Wywołaj to po każdej odpowiedzi agenta.
     // Orbita zmieni kolor na aurę agenta przez AURA_DURATION_MS ms.
@@ -470,11 +495,13 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
             aura.message.substring(0, 80) + '...'
         );
 
+        speakAloud(aura.agentId, aura.message);
+
         // Po czasie aura gaśnie, Orbita wraca do złotego
         auraTimerRef.current = setTimeout(() => {
             setState(s => ({ ...s, activeAura: null, isSpeaking: false }));
         }, AURA_DURATION_MS);
-    }, []);
+    }, [speakAloud]);
 
     const clearAura = useCallback(() => {
         if (auraTimerRef.current) clearTimeout(auraTimerRef.current);
