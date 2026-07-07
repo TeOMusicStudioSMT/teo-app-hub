@@ -41,6 +41,31 @@ goto :eof
 :node
 echo %CYAN%[NODE]%RESET% %PURPLE%Instaluje zaleznosci (od 1 min... do wciul - Czekaj, Przyzwalaj)...%RESET%
 call npm install --legacy-peer-deps --no-audit
+
+REM ── Glos Suwerena (XTTS) — auto-instalacja przy pierwszym uruchomieniu ──
+REM Uwaga: launcher jedzie NAKŁADANY na korzeń distro (Miniaturyzator overlay),
+REM wiec _OtakOs_AI jest siostrzanym folderem tego pliku, tak samo jak wiesio-bridge.js.
+set "VOICE_ENV=%~dp0_OtakOs_AI\voice_env"
+set "VOICE_REQ=%~dp0_OtakOs_AI\requirements-voice.txt"
+set "VOICE_SRV=%~dp0_OtakOs_AI\voice_server.py"
+where python >nul 2>nul
+if not "%errorlevel%"=="0" (
+    echo %PURPLE%[!] Brak Pythona — pomijam Glos Suwerena ^(karaoke/Whisper dalej dzialaja^). Zainstaluj Python 3.10-3.12 by go wlaczyc.%RESET%
+    goto :node_start
+)
+if not exist "%VOICE_ENV%\Scripts\python.exe" (
+    echo %CYAN%[GLOS]%RESET% %PURPLE%Pierwsza instalacja silnika klonu glosu ^(XTTS, moze potrwac kilka minut^)...%RESET%
+    python -m venv "%VOICE_ENV%"
+    "%VOICE_ENV%\Scripts\python.exe" -m pip install --quiet --upgrade pip
+    "%VOICE_ENV%\Scripts\python.exe" -m pip install --quiet -r "%VOICE_REQ%"
+    if not "%errorlevel%"=="0" echo %PURPLE%[!] Instalacja Glosu Suwerena nie powiodla sie — front spadnie na fallback przegladarki ^(speechSynthesis^).%RESET%
+)
+if exist "%VOICE_ENV%\Scripts\python.exe" (
+    echo %CYAN%[GLOS]%RESET% Silnik klonu glosu (:5002)...
+    start "Glos Suwerena" "%VOICE_ENV%\Scripts\python.exe" "%VOICE_SRV%"
+)
+
+:node_start
 echo %CYAN%[NODE]%RESET% Wiesio-Bridge (:3001)...
 start "Wiesio-Bridge" cmd /k node wiesio-bridge.js
 echo %CYAN%[NODE]%RESET% Frontend (:5176)...

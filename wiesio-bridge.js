@@ -327,8 +327,10 @@ app.post('/api/bridge/autosync', async (req, res) => {
             }
 
             if (foundIdx !== -1) {
-                // NAPRAWA NaN: t0 może być undefined gdy token nie ma timestampu — fallback 0
-                const startTime = (allWords[foundIdx].t0 ?? 0) / 100; // Whisper.cpp: centysekudy → sekundy
+                // NAPRAWA: whisper-cli.exe --output-json-full nie zwraca t0/t1 (to inny build/wersja) —
+                // tokeny mają offsets.{from,to} w milisekundach. t0 był zawsze undefined → fallback 0
+                // aktywował się dla KAŻDEJ linii (wszystkie znaczniki na 0).
+                const startTime = (allWords[foundIdx].offsets?.from ?? 0) / 1000;
                 syncedLines.push({
                     time: startTime,
                     timestamp: formatLRCTime(startTime),
@@ -1862,18 +1864,38 @@ app.post('/api/bridge/execute', async (req, res) => {
             console.log(`[Wiesio-Spawacz] 📄 Utworzono mapę klocków:\n${concatLines.join('\n')}`);
             console.log(`[Wiesio-Spawacz] 🔨 Odpalam FFmpeg... Cel: ${outputPath}`);
 
+            // Wykryj FPS głównego wideo — concat demuxer + reencode do sztywnego FPS
+            // (zamiast VFR passthrough) usuwa dryf, który wcześniej kumulował się i ujawniał
+            // dopiero w segmencie "wkład" (3. w kolejności po Start/Adds).
+            let mainFps = 30;
+            try {
+                const { stdout: probeOut } = await execFileAsync(ffprobePath, [
+                    '-v', 'error', '-select_streams', 'v:0',
+                    '-show_entries', 'stream=r_frame_rate',
+                    '-of', 'default=noprint_wrappers=1:nokey=1',
+                    mainVideoPath
+                ]);
+                const [num, den] = probeOut.trim().split('/').map(Number);
+                if (num && den) mainFps = Math.round(num / den) || 30;
+            } catch (e) {
+                console.warn(`[Wiesio-Spawacz] ⚠️ Nie wykryto FPS głównego wideo, używam domyślnego ${mainFps}fps.`);
+            }
+
             // REFAKTORYZACJA: execFileAsync dla FFmpeg Concatenator
             // Zamiast kopiowania, wymuszamy nowy render (ujednolici to FPS, bazę czasu i ścieżki)
             await execFileAsync(ffmpegPath, [
+                '-fflags', '+genpts',   // regeneruj PTS między sklejanymi segmentami (concat demuxer ich nie zeruje)
                 '-f', 'concat',
                 '-safe', '0',
                 '-i', concatTxtPath,
+                '-fps_mode', 'cfr',     // stały FPS zamiast VFR passthrough — eliminuje kumulujący się dryf (następca -vsync)
+                '-r', String(mainFps),
+                '-af', 'aresample=async=1:first_pts=0', // resync audio per-strumień (zastępuje przestarzałe -async 1)
+                '-avoid_negative_ts', 'make_zero',
                 '-c:v', 'libx264',    // nowy, uniwersalny kodek wideo
                 '-preset', 'fast',   // szybkość spawania
                 '-c:a', 'aac',       // jednolity kodek audio
                 '-b:a', '192k',      // stały bitrate audio
-                '-vsync', '2',       // zapobiega zacinaniu klatek
-                '-async', '1',       // wymusza synchronizację audio do wideo
                 '-y',
                 outputPath
             ], { timeout: 0, maxBuffer: 1024 * 1024 * 500 });
@@ -4782,6 +4804,41 @@ app.post('/api/voice/clone', async (req, res) => {
         res.json({ success: true, voiceId: id, file: `voices/${id}.wav`, bytes: st.size });
     } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
+// 🎙️ Wejście głosowe do Orba — nagranie z przeglądarki (base64) → transkrypt (Whisper.cpp lokalnie).
+app.post('/api/voice/transcribe', async (req, res) => {
+    const { sample, model = 'small' } = req.body ?? {};
+    if (!sample) return res.status(400).json({ success: false, message: 'Brak "sample" (base64 audio).' });
+    let src = null, wav = null, jsonFile = null;
+    try {
+        const modelPath = path.join(MODELS_DIR, `ggml-${model}.bin`);
+        if (!fsSync.existsSync(modelPath)) return res.status(424).json({ success: false, message: `Brak modelu Whisper: ggml-${model}.bin w _OtakOs_AI/models/.` });
+        if (!fsSync.existsSync(WHISPER_EXE)) return res.status(424).json({ success: false, message: 'Brak whisper-cli.exe w _OtakOs_AI/bin/.' });
+
+        const buf = Buffer.from(String(sample).replace(/^data:audio\/\w+;base64,/, ''), 'base64');
+        src = path.join(TEMP_DIR, `orb_voice_in_${Date.now()}`);
+        await fs.writeFile(src, buf);
+
+        wav = path.join(TEMP_DIR, `orb_voice_${Date.now()}.wav`);
+        await execFileAsync(ffmpegPath, ['-i', src, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', wav]);
+
+        const outBase = path.join(TEMP_DIR, 'orb_voice_tr_' + Date.now());
+        jsonFile = outBase + '.json';
+        await execFileAsync(WHISPER_EXE, ['-m', modelPath, '-f', wav, '--output-json-full', '-p', '4', '-l', 'pl', '-of', outBase], { cwd: BIN_DIR });
+        if (!fsSync.existsSync(jsonFile)) throw new Error('Whisper nie wygenerował wyniku.');
+        const out = JSON.parse(fsSync.readFileSync(jsonFile, 'utf8'));
+        const transcript = (out.transcription || []).map(s => String(s.text || '').trim()).join(' ').replace(/\s+/g, ' ').trim();
+        return res.json({ success: true, transcript });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    } finally {
+        try {
+            if (src) await fs.rm(src, { force: true });
+            if (wav) await fs.rm(wav, { force: true });
+            if (jsonFile) await fs.rm(jsonFile, { force: true });
+        } catch {}
+    }
+});
+
 app.post('/api/voice/speak', async (req, res) => {
     const { text, voiceId } = req.body ?? {};
     if (!text) return res.status(400).json({ success: false, message: 'Brak "text".' });
@@ -5137,6 +5194,39 @@ app.post('/api/teledysk/scene', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Nieznany mode — użyj proc | sd | gemini.' });
     } catch (err) {
         return res.status(500).json({ success: false, mode, message: err.message });
+    }
+});
+
+/**
+ * POST /api/teledysk/stage-audio — most Music V2 → Teledysk.
+ * Body: { audioUrl, title? }
+ * Suno zwraca utwór jako zdalny URL (CDN) — /api/teledysk/render potrzebuje
+ * pliku lokalnego w projekcie. Pobiera audioUrl i zapisuje do
+ * _OtakOs_Muzyka/Music_V2_Imports/<slug>-<ts>.mp3, zwraca ścieżkę relatywną
+ * gotową do wklejenia jako "audioFile" w Kreatorze Teledysku.
+ */
+app.post('/api/teledysk/stage-audio', async (req, res) => {
+    const { audioUrl, title } = req.body ?? {};
+    try {
+        if (!audioUrl || !/^https?:\/\//i.test(audioUrl))
+            return res.status(400).json({ success: false, message: '"audioUrl" musi być pełnym http(s) URL.' });
+
+        const response = await fetch(audioUrl);
+        if (!response.ok) return res.status(502).json({ success: false, message: `Pobieranie nie powiodło się: ${response.status}` });
+        const buf = Buffer.from(await response.arrayBuffer());
+
+        const slug = String(title || 'utwor').toLowerCase()
+            .replace(/[^a-z0-9ąćęłńóśźż]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'utwor';
+        const importDir = path.join(MUSIC_DIR, 'Music_V2_Imports');
+        await fs.mkdir(importDir, { recursive: true });
+        const fileName = `${slug}-${Date.now()}.mp3`;
+        await fs.writeFile(path.join(importDir, fileName), buf);
+
+        const relPath = path.relative(process.cwd(), path.join(importDir, fileName)).replace(/\\/g, '/');
+        return res.json({ success: true, audioFile: relPath });
+    } catch (err) {
+        console.error(`[Teledysk] ❌ stage-audio: ${err.message}`);
+        return res.status(500).json({ success: false, message: err.message });
     }
 });
 

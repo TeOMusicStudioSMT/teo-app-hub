@@ -139,8 +139,20 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   const [showSystem, setShowSystem] = useState<boolean>(false);
   const [systemTab, setSystemTab] = useState<'crew' | 'inkubator' | 'story' | 'mockup' | 'studio' | 'dziennik' | 'market' | 'lustro' | 'widok' | 'narada' | 'terminal' | 'archiwum' | 'klaudiusz' | 'autobus' | 'wydawnictwo' | 'rafineria'>('crew');
 
-
-
+  // 🎬🎵 Przylot z Music V2 (?openTeledysk=1&audioFile=...&title=...) → od razu na Teledysk
+  const [teledyskPrefill, setTeledyskPrefill] = useState<{ audioFile?: string; title?: string }>({});
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('openTeledysk') === '1') {
+      setTeledyskPrefill({
+        audioFile: params.get('audioFile') || undefined,
+        title: params.get('title') || undefined,
+      });
+      setShowSystem(true);
+      setSystemTab('story');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   // 👁️ Panel Dowodzenia: aktywna zakładka
   type CommandPanelTab = 'eyes' | 'impresario' | 'tost' | 'pralka';
@@ -1513,7 +1525,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
             }}>
               {systemTab === 'crew' && <CrewCreator onComplete={() => setShowSystem(false)} />}
               {systemTab === 'inkubator' && <KwantowyInkubator />}
-              {systemTab === 'story' && <><StorytellerFrame /><VideoUseLauncher /><TeledyskPanel /></>}
+              {systemTab === 'story' && <><StorytellerFrame /><VideoUseLauncher /><TeledyskPanel initialAudioFile={teledyskPrefill.audioFile} initialTitle={teledyskPrefill.title} /></>}
               {systemTab === 'market' && <Marketplace />}
               {systemTab === 'lustro' && <AntiMatrixMirror />}
               {systemTab === 'mockup' && <MockupGenFrame />}

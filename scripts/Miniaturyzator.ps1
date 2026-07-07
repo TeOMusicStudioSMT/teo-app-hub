@@ -49,12 +49,20 @@ Info "Staging: $Stage"
 $xdStatic = @(
     'node_modules','.git','.vite','dist','.cache','.claude','.husky',
     '_temp','TestProxy','models','memory','.agent',
-    '_OtakOs_AI','_OtakOs_Aula','_OtakOs_Build','_OtakOs_Components',
+    # _OtakOs_AI: wykluczamy tylko ciężkie/prywatne podfoldery (binarki Whisper,
+    # modele ggml, próbki głosu Suwerena) — voice_server.py i requirements-voice.txt
+    # ZOSTAJĄ, żeby Głos Suwerena mógł się auto-zainstalować na nowym węźle.
+    '_OtakOs_AI\bin','_OtakOs_AI\models','_OtakOs_AI\voices','_OtakOs_AI\temp','_OtakOs_AI\voice_env',
+    '_OtakOs_Aula','_OtakOs_Build','_OtakOs_Components',
     '_OtakOs_Klocki','_OtakOs_Kroniki','_OtakOs_Move','_OtakOs_Muzyka',
     '_OtakOs_Sonic','_OtakOs_Wymiar'
 )
 # Dołap dynamicznie wszelkie inne _OtakOs_* (na wypadek nowych).
+# _OtakOs_AI pomijamy tu celowo — ma własne, częściowe wykluczenia wyżej
+# (całościowy wpis by je nadpisał i znów wyciął cały folder, razem z
+# voice_server.py / requirements-voice.txt).
 $xdDynamic = Get-ChildItem $Source -Directory -Filter '_OtakOs_*' -ErrorAction SilentlyContinue |
+             Where-Object { $_.Name -ne '_OtakOs_AI' } |
              ForEach-Object { $_.Name }
 $XD = ($xdStatic + $xdDynamic) | Select-Object -Unique
 

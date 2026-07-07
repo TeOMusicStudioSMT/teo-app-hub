@@ -18,6 +18,7 @@ import { cn } from '../lib/helpers';
 import { toast } from 'react-hot-toast';
 import { useCityMemory, registerConsciousnessActivity } from '../lib/memory/CityMemory';
 import { ApiDyrygent } from '../lib/router/ApiDyrygent';
+import { useT } from '../lib/i18n';
 
 // Aromaty API - mapowanie kolorów
 export type AromaType = 'groq' | 'gemini' | 'claude' | 'ollama' | 'default';
@@ -110,7 +111,14 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
   // Model dla Ollama (może być zmieniony przez użytkownika)
   const [ollamaModel, setOllamaModel] = useState(defaultModel);
 
+  // 🎙️ Rozmowa głosowa — nagrywanie mikrofonem + auto-odtwarzanie odpowiedzi
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
   const inputRef = useRef<HTMLInputElement>(null);
+  const { t } = useT();
 
   const resonanceColor = useAtomValue(resonanceColorAtom);
   const _theme = RESONANCE_THEMES[resonanceColor];
@@ -143,12 +151,8 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
    * 🎯 KostoOpty - Główny router
    * Rozdziela przepływ na handleSubmit → processMessage → handleKostoAuthorization
    */
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputValue.trim() || isProcessing) return;
-
-    const message = inputValue.trim();
-    setInputValue('');
+  const submitMessage = async (message: string) => {
+    if (!message.trim() || isProcessing) return;
     setIsProcessing(true);
 
     try {
@@ -168,10 +172,107 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
       await processMessage(message, activeAroma);
 
     } catch (error) {
-      toast.error('Sfera milczy... spróbuj ponownie');
+      toast.error(t('orb.err.silent', 'Sfera milczy... spróbuj ponownie'));
       setIsProcessing(false);
     }
   };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const message = inputValue.trim();
+    if (!message || isProcessing) return;
+    setInputValue('');
+    await submitMessage(message);
+  };
+
+  /**
+   * 🎙️ Nagrywanie głosu — start/stop mikrofonu, transkrypcja lokalnym Whisperem,
+   * i od razu wysłanie jako wiadomość (rozmowa głosowa "sam na sam").
+   */
+  const toggleRecording = async () => {
+    if (isProcessing || isTranscribing) return;
+
+    if (isRecording) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setIsRecording(false);
+        setIsTranscribing(true);
+        try {
+          const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(String(reader.result));
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+
+          const res = await fetch('http://127.0.0.1:3001/api/voice/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sample: base64 }),
+          });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.message || 'Nie rozpoznano mowy');
+          if (!data.transcript) { toast(t('orb.mic.noSpeech', '🎙️ Nie usłyszałem nic wyraźnego...'), { icon: '🤔' }); return; }
+          await submitMessage(data.transcript);
+        } catch (err: any) {
+          toast.error(`${t('orb.mic.error', 'Głos nie dotarł')}: ${err.message}`);
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      toast.error(t('orb.mic.noMic', 'Brak dostępu do mikrofonu.'));
+    }
+  };
+
+  // 🔊 Auto-mowa — gdy Sfera odpowiada, wypowiedz to (lokalny klon głosu albo przeglądarka)
+  useEffect(() => {
+    if (!showResponse || !lastResponse) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('http://127.0.0.1:3001/api/voice/speak', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: lastResponse }),
+        });
+        if (cancelled) return;
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.onended = () => URL.revokeObjectURL(url);
+          await audio.play().catch(() => {});
+        } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          const utter = new SpeechSynthesisUtterance(lastResponse);
+          utter.lang = 'pl-PL';
+          window.speechSynthesis.speak(utter);
+        }
+      } catch {
+        if (!cancelled && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          const utter = new SpeechSynthesisUtterance(lastResponse);
+          utter.lang = 'pl-PL';
+          window.speechSynthesis.speak(utter);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showResponse, lastResponse]);
 
   /**
      * 🔀 ProcessMessage - Wybiera ścieżkę na podstawie aromatu
@@ -214,7 +315,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
       // Jeśli Dyrygent użył fallbacku (Local Duch) - powiadom użytkownika i zmień kolor
       if (responseBody.source === 'local') {
         setInternalAroma('ollama');
-        toast.success("🌩️ Chmura niedostępna - 🌑 Lokalny Duch przejął stery", {
+        toast.success(t('orb.fallbackLocal', "🌩️ Chmura niedostępna - 🌑 Lokalny Duch przejął stery"), {
           icon: '🏠',
           duration: 4000,
           style: { background: '#10b981', color: '#fff' }
@@ -235,7 +336,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
 
     } catch (error) {
       console.error("[Orb] Dispatch Error:", error);
-      toast.error('Ciemność... Nawet Duch Lokalny nie odpowiedział.');
+      toast.error(t('orb.err.darkness', 'Ciemność... Nawet Duch Lokalny nie odpowiedział.'));
     } finally {
       setIsProcessing(false);
     }
@@ -267,7 +368,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
         setTimeout(() => setShowResponse(false), 5000);
 
       } catch (error) {
-        toast.error('Ollama śpi... Obudź reaktor w terminalu!');
+        toast.error(t('orb.err.ollamaAsleep', 'Ollama śpi... Obudź reaktor w terminalu!'));
       } finally {
         setIsProcessing(false);
       }
@@ -286,7 +387,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
         setTimeout(() => setShowResponse(false), 5000);
 
       } catch (error) {
-        toast.error('Chmura niedostępna...');
+        toast.error(t('orb.err.cloudDown', 'Chmura niedostępna...'));
       } finally {
         setIsProcessing(false);
       }
@@ -405,7 +506,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
               transition={{ duration: 2, repeat: Infinity }}
               className="text-xs text-purple-300 font-medium"
             >
-              JESTEM
+              {t('orb.jestem', 'JESTEM')}
             </motion.span>
           </div>
         )}
@@ -451,9 +552,9 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
             className="w-full max-w-md mt-4 px-4 py-3 bg-slate-800/90 border border-green-500/30 rounded-xl"
           >
             <div className="text-center mb-3">
-              <p className="text-sm text-green-300 font-medium">🎯 KostoOpty - Wybierz źródło mocy</p>
+              <p className="text-sm text-green-300 font-medium">{t('orb.kosto.title', '🎯 KostoOpty - Wybierz źródło mocy')}</p>
               <p className="text-xs text-slate-400 mt-1">
-                Model: <span className="text-green-400">{pendingKosto.model}</span>
+                {t('orb.model', 'Model:')} <span className="text-green-400">{pendingKosto.model}</span>
               </p>
             </div>
 
@@ -464,7 +565,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
                 onClick={() => handleKostoAuthorization(true)}
                 className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 rounded-lg text-white text-sm font-medium flex items-center gap-2"
               >
-                <span>☁️</span> Zatwierdź
+                <span>☁️</span> {t('orb.kosto.approve', 'Zatwierdź')}
               </motion.button>
 
               <motion.button
@@ -473,12 +574,12 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
                 onClick={() => handleKostoAuthorization(false)}
                 className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg text-white text-sm font-medium flex items-center gap-2"
               >
-                <span>🏠</span> Lokalna
+                <span>🏠</span> {t('orb.kosto.local', 'Lokalna')}
               </motion.button>
             </div>
 
             <p className="text-xs text-slate-500 text-center mt-2">
-              ☁️ = Chmura (API) | 🏠 = Twój Ollama
+              {t('orb.kosto.legend', '☁️ = Chmura (API) | 🏠 = Twój Ollama')}
             </p>
           </motion.div>
         )}
@@ -509,7 +610,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
                     type="text"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
-                    placeholder="Wprowadź Intencję, Mistrzu..."
+                    placeholder={t('orb.placeholder', 'Wprowadź Intencję, Mistrzu...')}
                     disabled={isProcessing}
                     className={cn(
                       "w-full px-4 py-3 pr-12 bg-slate-800/60 border border-purple-500/30 rounded-xl",
@@ -549,12 +650,34 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
                   )}
                 </button>
               </div>
+
+              <button
+                type="button"
+                onClick={toggleRecording}
+                disabled={isProcessing || isTranscribing}
+                title={isRecording ? t('orb.mic.stopTitle', 'Zatrzymaj nagrywanie') : t('orb.mic.startTitle', 'Mów do Sfery')}
+                className={cn(
+                  "mt-2 w-full py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all",
+                  "disabled:opacity-30 disabled:cursor-not-allowed",
+                  isRecording
+                    ? "bg-red-600/80 text-white animate-pulse"
+                    : "bg-slate-800/60 border border-purple-500/30 text-purple-200 hover:bg-slate-700/60"
+                )}
+              >
+                {isTranscribing ? (
+                  <><span className="animate-spin">🌀</span> {t('orb.mic.transcribing', 'Rozpoznaję mowę...')}</>
+                ) : isRecording ? (
+                  <>{t('orb.mic.recording', '🔴 Nagrywam... (kliknij by zakończyć)')}</>
+                ) : (
+                  <>{t('orb.mic.idle', '🎙️ Mów do Sfery')}</>
+                )}
+              </button>
             </form>
 
             {/* Model selector dla Ollama */}
             {activeAroma === 'ollama' && (
               <div className="mt-2 flex items-center gap-2">
-                <label className="text-xs text-slate-400">Model:</label>
+                <label className="text-xs text-slate-400">{t('orb.model', 'Model:')}</label>
                 <input
                   type="text"
                   value={ollamaModel}
@@ -571,7 +694,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
                 animate={{ opacity: 0.6 }}
                 className="text-xs text-purple-300/70 text-center mt-2 italic"
               >
-                ↪ Wprowadzona intencja wlatuje do Sfery jako czyste światło...
+                {t('orb.hint', '↪ Wprowadzona intencja wlatuje do Sfery jako czyste światło...')}
               </motion.p>
             )}
           </motion.div>
@@ -588,7 +711,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
             className="w-2 h-2 rounded-full"
             style={{ backgroundColor: currentAroma.glowColor }}
           />
-          {currentAroma.name} • {isListening ? '🎧 Nasłuchuje' : '✓ Gotowa'}
+          {currentAroma.name} • {isListening ? t('orb.listening', '🎧 Nasłuchuje') : t('orb.ready', '✓ Gotowa')}
         </motion.div>
       )}
 

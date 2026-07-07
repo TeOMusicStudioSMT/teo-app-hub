@@ -24,10 +24,16 @@ const MODES = [
     { id: 'gemini', label: '🟣 Imagen',     hint: 'chmura (klucz Gemini)' },
 ];
 
-export const TeledyskPanel: React.FC = () => {
-    const [title, setTitle]         = useState('Triple Sun Alignment');
+interface TeledyskPanelProps {
+    /** Prefill z przylotu Music V2 (audio dograne przez /api/teledysk/stage-audio) */
+    initialAudioFile?: string;
+    initialTitle?: string;
+}
+
+export const TeledyskPanel: React.FC<TeledyskPanelProps> = ({ initialAudioFile, initialTitle }) => {
+    const [title, setTitle]         = useState(initialTitle || 'Triple Sun Alignment');
     const [sonicFile, setSonicFile] = useState('_OtakOs_Sonic/SonicVectors_014EN_2026-06-11T10-02-58-789Z.json');
-    const [audioFile, setAudioFile] = useState("_OtakOs_Muzyka/OtakOS RADIO Album's/8 June Protocol/1. Triple_Sun_Alignment.wav");
+    const [audioFile, setAudioFile] = useState(initialAudioFile || "_OtakOs_Muzyka/OtakOS RADIO Album's/8 June Protocol/1. Triple_Sun_Alignment.wav");
     const [sourceDir, setSourceDir] = useState('_OtakOs_Move');
     const [lyricsFile, setLyricsFile] = useState('');
     const [sceneMode, setSceneMode] = useState('proc');
