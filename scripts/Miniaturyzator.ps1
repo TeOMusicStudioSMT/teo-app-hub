@@ -55,7 +55,11 @@ $xdStatic = @(
     '_OtakOs_AI\bin','_OtakOs_AI\models','_OtakOs_AI\voices','_OtakOs_AI\temp','_OtakOs_AI\voice_env',
     '_OtakOs_Aula','_OtakOs_Build','_OtakOs_Components',
     '_OtakOs_Klocki','_OtakOs_Kroniki','_OtakOs_Move','_OtakOs_Muzyka',
-    '_OtakOs_Sonic','_OtakOs_Wymiar'
+    '_OtakOs_Sonic','_OtakOs_Wymiar',
+    # TeO_Arcade_Forge: narzędzia deweloperskie (silniki UE, skanery) — GIGANTYCZNE
+    # (dziesiątki GB), nie mają prawa wejść do lekkiego distro. Małe pliki/skrypty
+    # w samym TeO_Arcade_Forge (BUILD_LOG.md, ue_scripts, forge_plugins...) zostają.
+    'TeO_Arcade_Forge\ElectricDreamsEnv','TeO_Arcade_Forge\Twinmotion2026.1','TeO_Arcade_Forge\GENESIS_OVERRIDE 5.8'
 )
 # Dołap dynamicznie wszelkie inne _OtakOs_* (na wypadek nowych).
 # _OtakOs_AI pomijamy tu celowo — ma własne, częściowe wykluczenia wyżej
