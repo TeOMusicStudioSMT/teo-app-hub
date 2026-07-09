@@ -4871,7 +4871,10 @@ app.post('/api/teogochi/comment', async (req, res) => {
         .filter(Boolean).join('\n');
     if (!context) return res.status(400).json({ success: false, message: 'Brak "track" lub "lyric".' });
     const prompt = `Jesteś TeOgochi — małym, ciekawskim cyfrowym stworkiem-kompanem w Katedrze OtakOS, słuchasz muzyki razem z Suwerenem. Zareaguj JEDNYM krótkim, żywym zdaniem (max 12 słów) na to, co teraz gra — ciepło, czasem zabawnie, czasem wzruszony. Bez cudzysłowów, bez wyjaśnień — samo zdanie.\n\n${context}`;
-    const comment = await genOllama(prompt, model, 8000);
+    // Kompan nie potrzebuje kolosa: gdy domyślny rdzeń nie odpowie (nie zainstalowany
+    // / za ciężki na RAM), próbujemy malutkiej gemma3:1b (0.8GB) zamiast milczeć.
+    let comment = await genOllama(prompt, model, 8000);
+    if (!comment && model !== 'gemma3:1b') comment = await genOllama(prompt, 'gemma3:1b', 12000);
     return res.json({ success: true, comment: comment || null });
 });
 
