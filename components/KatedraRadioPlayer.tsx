@@ -495,11 +495,18 @@ export function KatedraRadioPlayer() {
                                 title={`Aura: ${aura.toUpperCase()}`}
                             />
                     ))}
-                    <button 
+                    <button
                         onClick={() => radio.setIsAutoAura(!radio.isAutoAura)}
                         style={{ ...btnStyle, fontSize: '9px', marginLeft: 8, padding: '2px 6px', color: radio.isAutoAura ? '#22d3ee' : 'rgba(255,255,255,0.4)', border: radio.isAutoAura ? '1px solid #22d3ee' : '1px solid rgba(255,255,255,0.1)' }}
                     >
                         🔄 AUTO-AURA
+                    </button>
+                    <button
+                        onClick={() => radio.setAutoAdvance(!radio.autoAdvance)}
+                        title={radio.autoAdvance ? 'Po utworze gra następny (kliknij: stop na końcu — np. do nagrań)' : 'Stop na końcu utworu — nic nie przeskoczy podczas nagrania'}
+                        style={{ ...btnStyle, fontSize: '9px', marginLeft: 4, padding: '2px 6px', color: radio.autoAdvance ? '#4ade80' : '#fbbf24', border: radio.autoAdvance ? '1px solid #4ade80' : '1px solid #fbbf24' }}
+                    >
+                        {radio.autoAdvance ? '⏭ AUTO-NEXT' : '⏹ STOP NA KOŃCU'}
                     </button>
                 </div>
 
@@ -613,13 +620,17 @@ export function KatedraRadioPlayer() {
                             >
                                 {teogochiEmoji} 🏠
                             </button>
-                            <AnimatePresence>
-                                {showTeogochiDom && (
-                                    <div style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 8, zIndex: 60 }}>
-                                        <TeOgochiDom onClose={() => setShowTeogochiDom(false)} />
-                                    </div>
-                                )}
-                            </AnimatePresence>
+                            {/* Dom przez portal na body — overflow panelu Biblioteki przycinał go do stopki */}
+                            {createPortal(
+                                <AnimatePresence>
+                                    {showTeogochiDom && (
+                                        <div style={{ position: 'fixed', left: 24, bottom: 96, zIndex: 9999 }}>
+                                            <TeOgochiDom onClose={() => setShowTeogochiDom(false)} />
+                                        </div>
+                                    )}
+                                </AnimatePresence>,
+                                document.body
+                            )}
                         </div>
                         <div style={playlistScrollStyle}>
                             {radio.tracks.map((track, index) => (

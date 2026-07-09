@@ -47,6 +47,7 @@ interface RadioState {
     showIntro:    boolean;            // czy pokazać intro (tytuł)
     showOutro:    boolean;            // czy pokazać outro (napisy)
     playbackRate: number;             // prędkość odtwarzania
+    autoAdvance:  boolean;            // ⏭ auto-następny po końcu utworu (OFF = stop na końcu, np. do nagrań)
 }
 
 
@@ -73,6 +74,7 @@ interface RadioContextValue extends RadioState {
     setShowIntro:    (s: boolean) => void;
     setShowOutro:    (s: boolean) => void;
     setPlaybackRate: (r: number) => void;
+    setAutoAdvance:  (a: boolean) => void;
 }
 
 
@@ -115,7 +117,12 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
         activeAura: null, isSpeaking: false, isRecording: false, wiesioAlive: false,
         isMinimized: true, showIntro: false, showOutro: false,
         playbackRate: 1.0,
+        autoAdvance: (() => { try { return localStorage.getItem('otakos_auto_advance') !== '0'; } catch { return true; } })(),
     });
+
+    // Ref dla listenera 'ended' (bindowany raz) — bez niego przełącznik nie działałby na żywo
+    const autoAdvanceRef = useRef(true);
+    useEffect(() => { autoAdvanceRef.current = state.autoAdvance; }, [state.autoAdvance]);
 
 
     const currentTrack = state.tracks[state.currentIndex] ?? null;
@@ -129,7 +136,12 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
 
         audio.addEventListener('ended', () => {
             handleStopSequence();
-            setState(s => ({ ...s, currentIndex: (s.currentIndex + 1) % Math.max(s.tracks.length, 1) }));
+            if (autoAdvanceRef.current) {
+                setState(s => ({ ...s, currentIndex: (s.currentIndex + 1) % Math.max(s.tracks.length, 1) }));
+            } else {
+                // ⏹ Tryb "stop na końcu" (np. nagrywanie teledysku) — zostań na utworze
+                setState(s => ({ ...s, isPlaying: false }));
+            }
         });
         audio.addEventListener('timeupdate', () =>
             setState(s => ({ ...s, currentTime: audio.currentTime }))
@@ -524,6 +536,11 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
                     audioRef.current.playbackRate = r;
                     setState(s => ({ ...s, playbackRate: r }));
                 }
+            },
+            setAutoAdvance: (a: boolean) => {
+                autoAdvanceRef.current = a;
+                try { localStorage.setItem('otakos_auto_advance', a ? '1' : '0'); } catch {}
+                setState(s => ({ ...s, autoAdvance: a }));
             },
         }}>
 
