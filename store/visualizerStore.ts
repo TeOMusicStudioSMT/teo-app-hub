@@ -5,7 +5,8 @@ export type VisualizerType =
   | 'STORYTELLER'
   | 'QUANTUM_EQUALIZER'
   | 'GRAVITON_GRID'
-  | 'MATRIX_RAIN';
+  | 'MATRIX_RAIN'
+  | 'PULS';
 
 export interface VisualizerLayout {
   left: VisualizerType;

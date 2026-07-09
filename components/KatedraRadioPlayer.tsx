@@ -10,6 +10,7 @@ import { useAtom } from 'jotai';
 import { currentLyricAtom, isKaraokeEnabledAtom } from '../store/visualizerStore';
 import { Mic, FileText, Hammer } from 'lucide-react';
 import { TeoKaraokeForge } from './special/TeoKaraokeForge';
+import { TeOgochi } from './TeOgochi';
 
 
 
@@ -584,6 +585,10 @@ export function KatedraRadioPlayer() {
                                 <button onClick={() => radio.loadPlaylist()} title="Odśwież listę utworów z katalogu" style={closeBtnStyle}>🔄</button>
                                 <button onClick={() => setExpanded(false)} style={closeBtnStyle}>✕</button>
                             </div>
+                        </div>
+                        {/* 🐣 TeOgochi słucha razem z Tobą i komentuje co gra */}
+                        <div style={{ padding: '6px 8px 0' }}>
+                            <TeOgochi />
                         </div>
                         <div style={playlistScrollStyle}>
                             {radio.tracks.map((track, index) => (

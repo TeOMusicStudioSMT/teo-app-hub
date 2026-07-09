@@ -70,10 +70,11 @@ interface SkinOption {
 
 const SKINS: SkinOption[] = [
   { value: 'PUSTKA',            label: 'Pustka',       icon: '⬛', color: '#334155', description: 'Brak wizualizatora' },
-  { value: 'STORYTELLER',       label: 'Storyteller',  icon: '📜', color: '#22d3ee', description: 'Narracja lore Katedry' },
+  { value: 'STORYTELLER',       label: 'Storyteller',  icon: '🐣', color: '#22d3ee', description: 'TeOgochi komentuje na żywo to, co gra' },
   { value: 'QUANTUM_EQUALIZER', label: 'Quantum EQ',   icon: '🌊', color: '#a855f7', description: 'Korektor kwantowy' },
-  { value: 'GRAVITON_GRID',     label: 'Graviton Grid',icon: '🔷', color: '#f59e0b', description: 'Siatka pól grawitacyjnych' },
+  { value: 'GRAVITON_GRID',     label: 'Graviton Grid',icon: '🔷', color: '#f59e0b', description: 'Wieża Partnerów — węzły i reklamy firm' },
   { value: 'MATRIX_RAIN',       label: 'Matrix Rain',  icon: '🟩', color: '#22c55e', description: 'Cyfrowy deszcz Matrixa' },
+  { value: 'PULS',              label: 'Puls Maszyny', icon: '🫀', color: '#ef4444', description: 'Żywe tętno sprzętu: RAM / CPU / VRAM / temperatura' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

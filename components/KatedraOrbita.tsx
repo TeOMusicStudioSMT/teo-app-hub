@@ -129,6 +129,65 @@ export function KatedraOrbita({
     // --- Ghost Cursor Trail ---
     const mouseTrail = useRef<{ x: number; y: number; life: number }[]>([]);
 
+    // 🐣 TeOgochi — żywe komentarze do lewej wieży STORYTELLER
+    const teogochiRef = useRef<string[]>([]);
+    const teogochiLastRef = useRef({ lyric: '', at: 0 });
+    useEffect(() => {
+        if (staticMode) return;
+        const tick = async () => {
+            if (leftModuleRef.current !== 'STORYTELLER' || !radio.isPlaying) return;
+            const lyric = radio.currentLyric || '';
+            const now = Date.now();
+            const changed = lyric && lyric !== teogochiLastRef.current.lyric;
+            if (!changed && now - teogochiLastRef.current.at < 25_000) return;
+            teogochiLastRef.current = { lyric, at: now };
+            try {
+                const r = await fetch('http://127.0.0.1:3001/api/teogochi/comment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ track: radio.currentTrack?.title, lyric }),
+                });
+                const d = await r.json();
+                if (d.success && d.comment) {
+                    teogochiRef.current = [...teogochiRef.current, `🐣 ${d.comment}`].slice(-9);
+                }
+            } catch { /* most offline — wieża zostaje na statycznym lore */ }
+        };
+        const iv = setInterval(tick, 5_000);
+        return () => clearInterval(iv);
+    }, [staticMode, radio.isPlaying, radio.currentLyric, radio.currentTrack]);
+
+    // 📢 Wieża Partnerów — aktywne reklamy do prawej wieży GRAVITON_GRID
+    const adsRef = useRef<{ company: string; slogan: string }[]>([]);
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const r = await fetch('http://127.0.0.1:3001/api/ads');
+                const d = await r.json();
+                if (d.success) adsRef.current = d.ads || [];
+            } catch { /* most offline — dummy nodes zostają */ }
+        };
+        load();
+        const iv = setInterval(load, 300_000); // co 5 min
+        return () => clearInterval(iv);
+    }, []);
+
+    // 🫀 Puls Maszyny — dane sprzętowe do skórki PULS
+    const pulseRef = useRef<{ ram?: any; cpu?: any; gpu?: any } | null>(null);
+    useEffect(() => {
+        const load = async () => {
+            if (leftModuleRef.current !== 'PULS' && rightModuleRef.current !== 'PULS') return;
+            try {
+                const r = await fetch('http://127.0.0.1:3001/api/system/pulse');
+                const d = await r.json();
+                if (d.success) pulseRef.current = d;
+            } catch { pulseRef.current = null; }
+        };
+        load();
+        const iv = setInterval(load, 5_000);
+        return () => clearInterval(iv);
+    }, [layout]);
+
     // Sync state to refs for the animation loop
     useEffect(() => {
         leftModuleRef.current = layout.left;
@@ -558,31 +617,39 @@ export function KatedraOrbita({
             ctx.lineTo(panelWidth, H);
             ctx.stroke();
 
-            // Matrix Scrolling Text
+            // Matrix Scrolling Text — gdy TeOgochi komentuje na żywo, jego głos
+            // zastępuje statyczny lore (kompan naprawdę słucha tego, co gra).
             s.storyScroll += 0.5;
-            const lore = [
-                '[ SYSTEM BOOT ]',
-                'Initiating TeOgoCHi...',
-                'Analyzing quantum baselines...',
-                'Synthesizing audio vectors...',
-                'Collapse of the wave function detected...',
-                'Generating lore...',
-                'Accessing Akashic records...',
-                'Syncing with BoB core...',
-                'Vector DNA crystallized.'
-            ];
-            
+            const lore = teogochiRef.current.length
+                ? ['[ TEOGOCHI · SŁUCHA NA ŻYWO ]', ...teogochiRef.current]
+                : [
+                    '[ SYSTEM BOOT ]',
+                    'Initiating TeOgoCHi...',
+                    'Analyzing quantum baselines...',
+                    'Synthesizing audio vectors...',
+                    'Collapse of the wave function detected...',
+                    'Generating lore...',
+                    'Accessing Akashic records...',
+                    'Syncing with BoB core...',
+                    'Vector DNA crystallized.'
+                ];
+
             ctx.font = '16px "Space Mono", monospace';
             ctx.fillStyle = `hsla(${(180 + s.hueOffset) % 360}, 100%, 60%, 0.9)`;
             ctx.textAlign = 'left';
-            
+
             const lineHeight = 30;
-            const totalHeight = lore.length * lineHeight;
-            
+
             lore.forEach((line, index) => {
                 let y = (index * lineHeight + s.storyScroll) % (H + lineHeight);
                 if (y > H) y -= (H + lineHeight);
-                ctx.fillText(line, 30, y);
+                // Dłuższe komentarze zawijamy ręcznie do szerokości wieży
+                if (line.length > 42) {
+                    ctx.fillText(line.slice(0, 42), 30, y);
+                    ctx.fillText('   ' + line.slice(42, 84), 30, y + 18);
+                } else {
+                    ctx.fillText(line, 30, y);
+                }
             });
             ctx.restore();
         }
@@ -640,8 +707,123 @@ export function KatedraOrbita({
             drawNode(W - 150, 700, 'hsla(40, 100%, 50%, 0.8)',  '[NODE: #GRV-99ZZ] SECURE');
             drawNode(W - 320, 850, 'hsla(150, 100%, 50%, 0.6)', '[NODE: #GRV-ALPHA] MINING');
 
+            // --- 📢 WIEŻA PARTNERÓW: opłacone reklamy firm (z /api/ads) ---
+            const ads = adsRef.current;
+            const adAreaTop = 100;
+            if (ads.length) {
+                ads.slice(0, 4).forEach((ad, i) => {
+                    const ax = W - panelWidth + 24, ay = adAreaTop + i * 96, aw = panelWidth - 48, ah = 80;
+                    ctx.save();
+                    ctx.fillStyle = 'rgba(245, 158, 11, 0.07)';
+                    ctx.strokeStyle = `hsla(40, 100%, 55%, 0.55)`;
+                    ctx.lineWidth = 1;
+                    ctx.shadowBlur = 12;
+                    ctx.shadowColor = 'hsla(40, 100%, 50%, 0.35)';
+                    ctx.fillRect(ax, ay, aw, ah);
+                    ctx.strokeRect(ax, ay, aw, ah);
+                    ctx.shadowBlur = 0;
+                    ctx.font = '700 15px "Inter", sans-serif';
+                    ctx.fillStyle = 'hsla(40, 100%, 70%, 1)';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(ad.company.slice(0, 30), ax + 14, ay + 28);
+                    ctx.font = '11px "Space Mono", monospace';
+                    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                    ctx.fillText(ad.slogan.slice(0, 44), ax + 14, ay + 50);
+                    ctx.font = '8px "Space Mono", monospace';
+                    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                    ctx.fillText('PARTNER KATEDRY', ax + 14, ay + 68);
+                    ctx.restore();
+                });
+            } else {
+                // Wolny slot — zaproszenie zamiast pustki
+                ctx.font = '11px "Space Mono", monospace';
+                ctx.fillStyle = 'rgba(255,255,255,0.35)';
+                ctx.textAlign = 'center';
+                ctx.fillText('TWOJA REKLAMA W KATEDRZE', W - panelWidth / 2, H - 60);
+                ctx.fillStyle = `hsla(40, 100%, 60%, 0.7)`;
+                ctx.fillText('otakos.wtf → REKLAMA', W - panelWidth / 2, H - 40);
+            }
+
             ctx.restore();
         }
+
+        // --- 🫀 WIEŻA: PULS MASZYNY (lewa lub prawa) ---
+        const drawPulse = (side: 'left' | 'right') => {
+            const panelWidth = 400;
+            const x0 = side === 'left' ? 0 : W - panelWidth;
+            const p = pulseRef.current;
+            ctx.save();
+            ctx.fillStyle = 'rgba(10, 5, 5, 0.85)';
+            ctx.fillRect(x0, 0, panelWidth, H);
+            ctx.strokeStyle = 'hsla(0, 90%, 55%, 0.7)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(side === 'left' ? panelWidth : x0, 0);
+            ctx.lineTo(side === 'left' ? panelWidth : x0, H);
+            ctx.stroke();
+
+            ctx.font = '700 18px "Inter", sans-serif';
+            ctx.fillStyle = 'hsla(0, 90%, 70%, 1)';
+            ctx.textAlign = 'center';
+            ctx.fillText('[ PULS MASZYNY ]', x0 + panelWidth / 2, 50);
+
+            if (!p) {
+                ctx.font = '12px "Space Mono", monospace';
+                ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                ctx.fillText('most milczy — brak tętna', x0 + panelWidth / 2, H / 2);
+                ctx.restore();
+                return;
+            }
+
+            // Słupki życiowe: RAM / CPU / VRAM / TEMP — z EKG-pulsem przy wysokim obciążeniu
+            const vitals: { label: string; pct: number; extra: string }[] = [
+                { label: 'RAM', pct: p.ram?.pct ?? 0, extra: `${((p.ram?.usedMB ?? 0) / 1024).toFixed(1)} / ${((p.ram?.totalMB ?? 0) / 1024).toFixed(0)} GB` },
+                { label: 'CPU', pct: p.cpu?.pct ?? 0, extra: `${p.cpu?.cores ?? '?'} rdzeni` },
+            ];
+            if (p.gpu) {
+                vitals.push({ label: 'VRAM', pct: Math.round(p.gpu.vramUsedMB / p.gpu.vramTotalMB * 100), extra: `${(p.gpu.vramUsedMB / 1024).toFixed(1)} / ${(p.gpu.vramTotalMB / 1024).toFixed(0)} GB` });
+                vitals.push({ label: 'TEMP', pct: Math.min(100, p.gpu.tempC), extra: `${p.gpu.tempC}°C GPU` });
+            }
+
+            const barW = panelWidth - 80, barH = 26, gap = 74, top = 120;
+            vitals.forEach((v, i) => {
+                const bx = x0 + 40, by = top + i * gap;
+                const danger = v.pct >= 85;
+                const pulse = danger ? 0.7 + 0.3 * Math.abs(Math.sin(Date.now() / 180)) : 1;
+                const hue = v.pct < 60 ? 140 : v.pct < 85 ? 40 : 0;
+                ctx.font = '700 12px "Space Mono", monospace';
+                ctx.fillStyle = 'rgba(255,255,255,0.75)';
+                ctx.textAlign = 'left';
+                ctx.fillText(`${v.label}  ${v.pct}%`, bx, by - 8);
+                ctx.textAlign = 'right';
+                ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                ctx.fillText(v.extra, bx + barW, by - 8);
+                ctx.textAlign = 'left';
+                ctx.fillStyle = 'rgba(255,255,255,0.07)';
+                ctx.fillRect(bx, by, barW, barH);
+                ctx.fillStyle = `hsla(${hue}, 90%, 50%, ${0.75 * pulse})`;
+                ctx.shadowBlur = danger ? 18 : 6;
+                ctx.shadowColor = `hsla(${hue}, 90%, 50%, 0.8)`;
+                ctx.fillRect(bx, by, barW * (v.pct / 100), barH);
+                ctx.shadowBlur = 0;
+            });
+
+            // Linia EKG na dole — serce Katedry bije w rytmie basu
+            const ekgY = H - 120;
+            ctx.strokeStyle = 'hsla(0, 90%, 60%, 0.8)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for (let px = 0; px < panelWidth - 60; px += 2) {
+                const t = (Date.now() / 6 + px) % 160;
+                const spike = t < 8 ? Math.sin(t / 8 * Math.PI) * (26 + bassRef.current * 0.35) : 0;
+                const y = ekgY - spike + Math.sin((px + Date.now() / 40) / 14) * 2;
+                px === 0 ? ctx.moveTo(x0 + 30 + px, y) : ctx.lineTo(x0 + 30 + px, y);
+            }
+            ctx.stroke();
+            ctx.restore();
+        };
+        if (leftModuleRef.current === 'PULS') drawPulse('left');
+        if (rightModuleRef.current === 'PULS') drawPulse('right');
 
         // --- 2. AUTOMATIC AURA GHOST TRAIL ---
         for (let i = mouseTrail.current.length - 1; i >= 0; i--) {

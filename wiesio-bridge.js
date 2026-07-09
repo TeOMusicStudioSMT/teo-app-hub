@@ -5402,6 +5402,88 @@ app.post('/api/video/edit', async (req, res) => {
     }
 });
 
+// ── 🫀 PULS MASZYNY — żywe tętno sprzętu (skórka PULS w Orbicie) ─────────────
+// RAM/CPU z os, VRAM+temperatura z nvidia-smi (cichy brak gdy karta bez CUDA).
+app.get('/api/system/pulse', async (req, res) => {
+    const totalMB = Math.round(os.totalmem() / 1048576);
+    const freeMB  = Math.round(os.freemem() / 1048576);
+    const cpus    = os.cpus();
+    // Chwilowe obciążenie CPU: średnia (busy/total) od startu — wystarcza do wizualizacji trendu
+    const cpuPct  = Math.round(cpus.reduce((acc, c) => {
+        const t = Object.values(c.times).reduce((a, b) => a + b, 0);
+        return acc + (1 - c.times.idle / t);
+    }, 0) / cpus.length * 100);
+
+    let gpu = null;
+    try {
+        const { stdout } = await execFileAsync('nvidia-smi',
+            ['--query-gpu=memory.used,memory.total,temperature.gpu,utilization.gpu', '--format=csv,noheader,nounits'],
+            { timeout: 3000 });
+        const [used, total, temp, util] = stdout.trim().split(',').map(v => parseInt(v.trim(), 10));
+        if (Number.isFinite(used)) gpu = { vramUsedMB: used, vramTotalMB: total, tempC: temp, utilPct: util };
+    } catch { /* brak nvidia-smi / karta nie-NVIDIA — pole gpu zostaje null */ }
+
+    res.json({
+        success: true,
+        ram: { usedMB: totalMB - freeMB, totalMB, pct: Math.round((totalMB - freeMB) / totalMB * 100) },
+        cpu: { pct: cpuPct, cores: cpus.length },
+        gpu,
+        uptimeSec: Math.round(os.uptime()),
+        at: Date.now(),
+    });
+});
+
+// ── 📢 WIEŻA PARTNERÓW — reklamy firm na prawym panelu Orbity ────────────────
+// Suwerenny rejestr: _OtakOs_Wymiar/ads.local.json. Zamówienia wpadają jako
+// "pending" (z otakos.wtf/formularza), Suweren aktywuje po opłacie
+// (POST /api/ads/activate — most słucha tylko na 127.0.0.1, więc aktywacja
+// jest z natury lokalna = tylko Ty).
+const ADS_FILE = path.join(process.cwd(), '_OtakOs_Wymiar', 'ads.local.json');
+async function readAds() {
+    try { return JSON.parse(await fs.readFile(ADS_FILE, 'utf8')); } catch { return []; }
+}
+async function writeAds(ads) {
+    await fs.mkdir(path.dirname(ADS_FILE), { recursive: true });
+    await fs.writeFile(ADS_FILE, JSON.stringify(ads, null, 2), 'utf8');
+}
+
+app.get('/api/ads', async (req, res) => {
+    const all = await readAds();
+    const now = Date.now();
+    const active = all.filter(a => a.status === 'active' && (!a.paidUntil || a.paidUntil > now));
+    res.json({ success: true, ads: active, pendingCount: all.filter(a => a.status === 'pending').length });
+});
+
+app.post('/api/ads/order', async (req, res) => {
+    const { company, slogan, url, email, tier = 'standard' } = req.body ?? {};
+    if (!company || !slogan) return res.status(400).json({ success: false, message: 'Wymagane: "company" i "slogan".' });
+    const ads = await readAds();
+    const order = {
+        id: `AD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+        company: String(company).slice(0, 60),
+        slogan:  String(slogan).slice(0, 120),
+        url:     url ? String(url).slice(0, 200) : null,
+        email:   email ? String(email).slice(0, 120) : null,
+        tier, status: 'pending', paidUntil: null, createdAt: Date.now(),
+    };
+    ads.push(order);
+    await writeAds(ads);
+    console.log(`[Wieża Partnerów] 📢 Nowe zamówienie: ${order.company} (${order.id})`);
+    return res.json({ success: true, orderId: order.id, message: 'Zamówienie przyjęte — slot aktywuje się po opłacie.' });
+});
+
+app.post('/api/ads/activate', async (req, res) => {
+    const { id, days = 30 } = req.body ?? {};
+    const ads = await readAds();
+    const ad = ads.find(a => a.id === id);
+    if (!ad) return res.status(404).json({ success: false, message: `Brak zamówienia ${id}.` });
+    ad.status = 'active';
+    ad.paidUntil = Date.now() + Number(days) * 86400000;
+    await writeAds(ads);
+    console.log(`[Wieża Partnerów] ✅ Aktywowano: ${ad.company} do ${new Date(ad.paidUntil).toISOString().slice(0, 10)}`);
+    return res.json({ success: true, ad });
+});
+
 // ── 🏛️ AUTOMAT KATEDR — lokalny rejestr + "drukarka" co 10 min ───────────────
 // Suwerennie, bez backendu: most rejestruje WŁASNĄ Katedrę (+ sparowanych
 // rówieśników), drukuje snapshot do _OtakOs_Wymiar/cathedrals.local.json co

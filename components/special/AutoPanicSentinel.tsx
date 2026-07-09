@@ -177,10 +177,25 @@ export const AutoPanicSentinel: React.FC = () => {
         };
         const isWatchedBridgeCall = (url: string) =>
             /127\.0\.0\.1:3001|localhost:3001/.test(url) && !/\/api\/mechanic/.test(url);
-        const isWidokCore = (url: string) =>
-            /\/api\/ollama|rada-decompose|\/api\/bridge\/execute/.test(url);
-        // Podpowiedź plików rdzenia → most wyciągnie je do targetFiles patcha.
-        const FILE_HINT = 'components/special/WidokCore.tsx wiesio-bridge.js';
+
+        // Rozpoznaj MODUŁ z URL-a — wcześniej wszystko (radio, teledysk, czat...)
+        // było podpisywane "W.I.D.O.K.", bo /api/ollama i /api/bridge/execute są
+        // współdzielone przez całą Katedrę. Mechanik dostawał złego podejrzanego.
+        const moduleOf = (url: string): { name: string; hint: string } => {
+            if (/rada-decompose/.test(url))        return { name: 'W.I.D.O.K.',        hint: 'components/special/WidokCore.tsx wiesio-bridge.js' };
+            if (/\/api\/teledysk/.test(url))       return { name: 'Teledysk',          hint: 'components/special/TeledyskPanel.tsx wiesio-bridge.js' };
+            if (/\/api\/voice/.test(url))          return { name: 'Głos Suwerena',     hint: 'wiesio-bridge.js components/VoiceClone.tsx' };
+            if (/\/api\/kronika/.test(url))        return { name: 'Kronika',           hint: 'components/special/KronikaGenerator.tsx wiesio-bridge.js' };
+            if (/\/api\/market/.test(url))         return { name: 'Marketplace',       hint: 'components/special/Marketplace.tsx wiesio-bridge.js' };
+            if (/\/api\/grv/.test(url))            return { name: 'GRV',               hint: 'lib/grvGenesis.ts wiesio-bridge.js' };
+            if (/\/api\/dziennik|\/api\/podcast/.test(url)) return { name: 'Dziennik/Whisper', hint: 'wiesio-bridge.js' };
+            if (/\/api\/teogochi/.test(url))       return { name: 'TeOgochi',          hint: 'components/TeOgochi.tsx wiesio-bridge.js' };
+            if (/\/api\/bridge\/autosync/.test(url)) return { name: 'Karaoke Auto-Sync', hint: 'components/special/TeoKaraokeForge.tsx wiesio-bridge.js' };
+            if (/\/api\/ollama/.test(url))         return { name: 'Rdzeń AI (Ollama)', hint: 'wiesio-bridge.js' };
+            if (/\/api\/bridge\/execute|\/wiesio\/action/.test(url)) return { name: 'Śluza Wiesia', hint: 'wiesio-bridge.js' };
+            if (/\/music\//.test(url))             return { name: 'Radio (stream)',    hint: 'context/KatedraRadioContext.tsx wiesio-bridge.js' };
+            return { name: 'Most (nieznany moduł)', hint: 'wiesio-bridge.js' };
+        };
 
         window.fetch = async (input: any, init?: any) => {
             const url = urlOf(input);
@@ -188,10 +203,10 @@ export const AutoPanicSentinel: React.FC = () => {
                 const res = await originalFetch(input, init);
                 // Pusty / serwerowy błąd na obserwowanym wywołaniu mostu = krytyczny crash
                 if (isWatchedBridgeCall(url) && (res.status === 0 || res.status >= 500)) {
+                    const mod = moduleOf(url);
                     reportPanic(
-                        `Krytyczny crash połączenia W.I.D.O.K. — most zwrócił status ` +
-                        `${res.status || 'EMPTY'} @ ${url}` +
-                        (isWidokCore(url) ? ` · ${FILE_HINT}` : ''),
+                        `Krytyczny crash modułu ${mod.name} — most zwrócił status ` +
+                        `${res.status || 'EMPTY'} @ ${url} · ${mod.hint}`,
                         '', 'fetch-interceptor',
                     );
                 }
@@ -200,11 +215,12 @@ export const AutoPanicSentinel: React.FC = () => {
                 if (isWatchedBridgeCall(url)) {
                     const msg     = err?.message || String(err);
                     const aborted = err?.name === 'AbortError' || /aborted|abort/i.test(msg);
+                    const mod = moduleOf(url);
                     reportPanic(
                         (aborted
-                            ? `This operation was aborted (zator VRAM?) @ ${url}`
-                            : `TypeError: Failed to fetch @ ${url} — ${msg}`) +
-                        (isWidokCore(url) ? ` · ${FILE_HINT}` : ''),
+                            ? `[${mod.name}] This operation was aborted (zator VRAM?) @ ${url}`
+                            : `[${mod.name}] TypeError: Failed to fetch @ ${url} — ${msg}`) +
+                        ` · ${mod.hint}`,
                         '', 'fetch-interceptor',
                     );
                 }
