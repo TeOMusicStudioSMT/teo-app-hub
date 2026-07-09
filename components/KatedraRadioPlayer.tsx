@@ -11,6 +11,8 @@ import { currentLyricAtom, isKaraokeEnabledAtom } from '../store/visualizerStore
 import { Mic, FileText, Hammer } from 'lucide-react';
 import { TeoKaraokeForge } from './special/TeoKaraokeForge';
 import { TeOgochi } from './TeOgochi';
+import { TeOgochiDom } from './TeOgochiDom';
+import { loadTeogochi, saveTeogochi, tickListening, stageOf } from '../lib/teogochiState';
 
 
 
@@ -77,6 +79,19 @@ export function KatedraRadioPlayer() {
     const [showKaraokeForge, setShowKaraokeForge] = useState(false);
     const [syncLyrics, setSyncLyrics] = useState<ParsedLyric[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // 🐣 TeOgochi Dom — kompan mieszka przy radiu; słuchanie = karmienie
+    const [showTeogochiDom, setShowTeogochiDom] = useState(false);
+    const [teogochiEmoji, setTeogochiEmoji] = useState(() => stageOf(loadTeogochi().xp).emoji);
+    React.useEffect(() => {
+        if (!radio.isPlaying) return;
+        const iv = setInterval(() => {
+            const next = tickListening(loadTeogochi());
+            saveTeogochi(next);
+            setTeogochiEmoji(stageOf(next.xp).emoji);
+        }, 60_000);
+        return () => clearInterval(iv);
+    }, [radio.isPlaying]);
 
     // 🎙️ Dyktowanie MELDUNKU głosem (zamiast pisania) — transkrypcja lokalnym Whisperem
     const [isMsgRecording, setIsMsgRecording] = useState(false);
@@ -587,8 +602,24 @@ export function KatedraRadioPlayer() {
                             </div>
                         </div>
                         {/* 🐣 TeOgochi słucha razem z Tobą i komentuje co gra */}
-                        <div style={{ padding: '6px 8px 0' }}>
-                            <TeOgochi />
+                        <div style={{ padding: '6px 8px 0', position: 'relative' }}>
+                            <div style={{ cursor: 'pointer' }} onClick={() => setShowTeogochiDom(v => !v)} title="Otwórz Dom TeOgochi">
+                                <TeOgochi />
+                            </div>
+                            <button
+                                onClick={() => setShowTeogochiDom(v => !v)}
+                                title="Dom TeOgochi — karm, głaszcz, patrz jak rośnie"
+                                style={{ position: 'absolute', top: 2, right: 12, background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.35)', borderRadius: 8, fontSize: 12, padding: '2px 7px', cursor: 'pointer' }}
+                            >
+                                {teogochiEmoji} 🏠
+                            </button>
+                            <AnimatePresence>
+                                {showTeogochiDom && (
+                                    <div style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 8, zIndex: 60 }}>
+                                        <TeOgochiDom onClose={() => setShowTeogochiDom(false)} />
+                                    </div>
+                                )}
+                            </AnimatePresence>
                         </div>
                         <div style={playlistScrollStyle}>
                             {radio.tracks.map((track, index) => (
