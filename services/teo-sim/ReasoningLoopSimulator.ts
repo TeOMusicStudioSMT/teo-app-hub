@@ -63,7 +63,7 @@ export class ReasoningLoopSimulator {
                     `Jeśli błędy zniknęły — napisz SUKCES.`;
 
                 const thought = await this.adapter.query(prompt, sysPrompt);
-                totalTokens += thought.tokens || thought.tokensUsed || 0;
+                totalTokens += thought.tokensUsed || 0;
                 useSimulationStore.getState().pushLog({ role: 'THOUGHT', text: thought.content || '(brak)', loop, tier });
 
                 // Awaria modelu (VRAM stall po stronie wnioskowania) → eskalacja

@@ -18,9 +18,17 @@ export const LLM_Adapter = {
             console.log("[LLM_Adapter]: Połączenie z modelem zakończone.");
 
             // W rzeczywistym świecie: return fetch('gemma-skills/endpoint', { body: systemPrompt });
-            return JSON.parse('{"nodes": [{"id": "File_A", "label": "Model bazowy A"}, {"id": "Error_TypeX", "label": "Błąd asynchynchronizacji"
-                                               }, {"id": "RepoStructure", "label": "Konfiguracja repozytorium"}], "edges": [{"source": "File_A", "target": "Error_TypeX", "relation": "POWODUJE_ZALEZNOSC"},
-                                                     {"source": "RepoStructure", "target": "Error_TypeX", "relation": "WARUNKUJE_FAILURE"}] }');
+            return {
+                nodes: [
+                    { id: 'File_A', label: 'Model bazowy A' },
+                    { id: 'Error_TypeX', label: 'Błąd asynchronizacji' },
+                    { id: 'RepoStructure', label: 'Konfiguracja repozytorium' },
+                ],
+                edges: [
+                    { source: 'File_A', target: 'Error_TypeX', relation: 'POWODUJE_ZALEZNOSC' },
+                    { source: 'RepoStructure', target: 'Error_TypeX', relation: 'WARUNKUJE_FAILURE' },
+                ],
+            };
 
         } catch (error) {
             console.error("🚨 [LLM_Adapter] Błąd komunikacyjny z modelem:", error);

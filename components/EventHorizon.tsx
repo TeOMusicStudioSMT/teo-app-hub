@@ -2,15 +2,18 @@ import React, { useState } from 'react';
 import { FaGoogle, FaWallet } from 'react-icons/fa';
 import { MdEmail } from 'react-icons/md';
 import { motion, AnimatePresence } from 'framer-motion';
+import RingKey from './RingKey';
 
 interface EventHorizonProps {
     onLoginRequest: () => void;
     onEmailLogin?: (email: string, password: string) => void;
     onEmailSignup?: (email: string, password: string) => void;
     onWalletLogin?: () => void;
+    /** Wejście suwerenne — tożsamość lokalna (identity.json), bez Firebase. Domyślna ścieżka 0.00G. */
+    onSovereignEnter?: () => void;
 }
 
-const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onEmailLogin, onEmailSignup, onWalletLogin }) => {
+const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onEmailLogin, onEmailSignup, onWalletLogin, onSovereignEnter }) => {
     const [isOrbActive, setIsOrbActive] = useState(false);
     const [showEmailForm, setShowEmailForm] = useState(false);
     const [isSignup, setIsSignup] = useState(false);
@@ -209,34 +212,54 @@ const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onEmailLogi
 
     // Initial State: Primordial Graviton Orb
     return (
-        <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 1, ease: "easeOut" }}
-            className="event-horizon-container relative w-40 h-40 md:w-52 md:h-52 flex items-center justify-center group cursor-pointer"
-            onClick={() => setIsOrbActive(true)}
-            aria-label="Activate Graviton Interface"
-            role="button"
-        >
-            {/* Crystalline Sphere effect - Restored with inline Tailwind/CSS for visibility */}
-            <div className="absolute inset-0 rounded-full border-2 border-cyan-500/30 shadow-[0_0_50px_rgba(6,182,212,0.4)] animate-[spin_10s_linear_infinite]" />
-            <div className="absolute inset-2 rounded-full border border-purple-500/40 opacity-70 animate-[spin_15s_linear_infinite_reverse]" />
-            
-            {/* Quantum Shield Pulse Integration */}
-            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-900/20 to-purple-900/20 blur-xl animate-pulse" />
-            
-            {/* Core */}
-            <div className="w-20 h-20 rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 blur-md animate-pulse shadow-[0_0_30px_rgba(168,85,247,0.6)]" />
-
-            {/* Subtle hint text that appears on hover */}
+        <div className="flex flex-col items-center gap-5">
             <motion.div
-                initial={{ opacity: 0 }}
-                whileHover={{ opacity: 1 }}
-                className="absolute -bottom-16 left-1/2 -translate-x-1/2 whitespace-nowrap text-cyan-300/70 text-sm pointer-events-none"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 1, ease: "easeOut" }}
+                className="event-horizon-container relative w-40 h-40 md:w-52 md:h-52 flex items-center justify-center group cursor-pointer"
+                onClick={() => setIsOrbActive(true)}
+                aria-label="Activate Graviton Interface"
+                role="button"
             >
-                Click to Connect
+                {/* Crystalline Sphere effect - Restored with inline Tailwind/CSS for visibility */}
+                <div className="absolute inset-0 rounded-full border-2 border-cyan-500/30 shadow-[0_0_50px_rgba(6,182,212,0.4)] animate-[spin_10s_linear_infinite]" />
+                <div className="absolute inset-2 rounded-full border border-purple-500/40 opacity-70 animate-[spin_15s_linear_infinite_reverse]" />
+
+                {/* Quantum Shield Pulse Integration */}
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-900/20 to-purple-900/20 blur-xl animate-pulse" />
+
+                {/* Core */}
+                <div className="w-20 h-20 rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 blur-md animate-pulse shadow-[0_0_30px_rgba(168,85,247,0.6)]" />
+
+                {/* Subtle hint text that appears on hover */}
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    whileHover={{ opacity: 1 }}
+                    className="absolute -bottom-16 left-1/2 -translate-x-1/2 whitespace-nowrap text-cyan-300/70 text-sm pointer-events-none"
+                >
+                    Click to Connect
+                </motion.div>
             </motion.div>
-        </motion.div>
+
+            {/* ⚡ Suwerenne wejście lokalne — domyślna, bezchmurna ścieżka 0.00G */}
+            {onSovereignEnter && (
+                <>
+                    <button
+                        onClick={onSovereignEnter}
+                        className="px-6 py-2 rounded-full border border-emerald-500/45 bg-emerald-950/30 text-emerald-300 text-xs font-mono tracking-wider hover:bg-emerald-900/50 transition-colors"
+                    >
+                        ⚡ WEJDŹ SUWERENNIE (LOKALNIE)
+                    </button>
+                    <div className="text-[10px] text-zinc-500 font-mono max-w-xs text-center leading-relaxed">
+                        Suwerennie = tożsamość lokalna (<span className="text-emerald-400">identity.json</span>), zero chmury.<br />
+                        Sfera = opcjonalne konto chmurowe (jak chcesz).
+                    </div>
+                    {/* 💍 Klucz Pierścienia — wejście dotknięciem NFC */}
+                    <RingKey onAuthSuccess={onSovereignEnter} />
+                </>
+            )}
+        </div>
     );
 };
 

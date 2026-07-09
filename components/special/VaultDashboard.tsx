@@ -34,7 +34,7 @@ interface ScoutTool {
 interface ScoutRejected { illusion: string; reason: string; }
 interface ScoutResult { verdict: string; tools: ScoutTool[]; rejected: ScoutRejected[]; }
 
-const ICONS: Record<string, React.FC<{ size?: number; className?: string }>> = {
+const ICONS: Record<string, React.ComponentType<{ size?: number | string; className?: string }>> = {
     github_bridge:    Github,
     ollama_ecosystem: Cpu,
     voice_cloning:    Mic,
