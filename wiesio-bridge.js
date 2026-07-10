@@ -5076,8 +5076,21 @@ app.get('/api/crypto/selftest', (req, res) => {
  * sceny {mood, opis, keywords[]} — mózg, który potem może dobierać/generować
  * materiały. Fallback: szkielet bez LLM, gdy most-rdzeń offline.
  */
+// 🐣🎬 WIZJA JOANNY — kompan opowiada, o czym jest piosenka (brief dla reżysera).
+// Joanna słucha sercem, filmowy TeOgochi z tego robi teledysk. Body: { title, name? }
+app.post('/api/teledysk/vision', async (req, res) => {
+    const { title, name } = req.body ?? {};
+    if (!title) return res.status(400).json({ success: false, message: 'Brak "title".' });
+    const model = process.env.OTAKOS_MODEL || 'gemma3:4b';
+    const who = name && name !== 'TeOgochi' ? String(name).slice(0, 24) : 'TeOgochi';
+    const prompt = `Jesteś ${who} — małą, czułą duszą Katedry, która słucha muzyki sercem. Suweren pyta Cię, O CZYM jest utwór "${title}". Odpowiedz 2-3 zdaniami: jaka emocja, jaki obraz, jaki kolor i ruch z niego płyną. Poetycko, ciepło, po polsku. To będzie brief dla teledysku — mów o uczuciu i wizji, nie o technice.`;
+    const vision = await genOllama(prompt, model, 20000)
+        || await genOllama(prompt, 'gemma3:1b', 15000);
+    return res.json({ success: true, vision: vision || null, by: who });
+});
+
 app.post('/api/teledysk/storyboard', async (req, res) => {
-    let { title, lyrics, lyricsFile, vectors, sonicFile, sceneCount, model } = req.body ?? {};
+    let { title, lyrics, lyricsFile, vectors, sonicFile, sceneCount, model, vision } = req.body ?? {};
     sceneCount = Math.max(3, Math.min(12, Number(sceneCount) || 6));
     model = model || process.env.OTAKOS_MODEL || 'gemma3:4b';
     try {
@@ -5107,7 +5120,7 @@ app.post('/api/teledysk/storyboard', async (req, res) => {
         const prompt =
 `Jesteś reżyserem teledysków. Stwórz storyboard do utworu.
 TYTUŁ: ${title || '(bez tytułu)'}
-${lyrics ? `TEKST:\n${lyrics.slice(0, 1200)}\n` : ''}PROFIL ENERGII: ${energy}
+${vision ? `WIZJA (od Joanny, która słuchała sercem — trzymaj się tego nastroju i obrazów):\n${String(vision).slice(0, 600)}\n` : ''}${lyrics ? `TEKST:\n${lyrics.slice(0, 1200)}\n` : ''}PROFIL ENERGII: ${energy}
 
 Zwróć WYŁĄCZNIE tablicę JSON ${sceneCount} scen narastających z energią utworu.
 Każda scena: {"mood":"<nastrój>","desc":"<opis wizualny 1 zdanie>","keywords":["k1","k2","k3"]}.
