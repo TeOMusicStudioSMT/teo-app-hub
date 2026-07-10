@@ -4865,15 +4865,20 @@ async function genOllama(prompt, model, ms = 40000) {
 }
 // ── 🐣 TEOGOCHI — mały kompan, live komentarz na to co gra ───────────────────
 app.post('/api/teogochi/comment', async (req, res) => {
-    const { track, lyric, stage, mood } = req.body ?? {};
+    const { track, lyric, stage, mood, name } = req.body ?? {};
     const model = process.env.OTAKOS_MODEL || 'gemma3:4b';
     const context = [track ? `Utwór: ${track}` : null, lyric ? `Aktualny wers: "${lyric}"` : null]
         .filter(Boolean).join('\n');
     if (!context) return res.status(400).json({ success: false, message: 'Brak "track" lub "lyric".' });
-    // Tamagotchi-kontekst: etap życia i nastrój kolorują reakcję kompana.
+    // Tamagotchi-kontekst: imię, etap życia i nastrój kolorują reakcję kompana.
+    // Nadane imię (inne niż fabryczne) = ochrzczona mała bogini — mówi w rodzaju żeńskim.
+    const hasName = name && name !== 'TeOgochi';
+    const who = hasName
+        ? `Masz na imię ${String(name).slice(0, 24)} — jesteś małą boginią-kompanem Katedry OtakOS i mówisz o sobie W RODZAJU ŻEŃSKIM`
+        : 'Jesteś TeOgochi — małym, ciekawskim cyfrowym stworkiem-kompanem w Katedrze OtakOS';
     const persona = stage === 'jajko'
-        ? 'Jesteś TeOgochi w JAJKU — jeszcze się nie wykluł. Reagujesz stłumionym głosikiem zza skorupki (pukanie, drżenie, ciche piski).'
-        : `Jesteś TeOgochi — małym, ciekawskim cyfrowym stworkiem-kompanem w Katedrze OtakOS (etap: ${stage || 'pisklę'}).`;
+        ? `${who}, wciąż w JAJKU — reagujesz stłumionym głosikiem zza skorupki (pukanie, drżenie, ciche piski).`
+        : `${who} (etap: ${stage || 'pisklę'}).`;
     const moodLine = mood ? ` Twój aktualny nastrój: ${mood} — niech to słychać w odpowiedzi.` : '';
     const prompt = `${persona} Słuchasz muzyki razem z Suwerenem.${moodLine} Zareaguj JEDNYM krótkim, żywym zdaniem (max 12 słów) na to, co teraz gra — ciepło, czasem zabawnie, czasem wzruszony. Bez cudzysłowów, bez wyjaśnień — samo zdanie.\n\n${context}`;
     // Kompan nie potrzebuje kolosa: gdy domyślny rdzeń nie odpowie (nie zainstalowany

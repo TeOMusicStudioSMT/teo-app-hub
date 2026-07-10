@@ -9,6 +9,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useKatedraRadio } from '../context/KatedraRadioContext';
+import { loadTeogochi, stageOf, moodLabel } from '../lib/teogochiState';
 
 const FALLBACK_LINES = [
     'Ooo, to brzmi nieźle! 🎵',
@@ -48,10 +49,14 @@ export const TeOgochi: React.FC = () => {
         (async () => {
             setIsThinking(true);
             try {
+                const tg = loadTeogochi();
                 const res = await fetch('http://127.0.0.1:3001/api/teogochi/comment', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ track: radio.currentTrack?.title, lyric }),
+                    body: JSON.stringify({
+                        track: radio.currentTrack?.title, lyric,
+                        name: tg.name, stage: stageOf(tg.xp).stage, mood: moodLabel(tg),
+                    }),
                 });
                 const data = await res.json();
                 if (cancelled) return;

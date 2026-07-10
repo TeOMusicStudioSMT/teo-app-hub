@@ -52,7 +52,7 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     track: radio.currentTrack?.title, lyric: context,
-                    stage: stage.stage, mood: nastroj,
+                    stage: stage.stage, mood: nastroj, name: s.name,
                 }),
             });
             const d = await r.json();
@@ -60,7 +60,16 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         } catch {
             setSpeech(isEgg ? '...(jajko lekko drży)...' : 'Ćwir? (most milczy)');
         }
-    }, [radio.currentTrack, stage.stage, nastroj, isEgg]);
+    }, [radio.currentTrack, stage.stage, nastroj, isEgg, s.name]);
+
+    // ⛪ Chrzcielnica — nadaj imię (bogini dostaje żeńską formę w komentarzach AI)
+    const handleRename = () => {
+        const newName = window.prompt('Nadaj imię swojemu kompanowi:', s.name);
+        if (!newName || !newName.trim()) return;
+        const next = { ...s, name: newName.trim().slice(0, 24) };
+        saveTeogochi(next); setS(next);
+        say(`Suweren właśnie uroczyście ochrzcił Cię imieniem ${next.name}`);
+    };
 
     const handlePet = () => {
         const { state, ok } = petAction(s);
@@ -94,8 +103,16 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             {/* Nagłówek */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <div>
-                    <div style={{ fontSize: 8, letterSpacing: '0.25em', color: 'rgba(251,191,36,0.55)' }}>∴ DOM TEOGOCHI ∴</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#fde68a' }}>{stage.title}</div>
+                    <div style={{ fontSize: 8, letterSpacing: '0.25em', color: 'rgba(251,191,36,0.55)' }}>
+                        ∴ DOM {s.name.toUpperCase()} ∴
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#fde68a', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {stage.title}
+                        <button onClick={handleRename} title="Chrzcielnica — nadaj imię"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, opacity: 0.6, padding: 0 }}>
+                            ✏️
+                        </button>
+                    </div>
                 </div>
                 <button onClick={onClose} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#64748b', width: 26, height: 26, cursor: 'pointer' }}>✕</button>
             </div>

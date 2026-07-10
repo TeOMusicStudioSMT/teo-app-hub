@@ -131,6 +131,7 @@ export function KatedraOrbita({
 
     // 🐣 TeOgochi — żywe komentarze do lewej wieży STORYTELLER
     const teogochiRef = useRef<string[]>([]);
+    const teogochiNameRef = useRef('TEOGOCHI');
     const teogochiLastRef = useRef({ lyric: '', at: 0 });
     useEffect(() => {
         if (staticMode) return;
@@ -142,10 +143,14 @@ export function KatedraOrbita({
             if (!changed && now - teogochiLastRef.current.at < 25_000) return;
             teogochiLastRef.current = { lyric, at: now };
             try {
+                // Imię/etap/nastrój z lokalnego stanu tamagotchi (bez importu — unik cyklu zależności canvas)
+                let tg: any = {};
+                try { tg = JSON.parse(localStorage.getItem('teogochi_state') || '{}'); } catch {}
+                if (tg.name) teogochiNameRef.current = String(tg.name).toUpperCase();
                 const r = await fetch('http://127.0.0.1:3001/api/teogochi/comment', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ track: radio.currentTrack?.title, lyric }),
+                    body: JSON.stringify({ track: radio.currentTrack?.title, lyric, name: tg.name }),
                 });
                 const d = await r.json();
                 if (d.success && d.comment) {
@@ -621,7 +626,7 @@ export function KatedraOrbita({
             // zastępuje statyczny lore (kompan naprawdę słucha tego, co gra).
             s.storyScroll += 0.5;
             const lore = teogochiRef.current.length
-                ? ['[ TEOGOCHI · SŁUCHA NA ŻYWO ]', ...teogochiRef.current]
+                ? [`[ ${teogochiNameRef.current} · SŁUCHA NA ŻYWO ]`, ...teogochiRef.current]
                 : [
                     '[ SYSTEM BOOT ]',
                     'Initiating TeOgoCHi...',
