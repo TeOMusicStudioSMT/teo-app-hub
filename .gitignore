@@ -70,3 +70,4 @@ TeO_Arcade_Forge/ue_scripts/mutate_*.py
 TeO_Arcade_Forge/forge_plugins/__pycache__/
 # Manifesty filmów Reżysera (runtime użytkownika — generowane, nie do repo)
 TeO_Arcade_Forge/stories/
+public/apps/

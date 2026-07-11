@@ -159,6 +159,17 @@ const moveDir = path.join(__dirname, '_OtakOs_Move');
 app.use('/move', express.static(moveDir));
 app.use('/components', express.static(COMPONENTS_DIR));
 
+// ── 🛰️ SUBSTRONY (Music V2 / Story V2 / App V2) — statycznie przez most ───────
+// Na USB V_ZERO nie ma serwerów dev (5173/5174/5175), tylko most (3001) i Hub.
+// Most zawsze żyje, więc serwuje zbudowane substrony pod /apps/{music,story,app}.
+// express.static serwuje index.html dla katalogu (query params teleportu i hash
+// routing działają po stronie klienta — fallback SPA zbędny). Buildy w public/apps/
+// jadą z distro. UWAGA: Express 5 — żadnych gołych `*` w routach (crash boota).
+const APPS_DIR = path.join(__dirname, 'public', 'apps');
+for (const app_ of ['music', 'story', 'app']) {
+    app.use(`/apps/${app_}`, cors({ origin: '*' }), express.static(path.join(APPS_DIR, app_)));
+}
+
 // Inicjalizacja folderów
 async function initializeDimension() {
     for (const dir of [ANTIGRAVITY_DIR, path.join(ANTIGRAVITY_DIR, 'Arcade'), MUSIC_DIR, MOVE_DIR, SONIC_DIR, BUILD_DIR, AI_DIR, MODELS_DIR, TEMP_DIR, BIN_DIR, COMPONENTS_DIR, AULA_DIR, RAFINERIA_TEMP_DIR]) {

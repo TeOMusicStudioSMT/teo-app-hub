@@ -28,10 +28,7 @@ export function teleportToMusic(params: {
   channel.postMessage({ type: 'GENERATE', params });
   
   console.log('[Teleport] 📤 Wysłano parametry do Music V2:', params);
-  
-  // Wykryj localhost
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  
+
   // Zbuduj parametry zapytania (Query Params) dla zachowania spójności przy zmianie portów
   const qParams = new URLSearchParams();
   qParams.set('style', params.style || '');
@@ -51,8 +48,10 @@ export function teleportToMusic(params: {
   }
 
   const query = '?' + qParams.toString();
-  const targetUrl = isLocalhost ? `http://localhost:5173${query}` : `/music${query}`;
-  
+  // Most (3001) zawsze żyje — na USB V_ZERO nie ma serwera dev na 5173.
+  // Serwuje zbudowaną substronę pod /apps/music. (Dev z HMR: otwórz localhost:5173 ręcznie.)
+  const targetUrl = `http://127.0.0.1:3001/apps/music/${query}`;
+
   // Otwórz Music V2 w nowej karcie
   window.open(targetUrl, '_blank');
 }
@@ -67,7 +66,6 @@ export function teleportToStory(params: {
   audioFadeMs?: number;      // np. 30
   returnUrl?: string;
 }): void {
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   const q = new URLSearchParams();
   q.set('action', 'video_edit');
   if (params.mission)       q.set('mission', params.mission);
@@ -77,7 +75,8 @@ export function teleportToStory(params: {
   if (params.returnUrl)     q.set('returnUrl', params.returnUrl);
 
   const query = '?' + q.toString();
-  const targetUrl = isLocalhost ? `http://localhost:5174${query}` : `/story${query}`;
+  // Most serwuje Story V2 pod /apps/story (zawsze żywy, także na USB V_ZERO).
+  const targetUrl = `http://127.0.0.1:3001/apps/story/${query}`;
   console.log('[Teleport] 🎬 Transport do Story V2 (VideO-Use):', params);
   window.open(targetUrl, '_blank');
 }
