@@ -5277,7 +5277,8 @@ app.post('/api/teledysk/stage-audio', async (req, res) => {
 app.post('/api/teledysk/render', async (req, res) => {
     let { audioFile, sourceDir, vectors, sonicFile, fps, maxCuts } = req.body ?? {};
     fps = Number(fps) > 0 ? Number(fps) : 30;
-    maxCuts = Number(maxCuts) > 0 ? Number(maxCuts) : 40;
+    // 120 cięć = więcej różnorodności zanim montaż zacznie się zapętlać na pełną długość utworu
+    maxCuts = Number(maxCuts) > 0 ? Number(maxCuts) : 120;
     const inCwd = (p) => { const a = path.resolve(process.cwd(), String(p)); if (!a.startsWith(process.cwd())) throw new Error('ścieżka poza projektem'); return a; };
     const VIDEO_EXT = /\.(mp4|mov|mkv|webm|avi|m4v)$/i;
     let work = null;
@@ -5346,9 +5347,18 @@ app.post('/api/teledysk/render', async (req, res) => {
         await fs.writeFile(listFile, parts.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n'), 'utf8');
         const editDir = path.join(srcAbs, 'edit');
         await fs.mkdir(editDir, { recursive: true });
-        const teledysk = path.join(editDir, 'teledysk.mp4');
-        await execFileAsync(ffmpegPath, ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-i', audioAbs,
-            '-map', '0:v:0', '-map', '1:a:0', '-shortest', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', teledysk]);
+        // Unikalna nazwa — każdy render zostaje, nic się nie nadpisuje.
+        const audioSlug = path.basename(audioFile).replace(/\.[^.]+$/, '')
+            .toLowerCase().replace(/[^a-z0-9ąćęłńóśźż]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'utwor';
+        const teledysk = path.join(editDir, `teledysk_${audioSlug}_${Date.now()}.mp4`);
+        // -stream_loop -1 zapętla montaż, a -shortest ucina na końcu audio → teledysk
+        // ZAWSZE ma długość utworu (7:16 zamiast 14s), niezależnie od ilości materiału.
+        // genpts + avoid_negative_ts — czysta baza czasu przy zapętleniu (anti-glitch).
+        await execFileAsync(ffmpegPath, ['-y', '-fflags', '+genpts', '-stream_loop', '-1',
+            '-f', 'concat', '-safe', '0', '-i', listFile, '-i', audioAbs,
+            '-map', '0:v:0', '-map', '1:a:0', '-shortest', '-avoid_negative_ts', 'make_zero',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', teledysk],
+            { timeout: 0, maxBuffer: 1024 * 1024 * 500 });
 
         return res.json({ success: true, output: path.relative(process.cwd(), teledysk), segments: segs.length, clipsUsed: clips.length, beats: cuts.length });
     } catch (err) {
