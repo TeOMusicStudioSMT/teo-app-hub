@@ -5395,7 +5395,26 @@ app.post('/api/teledysk/render', async (req, res) => {
             clips = clips.filter(p => path.basename(p).toLowerCase().includes(clipFilter.toLowerCase()));
         if (!clips.length) return res.status(400).json({ success: false, message: `Brak źródeł wideo (po filtrze) w ${sourceDir} ani w podkatalogach.` });
 
-        // Cięcia na uderzenia basu (jak /api/teledysk/plan)
+        // 🎲 TASOWANIE — bez tego montaż brał zawsze PIERWSZE N klipów (alfabetycznie
+        // top-level + wczesne foldery), nigdy nie sięgając dalszych (np. The_Celestial_Bridge_).
+        // Teraz każdy render losuje z CAŁEJ biblioteki (832 klipy) — inny za każdym razem.
+        for (let i = clips.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [clips[i], clips[j]] = [clips[j], clips[i]]; }
+
+        // KLUCZOWE: realna długość audio z ffprobe. Wektory soniczne NIE mają pola
+        // czasu (tylko s,b,v,h) i są próbkowane co ~sekundy podczas odtwarzania —
+        // 204 próbki to CAŁY 7-min utwór, nie 6.8s (i/fps). Rozkładamy je na audioDur,
+        // inaczej montaż ściska się do kilku sekund i zapętla te same klipy.
+        let audioDur = 0;
+        try {
+            const { stdout } = await execFileAsync(ffprobePath, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', audioAbs]);
+            audioDur = parseFloat(String(stdout).trim()) || 0;
+        } catch { /* brak ffprobe — spadamy na oś wektorów */ }
+        const N = vectors.length;
+        const hasRealT = vectors[0] && vectors[0].t !== undefined;
+        const timeAt = (i) => hasRealT ? Number(vectors[i].t) : (audioDur > 0 ? (i / Math.max(1, N - 1)) * audioDur : i / fps);
+        const endTime = audioDur > 0 ? audioDur : (hasRealT ? Number(vectors[N - 1].t) : N / fps);
+
+        // Cięcia na uderzenia basu (czasy z realnej osi audio)
         const bass = vectors.map(v => Number(v.b ?? v.bass ?? 0));
         const mean = bass.reduce((a, b) => a + b, 0) / bass.length;
         const std  = Math.sqrt(bass.reduce((a, b) => a + (b - mean) ** 2, 0) / bass.length);
@@ -5403,13 +5422,25 @@ app.post('/api/teledysk/render', async (req, res) => {
         const cuts = [];
         for (let i = 1; i < bass.length - 1; i++)
             if (bass[i] > thr && bass[i] >= bass[i - 1] && bass[i] > bass[i + 1])
-                cuts.push({ t: Number(vectors[i].t ?? i / fps), v: Number(vectors[i].v ?? vectors[i].vocals ?? 0), h: Number(vectors[i].h ?? vectors[i].highs ?? 0) });
+                cuts.push({ t: timeAt(i), v: Number(vectors[i].v ?? vectors[i].vocals ?? 0), h: Number(vectors[i].h ?? vectors[i].highs ?? 0) });
         if (cuts.length < 2) return res.status(400).json({ success: false, message: 'Za mało uderzeń do montażu.' });
 
-        const segs = cuts.slice(0, maxCuts).map((c, idx, arr) => ({
-            from: c.t, to: arr[idx + 1] ? arr[idx + 1].t : vectors.length / fps,
-            fx: c.v > 0.6 ? 'punch-zoom' : c.h > 0.6 ? 'flash-cut' : 'soft-fade',
-        }));
+        // Segmenty na uderzenia basu, ale DŁUGIE odstępy dzielimy na ~3s podsegmenty —
+        // każdy dostaje NOWY klip. Bez tego 37 uderzeń = tylko 37 klipów; teraz np. 7-min
+        // utwór daje ~140 segmentów = ~140 różnych klipów z biblioteki + żywszy montaż.
+        const MAX_SEG = 3.0, MAX_TOTAL = 180;
+        const rawCuts = cuts.slice(0, maxCuts);
+        const segs = [];
+        for (let idx = 0; idx < rawCuts.length && segs.length < MAX_TOTAL; idx++) {
+            const c = rawCuts[idx];
+            const from = c.t, to = rawCuts[idx + 1] ? rawCuts[idx + 1].t : endTime;
+            const span = Math.max(0.25, to - from);
+            const fx = c.v > 0.6 ? 'punch-zoom' : c.h > 0.6 ? 'flash-cut' : 'soft-fade';
+            const nSub = Math.max(1, Math.round(span / MAX_SEG));
+            const subDur = span / nSub;
+            for (let k = 0; k < nSub && segs.length < MAX_TOTAL; k++)
+                segs.push({ from: from + k * subDur, to: from + (k + 1) * subDur, fx });
+        }
 
         work = path.join(TEMP_DIR, `teledysk_${Date.now()}`);
         await fs.mkdir(work, { recursive: true });
