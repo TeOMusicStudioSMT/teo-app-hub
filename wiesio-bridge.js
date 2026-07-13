@@ -5306,14 +5306,21 @@ app.post('/api/teledysk/render', async (req, res) => {
         const audioAbs = inCwd(audioFile);
         if (!fsSync.existsSync(audioAbs)) return res.status(404).json({ success: false, message: `Audio nie istnieje: ${audioFile}` });
         const srcAbs = inCwd(sourceDir);
-        let clips = (await fs.readdir(srcAbs)).filter(f => VIDEO_EXT.test(f)).map(f => path.join(srcAbs, f));
+        // REKURENCJA: bierze wideo także z PODKATALOGÓW (Suweren trzyma materiały
+        // w folderach, bo pliki nazywają się tak samo 1-33). Pełne ścieżki, więc
+        // kolizje nazw nie szkodzą. Pomijamy folder edit/ — tam lądują nasze rendery
+        // (bez tego kolejny render zassałby własny poprzedni teledysk = pętla).
+        const allEntries = await fs.readdir(srcAbs, { recursive: true });
+        let clips = allEntries
+            .filter(f => VIDEO_EXT.test(f) && !/(^|[\\/])edit([\\/]|$)/i.test(f))
+            .map(f => path.join(srcAbs, f));
         // Kontrola materiałów: jawna lista (clips[]) albo filtr nazwy (clipFilter).
         const clipList = req.body?.clips, clipFilter = req.body?.clipFilter;
         if (Array.isArray(clipList) && clipList.length)
             clips = clips.filter(p => clipList.some(n => path.basename(p) === n || p.endsWith(n)));
         else if (typeof clipFilter === 'string' && clipFilter)
             clips = clips.filter(p => path.basename(p).toLowerCase().includes(clipFilter.toLowerCase()));
-        if (!clips.length) return res.status(400).json({ success: false, message: `Brak źródeł wideo (po filtrze) w ${sourceDir}.` });
+        if (!clips.length) return res.status(400).json({ success: false, message: `Brak źródeł wideo (po filtrze) w ${sourceDir} ani w podkatalogach.` });
 
         // Cięcia na uderzenia basu (jak /api/teledysk/plan)
         const bass = vectors.map(v => Number(v.b ?? v.bass ?? 0));
