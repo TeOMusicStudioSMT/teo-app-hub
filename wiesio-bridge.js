@@ -312,52 +312,99 @@ app.post('/api/bridge/autosync', async (req, res) => {
             return `[${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}]`;
         };
 
-        // 6. Algorytm Dopasowania (Wektorowy Aligner)
-        // Whisper.cpp w formacie JSON zwraca 'transcription' -> listę segmentów
+        // 6. Algorytm Dopasowania — WHISPER daje oś czasu, JOANNA (LLM) przypina wersy.
+        // Whisper.cpp zwraca 'transcription' -> segmenty {text, offsets:{from,to} w ms}.
         const segments = aiOutput.transcription || [];
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        const syncedLines = [];
 
-        // Pobieramy wszystkie tokeny/słowa z segmentów
-        const allWords = segments.flatMap(seg => seg.tokens || []);
+        // Oś czasu z audio (segment-level — dużo stabilniejsze niż pojedyncze tokeny).
+        const timeline = segments
+            .map(s => ({ t: (s.offsets?.from ?? 0) / 1000, text: String(s.text || '').trim() }))
+            .filter(s => s.text)
+            .sort((a, b) => a.t - b.t);
+        const audioEnd = timeline.length ? timeline[timeline.length - 1].t + 3 : lines.length * 3;
 
-        let lastWordIdx = 0;
+        // Twardy bezpiecznik: czasy TYLKO rosną (koniec skoków w tył jak 49s->2s).
+        const clampMonotonic = (arr) => {
+            let prev = -0.001;
+            return arr.map(v => { const t = Math.max(Number(v) || 0, prev + 0.25); prev = t; return t; });
+        };
 
-        for (const lineText of lines) {
-            const lineWords = lineText.toLowerCase().split(/\s+/);
-            const firstWord = lineWords[0].replace(/[.,?!]/g, '');
+        // 6a. JOANNA (LLM) — rozumie SENS tekstu i dopasowuje wersy do osi czasu.
+        let times = null;
+        if (timeline.length >= 2) {
+            const tlStr = timeline.map(s => `[${s.t.toFixed(1)}] ${s.text}`).join('\n').slice(0, 4000);
+            const lyrStr = lines.map((l, i) => `${i + 1}: ${l}`).join('\n').slice(0, 4000);
+            const prompt =
+`Masz PRAWDZIWY tekst piosenki (ponumerowane wersy) i przybliżoną transkrypcję audio ze znacznikami czasu w sekundach (auto, słowa bywają błędne, ale CZASY są z nagrania). Przypisz każdemu wersowi moment, w którym jest śpiewany, wg osi czasu transkrypcji.
+ZASADY: czasy TYLKO rosną (nigdy w tył); wers-pauza dostaje czas między sąsiadami; ostatni czas <= ${audioEnd.toFixed(0)}s.
+Zwróć WYŁĄCZNIE tablicę JSON długości ${lines.length}: [{"i":1,"t":0.0},{"i":2,"t":3.4},...]. Bez komentarza.
 
-            let foundIdx = -1;
-            for (let i = lastWordIdx; i < allWords.length; i++) {
-                // Czyścimy tekst tokena z AI (często ma spacje na początku)
-                const aiWordText = allWords[i].text.toLowerCase().trim().replace(/[.,?!]/g, '');
-                if (aiWordText.includes(firstWord) || firstWord.includes(aiWordText)) {
-                    foundIdx = i;
-                    break;
-                }
-            }
+TEKST (wersy):
+${lyrStr}
 
-            if (foundIdx !== -1) {
-                // NAPRAWA: whisper-cli.exe --output-json-full nie zwraca t0/t1 (to inny build/wersja) —
-                // tokeny mają offsets.{from,to} w milisekundach. t0 był zawsze undefined → fallback 0
-                // aktywował się dla KAŻDEJ linii (wszystkie znaczniki na 0).
-                const startTime = (allWords[foundIdx].offsets?.from ?? 0) / 1000;
-                syncedLines.push({
-                    time: startTime,
-                    timestamp: formatLRCTime(startTime),
-                    text: lineText
-                });
-                lastWordIdx = foundIdx + 1;
-            } else {
-                // Fallback: jeśli nie znaleziono dopasowania, dodajemy z czasem ostatniego wersu + mały offset
-                const lastTime = syncedLines.length > 0 ? syncedLines[syncedLines.length - 1].time + 1.0 : 0;
-                syncedLines.push({
-                    time: lastTime,
-                    timestamp: formatLRCTime(lastTime),
-                    text: `[?] ${lineText}`
-                });
+TRANSKRYPCJA Z CZASAMI:
+${tlStr}`;
+            const model = process.env.OTAKOS_MODEL || 'gemma4';
+            let raw = await genOllama(prompt, model, 60000);
+            if (!raw) raw = await genOllama(prompt, 'gemma3:1b', 45000);
+            const m = raw && raw.match(/\[[\s\S]*\]/);
+            if (m) {
+                try {
+                    const parsed = JSON.parse(m[0]);
+                    if (Array.isArray(parsed) && parsed.length >= Math.floor(lines.length * 0.6)) {
+                        const byIdx = new Map(parsed.map(o => [Number(o.i), Number(o.t)]));
+                        times = lines.map((_, i) => {
+                            const t = byIdx.get(i + 1);
+                            return Number.isFinite(t) ? t : NaN;
+                        });
+                        // Uzupełnij dziury interpolacją liniową między znanymi punktami.
+                        for (let i = 0; i < times.length; i++) {
+                            if (!Number.isFinite(times[i])) {
+                                let a = i - 1; while (a >= 0 && !Number.isFinite(times[a])) a--;
+                                let b = i + 1; while (b < times.length && !Number.isFinite(times[b])) b++;
+                                const ta = a >= 0 ? times[a] : 0;
+                                const tb = b < times.length ? times[b] : audioEnd;
+                                times[i] = ta + (tb - ta) * ((i - a) / Math.max(1, b - a));
+                            }
+                        }
+                        console.log(`[Wiesio-AI] 🐣 Joanna dopasowała ${parsed.length}/${lines.length} wersów (model: ${model}).`);
+                    }
+                } catch { /* zły JSON — spadamy na word-match */ }
             }
         }
+
+        // 6b. Fallback: word-matching po pierwszym słowie wersu (gdy Joanna/LLM milczy).
+        if (!times) {
+            const allWords = segments.flatMap(seg => seg.tokens || []);
+            let lastWordIdx = 0;
+            times = lines.map(lineText => {
+                const firstWord = lineText.toLowerCase().split(/\s+/)[0].replace(/[.,?!]/g, '');
+                let foundIdx = -1;
+                for (let i = lastWordIdx; i < allWords.length; i++) {
+                    const w = allWords[i].text.toLowerCase().trim().replace(/[.,?!]/g, '');
+                    if (w.length >= 2 && firstWord.length >= 2 && (w.includes(firstWord) || firstWord.includes(w))) { foundIdx = i; break; }
+                }
+                if (foundIdx !== -1) { lastWordIdx = foundIdx + 1; return (allWords[foundIdx].offsets?.from ?? 0) / 1000; }
+                return NaN;
+            });
+            // dziury → interpolacja
+            for (let i = 0; i < times.length; i++) if (!Number.isFinite(times[i])) {
+                let a = i - 1; while (a >= 0 && !Number.isFinite(times[a])) a--;
+                let b = i + 1; while (b < times.length && !Number.isFinite(times[b])) b++;
+                const ta = a >= 0 ? times[a] : 0, tb = b < times.length ? times[b] : audioEnd;
+                times[i] = ta + (tb - ta) * ((i - a) / Math.max(1, b - a));
+            }
+            console.log(`[Wiesio-AI] 🔤 Fallback word-match (LLM niedostępny).`);
+        }
+
+        // Bezpiecznik monotoniczności + zbudowanie wyniku.
+        const safeTimes = clampMonotonic(times);
+        const syncedLines = lines.map((lineText, i) => ({
+            time: safeTimes[i],
+            timestamp: formatLRCTime(safeTimes[i]),
+            text: lineText,
+        }));
 
         // 7. Finalizacja i Porządki
         try {
