@@ -42,6 +42,17 @@ goto :eof
 echo %CYAN%[NODE]%RESET% %PURPLE%Instaluje zaleznosci (od 1 min... do wciul - Czekaj, Przyzwalaj)...%RESET%
 call npm install --legacy-peer-deps --no-audit
 
+REM ── Model Whisper (karaoke / napisy / STT) — auto-download przy 1. starcie ──
+REM Binarka whisper-cli.exe jedzie w distro (lekka), model ggml-small (~465MB)
+REM dociagamy z HuggingFace tylko raz. Bez niego karaoke/napisy nie zadzialaja.
+set "WHISPER_MODEL=%~dp0_OtakOs_AI\models\ggml-small.bin"
+if not exist "%WHISPER_MODEL%" (
+    echo %CYAN%[WHISPER]%RESET% %PURPLE%Pierwsze pobranie modelu mowy ^(~465MB, jednorazowo^)...%RESET%
+    if not exist "%~dp0_OtakOs_AI\models" mkdir "%~dp0_OtakOs_AI\models"
+    powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin' -OutFile '%WHISPER_MODEL%' -UseBasicParsing } catch { exit 1 }"
+    if not exist "%WHISPER_MODEL%" echo %PURPLE%[!] Nie udalo sie pobrac modelu Whisper — karaoke/napisy dzialaja dopiero po recznym wgraniu ggml-small.bin do _OtakOs_AI\models.%RESET%
+)
+
 REM ── Glos Suwerena (XTTS) — auto-instalacja przy pierwszym uruchomieniu ──
 REM Uwaga: launcher jedzie NAKŁADANY na korzeń distro (Miniaturyzator overlay),
 REM wiec _OtakOs_AI jest siostrzanym folderem tego pliku, tak samo jak wiesio-bridge.js.

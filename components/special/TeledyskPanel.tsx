@@ -84,11 +84,11 @@ export const TeledyskPanel: React.FC<TeledyskPanelProps> = ({ initialAudioFile, 
     const render = useCallback(async () => {
         setBusy(true); setStatus('🎬 Renderuję teledysk (ffmpeg — chwilę to potrwa)...'); setOutput('');
         try {
-            const d = await call('/api/teledysk/render', { sonicFile, sourceDir, audioFile });
-            setOutput(d.output); setStatus(`✅ Teledysk: ${d.segments} cięć z ${d.clipsUsed} źródeł`);
+            const d = await call('/api/teledysk/render', { sonicFile, sourceDir, audioFile, lrcFile: lyricsFile || undefined });
+            setOutput(d.output); setStatus(`✅ Teledysk: ${d.segments} cięć z ${d.clipsUsed} źródeł${d.subtitles ? ' · z napisami 🔤' : ''}`);
         } catch (e: any) { setStatus(`⚠ Render: ${e.message}`); }
         finally { setBusy(false); }
-    }, [sonicFile, sourceDir, audioFile]);
+    }, [sonicFile, sourceDir, audioFile, lyricsFile]);
 
     const inp: React.CSSProperties = { width: '100%', marginTop: 3, marginBottom: 7, padding: '6px 9px', borderRadius: 6, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(245,158,11,.22)', color: '#fde68a', fontFamily: "'JetBrains Mono',monospace", fontSize: 10 };
     const lbl: React.CSSProperties = { fontSize: 8, color: 'rgba(255,255,255,.4)', letterSpacing: '.1em' };
@@ -102,7 +102,7 @@ export const TeledyskPanel: React.FC<TeledyskPanelProps> = ({ initialAudioFile, 
 
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <div style={{ flex: 1 }}><label style={lbl}>TYTUŁ</label><input style={inp} value={title} onChange={e => setTitle(e.target.value)} /></div>
-                <div style={{ flex: 1 }}><label style={lbl}>TEKST .lrc (opcjonalnie)</label><input style={inp} value={lyricsFile} onChange={e => setLyricsFile(e.target.value)} placeholder="_OtakOs_Muzyka/.../utwor.lrc" /></div>
+                <div style={{ flex: 1 }}><label style={lbl}>TEKST .lrc (opcjonalnie — storyboard + napisy na dole)</label><input style={inp} value={lyricsFile} onChange={e => setLyricsFile(e.target.value)} placeholder="_OtakOs_Muzyka/.../utwor.lrc" /></div>
             </div>
             <label style={lbl}>WEKTORY SONICZNE</label><input style={inp} value={sonicFile} onChange={e => setSonicFile(e.target.value)} />
             <div style={{ display: 'flex', gap: 8 }}>

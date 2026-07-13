@@ -49,10 +49,11 @@ Info "Staging: $Stage"
 $xdStatic = @(
     'node_modules','.git','.vite','dist','.cache','.claude','.husky',
     '_temp','TestProxy','models','memory','.agent',
-    # _OtakOs_AI: wykluczamy tylko ciężkie/prywatne podfoldery (binarki Whisper,
-    # modele ggml, próbki głosu Suwerena) — voice_server.py i requirements-voice.txt
-    # ZOSTAJĄ, żeby Głos Suwerena mógł się auto-zainstalować na nowym węźle.
-    '_OtakOs_AI\bin','_OtakOs_AI\models','_OtakOs_AI\voices','_OtakOs_AI\temp','_OtakOs_AI\voice_env',
+    # _OtakOs_AI: wykluczamy tylko CIĘŻKIE/prywatne podfoldery. bin/ (whisper-cli
+    # + DLL, ~20MB) ZOSTAJE w distro — lekki, potrzebny do karaoke/STT. Model ggml
+    # (~487MB) wykluczony — dociąga się przy pierwszym starcie (START_KATEDRA.bat).
+    # voice_server.py/requirements ZOSTAJĄ (Głos Suwerena auto-instaluje się sam).
+    '_OtakOs_AI\models','_OtakOs_AI\voices','_OtakOs_AI\temp','_OtakOs_AI\voice_env',
     '_OtakOs_Aula','_OtakOs_Build','_OtakOs_Components',
     '_OtakOs_Klocki','_OtakOs_Kroniki','_OtakOs_Move','_OtakOs_Muzyka',
     '_OtakOs_Sonic','_OtakOs_Wymiar',

@@ -5285,8 +5285,34 @@ app.post('/api/teledysk/stage-audio', async (req, res) => {
  * Tnie źródła wideo na uderzenia basu, dokłada efekty per segment (zoom/flash/
  * fade wg wokalu/sopranów), miksuje z audio → <sourceDir>/edit/teledysk.mp4.
  */
+// LRC ([mm:ss.xx] tekst) → SRT (napisy wypalane na teledysku). Każdy wers trwa
+// do następnego (ostatni +4s). Obsługuje wiele znaczników w jednej linii.
+function lrcToSrt(lrc) {
+    const lines = [];
+    for (const raw of String(lrc).split(/\r?\n/)) {
+        const tags = [...raw.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
+        if (!tags.length) continue;
+        const text = raw.replace(/\[[^\]]*\]/g, '').trim();
+        if (!text) continue;
+        for (const m of tags) {
+            const frac = m[3] ? Number((m[3] + '000').slice(0, 3)) : 0;
+            lines.push({ t: Number(m[1]) * 60 + Number(m[2]) + frac / 1000, text });
+        }
+    }
+    lines.sort((a, b) => a.t - b.t);
+    if (!lines.length) return '';
+    const fmt = (s) => {
+        const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60), ms = Math.round((s % 1) * 1000);
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+    };
+    return lines.map((l, i) => {
+        const end = lines[i + 1] ? lines[i + 1].t : l.t + 4;
+        return `${i + 1}\n${fmt(l.t)} --> ${fmt(end)}\n${l.text}\n`;
+    }).join('\n');
+}
+
 app.post('/api/teledysk/render', async (req, res) => {
-    let { audioFile, sourceDir, vectors, sonicFile, fps, maxCuts } = req.body ?? {};
+    let { audioFile, sourceDir, vectors, sonicFile, fps, maxCuts, lrcFile } = req.body ?? {};
     fps = Number(fps) > 0 ? Number(fps) : 30;
     // 120 cięć = więcej różnorodności zanim montaż zacznie się zapętlać na pełną długość utworu
     maxCuts = Number(maxCuts) > 0 ? Number(maxCuts) : 120;
@@ -5369,16 +5395,35 @@ app.post('/api/teledysk/render', async (req, res) => {
         const audioSlug = path.basename(audioFile).replace(/\.[^.]+$/, '')
             .toLowerCase().replace(/[^a-z0-9ąćęłńóśźż]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'utwor';
         const teledysk = path.join(editDir, `teledysk_${audioSlug}_${Date.now()}.mp4`);
+
+        // 🔤 Napisy z LRC (opcjonalnie) — wypalane na dole obrazu. SRT ląduje w work/,
+        // a ffmpeg odpalamy z cwd=work i referencją po nazwie — omija piekło escapowania
+        // ścieżek Windows w filtrze subtitles (dwukropki dysku, backslashe).
+        let subFilter = null, ffOpts = { timeout: 0, maxBuffer: 1024 * 1024 * 500 };
+        if (lrcFile) {
+            const lrcAbs = inCwd(lrcFile);
+            if (fsSync.existsSync(lrcAbs)) {
+                const srt = lrcToSrt(await fs.readFile(lrcAbs, 'utf8'));
+                if (srt) {
+                    await fs.writeFile(path.join(work, 'napisy.srt'), srt, 'utf8');
+                    // Alignment=2 = dół-środek, BorderStyle=3 = półprzezroczyste tło, MarginV=40 = odstęp od dołu
+                    subFilter = "subtitles=napisy.srt:force_style='FontName=Arial,FontSize=22,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&HA0000000,BorderStyle=3,Alignment=2,MarginV=40'";
+                    ffOpts = { ...ffOpts, cwd: work };
+                }
+            }
+        }
+
         // -stream_loop -1 zapętla montaż, a -shortest ucina na końcu audio → teledysk
         // ZAWSZE ma długość utworu (7:16 zamiast 14s), niezależnie od ilości materiału.
         // genpts + avoid_negative_ts — czysta baza czasu przy zapętleniu (anti-glitch).
-        await execFileAsync(ffmpegPath, ['-y', '-fflags', '+genpts', '-stream_loop', '-1',
+        const ffArgs = ['-y', '-fflags', '+genpts', '-stream_loop', '-1',
             '-f', 'concat', '-safe', '0', '-i', listFile, '-i', audioAbs,
-            '-map', '0:v:0', '-map', '1:a:0', '-shortest', '-avoid_negative_ts', 'make_zero',
-            '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', teledysk],
-            { timeout: 0, maxBuffer: 1024 * 1024 * 500 });
+            '-map', '0:v:0', '-map', '1:a:0', '-shortest', '-avoid_negative_ts', 'make_zero'];
+        if (subFilter) ffArgs.push('-vf', subFilter);
+        ffArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', teledysk);
+        await execFileAsync(ffmpegPath, ffArgs, ffOpts);
 
-        return res.json({ success: true, output: path.relative(process.cwd(), teledysk), segments: segs.length, clipsUsed: clips.length, beats: cuts.length });
+        return res.json({ success: true, output: path.relative(process.cwd(), teledysk), segments: segs.length, clipsUsed: clips.length, beats: cuts.length, subtitles: !!subFilter });
     } catch (err) {
         console.error(`[Teledysk] ❌ ${err.message}`);
         return res.status(500).json({ success: false, message: err.message });
