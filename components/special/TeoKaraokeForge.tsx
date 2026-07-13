@@ -149,13 +149,14 @@ export function TeoKaraokeForge({ onClose }: { onClose: () => void }) {
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
         const msg: string = (errData as any).message || `Błąd HTTP ${response.status}`;
-        // Specyficzny komunikat dla brakujących wektorów / silnika
-        if (/whisper|model|silnik|bin|ggml/i.test(msg)) {
-          toast.error(`Wektory soniczne nie są jeszcze gotowe: ${msg}`, { duration: 6000 });
-        } else if (/nie znaleziono|not found/i.test(msg)) {
+        // Brak silnika AI (Whisper) lub modelu — częste na wersji USB, gdzie
+        // _OtakOs_AI/bin + models nie są dograne. Jasny komunikat, co zrobić.
+        if (/whisper|ggml|silnik|\bmodel\b|\bbin\b/i.test(msg)) {
+          toast.error(`🧠 Silnik Whisper niedostępny: ${msg} — skopiuj _OtakOs_AI/bin i _OtakOs_AI/models na tę Katedrę (wersja USB ich nie zawiera).`, { duration: 9000 });
+        } else if (/nie znaleziono|not found|nie istnieje/i.test(msg)) {
           toast.error(`Plik audio nie istnieje lokalnie. Sprawdź bibliotekę muzyki.`, { duration: 5000 });
         } else {
-          toast.error(msg);
+          toast.error(msg, { duration: 7000 });
         }
         return;
       }
