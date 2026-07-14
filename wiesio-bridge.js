@@ -1913,53 +1913,56 @@ app.post('/api/bridge/execute', async (req, res) => {
                 console.warn(`[Wiesio-Spawacz] ⚠️ Ostrzeżenie: Brak dodatkowych klocków (Start/Adds/End) w ${klockiDir}.`);
             }
 
-            const concatTxtPath = path.join(MOVE_DIR, `concat_${Date.now()}.txt`);
-            await fs.writeFile(concatTxtPath, concatLines.join('\n'), 'utf8');
+            // Kolejność klocków: Start → Adds → wkład (main) → End.
+            const allClips = [...introVideos, ...addVideos, mainVideoPath, ...outroVideos];
 
             const finalOutputName = outputFilename || `CONCAT_${mainVideoFilename}`;
             const outputPath = path.join(BUILD_DIR, finalOutputName);
 
-            console.log(`[Wiesio-Spawacz] 📄 Utworzono mapę klocków:\n${concatLines.join('\n')}`);
-            console.log(`[Wiesio-Spawacz] 🔨 Odpalam FFmpeg... Cel: ${outputPath}`);
+            console.log(`[Wiesio-Spawacz] 📄 Klocki (${allClips.length}):\n${allClips.map(c => '  ' + path.basename(c)).join('\n')}`);
+            console.log(`[Wiesio-Spawacz] 🔨 Odpalam FFmpeg (filter_complex normalize+concat)... Cel: ${outputPath}`);
 
-            // Wykryj FPS głównego wideo — concat demuxer + reencode do sztywnego FPS
-            // (zamiast VFR passthrough) usuwa dryf, który wcześniej kumulował się i ujawniał
-            // dopiero w segmencie "wkład" (3. w kolejności po Start/Adds).
-            let mainFps = 30;
+            // Rozdzielczość + FPS głównego wideo = cel normalizacji (żeby wkład nie tracił jakości).
+            let W = 1920, H = 1080, mainFps = 30;
             try {
                 const { stdout: probeOut } = await execFileAsync(ffprobePath, [
                     '-v', 'error', '-select_streams', 'v:0',
-                    '-show_entries', 'stream=r_frame_rate',
-                    '-of', 'default=noprint_wrappers=1:nokey=1',
-                    mainVideoPath
+                    '-show_entries', 'stream=width,height,r_frame_rate',
+                    '-of', 'csv=p=0', mainVideoPath
                 ]);
-                const [num, den] = probeOut.trim().split('/').map(Number);
+                const [w, h, rate] = probeOut.trim().split(',');
+                W = parseInt(w) || 1920; H = parseInt(h) || 1080;
+                const [num, den] = String(rate).split('/').map(Number);
                 if (num && den) mainFps = Math.round(num / den) || 30;
             } catch (e) {
-                console.warn(`[Wiesio-Spawacz] ⚠️ Nie wykryto FPS głównego wideo, używam domyślnego ${mainFps}fps.`);
+                console.warn(`[Wiesio-Spawacz] ⚠️ Nie wykryto parametrów głównego wideo, używam ${W}x${H}@${mainFps}.`);
             }
+            if (W % 2) W++; if (H % 2) H++; // libx264 wymaga parzystych wymiarów
 
-            // REFAKTORYZACJA: execFileAsync dla FFmpeg Concatenator
-            // Zamiast kopiowania, wymuszamy nowy render (ujednolici to FPS, bazę czasu i ścieżki)
+            // KLUCZ: klocki bywają różnego FPS (24/30/60) i rozdzielczości. Stary concat
+            // demuxer sklejał surowe strumienie → aresample dopychał CISZĄ przy joinach
+            // (Suweren: +1:30). Teraz KAŻDY klip normalizowany (scale+pad+fps+audio) filtrem,
+            // potem concat filter — dokładne długości, zero paddingu, czyste A/V.
+            const inputs = [];
+            allClips.forEach(c => { inputs.push('-i', c); });
+            const fc = [];
+            allClips.forEach((_, i) => {
+                fc.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,fps=${mainFps},setsar=1[v${i}]`);
+                fc.push(`[${i}:a]aresample=48000,asetpts=PTS-STARTPTS[a${i}]`);
+            });
+            const concatIn = allClips.map((_, i) => `[v${i}][a${i}]`).join('');
+            const filter = fc.join(';') + ';' + concatIn + `concat=n=${allClips.length}:v=1:a=1[outv][outa]`;
+
             await execFileAsync(ffmpegPath, [
-                '-fflags', '+genpts',   // regeneruj PTS między sklejanymi segmentami (concat demuxer ich nie zeruje)
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', concatTxtPath,
-                '-fps_mode', 'cfr',     // stały FPS zamiast VFR passthrough — eliminuje kumulujący się dryf (następca -vsync)
-                '-r', String(mainFps),
-                '-af', 'aresample=async=1:first_pts=0', // resync audio per-strumień (zastępuje przestarzałe -async 1)
-                '-avoid_negative_ts', 'make_zero',
-                '-c:v', 'libx264',    // nowy, uniwersalny kodek wideo
-                '-preset', 'fast',   // szybkość spawania
-                '-c:a', 'aac',       // jednolity kodek audio
-                '-b:a', '192k',      // stały bitrate audio
-                '-y',
-                outputPath
+                ...inputs,
+                '-filter_complex', filter,
+                '-map', '[outv]', '-map', '[outa]',
+                '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac', '-b:a', '192k',
+                '-y', outputPath
             ], { timeout: 0, maxBuffer: 1024 * 1024 * 500 });
 
-            try { await fs.unlink(concatTxtPath); } catch (e) { }
-            console.log(`[Wiesio-Spawacz] ✨ Magia dokonana. Posprzątano.`);
+            console.log(`[Wiesio-Spawacz] ✨ Magia dokonana.`);
 
             return res.json({
                 success: true,
