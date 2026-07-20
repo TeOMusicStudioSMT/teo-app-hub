@@ -28,7 +28,7 @@ const BRIDGE = 'http://127.0.0.1:3001';
 
 type LiveState = Record<string, { status: string; load: number }>;
 
-export const NeuralMap: React.FC<{ lang?: 'pl' | 'en' }> = ({ lang = 'pl' }) => {
+export const NeuralMap: React.FC<{ lang?: 'pl' | 'en' | 'it' }> = ({ lang = 'pl' }) => {
   const [hovered, setHovered] = useState<string | null>(null);
   const [pulse, setPulse] = useState(0);
   const [live, setLive] = useState<LiveState | null>(null);

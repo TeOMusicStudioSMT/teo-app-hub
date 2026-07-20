@@ -10,16 +10,19 @@
  * CAŁEGO UI, żeby „wszystko budowało się w tym języku".
  */
 
-export type Lang = 'pl' | 'en';
+export type Lang = 'pl' | 'en' | 'it';
+export const SUPPORTED_LANGS: Lang[] = ['pl', 'en', 'it'];
 const KEY = 'otakos_lang';
 
-/** Wykryj język sprzętu (raz), zapamiętaj, zwróć. */
+/** Wykryj język sprzętu (raz), zapamiętaj, zwróć. Rozpoznaje pl/it, reszta → en. */
 export function detectLang(): Lang {
   try {
     const stored = localStorage.getItem(KEY);
-    if (stored === 'pl' || stored === 'en') return stored;
+    if (stored && (SUPPORTED_LANGS as string[]).includes(stored)) return stored as Lang;
     const nav = (navigator.language || navigator.languages?.[0] || 'pl').toLowerCase();
-    const lang: Lang = nav.startsWith('pl') ? 'pl' : 'en';
+    let lang: Lang = 'en';
+    if (nav.startsWith('pl')) lang = 'pl';
+    else if (nav.startsWith('it')) lang = 'it';
     localStorage.setItem(KEY, lang);
     return lang;
   } catch {
