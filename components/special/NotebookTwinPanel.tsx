@@ -78,6 +78,7 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
             {
                 hostA: `[BROADCAST ${timestamp}] ${isBroadcasting ? '● Rozpoczęto transmisję wideo RTMP na żywo (YouTube Ingest)' : '◯ Zakończono transmisję wideo'}`,
                 hostB: `[AI ORB 0.00G] Strumień ${isBroadcasting ? 'aktywny' : 'zakończony'}. Zdarzenie przekazane do pamięci Księgi Odbioru (KOOM).`,
+                triggerAnimation: 'BOTH',
             }
         ]);
     }, []);
