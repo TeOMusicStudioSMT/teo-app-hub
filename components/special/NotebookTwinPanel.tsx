@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import { Mic, Play, RotateCcw } from 'lucide-react';
 import { NotebookPodcastService, SOVEREIGN_WELCOME, type PodcastTurn, type TwinAnimation } from '../../src/services/NotebookPodcastService';
 import KsiegaOdbioru from './KsiegaOdbioru';
+import { PodcastCore } from '../PodcastCore';
 
 const service = new NotebookPodcastService();
 const STORE_KEY = 'teo_podcast_twin_log';   // pamięć trwała rozmowy (Rozczytelnia agentów)
@@ -60,7 +61,7 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
     const [turns, setTurns] = useState<PodcastTurn[]>(mem0.turns);
     const [anim, setAnim]   = useState<TwinAnimation>('IDLE');
     const [busy, setBusy]   = useState(false);
-    const [view, setView]   = useState<'rozmowa' | 'koom'>('rozmowa');
+    const [view, setView]   = useState<'rozmowa' | 'video_podcast' | 'koom'>('rozmowa');
     const logRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [turns]);
@@ -69,6 +70,17 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
     useEffect(() => {
         try { localStorage.setItem(STORE_KEY, JSON.stringify({ topic, turns })); } catch { /* limit storage */ }
     }, [topic, turns]);
+
+    const handleStreamStateChange = useCallback((isBroadcasting: boolean) => {
+        const timestamp = new Date().toLocaleTimeString();
+        setTurns(prev => [
+            ...prev,
+            {
+                hostA: `[BROADCAST ${timestamp}] ${isBroadcasting ? '● Rozpoczęto transmisję wideo RTMP na żywo (YouTube Ingest)' : '◯ Zakończono transmisję wideo'}`,
+                hostB: `[AI ORB 0.00G] Strumień ${isBroadcasting ? 'aktywny' : 'zakończony'}. Zdarzenie przekazane do pamięci Księgi Odbioru (KOOM).`,
+            }
+        ]);
+    }, []);
 
     const generate = useCallback(async () => {
         if (busy || !topic.trim()) return;
@@ -93,10 +105,10 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
     const aActive = busy || anim === 'A_SPEAKING' || anim === 'BOTH';
     const bActive = busy || anim === 'B_SPEAKING' || anim === 'BOTH';
 
-    // Zakładki: 🎙️ Rozmowa (Rozczytelnia) | 📖 Księga KOOM
+    // Zakładki: 🎙️ Rozmowa (Rozczytelnia) | 📺 Wideopodcast 1/1 | 📖 Księga KOOM
     const tabBar = (
         <div className="flex items-center gap-2 mb-2">
-            {([['rozmowa', '🎙️ Rozmowa'], ['koom', '📖 Księga KOOM']] as const).map(([k, label]) => (
+            {([['rozmowa', '🎙️ Rozmowa'], ['video_podcast', '📺 Wideopodcast 1/1'], ['koom', '📖 Księga KOOM']] as const).map(([k, label]) => (
                 <button key={k} onClick={() => setView(k)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-colors border
                         ${view === k ? 'bg-fuchsia-700/50 text-white border-fuchsia-400/50' : 'bg-slate-900/60 text-slate-400 border-slate-700 hover:text-slate-200'}`}>
@@ -111,6 +123,17 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
 
     if (view === 'koom') {
         return <div className="w-full max-w-3xl mx-auto">{tabBar}<KsiegaOdbioru /></div>;
+    }
+
+    if (view === 'video_podcast') {
+        return (
+            <div className="w-full max-w-4xl mx-auto space-y-3">
+                {tabBar}
+                <div className="w-full h-[650px]">
+                    <PodcastCore onStreamStateChange={handleStreamStateChange} />
+                </div>
+            </div>
+        );
     }
 
     return (
