@@ -1,0 +1,65 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  🏗️ Cloud Build → Cloud Run (graviton.pw / teo-app-hub)
+#
+#  NAPRAWA BŁĘDU AKTYWATORA:
+#  "if 'build.service_account' is specified, the build must either (a) specify
+#   'build.logs_bucket' ... or (c) use CLOUD_LOGGING_ONLY / NONE logging options"
+#  ← Aktywator jedzie na własnym koncie usługi, a takie buildy NIE MOGĄ pisać
+#    logów do domyślnego kubła Google. Sekcja `options.logging` na dole to gasi.
+#
+#  Budujemy etap `web` z Dockerfile (nginx + Vite dist na :8080).
+# ══════════════════════════════════════════════════════════════════════════════
+
+substitutions:
+  _REGION: europe-west1
+  _SERVICE: teo-app-hub
+  _IMAGE: europe-west1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/teo-app-hub
+  # Limit skalowania = tarcza kosztowa. Publiczna strona nie rozjedzie się na 20 instancji.
+  _MAX_INSTANCES: '3'
+
+steps:
+  # ── 1. Obraz (etap `web`: nginx serwujący zbudowany frontend) ───────────────
+  - id: buduj
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --target=web
+      - -t
+      - ${_IMAGE}:${SHORT_SHA}
+      - -t
+      - ${_IMAGE}:latest
+      # Klucz Gemini: NIE wpisywać tutaj. Gdy będzie potrzebny w buildzie,
+      # podepnij Secret Manager i dodaj --build-arg VITE_GEMINI_API_KEY=$$KLUCZ.
+      - .
+
+  # ── 2. Wypchnięcie do Artifact Registry ────────────────────────────────────
+  - id: wypchnij
+    name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags, '${_IMAGE}']
+
+  # ── 3. Wdrożenie na Cloud Run ──────────────────────────────────────────────
+  - id: wdroz
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_IMAGE}:${SHORT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --max-instances=${_MAX_INSTANCES}
+      - --min-instances=0
+
+images:
+  - '${_IMAGE}:${SHORT_SHA}'
+  - '${_IMAGE}:latest'
+
+options:
+  # ⬇️ TO JEST TA JEDNA LINIJKA, PRZEZ KTÓRĄ AKTYWATOR SIĘ WYWALAŁ.
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+timeout: 1800s
