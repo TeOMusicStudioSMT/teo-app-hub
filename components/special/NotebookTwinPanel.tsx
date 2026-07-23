@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import { Mic, Play, RotateCcw } from 'lucide-react';
 import { NotebookPodcastService, SOVEREIGN_WELCOME, type PodcastTurn, type TwinAnimation } from '../../src/services/NotebookPodcastService';
 import KsiegaOdbioru from './KsiegaOdbioru';
+import KwantowyTunel from './KwantowyTunel';
 import { PodcastCore } from '../PodcastCore';
 
 const service = new NotebookPodcastService();
@@ -140,6 +141,7 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
     return (
         <div className="w-full max-w-3xl mx-auto">
         {tabBar}
+        <KwantowyTunel />
         <div className="bg-[#05080d] border border-fuchsia-500/25 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.6)] font-sans text-slate-200">
             {/* HEADER */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-fuchsia-500/20 bg-gradient-to-r from-[#140518] to-[#0a0814]">

@@ -5,7 +5,11 @@ import App from './App';
 import { Provider } from 'jotai';
 import { KatedraRadioProvider } from './context/KatedraRadioContext';
 import { I18nProvider } from './lib/i18n';
+import { hydrateTunnelFromLocation } from './lib/bridgeService';
 import './index.css';
+
+// 📡 Dispatch: `?tunnel=...` w adresie (kod QR z Katedry) → zapis tunelu przed startem UI.
+hydrateTunnelFromLocation();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

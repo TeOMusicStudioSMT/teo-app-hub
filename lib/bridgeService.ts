@@ -6,16 +6,75 @@
  */
 
 const DEFAULT_BRIDGE_URL = 'http://127.0.0.1:3001/api/bridge/execute';
+const BRIDGE_PATH = '/api/bridge/execute';
+
+/** Klucz Kwantowego Tunelu (Cloudflare) w localStorage. */
+export const TUNNEL_STORAGE_KEY = 'teodash_tunnel_url';
+
+/**
+ * Normalizuje adres tunelu. Suweren może wkleić samą bazę
+ * (`https://cos-tam.trycloudflare.com`) albo pełną ścieżkę — obie formy działają.
+ */
+export const normalizeTunnelUrl = (raw: string): string => {
+    let url = raw.trim().replace(/\s+/g, '');
+    if (!url) return '';
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+    url = url.replace(/\/+$/, '');
+    if (!url.includes(BRIDGE_PATH)) url = `${url}${BRIDGE_PATH}`;
+    return url;
+};
+
+/** Odczyt zapisanego tunelu (pusty string = brak / tryb lokalny). */
+export const getTunnelUrl = (): string => {
+    if (typeof window === 'undefined') return '';
+    try { return (localStorage.getItem(TUNNEL_STORAGE_KEY) || '').trim(); } catch { return ''; }
+};
+
+/** Zapis tunelu. Pusty adres kasuje wpis → powrót do trybu lokalnego. */
+export const setTunnelUrl = (raw: string): string => {
+    const normalized = normalizeTunnelUrl(raw);
+    if (typeof window === 'undefined') return normalized;
+    try {
+        if (normalized) localStorage.setItem(TUNNEL_STORAGE_KEY, normalized);
+        else localStorage.removeItem(TUNNEL_STORAGE_KEY);
+    } catch { /* storage zablokowany — zostaje tryb lokalny */ }
+    return normalized;
+};
+
+/**
+ * 📡 DISPATCH — hydratacja tunelu z adresu strony.
+ * Telefon otwiera `https://graviton.pw/?tunnel=<adres>` (np. z kodu QR), a Katedra
+ * sama zapisuje tunel i czyści parametr z paska adresu (żeby nie wisiał w historii).
+ * Zwraca zapisany adres albo '' gdy w URL nic nie było.
+ */
+export const hydrateTunnelFromLocation = (): string => {
+    if (typeof window === 'undefined') return '';
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const raw = params.get('tunnel');
+        if (!raw) return '';
+
+        const saved = setTunnelUrl(raw);
+        params.delete('tunnel');
+        const rest = params.toString();
+        window.history.replaceState({}, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`);
+        return saved;
+    } catch {
+        return '';
+    }
+};
+
+/** Link dispatchowy dla telefonu — to on ląduje w kodzie QR. */
+export const buildDispatchUrl = (tunnel: string, base = 'https://graviton.pw'): string => {
+    const normalized = normalizeTunnelUrl(tunnel);
+    if (!normalized) return '';
+    return `${base.replace(/\/+$/, '')}/?tunnel=${encodeURIComponent(normalized)}`;
+};
 
 const getBridgeUrl = (): string => {
-    // Sprawdź czy jesteśmy w przeglądarce i czy jest ustawiony zewnętrzny tunel
-    if (typeof window !== 'undefined') {
-        const tunnelUrl = localStorage.getItem('teodash_tunnel_url');
-        if (tunnelUrl && tunnelUrl.trim().length > 0) {
-            return tunnelUrl;
-        }
-    }
-    return DEFAULT_BRIDGE_URL;
+    // Kwantowy Tunel (Cloudflare) ma pierwszeństwo; brak → bezpieczny powrót na localhost.
+    const tunnelUrl = getTunnelUrl();
+    return tunnelUrl ? normalizeTunnelUrl(tunnelUrl) : DEFAULT_BRIDGE_URL;
 };
 
 export interface BridgeResponse {
@@ -25,8 +84,8 @@ export interface BridgeResponse {
 }
 
 export const executeBridgeCommand = async (command: string): Promise<BridgeResponse> => {
+    const url = getBridgeUrl();
     try {
-        const url = getBridgeUrl();
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -47,7 +106,7 @@ export const executeBridgeCommand = async (command: string): Promise<BridgeRespo
         // Obsługa przypadku, w którym serwer Wiesia po prostu nie jest uruchomiony
         return {
             success: false,
-            message: 'Śluza zamknięta: Serwer Wiesława jest wyłączony lub nieosiągalny na 127.0.0.1:3001.',
+            message: `Śluza zamknięta: Serwer Wiesława jest wyłączony lub nieosiągalny pod ${url}.`,
             error: error instanceof Error ? error.message : String(error)
         };
     }
@@ -63,8 +122,8 @@ export interface GenericBridgeResponse extends BridgeResponse {
  * Wysyła generyczne polecenie do Śluzy
  */
 export const sendCommand = async (action: string, params: Record<string, any> = {}): Promise<GenericBridgeResponse> => {
+    const url = getBridgeUrl();
     try {
-        const url = getBridgeUrl();
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -83,7 +142,7 @@ export const sendCommand = async (action: string, params: Record<string, any> = 
         console.error(`[AntiGravity Bridge] Błąd połączenia ze Śluzą: ${action} failed`, error);
         return {
             success: false,
-            message: 'Błąd wymiaru: Serwer Wiesława jest wyłączony lub nieosiągalny.',
+            message: `Błąd wymiaru: Serwer Wiesława jest nieosiągalny pod ${url}.`,
             error: error instanceof Error ? error.message : String(error)
         };
     }

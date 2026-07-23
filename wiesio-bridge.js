@@ -121,20 +121,27 @@ const LOCAL_CHANNELS = {
   NODES_ALT: 'http://127.0.0.1:5175'
 };
 
+// Kanały lokalne trzymamy dla czytelności (kto normalnie puka do Śluzy):
+const KNOWN_ORIGINS = [
+    LOCAL_CHANNELS.HUB,
+    LOCAL_CHANNELS.MUSIC,
+    LOCAL_CHANNELS.VIDEO,
+    LOCAL_CHANNELS.NODES,
+    LOCAL_CHANNELS.HUB_ALT,
+    LOCAL_CHANNELS.MUSIC_ALT,
+    LOCAL_CHANNELS.VIDEO_ALT,
+    LOCAL_CHANNELS.NODES_ALT,
+    'https://otakos.wtf',
+    'http://localhost:3000',   // dev strony otakos.wtf (mapa AGI live)
+    'http://127.0.0.1:3000'
+];
+
 app.use(cors({
-    origin: [
-        LOCAL_CHANNELS.HUB, 
-        LOCAL_CHANNELS.MUSIC, 
-        LOCAL_CHANNELS.VIDEO, 
-        LOCAL_CHANNELS.NODES, 
-        LOCAL_CHANNELS.HUB_ALT, 
-        LOCAL_CHANNELS.MUSIC_ALT, 
-        LOCAL_CHANNELS.VIDEO_ALT, 
-        LOCAL_CHANNELS.NODES_ALT,
-        'https://otakos.wtf',
-        'http://localhost:3000',   // dev strony otakos.wtf (mapa AGI live)
-        'http://127.0.0.1:3000'
-    ],
+    // 🛰️ Kwantowy Tunel (Cloudflare): smartfon puka z losowego origin
+    // (*.trycloudflare.com), więc odbijamy KAŻDY origin — odpowiednik `origin: '*'`,
+    // ale zgodny z `credentials: true` (przy gołej gwiazdce przeglądarka blokuje
+    // żądania z ciasteczkami). Śluza i tak nasłuchuje tylko tam, gdzie Suweren ją wystawi.
+    origin: true,
     methods:         ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders:  ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cache-Control'],
     exposedHeaders:  ['Content-Type', 'X-Error-Code'],
@@ -6449,6 +6456,7 @@ app.listen(PORT, () => {
     console.log(` 🕸️  KnowledgeGraphService — Archiwista Wiedzy`);
     console.log(`================================================`);
     console.log(` 👉 Muzyka: _OtakOs_Muzyka/`);
+    console.log(` 🛰️  CORS: każdy origin (Kwantowy Tunel). Kanały lokalne: ${KNOWN_ORIGINS.length}`);
     console.log(` 🧠 LLM: POST /api/bridge/execute`);
     console.log(` 🧠 POST /api/claude  ← Claude proxy (SSE)`);
     console.log(` 🔵 POST /api/gemini  ← Gemini proxy (SSE)`);
