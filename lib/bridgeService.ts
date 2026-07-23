@@ -42,6 +42,16 @@ export const setTunnelUrl = (raw: string): string => {
 };
 
 /**
+ * Baza Mostu (sam origin, bez ścieżki) — dla endpointów innych niż Śluza:
+ * `/api/ollama`, `/api/gemini`, `/api/mechanic/*`. Jedzie tunelem, gdy tunel stoi.
+ */
+export const getBridgeBase = (): string => {
+    const tunnel = getTunnelUrl();
+    const url = tunnel ? normalizeTunnelUrl(tunnel) : DEFAULT_BRIDGE_URL;
+    return url.replace(BRIDGE_PATH, '').replace(/\/+$/, '');
+};
+
+/**
  * 📡 DISPATCH — hydratacja tunelu z adresu strony.
  * Telefon otwiera `https://graviton.pw/?tunnel=<adres>` (np. z kodu QR), a Katedra
  * sama zapisuje tunel i czyści parametr z paska adresu (żeby nie wisiał w historii).

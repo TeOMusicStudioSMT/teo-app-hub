@@ -84,6 +84,20 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
         ]);
     }, []);
 
+    // 💉 Wnioski Orba wstrzyknięte do Księgi lądują też w skrypcie rozmowy —
+    // Rozczytelnia i KOOM widzą to samo zdarzenie, każde po swojemu.
+    const handlePlanInjected = useCallback((texts: string[]) => {
+        if (!texts.length) return;
+        setTurns(prev => [
+            ...prev,
+            {
+                hostA: `[KOOM 💉] Wniosek z anteny → Księga Odbioru (${texts.length} zadań NEW dla Mechanika).`,
+                hostB: texts.map(t => `• ${t}`).join('\n'),
+                triggerAnimation: 'B_SPEAKING',
+            }
+        ]);
+    }, []);
+
     const generate = useCallback(async () => {
         if (busy || !topic.trim()) return;
         setBusy(true); setAnim('BOTH');
@@ -132,7 +146,7 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
             <div className="w-full max-w-4xl mx-auto space-y-3">
                 {tabBar}
                 <div className="w-full h-[650px]">
-                    <PodcastCore onStreamStateChange={handleStreamStateChange} />
+                    <PodcastCore onStreamStateChange={handleStreamStateChange} onPlanInjected={handlePlanInjected} />
                 </div>
             </div>
         );

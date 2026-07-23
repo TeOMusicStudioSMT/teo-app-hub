@@ -1,13 +1,85 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { KoomService } from '../src/services/KoomService';
+import { getBridgeBase } from '../lib/bridgeService';
 
 // Types & Interfaces
 export type LayoutMode = 'GRID' | 'FOCUS_SELF' | 'FOCUS_GUEST' | 'FOCUS_ORB';
+
+/** Źródło inteligencji AI Orba. LOCAL = zero tokenów chmury, praca offline. */
+export type BrainMode = 'CLOUD' | 'LOCAL';
+
+/** Persona Orba — pod tą flagą wniosek ląduje w Księdze Odbioru. */
+export type OrbPersona = 'ISKRA' | 'ECHO';
+
+const BRAIN_KEY = 'teo_podcast_brain';
+const LOCAL_MODEL_KEY = 'otakos_active_model';   // wspólny z resztą Katedry
+const CLOUD_MODEL = 'gemini-1.5-flash';
+
+/**
+ * 🎚️ SONIC — domyślny profil głosu Katedry.
+ * Głęboki, stabilny, magnetyczny: pierś podbita, ostrość ścięta, dynamika spięta
+ * kompresorem, żeby ton nie skakał. Wartości wyłuskane na zewnątrz — to jest
+ * pokrętło do strojenia, nie magiczne liczby zakopane w kodzie.
+ */
+export const SONIC_VOICE_PROFILE = {
+  chest:      { frequency: 140,  gain: 4.5 },                 // lowshelf — głębia, „pierś"
+  body:       { frequency: 320,  gain: 2.0, Q: 0.8 },         // peaking — magnetyzm, ciało tonu
+  presence:   { frequency: 2600, gain: 1.5, Q: 0.9 },         // peaking — zrozumiałość spółgłosek
+  warmth:     { frequency: 7200, Q: 0.7 },                    // lowpass — ocieplenie, ścięcie szkła
+  stability:  { threshold: -24, knee: 24, ratio: 3.2, attack: 0.006, release: 0.22 },
+  makeupGain: 1.15,
+} as const;
+
+/**
+ * Buduje łańcuch Web Audio nadający sygnałowi profil Sonica.
+ * Zwraca węzeł wyjściowy — podłącz go do analizatora i/lub głośników.
+ */
+export const createSonicChain = (ctx: BaseAudioContext, source: AudioNode): GainNode => {
+  const P = SONIC_VOICE_PROFILE;
+
+  const chest = ctx.createBiquadFilter();
+  chest.type = 'lowshelf';
+  chest.frequency.value = P.chest.frequency;
+  chest.gain.value = P.chest.gain;
+
+  const body = ctx.createBiquadFilter();
+  body.type = 'peaking';
+  body.frequency.value = P.body.frequency;
+  body.Q.value = P.body.Q;
+  body.gain.value = P.body.gain;
+
+  const presence = ctx.createBiquadFilter();
+  presence.type = 'peaking';
+  presence.frequency.value = P.presence.frequency;
+  presence.Q.value = P.presence.Q;
+  presence.gain.value = P.presence.gain;
+
+  const warmth = ctx.createBiquadFilter();
+  warmth.type = 'lowpass';
+  warmth.frequency.value = P.warmth.frequency;
+  warmth.Q.value = P.warmth.Q;
+
+  const stability = ctx.createDynamicsCompressor();
+  stability.threshold.value = P.stability.threshold;
+  stability.knee.value      = P.stability.knee;
+  stability.ratio.value     = P.stability.ratio;
+  stability.attack.value    = P.stability.attack;
+  stability.release.value   = P.stability.release;
+
+  const out = ctx.createGain();
+  out.gain.value = P.makeupGain;
+
+  source.connect(chest).connect(body).connect(presence).connect(warmth).connect(stability).connect(out);
+  return out;
+};
 
 export interface PodcastCoreProps {
   wsUrl?: string;
   onStreamStateChange?: (isBroadcasting: boolean) => void;
   guestStream?: MediaStream | null;
   audioStreamSource?: MediaStream | AudioNode | null;
+  /** Wywoływane, gdy wypowiedź Orba trafi do Księgi Odbioru jako zadanie NEW. */
+  onPlanInjected?: (texts: string[]) => void;
 }
 
 export const PodcastCore: React.FC<PodcastCoreProps> = ({
@@ -15,6 +87,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
   onStreamStateChange,
   guestStream = null,
   audioStreamSource = null,
+  onPlanInjected,
 }) => {
   // --- States ---
   const [layout, setLayout] = useState<LayoutMode>('GRID');
@@ -22,6 +95,19 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
   const [isCamActive, setIsCamActive] = useState<boolean>(false);
   const [isMicMuted, setIsMicMuted] = useState<boolean>(false);
   const [activeSpeaker, setActiveSpeaker] = useState<'SELF' | 'GUEST' | 'ORB'>('SELF');
+
+  // --- Mózg Orba ---
+  const [brain, setBrain] = useState<BrainMode>(() => {
+    try { return (localStorage.getItem(BRAIN_KEY) as BrainMode) || 'LOCAL'; } catch { return 'LOCAL'; }
+  });
+  const [persona, setPersona] = useState<OrbPersona>('ECHO');
+  const [orbPrompt, setOrbPrompt] = useState('');
+  const [orbAnswer, setOrbAnswer] = useState('');
+  const [orbBusy, setOrbBusy] = useState(false);
+  const [injectedCount, setInjectedCount] = useState(0);
+  const [sonicOn, setSonicOn] = useState(true);
+
+  useEffect(() => { try { localStorage.setItem(BRAIN_KEY, brain); } catch { /* noop */ } }, [brain]);
 
   // --- Refs ---
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -66,18 +152,34 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
     setIsCamActive(false);
   }, []);
 
-  // 2. AI Orb (Web Audio API Analyser)
-  const initAudioAnalyser = (streamSource: MediaStream) => {
+  // 2. AI Orb (Web Audio API Analyser + profil Sonica)
+  //    `sonic`      → sygnał przechodzi przez łańcuch ocieplający (głos Katedry)
+  //    `toSpeakers` → sygnał leci też na wyjście; NIGDY dla mikrofonu (sprzężenie!)
+  const initAudioAnalyser = (
+    input: MediaStream | AudioNode,
+    opts: { sonic?: boolean; toSpeakers?: boolean } = {},
+  ) => {
     try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const audioCtx = new AudioCtx();
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 128;
-      
-      const source = audioCtx.createMediaStreamSource(streamSource);
-      source.connect(analyser);
+      const isNode = typeof AudioNode !== 'undefined' && input instanceof AudioNode;
 
-      audioCtxRef.current = audioCtx;
+      // Węzeł obcy przynosi własny kontekst — nie wolno mieszać kontekstów.
+      let ctx: BaseAudioContext;
+      if (isNode) {
+        ctx = (input as AudioNode).context;
+      } else {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        ctx = audioCtxRef.current ?? new AudioCtx();
+        audioCtxRef.current = ctx as AudioContext;
+      }
+
+      const source = isNode ? (input as AudioNode) : (ctx as AudioContext).createMediaStreamSource(input as MediaStream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 128;
+
+      const tail: AudioNode = opts.sonic ? createSonicChain(ctx, source) : source;
+      tail.connect(analyser);
+      if (opts.toSpeakers) tail.connect(ctx.destination);
+
       analyserRef.current = analyser;
 
       drawOrb();
@@ -86,18 +188,29 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
     }
   };
 
+  // Głos AI Orba (zewnętrzne źródło) — zawsze przez profil Sonica, prosto w głośniki.
+  useEffect(() => {
+    if (!audioStreamSource) return;
+    initAudioAnalyser(audioStreamSource, { sonic: sonicOn, toSpeakers: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioStreamSource, sonicOn]);
+
   const drawOrb = () => {
     const canvas = orbCanvasRef.current;
-    const analyser = analyserRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const bufferLength = analyser ? analyser.frequencyBinCount : 64;
+    // Jedna pętla rAF na Orb — przy przełączeniu źródła dźwięku nie mnożymy klatek.
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+
+    const bufferLength = 64;
     const dataArray = new Uint8Array(bufferLength);
 
     const render = () => {
+      // Analizator czytany co klatkę — Orb podłapuje zmianę źródła w locie.
+      const analyser = analyserRef.current;
       if (analyser) {
         analyser.getByteFrequencyData(dataArray);
       } else {
@@ -267,6 +380,79 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
     };
   }, [initLocalStream, stopLocalStream]);
 
+  // 6. MÓZG ORBA — jedno zapytanie, dwa źródła inteligencji.
+  //    LOCAL → /api/ollama (Gemma 4 na sprzęcie Suwerena, ZERO tokenów chmury)
+  //    CLOUD → /api/gemini (Flash, gdy Suweren świadomie sięga po chmurę)
+  //    Oba idą przez Most, więc działają też przez Kwantowy Tunel z telefonu.
+  const askOrb = useCallback(async (question: string) => {
+    const prompt = question.trim();
+    if (!prompt || orbBusy) return;
+
+    setOrbBusy(true);
+    setOrbAnswer('');
+    setActiveSpeaker('ORB');
+
+    const base = getBridgeBase();
+    const endpoint = brain === 'LOCAL' ? '/api/ollama' : '/api/gemini';
+    const model = brain === 'LOCAL'
+      ? (localStorage.getItem(LOCAL_MODEL_KEY) || 'gemma4')
+      : CLOUD_MODEL;
+
+    const system =
+      'Jesteś AI Orbem wideopodcastu Katedry OtakOS. Odpowiadaj po polsku, zwięźle (2-4 zdania), ' +
+      'konkretnie i kończ jasnym wnioskiem albo propozycją działania — np. "Powinniśmy zoptymalizować ' +
+      'zużycie energii o 15%". Bez wstępów i bez lania wody.';
+
+    let full = '';
+    try {
+      const res = await fetch(`${base}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, system, messages: [{ role: 'user', content: prompt }] }),
+      });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      // Strumień SSE — tekst dopisuje się na żywo, jak w rozmowie.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === 'text' && evt.text) { full += evt.text; setOrbAnswer(full); }
+            if (evt.type === 'error') throw new Error(evt.error);
+          } catch { /* niedomknięty kawałek JSON — dojdzie w następnej porcji */ }
+        }
+      }
+
+      if (!full.trim()) {
+        setOrbAnswer(brain === 'LOCAL'
+          ? '(Orb milczy — sprawdź, czy Ollama stoi i model jest pobrany.)'
+          : '(Orb milczy — sprawdź klucz Gemini w Moście.)');
+        return;
+      }
+
+      // 💉 Wnioski prosto z anteny do Księgi Odbioru — jako zadania NEW dla Mechanika.
+      const injected = KoomService.injectFromSpeech(full, persona);
+      if (injected.length) {
+        setInjectedCount(c => c + injected.length);
+        onPlanInjected?.(injected.map(p => p.text));
+      }
+    } catch (e) {
+      setOrbAnswer(`(Most nieosiągalny: ${e instanceof Error ? e.message : String(e)})`);
+    } finally {
+      setOrbBusy(false);
+      setActiveSpeaker('SELF');
+    }
+  }, [brain, persona, orbBusy, onPlanInjected]);
+
   const toggleMic = () => {
     if (localStreamRef.current) {
       const audioTrack = localStreamRef.current.getAudioTracks()[0];
@@ -371,6 +557,87 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
             </span>
           </div>
         </div>
+      </div>
+
+      {/* --- MÓZG ORBA (źródło inteligencji + wtrysk do Księgi) --- */}
+      <div className="z-10 bg-black/40 px-4 py-3 rounded-xl border border-white/10 backdrop-blur-md mb-3 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-mono tracking-widest text-gray-400 mr-1">MÓZG ORBA:</span>
+
+          {(['LOCAL', 'CLOUD'] as BrainMode[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setBrain(mode)}
+              title={mode === 'LOCAL'
+                ? 'Gemma 4 na sprzęcie Suwerena — offline, zero tokenów chmury'
+                : 'Gemini Flash przez Most — zużywa tokeny chmury'}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-mono transition-all ${
+                brain === mode
+                  ? mode === 'LOCAL'
+                    ? 'bg-emerald-500 text-black font-bold shadow-md shadow-emerald-500/30'
+                    : 'bg-amber-500 text-black font-bold shadow-md shadow-amber-500/30'
+                  : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {mode === 'LOCAL' ? '🏠 LOCAL · Gemma 4' : '☁️ CLOUD · Flash'}
+            </button>
+          ))}
+
+          <span className="text-[10px] font-mono text-gray-600">|</span>
+
+          <button
+            onClick={() => setPersona(p => (p === 'ECHO' ? 'ISKRA' : 'ECHO'))}
+            title="Pod tą flagą wniosek trafia do Księgi Odbioru"
+            className="px-3 py-1.5 rounded-md text-[11px] font-mono bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
+            style={{ color: persona === 'ISKRA' ? '#f472b6' : '#22d3ee' }}
+          >
+            {persona === 'ISKRA' ? '🔥 ISKRA' : '🌊 ECHO'}
+          </button>
+
+          <button
+            onClick={() => setSonicOn(s => !s)}
+            title="Profil głosu Sonica — ocieplenie i stabilizacja pasma AI Orba"
+            className={`px-3 py-1.5 rounded-md text-[11px] font-mono transition-all border ${
+              sonicOn
+                ? 'bg-violet-600/30 border-violet-400/50 text-violet-200'
+                : 'bg-white/5 border-white/10 text-gray-500'
+            }`}
+          >
+            🎚️ SONIC {sonicOn ? 'ON' : 'OFF'}
+          </button>
+
+          {injectedCount > 0 && (
+            <span className="ml-auto text-[10px] font-mono text-amber-300 bg-amber-950/40 border border-amber-500/30 px-2.5 py-1 rounded-md">
+              📖 {injectedCount} → KSIĘGA
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            value={orbPrompt}
+            onChange={(e) => setOrbPrompt(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && askOrb(orbPrompt)}
+            placeholder="Zapytaj AI Orba na antenie — wnioski lecą prosto do Księgi Odbioru..."
+            className="flex-1 bg-black/50 border border-cyan-700/30 focus:border-cyan-500/60 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none"
+          />
+          <button
+            onClick={() => askOrb(orbPrompt)}
+            disabled={orbBusy || !orbPrompt.trim()}
+            className="px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest bg-gradient-to-r from-cyan-500 to-blue-600 text-black disabled:opacity-40 transition-all"
+          >
+            {orbBusy ? 'MYŚLI...' : 'ZAPYTAJ ORB'}
+          </button>
+        </div>
+
+        {orbAnswer && (
+          <div className="text-[11px] leading-relaxed text-slate-300 bg-black/40 border border-cyan-900/40 rounded-lg p-2.5 max-h-28 overflow-y-auto whitespace-pre-wrap">
+            <span className="font-bold" style={{ color: persona === 'ISKRA' ? '#f472b6' : '#22d3ee' }}>
+              {persona === 'ISKRA' ? '🔥 ISKRA' : '🌊 ECHO'}:
+            </span>{' '}
+            {orbAnswer}
+          </div>
+        )}
       </div>
 
       {/* --- BOTTOM CONTROLS --- */}

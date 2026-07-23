@@ -10,7 +10,14 @@
  * Chmura nie jest tu używana.
  */
 
-const BRIDGE = 'http://127.0.0.1:3001';
+import { getBridgeBase } from '../../lib/bridgeService';
+
+/** Most: localhost albo Kwantowy Tunel, gdy Katedra sterowana jest z telefonu. */
+const BRIDGE = () => getBridgeBase();
+
+/** Klucz Księgi w localStorage + zdarzenie żywego wtrysku planu. */
+export const KOOM_KEY = 'teo_koom_plans';
+export const KOOM_EVENT = 'koom:plan';
 
 export interface KoomPlan {
     id:        string;
@@ -52,11 +59,53 @@ export class KoomService {
         return out;
     }
 
+    /** Odczyt Księgi z localStorage (wspólny dla wszystkich wtryskiwaczy). */
+    static readBook(): KoomPlan[] {
+        try { const p = JSON.parse(localStorage.getItem(KOOM_KEY) || '[]'); return Array.isArray(p) ? p : []; }
+        catch { return []; }
+    }
+
+    /**
+     * 💉 Agentyczny wtrysk — plan trafia do Księgi NATYCHMIAST, w trakcie podcastu.
+     * Zapisuje do `teo_koom_plans` i krzyczy zdarzeniem `koom:plan`, żeby otwarta
+     * Księga dorysowała zadanie na żywo (bez F5). Duplikaty odpadają.
+     * Zwraca wpis albo null, gdy taki plan już w Księdze leży.
+     */
+    static injectPlan(text: string, source: 'ISKRA' | 'ECHO' | 'SUWEREN' = 'ECHO'): KoomPlan | null {
+        const clean = String(text || '').trim();
+        if (clean.length < 8) return null;
+
+        const book = this.readBook();
+        const key = clean.toLowerCase().replace(/\s+/g, ' ').slice(0, 80);
+        if (book.some(p => p.text.toLowerCase().replace(/\s+/g, ' ').slice(0, 80) === key)) return null;
+
+        const plan: KoomPlan = {
+            id: `koom-orb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
+            text: clean, source, status: 'NEW',
+            createdAt: new Date().toISOString(),
+        };
+
+        try { localStorage.setItem(KOOM_KEY, JSON.stringify([plan, ...book])); } catch { /* limit storage */ }
+        try { window.dispatchEvent(new CustomEvent(KOOM_EVENT, { detail: plan })); } catch { /* SSR */ }
+        return plan;
+    }
+
+    /**
+     * Wypowiedź AI Orba → plany w Księdze. Przepuszcza tekst przez tę samą
+     * heurystykę co SKANUJ ROZMOWĘ (zero tokenów) i wtryskuje to, co złapie.
+     */
+    static injectFromSpeech(text: string, source: 'ISKRA' | 'ECHO' = 'ECHO'): KoomPlan[] {
+        const turn = source === 'ISKRA' ? { hostA: text } : { hostB: text };
+        return this.extractPlans([turn])
+            .map(p => this.injectPlan(p.text, source))
+            .filter((p): p is KoomPlan => p !== null);
+    }
+
     /** Przekształć plan w zadanie Mechanika (lokalny enqueue — darmowy). */
     static async sendToMechanik(plan: KoomPlan): Promise<string | null> {
         const taskId = `koom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
         try {
-            const res = await fetch(`${BRIDGE}/api/mechanic/enqueue`, {
+            const res = await fetch(`${BRIDGE()}/api/mechanic/enqueue`, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({
@@ -77,7 +126,7 @@ export class KoomService {
     /** Lista dostępnych LOKALNYCH modeli (członkowie rady multi-model). */
     static async listLocalModels(max = 2): Promise<string[]> {
         try {
-            const res = await fetch(`${BRIDGE}/api/ollama/models`);
+            const res = await fetch(`${BRIDGE()}/api/ollama/models`);
             const d = await res.json();
             return (Array.isArray(d.models) ? d.models : []).slice(0, max);
         } catch { return []; }
@@ -103,7 +152,7 @@ export class KoomService {
     private static async queryLocal(model: string, planText: string): Promise<string> {
         const system = 'Jesteś inżynierem Katedry. Rozłóż podany plan na 2-4 konkretne, wykonalne kroki ' +
             'techniczne (pliki/akcje). Zwięźle, po polsku, bez wstępów.';
-        const res = await fetch(`${BRIDGE}/api/ollama`, {
+        const res = await fetch(`${BRIDGE()}/api/ollama`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ model, system, messages: [{ role: 'user', content: planText }] }),

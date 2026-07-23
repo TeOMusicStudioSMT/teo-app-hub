@@ -9,11 +9,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookMarked, ScanLine, Hammer, Network, Plus, Check, RefreshCw } from 'lucide-react';
-import { KoomService, type KoomPlan, type ModelTake } from '../../src/services/KoomService';
+import { KoomService, KOOM_KEY, KOOM_EVENT, type KoomPlan, type ModelTake } from '../../src/services/KoomService';
 import { toast } from 'react-hot-toast';
 
 const PODCAST_KEY = 'teo_podcast_twin_log';
-const KOOM_KEY    = 'teo_koom_plans';
 
 const loadPlans = (): KoomPlan[] => {
     try { const p = JSON.parse(localStorage.getItem(KOOM_KEY) || '[]'); return Array.isArray(p) ? p : []; } catch { return []; }
@@ -31,6 +30,20 @@ export const KsiegaOdbioru: React.FC = () => {
     const [takes, setTakes] = useState<Record<string, ModelTake[]>>({});
 
     useEffect(() => { try { localStorage.setItem(KOOM_KEY, JSON.stringify(plans)); } catch { /* limit */ } }, [plans]);
+
+    // 💉 Żywy wtrysk z podcastu: AI Orb rzuca wniosek → zadanie NEW pojawia się
+    // w Księdze natychmiast, bez odświeżania. Scalamy w stan, żeby zapis powyżej
+    // nie nadpisał wtryśniętego planu swoją starą kopią.
+    useEffect(() => {
+        const onInject = (e: Event) => {
+            const plan = (e as CustomEvent<KoomPlan>).detail;
+            if (!plan?.id) return;
+            setPlans(prev => prev.some(p => p.id === plan.id) ? prev : [plan, ...prev]);
+            toast.success(`💉 ${plan.source} → Księga: ${plan.text.slice(0, 48)}${plan.text.length > 48 ? '…' : ''}`, { icon: '📖' });
+        };
+        window.addEventListener(KOOM_EVENT, onInject);
+        return () => window.removeEventListener(KOOM_EVENT, onInject);
+    }, []);
 
     const scan = useCallback(() => {
         const turns = loadConversation();
