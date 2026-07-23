@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
-import { executeBridgeCommand } from "../../lib/bridgeService";
+import { executeBridgeCommand, getTunnelUrl } from "../../lib/bridgeService";
+import KwantowyTunel from "./KwantowyTunel";
 import { auth } from "../../lib/firebaseConfig";
 import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 
@@ -13,6 +14,9 @@ interface OtakOSGatewayProps {
 export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
   const [isInitiating, setIsInitiating] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
+  // 🛰️ Pilot: panel tunelu rozwinięty od razu, gdy Katedra wie już, gdzie stoi Most
+  // (telefon wszedł z linku dispatchowego `?tunnel=...`).
+  const [showPilot, setShowPilot] = useState(() => !!getTunnelUrl());
 
   const handleInitiate = async () => {
     if (isInitiating) return;
@@ -224,6 +228,20 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
         >
           <span className="text-xs">🔌</span> ŚLUZA ANTIGRAVITY
         </button>
+
+        {/* 🛰️ PILOT — zdalne sterowanie Katedrą przez Kwantowy Tunel */}
+        <button
+          onClick={() => setShowPilot(v => !v)}
+          className="px-4 py-2 bg-slate-900/60 border border-fuchsia-500/30 rounded-md text-fuchsia-300 text-[10px] tracking-widest hover:bg-fuchsia-900/30 hover:border-fuchsia-400 transition-all duration-300 flex items-center gap-2"
+        >
+          <span className="text-xs">🛰️</span> {showPilot ? 'ZWIŃ PILOTA' : 'PILOT / KWANTOWY TUNEL'}
+        </button>
+
+        {showPilot && (
+          <div className="w-[min(92vw,26rem)]">
+            <KwantowyTunel compact />
+          </div>
+        )}
       </div>
 
       {/* CSS for custom animations */}
