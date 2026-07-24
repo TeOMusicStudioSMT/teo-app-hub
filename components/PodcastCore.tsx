@@ -32,6 +32,21 @@ const CLOUD_MODEL = 'gemini-1.5-flash';
 /** Domyślny profil głosu — gdy nie ma klonu, Orb mówi „Sonikiem", nie ciszą. */
 const SONIC_VOICE_ID = 'SONIC';
 
+/**
+ * Profile głosowe syntezatora przeglądarki (zero VRAM, zero chmury).
+ * Gdy wybrany głos nie istnieje fizycznie (brak klonu / silnik offline),
+ * system bezszelestnie wraca do SONIC — nigdy do ciszy, nigdy do crasha.
+ */
+const BROWSER_VOICE_PROFILES: Record<string, { label: string; pitch: number; rate: number }> = {
+  [SONIC_VOICE_ID]: { label: 'SONIC — głęboki, stabilny', pitch: 0.9,  rate: 0.98 },
+  ISKRA:            { label: 'ISKRA — wysoki, żywy',      pitch: 1.22, rate: 1.08 },
+  ECHO:             { label: 'ECHO — niski, spokojny',    pitch: 0.72, rate: 0.9  },
+};
+
+/** mm:ss dla licznika nagrania. */
+const fmtClock = (s: number): string =>
+  `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
 export const CAM_SLOTS: ReadonlyArray<{ id: CamId; label: string; tag: string }> = [
   { id: 'CAM_1_SONY_4K', label: 'SONY 4K',    tag: 'CAM 1' },
   { id: 'CAM_2_PHONE_A', label: 'TELEFON A',  tag: 'CAM 2' },
@@ -182,6 +197,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
   const [recMsg, setRecMsg] = useState('');
   const [episodeTitle, setEpisodeTitle] = useState('');
   const [wantMp4, setWantMp4] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
   const [rtmpKeyInput, setRtmpKeyInput] = useState('');
   const [studio, setStudio] = useState<{ ffmpeg: boolean; rtmpConfigured: boolean; rtmpKeyMasked: string; recordingsDir: string }>({
     ffmpeg: false, rtmpConfigured: false, rtmpKeyMasked: '', recordingsDir: '',
@@ -231,6 +247,11 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
   const relayRecorderRef  = useRef<MediaRecorder | null>(null);
   const fileWsRef         = useRef<WebSocket | null>(null);
   const fileRecorderRef   = useRef<MediaRecorder | null>(null);
+  const recStartRef       = useRef(0); // znacznik startu nagrania — licznik REC na belce i kanwie
+
+  // ─── Refy: waveform próbki głosu ────────────────────────────────────────────
+  const sampleCanvasRef   = useRef<HTMLCanvasElement | null>(null);
+  const sampleAnimRef     = useRef<number | null>(null);
 
   // ─── Refy: pętle i lustra stanu (pętle rAF nie widzą świeżego state) ────────
   const animFrameRef      = useRef<number | null>(null);
@@ -250,6 +271,15 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
   useEffect(() => { liveRef.current = isBroadcasting; }, [isBroadcasting]);
   useEffect(() => { recRef.current = isRecording; }, [isRecording]);
 
+  // ⏱️ Licznik czasu nagrania — tyka co pół sekundy, znika po stopie.
+  useEffect(() => {
+    if (!isRecording) { setRecSeconds(0); return; }
+    const tick = () => setRecSeconds(recStartRef.current ? (Date.now() - recStartRef.current) / 1000 : 0);
+    tick();
+    const timer = window.setInterval(tick, 500);
+    return () => window.clearInterval(timer);
+  }, [isRecording]);
+
   // ═════════════════════════════════════════════════════════════════════════════
   //  DŹWIĘK — jeden kontekst, jedna magistrala
   // ═════════════════════════════════════════════════════════════════════════════
@@ -267,7 +297,18 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
       }
       const ctx = audioCtxRef.current;
       if (ctx.state === 'suspended') void ctx.resume();
-      if (!mixDestRef.current) mixDestRef.current = ctx.createMediaStreamDestination();
+      if (!mixDestRef.current) {
+        mixDestRef.current = ctx.createMediaStreamDestination();
+        // 🔇 Cichy zasilacz magistrali (zdiagnozowane eksperymentem 2026-07-25):
+        // magistrala BEZ ŻADNEGO źródła oddaje ścieżkę, z której muxer
+        // MediaRecordera nie dostaje ani jednej próbki → plik ma 0 bajtów.
+        // Stałe źródło o wartości 0 to wieczna cisza, ale żywe próbki —
+        // nagranie działa nawet zanim wepnie się pierwszy mikrofon.
+        const keepAlive = ctx.createConstantSource();
+        keepAlive.offset.value = 0;
+        keepAlive.connect(mixDestRef.current);
+        keepAlive.start();
+      }
       return ctx;
     } catch (e) {
       console.warn('[PodcastCore] AudioContext niedostępny:', e);
@@ -626,7 +667,8 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
     const labelOf = (src: ProgramSource): string =>
       src === 'ORB' ? 'AI ORB' : (CAM_SLOTS.find((s) => s.id === src)?.label ?? src);
 
-    const drawComposite = () => {
+    let lastDraw = 0;
+    const paint = () => {
       const W = canvas.width;
       const H = canvas.height;
 
@@ -695,14 +737,33 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
         ctx.fillStyle = '#000';
         ctx.fillText(text, badgeX + 16, barY + 43);
       };
-      if (recRef.current) badge('● REC', '#f59e0b');
+      if (recRef.current) {
+        const elapsed = recStartRef.current ? (Date.now() - recStartRef.current) / 1000 : 0;
+        badge(`● REC ${fmtClock(elapsed)}`, '#f59e0b');
+      }
       if (liveRef.current) badge('● LIVE', '#ef4444');
 
-      compositeAnimRef.current = requestAnimationFrame(drawComposite);
+      lastDraw = Date.now();
     };
 
-    drawComposite();
-    return () => { if (compositeAnimRef.current) cancelAnimationFrame(compositeAnimRef.current); };
+    const loop = () => {
+      paint();
+      compositeAnimRef.current = requestAnimationFrame(loop);
+    };
+    loop();
+
+    // 🛡️ Watchdog: rAF zamiera w ukrytej/zminimalizowanej karcie — dorysowujemy
+    // klatki timerem, żeby nagranie i transmisja nie zamarzły, gdy okno zniknie
+    // Suwerenowi z oczu. (Timer w tle Chrome dławi do ~1 Hz — to wciąż żywy obraz,
+    // nie zero bajtów.)
+    const watchdog = window.setInterval(() => {
+      if (Date.now() - lastDraw > 400) paint();
+    }, 250);
+
+    return () => {
+      if (compositeAnimRef.current) cancelAnimationFrame(compositeAnimRef.current);
+      window.clearInterval(watchdog);
+    };
   }, []);
 
   // ═════════════════════════════════════════════════════════════════════════════
@@ -717,9 +778,15 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
   const buildMixStream = useCallback((fps: number): MediaStream | null => {
     const canvas = compositeCanvasRef.current;
     if (!canvas) return null;
-    ensureAudio();
+    const ctx = ensureAudio();
     const video = canvas.captureStream(fps);
-    const audio = mixDestRef.current ? mixDestRef.current.stream.getAudioTracks() : [];
+    // ⚠️ Zawieszony AudioContext (polityka autoplay) nie oddaje ANI JEDNEJ próbki —
+    // muxer czekałby na audio w nieskończoność i plik zostałby ZEROWY. Ścieżkę
+    // dźwięku wpinamy tylko, gdy kontekst realnie chodzi; inaczej jedziemy samym
+    // obrazem i mówimy to wprost. (Klik Suwerena w przycisk = gest → resume działa.)
+    const audioReady = !!ctx && ctx.state === 'running' && !!mixDestRef.current;
+    if (!audioReady) console.warn('[PodcastCore] AudioContext zawieszony — strumień bez ścieżki audio.');
+    const audio = audioReady ? mixDestRef.current!.stream.getAudioTracks() : [];
     return new MediaStream([...video.getVideoTracks(), ...audio]);
   }, [ensureAudio]);
 
@@ -815,6 +882,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
       try { ws.close(1000, 'stop'); } catch { /* noop */ }
       fileWsRef.current = null;
     }
+    recStartRef.current = 0;
     setIsRecording(false);
   }, []);
 
@@ -845,6 +913,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
           };
           recorder.start(1000);
           fileRecorderRef.current = recorder;
+          recStartRef.current = Date.now();
           setIsRecording(true);
         } catch (e) {
           setRecMsg(`MediaRecorder nie wystartował: ${e instanceof Error ? e.message : String(e)}`);
@@ -930,6 +999,52 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
     }
   }, []);
 
+  /** Rysuje żywą falę z mikrofonu na małej kanwie panelu klonowania. */
+  const startSampleWaveform = useCallback((stream: MediaStream) => {
+    const canvas = sampleCanvasRef.current;
+    const ctx2d = canvas?.getContext('2d');
+    const audioCtx = ensureAudio();
+    if (!canvas || !ctx2d || !audioCtx) return () => { /* brak kanwy/kontekstu — bez fali */ };
+
+    let analyser: AnalyserNode | null = null;
+    let source: MediaStreamAudioSourceNode | null = null;
+    try {
+      source = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser); // tylko analiza — żadnego wyjścia na głośniki (sprzężenie!)
+    } catch {
+      return () => { /* strumień bez audio */ };
+    }
+
+    const data = new Uint8Array(analyser.fftSize);
+    const render = () => {
+      analyser!.getByteTimeDomainData(data);
+      const W = canvas.width, H = canvas.height;
+      ctx2d.clearRect(0, 0, W, H);
+      ctx2d.beginPath();
+      ctx2d.lineWidth = 2;
+      ctx2d.strokeStyle = '#a78bfa';
+      for (let i = 0; i < data.length; i += 4) {
+        const x = (i / data.length) * W;
+        const y = (data[i] / 255) * H;
+        if (i === 0) ctx2d.moveTo(x, y);
+        else ctx2d.lineTo(x, y);
+      }
+      ctx2d.stroke();
+      sampleAnimRef.current = requestAnimationFrame(render);
+    };
+    render();
+
+    return () => {
+      if (sampleAnimRef.current) cancelAnimationFrame(sampleAnimRef.current);
+      sampleAnimRef.current = null;
+      try { source?.disconnect(); } catch { /* już odpięty */ }
+      const c = sampleCanvasRef.current;
+      c?.getContext('2d')?.clearRect(0, 0, c.width, c.height);
+    };
+  }, [ensureAudio]);
+
   /** Nagrywa 10 s próbki i odsyła ją do Mostu (`/api/voice/clone`). */
   const recordVoiceSample = useCallback(async () => {
     if (sampling) return;
@@ -946,10 +1061,15 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
       }
     }
 
-    const cleanup = () => temporary?.getTracks().forEach((t) => t.stop());
+    const audioOnly = new MediaStream(source.getAudioTracks());
+    const stopWaveform = startSampleWaveform(audioOnly);
+    const cleanup = () => {
+      stopWaveform();
+      temporary?.getTracks().forEach((t) => t.stop());
+    };
 
     try {
-      const recorder = new MediaRecorder(new MediaStream(source.getAudioTracks()));
+      const recorder = new MediaRecorder(audioOnly);
       const chunks: BlobPart[] = [];
       recorder.ondataavailable = (ev) => { if (ev.data.size > 0) chunks.push(ev.data); };
 
@@ -1002,12 +1122,14 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
    * inaczej lecimy domyślnym profilem SONIC przez syntezator przeglądarki.
    * Ta ścieżka nie dotyka GPU, więc nie ma z czego wysypać VRAM-u.
    */
-  const speakWithBrowser = useCallback((text: string) => {
+  const speakWithBrowser = useCallback((text: string, profileId?: string) => {
     try {
+      // Nieznany/niedostępny profil = bezszelestny powrót do SONIC, nigdy cisza.
+      const profile = BROWSER_VOICE_PROFILES[profileId ?? ''] ?? BROWSER_VOICE_PROFILES[SONIC_VOICE_ID];
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = 'pl-PL';
-      utter.rate = 0.98;
-      utter.pitch = 0.9;
+      utter.rate = profile.rate;
+      utter.pitch = profile.pitch;
       orbSpeakingRef.current = true;
       utter.onend = () => { orbSpeakingRef.current = false; };
       window.speechSynthesis.cancel();
@@ -1022,8 +1144,11 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
     const line = text.trim();
     if (!orbVoiceOn || !line) return;
 
-    const useClone = voiceId !== SONIC_VOICE_ID && voiceEngine.available;
-    if (!useClone) { speakWithBrowser(line); return; }
+    // Profil przeglądarkowy (SONIC/ISKRA/ECHO) nie dotyka silnika klonu.
+    // Klon fizyczny tylko gdy głos istnieje na liście I silnik faktycznie stoi.
+    const isBrowserProfile = voiceId in BROWSER_VOICE_PROFILES;
+    const useClone = !isBrowserProfile && voiceEngine.available && voiceEngine.voices.includes(voiceId);
+    if (!useClone) { speakWithBrowser(line, isBrowserProfile ? voiceId : SONIC_VOICE_ID); return; }
 
     try {
       const r = await fetch(`${getBridgeBase()}/api/voice/speak`, {
@@ -1054,7 +1179,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
       drawOrb();
     } catch (e) {
       setVoiceMsg(`Silnik klonu milczy (${e instanceof Error ? e.message : String(e)}) — gram profilem SONIC.`);
-      speakWithBrowser(line);
+      speakWithBrowser(line, SONIC_VOICE_ID);
     }
   }, [drawOrb, ensureAudio, orbVoiceOn, sonicOn, speakWithBrowser, voiceEngine.available, voiceId]);
 
@@ -1197,13 +1322,20 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
           <button
             onClick={isRecording ? stopRecording : startRecording}
             title="Zapis fizycznego pliku .webm przez Most Wiesia"
-            className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all shadow-lg ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all shadow-lg ${
               isRecording
-                ? 'bg-amber-500 text-black shadow-amber-500/40 animate-pulse'
+                ? 'bg-amber-500 text-black shadow-amber-500/40'
                 : 'bg-white/5 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20'
             }`}
           >
-            {isRecording ? '■ STOP NAGRYWANIA' : '● NAGRAJ ODCINEK'}
+            {isRecording ? (
+              <>
+                <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+                REC {fmtClock(recSeconds)} — STOP
+              </>
+            ) : (
+              '● NAGRAJ ODCINEK'
+            )}
           </button>
 
           <button
@@ -1219,40 +1351,28 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
         </div>
       </div>
 
-      {/* --- REŻYSERKA: monitor programowy + multiview --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-[3fr_1fr] gap-4 my-4">
-
-        {/* Monitor programowy = DOKŁADNIE to, co idzie w świat */}
-        <div className="relative rounded-xl overflow-hidden border border-cyan-500/30 bg-black shadow-[0_0_30px_rgba(0,240,255,0.12)]">
-          <canvas ref={compositeCanvasRef} width={1920} height={1080} className="w-full h-auto block" />
-          <div className="absolute top-3 left-3 flex items-center gap-2">
-            <span className="bg-black/70 px-2.5 py-1 rounded-md text-[10px] font-mono border border-white/10">
-              PROGRAM 1920×1080
-            </span>
-            {isBroadcasting && <span className="bg-red-600 text-white px-2.5 py-1 rounded-md text-[10px] font-mono">● LIVE</span>}
-            {isRecording && <span className="bg-amber-500 text-black px-2.5 py-1 rounded-md text-[10px] font-mono">● REC</span>}
+      {/* --- PULPIT REŻYSERSKI: pasek 4 kamer + Orb NAD monitorem programowym --- */}
+      <div className="flex flex-col gap-3 my-4">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-mono tracking-widest text-gray-400">🎥 PULPIT REŻYSERSKI</span>
+          <div className="flex gap-1">
+            {(['AUTO', 'MANUAL'] as DirectorMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setDirectorMode(m)}
+                title={m === 'AUTO' ? 'Cięcie po głosie — kto mówi, ten jest na wizji (min. ujęcie 2.5 s)' : 'Cięcie ręczne — klikasz miniaturę'}
+                className={`px-3 py-1 rounded text-[10px] font-mono transition-all ${
+                  directorMode === m ? 'bg-cyan-500 text-black font-bold shadow-md shadow-cyan-500/30' : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                {m === 'AUTO' ? '🤖 AUTOMAT' : '🎚️ MANUAL'}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Multiview: cztery gniazda + Orb */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono tracking-widest text-gray-400">🎥 REŻYSER</span>
-            <div className="flex gap-1">
-              {(['AUTO', 'MANUAL'] as DirectorMode[]).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setDirectorMode(m)}
-                  title={m === 'AUTO' ? 'Cięcie po głosie — kto mówi, ten jest na wizji' : 'Cięcie ręczne — klikasz kafelek'}
-                  className={`px-2 py-1 rounded text-[10px] font-mono transition-all ${
-                    directorMode === m ? 'bg-cyan-500 text-black font-bold' : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          </div>
+        {/* Pasek podglądów — miniatury źródeł z VU meterami */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
 
           {CAM_SLOTS.map((slot) => (
             <div
@@ -1275,8 +1395,13 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
                 </div>
               )}
 
-              {/* Wskaźnik poziomu — z tego reżyser czyta, kto mówi */}
-              <div className="absolute left-0 bottom-0 h-1 bg-cyan-400/80 transition-all" style={{ width: `${levelOf(slot.id)}%` }} />
+              {/* VU meter — z tego reżyser czyta, kto mówi */}
+              <div className="absolute left-0 right-0 bottom-0 h-1.5 bg-black/60">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-400 via-yellow-300 to-red-500 transition-[width] duration-100"
+                  style={{ width: `${levelOf(slot.id)}%` }}
+                />
+              </div>
 
               <div className="absolute top-1 left-1 flex items-center gap-1">
                 <span className="bg-black/70 px-1.5 py-0.5 rounded text-[9px] font-mono border border-white/10">{slot.tag}</span>
@@ -1304,13 +1429,30 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
           {/* Orb jako pełnoprawne ujęcie */}
           <div
             onClick={() => manualCut('ORB')}
-            className={`relative rounded-lg overflow-hidden border cursor-pointer bg-black/60 flex items-center justify-center py-2 transition-all ${
+            className={`relative rounded-lg overflow-hidden border cursor-pointer bg-black/60 aspect-video flex flex-col items-center justify-center transition-all ${
               program === 'ORB' ? 'border-cyan-400 shadow-[0_0_16px_rgba(0,240,255,0.35)]' : 'border-white/10 hover:border-cyan-500/40'
             }`}
           >
-            <canvas ref={orbCanvasRef} width={240} height={240} className="w-24 h-24 rounded-full" />
-            <span className="ml-2 text-[10px] font-mono tracking-widest text-cyan-300">AI ORB</span>
-            <div className="absolute left-0 bottom-0 h-1 bg-violet-400/80 transition-all" style={{ width: `${levelOf('ORB')}%` }} />
+            <canvas ref={orbCanvasRef} width={240} height={240} className="w-16 h-16 md:w-20 md:h-20 rounded-full" />
+            <span className="mt-1 text-[9px] font-mono tracking-widest text-cyan-300">AI ORB</span>
+            <div className="absolute left-0 right-0 bottom-0 h-1.5 bg-black/60">
+              <div
+                className="h-full bg-gradient-to-r from-violet-400 via-fuchsia-400 to-red-500 transition-[width] duration-100"
+                style={{ width: `${levelOf('ORB')}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Monitor programowy = DOKŁADNIE to, co idzie w świat */}
+        <div className="relative rounded-xl overflow-hidden border border-cyan-500/30 bg-black shadow-[0_0_30px_rgba(0,240,255,0.12)]">
+          <canvas ref={compositeCanvasRef} width={1920} height={1080} className="w-full h-auto block" />
+          <div className="absolute top-3 left-3 flex items-center gap-2">
+            <span className="bg-black/70 px-2.5 py-1 rounded-md text-[10px] font-mono border border-white/10">
+              PROGRAM 1920×1080
+            </span>
+            {isBroadcasting && <span className="bg-red-600 text-white px-2.5 py-1 rounded-md text-[10px] font-mono animate-pulse">● LIVE</span>}
+            {isRecording && <span className="bg-red-600 text-white px-2.5 py-1 rounded-md text-[10px] font-mono animate-pulse">● REC {fmtClock(recSeconds)}</span>}
           </div>
         </div>
       </div>
@@ -1349,81 +1491,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
         </div>
       </div>
 
-      {/* --- SYSTEM KLONOWANIA GŁOSU --- */}
-      <div className="z-10 bg-black/40 px-4 py-3 rounded-xl border border-violet-500/20 backdrop-blur-md mb-3 space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-mono tracking-widest text-violet-300 mr-1">🎛️ SYSTEM KLONOWANIA GŁOSU</span>
-          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-            voiceEngine.available
-              ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-              : 'bg-white/5 border-white/10 text-gray-400'
-          }`}>
-            SILNIK: {voiceEngine.available ? 'LOKALNY ONLINE' : 'OFFLINE → profil SONIC'}
-          </span>
-          <button
-            onClick={() => void refreshVoice()}
-            className="px-2 py-0.5 rounded text-[10px] font-mono bg-white/5 border border-white/10 hover:bg-white/10"
-          >
-            ODŚWIEŻ
-          </button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => void recordVoiceSample()}
-            disabled={sampling}
-            className="px-3 py-1.5 rounded-md text-[11px] font-mono bg-violet-600/30 border border-violet-400/50 text-violet-100 hover:bg-violet-600/50 disabled:opacity-40 transition-all"
-          >
-            {sampling ? `NAGRYWAM... ${Math.round(sampleProgress)}%` : '🎙️ Nagraj próbkę głosu (10s)'}
-          </button>
-
-          <select
-            value={voiceId}
-            onChange={(e) => setVoiceId(e.target.value)}
-            title="Głos, którym mówi AI Orb"
-            className="bg-black/50 border border-violet-700/40 rounded-md px-2 py-1.5 text-[11px] text-slate-200 outline-none"
-          >
-            <option value={SONIC_VOICE_ID}>🎚️ SONIC (profil domyślny — bez klonu)</option>
-            {voiceEngine.voices.map((v) => (
-              <option key={v} value={v}>🗣️ {v}{voiceEngine.available ? '' : ' (silnik offline)'}</option>
-            ))}
-          </select>
-
-          <button
-            onClick={() => setOrbVoiceOn((s) => !s)}
-            className={`px-3 py-1.5 rounded-md text-[11px] font-mono transition-all border ${
-              orbVoiceOn ? 'bg-violet-600/30 border-violet-400/50 text-violet-200' : 'bg-white/5 border-white/10 text-gray-500'
-            }`}
-          >
-            🔊 GŁOS ORBA {orbVoiceOn ? 'ON' : 'OFF'}
-          </button>
-
-          <button
-            onClick={() => setSonicOn((s) => !s)}
-            title="Profil głosu Sonica — ocieplenie i stabilizacja pasma AI Orba"
-            className={`px-3 py-1.5 rounded-md text-[11px] font-mono transition-all border ${
-              sonicOn ? 'bg-violet-600/30 border-violet-400/50 text-violet-200' : 'bg-white/5 border-white/10 text-gray-500'
-            }`}
-          >
-            🎚️ SONIC {sonicOn ? 'ON' : 'OFF'}
-          </button>
-        </div>
-
-        {sampling && (
-          <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-violet-400 transition-all" style={{ width: `${sampleProgress}%` }} />
-          </div>
-        )}
-
-        <p className="text-[10px] leading-relaxed text-gray-500">
-          {voiceEngine.available
-            ? 'Klon mówi lokalnie (XTTS/OpenVoice na :5002) i wchodzi na antenę przez profil SONIC.'
-            : 'Brak klonu → Orb mówi syntezatorem przeglądarki (zero VRAM, zero chmury). Ten tor słychać w pokoju, ale NIE wchodzi na transmisję — na antenę wejdzie dopiero klon z lokalnego silnika.'}
-        </p>
-        {voiceMsg && <p className="text-[10px] font-mono text-violet-300 break-all">{voiceMsg}</p>}
-      </div>
-
-      {/* --- MÓZG ORBA (źródło inteligencji + wtrysk do Księgi) --- */}
+      {/* --- MÓZG ORBA (źródło inteligencji + wtrysk do Księgi + głosy) --- */}
       <div className="z-10 bg-black/40 px-4 py-3 rounded-xl border border-white/10 backdrop-blur-md mb-3 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[10px] font-mono tracking-widest text-gray-400 mr-1">MÓZG ORBA:</span>
@@ -1490,6 +1558,94 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
             {orbAnswer}
           </div>
         )}
+
+        {/* 🎛️ SYSTEM KLONOWANIA GŁOSU — głos, którym Orb mówi na antenie */}
+        <div className="pt-2.5 mt-1 border-t border-violet-500/25 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-mono tracking-widest text-violet-300 mr-1">🎛️ SYSTEM KLONOWANIA GŁOSU</span>
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+              voiceEngine.available
+                ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                : 'bg-white/5 border-white/10 text-gray-400'
+            }`}>
+              SILNIK: {voiceEngine.available ? 'LOKALNY ONLINE' : 'OFFLINE → profil SONIC'}
+            </span>
+            <button
+              onClick={() => void refreshVoice()}
+              className="px-2 py-0.5 rounded text-[10px] font-mono bg-white/5 border border-white/10 hover:bg-white/10"
+            >
+              ODŚWIEŻ
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => void recordVoiceSample()}
+              disabled={sampling}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-[11px] font-mono border transition-all disabled:opacity-60 ${
+                sampling
+                  ? 'bg-red-950/50 border-red-500/60 text-red-200'
+                  : 'bg-violet-600/30 border-violet-400/50 text-violet-100 hover:bg-violet-600/50'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${sampling ? 'bg-red-500 animate-ping' : 'bg-red-600'}`} />
+              {sampling ? `NAGRYWAM... ${Math.round(sampleProgress)}%` : 'NAGRAJ PRÓBKĘ (10 sekund)'}
+            </button>
+
+            <select
+              value={voiceId}
+              onChange={(e) => setVoiceId(e.target.value)}
+              title="Aktywny profil głosowy AI Orba"
+              className="bg-black/50 border border-violet-700/40 rounded-md px-2 py-1.5 text-[11px] text-slate-200 outline-none"
+            >
+              <option value={SONIC_VOICE_ID}>🎚️ Domyślny SONIC — bezpieczny profil</option>
+              <option value="ISKRA">🔥 ISKRA — wysoki, żywy</option>
+              <option value="ECHO">🌊 ECHO — niski, spokojny</option>
+              {voiceEngine.voices.map((v) => (
+                <option key={v} value={v}>🗣️ Mój sklonowany głos: {v}{voiceEngine.available ? '' : ' (silnik offline)'}</option>
+              ))}
+            </select>
+
+            <button
+              onClick={() => setOrbVoiceOn((s) => !s)}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-mono transition-all border ${
+                orbVoiceOn ? 'bg-violet-600/30 border-violet-400/50 text-violet-200' : 'bg-white/5 border-white/10 text-gray-500'
+              }`}
+            >
+              🔊 GŁOS ORBA {orbVoiceOn ? 'ON' : 'OFF'}
+            </button>
+
+            <button
+              onClick={() => setSonicOn((s) => !s)}
+              title="Profil głosu Sonica — ocieplenie i stabilizacja pasma AI Orba"
+              className={`px-3 py-1.5 rounded-md text-[11px] font-mono transition-all border ${
+                sonicOn ? 'bg-violet-600/30 border-violet-400/50 text-violet-200' : 'bg-white/5 border-white/10 text-gray-500'
+              }`}
+            >
+              🎚️ SONIC {sonicOn ? 'ON' : 'OFF'}
+            </button>
+          </div>
+
+          {/* Żywa fala z mikrofonu + pasek postępu — kanwa zawsze w DOM (ref), widoczna przy nagrywaniu */}
+          <canvas
+            ref={sampleCanvasRef}
+            width={600}
+            height={64}
+            className={`w-full h-16 rounded-md bg-black/50 border border-violet-500/30 ${sampling ? 'block' : 'hidden'}`}
+          />
+          {sampling && (
+            <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-violet-400 to-fuchsia-400 transition-all" style={{ width: `${sampleProgress}%` }} />
+            </div>
+          )}
+
+          <p className="text-[10px] leading-relaxed text-gray-500">
+            {voiceEngine.available
+              ? 'Klon mówi lokalnie (XTTS/OpenVoice na :5002) i wchodzi na antenę przez profil SONIC.'
+              : 'Brak fizycznego klonu → Orb mówi syntezatorem przeglądarki (zero VRAM, zero chmury). Ten tor słychać w pokoju, ale NIE wchodzi na transmisję — na antenę wejdzie dopiero klon z lokalnego silnika.'}
+          </p>
+          {voiceMsg && <p className="text-[10px] font-mono text-violet-300 break-all">{voiceMsg}</p>}
+        </div>
       </div>
 
       {/* --- DOLNA BELKA: mikrofon, nagranie, antena --- */}
