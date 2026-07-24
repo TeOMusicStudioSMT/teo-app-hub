@@ -38,6 +38,12 @@ import AlignmentShield       from './services/AlignmentShield.js';
 import { forecast as kronosForecast } from './services/KronosSeed.js';
 import CryptoAgility from './services/CryptoAgility.js';
 import { buildDziennikHtml } from './services/dziennikTemplate.js';
+import {
+    attachStudioRelay,
+    getStudioStatus,
+    saveRtmpConfig,
+    RECORDINGS_DIR,
+} from './services/StudioRelayService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -4922,6 +4928,51 @@ app.post('/api/voice/speak', async (req, res) => {
     }
 });
 
+// ── 🎥 STUDIO WIDEOPODCASTU — sterowanie relayem RTMP i recorderem ───────────
+// Same strumienie idą kanałami WebSocket (/api/rtmp-relay, /api/recorder) —
+// tutaj żyje tylko konfiguracja i status. Klucz transmisji NIGDY nie wraca do
+// przeglądarki w postaci jawnej (front dostaje maskę typu `••••-a1b2`).
+
+app.get('/api/studio/status', async (req, res) => {
+    try {
+        res.json(await getStudioStatus());
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/studio/rtmp-key', async (req, res) => {
+    const { streamKey, rtmpUrl } = req.body ?? {};
+    if (typeof streamKey !== 'string') {
+        return res.status(400).json({ success: false, message: 'Brak "streamKey" (pusty string kasuje klucz).' });
+    }
+    try {
+        const saved = await saveRtmpConfig(streamKey, rtmpUrl);
+        res.json({ success: true, ...saved, status: await getStudioStatus() });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// Lista nagranych odcinków — Suweren widzi, że plik realnie leży na dysku.
+app.get('/api/studio/recordings', async (req, res) => {
+    try {
+        const names = await fs.readdir(RECORDINGS_DIR).catch(() => []);
+        const files = [];
+        for (const name of names) {
+            if (!/\.(webm|mp4)$/i.test(name)) continue;
+            try {
+                const st = await fs.stat(path.join(RECORDINGS_DIR, name));
+                files.push({ name, bytes: st.size, modified: st.mtime.toISOString() });
+            } catch { /* plik zniknął w trakcie listowania */ }
+        }
+        files.sort((a, b) => b.modified.localeCompare(a.modified));
+        res.json({ success: true, dir: RECORDINGS_DIR, files });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ── 📜 KRONIKA 0.00G — żywy wpis: narracja AI + równoległy feedback agentów ───
 async function genOllama(prompt, model, ms = 40000) {
     try {
@@ -6444,7 +6495,7 @@ function handleTaskCompletion(completedTask) {
     }
 }
 
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
     console.log(`================================================`);
     console.log(` 🔌 Wiesław nasłuchuje na porcie ${PORT}`);
     console.log(`================================================`);
@@ -6505,7 +6556,15 @@ app.listen(PORT, () => {
     console.log(` 🤖  GET  /api/auth/google                  (OAuth2 placeholder)`);
     console.log(` 🤖  POST /api/impresario/secrets/youtube   (Zapis kluczy API)`);
     console.log(` 🤖  POST /api/auth/google/simulate         (Gemini Agent stub)`);
+    console.log(` 🎥  WS   /api/rtmp-relay                   (Katedra → ffmpeg → RTMP/YouTube)`);
+    console.log(` 🔴  WS   /api/recorder                     (Katedra → plik .webm na dysku)`);
+    console.log(` 🎥  GET  /api/studio/status | POST /api/studio/rtmp-key`);
 
     // 🛡️ Strażnik VRAM - Tacos Guard
     initTacosGuard();
 });
+
+// ── 🎥 STUDIO — kanały WebSocket wpięte w ten sam serwer HTTP ────────────────
+// /api/rtmp-relay → ffmpeg → RTMP (koniec głuchoty transmisji)
+// /api/recorder   → fizyczny plik .webm na dysku Suwerena
+attachStudioRelay(httpServer, { ffmpegPath });
