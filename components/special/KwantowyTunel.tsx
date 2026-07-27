@@ -15,6 +15,7 @@ import React, { useState, useEffect } from 'react';
 import { Radio, Check, QrCode, Copy } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getTunnelUrl, setTunnelUrl, buildDispatchUrl, sendCommand } from '../../lib/bridgeService';
+import { isSuweren, isLocalKatedra } from '../../lib/suweren';
 
 /** Baza hostingu Katedry — tu ląduje telefon po zeskanowaniu QR. */
 const DISPATCH_BASE = 'https://graviton.pw';
@@ -28,6 +29,11 @@ export const KwantowyTunel: React.FC<{ compact?: boolean; dispatchBase?: string 
     const [showQr, setShowQr] = useState(false);
 
     const dispatchUrl = saved ? buildDispatchUrl(saved, dispatchBase) : '';
+
+    // 👑 Strażnik gospodarza — pilot steruje MASZYNĄ Suwerena, więc na publicznym
+    // wdrożeniu (graviton.pw) gość go nie widzi. Lokalna Katedra = zawsze widoczny.
+    // Zasłona, nie zamek — patrz komentarz w lib/suweren.ts.
+    const [gospodarz] = useState(() => isSuweren());
 
     // Kod QR rysowany lokalnie (biblioteka `qrcode` → data URI). Zero zapytań na zewnątrz.
     useEffect(() => {
@@ -68,12 +74,20 @@ export const KwantowyTunel: React.FC<{ compact?: boolean; dispatchBase?: string 
         }
     };
 
+    // Gość publicznego wdrożenia nie dostaje nawet pustego pudełka.
+    if (!gospodarz) return null;
+
     return (
         <div className={`bg-black/50 border border-cyan-500/25 rounded-2xl px-4 py-3 ${compact ? '' : 'mb-3'}`}>
             <div className="flex items-center gap-2 mb-2">
                 <Radio size={14} className="text-cyan-400" />
                 <span className="text-[11px] font-bold tracking-widest text-cyan-300">KWANTOWY TUNEL URL</span>
-                <span className="ml-auto text-[10px] text-slate-500">{saved ? '🌐 zewnętrzny' : '🏠 lokalny'}</span>
+                <span className="ml-auto text-[10px] text-slate-500 flex items-center gap-1.5">
+                    <span title={isLocalKatedra() ? 'Katedra lokalna — gospodarzem jest ten, kto siedzi przy klawiaturze' : 'Zalogowany jako gospodarz węzła'}>
+                        {isLocalKatedra() ? '🏛️' : '👑'}
+                    </span>
+                    {saved ? '🌐 zewnętrzny' : '🏠 lokalny'}
+                </span>
             </div>
             <div className="flex gap-2">
                 <input

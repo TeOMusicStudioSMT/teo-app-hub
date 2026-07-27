@@ -16,6 +16,10 @@ COPY . .
 # Klucz Gemini wstrzykiwany w czasie buildu (jak w pierwotnym Dockerfile).
 ARG VITE_GEMINI_API_KEY
 ENV VITE_GEMINI_API_KEY=$VITE_GEMINI_API_KEY
+# 👑 Konto(a) gospodarza węzła — decyduje, kto widzi panele sterowania maszyną
+# (Kwantowy Tunel/Pilot) na publicznym wdrożeniu. Kilka adresów po przecinku.
+ARG VITE_SUWEREN_EMAIL
+ENV VITE_SUWEREN_EMAIL=$VITE_SUWEREN_EMAIL
 RUN npm run build      # → /app/dist
 
 # ── ETAP 2: MECHANIK (Wiesio-Bridge runtime) ──────────────────────────────────

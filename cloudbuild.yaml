@@ -16,6 +16,9 @@ substitutions:
   _IMAGE: europe-west1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/teo-app-hub
   # Limit skalowania = tarcza kosztowa. Publiczna strona nie rozjedzie się na 20 instancji.
   _MAX_INSTANCES: '3'
+  # 👑 Konto Google gospodarza — tylko ono widzi panel Kwantowego Tunelu na graviton.pw.
+  # Zmiana konta = podmiana tej wartości (albo nadpisanie w aktywatorze), bez ruszania kodu.
+  _SUWEREN_EMAIL: teo@teo.center
 
 steps:
   # ── 1. Obraz (etap `web`: nginx serwujący zbudowany frontend) ───────────────
@@ -24,6 +27,8 @@ steps:
     args:
       - build
       - --target=web
+      - --build-arg
+      - VITE_SUWEREN_EMAIL=${_SUWEREN_EMAIL}
       - -t
       - ${_IMAGE}:${SHORT_SHA}
       - -t
