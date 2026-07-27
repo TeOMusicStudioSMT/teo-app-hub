@@ -61,6 +61,7 @@ interface RadioContextValue extends RadioState {
     setVolume:    (v: number) => void;
     setTrack:     (index: number) => void;
     loadPlaylist: (playlistId?: string) => Promise<void>;
+    playFavorite: (track: SunoTrack) => void;
     currentTrack: SunoTrack | null;
     analyserRef:  React.RefObject<AnalyserNode | null>;
     // ── Nowe metody ──
@@ -320,6 +321,24 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
     const setVolume = useCallback((v: number) => setState(s => ({ ...s, volume: Math.max(0, Math.min(1, v)) })), []);
     const setTrack  = useCallback((index: number) => { setupAudioContext(); setState(s => ({ ...s, currentIndex: Math.max(0, Math.min(index, s.tracks.length - 1)), isPlaying: true })); }, [setupAudioContext]);
 
+    /**
+     * 🎶 Odtwórz ulubiony (playlista Domu Kompana) — TYM SAMYM torem co radio.
+     * Jeśli utwór jest już w kolejce, przeskakujemy na niego; jeśli nie — dopinamy
+     * na koniec. Świadomie NIE tworzymy drugiego <audio> ani drugiego AudioContextu:
+     * `createMediaElementSource` wolno wywołać raz na element, a dwa równoległe
+     * odtwarzacze biłyby się o wyjście z mikserem PodcastCore. Jedno źródło = zero konfliktu.
+     */
+    const playFavorite = useCallback((track: SunoTrack) => {
+        setupAudioContext();
+        const key = (t: SunoTrack) => t.filename || t.audio_url || t.id;
+        setState(s => {
+            const idx = s.tracks.findIndex(t => key(t) === key(track));
+            if (idx >= 0) return { ...s, currentIndex: idx, isPlaying: true, error: null };
+            const tracks = [...s.tracks, track];
+            return { ...s, tracks, currentIndex: tracks.length - 1, isPlaying: true, error: null };
+        });
+    }, [setupAudioContext]);
+
     const seekTo = useCallback((time: number) => {
         if (audioRef.current) {
             audioRef.current.currentTime = time;
@@ -524,7 +543,7 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
         <KatedraRadioContext.Provider value={{
             ...state, currentTrack, analyserRef,
             play, pause, toggle, next, prev,
-            setVolume, setTrack, loadPlaylist,
+            setVolume, setTrack, loadPlaylist, playFavorite,
             speakMessage, clearAura, seekTo, toggleRecording,
             setIsMinimized: (m: boolean) => setState(s => ({ ...s, isMinimized: m })),
             setCurrentLyric: (t: string) => setState(s => ({ ...s, currentLyric: t })),

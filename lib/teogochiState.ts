@@ -23,6 +23,8 @@ export interface TeogochiState {
     lastTreatAt: number;
     lastPetAt: number;
     minutesListened: number;
+    lastFavoriteAt?: number;   // ostatni utwór puszczony z playlisty Domu
+    favoritesPlayed?: number;  // ile ulubionych mu zagrano
 }
 
 const KEY = 'teogochi_state';
@@ -51,6 +53,7 @@ function fresh(): TeogochiState {
         name: 'TeOgochi', xp: 0, satiety: 70, mood: 70,
         hatchedAt: null, bornAt: now, lastTickAt: now,
         lastTreatAt: 0, lastPetAt: 0, minutesListened: 0,
+        lastFavoriteAt: 0, favoritesPlayed: 0,
     };
 }
 
@@ -102,6 +105,26 @@ export function feedTreat(s: TeogochiState): { state: TeogochiState; ok: boolean
     next.mood = clamp(next.mood + 4);
     next.xp += 6;
     next.lastTreatAt = now;
+    if (!next.hatchedAt && next.xp >= STAGES[1].minXp) next.hatchedAt = now;
+    return { state: { ...next }, ok: true };
+}
+
+/**
+ * 🎶 Karmienie hybrydowe — ulubiony utwór z playlisty Domu.
+ * Słabsze niż wektor soniczny (to nie uczta, tylko dobra piosenka), ale mocniej
+ * podnosi NASTRÓJ — kompan dostaje coś, co sam lubi. Cooldown 2 min, żeby
+ * przeklikanie całej listy nie napchało go w 10 sekund. Sytość i tak rośnie
+ * dalej z minutowych ticków słuchania — playlista i eter karmią tym samym torem.
+ */
+export function feedFavorite(s: TeogochiState): { state: TeogochiState; ok: boolean } {
+    const now = Date.now();
+    if (now - (s.lastFavoriteAt ?? 0) < 120_000) return { state: s, ok: false };
+    const next = applyDecay(s);
+    next.satiety = clamp(next.satiety + 8);
+    next.mood = clamp(next.mood + 6);
+    next.xp += 3;
+    next.lastFavoriteAt = now;
+    next.favoritesPlayed = (next.favoritesPlayed ?? 0) + 1;
     if (!next.hatchedAt && next.xp >= STAGES[1].minXp) next.hatchedAt = now;
     return { state: { ...next }, ok: true };
 }

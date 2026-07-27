@@ -8,11 +8,15 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useKatedraRadio } from '../context/KatedraRadioContext';
+import { useKatedraRadio, type SunoTrack } from '../context/KatedraRadioContext';
 import {
-    loadTeogochi, saveTeogochi, feedTreat, pet as petAction,
+    loadTeogochi, saveTeogochi, feedTreat, feedFavorite, pet as petAction,
     stageOf, nextStageOf, moodLabel, type TeogochiState,
 } from '../lib/teogochiState';
+import {
+    loadJoannaPlaylist, addUserTrack, removeUserTrack, isUserTrack, trackIdFrom,
+    type JoannaTrack,
+} from '../lib/joannaPlaylist';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
@@ -33,6 +37,19 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [s, setS] = useState<TeogochiState>(() => loadTeogochi());
     const [speech, setSpeech] = useState('');
     const [wiggle, setWiggle] = useState(0);
+
+    // 🎶 Playlista smakołyków — rozwijana pod przyciskiem SMAKOŁYK
+    const [showList, setShowList] = useState(false);
+    const [playlist, setPlaylist] = useState<JoannaTrack[]>([]);
+    const [listLoading, setListLoading] = useState(false);
+
+    useEffect(() => {
+        if (!showList || playlist.length > 0) return;
+        setListLoading(true);
+        loadJoannaPlaylist()
+            .then(setPlaylist)
+            .finally(() => setListLoading(false));
+    }, [showList, playlist.length]);
 
     // Odśwież stan (tick karmienia żyje w KatedraRadioPlayer — tu tylko czytamy)
     useEffect(() => {
@@ -85,6 +102,53 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         setWiggle(w => w + 1);
         if (ok) say('dostał pyszny smakołyk: świeży wektor soniczny');
         else setSpeech('Brzuszek pełny — smakołyk za jakiś czas! 🫧');
+    };
+
+    // 🎶 Ulubiony utwór = smakołyk grany na żywo. Leci TYM SAMYM torem co radio
+    // (jeden odtwarzacz, jeden AudioContext), więc minutowe ticki karmienia
+    // działają dalej — eter i playlista karmią identycznie.
+    const handlePlayFavorite = (t: JoannaTrack) => {
+        const suno: SunoTrack = { id: t.id, title: t.title, audio_url: t.url || '', filename: t.filename };
+        radio.playFavorite(suno);
+
+        const { state, ok } = feedFavorite(s);
+        saveTeogochi(state); setS(state);
+        setWiggle(w => w + 1);
+        if (ok) say(`słucha właśnie swojego ulubionego kawałka: „${t.title}"`);
+        else setSpeech(`Gram „${t.title}" 🎶 (najedzony — ale słucha z przyjemnością)`);
+    };
+
+    // ⭐ Zabierz do ulubionych to, co właśnie leci w eterze.
+    const handleStarCurrent = () => {
+        const cur = radio.currentTrack;
+        if (!cur) { setSpeech('W eterze cisza — nie ma czego zapisać. 🫧'); return; }
+        const source = cur.filename || cur.audio_url || cur.id;
+        const entry: JoannaTrack = {
+            id: trackIdFrom(source),
+            title: cur.title || 'Bez tytułu',
+            filename: cur.filename,
+            url: cur.filename ? undefined : cur.audio_url,
+            note: 'z eteru',
+        };
+        if (addUserTrack(entry)) {
+            setPlaylist(prev => [entry, ...prev.filter(p => p.id !== entry.id)]);
+            setShowList(true);
+            setSpeech(`⭐ „${entry.title}" trafił do smakołyków!`);
+        } else {
+            setSpeech('To już jest w jego ulubionych 😊');
+        }
+    };
+
+    const handleRemoveFavorite = (id: string) => {
+        removeUserTrack(id);
+        setPlaylist(prev => prev.filter(p => p.id !== id));
+    };
+
+    // Czy dany ulubiony leci właśnie w eterze?
+    const isNowPlaying = (t: JoannaTrack): boolean => {
+        const cur = radio.currentTrack;
+        if (!cur || !radio.isPlaying) return false;
+        return (!!t.filename && t.filename === cur.filename) || (!!t.url && t.url === cur.audio_url);
     };
 
     return (
@@ -159,15 +223,94 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
             {/* Akcje */}
             <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={handleTreat}
-                    style={{ flex: 1, padding: '8px 6px', borderRadius: 9, border: '1px solid rgba(74,222,128,0.4)', background: 'rgba(74,222,128,0.08)', color: '#86efac', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
-                    🎵 SMAKOŁYK
+                <button onClick={() => setShowList(v => !v)}
+                    title="Rozwiń playlistę ulubionych smakołyków"
+                    style={{ flex: 1, padding: '8px 6px', borderRadius: 9, border: `1px solid rgba(74,222,128,${showList ? 0.75 : 0.4})`, background: `rgba(74,222,128,${showList ? 0.16 : 0.08})`, color: '#86efac', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                    🎵 SMAKOŁYK {showList ? '▲' : '▼'}
                 </button>
                 <button onClick={handlePet}
                     style={{ flex: 1, padding: '8px 6px', borderRadius: 9, border: '1px solid rgba(192,132,252,0.4)', background: 'rgba(192,132,252,0.08)', color: '#d8b4fe', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
                     🫳 POGŁASZCZ
                 </button>
             </div>
+
+            {/* 🎶 Playlista smakołyków */}
+            <AnimatePresence>
+                {showList && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        style={{ overflow: 'hidden' }}
+                    >
+                        <div style={{ marginTop: 8, padding: 8, borderRadius: 11, background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.18)' }}>
+                            {/* Pasek narzędzi listy */}
+                            <div style={{ display: 'flex', gap: 5, marginBottom: 7 }}>
+                                <button onClick={handleStarCurrent}
+                                    title="Dodaj utwór grający w eterze do ulubionych"
+                                    style={{ flex: 1, padding: '5px 4px', borderRadius: 7, border: '1px solid rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.07)', color: '#fcd34d', fontSize: 8, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em' }}>
+                                    ⭐ Z ETERU
+                                </button>
+                                <button onClick={handleTreat}
+                                    title="Klasyczny smakołyk — świeży wektor soniczny (co 10 min)"
+                                    style={{ flex: 1, padding: '5px 4px', borderRadius: 7, border: '1px solid rgba(74,222,128,0.35)', background: 'rgba(74,222,128,0.07)', color: '#86efac', fontSize: 8, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em' }}>
+                                    🍬 WEKTOR
+                                </button>
+                            </div>
+
+                            {/* Lista */}
+                            <div style={{ maxHeight: 148, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                {listLoading ? (
+                                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', textAlign: 'center', padding: '14px 0' }}>
+                                        ...nakrywam do stołu...
+                                    </div>
+                                ) : playlist.length === 0 ? (
+                                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.38)', textAlign: 'center', padding: '12px 6px', lineHeight: 1.6 }}>
+                                        Spiżarnia pusta.<br />
+                                        Puść coś w radiu i kliknij <span style={{ color: '#fcd34d' }}>⭐ Z ETERU</span>,<br />
+                                        albo wpisz ulubione w <code style={{ color: '#86efac', fontSize: 8 }}>joanna_playlist.json</code>.
+                                    </div>
+                                ) : playlist.map(t => {
+                                    const playing = isNowPlaying(t);
+                                    return (
+                                        <div key={t.id}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 5,
+                                                padding: '5px 6px', borderRadius: 7,
+                                                background: playing ? 'rgba(74,222,128,0.14)' : 'rgba(255,255,255,0.03)',
+                                                border: `1px solid ${playing ? 'rgba(74,222,128,0.45)' : 'rgba(255,255,255,0.05)'}`,
+                                            }}>
+                                            <button onClick={() => handlePlayFavorite(t)}
+                                                title={t.note ? `${t.title} — ${t.note}` : `Zagraj: ${t.title}`}
+                                                style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', color: 'inherit', minWidth: 0 }}>
+                                                <span style={{ fontSize: 10, flexShrink: 0 }}>{playing ? '🔊' : '▶'}</span>
+                                                <span style={{
+                                                    fontSize: 9, color: playing ? '#bbf7d0' : 'rgba(255,255,255,0.72)',
+                                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                                }}>
+                                                    {t.title}
+                                                </span>
+                                            </button>
+                                            {isUserTrack(t.id) && (
+                                                <button onClick={() => handleRemoveFavorite(t.id)} title="Usuń z ulubionych"
+                                                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.25)', fontSize: 9, cursor: 'pointer', padding: '0 2px', flexShrink: 0 }}>
+                                                    ✕
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {playlist.length > 0 && (
+                                <div style={{ marginTop: 6, fontSize: 7.5, color: 'rgba(255,255,255,0.3)', textAlign: 'center', letterSpacing: '0.06em' }}>
+                                    ♪ {playlist.length} smakołyków · zjedzonych: {s.favoritesPlayed ?? 0}
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Stopka metryk życia */}
             <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', fontSize: 8, color: 'rgba(255,255,255,0.35)' }}>
