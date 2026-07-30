@@ -2,6 +2,7 @@ import React, {
     createContext, useContext, useRef,
     useState, useCallback, useEffect
 } from 'react';
+import { toast } from 'react-hot-toast';
 import bridgeService, { getBridgeBase as bridgeBase } from '../lib/bridgeService';
 import {
     SonicVectorExtractor, CURRENT_VECTORS_FILE, CURRENT_PLAN_FILE,
@@ -185,7 +186,13 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
     useEffect(() => {
         const checkWiesioPulse = async () => {
             try {
-                const res = await fetch('http://127.0.0.1:3001/wiesio/ping');
+                // ⚠️ MUSI iść tą samą drogą co komendy (`getBridgeBase()`), a nie po
+                // zahardkodowanym 127.0.0.1. Inaczej przy ustawionym Kwantowym Tunelu
+                // kontrolka świeci na zielono („Most żyje"), podczas gdy KAŻDA komenda
+                // leci do tunelu i pada — playlista pusta, Joanna niema, teledysk nie
+                // startuje, a interfejs twierdzi, że wszystko gra. Kontrolka ma mówić
+                // prawdę o tej drodze, którą naprawdę jedzie ruch.
+                const res = await fetch(`${bridgeBase()}/wiesio/ping`);
                 setState(s => s.wiesioAlive !== res.ok ? { ...s, wiesioAlive: res.ok } : s);
             } catch (err) {
                 setState(s => s.wiesioAlive !== false ? { ...s, wiesioAlive: false } : s);
@@ -348,7 +355,11 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
 
             const canvas = document.querySelector('canvas[aria-label="Wizualizator orbity Katedry"]') as HTMLCanvasElement;
             if (!canvas) {
-                console.error("[PodCaT] Canvas nie znaleziony!");
+                // Nagrywamy OBRAZ Orbity — bez niej nie ma czego nagrać. Wcześniej ta
+                // ścieżka kończyła się cichym `console.error` i `return`: Suweren
+                // naciskał REC i nie działo się absolutnie nic, bez słowa wyjaśnienia.
+                console.error('[PodCaT] Kanwa Orbity nie znaleziona — nagrywanie przerwane.');
+                toast.error('Nie ma czego nagrywać — Orbita Katedry nie jest widoczna. Wróć na widok z Orbitą i spróbuj ponownie.', { duration: 6000 });
                 return;
             }
 

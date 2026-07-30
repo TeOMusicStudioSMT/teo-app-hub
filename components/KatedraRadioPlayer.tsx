@@ -13,6 +13,7 @@ import { TeoKaraokeForge } from './special/TeoKaraokeForge';
 import { TeOgochi } from './TeOgochi';
 import { TeOgochiDom } from './TeOgochiDom';
 import { loadTeogochi, saveTeogochi, tickListening, stageOf } from '../lib/teogochiState';
+import { getTunnelUrl, setTunnelUrl } from '../lib/bridgeService';
 
 
 
@@ -82,6 +83,8 @@ export function KatedraRadioPlayer() {
 
     // 🔎 Filtr biblioteki — przy setkach ścieżek lista bez wyszukiwarki jest bezużyteczna
     const [query, setQuery] = useState('');
+    // 🛰️ Czy komendy jadą przez tunel (a nie na lokalny Most) — pokazujemy to przy awarii
+    const [tunelUrl, setTunelUrl] = useState<string>(() => getTunnelUrl());
 
     // 📂 Otwarcie Biblioteki samo zaciąga katalog (rekurencyjnie, z podfolderami
     // albumów). Bez tego panel witał pustką i trzeba było zgadnąć, że gdzieś jest 🔄.
@@ -777,9 +780,41 @@ export function KatedraRadioPlayer() {
                                         <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)' }}>⟳ DJ Wiesław przegląda katalog...</span>
                                     ) : (
                                         <>
-                                            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>
-                                                {radio.wiesioAlive ? 'Katalog pusty.' : 'Most śpi — obudź Wiesława (:3001).'}
+                                            {/* Pokazujemy PRAWDZIWY powód, nie ogólnik. „Katalog pusty" przy
+                                                działającym Moście wysyłało Suwerena na polowanie na nieistniejący
+                                                problem — a naprawdę padało samo żądanie. */}
+                                            <div style={{ fontSize: 9, color: radio.error ? '#fca5a5' : 'rgba(255,255,255,0.4)' }}>
+                                                {radio.error
+                                                    ? '⚠️ Skan katalogu nie doszedł do skutku.'
+                                                    : radio.wiesioAlive ? 'Katalog pusty.' : 'Most śpi — obudź Wiesława (:3001).'}
                                             </div>
+                                            {radio.error && (
+                                                <div style={{ fontSize: 7.5, color: 'rgba(252,165,165,0.75)', marginTop: 5, wordBreak: 'break-all', lineHeight: 1.5 }}>
+                                                    {radio.error}
+                                                </div>
+                                            )}
+                                            {/* 🛰️ Najczęstsza przyczyna: stary adres Kwantowego Tunelu w localStorage.
+                                                Komendy jadą wtedy do tunelu, a kontrolka pinguje lokalny Most — stąd
+                                                „zielono, ale nic nie działa". Dajemy wyjście jednym kliknięciem. */}
+                                            {tunelUrl && (
+                                                <div style={{ marginTop: 8, padding: 7, borderRadius: 8, background: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.3)' }}>
+                                                    <div style={{ fontSize: 7.5, color: '#67e8f9', lineHeight: 1.5 }}>
+                                                        🛰️ Komendy idą przez Kwantowy Tunel:<br />
+                                                        <span style={{ color: 'rgba(255,255,255,0.5)', wordBreak: 'break-all' }}>{tunelUrl}</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => { setTunnelUrl(''); setTunelUrl(''); radio.loadPlaylist(undefined, false); }}
+                                                        style={{
+                                                            marginTop: 6, padding: '4px 10px', borderRadius: 7,
+                                                            border: '1px solid rgba(34,211,238,0.45)', background: 'rgba(34,211,238,0.12)',
+                                                            color: '#a5f3fc', fontSize: 7.5, fontWeight: 700, cursor: 'pointer',
+                                                            fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.06em',
+                                                        }}
+                                                    >
+                                                        🏠 WRÓĆ NA MOST LOKALNY
+                                                    </button>
+                                                </div>
+                                            )}
                                             <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.28)', marginTop: 6 }}>
                                                 Wrzuć pliki do <code style={{ color: '#c4b5fd' }}>_OtakOs_Muzyka/</code><br />
                                                 (podfoldery albumów też są skanowane)
