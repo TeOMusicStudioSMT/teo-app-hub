@@ -3717,7 +3717,7 @@ app.post('/api/shield/inspect', (req, res) => {
  * fundament automatycznego teledysku (Punkt 4, cegła 1).
  */
 app.post('/api/teledysk/plan', async (req, res) => {
-    let { vectors, sonicFile, fps, sourceDir } = req.body ?? {};
+    let { vectors, sonicFile, fps, sourceDir, duration } = req.body ?? {};
     fps = Number(fps) > 0 ? Number(fps) : 30;
     try {
         if (!Array.isArray(vectors) && sonicFile) {
@@ -3725,6 +3725,8 @@ app.post('/api/teledysk/plan', async (req, res) => {
             if (!abs.startsWith(process.cwd())) return res.status(403).json({ success: false, message: 'sonicFile poza projektem.' });
             const parsed = JSON.parse(await fs.readFile(abs, 'utf8'));
             vectors = Array.isArray(parsed) ? parsed : (parsed.vectors || parsed.steps || []);
+            // Koperta SonicVectorSet niesie prawdziwą długość utworu — użyj jej.
+            if (!duration && !Array.isArray(parsed)) duration = Number(parsed.duration) || 0;
         }
         if (!Array.isArray(vectors) || vectors.length < 4)
             return res.status(400).json({ success: false, message: 'Wymagane "vectors" (>=4) lub "sonicFile".' });
@@ -3744,10 +3746,20 @@ app.post('/api/teledysk/plan', async (req, res) => {
                 });
             }
         }
+        // Koniec ostatniego segmentu = REALNY koniec utworu. `vectors.length / fps`
+        // zakładało, że próbki idą w tempie klatek — przy 20 Hz obcinało 30-sekundowy
+        // utwór na 20. sekundzie. Bierzemy `duration`, a gdy go brak — czas ostatniej
+        // próbki (nowy format ma `t`); dopiero na końcu stare założenie fps.
+        const koniec = Number(duration) > 0
+            ? Number(duration)
+            : Number(vectors[vectors.length - 1]?.t) > 0
+                ? Number(vectors[vectors.length - 1].t)
+                : vectors.length / fps;
+
         const segments = cuts.map((c, idx) => {
             const next = cuts[idx + 1];
             const fx = c.vocals > 0.6 ? 'punch-zoom' : c.highs > 0.6 ? 'flash-cut' : 'soft-fade';
-            return { from: c.t, to: +(next ? next.t : vectors.length / fps).toFixed(3), fx, intensity: +Math.max(c.vocals, c.highs).toFixed(2) };
+            return { from: c.t, to: +(next ? next.t : koniec).toFixed(3), fx, intensity: +Math.max(c.vocals, c.highs).toFixed(2) };
         });
 
         return res.json({
