@@ -68,7 +68,7 @@ interface RadioContextValue extends RadioState {
     prev:         () => void;
     setVolume:    (v: number) => void;
     setTrack:     (index: number) => void;
-    loadPlaylist: (playlistId?: string) => Promise<void>;
+    loadPlaylist: (playlistId?: string, autoPlay?: boolean) => Promise<void>;
     playFavorite: (track: SunoTrack) => void;
     sendToStoryboard: () => Promise<{ ok: boolean; message: string }>;
     currentTrack: SunoTrack | null;
@@ -439,7 +439,13 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
         }
     }, [state.isRecording, setupAudioContext]);
 
-    const loadPlaylist = useCallback(async (_playlistId?: string) => {
+    /**
+     * Zaciąga listę z lokalnego katalogu `_OtakOs_Muzyka` (skan REKURENCYJNY —
+     * podfoldery albumów też wchodzą, ze ścieżką względną w `filename`).
+     * `autoPlay=false` przy cichym doczytaniu listy (otwarcie Biblioteki) —
+     * pokazujemy ścieżki, ale nie napadamy Suwerena dźwiękiem.
+     */
+    const loadPlaylist = useCallback(async (_playlistId?: string, autoPlay = true) => {
         setupAudioContext();
         setState(s => ({ ...s, isLoading: true, error: null }));
         try {
@@ -447,7 +453,10 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
             if (!response.success) throw new Error(response.message ?? 'Wiesław nie odpowiada');
             const tracks: SunoTrack[] = response.tracks ?? [];
             if (tracks.length === 0) throw new Error('Brak plików w _OtakOs_Muzyka/');
-            setState(s => ({ ...s, tracks, currentIndex: 0, isLoading: false, isPlaying: true, error: null }));
+            setState(s => ({
+                ...s, tracks, currentIndex: 0, isLoading: false,
+                isPlaying: autoPlay ? true : s.isPlaying, error: null,
+            }));
         } catch (e: any) {
             setState(s => ({ ...s, isLoading: false, error: e.message }));
         }

@@ -82,6 +82,16 @@ export function KatedraRadioPlayer() {
 
     // 🔎 Filtr biblioteki — przy setkach ścieżek lista bez wyszukiwarki jest bezużyteczna
     const [query, setQuery] = useState('');
+
+    // 📂 Otwarcie Biblioteki samo zaciąga katalog (rekurencyjnie, z podfolderami
+    // albumów). Bez tego panel witał pustką i trzeba było zgadnąć, że gdzieś jest 🔄.
+    // `autoPlay=false` — pokazujemy ścieżki, nie napadamy dźwiękiem.
+    React.useEffect(() => {
+        if (expanded && radio.tracks.length === 0 && !radio.isLoading) {
+            radio.loadPlaylist(undefined, false);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [expanded]);
     // 🧬 Wektory soniczne — komunikat po wysyłce do storyboardu
     const [sonicMsg, setSonicMsg] = useState<string | null>(null);
     const [sonicBusy, setSonicBusy] = useState(false);
@@ -739,6 +749,36 @@ export function KatedraRadioPlayer() {
                                 !radio.tracks.some(t => t.title?.toLowerCase().includes(query.trim().toLowerCase())) && (
                                 <div style={{ padding: '14px 10px', fontSize: 8.5, color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
                                     Brak ścieżki pasującej do „{query.trim()}"
+                                </div>
+                            )}
+
+                            {/* Pusta biblioteka — powiedz wprost, gdzie leży muzyka i co kliknąć */}
+                            {radio.tracks.length === 0 && (
+                                <div style={{ padding: '18px 12px', textAlign: 'center', lineHeight: 1.7 }}>
+                                    {radio.isLoading ? (
+                                        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)' }}>⟳ DJ Wiesław przegląda katalog...</span>
+                                    ) : (
+                                        <>
+                                            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>
+                                                {radio.wiesioAlive ? 'Katalog pusty.' : 'Most śpi — obudź Wiesława (:3001).'}
+                                            </div>
+                                            <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.28)', marginTop: 6 }}>
+                                                Wrzuć pliki do <code style={{ color: '#c4b5fd' }}>_OtakOs_Muzyka/</code><br />
+                                                (podfoldery albumów też są skanowane)
+                                            </div>
+                                            <button
+                                                onClick={() => radio.loadPlaylist()}
+                                                style={{
+                                                    marginTop: 10, padding: '5px 12px', borderRadius: 8,
+                                                    border: '1px solid rgba(180,100,255,0.4)', background: 'rgba(180,100,255,0.1)',
+                                                    color: '#e9d5ff', fontSize: 8, fontWeight: 700, cursor: 'pointer',
+                                                    fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.08em',
+                                                }}
+                                            >
+                                                🔄 SKANUJ KATALOG
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>
