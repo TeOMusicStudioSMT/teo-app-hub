@@ -80,6 +80,23 @@ export function KatedraRadioPlayer() {
     const [syncLyrics, setSyncLyrics] = useState<ParsedLyric[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // 🔎 Filtr biblioteki — przy setkach ścieżek lista bez wyszukiwarki jest bezużyteczna
+    const [query, setQuery] = useState('');
+    // 🧬 Wektory soniczne — komunikat po wysyłce do storyboardu
+    const [sonicMsg, setSonicMsg] = useState<string | null>(null);
+    const [sonicBusy, setSonicBusy] = useState(false);
+
+    const handleSendToStoryboard = async () => {
+        setSonicBusy(true);
+        setSonicMsg('Liczę cięcia...');
+        try {
+            const r = await radio.sendToStoryboard();
+            setSonicMsg(r.message);
+        } finally {
+            setSonicBusy(false);
+        }
+    };
+
     // 🐣 TeOgochi Dom — kompan mieszka przy radiu; słuchanie = karmienie
     const [showTeogochiDom, setShowTeogochiDom] = useState(false);
     const [teogochiEmoji, setTeogochiEmoji] = useState(() => stageOf(loadTeogochi().xp).emoji);
@@ -602,12 +619,29 @@ export function KatedraRadioPlayer() {
                         style={playlistPanelStyle}
                     >
                         <div style={playlistHeaderStyle}>
-                            <span>BIBLIOTEKA 0.00G</span>
+                            <span>BIBLIOTEKA 0.00G {radio.tracks.length > 0 && <span style={{ opacity: 0.45 }}>· {radio.tracks.length}</span>}</span>
                             <div style={{ display: 'flex', gap: 8 }}>
-                                <button onClick={() => radio.loadPlaylist()} title="Odśwież listę utworów z katalogu" style={closeBtnStyle}>🔄</button>
+                                <button onClick={() => radio.loadPlaylist()} title="Odśwież listę utworów z katalogu _OtakOs_Muzyka" style={closeBtnStyle}>🔄</button>
                                 <button onClick={() => setExpanded(false)} style={closeBtnStyle}>✕</button>
                             </div>
                         </div>
+
+                        {/* 🔎 Filtr — wybór ścieżki produkcyjnej z setek plików */}
+                        {radio.tracks.length > 6 && (
+                            <div style={{ padding: '6px 10px 0' }}>
+                                <input
+                                    value={query}
+                                    onChange={e => setQuery(e.target.value)}
+                                    placeholder="szukaj ścieżki..."
+                                    style={{
+                                        width: '100%', boxSizing: 'border-box',
+                                        background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(180,100,255,0.22)',
+                                        borderRadius: 8, padding: '5px 8px', fontSize: 9, color: '#e9d5ff',
+                                        outline: 'none', fontFamily: "'JetBrains Mono', monospace",
+                                    }}
+                                />
+                            </div>
+                        )}
                         {/* 🐣 TeOgochi słucha razem z Tobą i komentuje co gra */}
                         <div style={{ padding: '6px 8px 0', position: 'relative' }}>
                             <div style={{ cursor: 'pointer' }} onClick={() => setShowTeogochiDom(v => !v)} title="Otwórz Dom TeOgochi">
@@ -632,8 +666,55 @@ export function KatedraRadioPlayer() {
                                 document.body
                             )}
                         </div>
+                        {/* 🧬 GENERATOR WEKTORÓW SONICZNYCH — łącznik z montażownią Story V2 */}
+                        <div style={{ margin: '8px 10px 0', padding: 8, borderRadius: 10, background: 'rgba(34,211,238,0.05)', border: `1px solid rgba(34,211,238,${radio.sonicReady ? 0.4 : 0.15})` }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: radio.sonicReady ? 6 : 0 }}>
+                                <span style={{ fontSize: 10 }}>🧬</span>
+                                <span style={{ fontSize: 8, letterSpacing: '0.12em', color: radio.sonicReady ? '#67e8f9' : 'rgba(255,255,255,0.4)', fontWeight: 700 }}>
+                                    {radio.sonicReady ? 'SONIC VECTOR READY' : 'WEKTORY: ZBIERAM...'}
+                                </span>
+                                {radio.sonicSet && (
+                                    <span style={{ marginLeft: 'auto', fontSize: 7.5, color: 'rgba(255,255,255,0.35)' }}>
+                                        {radio.sonicSet.beats.length} ud.{radio.sonicSet.bpm ? ` · ${radio.sonicSet.bpm} BPM` : ''}
+                                    </span>
+                                )}
+                            </div>
+
+                            {radio.sonicReady && (
+                                <button
+                                    onClick={handleSendToStoryboard}
+                                    disabled={sonicBusy}
+                                    title="Policz cięcia zgrane z beatem i odłóż plan dla TeO Story V2"
+                                    style={{
+                                        width: '100%', padding: '5px 4px', borderRadius: 7,
+                                        border: '1px solid rgba(34,211,238,0.4)', background: 'rgba(34,211,238,0.1)',
+                                        color: '#a5f3fc', fontSize: 8, fontWeight: 700, letterSpacing: '0.08em',
+                                        cursor: sonicBusy ? 'wait' : 'pointer', opacity: sonicBusy ? 0.5 : 1,
+                                        fontFamily: "'JetBrains Mono', monospace",
+                                    }}
+                                >
+                                    🎬 {sonicBusy ? 'LICZĘ...' : 'WYŚLIJ DO STORYBOARDU'}
+                                </button>
+                            )}
+
+                            {!radio.sonicReady && (
+                                <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.3)', marginTop: 4, lineHeight: 1.5 }}>
+                                    Wektory domykają się przy końcu utworu lub zmianie ścieżki.
+                                </div>
+                            )}
+
+                            {sonicMsg && (
+                                <div style={{ marginTop: 5, fontSize: 7.5, color: 'rgba(255,255,255,0.55)', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                                    {sonicMsg}
+                                </div>
+                            )}
+                        </div>
+
                         <div style={playlistScrollStyle}>
-                            {radio.tracks.map((track, index) => (
+                            {radio.tracks
+                                .map((track, index) => ({ track, index }))
+                                .filter(({ track }) => !query.trim() || track.title?.toLowerCase().includes(query.trim().toLowerCase()))
+                                .map(({ track, index }) => (
                                 <div
                                     key={track.id}
                                     style={{
@@ -654,6 +735,12 @@ export function KatedraRadioPlayer() {
                                     )}
                                 </div>
                             ))}
+                            {radio.tracks.length > 0 && query.trim() &&
+                                !radio.tracks.some(t => t.title?.toLowerCase().includes(query.trim().toLowerCase())) && (
+                                <div style={{ padding: '14px 10px', fontSize: 8.5, color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
+                                    Brak ścieżki pasującej do „{query.trim()}"
+                                </div>
+                            )}
                         </div>
                     </motion.div>
                 )}

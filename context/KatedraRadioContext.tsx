@@ -2,7 +2,11 @@ import React, {
     createContext, useContext, useRef,
     useState, useCallback, useEffect
 } from 'react';
-import bridgeService from '../lib/bridgeService';
+import bridgeService, { getBridgeBase as bridgeBase } from '../lib/bridgeService';
+import {
+    SonicVectorExtractor, CURRENT_VECTORS_FILE, CURRENT_PLAN_FILE,
+    type SonicVectorSet,
+} from '../lib/sonicVectors';
 
 // ── Typy ─────────────────────────────────────────────────────────────
 
@@ -48,6 +52,10 @@ interface RadioState {
     showOutro:    boolean;            // czy pokazać outro (napisy)
     playbackRate: number;             // prędkość odtwarzania
     autoAdvance:  boolean;            // ⏭ auto-następny po końcu utworu (OFF = stop na końcu, np. do nagrań)
+    // ── 🧬 Wektory soniczne ──
+    sonicSet:       SonicVectorSet | null;  // ostatni domknięty zbiór
+    sonicReady:     boolean;                // zapisany na dysku → gotowy dla Story V2
+    storyboardCuts: number;                 // ile cięć policzył Most
 }
 
 
@@ -62,6 +70,7 @@ interface RadioContextValue extends RadioState {
     setTrack:     (index: number) => void;
     loadPlaylist: (playlistId?: string) => Promise<void>;
     playFavorite: (track: SunoTrack) => void;
+    sendToStoryboard: () => Promise<{ ok: boolean; message: string }>;
     currentTrack: SunoTrack | null;
     analyserRef:  React.RefObject<AnalyserNode | null>;
     // ── Nowe metody ──
@@ -106,9 +115,9 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
     const recordedChunksRef = useRef<Blob[]>([]);
     const currentFilenameRef = useRef<string>('');
     
-    // Pamięć Wektorowa dla Muzycznego Agenta
-    const sonicVectors = useRef<any[]>([]);
-    const lastSampleTime = useRef<number>(0);
+    // 🧬 Generator wektorów sonicznych — karmi się z pętli FFT niżej.
+    // Jeden ekstraktor na cały odtwarzacz; NIE tworzy własnego AudioContextu.
+    const sonicRef = useRef<SonicVectorExtractor>(new SonicVectorExtractor());
 
     const [state, setState] = useState<RadioState>({
         tracks: [], currentIndex: 0,
@@ -119,6 +128,7 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
         isMinimized: true, showIntro: false, showOutro: false,
         playbackRate: 1.0,
         autoAdvance: (() => { try { return localStorage.getItem('otakos_auto_advance') !== '0'; } catch { return true; } })(),
+        sonicSet: null, sonicReady: false, storyboardCuts: 0,
     });
 
     // Ref dla listenera 'ended' (bindowany raz) — bez niego przełącznik nie działałby na żywo
@@ -256,26 +266,12 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
             const vocalBand = dataArray.slice(10, 50); 
             const vocalVolume = vocalBand.reduce((a, b) => a + b, 0) / vocalBand.length;
             
-            // --- SONICZNY HARVESTER (Próbkowanie Wektorowe co 1s) ---
-            const now = Date.now();
-            if (now - lastSampleTime.current > 1000 && audioRef.current && !audioRef.current.paused) {
-                const getAverage = (arr: Uint8Array, start: number, end: number) => {
-                    let sum = 0;
-                    for (let i = start; i < end; i++) sum += arr[i];
-                    return Math.round(sum / (end - start));
-                };
-
-                const bassLvl = getAverage(dataArray, 0, 10);
-                const midLvl  = getAverage(dataArray, 10, 50);
-                const highLvl = getAverage(dataArray, 50, 120);
-
-                sonicVectors.current.push({
-                    s: sonicVectors.current.length,
-                    b: bassLvl,
-                    v: midLvl,
-                    h: highLvl
-                });
-                lastSampleTime.current = now;
+            // --- 🧬 SONICZNY HARVESTER (wektory + beat-detection, 20 Hz) ---
+            // Próbkujemy po CZASIE UTWORU, nie po zegarze ściennym — pauza nie
+            // wstrzykuje fałszywej ciszy, a przewinięcie nie rozjeżdża osi.
+            const audioEl = audioRef.current;
+            if (audioEl && !audioEl.paused) {
+                sonicRef.current.sample(analyser, audioEl.currentTime);
             }
 
             setState(s => ({ ...s, bassLevel: bass, vocalLevel: vocalVolume }));
@@ -457,32 +453,80 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
         }
     }, [setupAudioContext]);
 
-    // ── Sonic Harvester — Zrzut danych ──
+    // ── 🧬 Sonic Harvester — zrzut wektorów na dysk ────────────────────
+    // Zapisuje DWA pliki: archiwalny (z datą) i `current_track_vectors.json`,
+    // po który sięga silnik montażowy TeO Story V2.
     const handleStopSequence = useCallback(async () => {
-        if (sonicVectors.current.length > 0) {
-            const trackTitle = currentTrack?.title || "Unknown_Track";
-            const timestamp  = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename   = `SonicVectors_${trackTitle.replace(/\s+/g, '_')}_${timestamp}.json`;
+        const ex = sonicRef.current;
+        if (ex.isEmpty) return;
 
-            console.log(`💎 ZEJŚCIE DANYCH Z MEMBRAN: ${filename} (${sonicVectors.current.length} próbek)`);
+        const trackTitle = currentTrack?.title || 'Unknown_Track';
+        const set = ex.finish(audioRef.current?.duration || 0, trackTitle);
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const archive = `SonicVectors_${trackTitle.replace(/\s+/g, '_')}_${timestamp}.json`;
 
-            try {
-                await fetch('http://127.0.0.1:3001/wiesio/action', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        action: 'SAVE_SONIC_VECTORS', 
-                        payload: { filename, vectors: sonicVectors.current } 
-                    })
-                });
-            } catch (err) {
-                console.error("[Sonic Harvester] ❌ Błąd zapisu do Wiesława!", err);
+        console.log(`💎 ZEJŚCIE DANYCH Z MEMBRAN: ${set.vectors.length} próbek, ${set.beats.length} uderzeń, BPM ${set.bpm ?? '?'}`);
+
+        const save = async (filename: string, vectors: unknown) => {
+            const r = await fetch(`${bridgeBase()}/wiesio/action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'SAVE_SONIC_VECTORS', payload: { filename, vectors } }),
+            });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        };
+
+        try {
+            await save(archive, set);                  // kopia archiwalna
+            await save(CURRENT_VECTORS_FILE, set);     // „gorący" plik dla Story V2
+            setState(s => ({ ...s, sonicSet: set, sonicReady: true }));
+        } catch (err) {
+            console.error('[Sonic Harvester] ❌ Błąd zapisu do Wiesława!', err);
+            setState(s => ({ ...s, sonicSet: set, sonicReady: false }));
+        }
+
+        ex.reset(trackTitle);
+    }, [currentTrack]);
+
+    /**
+     * 🎬 WYŚLIJ DO STORYBOARDU — wektory → plan cięć zgranych z beatem.
+     * Most liczy plan (`/api/teledysk/plan`) i odkładamy go jako
+     * `current_track_plan.json`, gotowy do zaciągnięcia przez montażownię.
+     */
+    const sendToStoryboard = useCallback(async (): Promise<{ ok: boolean; message: string }> => {
+        const set = state.sonicSet;
+        if (!set || set.vectors.length < 4) {
+            return { ok: false, message: 'Brak wektorów — puść utwór do końca albo przełącz ścieżkę.' };
+        }
+        try {
+            const res = await fetch(`${bridgeBase()}/api/teledysk/plan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vectors: set.vectors, fps: 30, duration: set.duration }),
+            });
+            const plan = await res.json();
+            if (!res.ok || !plan.success) {
+                return { ok: false, message: plan.message || `Most odmówił (HTTP ${res.status})` };
             }
 
-            sonicVectors.current = [];
-            lastSampleTime.current = 0;
+            await fetch(`${bridgeBase()}/wiesio/action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'SAVE_SONIC_VECTORS',
+                    payload: {
+                        filename: CURRENT_PLAN_FILE,
+                        vectors: { track: set.track, bpm: set.bpm, duration: set.duration, ...plan },
+                    },
+                }),
+            });
+
+            setState(s => ({ ...s, storyboardCuts: plan.cutCount ?? 0 }));
+            return { ok: true, message: `🎬 ${plan.cutCount} cięć → ${CURRENT_PLAN_FILE}` };
+        } catch (e: any) {
+            return { ok: false, message: `Most nieosiągalny: ${e?.message || e}` };
         }
-    }, [currentTrack]);
+    }, [state.sonicSet]);
 
     // 🔊 Głos Rady — realne odtworzenie tego, co agent "mówi" (lokalny klon głosu
     // per agentId, fallback przeglądarki gdy silnik XTTS niedostępny).
@@ -543,7 +587,7 @@ export function KatedraRadioProvider({ children }: { children: React.ReactNode }
         <KatedraRadioContext.Provider value={{
             ...state, currentTrack, analyserRef,
             play, pause, toggle, next, prev,
-            setVolume, setTrack, loadPlaylist, playFavorite,
+            setVolume, setTrack, loadPlaylist, playFavorite, sendToStoryboard,
             speakMessage, clearAura, seekTo, toggleRecording,
             setIsMinimized: (m: boolean) => setState(s => ({ ...s, isMinimized: m })),
             setCurrentLyric: (t: string) => setState(s => ({ ...s, currentLyric: t })),
