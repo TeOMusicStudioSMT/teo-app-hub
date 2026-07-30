@@ -272,8 +272,19 @@ export function KatedraRadioPlayer() {
     // Jeśli nic nie załadowano, pokaż przycisk startu
 
     if (radio.tracks.length === 0 && !radio.isLoading && !radio.error) {
+        // 🔎 PUŁAPKA (naprawiona 2026-07-30): samo `loadPlaylist()` zaciągało 137
+        // utworów, ale odtwarzacz zwijał się zaraz potem w krążek 56×56 px, bo
+        // `isMinimized` startuje jako `true`. Z perspektywy Suwerena wyglądało to
+        // jak „katalog się nie ładuje" — dane były, tylko nie miał ich gdzie zobaczyć.
+        // Klik na ten przycisk to jawna prośba „pokaż mi muzykę": rozwijamy Katedrę
+        // i otwieramy Bibliotekę, żeby wynik był widoczny od razu.
+        const odpalAsystenta = async () => {
+            await radio.loadPlaylist();
+            radio.setIsMinimized(false);
+            setExpanded(true);
+        };
         return (
-            <button onClick={() => radio.loadPlaylist()} style={launchButtonStyle}>
+            <button onClick={odpalAsystenta} style={launchButtonStyle}>
                 <span style={{ fontSize: '24px' }}>🎧</span>
                 <span style={{ fontSize: '9px', letterSpacing: '0.15em', textAlign: 'center', lineHeight: '1.2' }}>
                     ASYSTENT<br />MUZYCZNY
@@ -723,7 +734,14 @@ export function KatedraRadioPlayer() {
                         <div style={playlistScrollStyle}>
                             {radio.tracks
                                 .map((track, index) => ({ track, index }))
-                                .filter(({ track }) => !query.trim() || track.title?.toLowerCase().includes(query.trim().toLowerCase()))
+                                // Szukamy w tytule ORAZ w ścieżce — `title` to sama nazwa pliku,
+                                // więc bez `filename` nie dało się znaleźć utworu po nazwie albumu
+                                // (np. „Krople" nie trafiało w „OtakOS RADIO Album's/7 Krople Wiatru/…").
+                                .filter(({ track }) => {
+                                    const q = query.trim().toLowerCase();
+                                    if (!q) return true;
+                                    return `${track.title ?? ''} ${track.filename ?? ''}`.toLowerCase().includes(q);
+                                })
                                 .map(({ track, index }) => (
                                 <div
                                     key={track.id}
@@ -746,7 +764,7 @@ export function KatedraRadioPlayer() {
                                 </div>
                             ))}
                             {radio.tracks.length > 0 && query.trim() &&
-                                !radio.tracks.some(t => t.title?.toLowerCase().includes(query.trim().toLowerCase())) && (
+                                !radio.tracks.some(t => `${t.title ?? ''} ${t.filename ?? ''}`.toLowerCase().includes(query.trim().toLowerCase())) && (
                                 <div style={{ padding: '14px 10px', fontSize: 8.5, color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
                                     Brak ścieżki pasującej do „{query.trim()}"
                                 </div>
@@ -880,6 +898,11 @@ const closeBtnStyle: React.CSSProperties = {
 
 const playlistScrollStyle: React.CSSProperties = {
     flex: 1,
+    // `minHeight: 0` jest tu konieczne, nie kosmetyczne: dziecko flexa domyślnie
+    // ma `min-height: auto`, więc lista 137 utworów rozpychałaby się na pełną
+    // wysokość zamiast scrollować, a panel (`maxHeight: 520`, `overflow: hidden`)
+    // po prostu by ją przyciął.
+    minHeight: 0,
     overflowY: 'auto',
     padding: '8px',
 };
