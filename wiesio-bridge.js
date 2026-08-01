@@ -37,6 +37,10 @@ import ApiLayerService       from './services/ApiLayerService.js';
 import AlignmentShield       from './services/AlignmentShield.js';
 import { forecast as kronosForecast } from './services/KronosSeed.js';
 import { zbierzWiadomosci, promptNastroju, SOURCES as RYNEK_SOURCES } from './services/RynekTunelService.js';
+import {
+    lista as dziennikLista, dodaj as dziennikDodaj,
+    domknij as dziennikDomknij, podsumowanie as dziennikPodsumowanie,
+} from './services/DziennikDecyzjiService.js';
 import CryptoAgility from './services/CryptoAgility.js';
 import { buildDziennikHtml } from './services/dziennikTemplate.js';
 import {
@@ -5928,6 +5932,46 @@ app.post('/api/rynek/nastroj', async (req, res) => {
         });
     } catch (err) {
         console.error('[Rynek] ❌ nastroj:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ── 📓 DZIENNIK DECYZJI ──────────────────────────────────────────────────────
+// Jedyne narzędzie z całego arsenału finansowego, które realnie poprawia wyniki:
+// zapisuje CO i DLACZEGO, zanim znany jest wynik. Nic tu nie doradza.
+
+app.get('/api/rynek/dziennik', async (req, res) => {
+    try {
+        return res.json({ success: true, wpisy: await dziennikLista(ANTIGRAVITY_DIR) });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/rynek/dziennik', async (req, res) => {
+    try {
+        const wpis = await dziennikDodaj(ANTIGRAVITY_DIR, req.body ?? {});
+        console.log(`[Dziennik] 📓 ${wpis.kierunek} ${wpis.aktywo} (pewność ${wpis.pewnosc}/5) — ${wpis.id}`);
+        return res.json({ success: true, wpis });
+    } catch (err) {
+        // 400, nie 500 — to walidacja treści, nie awaria serwera.
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/rynek/dziennik/:id/wynik', async (req, res) => {
+    try {
+        const wpis = await dziennikDomknij(ANTIGRAVITY_DIR, req.params.id, req.body ?? {});
+        return res.json({ success: true, wpis });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+app.get('/api/rynek/dziennik/podsumowanie', async (req, res) => {
+    try {
+        return res.json({ success: true, ...(await dziennikPodsumowanie(ANTIGRAVITY_DIR)) });
+    } catch (err) {
         return res.status(500).json({ success: false, message: err.message });
     }
 });

@@ -48,6 +48,7 @@ import { KwantowyInkubator } from './KwantowyInkubator';
 import TedTheTrader from './TedTheTrader';
 import KronosOracle from './KronosOracle';
 import TunelRynkowy from './TunelRynkowy';
+import DziennikDecyzji from './DziennikDecyzji';
 import VideoUseLauncher from './VideoUseLauncher';
 import TeledyskPanel from './TeledyskPanel';
 import { StorytellerFrame } from './StorytellerFrame';
@@ -1399,6 +1400,8 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
                 przed symulacją scenariusza, nie po niej. */}
             <TunelRynkowy />
             <KronosOracle />
+            {/* 📓 Dziennik na końcu — po faktach i po symulacji zapada decyzja. */}
+            <DziennikDecyzji />
           </motion.div>
         )}
 
