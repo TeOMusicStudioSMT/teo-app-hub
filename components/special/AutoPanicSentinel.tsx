@@ -192,21 +192,44 @@ export const AutoPanicSentinel: React.FC = () => {
             if (/\/api\/teogochi/.test(url))       return { name: 'TeOgochi',          hint: 'components/TeOgochi.tsx wiesio-bridge.js' };
             if (/\/api\/bridge\/autosync/.test(url)) return { name: 'Karaoke Auto-Sync', hint: 'components/special/TeoKaraokeForge.tsx wiesio-bridge.js' };
             if (/\/api\/ollama/.test(url))         return { name: 'Rdzeń AI (Ollama)', hint: 'wiesio-bridge.js' };
+            if (/\/api\/agi/.test(url))           return { name: 'Mapa AGI',          hint: 'lib/agi.local.ts wiesio-bridge.js' };
+            if (/\/api\/voice/.test(url))         return { name: 'Głos (klon/synteza)', hint: 'services/voiceService wiesio-bridge.js · silnik XTTS na :5002' };
+            if (/\/api\/teledysk|\/api\/video/.test(url)) return { name: 'Teledysk/Render', hint: 'wiesio-bridge.js · ffmpeg' };
+            if (/\/api\/mechanic/.test(url))      return { name: 'Mechanik',          hint: 'services/MechanicService.js' };
             if (/\/api\/bridge\/execute|\/wiesio\/action/.test(url)) return { name: 'Śluza Wiesia', hint: 'wiesio-bridge.js' };
             if (/\/music\//.test(url))             return { name: 'Radio (stream)',    hint: 'context/KatedraRadioContext.tsx wiesio-bridge.js' };
             return { name: 'Most (nieznany moduł)', hint: 'wiesio-bridge.js' };
         };
 
+        // 🔍 PROTOKÓŁ RZETELNOŚCI (2026-07-30): meldunek podaje FAKTY, a hipotezy
+        // oznacza jako hipotezy. Wcześniej KAŻDY `AbortError` na moście był zgłaszany
+        // jako „zator VRAM?" — nawet gdy wywołanie nie miało z AI nic wspólnego
+        // (przerwane żądanie przy zmianie widoku, własny timeout wywołującego,
+        // odmontowany komponent). Diagnoza podana pewnym tonem wysyła Suwerena
+        // w polowanie na zły trop; VRAM sugerujemy wyłącznie tam, gdzie faktycznie
+        // rozmawiamy z modelem.
+        const czyEndpointAI = (u: string) => /\/api\/(ollama|gemini|claude|forge|kronika|dziennik)/.test(u);
+        const hipotezyDla = (u: string, przerwane: boolean): string => {
+            if (!przerwane) return 'Most nie odpowiada (wyłączony?), zła domena/port albo blokada CORS';
+            return czyEndpointAI(u)
+                ? 'model ładował się dłużej niż limit, Ollama nie nadąża, albo model niepobrany'
+                : 'żądanie przerwane przez wywołującego (zmiana widoku / własny timeout) albo most milczał zbyt długo';
+        };
+
         window.fetch = async (input: any, init?: any) => {
             const url = urlOf(input);
+            const t0 = Date.now();
             try {
                 const res = await originalFetch(input, init);
                 // Pusty / serwerowy błąd na obserwowanym wywołaniu mostu = krytyczny crash
                 if (isWatchedBridgeCall(url) && (res.status === 0 || res.status >= 500)) {
                     const mod = moduleOf(url);
+                    const sek = ((Date.now() - t0) / 1000).toFixed(1);
                     reportPanic(
-                        `Krytyczny crash modułu ${mod.name} — most zwrócił status ` +
-                        `${res.status || 'EMPTY'} @ ${url} · ${mod.hint}`,
+                        `[${mod.name}] most odpowiedział błędem po ${sek}s\n` +
+                        `FAKTY: HTTP ${res.status || 'EMPTY'} · ${url}\n` +
+                        `HIPOTEZY (niezweryfikowane): wyjątek po stronie mostu w obsłudze tego endpointu\n` +
+                        `GDZIE SZUKAĆ: ${mod.hint} (surowy ślad w konsoli mostu)`,
                         '', 'fetch-interceptor',
                     );
                 }
@@ -214,13 +237,15 @@ export const AutoPanicSentinel: React.FC = () => {
             } catch (err: any) {
                 if (isWatchedBridgeCall(url)) {
                     const msg     = err?.message || String(err);
-                    const aborted = err?.name === 'AbortError' || /aborted|abort/i.test(msg);
-                    const mod = moduleOf(url);
+                    const nazwa   = err?.name || 'Error';
+                    const aborted = nazwa === 'AbortError' || /aborted|abort/i.test(msg);
+                    const sek     = ((Date.now() - t0) / 1000).toFixed(1);
+                    const mod     = moduleOf(url);
                     reportPanic(
-                        (aborted
-                            ? `[${mod.name}] This operation was aborted (zator VRAM?) @ ${url}`
-                            : `[${mod.name}] TypeError: Failed to fetch @ ${url} — ${msg}`) +
-                        ` · ${mod.hint}`,
+                        `[${mod.name}] ${aborted ? 'żądanie przerwane' : 'żądanie nie doszło'} po ${sek}s\n` +
+                        `FAKTY: ${nazwa}: ${msg} · ${url}\n` +
+                        `HIPOTEZY (niezweryfikowane): ${hipotezyDla(url, aborted)}\n` +
+                        `GDZIE SZUKAĆ: ${mod.hint}`,
                         '', 'fetch-interceptor',
                     );
                 }

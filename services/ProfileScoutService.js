@@ -74,9 +74,13 @@ class ProfileScoutServiceClass {
             return this._parse(data.response || '');
 
         } catch (e) {
+            // Ten sam protokół rzetelności co u Mechanika: abort mówi „nie zdążyło",
+            // a nie „to VRAM". Podajemy fakt (limit) i hipotezy jako hipotezy.
             const aborted = e.name === 'AbortError';
             throw new Error(aborted
-                ? 'Pralka Świadomości: timeout 300s (zator VRAM gemma4).'
+                ? `Pralka Świadomości: model "${MODEL}" nie odpowiedział w limicie 300s. ` +
+                  'HIPOTEZY (niezweryfikowane): zimny start modelu, Ollama nie nadąża, ' +
+                  'model niepobrany lub za mało wolnej pamięci. Sprawdź: "ollama ps".'
                 : `Pralka Świadomości: ${e.message}`);
         } finally {
             clearTimeout(timer);

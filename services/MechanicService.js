@@ -258,26 +258,33 @@ class MechanicService {
 
         // 2. [🛠️ GENEROWANIE ŁATKI] Wyślij do Gemma4 (z kontekstem Turboveca)
         await this._setStage(task.id, allTasks, 'GENERATING');
+        const aiStartedAt = Date.now();
         try {
             patchContent = await this._callGemma(task);
         } catch (aiErr) {
-            // Detekcja zatoru VRAM: abort = Ollama nie zdążyła załadować modelu w limicie.
-            const aborted = aiErr.name === 'AbortError' || /aborted|abort/i.test(aiErr.message || '');
-            const vramNote = '[MECHANIK] ⚠️ Wykryto zator pamięci VRAM. ' +
-                'Podnoszę limity magistrali i restartuję nasłuch rdzenia...';
+            // ⚠️ PROTOKÓŁ RZETELNOŚCI (2026-07-30). Poprzednia wersja na KAŻDY abort
+            // meldowała „Wykryto zator pamięci VRAM. Podnoszę limity magistrali
+            // i restartuję nasłuch rdzenia..." — dwa grzechy naraz:
+            //   1. „Wykryto" było zgadywaniem podanym jako fakt (abort ma wiele przyczyn:
+            //      Ollama nie stoi, model niepobrany, zimny start, padł proces).
+            //   2. Opisywało czynności, KTÓRYCH NIE WYKONUJE — nic tu nie podnosi limitów
+            //      ani nie restartuje rdzenia; jedyna realna akcja to purgeStalledTasks.
+            // Diagnoza podana pewnym tonem wysyła Suwerena w polowanie na zły trop.
+            // Teraz: fakty → hipotezy jawnie oznaczone → co NAPRAWDĘ zrobiono → jak sprawdzić.
+            const diag = this._opiszAwarieAI(aiErr, task, Date.now() - aiStartedAt);
 
-            if (aborted) {
-                console.warn(`[Mechanik] ${vramNote} (zadanie ${task.id}, timeout ${AI_TIMEOUT_MS / 1000}s)`);
-            }
-            console.error(`[Mechanik] ❌ AI zawiedzie dla ${task.id}: ${aiErr.message}`);
+            console.error(`[Mechanik] ❌ ${task.id}: ${diag.naglowek}`);
+            console.error(`[Mechanik]    fakty: ${diag.fakty}`);
 
-            // Odłóż do rejestru zadań jasny komunikat (widoczny na Szmaragdowym Terminalu).
             await this._updateStatus(task.id, allTasks, STATUS.FAILED, {
-                failedAt:  new Date().toISOString(),
-                error:     aborted ? vramNote : aiErr.message,
-                vramStall: aborted || undefined,
+                failedAt:   new Date().toISOString(),
+                error:      diag.pelny,
+                errorKind:  diag.rodzaj,          // 'TIMEOUT' | 'HTTP' | 'EMPTY' | 'UNKNOWN'
+                hypothesis: true,                 // ⚠️ przyczyna NIE jest potwierdzona
+                vramStall:  diag.rodzaj === 'TIMEOUT' ? undefined : undefined,
             });
-            await this._writeDeadLetter({ task, error: aborted ? `${vramNote} (${aiErr.message})` : aiErr.message });
+            await this._writeDeadLetter({ task, error: diag.pelny });
+            const aborted = diag.rodzaj === 'TIMEOUT';
 
             // FIFO Clearer: po wykryciu abortu usuń zakleszczone zombie, by nie blokowały kolejki.
             if (aborted) {
@@ -336,6 +343,61 @@ class MechanicService {
     // ─────────────────────────────────────────────────────────────────────────
     // PRIVATE: AI CALL — Gemma4 (ten sam wzorzec co KnowledgeGraphService)
     // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * 🔍 Opis awarii wywołania AI — protokół rzetelności Mechanika.
+     *
+     * Zasada: NAJPIERW to, co zmierzone (typ błędu, endpoint, model, czas), POTEM
+     * hipotezy — zawsze podpisane jako hipotezy, nigdy jako „wykryto". Mechanik nie
+     * ma czym zmierzyć zajętości VRAM, więc nie wolno mu twierdzić, że ją wykrył.
+     * Na końcu polecenie, którym Suweren sam sprawdzi, która hipoteza jest prawdziwa.
+     */
+    _opiszAwarieAI(err, task, elapsedMs) {
+        const sek        = Math.max(1, Math.round(elapsedMs / 1000));
+        const komunikat  = err?.message || String(err);
+        const nazwa      = err?.name || 'Error';
+        const czyTimeout = nazwa === 'AbortError' || /aborted|abort/i.test(komunikat);
+        const httpKod    = (/Ollama HTTP (\d+)/.exec(komunikat) || [])[1];
+        const czyPusta   = /pust[ąa]\s+odpowied/i.test(komunikat);
+
+        let rodzaj, naglowek, hipotezy;
+        if (czyTimeout) {
+            rodzaj   = 'TIMEOUT';
+            naglowek = `Zapytanie do modelu ${GEMMA_MODEL} przerwane po ${sek}s (limit ${AI_TIMEOUT_MS / 1000}s).`;
+            hipotezy = [
+                `zimny start — ${GEMMA_MODEL} ładuje się dłużej niż limit`,
+                'Ollama nie nadąża lub padła w trakcie generowania',
+                'za mało wolnej pamięci, by pomieścić model',
+                'zadanie zbyt duże na jedno wywołanie',
+            ];
+        } else if (httpKod) {
+            rodzaj   = 'HTTP';
+            naglowek = `Ollama odrzuciła zapytanie: HTTP ${httpKod}.`;
+            hipotezy = httpKod === '404'
+                ? [`model "${GEMMA_MODEL}" nie jest pobrany na tej maszynie`]
+                : ['Ollama zwróciła błąd serwera — szczegóły w jej własnym logu'];
+        } else if (czyPusta) {
+            rodzaj   = 'EMPTY';
+            naglowek = `Model ${GEMMA_MODEL} odpowiedział, ale pustką.`;
+            hipotezy = ['prompt odrzucony przez model', 'odpowiedź ucięta przez limit kontekstu'];
+        } else {
+            rodzaj   = 'UNKNOWN';
+            naglowek = `Wywołanie AI nie powiodło się: ${nazwa}.`;
+            hipotezy = ['przyczyna nierozpoznana — patrz surowy komunikat poniżej'];
+        }
+
+        const fakty = `${nazwa}: ${komunikat} · endpoint ${OLLAMA_URL} · model ${GEMMA_MODEL} · ${sek}s · zadanie ${task.id}`;
+        const pelny = [
+            `[MECHANIK] ${naglowek}`,
+            `FAKTY: ${fakty}`,
+            `HIPOTEZY (niezweryfikowane, w kolejności prawdopodobieństwa): ${hipotezy.map((h, i) => `${i + 1}) ${h}`).join('; ')}`,
+            `CO ZROBIONO: zadanie oznaczone jako FAILED i zapisane do dead-letter` +
+                (czyTimeout ? '; wyczyszczono zakleszczone zadania starsze niż 5 min' : ''),
+            `SPRAWDŹ SAM: "ollama ps" (czy model stoi) oraz "curl ${OLLAMA_URL.replace(/\/api\/.*$/, '/api/tags')}" (czy jest pobrany)`,
+        ].join('\n');
+
+        return { rodzaj, naglowek, fakty, hipotezy, pelny };
+    }
 
     async _callGemma(task) {
         const prompt =
