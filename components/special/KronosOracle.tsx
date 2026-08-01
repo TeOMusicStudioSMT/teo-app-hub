@@ -131,15 +131,29 @@ export const KronosOracle: React.FC = () => {
                 <div>
                     <div style={{ fontSize: 9, letterSpacing: '.2em', color: 'rgba(0,229,255,.5)' }}>∴ KATEDRA OTAKOS · CENTRUM FINANSOWE ∴</div>
                     <div style={{ fontSize: 15, fontWeight: 700, color: '#e8f6ff' }}>🔮 KRONOS ORACLE</div>
-                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,.35)' }}>Nasiono Rynkowe — lokalna projekcja świec K-line (zero chmury)</div>
+                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,.35)' }}>Nasiono Rynkowe — symulacja scenariusza (błądzenie losowe), zero chmury</div>
                 </div>
                 {fc && (
                     <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 8, letterSpacing: '.15em', color: 'rgba(255,255,255,.3)' }}>SCENARIUSZ</div>
                         <div style={{ fontSize: 18, fontWeight: 700, color: verdictColor }}>{fc.verdict}</div>
-                        <div style={{ fontSize: 11, color: verdictColor }}>{fc.projChangePct >= 0 ? '+' : ''}{fc.projChangePct}% proj.</div>
+                        <div style={{ fontSize: 11, color: verdictColor }}>{fc.projChangePct >= 0 ? '+' : ''}{fc.projChangePct}% w tym przebiegu</div>
                         <div style={{ fontSize: 8, color: 'rgba(255,255,255,.3)' }}>vol {(fc.volatility * 100).toFixed(1)}% · drift {(fc.drift * 100).toFixed(2)}%</div>
                     </div>
                 )}
+            </div>
+
+            {/* ⚠️ UCZCIWA ETYKIETA. Silnik (services/KronosSeed.js) to błądzenie losowe:
+                szum gaussowski + dryf z historycznej zmienności + powrót do średniej.
+                NIE MA zdolności przewidywania — „WZROST/SPADEK" mówi tylko, gdzie
+                zatrzymał się ten jeden losowy przebieg. Bez tej etykiety wykres wygląda
+                jak prognoza i kusi, by postawić na nim realne pieniądze. */}
+            <div style={{ marginTop: 10, padding: '7px 10px', borderRadius: 8, background: 'rgba(251,191,36,.07)', border: '1px solid rgba(251,191,36,.3)' }}>
+                <div style={{ fontSize: 9, color: '#fcd34d', lineHeight: 1.6 }}>
+                    ⚠️ <b>To nie jest prognoza.</b> Silnik losuje jeden możliwy przebieg z historycznej
+                    zmienności (błądzenie losowe). Pokazuje <i>jak szeroko</i> cena może się rozejść,
+                    a nie <i>dokąd</i> pójdzie. Nie podejmuj decyzji finansowych na tej podstawie.
+                </div>
             </div>
 
             {/* Kontrolki */}

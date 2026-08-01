@@ -95,7 +95,12 @@ export function forecast(opt = {}) {
     const verdict = projChange > 0.03 ? 'WZROST' : projChange < -0.03 ? 'SPADEK' : 'KONSOLIDACJA';
 
     return {
-        model: 'Kronos-Seed (lokalna projekcja · Nasiono Rynkowe)',
+        // ⚠️ Nazwa mówi wprost, czym to jest. Wcześniejsze „projekcja" brzmiało jak
+        // prognoza; to jest JEDEN losowy przebieg z historycznej zmienności.
+        model: 'Kronos-Seed (symulacja scenariusza · błądzenie losowe, NIE prognoza)',
+        isSimulation: true,
+        disclaimer: 'Błądzenie losowe z historycznej zmienności. Brak zdolności predykcyjnej — ' +
+                    'nie stanowi porady inwestycyjnej ani podstawy decyzji finansowych.',
         symbol, lastPrice, predLen,
         drift:      +drift.toFixed(6),
         volatility: +vol.toFixed(6),
