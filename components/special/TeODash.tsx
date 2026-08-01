@@ -47,6 +47,7 @@ import { CrewCreator } from './CrewCreator';
 import { KwantowyInkubator } from './KwantowyInkubator';
 import TedTheTrader from './TedTheTrader';
 import KronosOracle from './KronosOracle';
+import TunelRynkowy from './TunelRynkowy';
 import VideoUseLauncher from './VideoUseLauncher';
 import TeledyskPanel from './TeledyskPanel';
 import { StorytellerFrame } from './StorytellerFrame';
@@ -1394,6 +1395,9 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
         {showTed && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
             <TedTheTrader />
+            {/* 📰 Tunel wiadomości NAD Kronosem — fakty (co mówią media) czyta się
+                przed symulacją scenariusza, nie po niej. */}
+            <TunelRynkowy />
             <KronosOracle />
           </motion.div>
         )}

@@ -36,6 +36,7 @@ import FlushService          from './services/FlushService.js';
 import ApiLayerService       from './services/ApiLayerService.js';
 import AlignmentShield       from './services/AlignmentShield.js';
 import { forecast as kronosForecast } from './services/KronosSeed.js';
+import { zbierzWiadomosci, promptNastroju, SOURCES as RYNEK_SOURCES } from './services/RynekTunelService.js';
 import CryptoAgility from './services/CryptoAgility.js';
 import { buildDziennikHtml } from './services/dziennikTemplate.js';
 import {
@@ -5861,6 +5862,72 @@ app.post('/api/kronos/forecast', (req, res) => {
         const out = kronosForecast({ symbol, lastPrice: Number(lastPrice), history, predLen: Number(predLen) || 24 });
         return res.json({ success: true, ...out });
     } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ── 📰 TUNEL WIADOMOŚCI RYNKOWYCH ────────────────────────────────────────────
+// Rynek reaguje emocjonalnie, więc nastrój prasy jest realnym sygnałem — inaczej
+// niż wróżenie ze świec. Tu zbieramy FAKTY (nagłówki), a interpretację zostawiamy
+// osobnemu wywołaniu, jawnie oznaczonemu jako opinia modelu.
+
+/**
+ * GET /api/rynek/wiadomosci?limit=40&rodzaj=krypto|makro&odswiez=1
+ * Zwraca nagłówki + RAPORT ŹRÓDEŁ (które kanały odpowiedziały, a które padły).
+ */
+app.get('/api/rynek/wiadomosci', async (req, res) => {
+    try {
+        const out = await zbierzWiadomosci({
+            limit:   Number(req.query.limit) || 40,
+            rodzaj:  req.query.rodzaj === 'krypto' || req.query.rodzaj === 'makro' ? req.query.rodzaj : undefined,
+            odswiez: req.query.odswiez === '1' || req.query.odswiez === 'true',
+        });
+        const padle = out.raport.filter(r => !r.ok);
+        if (padle.length) console.warn(`[Rynek] ⚠️ Kanały bez odpowiedzi: ${padle.map(p => `${p.nazwa} (${p.blad})`).join(', ')}`);
+        return res.json({ success: true, ...out, zrodelLacznie: RYNEK_SOURCES.length });
+    } catch (err) {
+        console.error('[Rynek] ❌ wiadomosci:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/rynek/nastroj  Body: { rodzaj?, maks? }
+ * Lokalny model streszcza NASTRÓJ PRASY. To opinia modelu o tonie nagłówków —
+ * nie prognoza i nie porada. Odpowiedź niesie to oznaczenie, żeby żaden konsument
+ * API nie mógł wziąć jej za sygnał inwestycyjny.
+ */
+app.post('/api/rynek/nastroj', async (req, res) => {
+    try {
+        const { rodzaj, maks } = req.body ?? {};
+        const dane = await zbierzWiadomosci({ limit: 60, rodzaj: rodzaj === 'krypto' || rodzaj === 'makro' ? rodzaj : undefined });
+        if (!dane.items.length) {
+            return res.status(503).json({ success: false, message: 'Żaden kanał nie odpowiedział — brak nagłówków do streszczenia.', raport: dane.raport });
+        }
+        const uzyte = Math.max(5, Math.min(40, Number(maks) || 25));
+        const streszczenie = await genOllama(promptNastroju(dane.items, uzyte), DEFAULT_LLM, 120000);
+        if (!streszczenie) {
+            return res.status(503).json({
+                success: false,
+                message: `Rdzeń "${DEFAULT_LLM}" nie odpowiedział — nagłówki są, brakuje streszczenia. Sprawdź: ollama ps`,
+                items: dane.items.slice(0, uzyte), raport: dane.raport,
+            });
+        }
+        return res.json({
+            success: true,
+            streszczenie,
+            model: DEFAULT_LLM,
+            naglowkowUzytych: uzyte,
+            items: dane.items.slice(0, uzyte),
+            raport: dane.raport,
+            pobranoO: dane.pobranoO,
+            // ⚠️ Jawne oznaczenie w samej odpowiedzi — nie tylko w UI.
+            charakter: 'OPINIA MODELU O TONIE PRASY',
+            disclaimer: 'Streszczenie nastroju medialnego wygenerowane lokalnie. Nie jest prognozą ' +
+                        'ani poradą inwestycyjną i nie powinno być podstawą decyzji finansowych.',
+        });
+    } catch (err) {
+        console.error('[Rynek] ❌ nastroj:', err.message);
         return res.status(500).json({ success: false, message: err.message });
     }
 });
