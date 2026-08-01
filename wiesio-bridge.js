@@ -95,6 +95,26 @@ function normalizeOllamaBase(h) {
 }
 const OLLAMA_BASE = normalizeOllamaBase(process.env.OLLAMA_HOST);
 
+/**
+ * 🧠 Domyślny rdzeń narracyjny — głos Joanny, Kronika, Dziennik, teledysk, storyboard.
+ *
+ * ⚠️ HISTORIA (naprawione 2026-07-30). Pięć endpointów miało wpisane na sztywno
+ * `gemma3:4b` — model, którego NIE MA w instalacji Ollamy Suwerena, a `OTAKOS_MODEL`
+ * nie było ustawione nigdzie. Każde wywołanie po cichu chybiało: Joanna spadała na
+ * awaryjną `gemma3:1b` (0,8 GB) i mówiła łamaną polszczyzną („byntę słodki wiatr",
+ * „Przeboowe dźwięki"), a Kronika/Dziennik/storyboard po prostu milczały.
+ *
+ * DLACZEGO `gemma4:e2b`, a nie `gemma4`: pełna `gemma4:latest` (9,6 GB) wywraca
+ * backend na tej maszynie — `llama-server terminated: stack-based buffer overrun`.
+ * Wariant `e2b` (7,2 GB) należy do tej samej rodziny, odpowiada poprawną polszczyzną
+ * i nie wywala Ollamy. Zmierzone, nie założone.
+ *
+ * Podmiana bez ruszania kodu: zmienna środowiskowa `OTAKOS_MODEL`.
+ */
+const DEFAULT_LLM = process.env.OTAKOS_MODEL || 'gemma4:e2b';
+/** Ostatnia deska ratunku — malutki model, byle kompan nie zamilkł całkiem. */
+const FALLBACK_LLM = 'gemma3:1b';
+
 // Ścieżki do folderów
 const ANTIGRAVITY_DIR = path.join(process.cwd(), '_OtakOs_Wymiar');
 const MUSIC_DIR = path.join(process.cwd(), '_OtakOs_Muzyka');
@@ -4997,7 +5017,7 @@ async function genOllama(prompt, model, ms = 40000) {
 // ── 🐣 TEOGOCHI — mały kompan, live komentarz na to co gra ───────────────────
 app.post('/api/teogochi/comment', async (req, res) => {
     const { track, lyric, stage, mood, name } = req.body ?? {};
-    const model = process.env.OTAKOS_MODEL || 'gemma3:4b';
+    const model = DEFAULT_LLM;
     const context = [track ? `Utwór: ${track}` : null, lyric ? `Aktualny wers: "${lyric}"` : null]
         .filter(Boolean).join('\n');
     if (!context) return res.status(400).json({ success: false, message: 'Brak "track" lub "lyric".' });
@@ -5012,16 +5032,25 @@ app.post('/api/teogochi/comment', async (req, res) => {
         : `${who} (etap: ${stage || 'pisklę'}).`;
     const moodLine = mood ? ` Twój aktualny nastrój: ${mood} — niech to słychać w odpowiedzi.` : '';
     const prompt = `${persona} Słuchasz muzyki razem z Suwerenem.${moodLine} Zareaguj JEDNYM krótkim, żywym zdaniem (max 12 słów) na to, co teraz gra — ciepło, czasem zabawnie, czasem wzruszony. Bez cudzysłowów, bez wyjaśnień — samo zdanie.\n\n${context}`;
-    // Kompan nie potrzebuje kolosa: gdy domyślny rdzeń nie odpowie (nie zainstalowany
-    // / za ciężki na RAM), próbujemy malutkiej gemma3:1b (0.8GB) zamiast milczeć.
-    let comment = await genOllama(prompt, model, 8000);
-    if (!comment && model !== 'gemma3:1b') comment = await genOllama(prompt, 'gemma3:1b', 12000);
-    return res.json({ success: true, comment: comment || null });
+    // Gdy główny rdzeń nie odpowie, wolimy łamaną polszczyznę od ciszy — ale MÓWIMY
+    // wprost, że to tor awaryjny. Wcześniej ten fallback był cichy i Suweren słyszał
+    // „byntę słodki wiatr" nie wiedząc, że rozmawia z modelem 0,8 GB zamiast z Joanną.
+    // Rdzeń jest cięższy niż drobinka, więc dajemy mu uczciwy czas na zimny start.
+    // 120 s: zimny start 7,2 GB na słabszej maszynie potrafi trwać. Dymek Joanny
+    // jest asynchroniczny — dłuższe czekanie nikogo nie blokuje, a cisza boli bardziej.
+    let comment = await genOllama(prompt, model, 120000);
+    let awaryjny = false;
+    if (!comment && model !== FALLBACK_LLM) {
+        comment = await genOllama(prompt, FALLBACK_LLM, 15000);
+        awaryjny = Boolean(comment);
+        console.warn(`[TeOgochi] ⚠️ Rdzeń "${model}" nie odpowiedział — zdanie z awaryjnego ${FALLBACK_LLM} (jakość językowa będzie gorsza).`);
+    }
+    return res.json({ success: true, comment: comment || null, model: awaryjny ? FALLBACK_LLM : model, fallback: awaryjny });
 });
 
 app.post('/api/kronika/forge', async (req, res) => {
     let { narrative, transcript, title, videoUrl, model } = req.body ?? {};
-    model = model || process.env.OTAKOS_MODEL || 'gemma3:4b';
+    model = model || DEFAULT_LLM;
     const source = (narrative || transcript || '').trim();
     if (source.length < 20) return res.status(400).json({ success: false, message: 'Wymagane "narrative" lub "transcript" (>=20 zn.).' });
     try {
@@ -5080,7 +5109,7 @@ app.get('/api/dziennik/list', async (req, res) => {
  */
 app.post('/api/dziennik/forge', async (req, res) => {
     let { transcript, podcastDir, title, cycle, model } = req.body ?? {};
-    model = model || process.env.OTAKOS_MODEL || 'gemma3:4b';
+    model = model || DEFAULT_LLM;
     try {
         // Transkrypcja z folderu podcastu (jeśli jest plik .txt/.md/.lrc)
         if (!transcript && podcastDir) {
@@ -5212,7 +5241,7 @@ app.get('/api/crypto/selftest', (req, res) => {
 app.post('/api/teledysk/vision', async (req, res) => {
     const { title, name } = req.body ?? {};
     if (!title) return res.status(400).json({ success: false, message: 'Brak "title".' });
-    const model = process.env.OTAKOS_MODEL || 'gemma3:4b';
+    const model = DEFAULT_LLM;
     const who = name && name !== 'TeOgochi' ? String(name).slice(0, 24) : 'TeOgochi';
     const prompt = `Jesteś ${who} — małą, czułą duszą Katedry, która słucha muzyki sercem. Suweren pyta Cię, O CZYM jest utwór "${title}". Odpowiedz 2-3 zdaniami: jaka emocja, jaki obraz, jaki kolor i ruch z niego płyną. Poetycko, ciepło, po polsku. To będzie brief dla teledysku — mów o uczuciu i wizji, nie o technice.`;
     const vision = await genOllama(prompt, model, 20000)
@@ -5223,7 +5252,7 @@ app.post('/api/teledysk/vision', async (req, res) => {
 app.post('/api/teledysk/storyboard', async (req, res) => {
     let { title, lyrics, lyricsFile, vectors, sonicFile, sceneCount, model, vision } = req.body ?? {};
     sceneCount = Math.max(3, Math.min(12, Number(sceneCount) || 6));
-    model = model || process.env.OTAKOS_MODEL || 'gemma3:4b';
+    model = model || DEFAULT_LLM;
     try {
         // Tekst z .lrc (usuń znaczniki [mm:ss.xx])
         if (!lyrics && lyricsFile) {
