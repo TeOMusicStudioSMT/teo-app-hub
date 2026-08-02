@@ -51,6 +51,51 @@ export const getBridgeBase = (): string => {
     return url.replace(BRIDGE_PATH, '').replace(/\/+$/, '');
 };
 
+// ── 🛡️ KLUCZ STRAŻY MOSTU ────────────────────────────────────────────────────
+// Most odrzuca żądania spoza maszyny bez klucza. Klucz jedzie w NAGŁÓWKU, a do
+// telefonu trafia FRAGMENTEM adresu (`#k=…`) — fragment nigdy nie opuszcza
+// przeglądarki, więc nie ląduje w logach serwera, proxy ani w historii Cloudflare.
+// Parametr `?k=` byłby wygodniejszy i właśnie dlatego jest zły.
+
+const KLUCZ_STORAGE = 'teodash_klucz_strazy';
+export const NAGLOWEK_KLUCZA = 'x-teo-klucz';
+
+export const getKluczStrazy = (): string => {
+    if (typeof window === 'undefined') return '';
+    try { return (localStorage.getItem(KLUCZ_STORAGE) || '').trim(); } catch { return ''; }
+};
+
+export const setKluczStrazy = (klucz: string): string => {
+    const czysty = String(klucz || '').trim();
+    if (typeof window === 'undefined') return czysty;
+    try {
+        if (czysty) localStorage.setItem(KLUCZ_STORAGE, czysty);
+        else localStorage.removeItem(KLUCZ_STORAGE);
+    } catch { /* storage zablokowany */ }
+    return czysty;
+};
+
+/** Nagłówki dla każdego wywołania Mostu — z kluczem, jeśli jest. */
+const naglowki = (dodatkowe: Record<string, string> = {}): Record<string, string> => {
+    const k = getKluczStrazy();
+    return { 'Content-Type': 'application/json', ...(k ? { [NAGLOWEK_KLUCZA]: k } : {}), ...dodatkowe };
+};
+
+/**
+ * Na maszynie Suwerena klucz można po prostu pobrać z Mostu (endpoint wydaje go
+ * wyłącznie żądaniom lokalnym). Dzięki temu Katedra na localhoście działa bez
+ * żadnej konfiguracji, a klucz jest gotowy do wbicia w kod QR dla telefonu.
+ */
+export const zapewnijKluczLokalnie = async (): Promise<string> => {
+    if (getKluczStrazy()) return getKluczStrazy();
+    try {
+        const r = await fetch(`${getBridgeBase()}/api/straz/klucz`);
+        if (!r.ok) return '';
+        const d = await r.json();
+        return d?.klucz ? setKluczStrazy(d.klucz) : '';
+    } catch { return ''; }
+};
+
 /**
  * 📡 DISPATCH — hydratacja tunelu z adresu strony.
  * Telefon otwiera `https://graviton.pw/?tunnel=<adres>` (np. z kodu QR), a Katedra
@@ -66,19 +111,39 @@ export const hydrateTunnelFromLocation = (): string => {
 
         const saved = setTunnelUrl(raw);
         params.delete('tunnel');
+
+        // 🔑 Klucz Straży czytamy z FRAGMENTU (`#k=…`) i natychmiast go stamtąd
+        // usuwamy — żeby nie został w pasku adresu ani w historii przeglądarki.
+        let hash = window.location.hash;
+        const hp = new URLSearchParams(hash.replace(/^#/, ''));
+        const k = hp.get('k');
+        if (k) {
+            setKluczStrazy(k);
+            hp.delete('k');
+            const reszta = hp.toString();
+            hash = reszta ? `#${reszta}` : '';
+        }
+
         const rest = params.toString();
-        window.history.replaceState({}, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`);
+        window.history.replaceState({}, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${hash}`);
         return saved;
     } catch {
         return '';
     }
 };
 
-/** Link dispatchowy dla telefonu — to on ląduje w kodzie QR. */
-export const buildDispatchUrl = (tunnel: string, base = 'https://graviton.pw'): string => {
+/**
+ * Link dispatchowy dla telefonu — to on ląduje w kodzie QR.
+ * Klucz idzie za kratką, bo fragment nie opuszcza przeglądarki: nie trafia do
+ * logów serwera hostingu ani do Cloudflare. Zapłatą jest to, że kto zobaczy
+ * kod QR, ten ma klucz — dlatego Straż i tak nie wpuszcza z tunelu niczego,
+ * co zapisuje albo uruchamia (patrz services/StrazMostu.js).
+ */
+export const buildDispatchUrl = (tunnel: string, base = 'https://graviton.pw', klucz = getKluczStrazy()): string => {
     const normalized = normalizeTunnelUrl(tunnel);
     if (!normalized) return '';
-    return `${base.replace(/\/+$/, '')}/?tunnel=${encodeURIComponent(normalized)}`;
+    const podstawa = `${base.replace(/\/+$/, '')}/?tunnel=${encodeURIComponent(normalized)}`;
+    return klucz ? `${podstawa}#k=${encodeURIComponent(klucz)}` : podstawa;
 };
 
 const getBridgeUrl = (): string => {
@@ -98,9 +163,7 @@ export const executeBridgeCommand = async (command: string): Promise<BridgeRespo
     try {
         const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: naglowki(),
             body: JSON.stringify({ command }),
         });
 
@@ -136,9 +199,7 @@ export const sendCommand = async (action: string, params: Record<string, any> = 
     try {
         const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: naglowki(),
             body: JSON.stringify({ action, ...params }),
         });
 

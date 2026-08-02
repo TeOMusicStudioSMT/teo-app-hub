@@ -5,11 +5,17 @@ import App from './App';
 import { Provider } from 'jotai';
 import { KatedraRadioProvider } from './context/KatedraRadioContext';
 import { I18nProvider } from './lib/i18n';
-import { hydrateTunnelFromLocation } from './lib/bridgeService';
+import { hydrateTunnelFromLocation, zapewnijKluczLokalnie } from './lib/bridgeService';
 import './index.css';
 
 // 📡 Dispatch: `?tunnel=...` w adresie (kod QR z Katedry) → zapis tunelu przed startem UI.
+// Czyta też klucz Straży z fragmentu `#k=…` i sprząta go z paska adresu.
 hydrateTunnelFromLocation();
+
+// 🛡️ Na maszynie Suwerena klucz Straży pobieramy z Mostu (wydaje go tylko żądaniom
+// lokalnym). Świadomie BEZ `await` — brak Mostu nie może blokować startu Katedry,
+// a wywołania i tak dołożą klucz, gdy tylko się pojawi.
+void zapewnijKluczLokalnie();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

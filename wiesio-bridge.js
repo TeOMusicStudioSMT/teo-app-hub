@@ -42,6 +42,9 @@ import {
     domknij as dziennikDomknij, podsumowanie as dziennikPodsumowanie,
 } from './services/DziennikDecyzjiService.js';
 import { zbudujMape } from './services/MapaSektorowService.js';
+import {
+    strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
+} from './services/StrazMostu.js';
 import CryptoAgility from './services/CryptoAgility.js';
 import { buildDziennikHtml } from './services/dziennikTemplate.js';
 import {
@@ -208,6 +211,38 @@ const APPS_DIR = path.join(__dirname, 'public', 'apps');
 for (const app_ of ['music', 'story', 'app']) {
     app.use(`/apps/${app_}`, cors({ origin: '*' }), express.static(path.join(APPS_DIR, app_)));
 }
+
+// ── 🛡️ STRAŻ MOSTU ───────────────────────────────────────────────────────────
+// Wpięta TUTAJ celowo: po trasach statycznych (żeby strumień muzyki i substrony
+// działały na telefonie bez dokładania klucza do każdego <audio>), a PRZED całym
+// API — bo to API potrafi uruchamiać komendy i zapisywać pliki.
+//
+// Maszyna Suwerena (localhost) przechodzi bez zmian. Żądanie z tunelu musi mieć
+// klucz, a i tak nie uruchomi niczego, co zapisuje albo wykonuje. Ta druga
+// warstwa jest ważniejsza od pierwszej: kod QR NIESIE klucz, więc zdjęcie ekranu
+// znaczy wyciek klucza — ale nie przejęcie maszyny.
+const KLUCZ_DIR = path.join(process.cwd(), '_OtakOs_Wymiar');
+let KLUCZ_STRAZY = wczytajLubUtworzKlucz(KLUCZ_DIR);
+const PELNY_TUNEL = process.env.OTAKOS_TUNEL_PELNY === '1';
+
+app.use(strazMostu({ klucz: () => KLUCZ_STRAZY, pelnyTunel: PELNY_TUNEL }));
+
+/** Klucz wydajemy WYŁĄCZNIE maszynie lokalnej — stąd trafia do linku QR. */
+app.get('/api/straz/klucz', (req, res) => {
+    if (!req.lokalny) return res.status(403).json({ success: false, message: 'Tylko z maszyny Suwerena.' });
+    return res.json({ success: true, klucz: KLUCZ_STRAZY, naglowek: NAGLOWEK_KLUCZA, pelnyTunel: PELNY_TUNEL });
+});
+
+/** Przekucie klucza — ratunek, gdy kod QR wyciekł (zdjęcie, stream, cudze oko). */
+app.post('/api/straz/przekuj', async (req, res) => {
+    if (!req.lokalny) return res.status(403).json({ success: false, message: 'Tylko z maszyny Suwerena.' });
+    try {
+        KLUCZ_STRAZY = await przekujKlucz(KLUCZ_DIR);
+        return res.json({ success: true, klucz: KLUCZ_STRAZY, message: 'Klucz przekuty — stare kody QR i linki są martwe.' });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
 
 // Inicjalizacja folderów
 async function initializeDimension() {
