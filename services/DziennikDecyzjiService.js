@@ -66,7 +66,10 @@ export async function dodaj(katalog, dane = {}) {
         // Czego się spodziewasz — zapisane ZANIM poznasz wynik.
         oczekiwanie: String(dane.oczekiwanie || '').trim() || null,
         pewnosc: Math.max(1, Math.min(5, Number(dane.pewnosc) || 3)),   // 1–5
-        nastrojPrasy: String(dane.nastrojPrasy || '').trim().slice(0, 600) || null,
+        // 2000 znaków, nie 600: realne streszczenie z Tunelu ma ~760 znaków (zmierzone),
+        // więc poprzedni limit ucinał je w połowie zdania. Migawka nastroju obcięta
+        // w pół myśli jest gorsza niż jej brak — po miesiącu nie da się jej odczytać.
+        nastrojPrasy: String(dane.nastrojPrasy || '').trim().slice(0, 2000) || null,
         cenaWtedy: Number(dane.cenaWtedy) > 0 ? Number(dane.cenaWtedy) : null,
         // Wynik dopisujemy PÓŹNIEJ, osobnym wywołaniem.
         wynik: null,

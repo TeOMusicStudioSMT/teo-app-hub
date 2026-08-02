@@ -20,7 +20,7 @@ interface Wynik { ocena: Ocena; domknieto: string; cenaPotem: number | null; cze
 interface Wpis {
     id: string; utworzono: string; aktywo: string; kierunek: Kierunek;
     rozumowanie: string; oczekiwanie: string | null; pewnosc: number;
-    cenaWtedy: number | null; wynik: Wynik | null;
+    cenaWtedy: number | null; nastrojPrasy: string | null; wynik: Wynik | null;
 }
 interface Podsum {
     wszystkich: number; otwartych: number; domknietych: number;
@@ -45,6 +45,28 @@ export const DziennikDecyzji: React.FC = () => {
     const [oczekiwanie, setOczek]       = useState('');
     const [pewnosc, setPewnosc]         = useState(3);
     const [cenaWtedy, setCena]          = useState('');
+
+    // 📰 Nastrój prasy dołączany do wpisu. To jest sedno spięcia Tunelu z Dziennikiem:
+    // po miesiącu widać, czy decyzja zapadała w panice czy w euforii — a tego się
+    // z pamięci nie odtworzy, bo pamięć po fakcie dopisuje sobie spokój i rozwagę.
+    const [nastrojPrasy, setNastrojPrasy] = useState('');
+    const [pobieramNastroj, setPobNastroj] = useState(false);
+    const [nastrojBlad, setNastrojBlad]   = useState<string | null>(null);
+
+    const dolaczNastroj = async () => {
+        setPobNastroj(true); setNastrojBlad(null);
+        try {
+            const r = await fetch(`${getBridgeBase()}/api/rynek/nastroj`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ maks: 20 }),
+            });
+            const d = await r.json();
+            if (!d.success) throw new Error(d.message || 'Rdzeń nie odpowiedział');
+            setNastrojPrasy(String(d.streszczenie || '').trim());
+        } catch (e: any) {
+            setNastrojBlad(e?.message || String(e));
+        } finally { setPobNastroj(false); }
+    };
 
     // Domykanie
     const [domykam, setDomykam]         = useState<string | null>(null);
@@ -71,11 +93,11 @@ export const DziennikDecyzji: React.FC = () => {
         try {
             const r = await fetch(`${getBridgeBase()}/api/rynek/dziennik`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ aktywo, kierunek, rozumowanie, oczekiwanie, pewnosc, cenaWtedy: Number(cenaWtedy) || undefined }),
+                body: JSON.stringify({ aktywo, kierunek, rozumowanie, oczekiwanie, pewnosc, nastrojPrasy, cenaWtedy: Number(cenaWtedy) || undefined }),
             });
             const d = await r.json();
             if (!d.success) throw new Error(d.message);
-            setRozum(''); setOczek(''); setCena(''); setForm(false);
+            setRozum(''); setOczek(''); setCena(''); setNastrojPrasy(''); setNastrojBlad(null); setForm(false);
             await pobierz();
         } catch (e: any) {
             setBlad(e?.message || String(e));
@@ -146,6 +168,30 @@ export const DziennikDecyzji: React.FC = () => {
                         placeholder="DLACZEGO tak robisz? (wymagane — to jest cała wartość dziennika)" style={{ ...pole, resize: 'vertical' }} />
                     <input value={oczekiwanie} onChange={e => setOczek(e.target.value)}
                         placeholder="Czego się spodziewasz? (np. odbicie w 2 tygodnie)" style={pole} />
+
+                    {/* 📰 Migawka nastroju prasy — kontekst chwili, w której zapadała decyzja */}
+                    <div style={{ padding: 8, borderRadius: 8, background: 'rgba(0,229,255,.04)', border: '1px solid rgba(0,229,255,.18)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 8.5, letterSpacing: '.1em', color: 'rgba(103,232,249,.75)' }}>📰 NASTRÓJ PRASY (opcjonalnie)</span>
+                            <button onClick={dolaczNastroj} disabled={pobieramNastroj}
+                                style={{ marginLeft: 'auto', padding: '3px 10px', borderRadius: 6, fontSize: 8.5, fontFamily: "'JetBrains Mono',monospace",
+                                    cursor: pobieramNastroj ? 'wait' : 'pointer', border: '1px solid rgba(0,229,255,.35)',
+                                    background: 'rgba(0,229,255,.08)', color: '#67e8f9' }}>
+                                {pobieramNastroj ? 'CZYTAM NAGŁÓWKI...' : nastrojPrasy ? '↻ ODŚWIEŻ' : '⬇ DOŁĄCZ Z TUNELU'}
+                            </button>
+                        </div>
+                        {nastrojBlad && <div style={{ fontSize: 8, color: '#fca5a5', marginTop: 4 }}>⚠️ {nastrojBlad}</div>}
+                        {nastrojPrasy ? (
+                            <div style={{ fontSize: 8.5, color: 'rgba(232,246,255,.6)', marginTop: 5, lineHeight: 1.5, maxHeight: 76, overflowY: 'auto' }}>
+                                {nastrojPrasy}
+                            </div>
+                        ) : !pobieramNastroj && (
+                            <div style={{ fontSize: 8, color: 'rgba(255,255,255,.28)', marginTop: 4, lineHeight: 1.5 }}>
+                                Zapisze, w jakim klimacie medialnym zapadała ta decyzja. Po miesiącu zobaczysz,
+                                czy wchodziłeś w panice, czy w euforii — pamięć tego nie odtworzy.
+                            </div>
+                        )}
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontSize: 9, color: 'rgba(255,255,255,.45)' }}>PEWNOŚĆ</span>
                         {[1, 2, 3, 4, 5].map(p => (
@@ -186,6 +232,19 @@ export const DziennikDecyzji: React.FC = () => {
                         </div>
                         <div style={{ fontSize: 9.5, color: 'rgba(232,246,255,.75)', lineHeight: 1.5 }}>{w.rozumowanie}</div>
                         {w.oczekiwanie && <div style={{ fontSize: 8.5, color: 'rgba(255,255,255,.35)', marginTop: 3 }}>↳ oczekiwanie: {w.oczekiwanie}</div>}
+
+                        {/* Klimat medialny chwili decyzji — zwinięty, żeby nie zagłuszał rozumowania */}
+                        {w.nastrojPrasy && (
+                            <details style={{ marginTop: 4 }}>
+                                <summary style={{ fontSize: 8, color: 'rgba(103,232,249,.65)', cursor: 'pointer', listStyle: 'none' }}>
+                                    📰 nastrój prasy w chwili decyzji
+                                </summary>
+                                <div style={{ fontSize: 8, color: 'rgba(255,255,255,.42)', marginTop: 3, lineHeight: 1.5,
+                                    paddingLeft: 8, borderLeft: '2px solid rgba(0,229,255,.2)' }}>
+                                    {w.nastrojPrasy}
+                                </div>
+                            </details>
+                        )}
 
                         {w.wynik ? (
                             <div style={{ marginTop: 5, paddingTop: 5, borderTop: '1px solid rgba(255,255,255,.06)' }}>
