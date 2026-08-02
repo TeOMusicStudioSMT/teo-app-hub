@@ -49,6 +49,7 @@ import TedTheTrader from './TedTheTrader';
 import KronosOracle from './KronosOracle';
 import TunelRynkowy from './TunelRynkowy';
 import DziennikDecyzji from './DziennikDecyzji';
+import MapaSektorow from './MapaSektorow';
 import VideoUseLauncher from './VideoUseLauncher';
 import TeledyskPanel from './TeledyskPanel';
 import { StorytellerFrame } from './StorytellerFrame';
@@ -1399,6 +1400,8 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
             {/* 📰 Tunel wiadomości NAD Kronosem — fakty (co mówią media) czyta się
                 przed symulacją scenariusza, nie po niej. */}
             <TunelRynkowy />
+            {/* 🗺️ Mapa po tunelu, przed symulacją — kontekst "co z czym" przed scenariuszem. */}
+            <MapaSektorow />
             <KronosOracle />
             {/* 📓 Dziennik na końcu — po faktach i po symulacji zapada decyzja. */}
             <DziennikDecyzji />

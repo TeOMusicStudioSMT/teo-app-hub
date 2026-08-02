@@ -41,6 +41,7 @@ import {
     lista as dziennikLista, dodaj as dziennikDodaj,
     domknij as dziennikDomknij, podsumowanie as dziennikPodsumowanie,
 } from './services/DziennikDecyzjiService.js';
+import { zbudujMape } from './services/MapaSektorowService.js';
 import CryptoAgility from './services/CryptoAgility.js';
 import { buildDziennikHtml } from './services/dziennikTemplate.js';
 import {
@@ -5933,6 +5934,23 @@ app.post('/api/rynek/nastroj', async (req, res) => {
     } catch (err) {
         console.error('[Rynek] ❌ nastroj:', err.message);
         return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * GET /api/rynek/sektory?odswiez=1
+ * Macierz korelacji z realnych notowań — co faktycznie porusza się razem.
+ */
+app.get('/api/rynek/sektory', async (req, res) => {
+    try {
+        const mapa = await zbudujMape({ odswiez: req.query.odswiez === '1' || req.query.odswiez === 'true' });
+        if (mapa.pominiete?.length) {
+            console.warn(`[Rynek] ⚠️ Mapa sektorów — pominięte aktywa: ${mapa.pominiete.map(p => `${p.id} (${p.powod})`).join(', ')}`);
+        }
+        return res.json({ success: true, ...mapa });
+    } catch (err) {
+        console.error('[Rynek] ❌ sektory:', err.message);
+        return res.status(502).json({ success: false, message: `Źródło notowań nieosiągalne: ${err.message}` });
     }
 });
 
