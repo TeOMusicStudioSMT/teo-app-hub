@@ -662,7 +662,12 @@ export const ApiDyrygent = {
      * 🏠 Bezpośrednie uderzenie do lokalnego portu Ollamy (fallback)
      */
     async fetchLocalOllama(message: string, config: DyrygentConfig): Promise<string> {
-        const url   = config.ollamaUrl   || 'http://127.0.0.1:11435/api/generate';
+        // ⚠️ Było 11435 — literówka o jedną cyfrę, przez którą CAŁY fallback lokalny
+        // był martwy: chmura padała, Dyrygent meldował „Aktywuję Lokalnego Ducha",
+        // strzelał w port, na którym nic nie stoi, i kończył „Ollama milczy".
+        // Zmierzone 2026-08-02: 11435 → brak połączenia, 11434 → HTTP 200.
+        // Trzy inne wywołania w tym samym pliku miały 11434 poprawnie.
+        const url   = config.ollamaUrl   || 'http://127.0.0.1:11434/api/generate';
         const model = config.ollamaModel || 'gemma4';
 
         const response = await fetch(url, {

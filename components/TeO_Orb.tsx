@@ -297,7 +297,9 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
         message,
         aroma,
         {
-          ollamaUrl: 'http://127.0.0.1:11435/api/generate', // Specyficzny port Mistrza
+          // 11435 był literówką („specyficzny port Mistrza" — takiego portu nie ma).
+          // Ollama słucha na 11434; sprawdzone: 11435 brak połączenia, 11434 HTTP 200.
+          ollamaUrl: 'http://127.0.0.1:11434/api/generate',
           ollamaModel: ollamaModel,
           timeoutMs: 12000, // Czekamy na chmurę maks 12 sek
         },

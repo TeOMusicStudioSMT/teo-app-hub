@@ -6,7 +6,8 @@ import { ModeSelector } from './dashboard/ModeSelector';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import MobilePocketBadge from './special/MobilePocketBadge';
-import LiveModelSwitcher from './special/LiveModelSwitcher';
+import SterowanieRdzeniem from './special/SterowanieRdzeniem';
+import { getModelLokalny, nasluchujZmian } from '../lib/router/trybPracy';
 
 // --- Quantum Shield Mock Component ---
 const QuantumShieldControl = () => (
@@ -28,15 +29,16 @@ const QuantumShieldControl = () => (
     </div>
 );
 
-// --- Rdzeń Lokalny (Gemma 4 / Gemma Diffusion) ---
+// --- Rdzeń AI ---
+// ⚠️ Wcześniej była tu lista wpisana na sztywno: `gemma4` i `gemma-diffusion`.
+// Drugi z nich NIE ISTNIEJE w instalacji Ollamy, a pierwszy (pełna `gemma4:latest`,
+// 9,6 GB) wywraca backend na słabszej maszynie. Wybór z takiej listy prowadził
+// prosto do cichej awarii. Teraz lista bierze się z REALNIE zainstalowanych modeli,
+// a panel ostrzega, gdy wskazany rdzeń nie jest obecny — patrz SterowanieRdzeniem.
 const BRIDGE = 'http://127.0.0.1:3001';
-const ENGINES = [
-    { id: 'gemma4',          label: 'Gemma 4',         main: true,  desc: 'Główny rdzeń Katedry — szybki, lokalny.' },
-    { id: 'gemma-diffusion', label: 'Gemma Diffusion', main: false, desc: 'Wariant dyfuzyjny (eksperymentalny).' },
-];
 
 const OfflineBrainControl = () => {
-    const [active, setActive] = useState<string>(() => localStorage.getItem('otakos_active_model') || 'gemma4');
+    const [active, setActive] = useState<string>(() => getModelLokalny());
     const [status, setStatus] = useState<{ online?: boolean; hasGemma4?: boolean } | null>(null);
     const [pulling, setPulling] = useState(false);
 
@@ -45,13 +47,12 @@ const OfflineBrainControl = () => {
         catch { setStatus({ online: false }); }
     };
     useEffect(() => {
-        if (!localStorage.getItem('otakos_active_model')) localStorage.setItem('otakos_active_model', 'gemma4');
         loadStatus();
         const iv = setInterval(loadStatus, 8000);
-        return () => clearInterval(iv);
+        // Panel podąża za zmianami z KAŻDEGO miejsca — koniec z rozjazdem stanu.
+        const odsub = nasluchujZmian(() => setActive(getModelLokalny()));
+        return () => { clearInterval(iv); odsub(); };
     }, []);
-
-    const pick = (id: string) => { setActive(id); localStorage.setItem('otakos_active_model', id); toast.success(`Silnik: ${ENGINES.find(e => e.id === id)?.label}`); };
     const pull = async () => {
         setPulling(true);
         try { await fetch(`${BRIDGE}/api/models/pull`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: active }) }); toast.success('Pobieranie modelu rozpoczęte (na USB).'); }
@@ -63,21 +64,12 @@ const OfflineBrainControl = () => {
     const has = status?.hasGemma4;
 
     return (
-        <DashboardCard title="Rdzeń Lokalny (Gemma 4)" icon={<CpuIcon />}>
+        <DashboardCard title="Rdzeń AI" icon={<CpuIcon />}>
             <div className="p-6 space-y-4">
                 <MobilePocketBadge />
-                <LiveModelSwitcher />
-                <p className="text-slate-400 text-sm">Lokalny silnik AI — zero latencji, zero kosztów, zero chmury.</p>
-                {/* Selektor silnika */}
-                <div className="flex gap-2">
-                    {ENGINES.map(e => (
-                        <button key={e.id} onClick={() => pick(e.id)} title={e.desc}
-                            className={`flex-1 py-2 rounded text-xs font-bold border transition-colors ${active === e.id ? 'border-cyan-500 text-cyan-300 bg-cyan-950/40' : 'border-slate-700 text-slate-400 hover:border-slate-500'}`}>
-                            {e.label}{e.main && <span className="block text-[8px] opacity-60">MAIN</span>}
-                        </button>
-                    ))}
-                </div>
-                {/* Status */}
+                {/* 🎛️ Jedno miejsce prawdy: tryb pracy, oba rdzenie i „kto teraz odpowiada". */}
+                <SterowanieRdzeniem />
+                {/* Status Ollamy + pobieranie modelu — zostaje, bo dotyczy maszyny, nie wyboru. */}
                 <div className={`flex items-center gap-2 p-3 rounded ${online ? 'text-emerald-400 bg-emerald-900/20' : 'text-amber-400 bg-amber-900/20'}`}>
                     <div className={`w-2 h-2 rounded-full animate-pulse ${online ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                     <span className="font-mono text-sm">{online ? `RDZEŃ ONLINE${has ? ' · Gemma OK' : ' · brak modelu'}` : 'RDZEŃ OFFLINE (uruchom Ollama / pobierz)'}</span>
@@ -85,10 +77,10 @@ const OfflineBrainControl = () => {
                 {(!online || !has) && (
                     <button onClick={pull} disabled={pulling}
                         className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold flex items-center justify-center gap-2 disabled:opacity-50">
-                        <SignalIcon className="w-4 h-4" /> {pulling ? 'Pobieranie...' : `⬇️ Pobierz ${ENGINES.find(e => e.id === active)?.label} (na USB)`}
+                        <SignalIcon className="w-4 h-4" /> {pulling ? 'Pobieranie...' : `⬇️ Pobierz ${active} (na USB)`}
                     </button>
                 )}
-                <p className="text-[10px] text-slate-600">Pierwszy boot może pobrać model na pendrive (zalecane USB 25–64 GB). Domyślny silnik: Gemma 4.</p>
+                <p className="text-[10px] text-slate-600">Pierwszy boot może pobrać model na pendrive (zalecane USB 25–64 GB). Domyślny rdzeń: gemma4:e2b (wariant, który nie wywraca backendu na słabszym sprzęcie).</p>
             </div>
         </DashboardCard>
     );

@@ -49,7 +49,16 @@ export const ModeSelector: React.FC = () => {
 
     return (
         <div className="p-6 bg-slate-900/40 rounded-3xl border border-white/5 backdrop-blur-xl mb-8">
-            <h3 className="text-cyan-400 text-[10px] font-bold mb-4 uppercase tracking-[0.4em]">Field Consciousness Control</h3>
+            {/* ⚠️ NAZEWNICTWO NAPRAWIONE 2026-08-02. Ten przełącznik (`just / resonance /
+                active`) steruje NATĘŻENIEM EFEKTU OBRAMOWANIA, nie routingiem modeli —
+                Suweren brał go za wybór chmura/lokal i słusznie się gubił, bo nazwa
+                niczego takiego nie zdradzała. Wybór rdzenia mieszka w panelu
+                „STEROWANIE RDZENIEM" (components/special/SterowanieRdzeniem.tsx). */}
+            <h3 className="text-cyan-400 text-[10px] font-bold mb-1 uppercase tracking-[0.4em]">Nastrój pola (efekt wizualny)</h3>
+            <p className="text-[9px] text-slate-500 mb-4 leading-relaxed">
+                Steruje wyglądem obramowania, <b>nie</b> wyborem modelu. Rdzeń AI i tryb
+                chmura/lokal/hybryda ustawiasz niżej, w panelu <b className="text-cyan-500">STEROWANIE RDZENIEM</b>.
+            </p>
             <div className="flex flex-col gap-4">
                 {/* Tradycyjne tryby obramowania */}
                 <div className="flex gap-4">
