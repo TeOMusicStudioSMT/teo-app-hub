@@ -1,0 +1,59 @@
+# ☁️ .gcloudignore — co NIE jedzie do Cloud Build.
+#
+# ⚠️ POWÓD ISTNIENIA TEGO PLIKU: `gcloud builds submit` NIE czyta `.dockerignore`.
+# Gdy brakuje `.gcloudignore`, gcloud sięga po `.gitignore` — a ten nie wyklucza
+# `TeO_Arcade_Forge` (75 GB) ani `_OtakOs_Kroniki` (2,1 GB). Deploy próbowałby
+# wysłać ~77 GB do Cloud Storage: godziny transferu, rachunek i najpewniej
+# zerwane połączenie. Cały katalog waży 268 GB; do zbudowania strony potrzeba
+# ułamka procenta tego.
+#
+# Zasada: trzymać zgodnie z `.dockerignore`, plus giganty, których `.gitignore`
+# nie łapie, bo są śledzone albo świadomie zostawione.
+
+.git
+.gitignore
+.gcloudignore
+.claude
+.agent
+.husky
+.vite
+
+node_modules
+dist
+build
+
+# ── Dane runtime i persystencja (montowane jako wolumeny, nie wchodzą do obrazu)
+_OtakOs_*
+data
+.vault-0.00g
+_temp
+
+# ── Giganty, których .gitignore NIE wyklucza (to one uzasadniają ten plik)
+# Uwaga: składnia jak w .gitignore — BEZ cudzysłowów, spacja w nazwie jest dozwolona.
+TeO_Arcade_Forge/
+_OtakOs_Kroniki/
+_Nagrane_Podcasty/
+TeO Soul/
+
+# ── Sekrety — nigdy poza maszynę
+.env
+.env.*
+*.key
+**/media_secrets.json
+*.anthropic_key*
+
+# ── Multimedia i archiwa, których build nie dotyka
+*.mp4
+*.mov
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.7z
+*.zip
+
+# ── Logi i kopie
+*.log
+*.bak
+ts_errors.log
+npm-debug.log*
