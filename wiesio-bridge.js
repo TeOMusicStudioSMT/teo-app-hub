@@ -43,6 +43,13 @@ import {
 } from './services/DziennikDecyzjiService.js';
 import { zbudujMape } from './services/MapaSektorowService.js';
 import {
+    ETAPY as PRODUKCJA_ETAPY,
+    lista as produkcjaLista, projekty as produkcjaProjekty, biblia as produkcjaBiblia,
+    dodaj as produkcjaDodaj, zmien as produkcjaZmien, usun as produkcjaUsun,
+    zbudujPrompt as produkcjaPrompt, statystyka as produkcjaStatystyka,
+    promptSystemowyRozkladu, odczytajRozklad,
+} from './services/ProdukcjaService.js';
+import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
 import CryptoAgility from './services/CryptoAgility.js';
@@ -6713,6 +6720,182 @@ app.post('/api/agent/rada-decompose', async (req, res) => {
     } catch (e) {
         console.error(`[Rada] ❌ Błąd dekompozycji: ${e.message}`);
         return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🎬 KOLEJKA KREATYWNA — Tablica Produkcji (drugi tor, obok Mechanika)
+//
+//  DLACZEGO OSOBNO OD RADY WYŻEJ: tamta kolejka karmi Mechanika, który generuje
+//  ŁATKI DO KODU. Zadanie „narysuj kartę postaci" trafiające do Mechanika kończy
+//  się śmieciowym patchem — zmierzone 2026-08-03 na żywej kolejce.
+//  Ten tor ma inny cykl życia: prompt → zewnętrzne narzędzie → zwrot → następny etap.
+//
+//  Most NIE wywołuje Gems/AI Studio/Flow — nie ma do nich API i nie udaje, że ma.
+//  Robi to, co da się zrobić uczciwie: buduje prompt, pilnuje spójności (biblia
+//  wraca do każdego kolejnego promptu) i pamięta stan. Rundę robi Suweren.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/produkcja/tablica?projekt= — karty + rozkład po etapach + biblia. */
+app.get('/api/produkcja/tablica', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        const [kadry, statystykaTablicy, listaProjektow] = await Promise.all([
+            produkcjaLista(ANTIGRAVITY_DIR, projekt),
+            produkcjaStatystyka(ANTIGRAVITY_DIR, projekt),
+            produkcjaProjekty(ANTIGRAVITY_DIR),
+        ]);
+        const bibliaProjektu = projekt ? await produkcjaBiblia(ANTIGRAVITY_DIR, projekt) : null;
+        return res.json({
+            success: true,
+            etapy: PRODUKCJA_ETAPY,
+            projekty: listaProjektow,
+            kadry,
+            statystyka: statystykaTablicy,
+            biblia: bibliaProjektu,
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/** POST /api/produkcja/kadr — ręczne dołożenie karty. */
+app.post('/api/produkcja/kadr', async (req, res) => {
+    try {
+        const kadr = await produkcjaDodaj(ANTIGRAVITY_DIR, req.body ?? {});
+        console.log(`[Produkcja] 🎬 Nowy kadr [${kadr.etap}] „${kadr.tytul}" (${kadr.projekt})`);
+        return res.json({ success: true, kadr });
+    } catch (err) {
+        // 400, nie 500 — to walidacja treści, nie awaria serwera.
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+/** PATCH /api/produkcja/kadr/:id — zmiana etapu, zwrotu, notatek. */
+app.patch('/api/produkcja/kadr/:id', async (req, res) => {
+    try {
+        const kadr = await produkcjaZmien(ANTIGRAVITY_DIR, req.params.id, req.body ?? {});
+        return res.json({ success: true, kadr });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+/** DELETE /api/produkcja/kadr/:id */
+app.delete('/api/produkcja/kadr/:id', async (req, res) => {
+    try {
+        const kadr = await produkcjaUsun(ANTIGRAVITY_DIR, req.params.id);
+        return res.json({ success: true, kadr });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * GET /api/produkcja/kadr/:id/prompt
+ * Gotowy do wklejenia prompt dla etapu, na którym stoi karta — z doklejoną biblią.
+ * Odpowiedź niesie `ostrzezenie`, gdy biblii nie ma: lepiej, żeby Suweren
+ * wiedział, że kadr idzie bez kotwicy, niż żeby odkrył to w ujęciu czterdziestym.
+ */
+app.get('/api/produkcja/kadr/:id/prompt', async (req, res) => {
+    try {
+        const wszystkie = await produkcjaLista(ANTIGRAVITY_DIR);
+        const kadr = wszystkie.find(k => k.id === req.params.id);
+        if (!kadr) return res.status(404).json({ success: false, message: `Kadr "${req.params.id}" nie istnieje.` });
+
+        const bibliaProjektu = await produkcjaBiblia(ANTIGRAVITY_DIR, kadr.projekt);
+        return res.json({ success: true, kadr, ...produkcjaPrompt(kadr, bibliaProjektu) });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/produkcja/rozloz  { zlecenie, projekt, temperatura? }
+ * Rada Kreatywna rozkłada zlecenie na karty produkcyjne.
+ *
+ * Melduje `dodane` i `odrzucone` OSOBNO — dokładnie z tego powodu, dla którego
+ * naprawialiśmy Radę od kodu: tamta pisała „3 wstrzyknięto" przy kolejce 0.
+ */
+app.post('/api/produkcja/rozloz', async (req, res) => {
+    const { zlecenie, projekt = '', temperatura = 0.7, sesjaRady = '' } = req.body ?? {};
+    if (!zlecenie || String(zlecenie).trim().length < 5) {
+        return res.status(400).json({ success: false, message: 'Brak zlecenia (min. 5 znaków).' });
+    }
+    const temp = Math.max(0.05, Math.min(2.0, Number(temperatura) || 0.7));
+    const nazwaProjektu = String(projekt).trim() || 'bez nazwy';
+
+    console.log(`[Produkcja] 🏛️ Rada Kreatywna rozkłada: "${String(zlecenie).slice(0, 60)}..." (${nazwaProjektu})`);
+
+    try {
+        // Kontekst dla modelu: co już stoi na tablicy tego projektu. Bez tego Rada
+        // przy każdym wywołaniu proponuje od nowa „stwórz Style Sheet".
+        const juzNaTablicy = await produkcjaLista(ANTIGRAVITY_DIR, nazwaProjektu);
+        const kontekst = juzNaTablicy.length
+            ? juzNaTablicy.slice(0, 12).map(k => `- [${k.etap}] ${k.tytul}`).join('\n')
+            : 'tablica pusta — projekt startuje od zera';
+
+        const odp = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: DEFAULT_LLM,
+                system: promptSystemowyRozkladu(),
+                prompt: `Projekt: ${nazwaProjektu}\nZlecenie: ${zlecenie}\n\nJuż na tablicy (NIE powtarzaj tego):\n${kontekst}`,
+                stream: false,
+                options: { temperature: temp },
+            }),
+        });
+        if (!odp.ok) throw new Error(`Ollama HTTP ${odp.status}`);
+        const dane = await odp.json();
+
+        let propozycje;
+        try {
+            propozycje = odczytajRozklad(dane.response);
+        } catch (parseErr) {
+            // Uczciwie: mówimy, że model nie dał się odczytać, i pokazujemy początek
+            // odpowiedzi. Cichy fallback na jedną kartę ukrywałby zepsuty rdzeń.
+            console.warn(`[Produkcja] ⚠️ Rozkład nieczytelny (${DEFAULT_LLM}): ${parseErr.message}`);
+            return res.status(502).json({
+                success: false,
+                message: `Rada Kreatywna nie zwróciła czytelnego rozkładu: ${parseErr.message}`,
+                model: DEFAULT_LLM,
+                surowaOdpowiedz: String(dane.response || '').slice(0, 400),
+            });
+        }
+
+        const dodane = [];
+        const odrzucone = [];
+        for (const p of propozycje) {
+            try {
+                dodane.push(await produkcjaDodaj(ANTIGRAVITY_DIR, {
+                    ...p,
+                    projekt: nazwaProjektu,
+                    zrodlo: 'rada',
+                    sesjaRady: sesjaRady || null,
+                }));
+            } catch (e) {
+                odrzucone.push({ tytul: p.tytul || '(bez tytułu)', powod: e.message });
+            }
+        }
+
+        if (odrzucone.length) {
+            console.warn(`[Produkcja] ⚠️ Dodano ${dodane.length}/${propozycje.length}. ` +
+                         `Odrzucone: ${odrzucone.map(o => `${o.tytul} (${o.powod})`).join(', ')}`);
+        } else {
+            console.log(`[Produkcja] ✅ Rada Kreatywna: ${dodane.length} kart na tablicy „${nazwaProjektu}".`);
+        }
+
+        return res.json({
+            success: true,
+            model: DEFAULT_LLM,
+            zaproponowano: propozycje.length,
+            dodane,
+            odrzucone,
+        });
+    } catch (e) {
+        console.error(`[Produkcja] ❌ Rozkład: ${e.message}`);
+        return res.status(500).json({ success: false, message: e.message });
     }
 });
 
