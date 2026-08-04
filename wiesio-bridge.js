@@ -6345,7 +6345,7 @@ app.post('/api/tost/send', async (req, res) => {
         const promptText = text.trim() || 'Analizuj ten obraz pod kątem zagrożeń i śladów EXIF.';
 
         const ollamaBody = {
-            model:  'gemma4',
+            model:   DEFAULT_LLM,
             system: TOST_SYSTEM_INSTRUCTION,
             prompt: promptText,
             stream: false,
@@ -6613,7 +6613,7 @@ app.post('/api/agent/rada-decompose', async (req, res) => {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model:   'gemma4',
+                model:   DEFAULT_LLM,
                 system:  systemPrompt,
                 prompt:  `Temat: ${topic}\nKontekst: ${context || 'brak'}`,
                 stream:  false,
@@ -6665,22 +6665,50 @@ app.post('/api/agent/rada-decompose', async (req, res) => {
         }
 
         // ── Enqueue do MechanicService (Session Isolation: kolejka działa w tle) ──
+        // ⚠️ NAPRAWIONE 2026-08-03. Dwa błędy siedziały jeden w drugim:
+        //   1. Wywołanie NIE przekazywało `id`, a `enqueueTask` wymaga `id` ORAZ `title`.
+        //      Każde wstrzyknięcie odpadało z „brak id lub title" — kolejka zostawała pusta.
+        //   2. `enqueueTask` przy odrzuceniu ZWRACA null (nie rzuca), więc `catch` nigdy
+        //      się nie odpalał, a kod bezwarunkowo meldował „N pod-zadań wstrzyknięto".
+        //      W logach Suwerena: trzy ostrzeżenia z rzędu i zaraz pod nimi zielony ptaszek
+        //      „3 pod-zadań wstrzyknięto" przy kolejce 0 PENDING. Melduje się to, co się
+        //      wydarzyło, nie to, co miało się wydarzyć.
+        // `id` jest przedrostkowane sesją, bo model potrafi zwrócić „t1" dla każdej sesji,
+        // a deduplikacja po id po cichu zjadłaby kolejne zadania.
+        const przyjete = [];
+        const odrzucone = [];
         for (const task of tasks) {
+            const idKolejki = `rada-${sessionId}-${task.id}`;
             try {
-                await MechanicService.getInstance().enqueueTask({
+                const wynik = await MechanicService.getInstance().enqueueTask({
+                    id:          idKolejki,
                     title:       `[RADA·${task.agent.toUpperCase()}] ${task.title}`,
                     description: task.description,
                     priority:    task.priority,
                     targetFiles: [],
                     sessionId,
                 });
+                if (wynik) przyjete.push(idKolejki);
+                else odrzucone.push({ id: idKolejki, powod: 'odrzucone przez kolejkę (duplikat lub braki)' });
             } catch (enqErr) {
-                console.warn(`[Rada] ⚠️ Enqueue failed for ${task.id}: ${enqErr.message}`);
+                odrzucone.push({ id: idKolejki, powod: enqErr.message });
+                console.warn(`[Rada] ⚠️ Enqueue failed for ${idKolejki}: ${enqErr.message}`);
             }
         }
 
-        console.log(`[Rada] ✅ Sesja ${sessionId}: ${tasks.length} pod-zadań wstrzyknięto do kolejki.`);
-        return res.json({ success: true, sessionId, tasks, totalTasks: tasks.length });
+        if (odrzucone.length) {
+            console.warn(`[Rada] ⚠️ Sesja ${sessionId}: przyjęto ${przyjete.length}/${tasks.length}. ` +
+                         `Odrzucone: ${odrzucone.map(o => `${o.id} (${o.powod})`).join(', ')}`);
+        } else {
+            console.log(`[Rada] ✅ Sesja ${sessionId}: ${przyjete.length}/${tasks.length} pod-zadań w kolejce.`);
+        }
+        return res.json({
+            success: true, sessionId, tasks,
+            totalTasks: tasks.length,
+            // Liczby mówią prawdę — konsument API nie musi wierzyć na słowo.
+            wKolejce: przyjete.length,
+            odrzucone,
+        });
 
     } catch (e) {
         console.error(`[Rada] ❌ Błąd dekompozycji: ${e.message}`);
