@@ -50,6 +50,11 @@ import {
     promptSystemowyRozkladu, odczytajRozklad,
 } from './services/ProdukcjaService.js';
 import {
+    listaPostaci, dodajPostac, usunPostac,
+    pamiec as rezyserPamiec, listaSeriali, dodajFakt, usunFakt, dodajOdcinek, usunOdcinek,
+    zbudujKontekst, promptSystemowyRezysera, odczytajOdpowiedz, zdanieZWyniku, AKCJE_REZYSERA,
+} from './services/RezyserService.js';
+import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
 import CryptoAgility from './services/CryptoAgility.js';
@@ -6817,84 +6822,321 @@ app.get('/api/produkcja/kadr/:id/prompt', async (req, res) => {
  * Melduje `dodane` i `odrzucone` OSOBNO — dokładnie z tego powodu, dla którego
  * naprawialiśmy Radę od kodu: tamta pisała „3 wstrzyknięto" przy kolejce 0.
  */
+/**
+ * Wspólny rozkład Rady Kreatywnej — używa go i panel Tablicy, i Reżyser.
+ * Jedna implementacja, bo dwie rozjechałyby się przy pierwszej poprawce promptu.
+ * Rzuca `BladRozkladu` z surową odpowiedzią, gdy model nie utrzyma formatu.
+ */
+class BladRozkladu extends Error {
+    constructor(message, surowaOdpowiedz) { super(message); this.surowaOdpowiedz = surowaOdpowiedz; }
+}
+
+async function radaKreatywnaRozloz(zlecenie, projekt, temperatura = 0.7, sesjaRady = null) {
+    const temp = Math.max(0.05, Math.min(2.0, Number(temperatura) || 0.7));
+    const nazwaProjektu = String(projekt || '').trim() || 'bez nazwy';
+
+    // Kontekst dla modelu: co już stoi na tablicy tego projektu. Bez tego Rada
+    // przy każdym wywołaniu proponuje od nowa „stwórz Style Sheet".
+    const juzNaTablicy = await produkcjaLista(ANTIGRAVITY_DIR, nazwaProjektu);
+    const kontekst = juzNaTablicy.length
+        ? juzNaTablicy.slice(0, 12).map(k => `- [${k.etap}] ${k.tytul}`).join('\n')
+        : 'tablica pusta — projekt startuje od zera';
+
+    const odp = await fetch(`${OLLAMA_BASE}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model: DEFAULT_LLM,
+            system: promptSystemowyRozkladu(),
+            prompt: `Projekt: ${nazwaProjektu}\nZlecenie: ${zlecenie}\n\nJuż na tablicy (NIE powtarzaj tego):\n${kontekst}`,
+            stream: false,
+            options: { temperature: temp },
+        }),
+    });
+    if (!odp.ok) throw new Error(`Ollama HTTP ${odp.status}`);
+    const dane = await odp.json();
+
+    let propozycje;
+    try {
+        propozycje = odczytajRozklad(dane.response);
+    } catch (parseErr) {
+        // Uczciwie: mówimy, że model nie dał się odczytać, i pokazujemy początek
+        // odpowiedzi. Cichy fallback na jedną kartę ukrywałby zepsuty rdzeń.
+        console.warn(`[Produkcja] ⚠️ Rozkład nieczytelny (${DEFAULT_LLM}): ${parseErr.message}`);
+        throw new BladRozkladu(
+            `Rada Kreatywna nie zwróciła czytelnego rozkładu: ${parseErr.message}`,
+            String(dane.response || '').slice(0, 400),
+        );
+    }
+
+    const dodane = [];
+    const odrzucone = [];
+    for (const p of propozycje) {
+        try {
+            dodane.push(await produkcjaDodaj(ANTIGRAVITY_DIR, {
+                ...p, projekt: nazwaProjektu, zrodlo: 'rada', sesjaRady: sesjaRady || null,
+            }));
+        } catch (e) {
+            odrzucone.push({ tytul: p.tytul || '(bez tytułu)', powod: e.message });
+        }
+    }
+
+    if (odrzucone.length) {
+        console.warn(`[Produkcja] ⚠️ Dodano ${dodane.length}/${propozycje.length}. ` +
+                     `Odrzucone: ${odrzucone.map(o => `${o.tytul} (${o.powod})`).join(', ')}`);
+    } else {
+        console.log(`[Produkcja] ✅ Rada Kreatywna: ${dodane.length} kart na tablicy „${nazwaProjektu}".`);
+    }
+
+    return { model: DEFAULT_LLM, zaproponowano: propozycje.length, dodane, odrzucone };
+}
+
 app.post('/api/produkcja/rozloz', async (req, res) => {
     const { zlecenie, projekt = '', temperatura = 0.7, sesjaRady = '' } = req.body ?? {};
     if (!zlecenie || String(zlecenie).trim().length < 5) {
         return res.status(400).json({ success: false, message: 'Brak zlecenia (min. 5 znaków).' });
     }
-    const temp = Math.max(0.05, Math.min(2.0, Number(temperatura) || 0.7));
-    const nazwaProjektu = String(projekt).trim() || 'bez nazwy';
+    console.log(`[Produkcja] 🏛️ Rada Kreatywna rozkłada: "${String(zlecenie).slice(0, 60)}..." (${projekt || 'bez nazwy'})`);
+    try {
+        return res.json({ success: true, ...(await radaKreatywnaRozloz(zlecenie, projekt, temperatura, sesjaRady)) });
+    } catch (e) {
+        if (e instanceof BladRozkladu) {
+            return res.status(502).json({ success: false, message: e.message, model: DEFAULT_LLM, surowaOdpowiedz: e.surowaOdpowiedz });
+        }
+        console.error(`[Produkcja] ❌ Rozkład: ${e.message}`);
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
 
-    console.log(`[Produkcja] 🏛️ Rada Kreatywna rozkłada: "${String(zlecenie).slice(0, 60)}..." (${nazwaProjektu})`);
+// ══════════════════════════════════════════════════════════════════════════════
+//  🎬 REŻYSER — Sfera z rękami, pamięcią i obsadą
+//
+//  Rozmówca opowiadał. Reżyser ROBI: jedno wywołanie modelu zwraca i mowę,
+//  i ewentualną akcję, którą Most wykonuje od razu. Dwa wywołania (najpierw
+//  odpowiedz, potem sklasyfikuj) trwałyby na tej maszynie ponad 40 s —
+//  rozmowa przestałaby być rozmową.
+//
+//  Akcje wykonuje SERWER, nie przeglądarka: model może zaproponować tylko to,
+//  co jest na białej liście, i nic poza nią nie zadziała.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Obsada ────────────────────────────────────────────────────────────────────
+app.get('/api/rezyser/postacie', async (req, res) => {
+    try {
+        return res.json({ success: true, postacie: await listaPostaci(ANTIGRAVITY_DIR) });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/** POST — `surowe` (wgranie: JSON / markdown / goły prompt) albo gotowe pola. */
+app.post('/api/rezyser/postacie', async (req, res) => {
+    try {
+        const postac = await dodajPostac(ANTIGRAVITY_DIR, req.body ?? {});
+        console.log(`[Reżyser] 🎭 Postać „${postac.imie}" (${postac.rola}, ${postac.pochodzenie}, format: ${postac.format}).`);
+        return res.json({ success: true, postac });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+app.delete('/api/rezyser/postacie/:id', async (req, res) => {
+    try {
+        return res.json({ success: true, postac: await usunPostac(ANTIGRAVITY_DIR, req.params.id) });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+// ── Pamięć serialu ────────────────────────────────────────────────────────────
+app.get('/api/rezyser/pamiec', async (req, res) => {
+    try {
+        const serial = String(req.query.serial || '');
+        return res.json({
+            success: true,
+            pamiec: await rezyserPamiec(ANTIGRAVITY_DIR, serial),
+            seriale: await listaSeriali(ANTIGRAVITY_DIR),
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/rezyser/pamiec/fakt', async (req, res) => {
+    try {
+        const { serial = '', tresc = '', zrodlo = 'suweren' } = req.body ?? {};
+        const wynik = await dodajFakt(ANTIGRAVITY_DIR, serial, tresc, zrodlo);
+        return res.json({ success: true, ...wynik });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+app.delete('/api/rezyser/pamiec/fakt/:id', async (req, res) => {
+    try {
+        const fakt = await usunFakt(ANTIGRAVITY_DIR, String(req.query.serial || ''), req.params.id);
+        return res.json({ success: true, fakt });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/rezyser/pamiec/odcinek', async (req, res) => {
+    try {
+        const { serial = '', ...dane } = req.body ?? {};
+        const odcinek = await dodajOdcinek(ANTIGRAVITY_DIR, serial, dane);
+        console.log(`[Reżyser] 📼 Odcinek #${odcinek.numer} „${odcinek.tytul}" domknięty (${serial || 'bez nazwy'}).`);
+        return res.json({ success: true, odcinek });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+app.delete('/api/rezyser/pamiec/odcinek/:id', async (req, res) => {
+    try {
+        const odcinek = await usunOdcinek(ANTIGRAVITY_DIR, String(req.query.serial || ''), req.params.id);
+        return res.json({ success: true, odcinek });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/rezyser/rozmowa  { serial, wypowiedz, historia[], postacId? }
+ * Jedna tura rozmowy z Reżyserem: kontekst → model → mowa + wykonana akcja.
+ */
+app.post('/api/rezyser/rozmowa', async (req, res) => {
+    const { serial = '', wypowiedz = '', historia = [], postacId = null } = req.body ?? {};
+    if (String(wypowiedz).trim().length < 2) {
+        return res.status(400).json({ success: false, message: 'Pusta wypowiedź.' });
+    }
+    const nazwaSerialu = String(serial).trim() || 'bez nazwy';
 
     try {
-        // Kontekst dla modelu: co już stoi na tablicy tego projektu. Bez tego Rada
-        // przy każdym wywołaniu proponuje od nowa „stwórz Style Sheet".
-        const juzNaTablicy = await produkcjaLista(ANTIGRAVITY_DIR, nazwaProjektu);
-        const kontekst = juzNaTablicy.length
-            ? juzNaTablicy.slice(0, 12).map(k => `- [${k.etap}] ${k.tytul}`).join('\n')
-            : 'tablica pusta — projekt startuje od zera';
+        // ── Kontekst: obsada + pamięć + tablica, przycięte do budżetu ──
+        const postac = postacId
+            ? (await listaPostaci(ANTIGRAVITY_DIR)).find(p => p.id === postacId) ?? null
+            : null;
+        const kontekst = zbudujKontekst({
+            pamiecSerialu: await rezyserPamiec(ANTIGRAVITY_DIR, nazwaSerialu),
+            postac,
+            kadry: await produkcjaLista(ANTIGRAVITY_DIR, nazwaSerialu),
+        });
+        if (kontekst.pominieto.length) {
+            // Cicha utrata faktu kanonicznego to najgorsze, co może się przydarzyć
+            // serialowi — więc krzyczy w logu i wraca w odpowiedzi.
+            console.warn(`[Reżyser] ⚠️ Kontekst przycięty: ${kontekst.pominieto.join(' · ')}`);
+        }
+
+        // Ostatnie 8 tur — dalej i tak wypchnęłoby kontekst ponad okno modelu.
+        const rozmowa = (Array.isArray(historia) ? historia : []).slice(-8)
+            .map(t => `${t.role === 'user' ? 'Suweren' : 'Ty'}: ${t.content}`).join('\n');
 
         const odp = await fetch(`${OLLAMA_BASE}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model: DEFAULT_LLM,
-                system: promptSystemowyRozkladu(),
-                prompt: `Projekt: ${nazwaProjektu}\nZlecenie: ${zlecenie}\n\nJuż na tablicy (NIE powtarzaj tego):\n${kontekst}`,
+                system: promptSystemowyRezysera(kontekst, postac?.imie ?? null),
+                prompt: `${rozmowa ? rozmowa + '\n' : ''}Suweren: ${wypowiedz}\nTy:`,
                 stream: false,
-                options: { temperature: temp },
+                options: { temperature: 0.75 },
             }),
         });
-        if (!odp.ok) throw new Error(`Ollama HTTP ${odp.status}`);
+        if (!odp.ok) throw new Error(`Ollama HTTP ${odp.status} — sprawdź, czy rdzeń AI stoi.`);
         const dane = await odp.json();
 
-        let propozycje;
+        // ── Odczyt kontraktu. Gdy model go nie utrzyma, NIE zgadujemy akcji ──
+        let mowa, akcja = null, uwaga = null;
         try {
-            propozycje = odczytajRozklad(dane.response);
-        } catch (parseErr) {
-            // Uczciwie: mówimy, że model nie dał się odczytać, i pokazujemy początek
-            // odpowiedzi. Cichy fallback na jedną kartę ukrywałby zepsuty rdzeń.
-            console.warn(`[Produkcja] ⚠️ Rozkład nieczytelny (${DEFAULT_LLM}): ${parseErr.message}`);
-            return res.status(502).json({
-                success: false,
-                message: `Rada Kreatywna nie zwróciła czytelnego rozkładu: ${parseErr.message}`,
-                model: DEFAULT_LLM,
-                surowaOdpowiedz: String(dane.response || '').slice(0, 400),
-            });
+            ({ mowa, akcja } = odczytajOdpowiedz(dane.response));
+        } catch (e) {
+            mowa = String(dane.response || '').trim();
+            uwaga = `Model nie utrzymał formatu (${e.message}) — potraktowane jako sama wypowiedź, bez akcji.`;
+            console.warn(`[Reżyser] ⚠️ ${uwaga}`);
+        }
+        if (!mowa && !akcja) {
+            return res.status(502).json({ success: false, message: 'Reżyser milczy — rdzeń AI zwrócił pustkę.' });
         }
 
-        const dodane = [];
-        const odrzucone = [];
-        for (const p of propozycje) {
-            try {
-                dodane.push(await produkcjaDodaj(ANTIGRAVITY_DIR, {
-                    ...p,
-                    projekt: nazwaProjektu,
-                    zrodlo: 'rada',
-                    sesjaRady: sesjaRady || null,
-                }));
-            } catch (e) {
-                odrzucone.push({ tytul: p.tytul || '(bez tytułu)', powod: e.message });
+        // ── Wykonanie akcji (biała lista; model nie wymyśli sobie nowej) ──
+        let wynikAkcji = null;
+        if (akcja) {
+            if (!AKCJE_REZYSERA.has(akcja.typ)) {
+                wynikAkcji = { wykonana: false, powod: `nieznana akcja „${akcja.typ}" — pominięta` };
+                console.warn(`[Reżyser] ⛔ ${wynikAkcji.powod}`);
+            } else {
+                try {
+                    switch (akcja.typ) {
+                        case 'dodaj_kadr': {
+                            const kadr = await produkcjaDodaj(ANTIGRAVITY_DIR, {
+                                tytul: akcja.tytul, opis: akcja.opis, etap: akcja.etap || 'BIBLIA',
+                                projekt: nazwaSerialu, zrodlo: 'rada',
+                            });
+                            wynikAkcji = { wykonana: true, opis: `kadr „${kadr.tytul}" na etapie ${kadr.etap}`, kadr };
+                            break;
+                        }
+                        case 'rozloz': {
+                            const r = await radaKreatywnaRozloz(akcja.zlecenie || wypowiedz, nazwaSerialu);
+                            wynikAkcji = {
+                                wykonana: true,
+                                opis: `rozłożone na ${r.dodane.length} kart` +
+                                      (r.odrzucone.length ? ` (${r.odrzucone.length} odrzuconych)` : ''),
+                                ...r,
+                            };
+                            break;
+                        }
+                        case 'zapamietaj': {
+                            const w = await dodajFakt(ANTIGRAVITY_DIR, nazwaSerialu, akcja.fakt, 'rezyser');
+                            wynikAkcji = {
+                                wykonana: true,
+                                opis: w.duplikat ? 'ten fakt już był w kanonie' : `zapamiętane: „${w.fakt.tresc}"`,
+                                fakt: w.fakt,
+                            };
+                            break;
+                        }
+                        case 'domknij_odcinek': {
+                            const o = await dodajOdcinek(ANTIGRAVITY_DIR, nazwaSerialu, {
+                                tytul: akcja.tytul, streszczenie: akcja.streszczenie,
+                            });
+                            wynikAkcji = { wykonana: true, opis: `odcinek #${o.numer} „${o.tytul}" domknięty`, odcinek: o };
+                            break;
+                        }
+                        case 'otworz':
+                            // Jedyna akcja bez skutku na serwerze — front ma otworzyć moduł.
+                            wynikAkcji = { wykonana: true, opis: `otwórz moduł: ${akcja.modul}`, modul: akcja.modul };
+                            break;
+                    }
+                } catch (e) {
+                    // Akcja padła — mówimy to wprost. Reżyser, który „zrobił" coś,
+                    // czego nie ma na tablicy, jest gorszy niż Reżyser, który przyznał błąd.
+                    wynikAkcji = { wykonana: false, powod: e.message };
+                    console.warn(`[Reżyser] ⚠️ Akcja ${akcja.typ} nie przeszła: ${e.message}`);
+                }
             }
         }
 
-        if (odrzucone.length) {
-            console.warn(`[Produkcja] ⚠️ Dodano ${dodane.length}/${propozycje.length}. ` +
-                         `Odrzucone: ${odrzucone.map(o => `${o.tytul} (${o.powod})`).join(', ')}`);
-        } else {
-            console.log(`[Produkcja] ✅ Rada Kreatywna: ${dodane.length} kart na tablicy „${nazwaProjektu}".`);
+        // Model bywa tak zajęty składaniem akcji, że zapomina o „mowa". Zdanie
+        // układamy wtedy Z WYNIKU — czyli PO wykonaniu, z tego, co naprawdę się
+        // stało. Kolejność jest istotna: gdyby powstało wcześniej, obiecywałoby.
+        if (!mowa) {
+            mowa = zdanieZWyniku(akcja.typ, wynikAkcji);
+            uwaga = (uwaga ? uwaga + ' ' : '') +
+                    'Model nie podał wypowiedzi — zdanie ułożone z faktycznego wyniku akcji.';
         }
+
+        console.log(`[Reżyser] 🎬 ${nazwaSerialu}${postac ? ` · ${postac.imie}` : ''} · kontekst ${kontekst.znakow} zn.` +
+                    `${akcja ? ` · akcja ${akcja.typ}: ${wynikAkcji?.wykonana ? 'OK' : 'NIE'}` : ''}`);
 
         return res.json({
             success: true,
+            mowa, akcja, wynikAkcji, uwaga,
             model: DEFAULT_LLM,
-            zaproponowano: propozycje.length,
-            dodane,
-            odrzucone,
+            postac: postac ? { id: postac.id, imie: postac.imie, glos: postac.glos } : null,
+            kontekst: { znakow: kontekst.znakow, pominieto: kontekst.pominieto },
         });
     } catch (e) {
-        console.error(`[Produkcja] ❌ Rozkład: ${e.message}`);
+        console.error(`[Reżyser] ❌ ${e.message}`);
         return res.status(500).json({ success: false, message: e.message });
     }
 });
