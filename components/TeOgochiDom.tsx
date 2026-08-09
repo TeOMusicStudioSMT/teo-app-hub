@@ -17,6 +17,9 @@ import {
     loadJoannaPlaylist, addUserTrack, removeUserTrack, isUserTrack, trackIdFrom,
     type JoannaTrack,
 } from '../lib/joannaPlaylist';
+import {
+    powiedzJakKompan, czyGlosWlaczony, ustawGlos, czemuNieSlychac, ucisz,
+} from '../lib/glosKompana';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
@@ -37,6 +40,12 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [s, setS] = useState<TeogochiState>(() => loadTeogochi());
     const [speech, setSpeech] = useState('');
     const [wiggle, setWiggle] = useState(0);
+    const [glosNa, setGlosNa] = useState<boolean>(() => czyGlosWlaczony());
+    // Powód, dla którego mowa NIE zabrzmiała — pokazujemy zamiast udawać, że słychać.
+    const [nieSlychac, setNieSlychac] = useState<string | null>(null);
+
+    // Zamknięcie domu ucisza kompana w pół zdania — inaczej mówiłby do pustego ekranu.
+    useEffect(() => () => ucisz(), []);
 
     // 🎶 Playlista smakołyków — rozwijana pod przyciskiem SMAKOŁYK
     const [showList, setShowList] = useState(false);
@@ -62,6 +71,21 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const isEgg = stage.stage === 'jajko';
     const nastroj = moodLabel(s);
 
+    // 🔊 JEDNO miejsce, przez które przechodzi wszystko, co kompan „mówi".
+    // Wcześniej `setSpeech` było wołane w dziesięciu miejscach i tylko wypełniało
+    // dymek — dopisywanie mowy do każdego z osobna gwarantowałoby, że przy
+    // następnej zmianie ktoś jedno przeoczy i Joanna wybiórczo zamilknie.
+    const powiedz = useCallback((tekst: string) => {
+        setSpeech(tekst);
+        // Świadomie bez `await`: dymek ma pojawić się natychmiast, a mowa
+        // dogonić. Silnik klonu potrafi mielić sekundę i nie ma powodu,
+        // żeby UI na niego czekało.
+        void powiedzJakKompan(tekst).then(zrodlo => {
+            if (zrodlo === 'cisza') setNieSlychac(czemuNieSlychac());
+            else if (zrodlo !== 'wylaczony') setNieSlychac(null);
+        });
+    }, []);
+
     const say = useCallback(async (context: string) => {
         try {
             const r = await fetch(`${BRIDGE}/api/teogochi/comment`, {
@@ -73,11 +97,11 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 }),
             });
             const d = await r.json();
-            setSpeech(d.comment || (isEgg ? '...(ciche pukanie od środka)...' : 'Ćwir!'));
+            powiedz(d.comment || (isEgg ? '...(ciche pukanie od środka)...' : 'Ćwir!'));
         } catch {
-            setSpeech(isEgg ? '...(jajko lekko drży)...' : 'Ćwir? (most milczy)');
+            powiedz(isEgg ? '...(jajko lekko drży)...' : 'Ćwir? (most milczy)');
         }
-    }, [radio.currentTrack, stage.stage, nastroj, isEgg, s.name]);
+    }, [radio.currentTrack, stage.stage, nastroj, isEgg, s.name, powiedz]);
 
     // ⛪ Chrzcielnica — nadaj imię (bogini dostaje żeńską formę w komentarzach AI)
     const handleRename = () => {
@@ -93,7 +117,7 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         saveTeogochi(state); setS(state);
         setWiggle(w => w + 1);
         if (ok) say(isEgg ? 'ktoś czule pogłaskał Twoją skorupkę' : 'Suweren właśnie Cię pogłaskał');
-        else setSpeech(isEgg ? '...(skorupka jeszcze ciepła od głaskania)...' : 'Hej, dopiero co! Daj odetchnąć 😊');
+        else powiedz(isEgg ? '...(skorupka jeszcze ciepła od głaskania)...' : 'Hej, dopiero co! Daj odetchnąć 😊');
     };
 
     const handleTreat = () => {
@@ -101,7 +125,7 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         saveTeogochi(state); setS(state);
         setWiggle(w => w + 1);
         if (ok) say('dostał pyszny smakołyk: świeży wektor soniczny');
-        else setSpeech('Brzuszek pełny — smakołyk za jakiś czas! 🫧');
+        else powiedz('Brzuszek pełny — smakołyk za jakiś czas! 🫧');
     };
 
     // 🎶 Ulubiony utwór = smakołyk grany na żywo. Leci TYM SAMYM torem co radio
@@ -115,13 +139,13 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         saveTeogochi(state); setS(state);
         setWiggle(w => w + 1);
         if (ok) say(`słucha właśnie swojego ulubionego kawałka: „${t.title}"`);
-        else setSpeech(`Gram „${t.title}" 🎶 (najedzony — ale słucha z przyjemnością)`);
+        else powiedz(`Gram „${t.title}" 🎶 (najedzony — ale słucha z przyjemnością)`);
     };
 
     // ⭐ Zabierz do ulubionych to, co właśnie leci w eterze.
     const handleStarCurrent = () => {
         const cur = radio.currentTrack;
-        if (!cur) { setSpeech('W eterze cisza — nie ma czego zapisać. 🫧'); return; }
+        if (!cur) { powiedz('W eterze cisza — nie ma czego zapisać. 🫧'); return; }
         const source = cur.filename || cur.audio_url || cur.id;
         const entry: JoannaTrack = {
             id: trackIdFrom(source),
@@ -133,9 +157,9 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         if (addUserTrack(entry)) {
             setPlaylist(prev => [entry, ...prev.filter(p => p.id !== entry.id)]);
             setShowList(true);
-            setSpeech(`⭐ „${entry.title}" trafił do smakołyków!`);
+            powiedz(`⭐ „${entry.title}" trafił do smakołyków!`);
         } else {
-            setSpeech('To już jest w jego ulubionych 😊');
+            powiedz('To już jest w jego ulubionych 😊');
         }
     };
 
@@ -178,7 +202,26 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         </button>
                     </div>
                 </div>
-                <button onClick={onClose} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#64748b', width: 26, height: 26, cursor: 'pointer' }}>✕</button>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {/* 🔊 Głos kompana. Wyciszenie zapisuje się na stałe i milknie w pół zdania. */}
+                    <button
+                        onClick={() => {
+                            const nowy = !glosNa;
+                            ustawGlos(nowy); setGlosNa(nowy);
+                            setNieSlychac(null);
+                            if (nowy) powiedz(`Znowu mnie słychać. Mówi ${s.name}.`);
+                        }}
+                        title={glosNa ? `Wycisz ${s.name}` : `Włącz głos — ${s.name} zacznie mówić`}
+                        style={{
+                            background: glosNa ? 'rgba(251,191,36,0.12)' : 'none',
+                            border: `1px solid rgba(251,191,36,${glosNa ? 0.4 : 0.15})`,
+                            borderRadius: 8, color: glosNa ? '#fbbf24' : '#64748b',
+                            width: 26, height: 26, cursor: 'pointer', fontSize: 11, padding: 0,
+                        }}>
+                        {glosNa ? '🔊' : '🔇'}
+                    </button>
+                    <button onClick={onClose} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#64748b', width: 26, height: 26, cursor: 'pointer' }}>✕</button>
+                </div>
             </div>
 
             {/* Stworzonko */}
@@ -210,6 +253,14 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Dymek się pojawił, ale dźwięku NIE było — mówimy dlaczego, zamiast
+                zostawiać Suwerena z pytaniem, czemu kompan jest niemy. */}
+            {glosNa && nieSlychac && (
+                <div style={{ margin: '0 0 4px', padding: '6px 9px', borderRadius: 9, background: 'rgba(148,163,184,0.07)', border: '1px solid rgba(148,163,184,0.18)', fontSize: 8, color: '#94a3b8', lineHeight: 1.5 }}>
+                    🔇 {nieSlychac}
+                </div>
+            )}
 
             {/* Statystyki */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '12px 0' }}>
