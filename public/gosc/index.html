@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TeO Studio — telefon jako kamera</title>
+<!--
+  📱 Strona gościa. CELOWO bez budowania i bez bibliotek — musi ruszyć
+  także z pendrive'a i z telefonu, który widzi Katedrę pierwszy raz.
+
+  ⚠️ `getUserMedia` DZIAŁA WYŁĄCZNIE W BEZPIECZNYM KONTEKŚCIE. Otwarcie tej
+  strony po `http://192.168.x.x:3001` NIE DA kamery — przeglądarka odmówi bez
+  pytania. Dlatego link do telefonu prowadzi przez Kwantowy Tunel (HTTPS).
+  Sam obraz i tak poleci potem po sieci lokalnej, bo WebRTC dogaduje się
+  bezpośrednio; tunelem idzie tylko uścisk dłoni.
+-->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; background:#05040c; color:#e2e8f0; font-family:'JetBrains Mono',ui-monospace,monospace;
+         min-height:100dvh; display:flex; flex-direction:column; }
+  header { padding:14px 16px; border-bottom:1px solid rgba(34,211,238,.18); }
+  h1 { margin:0; font-size:13px; letter-spacing:.28em; color:#22d3ee; font-weight:700; }
+  .pod { font-size:9px; color:#64748b; letter-spacing:.18em; margin-top:3px; }
+  main { flex:1; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  video { width:100%; border-radius:14px; background:#000; aspect-ratio:16/9; object-fit:cover;
+          border:1px solid rgba(255,255,255,.08); }
+  .rzad { display:flex; gap:8px; flex-wrap:wrap; }
+  button, select, input {
+    font-family:inherit; font-size:12px; padding:12px 14px; border-radius:12px;
+    background:rgba(255,255,255,.05); color:#e2e8f0; border:1px solid rgba(255,255,255,.14);
+  }
+  button { cursor:pointer; font-weight:700; letter-spacing:.06em; flex:1; min-height:48px; }
+  button.glowny { background:rgba(34,211,238,.14); border-color:rgba(34,211,238,.5); color:#67e8f9; }
+  button.stop   { background:rgba(239,68,68,.12);  border-color:rgba(239,68,68,.45);  color:#fca5a5; }
+  button:disabled { opacity:.4; }
+  .stan { font-size:11px; line-height:1.6; padding:10px 12px; border-radius:12px;
+          background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); }
+  .zle  { border-color:rgba(251,191,36,.4); background:rgba(251,191,36,.07); color:#fde68a; }
+  .ok   { border-color:rgba(16,185,129,.4); background:rgba(16,185,129,.07); color:#a7f3d0; }
+  label { font-size:9px; letter-spacing:.2em; color:#64748b; display:block; margin-bottom:4px; }
+  .kropka { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TeO STUDIO — GOŚĆ</h1>
+  <div class="pod">TELEFON JAKO KAMERA · 0.00G</div>
+</header>
+
+<main>
+  <video id="podglad" playsinline autoplay muted></video>
+
+  <div id="stan" class="stan">Sprawdzam warunki…</div>
+
+  <div>
+    <label>POKÓJ (kod ze studia)</label>
+    <input id="pokoj" placeholder="np. K7M2QP" autocapitalize="characters" autocomplete="off" style="width:100%">
+  </div>
+
+  <div>
+    <label>NAZWA (jak Cię podpisać na pulpicie reżysera)</label>
+    <input id="nazwa" placeholder="np. statyw" autocomplete="off" style="width:100%">
+  </div>
+
+  <div>
+    <label>KAMERA</label>
+    <select id="kamery" style="width:100%"></select>
+  </div>
+
+  <div class="rzad">
+    <button id="start" class="glowny">📡 NADAWAJ</button>
+    <button id="stop" class="stop" disabled>■ STOP</button>
+  </div>
+  <div class="rzad">
+    <button id="przod">🔄 PRZÓD / TYŁ</button>
+  </div>
+</main>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const stan = $('stan');
+  let ws = null, pc = null, strumien = null, tylnaKamera = true;
+
+  const powiedz = (tekst, klasa) => { stan.className = 'stan' + (klasa ? ' ' + klasa : ''); stan.innerHTML = tekst; };
+
+  // Kod pokoju i nazwa mogą przyjechać w adresie (z kodu QR ze studia).
+  const param = new URLSearchParams(location.search);
+  if (param.get('pokoj')) $('pokoj').value = param.get('pokoj').toUpperCase();
+  if (param.get('nazwa')) $('nazwa').value = param.get('nazwa');
+
+  // ── Warunek konieczny: bezpieczny kontekst ────────────────────────────────
+  // Bez tego `getUserMedia` NIE ISTNIEJE i telefon nie odda obrazu. Mówimy to
+  // od razu i konkretnie, zamiast pozwolić Suwerenowi klikać w martwy przycisk.
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    powiedz(
+      '<b>Ta strona nie dostanie kamery.</b><br>' +
+      'Przeglądarka oddaje kamerę tylko przez <b>HTTPS</b> (albo na localhoście), ' +
+      'a ten adres to zwykłe <b>http</b>.<br><br>' +
+      'Otwórz link z <b>Kwantowego Tunelu</b> (adres <code>*.trycloudflare.com</code>) — ' +
+      'obraz i tak poleci potem po Waszym Wi-Fi, tunelem idzie tylko uścisk dłoni.',
+      'zle');
+    $('start').disabled = true;
+    $('przod').disabled = true;
+    return;
+  }
+
+  async function wypelnijKamery() {
+    try {
+      const lista = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+      const sel = $('kamery');
+      sel.innerHTML = '';
+      // Etykiety pojawiają się dopiero PO przyznaniu dostępu — dopóki ich nie ma,
+      // podpisujemy uczciwie „Kamera 1/2", zamiast udawać, że wiemy która to.
+      lista.forEach((d, i) => {
+        const o = document.createElement('option');
+        o.value = d.deviceId; o.textContent = d.label || ('Kamera ' + (i + 1));
+        sel.appendChild(o);
+      });
+      if (!lista.length) sel.innerHTML = '<option>— brak kamer —</option>';
+    } catch (e) { console.warn('[gosc] enumerateDevices:', e); }
+  }
+
+  async function wezObraz() {
+    const deviceId = $('kamery').value;
+    const video = deviceId
+      ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      : { facingMode: tylnaKamera ? 'environment' : 'user', width: { ideal: 1920 }, height: { ideal: 1080 } };
+    strumien = await navigator.mediaDevices.getUserMedia({ video, audio: true });
+    $('podglad').srcObject = strumien;
+    await wypelnijKamery();          // po zgodzie etykiety wreszcie mają nazwy
+    return strumien;
+  }
+
+  function adresSygnalizacji(pokoj, nazwa) {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    return `${proto}://${location.host}/api/studio/gosc?rola=gosc&pokoj=${encodeURIComponent(pokoj)}&nazwa=${encodeURIComponent(nazwa)}`;
+  }
+
+  async function nadawaj() {
+    const pokoj = $('pokoj').value.trim().toUpperCase();
+    if (!pokoj) { powiedz('Wpisz kod pokoju ze studia.', 'zle'); return; }
+    const nazwa = $('nazwa').value.trim() || 'telefon';
+
+    $('start').disabled = true;
+    powiedz('Proszę o kamerę…');
+
+    try { await wezObraz(); }
+    catch (e) {
+      powiedz('<b>Nie dostałem kamery.</b><br>' + (e.name === 'NotAllowedError'
+        ? 'Odmówiłeś dostępu albo przeglądarka go zablokowała — sprawdź kłódkę przy adresie.'
+        : e.message), 'zle');
+      $('start').disabled = false; return;
+    }
+
+    powiedz('Łączę ze studiem…');
+    ws = new WebSocket(adresSygnalizacji(pokoj, nazwa));
+
+    ws.onopen = () => powiedz('Jestem w pokoju <b>' + pokoj + '</b>. Czekam na studio…');
+    ws.onerror = () => powiedz('Nie mogę się połączyć z Katedrą — czy Most stoi?', 'zle');
+    ws.onclose = () => { if (pc) powiedz('Połączenie zerwane.', 'zle'); $('start').disabled = false; };
+
+    ws.onmessage = async (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+
+      if (m.typ === 'witaj') {
+        if (!m.studioObecne) powiedz('Jestem w pokoju <b>' + pokoj + '</b>, ale <b>studia jeszcze nie ma</b>. Czekam.', 'zle');
+        else await zacznijPolaczenie();
+      }
+      if (m.typ === 'studio-zniklo') { powiedz('Studio wyszło z pokoju. Czekam na powrót.', 'zle'); zamknijPc(); }
+      if (m.typ === 'sygnal') await odbierzSygnal(m.dane);
+    };
+
+    $('stop').disabled = false;
+  }
+
+  async function zacznijPolaczenie() {
+    zamknijPc();
+    // Bez serwerów STUN/TURN: w tej samej sieci wystarczają kandydaci hosta,
+    // a Katedra ma działać bez wychodzenia na zewnątrz. Gdyby telefon był
+    // w innej sieci, tu trzeba by dołożyć STUN — i to byłby wyjazd do chmury.
+    pc = new RTCPeerConnection({ iceServers: [] });
+    strumien.getTracks().forEach(t => pc.addTrack(t, strumien));
+
+    pc.onicecandidate = (e) => { if (e.candidate) sygnal({ ice: e.candidate }); };
+    pc.onconnectionstatechange = () => {
+      const s = pc.connectionState;
+      if (s === 'connected') powiedz('<span class="kropka" style="background:#10b981"></span><b>NA ANTENIE</b> — studio widzi obraz.', 'ok');
+      if (s === 'failed')    powiedz('Połączenie nie doszło do skutku. Czy oba urządzenia są w tym samym Wi-Fi?', 'zle');
+      if (s === 'disconnected') powiedz('Studio się rozłączyło.', 'zle');
+    };
+
+    const oferta = await pc.createOffer();
+    await pc.setLocalDescription(oferta);
+    sygnal({ sdp: pc.localDescription });
+    powiedz('Wysłałem obraz do studia, czekam na potwierdzenie…');
+  }
+
+  async function odbierzSygnal(dane) {
+    if (!pc) await zacznijPolaczenie();
+    if (dane.sdp) {
+      await pc.setRemoteDescription(new RTCSessionDescription(dane.sdp));
+      if (dane.sdp.type === 'offer') {
+        const odp = await pc.createAnswer();
+        await pc.setLocalDescription(odp);
+        sygnal({ sdp: pc.localDescription });
+      }
+    }
+    if (dane.ice) { try { await pc.addIceCandidate(dane.ice); } catch (e) { console.warn('[gosc] ICE:', e); } }
+  }
+
+  const sygnal = (dane) => { if (ws?.readyState === 1) ws.send(JSON.stringify({ typ: 'sygnal', dane })); };
+
+  function zamknijPc() { if (pc) { try { pc.close(); } catch {} pc = null; } }
+
+  function stop() {
+    zamknijPc();
+    if (ws) { try { ws.close(); } catch {} ws = null; }
+    if (strumien) { strumien.getTracks().forEach(t => t.stop()); strumien = null; }
+    $('podglad').srcObject = null;
+    $('start').disabled = false; $('stop').disabled = true;
+    powiedz('Zatrzymane. Kamera zwolniona.');
+  }
+
+  $('start').onclick = nadawaj;
+  $('stop').onclick = stop;
+  $('przod').onclick = async () => {
+    tylnaKamera = !tylnaKamera;
+    $('kamery').value = '';                    // wracamy do wyboru przód/tył
+    if (!strumien) { powiedz('Przełączę przy starcie: ' + (tylnaKamera ? 'tylna' : 'przednia')); return; }
+    const stare = strumien;
+    try {
+      await wezObraz();
+      // Podmiana ścieżki w locie — bez zrywania połączenia ze studiem.
+      const nowa = strumien.getVideoTracks()[0];
+      const nadawca = pc?.getSenders().find(s => s.track?.kind === 'video');
+      if (nadawca && nowa) await nadawca.replaceTrack(nowa);
+      stare.getTracks().forEach(t => t.stop());
+    } catch (e) { powiedz('Nie udało się przełączyć kamery: ' + e.message, 'zle'); }
+  };
+
+  powiedz('Gotowe. Wpisz kod pokoju i naciśnij <b>NADAWAJ</b>.');
+  wypelnijKamery();
+})();
+</script>
+</body>
+</html>

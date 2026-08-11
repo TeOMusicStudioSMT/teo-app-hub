@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { KoomService } from '../src/services/KoomService';
 import { getBridgeBase } from '../lib/bridgeService';
+import PanelPodlaczen from './special/PanelPodlaczen';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  TYPY
@@ -436,6 +437,27 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
     if (camStreamsRef.current.CAM_2_PHONE_A) return;
     attachCamStream('CAM_2_PHONE_A', guestStream, true);
   }, [guestStream, attachCamStream]);
+
+  /**
+   * 📱 Telefon z Panelu Podłączeń → gniazdo kamery.
+   *
+   * Szuka WOLNEGO gniazda telefonu (CAM 2, potem CAM 3), bo Suweren ma dwa
+   * telefony i drugi nie może wyrzucać pierwszego. Gdy oba zajęte, świadomie
+   * podmieniamy CAM 2 i mówimy o tym w pasku — cicha podmiana wyglądałaby
+   * jak zniknięcie ujęcia bez powodu.
+   */
+  const przyjmijGoscia = useCallback((strumien: MediaStream | null, nazwa: string) => {
+    if (!strumien) return;
+    const wolne: CamId | undefined =
+      (['CAM_2_PHONE_A', 'CAM_3_PHONE_B'] as CamId[]).find((id) => !camStreamsRef.current[id]);
+    const cel: CamId = wolne ?? 'CAM_2_PHONE_A';
+    attachCamStream(cel, strumien, true);
+    setRelayMsg(
+      wolne
+        ? `📱 „${nazwa}" wszedł na ${cel.startsWith('CAM_2') ? 'CAM 2' : 'CAM 3'}.`
+        : `📱 „${nazwa}" zajął CAM 2 — oba gniazda telefonów były zajęte, poprzednie ujęcie zeszło.`
+    );
+  }, [attachCamStream]);
 
   const toggleMic = useCallback(() => {
     const stream = camStreamsRef.current[micSlotRef.current];
@@ -1489,6 +1511,9 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
             </div>
           ))}
         </div>
+
+        {/* 🔌 Podłączenia zewnętrzne: telefon przez Wi-Fi, grabber, wirtualna kamera. */}
+        <PanelPodlaczen onGosc={przyjmijGoscia} />
       </div>
 
       {/* --- MÓZG ORBA (źródło inteligencji + wtrysk do Księgi + głosy) --- */}

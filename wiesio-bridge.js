@@ -65,6 +65,7 @@ import {
     saveRtmpConfig,
     RECORDINGS_DIR,
 } from './services/StudioRelayService.js';
+import { attachGoscStudio, stanPokoi } from './services/GoscStudioService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -223,6 +224,16 @@ const APPS_DIR = path.join(__dirname, 'public', 'apps');
 for (const app_ of ['music', 'story', 'app']) {
     app.use(`/apps/${app_}`, cors({ origin: '*' }), express.static(path.join(APPS_DIR, app_)));
 }
+
+// ── 📱 STRONA GOŚCIA (telefon jako kamera) ────────────────────────────────────
+// Wpięta PRZED Strażą świadomie: telefon otwiera ją Kwantowym Tunelem, czyli
+// jako żądanie ZDALNE, a kod QR nie niesie klucza sesji. Sama strona to statyczny
+// HTML bez sekretów, więc wystawienie jej nic nie ujawnia.
+// BRAMĄ JEST KOD POKOJU (6 znaków z 32-znakowego alfabetu). Najgorsze, co może
+// zrobić ktoś obcy, kto zgadnie i adres, i kod, to WEPCHNĄĆ swój obraz do pokoju —
+// a i tak nie trafi on na pulpit, dopóki Suweren świadomie nie kliknie „NA PULPIT".
+// Odczytać stąd nie da się niczego.
+app.use('/gosc', cors({ origin: '*' }), express.static(path.join(__dirname, 'public', 'gosc')));
 
 // ── 🛡️ STRAŻ MOSTU ───────────────────────────────────────────────────────────
 // Wpięta TUTAJ celowo: po trasach statycznych (żeby strumień muzyki i substrony
@@ -5039,6 +5050,30 @@ app.post('/api/studio/rtmp-key', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/studio/pokoje — kto realnie wisi na kanale gości.
+ * Panel pokazuje własny stan z przeglądarki; to jest widok od strony MOSTU,
+ * więc pozwala rozstrzygnąć, czy telefon nie doszedł, czy tylko UI się zacięło.
+ * Dokładamy adresy LAN, bo bez nich nie da się powiedzieć Suwerenowi,
+ * pod jakim adresem jego maszyna jest widoczna dla telefonu.
+ */
+app.get('/api/studio/pokoje', (req, res) => {
+    const adresy = [];
+    for (const [nazwa, lista] of Object.entries(os.networkInterfaces())) {
+        for (const a of lista ?? []) {
+            if (a.family === 'IPv4' && !a.internal) adresy.push({ interfejs: nazwa, ip: a.address });
+        }
+    }
+    res.json({
+        success: true,
+        pokoje: stanPokoi(),
+        adresyLan: adresy,
+        // Bez tego zdania ktoś kiedyś spróbuje wpisać ten adres w telefon i utknie.
+        uwaga: 'Telefon NIE dostanie kamery po adresie http://… — przeglądarka wymaga HTTPS. ' +
+               'Użyj Kwantowego Tunelu; sam obraz i tak poleci po sieci lokalnej.',
+    });
+});
+
 // Lista nagranych odcinków — Suweren widzi, że plik realnie leży na dysku.
 app.get('/api/studio/recordings', async (req, res) => {
     try {
@@ -7226,3 +7261,16 @@ const httpServer = app.listen(PORT, () => {
 // /api/rtmp-relay → ffmpeg → RTMP (koniec głuchoty transmisji)
 // /api/recorder   → fizyczny plik .webm na dysku Suwerena
 attachStudioRelay(httpServer, { ffmpegPath });
+attachGoscStudio(httpServer);
+
+// ⚠️ STRAŻNIK GNIAZD NICZYICH — MUSI być wpięty JAKO OSTATNI.
+// Node woła WSZYSTKIE nasłuchy 'upgrade', więc żaden z serwisów nie może
+// niszczyć „nieznanych" ścieżek — zabiłby kanał sąsiada (dokładnie to robił
+// StudioRelay z kanałem gościa). Każdy serwis oznacza swoje żądanie flagą,
+// a tutaj sprzątamy tylko to, czego nikt nie przygarnął.
+httpServer.on('upgrade', (req, socket) => {
+    if (!req.__wsObsluzone) {
+        console.warn(`[WS] ⛔ Gniazdo bez właściciela: ${req.url}`);
+        socket.destroy();
+    }
+});

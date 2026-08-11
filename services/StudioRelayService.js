@@ -402,12 +402,17 @@ export function attachStudioRelay(server, deps = {}) {
         catch { return socket.destroy(); }
 
         if (pathname === '/api/rtmp-relay') {
+            req.__wsObsluzone = true;
             wssRtmp.handleUpgrade(req, socket, head, (ws) => wssRtmp.emit('connection', ws, req));
         } else if (pathname === '/api/recorder') {
+            req.__wsObsluzone = true;
             wssRecorder.handleUpgrade(req, socket, head, (ws) => wssRecorder.emit('connection', ws, req));
-        } else {
-            socket.destroy();
         }
+        // ⚠️ ŻADNEGO `else socket.destroy()`. Node woła WSZYSTKIE nasłuchy 'upgrade',
+        // a od 2026-08-06 drugi kanał (`/api/studio/gosc`, GoscStudioService) wisi
+        // na tym samym serwerze. Niszczenie „nieznanych" ścieżek zabijało połączenie
+        // gościa, zanim tamten nasłuch zdążył je odebrać. Gniazda niczyje sprząta
+        // teraz jeden wspólny strażnik wpięty JAKO OSTATNI w wiesio-bridge.js.
     });
 
     console.log(`[Studio] 🎥 Kanały WebSocket: /api/rtmp-relay (→ RTMP) | /api/recorder (→ dysk)`);
