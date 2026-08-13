@@ -53,6 +53,7 @@ import MapaSektorow from './MapaSektorow';
 import VideoUseLauncher from './VideoUseLauncher';
 import TeledyskPanel from './TeledyskPanel';
 import { StorytellerFrame } from './StorytellerFrame';
+import AgentPantryPanel from './AgentPantryPanel';
 import { TeOgochi } from '../TeOgochi';
 import Marketplace from './Marketplace';
 import AntiMatrixMirror from './AntiMatrixMirror';
@@ -1536,7 +1537,10 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
             }}>
               {systemTab === 'crew' && <CrewCreator onComplete={() => setShowSystem(false)} />}
               {systemTab === 'inkubator' && <KwantowyInkubator />}
-              {systemTab === 'story' && <><TeOgochi /><StorytellerFrame /><VideoUseLauncher /><TeledyskPanel initialAudioFile={teledyskPrefill.audioFile} initialTitle={teledyskPrefill.title} /></>}
+              {/* 🍱 Spiżarnia stoi TU, a nie w osobnej zakładce, bo zasoby zjadają
+                  moduły z tej właśnie sekcji: Dom Joanny (playlista), Teledysk
+                  i Story V2 (etap KADR). Zakładki „Skarbiec" w TeODash nie ma. */}
+              {systemTab === 'story' && <><TeOgochi /><AgentPantryPanel /><StorytellerFrame /><VideoUseLauncher /><TeledyskPanel initialAudioFile={teledyskPrefill.audioFile} initialTitle={teledyskPrefill.title} /></>}
               {systemTab === 'market' && <Marketplace />}
               {systemTab === 'lustro' && <AntiMatrixMirror />}
               {systemTab === 'mockup' && <MockupGenFrame />}
