@@ -66,6 +66,9 @@ import {
     RECORDINGS_DIR,
 } from './services/StudioRelayService.js';
 import { attachGoscStudio, stanPokoi } from './services/GoscStudioService.js';
+import {
+    ZNANE_TOKENY, PLATFORMA_CG, saldaTokenow, cenyTokenow, cenyPoId,
+} from './services/TokenyErc20Service.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -4059,27 +4062,115 @@ async function rpcBalance(rpc, address) {
         return d.result ? Number(BigInt(d.result)) / 1e18 : 0;
     } catch { return 0; } finally { clearTimeout(t); }
 }
+/**
+ * POST /api/wallet/portfolio  { addresses[], vs?, tokenyDodatkowe?[{chain,adres}] }
+ *
+ * ⚠️ NAPRAWIONE 2026-08-06. Wcześniej liczyły się WYŁĄCZNIE salda natywne
+ * (ETH/MATIC/BNB), a wszystko trzymane w tokenach ERC-20 było niewidzialne.
+ * Ta zaniżona suma szła prosto do Teda i Kronosa — zła liczba na wejściu
+ * psuje każdy wniosek dalej. Teraz czytamy też tokeny, tymi samymi publicznymi
+ * RPC, bez żadnego klucza API.
+ *
+ * Odpowiedź niesie `widocznosc`, bo widzimy tylko te kontrakty, o które
+ * pytamy. Zastąpienie cichego zaniżenia drugim cichym zaniżeniem byłoby
+ * GORSZE niż brak zmiany — tym razem suma wyglądałaby na kompletną.
+ */
 app.post('/api/wallet/portfolio', async (req, res) => {
-    const { addresses, vs } = req.body ?? {};
+    const { addresses, vs, tokenyDodatkowe } = req.body ?? {};
     const list = Array.isArray(addresses) ? addresses.filter(a => /^0x[a-fA-F0-9]{40}$/.test(a)) : [];
     if (!list.length) return res.status(400).json({ success: false, message: 'Podaj adres(y) 0x... (EVM).' });
     const cur = (vs || 'eur').toLowerCase();
+
+    // Tokeny dorzucone ręcznie przez Suwerena — dla wszystkiego spoza listy.
+    const dodatkowe = {};
+    for (const t of Array.isArray(tokenyDodatkowe) ? tokenyDodatkowe : []) {
+        const chain = String(t?.chain || '').toLowerCase();
+        const adres = String(t?.adres || '');
+        if (!WALLET_CHAINS[chain] || !/^0x[a-fA-F0-9]{40}$/.test(adres)) continue;
+        (dodatkowe[chain] ??= []).push({ sym: '?', adres, dec: 18 });
+    }
+
     try {
         // Ceny natywnych
         const ids = Object.values(WALLET_CHAINS).map(c => c.cg).join(',');
         let prices = {};
         try { prices = await (await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=${cur}`)).json(); } catch {}
+
         const assets = [];
+        const tokeny = [];
+        const znalezione = [];      // pozycje ze wszystkich łańcuchów, przed wyceną
+        const problemy = [];
+        let sprawdzonychKontraktow = 0;
+
         for (const [chain, c] of Object.entries(WALLET_CHAINS)) {
+            // ── Saldo natywne (jak dotąd) ──
             let bal = 0;
             for (const addr of list) bal += await rpcBalance(c.rpc, addr);
             if (bal > 0) {
                 const price = prices?.[c.cg]?.[cur] || 0;
                 assets.push({ chain, name: c.name, symbol: c.sym, balance: +bal.toFixed(6), price, value: +(bal * price).toFixed(2) });
             }
+
+            // ── Tokeny ERC-20 — najpierw SAME SALDA, wycena dopiero po pętli ──
+            const doSprawdzenia = [...(ZNANE_TOKENY[chain] ?? []), ...(dodatkowe[chain] ?? [])];
+            try {
+                const { pozycje, sprawdzono } = await saldaTokenow(c.rpc, list, doSprawdzenia);
+                sprawdzonychKontraktow += sprawdzono;
+                for (const p of pozycje) {
+                    const znany = doSprawdzenia.find(t => t.adres.toLowerCase() === p.adres.toLowerCase());
+                    znalezione.push({ chain, nazwaSieci: c.name, ...p, cg: znany?.cg ?? null });
+                }
+            } catch (e) {
+                // Awaria odczytu tokenów NIE może udawać, że tokenów nie ma.
+                problemy.push({ chain, powod: e.message });
+                console.warn(`[Portfel] ⚠️ ${chain}: odczyt tokenów nieudany — ${e.message}`);
+            }
         }
-        const total = +assets.reduce((s, a) => s + a.value, 0).toFixed(2);
-        return res.json({ success: true, addresses: list, vs: cur, assets, total, note: assets.length ? null : 'Brak salda natywnego (lub adresy puste). Tokeny ERC-20 wymagają klucza API.' });
+
+        // ── Wycena: JEDNO zapytanie na wszystkie znane tokeny ──
+        // Wersja „cena po adresie kontraktu, token po tokenie" kosztowała tyle
+        // zapytań, ile tokenów — na darmowym planie CoinGecko oznaczało to pewny
+        // limit i sumę zaniżoną o wszystko, co nie zdążyło. Po kontrakcie pytamy
+        // już tylko o to, czego nie ma w naszej liście (tokeny dodane ręcznie).
+        const { ceny: cenyId, limit: limitId } = await cenyPoId(znalezione.map(p => p.cg), cur);
+        if (limitId) problemy.push({ chain: '—', powod: 'limit zapytań cennika (CoinGecko) — część tokenów bez wyceny' });
+
+        for (const p of znalezione) {
+            let price = p.cg ? (cenyId[p.cg] || 0) : 0;
+            if (!price && !p.cg) {
+                // Token spoza listy — jedyna droga to zapytanie po kontrakcie.
+                const { ceny, limit } = await cenyTokenow(PLATFORMA_CG[p.chain], [p.adres], cur);
+                if (limit) problemy.push({ chain: p.chain, powod: 'limit zapytań cennika przy tokenie dodanym ręcznie' });
+                price = ceny[p.adres.toLowerCase()] || 0;
+            }
+            tokeny.push({
+                chain: p.chain, name: p.nazwaSieci, symbol: p.symbol, kontrakt: p.adres,
+                balance: +p.saldo.toFixed(6), price, value: +(p.saldo * price).toFixed(2),
+                // Token bez notowania ZOSTAJE widoczny — ukrycie go byłoby
+                // powrotem do grzechu, który tu naprawiamy.
+                bezCeny: price === 0,
+            });
+        }
+
+        const total = +[...assets, ...tokeny].reduce((s, a) => s + a.value, 0).toFixed(2);
+        const bezCeny = tokeny.filter(t => t.bezCeny).length;
+
+        return res.json({
+            success: true, addresses: list, vs: cur,
+            assets, tokeny, total,
+            widocznosc: {
+                sprawdzonychKontraktow,
+                znalezionychTokenow: tokeny.length,
+                bezCeny,
+                problemy,
+                // To zdanie jest częścią wyniku, nie ozdobą UI.
+                uwaga: 'Widoczne są tylko tokeny z listy Katedry oraz dodane ręcznie. ' +
+                       'Token spoza nich NIE jest liczony — dołóż adres kontraktu, jeśli czegoś brakuje.'
+                       + (problemy.length ? ` UWAGA: odczyt tokenów nie powiódł się na: ${problemy.map(p => p.chain).join(', ')} — suma jest niepełna.` : '')
+                       + (bezCeny ? ` ${bezCeny} token(ów) bez notowania — widoczne w saldzie, ale nie wchodzą do sumy.` : ''),
+            },
+            note: (assets.length || tokeny.length) ? null : 'Brak salda natywnego i żadnego znanego tokenu na tych adresach.',
+        });
     } catch (err) {
         return res.status(500).json({ success: false, message: err.message });
     }
