@@ -20,6 +20,7 @@ import {
 import {
     powiedzJakKompan, czyGlosWlaczony, ustawGlos, czemuNieSlychac, ucisz,
 } from '../lib/glosKompana';
+import { pobierzZasob, type WynikPobrania, type PozycjaZasobu } from '../services/AgentPantryService';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
@@ -46,6 +47,12 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
     // Zamknięcie domu ucisza kompana w pół zdania — inaczej mówiłby do pustego ekranu.
     useEffect(() => () => ucisz(), []);
+
+    // 🍱 Spiżarnia — trzecie źródło smakołyków, obok dysku i eteru.
+    const [spizarniaOtwarta, setSpizarniaOtwarta] = useState(false);
+    const [fraza, setFraza] = useState('');
+    const [szukam, setSzukam] = useState(false);
+    const [znalezione, setZnalezione] = useState<WynikPobrania | null>(null);
 
     // 🎶 Playlista smakołyków — rozwijana pod przyciskiem SMAKOŁYK
     const [showList, setShowList] = useState(false);
@@ -160,6 +167,31 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             powiedz(`⭐ „${entry.title}" trafił do smakołyków!`);
         } else {
             powiedz('To już jest w jego ulubionych 😊');
+        }
+    };
+
+    // 🍱 Dosyp z Openverse. Nie „udaje pobrania" — `pobierzZasob` odpytuje realne,
+    // bezkluczowe źródło, a gdy nic nie wróci, niesie powód w `uwaga`.
+    const dosyp = useCallback(async () => {
+        setSzukam(true); setZnalezione(null);
+        try {
+            setZnalezione(await pobierzZasob('AUDIO_SONIC', fraza.trim() || 'ambient', 5));
+        } finally { setSzukam(false); }
+    }, [fraza]);
+
+    const dodajZeSpizarni = (p: PozycjaZasobu) => {
+        const wpis: JoannaTrack = {
+            id: trackIdFrom(p.url),
+            title: p.tytul,
+            url: p.url,
+            // Licencja w notatce, bo za pół roku nikt nie będzie pamiętał, skąd to jest.
+            note: `spiżarnia${p.licencja ? ` · ${p.licencja}` : ''}`,
+        };
+        if (addUserTrack(wpis)) {
+            setPlaylist(prev => [wpis, ...prev.filter(x => x.id !== wpis.id)]);
+            powiedz(`Nowy smakołyk: „${p.tytul}"`);
+        } else {
+            powiedz('To już mam w smakołykach.');
         }
     };
 
@@ -307,7 +339,53 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                     style={{ flex: 1, padding: '5px 4px', borderRadius: 7, border: '1px solid rgba(74,222,128,0.35)', background: 'rgba(74,222,128,0.07)', color: '#86efac', fontSize: 8, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em' }}>
                                     🍬 WEKTOR
                                 </button>
+                                <button onClick={() => setSpizarniaOtwarta(v => !v)}
+                                    title="Dosyp smakołyków z Openverse (dźwięk na wolnych licencjach)"
+                                    style={{ flex: 1, padding: '5px 4px', borderRadius: 7, border: `1px solid rgba(217,70,239,${spizarniaOtwarta ? 0.7 : 0.35})`, background: `rgba(217,70,239,${spizarniaOtwarta ? 0.16 : 0.07})`, color: '#f0abfc', fontSize: 8, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em' }}>
+                                    🍱 SPIŻARNIA
+                                </button>
                             </div>
+
+                            {/* 🍱 Dosypywanie z Openverse — dźwięk na wolnych licencjach.
+                                Do 2026-08-13 playlista mogła rosnąć tylko o to, co już leżało
+                                na dysku albo leciało w eterze. Spiżarnia dokłada trzecie źródło. */}
+                            {spizarniaOtwarta && (
+                                <div style={{ marginBottom: 7, padding: 7, borderRadius: 9, background: 'rgba(217,70,239,0.05)', border: '1px solid rgba(217,70,239,0.22)' }}>
+                                    <div style={{ display: 'flex', gap: 4 }}>
+                                        <input value={fraza} onChange={e => setFraza(e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter') void dosyp(); }}
+                                            placeholder="np. piano, rain, lofi"
+                                            style={{ flex: 1, minWidth: 0, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '4px 7px', color: '#e2e8f0', fontSize: 9, fontFamily: 'inherit', outline: 'none' }} />
+                                        <button onClick={() => void dosyp()} disabled={szukam}
+                                            style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid rgba(217,70,239,0.5)', background: 'rgba(217,70,239,0.12)', color: '#f0abfc', fontSize: 9, fontWeight: 700, cursor: 'pointer', opacity: szukam ? 0.5 : 1 }}>
+                                            {szukam ? '…' : 'SZUKAJ'}
+                                        </button>
+                                    </div>
+                                    {/* Ta sama pułapka co w panelu Spiżarni: katalog jest po angielsku. */}
+                                    <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                                        po angielsku — katalog ma angielskie opisy
+                                    </div>
+                                    {znalezione && (
+                                        <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            {znalezione.uwaga && (
+                                                <div style={{ fontSize: 8, color: '#fcd34d', lineHeight: 1.5 }}>⚠ {znalezione.uwaga}</div>
+                                            )}
+                                            {znalezione.pozycje.map((p, i) => (
+                                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                    <span style={{ flex: 1, minWidth: 0, fontSize: 8, color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {p.tytul}{p.licencja ? ` · ${p.licencja}` : ''}
+                                                    </span>
+                                                    <button onClick={() => dodajZeSpizarni(p)}
+                                                        title="Dołóż do smakołyków"
+                                                        style={{ padding: '2px 6px', borderRadius: 5, border: '1px solid rgba(74,222,128,0.4)', background: 'rgba(74,222,128,0.08)', color: '#86efac', fontSize: 8, fontWeight: 700, cursor: 'pointer' }}>
+                                                        +
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Lista */}
                             <div style={{ maxHeight: 148, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
