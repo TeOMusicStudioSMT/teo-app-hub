@@ -4037,6 +4037,38 @@ app.post('/api/grv/mint-respiration', async (req, res) => {
     }
 });
 
+/**
+ * Wewnętrzny wdech — wołany PRZEZ SAM MOST, gdy praca faktycznie się dokonała.
+ *
+ * ⚠️ DLACZEGO TU, A NIE W APLIKACJACH: gdyby każda substrona (Hub, Story V2,
+ * Music, App) sama zgłaszała pracę, to (a) trzeba by wpiąć to w pięć miejsc,
+ * (b) każda nowa aplikacja zaczynałaby jako niema, i (c) front decydowałby,
+ * kiedy mu się należy GRV. Tak wygląda organizm, w którym oddycha tylko jedno
+ * płuco. Most wie, kiedy karta naprawdę wpadła i kiedy render naprawdę wyszedł
+ * — więc to on liczy oddech, a wszystkie aplikacje dostają go za darmo.
+ *
+ * NIGDY nie wywraca żądania: jeśli oddech padnie, praca i tak została wykonana
+ * i odpowiedź ma dojść. Zwraca `null` zamiast rzucać.
+ */
+async function oddechZaPrace(rodzaj, klucz, trwaly = null, wezel = ODDECH_WEZEL) {
+    try {
+        const werdykt = await ocenPrace(ANTIGRAVITY_DIR, { wezel, rodzaj, klucz });
+        if (!werdykt.przyznane) return { przyznane: false, powod: werdykt.powod, klasa: werdykt.klasa };
+        await przelejGrv(SKARBIEC_GRV, wezel, werdykt.stawka);
+        await zapiszWdech(ANTIGRAVITY_DIR, { wezel, rodzaj, klucz, grv: werdykt.stawka, klasa: werdykt.klasa, trwaly });
+        // RUCH loguje się cicho (debug), WYNIK zostawia ślad w konsoli — tak jak
+        // w UI: mały ruch bez hałasu, pełny wynik z błyskiem.
+        if (werdykt.klasa === 'WYNIK') console.log(`[Oddech] ✨ +${werdykt.stawka} GRV — ${werdykt.opis}`);
+        return { przyznane: true, klasa: werdykt.klasa, grv: werdykt.stawka, opis: werdykt.opis };
+    } catch (e) {
+        console.warn(`[Oddech] ⚠️ Wdech nieudany (${rodzaj}): ${e.message}`);
+        return null;
+    }
+}
+
+/** Węzeł, któremu przypisujemy pracę wykonaną na tej maszynie. */
+const ODDECH_WEZEL = process.env.OTAKOS_WEZEL || 'Mistrz Arkadiusz';
+
 /** Stan oddechu — licznik dobowy, bilans, ostatnie wdechy. */
 app.get('/api/grv/oddech/:wezel', async (req, res) => {
     try {
@@ -5879,7 +5911,11 @@ app.post('/api/teledysk/render', async (req, res) => {
         ffArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', teledysk);
         await execFileAsync(ffmpegPath, ffArgs, ffOpts);
 
-        return res.json({ success: true, output: path.relative(process.cwd(), teledysk), segments: segs.length, clipsUsed: clips.length, beats: cuts.length, subtitles: !!subFilter });
+        const wzgledna = path.relative(process.cwd(), teledysk);
+        // Plik realnie lezy na dysku — to jest TRWALOSC z punktu 3.
+        const oddech = await oddechZaPrace('render.wideo', `render:${wzgledna}`,
+            { nazwa: path.basename(teledysk), sciezka: wzgledna });
+        return res.json({ success: true, output: wzgledna, segments: segs.length, clipsUsed: clips.length, beats: cuts.length, subtitles: !!subFilter, oddech });
     } catch (err) {
         console.error(`[Teledysk] ❌ ${err.message}`);
         return res.status(500).json({ success: false, message: err.message });
@@ -6992,7 +7028,8 @@ app.post('/api/produkcja/kadr', async (req, res) => {
     try {
         const kadr = await produkcjaDodaj(ANTIGRAVITY_DIR, req.body ?? {});
         console.log(`[Produkcja] 🎬 Nowy kadr [${kadr.etap}] „${kadr.tytul}" (${kadr.projekt})`);
-        return res.json({ success: true, kadr });
+        const oddech = await oddechZaPrace('kadr.dodany', `kadr:${kadr.id}`);
+        return res.json({ success: true, kadr, oddech });
     } catch (err) {
         // 400, nie 500 — to walidacja treści, nie awaria serwera.
         return res.status(400).json({ success: false, message: err.message });
@@ -7003,7 +7040,13 @@ app.post('/api/produkcja/kadr', async (req, res) => {
 app.patch('/api/produkcja/kadr/:id', async (req, res) => {
     try {
         const kadr = await produkcjaZmien(ANTIGRAVITY_DIR, req.params.id, req.body ?? {});
-        return res.json({ success: true, kadr });
+        // Klucz niesie DOCELOWY etap, więc każde przejście płaci raz, ale powrót
+        // i ponowne przesunięcie na ten sam etap już nie — inaczej wystarczyłoby
+        // wozić kartę tam i z powrotem.
+        const oddech = req.body?.etap
+            ? await oddechZaPrace('kadr.etap', `etap:${kadr.id}:${kadr.etap}`)
+            : null;
+        return res.json({ success: true, kadr, oddech });
     } catch (err) {
         return res.status(400).json({ success: false, message: err.message });
     }
@@ -7032,7 +7075,10 @@ app.get('/api/produkcja/kadr/:id/prompt', async (req, res) => {
         if (!kadr) return res.status(404).json({ success: false, message: `Kadr "${req.params.id}" nie istnieje.` });
 
         const bibliaProjektu = await produkcjaBiblia(ANTIGRAVITY_DIR, kadr.projekt);
-        return res.json({ success: true, kadr, ...produkcjaPrompt(kadr, bibliaProjektu) });
+        // Prompt płaci raz na kadr+etap: podgląd tego samego promptu w kółko
+        // to nie jest nowa praca.
+        const oddech = await oddechZaPrace('prompt.zbudowany', `prompt:${kadr.id}:${kadr.etap}`);
+        return res.json({ success: true, kadr, oddech, ...produkcjaPrompt(kadr, bibliaProjektu) });
     } catch (err) {
         return res.status(500).json({ success: false, message: err.message });
     }
@@ -7189,7 +7235,9 @@ app.post('/api/rezyser/pamiec/fakt', async (req, res) => {
     try {
         const { serial = '', tresc = '', zrodlo = 'suweren' } = req.body ?? {};
         const wynik = await dodajFakt(ANTIGRAVITY_DIR, serial, tresc, zrodlo);
-        return res.json({ success: true, ...wynik });
+        // Duplikat faktu NIE jest nowa praca — placi tylko swiezy wpis do kanonu.
+        const oddech = wynik.duplikat ? null : await oddechZaPrace('fakt.kanon', `fakt:${wynik.fakt.id}`);
+        return res.json({ success: true, ...wynik, oddech });
     } catch (err) {
         return res.status(400).json({ success: false, message: err.message });
     }
@@ -7209,7 +7257,9 @@ app.post('/api/rezyser/pamiec/odcinek', async (req, res) => {
         const { serial = '', ...dane } = req.body ?? {};
         const odcinek = await dodajOdcinek(ANTIGRAVITY_DIR, serial, dane);
         console.log(`[Reżyser] 📼 Odcinek #${odcinek.numer} „${odcinek.tytul}" domknięty (${serial || 'bez nazwy'}).`);
-        return res.json({ success: true, odcinek });
+        const oddech = await oddechZaPrace('odcinek.domkniety', `odc:${odcinek.id}`,
+            { nazwa: `Odcinek #${odcinek.numer}: ${odcinek.tytul}`, sciezka: null });
+        return res.json({ success: true, odcinek, oddech });
     } catch (err) {
         return res.status(400).json({ success: false, message: err.message });
     }
