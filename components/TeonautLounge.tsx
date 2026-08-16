@@ -221,7 +221,10 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                             transition={{ duration: 0.3, ease: 'easeInOut' }}
                         >
                             {activeView === 'dashboard' && <DashboardView onTriggerAnomaly={onTriggerAnomaly} behavioralData={behavioralData} onVisualAssistantOpen={onVisualAssistantOpen} />}
-                            {activeView === 'projects' && <ProjectsView onSubscriptionToggle={onSubscriptionToggle} onFavoriteToggle={onFavoriteToggle} />}
+                            {/* Universa nie bierze już `onSubscriptionToggle`/`onFavoriteToggle`:
+                                subskrypcje przestały być lokalną listą w pamięci i przeszły do
+                                rejestru w Moście, gdzie płaci się realnym GRV z księgi. */}
+                            {activeView === 'projects' && <ProjectsView />}
                             {activeView === 'teo-market' && (
                                 <DashboardCard title="TeO Market" icon={<MarketIcon />}>
                                     <MarketTabView />

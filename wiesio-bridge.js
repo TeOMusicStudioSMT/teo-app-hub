@@ -69,6 +69,11 @@ import { attachGoscStudio, stanPokoi } from './services/GoscStudioService.js';
 import {
     ZNANE_TOKENY, PLATFORMA_CG, saldaTokenow, cenyTokenow, cenyPoId,
 } from './services/TokenyErc20Service.js';
+import {
+    SKARBIEC as SKARBIEC_GRV,
+    listaModulow, dodajModul, usunModul, zapiszSubskrypcje, anulujSubskrypcje,
+    listaWypraw, dodajWyprawe, usunWyprawe, zapiszWplate, stan as stanRejestru,
+} from './services/ModulyService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -3973,6 +3978,23 @@ app.get('/api/grv/genesis', async (req, res) => {
         nodeCount: Object.keys(L.nodes).length,
     });
 });
+// ⚠️ TRASY SZCZEGÓŁOWE MUSZĄ STAĆ PRZED `/api/grv/:id` — Express dopasowuje
+// po kolei rejestracji, więc `:id` przechwytywał słowa „verify" i „ledger"
+// i odpowiadał „Węzeł nieznany.". ZMIERZONE 2026-08-15 na żywym moście:
+// oba te punkty były MARTWE od momentu powstania, czyli weryfikacja
+// integralności łańcucha GRV nigdy nie była osiągalna przez API — w ekonomii,
+// która całą swoją wiarygodność opiera na pieczęci. `genesis` działał tylko
+// dlatego, że przypadkiem zarejestrowano go wyżej.
+app.get('/api/grv/verify', async (req, res) => {
+    const L = await loadGrvLedger();
+    res.json({ success: true, ...verifyGrvChain(L) });
+});
+app.get('/api/grv/ledger', async (req, res) => {
+    const L = await loadGrvLedger();
+    const chain = L.chain || [];
+    res.json({ success: true, length: chain.length, recent: chain.slice(-20), integrity: verifyGrvChain(L) });
+});
+
 app.get('/api/grv/:id', async (req, res) => {
     const L = await loadGrvLedger(); const n = L.nodes[req.params.id];
     if (!n) return res.status(404).json({ success: false, message: 'Węzeł nieznany.' });
@@ -3995,34 +4017,52 @@ app.post('/api/grv/register', async (req, res) => {
     console.log(`[GRV] ➕ Węzeł ${id}: ${grv} GRV${assignedTier ? ` (${assignedTier})` : ''}.`);
     res.json({ success: true, id, ...L.nodes[id] });
 });
-app.post('/api/grv/grant', async (req, res) => {
-    const { from, to, amount } = req.body ?? {};
+/**
+ * Przelew GRV — JEDYNA droga ruchu w księdze.
+ *
+ * ⚠️ Wyciągnięte z trasy `/api/grv/grant` 2026-08-15, żeby subskrypcje modułów
+ * i wpłaty na wyprawy szły DOKŁADNIE tędy: z odjęciem u nadawcy i pieczęcią
+ * w łańcuchu. Druga, równoległa ścieżka ruchu GRV oznaczałaby księgę, której
+ * `verifyGrvChain` już nie potwierdza — czyli ekonomię bez dowodu.
+ *
+ * Rzuca `BladGrv` z polem `status`, żeby wołający zwrócił właściwy kod HTTP.
+ */
+class BladGrv extends Error {
+    constructor(message, status = 400) { super(message); this.status = status; }
+}
+
+async function przelejGrv(from, to, amount) {
     const amt = Number(amount);
-    if (!from || !to || !(amt > 0)) return res.status(400).json({ success: false, message: 'Wymagane from, to, amount>0.' });
+    if (!from || !to || !(amt > 0)) throw new BladGrv('Wymagane from, to, amount>0.', 400);
+
     const L = await loadGrvLedger();
     const src = L.nodes[from];
-    if (!src) return res.status(404).json({ success: false, message: `Węzeł ${from} nieznany.` });
+    if (!src) throw new BladGrv(`Węzeł ${from} nieznany.`, 404);
     if (!L.nodes[to]) L.nodes[to] = { grv: 0, role: 'node', tier: null, registeredAt: Date.now() };
+
     const infinite = src.grv === 'INFINITE';
     if (!infinite) {
-        if (Number(src.grv) < amt) return res.status(400).json({ success: false, message: 'Za mało GRV u nadawcy.' });
+        if (Number(src.grv) < amt) throw new BladGrv('Za mało GRV u nadawcy.', 400);
         src.grv = Number(src.grv) - amt;
     }
     if (L.nodes[to].grv !== 'INFINITE') L.nodes[to].grv = Number(L.nodes[to].grv) + amt;
+
     await sealGrv('grant', { from, to, amount: amt });
     await saveGrvLedger();
-    res.json({ success: true, from, to, amount: amt, fromBalance: src.grv, toBalance: L.nodes[to].grv, infiniteSource: infinite });
+    return { from, to, amount: amt, fromBalance: src.grv, toBalance: L.nodes[to].grv, infiniteSource: infinite };
+}
+
+app.post('/api/grv/grant', async (req, res) => {
+    const { from, to, amount } = req.body ?? {};
+    try {
+        return res.json({ success: true, ...(await przelejGrv(from, to, amount)) });
+    } catch (e) {
+        return res.status(e instanceof BladGrv ? e.status : 500).json({ success: false, message: e.message });
+    }
 });
 // ⛓️ Weryfikacja integralności księgi (tamper-evidence) + podgląd łańcucha.
-app.get('/api/grv/verify', async (req, res) => {
-    const L = await loadGrvLedger();
-    res.json({ success: true, ...verifyGrvChain(L) });
-});
-app.get('/api/grv/ledger', async (req, res) => {
-    const L = await loadGrvLedger();
-    const chain = L.chain || [];
-    res.json({ success: true, length: chain.length, recent: chain.slice(-20), integrity: verifyGrvChain(L) });
-});
+// (dawne miejsce /api/grv/verify i /api/grv/ledger — przeniesione wyżej,
+// przed /api/grv/:id, bo tam byly martwe)
 
 // ── 🔍 SKANER AUTENTYCZNOŚCI (TeO Trust Art. III ↔ Tarcza Prawdy) ──
 // Każda operacja przechodzi przez filtr, by wykluczyć energię „pochłaniania".
@@ -7264,6 +7304,118 @@ app.post('/api/rezyser/rozmowa', async (req, res) => {
     } catch (e) {
         console.error(`[Reżyser] ❌ ${e.message}`);
         return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🌌 UNIVERSA — rejestr modułów i wypraw, płatne w GRV
+//
+//  Zastępuje makietę: zakładka „Universes" miała wymyślone aktywa, liczniki
+//  wpisane na sztywno i przycisk wpłaty BEZ obsługi kliknięcia.
+//  Tutaj każdy ruch przechodzi przez `przelejGrv` — z odjęciem u nadawcy
+//  i pieczęcią w łańcuchu. Liczniki wypraw są SUMOWANE z wpłat, nigdy
+//  przechowywane, więc nie da się ich ustawić z palca.
+// ══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/moduly', async (req, res) => {
+    try {
+        const wezel = String(req.query.wezel || '') || null;
+        return res.json({
+            success: true,
+            moduly: await listaModulow(ANTIGRAVITY_DIR, wezel),
+            stan: await stanRejestru(ANTIGRAVITY_DIR),
+            skarbiec: SKARBIEC_GRV,
+        });
+    } catch (err) { return res.status(500).json({ success: false, message: err.message }); }
+});
+
+app.post('/api/moduly', async (req, res) => {
+    try {
+        const modul = await dodajModul(ANTIGRAVITY_DIR, req.body ?? {});
+        console.log(`[Universa] 🧩 Nowy moduł „${modul.nazwa}" od ${modul.autor} (${modul.cenaGRV} GRV).`);
+        return res.json({ success: true, modul });
+    } catch (err) { return res.status(400).json({ success: false, message: err.message }); }
+});
+
+app.delete('/api/moduly/:id', async (req, res) => {
+    try {
+        return res.json({ success: true, modul: await usunModul(ANTIGRAVITY_DIR, req.params.id) });
+    } catch (err) { return res.status(400).json({ success: false, message: err.message }); }
+});
+
+/** Subskrypcja: REALNY przelew GRV, potem dopiero zapis. Kolejność jest istotna. */
+app.post('/api/moduly/:id/subskrybuj', async (req, res) => {
+    const { wezel } = req.body ?? {};
+    if (!wezel) return res.status(400).json({ success: false, message: 'Wymagany „wezel" (kto subskrybuje).' });
+    try {
+        const moduly = await listaModulow(ANTIGRAVITY_DIR, wezel);
+        const m = moduly.find(x => x.id === req.params.id);
+        if (!m) return res.status(404).json({ success: false, message: `Moduł „${req.params.id}" nie istnieje.` });
+        if (m.subskrybowany) return res.status(400).json({ success: false, message: 'Już subskrybujesz ten moduł.' });
+
+        // Płatne moduły: najpierw pieniądze, potem dostęp. Zapis przed przelewem
+        // dałby subskrypcję nawet przy pustym koncie.
+        let przelew = null;
+        if (m.cenaGRV > 0) {
+            const odbiorca = m.wbudowany ? SKARBIEC_GRV : (m.autor || SKARBIEC_GRV);
+            przelew = await przelejGrv(wezel, odbiorca, m.cenaGRV);
+        }
+        const wynik = await zapiszSubskrypcje(ANTIGRAVITY_DIR, { modul: m.id, wezel, grv: m.cenaGRV });
+        console.log(`[Universa] ✅ ${wezel} subskrybuje „${m.nazwa}" za ${m.cenaGRV} GRV.`);
+        return res.json({ success: true, modul: m.id, zaplacono: m.cenaGRV, przelew, ...wynik });
+    } catch (err) {
+        return res.status(err instanceof BladGrv ? err.status : 400).json({ success: false, message: err.message });
+    }
+});
+
+app.delete('/api/moduly/:id/subskrypcja', async (req, res) => {
+    try {
+        const wezel = String(req.query.wezel || '');
+        if (!wezel) return res.status(400).json({ success: false, message: 'Wymagany „wezel".' });
+        return res.json({ success: true, ...(await anulujSubskrypcje(ANTIGRAVITY_DIR, req.params.id, wezel)) });
+    } catch (err) { return res.status(400).json({ success: false, message: err.message }); }
+});
+
+// ── Wyprawy ───────────────────────────────────────────────────────────────────
+
+app.get('/api/wyprawy', async (req, res) => {
+    try {
+        return res.json({ success: true, wyprawy: await listaWypraw(ANTIGRAVITY_DIR) });
+    } catch (err) { return res.status(500).json({ success: false, message: err.message }); }
+});
+
+app.post('/api/wyprawy', async (req, res) => {
+    try {
+        const wyprawa = await dodajWyprawe(ANTIGRAVITY_DIR, req.body ?? {});
+        console.log(`[Universa] 🚀 Nowa wyprawa „${wyprawa.nazwa}" (cel ${wyprawa.celGRV} GRV) od ${wyprawa.autor}.`);
+        return res.json({ success: true, wyprawa });
+    } catch (err) { return res.status(400).json({ success: false, message: err.message }); }
+});
+
+app.delete('/api/wyprawy/:id', async (req, res) => {
+    try {
+        return res.json({ success: true, wyprawa: await usunWyprawe(ANTIGRAVITY_DIR, req.params.id) });
+    } catch (err) { return res.status(400).json({ success: false, message: err.message }); }
+});
+
+/** Wpłata na wyprawę: przelew GRV, potem zapis. Licznik urośnie sam z sumy. */
+app.post('/api/wyprawy/:id/wplac', async (req, res) => {
+    const { wezel, grv } = req.body ?? {};
+    const kwota = Math.floor(Number(grv) || 0);
+    if (!wezel) return res.status(400).json({ success: false, message: 'Wymagany „wezel".' });
+    if (!(kwota > 0)) return res.status(400).json({ success: false, message: 'Kwota musi być większa od zera.' });
+    try {
+        const wyprawy = await listaWypraw(ANTIGRAVITY_DIR);
+        const w = wyprawy.find(x => x.id === req.params.id);
+        if (!w) return res.status(404).json({ success: false, message: `Wyprawa „${req.params.id}" nie istnieje.` });
+
+        const przelew = await przelejGrv(wezel, SKARBIEC_GRV, kwota);
+        const wpis = await zapiszWplate(ANTIGRAVITY_DIR, { wyprawa: w.id, wezel, grv: kwota });
+        const po = (await listaWypraw(ANTIGRAVITY_DIR)).find(x => x.id === w.id);
+        console.log(`[Universa] 💫 ${wezel} wpłacił ${kwota} GRV na „${w.nazwa}" (${po.zebraneGRV}/${w.celGRV}).`);
+        return res.json({ success: true, wpis, przelew, wyprawa: po });
+    } catch (err) {
+        return res.status(err instanceof BladGrv ? err.status : 400).json({ success: false, message: err.message });
     }
 });
 
