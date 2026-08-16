@@ -105,5 +105,60 @@ export const saldoWezla = (id: string) =>
 export const integralnoscKsiegi = () =>
     zawolaj<{ ok: boolean; length: number }>('/api/grv/verify');
 
+// ── 🫁 Ekonomia Oddechu ───────────────────────────────────────────────────────
+
+/** Rodzaje pracy z białej listy mostu. Front nie wymyśli nowego tytułu do wypłaty. */
+export type RodzajPracy =
+    | 'kadr.dodany' | 'kadr.etap' | 'prompt.zbudowany' | 'wektory.zebrane' | 'fakt.kanon'
+    | 'montaz.edl' | 'render.wideo' | 'teoprint' | 'odcinek.domkniety';
+
+export interface StanOddechu {
+    wezel: string;
+    wDobie: number;
+    limit: number;
+    pozostalo: number;
+    procentDoby: number;
+    wdechow: number;
+    grvLacznie: number;
+    ruchow: number;
+    wynikow: number;
+    trwalych: number;
+    ostatnie: { rodzaj: string; klasa: string; grv: number; kiedy: string }[];
+    stawki: { RUCH: number; WYNIK: number };
+}
+
+export interface WynikWdechu {
+    przyznane: boolean;
+    klasa?: 'RUCH' | 'WYNIK';
+    stawka?: number;
+    opis?: string;
+    /** Niepuste, gdy nagrody NIE było — praca już opłacona albo limit dobowy. */
+    powod?: string;
+    stan?: StanOddechu;
+}
+
+/**
+ * Zgłoś wykonaną pracę. `klucz` MUSI być stały dla tej samej pracy
+ * (np. `kadr:<id>`) — most płaci za dany klucz dokładnie raz.
+ *
+ * Brak nagrody NIE jest błędem: to normalny wydech (limit dobowy albo
+ * praca już rozliczona), więc most odpowiada 200 z powodem.
+ */
+export const zglosPrace = (
+    rodzaj: RodzajPracy,
+    klucz: string,
+    trwaly?: { nazwa: string; sciezka?: string },
+    wezel: string = MOJ_WEZEL,
+) => zawolaj<WynikWdechu>('/api/grv/mint-respiration', {
+    method: 'POST', body: JSON.stringify({ wezel, rodzaj, klucz, trwaly }),
+});
+
+export const stanOddechu = (wezel: string = MOJ_WEZEL) =>
+    zawolaj<StanOddechu>(`/api/grv/oddech/${encodeURIComponent(wezel)}`);
+
+export const zasobyTrwale = (wezel: string = MOJ_WEZEL) =>
+    zawolaj<{ trwale: { id: string; nazwa: string; rodzaj: string; grv: number; kiedy: string }[] }>(
+        `/api/grv/trwale?wezel=${encodeURIComponent(wezel)}`).then(d => d.trwale);
+
 /** Węzeł Suwerena. Księga zna go pod tym imieniem — nie po adresie portfela. */
 export const MOJ_WEZEL = 'Mistrz Arkadiusz';

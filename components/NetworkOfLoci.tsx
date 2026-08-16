@@ -24,8 +24,8 @@ import { useEssenceIdentity } from '../hooks/useEssenceIdentity';
 import { DigitalSelfAvatar } from './identity/DigitalSelfAvatar';
 import { cn } from '../lib/helpers';
 import {
-    pobierzModuly, saldoWezla, integralnoscKsiegi, MOJ_WEZEL,
-    type Modul, type StanRejestru,
+    pobierzModuly, saldoWezla, integralnoscKsiegi, stanOddechu, MOJ_WEZEL,
+    type Modul, type StanRejestru, type StanOddechu,
 } from '../lib/universa';
 
 interface StanMapy {
@@ -35,6 +35,7 @@ interface StanMapy {
     grv: number | 'INFINITE' | null;
     ksiegaOk: boolean | null;
     dlugoscLancucha: number;
+    oddech: StanOddechu | null;
     powod?: string;
 }
 
@@ -47,7 +48,7 @@ const BARWA_KATEGORII: Record<string, string> = {
 
 export const NetworkOfLoci: React.FC = () => {
     const [stan, setStan] = useState<StanMapy>({
-        most: null, moduly: [], rejestr: null, grv: null, ksiegaOk: null, dlugoscLancucha: 0,
+        most: null, moduly: [], rejestr: null, grv: null, ksiegaOk: null, dlugoscLancucha: 0, oddech: null,
     });
     const [wybrany, setWybrany] = useState<Modul | null>(null);
     const resonanceColor = useAtomValue(resonanceColorAtom);
@@ -58,10 +59,11 @@ export const NetworkOfLoci: React.FC = () => {
         let zywy = true;
         (async () => {
             try {
-                const [m, w, k] = await Promise.all([
+                const [m, w, k, o] = await Promise.all([
                     pobierzModuly(MOJ_WEZEL),
                     saldoWezla(MOJ_WEZEL).catch(() => null),
                     integralnoscKsiegi().catch(() => null),
+                    stanOddechu(MOJ_WEZEL).catch(() => null),
                 ]);
                 if (!zywy) return;
                 setStan({
@@ -71,6 +73,7 @@ export const NetworkOfLoci: React.FC = () => {
                     grv: w?.grv ?? null,
                     ksiegaOk: k?.ok ?? null,
                     dlugoscLancucha: k?.length ?? 0,
+                    oddech: o,
                 });
             } catch (e) {
                 if (zywy) setStan(s => ({ ...s, most: false, powod: e instanceof Error ? e.message : String(e) }));
@@ -220,6 +223,33 @@ export const NetworkOfLoci: React.FC = () => {
                     )}
                 </AnimatePresence>
             </div>
+
+            {/* 🫁 ODDECH — praca własna zamieniona w GRV, z rytmem doby */}
+            {stan.most && stan.oddech && (
+                <div className="mt-3 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.05] p-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                        <span className="text-[10px] tracking-[0.2em] text-emerald-300 uppercase">
+                            🫁 Oddech · {stan.oddech.ruchow} ruchów + {stan.oddech.wynikow} wyników = {stan.oddech.trwalych} trwałych
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400">
+                            doba: <b className={stan.oddech.pozostalo === 0 ? 'text-amber-400' : 'text-emerald-300'}>
+                                {stan.oddech.wDobie.toLocaleString('pl-PL')}
+                            </b> / {stan.oddech.limit.toLocaleString('pl-PL')} GRV
+                        </span>
+                    </div>
+                    <div className="w-full bg-slate-800/60 rounded-full h-1.5 overflow-hidden">
+                        <div className={cn('h-1.5 rounded-full transition-all duration-500',
+                            stan.oddech.pozostalo === 0 ? 'bg-amber-500' : 'bg-emerald-500')}
+                            style={{ width: `${Math.min(100, stan.oddech.procentDoby)}%` }} />
+                    </div>
+                    {/* Wyczerpany limit to nie awaria — to rytm. Mówimy to wprost. */}
+                    <div className="mt-1.5 text-[9px] text-slate-500 leading-relaxed">
+                        {stan.oddech.pozostalo === 0
+                            ? 'Dobowy oddech wyczerpany. To nie usterka — tak działa rygor „z wyczuciem": księgi nie da się napompować pracą w kółko.'
+                            : `Ruch ${stan.oddech.stawki.RUCH} GRV · wynik ${stan.oddech.stawki.WYNIK} GRV · zostało ${stan.oddech.pozostalo.toLocaleString('pl-PL')} GRV na dziś.`}
+                    </div>
+                </div>
+            )}
 
             {/* Pasek prawdy o księdze */}
             {stan.most && (

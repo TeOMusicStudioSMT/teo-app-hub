@@ -74,6 +74,9 @@ import {
     listaModulow, dodajModul, usunModul, zapiszSubskrypcje, anulujSubskrypcje,
     listaWypraw, dodajWyprawe, usunWyprawe, zapiszWplate, stan as stanRejestru,
 } from './services/ModulyService.js';
+import {
+    ocenPrace, zapiszWdech, stanOddechu, rejestrTrwalych,
+} from './services/OddechService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -3993,6 +3996,60 @@ app.get('/api/grv/ledger', async (req, res) => {
     const L = await loadGrvLedger();
     const chain = L.chain || [];
     res.json({ success: true, length: chain.length, recent: chain.slice(-20), integrity: verifyGrvChain(L) });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🫁 EKONOMIA ODDECHU — praca własna zamienia się w GRV
+//
+//  Decyzja Suwerena po naradzie z Radą: 1 + 2 = 3.
+//  RUCH (mikro) + WYNIK (ukończenie) = TRWAŁOŚĆ (rejestr z pieczęcią).
+//
+//  Źródłem emisji jest węzeł zarządcy (`TeO`, saldo INFINITE) — ta sama droga
+//  co każdy inny przelew, z odjęciem u nadawcy tam, gdzie to ma sens,
+//  i z pieczęcią w łańcuchu. Żadnej drugiej ścieżki emisji nie ma.
+//
+//  ⚠️ „Z WYCZUCIEM" jest wymuszone PO STRONIE SERWERA, nie w UI:
+//  limit dobowy liczony z realnych zapisów oraz klucz jednokrotności.
+//  Front może wołać ten punkt w kółko i nic z tego nie wyciśnie.
+// ══════════════════════════════════════════════════════════════════════════════
+app.post('/api/grv/mint-respiration', async (req, res) => {
+    const { wezel, rodzaj, klucz, trwaly } = req.body ?? {};
+    try {
+        const werdykt = await ocenPrace(ANTIGRAVITY_DIR, { wezel, rodzaj, klucz });
+
+        if (!werdykt.przyznane) {
+            // To NIE jest błąd — oddech trafił na wydech. HTTP 200 z jasnym powodem,
+            // żeby UI nie krzyczało czerwonym alertem przy normalnym rytmie.
+            return res.json({ success: true, przyznane: false, ...werdykt });
+        }
+
+        const przelew = await przelejGrv(SKARBIEC_GRV, wezel, werdykt.stawka);
+        const wpis = await zapiszWdech(ANTIGRAVITY_DIR, {
+            wezel, rodzaj, klucz, grv: werdykt.stawka, klasa: werdykt.klasa, trwaly,
+        });
+        const stan = await stanOddechu(ANTIGRAVITY_DIR, wezel);
+
+        console.log(`[Oddech] 🫁 ${wezel} +${werdykt.stawka} GRV za ${werdykt.klasa} „${werdykt.opis}" ` +
+                    `(doba: ${stan.wDobie}/${stan.limit}).`);
+        return res.json({ success: true, przyznane: true, ...werdykt, wpis, przelew, stan });
+    } catch (e) {
+        return res.status(e instanceof BladGrv ? e.status : 400).json({ success: false, message: e.message });
+    }
+});
+
+/** Stan oddechu — licznik dobowy, bilans, ostatnie wdechy. */
+app.get('/api/grv/oddech/:wezel', async (req, res) => {
+    try {
+        return res.json({ success: true, ...(await stanOddechu(ANTIGRAVITY_DIR, req.params.wezel)) });
+    } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
+/** Rejestr Zasobów Trwałych — punkt 3: to, co przetrwało. */
+app.get('/api/grv/trwale', async (req, res) => {
+    try {
+        const wezel = String(req.query.wezel || '') || null;
+        return res.json({ success: true, trwale: await rejestrTrwalych(ANTIGRAVITY_DIR, wezel) });
+    } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
 });
 
 app.get('/api/grv/:id', async (req, res) => {
