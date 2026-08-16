@@ -20,6 +20,7 @@ import { NetworkOfLoci } from './NetworkOfLoci';
 import { UniverseCard } from './dashboard/UniverseCard';
 import { WarpTransition } from './effects/WarpTransition';
 import { FiMusic, FiPackage, FiShield, FiFeather } from 'react-icons/fi';
+import { getBridgeBase } from '../lib/bridgeService';
 import {
     pobierzModuly, dodajModul, usunModul, subskrybuj, anuluj,
     pobierzWyprawy, dodajWyprawe, wplac, saldoWezla, MOJ_WEZEL,
@@ -55,11 +56,29 @@ export const ProjectsView: React.FC = () => {
 
     useEffect(() => { void odswiez(); }, [odswiez]);
 
-    // Wrota otwierają się wprost. Poprzedni próg `tier` blokował je na stałe,
-    // a Suweren nie ma powodu prosić własnego systemu o pozwolenie.
-    const wejdz = (url: string) => {
+    /**
+     * 🚪 Teleport do substrony serwowanej przez WŁASNY Most.
+     *
+     * ⚠️ DLACZEGO NIE ZEWNĘTRZNE DOMENY: kafle prowadziły na `teostory.studio`,
+     * `teoapp.studio` i — co gorsza — `teostomusic.studio`, która NIE ISTNIEJE.
+     * Tymczasem Most serwuje te same aplikacje lokalnie pod `/apps/{story,music,app}`
+     * i robi to Z DOWOLNEJ LITERY DYSKU: adres liczy się z `getBridgeBase()`,
+     * więc na pendrivie I: działa tak samo jak na F:, bez jednej linijki zmiany.
+     * To jest ten wzorzec, o którym Suweren napisał „perfekt".
+     *
+     * KLUCZE: substrony to inny origin niż Hub, więc nie widzą jego localStorage.
+     * Klucz Gemini dokładamy w adresie — Story V2 czyta go przy starcie
+     * (`teo_gemini_key`) i zapisuje u siebie. Bez tego LaB i Rada w substronie
+     * milczą, a Suweren nie wie dlaczego.
+     */
+    const wejdz = (sciezka: string, hash = '') => {
         setIsWarping(true);
-        setTimeout(() => { window.location.href = url; }, 1200);
+        const baza = getBridgeBase().replace(/\/+$/, '');
+        const klucz = (() => {
+            try { return localStorage.getItem('teo_gemini_key') || ''; } catch { return ''; }
+        })();
+        const q = klucz ? `?gemini_key=${encodeURIComponent(klucz)}` : '';
+        setTimeout(() => { window.location.href = `${baza}${sciezka}${q}${hash}`; }, 1000);
     };
 
     const zmienSubskrypcje = async (m: Modul) => {
@@ -139,15 +158,24 @@ export const ProjectsView: React.FC = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     <UniverseCard title="TeO Story Studio" subtitle="Narracje. Reżyser. Tablica Produkcji."
-                        onClick={() => wejdz('https://teostory.studio')} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
-                    {/* Adres poprawiony: `teostomusic.studio` NIE ISTNIEJE (ENOTFOUND). */}
+                        onClick={() => wejdz('/apps/story/')} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
                     <UniverseCard title="TeO Music Studio" subtitle="Rezonans harmoniczny. Synteza dźwięku."
-                        onClick={() => wejdz('https://teomusic.studio')} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
+                        onClick={() => wejdz('/apps/music/')} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
                     <UniverseCard title="TeO App Studio" subtitle="Narzędzia. Kod. Rzeczywistość."
-                        onClick={() => wejdz('https://teoapp.studio')} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
-                    <UniverseCard title="Graviton" subtitle="Wymiar 0.00G. Księga GRV."
-                        onClick={() => wejdz('https://graviton.pw')} icon={<FiShield className="w-8 h-8" />} colorTheme="blue" isLocked={false} />
+                        onClick={() => wejdz('/apps/app/')} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
+                    {/* ⚠️ „TeO LaB V.1" NIE JEST aplikacją — sprawdzone: to katalog materiałów
+                        (Edukacja/, TeOprinty/) plus KOPIA komponentu LaB, który już mieszka
+                        w Story V2. Danych ani logiki GRV tam nie ma; księga żyje w Moście.
+                        Kafel prowadzi więc tam, gdzie GRV realnie POWSTAJE: do Kuźni TeOPrintów,
+                        która każdemu schematowi nadaje sekcję „Ekonomia Graviton". */}
+                    <UniverseCard title="TeO LaB · TeOPrinty" subtitle="Kuźnia schematów. Wycena w GRV."
+                        onClick={() => wejdz('/apps/story/', '#lab')} icon={<FiShield className="w-8 h-8" />} colorTheme="blue" isLocked={false} />
                 </div>
+                <p className="mt-3 text-[11px] text-slate-500 leading-relaxed max-w-3xl">
+                    Wrota prowadzą do aplikacji serwowanych przez <b>Twój Most</b>, nie do zewnętrznych domen —
+                    adres liczy się z bieżącej bazy, więc <b>na pendrivie I: działa tak samo jak na F:</b>.
+                    Klucz Gemini jedzie w adresie, bo substrona ma inny origin i nie widzi pamięci Huba.
+                </p>
             </div>
 
             {/* ── REJESTR MODUŁÓW ── */}
