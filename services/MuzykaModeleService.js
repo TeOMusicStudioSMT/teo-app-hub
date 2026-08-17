@@ -21,6 +21,7 @@ import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 
 const REPO = 'Comfy-Org/MiniMax-Music-3';
+const REPO_ACE = 'Comfy-Org/ace_step_1.5_ComfyUI_files';
 
 /**
  * Katalog wag. Domyślnie obok mostu: <cwd>/../TeO_Music_V2/models
@@ -37,7 +38,25 @@ export const MANIFEST = [
     { id: 'text-encoder-pruned-bf16', path: 'text_encoders/minimax_music3_text_encoder_pruned_bf16.safetensors',        role: 'text_encoders',   precision: 'bf16', bytes: 16_706_629_398, label: 'Text Encoder pruned bf16',  fitsVram6gb: false },
     { id: 'text-encoder-bf16',        path: 'text_encoders/minimax_music3_text_encoder_bf16.safetensors',               role: 'text_encoders',   precision: 'bf16', bytes: 18_472_478_038, label: 'Text Encoder bf16 (pełny)', fitsVram6gb: false },
     { id: 'dav',                      path: 'vae/minimax_music3_dav.safetensors',                                       role: 'vae',             precision: 'fp32', bytes: 216_696_128,    label: 'DAV (dekoder audio)',       fitsVram6gb: true  },
+
+    // ── ACE-Step 1.5 — realna alternatywa na slabszy sprzet ───────────────────
+    // DLACZEGO: MiniMax ma faze autoregresywna (1501 krokow na 60s audio) i encoder
+    // 8.7 GB. Zmierzone na RTX 3060 Laptop 6GB / 15.7GB RAM: ~6h50m na minute muzyki.
+    // ACE-Step 1.5 turbo to czysta dyfuzja w 8 krokach, bez fazy AR. Do tego przyjmuje
+    // bpm / keyscale / timesignature / language JAKO WEJSCIA (MiniMax wymagal wciskania
+    // tego w tekst opisu), a `language` zawiera 'pl' — polskie teksty dzialaja natywnie.
+    // UWAGA: szablon uzywa DualCLIPLoader, wiec potrzebne SA OBA encodery Qwen.
+    // UWAGA na `repoPath`: w repo ACE pliki leza pod prefiksem `split_files/`, a lokalnie
+    // MUSZA lezec bez niego, bo tylko wtedy ComfyUI je widzi w models/{rola}/.
+    { id: 'ace-dit-turbo', path: 'diffusion_models/acestep_v1.5_turbo.safetensors', repoPath: 'split_files/diffusion_models/acestep_v1.5_turbo.safetensors', role: 'diffusion_models', precision: 'bf16', bytes: 4_787_825_604, repo: REPO_ACE, label: 'ACE-Step 1.5 turbo (DiT)',  fitsVram6gb: true, family: 'ace' },
+    { id: 'ace-dit-base',  path: 'diffusion_models/acestep_v1.5_base.safetensors',  repoPath: 'split_files/diffusion_models/acestep_v1.5_base.safetensors',  role: 'diffusion_models', precision: 'bf16', bytes: 4_787_825_604, repo: REPO_ACE, label: 'ACE-Step 1.5 base (DiT)',   fitsVram6gb: true, family: 'ace' },
+    { id: 'ace-clip-06b',  path: 'text_encoders/qwen_0.6b_ace15.safetensors',       repoPath: 'split_files/text_encoders/qwen_0.6b_ace15.safetensors',       role: 'text_encoders',    precision: 'bf16', bytes: 1_191_588_248, repo: REPO_ACE, label: 'ACE Qwen 0.6B (encoder A)', fitsVram6gb: true, family: 'ace' },
+    { id: 'ace-clip-17b',  path: 'text_encoders/qwen_1.7b_ace15.safetensors',       repoPath: 'split_files/text_encoders/qwen_1.7b_ace15.safetensors',       role: 'text_encoders',    precision: 'bf16', bytes: 3_708_523_360, repo: REPO_ACE, label: 'ACE Qwen 1.7B (encoder B)', fitsVram6gb: true, family: 'ace' },
+    { id: 'ace-vae',       path: 'vae/ace_1.5_vae.safetensors',                     repoPath: 'split_files/vae/ace_1.5_vae.safetensors',                     role: 'vae',              precision: 'fp32', bytes:   337_431_732, repo: REPO_ACE, label: 'ACE 1.5 VAE',               fitsVram6gb: true, family: 'ace' },
 ];
+
+/** Rodzina modelu: 'minimax' (domyslnie) albo 'ace'. */
+export function rodzina(m) { return m.family || 'minimax'; }
 
 const ROLE = ['diffusion_models', 'text_encoders', 'vae'];
 
@@ -46,7 +65,8 @@ export function modelPoId(id) {
 }
 
 function urlHf(m) {
-    return `https://huggingface.co/${REPO}/resolve/main/${m.path}`;
+    // repo/repoPath moga sie roznic od ukladu lokalnego (patrz `split_files/` w ACE).
+    return `https://huggingface.co/${m.repo || REPO}/resolve/main/${m.repoPath || m.path}`;
 }
 
 /** Bezpieczne złożenie ścieżki — manifest jest nasz, ale nie ufamy wejściu z sieci. */
@@ -99,17 +119,38 @@ export async function status() {
     }
 
     const gotowe = pliki.filter((p) => p.kompletny);
-    const roleGotowe = new Set(gotowe.map((p) => p.role));
-    const brakujaceRole = ROLE.filter((r) => !roleGotowe.has(r));
+
+    // Gotowość liczona OSOBNO dla każdej rodziny. Wspólne liczenie mówiłoby
+    // "komplet" dla mieszanki DiT z ACE i encodera z MiniMaxa — a taki graf nie ruszy.
+    // ACE wymaga DWÓCH encoderów (DualCLIPLoader), MiniMax jednego.
+    const rodziny = {};
+    for (const nazwa of ['minimax', 'ace']) {
+        const swoje = gotowe.filter((p) => rodzina(p) === nazwa);
+        const maRole = new Set(swoje.map((p) => p.role));
+        const brakujaceRole = ROLE.filter((r) => !maRole.has(r));
+        const encoderow = swoje.filter((p) => p.role === 'text_encoders').length;
+        const potrzebaEncoderow = nazwa === 'ace' ? 2 : 1;
+        rodziny[nazwa] = {
+            gotowy: brakujaceRole.length === 0 && encoderow >= potrzebaEncoderow,
+            brakujaceRole,
+            encoderow,
+            potrzebaEncoderow,
+            bajtyNaDysku: swoje.reduce((s, p) => s + p.naDysku, 0),
+        };
+    }
+
+    // Zgodność wstecz: pipelineGotowy = którakolwiek rodzina umie zagrać.
+    const ktoraGotowa = Object.keys(rodziny).find((k) => rodziny[k].gotowy) || null;
 
     return {
         success: true,
         katalog: KATALOG_MODELI,
         repo: REPO,
         pliki,
-        // Pipeline ruszy tylko gdy jest po jednym z KAŻDEJ roli.
-        pipelineGotowy: brakujaceRole.length === 0,
-        brakujaceRole,
+        rodziny,
+        gotowaRodzina: ktoraGotowa,
+        pipelineGotowy: !!ktoraGotowa,
+        brakujaceRole: ktoraGotowa ? [] : rodziny.minimax.brakujaceRole,
         bajtyNaDysku: gotowe.reduce((s, p) => s + p.naDysku, 0),
         aktywnePobierania: [...pobierania.values()].filter((p) => p.stan === 'pobieranie').length,
     };

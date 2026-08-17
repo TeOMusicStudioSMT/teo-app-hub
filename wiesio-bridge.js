@@ -5247,23 +5247,80 @@ async function comfyStatus() {
     }
 }
 
+/**
+ * Rodziny modeli muzycznych — plik workflow i domyslne parametry kazdej.
+ *
+ * DLACZEGO DWIE: MiniMax-Music-3 ma faze autoregresywna (~25 krokow na sekunde
+ * audio) i encoder 8.7 GB. Zmierzone na RTX 3060 Laptop 6GB / 15.7GB RAM:
+ * 16.6 s/krok, 1501 krokow na 60s = ~6h50m, przy GPU na 0% (glod danych, model
+ * streamowany z dysku). ACE-Step 1.5 turbo to czysta dyfuzja w 8 krokach —
+ * ~190x mniej obliczen — i przyjmuje bpm/keyscale/language jako wejscia noda,
+ * z obsluga 'pl' dla polskich tekstow.
+ */
+const RODZINY_MUZYKI = {
+    ace: {
+        workflow: 'acestep15.json',
+        etykieta: 'ACE-Step 1.5 turbo',
+        dit: 'ace-dit-turbo', enc: 'ace-clip-06b', enc2: 'ace-clip-17b', vae: 'ace-vae',
+        steps: 8, cfg: 1.0, cfgScale: 2.0,
+        uwaga: 'Czysta dyfuzja w 8 krokach, bez fazy autoregresywnej. Obsługuje polskie teksty (language=pl). Zestaw wag: 10,03 GB.',
+    },
+    minimax: {
+        workflow: 'minimax_music3.json',
+        etykieta: 'MiniMax-Music-3',
+        dit: 'dit-int8', enc: 'text-encoder-pruned-int8', enc2: null, vae: 'dav',
+        steps: 30, cfg: 1.7, cfgScale: 1.7,
+        uwaga: 'UWAGA: faza autoregresywna ~25 kroków na sekundę audio. Zmierzone na 16 GB RAM: ~6h50m na minutę muzyki. Sensowne dopiero od ~32 GB RAM.',
+    },
+};
+
 app.get('/api/music/engine/status', async (req, res) => {
     const [modele, comfy] = await Promise.all([muzykaModeleStatus(), comfyStatus()]);
-    const maWorkflow = fsSync.existsSync(MUSIC_WORKFLOW);
-    const gotowy = modele.pipelineGotowy && comfy.online && comfy.maMinimax && maWorkflow;
+
+    // Stan liczony OSOBNO dla każdej rodziny — Suweren ma widzieć, że np. ACE jest
+    // gotowy, nawet gdy MiniMaxowi czegoś brakuje (i odwrotnie).
+    const rodziny = {};
+    for (const [nazwa, cfgR] of Object.entries(RODZINY_MUZYKI)) {
+        const plik = path.join(WORKFLOWS_DIR, cfgR.workflow);
+        const maWorkflow = fsSync.existsSync(plik);
+        const wagi = modele.rodziny?.[nazwa];
+        const nodyOk = nazwa === 'minimax' ? !!comfy.maMinimax : comfy.online;
+        rodziny[nazwa] = {
+            etykieta: cfgR.etykieta,
+            gotowy: !!wagi?.gotowy && comfy.online && nodyOk && maWorkflow,
+            wagiGotowe: !!wagi?.gotowy,
+            brakujaceRole: wagi?.brakujaceRole ?? [],
+            encodery: wagi ? `${wagi.encoderow}/${wagi.potrzebaEncoderow}` : '?',
+            workflow: { plik, obecny: maWorkflow },
+            krokow: cfgR.steps,
+            uwaga: cfgR.uwaga,
+            potrzebne: [cfgR.dit, cfgR.enc, cfgR.enc2, cfgR.vae].filter(Boolean),
+        };
+    }
+    const ktoraGotowa = Object.keys(rodziny).find(k => rodziny[k].gotowy) || null;
+
+    // Braki opisujemy dla rodziny NAJBLIŻSZEJ gotowości (najmniej brakujących rol),
+    // żeby lista nie była mieszanką dwóch silników.
+    const kandydat = ktoraGotowa
+        || Object.keys(rodziny).sort((a, b) => rodziny[a].brakujaceRole.length - rodziny[b].brakujaceRole.length)[0];
+    const k = rodziny[kandydat];
+
     res.json({
         success: true,
-        gotowy,
+        gotowy: !!ktoraGotowa,
+        gotowaRodzina: ktoraGotowa,
+        rodziny,
         katalogModeli: MUZYKA_KATALOG_MODELI,
-        modele: { pipelineGotowy: modele.pipelineGotowy, brakujaceRole: modele.brakujaceRole },
         comfy: { base: COMFY_BASE, ...comfy },
-        workflow: { plik: MUSIC_WORKFLOW, obecny: maWorkflow },
+        // Zgodność wstecz z panelem
+        modele: { pipelineGotowy: modele.pipelineGotowy, brakujaceRole: modele.brakujaceRole },
+        workflow: k.workflow,
         // Konkretna lista rzeczy do zrobienia — bez ściemy typu "wkrótce".
-        braki: [
-            ...(modele.pipelineGotowy ? [] : [`Brak wag dla rol: ${modele.brakujaceRole.join(', ')} — pobierz w panelu AI Session (Katalog Modeli).`]),
-            ...(comfy.online ? [] : [`ComfyUI nie działa na ${COMFY_BASE} — odpal run_nvidia_gpu.bat.`]),
-            ...(comfy.online && !comfy.maMinimax ? ['ComfyUI działa, ale nie zna nodów MiniMax — zaktualizuj ComfyUI (update/update_comfyui.bat).'] : []),
-            ...(maWorkflow ? [] : [`Brak workflow: ${MUSIC_WORKFLOW} — w ComfyUI wybierz szablon "MiniMax Music 3 Text to Music", Workflow → Export (API), zapisz pod tą nazwą.`]),
+        braki: ktoraGotowa ? [] : [
+            ...(k.wagiGotowe ? [] : [`${k.etykieta}: brak wag (${k.brakujaceRole.join(', ') || 'encodery ' + k.encodery}) — pobierz w panelu AI Session → Katalog Modeli.`]),
+            ...(comfy.online ? [] : [`ComfyUI nie działa na ${COMFY_BASE} — odpal run_nvidia_gpu.bat (dopisz w nim: set PYTHONUTF8=1).`]),
+            ...(comfy.online && kandydat === 'minimax' && !comfy.maMinimax ? ['ComfyUI nie zna nodów MiniMax — zaktualizuj przez update/update_comfyui.bat (NIE tym z python_dependencies, wywala się na limicie 260 znaków).'] : []),
+            ...(k.workflow.obecny ? [] : [`Brak workflow: ${k.workflow.plik}`]),
         ],
     });
 });
@@ -5296,6 +5353,9 @@ function wstrzyknijDoWorkflow(wf, p) {
         // Wagi — wskazujemy pliki z naszego suwerennego katalogu.
         if (p.ditFile)  { for (const k of ['unet_name', 'model_name', 'ckpt_name']) ustaw(id, k, p.ditFile); }
         if (p.encFile)  { for (const k of ['clip_name', 'clip_name1', 'text_encoder_name']) ustaw(id, k, p.encFile); }
+        // ACE uzywa DualCLIPLoader z DWOMA ROZNYMI encoderami — wpisanie tego samego
+        // pliku w oba sloty daje graf, ktory sie zwaliduje, ale policzy bzdure.
+        if (p.encFile2) { ustaw(id, 'clip_name2', p.encFile2); }
         if (p.vaeFile)  { ustaw(id, 'vae_name', p.vaeFile); }
 
         // Opis brzmienia vs tekst piosenki — rozróżniamy po nazwie wejścia,
@@ -5306,35 +5366,71 @@ function wstrzyknijDoWorkflow(wf, p) {
             ustaw(id, 'text', p.prompt, '<opis>');
         }
 
+        // ACE-Step: tempo, tonacja, metrum i jezyk to WEJSCIA noda, nie tekst w prompcie.
+        // Dzieki temu suwak BPM i wybor tonacji z panelu trafiaja wprost do modelu.
+        if (p.tags     !== undefined && 'tags' in we) ustaw(id, 'tags', p.tags, '<tagi stylu>');
+        if (p.bpm      !== undefined) ustaw(id, 'bpm', p.bpm);
+        if (p.keyscale !== undefined) ustaw(id, 'keyscale', p.keyscale);
+        if (p.language !== undefined) ustaw(id, 'language', p.language);
+        if (p.timesignature !== undefined) ustaw(id, 'timesignature', p.timesignature);
+
         if (p.duration   !== undefined) { for (const k of ['max_duration', 'seconds', 'duration']) ustaw(id, k, p.duration); }
         if (p.seed       !== undefined) { for (const k of ['seed', 'noise_seed']) ustaw(id, k, p.seed); }
         if (p.steps      !== undefined) ustaw(id, 'steps', p.steps);
-        if (p.cfg        !== undefined) { for (const k of ['cfg', 'cfg_scale', 'guidance']) ustaw(id, k, p.cfg); }
+        // `cfg` (sampler) i `cfg_scale` (encoder) to ROZNE wartosci: w ACE 1.0 vs 2.0.
+        // Wczesniej wpisywalem te sama liczbe w oba — dla MiniMaxa uchodzilo (1.7/1.7),
+        // dla ACE zepsuloby wynik.
+        if (p.cfg        !== undefined) { for (const k of ['cfg', 'guidance']) ustaw(id, k, p.cfg); }
+        if (p.cfgScale   !== undefined) ustaw(id, 'cfg_scale', p.cfgScale);
         if (p.tiledDecode !== undefined) ustaw(id, 'tiled_decode', p.tiledDecode);
     }
     return podmienione;
 }
 
 app.post('/api/music/generate', async (req, res) => {
+    const body = req.body ?? {};
     const {
-        prompt, lyrics = '', duration = 60, seed, steps, cfg,
-        ditId = 'dit-int8', encId = 'text-encoder-pruned-int8', vaeId = 'dav',
+        prompt, lyrics = '', duration = 60, seed, steps, cfg, cfgScale,
+        bpm, keyscale, language, timesignature,
         tiledDecode = true,
-    } = req.body ?? {};
+    } = body;
+
+    // Rodzina modelu: 'ace' (lekka, 8 krokow) albo 'minimax' (ciezka, faza AR).
+    // Domyslnie bierzemy te, ktora ma kompletne wagi — z preferencja dla ACE,
+    // bo na tym sprzecie MiniMax liczy ~7h na minute (zmierzone).
+    const modele = await muzykaModeleStatus();
+    const wybrana = body.rodzina
+        || (modele.rodziny?.ace?.gotowy ? 'ace' : (modele.rodziny?.minimax?.gotowy ? 'minimax' : 'ace'));
+    const cfgRodziny = RODZINY_MUZYKI[wybrana];
+    if (!cfgRodziny) {
+        return res.status(400).json({
+            success: false,
+            message: `Nieznana rodzina: ${wybrana}`,
+            dostepne: Object.keys(RODZINY_MUZYKI),
+        });
+    }
+
+    const ditId = body.ditId || cfgRodziny.dit;
+    const encId = body.encId || cfgRodziny.enc;
+    const encId2 = body.encId2 || cfgRodziny.enc2;
+    const vaeId = body.vaeId || cfgRodziny.vae;
 
     if (!prompt || !String(prompt).trim()) {
         return res.status(400).json({ success: false, message: 'Brak "prompt" (opis brzmienia).' });
     }
 
-    // 1) Wagi na miejscu?
-    const modele = await muzykaModeleStatus();
-    if (!modele.pipelineGotowy) {
+    // 1) Wagi tej rodziny na miejscu?
+    const stanRodziny = modele.rodziny?.[wybrana];
+    if (!stanRodziny?.gotowy) {
+        const potrzebne = [cfgRodziny.dit, cfgRodziny.enc, cfgRodziny.enc2, cfgRodziny.vae].filter(Boolean);
         return res.status(424).json({
             success: false,
             etap: 'modele',
-            message: `Brak kompletnych wag. Brakujące role: ${modele.brakujaceRole.join(', ')}.`,
-            hint: 'POST /api/music/models/pull { ids: ["dit-int8","text-encoder-pruned-int8","dav"] } albo panel AI Session → Katalog Modeli.',
-            brakujaceRole: modele.brakujaceRole,
+            rodzina: wybrana,
+            message: `Brak kompletnych wag dla ${cfgRodziny.etykieta}. Brakujące role: ${(stanRodziny?.brakujaceRole ?? []).join(', ') || '—'}${stanRodziny && stanRodziny.encoderow < stanRodziny.potrzebaEncoderow ? ` (encodery: ${stanRodziny.encoderow}/${stanRodziny.potrzebaEncoderow})` : ''}.`,
+            hint: `POST /api/music/models/pull { ids: ${JSON.stringify(potrzebne)} } albo panel AI Session → Katalog Modeli.`,
+            brakujaceRole: stanRodziny?.brakujaceRole ?? [],
+            potrzebne,
         });
     }
     const uszkodzone = modele.pliki.filter(p => p.uszkodzony).map(p => p.id);
@@ -5354,24 +5450,24 @@ app.post('/api/music/generate', async (req, res) => {
             hint: 'Odpal ComfyUI (run_nvidia_gpu.bat). Katalog wag wskaż przez extra_model_paths.yaml — patrz /api/music/engine/status.',
         });
     }
-    if (!comfy.maMinimax) {
+    if (wybrana === 'minimax' && !comfy.maMinimax) {
         return res.status(424).json({
             success: false, etap: 'comfy-wersja',
             message: `ComfyUI działa (${comfy.nodeCount} nodów), ale nie zna żadnego noda MiniMax.`,
-            hint: 'Zaktualizuj ComfyUI — update/update_comfyui.bat. MiniMax-Music-3 wymaga świeżej wersji.',
+            hint: 'Zaktualizuj ComfyUI — update/update_comfyui.bat. UWAGA: NIE używaj update_comfyui_and_python_dependencies.bat, na tej ścieżce wywala się na limicie 260 znaków (WinError 206) i rozwala instalację.',
         });
     }
 
-    // 3) Workflow od Suwerena (nazw nodów nie wymyślamy)
+    // 3) Workflow tej rodziny (nazw nodów nie wymyślamy — czytamy z pliku)
+    const plikWorkflow = path.join(WORKFLOWS_DIR, cfgRodziny.workflow);
     let wf;
     try {
-        wf = JSON.parse(await fs.readFile(MUSIC_WORKFLOW, 'utf8'));
+        wf = JSON.parse(await fs.readFile(plikWorkflow, 'utf8'));
     } catch (err) {
         return res.status(424).json({
-            success: false, etap: 'workflow',
-            message: `Nie mogę wczytać workflow: ${MUSIC_WORKFLOW} (${err.message})`,
-            hint: 'W ComfyUI: szablon "MiniMax Music 3 Text to Music" → Workflow → Export (API) → zapisz jako _OtakOs_AI/workflows/minimax_music3.json',
-            wykryteNodyMinimax: comfy.minimaxNodes,
+            success: false, etap: 'workflow', rodzina: wybrana,
+            message: `Nie mogę wczytać workflow: ${plikWorkflow} (${err.message})`,
+            hint: `W ComfyUI otwórz szablon dla ${cfgRodziny.etykieta} → Workflow → Export (API) → zapisz pod tą nazwą.`,
         });
     }
     // Export (API) daje płaską mapę id→node. Format UI ma "nodes":[...] i tu nie zadziała.
@@ -5383,16 +5479,24 @@ app.post('/api/music/generate', async (req, res) => {
         });
     }
 
-    const ditFile = muzykaModelPoId(ditId)?.path.split('/').pop();
-    const encFile = muzykaModelPoId(encId)?.path.split('/').pop();
-    const vaeFile = muzykaModelPoId(vaeId)?.path.split('/').pop();
+    const nazwaPliku = (id) => (id ? muzykaModelPoId(id)?.path.split('/').pop() : undefined);
+    const ditFile = nazwaPliku(ditId);
+    const encFile = nazwaPliku(encId);
+    const encFile2 = nazwaPliku(encId2);
+    const vaeFile = nazwaPliku(vaeId);
     const uzytySeed = Number.isFinite(seed) ? seed : Math.floor(Math.random() * 1e15);
 
     const podmienione = wstrzyknijDoWorkflow(wf, {
         prompt: String(prompt), lyrics: String(lyrics),
+        // ACE ma osobne wejscie `tags` na styl; MiniMax dostaje wszystko w `caption`.
+        tags: wybrana === 'ace' ? String(prompt) : undefined,
         duration: Number(duration), seed: uzytySeed,
-        steps, cfg, tiledDecode,
-        ditFile, encFile, vaeFile,
+        steps: steps ?? cfgRodziny.steps,
+        cfg: cfg ?? cfgRodziny.cfg,
+        cfgScale: cfgScale ?? cfgRodziny.cfgScale,
+        bpm, keyscale, language, timesignature,
+        tiledDecode,
+        ditFile, encFile, encFile2, vaeFile,
     });
 
     // 4) Do kolejki ComfyUI
@@ -5411,13 +5515,15 @@ app.post('/api/music/generate', async (req, res) => {
                 podmienione,
             });
         }
-        console.log(`[Muzyka] 🎼 Zakolejkowano w ComfyUI: ${dane.prompt_id} | seed ${uzytySeed} | ${duration}s`);
+        console.log(`[Muzyka] 🎼 Zakolejkowano w ComfyUI: ${dane.prompt_id} | ${cfgRodziny.etykieta} | seed ${uzytySeed} | ${duration}s`);
         return res.json({
             success: true,
             promptId: dane.prompt_id,
             seed: uzytySeed,
             podmienione,
-            engine: 'ComfyUI × MiniMax-Music-3',
+            rodzina: wybrana,
+            uwaga: cfgRodziny.uwaga,
+            engine: `ComfyUI × ${cfgRodziny.etykieta}`,
             katalogModeli: MUZYKA_KATALOG_MODELI,
             // Gotowy plik zjedzie do output ComfyUI; przenosinami do _OtakOs_Muzyka
             // zajmuje się /api/music/collect po zakończeniu.
