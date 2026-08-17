@@ -5279,6 +5279,11 @@ function wstrzyknijDoWorkflow(wf, p) {
     const ustaw = (nodeId, klucz, wartosc, opis) => {
         const wejscia = wf[nodeId]?.inputs;
         if (!wejscia || !(klucz in wejscia)) return false;
+        // NIGDY nie nadpisujemy wejscia podlaczonego kablem (w formacie API polaczenie
+        // to tablica ["idZrodla", slot]). Np. `seconds` w EmptyMiniMaxMusic3LatentAudio
+        // jest wyliczane przez encoder — wstawienie tam liczby rozjezdza dlugosc
+        // latentu z dlugoscia kondycjonowania i sampler pada.
+        if (Array.isArray(wejscia[klucz])) return false;
         wejscia[klucz] = wartosc;
         podmienione.push(`${nodeId}.${klucz} = ${opis ?? wartosc}`);
         return true;
@@ -5423,6 +5428,29 @@ app.post('/api/music/generate', async (req, res) => {
     }
 });
 
+/**
+ * Zamienia surowe `messages` z historii ComfyUI na czytelne zdanie.
+ * Bez tego front pokazywał zrzut JSON — nieczytelny i wyglądający na awarię
+ * nawet wtedy, gdy Suweren sam kliknął anuluj.
+ */
+function czytelnyKomunikatComfy(messages) {
+    const zdarzenia = Array.isArray(messages) ? messages : [];
+    const wynik = { przerwane: false, opis: null, node: null };
+    for (const m of zdarzenia) {
+        const typ = Array.isArray(m) ? m[0] : null;
+        const dane = Array.isArray(m) ? (m[1] ?? {}) : {};
+        if (typ === 'execution_interrupted') {
+            wynik.przerwane = true;
+            wynik.node = dane.node_type || dane.node_id || null;
+        }
+        if (typ === 'execution_error') {
+            wynik.opis = dane.exception_message || dane.exception_type || 'nieznany błąd wykonania';
+            wynik.node = dane.node_type || dane.node_id || null;
+        }
+    }
+    return wynik;
+}
+
 /** Postęp konkretnego zadania + zebranie gotowego audio do _OtakOs_Muzyka. */
 app.get('/api/music/progress', async (req, res) => {
     const promptId = req.query.promptId;
@@ -5432,14 +5460,34 @@ app.get('/api/music/progress', async (req, res) => {
         const hist = await r.json().catch(() => ({}));
         const wpis = hist[promptId];
         if (!wpis) {
-            // Jeszcze nie w historii — sprawdźmy kolejkę.
+            // Jeszcze nie w historii. ComfyUI rozdziela kolejkę na running i pending —
+            // rozróżniamy je, bo "w-kolejce" przy liczącym zadaniu wprowadzało w błąd.
             const q = await fetch(`${COMFY_BASE}/queue`).then(x => x.json()).catch(() => ({}));
-            const wKolejce = JSON.stringify(q).includes(promptId);
-            return res.json({ success: true, stan: wKolejce ? 'w-kolejce' : 'nieznane', promptId });
+            const wTablicy = (arr) => Array.isArray(arr) && arr.some(z => JSON.stringify(z).includes(promptId));
+            if (wTablicy(q.queue_running)) {
+                return res.json({ success: true, stan: 'liczy', promptId, przedNami: 0 });
+            }
+            if (wTablicy(q.queue_pending)) {
+                return res.json({
+                    success: true, stan: 'w-kolejce', promptId,
+                    przedNami: (q.queue_running?.length ?? 0) + (q.queue_pending ?? []).findIndex(z => JSON.stringify(z).includes(promptId)),
+                });
+            }
+            return res.json({ success: true, stan: 'nieznane', promptId });
         }
         const status = wpis.status ?? {};
-        if (status.status_str === 'error') {
-            return res.json({ success: false, stan: 'blad', promptId, messages: status.messages ?? [] });
+        const czytelny = czytelnyKomunikatComfy(status.messages);
+        if (czytelny.przerwane) {
+            return res.json({
+                success: false, stan: 'przerwane', promptId,
+                message: `Zadanie przerwane${czytelny.node ? ` na nodzie ${czytelny.node}` : ''} — anulowane w ComfyUI albo z panelu.`,
+            });
+        }
+        if (status.status_str === 'error' || czytelny.opis) {
+            return res.json({
+                success: false, stan: 'blad', promptId,
+                message: czytelny.opis ? `ComfyUI: ${czytelny.opis}${czytelny.node ? ` (node ${czytelny.node})` : ''}` : 'ComfyUI zgłosił błąd wykonania.',
+            });
         }
         // Zbieramy pliki audio z outputów
         const audio = [];
