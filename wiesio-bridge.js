@@ -58,6 +58,14 @@ import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
 import CryptoAgility from './services/CryptoAgility.js';
+import {
+    KATALOG_MODELI as MUZYKA_KATALOG_MODELI,
+    MANIFEST as MUZYKA_MANIFEST,
+    status as muzykaModeleStatus,
+    pull as muzykaModelePull,
+    usun as muzykaModeleUsun,
+    modelPoId as muzykaModelPoId,
+} from './services/MuzykaModeleService.js';
 import { buildDziennikHtml } from './services/dziennikTemplate.js';
 import {
     attachStudioRelay,
@@ -5160,6 +5168,331 @@ app.post('/api/models/pull', (req, res) => {
         .catch(e => console.warn(`[Models] pull ${model}: ${e.message}`));
     console.log(`[Models] ⬇️ pull ${model} started`);
     res.json({ success: true, started: true, model });
+});
+
+// ── 🎵 MODELE MUZYCZNE (MiniMax-Music-3) — katalog suwerenny + realne pobieranie ──
+// Wagi żyją w TeO_Music_V2/models/ (poza repo, 16+ GB). Layout 1:1 z Comfy-Org/
+// MiniMax-Music-3, czyli też 1:1 z ComfyUI/models/ — jeden katalog, zero duplikatów.
+// Dzięki temu moduł da się zminiaturyzować na otakos.wtf: kod leci lekki, wagi
+// dociąga Suweren po pierwszej instalacji.
+app.get('/api/music/models', async (req, res) => {
+    try {
+        res.json(await muzykaModeleStatus());
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/music/models/pull', (req, res) => {
+    const { ids, id } = req.body ?? {};
+    const lista = Array.isArray(ids) ? ids : (id ? [id] : []);
+    if (!lista.length) {
+        return res.status(400).json({
+            success: false,
+            message: 'Brak "ids" (tablica) ani "id".',
+            dostepne: MUZYKA_MANIFEST.map(m => m.id),
+        });
+    }
+    const nieznane = lista.filter(x => !muzykaModelPoId(x));
+    if (nieznane.length) {
+        return res.status(400).json({
+            success: false,
+            message: `Nieznane id: ${nieznane.join(', ')}`,
+            dostepne: MUZYKA_MANIFEST.map(m => m.id),
+        });
+    }
+    res.json(muzykaModelePull(lista));
+});
+
+app.post('/api/music/models/remove', async (req, res) => {
+    const { id } = req.body ?? {};
+    if (!id) return res.status(400).json({ success: false, message: 'Brak "id".' });
+    try {
+        res.json(await muzykaModeleUsun(id));
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ── 🎼 GENERACJA MUZYKI — realnie, przez ComfyUI, albo uczciwe "nie mogę" ─────
+// ŻADNEJ SYMULACJI. Jeśli czegoś brakuje, endpoint zwraca 424 i mówi czego —
+// nie udaje kroków dyfuzji.
+//
+// DLACZEGO przez ComfyUI, a nie własny pipeline: pliki wag mają w metadanych
+// `comfy_model` (repack Comfy-Org) i są zapakowane pod natywne nody ComfyUI.
+// Pisanie własnej inferencji DiT MiniMax-Music-3 to przepisywanie tego, co już
+// istnieje — a katalog wag i tak zostaje suwerenny w TeO_Music_V2.
+//
+// DLACZEGO workflow z pliku, a nie zaszyty w kodzie: nazw nodów MiniMax nie
+// wolno wymyślać. Suweren eksportuje workflow z ComfyUI (Workflow → Export API),
+// wrzuca do _OtakOs_AI/workflows/minimax_music3.json, a most wstrzykuje parametry
+// TYLKO w te wejścia, które w nim realnie istnieją.
+const COMFY_BASE = process.env.OTAKOS_COMFY_HOST || 'http://127.0.0.1:8188';
+const WORKFLOWS_DIR = path.join(AI_DIR, 'workflows');
+const MUSIC_WORKFLOW = path.join(WORKFLOWS_DIR, 'minimax_music3.json');
+
+/** Czy ComfyUI żyje i czy zna nody MiniMax (czyli czy jest dość świeży). */
+async function comfyStatus() {
+    try {
+        const c = new AbortController(); const t = setTimeout(() => c.abort(), 2500);
+        const r = await fetch(`${COMFY_BASE}/object_info`, { signal: c.signal });
+        clearTimeout(t);
+        if (!r.ok) return { online: false, message: `ComfyUI odpowiedział HTTP ${r.status}` };
+        const info = await r.json();
+        const nody = Object.keys(info);
+        const minimax = nody.filter(n => /minimax/i.test(n));
+        return { online: true, nodeCount: nody.length, minimaxNodes: minimax, maMinimax: minimax.length > 0 };
+    } catch (err) {
+        return { online: false, message: `ComfyUI nieosiągalny na ${COMFY_BASE} (${err.message})` };
+    }
+}
+
+app.get('/api/music/engine/status', async (req, res) => {
+    const [modele, comfy] = await Promise.all([muzykaModeleStatus(), comfyStatus()]);
+    const maWorkflow = fsSync.existsSync(MUSIC_WORKFLOW);
+    const gotowy = modele.pipelineGotowy && comfy.online && comfy.maMinimax && maWorkflow;
+    res.json({
+        success: true,
+        gotowy,
+        katalogModeli: MUZYKA_KATALOG_MODELI,
+        modele: { pipelineGotowy: modele.pipelineGotowy, brakujaceRole: modele.brakujaceRole },
+        comfy: { base: COMFY_BASE, ...comfy },
+        workflow: { plik: MUSIC_WORKFLOW, obecny: maWorkflow },
+        // Konkretna lista rzeczy do zrobienia — bez ściemy typu "wkrótce".
+        braki: [
+            ...(modele.pipelineGotowy ? [] : [`Brak wag dla rol: ${modele.brakujaceRole.join(', ')} — pobierz w panelu AI Session (Katalog Modeli).`]),
+            ...(comfy.online ? [] : [`ComfyUI nie działa na ${COMFY_BASE} — odpal run_nvidia_gpu.bat.`]),
+            ...(comfy.online && !comfy.maMinimax ? ['ComfyUI działa, ale nie zna nodów MiniMax — zaktualizuj ComfyUI (update/update_comfyui.bat).'] : []),
+            ...(maWorkflow ? [] : [`Brak workflow: ${MUSIC_WORKFLOW} — w ComfyUI wybierz szablon "MiniMax Music 3 Text to Music", Workflow → Export (API), zapisz pod tą nazwą.`]),
+        ],
+    });
+});
+
+/**
+ * Wstrzykuje parametry do workflow w formacie API ComfyUI.
+ * Zasada: dotykamy WYŁĄCZNIE wejść, które w danym nodzie istnieją — nie dorzucamy
+ * kluczy na zgadywanie, bo ComfyUI odrzuciłby graf albo cicho zignorował.
+ * Zwraca też co realnie podmieniliśmy, żeby front mógł to pokazać, a nie wierzyć.
+ */
+function wstrzyknijDoWorkflow(wf, p) {
+    const podmienione = [];
+    const ustaw = (nodeId, klucz, wartosc, opis) => {
+        const wejscia = wf[nodeId]?.inputs;
+        if (!wejscia || !(klucz in wejscia)) return false;
+        wejscia[klucz] = wartosc;
+        podmienione.push(`${nodeId}.${klucz} = ${opis ?? wartosc}`);
+        return true;
+    };
+
+    for (const [id, node] of Object.entries(wf)) {
+        const typ = String(node.class_type || '');
+        const we = node.inputs || {};
+
+        // Wagi — wskazujemy pliki z naszego suwerennego katalogu.
+        if (p.ditFile)  { for (const k of ['unet_name', 'model_name', 'ckpt_name']) ustaw(id, k, p.ditFile); }
+        if (p.encFile)  { for (const k of ['clip_name', 'clip_name1', 'text_encoder_name']) ustaw(id, k, p.encFile); }
+        if (p.vaeFile)  { ustaw(id, 'vae_name', p.vaeFile); }
+
+        // Opis brzmienia vs tekst piosenki — rozróżniamy po nazwie wejścia,
+        // a gdy node ma tylko "text", po tym czy to node oznaczony jako lyrics.
+        if ('lyrics' in we && p.lyrics !== undefined) ustaw(id, 'lyrics', p.lyrics, '<tekst>');
+        if ('caption' in we && p.prompt) ustaw(id, 'caption', p.prompt, '<opis>');
+        if ('text' in we && p.prompt && !/lyric/i.test(typ) && !('caption' in we)) {
+            ustaw(id, 'text', p.prompt, '<opis>');
+        }
+
+        if (p.duration   !== undefined) { for (const k of ['max_duration', 'seconds', 'duration']) ustaw(id, k, p.duration); }
+        if (p.seed       !== undefined) { for (const k of ['seed', 'noise_seed']) ustaw(id, k, p.seed); }
+        if (p.steps      !== undefined) ustaw(id, 'steps', p.steps);
+        if (p.cfg        !== undefined) { for (const k of ['cfg', 'cfg_scale', 'guidance']) ustaw(id, k, p.cfg); }
+        if (p.tiledDecode !== undefined) ustaw(id, 'tiled_decode', p.tiledDecode);
+    }
+    return podmienione;
+}
+
+app.post('/api/music/generate', async (req, res) => {
+    const {
+        prompt, lyrics = '', duration = 60, seed, steps, cfg,
+        ditId = 'dit-int8', encId = 'text-encoder-pruned-int8', vaeId = 'dav',
+        tiledDecode = true,
+    } = req.body ?? {};
+
+    if (!prompt || !String(prompt).trim()) {
+        return res.status(400).json({ success: false, message: 'Brak "prompt" (opis brzmienia).' });
+    }
+
+    // 1) Wagi na miejscu?
+    const modele = await muzykaModeleStatus();
+    if (!modele.pipelineGotowy) {
+        return res.status(424).json({
+            success: false,
+            etap: 'modele',
+            message: `Brak kompletnych wag. Brakujące role: ${modele.brakujaceRole.join(', ')}.`,
+            hint: 'POST /api/music/models/pull { ids: ["dit-int8","text-encoder-pruned-int8","dav"] } albo panel AI Session → Katalog Modeli.',
+            brakujaceRole: modele.brakujaceRole,
+        });
+    }
+    const uszkodzone = modele.pliki.filter(p => p.uszkodzony).map(p => p.id);
+    if (uszkodzone.length) {
+        return res.status(424).json({
+            success: false, etap: 'modele',
+            message: `Pliki wag mają zły rozmiar (niedokończone pobieranie): ${uszkodzone.join(', ')}. Ładowanie takiego pliku wywala silnik.`,
+            hint: 'Pobierz je ponownie — pobieranie wznawia się od miejsca zerwania.',
+        });
+    }
+
+    // 2) ComfyUI żyje i zna MiniMax?
+    const comfy = await comfyStatus();
+    if (!comfy.online) {
+        return res.status(424).json({
+            success: false, etap: 'comfy', message: comfy.message,
+            hint: 'Odpal ComfyUI (run_nvidia_gpu.bat). Katalog wag wskaż przez extra_model_paths.yaml — patrz /api/music/engine/status.',
+        });
+    }
+    if (!comfy.maMinimax) {
+        return res.status(424).json({
+            success: false, etap: 'comfy-wersja',
+            message: `ComfyUI działa (${comfy.nodeCount} nodów), ale nie zna żadnego noda MiniMax.`,
+            hint: 'Zaktualizuj ComfyUI — update/update_comfyui.bat. MiniMax-Music-3 wymaga świeżej wersji.',
+        });
+    }
+
+    // 3) Workflow od Suwerena (nazw nodów nie wymyślamy)
+    let wf;
+    try {
+        wf = JSON.parse(await fs.readFile(MUSIC_WORKFLOW, 'utf8'));
+    } catch (err) {
+        return res.status(424).json({
+            success: false, etap: 'workflow',
+            message: `Nie mogę wczytać workflow: ${MUSIC_WORKFLOW} (${err.message})`,
+            hint: 'W ComfyUI: szablon "MiniMax Music 3 Text to Music" → Workflow → Export (API) → zapisz jako _OtakOs_AI/workflows/minimax_music3.json',
+            wykryteNodyMinimax: comfy.minimaxNodes,
+        });
+    }
+    // Export (API) daje płaską mapę id→node. Format UI ma "nodes":[...] i tu nie zadziała.
+    if (wf.nodes || !Object.values(wf).some(n => n && n.class_type)) {
+        return res.status(422).json({
+            success: false, etap: 'workflow-format',
+            message: 'To workflow w formacie UI, nie API — most nie umie go uruchomić.',
+            hint: 'W ComfyUI użyj Workflow → Export (API), nie zwykłego Save.',
+        });
+    }
+
+    const ditFile = muzykaModelPoId(ditId)?.path.split('/').pop();
+    const encFile = muzykaModelPoId(encId)?.path.split('/').pop();
+    const vaeFile = muzykaModelPoId(vaeId)?.path.split('/').pop();
+    const uzytySeed = Number.isFinite(seed) ? seed : Math.floor(Math.random() * 1e15);
+
+    const podmienione = wstrzyknijDoWorkflow(wf, {
+        prompt: String(prompt), lyrics: String(lyrics),
+        duration: Number(duration), seed: uzytySeed,
+        steps, cfg, tiledDecode,
+        ditFile, encFile, vaeFile,
+    });
+
+    // 4) Do kolejki ComfyUI
+    try {
+        const r = await fetch(`${COMFY_BASE}/prompt`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: wf, client_id: `teo_music_v2_${Date.now()}` }),
+        });
+        const dane = await r.json().catch(() => ({}));
+        if (!r.ok) {
+            return res.status(502).json({
+                success: false, etap: 'kolejka',
+                message: `ComfyUI odrzucił graf (HTTP ${r.status}).`,
+                comfyError: dane.error ?? dane, nodeErrors: dane.node_errors ?? null,
+                podmienione,
+            });
+        }
+        console.log(`[Muzyka] 🎼 Zakolejkowano w ComfyUI: ${dane.prompt_id} | seed ${uzytySeed} | ${duration}s`);
+        return res.json({
+            success: true,
+            promptId: dane.prompt_id,
+            seed: uzytySeed,
+            podmienione,
+            engine: 'ComfyUI × MiniMax-Music-3',
+            katalogModeli: MUZYKA_KATALOG_MODELI,
+            // Gotowy plik zjedzie do output ComfyUI; przenosinami do _OtakOs_Muzyka
+            // zajmuje się /api/music/collect po zakończeniu.
+            message: 'Graf w kolejce ComfyUI. Postęp: GET /api/music/progress?promptId=...',
+        });
+    } catch (err) {
+        return res.status(502).json({ success: false, etap: 'kolejka', message: err.message, podmienione });
+    }
+});
+
+/** Postęp konkretnego zadania + zebranie gotowego audio do _OtakOs_Muzyka. */
+app.get('/api/music/progress', async (req, res) => {
+    const promptId = req.query.promptId;
+    if (!promptId) return res.status(400).json({ success: false, message: 'Brak ?promptId=' });
+    try {
+        const r = await fetch(`${COMFY_BASE}/history/${promptId}`);
+        const hist = await r.json().catch(() => ({}));
+        const wpis = hist[promptId];
+        if (!wpis) {
+            // Jeszcze nie w historii — sprawdźmy kolejkę.
+            const q = await fetch(`${COMFY_BASE}/queue`).then(x => x.json()).catch(() => ({}));
+            const wKolejce = JSON.stringify(q).includes(promptId);
+            return res.json({ success: true, stan: wKolejce ? 'w-kolejce' : 'nieznane', promptId });
+        }
+        const status = wpis.status ?? {};
+        if (status.status_str === 'error') {
+            return res.json({ success: false, stan: 'blad', promptId, messages: status.messages ?? [] });
+        }
+        // Zbieramy pliki audio z outputów
+        const audio = [];
+        for (const out of Object.values(wpis.outputs ?? {})) {
+            for (const a of (out.audio ?? [])) {
+                audio.push({
+                    filename: a.filename, subfolder: a.subfolder ?? '', type: a.type ?? 'output',
+                    url: `${COMFY_BASE}/view?filename=${encodeURIComponent(a.filename)}&subfolder=${encodeURIComponent(a.subfolder ?? '')}&type=${a.type ?? 'output'}`,
+                });
+            }
+        }
+        res.json({
+            success: true,
+            stan: status.completed ? 'gotowe' : (status.status_str || 'w-toku'),
+            promptId, audio,
+        });
+    } catch (err) {
+        res.status(502).json({ success: false, message: `ComfyUI nieosiągalny: ${err.message}` });
+    }
+});
+
+/**
+ * Przenosi gotowy utwór z output ComfyUI do biblioteki Katedry (_OtakOs_Muzyka),
+ * żeby Graviton Radio i reszta Katedry go widziały. Realny zapis, realny rozmiar.
+ */
+app.post('/api/music/collect', async (req, res) => {
+    const { filename, subfolder = '', type = 'output', title } = req.body ?? {};
+    if (!filename) return res.status(400).json({ success: false, message: 'Brak "filename".' });
+    try {
+        const url = `${COMFY_BASE}/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}&type=${encodeURIComponent(type)}`;
+        const r = await fetch(url);
+        if (!r.ok) return res.status(502).json({ success: false, message: `ComfyUI /view HTTP ${r.status}` });
+        const buf = Buffer.from(await r.arrayBuffer());
+
+        const ext = path.extname(filename) || '.flac';
+        const bazowa = (title ? String(title) : path.basename(filename, ext))
+            .replace(/[^\p{L}\p{N}_ -]/gu, '').trim().replace(/\s+/g, '_').slice(0, 80) || 'TeO_Utwor';
+        const docelowy = path.join(MUSIC_DIR, `${bazowa}_${Date.now()}${ext}`);
+
+        await fs.mkdir(MUSIC_DIR, { recursive: true });
+        await fs.writeFile(docelowy, buf);
+        const st = await fs.stat(docelowy);
+        console.log(`[Muzyka] 💾 Zapisano do biblioteki: ${path.basename(docelowy)} (${(st.size / 1e6).toFixed(1)} MB)`);
+
+        res.json({
+            success: true,
+            savedPath: docelowy,
+            bytes: st.size,
+            streamUrl: `http://127.0.0.1:${PORT}/music/${encodeURIComponent(path.basename(docelowy))}`,
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
 });
 
 // ── 🎤 GŁOS SUWERENA — suwerenny klon głosu (lokalny silnik + fallback) ───────
