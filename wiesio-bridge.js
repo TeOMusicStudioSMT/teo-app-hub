@@ -6089,6 +6089,93 @@ app.post('/api/rzezba/pasma', async (req, res) => {
     } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 });
 
+// ── 🎚️ STEMY — PRAWDZIWA separacja przez Demucs ──────────────────────────────
+// To NIE to samo co /api/rzezba/pasma. Pasma dzielą po częstotliwości; TU model
+// uczony rozdziela nagranie na wokal / perkusję / bas / resztę.
+//
+// Demucs siedzi w OSOBNYM venv (F:/OtakOsDemucs), świadomie:
+//  - python ComfyUI raz już padł przy dokładaniu paczek — nie ryzykujemy drugi raz,
+//  - torch jest CPU-only, żeby separacja nie walczyła o 6 GB VRAM z generacją muzyki,
+//  - venv stoi na KRÓTKIEJ ścieżce, bo drzewo licencji torcha przekracza limit
+//    260 znaków Windows przy dłuższym prefiksie (ten sam WinError 206).
+const DEMUCS_PYTHON = process.env.OTAKOS_DEMUCS_PYTHON || 'F:/OtakOsDemucs/Scripts/python.exe';
+const DEMUCS_SKRYPT = path.join(__dirname, 'services', 'demucs_stemy.py');
+const STEMY_DIR = path.join(MUSIC_DIR, '_Stemy');
+
+/** Czy separacja jest w ogóle dostępna — mówimy wprost, czego brakuje. */
+app.get('/api/stemy/status', (req, res) => {
+    const maPythona = fsSync.existsSync(DEMUCS_PYTHON);
+    const maSkrypt = fsSync.existsSync(DEMUCS_SKRYPT);
+    res.json({
+        success: true,
+        dostepne: maPythona && maSkrypt,
+        python: DEMUCS_PYTHON,
+        skrypt: DEMUCS_SKRYPT,
+        zrodla: ['drums', 'bass', 'other', 'vocals'],
+        urzadzenie: 'cpu',
+        braki: [
+            ...(maPythona ? [] : [`Brak środowiska Demucs w ${DEMUCS_PYTHON} — utwórz venv i zainstaluj: torch (CPU), demucs, numpy, truststore.`]),
+            ...(maSkrypt ? [] : [`Brak skryptu ${DEMUCS_SKRYPT}.`]),
+        ],
+        uwaga: 'Separacja liczy na CPU — orientacyjnie ~0.7x czasu trwania nagrania. '
+             + 'Dla długiego utworu to minuty, nie sekundy.',
+    });
+});
+
+/** Realna separacja. Blokuje do skutku — front ma o tym uprzedzić Suwerena. */
+app.post('/api/stemy/rozdziel', async (req, res) => {
+    const { plik, tylko } = req.body ?? {};
+    if (!plik) return res.status(400).json({ success: false, message: 'Brak "plik".' });
+    if (!fsSync.existsSync(DEMUCS_PYTHON)) {
+        return res.status(424).json({
+            success: false,
+            message: 'Środowisko Demucs nie jest zainstalowane.',
+            hint: `Sprawdź GET /api/stemy/status. Oczekiwany python: ${DEMUCS_PYTHON}`,
+        });
+    }
+
+    let wejscie;
+    try { wejscie = sciezkaWBibliotece(plik); }
+    catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+    if (!fsSync.existsSync(wejscie)) {
+        return res.status(404).json({ success: false, message: `Nie ma pliku: ${path.basename(wejscie)}` });
+    }
+
+    const args = [DEMUCS_SKRYPT, wejscie, STEMY_DIR];
+    if (Array.isArray(tylko) && tylko.length) args.push(`--tylko=${tylko.join(',')}`);
+
+    console.log(`[Stemy] 🎚️ Rozdzielam: ${path.basename(wejscie)} (CPU, to potrwa)`);
+    try {
+        // 30 min limitu: dlugie utwory na CPU potrafia trwac.
+        const { stdout } = await execFileAsync(DEMUCS_PYTHON, args, {
+            timeout: 30 * 60 * 1000, maxBuffer: 8 * 1024 * 1024,
+        });
+        // Skrypt wypisuje JSON w OSTATNIEJ linii — wczesniej moga byc ostrzezenia paczek.
+        const linia = String(stdout).trim().split(/\r?\n/).filter(Boolean).pop();
+        const d = JSON.parse(linia);
+        if (!d.success) return res.status(502).json(d);
+
+        console.log(`[Stemy] ✅ ${d.stemy.length} stemów w ${d.sekundySeparacji}s`);
+        res.json({
+            ...d,
+            stemy: d.stemy.map((x) => ({
+                ...x,
+                url: `http://127.0.0.1:${PORT}/music/${encodeURIComponent('_Stemy/' + x.plik)}`,
+                // RMS ponizej -55 dB to praktycznie cisza — mowimy o tym wprost,
+                // zamiast dawac Suwerenowi pusty plik bez slowa wyjasnienia.
+                pusty: x.rmsDb < -55,
+            })),
+            uwaga: 'To PRAWDZIWA separacja (model uczony), nie podział na pasma. '
+                 + 'Stem oznaczony jako pusty znaczy, że model nie znalazł tam materiału '
+                 + '(np. wokal w utworze instrumentalnym) — to poprawny wynik, nie błąd.',
+        });
+    } catch (err) {
+        const powod = err.killed ? 'przekroczono 30 minut' : (err.stderr || err.message || '').slice(0, 400);
+        console.warn(`[Stemy] ❌ ${powod}`);
+        res.status(502).json({ success: false, message: `Separacja nie powiodła się: ${powod}` });
+    }
+});
+
 // ── 🎙️ JOANNA — KOMPANKA Z RĘKAMI ───────────────────────────────────────────
 // Do tej pory TeOgochi tylko komentowała muzykę. Tu dostaje ręce: rozmowa może
 // wykonać akcję. Wzorzec bliźniaczy z /api/rezyser/rozmowa — ta sama dyscyplina
