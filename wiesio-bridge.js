@@ -42,6 +42,15 @@ import {
     wzorPoNazwie as bitWzorPoNazwie,
     renderujBit,
 } from './services/BitService.js';
+import {
+    PASMA as RZEZBA_PASMA,
+    dlugosc as audioDlugosc,
+    tnij as audioTnij,
+    petla as audioPetla,
+    sklej as audioSklej,
+    znormalizuj as audioNormalizuj,
+    pasma as audioPasma,
+} from './services/RzezbaAudioService.js';
 import MechanicService       from './services/MechanicService.js';
 import TurbovecService       from './services/TurbovecService.js';
 import ShellSanitizer        from './services/ShellSanitizer.js';
@@ -5988,6 +5997,96 @@ app.post('/api/bit/parsuj', (req, res) => {
     }
     const { matryca, nieznane } = bitParsujMatryce(grid, kroki);
     res.json({ success: true, kroki, bpm, matryca, nieznaneSciezki: nieznane, dostepneSciezki: BIT_SCIEZKI });
+});
+
+// ── ✂️ RZEŹBA AUDIO — cięcie, pętle, sklejanie, pasma ────────────────────────
+// Obróbka gotowych nagrań przez lokalny ffmpeg. Wyniki lądują w _OtakOs_Muzyka/_Rzezba,
+// żeby szkice nie mieszały się z gotowymi utworami w bibliotece radia.
+//
+// UWAGA NAZEWNICZA: `pasma` to rozdział po CZĘSTOTLIWOŚCI, NIE separacja stemów.
+// Wyciąganie wokalu z miksu wymaga modelu (Demucs) — węzeł go nie ma i nie udajemy,
+// że ma. Endpoint zwraca to w polu `uwaga`.
+const RZEZBA_DIR = path.join(MUSIC_DIR, '_Rzezba');
+
+/** Zamienia nazwę pliku z biblioteki na pełną ścieżkę; blokuje ucieczkę z katalogu. */
+function sciezkaWBibliotece(nazwa) {
+    const pelna = path.resolve(MUSIC_DIR, String(nazwa || ''));
+    if (!pelna.startsWith(path.resolve(MUSIC_DIR))) {
+        throw new Error('Ścieżka ucieka poza bibliotekę muzyki.');
+    }
+    return pelna;
+}
+
+function urlBity(pelna) {
+    const wzgl = path.relative(MUSIC_DIR, pelna).replace(/\\/g, '/');
+    return `http://127.0.0.1:${PORT}/music/${encodeURIComponent(wzgl)}`;
+}
+
+app.get('/api/rzezba/info', async (req, res) => {
+    const plik = req.query.plik;
+    if (!plik) return res.status(400).json({ success: false, message: 'Brak ?plik=' });
+    try {
+        const pelna = sciezkaWBibliotece(plik);
+        const sek = await audioDlugosc(pelna);
+        res.json({ success: true, plik, sekundy: sek, pasma: RZEZBA_PASMA });
+    } catch (err) {
+        res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/rzezba/tnij', async (req, res) => {
+    try {
+        const w = await audioTnij({
+            plik: sciezkaWBibliotece(req.body?.plik), od: req.body?.od, ile: req.body?.ile,
+            katalogWy: RZEZBA_DIR,
+        });
+        console.log(`[Rzeźba] ✂️ ${w.plik} (${w.od}s +${w.ile}s)`);
+        res.json({ success: true, ...w, url: urlBity(w.sciezka) });
+    } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+});
+
+app.post('/api/rzezba/petla', async (req, res) => {
+    try {
+        const w = await audioPetla({
+            plik: sciezkaWBibliotece(req.body?.plik), od: req.body?.od, ile: req.body?.ile,
+            powtorzen: req.body?.powtorzen, katalogWy: RZEZBA_DIR,
+        });
+        console.log(`[Rzeźba] 🔁 ${w.plik} x${w.powtorzen}`);
+        res.json({ success: true, ...w, url: urlBity(w.sciezka) });
+    } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+});
+
+app.post('/api/rzezba/sklej', async (req, res) => {
+    try {
+        const pliki = (req.body?.pliki ?? []).map(sciezkaWBibliotece);
+        const w = await audioSklej({ pliki, katalogWy: RZEZBA_DIR });
+        console.log(`[Rzeźba] 🔗 ${w.plik} (${w.zlaczono} plików)`);
+        res.json({ success: true, ...w, url: urlBity(w.sciezka) });
+    } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+});
+
+app.post('/api/rzezba/normalizuj', async (req, res) => {
+    try {
+        const w = await audioNormalizuj({
+            plik: sciezkaWBibliotece(req.body?.plik), lufs: req.body?.lufs, katalogWy: RZEZBA_DIR,
+        });
+        console.log(`[Rzeźba] 📏 ${w.plik} -> ${w.lufs} LUFS`);
+        res.json({ success: true, ...w, url: urlBity(w.sciezka) });
+    } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+});
+
+app.post('/api/rzezba/pasma', async (req, res) => {
+    try {
+        const w = await audioPasma({
+            plik: sciezkaWBibliotece(req.body?.plik), ktore: req.body?.ktore, katalogWy: RZEZBA_DIR,
+        });
+        console.log(`[Rzeźba] 🎚️ pasma: ${w.pasma.map(x => x.pasmo).join(', ')}`);
+        res.json({
+            success: true,
+            pasma: w.pasma.map(x => ({ ...x, url: urlBity(x.sciezka) })),
+            uwaga: w.uwaga,
+        });
+    } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 });
 
 // ── 🎙️ JOANNA — KOMPANKA Z RĘKAMI ───────────────────────────────────────────
