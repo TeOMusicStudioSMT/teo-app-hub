@@ -22,6 +22,7 @@ import path from 'path';
 /** Biała lista. Model NIE wymyśli sobie nowej akcji — nieznana jest odrzucana. */
 export const AKCJE_JOANNY = new Set([
     'zrob_utwor', 'zagraj', 'ocen', 'zapamietaj', 'pokaz_biblioteke',
+    'stworz_bit',   // step-grid: matryca rytmiczna -> realny WAV
 ]);
 
 const PLIK = 'joanna_produkcja.json';
@@ -152,7 +153,10 @@ export function promptSystemowy(kontekst, imie = 'Joanna') {
         '  {"typ":"zagraj","czego":"..."} — znajdź i podaj utwór z biblioteki do odtworzenia\n' +
         '  {"typ":"ocen","ocena":4,"uwaga":"..."} — zapisz ocenę ostatniego utworu\n' +
         '  {"typ":"zapamietaj","fakt":"..."} — zapisz trwałą preferencję Suwerena\n' +
-        '  {"typ":"pokaz_biblioteke"} — pokaż, co już nagraliście\n\n' +
+        '  {"typ":"pokaz_biblioteke"} — pokaż, co już nagraliście\n' +
+        '  {"typ":"stworz_bit","bpm":124,"steps":16,"dsp_freq":432,"grid":{"kick":"x---x---x---x---","snare":"----x-------x---","hihat":"x-x-x-x-x-x-x-x-"}} — złóż bit ze step-gridu\n\n' +
+        'W bicie ścieżki to: kick, snare, hihat, synth. Wzór zapisujesz jako ciąg 16 znaków, ' +
+        'gdzie x to uderzenie a myślnik cisza. Kick na 1 i 3, werbel na 2 i 4 to podstawa.\n\n' +
         'Pola opcjonalne pomijaj, gdy Suweren ich nie podał — nie zmyślaj wartości.\n' +
         'Generacja trwa kilkadziesiąt sekund, więc mówiąc o niej uprzedź, że to chwilę potrwa.\n\n' +
         'Odpowiadaj WYŁĄCZNIE takim JSON-em, bez markdown, bez niczego poza nim:\n' +
@@ -165,6 +169,8 @@ export function promptSystemowy(kontekst, imie = 'Joanna') {
         '{"mowa":"Zapisuję to sobie.","akcja":{"typ":"zapamietaj","fakt":"Suweren lubi mocniejszy bas"}}\n' +
         'Suweren: ten był świetny, daję pięć\n' +
         '{"mowa":"Cieszę się!","akcja":{"typ":"ocen","ocena":5}}\n\n' +
+        'Suweren: zrób mi bit 124 na cztery czwarte\n' +
+        '{"mowa":"Składam prosty bit, posłuchaj.","akcja":{"typ":"stworz_bit","bpm":124,"steps":16,"grid":{"kick":"x---x---x---x---","snare":"----x-------x---","hihat":"x-x-x-x-x-x-x-x-"}}}\n\n' +
         'ZASADA ŻELAZNA: jeśli powiesz, że coś zapamiętasz, zapiszesz albo zrobisz — ' +
         'MUSISZ w tej samej odpowiedzi wykonać odpowiednią akcję. Sama obietnica bez ' +
         'akcji jest kłamstwem i jest zabroniona.\n' +
@@ -184,6 +190,7 @@ export function zdanieZWyniku(typ, wynik) {
         case 'ocen':             return `Zapisałam ocenę — ${wynik.opis}.`;
         case 'zapamietaj':       return `Zapamiętałam: ${wynik.opis}.`;
         case 'pokaz_biblioteke': return `Mamy ${wynik.opis}.`;
+        case 'stworz_bit':       return `Bit gotowy — ${wynik.opis}.`;
         default:                 return `Zrobione — ${wynik.opis}.`;
     }
 }

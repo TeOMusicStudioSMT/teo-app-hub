@@ -35,6 +35,11 @@ import {
     promptSystemowy as joannaPrompt,
     zdanieZWyniku as joannaZdanie,
 } from './services/JoannaService.js';
+import {
+    SCIEZKI as BIT_SCIEZKI,
+    parsujMatryce as bitParsujMatryce,
+    renderujBit,
+} from './services/BitService.js';
 import MechanicService       from './services/MechanicService.js';
 import TurbovecService       from './services/TurbovecService.js';
 import ShellSanitizer        from './services/ShellSanitizer.js';
@@ -5926,6 +5931,42 @@ async function genOllama(prompt, model, ms = 40000) {
     } catch { return ''; }
 }
 // ── 🐣 TEOGOCHI — mały kompan, live komentarz na to co gra ───────────────────
+// ── 🥁 PANEL BITÓW — suwerenny step-grid ─────────────────────────────────────
+// Matryca [1,0,0,0,...] → realny plik WAV. Perkusja SYNTEZOWANA proceduralnie,
+// bez sampli i bez zewnętrznego DAW-a. Bity lądują w _OtakOs_Muzyka/_Bity,
+// żeby nie mieszać szkiców z gotowymi utworami w bibliotece radia.
+const BITY_DIR = path.join(MUSIC_DIR, '_Bity');
+
+app.post('/api/bit/render', async (req, res) => {
+    try {
+        const w = await renderujBit(req.body ?? {}, BITY_DIR);
+        console.log(`[Bity] 🥁 ${w.plik} — ${w.bpm} BPM, ${w.kroki} kroków, ${w.dspFreq} Hz, ${w.uderzen} uderzeń`);
+        res.json({
+            success: true,
+            plik: w.plik,
+            sciezka: w.sciezka,
+            url: `http://127.0.0.1:${PORT}/music/${encodeURIComponent('_Bity/' + w.plik)}`,
+            bpm: w.bpm, kroki: w.kroki, dspFreq: w.dspFreq, powtorzen: w.powtorzen,
+            sekundy: Number(w.sekundy.toFixed(2)), uderzen: w.uderzen,
+            matryca: w.matryca,
+            // Nie milczymy o ścieżkach, których nie znamy — model bywa kreatywny.
+            nieznaneSciezki: w.nieznane.length ? w.nieznane : undefined,
+            dostepneSciezki: BIT_SCIEZKI,
+            // Uczciwie: strojenie dotyczy materiału wysokościowego, nie szumu.
+            uwagaStrojenie: `dsp_freq=${w.dspFreq} stroi stopę, korpus werbla i synth-perc. Hi-hat to szum nieharmoniczny — nie jest strojony.`,
+        });
+    } catch (err) {
+        res.status(400).json({ success: false, message: err.message, dostepneSciezki: BIT_SCIEZKI });
+    }
+});
+
+/** Podgląd samego parsera — pozwala sprawdzić wzór bez renderowania audio. */
+app.post('/api/bit/parsuj', (req, res) => {
+    const kroki = [8, 16, 32, 64].includes(Number(req.body?.steps)) ? Number(req.body.steps) : 16;
+    const { matryca, nieznane } = bitParsujMatryce(req.body?.grid, kroki);
+    res.json({ success: true, kroki, matryca, nieznaneSciezki: nieznane, dostepneSciezki: BIT_SCIEZKI });
+});
+
 // ── 🎙️ JOANNA — KOMPANKA Z RĘKAMI ───────────────────────────────────────────
 // Do tej pory TeOgochi tylko komentowała muzykę. Tu dostaje ręce: rozmowa może
 // wykonać akcję. Wzorzec bliźniaczy z /api/rezyser/rozmowa — ta sama dyscyplina
@@ -6089,6 +6130,28 @@ async function wykonajAkcjeJoanny(akcja) {
             if (!tresc) return { wykonana: false, powod: 'pusty fakt' };
             const w = await joannaZapamietaj(ANTIGRAVITY_DIR, tresc);
             return { wykonana: true, opis: w.tresc };
+        }
+
+        case 'stworz_bit': {
+            // Jason w specyfikacji zaproponował kształt {"akcja":"stworz_bit","parametry":{...}}.
+            // Parser Reżysera spłaszcza to do akcja.parametry, więc obsługujemy OBA
+            // kształty — i ten, i płaski {"typ":"stworz_bit","bpm":...}.
+            const p = akcja.parametry ?? akcja;
+            try {
+                const w = await renderujBit(p, BITY_DIR);
+                console.log(`[Joanna] 🥁 Złożyła bit: ${w.plik} (${w.bpm} BPM, ${w.uderzen} uderzeń)`);
+                return {
+                    wykonana: true,
+                    opis: `${w.bpm} BPM, ${w.kroki} kroków, ${w.uderzen} uderzeń, strojenie ${w.dspFreq} Hz`,
+                    plik: w.plik,
+                    url: `http://127.0.0.1:${PORT}/music/${encodeURIComponent('_Bity/' + w.plik)}`,
+                    matryca: w.matryca,
+                    sekundy: Number(w.sekundy.toFixed(2)),
+                    nieznaneSciezki: w.nieznane.length ? w.nieznane : undefined,
+                };
+            } catch (e) {
+                return { wykonana: false, powod: e.message };
+            }
         }
 
         case 'pokaz_biblioteke': {
