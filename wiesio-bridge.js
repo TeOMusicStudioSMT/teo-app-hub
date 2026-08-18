@@ -6319,6 +6319,68 @@ app.post('/api/joanna/domknij', async (req, res) => {
     }
 });
 
+/**
+ * 📻 ZAPOWIEDŹ RADIOWA — Joanna jako DJ-ka Katedry.
+ *
+ * Krótkie zdanie między utworami. Świadomie NIE syntezujemy tu mowy: głos robi
+ * przeglądarka (speechSynthesis), bo lokalny silnik klonu głosu jest opcjonalny
+ * i zwykle go nie ma. Most daje TEKST, front daje GŁOS — i nikt nie udaje, że
+ * mamy studyjny lektor.
+ *
+ * Zapowiedź zna pamięć produkcji, więc o własnym utworze powie inaczej niż
+ * o cudzym („ten składałam wczoraj").
+ */
+app.post('/api/joanna/zapowiedz', async (req, res) => {
+    const { utwor, poprzedni = null, imie = 'Joanna' } = req.body ?? {};
+    if (!utwor) return res.status(400).json({ success: false, message: 'Brak "utwor".' });
+
+    try {
+        const dane = await joannaPamiec(ANTIGRAVITY_DIR);
+        // Czy to jej własna produkcja? Dopasowanie po nazwie pliku.
+        const wlasny = (dane.utwory ?? []).find((u) => u.plik && String(utwor).includes(u.plik.replace(/\.[^.]+$/, '')));
+
+        const kontekst = [
+            `Zaraz zagra: ${utwor}`,
+            poprzedni ? `Przed chwilą grało: ${poprzedni}` : null,
+            wlasny ? `TEN UTWÓR TY ZROBIŁAŚ. Opis: „${wlasny.opis}"${wlasny.ocena ? `, Suweren dał mu ${wlasny.ocena}/5` : ''}.` : null,
+        ].filter(Boolean).join('\n');
+
+        const system =
+            `Jesteś ${imie} — DJ-ką Radia Katedry OtakOS. Mówisz PO POLSKU, w rodzaju żeńskim. ` +
+            'Twoja wypowiedź jest CZYTANA NA GŁOS między utworami: JEDNO zdanie, maksymalnie 18 słów. ' +
+            'Bez markdownu, bez emoji, bez cudzysłowów, bez podawania nazwy pliku z rozszerzeniem. ' +
+            'Masz brzmieć jak radio: ciepło, konkretnie, czasem z humorem. ' +
+            'Jeśli utwór jest twój — możesz o tym wspomnieć naturalnie, bez przechwałek. ' +
+            'Zwróć SAMO ZDANIE, nic więcej.';
+
+        const odp = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: DEFAULT_LLM, system, prompt: kontekst,
+                stream: false, options: { temperature: 0.9 },
+            }),
+        });
+        if (!odp.ok) throw new Error(`Ollama HTTP ${odp.status}`);
+        const d = await odp.json();
+
+        // Model lubi dokleić cudzysłowy albo drugie zdanie — bierzemy pierwsze,
+        // bo radio nie znosi gadania przez wejście wokalu.
+        let zdanie = String(d.response || '').trim()
+            .replace(/^["'„”]+|["'„”]+$/g, '')
+            .split(/(?<=[.!?])\s+/)[0]
+            .trim();
+        if (!zdanie) {
+            return res.status(502).json({ success: false, message: 'Joanna milczy — rdzeń AI zwrócił pustkę.' });
+        }
+        console.log(`[Radio] 📻 Zapowiedź: „${zdanie.slice(0, 70)}"`);
+        res.json({ success: true, zapowiedz: zdanie, wlasny: !!wlasny });
+    } catch (err) {
+        console.warn(`[Radio] ❌ Zapowiedź: ${err.message}`);
+        res.status(502).json({ success: false, message: err.message });
+    }
+});
+
 app.post('/api/teogochi/comment', async (req, res) => {
     const { track, lyric, stage, mood, name } = req.body ?? {};
     const model = DEFAULT_LLM;
