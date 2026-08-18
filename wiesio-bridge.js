@@ -24,6 +24,17 @@ const require = createRequire(import.meta.url);
 
 // ── ARCHIWISTA WIEDZY (KnowledgeGraphService) ────────────────────────────────
 import KnowledgeGraphService from './services/KnowledgeGraphService.js';
+import {
+    AKCJE_JOANNY,
+    pamiec as joannaPamiec,
+    zapiszUtwor as joannaZapiszUtwor,
+    dopiszPlik as joannaDopiszPlik,
+    ocenUtwor as joannaOcen,
+    zapamietaj as joannaZapamietaj,
+    zbudujKontekst as joannaKontekst,
+    promptSystemowy as joannaPrompt,
+    zdanieZWyniku as joannaZdanie,
+} from './services/JoannaService.js';
 import MechanicService       from './services/MechanicService.js';
 import TurbovecService       from './services/TurbovecService.js';
 import ShellSanitizer        from './services/ShellSanitizer.js';
@@ -5915,6 +5926,214 @@ async function genOllama(prompt, model, ms = 40000) {
     } catch { return ''; }
 }
 // ── 🐣 TEOGOCHI — mały kompan, live komentarz na to co gra ───────────────────
+// ── 🎙️ JOANNA — KOMPANKA Z RĘKAMI ───────────────────────────────────────────
+// Do tej pory TeOgochi tylko komentowała muzykę. Tu dostaje ręce: rozmowa może
+// wykonać akcję. Wzorzec bliźniaczy z /api/rezyser/rozmowa — ta sama dyscyplina
+// (biała lista akcji, kontrakt {mowa, akcja}, wynik z powrotem na zdanie).
+
+/** Pamięć produkcji + ostatnie utwory — do podglądu w UI. */
+app.get('/api/joanna/pamiec', async (req, res) => {
+    try {
+        const dane = await joannaPamiec(ANTIGRAVITY_DIR);
+        res.json({ success: true, ...dane });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/** Ocena wprost z UI (kciuk w dół/górę), bez przechodzenia przez model. */
+app.post('/api/joanna/ocena', async (req, res) => {
+    const { utworId, ocena, uwaga } = req.body ?? {};
+    try {
+        const u = await joannaOcen(ANTIGRAVITY_DIR, { utworId, ocena, uwaga });
+        if (!u) return res.status(404).json({ success: false, message: 'Nie ma czego oceniać — brak utworów w pamięci.' });
+        res.json({ success: true, utwor: u });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/joanna/rozmowa  { wypowiedz, historia[], imie? }
+ * Zwraca { mowa, akcja, wynikAkcji, uwaga }.
+ */
+app.post('/api/joanna/rozmowa', async (req, res) => {
+    const { wypowiedz = '', historia = [], imie = 'Joanna' } = req.body ?? {};
+    if (String(wypowiedz).trim().length < 2) {
+        return res.status(400).json({ success: false, message: 'Pusta wypowiedź.' });
+    }
+
+    try {
+        const dane = await joannaPamiec(ANTIGRAVITY_DIR);
+        const kontekst = joannaKontekst(dane);
+        // Ostatnie 8 tur — dalej i tak wypycha okno modelu na tej maszynie.
+        const rozmowa = (Array.isArray(historia) ? historia : []).slice(-8)
+            .map(t => `${t.role === 'user' ? 'Suweren' : 'Ty'}: ${t.content}`).join('\n');
+
+        const odp = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: DEFAULT_LLM,
+                system: joannaPrompt(kontekst, imie),
+                prompt: `${rozmowa ? rozmowa + '\n' : ''}Suweren: ${wypowiedz}\nTy:`,
+                stream: false,
+                options: { temperature: 0.8 },
+            }),
+        });
+        if (!odp.ok) throw new Error(`Ollama HTTP ${odp.status} — sprawdź, czy rdzeń AI stoi.`);
+        const wynikLlm = await odp.json();
+
+        // Kontrakt: gdy model go nie utrzyma, NIE zgadujemy akcji — lepiej sama mowa.
+        let mowa, akcja = null, uwaga = null;
+        try {
+            ({ mowa, akcja } = odczytajOdpowiedz(wynikLlm.response));
+        } catch (e) {
+            mowa = String(wynikLlm.response || '').trim();
+            uwaga = `Model nie utrzymał formatu (${e.message}) — potraktowane jako sama wypowiedź, bez akcji.`;
+            console.warn(`[Joanna] ⚠️ ${uwaga}`);
+        }
+        if (!mowa && !akcja) {
+            return res.status(502).json({ success: false, message: 'Joanna milczy — rdzeń AI zwrócił pustkę.' });
+        }
+
+        // ── Wykonanie akcji (biała lista) ─────────────────────────────────────
+        let wynikAkcji = null;
+        if (akcja) {
+            if (!AKCJE_JOANNY.has(akcja.typ)) {
+                wynikAkcji = { wykonana: false, powod: `nieznana akcja „${akcja.typ}" — pominięta` };
+                console.warn(`[Joanna] ⛔ ${wynikAkcji.powod}`);
+            } else {
+                try {
+                    wynikAkcji = await wykonajAkcjeJoanny(akcja);
+                } catch (e) {
+                    wynikAkcji = { wykonana: false, powod: e.message };
+                    console.warn(`[Joanna] ❌ Akcja "${akcja.typ}" padła: ${e.message}`);
+                }
+            }
+            // Doklejamy zdanie o wyniku, żeby mowa nie rozjechała się z faktami —
+            // model potrafi powiedzieć "zrobione", gdy akcja padła.
+            const zdanie = joannaZdanie(akcja.typ, wynikAkcji);
+            mowa = mowa ? `${mowa} ${zdanie}` : zdanie;
+        }
+
+        res.json({ success: true, mowa, akcja, wynikAkcji, uwaga });
+    } catch (err) {
+        console.warn(`[Joanna] ❌ ${err.message}`);
+        res.status(502).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * Realne wykonanie akcji Joanny. Każda gałąź wywołuje istniejący, sprawdzony
+ * mechanizm — nic tu nie udaje działania.
+ */
+async function wykonajAkcjeJoanny(akcja) {
+    switch (akcja.typ) {
+
+        case 'zrob_utwor': {
+            // Generacja trwa kilkadziesiąt sekund — NIE blokujemy nią rozmowy.
+            // Kolejkujemy i oddajemy promptId; front odpytuje /api/music/progress.
+            const dlugosc = Math.max(10, Math.min(240, Number(akcja.dlugosc) || 30));
+            const ciało = {
+                prompt: [akcja.opis, akcja.styl].filter(Boolean).join(', ') || 'ambient soundscape',
+                lyrics: akcja.tekst || '',
+                duration: dlugosc,
+                ...(akcja.bpm ? { bpm: Math.max(40, Math.min(200, Number(akcja.bpm))) } : {}),
+                ...(akcja.tonacja ? { keyscale: String(akcja.tonacja) } : {}),
+                language: 'pl',
+            };
+            const r = await fetch(`http://127.0.0.1:${PORT}/api/music/generate`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(ciało),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.success) {
+                return { wykonana: false, powod: d.message || `silnik odmówił (HTTP ${r.status})` };
+            }
+            const wpis = await joannaZapiszUtwor(ANTIGRAVITY_DIR, {
+                opis: ciało.prompt, styl: akcja.styl ?? null, bpm: akcja.bpm ?? null,
+                tonacja: akcja.tonacja ?? null, dlugosc, promptId: d.promptId,
+            });
+            console.log(`[Joanna] 🎼 Zleciła utwór: "${ciało.prompt.slice(0, 50)}" (${dlugosc}s, id ${wpis.id})`);
+            return {
+                wykonana: true,
+                opis: `${dlugosc} sekund, ${ciało.prompt.slice(0, 60)}`,
+                promptId: d.promptId, utworId: wpis.id, rodzina: d.rodzina,
+            };
+        }
+
+        case 'zagraj': {
+            const szukaj = String(akcja.czego ?? '').toLowerCase();
+            const pliki = (await getAudioFilesRecursive(MUSIC_DIR)) ?? [];
+            const trafione = pliki.filter(p => !szukaj || path.basename(p).toLowerCase().includes(szukaj));
+            if (!trafione.length) {
+                return { wykonana: false, powod: szukaj ? `nie znalazłam nic pasującego do „${szukaj}"` : 'biblioteka jest pusta' };
+            }
+            const wybrany = trafione[Math.floor(Math.random() * trafione.length)];
+            const nazwa = path.basename(wybrany);
+            return {
+                wykonana: true, opis: nazwa,
+                url: `http://127.0.0.1:${PORT}/music/${encodeURIComponent(path.relative(MUSIC_DIR, wybrany).replace(/\\/g, '/'))}`,
+            };
+        }
+
+        case 'ocen': {
+            const u = await joannaOcen(ANTIGRAVITY_DIR, { ocena: akcja.ocena, uwaga: akcja.uwaga });
+            if (!u) return { wykonana: false, powod: 'nie ma jeszcze żadnego utworu do oceny' };
+            return { wykonana: true, opis: `${u.ocena ?? '—'}/5 dla „${u.opis.slice(0, 40)}"` };
+        }
+
+        case 'zapamietaj': {
+            const tresc = akcja.fakt ?? akcja.tresc;
+            if (!tresc) return { wykonana: false, powod: 'pusty fakt' };
+            const w = await joannaZapamietaj(ANTIGRAVITY_DIR, tresc);
+            return { wykonana: true, opis: w.tresc };
+        }
+
+        case 'pokaz_biblioteke': {
+            const pliki = (await getAudioFilesRecursive(MUSIC_DIR)) ?? [];
+            const dane = await joannaPamiec(ANTIGRAVITY_DIR);
+            return {
+                wykonana: true,
+                opis: `${pliki.length} utworów w bibliotece, ${dane.utwory.length} z mojej produkcji`,
+                utwory: pliki.slice(-20).map(p => path.basename(p)),
+            };
+        }
+
+        default:
+            return { wykonana: false, powod: `akcja „${akcja.typ}" nie ma implementacji` };
+    }
+}
+
+/**
+ * Domyka utwór Joanny: zbiera gotowe audio z ComfyUI do biblioteki i dopina
+ * nazwę pliku do jej pamięci produkcji. Front woła to, gdy postęp = gotowe.
+ */
+app.post('/api/joanna/domknij', async (req, res) => {
+    const { promptId, title } = req.body ?? {};
+    if (!promptId) return res.status(400).json({ success: false, message: 'Brak "promptId".' });
+    try {
+        const p = await fetch(`http://127.0.0.1:${PORT}/api/music/progress?promptId=${encodeURIComponent(promptId)}`);
+        const dp = await p.json();
+        if (dp.stan !== 'gotowe' || !dp.audio?.length) {
+            return res.json({ success: false, stan: dp.stan, message: 'Utwór jeszcze nie jest gotowy.' });
+        }
+        const a = dp.audio[0];
+        const c = await fetch(`http://127.0.0.1:${PORT}/api/music/collect`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: a.filename, subfolder: a.subfolder, type: a.type, title: title || 'Joanna' }),
+        });
+        const dc = await c.json();
+        if (!dc.success) return res.status(502).json({ success: false, message: dc.message });
+        const wpis = await joannaDopiszPlik(ANTIGRAVITY_DIR, promptId, path.basename(dc.savedPath));
+        console.log(`[Joanna] 💾 Domknęła utwór: ${path.basename(dc.savedPath)}`);
+        res.json({ success: true, savedPath: dc.savedPath, streamUrl: dc.streamUrl, utwor: wpis });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 app.post('/api/teogochi/comment', async (req, res) => {
     const { track, lyric, stage, mood, name } = req.body ?? {};
     const model = DEFAULT_LLM;
