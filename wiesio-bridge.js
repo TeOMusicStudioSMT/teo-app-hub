@@ -38,6 +38,8 @@ import {
 import {
     SCIEZKI as BIT_SCIEZKI,
     parsujMatryce as bitParsujMatryce,
+    listaWzorcow as bitListaWzorcow,
+    wzorPoNazwie as bitWzorPoNazwie,
     renderujBit,
 } from './services/BitService.js';
 import MechanicService       from './services/MechanicService.js';
@@ -5945,6 +5947,7 @@ app.post('/api/bit/render', async (req, res) => {
             success: true,
             plik: w.plik,
             sciezka: w.sciezka,
+            uzytyWzor: w.uzytyWzor ?? undefined,
             url: `http://127.0.0.1:${PORT}/music/${encodeURIComponent('_Bity/' + w.plik)}`,
             bpm: w.bpm, kroki: w.kroki, dspFreq: w.dspFreq, powtorzen: w.powtorzen,
             sekundy: Number(w.sekundy.toFixed(2)), uderzen: w.uderzen,
@@ -5960,11 +5963,31 @@ app.post('/api/bit/render', async (req, res) => {
     }
 });
 
+/** Biblioteka gotowych rytmów — wspólna dla panelu i dla Joanny. */
+app.get('/api/bit/wzorce', (req, res) => {
+    res.json({ success: true, wzorce: bitListaWzorcow(), sciezki: BIT_SCIEZKI });
+});
+
 /** Podgląd samego parsera — pozwala sprawdzić wzór bez renderowania audio. */
 app.post('/api/bit/parsuj', (req, res) => {
     const kroki = [8, 16, 32, 64].includes(Number(req.body?.steps)) ? Number(req.body.steps) : 16;
-    const { matryca, nieznane } = bitParsujMatryce(req.body?.grid, kroki);
-    res.json({ success: true, kroki, matryca, nieznaneSciezki: nieznane, dostepneSciezki: BIT_SCIEZKI });
+    // Nazwa wzorca zamiast matrycy — panel wczytuje preset tą samą drogą,
+    // z której korzysta Joanna, żeby definicje nie rozjechały się w dwóch miejscach.
+    let grid = req.body?.grid;
+    let bpm = null;
+    if (req.body?.wzor) {
+        const w = bitWzorPoNazwie(req.body.wzor);
+        if (!w) {
+            return res.status(400).json({
+                success: false,
+                message: `Nie znam wzorca „${req.body.wzor}".`,
+                dostepneWzorce: bitListaWzorcow().map(x => x.id),
+            });
+        }
+        grid = w.grid; bpm = w.bpm;
+    }
+    const { matryca, nieznane } = bitParsujMatryce(grid, kroki);
+    res.json({ success: true, kroki, bpm, matryca, nieznaneSciezki: nieznane, dostepneSciezki: BIT_SCIEZKI });
 });
 
 // ── 🎙️ JOANNA — KOMPANKA Z RĘKAMI ───────────────────────────────────────────

@@ -21,6 +21,74 @@ export const SCIEZKI = ['kick', 'snare', 'hihat', 'synth'];
 const SR = 44100;                 // sample rate
 const KROKOW_NA_TAKT = 16;        // 16 kroków = takt 4/4 w szesnastkach
 
+/**
+ * BIBLIOTEKA WZORCÓW — gotowe rytmy do wyboru.
+ *
+ * DLACZEGO ISTNIEJE: zmierzone na gemma4:e2b — mały model trzyma się przykładu
+ * z promptu i na prośbę „gęsty hi-hat co krok" i tak wkleja wzór z przykładu.
+ * Wybór z nazwanej listy jest dla niego zadaniem wykonalnym, a układanie matrycy
+ * od zera nie jest. Suweren dostaje te same wzory jako presety w panelu.
+ *
+ * Zapis w szesnastkach: 16 znaków = jeden takt 4/4.
+ */
+export const WZORCE = {
+    'four-on-floor': {
+        nazwa: 'Four on the Floor', opis: 'Stopa na każdą ćwierćnutę — house, techno, disco.',
+        bpm: 124,
+        grid: { kick: 'x---x---x---x---', snare: '----x-------x---', hihat: '--x---x---x---x-', synth: '----------------' },
+    },
+    'boom-bap': {
+        nazwa: 'Boom Bap', opis: 'Klasyka hip-hopu — leniwa stopa, mocny werbel na 2 i 4.',
+        bpm: 90,
+        grid: { kick: 'x-----x-x-------', snare: '----x-------x---', hihat: 'x-x-x-x-x-x-x-x-', synth: '----------------' },
+    },
+    'trap': {
+        nazwa: 'Trap', opis: 'Rzadka stopa, werbel na 3, hi-haty w trójkach i rolkach.',
+        bpm: 140,
+        grid: { kick: 'x-------x--x----', snare: '--------x-------', hihat: 'xxx-xxx-xxxxxx-x', synth: '----------------' },
+    },
+    'breakbeat': {
+        nazwa: 'Breakbeat', opis: 'Połamany rytm z synkopą — jungle, big beat.',
+        bpm: 135,
+        grid: { kick: 'x-----x---x-----', snare: '----x-------x-x-', hihat: 'x-x-x-x-x-x-x-x-', synth: '----------------' },
+    },
+    'dnb': {
+        nazwa: 'Drum & Bass', opis: 'Szybki two-step — stopa i werbel w klasycznym amenie.',
+        bpm: 174,
+        grid: { kick: 'x---------x-----', snare: '----x-------x---', hihat: 'x-x-x-x-x-x-x-x-', synth: '----------------' },
+    },
+    'ambient-puls': {
+        nazwa: 'Ambient Puls', opis: 'Bez perkusji — sam nastrojony puls syntezatora. Pod 432 Hz.',
+        bpm: 68,
+        grid: { kick: 'x-------x-------', snare: '----------------', hihat: '----------------', synth: 'x---x---x---x---' },
+    },
+    'oddech': {
+        nazwa: 'Oddech Zero-G', opis: 'Bardzo wolny, przestrzenny — stopa jak uderzenie serca.',
+        bpm: 60,
+        grid: { kick: 'x-------x-------', snare: '--------x-------', hihat: '--x---x---x---x-', synth: '------------x---' },
+    },
+    'marsz': {
+        nazwa: 'Marsz', opis: 'Prosty, zdecydowany rytm marszowy.',
+        bpm: 110,
+        grid: { kick: 'x---x---x---x---', snare: '--x---x---x---x-', hihat: '----------------', synth: '----------------' },
+    },
+};
+
+/** Lista dla UI i dla promptu Joanny — bez matryc, żeby nie puchło. */
+export function listaWzorcow() {
+    return Object.entries(WZORCE).map(([id, w]) => ({ id, nazwa: w.nazwa, opis: w.opis, bpm: w.bpm }));
+}
+
+/**
+ * Rozwija nazwę wzorca w matrycę. Zwraca null dla nieznanej nazwy — wołający
+ * ma wtedy powiedzieć wprost, że takiego wzoru nie ma, zamiast podstawiać cokolwiek.
+ */
+export function wzorPoNazwie(nazwa) {
+    if (!nazwa) return null;
+    const k = String(nazwa).toLowerCase().trim().replace(/[\s_]+/g, '-');
+    return WZORCE[k] ?? null;
+}
+
 // ── PARSER WZORCÓW TEKSTOWYCH ────────────────────────────────────────────────
 
 /**
@@ -207,23 +275,37 @@ export function doWav(pcm) {
  */
 export async function renderujBit(params, katalogDocelowy) {
     const kroki = [8, 16, 32, 64].includes(Number(params.steps)) ? Number(params.steps) : 16;
-    const bpm = Math.max(40, Math.min(220, Number(params.bpm) || 120));
     const dspFreq = Number(params.dsp_freq ?? params.dspFreq) || 432;
     const powtorzen = Math.max(1, Math.min(16, Number(params.powtorzen ?? params.bars) || 2));
 
-    const { matryca, nieznane } = parsujMatryce(params.grid, kroki);
+    // Nazwa wzorca zastępuje matrycę, gdy Suweren/Joanna nie podali własnej.
+    // Podany `grid` ZAWSZE wygrywa — wzorzec to punkt startowy, nie nadpisywacz.
+    let zrodloGrid = params.grid;
+    let uzytyWzor = null;
+    if (params.wzor) {
+        const w = wzorPoNazwie(params.wzor);
+        if (!w) {
+            throw new Error(`Nie znam wzorca „${params.wzor}". Dostępne: ${Object.keys(WZORCE).join(', ')}`);
+        }
+        uzytyWzor = params.wzor;
+        if (!zrodloGrid || !Object.keys(zrodloGrid).length) zrodloGrid = w.grid;
+        if (!params.bpm) params.bpm = w.bpm;
+    }
+
+    const { matryca, nieznane } = parsujMatryce(zrodloGrid, kroki);
     const pusta = SCIEZKI.every((s) => matryca[s].every((v) => !v));
     if (pusta) {
         throw new Error('Matryca jest pusta — żadna ścieżka nie ma uderzeń.');
     }
 
+    const bpm = Math.max(40, Math.min(220, Number(params.bpm) || 120));
     const { pcm, sekundy, uderzen } = syntezuj({ bpm, kroki, matryca, dspFreq, powtorzen });
     await fs.mkdir(katalogDocelowy, { recursive: true });
     const nazwa = `bit_${bpm}bpm_${dspFreq}hz_${Date.now()}.wav`;
     const sciezka = path.join(katalogDocelowy, nazwa);
     await fs.writeFile(sciezka, doWav(pcm));
 
-    return { plik: nazwa, sciezka, bpm, kroki, dspFreq, powtorzen, sekundy, uderzen, nieznane, matryca };
+    return { plik: nazwa, sciezka, bpm, kroki, dspFreq, powtorzen, sekundy, uderzen, nieznane, matryca, uzytyWzor };
 }
 
-export default { SCIEZKI, parsujWzor, parsujMatryce, syntezuj, doWav, renderujBit };
+export default { SCIEZKI, WZORCE, listaWzorcow, wzorPoNazwie, parsujWzor, parsujMatryce, syntezuj, doWav, renderujBit };

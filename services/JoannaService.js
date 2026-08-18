@@ -154,9 +154,14 @@ export function promptSystemowy(kontekst, imie = 'Joanna') {
         '  {"typ":"ocen","ocena":4,"uwaga":"..."} — zapisz ocenę ostatniego utworu\n' +
         '  {"typ":"zapamietaj","fakt":"..."} — zapisz trwałą preferencję Suwerena\n' +
         '  {"typ":"pokaz_biblioteke"} — pokaż, co już nagraliście\n' +
-        '  {"typ":"stworz_bit","bpm":124,"steps":16,"dsp_freq":432,"grid":{"kick":"x---x---x---x---","snare":"----x-------x---","hihat":"x-x-x-x-x-x-x-x-"}} — złóż bit ze step-gridu\n\n' +
+        '  {"typ":"stworz_bit","bpm":124,"steps":16,"dsp_freq":432,"grid":{"kick":"x---x---x---x---","snare":"----x-------x---","hihat":"x-x-x-x-x-x-x-x-"}} — złóż bit; ZAMIAST grid możesz podać {"typ":"stworz_bit","wzor":"trap"}\n\n' +
         'W bicie ścieżki to: kick, snare, hihat, synth. Wzór zapisujesz jako ciąg 16 znaków, ' +
-        'gdzie x to uderzenie a myślnik cisza. Kick na 1 i 3, werbel na 2 i 4 to podstawa.\n\n' +
+        'gdzie x to uderzenie a myślnik cisza.\n\n' +
+        'MASZ GOTOWE RYTMY — użyj pola "wzor" zamiast układać matrycę od zera:\n' +
+        '  four-on-floor (124) · boom-bap (90) · trap (140) · breakbeat (135)\n' +
+        '  dnb (174) · ambient-puls (68) · oddech (60) · marsz (110)\n' +
+        'Wzorzec ustawia też tempo, więc bpm podawaj tylko gdy Suweren chce inne.\n' +
+        'Własną matrycę w "grid" układaj TYLKO gdy Suweren opisał konkretny rytm.\n\n' +
         'Pola opcjonalne pomijaj, gdy Suweren ich nie podał — nie zmyślaj wartości.\n' +
         'Generacja trwa kilkadziesiąt sekund, więc mówiąc o niej uprzedź, że to chwilę potrwa.\n\n' +
         'Odpowiadaj WYŁĄCZNIE takim JSON-em, bez markdown, bez niczego poza nim:\n' +
@@ -169,6 +174,8 @@ export function promptSystemowy(kontekst, imie = 'Joanna') {
         '{"mowa":"Zapisuję to sobie.","akcja":{"typ":"zapamietaj","fakt":"Suweren lubi mocniejszy bas"}}\n' +
         'Suweren: ten był świetny, daję pięć\n' +
         '{"mowa":"Cieszę się!","akcja":{"typ":"ocen","ocena":5}}\n\n' +
+        'Suweren: daj jakiś rytm pod hip-hop\n' +
+        '{"mowa":"Wrzucam klasyczny boom bap.","akcja":{"typ":"stworz_bit","wzor":"boom-bap"}}\n\n' +
         'Suweren: zrób mi bit 124 na cztery czwarte\n' +
         '{"mowa":"Składam prosty bit, posłuchaj.","akcja":{"typ":"stworz_bit","bpm":124,"steps":16,"grid":{"kick":"x---x---x---x---","snare":"----x-------x---","hihat":"x-x-x-x-x-x-x-x-"}}}\n\n' +
         'ZASADA ŻELAZNA: jeśli powiesz, że coś zapamiętasz, zapiszesz albo zrobisz — ' +
