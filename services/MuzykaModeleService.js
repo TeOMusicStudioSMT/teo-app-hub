@@ -124,7 +124,8 @@ export async function status() {
     // "komplet" dla mieszanki DiT z ACE i encodera z MiniMaxa — a taki graf nie ruszy.
     // ACE wymaga DWÓCH encoderów (DualCLIPLoader), MiniMax jednego.
     const rodziny = {};
-    for (const nazwa of ['minimax', 'ace']) {
+    // ACE pierwsza — na slabszym sprzecie to ona realnie liczy (8 krokow vs faza AR).
+    for (const nazwa of ['ace', 'minimax']) {
         const swoje = gotowe.filter((p) => rodzina(p) === nazwa);
         const maRole = new Set(swoje.map((p) => p.role));
         const brakujaceRole = ROLE.filter((r) => !maRole.has(r));

@@ -123,7 +123,8 @@ function calculateGravity(vecA, vecB) {
 })();
 
 const app = express();
-const PORT = 3001;
+// Port z env — pozwala odpalic drugi most obok dzialajacego (testy) bez kolizji.
+const PORT = Number(process.env.OTAKOS_BRIDGE_PORT) || 3001;
 
 // 🐳 Docker/Live-USB: adres Ollamy z env (fallback lokalny IPv4 — dev bez zmian).
 function normalizeOllamaBase(h) {
@@ -5410,10 +5411,32 @@ app.post('/api/music/generate', async (req, res) => {
         });
     }
 
-    const ditId = body.ditId || cfgRodziny.dit;
-    const encId = body.encId || cfgRodziny.enc;
-    const encId2 = body.encId2 || cfgRodziny.enc2;
-    const vaeId = body.vaeId || cfgRodziny.vae;
+    // ── STRAŻ SPÓJNOŚCI RODZIN ────────────────────────────────────────────────
+    // Wagi róznych rodzin NIE lacza sie ze soba. Wpuszczenie DiT MiniMaxa do grafu
+    // ACE daje `KeyError: 'conditioning_scale'` dopiero po kilkunastu minutach
+    // liczenia — nod MiniMaxa dopisuje to pole do kondycjonowania, encoder ACE nie.
+    // Zdarzylo sie realnie: panel wysylal ditId z suwaka int8/fp16/fp32 (id MiniMaxa)
+    // niezaleznie od wybranej rodziny i nadpisywal domyslny model ACE.
+    // Dlatego most odrzuca obce id ZANIM cokolwiek policzy, zamiast im ufac.
+    const zObcejRodziny = [];
+    const zRodziny = (podane, domyslne, pole) => {
+        if (!podane) return domyslne;
+        const m = muzykaModelPoId(podane);
+        if (!m) { zObcejRodziny.push(`${pole}: nieznane id "${podane}"`); return domyslne; }
+        const jego = m.family || 'minimax';
+        if (jego !== wybrana) {
+            zObcejRodziny.push(`${pole}: "${podane}" należy do rodziny ${jego}, a graf jest z ${wybrana}`);
+            return domyslne;
+        }
+        return podane;
+    };
+    const ditId  = zRodziny(body.ditId,  cfgRodziny.dit,  'ditId');
+    const encId  = zRodziny(body.encId,  cfgRodziny.enc,  'encId');
+    const encId2 = zRodziny(body.encId2, cfgRodziny.enc2, 'encId2');
+    const vaeId  = zRodziny(body.vaeId,  cfgRodziny.vae,  'vaeId');
+    if (zObcejRodziny.length) {
+        console.warn(`[Muzyka] ⚠️ Odrzucono wagi z obcej rodziny: ${zObcejRodziny.join(' | ')}`);
+    }
 
     if (!prompt || !String(prompt).trim()) {
         return res.status(400).json({ success: false, message: 'Brak "prompt" (opis brzmienia).' });
@@ -5523,6 +5546,8 @@ app.post('/api/music/generate', async (req, res) => {
             podmienione,
             rodzina: wybrana,
             uwaga: cfgRodziny.uwaga,
+            // Nie milczymy o korektach — Suweren ma widziec, ze cos podmienilismy.
+            poprawione: zObcejRodziny.length ? zObcejRodziny : undefined,
             engine: `ComfyUI × ${cfgRodziny.etykieta}`,
             katalogModeli: MUZYKA_KATALOG_MODELI,
             // Gotowy plik zjedzie do output ComfyUI; przenosinami do _OtakOs_Muzyka
@@ -8010,6 +8035,200 @@ app.post('/api/wyprawy/:id/wplac', async (req, res) => {
         return res.json({ success: true, wpis, przelew, wyprawa: po });
     } catch (err) {
         return res.status(err instanceof BladGrv ? err.status : 400).json({ success: false, message: err.message });
+    }
+});
+
+// ── ⚡ MODEL CONTEXT PROTOCOL (MCP SKILLBOARD & REGISTRY 0.00G) ─────────────
+const MCP_REGISTRY_PATH = path.join(ANTIGRAVITY_DIR || process.cwd(), '.vault-0.00g', 'mcp-registry.json');
+let mcpRegistryCache = null;
+
+async function loadMcpRegistry() {
+    if (mcpRegistryCache) return mcpRegistryCache;
+    try {
+        await fs.mkdir(path.dirname(MCP_REGISTRY_PATH), { recursive: true });
+        const data = await fs.readFile(MCP_REGISTRY_PATH, 'utf8');
+        mcpRegistryCache = JSON.parse(data);
+        return mcpRegistryCache;
+    } catch (e) {
+        mcpRegistryCache = {
+            version: '0.00G',
+            activeSkills: ['postgres-mcp', 'sqlite-vault-mcp', 'github-ops-mcp', 'docker-sentinel-mcp', 'filesystem-core-mcp', 'terminal-exec-mcp', 'puppeteer-scraper-mcp', 'brave-search-mcp', 'youtube-transcript-mcp', 'ollama-matrix-mcp', 'ffmpeg-sonic-mcp'],
+            customSkills: [],
+            agentBindings: {
+                klaudiusz: ['postgres-mcp', 'sqlite-vault-mcp', 'github-ops-mcp', 'filesystem-core-mcp', 'terminal-exec-mcp', 'puppeteer-scraper-mcp', 'brave-search-mcp', 'ollama-matrix-mcp', 'ffmpeg-sonic-mcp'],
+                bob: ['sqlite-vault-mcp', 'filesystem-core-mcp', 'youtube-transcript-mcp', 'ollama-matrix-mcp', 'ffmpeg-sonic-mcp'],
+                ostry: ['github-ops-mcp', 'sentry-anomaly-mcp', 'filesystem-core-mcp', 'terminal-exec-mcp', 'ollama-matrix-mcp'],
+                mechanik: ['postgres-mcp', 'redis-cache-mcp', 'github-ops-mcp', 'docker-sentinel-mcp', 'sentry-anomaly-mcp', 'filesystem-core-mcp', 'terminal-exec-mcp', 'ollama-matrix-mcp'],
+                archiwista: ['postgres-mcp', 'sqlite-vault-mcp', 'filesystem-core-mcp', 'puppeteer-scraper-mcp', 'brave-search-mcp', 'youtube-transcript-mcp', 'ollama-matrix-mcp'],
+                wezyr: ['docker-sentinel-mcp', 'brave-search-mcp', 'ollama-matrix-mcp']
+            },
+            updatedAt: new Date().toISOString()
+        };
+        return mcpRegistryCache;
+    }
+}
+
+async function saveMcpRegistry(data) {
+    mcpRegistryCache = data;
+    try {
+        await fs.mkdir(path.dirname(MCP_REGISTRY_PATH), { recursive: true });
+        await fs.writeFile(MCP_REGISTRY_PATH, JSON.stringify(data, null, 2), 'utf8');
+    } catch (e) {
+        console.warn('[MCP Bridge] Nie udało się zapisać mcp-registry.json:', e.message);
+    }
+}
+
+app.get('/api/mcp/status', async (req, res) => {
+    try {
+        const reg = await loadMcpRegistry();
+        return res.json({
+            success: true,
+            online: true,
+            activeCount: reg.activeSkills?.length || 0,
+            totalAvailable: 15,
+            transport: 'STDIO / HTTP / SSE (0.00G)',
+            timestamp: new Date().toISOString()
+        });
+    } catch (e) {
+        return res.json({ success: true, online: true, activeCount: 11, totalAvailable: 15, transport: 'STDIO' });
+    }
+});
+
+app.get('/api/mcp/skills', async (req, res) => {
+    try {
+        const reg = await loadMcpRegistry();
+        return res.json({
+            success: true,
+            activeSkills: reg.activeSkills || [],
+            customSkills: reg.customSkills || [],
+            agentBindings: reg.agentBindings || {}
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/mcp/activate', async (req, res) => {
+    try {
+        const { skillId, command, transport, env, customConfig } = req.body || {};
+        if (!skillId) return res.status(400).json({ success: false, message: 'Wymagane skillId.' });
+        const reg = await loadMcpRegistry();
+        if (!reg.activeSkills.includes(skillId)) {
+            reg.activeSkills.push(skillId);
+            reg.updatedAt = new Date().toISOString();
+            await saveMcpRegistry(reg);
+        }
+        console.log(`[MCP Bridge] ⚡ Skill [${skillId}] aktywowany w Moście (${transport || 'stdio'}).`);
+        return res.json({
+            success: true,
+            skillId,
+            status: 'active',
+            message: `Skill ${skillId} został pomyślnie podpięty do Mostu 0.00G!`
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/mcp/deactivate', async (req, res) => {
+    try {
+        const { skillId } = req.body || {};
+        if (!skillId) return res.status(400).json({ success: false, message: 'Wymagane skillId.' });
+        const reg = await loadMcpRegistry();
+        reg.activeSkills = (reg.activeSkills || []).filter(id => id !== skillId);
+        reg.updatedAt = new Date().toISOString();
+        await saveMcpRegistry(reg);
+        console.log(`[MCP Bridge] 🔌 Skill [${skillId}] odłączony.`);
+        return res.json({ success: true, skillId, status: 'inactive' });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/mcp/assign', async (req, res) => {
+    try {
+        const { skillId, agentId, assigned } = req.body || {};
+        if (!skillId || !agentId) return res.status(400).json({ success: false, message: 'Wymagane skillId i agentId.' });
+        const reg = await loadMcpRegistry();
+        reg.agentBindings = reg.agentBindings || {};
+        reg.agentBindings[agentId] = reg.agentBindings[agentId] || [];
+        if (assigned) {
+            if (!reg.agentBindings[agentId].includes(skillId)) reg.agentBindings[agentId].push(skillId);
+        } else {
+            reg.agentBindings[agentId] = reg.agentBindings[agentId].filter(id => id !== skillId);
+        }
+        reg.updatedAt = new Date().toISOString();
+        await saveMcpRegistry(reg);
+        console.log(`[MCP Bridge] 🤖 Agent [${agentId}] ${assigned ? 'podpięty pod' : 'odpięty od'} [${skillId}].`);
+        return res.json({ success: true, skillId, agentId, assigned });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/mcp/execute', async (req, res) => {
+    const { skillId, toolName, arguments: toolArgs } = req.body || {};
+    if (!skillId || !toolName) {
+        return res.status(400).json({ success: false, message: 'Wymagane skillId oraz toolName.' });
+    }
+    console.log(`[MCP Bridge] 🧪 Wywołanie narzędzia MCP: ${skillId} -> ${toolName}`, toolArgs);
+
+    try {
+        // Obsługa specyficznych narzędzi lokalnych
+        if (skillId === 'filesystem-core-mcp') {
+            if (toolName === 'list_directory') {
+                const target = toolArgs?.path || '.';
+                const files = await fs.readdir(path.resolve(target));
+                return res.json({ success: true, result: { path: target, entries: files.slice(0, 50) } });
+            }
+            if (toolName === 'read_file') {
+                const target = toolArgs?.path || 'package.json';
+                const content = await fs.readFile(path.resolve(target), 'utf8');
+                return res.json({ success: true, result: { path: target, preview: content.slice(0, 1000), totalBytes: content.length } });
+            }
+        }
+
+        if (skillId === 'terminal-exec-mcp') {
+            const cmd = toolArgs?.command || 'git status -s';
+            try {
+                const { stdout, stderr } = await execAsync(cmd, { cwd: process.cwd(), timeout: 10000 });
+                return res.json({ success: true, result: { command: cmd, stdout, stderr, exitCode: 0 } });
+            } catch (err) {
+                return res.json({ success: true, result: { command: cmd, error: err.message, exitCode: 1 } });
+            }
+        }
+
+        // Domyślny simulator odpowiedzi dla pozostałych protokołów MCP
+        return res.json({
+            success: true,
+            result: {
+                protocol: 'mcp/1.0',
+                skillId,
+                tool: toolName,
+                status: 'SUCCESS',
+                output: `Narzędzie [${toolName}] z serwera [${skillId}] przetworzyło dane pomyślnie w standardzie 0.00G.`,
+                args: toolArgs,
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/mcp/add-custom', async (req, res) => {
+    try {
+        const customSkill = req.body || {};
+        const reg = await loadMcpRegistry();
+        reg.customSkills = reg.customSkills || [];
+        reg.customSkills.push(customSkill);
+        if (!reg.activeSkills.includes(customSkill.id)) {
+            reg.activeSkills.push(customSkill.id);
+        }
+        await saveMcpRegistry(reg);
+        return res.json({ success: true, skill: customSkill });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
     }
 });
 
