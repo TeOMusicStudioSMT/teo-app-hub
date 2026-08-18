@@ -45,7 +45,8 @@ type View =
     | 'trust'
     | 'pralka'
     | 'kompas'
-    | 'gameforge';
+    | 'gameforge'
+    | 'mcp-skillboard';
 
 interface LoungeNavigationProps {
     activeView: View;
@@ -64,6 +65,7 @@ const PRIMARY_NAV: { id: View; label: string; icon: React.ReactNode }[] = [
 
 // ── Pozycje schowane w panelu "Więcej" ────────────────────────────────
 const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string }[] = [
+    { id: 'mcp-skillboard',label: '⚡ MCP SKILLBOARD', icon: <span className="text-base font-bold text-cyan-400">⚡</span>, desc: 'Centralny rejestr skilli i narzędzi MCP (0.00G Protocol)' },
     { id: 'kompas',        label: 'Kompas Suwerena', icon: <span className="text-base">🧭</span>, desc: 'Mapa gry Odkrywania — od Karmy do Miłości 2.0' },
     { id: 'trust',         label: 'TeO Trust',      icon: <span className="text-base">🏛️</span>, desc: 'Certyfikat Beneficjenta — punkt startowy' },
     { id: 'pralka',        label: 'Pralka Kompasji', icon: <span className="text-base">🤍</span>, desc: 'Sumienie energetyczne — uzdrawia, nie karze (Filar I)' },

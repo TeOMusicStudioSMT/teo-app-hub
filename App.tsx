@@ -53,6 +53,7 @@ import AutoPanicSentinel from './components/special/AutoPanicSentinel';
 import NotebookTwinPanel from './components/special/NotebookTwinPanel';
 import SimulationDashboard from './components/special/SimulationDashboard';
 import TeoLab from './components/special/TeoLab';
+import McpSkillboardPanel from './components/McpSkillboardPanel';
 
 
 
@@ -97,6 +98,7 @@ const App: React.FC = () => {
     const [showPodcast, setShowPodcast] = useState(false); // 🎙️ Podcast Twin
     const [showTeoSim, setShowTeoSim] = useState(false); // 🧠 TeO-Sim Reasoning Loops
     const [showLab, setShowLab] = useState(false); // 🧪 TeO Lab (Agro + RadioSMT)
+    const [showMcpSkillboard, setShowMcpSkillboard] = useState(false); // ⚡ MCP Skillboard
     const [isWiesioOnline, setIsWiesioOnline] = useState<boolean | null>(null);
 
     // --- Real Auth State ---
@@ -795,6 +797,20 @@ const App: React.FC = () => {
                                             🧪
                                         </button>
                                     </div>
+                                    {/* ⚡ MCP SKILLBOARD (0.00G Cyber-Hub) */}
+                                    <div className="pointer-events-auto">
+                                        <button
+                                            onClick={() => setShowMcpSkillboard(true)}
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-700 border-2 border-cyan-300/70 shadow-[0_0_20px_rgba(6,182,212,0.7)] cursor-pointer hover:scale-115 transition-all duration-300 relative group"
+                                            title="⚡ MCP SKILLBOARD (0.00G)"
+                                        >
+                                            <span className="animate-pulse">⚡</span>
+                                            <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 shadow-[0_0_8px_#34d399]" />
+                                            <span className="absolute -left-44 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/90 backdrop-blur-md px-3 py-1 rounded-lg text-xs font-bold text-cyan-300 border border-cyan-500/40 whitespace-nowrap pointer-events-none shadow-xl">
+                                                ⚡ MCP SKILLBOARD
+                                            </span>
+                                        </button>
+                                    </div>
 
                                     {/* 🏛️ Nagroda - Rada Podstawowa (Unlocked at 100%) */}
                                     {isRadaUnlocked && (
@@ -939,6 +955,23 @@ const App: React.FC = () => {
                                                 className="my-auto w-full"
                                             >
                                                 <TeoLab onClose={() => setShowLab(false)} />
+                                            </motion.div>
+                                        </motion.div>
+                                    )}
+                                    {showMcpSkillboard && (
+                                        <motion.div
+                                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                            className="fixed inset-0 bg-black/95 flex justify-center overflow-y-auto z-[3005] p-4 md:p-8"
+                                            onClick={() => setShowMcpSkillboard(false)}
+                                        >
+                                            <motion.div
+                                                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="my-auto w-full max-w-6xl"
+                                            >
+                                                <McpSkillboardPanel onClose={() => setShowMcpSkillboard(false)} />
                                             </motion.div>
                                         </motion.div>
                                     )}

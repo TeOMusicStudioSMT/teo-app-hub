@@ -242,7 +242,19 @@ app.use('/components', express.static(COMPONENTS_DIR));
 // jadą z distro. UWAGA: Express 5 — żadnych gołych `*` w routach (crash boota).
 const APPS_DIR = path.join(__dirname, 'public', 'apps');
 for (const app_ of ['music', 'story', 'app']) {
-    app.use(`/apps/${app_}`, cors({ origin: '*' }), express.static(path.join(APPS_DIR, app_)));
+    const middlewares = [cors({ origin: '*' })];
+    // 🎹 Teleport na Music V2 budzi ComfyUI. Suweren wchodzil do studia i dopiero
+    // tam dowiadywal sie, ze silnik nie dziala — musial go odpalac recznie z .bat.
+    // Hak siedzi po stronie SERWERA, wiec lapie kazda droge wejscia: kafel w
+    // Projektach, dashboard, zakladke w przegladarce, Kwantowy Tunel z telefonu.
+    // Nieblokujaco: strona laduje sie od razu, silnik wstaje w tle.
+    if (app_ === 'music') {
+        middlewares.push((req, res, next) => {
+            zapewnijComfyUI('teleport na Music V2').catch(() => {});
+            next();
+        });
+    }
+    app.use(`/apps/${app_}`, ...middlewares, express.static(path.join(APPS_DIR, app_)));
 }
 
 // ── 📱 STRONA GOŚCIA (telefon jako kamera) ────────────────────────────────────
@@ -3891,8 +3903,11 @@ const LAUNCH_APPS = {
     app:   { dir: 'TeO_App_V2',   port: 5175 },
 };
 app.post('/api/launch', async (req, res) => {
-    const cfg = LAUNCH_APPS[(req.body ?? {}).app];
+    const nazwaApki = (req.body ?? {}).app;
+    const cfg = LAUNCH_APPS[nazwaApki];
     if (!cfg) return res.status(400).json({ success: false, message: 'Nieznana apka (music|story|app).' });
+    // Music V2 bez ComfyUI nie policzy ani nuty — budzimy go razem ze studiem.
+    if (nazwaApki === 'music') zapewnijComfyUI('uruchomienie Music V2').catch(() => {});
     const url = `http://localhost:${cfg.port}`;
     // Już działa?
     try {
@@ -5231,6 +5246,71 @@ app.post('/api/music/models/remove', async (req, res) => {
 const COMFY_BASE = process.env.OTAKOS_COMFY_HOST || 'http://127.0.0.1:8188';
 const WORKFLOWS_DIR = path.join(AI_DIR, 'workflows');
 const MUSIC_WORKFLOW = path.join(WORKFLOWS_DIR, 'minimax_music3.json');
+
+// ── 🎛️ AUTOMAT COMFYUI ───────────────────────────────────────────────────────
+// Katalog portable ComfyUI. Domyslnie dwa poziomy w gore od mostu:
+// TeO_Genesis/.. -> ToO APP/.. -> TeO App HuB/ComfyUI_windows_portable_nvidia/...
+const COMFY_DIR = process.env.OTAKOS_COMFY_DIR || path.resolve(
+    process.cwd(), '..', '..', 'ComfyUI_windows_portable_nvidia', 'ComfyUI_windows_portable'
+);
+
+/** Zeby dwa rownolegle teleporty nie odpalily dwoch ComfyUI naraz. */
+let comfyStartuje = null;
+
+/** Krotkie sprawdzenie, czy ComfyUI odpowiada. */
+async function comfyZyje(ms = 1500) {
+    try {
+        const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
+        const r = await fetch(`${COMFY_BASE}/object_info`, { signal: c.signal });
+        clearTimeout(t);
+        return r.ok;
+    } catch { return false; }
+}
+
+/**
+ * Budzi ComfyUI, jesli spi. Nie czeka na pelen start — zwraca od razu,
+ * bo teleport nie ma na co czekac, a panel i tak odpytuje /engine/status.
+ */
+async function zapewnijComfyUI(powod = 'żądanie') {
+    if (await comfyZyje()) return { online: true, started: false };
+    if (comfyStartuje) return comfyStartuje;
+
+    comfyStartuje = (async () => {
+        const python = path.join(COMFY_DIR, 'python_embeded', 'python.exe');
+        const main = path.join(COMFY_DIR, 'ComfyUI', 'main.py');
+        if (!fsSync.existsSync(python) || !fsSync.existsSync(main)) {
+            console.warn(`[Automat-ComfyUI] ⚠️ Nie znajduję ComfyUI w ${COMFY_DIR} — ustaw OTAKOS_COMFY_DIR.`);
+            return { online: false, started: false, message: `Brak ComfyUI w ${COMFY_DIR}` };
+        }
+        try {
+            const child = spawn(python, ['-s', main, '--windows-standalone-build'], {
+                cwd: COMFY_DIR,
+                detached: true,
+                stdio: 'ignore',
+                // PYTHONUTF8: bez tego polski komunikat systemowy (np. ConnectionResetError
+                // po polsku) wywala proces na UnicodeEncodeError przy wypisywaniu wlasnego
+                // bledu. Wyglada jak losowa awaria, jest kwestia strony kodowej.
+                env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+            });
+            child.unref();
+            console.log(`[Automat-ComfyUI] 🎛️ Budzę ComfyUI (${powod}) — PID ${child.pid}, ładowanie potrwa ~30 s.`);
+            return { online: false, started: true, pid: child.pid, message: 'ComfyUI wstaje — pierwszy start trwa ~30 s.' };
+        } catch (e) {
+            console.warn(`[Automat-ComfyUI] ❌ Nie udało się uruchomić: ${e.message}`);
+            return { online: false, started: false, message: e.message };
+        } finally {
+            // Odblokuj po chwili, zeby kolejna proba byla mozliwa gdyby start padl.
+            setTimeout(() => { comfyStartuje = null; }, 45000);
+        }
+    })();
+    return comfyStartuje;
+}
+
+/** Recznie: obudz ComfyUI i powiedz co sie stalo. */
+app.post('/api/comfy/ensure', async (req, res) => {
+    const wynik = await zapewnijComfyUI('ręczne żądanie');
+    res.json({ success: true, katalog: COMFY_DIR, base: COMFY_BASE, ...wynik });
+});
 
 /** Czy ComfyUI żyje i czy zna nody MiniMax (czyli czy jest dość świeży). */
 async function comfyStatus() {
@@ -8068,6 +8148,26 @@ async function loadMcpRegistry() {
     }
 }
 
+/**
+ * Skille, ktore MAJA realna implementacje po stronie mostu. Reszta rejestru to
+ * karty w katalogu — moga byc podpiete pozniej do prawdziwych serwerow MCP,
+ * ale dzis nic nie wykonaja i endpoint /execute mowi to wprost (501).
+ * Dopisujac tu nowy skill, dopisz tez jego obsluge w /api/mcp/execute.
+ */
+const MCP_REALNE = ['filesystem-core-mcp', 'terminal-exec-mcp', 'katedra-puls-mcp', 'muzyka-otakos-mcp', 'sumienie-mcp'];
+
+/**
+ * Sekrety nie wychodza przez MCP. `read_file` czytal cokolwiek — a `list_directory`
+ * pokazywal w katalogu mostu `.env`, `.env.local` i `.anthropic_key.env`.
+ * Blokada dziala na nazwie pliku, wiec lapie tez kopie typu `.env.backup`.
+ */
+const MCP_PLIKI_ZAKAZANE = /(^\.env)|(\.env$)|(\.env\.)|key|secret|token|credential|password|haslo|\.pem$|\.pfx$|id_rsa|vault/i;
+
+function mcpWolnoCzytac(sciezka) {
+    const nazwa = path.basename(String(sciezka));
+    return !MCP_PLIKI_ZAKAZANE.test(nazwa);
+}
+
 async function saveMcpRegistry(data) {
     mcpRegistryCache = data;
     try {
@@ -8183,33 +8283,204 @@ app.post('/api/mcp/execute', async (req, res) => {
             }
             if (toolName === 'read_file') {
                 const target = toolArgs?.path || 'package.json';
+                if (!mcpWolnoCzytac(target)) {
+                    return res.status(403).json({
+                        success: false,
+                        message: `Odmowa: "${path.basename(target)}" wygląda na plik z sekretem. MCP nie wydaje kluczy ani .env.`,
+                    });
+                }
                 const content = await fs.readFile(path.resolve(target), 'utf8');
                 return res.json({ success: true, result: { path: target, preview: content.slice(0, 1000), totalBytes: content.length } });
             }
         }
 
         if (skillId === 'terminal-exec-mcp') {
-            const cmd = toolArgs?.command || 'git status -s';
+            const rawCmd = toolArgs?.command || 'git status -s';
+            // Ten sam sanitizer, co /api/mcp/execute pomijal, a trzy inne endpointy
+            // wykonujace komendy uzywaja. Bez niego wklejony prompt powloki albo
+            // sztuczka ze znacznikiem szly prosto do execAsync.
+            const san = ShellSanitizer.sanitizeShellCommand(rawCmd);
+            const cmd = san.command ?? san.cmd ?? san.sanitized ?? rawCmd;
             try {
                 const { stdout, stderr } = await execAsync(cmd, { cwd: process.cwd(), timeout: 10000 });
-                return res.json({ success: true, result: { command: cmd, stdout, stderr, exitCode: 0 } });
+                return res.json({ success: true, result: { command: cmd, stdout, stderr, exitCode: 0, sanitizer: san.notes ?? [] } });
             } catch (err) {
-                return res.json({ success: true, result: { command: cmd, error: err.message, exitCode: 1 } });
+                return res.json({ success: true, result: { command: cmd, error: err.message, exitCode: 1, sanitizer: san.notes ?? [] } });
             }
         }
 
-        // Domyślny simulator odpowiedzi dla pozostałych protokołów MCP
-        return res.json({
-            success: true,
-            result: {
-                protocol: 'mcp/1.0',
-                skillId,
-                tool: toolName,
-                status: 'SUCCESS',
-                output: `Narzędzie [${toolName}] z serwera [${skillId}] przetworzyło dane pomyślnie w standardzie 0.00G.`,
-                args: toolArgs,
-                timestamp: new Date().toISOString()
+        // ══ SKILLE KLAUDIUSZA — realne, nie karty w katalogu ══════════════════
+
+        // 💓 PULS KATEDRY — jeden strzal, pelna diagnoza wezla.
+        // Powstal z tej sesji: szukanie, dlaczego muzyka liczy 7h, wymagalo recznego
+        // sprawdzania mostu, Ollamy, ComfyUI, VRAM-u i COMMITU (nie WorkingSet!).
+        if (skillId === 'katedra-puls-mcp') {
+            const zywy = async (url, ms = 1500) => {
+                try {
+                    const c = new AbortController(); const t = setTimeout(() => c.abort(), ms);
+                    const r = await fetch(url, { signal: c.signal }); clearTimeout(t);
+                    return r.ok;
+                } catch { return false; }
+            };
+            const [ollama, comfy] = await Promise.all([
+                zywy(`${OLLAMA_BASE}/api/tags`), zywy(`${COMFY_BASE}/object_info`, 2500),
+            ]);
+            let modeleLlm = [];
+            try {
+                const r = await fetch(`${OLLAMA_BASE}/api/ps`);
+                modeleLlm = (await r.json()).models?.map(m => ({ nazwa: m.name, gb: +(m.size / 1e9).toFixed(2) })) ?? [];
+            } catch { /* Ollama spi */ }
+            const wolneMb = Math.round(os.freemem() / 1e6);
+            const calyMb = Math.round(os.totalmem() / 1e6);
+            let muzyka = null;
+            try { muzyka = await muzykaModeleStatus(); } catch { /* katalog nieosiagalny */ }
+
+            return res.json({
+                success: true,
+                result: {
+                    most: { port: PORT, uptimeS: Math.round(process.uptime()) },
+                    ollama: { online: ollama, zaladowane: modeleLlm },
+                    comfyui: { online: comfy, base: COMFY_BASE },
+                    pamiec: {
+                        wolneGb: +(wolneMb / 1024).toFixed(2),
+                        calyGb: +(calyMb / 1024).toFixed(2),
+                        // Ostrzezenie zmierzone w tej sesji: 8.7 GB encoder + ~2 GB torch.
+                        starczyNaMuzyke: wolneMb > 11000,
+                    },
+                    muzyka: muzyka ? { gotowaRodzina: muzyka.gotowaRodzina, naDyskuGb: +(muzyka.bajtyNaDysku / 1e9).toFixed(2) } : null,
+                    werdykt: [
+                        ollama ? null : 'Ollama nie odpowiada — Orb zamilknie.',
+                        comfy ? null : 'ComfyUI nie działa — muzyka i obraz nie policzą.',
+                        wolneMb < 4000 ? `Mało wolnej pamięci (${(wolneMb / 1024).toFixed(1)} GB) — zwolnij model Ollamy: keep_alive 0.` : null,
+                        modeleLlm.some(m => /gemma4:latest/.test(m.nazwa)) ? 'Uwaga: wisi gemma4:latest, ta która wywala Ollamę na tej maszynie.' : null,
+                    ].filter(Boolean),
+                },
+            });
+        }
+
+        // 🎵 BIBLIOTEKA DZWIEKU — co realnie lezy w _OtakOs_Muzyka.
+        if (skillId === 'muzyka-otakos-mcp') {
+            const szukaj = String(toolArgs?.query ?? '').toLowerCase();
+            let pliki = [];
+            try {
+                pliki = (await getAudioFilesRecursive(MUSIC_DIR)) ?? [];
+            } catch { /* brak katalogu */ }
+            const wynik = [];
+            for (const pelna of pliki) {
+                const nazwa = path.basename(pelna);
+                if (szukaj && !nazwa.toLowerCase().includes(szukaj)) continue;
+                let bajty = 0;
+                try { bajty = (await fs.stat(pelna)).size; } catch { /* zniknal */ }
+                wynik.push({ nazwa, mb: +(bajty / 1e6).toFixed(2), sciezka: path.relative(MUSIC_DIR, pelna) });
             }
+            wynik.sort((a, b) => a.nazwa.localeCompare(b.nazwa));
+            return res.json({
+                success: true,
+                result: {
+                    katalog: MUSIC_DIR,
+                    znaleziono: wynik.length,
+                    lacznieMb: +(wynik.reduce((s, x) => s + x.mb, 0)).toFixed(1),
+                    utwory: wynik.slice(0, 60),
+                },
+            });
+        }
+
+        // 🪞 SUMIENIE KATEDRY — skaner atrap. NAJBARDZIEJ TEO Z TYCH SKILLI.
+        // Powod istnienia: w tej samej sesji dwa razy trafilismy na kod, ktory
+        // UDAWAL dzialanie — petla setTimeout wypisujaca fałszywe "DiT Step 12/30"
+        // i endpoint MCP zwracajacy status SUCCESS na `DROP TABLE`. Oba przeszly
+        // build i tsc na zielono. Zielony build nie znaczy, ze funkcja istnieje.
+        // Ten skill szuka wlasnie takich rzeczy — jest narzedziem zasady
+        // "zero z dupy" z CLAUDE.md, zamienionym w kod.
+        if (skillId === 'sumienie-mcp') {
+            const cel = toolArgs?.path;
+            if (!cel) return res.status(400).json({ success: false, message: 'Podaj "path" — plik albo katalog do zbadania.' });
+            const TROPY = [
+                // Kolejnosc dowolna: `onProgress({percentage})` czesto stoi PRZED `setTimeout`,
+                // a pierwsza wersja wzorca wymagala setTimeout na poczatku i to przepuszczala.
+                { id: 'falszywy-postep', re: /(setTimeout[\s\S]{0,160}(percentage|progress|procent|krok))|((percentage|onProgress|procent)[\s\S]{0,160}setTimeout)/i, opis: 'Pętla z setTimeout udająca postęp — telemetria bez obliczeń.' },
+                { id: 'zawsze-sukces', re: /status:\s*['"`](SUCCESS|OK|SUKCES)['"`]/i, opis: 'Zaszyty na sztywno SUCCESS — sprawdź, czy cokolwiek się wykonało.' },
+                { id: 'pomyslnie', re: /(przetworzy[lł]o|wykonano|zakończono)\s+(dane\s+)?pomyślnie/i, opis: 'Deklaracja sukcesu w treści, nie w wyniku.' },
+                // Slowo-klucz moze stac PRZED albo PO Math.random() — `const loss = Math.random()`
+                // to najczestszy uklad, a pierwsza wersja tego wzorca go przepuszczala.
+                { id: 'losowe-dane', re: /(Math\.random\(\)[\s\S]{0,60}(loss|score|confidence|wynik|postep|progress))|((loss|score|confidence|wynik|postep|progress)[\s\S]{0,60}Math\.random\(\))/i, opis: 'Math.random() podstawiony pod metrykę — dane z kapelusza.' },
+                { id: 'placeholder-media', re: /soundhelix|placeholder\.com|via\.placeholder|example\.com\/(audio|video)/i, opis: 'Zewnętrzny placeholder udający wytworzony materiał.' },
+                { id: 'symulator', re: /\b(symulator|simulator|udaje|fake|mock)\b/i, opis: 'Nazwane wprost: symulacja. Sprawdź, czy nie jest podana jako funkcja.' },
+                { id: 'dlug', re: /\b(TODO|FIXME|HACK|XXX)\b/, opis: 'Dług zapisany w kodzie.' },
+            ];
+            const ROZSZERZENIA = /\.(ts|tsx|js|jsx|mjs|cjs|py)$/i;
+            const pelna = path.resolve(cel);
+            const doZbadania = [];
+            const st = await fs.stat(pelna);
+            if (st.isDirectory()) {
+                const wejscia = await fs.readdir(pelna, { withFileTypes: true });
+                for (const w of wejscia) {
+                    if (w.isFile() && ROZSZERZENIA.test(w.name)) doZbadania.push(path.join(pelna, w.name));
+                }
+            } else doZbadania.push(pelna);
+
+            const znaleziska = [];
+            for (const plik of doZbadania.slice(0, 40)) {
+                let tresc = '';
+                try { tresc = await fs.readFile(plik, 'utf8'); } catch { continue; }
+                const linie = tresc.split(/\r?\n/);
+                // Okno 4 linii, nie pojedyncza linia: atrapy rozkladaja sie w pionie.
+                // `setTimeout` bywa o dwie linie nizej niz `percentage`, a skan linia-po-linii
+                // taki uklad przepuszczal (wykryte przy testowaniu tego skilla na probce).
+                const OKNO = 4;
+                for (const t of TROPY) {
+                    const zgloszone = new Set();
+                    for (let i = 0; i < linie.length; i++) {
+                        const okno = linie.slice(i, i + OKNO).join('\n');
+                        const traf = okno.match(t.re);
+                        if (!traf) continue;
+                        // Numer linii liczymy od MIEJSCA TRAFIENIA w oknie, nie od jego poczatku —
+                        // inaczej raport wskazywal linie o kilka wyzej niz faktyczna atrapa.
+                        const przesuniecie = okno.slice(0, traf.index).split('\n').length - 1;
+                        const nrLinii = i + przesuniecie;
+                        // Nachodzace okna trafiaja to samo miejsce — zglaszamy raz.
+                        if ([...zgloszone].some((z) => Math.abs(nrLinii - z) < OKNO)) continue;
+                        zgloszone.add(nrLinii);
+                        znaleziska.push({
+                            plik: path.relative(process.cwd(), plik),
+                            linia: nrLinii + 1,
+                            trop: t.id,
+                            opis: t.opis,
+                            fragment: (linie[nrLinii] ?? '').trim().slice(0, 140),
+                        });
+                    }
+                }
+            }
+            return res.json({
+                success: true,
+                result: {
+                    zbadano: doZbadania.length,
+                    znaleziono: znaleziska.length,
+                    // Puste znaleziska NIE znacza "kod uczciwy" — to heurystyka, nie dowod.
+                    werdykt: znaleziska.length === 0
+                        ? 'Brak trafień heurystyki. To nie jest dowód uczciwości kodu — tylko brak znanych wzorców atrapy.'
+                        : `${znaleziska.length} miejsc do obejrzenia okiem. Każde trafienie wymaga oceny człowieka.`,
+                    znaleziska: znaleziska.slice(0, 80),
+                },
+            });
+        }
+
+        // ── UCZCIWA ODMOWA ────────────────────────────────────────────────────
+        // Tu byl "domyslny simulator", ktory KAZDEMU narzedziu odpowiadal
+        // status: 'SUCCESS' i "przetworzylo dane pomyslnie". Na zapytanie
+        // `DROP TABLE wszystko` do nieistniejacej bazy tez odpowiadal SUKCESEM.
+        // To jest dokladnie "z dupy" z CLAUDE.md — i grozne, bo Suweren moglby
+        // uwierzyc, ze destrukcyjna operacja przeszla.
+        // Skill bez realnego backendu ma powiedziec, ze go nie ma. Kropka.
+        return res.status(501).json({
+            success: false,
+            skillId,
+            tool: toolName,
+            status: 'NIEZAIMPLEMENTOWANE',
+            message: `Skill "${skillId}" jest w rejestrze, ale nie ma podpiętego serwera MCP — most nie wykona "${toolName}".`,
+            hint: 'Realnie wykonują się tylko te skille, które mają implementację po stronie mostu. '
+                + `Obecnie: ${MCP_REALNE.join(', ')}. Resztę trzeba podpiąć do prawdziwego serwera MCP (stdio/sse/http).`,
+            realneSkille: MCP_REALNE,
         });
     } catch (e) {
         return res.status(500).json({ success: false, message: e.message });
