@@ -22,13 +22,17 @@
  *  5. TOKEN NIE WYCHODZI. Ani do logu, ani do odpowiedzi, ani w treści cudzego
  *     błędu (odpowiedzi Twilio bywają echem żądania).
  *
- * ZAKRES ETAPU 2: połączenie wychodzące, które MÓWI (TwiML `<Say>`) i potrafi
- * odebrać jedną odpowiedź tonami (`<Gather>` → webhook). Pełna rozmowa
- * dwustronna AI ↔ człowiek wymaga publicznego WSS dla Media Streams — to jest
- * Etap 3 i tego tu NIE MA. Funkcja `mozliwosci()` mówi to wprost.
+ * ZAKRES: Etap 2 dał połączenie wychodzące, które MÓWI (TwiML `<Say>`).
+ * Etap 3 dokłada rozmowę DWUSTRONNĄ (`zbudujTwimlStream` → `<Connect><Stream>`
+ * na publiczny WSS Kwantowego Tunelu) oraz weryfikację podpisu Twilio dla
+ * połączeń przychodzących. To, co realnie działa, zależy od tego, czy tunel
+ * jest wpięty — dlatego `mozliwosci()` przyjmuje ten stan jako argument
+ * i nie deklaruje niczego na wyrost.
  *
  * Standard ESM. Zero zależności — sam `fetch`.
  */
+
+import crypto from 'crypto';
 
 /**
  * Adres API. Nadpisywalny (`OTAKOS_TWILIO_API`) z jednego powodu: żeby dało się
@@ -98,6 +102,58 @@ export function zbudujTwiml({ tekst, jezyk = 'pl-PL', glos = 'Polly.Ewa', nagran
     return `<?xml version="1.0" encoding="UTF-8"?><Response>${tresc}</Response>`;
 }
 
+/**
+ * TwiML rozmowy DWUSTRONNEJ (Etap 3) — `<Connect><Stream>` kieruje audio
+ * połączenia na nasz publiczny WSS (Kwantowy Tunel).
+ *
+ * ⚠️ `<Connect>` jest BLOKUJĄCY: dopóki strumień żyje, nic dalej z TwiML się nie
+ * wykona, a zakończenie strumienia kończy połączenie. Dlatego powitanie idzie
+ * PRZED `<Connect>`, a nie po nim — po nim byłoby zdaniem, którego nikt nigdy
+ * nie usłyszy.
+ *
+ * `bilet` wchodzi jako `<Parameter>`, nie jako część adresu: parametry lecą
+ * w ramce `start`, więc token nie ląduje w logach pośredników razem z URL-em.
+ */
+export function zbudujTwimlStream({ wssUrl, bilet, powitanie = '', jezyk = 'pl-PL', glos = 'Polly.Ewa', parametry = {} }) {
+    if (!wssUrl) throw new BladTelefonii('Brak adresu WSS Kwantowego Tunelu — rozmowa dwustronna nie ma dokąd pójść.', 424);
+
+    const wstep = powitanie
+        ? `<Say language="${escXml(jezyk)}" voice="${escXml(glos)}">${escXml(powitanie)}</Say>`
+        : '';
+
+    const parms = Object.entries({ ...parametry, ...(bilet ? { bilet } : {}) })
+        .map(([k, v]) => `<Parameter name="${escXml(k)}" value="${escXml(v)}"/>`)
+        .join('');
+
+    return `<?xml version="1.0" encoding="UTF-8"?><Response>${wstep}` +
+           `<Connect><Stream url="${escXml(wssUrl)}">${parms}</Stream></Connect></Response>`;
+}
+
+/**
+ * Weryfikacja podpisu Twilio (`X-Twilio-Signature`).
+ *
+ * ⚠️ BEZ TEGO PUBLICZNY WEBHOOK JEST OTWARTYM PRZYCISKIEM DLA CAŁEGO INTERNETU.
+ * Adres tunelu prędzej czy później gdzieś wycieknie, a wtedy każdy mógłby kazać
+ * Katedrze odebrać „połączenie" i puścić w świat głos Suwerena. Algorytm jest
+ * podyktowany przez Twilio: HMAC-SHA1 (klucz = auth token) po pełnym URL-u
+ * z doklejonymi parami klucz+wartość POST-a, posortowanymi po kluczu.
+ *
+ * Porównanie stałoczasowe — zwykłe `===` na podpisie to podręcznikowy wyciek
+ * przez czas odpowiedzi.
+ */
+export function weryfikujPodpis({ url, params = {}, podpis, token }) {
+    if (!token) return { ok: false, powod: 'Brak auth tokenu — nie mam czym zweryfikować podpisu.' };
+    if (!podpis) return { ok: false, powod: 'Żądanie bez nagłówka X-Twilio-Signature.' };
+
+    const dane = Object.keys(params).sort().reduce((acc, k) => acc + k + params[k], String(url ?? ''));
+    const oczekiwany = crypto.createHmac('sha1', token).update(Buffer.from(dane, 'utf8')).digest('base64');
+
+    const a = Buffer.from(oczekiwany);
+    const b = Buffer.from(String(podpis));
+    const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
+    return { ok, powod: ok ? null : 'Podpis nie zgadza się z treścią żądania.' };
+}
+
 function naglowki(sid, token) {
     return {
         Authorization: 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64'),
@@ -154,7 +210,7 @@ export async function stanKonta({ sid, token }) {
  * @param {boolean} p.proba  — `true` (domyślnie) sprawdza wszystko i NIE dzwoni.
  * @returns {Promise<{wykonane: boolean, callSid?: string, status?: string, twiml: string, do: string, od: string, konto: object}>}
  */
-export async function zadzwon({ sid, token, od, doKogo, tekst, jezyk = 'pl-PL', glos = 'Polly.Ewa', nagranieUrl = null, proba = true }) {
+export async function zadzwon({ sid, token, od, doKogo, tekst, jezyk = 'pl-PL', glos = 'Polly.Ewa', nagranieUrl = null, twiml: twimlGotowy = null, proba = true }) {
     sprawdzPoswiadczenia(sid, token);
 
     const cel = normalizujNumer(doKogo);
@@ -168,13 +224,15 @@ export async function zadzwon({ sid, token, od, doKogo, tekst, jezyk = 'pl-PL', 
             'Brak poprawnego numeru nadawcy (twilio.from_number w Skarbcu 0.00G, format E.164). Nie zgaduję numeru wyjściowego.',
             424);
     }
-    if (!String(tekst ?? '').trim() && !nagranieUrl) {
+    // `twimlGotowy` przychodzi z trybu rozmowy dwustronnej (<Connect><Stream>) —
+    // wtedy treści nie ma i mieć nie musi, bo słowa powstają dopiero na żywo.
+    if (!twimlGotowy && !String(tekst ?? '').trim() && !nagranieUrl) {
         throw new BladTelefonii('Brak treści rozmowy — połączenie bez słowa nie ma sensu. Nie dzwonię.', 400);
     }
 
     // Poświadczenia sprawdzamy ZAWSZE, także w próbie — po to jest próba.
     const konto = await stanKonta({ sid, token });
-    const twiml = zbudujTwiml({ tekst, jezyk, glos, nagranieUrl });
+    const twiml = twimlGotowy || zbudujTwiml({ tekst, jezyk, glos, nagranieUrl });
 
     if (proba) {
         return {
@@ -220,16 +278,29 @@ export async function zadzwon({ sid, token, od, doKogo, tekst, jezyk = 'pl-PL', 
     };
 }
 
-/** Co ten sterownik POTRAFI, a czego nie — żeby UI nie obiecywał Etapu 3. */
-export function mozliwosci() {
+/**
+ * Co ten sterownik POTRAFI w TEJ CHWILI.
+ *
+ * Połowa możliwości Etapu 3 stoi na Kwantowym Tunelu — bez publicznego adresu
+ * Twilio nie ma dokąd oddać audio. Dlatego stan tunelu wchodzi tu argumentem,
+ * a nie jest zaszyty na sztywno: panel ma pokazywać prawdę o TEJ maszynie,
+ * a nie deklarację z dokumentacji.
+ */
+export function mozliwosci(tunelWpiety = false) {
     return {
         polaczenieWychodzace: true,
         mowaTwilio: true,
-        odbieranieTonow: false,     // <Gather> jest w TwiML, ale bez publicznego webhooka nie ma gdzie oddać odpowiedzi
-        rozmowaDwustronna: false,   // Media Streams — wymaga publicznego WSS (Etap 3)
-        klonSuwerenaWSluchawce: false, // <Play> potrzebuje publicznego URL do pliku (Etap 3)
-        polaczeniaPrzychodzace: false, // wymaga webhooka na numerze (Etap 3)
+        // Klon Suwerena jedzie kanałem Media Streams (nie <Play>), więc idzie
+        // razem z rozmową dwustronną — i tak samo zależy od tunelu.
+        rozmowaDwustronna: !!tunelWpiety,
+        klonSuwerenaWSluchawce: !!tunelWpiety,
+        polaczeniaPrzychodzace: !!tunelWpiety,
+        odbieranieTonow: false,     // <Gather> wymaga osobnego webhooka na akcję — nie w tym etapie
     };
 }
 
-export default { BladTelefonii, poprawnyNumer, normalizujNumer, escXml, zbudujTwiml, stanKonta, zadzwon, mozliwosci, maskaSid };
+export default {
+    BladTelefonii, poprawnyNumer, normalizujNumer, escXml, maskaSid,
+    zbudujTwiml, zbudujTwimlStream, weryfikujPodpis,
+    stanKonta, zadzwon, mozliwosci,
+};

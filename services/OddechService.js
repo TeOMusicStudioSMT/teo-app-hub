@@ -55,6 +55,9 @@ export const RODZAJE = {
     'biznes.klient':      { klasa: 'RUCH',  opis: 'obsłużony klient działalności' },
     'biznes.oferta':      { klasa: 'RUCH',  opis: 'oferta wygenerowana dla klienta' },
     'biznes.rozmowa':     { klasa: 'RUCH',  opis: 'domknięta rozmowa AI z klientem' },
+    // Minuta rozmowy na żywo. Klucz niesie numer minuty, więc każda płaci raz,
+    // a limit dobowy pilnuje reszty — to wciąż TA SAMA ścieżka emisji.
+    'biznes.minuta':      { klasa: 'RUCH',  opis: 'minuta rozmowy na żywo' },
     // ── WYNIK ──
     'montaz.edl':         { klasa: 'WYNIK', opis: 'domknięty montaż (EDL)' },
     'render.wideo':       { klasa: 'WYNIK', opis: 'wyrenderowany plik wideo (ffmpeg)' },

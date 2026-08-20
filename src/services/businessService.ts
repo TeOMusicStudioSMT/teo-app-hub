@@ -122,6 +122,7 @@ export interface WynikDial {
     konto?: { sid: string; nazwa: string | null; status: string | null; prubny: boolean };
     uwaga?: string | null;
     przewod?: string;
+    tryb?: 'zapowiedz' | 'rozmowa';
     message?: string;
 }
 
@@ -214,6 +215,11 @@ export async function zadzwon(opcje: {
     glos?: string;
     proba?: boolean;
     potwierdzenie?: boolean;
+    /**
+     * `zapowiedz` — Twilio czyta jedno zdanie i kończy (Etap 2).
+     * `rozmowa`   — audio idzie na WSS Kwantowego Tunelu, AI rozmawia (Etap 3).
+     */
+    tryb?: 'zapowiedz' | 'rozmowa';
 }): Promise<WynikDial> {
     let odp: Response;
     try {

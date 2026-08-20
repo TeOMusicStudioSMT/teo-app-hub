@@ -77,8 +77,15 @@ import {
 } from './services/PrzewodyGlosuService.js';
 import {
     BladTelefonii, zadzwon as telefoniaZadzwon, stanKonta as telefoniaStanKonta,
-    mozliwosci as telefoniaMozliwosci,
+    mozliwosci as telefoniaMozliwosci, zbudujTwimlStream, weryfikujPodpis as telefoniaPodpis,
 } from './services/TelefoniaService.js';
+import {
+    BladTunelu, wczytaj as tunelWczytaj, ustaw as tunelUstaw, zdejmij as tunelZdejmij,
+    czyZywy as tunelCzyZywy, nowyBilet, zuzyjBilet, biletowWObiegu,
+} from './services/TunelService.js';
+import {
+    attachLiveAudio, zyweRozmowy, rozmowa as zywaRozmowa,
+} from './services/LiveAudioStreamService.js';
 import FlushService          from './services/FlushService.js';
 import ApiLayerService       from './services/ApiLayerService.js';
 import AlignmentShield       from './services/AlignmentShield.js';
@@ -6076,23 +6083,26 @@ app.get('/api/business/telefonia', async (req, res) => {
     if (!token) braki.push('twilio.auth_token');
     if (!od) braki.push('twilio.from_number');
 
+    const tunel = await tunelWczytaj(ANTIGRAVITY_DIR);
+    const mozliwosci = telefoniaMozliwosci(!!tunel.adres);
+
     if (braki.length) {
         return res.json({
-            success: true, drozny: false, braki, mozliwosci: telefoniaMozliwosci(),
+            success: true, drozny: false, braki, mozliwosci, tunel,
             message: `Przewód telefoniczny niekompletny — brakuje w Skarbcu 0.00G: ${braki.join(', ')}.`,
         });
     }
     try {
         const konto = await telefoniaStanKonta({ sid, token });
         return res.json({
-            success: true, drozny: true, braki: [], konto, od, mozliwosci: telefoniaMozliwosci(),
+            success: true, drozny: true, braki: [], konto, od, mozliwosci, tunel,
             message: konto.prubny
                 ? 'Konto próbne Twilio: dodzwoni się TYLKO na numery zweryfikowane i doklei własną zapowiedź.'
                 : 'Przewód telefoniczny drożny.',
         });
     } catch (e) {
         return res.status(e instanceof BladTelefonii ? e.status : 500)
-            .json({ success: false, drozny: false, message: e.message, mozliwosci: telefoniaMozliwosci() });
+            .json({ success: false, drozny: false, message: e.message, mozliwosci, tunel });
     }
 });
 
@@ -6113,7 +6123,7 @@ app.get('/api/business/telefonia', async (req, res) => {
  * publicznego adresu — Etap 3. Tu mówi głos Twilio, i tak to jest opisane.
  */
 app.post('/api/business/dial', async (req, res) => {
-    const { biznesId, numer, tekst, jezyk = 'pl-PL', glos = 'Polly.Ewa', proba = true, potwierdzenie = false } = req.body ?? {};
+    const { biznesId, numer, tekst, jezyk = 'pl-PL', glos = 'Polly.Ewa', proba = true, potwierdzenie = false, tryb = 'zapowiedz' } = req.body ?? {};
     try {
         const biznes = await biznesZnajdz(ANTIGRAVITY_DIR, String(biznesId || ''));
         if (!biznes) return res.status(404).json({ success: false, message: `Działalność „${biznesId}" nieznana.` });
@@ -6135,7 +6145,33 @@ app.post('/api/business/dial', async (req, res) => {
         const tresc = String(tekst || '').trim() ||
             `Dzień dobry. Tu asystent głosowy ${biznes.nazwa}. Dzwonię w sprawie Państwa zapytania. Proszę o kontakt, gdy będzie dogodna chwila.`;
 
-        const wynik = await telefoniaZadzwon({ sid, token, od, doKogo: cel, tekst: tresc, jezyk, glos, proba: !naprawde });
+        // ── Tryb ROZMOWY (Etap 3): audio idzie na nasz publiczny WSS ─────────
+        // Bilet jest wydawany DOPIERO dla realnego połączenia. W próbie ich nie
+        // sypiemy — inaczej każde kliknięcie „Próba" zostawiałoby ważny token
+        // wstępu na kanał audio.
+        let twimlRozmowy = null;
+        if (tryb === 'rozmowa') {
+            const tunel = await tunelWczytaj(ANTIGRAVITY_DIR);
+            if (!tunel.wss) {
+                return res.status(424).json({
+                    success: false, wykonane: false,
+                    message: 'Rozmowa dwustronna wymaga Kwantowego Tunelu — Twilio nie ma dokąd oddać audio. Wpnij adres publiczny (POST /api/tunel).',
+                });
+            }
+            const bilet = naprawde ? nowyBilet({ biznesId: biznes.id, kierunek: 'wychodzace' }) : 'PRÓBA-BEZ-BILETU';
+            twimlRozmowy = zbudujTwimlStream({
+                wssUrl: `${tunel.wss}/api/voice/stream`,
+                bilet,
+                powitanie: tresc,
+                jezyk, glos,
+                parametry: { biznesId: biznes.id, kierunek: 'wychodzace' },
+            });
+        }
+
+        const wynik = await telefoniaZadzwon({
+            sid, token, od, doKogo: cel, tekst: tresc, jezyk, glos,
+            twiml: twimlRozmowy, proba: !naprawde,
+        });
 
         if (wynik.wykonane) {
             console.log(`[Biznesy] ☎️ Połączenie zestawione: ${biznes.nazwa} → ${cel} (callSid ${wynik.callSid}).`);
@@ -6153,7 +6189,7 @@ app.post('/api/business/dial', async (req, res) => {
             });
         }
 
-        return res.json({ success: true, przewod: 'twilio-conduit', ...wynik });
+        return res.json({ success: true, przewod: 'twilio-conduit', tryb, ...wynik });
     } catch (e) {
         return res.status(e instanceof BladTelefonii ? e.status : 500)
             .json({ success: false, wykonane: false, przewod: 'twilio-conduit', message: e.message });
@@ -6219,7 +6255,9 @@ app.get('/api/voice/mcp', async (req, res) => {
             gotowych: przewody.filter(p => p.sterownik && p.podpiety).length,
             wKatalogu: przewody.length,
             // Czego telefonia POTRAFI, a czego nie — żeby panel nie obiecywał Etapu 3.
-            telefonia: telefoniaMozliwosci(),
+            // Połowa możliwości telefonii stoi na tunelu — pytamy o jego stan,
+            // zamiast deklarować z góry.
+            telefonia: telefoniaMozliwosci(!!(await tunelWczytaj(ANTIGRAVITY_DIR)).adres),
             nagrania: await glosNagrania(VOICE_OUT_DIR),
         });
     } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
@@ -6264,6 +6302,288 @@ app.post('/api/voice/render', async (req, res) => {
         });
     }
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🌀 KWANTOWY TUNEL — publiczny adres maszyny Suwerena (Etap 3)
+// ══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/tunel', async (req, res) => {
+    const tunel = await tunelWczytaj(ANTIGRAVITY_DIR);
+    // „Wpisany" i „działający" to dwie różne rzeczy — tunel potrafi paść cicho.
+    const zywy = req.query.sprawdz === '0' ? { zywy: null } : await tunelCzyZywy(tunel.adres);
+    res.json({ success: true, ...tunel, ...zywy, biletow: biletowWObiegu() });
+});
+
+app.post('/api/tunel', async (req, res) => {
+    const { adres, opis } = req.body ?? {};
+    try {
+        const t = await tunelUstaw(ANTIGRAVITY_DIR, adres, opis);
+        return res.json({ success: true, ...t, ...(await tunelCzyZywy(t.adres)) });
+    } catch (e) {
+        return res.status(e instanceof BladTunelu ? e.status : 500).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/tunel', async (req, res) => {
+    res.json({ success: true, ...(await tunelZdejmij(ANTIGRAVITY_DIR)) });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🔴 ROZMOWA DWUSTRONNA — STT → LLM → TTS w czasie rzeczywistym (Etap 3)
+//
+//  Sama pętla (protokół Twilio, VAD, barge-in, rytm 20 ms) siedzi w
+//  LiveAudioStreamService. Tutaj wpinamy w nią PRAWDZIWE narzędzia Katedry:
+//  Whisper, Ollamę i sterowniki głosu z Etapu 2. Rozdział jest celowy — dzięki
+//  niemu pętlę da się przetestować atrapami, bez dzwonienia do człowieka.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Model rozmowy. Osobny od czatu, bo tu liczy się czas odpowiedzi, nie erudycja. */
+const MODEL_ROZMOWY = process.env.OTAKOS_MODEL_ROZMOWY || 'gemma4';
+/** Rozmówca nie będzie czekał pół minuty — po tym czasie mówimy o kłopocie. */
+const LIMIT_LLM_MS = 25_000;
+
+// ── Słuchacze SSE panelu (Live Call Monitor) ─────────────────────────────────
+const sluchaczeLive = new Set();
+
+function rozeslijLive(ev) {
+    const dane = `data: ${JSON.stringify(ev)}\n\n`;
+    for (const r of sluchaczeLive) {
+        try { r.write(dane); } catch { sluchaczeLive.delete(r); }
+    }
+}
+
+app.get('/api/voice/live', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+    res.write(`data: ${JSON.stringify({ typ: 'polaczono', rozmowy: zyweRozmowy() })}\n\n`);
+
+    sluchaczeLive.add(res);
+    // Bicie serca — bez niego pośrednicy ucinają cichy strumień po ~30 s,
+    // a panel wygląda, jakby rozmowa zamarła.
+    const puls = setInterval(() => { try { res.write(': puls\n\n'); } catch { /* noop */ } }, 25_000);
+    req.on('close', () => { clearInterval(puls); sluchaczeLive.delete(res); });
+});
+
+app.get('/api/voice/live/rozmowy', (req, res) => {
+    res.json({ success: true, rozmowy: zyweRozmowy(), sluchaczy: sluchaczeLive.size });
+});
+
+/** ✋ Przejęcie mikrofonu przez Suwerena — AI milknie do odwołania. */
+app.post('/api/voice/live/:callSid/przejmij', async (req, res) => {
+    const r = zywaRozmowa(req.params.callSid);
+    if (!r) return res.status(404).json({ success: false, message: 'Nie ma takiej żywej rozmowy.' });
+    try { return res.json({ success: true, stan: await r.przejmij({ tekst: req.body?.tekst ?? null }) }); }
+    catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
+
+/** Oddanie mikrofonu z powrotem AI. Nigdy nie dzieje się samo. */
+app.post('/api/voice/live/:callSid/oddaj', (req, res) => {
+    const r = zywaRozmowa(req.params.callSid);
+    if (!r) return res.status(404).json({ success: false, message: 'Nie ma takiej żywej rozmowy.' });
+    try { return res.json({ success: true, stan: r.oddaj() }); }
+    catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/voice/live/:callSid/rozlacz', (req, res) => {
+    const r = zywaRozmowa(req.params.callSid);
+    if (!r) return res.status(404).json({ success: false, message: 'Nie ma takiej żywej rozmowy.' });
+    return res.json({ success: true, ...r.rozlacz(req.body?.powod ?? 'decyzja Suwerena') });
+});
+
+/**
+ * POST /api/voice/incoming — webhook Twilio dla połączeń PRZYCHODZĄCYCH.
+ *
+ * ⚠️ TO JEST PUBLICZNY ADRES NA MASZYNIE SUWERENA. Każde żądanie jest
+ * weryfikowane podpisem `X-Twilio-Signature`; bez ważnego podpisu odpowiadamy
+ * 403 i nie wykonujemy NICZEGO. Adres tunelu prędzej czy później gdzieś
+ * wycieknie, a wtedy jedyną barierą jest ten podpis.
+ */
+app.post('/api/voice/incoming', async (req, res) => {
+    const { token } = await poswiadczeniaTwilio();
+    const tunel = await tunelWczytaj(ANTIGRAVITY_DIR);
+
+    if (!tunel.adres || !tunel.wss) {
+        console.warn('[Live] ⛔ Połączenie przychodzące przy odpiętym tunelu.');
+        return res.status(503).type('text/xml').send(
+            '<?xml version="1.0" encoding="UTF-8"?><Response><Say language="pl-PL" voice="Polly.Ewa">Przepraszamy, asystent jest chwilowo niedostępny.</Say></Response>');
+    }
+
+    const podpis = req.get('X-Twilio-Signature');
+    const w = telefoniaPodpis({ url: `${tunel.adres}/api/voice/incoming`, params: req.body ?? {}, podpis, token });
+    if (!w.ok) {
+        console.warn(`[Live] ⛔ Odrzucony webhook przychodzący: ${w.powod}`);
+        return res.status(403).type('text/plain').send('Podpis nieprawidłowy.');
+    }
+
+    const doNumeru = String(req.body?.To ?? '');
+    const odNumeru = String(req.body?.From ?? '');
+    const wszystkie = await biznesStan(ANTIGRAVITY_DIR);
+    const biznes = wszystkie.biznesy.find(b => b.telefon && b.telefon === doNumeru)
+        ?? wszystkie.biznesy.find(b => b.aktywny)
+        ?? null;
+
+    const bilet = nowyBilet({ biznesId: biznes?.id ?? null, kierunek: 'przychodzace' });
+    console.log(`[Live] 📞 Przychodzące ${odNumeru} → ${doNumeru} (${biznes?.nazwa ?? 'bez działalności'}).`);
+
+    const twiml = zbudujTwimlStream({
+        wssUrl: `${tunel.wss}/api/voice/stream`,
+        bilet,
+        powitanie: biznes
+            ? `Dzień dobry, tu asystent głosowy ${biznes.nazwa}. W czym mogę pomóc?`
+            : 'Dzień dobry, tu asystent głosowy. W czym mogę pomóc?',
+        parametry: { biznesId: biznes?.id ?? '', kierunek: 'przychodzace' },
+    });
+    return res.type('text/xml').send(twiml);
+});
+
+// ── NARZĘDZIA ROZMOWY: Whisper → Ollama → sterowniki głosu ───────────────────
+
+/**
+ * μ-law 8 kHz z telefonu → tekst. Whisper chce 16 kHz PCM, więc po drodze
+ * jedzie ffmpeg. Oba pliki lądują w temp i są sprzątane bez względu na wynik.
+ */
+async function transkrybujUlaw(ulaw, model = 'small') {
+    const modelPath = path.join(MODELS_DIR, `ggml-${model}.bin`);
+    if (!fsSync.existsSync(modelPath)) throw new Error(`Brak modelu Whisper ggml-${model}.bin w _OtakOs_AI/models/.`);
+    if (!fsSync.existsSync(WHISPER_EXE)) throw new Error('Brak whisper-cli.exe w _OtakOs_AI/bin/.');
+
+    const stempel = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const surowy = path.join(TEMP_DIR, `live_${stempel}.ulaw`);
+    const wav = path.join(TEMP_DIR, `live_${stempel}.wav`);
+    const baza = path.join(TEMP_DIR, `live_${stempel}_tr`);
+    const json = baza + '.json';
+
+    try {
+        await fs.mkdir(TEMP_DIR, { recursive: true });
+        await fs.writeFile(surowy, ulaw);
+        await execFileAsync(ffmpegPath, [
+            '-f', 'mulaw', '-ar', '8000', '-ac', '1', '-i', surowy,
+            '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', wav,
+        ]);
+        await execFileAsync(WHISPER_EXE, ['-m', modelPath, '-f', wav, '--output-json-full', '-p', '4', '-l', 'pl', '-of', baza], { cwd: BIN_DIR });
+        if (!fsSync.existsSync(json)) throw new Error('Whisper nie wygenerował wyniku.');
+        const out = JSON.parse(fsSync.readFileSync(json, 'utf8'));
+        return (out.transcription || []).map(s => String(s.text || '').trim()).join(' ').replace(/\s+/g, ' ').trim();
+    } finally {
+        for (const p of [surowy, wav, json]) { try { await fs.rm(p, { force: true }); } catch { /* noop */ } }
+    }
+}
+
+/**
+ * Odpowiedź rozmowy. Krótka, mówiona, bez znaczników.
+ *
+ * ⚠️ Prompt zakazuje emoji i markdownu nie dla estetyki: TTS CZYTA je na głos
+ * („gwiazdka", „myślnik"), a przez telefon brzmi to jak zepsuty automat.
+ */
+async function odpowiedzRozmowy({ tekst, historia, biznes }) {
+    const system = [
+        `Jesteś asystentem głosowym firmy „${biznes?.nazwa ?? 'Katedra'}".`,
+        biznes?.opis ? `Czym się zajmuje: ${biznes.opis}` : null,
+        'Rozmawiasz przez TELEFON. Odpowiadaj po polsku, maksymalnie dwoma krótkimi zdaniami.',
+        'Zero emoji, zero znaczników, zero list — twoje słowa idą prosto do syntezatora mowy.',
+        'Nie zmyślaj cen, terminów ani dostępności. Czego nie wiesz, tego nie obiecuj — zaproponuj kontakt.',
+    ].filter(Boolean).join(' ');
+
+    const wiadomosci = (historia ?? []).slice(-8).map(h => ({
+        role: h.rola === 'klient' ? 'user' : 'assistant',
+        content: h.tekst,
+    }));
+    if (!wiadomosci.length) wiadomosci.push({ role: 'user', content: tekst });
+
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), LIMIT_LLM_MS);
+    try {
+        const r = await fetch(`${OLLAMA_BASE}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: MODEL_ROZMOWY,
+                messages: [{ role: 'system', content: system }, ...wiadomosci],
+                stream: false,
+                options: { num_predict: 120, temperature: 0.6 },
+            }),
+            signal: c.signal,
+        });
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+        const d = await r.json();
+        return String(d?.message?.content ?? '').replace(/[*_`#]/g, '').trim();
+    } catch (e) {
+        throw new Error(`Model rozmowy (${MODEL_ROZMOWY}) nie odpowiedział: ${e.name === 'AbortError' ? `przekroczone ${LIMIT_LLM_MS / 1000}s` : e.message}`);
+    } finally { clearTimeout(t); }
+}
+
+/** Tekst → μ-law 8 kHz gotowe do wysłania w ramkach Twilio. */
+async function mowaUlaw({ tekst, biznes }) {
+    const tor = await ustalTorGlosu({ profil: biznes?.voiceProfile ?? null });
+    const { audio, ext } = await glosSyntezuj({
+        przewod: tor.przewod, tekst, glos: tor.glos, jezyk: tor.jezyk,
+        probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE }, klucz: tor.klucz,
+    });
+
+    const stempel = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const wejscie = path.join(TEMP_DIR, `live_out_${stempel}.${ext}`);
+    const wyjscie = path.join(TEMP_DIR, `live_out_${stempel}.ulaw`);
+    try {
+        await fs.mkdir(TEMP_DIR, { recursive: true });
+        await fs.writeFile(wejscie, audio);
+        await execFileAsync(ffmpegPath, ['-i', wejscie, '-ar', '8000', '-ac', '1', '-f', 'mulaw', '-y', wyjscie]);
+        return await fs.readFile(wyjscie);
+    } finally {
+        for (const p of [wejscie, wyjscie]) { try { await fs.rm(p, { force: true }); } catch { /* noop */ } }
+    }
+}
+
+/** Zależności pętli rozmowy — wpinane raz, przy starcie mostu. */
+const ZALEZNOSCI_ROZMOWY = {
+    transkrybuj: (ulaw) => transkrybujUlaw(ulaw),
+    odpowiedz: (x) => odpowiedzRozmowy(x),
+    mowa: (x) => mowaUlaw(x),
+    znajdzBiznes: (id) => biznesZnajdz(ANTIGRAVITY_DIR, id),
+    sprawdzBilet: (bilet) => {
+        const b = zuzyjBilet(bilet);
+        return b ? { ok: true, ...b } : { ok: false, powod: 'Bilet nieznany, zużyty albo przeterminowany.' };
+    },
+    naZdarzenie: (ev) => rozeslijLive(ev),
+
+    /**
+     * Minuta rozmowy = RUCH w Ekonomii Oddechu.
+     *
+     * Klucz niesie numer minuty, więc każda płaci dokładnie raz, a limit dobowy
+     * pilnuje reszty. To wciąż JEDNA ścieżka emisji — ta sama, co przy każdej
+     * innej pracy. Żadnego osobnego „licznika minutowego" obok księgi nie ma.
+     */
+    naMinute: async ({ callSid, biznesId, minuta }) => {
+        const wynik = await oddechZaPrace('biznes.minuta', `rozmowa:${callSid}:min:${minuta}`);
+        rozeslijLive({
+            typ: 'grv', callSid, minuta,
+            grv: wynik?.przyznane ? wynik.grv : 0,
+            powod: wynik?.przyznane ? null : (wynik?.powod ?? 'Oddech nieosiągalny.'),
+        });
+        if (biznesId && wynik?.przyznane) {
+            await biznesZapiszZdarzenie(ANTIGRAVITY_DIR, {
+                biznesId, akcja: 'biznes.minuta', klucz: `rozmowa:${callSid}:min:${minuta}`,
+                opis: `minuta rozmowy na żywo (${minuta})`, grv: wynik.grv, przyznane: true,
+            }).catch(() => {});
+        }
+    },
+
+    naKoniec: async ({ callSid, biznesId, sekundy, tur, historia }) => {
+        if (!biznesId) return;
+        const wynik = await oddechZaPrace('biznes.rozmowa', `rozmowa:${callSid}`);
+        await biznesZapiszZdarzenie(ANTIGRAVITY_DIR, {
+            biznesId,
+            akcja: 'rozmowa.domknieta',
+            klucz: `rozmowa:${callSid}`,
+            opis: `rozmowa na żywo: ${sekundy}s, ${tur} tur, ${historia?.length ?? 0} kwestii`,
+            grv: wynik?.przyznane ? wynik.grv : 0,
+            przyznane: !!wynik?.przyznane,
+            powod: wynik?.przyznane ? null : (wynik?.powod ?? 'Oddech nieosiągalny.'),
+        }).catch(() => {});
+    },
+};
 
 // ── 🎥 STUDIO WIDEOPODCASTU — sterowanie relayem RTMP i recorderem ───────────
 // Same strumienie idą kanałami WebSocket (/api/rtmp-relay, /api/recorder) —
@@ -9545,6 +9865,11 @@ const httpServer = app.listen(PORT, () => {
     console.log(` 🗣️  POST /api/voice/speak                  (klon lokalny | Kokoro | ElevenLabs)`);
     console.log(` 💾  POST /api/voice/render                 (mowa → plik w _OtakOs_Voice/)`);
     console.log(` 🧬  GET  /api/voice/elevenlabs/glosy        (lista głosów konta ElevenLabs)`);
+    console.log(` 🌀  GET/POST/DELETE /api/tunel             (Kwantowy Tunel — publiczny adres)`);
+    console.log(` 🔴  WS   /api/voice/stream                 (rozmowa dwustronna, Twilio Media Streams)`);
+    console.log(` 📡  GET  /api/voice/live                   (SSE: transkrypcja, latencja, GRV)`);
+    console.log(` ✋  POST /api/voice/live/:callSid/przejmij | /oddaj | /rozlacz`);
+    console.log(` 📞  POST /api/voice/incoming               (webhook Twilio — podpis WYMAGANY)`);
 
     // 🛡️ Strażnik VRAM - Tacos Guard
     initTacosGuard();
@@ -9554,6 +9879,8 @@ const httpServer = app.listen(PORT, () => {
 // /api/rtmp-relay → ffmpeg → RTMP (koniec głuchoty transmisji)
 // /api/recorder   → fizyczny plik .webm na dysku Suwerena
 attachStudioRelay(httpServer, { ffmpegPath });
+// 🔴 Rozmowa dwustronna — /api/voice/stream (Twilio Media Streams, Etap 3)
+attachLiveAudio(httpServer, ZALEZNOSCI_ROZMOWY);
 attachGoscStudio(httpServer);
 
 // ⚠️ STRAŻNIK GNIAZD NICZYICH — MUSI być wpięty JAKO OSTATNI.

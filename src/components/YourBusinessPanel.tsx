@@ -1,13 +1,15 @@
 /**
- * 🏢 YourBusinessPanel.tsx — moduł „Twoje Biznesy" (Etap 2).
+ * 🏢 YourBusinessPanel.tsx — moduł „Twoje Biznesy" (Etap 3).
  *
- * Szklany kokpit Cyber-Minimalizmu 0.00G, spinający trzy rzeczy:
+ * Szklany kokpit Cyber-Minimalizmu 0.00G, spinający cztery rzeczy:
  *   1. KARTY DZIAŁALNOŚCI — firmy, strony, usługi Suwerena + bilans GRV
  *      wypracowany Służbą (liczony z księgi zdarzeń po stronie mostu).
  *   2. VOICE & AGENT DISPATCHER — który sklonowany głos obsługuje którą firmę
  *      i czym ten głos jest liczony.
  *   3. LIVE ORDERS & AI DIAL CONSOLE — feed zdarzeń Służby oraz konsola
  *      autonomicznego połączenia.
+ *   4. LIVE CALL MONITOR — Kwantowy Tunel, rozmowy w toku, transkrypcja na
+ *      żywo, latencja, naliczone GRV i mikrofon Suwerena.
  *
  * ⚠️ TRZY MIEJSCA, W KTÓRYCH TEN PANEL CELOWO NIE ŁADNIE WYGLĄDA:
  *
@@ -18,17 +20,20 @@
  *  · Konsola Dial → dwa osobne przyciski. „Próba" sprawdza wszystko i NIE
  *    dzwoni; realny telefon wymaga jeszcze zaznaczonej zgody, która gaśnie po
  *    każdym połączeniu. Jedno kliknięcie nie ma prawa zadzwonić do człowieka.
+ *  · Monitor → gdy nic nie leci, pisze „cisza na linii", zamiast rysować
+ *    atrapę rozmowy. Po przejęciu mikrofonu AI NIE wraca samo — powrót jest
+ *    osobnym kliknięciem, bo bot wtrącający się w przejętą rozmowę to katastrofa.
  *
  * @author Klaudiusz 0.00G dla Suwerena
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import {
     Building2, Plus, RefreshCw, X, Wallet, Mic2, PhoneCall, Radio,
     Users, Zap, AlertTriangle, CheckCircle2, PlugZap, Volume2, Save,
-    Trash2, Globe, Sparkles, ScrollText,
+    Trash2, Globe, Sparkles, ScrollText, Waves, Network, Hand, Bot,
 } from 'lucide-react';
 
 import {
@@ -42,6 +47,11 @@ import {
     mowProfilem, renderujDoPliku, glosyElevenLabs,
     type ProfilGlosu, type StanPrzewodow, type GlosElevenLabs,
 } from '../services/voiceMcpService';
+import {
+    sluchajLive, pobierzRozmowy, przejmijRozmowe, oddajRozmowe, rozlaczRozmowe,
+    stanTunelu, ustawTunel, zdejmijTunel,
+    type ZdarzenieLive, type StanRozmowy, type StanTunelu,
+} from '../services/liveCallService';
 import { AGENTS_COLLECTIVE } from '../services/mcpMarketService';
 
 interface YourBusinessPanelProps {
@@ -112,6 +122,14 @@ export const YourBusinessPanel: React.FC<YourBusinessPanelProps> = ({ onClose, e
     // Głosy ElevenLabs — dociągane na żądanie (każde pytanie to ruch do chmury).
     const [glosyEl, setGlosyEl] = useState<GlosElevenLabs[]>([]);
 
+    // Live Call Monitor (Etap 3)
+    const [tunel, setTunel] = useState<StanTunelu | null>(null);
+    const [adresTunelu, setAdresTunelu] = useState('');
+    const [rozmowy, setRozmowy] = useState<StanRozmowy[]>([]);
+    const [feed, setFeed] = useState<ZdarzenieLive[]>([]);
+    const [tekstPrzejecia, setTekstPrzejecia] = useState('');
+    const [trybDial, setTrybDial] = useState<'zapowiedz' | 'rozmowa'>('zapowiedz');
+
     // ── Odczyt stanu ─────────────────────────────────────────────────────────
     const odswiez = useCallback(async () => {
         setLadowanie(true);
@@ -127,6 +145,8 @@ export const YourBusinessPanel: React.FC<YourBusinessPanelProps> = ({ onClose, e
             // Telefonia pyta konto Twilio — wolno jej nie odpowiedzieć, ale wtedy
             // konsola Dial pokazuje „stan nieznany", a nie zieloną gotowość.
             try { setTelefonia(await stanTelefonii()); } catch { setTelefonia(null); }
+            try { setTunel(await stanTunelu()); } catch { setTunel(null); }
+            try { setRozmowy((await pobierzRozmowy()).rozmowy); } catch { setRozmowy([]); }
         } catch (e: any) {
             setBlad(e?.message ?? 'Nieznany błąd mostu.');
             setStan(null);
@@ -136,6 +156,43 @@ export const YourBusinessPanel: React.FC<YourBusinessPanelProps> = ({ onClose, e
     }, []);
 
     useEffect(() => { void odswiez(); }, [odswiez]);
+
+    /**
+     * Strumień rozmów. Zdarzenia lecą do feedu, ale STAN rozmów dociągamy
+     * zapytaniem przy każdym starcie/końcu — SSE po zerwaniu wznawia się bez
+     * historii, więc sam strumień nie jest źródłem prawdy o tym, co żyje.
+     */
+    useEffect(() => {
+        const odepnij = sluchajLive((ev) => {
+            setFeed(f => [ev, ...f].slice(0, 60));
+            if (['start', 'stop', 'przejecie', 'oddanie', 'rozlaczenie', 'odmowa'].includes(ev.typ)) {
+                pobierzRozmowy().then(d => setRozmowy(d.rozmowy)).catch(() => { /* most milczy */ });
+            }
+            if (ev.typ === 'start') toast(`🔴 Rozmowa: ${ev.biznes ?? 'bez działalności'} (${ev.kierunek ?? '—'})`, { duration: 5000 });
+            if (ev.typ === 'stop') toast(`⏹️ Koniec rozmowy — ${ev.sekundy ?? 0}s, ${ev.tur ?? 0} tur.`, { duration: 5000 });
+        });
+        return odepnij;
+    }, []);
+
+    // Licznik czasu odświeżany co sekundę — inaczej „czas trwania" stałby
+    // w miejscu między zdarzeniami, a to najgorszy możliwy wskaźnik na żywo.
+    // `odMs` z mostu jest prawdą na moment pobrania, więc doliczamy to,
+    // co upłynęło od tamtej chwili tutaj.
+    const pobrano = useRef(Date.now());
+    useEffect(() => { pobrano.current = Date.now(); }, [rozmowy]);
+
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        if (!rozmowy.some(r => r.zywa)) return;
+        const t = setInterval(() => setTick(x => x + 1), 1000);
+        return () => clearInterval(t);
+    }, [rozmowy]);
+
+    const trwanie = (r: StanRozmowy) => {
+        const ms = r.zywa ? r.odMs + (Date.now() - pobrano.current) : r.odMs;
+        const s = Math.max(0, Math.round(ms / 1000));
+        return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    };
 
     const biznesy = stan?.biznesy ?? [];
     const aktywnyBiznes = useMemo(
@@ -251,6 +308,7 @@ export const YourBusinessPanel: React.FC<YourBusinessPanelProps> = ({ onClose, e
                 tekst: tekstRozmowy.trim() || undefined,
                 proba: !naprawde,
                 potwierdzenie: naprawde,
+                tryb: trybDial,
             });
             setDial(w);
             if (w.wykonane) toast.success(`Połączenie zestawione (${w.callSid ?? 'bez SID'}).`, { duration: 7000 });
@@ -264,6 +322,48 @@ export const YourBusinessPanel: React.FC<YourBusinessPanelProps> = ({ onClose, e
             setZgodaNaTelefon(false);
             setDzwonie(false);
         }
+    };
+
+    // ── Kwantowy Tunel i mikrofon Suwerena (Etap 3) ──────────────────────────
+    const wpnijTunel = async () => {
+        if (!adresTunelu.trim()) { toast.error('Podaj adres publiczny tunelu (https://…).'); return; }
+        try {
+            const t = await ustawTunel(adresTunelu.trim());
+            setTunel(t);
+            setAdresTunelu('');
+            toast.success(t.zywy ? 'Tunel wpięty i odpowiada.' : 'Tunel zapisany, ale NIE odpowiada — sprawdź, czy działa.');
+            await odswiez();
+        } catch (e: any) { toast.error(e?.message ?? 'Nie udało się wpiąć tunelu.'); }
+    };
+
+    const odepnijTunel = async () => {
+        try {
+            await zdejmijTunel();
+            setTunel(await stanTunelu(false));
+            toast('Tunel odpięty — rozmowy dwustronne wyłączone.', { icon: '🌀' });
+            await odswiez();
+        } catch (e: any) { toast.error(e?.message ?? 'Nie udało się odpiąć.'); }
+    };
+
+    const przejmij = async (r: StanRozmowy) => {
+        if (!r.callSid) return;
+        try {
+            await przejmijRozmowe(r.callSid, tekstPrzejecia.trim() || undefined);
+            setTekstPrzejecia('');
+            toast.success('Mikrofon przejęty — AI milczy do odwołania.');
+        } catch (e: any) { toast.error(e?.message ?? 'Przejęcie nie wyszło.'); }
+    };
+
+    const oddaj = async (r: StanRozmowy) => {
+        if (!r.callSid) return;
+        try { await oddajRozmowe(r.callSid); toast.success('Mikrofon oddany AI.'); }
+        catch (e: any) { toast.error(e?.message ?? 'Nie udało się oddać.'); }
+    };
+
+    const rozlacz = async (r: StanRozmowy) => {
+        if (!r.callSid) return;
+        try { await rozlaczRozmowe(r.callSid); toast('Rozmowa rozłączona.', { icon: '⏹️' }); }
+        catch (e: any) { toast.error(e?.message ?? 'Nie udało się rozłączyć.'); }
     };
 
     const pobierzGlosyEl = async () => {
@@ -290,7 +390,7 @@ export const YourBusinessPanel: React.FC<YourBusinessPanelProps> = ({ onClose, e
                     <div>
                         <h2 className="text-xl font-black tracking-tight text-slate-100">TWOJE BIZNESY</h2>
                         <p className="text-[11px] text-slate-500 font-mono">
-                            Rejestr działalności · Służba w GRV · Głos agentów · Telefonia (Etap 2)
+                            Rejestr · Służba w GRV · Głos agentów · Telefonia · Rozmowa na żywo (Etap 3)
                         </p>
                     </div>
                 </div>
@@ -827,9 +927,31 @@ export const YourBusinessPanel: React.FC<YourBusinessPanelProps> = ({ onClose, e
                                 <textarea
                                     value={tekstRozmowy} onChange={e => setTekstRozmowy(e.target.value)}
                                     rows={2}
-                                    placeholder="Co ma powiedzieć (puste = domyślna zapowiedź działalności)"
+                                    placeholder={trybDial === 'rozmowa'
+                                        ? 'Powitanie przed oddaniem głosu AI (puste = domyślne)'
+                                        : 'Co ma powiedzieć (puste = domyślna zapowiedź działalności)'}
                                     className="px-3 py-2 rounded-xl bg-slate-950/70 border border-slate-700 text-slate-200 text-xs outline-none focus:border-amber-500 resize-none"
                                 />
+
+                                {/* Tryb: jedno zdanie (Etap 2) czy pełna rozmowa (Etap 3, przez tunel). */}
+                                <div className="flex gap-1 p-1 rounded-xl bg-slate-950/60 border border-white/5">
+                                    {([
+                                        ['zapowiedz', '📢 Zapowiedź', true],
+                                        ['rozmowa', '🔴 Rozmowa dwustronna', !!tunel?.adres],
+                                    ] as const).map(([id, etykieta, dostepny]) => (
+                                        <button
+                                            key={id}
+                                            onClick={() => dostepny ? setTrybDial(id) : toast.error('Rozmowa dwustronna wymaga wpiętego Kwantowego Tunelu.')}
+                                            className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                                                trybDial === id
+                                                    ? 'bg-amber-600 text-white'
+                                                    : dostepny ? 'text-slate-400 hover:text-slate-200' : 'text-slate-700 cursor-not-allowed'
+                                            }`}
+                                        >
+                                            {etykieta}{!dostepny ? ' (brak tunelu)' : ''}
+                                        </button>
+                                    ))}
+                                </div>
 
                                 <div className="flex gap-2">
                                     <button
@@ -918,15 +1040,252 @@ export const YourBusinessPanel: React.FC<YourBusinessPanelProps> = ({ onClose, e
                 </section>
             )}
 
+            {/* ── 4. LIVE CALL MONITOR (Etap 3) ──────────────────────────── */}
+            {stan && (
+                <section className="flex flex-col gap-3">
+                    <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                        <Waves className="w-4 h-4 text-rose-400" /> Live Call Monitor
+                        {rozmowy.some(r => r.zywa) && (
+                            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-950/70 text-rose-300 border border-rose-800/60">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
+                                NA ŻYWO
+                            </span>
+                        )}
+                    </h3>
+
+                    {/* Kwantowy Tunel */}
+                    <div className="flex flex-col gap-2 p-4 rounded-2xl bg-slate-900/40 border border-white/5 backdrop-blur-md">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                                <Network className="w-4 h-4 text-cyan-400" /> Kwantowy Tunel
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                                tunel?.adres
+                                    ? (tunel.zywy
+                                        ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60'
+                                        : 'bg-amber-950/70 text-amber-300 border-amber-800/60')
+                                    : 'bg-slate-800/70 text-slate-400 border-slate-700'
+                            }`}>
+                                {tunel?.adres
+                                    ? (tunel.zywy === null ? 'WPIĘTY (niesprawdzony)' : tunel.zywy ? 'WPIĘTY I ŻYWY' : 'WPIĘTY, NIE ODPOWIADA')
+                                    : 'ODPIĘTY'}
+                            </span>
+                        </div>
+
+                        {tunel?.adres ? (
+                            <div className="flex flex-col gap-2">
+                                <div className="font-mono text-[10px] text-slate-400 break-all">
+                                    {tunel.adres}
+                                    <span className="text-slate-600"> → {tunel.wss}/api/voice/stream</span>
+                                </div>
+                                {tunel.zywy === false && tunel.powod && (
+                                    <div className="text-[10px] text-amber-300 leading-snug">{tunel.powod}</div>
+                                )}
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-slate-600 font-mono">biletów w obiegu: {tunel.biletow ?? 0}</span>
+                                    <button
+                                        onClick={() => void odepnijTunel()}
+                                        className="ml-auto px-3 py-1.5 rounded-lg bg-slate-950/70 border border-rose-500/30 text-rose-300 text-[10px] font-bold hover:bg-rose-950/40"
+                                    >
+                                        Odepnij tunel
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-2">
+                                <div className="text-[10px] text-slate-500 leading-snug">
+                                    Bez publicznego adresu Twilio nie ma dokąd oddać audio — rozmowa dwustronna
+                                    i połączenia przychodzące są wyłączone. Wpnij adres tunelu (Cloudflare, ngrok, własna domena).
+                                </div>
+                                <div className="flex gap-2">
+                                    <input
+                                        value={adresTunelu} onChange={e => setAdresTunelu(e.target.value)}
+                                        placeholder="https://twoj-tunel.trycloudflare.com"
+                                        className="flex-1 px-3 py-2 rounded-xl bg-slate-950/70 border border-slate-700 text-slate-200 text-xs outline-none focus:border-cyan-500"
+                                    />
+                                    <button
+                                        onClick={() => void wpnijTunel()}
+                                        className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold"
+                                    >
+                                        Wepnij
+                                    </button>
+                                </div>
+                                <div className="text-[10px] text-slate-600 font-mono leading-snug">
+                                    Webhook dla numeru przychodzącego: &lt;adres&gt;/api/voice/incoming (podpis Twilio WYMAGANY)
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        {/* Żywe rozmowy + mikrofon Suwerena */}
+                        <div className="flex flex-col gap-2 p-4 rounded-2xl bg-slate-900/40 border border-white/5 backdrop-blur-md">
+                            <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                                Rozmowy w toku ({rozmowy.filter(r => r.zywa).length})
+                            </div>
+
+                            {rozmowy.filter(r => r.zywa).length === 0 && (
+                                <div className="text-xs text-slate-600 italic">
+                                    Cisza na linii. Nic nie udaję — gdy rozmowa ruszy, pojawi się tutaj sama.
+                                </div>
+                            )}
+
+                            {rozmowy.filter(r => r.zywa).map(r => (
+                                <div key={r.callSid ?? 'x'} className="flex flex-col gap-2 p-3 rounded-xl bg-slate-950/60 border border-rose-900/40">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <div className="text-xs font-bold text-slate-200 truncate">
+                                                {biznesy.find(b => b.id === r.biznesId)?.nazwa ?? r.biznesId ?? 'bez działalności'}
+                                                <span className="text-slate-500 font-normal"> · {r.kierunek === 'przychodzace' ? '📞 przychodzące' : '☎️ wychodzące'}</span>
+                                            </div>
+                                            <div className="text-[10px] font-mono text-slate-600 truncate">{r.callSid}</div>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border shrink-0 ${
+                                            r.tryb === 'suweren' ? 'bg-amber-950/70 text-amber-300 border-amber-800/60'
+                                                : r.tryb === 'mowimy' ? 'bg-fuchsia-950/70 text-fuchsia-300 border-fuchsia-800/60'
+                                                : r.tryb === 'myslimy' ? 'bg-sky-950/70 text-sky-300 border-sky-800/60'
+                                                : 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60'
+                                        }`}>
+                                            {r.tryb === 'suweren' ? '✋ SUWEREN' : r.tryb.toUpperCase()}
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-4 gap-2 text-center">
+                                        <div className="py-1 rounded-lg bg-slate-950/60 border border-white/5">
+                                            <div className="text-xs font-bold font-mono text-slate-200">{trwanie(r)}</div>
+                                            <div className="text-[9px] uppercase text-slate-600">Czas</div>
+                                        </div>
+                                        <div className="py-1 rounded-lg bg-slate-950/60 border border-white/5">
+                                            <div className="text-xs font-bold font-mono text-amber-300">{r.minut * 5}</div>
+                                            <div className="text-[9px] uppercase text-slate-600">GRV/min</div>
+                                        </div>
+                                        <div className="py-1 rounded-lg bg-slate-950/60 border border-white/5">
+                                            <div className="text-xs font-bold font-mono text-cyan-300">{r.tur}</div>
+                                            <div className="text-[9px] uppercase text-slate-600">Tury</div>
+                                        </div>
+                                        <div className="py-1 rounded-lg bg-slate-950/60 border border-white/5">
+                                            <div className="text-xs font-bold font-mono text-sky-300">
+                                                {r.latencje?.tura ? `${(r.latencje.tura / 1000).toFixed(1)}s` : '—'}
+                                            </div>
+                                            <div className="text-[9px] uppercase text-slate-600">Latencja</div>
+                                        </div>
+                                    </div>
+
+                                    {r.latencje && (r.latencje.stt || r.latencje.llm || r.latencje.tts) && (
+                                        <div className="flex gap-1 text-[9px] font-mono text-slate-500">
+                                            <span>STT {r.latencje.stt ?? '—'}ms</span>
+                                            <span>·</span>
+                                            <span>LLM {r.latencje.llm ?? '—'}ms</span>
+                                            <span>·</span>
+                                            <span>TTS {r.latencje.tts ?? '—'}ms</span>
+                                        </div>
+                                    )}
+
+                                    <input
+                                        value={tekstPrzejecia} onChange={e => setTekstPrzejecia(e.target.value)}
+                                        placeholder="Co powiedzieć po przejęciu (opcjonalnie)"
+                                        className="px-3 py-2 rounded-lg bg-slate-950/70 border border-slate-700 text-slate-200 text-[11px] outline-none focus:border-amber-500"
+                                    />
+                                    <div className="flex gap-2">
+                                        {r.tryb === 'suweren' ? (
+                                            <button
+                                                onClick={() => void oddaj(r)}
+                                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-950/70 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold hover:bg-emerald-950/40"
+                                            >
+                                                <Bot className="w-3.5 h-3.5" /> Oddaj mikrofon AI
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => void przejmij(r)}
+                                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold"
+                                            >
+                                                <Hand className="w-3.5 h-3.5" /> Przejmij rozmowę
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => void rozlacz(r)}
+                                            className="px-3 py-2 rounded-lg bg-slate-950/70 border border-rose-500/40 text-rose-300 text-[11px] font-bold hover:bg-rose-950/40"
+                                        >
+                                            Rozłącz
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Strumień zdarzeń */}
+                        <div className="flex flex-col gap-2 p-4 rounded-2xl bg-slate-900/40 border border-white/5 backdrop-blur-md">
+                            <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                                Transkrypcja i przebieg ({feed.length})
+                            </div>
+                            <div className="flex flex-col gap-1 max-h-72 overflow-y-auto">
+                                {feed.length === 0 && (
+                                    <div className="text-xs text-slate-600 italic">
+                                        Strumień milczy. To nie awaria — po prostu nic się teraz nie dzieje.
+                                    </div>
+                                )}
+                                {feed.map((ev, i) => {
+                                    if (ev.typ === 'transkrypt') {
+                                        const ai = ev.rola === 'ai';
+                                        return (
+                                            <div key={i} className={`px-3 py-2 rounded-xl border text-xs ${
+                                                ai ? 'bg-fuchsia-950/20 border-fuchsia-900/40 text-fuchsia-100'
+                                                   : 'bg-slate-950/60 border-white/5 text-slate-200'
+                                            }`}>
+                                                <div className="flex items-center gap-1.5 text-[9px] uppercase font-bold tracking-wider mb-0.5 opacity-70">
+                                                    {ai ? '🤖 asystent' : '🙋 klient'}
+                                                    {ev.ms ? <span className="font-mono">· {ev.ms}ms</span> : null}
+                                                </div>
+                                                {ev.tekst}
+                                            </div>
+                                        );
+                                    }
+                                    const opisy: Record<string, string> = {
+                                        start: '🔴 rozmowa ruszyła',
+                                        stop: `⏹️ koniec (${ev.sekundy ?? 0}s, ${ev.tur ?? 0} tur)`,
+                                        myslimy: '🧠 myśli…',
+                                        mowimy: '🗣️ mówi',
+                                        sluchamy: '👂 słucha',
+                                        cisza: '… nic nie usłyszałem',
+                                        przerwane: `✂️ przerwane (${ev.powod ?? '—'})`,
+                                        minuta: `⏱️ minuta ${ev.minuta}`,
+                                        grv: ev.grv ? `💰 +${ev.grv} GRV (min. ${ev.minuta})` : `💤 bez GRV: ${ev.powod ?? '—'}`,
+                                        przejecie: '✋ Suweren przejął mikrofon',
+                                        oddanie: '🤖 mikrofon wrócił do AI',
+                                        rozlaczenie: `📴 rozłączone (${ev.powod ?? '—'})`,
+                                        odmowa: `⛔ odmowa: ${ev.powod ?? '—'}`,
+                                        blad: `⚠️ ${ev.message ?? 'błąd'}`,
+                                        polaczono: '📡 podpięto strumień',
+                                        latencja: `⚡ tura ${ev.latencje?.tura ?? '—'}ms`,
+                                        dtmf: '☎️ ton',
+                                    };
+                                    return (
+                                        <div key={i} className={`px-3 py-1 text-[10px] font-mono ${
+                                            ev.typ === 'blad' || ev.typ === 'odmowa' ? 'text-rose-300' : 'text-slate-600'
+                                        }`}>
+                                            {opisy[ev.typ] ?? ev.typ}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <div className="text-[10px] text-slate-600 leading-snug pt-1 border-t border-white/5">
+                                GRV za minutę rozmowy nalicza most przez Ekonomię Oddechu (klucz z numerem minuty,
+                                limit dobowy). Panel pokazuje, co realnie weszło do księgi — nie własny licznik.
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            )}
+
             {/* ── STOPKA STANU ───────────────────────────────────────────── */}
             {stan && (
                 <div className="flex items-center justify-between text-[10px] font-mono text-slate-600 pt-1">
                     <span className="flex items-center gap-1.5">
                         <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                        Rejestr: _OtakOs_Wymiar/biznesy.json · Głos: _OtakOs_Voice/
+                        Rejestr: _OtakOs_Wymiar/biznesy.json · Głos: _OtakOs_Voice/ · Tunel: _OtakOs_Wymiar/tunel.json
                     </span>
                     <span className="flex items-center gap-1.5">
-                        <Globe className="w-3 h-3" /> Etap 2 — telefonia mówi; rozmowa dwustronna czeka na Etap 3
+                        <Globe className="w-3 h-3" /> Etap 3 — rozmowa dwustronna przez Kwantowy Tunel
                     </span>
                 </div>
             )}
