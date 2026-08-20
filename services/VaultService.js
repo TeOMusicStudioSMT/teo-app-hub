@@ -32,6 +32,11 @@ export const SERVICE_CATALOG = {
     apilayer_gateway: { label: 'APILayer Gateway',      fields: ['apilayer_free_key'],  security: 'HIGH',     glyph: '🌐' },
     anthropic:        { label: 'Klaudiusz (Anthropic)', fields: ['api_key'],            security: 'CRITICAL', glyph: '🧠' },
     gemini:           { label: 'Gemini (Google)',       fields: ['api_key'],            security: 'HIGH',     glyph: '✦' },
+    // ── Przewody Voice/Audio modułu „Twoje Biznesy" (GlosMcpService) ──
+    // Wpisane tu, żeby panel mógł UCZCIWIE odpowiedzieć „klucza nie ma",
+    // zamiast zgadywać po zmiennych środowiskowych.
+    elevenlabs:       { label: 'ElevenLabs (klon głosu)', fields: ['api_key'],          security: 'HIGH',     glyph: '🧬' },
+    twilio:           { label: 'Twilio (telefonia AI)',   fields: ['account_sid', 'auth_token', 'from_number'], security: 'CRITICAL', glyph: '☎️' },
 };
 
 class VaultServiceClass {

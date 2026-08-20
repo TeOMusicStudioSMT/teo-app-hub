@@ -59,6 +59,26 @@ import TostService           from './services/TostService.js';
 import LaundryService        from './services/LaundryService.js';
 import VaultService          from './services/VaultService.js';
 import ProfileScoutService   from './services/ProfileScoutService.js';
+import {
+    AKCJE_SLUZBY as BIZNES_AKCJE,
+    dodaj as biznesDodaj, zaktualizuj as biznesZaktualizuj,
+    usun as biznesUsun, znajdz as biznesZnajdz, zapiszZdarzenie as biznesZapiszZdarzenie,
+    zdarzenia as biznesZdarzenia, stan as biznesStan,
+} from './services/BiznesService.js';
+import {
+    przewod as glosPrzewod,
+    statusPrzewodow as glosStatusPrzewodow, wczytajProfile as glosProfile,
+    zapiszProfil as glosZapiszProfil, usunProfil as glosUsunProfil,
+    nagrania as glosNagrania,
+} from './services/GlosMcpService.js';
+import {
+    KOKORO_BASE_DOMYSLNY,
+    BladPrzewodu, syntezuj as glosSyntezuj, glosyElevenLabs,
+} from './services/PrzewodyGlosuService.js';
+import {
+    BladTelefonii, zadzwon as telefoniaZadzwon, stanKonta as telefoniaStanKonta,
+    mozliwosci as telefoniaMozliwosci,
+} from './services/TelefoniaService.js';
 import FlushService          from './services/FlushService.js';
 import ApiLayerService       from './services/ApiLayerService.js';
 import AlignmentShield       from './services/AlignmentShield.js';
@@ -5786,6 +5806,51 @@ app.post('/api/music/collect', async (req, res) => {
 // przez lokalny silnik klonu (XTTS/OpenVoice na VOICE_BASE) jeśli obecny; inaczej
 // front używa przeglądarki (speechSynthesis). Każdy może to mieć w swojej Katedrze.
 const VOICE_BASE = process.env.OTAKOS_VOICE_HOST || 'http://127.0.0.1:5002';
+/** Kokoro TTS — lokalny serwer o API zgodnym z OpenAI (Etap 2). */
+const KOKORO_BASE = process.env.OTAKOS_KOKORO_HOST || KOKORO_BASE_DOMYSLNY;
+
+/**
+ * Klucze przewodów chmurowych czytamy ZE SKARBCA przy każdym użyciu, nigdy
+ * z pamięci procesu. Suweren może je dodać albo skasować w trakcie działania
+ * mostu i ma to zadziałać od razu, bez restartu.
+ */
+async function sekretPrzewodu(usluga, pole) {
+    try { return await VaultService.getInstance().getSecret(usluga, pole); } catch { return null; }
+}
+
+/** Profil głosowy → parametry dla sterownika. Jedno miejsce, wspólne dla speak i render. */
+async function ustalTorGlosu({ profil, voiceId, przewod }) {
+    let tor = przewod || 'klon-lokalny';
+    let glos = voiceId ? String(voiceId).replace(/[^\w-]/g, '') : null;
+    let jezyk = 'pl';
+
+    if (profil) {
+        const p = (await glosProfile(VOICE_OUT_DIR)).find(x => x.id === profil);
+        if (!p) throw new BladPrzewodu(`Profil głosu „${profil}" nieznany.`, 404, null);
+        tor = p.przewod || tor;
+        glos = p.voiceId || glos;
+        jezyk = p.jezyk || jezyk;
+    }
+
+    const def = glosPrzewod(tor);
+    if (def && !def.sterownik) {
+        throw new BladPrzewodu(
+            `Przewód „${def.nazwa}" nie ma sterownika w moście — nic nie zabrzmiało.`, 501, tor);
+    }
+    if (tor === 'przegladarka') {
+        throw new BladPrzewodu(
+            'Ten profil używa syntezy przeglądarki — most nie ma tu czego wyprodukować. Dźwięk powstaje po stronie Suwerena.',
+            424, 'przegladarka');
+    }
+
+    return {
+        przewod: tor,
+        glos,
+        jezyk,
+        probka: path.join(VOICES_DIR, `${glos || 'suweren'}.wav`),
+        klucz: tor === 'elevenlabs-mcp' ? await sekretPrzewodu('elevenlabs', 'api_key') : null,
+    };
+}
 const VOICES_DIR = path.join(AI_DIR, 'voices');
 
 app.get('/api/voice/status', async (req, res) => {
@@ -5848,18 +5913,355 @@ app.post('/api/voice/transcribe', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/voice/speak — mowa strumieniem do przeglądarki.
+ * Body: { text, voiceId? , profil?, przewod? }
+ *
+ * Od Etapu 2 idzie przez `PrzewodyGlosuService`, więc obsługuje wszystkie tory
+ * ze sterownikiem (lokalny klon, Kokoro, ElevenLabs). Bez `profil`/`przewod`
+ * zachowuje się dokładnie jak wcześniej: lokalny klon, a przy jego braku 424
+ * z `fallback: 'browser'` — front ma na tym oparty tor zapasowy i nie wolno
+ * mu tego kształtu odpowiedzi zabrać.
+ */
 app.post('/api/voice/speak', async (req, res) => {
-    const { text, voiceId } = req.body ?? {};
+    const { text, voiceId, profil, przewod } = req.body ?? {};
     if (!text) return res.status(400).json({ success: false, message: 'Brak "text".' });
-    const ref = path.join(VOICES_DIR, `${String(voiceId || 'suweren').replace(/[^\w-]/g, '')}.wav`);
     try {
-        // Konwencja lokalnego silnika (XTTS/OpenVoice): POST {text, speaker_wav, language} → audio.
-        const r = await fetch(`${VOICE_BASE}/api/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, speaker_wav: fsSync.existsSync(ref) ? ref : undefined, language: 'pl' }) });
-        if (!r.ok) throw new Error('engine ' + r.status);
-        res.setHeader('Content-Type', 'audio/wav');
-        return res.send(Buffer.from(await r.arrayBuffer()));
+        const tor = await ustalTorGlosu({ profil, voiceId, przewod });
+        const { audio, mime } = await glosSyntezuj({
+            przewod: tor.przewod, tekst: text, glos: tor.glos, jezyk: tor.jezyk,
+            probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE }, klucz: tor.klucz,
+        });
+        res.setHeader('Content-Type', mime);
+        res.setHeader('X-Przewod', tor.przewod);
+        return res.send(audio);
     } catch (e) {
-        return res.status(424).json({ success: false, fallback: 'browser', message: `Lokalny silnik głosu niedostępny (${e.message}). Front użyje przeglądarki.` });
+        const status = e instanceof BladPrzewodu ? e.status : 424;
+        return res.status(status).json({
+            success: false,
+            fallback: 'browser',
+            przewod: e?.przewod ?? null,
+            message: `${e.message} Front może użyć toru przeglądarki.`,
+        });
+    }
+});
+
+/**
+ * GET /api/voice/elevenlabs/glosy — lista głosów konta.
+ * Bez tego profil ElevenLabs wymagałby wklepywania ID głosu z palca.
+ */
+app.get('/api/voice/elevenlabs/glosy', async (req, res) => {
+    try {
+        const glosy = await glosyElevenLabs(await sekretPrzewodu('elevenlabs', 'api_key'));
+        return res.json({ success: true, glosy });
+    } catch (e) {
+        return res.status(e instanceof BladPrzewodu ? e.status : 500).json({ success: false, message: e.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🏢 TWOJE BIZNESY — rejestr działalności Suwerena + Służba płacona w GRV
+//
+//  Etap 1: karty działalności, przypisany głos, księga zdarzeń Służby.
+//
+//  ⚠️ GRV idzie TĄ SAMĄ drogą co każda inna praca: `oddechZaPrace` → `ocenPrace`
+//  (limit dobowy + klucz jednokrotności) → `przelejGrv` (pieczęć w łańcuchu).
+//  Nie ma tu drugiej ścieżki emisji i mieć nie będzie — księga, której
+//  `verifyGrvChain` nie potwierdza, to ekonomia bez dowodu.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Folder audio modułu głosowego: profile + wyrenderowane nagrania. */
+const VOICE_OUT_DIR = path.join(process.cwd(), '_OtakOs_Voice');
+
+app.get('/api/business/list', async (req, res) => {
+    try {
+        return res.json({ success: true, ...(await biznesStan(ANTIGRAVITY_DIR)) });
+    } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/business/create', async (req, res) => {
+    try {
+        const biznes = await biznesDodaj(ANTIGRAVITY_DIR, req.body ?? {});
+        console.log(`[Biznesy] 🏢 Nowa działalność: ${biznes.nazwa} (${biznes.id}).`);
+        return res.json({ success: true, biznes });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
+
+app.patch('/api/business/:id', async (req, res) => {
+    try {
+        return res.json({ success: true, biznes: await biznesZaktualizuj(ANTIGRAVITY_DIR, req.params.id, req.body ?? {}) });
+    } catch (e) { return res.status(404).json({ success: false, message: e.message }); }
+});
+
+app.delete('/api/business/:id', async (req, res) => {
+    try {
+        return res.json({ success: true, ...(await biznesUsun(ANTIGRAVITY_DIR, req.params.id)) });
+    } catch (e) { return res.status(404).json({ success: false, message: e.message }); }
+});
+
+/** Feed Służby — „Live Orders". Bez filtra: wszystkie działalności razem. */
+app.get('/api/business/ledger', async (req, res) => {
+    try {
+        const biznesId = String(req.query.biznesId || '') || null;
+        const limit = Number(req.query.limit || 40);
+        return res.json({ success: true, zdarzenia: await biznesZdarzenia(ANTIGRAVITY_DIR, { biznesId, limit }) });
+    } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
+/**
+ * POST /api/business/sluzba — zgłoszenie wykonanej Służby.
+ * Body: { biznesId, akcja, klucz, opis?, klient?, wezel? }
+ *
+ * `klucz` jest OBOWIĄZKOWY i nie ma domyślnej wartości. Gdyby most sam go
+ * dorabiał (choćby ze znacznika czasu), jedno kliknięcie w kółko drukowałoby
+ * GRV — a nagroda za służbę zamieniłaby się w automat do gry.
+ */
+app.post('/api/business/sluzba', async (req, res) => {
+    const { biznesId, akcja, klucz, opis, klient, wezel } = req.body ?? {};
+    try {
+        const def = BIZNES_AKCJE[akcja];
+        if (!def) {
+            return res.status(400).json({
+                success: false,
+                message: `Nieznana akcja Służby „${akcja}". Dozwolone: ${Object.keys(BIZNES_AKCJE).join(', ')}.`,
+            });
+        }
+        if (!String(klucz || '').trim()) {
+            return res.status(400).json({ success: false, message: 'Wymagany „klucz" jednokrotności — bez niego ta sama służba płaciłaby w kółko.' });
+        }
+        const biznes = await biznesZnajdz(ANTIGRAVITY_DIR, String(biznesId || ''));
+        if (!biznes) return res.status(404).json({ success: false, message: `Działalność „${biznesId}" nieznana.` });
+
+        const kluczPelny = `biznes:${biznes.id}:${akcja}:${String(klucz).trim()}`;
+        const oddech = await oddechZaPrace(def.oddech, kluczPelny, null, wezel || ODDECH_WEZEL);
+
+        // `oddechZaPrace` zwraca null, gdy sam oddech padł. Służba i tak się wydarzyła,
+        // więc zapisujemy ją bez GRV i mówimy wprost, że nagroda nie doszła.
+        const przyznane = !!oddech?.przyznane;
+        const grv = przyznane ? oddech.grv : 0;
+        const powod = oddech ? (oddech.powod ?? null) : 'Oddech nieosiągalny — GRV nie zostało naliczone.';
+
+        const zdarzenie = await biznesZapiszZdarzenie(ANTIGRAVITY_DIR, {
+            biznesId: biznes.id, akcja, klucz: kluczPelny, opis, klient, grv, przyznane, powod,
+        });
+
+        if (przyznane) console.log(`[Biznesy] 💰 ${biznes.nazwa}: ${def.opis} → +${grv} GRV.`);
+        return res.json({ success: true, zdarzenie, oddech: oddech ?? { przyznane: false, powod }, biznes: biznes.id });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/** Poświadczenia telefonii — trzy pola, wszystkie ze Skarbca 0.00G. */
+async function poswiadczeniaTwilio() {
+    const [sid, token, od] = await Promise.all([
+        sekretPrzewodu('twilio', 'account_sid'),
+        sekretPrzewodu('twilio', 'auth_token'),
+        sekretPrzewodu('twilio', 'from_number'),
+    ]);
+    return { sid, token, od };
+}
+
+/**
+ * GET /api/business/telefonia — czy przewód telefoniczny jest DROŻNY.
+ *
+ * Odpytuje konto Twilio, zamiast wnioskować z samej obecności klucza w skarbcu.
+ * Klucz bywa nieaktualny, a konto zawieszone — i wtedy „skonfigurowany" znaczy
+ * dokładnie nic.
+ */
+app.get('/api/business/telefonia', async (req, res) => {
+    const { sid, token, od } = await poswiadczeniaTwilio();
+    const braki = [];
+    if (!sid) braki.push('twilio.account_sid');
+    if (!token) braki.push('twilio.auth_token');
+    if (!od) braki.push('twilio.from_number');
+
+    if (braki.length) {
+        return res.json({
+            success: true, drozny: false, braki, mozliwosci: telefoniaMozliwosci(),
+            message: `Przewód telefoniczny niekompletny — brakuje w Skarbcu 0.00G: ${braki.join(', ')}.`,
+        });
+    }
+    try {
+        const konto = await telefoniaStanKonta({ sid, token });
+        return res.json({
+            success: true, drozny: true, braki: [], konto, od, mozliwosci: telefoniaMozliwosci(),
+            message: konto.prubny
+                ? 'Konto próbne Twilio: dodzwoni się TYLKO na numery zweryfikowane i doklei własną zapowiedź.'
+                : 'Przewód telefoniczny drożny.',
+        });
+    } catch (e) {
+        return res.status(e instanceof BladTelefonii ? e.status : 500)
+            .json({ success: false, drozny: false, message: e.message, mozliwosci: telefoniaMozliwosci() });
+    }
+});
+
+/**
+ * POST /api/business/dial — połączenie wychodzące (Etap 2 — sterownik Twilio).
+ * Body: { biznesId, numer?, tekst?, jezyk?, glos?, proba?, potwierdzenie? }
+ *
+ * ⚠️ DWA BEZPIECZNIKI, KTÓRYCH NIE WOLNO STĄD ZDJĄĆ:
+ *
+ *  1. `proba` jest DOMYŚLNIE `true`. Zwykłe kliknięcie sprawdza poświadczenia,
+ *     składa TwiML i pokazuje, co POSZŁOBY na linię — bez dzwonienia. Realne
+ *     połączenie trzeba zamówić jawnie (`proba: false`).
+ *  2. Realne połączenie wymaga dodatkowo `potwierdzenie: true`. To jest telefon
+ *     do żywego człowieka i realny rachunek u operatora — jedno przypadkowe
+ *     kliknięcie nie ma prawa go zestawić.
+ *
+ * Rozmowa dwustronna (Media Streams) i klon Suwerena w słuchawce wymagają
+ * publicznego adresu — Etap 3. Tu mówi głos Twilio, i tak to jest opisane.
+ */
+app.post('/api/business/dial', async (req, res) => {
+    const { biznesId, numer, tekst, jezyk = 'pl-PL', glos = 'Polly.Ewa', proba = true, potwierdzenie = false } = req.body ?? {};
+    try {
+        const biznes = await biznesZnajdz(ANTIGRAVITY_DIR, String(biznesId || ''));
+        if (!biznes) return res.status(404).json({ success: false, message: `Działalność „${biznesId}" nieznana.` });
+
+        const cel = String(numer || biznes.telefon || '').trim();
+        if (!cel) {
+            return res.status(400).json({ success: false, message: 'Brak numeru docelowego (ani w żądaniu, ani w karcie działalności).' });
+        }
+
+        const naprawde = proba === false;
+        if (naprawde && potwierdzenie !== true) {
+            return res.status(428).json({
+                success: false, wykonane: false,
+                message: 'Realne połączenie wymaga jawnego „potwierdzenie": true. To telefon do żywego człowieka i rachunek u operatora — nie zestawiam go z domyślnych ustawień.',
+            });
+        }
+
+        const { sid, token, od } = await poswiadczeniaTwilio();
+        const tresc = String(tekst || '').trim() ||
+            `Dzień dobry. Tu asystent głosowy ${biznes.nazwa}. Dzwonię w sprawie Państwa zapytania. Proszę o kontakt, gdy będzie dogodna chwila.`;
+
+        const wynik = await telefoniaZadzwon({ sid, token, od, doKogo: cel, tekst: tresc, jezyk, glos, proba: !naprawde });
+
+        if (wynik.wykonane) {
+            console.log(`[Biznesy] ☎️ Połączenie zestawione: ${biznes.nazwa} → ${cel} (callSid ${wynik.callSid}).`);
+            // Ślad w księdze — ale BEZ GRV. Zestawione połączenie to jeszcze nie
+            // domknięta rozmowa; za tę płaci osobne zgłoszenie Służby.
+            await biznesZapiszZdarzenie(ANTIGRAVITY_DIR, {
+                biznesId: biznes.id,
+                akcja: 'rozmowa.wychodzaca',
+                klucz: `dial:${wynik.callSid ?? Date.now().toString(36)}`,
+                opis: `połączenie wychodzące do ${cel}`,
+                klient: cel,
+                grv: 0,
+                przyznane: false,
+                powod: 'Zestawione połączenie to jeszcze nie domknięta rozmowa — GRV należy się za „rozmowa.domknieta".',
+            });
+        }
+
+        return res.json({ success: true, przewod: 'twilio-conduit', ...wynik });
+    } catch (e) {
+        return res.status(e instanceof BladTelefonii ? e.status : 500)
+            .json({ success: false, wykonane: false, przewod: 'twilio-conduit', message: e.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🎙️ GŁOS DZIAŁALNOŚCI — profile głosowe i katalog przewodów Voice/Audio MCP
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/voice/profiles — profile + informacja, czy próbka klonu realnie leży na dysku. */
+app.get('/api/voice/profiles', async (req, res) => {
+    try {
+        const profile = await glosProfile(VOICE_OUT_DIR);
+        const zProbka = profile.map(p => ({
+            ...p,
+            probkaIstnieje: fsSync.existsSync(path.join(VOICES_DIR, `${p.voiceId}.wav`)),
+        }));
+        return res.json({ success: true, profile: zProbka, katalog: '_OtakOs_Voice' });
+    } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/voice/profiles', async (req, res) => {
+    try {
+        const profil = await glosZapiszProfil(VOICE_OUT_DIR, req.body ?? {});
+        const probkaIstnieje = fsSync.existsSync(path.join(VOICES_DIR, `${profil.voiceId}.wav`));
+        return res.json({ success: true, profil: { ...profil, probkaIstnieje } });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
+
+app.delete('/api/voice/profiles/:id', async (req, res) => {
+    try {
+        return res.json({ success: true, ...(await glosUsunProfil(VOICE_OUT_DIR, req.params.id)) });
+    } catch (e) { return res.status(404).json({ success: false, message: e.message }); }
+});
+
+/**
+ * GET /api/voice/mcp — stan przewodów Voice/Audio.
+ *
+ * Zwraca DWA różne pola i UI ma je rozróżniać: `podpiety` (klucz w skarbcu lub
+ * żywy serwer) oraz `sterownik` (most umie tędy poprowadzić dźwięk). Przewód
+ * opłacony i skonfigurowany bywa całkowicie bezużyteczny, dopóki nie ma obsługi.
+ */
+app.get('/api/voice/mcp', async (req, res) => {
+    try {
+        const zywy = async (url) => {
+            try {
+                const c = new AbortController(); const t = setTimeout(() => c.abort(), 1500);
+                const r = await fetch(url, { signal: c.signal }); clearTimeout(t);
+                return !!r;
+            } catch { return false; }
+        };
+        const maKlucz = async (usluga, pole) => {
+            try { return !!(await VaultService.getInstance().getSecret(usluga, pole)); } catch { return false; }
+        };
+        const przewody = await glosStatusPrzewodow(
+            { zywy, maKlucz, maPlik: (s) => fsSync.existsSync(s) },
+            { VOICE_BASE, WHISPER_EXE, KOKORO_BASE },
+        );
+        return res.json({
+            success: true,
+            przewody,
+            gotowych: przewody.filter(p => p.sterownik && p.podpiety).length,
+            wKatalogu: przewody.length,
+            // Czego telefonia POTRAFI, a czego nie — żeby panel nie obiecywał Etapu 3.
+            telefonia: telefoniaMozliwosci(),
+            nagrania: await glosNagrania(VOICE_OUT_DIR),
+        });
+    } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
+/**
+ * POST /api/voice/render — mowa zapisana jako plik w `_OtakOs_Voice/`.
+ * Body: { text, profil? | voiceId?, nazwa? }
+ *
+ * W odróżnieniu od `/api/voice/speak` (strumień do przeglądarki) tu zostaje
+ * artefakt na dysku Suwerena — zapowiedź, powitanie w słuchawce, kwestia agenta.
+ * Bez lokalnego silnika NIE renderujemy niczego i mówimy to kodem 424.
+ */
+app.post('/api/voice/render', async (req, res) => {
+    const { text, profil, voiceId, nazwa } = req.body ?? {};
+    if (!String(text || '').trim()) return res.status(400).json({ success: false, message: 'Brak „text" do wypowiedzenia.' });
+
+    try {
+        const tor = await ustalTorGlosu({ profil, voiceId, przewod: req.body?.przewod });
+        const { audio, ext } = await glosSyntezuj({
+            przewod: tor.przewod, tekst: text, glos: tor.glos, jezyk: tor.jezyk,
+            probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE }, klucz: tor.klucz,
+        });
+
+        await fs.mkdir(VOICE_OUT_DIR, { recursive: true });
+        const stempel = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const etykieta = String(nazwa || tor.glos || tor.przewod).replace(/[^\w-]/g, '').slice(0, 40) || 'glos';
+        const plik = path.join(VOICE_OUT_DIR, `${stempel}_${etykieta}.${ext}`);
+        await fs.writeFile(plik, audio);
+
+        console.log(`[Głos] 💾 Nagranie zapisane (${tor.przewod}): _OtakOs_Voice/${path.basename(plik)} (${audio.length} B).`);
+        return res.json({
+            success: true,
+            plik: `_OtakOs_Voice/${path.basename(plik)}`,
+            bajty: audio.length,
+            przewod: tor.przewod,
+            voiceId: tor.glos,
+        });
+    } catch (e) {
+        return res.status(e instanceof BladPrzewodu ? e.status : 500).json({
+            success: false, przewod: e?.przewod ?? null, message: e.message,
+        });
     }
 });
 
@@ -9132,6 +9534,17 @@ const httpServer = app.listen(PORT, () => {
     console.log(` 🎥  WS   /api/rtmp-relay                   (Katedra → ffmpeg → RTMP/YouTube)`);
     console.log(` 🔴  WS   /api/recorder                     (Katedra → plik .webm na dysku)`);
     console.log(` 🎥  GET  /api/studio/status | POST /api/studio/rtmp-key`);
+    console.log(` 🏢  GET  /api/business/list                (Twoje Biznesy: karty + bilans GRV)`);
+    console.log(` 🏢  POST /api/business/create | PATCH/DELETE /api/business/:id`);
+    console.log(` 💰  POST /api/business/sluzba              (Służba → Oddech → GRV z pieczęcią)`);
+    console.log(` 📜  GET  /api/business/ledger              (Live Orders: księga zdarzeń)`);
+    console.log(` ☎️   GET  /api/business/telefonia           (czy przewód Twilio jest DROŻNY)`);
+    console.log(` ☎️   POST /api/business/dial                (domyślnie PRÓBA; realne = proba:false + potwierdzenie:true)`);
+    console.log(` 🎙️  GET  /api/voice/profiles | POST | DELETE /api/voice/profiles/:id`);
+    console.log(` 🔌  GET  /api/voice/mcp                    (przewody Voice/Audio: podpiety vs sterownik)`);
+    console.log(` 🗣️  POST /api/voice/speak                  (klon lokalny | Kokoro | ElevenLabs)`);
+    console.log(` 💾  POST /api/voice/render                 (mowa → plik w _OtakOs_Voice/)`);
+    console.log(` 🧬  GET  /api/voice/elevenlabs/glosy        (lista głosów konta ElevenLabs)`);
 
     // 🛡️ Strażnik VRAM - Tacos Guard
     initTacosGuard();

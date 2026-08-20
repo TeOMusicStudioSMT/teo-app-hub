@@ -27,6 +27,7 @@ import KompasSuwerena from './special/KompasSuwerena';
 import TeoArcadeForge from './special/TeoArcadeForge';
 import AntresolaPanel from './special/AntresolaPanel';
 import McpSkillboardPanel from './McpSkillboardPanel';
+import YourBusinessPanel from './YourBusinessPanel';
 import { GravitonWalletView } from './GravitonWalletView';
 import { useAssistant } from '../hooks/useAssistant';
 import { InstallPWA } from './InstallPWA';
@@ -55,7 +56,7 @@ interface TeonautLoungeProps {
     onOpenCrewClub?: () => void;
 }
 
-type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'gameforge' | 'mcp-skillboard';
+type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'gameforge' | 'mcp-skillboard' | 'twoje-biznesy';
 
 export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionToggle, onFavoriteToggle, onLogout, onTriggerAnomaly, behavioralData, onVisualAssistantOpen, onOpenCrewClub }) => {
     const [staticBalance] = useState(3975.78);
@@ -246,6 +247,7 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                             {activeView === 'kompas' && <KompasSuwerena />}
                             {activeView === 'gameforge' && <TeoArcadeForge />}
                             {activeView === 'mcp-skillboard' && <McpSkillboardPanel embedded />}
+                            {activeView === 'twoje-biznesy' && <YourBusinessPanel embedded />}
                             {activeView === 'profile' && <ProfileView onLogout={onLogout} />}
                         </motion.div>
                     )}

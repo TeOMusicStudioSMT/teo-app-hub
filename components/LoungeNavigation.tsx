@@ -46,7 +46,8 @@ type View =
     | 'pralka'
     | 'kompas'
     | 'gameforge'
-    | 'mcp-skillboard';
+    | 'mcp-skillboard'
+    | 'twoje-biznesy';
 
 interface LoungeNavigationProps {
     activeView: View;
@@ -65,6 +66,7 @@ const PRIMARY_NAV: { id: View; label: string; icon: React.ReactNode }[] = [
 
 // ── Pozycje schowane w panelu "Więcej" ────────────────────────────────
 const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string }[] = [
+    { id: 'twoje-biznesy', label: '🏢 TWOJE BIZNESY', icon: <span className="text-base">🏢</span>, desc: 'Rejestr działalności, głos agentów i Służba rozliczana w GRV' },
     { id: 'mcp-skillboard',label: '⚡ MCP SKILLBOARD', icon: <span className="text-base font-bold text-cyan-400">⚡</span>, desc: 'Centralny rejestr skilli i narzędzi MCP (0.00G Protocol)' },
     { id: 'kompas',        label: 'Kompas Suwerena', icon: <span className="text-base">🧭</span>, desc: 'Mapa gry Odkrywania — od Karmy do Miłości 2.0' },
     { id: 'trust',         label: 'TeO Trust',      icon: <span className="text-base">🏛️</span>, desc: 'Certyfikat Beneficjenta — punkt startowy' },

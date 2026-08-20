@@ -48,11 +48,19 @@ export const RODZAJE = {
     'prompt.zbudowany':   { klasa: 'RUCH',  opis: 'prompt z kotwicą biblii' },
     'wektory.zebrane':    { klasa: 'RUCH',  opis: 'wektory soniczne utworu' },
     'fakt.kanon':         { klasa: 'RUCH',  opis: 'fakt dopisany do kanonu serialu' },
+    // ── RUCH: Służba w module „Twoje Biznesy" ──
+    // Obsługa klienta to praca jak każda inna — i idzie DOKŁADNIE tą samą drogą:
+    // ten sam limit dobowy, ten sam klucz jednokrotności, ta sama pieczęć.
+    // Osobna „ekonomia biznesowa" byłaby drugą drogą emisji, czyli księgą bez dowodu.
+    'biznes.klient':      { klasa: 'RUCH',  opis: 'obsłużony klient działalności' },
+    'biznes.oferta':      { klasa: 'RUCH',  opis: 'oferta wygenerowana dla klienta' },
+    'biznes.rozmowa':     { klasa: 'RUCH',  opis: 'domknięta rozmowa AI z klientem' },
     // ── WYNIK ──
     'montaz.edl':         { klasa: 'WYNIK', opis: 'domknięty montaż (EDL)' },
     'render.wideo':       { klasa: 'WYNIK', opis: 'wyrenderowany plik wideo (ffmpeg)' },
     'teoprint':           { klasa: 'WYNIK', opis: 'TeOPrint z Kuźni LaB' },
     'odcinek.domkniety':  { klasa: 'WYNIK', opis: 'domknięty odcinek serialu' },
+    'biznes.zamowienie':  { klasa: 'WYNIK', opis: 'złożone zamówienie w działalności' },
 };
 
 function sciezka(katalog) { return path.join(katalog, PLIK); }
