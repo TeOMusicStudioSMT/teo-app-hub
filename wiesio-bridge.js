@@ -51,9 +51,20 @@ import {
     znormalizuj as audioNormalizuj,
     pasma as audioPasma,
 } from './services/RzezbaAudioService.js';
-import MechanicService       from './services/MechanicService.js';
+import MechanicService, { modelMechanika, ustawModelMechanika, MODEL_DOMYSLNY } from './services/MechanicService.js';
 import TurbovecService       from './services/TurbovecService.js';
 import ShellSanitizer        from './services/ShellSanitizer.js';
+import { glosyPiper, PIPER_GLOSY, PIPER_DOMYSLNY } from './services/PrzewodyGlosuService.js';
+import { mcpPolaczenie }    from './services/McpStdioClient.js';
+import * as Petla         from './services/PetlaNaprawcza.js';
+import * as Szyna         from './services/SzynaZdarzen.js';
+import * as Rangi         from './services/Rangi.js';
+import * as Questy        from './services/Questy.js';
+import * as Konta         from './services/Konta.js';
+import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
+import { stanAnimacji, renderuj, KATALOG_PROJEKTOW } from './services/Animacje.js';
+import { zProjektuAppV2 }   from './services/KompozytorUI.js';
+import { stanMontazu, odpalBacklot, SCIEZKA_STUDIA } from './services/Montaz.js';
 import ImpresarioService     from './services/ImpresarioService.js';
 import TostService           from './services/TostService.js';
 import LaundryService        from './services/LaundryService.js';
@@ -295,7 +306,7 @@ app.use('/components', express.static(COMPONENTS_DIR));
 // routing działają po stronie klienta — fallback SPA zbędny). Buildy w public/apps/
 // jadą z distro. UWAGA: Express 5 — żadnych gołych `*` w routach (crash boota).
 const APPS_DIR = path.join(__dirname, 'public', 'apps');
-for (const app_ of ['music', 'story', 'app']) {
+for (const app_ of ['music', 'story', 'app', 'games']) {
     const middlewares = [cors({ origin: '*' })];
     // 🎹 Teleport na Music V2 budzi ComfyUI. Suweren wchodzil do studia i dopiero
     // tam dowiadywal sie, ze silnik nie dziala — musial go odpalac recznie z .bat.
@@ -1295,7 +1306,14 @@ app.post('/api/gemini', async (req, res) => {
 // ── GŁÓWNY ENDPOINT ──────────────────────────────────────────────────
 
 app.post('/api/bridge/execute', async (req, res) => {
-    const payload = req.body;
+    // ⚠️ DWA KSZTAŁTY CIAŁA ŻĄDANIA. Most czytał pola z KORZENIA (`req.body.type`),
+    // a Story V2 zagnieżdżał je w `payload: {...}` — każde zlecenie montażu wracało
+    // z HTTP 400 „Brak type lub mainVideoFilename", mimo że oba pola były wysłane.
+    // Zmierzone: to samo żądanie płasko przechodziło. Przyjmujemy OBA kształty,
+    // bo most jest starszy i mają go inni klienci — łamanie ich byłoby gorsze.
+    const payload = (req.body && typeof req.body.payload === 'object' && req.body.payload !== null)
+        ? { ...req.body.payload, ...req.body }
+        : req.body;
     // NAPRAWA: action ma wyższy priorytet niż command (command może być pełną komendą shellową)
     const action = payload.action || payload.command;
 
@@ -1701,13 +1719,33 @@ app.post('/api/bridge/execute', async (req, res) => {
 
         console.log(`[Wiesio-Inżynier] ⬇️ Pobieram model z sieci: ${modelToPull}... (Proces w tle)`);
 
-        // Puszczamy asynchronicznie, by nie zablokować Katedry
-        execFile('ollama', ['pull', modelToPull], (error, stdout, stderr) => {
-            if (error) {
-                console.error(`[Wiesio-Inżynier] ❌ Błąd pobierania ${modelToPull}: ${error.message}`);
-            } else {
-                console.log(`[Wiesio-Inżynier] ✅ Model ${modelToPull} pobrany i gotowy do pracy!`);
+        // ⚠️ BYŁO: execFile(..., callback) — ta forma BUFORUJE stdout i stderr
+        // z domyślnym limitem 1 MB. `ollama pull` sypie pasek postępu do stderr
+        // bez końca, więc przy dużym modelu bufor pękał i Node ZABIJAŁ pobieranie:
+        // „stderr maxBuffer length exceeded". Zmierzone na qwen3.6:35b-a3b.
+        // Teraz spawn ze strumieniem — nic nie buforujemy, a postęp widać w konsoli.
+        const pobieranie = spawn('ollama', ['pull', modelToPull], { windowsHide: true });
+        let ostatniProcent = -1;
+        const pokazPostep = (buf) => {
+            const t = buf.toString();
+            // Ollama nadpisuje linię CR-em; wyłuskujemy sam procent i logujemy co 10%.
+            const linie = t.split(String.fromCharCode(13));
+            const m = /(\d{1,3})%/.exec(linie[linie.length - 1] || '');
+            if (!m) return;
+            const proc = Number(m[1]);
+            if (proc >= ostatniProcent + 10 || proc === 100) {
+                ostatniProcent = proc;
+                console.log(`[Wiesio-Inżynier] ⬇️ ${modelToPull}: ${proc}%`);
             }
+        };
+        pobieranie.stdout.on('data', pokazPostep);
+        pobieranie.stderr.on('data', pokazPostep);
+        pobieranie.on('error', (e) => {
+            console.error(`[Wiesio-Inżynier] ❌ Nie udało się uruchomić ollama: ${e.message}`);
+        });
+        pobieranie.on('close', (kod) => {
+            if (kod === 0) console.log(`[Wiesio-Inżynier] ✅ Model ${modelToPull} pobrany i gotowy do pracy!`);
+            else console.error(`[Wiesio-Inżynier] ❌ Pobieranie ${modelToPull} zakończone kodem ${kod}.`);
         });
 
         return res.json({ success: true, message: `Rozpoczęto pobieranie ${modelToPull}. Sprawdź czarną konsolę Wiesia.` });
@@ -3808,14 +3846,17 @@ app.post('/api/mechanic/apply', async (req, res) => {
         console.warn(`[Mechanic-API] 🛡️ Tarcza błąd (pomijam): ${shieldErr.message}`);
     }
 
-    // ── Backup (obowiązkowy gdy plik istnieje) ────────────────────────────────
-    const backupPath = targetAbsolute + '.bak';
+    // ── 🔁 MIGAWKA (obowiązkowa gdy plik istnieje) ────────────────────────────
+    // Kopia idzie do _OtakOs_Kopie/naprawy/<taskId>/, NIE do `<plik>.bak` obok
+    // źródła: tamta była jedna, nadpisywana i zaśmiecała drzewo, a po cofce nie
+    // dało się powiedzieć, z którego zadania pochodzi.
+    let backupPath = null;
     let backupCreated = false;
     if (existingContent !== null) {
         try {
-            await fs.writeFile(backupPath, existingContent, 'utf8');
-            backupCreated = true;
-            console.log(`[Mechanic-API] 💾 Backup: ${path.relative(process.cwd(), backupPath)}`);
+            backupPath = await Petla.migawka(id, targetFile, existingContent);
+            backupCreated = Boolean(backupPath);
+            console.log(`[Mechanic-API] 💾 Migawka: ${path.relative(process.cwd(), backupPath)}`);
         } catch (backupErr) {
             console.error(`[Mechanic-API] ❌ Błąd backupu: ${backupErr.message}`);
             return res.status(500).json({
@@ -3839,6 +3880,35 @@ app.post('/api/mechanic/apply', async (req, res) => {
             message: `Błąd zapisu pliku docelowego: ${writeErr.message}`,
         });
     }
+
+    // ── 🔁 WERYFIKACJA — czy łatka w ogóle się parsuje ────────────────────────
+    // Wcześniej NIC tu nie było: zapis → DONE. Kod z błędem składni rozwalał
+    // Katedrę po cichu. Teraz sprawdzamy, a gdy padnie — COFAMY z migawki.
+    const kontrola = await Petla.zweryfikuj(targetAbsolute);
+    if (!kontrola.ok) {
+        const cofnieto = await Petla.cofnij(backupPath, targetAbsolute);
+        console.error(`[Mechanic-API] 🔁 Weryfikacja PADŁA (${kontrola.czym}) → ${cofnieto ? 'COFNIĘTO' : 'COFNIĘCIE NIEUDANE'}`);
+        await Petla.zapiszDoDziennika({
+            taskId: id, plik: targetFile, wynik: 'cofniete',
+            czym: kontrola.czym, blad: kontrola.blad, cofnieto,
+        });
+        return res.status(422).json({
+            success: false,
+            code: 'WERYFIKACJA_PADLA',
+            message: cofnieto
+                ? `Łatka nie przeszła kontroli (${kontrola.czym}) — plik COFNIĘTY do stanu sprzed wdrożenia.`
+                : `Łatka nie przeszła kontroli (${kontrola.czym}), a COFNIĘCIE SIĘ NIE UDAŁO. Plik wymaga ręcznej naprawy!`,
+            blad: kontrola.blad,
+            migawka: backupPath ? path.relative(process.cwd(), backupPath) : null,
+            cofnieto,
+        });
+    }
+    await Petla.zapiszDoDziennika({
+        taskId: id, plik: targetFile, wynik: 'wdrozone',
+        czym: kontrola.czym, sprawdzone: kontrola.sprawdzone,
+        uwaga: kontrola.sprawdzone ? undefined : kontrola.blad,
+    });
+    console.log(`[Mechanic-API] 🔁 Weryfikacja: ${kontrola.sprawdzone ? `OK (${kontrola.czym})` : 'POMINIĘTA — ' + kontrola.blad}`);
 
     // ── Zmiana statusu → DONE ─────────────────────────────────────────────────
     try {
@@ -4160,6 +4230,243 @@ app.get('/api/grv/trwale', async (req, res) => {
         const wezel = String(req.query.wezel || '') || null;
         return res.json({ success: true, trwale: await rejestrTrwalych(ANTIGRAVITY_DIR, wezel) });
     } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 🏅 RANGI — awans po drabinie Katedry ────────────────────────────────────
+/** GET /api/grv/osiagniecia?wezel= — co węzeł zdobył i czego mu brakuje. */
+app.get('/api/grv/osiagniecia', async (req, res) => {
+    const wezel = req.query.wezel || 'Mistrz Arkadiusz';
+    const s = await Rangi.stanOsiagniec(wezel);
+    const L = await loadGrvLedger();
+    res.json({
+        success: true, wezel, ...s,
+        ranga: L.nodes[wezel]?.tier ?? null,
+        rola: L.nodes[wezel]?.role ?? 'basic',
+    });
+});
+
+/**
+ * POST /api/grv/awans — Body: { wezel, ranga, haslo? }.
+ *
+ * FILAR idzie na hasło i ma sloty NIEOGRANICZONE — dlatego NIE dotykamy tu puli.
+ * HEROLD idzie na osiągnięcia liczone z faktów zapisanych przez most.
+ * FOUNDER tędy nie przechodzi: to klucz założycielski, osobna droga.
+ */
+app.post('/api/grv/awans', async (req, res) => {
+    const { wezel, ranga, haslo } = req.body ?? {};
+    if (!wezel || !ranga) return res.status(400).json({ success: false, message: 'Wymagane: wezel, ranga.' });
+
+    const L = await loadGrvLedger();
+    const wpis = L.nodes[wezel];
+    if (!wpis) return res.status(404).json({ success: false, message: `Węzeł „${wezel}" nie istnieje w księdze.` });
+
+    // Nie degradujemy i nie nadajemy tego samego dwa razy.
+    const KOLEJNOSC = { basic: 0, herald: 1, pillar: 2, founder: 3 };
+    const teraz = KOLEJNOSC[wpis.tier ?? 'basic'] ?? 0;
+    if ((KOLEJNOSC[ranga] ?? 0) <= teraz) {
+        return res.status(409).json({
+            success: false, code: 'JUZ_WYZEJ',
+            message: `Węzeł ma już rangę „${wpis.tier ?? 'basic'}" — awans na „${ranga}" byłby krokiem w tył lub w miejscu.`,
+        });
+    }
+
+    const werdykt = await Rangi.czyWolnoAwans(wezel, ranga, haslo, L.pools, GRV_TIERS);
+    if (!werdykt.wolno) {
+        return res.status(403).json({ success: false, code: 'ODMOWA', message: werdykt.powod, brakuje: werdykt.brakuje });
+    }
+
+    // Dosypanie GRV do poziomu rangi — bez odbierania tego, co węzeł już ma.
+    const docelowe = GRV_TIERS[ranga]?.grv ?? 0;
+    const przed = Number(wpis.grv) || 0;
+    const dosyp = Math.max(0, docelowe - przed);
+
+    wpis.tier = ranga;
+    wpis.role = ranga;
+    wpis.grv = przed + dosyp;
+    wpis.awansowanyO = new Date().toISOString();
+    // Pulę zajmujemy TYLKO tam, gdzie jest ograniczona. Filar jej nie rusza.
+    if (!werdykt.nieograniczone) L.pools[ranga] = (L.pools[ranga] || 0) + 1;
+
+    await sealGrv('awans', { wezel, ranga, dosyp, nieograniczone: Boolean(werdykt.nieograniczone) });
+    await saveGrvLedger();
+
+    await Szyna.nadaj({
+        agent: 'bilans', rodzaj: 'ranga',
+        tresc: `${wezel} awansował na ${ranga}${dosyp ? ` (+${dosyp} GRV)` : ''}.`,
+    });
+    console.log(`[GRV] 🏅 ${wezel} → ${ranga}${dosyp ? ` (+${dosyp} GRV)` : ''}${werdykt.nieograniczone ? ' [pula nieograniczona]' : ''}.`);
+
+    res.json({
+        success: true, wezel, ranga, dosypano: dosyp, saldo: wpis.grv,
+        nieograniczone: Boolean(werdykt.nieograniczone),
+    });
+});
+
+/** GET /api/grv/drabina — kto ile ma miejsc i jak się tam wchodzi. */
+app.get('/api/grv/drabina', async (req, res) => {
+    const L = await loadGrvLedger();
+    res.json({
+        success: true,
+        szczeble: [
+            { ranga: 'basic',   grv: GRV_NEW_NODE, wejscie: 'start każdego węzła', wolne: null },
+            { ranga: 'herald',  grv: GRV_TIERS.herald.grv, wejscie: `${Rangi.PROG_HEROLDA} osiągnięcia`, wolne: GRV_TIERS.herald.count - (L.pools.herald || 0) },
+            { ranga: 'pillar',  grv: GRV_TIERS.pillar.grv, wejscie: 'hasło kręgu', wolne: 'bez ograniczeń' },
+            { ranga: 'founder', grv: GRV_TIERS.founder.grv, wejscie: 'klucz założycielski', wolne: GRV_TIERS.founder.count - (L.pools.founder || 0) },
+        ],
+        zarzadca: 'TeO — saldo nieskończone, dzieli pulę obdarowań',
+    });
+});
+
+// ── 🗺️ QUESTY — droga od Herolda wzwyż ──────────────────────────────────────
+/** GET /api/grv/questy?wezel= — postęp, nagrody, co czeka na odbiór. */
+app.get('/api/grv/questy', async (req, res) => {
+    const wezel = req.query.wezel || 'Mistrz Arkadiusz';
+    const s = await Questy.stanQuestow(wezel);
+    const L = await loadGrvLedger();
+    res.json({ success: true, wezel, ranga: L.nodes[wezel]?.tier ?? null, ...s });
+});
+
+/**
+ * POST /api/grv/quest/odbierz — Body: { wezel, quest }.
+ *
+ * Nagroda idzie PRZELEWEM z węzła `TeO` tą samą drogą co każdy inny ruch GRV —
+ * z odjęciem u nadawcy i pieczęcią w łańcuchu. Emisja „z powietrza" obok księgi
+ * byłaby drugą ścieżką pieniądza, a księga z dwoma wejściami przestaje być księgą.
+ */
+app.post('/api/grv/quest/odbierz', async (req, res) => {
+    const { quest } = req.body ?? {};
+    const wezel = (req.body ?? {}).wezel || 'Mistrz Arkadiusz';
+    if (!quest) return res.status(400).json({ success: false, message: 'Brak id questu.' });
+
+    const L = await loadGrvLedger();
+    if (!L.nodes[wezel]) return res.status(404).json({ success: false, message: `Węzeł „${wezel}" nie istnieje w księdze.` });
+
+    const werdykt = await Questy.sprawdzOdbior(wezel, quest);
+    if (!werdykt.ok) return res.status(409).json({ success: false, code: 'NIE_DO_ODBIORU', message: werdykt.powod });
+
+    let przelew;
+    try {
+        przelew = await przelejGrv('TeO', wezel, werdykt.quest.nagroda);
+    } catch (e) {
+        return res.status(e instanceof BladGrv ? e.status : 500).json({
+            success: false, code: 'WYPLATA_ODRZUCONA', message: e.message,
+        });
+    }
+
+    // Znacznik odbioru DOPIERO po udanej wypłacie — inaczej quest przepadłby
+    // bez GRV, gdyby przelew padł.
+    await Questy.zapiszOdebrany(wezel, quest);
+
+    await Szyna.nadaj({
+        agent: 'bilans', rodzaj: 'quest',
+        tresc: `${wezel} odebrał „${werdykt.quest.nazwa}" — ${werdykt.quest.nagroda} GRV.`,
+    });
+    console.log(`[GRV] 🗺️ Quest „${werdykt.quest.nazwa}" → ${wezel}: +${werdykt.quest.nagroda} GRV.`);
+
+    res.json({ success: true, quest, nazwa: werdykt.quest.nazwa, nagroda: werdykt.quest.nagroda, przelew });
+});
+
+// ── 🗝️ KONTA I KLUCZE ZAŁOŻYCIELSKIE ────────────────────────────────────────
+/** GET /api/konta — kto jest kim w księdze. Most jest właścicielem tego mapowania. */
+app.get('/api/konta', async (req, res) => {
+    const d = await Konta.wczytajKonta();
+    const L = await loadGrvLedger();
+    res.json({
+        success: true,
+        konta: d.konta.map(k => ({
+            ...k,
+            saldo: L.nodes[k.wezel]?.grv ?? null,
+            ranga: L.nodes[k.wezel]?.tier ?? null,
+            istniejeWKsiedze: Boolean(L.nodes[k.wezel]),
+        })),
+    });
+});
+
+/** GET /api/konta/wezel?kto= — na który węzeł mapuje się mail/login. */
+app.get('/api/konta/wezel', async (req, res) => {
+    const k = await Konta.wezelDlaKonta(req.query.kto);
+    if (!k) {
+        // Świadomie NIE zgadujemy. Przypisanie nieznanego maila do węzła
+        // Suwerena oddałoby komuś obcemu jego milion GRV.
+        return res.status(404).json({
+            success: false,
+            message: `Konto „${req.query.kto || ''}" nie jest przypisane do żadnego węzła księgi.`,
+        });
+    }
+    res.json({ success: true, ...k });
+});
+
+/** GET /api/grv/klucze — stan kluczy założycielskich. */
+app.get('/api/grv/klucze', async (req, res) => {
+    const d = await Konta.wczytajKlucze();
+    const L = await loadGrvLedger();
+    const wolne = GRV_TIERS.founder.count - (L.pools.founder || 0);
+    res.json({
+        success: true,
+        klucze: d.klucze.map(k => ({
+            klucz: k.klucz, wydany: k.wydany, notatka: k.notatka,
+            uzytyPrzez: k.uzytyPrzez, uzytyO: k.uzytyO,
+        })),
+        niewykorzystane: d.klucze.filter(k => !k.uzytyPrzez).length,
+        wolnychMiejsc: wolne,
+    });
+});
+
+/** POST /api/grv/klucze/wydaj — Body: { ile?, notatka? }. */
+app.post('/api/grv/klucze/wydaj', async (req, res) => {
+    const { ile, notatka } = req.body ?? {};
+    const L = await loadGrvLedger();
+    const wolne = GRV_TIERS.founder.count - (L.pools.founder || 0);
+    const w = await Konta.wydajKlucze(ile ?? 1, notatka, wolne);
+    if (!w.ok) return res.status(409).json({ success: false, message: w.powod });
+
+    await Szyna.nadaj({
+        agent: 'bilans', rodzaj: 'klucz',
+        tresc: `Wydano ${w.klucze.length} klucz(y) założycielskich${notatka ? ` (${notatka})` : ''}.`,
+    });
+    console.log(`[GRV] 🗝️ Wydano ${w.klucze.length} klucz(y) Founder.`);
+    res.json({ success: true, ...w });
+});
+
+/**
+ * POST /api/grv/klucze/uzyj — Body: { klucz, wezel }.
+ * JEDYNA droga do rangi Founder. Klucz wypala się po udanym nadaniu.
+ */
+app.post('/api/grv/klucze/uzyj', async (req, res) => {
+    const { klucz, wezel } = req.body ?? {};
+    if (!klucz || !wezel) return res.status(400).json({ success: false, message: 'Wymagane: klucz, wezel.' });
+
+    const sprawdzenie = await Konta.sprawdzKlucz(klucz);
+    if (!sprawdzenie.ok) return res.status(403).json({ success: false, code: 'KLUCZ_ODRZUCONY', message: sprawdzenie.powod });
+
+    const L = await loadGrvLedger();
+    const wpis = L.nodes[wezel];
+    if (!wpis) return res.status(404).json({ success: false, message: `Węzeł „${wezel}" nie istnieje w księdze.` });
+    if (wpis.tier === 'founder') {
+        return res.status(409).json({ success: false, code: 'JUZ_FOUNDER', message: `„${wezel}" jest już Founderem — klucz zostaje nietknięty.` });
+    }
+    const uzyte = L.pools.founder || 0;
+    if (uzyte >= GRV_TIERS.founder.count) {
+        return res.status(409).json({ success: false, message: `Pula Founderów wyczerpana (${GRV_TIERS.founder.count}).` });
+    }
+
+    const przed = Number(wpis.grv) || 0;
+    const dosyp = Math.max(0, GRV_TIERS.founder.grv - przed);
+    wpis.tier = 'founder';
+    wpis.role = 'founder';
+    wpis.grv = przed + dosyp;
+    wpis.awansowanyO = new Date().toISOString();
+    L.pools.founder = uzyte + 1;
+
+    await sealGrv('klucz-founder', { wezel, dosyp });
+    await saveGrvLedger();
+    // Wypalamy DOPIERO po zapisaniu rangi — inaczej klucz przepadłby bez skutku.
+    await Konta.wypalKlucz(klucz, wezel);
+
+    await Szyna.nadaj({ agent: 'bilans', rodzaj: 'ranga', tresc: `${wezel} przyjęty do Founderów kluczem (+${dosyp} GRV).` });
+    console.log(`[GRV] 🗝️ ${wezel} → founder (klucz wypalony, +${dosyp} GRV).`);
+
+    res.json({ success: true, wezel, ranga: 'founder', dosypano: dosyp, saldo: wpis.grv, wolneMiejsca: GRV_TIERS.founder.count - L.pools.founder });
 });
 
 app.get('/api/grv/:id', async (req, res) => {
@@ -5028,6 +5335,72 @@ const CRAFT = {
 
 /** GET /api/craft/recipes — surowce + recepty statków (źródło prawdy dla UI i skryptu UE). */
 app.get('/api/craft/recipes', (req, res) => res.json({ success: true, ...CRAFT }));
+
+// ── 🎮 TGS: KUSTOSZ TETERHII — żywy quest z lokalnego modelu ──────────────────
+// Instrukcja systemowa pochodzi z narady Rady 7 (_OtakOs_Kroniki/TGS.txt). Rada
+// chciała wkleić ją do Google AI Studio; Suweren dostał tam Errora, bo nie było
+// świata, którego model mógłby „dotknąć". Teraz świat JEST — na dysku, w apce
+// TGS — a instrukcja jedzie do WŁASNEJ Ollamy. Zero chmury, 0.00G.
+//
+// Kontrakt: przyjmuje kontekst gracza, oddaje JEDEN quest jako czysty JSON.
+// Gdy model zwróci śmieci — 500 z powodem. Nie sklejamy atrapy questu.
+const TETERHIA_SYSTEM = [
+  'Jesteś Kustoszem Świata Teterhia w grze TGS ("To Get Sauce" → "TeO Great Show").',
+  'Generujesz DOKŁADNIE JEDEN quest i zwracasz WYŁĄCZNIE obiekt JSON — bez markdown, bez komentarza.',
+  '',
+  'SCHEMAT: {"tytul":string,"tresc":string,"wybory":[{"tekst":string,"ton":"autentyczny"|"empatyczny"|"holistyczny"|"sztuczny"|"brutalny"}],"bazaMGRV":number,"exp":number,"sekretny":boolean,"umiejetnosc":string|null}',
+  '',
+  'ZASADY ŚWIATA:',
+  '1. CEL GRACZA to Odkrycie Sosu — wewnętrznego prowadzenia. Quest ma skłaniać do refleksji, nie do grindu.',
+  '2. BARWA ŚWIATA zależy od autentyczności. Daj 3-4 wybory o RÓŻNYCH tonach; przynajmniej jeden autentyczny/empatyczny/holistyczny i przynajmniej jeden sztuczny lub brutalny.',
+  '3. Żaden wybór nie może być oczywiście "dobry" — sztuczny ma brzmieć rozsądnie i wygodnie. To ma kosztować.',
+  '4. UMIEJĘTNOŚCI zdobywa się WYŁĄCZNIE z questów. Jeśli dajesz umiejetnosc, opisz ją jednym słowem-kluczem.',
+  '5. bazaMGRV 30-150, exp 20-120. Sekretne questy dawaj rzadko i wyceniaj wyżej.',
+  '6. Pisz po polsku, obrazowo, bez patosu i bez emoji. Krótko: tresc do 60 słów.',
+].join('\n');
+
+app.post('/api/tgs/quest', async (req, res) => {
+    const k = req.body ?? {};
+    if (!k.postac || !k.postac.imie) return res.status(400).json({ success: false, message: 'Brak postaci w kontekście.' });
+    // ⚠️ NIE 'gemma4' — Ollama rozwija goły tag do gemma4:latest, a ten wywala
+    // silnik. gemma4:e2b jest sprawdzony i lekki (liczy się na słabym sprzęcie).
+    const model = process.env.OTAKOS_MODEL || 'gemma4:e2b';
+    const prompt = [
+        `Postać: ${k.postac.imie}, żywioł ${k.postac.zywiol}, droga ${k.postac.droga}.`,
+        `Wkładki Suwerena: ${(k.postac.wkladki || []).join(', ') || 'brak'}.`,
+        `Świat: ${k.swiat}. Gracz stoi na biomie: ${k.biom}.`,
+        `Nasycenie barw świata: ${k.nasycenie}/100. Poziom gracza: ${k.poziom}.`,
+        `Umiejętności już zdobyte: ${(k.posiadaneUmiejetnosci || []).join(', ') || 'żadne'}.`,
+        '',
+        'Wykuj jeden quest osadzony w TYM miejscu i TEJ postaci. Zwróć sam JSON.',
+    ].join('\n');
+    console.log(`[TGS] 🔮 Kustosz kuje quest dla "${k.postac.imie}" (biom ${k.biom}, model ${model})…`);
+    try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 300000);
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+            body: JSON.stringify({ model, system: TETERHIA_SYSTEM, prompt, stream: false, format: 'json', options: { temperature: 0.9 } }),
+        });
+        clearTimeout(t);
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status} — czy Ollama działa?`);
+        const d = await r.json();
+        let quest;
+        try { quest = JSON.parse(String(d.response || '').trim()); }
+        catch { throw new Error('Kustosz zwrócił coś, co nie jest JSON-em. Quest odrzucony.'); }
+        if (!quest || !quest.tytul || !Array.isArray(quest.wybory) || quest.wybory.length < 2) {
+            throw new Error('Kustosz zwrócił quest bez tytułu albo bez wyborów. Odrzucony.');
+        }
+        // Sanityzacja liczb — model bywa hojny. Trzymamy widełki z zasad świata.
+        quest.bazaMGRV = Math.max(30, Math.min(150, Number(quest.bazaMGRV) || 50));
+        quest.exp = Math.max(20, Math.min(120, Number(quest.exp) || 40));
+        quest.sekretny = Boolean(quest.sekretny);
+        if (!quest.umiejetnosc) delete quest.umiejetnosc;
+        res.json({ success: true, quest, model });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.name === 'AbortError' ? 'Ollama nie zdążyła (300s).' : e.message });
+    }
+});
+
 
 /** POST /api/craft/plan {target} — Co-Bot rozpisuje plan budowy statku: kroki + koszt energii. */
 app.post('/api/craft/plan', (req, res) => {
@@ -5957,6 +6330,23 @@ app.post('/api/voice/speak', async (req, res) => {
  * GET /api/voice/elevenlabs/glosy — lista głosów konta.
  * Bez tego profil ElevenLabs wymagałby wklepywania ID głosu z palca.
  */
+/**
+ * GET /api/voice/piper/glosy — jakie POLSKIE głosy realnie leżą na dysku.
+ * Lista z katalogu wag, nie z tabelki w kodzie — jak wagi znikną, lista zniknie.
+ */
+app.get('/api/voice/piper/glosy', async (req, res) => {
+    const glosy = await glosyPiper();
+    res.json({
+        success: true,
+        glosy,
+        domyslny: PIPER_DOMYSLNY,
+        katalog: PIPER_GLOSY,
+        przewod: 'piper-pl',
+        message: glosy.length ? undefined
+            : `Brak wag w ${PIPER_GLOSY}. Pobierz głos pl_PL z rhasspy/piper-voices.`,
+    });
+});
+
 app.get('/api/voice/elevenlabs/glosy', async (req, res) => {
     try {
         const glosy = await glosyElevenLabs(await sekretPrzewodu('elevenlabs', 'api_key'));
@@ -9429,7 +9819,7 @@ async function loadMcpRegistry() {
  * ale dzis nic nie wykonaja i endpoint /execute mowi to wprost (501).
  * Dopisujac tu nowy skill, dopisz tez jego obsluge w /api/mcp/execute.
  */
-const MCP_REALNE = ['filesystem-core-mcp', 'terminal-exec-mcp', 'katedra-puls-mcp', 'muzyka-otakos-mcp', 'sumienie-mcp'];
+const MCP_REALNE = ['filesystem-core-mcp', 'terminal-exec-mcp', 'katedra-puls-mcp', 'muzyka-otakos-mcp', 'sumienie-mcp', 'graphify-mcp'];
 
 /**
  * Sekrety nie wychodza przez MCP. `read_file` czytal cokolwiek — a `list_directory`
@@ -9549,6 +9939,21 @@ app.post('/api/mcp/execute', async (req, res) => {
     console.log(`[MCP Bridge] 🧪 Wywołanie narzędzia MCP: ${skillId} -> ${toolName}`, toolArgs);
 
     try {
+        // ══ PRAWDZIWY SERWER MCP — graphify (JSON-RPC przez stdio) ═══════════
+        // Pierwszy skill w Skillboardzie, który NIE jest handlerem wpisanym w most,
+        // tylko rozmową z zewnętrznym serwerem MCP jego własnym protokołem.
+        if (skillId === 'graphify-mcp') {
+            const exe = process.platform === 'win32' ? 'graphify-mcp.exe' : 'graphify-mcp';
+            const sciezka = path.join(os.homedir(), '.local', 'bin', exe);
+            const graf = path.join(process.cwd(), 'graphify-out', 'graph.json');
+            const polaczenie = mcpPolaczenie('graphify', sciezka, [graf], { cwd: process.cwd() });
+            if (toolName === 'tools/list') {
+                return res.json({ success: true, result: { tools: await polaczenie.listaNarzedzi() } });
+            }
+            const wynik = await polaczenie.wywolaj(toolName, toolArgs);
+            return res.json({ success: true, result: wynik });
+        }
+
         // Obsługa specyficznych narzędzi lokalnych
         if (skillId === 'filesystem-core-mcp') {
             if (toolName === 'list_directory') {
@@ -9762,6 +10167,806 @@ app.post('/api/mcp/execute', async (req, res) => {
     }
 });
 
+// ── 🕸️ MODUŁ WIEDZY — Katedra czyta własne katalogi i dane (Graphify) ────────
+//
+// Archiwista Wiedzy (KnowledgeGraphService) trzyma REJESTR USTEREK — 12 węzłów
+// typu FAULT. To co innego niż wiedza o katalogach. Ta trasa dokłada brakujące:
+// deterministyczny graf kodu, dokumentów, schematów SQL i configów Katedry,
+// liczony lokalnie przez AST — bez LLM, bez wektorów, bez chmury.
+//
+// ⚠️ graph.json ma ~14 MB. NIE wystawiamy go — most oddaje raport, wyniki zapytań
+// i wizualizację. Kto chce surowy graf, bierze go z dysku.
+const WIEDZA_KATALOG = path.join(process.cwd(), 'graphify-out');
+
+/**
+ * pipx kładzie graphify.exe w ~/.local/bin, którego NIE MA w PATH (pipx sam o tym
+ * ostrzega przy instalacji). Most startuje z PATH-em odziedziczonym po .bat,
+ * więc gołe „graphify" by nie zadziałało. Szukamy po kolei.
+ */
+let _graphifyCache;
+async function znajdzGraphify() {
+    if (_graphifyCache !== undefined) return _graphifyCache;
+    try {
+        await execAsync('graphify --version', { timeout: 15000, windowsHide: true });
+        return (_graphifyCache = 'graphify');
+    } catch { /* nie ma w PATH */ }
+    const nazwa = process.platform === 'win32' ? 'graphify.exe' : 'graphify';
+    const kandydat = path.join(os.homedir(), '.local', 'bin', nazwa);
+    try {
+        await fs.access(kandydat);
+        return (_graphifyCache = `"${kandydat}"`);
+    } catch { /* brak */ }
+    return (_graphifyCache = null);
+}
+
+function brakGraphify(res) {
+    return res.status(412).json({
+        success: false,
+        message: 'Graphify nie jest zainstalowany — modułu wiedzy nie ma czym policzyć.',
+        hint: 'Zainstaluj: python -m pipx install graphifyy   (albo powiedz w konsoli: „zainstaluj repo graphify")',
+    });
+}
+
+/** GET /api/wiedza/stan — czy graf istnieje, jak duży, kiedy liczony. Bez zmyślania. */
+app.get('/api/wiedza/stan', async (req, res) => {
+    const bin = await znajdzGraphify();
+    const plik = path.join(WIEDZA_KATALOG, 'graph.json');
+    try {
+        // Sam stat — 14 MB do RAM-u tylko po to, żeby powiedzieć „graf jest",
+        // to marnotrawstwo. Liczby węzłów oddaje /api/wiedza/buduj przy liczeniu.
+        const st = await fs.stat(plik);
+        res.json({
+            success: true,
+            zainstalowany: Boolean(bin),
+            graf: true,
+            katalog: WIEDZA_KATALOG,
+            rozmiarMB: +(st.size / 1e6).toFixed(1),
+            policzony: st.mtime.toISOString(),
+            raport: '/api/wiedza/raport',
+        });
+    } catch {
+        res.json({
+            success: true,
+            zainstalowany: Boolean(bin),
+            graf: false,
+            katalog: WIEDZA_KATALOG,
+            message: 'Grafu jeszcze nie ma — zbuduj przez POST /api/wiedza/buduj.',
+        });
+    }
+});
+
+/**
+ * POST /api/wiedza/buduj — Body: { sciezka? }.
+ * Domyślnie liczy Katedrę. `graphify update` NIE potrzebuje LLM — czysty AST.
+ * Pierwszy przebieg na Katedrze to ~2 minuty; kolejne idą z cache i są szybsze.
+ */
+app.post('/api/wiedza/buduj', async (req, res) => {
+    const bin = await znajdzGraphify();
+    if (!bin) return brakGraphify(res);
+    const zadana = String((req.body ?? {}).sciezka || '.').trim();
+    // Ścieżkę trzymamy w granicach Katedry — moduł wiedzy ma opisywać JĄ,
+    // a nie zwiedzać cały dysk na komendę z czatu.
+    const cel = path.resolve(process.cwd(), zadana);
+    if (!cel.startsWith(process.cwd())) {
+        return res.status(403).json({
+            success: false,
+            message: `Odmowa: „${zadana}" leży poza Katedrą. Moduł wiedzy opisuje Katedrę, nie cały dysk.`,
+        });
+    }
+    console.log(`[Wiedza] 🕸️ Buduję graf dla ${cel}…`);
+    try {
+        const { stdout, stderr } = await execAsync(`${bin} update "${cel}"`, {
+            timeout: 1800000, windowsHide: true, maxBuffer: 20 * 1024 * 1024,
+        });
+        const ogon = String(stdout || '').trim().split('\n').slice(-8).join('\n');
+        const liczby = /(\d+)\s+nodes,\s*(\d+)\s+edges,\s*(\d+)\s+communities/.exec(stdout || '');
+        console.log(`[Wiedza] ✅ Graf gotowy.`);
+        res.json({
+            success: true,
+            sciezka: cel,
+            wezly: liczby ? Number(liczby[1]) : null,
+            krawedzie: liczby ? Number(liczby[2]) : null,
+            spolecznosci: liczby ? Number(liczby[3]) : null,
+            wyjscie: ogon,
+            ostrzezenia: String(stderr || '').trim().split('\n').slice(-5).join('\n'),
+        });
+    } catch (e) {
+        console.error(`[Wiedza] ❌ ${e.message}`);
+        res.status(500).json({ success: false, message: e.message, wyjscie: String(e.stdout || '').slice(-1500) });
+    }
+});
+
+/** GET /api/wiedza/wyjasnij?wezel=X — czym jest węzeł i z czym sąsiaduje. */
+app.get('/api/wiedza/wyjasnij', async (req, res) => {
+    const bin = await znajdzGraphify();
+    if (!bin) return brakGraphify(res);
+    const wezel = String(req.query.wezel || '').trim();
+    if (!wezel) return res.status(400).json({ success: false, message: 'Podaj ?wezel=nazwa.' });
+    try {
+        const san = ShellSanitizer.sanitizeShellCommand(wezel);
+        const czysty = (san.command ?? san.cmd ?? san.sanitized ?? wezel).replace(/"/g, '');
+        const { stdout } = await execAsync(
+            `${bin} explain "${czysty}" --graph "${path.join(WIEDZA_KATALOG, 'graph.json')}"`,
+            { timeout: 120000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
+        );
+        res.json({ success: true, wezel: czysty, opis: String(stdout || '').trim() });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message, wyjscie: String(e.stdout || '').slice(-800) });
+    }
+});
+
+/** GET /api/wiedza/sciezka?a=X&b=Y — najkrótsza droga między dwoma węzłami. */
+app.get('/api/wiedza/sciezka', async (req, res) => {
+    const bin = await znajdzGraphify();
+    if (!bin) return brakGraphify(res);
+    const a = String(req.query.a || '').replace(/"/g, '').trim();
+    const b = String(req.query.b || '').replace(/"/g, '').trim();
+    if (!a || !b) return res.status(400).json({ success: false, message: 'Podaj ?a=…&b=…' });
+    try {
+        const { stdout } = await execAsync(
+            `${bin} path "${a}" "${b}" --graph "${path.join(WIEDZA_KATALOG, 'graph.json')}"`,
+            { timeout: 120000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
+        );
+        res.json({ success: true, od: a, do: b, sciezka: String(stdout || '').trim() });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message, wyjscie: String(e.stdout || '').slice(-800) });
+    }
+});
+
+/** GET /api/wiedza/raport — GRAPH_REPORT.md (~170 KB, bezpieczny rozmiar). */
+app.get('/api/wiedza/raport', async (req, res) => {
+    try {
+        const md = await fs.readFile(path.join(WIEDZA_KATALOG, 'GRAPH_REPORT.md'), 'utf8');
+        res.type('text/markdown; charset=utf-8').send(md);
+    } catch {
+        res.status(404).json({ success: false, message: 'Brak raportu — zbuduj graf (POST /api/wiedza/buduj).' });
+    }
+});
+
+// Wizualizacja (~490 KB) serwowana statycznie. graph.json (~14 MB) świadomie NIE.
+app.get('/api/wiedza/graf.html', async (req, res) => {
+    const plik = path.join(WIEDZA_KATALOG, 'graph.html');
+    try { await fs.access(plik); res.sendFile(plik); }
+    catch { res.status(404).json({ success: false, message: 'Brak wizualizacji — zbuduj graf.' }); }
+});
+
+// ── 🎞️ STUDIO MONTAŻU — OpenMontage dla Story V2 (AGPLv3, narzędzie osobne) ──
+app.get('/api/montaz/stan', async (req, res) => {
+    try {
+        res.json({ success: true, ...(await stanMontazu()) });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/** POST /api/montaz/backlot — odpal tablicę produkcji i POCZEKAJ aż odpowie. */
+app.post('/api/montaz/backlot', async (req, res) => {
+    try {
+        const w = await odpalBacklot();
+        res.json({ success: true, ...w });
+    } catch (e) {
+        res.status(500).json({
+            success: false,
+            message: e.message,
+            hint: `Studio siedzi w ${SCIEZKA_STUDIA}. Ścieżkę zmienia OTAKOS_OPENMONTAGE.`,
+        });
+    }
+});
+
+// ── 🎒 POSIADANE AKTYWA — czego Suweren FAKTYCZNIE jest właścicielem ─────────
+//
+// ⚠️ ZNALEZIONY BŁĄD (2026-08-27): zakup w Marketplace PRZELEWAŁ GRV i nie
+// zapisywał NICZEGO. Posiadanie żyło w `useState(false)` wewnątrz karty produktu,
+// więc po odświeżeniu strony wracało na „niekupione" i ten sam produkt można było
+// kupić w kółko. Kupiony moduł nie pojawiał się nigdzie — bo nie istniał żaden
+// rejestr, z którego Dashboard, GRAVITON czy Universa mogłyby go odczytać.
+//
+// Zakup jest teraz JEDNĄ operacją po stronie mostu: sprawdź posiadanie →
+// przelej GRV → zapisz właściciela. Front nie może być źródłem prawdy o tym,
+// co ktoś ma.
+const PLIK_POSIADANYCH = () => path.join(process.cwd(), '_OtakOs_Wymiar', 'posiadane.json');
+
+async function wczytajPosiadane() {
+    try { return JSON.parse(await fs.readFile(PLIK_POSIADANYCH(), 'utf8')); }
+    catch { return { wersja: 1, aktywa: [] }; }
+}
+async function zapiszPosiadane(d) {
+    await fs.mkdir(path.dirname(PLIK_POSIADANYCH()), { recursive: true });
+    await fs.writeFile(PLIK_POSIADANYCH(), JSON.stringify(d, null, 2), 'utf8');
+}
+
+/** GET /api/market/posiadane?wezel= — co ten węzeł ma. Źródło dla Dashboard/GRAVITON/Universa. */
+app.get('/api/market/posiadane', async (req, res) => {
+    const wezel = req.query.wezel || null;
+    const d = await wczytajPosiadane();
+    const moje = wezel ? d.aktywa.filter(a => a.wlasciciel === wezel) : d.aktywa;
+    res.json({
+        success: true,
+        aktywa: moje,
+        lacznie: moje.length,
+        wartoscGrv: moje.reduce((s, a) => s + (Number(a.zaplacono) || 0), 0),
+    });
+});
+
+/**
+ * POST /api/market/kup — Body: { id, wezel? }.
+ * Atomowo: posiadanie → przelew → zapis. Każdy krok może odmówić i wtedy
+ * NIC się nie dzieje: brak przelewu bez zapisu i brak zapisu bez przelewu.
+ */
+app.post('/api/market/kup', async (req, res) => {
+    const { id } = req.body ?? {};
+    const wezel = (req.body ?? {}).wezel || 'Mistrz Arkadiusz';
+    if (!id) return res.status(400).json({ success: false, message: 'Brak id produktu.' });
+
+    const m = await loadMarket();
+    const produkt = m.products.find(p => p.id === id);
+    if (!produkt) return res.status(404).json({ success: false, message: `Produkt „${id}" nie istnieje.` });
+
+    // 1. Czy już to ma? Podwójny zakup był głównym objawem błędu.
+    const d = await wczytajPosiadane();
+    if (d.aktywa.some(a => a.produktId === id && a.wlasciciel === wezel)) {
+        return res.status(409).json({
+            success: false, code: 'JUZ_POSIADASZ',
+            message: `„${produkt.name}" już należy do węzła ${wezel} — nie pobieram GRV drugi raz.`,
+        });
+    }
+
+    // 2. Przelew (tylko gdy jest za co i nie jest to własny wyrób).
+    const cena = Number(dynPriceGrv(produkt) ?? produkt.priceGrv) || 0;
+    let przelew = null;
+    if (cena > 0 && produkt.creator !== wezel) {
+        try {
+            przelew = await przelejGrv(wezel, produkt.creator, cena);
+        } catch (e) {
+            return res.status(e instanceof BladGrv ? e.status : 500).json({
+                success: false, code: 'PRZELEW_ODRZUCONY', message: e.message,
+            });
+        }
+    }
+
+    // 3. Dopiero teraz zapis właściciela — po udanym przelewie, nie przed.
+    const aktywo = {
+        id: `own-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        produktId: produkt.id, nazwa: produkt.name, modul: produkt.module,
+        typ: produkt.type, wlasciciel: wezel, tworca: produkt.creator,
+        zaplacono: cena, kiedy: new Date().toISOString(), payload: produkt.payload ?? null,
+    };
+    d.aktywa.push(aktywo);
+    await zapiszPosiadane(d);
+
+    await Szyna.nadaj({
+        agent: 'kupiec', rodzaj: 'praca',
+        tresc: `${wezel} nabył „${produkt.name}" za ${cena} GRV.`,
+    });
+    console.log(`[Market] 🎒 ${wezel} nabył „${produkt.name}" za ${cena} GRV.`);
+
+    res.json({ success: true, aktywo, zaplacono: cena, przelew });
+});
+
+// ── 🛒 SYNCHRONIZACJA MARKETPLACE Z GLOBALNYM (otakos.wtf) ───────────────────
+//
+// Globalne oferty to ZRZUT DZIENNY: statyczny JSON serwowany przez otakos.wtf.
+// Katedra pobiera go na żądanie i SCALA po `id` — ta sama oferta nie zdubluje
+// się przy kolejnej synchronizacji, a lokalne głosy i daty utworzenia zostają.
+//
+// ⚠️ NIE KASUJEMY niczego lokalnego. Oferta, która zniknęła z globalnego pliku,
+// zostaje w Katedrze — to węzeł Suwerena, nie replika serwera.
+const MARKET_GLOBALNY = process.env.OTAKOS_MARKET_URL || 'https://otakos.wtf/market/oferty.json';
+
+app.get('/api/market/global-info', (req, res) => {
+    res.json({ success: true, zrodlo: MARKET_GLOBALNY, zmienna: 'OTAKOS_MARKET_URL' });
+});
+
+app.post('/api/market/sync', async (req, res) => {
+    const zrodlo = (req.body ?? {}).zrodlo || MARKET_GLOBALNY;
+    console.log(`[Market] 🛒 Synchronizacja z ${zrodlo}…`);
+    let dane;
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 30000);
+        const r = await fetch(zrodlo, { signal: ctrl.signal });
+        clearTimeout(t);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        dane = await r.json();
+    } catch (e) {
+        return res.status(502).json({
+            success: false,
+            message: `Nie pobrałem globalnych ofert: ${e.name === 'AbortError' ? 'przekroczony czas (30s)' : e.message}`,
+            zrodlo,
+            // ⚠️ otakos.wtf ma fallback SPA: BRAKUJĄCY plik NIE zwraca 404, tylko
+            // index.html z kodem 200. Dlatego objawem braku deployu jest błąd
+            // parsowania JSON („Unexpected token '<'"), a nie uczciwe 404.
+            hint: String(e.message).includes('<')
+                ? 'Dostałem HTML zamiast JSON. otakos.wtf ma fallback SPA, więc brakujący plik udaje 200 — to znaczy, że oferty NIE zostały jeszcze wdrożone na stronę.'
+                : 'Sprawdź, czy otakos.wtf serwuje /market/oferty.json — plik jedzie z deployem strony.',
+        });
+    }
+
+    const oferty = Array.isArray(dane?.oferty) ? dane.oferty : null;
+    if (!oferty) {
+        return res.status(422).json({
+            success: false,
+            message: 'Pobrany plik nie ma tablicy „oferty" — to nie jest zrzut Marketplace.',
+            zrodlo,
+        });
+    }
+
+    const m = await loadMarket();
+    const poId = new Map(m.products.map(p => [p.id, p]));
+    let nowych = 0, odswiezonych = 0;
+
+    for (const o of oferty) {
+        if (!o?.id || !o?.name) continue;                 // rekord bez kotwicy — pomijamy
+        const stary = poId.get(o.id);
+        if (stary) {
+            // Scalamy OPIS I CENĘ, ale NIE głosy ani daty — te są lokalne.
+            stary.name = o.name;
+            stary.desc = o.desc ?? stary.desc;
+            stary.priceGrv = Number(o.priceGrv) || 0;
+            stary.module = o.module || stary.module;
+            stary.type = o.type || stary.type;
+            stary.creator = o.creator || stary.creator;
+            stary.payload = o.payload ?? stary.payload;
+            stary.zGlobalnego = true;
+            odswiezonych++;
+        } else {
+            m.products.push({
+                id: o.id, module: o.module || 'core', type: o.type || 'item',
+                name: o.name, desc: o.desc || '', priceGrv: Number(o.priceGrv) || 0,
+                creator: o.creator || 'otakos.wtf', votes: 0,
+                createdAt: Date.now(), payload: o.payload ?? null, zGlobalnego: true,
+            });
+            nowych++;
+        }
+    }
+    await saveMarket();
+
+    await Szyna.nadaj({
+        agent: 'kupiec', rodzaj: 'praca',
+        tresc: `Synchronizacja z globalnym: ${nowych} nowych, ${odswiezonych} odświeżonych.`,
+    });
+    console.log(`[Market] 🛒 ${nowych} nowych, ${odswiezonych} odświeżonych (zrzut ${dane.zrzut ?? '?'}).`);
+
+    res.json({
+        success: true, zrodlo, nowych, odswiezonych,
+        zrzut: dane.zrzut ?? null, wersja: dane.wersja ?? null,
+        lacznie: m.products.length,
+        uwaga: 'Nic lokalnego nie zostało skasowane — oferta zdjęta z globalnego zostaje w Twoim węźle.',
+    });
+});
+
+// ── 🔧 KODEKS (Mechanik) — model, dziennik napraw, co wie i gdzie jest ────────
+/** GET /api/mechanic/model — czym Mechanik faktycznie mieli. */
+app.get('/api/mechanic/model', (req, res) => {
+    res.json({
+        success: true,
+        model: modelMechanika(),
+        domyslny: MODEL_DOMYSLNY,
+        plik: path.join('_OtakOs_Wymiar', 'mechanik.json'),
+    });
+});
+
+/** POST /api/mechanic/model {model} — przestaw rdzeń Mechanika (bez restartu mostu). */
+app.post('/api/mechanic/model', async (req, res) => {
+    const { model } = req.body ?? {};
+    if (!model) return res.status(400).json({ success: false, message: 'Brak nazwy modelu.' });
+
+    // Model-widmo sprawdzamy PRZED zapisem — inaczej Mechanik padłby dopiero
+    // przy pierwszym zadaniu, w tle, gdzie Suweren tego nie zobaczy.
+    try {
+        const r = await fetch(`${OLLAMA_BASE}/api/tags`);
+        const d = await r.json();
+        const sa = (d.models || []).map(m => m.name);
+        if (!sa.includes(model)) {
+            return res.status(422).json({
+                success: false,
+                message: `Ollama nie zna modelu „${model}" — nie zapisuję.`,
+                dostepne: sa,
+            });
+        }
+    } catch {
+        return res.status(503).json({ success: false, message: 'Ollama nie odpowiada — nie mogę sprawdzić modelu.' });
+    }
+
+    const ustawiony = ustawModelMechanika(model);
+    await Szyna.nadaj({ agent: 'kodeks', rodzaj: 'ustawienie', tresc: `Rdzeń przestawiony na ${ustawiony}.` });
+    res.json({ success: true, model: ustawiony });
+});
+
+/** GET /api/mechanic/dziennik?plik=&ile= — co Mechanik wdrożył, a co cofnął. */
+app.get('/api/mechanic/dziennik', async (req, res) => {
+    const wpisy = await Petla.historiaNapraw(req.query.plik || null, Number(req.query.ile) || 30);
+    const wdrozone = wpisy.filter(w => w.wynik === 'wdrozone').length;
+    const cofniete = wpisy.filter(w => w.wynik === 'cofniete').length;
+    res.json({ success: true, wpisy, wdrozone, cofniete });
+});
+
+/** GET /api/mechanic/co-wiem — czym Mechanik dysponuje i gdzie to leży. */
+app.get('/api/mechanic/co-wiem', async (req, res) => {
+    const policz = async (katalog, filtr) => {
+        try {
+            const w = await fs.readdir(path.join(process.cwd(), katalog));
+            return filtr ? w.filter(filtr).length : w.length;
+        } catch { return 0; }
+    };
+    res.json({
+        success: true,
+        model: modelMechanika(),
+        katalogi: {
+            latki:   { sciezka: '_OtakOs_Wymiar/patches', ile: await policz('_OtakOs_Wymiar/patches', f => f.endsWith('.md')) },
+            migawki: { sciezka: '_OtakOs_Kopie/naprawy',  ile: await policz('_OtakOs_Kopie/naprawy') },
+            kopie:   { sciezka: '_OtakOs_Kopie/components', ile: await policz('_OtakOs_Kopie/components') },
+        },
+        trasy: [
+            'GET  /api/mechanic/queue',
+            'POST /api/mechanic/apply   (migawka → weryfikacja → cofka)',
+            'POST /api/mechanic/reject/:id',
+            'GET  /api/mechanic/patch/:id',
+            'GET  /api/mechanic/dziennik',
+        ],
+        zasada: 'Mechanik NIE commituje. Proponuje łatkę, Suweren zatwierdza, pętla weryfikuje i cofa.',
+    });
+});
+
+// ── 🚌 SZYNA ZDARZEŃ AGENTÓW — fundament WORKPalace i rozmów między TeOgochi ──
+app.post('/api/szyna/zdarzenie', async (req, res) => {
+    const { agent, rodzaj, tresc, zadanie, dane } = req.body ?? {};
+    if (!agent || !tresc) {
+        return res.status(400).json({ success: false, message: 'Wymagane: agent oraz tresc.' });
+    }
+    const z = await Szyna.nadaj({ agent, rodzaj, tresc, zadanie, dane });
+    res.json({ success: true, zdarzenie: z });
+});
+
+/** GET /api/szyna/zdarzenia?agent=&ile= — ogon dziennika. */
+app.get('/api/szyna/zdarzenia', (req, res) => {
+    res.json({
+        success: true,
+        zdarzenia: Szyna.ostatnie({ agent: req.query.agent || null, ile: Number(req.query.ile) || 100 }),
+        pracuja: Szyna.ktoPracuje(),
+    });
+});
+
+/** GET /api/szyna/strumien — SSE. Żywy podgląd dla WORKPalace. */
+app.get('/api/szyna/strumien', (req, res) => {
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+    });
+    res.write(': szyna otwarta\n\n');
+    const odepnij = Szyna.sluchaj(res);
+    // Puls co 25 s — bez niego pośrednicy zamykają bezczynne połączenie.
+    const puls = setInterval(() => { try { res.write(': puls\n\n'); } catch { /* zerwane */ } }, 25000);
+    req.on('close', () => { clearInterval(puls); odepnij(); });
+});
+
+/**
+ * POST /api/szyna/pytanie — jeden agent pyta drugiego.
+ *
+ * Most jest tu ŚWIADOMIE GŁUPIĄ RURĄ: persona i model przychodzą z frontu, bo to
+ * tam żyje katalog gatunków (lib/teogochiGatunki.ts). Dublowanie go po stronie
+ * mostu skończyłoby się dwoma źródłami prawdy, które się rozjadą.
+ * Pytanie i odpowiedź lądują na szynie — WORKPalace widzi rozmowę.
+ */
+app.post('/api/szyna/pytanie', async (req, res) => {
+    const { odKogo, doKogo, pytanie, model, persona } = req.body ?? {};
+    if (!odKogo || !doKogo || !pytanie) {
+        return res.status(400).json({ success: false, message: 'Wymagane: odKogo, doKogo, pytanie.' });
+    }
+    const silnik = model || process.env.OTAKOS_MODEL || 'gemma4:e2b';
+    await Szyna.nadaj({ agent: odKogo, rodzaj: 'pytanie', tresc: `→ ${doKogo}: ${pytanie}` });
+
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 300000);
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+            body: JSON.stringify({
+                model: silnik,
+                system: persona || `Jesteś agentem „${doKogo}" w Katedrze OtakOS. Odpowiadaj po polsku, krótko i konkretnie.`,
+                prompt: `Pyta Cię agent „${odKogo}".\n\n${pytanie}`,
+                stream: false, options: { temperature: 0.7 },
+            }),
+        });
+        clearTimeout(t);
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+        const d = await r.json();
+        const odpowiedz = String(d.response || '').trim();
+        await Szyna.nadaj({ agent: doKogo, rodzaj: 'odpowiedz', tresc: `→ ${odKogo}: ${odpowiedz}` });
+        res.json({ success: true, odpowiedz, model: silnik });
+    } catch (e) {
+        const powod = e.name === 'AbortError' ? 'Ollama nie zdążyła (300s).' : e.message;
+        await Szyna.nadaj({ agent: doKogo, rodzaj: 'blad', tresc: `nie odpowiedział: ${powod}` });
+        res.status(500).json({ success: false, message: powod });
+    }
+});
+
+// ── 🎬 ANIMACJE — wspólny silnik dla App V2 i Story V2 (HyperFrames, Apache 2.0) ──
+app.get('/api/animacja/stan', async (req, res) => {
+    const s = await stanAnimacji();
+    res.json({
+        success: true, ...s,
+        silnikNazwa: 'HyperFrames (Apache 2.0)',
+        telemetria: 'wyłączona na sztywno (HYPERFRAMES_NO_TELEMETRY=1, DO_NOT_TRACK=1)',
+        gotowy: s.silnik && s.ffmpeg,
+    });
+});
+
+/** POST /api/animacja/z-projektu — Body: { projekt, id?, sekundNaElement? }. Projekt = JSON z App V2. */
+app.post('/api/animacja/z-projektu', async (req, res) => {
+    const { projekt, id, sekundNaElement, szer, wys } = req.body ?? {};
+    if (!projekt || !Array.isArray(projekt.elements)) {
+        return res.status(400).json({ success: false, message: 'Body musi mieć { projekt: { elements: [...] } }.' });
+    }
+    try {
+        const html = zProjektuAppV2(projekt, { sekundNaElement, szer, wys });
+        const w = await renderuj(id || 'projekt-app-v2', html);
+        res.json({ success: true, ...w, url: `/api/animacja/plik/${w.id}` });
+    } catch (e) {
+        console.error('[Animacje] ❌', e.message);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/** POST /api/animacja/renderuj — Body: { id, html }. Dla Story V2 i ręcznych kompozycji. */
+app.post('/api/animacja/renderuj', async (req, res) => {
+    const { id, html } = req.body ?? {};
+    if (!html || !String(html).includes('data-composition-id')) {
+        return res.status(400).json({
+            success: false,
+            message: 'Body musi mieć { html } z elementem niosącym data-composition-id.',
+        });
+    }
+    try {
+        const w = await renderuj(id || 'kompozycja', String(html));
+        res.json({ success: true, ...w, url: `/api/animacja/plik/${w.id}` });
+    } catch (e) {
+        console.error('[Animacje] ❌', e.message);
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/** GET /api/animacja/plik/:id — najnowszy MP4 danego projektu, strumieniowo. */
+app.get('/api/animacja/plik/:id', async (req, res) => {
+    const slug = String(req.params.id).replace(/[^a-z0-9-]/gi, '');
+    const katalog = path.join(KATALOG_PROJEKTOW, slug, 'renders');
+    try {
+        const mp4 = (await fs.readdir(katalog)).filter(w => w.endsWith('.mp4')).sort();
+        if (!mp4.length) throw new Error('brak renderu');
+        res.type('video/mp4').sendFile(path.join(katalog, mp4[mp4.length - 1]));
+    } catch {
+        res.status(404).json({ success: false, message: `Brak renderu dla „${slug}".` });
+    }
+});
+
+// ── 🎨 WIEDZA PROJEKTOWA — korpus wzorców front-endu dla agentów App V2 ──────
+// Źródło: greatfrontend/awesome-front-end-system-design (klon w _OtakOs_Wiedza/).
+// Czytane deterministycznie, bez modelu i bez sieci — patrz services/WiedzaDesign.js.
+app.get('/api/wiedza/design/tematy', async (req, res) => {
+    try {
+        const tematy = await wczytajKorpus();
+        res.json({
+            success: true,
+            liczba: tematy.length,
+            tematy: tematy.map(t => ({
+                id: t.id, nazwa: t.nazwa, kategoria: t.kategoria,
+                przyklady: t.przyklady, zrodel: t.liczbaZrodel,
+            })),
+        });
+    } catch (e) {
+        res.status(404).json({
+            success: false,
+            message: `Brak korpusu wiedzy projektowej: ${e.message}`,
+            hint: `Sklonuj go do ${SCIEZKA_KORPUSU.replace(/README\.md$/, '')}`,
+        });
+    }
+});
+
+/** GET /api/wiedza/design/temat?id=chat-app — pełny wpis ze wszystkimi źródłami. */
+app.get('/api/wiedza/design/temat', async (req, res) => {
+    try {
+        const tematy = await wczytajKorpus();
+        const t = tematy.find(x => x.id === String(req.query.id || '').trim());
+        if (!t) return res.status(404).json({ success: false, message: 'Nie ma takiego tematu.', dostepne: tematy.map(x => x.id) });
+        res.json({ success: true, temat: t, brief: brief(t, 99) });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * GET /api/wiedza/design/dopasuj?opis=... — po to istnieje cały ten moduł.
+ * Agent App V2 pyta „co Suweren chce zbudować", a most oddaje gotowy brief
+ * do wstrzyknięcia w instrukcję systemową. Zero tokenów po drodze.
+ */
+app.get('/api/wiedza/design/dopasuj', async (req, res) => {
+    const opis = String(req.query.opis || '').trim();
+    if (!opis) return res.status(400).json({ success: false, message: 'Podaj ?opis=…' });
+    try {
+        const trafienia = await dopasuj(opis, Number(req.query.ile) || 2);
+        res.json({
+            success: true,
+            opis,
+            trafienia: trafienia.map(t => ({
+                id: t.temat.id, nazwa: t.temat.nazwa, kategoria: t.temat.kategoria,
+                punkty: t.punkty, zrodel: t.temat.liczbaZrodel, brief: brief(t.temat, 6),
+            })),
+            // Uczciwie: brak trafienia to normalny wynik, nie awaria.
+            brief: trafienia.length ? trafienia.map(t => brief(t.temat, 6)).join('\n\n') : '',
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ── 🧰 SKILLE ZEWNĘTRZNE — instalacja WYŁĄCZNIE z białej listy ────────────────
+//
+// Suweren chce mówić do konsoli „Klaudi, zainstaluj to repro" i mieć skill.
+// Wygodne — i dlatego niebezpieczne: czat wystawiony Kwantowym Tunelem na telefon
+// stałby się przyciskiem „uruchom dowolny kod z internetu na maszynie Suwerena".
+//
+// DLATEGO: czat NIE PODAJE adresu. Czat podaje IDENTYFIKATOR z białej listy.
+// Adres repo i DOKŁADNA komenda instalacyjna są wpisane w pliku po stronie dysku,
+// który zmienia tylko Suweren. Nieznane id = odmowa z powodem, zero klonowania.
+//
+// Biała lista: _OtakOs_Wymiar/skille-biala-lista.json
+const SKILLE_LISTA = path.join(process.cwd(), '_OtakOs_Wymiar', 'skille-biala-lista.json');
+// UWAGA: to NIE jest SKILLE_DIR z linii ~5187. Tamten to TeO_Skille — własne
+// skille Katedry. Ten wskazuje katalog skilli Claude Code w domu Suwerena.
+const CC_SKILLE_DIR = path.join(os.homedir(), '.claude', 'skills');
+
+/** Wpisy fabryczne — używane, gdy pliku jeszcze nie ma. */
+const SKILLE_DOMYSLNE = [
+    {
+        id: 'gstack',
+        nazwa: 'gstack (Garry Tan)',
+        repo: 'https://github.com/garrytan/gstack.git',
+        setup: './setup --host claude --prefix',
+        wymaga: ['git', 'bun'],
+        opis: '53 komendy /gstack-* dla Claude Code: przegląd kodu, QA, wydania, planowanie.',
+    },
+];
+
+async function wczytajBialaListe() {
+    try {
+        const s = await fs.readFile(SKILLE_LISTA, 'utf8');
+        const d = JSON.parse(s);
+        return Array.isArray(d.skille) ? d.skille : SKILLE_DOMYSLNE;
+    } catch {
+        return SKILLE_DOMYSLNE;
+    }
+}
+
+/**
+ * Skrypty setup skilli to bash, a execAsync na Windowsie idzie przez cmd.exe,
+ * który na „./setup" odpowiada „'.' is not recognized". Zmierzone, nie zgadnięte.
+ * Szukamy więc basha: najpierw w PATH, potem obok gita (Git for Windows go wozi).
+ */
+async function znajdzBash() {
+    if (process.platform !== 'win32') return null;      // POSIX odpala skrypt wprost
+    try {
+        await execAsync('bash --version', { timeout: 8000, windowsHide: true });
+        return 'bash';
+    } catch { /* brak w PATH — szukamy dalej */ }
+    try {
+        const { stdout } = await execAsync('git --exec-path', { timeout: 8000, windowsHide: true });
+        // …/Git/mingw64/libexec/git-core → …/Git/bin/bash.exe
+        const korzen = path.resolve(stdout.trim(), '..', '..', '..');
+        const kandydat = path.join(korzen, 'bin', 'bash.exe');
+        await fs.access(kandydat);
+        return `"${kandydat}"`;
+    } catch { /* nie ma */ }
+    return null;
+}
+
+/** GET /api/skille/biala-lista — co Suweren dopuścił do instalacji. */
+app.get('/api/skille/biala-lista', async (req, res) => {
+    const skille = await wczytajBialaListe();
+    res.json({
+        success: true,
+        skille,
+        plik: SKILLE_LISTA,
+        uwaga: 'Instalowane są WYŁĄCZNIE te pozycje. Nowe repo dopisuje Suweren do tego pliku — nie czat.',
+    });
+});
+
+/** GET /api/skille/zainstalowane — co realnie leży na dysku (nie co obiecano). */
+app.get('/api/skille/zainstalowane', async (req, res) => {
+    try {
+        const wpisy = await fs.readdir(CC_SKILLE_DIR, { withFileTypes: true });
+        res.json({ success: true, katalog: CC_SKILLE_DIR, skille: wpisy.filter(w => w.isDirectory()).map(w => w.name) });
+    } catch (e) {
+        res.json({ success: true, katalog: CC_SKILLE_DIR, skille: [], message: `Katalog skilli nie istnieje jeszcze (${e.code}).` });
+    }
+});
+
+/**
+ * POST /api/skille/instaluj — Body: { id }.
+ * Klonuje i uruchamia setup TYLKO dla pozycji z białej listy.
+ */
+app.post('/api/skille/instaluj', async (req, res) => {
+    const id = String((req.body ?? {}).id || '').trim().toLowerCase();
+    const skille = await wczytajBialaListe();
+    const wpis = skille.find(s => s.id === id);
+
+    if (!wpis) {
+        return res.status(403).json({
+            success: false,
+            message: `„${id || '(puste)'}" nie jest na białej liście — nie instaluję.`,
+            hint: `Dopuszczone: ${skille.map(s => s.id).join(', ') || '(lista pusta)'}. `
+                + `Nowe repo dopisz ręcznie do ${SKILLE_LISTA} — czat nie może tego zrobić za Ciebie i to jest celowe.`,
+            dopuszczone: skille.map(s => s.id),
+        });
+    }
+
+    // Narzędzia sprawdzamy PRZED klonowaniem — inaczej zostaje 40MB śmieci
+    // i setup, który i tak wyjdzie z błędem w pięćdziesiątej linii.
+    for (const narzedzie of wpis.wymaga || []) {
+        try { await execAsync(`${narzedzie} --version`, { timeout: 10000, windowsHide: true }); }
+        catch {
+            return res.status(412).json({
+                success: false,
+                message: `Brak „${narzedzie}" w PATH — instalacja „${wpis.id}" nie ruszy.`,
+                hint: narzedzie === 'bun' ? 'Zainstaluj: npm install -g bun' : `Zainstaluj ${narzedzie} i spróbuj ponownie.`,
+            });
+        }
+    }
+
+    const cel = path.join(CC_SKILLE_DIR, wpis.id);
+    console.log(`[Skille] 📦 Instaluję „${wpis.id}" z ${wpis.repo} → ${cel}`);
+
+    try {
+        await fs.mkdir(CC_SKILLE_DIR, { recursive: true });
+        // Nie każdy skill to repo do sklonowania. graphify jedzie z PyPI przez pipx
+        // i sam się rejestruje — wpis bez pola `repo` znaczy „tylko uruchom setup".
+        let klon = '(brak — wpis bez repo, sam setup)';
+        if (wpis.repo) {
+            await fs.rm(cel, { recursive: true, force: true });
+            ({ stdout: klon } = await execAsync(
+                `git clone --single-branch --depth 1 ${wpis.repo} "${cel}"`,
+                { timeout: 600000, windowsHide: true },
+            ));
+        }
+        const bash = await znajdzBash();
+        if (process.platform === 'win32' && !bash) {
+            return res.status(412).json({
+                success: false, id: wpis.id,
+                message: 'Nie znalazłem basha — skrypt setup nie ma czym się uruchomić.',
+                hint: 'Zainstaluj Git for Windows (wozi bash.exe) albo dodaj bash do PATH.',
+            });
+        }
+        const komenda = bash ? `${bash} -lc "${wpis.setup.replace(/"/g, '\\"')}"` : wpis.setup;
+        // Wpisy bez `repo` odpalamy w KATEDRZE, nie w katalogu skilli — dzięki temu
+        // ich setup może wołać skrypty instalacyjne trzymane w _OtakOs_Wymiar/skille/.
+        const { stdout, stderr } = await execAsync(komenda, {
+            cwd: wpis.repo ? cel : process.cwd(),
+            timeout: 900000, windowsHide: true, maxBuffer: 10 * 1024 * 1024,
+        });
+        const ogon = (s) => String(s || '').split('\n').slice(-25).join('\n');
+        console.log(`[Skille] ✅ „${wpis.id}" zainstalowany.`);
+        res.json({
+            success: true,
+            id: wpis.id,
+            katalog: wpis.repo ? cel : CC_SKILLE_DIR,
+            klon: ogon(klon),
+            setup: ogon(stdout),
+            ostrzezenia: ogon(stderr),
+            uwaga: 'Skille Claude Code ładują się przy starcie sesji — odpal Claude na nowo, żeby je zobaczyć.',
+        });
+    } catch (e) {
+        console.error(`[Skille] ❌ „${wpis.id}": ${e.message}`);
+        res.status(500).json({
+            success: false,
+            id: wpis.id,
+            message: `Instalacja „${wpis.id}" padła: ${e.message}`,
+            wyjscie: String(e.stdout || '').split('\n').slice(-20).join('\n'),
+            blad: String(e.stderr || '').split('\n').slice(-20).join('\n'),
+        });
+    }
+});
+
 app.post('/api/mcp/add-custom', async (req, res) => {
     try {
         const customSkill = req.body || {};
@@ -9873,6 +11078,13 @@ const httpServer = app.listen(PORT, () => {
 
     // 🛡️ Strażnik VRAM - Tacos Guard
     initTacosGuard();
+
+    // 🚌 Szyna: wczytujemy ogon dziennika, żeby WORKPalace po restarcie mostu
+    // nie zaczynał od pustki i nie sugerował, że agenci nic nigdy nie robili.
+    Szyna.wczytajOgon().then(ile => {
+        if (ile) console.log(`[Szyna] 🚌 Wczytano ${ile} zdarzeń z dziennika.`);
+        else console.log('[Szyna] 🚌 Dziennik pusty — czekam na pierwszy meldunek agenta.');
+    });
 });
 
 // ── 🎥 STUDIO — kanały WebSocket wpięte w ten sam serwer HTTP ────────────────

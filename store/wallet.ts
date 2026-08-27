@@ -64,6 +64,73 @@ export const consumeGrvAtom = atom(
     }
 );
 
+const MOST = 'http://127.0.0.1:3001';
+
+/**
+ * 🔗 KTÓRY WĘZEŁ KSIĘGI odpowiada któremu kontu.
+ *
+ * ⚠️ TU BYŁA DRUGA PRAWDA. Mapowanie kont na węzły siedziało W TEJ FUNKCJI,
+ * czyli w przeglądarce, a most miał własne zdanie w `_OtakOs_Wymiar/konta.json`.
+ * Dwie warstwy mogły twierdzić co innego o tym, czyj to portfel. Teraz pytamy
+ * most (`/api/konta/wezel`) — rejestr jest jeden i to on jest właścicielem
+ * odpowiedzi. Wynik trafia do pamięci podręcznej, żeby nie pytać przy każdym renderze.
+ *
+ * Nieznane konto → `null`. Świadomie NIE zgadujemy „to pewnie Suweren", bo
+ * zgadnięcie przypisałoby komuś cudze saldo. Wołający ma wtedy nic nie pokazać.
+ *
+ * ⚠️ Nazwa węzła NIE jest kosmetyką: to klucz w księdze GRV (grv_ledger.json),
+ * po nim idą przelewy i po nim liczy się saldo.
+ */
+let rejestrKont: Record<string, string> = {};
+
+/** Konto, na które przeglądarka jest obecnie zalogowana — do odświeżeń po zakupie. */
+let ostatnieKonto: string | null = null;
+
+export async function wezelKsiegi(username?: string | null): Promise<string | null> {
+    const u = (username || '').trim().toLowerCase();
+    if (!u) return null;
+    if (rejestrKont[u]) return rejestrKont[u];
+    try {
+        const r = await fetch(`${MOST}/api/konta/wezel?kto=${encodeURIComponent(u)}`);
+        if (!r.ok) return null;                 // most nie zna tego konta — nie zgadujemy
+        const d = await r.json();
+        if (!d?.wezel) return null;
+        rejestrKont[u] = d.wezel;
+        return d.wezel;
+    } catch {
+        return null;                            // most śpi — lepiej nic niż cudze saldo
+    }
+}
+
+/**
+ * Realne saldo z KSIĘGI, nie z pamięci przeglądarki.
+ *
+ * ⚠️ TU BYŁ ROZJAZD: portfel UI trzymał własną liczbę (1000 dla zwykłego konta,
+ * 99999999 dla admina) i odejmował od niej przy zakupie, podczas gdy księga GRV
+ * — jedyne miejsce z łańcuchem i pieczęcią — miała zupełnie inną wartość.
+ * Suweren widział 900,73 GRV przy 1 000 075 w księdze. Ekran pokazywał fikcję.
+ */
+/** Napis, którym oznaczamy saldo nieskończone. Bank NIE ma liczby. */
+export const SALDO_NIESKONCZONE = '∞';
+
+export async function saldoZKsiegi(wezel: string): Promise<{ grv: number | null; nieskonczone: boolean; tier?: string }> {
+    try {
+        const r = await fetch(`${MOST}/api/grv/${encodeURIComponent(wezel)}`);
+        if (!r.ok) return { grv: null, nieskonczone: false };
+        const d = await r.json();
+        // Zarządca ma saldo nieskończone — księga zwraca je jako napis „INFINITE".
+        // ⚠️ Ekran pokazywał wtedy wymyślone 99 999 999 GRV. To ta sama fikcja, co
+        // wcześniejsze 900,73 przy milionie w księdze: liczba z palca zamiast prawdy.
+        // Bank nie ma salda — ma nieskończoność, i tak trzeba to napisać.
+        const surowe = d?.grv;
+        if (surowe === 'INFINITE') return { grv: null, nieskonczone: true, tier: d?.tier };
+        const liczba = typeof surowe === 'number' ? surowe : Number(surowe);
+        return { grv: Number.isFinite(liczba) ? liczba : null, nieskonczone: false, tier: d?.tier };
+    } catch {
+        return { grv: null, nieskonczone: false };
+    }
+}
+
 export const walletAtom = atom<WalletState>({
     address: null,
     balance: null,
@@ -100,10 +167,27 @@ export const autoConnectWalletAtom = atom(
 
         set(walletAtom, {
             address: mockAddress,
-            balance: bonus.toFixed(2),
+            balance: bonus.toFixed(2),      // wartość tymczasowa — zaraz nadpisze ją księga
             tier: userTier,
             frequencyTier: initialTier,
             isGenesisNode: isGenesis
+        });
+
+        // 🔗 Prawdziwe saldo dociąga się z księgi GRV. Wpisany wyżej „bonus" to
+        // tylko wypełniacz na czas jednego przebiegu — gdyby most spał, ekran
+        // pokaże starą wartość, ale NIE będzie na jej podstawie nic odejmował.
+        ostatnieKonto = username ?? null;
+        void wezelKsiegi(username).then(async (wezel) => {
+            if (!wezel) return;                       // konto nieznane mostowi — zostaje wypełniacz
+            const { grv, nieskonczone, tier } = await saldoZKsiegi(wezel);
+            if (grv === null && !nieskonczone) return;   // most śpi — zostaje wypełniacz
+            const pokaz = nieskonczone ? SALDO_NIESKONCZONE : grv!.toFixed(2);
+            set(walletAtom, w => ({
+                ...w,
+                balance: pokaz,
+                tier: tier === 'founder' ? 'singularity' : w.tier,
+            }));
+            console.log(`%c [GRV] Saldo z księgi: ${wezel} = ${pokaz}`, 'color:#34d399');
         });
 
         if (!isGenesis) {
@@ -117,20 +201,25 @@ export const purchaseAssetAtom = atom(
     null,
     (get, set, price: number) => {
         const currentWallet = get(walletAtom);
+        const bank = currentWallet.balance === SALDO_NIESKONCZONE;   // zarządca — nie ma czego odejmować
         // Auto-connect check (Just in case, though App.tsx should handle it)
         const balanceVal = currentWallet.balance ? parseFloat(currentWallet.balance) : 0;
 
-        if (balanceVal < price) {
+        if (!bank && balanceVal < price) {
             throw new Error("Insufficient Energy (GRV). Please top up your Field.");
         }
 
         const split = calculateRevenueSplit(price);
-        const newBalance = balanceVal - price;
 
-        // Update Wallet State
-        set(walletAtom, {
-            ...currentWallet,
-            balance: newBalance.toFixed(2)
+        // ⚠️ NIE liczymy salda lokalnie. Przelew wykonał już most (POST
+        // /api/market/kup) i to KSIĘGA wie, ile zostało. Odejmowanie po stronie
+        // UI było właśnie tym, co rozjeżdżało ekran z rzeczywistością.
+        if (!bank) set(walletAtom, { ...currentWallet, balance: (balanceVal - price).toFixed(2) });
+        void wezelKsiegi(ostatnieKonto).then(async (wezel) => {
+            if (!wezel) return;
+            const { grv, nieskonczone } = await saldoZKsiegi(wezel);
+            if (nieskonczone) return;                 // bank zostaje bankiem
+            if (grv !== null) set(walletAtom, w => ({ ...w, balance: grv.toFixed(2) }));
         });
 
         // --- ISO 20022 FINANCIAL MESSAGING ---

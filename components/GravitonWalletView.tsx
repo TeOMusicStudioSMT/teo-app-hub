@@ -13,7 +13,7 @@ import DashboardCard from './DashboardCard';
 import { WalletIcon, ShieldCheckIcon, BrainCircuitIcon } from './icons';
 import WalletConnect from './WalletConnect';
 import { useAtomValue } from 'jotai';
-import { walletAtom } from '../store/wallet';
+import { walletAtom, SALDO_NIESKONCZONE } from '../store/wallet';
 import { cn } from '../lib/helpers';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -82,7 +82,7 @@ export const GravitonWalletView: React.FC = () => {
                         <p className="text-sm text-slate-400 uppercase tracking-widest">Tier Częstotliwości</p>
                         <p className={cn('text-2xl font-bold my-2 border-b-2 pb-2', tierStyles[wallet.frequencyTier] || tierStyles.Low)}>{wallet.frequencyTier}</p>
                         <p className="text-sm text-slate-400 uppercase tracking-widest mt-3">Saldo</p>
-                        <p className="text-4xl font-bold text-white">{wallet.balance ? parseFloat(wallet.balance).toLocaleString() : '...'} <span className="text-lg text-amber-400">GRV</span></p>
+                        <p className="text-4xl font-bold text-white">{wallet.balance === SALDO_NIESKONCZONE ? SALDO_NIESKONCZONE : (wallet.balance ? parseFloat(wallet.balance).toLocaleString() : '...')} <span className="text-lg text-amber-400">GRV</span></p>
                         {wallet.isGenesisNode && <span className="inline-block mt-2 px-2 py-0.5 bg-amber-900/30 border border-amber-500/50 rounded text-[10px] text-amber-400 uppercase font-bold tracking-wider">Węzeł Genezy</span>}
                     </div>
                 </DashboardCard>

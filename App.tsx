@@ -207,6 +207,23 @@ const App: React.FC = () => {
         }
     }, [user]); // Only run when user changes
 
+    // 2b. Wejście suwerenne — to samo, co dawało logowanie: przypisanie konta do KSIĘGI.
+    // Bez tego portfel po wejściu bez Google nie miał się do czego spiąć i saldo
+    // zostawało wypełniaczem. Mail z bramy → most → węzeł księgi → prawdziwe GRV.
+    useEffect(() => {
+        if (user) return;
+        // ⚠️ Czytamy localStorage, NIE stan `sovereignLocal`. Brama ustawia klucz
+        // dopiero po starcie App, więc stan wczytany przy montowaniu jest wtedy
+        // nieaktualny — i portfel zostawał na wypełniaczu mimo udanego wejścia.
+        const suwerennie = localStorage.getItem('otakos_sovereign_local') === 'true';
+        if (!suwerennie) return;
+        if (!sovereignLocal) setSovereignLocal(true);
+        let mail: string | null = null;
+        try { mail = JSON.parse(localStorage.getItem('teonauta_data') || '{}')?.email ?? null; } catch { mail = null; }
+        if (!mail) return;                     // wejście bez konta — świadomie puste saldo
+        autoConnectWallet(mail);
+    }, [user, sovereignLocal, isInitiated, autoConnectWallet]);
+
     // 3. Init ready state after intro
     useEffect(() => {
         if (!showIntro) {

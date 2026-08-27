@@ -5,14 +5,65 @@ import { toast } from "react-hot-toast";
 import { executeBridgeCommand } from "../../lib/bridgeService";
 import { auth } from "../../lib/firebaseConfig";
 import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { isLocalKatedra } from "../../lib/suweren";
 
 interface OtakOSGatewayProps {
   onInitiate: () => void;
 }
 
+const MOST = "http://127.0.0.1:3001";
+
+interface KontoBramy {
+  id: string; mail: string; wezel: string; rola: string; opis: string;
+  ranga: string | null; saldo: number | string | null;
+}
+
 export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
   const [isInitiating, setIsInitiating] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
+
+  // 🔑 DRUGIE DRZWI. Brama wołała wyłącznie popup Google — a Katedra ma działać
+  // lokalnie, na maszynie Suwerena. Przy zablokowanym popupie albo bez sieci nie
+  // dało się wejść W OGÓLE. Wejście suwerenne robi to, co dawało logowanie:
+  // personalizuje (kim jesteś) i SPINA konto z księgą GRV (który to węzeł).
+  const [kontaOtwarte, setKontaOtwarte] = useState(false);
+  const [konta, setKonta] = useState<KontoBramy[]>([]);
+  const [mostSpi, setMostSpi] = useState(false);
+
+  const otworzWyborKonta = async () => {
+    setKontaOtwarte(true);
+    setMostSpi(false);
+    try {
+      const r = await fetch(`${MOST}/api/konta`);
+      if (!r.ok) throw new Error("most odmowil");
+      const d = await r.json();
+      setKonta(d.konta ?? []);
+    } catch {
+      // Nie zmyślamy listy kont. Rejestr trzyma most — bez niego nie ma z czym
+      // spiąć salda, i lepiej to powiedzieć niż wpuścić do pustego portfela.
+      setKonta([]);
+      setMostSpi(true);
+    }
+  };
+
+  const wejdzJako = (k: KontoBramy | null) => {
+    if (k) {
+      localStorage.setItem("teonauta_data", JSON.stringify({ name: k.wezel, email: k.mail, avatar: null }));
+      localStorage.setItem("otakos_username", k.mail);   // po tym most znajdzie węzeł księgi
+      toast.success(`Witaj, ${k.wezel}. Wchodzisz suwerennie.`);
+    } else {
+      // Wejście bez konta: Katedra działa, ale portfel nie ma się do czego spiąć.
+      localStorage.removeItem("teonauta_data");
+      localStorage.removeItem("otakos_username");
+      toast("Wchodzisz bez konta — saldo GRV zostanie puste.", { icon: "⚠️" });
+    }
+    localStorage.setItem("otakos_sovereign_local", "true");
+    setIsInitiating(true);
+    setTimeout(() => {
+      setIsVisible(false);
+      setTimeout(() => onInitiate(), 800);
+    }, 400);
+  };
 
   const handleInitiate = async () => {
     if (isInitiating) return;
@@ -116,7 +167,7 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
       ))}
 
       {/* Main content */}
-      <div className="relative z-10 flex items-center justify-center min-h-screen">
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen">
         <button
           onClick={handleInitiate}
           disabled={isInitiating}
@@ -187,6 +238,77 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
             ENTER LOUNGE
           </span>
         </button>
+
+        {/* ── DRUGIE DRZWI: WEJŚCIE SUWERENNE ──
+            ⚠️ TYLKO NA MASZYNIE SUWERENA. Ta sama brama stoi publicznie na
+            graviton.pw, a tam most (127.0.0.1:3001) należy do odwiedzającego,
+            nie do Katedry. Bez tego warunku „wejdź bez konta" byłoby otwartymi
+            drzwiami do Lounge dla każdego z ulicy. Gospodarzem jest ten, kto
+            siedzi przy klawiaturze — i tylko lokalnie da się to stwierdzić. */}
+        {!isLocalKatedra() ? null : !kontaOtwarte ? (
+          <button
+            onClick={otworzWyborKonta}
+            disabled={isInitiating}
+            className="mt-6 px-6 py-2 text-[11px] tracking-[0.25em] uppercase font-light
+                       text-emerald-500/70 border-b border-emerald-500/20
+                       hover:text-emerald-300 hover:border-emerald-400/60
+                       transition-all duration-500 disabled:pointer-events-none"
+          >
+            Wejdź suwerennie · bez chmury
+          </button>
+        ) : (
+          <div className="mt-6 w-[22rem] max-w-[90vw] rounded-xl border border-emerald-500/25 bg-slate-950/80 p-4 backdrop-blur-sm">
+            <p className="text-[10px] tracking-[0.2em] uppercase text-emerald-500/70 mb-3">
+              kim jesteś przy tej klawiaturze
+            </p>
+
+            {mostSpi ? (
+              <p className="text-[11px] leading-relaxed text-amber-400/90 mb-3">
+                Most (:3001) śpi — rejestr kont trzyma on, więc nie mam skąd wziąć listy.
+                Odpal Katedrę mostem albo wejdź bez konta, świadomie z pustym saldem.
+              </p>
+            ) : konta.length === 0 ? (
+              <p className="text-[11px] text-slate-500 mb-3">Pytam most o konta…</p>
+            ) : (
+              <div className="space-y-2 mb-3">
+                {konta.map((k) => (
+                  <button
+                    key={k.id}
+                    onClick={() => wejdzJako(k)}
+                    disabled={isInitiating}
+                    className="w-full text-left rounded-lg border border-slate-700/60 bg-black/40 px-3 py-2
+                               hover:border-emerald-500/60 hover:bg-emerald-950/20
+                               transition-colors duration-300 disabled:pointer-events-none"
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm text-slate-200">{k.wezel}</span>
+                      <span className="text-[10px] font-mono text-amber-300/80">
+                        {k.saldo === "INFINITE" ? "∞ GRV" : `${Number(k.saldo ?? 0).toLocaleString("pl-PL")} GRV`}
+                      </span>
+                    </div>
+                    <div className="text-[10px] font-mono text-slate-500 truncate">{k.mail}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2">
+              <button
+                onClick={() => setKontaOtwarte(false)}
+                className="text-[10px] tracking-widest uppercase text-slate-600 hover:text-slate-400"
+              >
+                wróć
+              </button>
+              <button
+                onClick={() => wejdzJako(null)}
+                disabled={isInitiating}
+                className="text-[10px] tracking-widest uppercase text-slate-500 hover:text-amber-300 disabled:pointer-events-none"
+              >
+                wejdź bez konta
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom info text & Bridge Tester */}

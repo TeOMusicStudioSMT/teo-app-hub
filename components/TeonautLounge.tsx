@@ -9,7 +9,7 @@ import { ProfileView } from './ProfileView';
 import { QuantumCompass } from './education/QuantumCompass';
 import { IdentityDashboard } from './identity/IdentityDashboard';
 import { useAtomValue, useSetAtom } from 'jotai';
-import { walletAtom, autoConnectWalletAtom } from '../store/wallet';
+import { walletAtom, autoConnectWalletAtom, SALDO_NIESKONCZONE } from '../store/wallet';
 import { useEssenceIdentity } from '../hooks/useEssenceIdentity';
 import { motion, AnimatePresence } from 'framer-motion';
 import { resonanceColorAtom, RESONANCE_THEMES } from '../store/personalization';
@@ -32,6 +32,7 @@ import { GravitonWalletView } from './GravitonWalletView';
 import { useAssistant } from '../hooks/useAssistant';
 import { InstallPWA } from './InstallPWA';
 import { CoBotDashboard } from './special/CoBotFactory';
+import DomTeogochi from './special/DomTeogochi';
 import { CrewCreator } from './special/CrewCreator';
 import { TeO_Orb, AromaType } from './TeO_Orb';
 import { IdentityCard, CoreStatusPanel } from './IdentityCard';
@@ -59,7 +60,6 @@ interface TeonautLoungeProps {
 type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'gameforge' | 'mcp-skillboard' | 'twoje-biznesy';
 
 export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionToggle, onFavoriteToggle, onLogout, onTriggerAnomaly, behavioralData, onVisualAssistantOpen, onOpenCrewClub }) => {
-    const [staticBalance] = useState(3975.78);
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [isHudVisible, setIsHudVisible] = useState(true);
     const [activeAroma, setActiveAroma] = useState<AromaType>('default');
@@ -82,13 +82,24 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
         setActiveView(view);
     };
 
-    const balance = wallet.balance ? parseFloat(wallet.balance) : staticBalance;
+    // ⚠️ Tu siedziało `staticBalance = 3975.78` — liczba z palca pokazywana zawsze,
+    // gdy portfel nie był spięty z księgą. Wejście „bez konta" obiecywało puste
+    // saldo, a ekran i tak wypisywał prawie cztery tysiące GRV. Brak salda ma
+    // wyglądać jak brak salda.
+    const balance = wallet.balance ? parseFloat(wallet.balance) : null;
     const frequencyTier = wallet.frequencyTier;
 
-    const formattedBalance = new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    }).format(balance);
+    // Zarządca (bank ekosystemu) nie ma liczby — ma nieskończoność. Formatowanie
+    // jej przez Intl dałoby „NaN", a wcześniej ekran wypisywał zmyślone 99 999 999.
+    const nieskonczone = wallet.balance === SALDO_NIESKONCZONE;
+    const formattedBalance = nieskonczone
+        ? SALDO_NIESKONCZONE
+        : balance === null || Number.isNaN(balance)
+            ? '—'
+            : new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            }).format(balance);
 
     const localTeonauta = JSON.parse(localStorage.getItem('teonauta_data') || '{}');
     const welcomeMessage = identity?.username 
@@ -234,7 +245,10 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                             )}
                             {activeView === 'graviton-wallet' && <GravitonWalletView />}
                             {activeView === 'identity' && <IdentityDashboard />}
-                            {activeView === 'cobots' && <CoBotDashboard />}
+                            {/* Widok 'cobots' to teraz DOM TEOGOCHI — 13 gatunków agentów zadaniowych.
+                                CoBotFactory zostaje w kodzie nietknięta: to inna rzecz
+                                (fabryka autonomicznych agentów), nie ma powodu jej kasować. */}
+                            {activeView === 'cobots' && <DomTeogochi />}
                             {activeView === 'crew-club' && <div className="text-center py-20 text-slate-500 italic">Ładowanie Kokpitu Mistrzów...</div>}
                             {activeView === 'academy' && <QuantumCompass />}
                             {activeView === 'field-control' && <FieldControlView />}
