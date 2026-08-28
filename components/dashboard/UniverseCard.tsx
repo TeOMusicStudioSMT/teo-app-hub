@@ -9,7 +9,7 @@ interface UniverseCardProps {
     onClick: () => void;
     isLocked?: boolean;
     icon?: React.ReactNode;
-    colorTheme?: 'purple' | 'blue' | 'cyan' | 'pink';
+    colorTheme?: 'purple' | 'blue' | 'cyan' | 'pink' | 'green';
 }
 
 export const UniverseCard: React.FC<UniverseCardProps> = ({
@@ -42,6 +42,7 @@ export const UniverseCard: React.FC<UniverseCardProps> = ({
             case 'blue': return 'from-blue-950 via-indigo-950 to-black';
             case 'cyan': return 'from-cyan-950 via-blue-950 to-black';
             case 'pink': return 'from-pink-950 via-purple-950 to-black';
+            case 'green': return 'from-emerald-950 via-teal-950 to-black';
             default: return 'from-indigo-950 via-purple-950 to-black';
         }
     };
@@ -51,6 +52,7 @@ export const UniverseCard: React.FC<UniverseCardProps> = ({
             case 'blue': return 'bg-blue-500';
             case 'cyan': return 'bg-cyan-500';
             case 'pink': return 'bg-pink-500';
+            case 'green': return 'bg-emerald-500';
             default: return 'bg-purple-500';
         }
     };
@@ -60,6 +62,7 @@ export const UniverseCard: React.FC<UniverseCardProps> = ({
             case 'blue': return 'from-blue-200 via-white to-blue-200';
             case 'cyan': return 'from-cyan-200 via-white to-cyan-200';
             case 'pink': return 'from-pink-200 via-white to-pink-200';
+            case 'green': return 'from-emerald-200 via-white to-emerald-200';
             default: return 'from-purple-200 via-white to-purple-200';
         }
     };

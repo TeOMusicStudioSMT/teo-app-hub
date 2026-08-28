@@ -16,6 +16,7 @@
 
 import path          from 'path';
 import { promises as fs } from 'fs';
+import fsSync        from 'fs';
 import { fileURLToPath } from 'url';
 import TurbovecService from './TurbovecService.js';
 import ShellSanitizer from './ShellSanitizer.js';
@@ -33,7 +34,36 @@ const DEAD_LETTER_FILE = path.join(TASKS_DIR, 'dead_letter_mechanic.json');
 
 // ─── Ollama ───────────────────────────────────────────────────────────────────
 const OLLAMA_URL    = 'http://127.0.0.1:11434/api/generate';
-const GEMMA_MODEL   = 'gemma4';
+/**
+ * ⚠️ BYŁO `'gemma4'` — GOŁY TAG. Ollama rozwija go do `gemma4:latest`, a ten
+ * na tej maszynie WYWALA SILNIK. Do tego gemma to model ogólny, a Mechanik ma
+ * naprawiać KOD — stąd trzy próby z rzędu kończące się tym samym
+ * `Expected ")" but found ":"`.
+ *
+ * Domyślnie bierzemy model kodowy. Suweren zmienia go w panelu Kodeksa
+ * (zapis do _OtakOs_Wymiar/mechanik.json) albo przez OTAKOS_MECHANIK_MODEL.
+ * Czytamy PRZY KAŻDYM ZADANIU, żeby zmiana działała bez restartu mostu.
+ */
+const MODEL_DOMYSLNY = process.env.OTAKOS_MECHANIK_MODEL || 'qwen2.5-coder:7b';
+const PLIK_USTAWIEN  = () => path.join(process.cwd(), '_OtakOs_Wymiar', 'mechanik.json');
+
+function modelMechanika() {
+    try {
+        const s = fsSync.readFileSync(PLIK_USTAWIEN(), 'utf8');
+        const d = JSON.parse(s);
+        if (d && typeof d.model === 'string' && d.model.trim()) return d.model.trim();
+    } catch { /* brak pliku albo śmieć — lecimy domyślnym */ }
+    return MODEL_DOMYSLNY;
+}
+
+export function ustawModelMechanika(model) {
+    const czysty = String(model || '').trim();
+    fsSync.mkdirSync(path.dirname(PLIK_USTAWIEN()), { recursive: true });
+    fsSync.writeFileSync(PLIK_USTAWIEN(), JSON.stringify({ model: czysty }, null, 2), 'utf8');
+    return czysty || MODEL_DOMYSLNY;
+}
+
+export { modelMechanika, MODEL_DOMYSLNY };
 const AI_TIMEOUT_MS = 300_000;  // 300s (VRAM Breathing v2) — pełna swoboda alokacji VRAM przy zimnym starcie gemma4
 
 // ─── Typy statusów ────────────────────────────────────────────────────────────
@@ -363,9 +393,9 @@ class MechanicService {
         let rodzaj, naglowek, hipotezy;
         if (czyTimeout) {
             rodzaj   = 'TIMEOUT';
-            naglowek = `Zapytanie do modelu ${GEMMA_MODEL} przerwane po ${sek}s (limit ${AI_TIMEOUT_MS / 1000}s).`;
+            naglowek = `Zapytanie do modelu ${modelMechanika()} przerwane po ${sek}s (limit ${AI_TIMEOUT_MS / 1000}s).`;
             hipotezy = [
-                `zimny start — ${GEMMA_MODEL} ładuje się dłużej niż limit`,
+                `zimny start — ${modelMechanika()} ładuje się dłużej niż limit`,
                 'Ollama nie nadąża lub padła w trakcie generowania',
                 'za mało wolnej pamięci, by pomieścić model',
                 'zadanie zbyt duże na jedno wywołanie',
@@ -374,11 +404,11 @@ class MechanicService {
             rodzaj   = 'HTTP';
             naglowek = `Ollama odrzuciła zapytanie: HTTP ${httpKod}.`;
             hipotezy = httpKod === '404'
-                ? [`model "${GEMMA_MODEL}" nie jest pobrany na tej maszynie`]
+                ? [`model "${modelMechanika()}" nie jest pobrany na tej maszynie`]
                 : ['Ollama zwróciła błąd serwera — szczegóły w jej własnym logu'];
         } else if (czyPusta) {
             rodzaj   = 'EMPTY';
-            naglowek = `Model ${GEMMA_MODEL} odpowiedział, ale pustką.`;
+            naglowek = `Model ${modelMechanika()} odpowiedział, ale pustką.`;
             hipotezy = ['prompt odrzucony przez model', 'odpowiedź ucięta przez limit kontekstu'];
         } else {
             rodzaj   = 'UNKNOWN';
@@ -386,7 +416,7 @@ class MechanicService {
             hipotezy = ['przyczyna nierozpoznana — patrz surowy komunikat poniżej'];
         }
 
-        const fakty = `${nazwa}: ${komunikat} · endpoint ${OLLAMA_URL} · model ${GEMMA_MODEL} · ${sek}s · zadanie ${task.id}`;
+        const fakty = `${nazwa}: ${komunikat} · endpoint ${OLLAMA_URL} · model ${modelMechanika()} · ${sek}s · zadanie ${task.id}`;
         const pelny = [
             `[MECHANIK] ${naglowek}`,
             `FAKTY: ${fakty}`,
@@ -425,7 +455,7 @@ class MechanicService {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 signal:  controller.signal,
-                body: JSON.stringify({ model: GEMMA_MODEL, prompt, stream: false }),
+                body: JSON.stringify({ model: modelMechanika(), prompt, stream: false }),
             });
             if (!resp.ok) throw new Error(`Ollama HTTP ${resp.status}`);
             const json = await resp.json();

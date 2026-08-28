@@ -56,12 +56,15 @@ interface LoungeNavigationProps {
 }
 
 // ── 5 głównych pozycji zawsze widocznych ──────────────────────────────
+// ⚠️ Klub i GRAVITON ZESZŁY z paska (żyją dalej w panelu „Więcej"). Ich miejsca
+// zajęły: Tryb Zen — bo używa się go często, a był schowany trzy kliknięcia głębiej —
+// oraz TeOgochi, czyli dawne Co-Bots. Pasek ma 5 miejsc i to są te, po które
+// Suweren sięga najczęściej.
 const PRIMARY_NAV: { id: View; label: string; icon: React.ReactNode }[] = [
-    { id: 'dashboard',       label: 'Dashboard',  icon: <ChartBarIcon /> },
-    { id: 'projects',        label: 'Universes',  icon: <AppIcon /> },
-    { id: 'crew-club',       label: '🏆 Klub',    icon: <TrophyIcon /> },
-    { id: 'teo-market',      label: 'TeO Market', icon: <MarketIcon /> },
-    { id: 'graviton-wallet', label: 'GRAVITON',   icon: <WalletIcon /> },
+    { id: 'dashboard',  label: 'Dashboard',  icon: <ChartBarIcon /> },
+    { id: 'projects',   label: 'Universes',  icon: <AppIcon /> },
+    { id: 'cobots',     label: '🥚 TeOgochi', icon: <BrainChipIcon /> },
+    { id: 'teo-market', label: 'TeO Market', icon: <MarketIcon /> },
 ];
 
 // ── Pozycje schowane w panelu "Więcej" ────────────────────────────────
@@ -73,7 +76,8 @@ const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string }
     { id: 'pralka',        label: 'Pralka Kompasji', icon: <span className="text-base">🤍</span>, desc: 'Sumienie energetyczne — uzdrawia, nie karze (Filar I)' },
     { id: 'sonic',         label: 'Kolektor Soniczny', icon: <span className="text-base">🎼</span>, desc: 'Zbiór wektorów z własnej muzyki (Filar I)' },
     { id: 'identity',      label: 'Identity',      icon: <UserCircleIcon />,  desc: 'Karta tożsamości Suwerena' },
-    { id: 'cobots',        label: 'Co-Bots',        icon: <BrainChipIcon />,   desc: 'Fabryka autonomicznych agentów' },
+    { id: 'crew-club',     label: '🏆 Klub',        icon: <TrophyIcon />,      desc: 'Załoga, rankingi i wspólne wyprawy' },
+    { id: 'graviton-wallet', label: 'GRAVITON',     icon: <WalletIcon />,      desc: 'Portfel GRV — saldo, księga, oddech' },
     { id: 'academy',       label: 'Academy',        icon: <MortarBoardIcon />, desc: 'Quantum Compass & nauka' },
     { id: 'field-control', label: 'Field Control',  icon: <ShieldCheckIcon />, desc: 'Tarcza Pola i bezpieczeństwo' },
     { id: 'teolab',        label: 'TeO Lab',        icon: <span className="text-base">🧪</span>, desc: 'Laboratorium eksperymentów (Filar II)' },
@@ -147,6 +151,24 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
                     <span className="hidden md:inline whitespace-nowrap">{item.label}</span>
                 </button>
             );})}
+
+            {/* 🧘 TRYB ZEN — piąte miejsce na pasku, po Klubie.
+                Renderowany OSOBNO, bo to przełącznik (callback), a nie widok:
+                nie ma swojego `View`, więc nie może wejść do PRIMARY_NAV. */}
+            <button
+                onClick={() => onToggleZen?.()}
+                title="Tryb Zen — ukryj interfejs, zostaw samą sferę"
+                className={cn(
+                    'relative flex-1 md:flex-none flex items-center justify-center gap-2',
+                    'px-3 py-2 rounded-full text-sm font-bold transition-all duration-300',
+                    'bg-transparent text-slate-300 hover:bg-slate-700/50 hover:text-white',
+                )}
+            >
+                <div className="w-5 h-5 shrink-0 flex items-center justify-center">
+                    <EyeOff className="w-4 h-4" />
+                </div>
+                <span className="hidden md:inline whitespace-nowrap">Tryb Zen</span>
+            </button>
 
             {/* ── Separator ─────────────────────────────────────────── */}
             <div className="w-px h-6 bg-slate-700/60 shrink-0 mx-1" />

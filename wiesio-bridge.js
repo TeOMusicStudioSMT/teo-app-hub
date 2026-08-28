@@ -101,6 +101,7 @@ import {
 import FlushService          from './services/FlushService.js';
 import ApiLayerService       from './services/ApiLayerService.js';
 import AlignmentShield       from './services/AlignmentShield.js';
+import deepseekHarness      from './services/DeepseekHarnessService.js';
 import { forecast as kronosForecast } from './services/KronosSeed.js';
 import { zbierzWiadomosci, promptNastroju, SOURCES as RYNEK_SOURCES } from './services/RynekTunelService.js';
 import {
@@ -11060,6 +11061,65 @@ app.post('/api/mcp/add-custom', async (req, res) => {
         }
         await saveMcpRegistry(reg);
         return res.json({ success: true, skill: customSkill });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+// ── ⚡ DEEPSEEK-HARNESS & MULTI-FRAME ROUTES ─────────────────────────────────
+app.post('/api/harness/run', async (req, res) => {
+    try {
+        const { goal, frame, model, maxIterations, smartRalphMode } = req.body || {};
+        if (!goal) {
+            return res.status(400).json({ success: false, message: 'Brak celu zadania (goal).' });
+        }
+        const result = await deepseekHarness.runHarness({ goal, frame, model, maxIterations, smartRalphMode });
+        return res.json(result);
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+const handleHarnessStatus = (req, res) => {
+    try {
+        const runId = req.params.runId;
+        const status = deepseekHarness.getStatus(runId);
+        if (!status) {
+            return res.status(404).json({ success: false, message: 'Nie znaleziono przebiegu harness.' });
+        }
+        return res.json({ success: true, run: status });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+};
+app.get('/api/harness/status', handleHarnessStatus);
+app.get('/api/harness/status/:runId', handleHarnessStatus);
+
+const handleHarnessCancel = (req, res) => {
+    try {
+        const runId = req.params.runId;
+        const ok = deepseekHarness.cancelRun(runId);
+        return res.json({ success: ok, message: ok ? 'Przebieg anulowany.' : 'Brak aktywnego przebiegu do anulowania.' });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+};
+app.post('/api/harness/cancel', handleHarnessCancel);
+app.post('/api/harness/cancel/:runId', handleHarnessCancel);
+
+app.get('/api/harness/frames', (req, res) => {
+    try {
+        return res.json({ success: true, ...deepseekHarness.getFrames() });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/harness/frame/switch', (req, res) => {
+    try {
+        const { frame } = req.body || {};
+        const result = deepseekHarness.switchFrame(frame);
+        return res.json(result);
     } catch (e) {
         return res.status(500).json({ success: false, message: e.message });
     }

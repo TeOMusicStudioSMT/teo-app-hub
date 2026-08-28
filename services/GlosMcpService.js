@@ -45,6 +45,32 @@ const LIMIT_NAGRAN = 30;
  */
 export const KATALOG_PRZEWODOW = [
     {
+        // 🇵🇱 Jedyny przewód, który mówi po POLSKU lokalnie. Dodany po sprawdzeniu,
+        // że supervoice-voicebox obsługuje WYŁĄCZNIE angielski (ich README).
+        id: 'piper-pl',
+        nazwa: 'Piper PL (polski, lokalnie)',
+        rodzaj: 'tts',
+        zrodlo: 'lokalny',
+        glyph: '🇵🇱',
+        suwerenny: true,
+        sterownik: true,
+        sprawdz: { plik: 'PIPER_GLOSY' },
+        opis: 'Polska mowa liczona na maszynie Suwerena — bez chmury i bez kluczy. Wagi w _OtakOs_Voice/piper/ (pl_PL-gosia-medium, pl_PL-bass-high).',
+    },
+    {
+        // 🇬🇧 SuperVoice — osobny przewód WYŁĄCZNIE do angielskiego. Trzymany osobno
+        // od piper-pl celowo: wrzucenie tu polskiego zdania da obcy akcent, a nie błąd.
+        id: 'supervoice-en',
+        nazwa: 'SuperVoice EN (angielski, lokalnie, GPU)',
+        rodzaj: 'tts',
+        zrodlo: 'lokalny',
+        glyph: '🇬🇧',
+        suwerenny: true,
+        sterownik: true,
+        sprawdz: { plik: 'SUPERVOICE_SKRYPT' },
+        opis: 'Angielska mowa 24 kHz liczona na GPU Suwerena (VoiceBox, MIT, BETA). Trzy głosy: voice_1..voice_3. Modele ~5 GB w cache torcha. Polskiego NIE przeczyta — do tego jest piper-pl.',
+    },
+    {
         id: 'klon-lokalny',
         nazwa: 'Lokalny klon głosu (XTTS / OpenVoice)',
         rodzaj: 'tts',

@@ -763,6 +763,39 @@ export const INITIAL_MCP_SKILLS: McpSkill[] = [
             }
         ],
         isCustom: true
+    },
+    {
+        // 🕸️ PIERWSZY SKILL, KTORY JEST PRAWDZIWYM SERWEREM MCP.
+        // Reszta tej listy to albo handlery wpisane wprost w most, albo karty
+        // katalogowe. Ten jeden most wola protokolem MCP (JSON-RPC po stdio)
+        // do zewnetrznego procesu graphify-mcp — patrz services/McpStdioClient.js.
+        id: 'graphify-mcp',
+        name: 'Graf Wiedzy Katedry',
+        category: 'ai_media',
+        categoryLabel: 'AI & Media',
+        description: 'Katedra pyta o wlasne katalogi. Graf 11771 wezlow i 19709 krawedzi zbudowany z AST — bez LLM, bez wektorow, koszt 0 tokenow. Pytaj o wezel, sasiadow, najkrotsza sciezke miedzy dwoma miejscami w kodzie albo o wezly-bogow, przez ktore przechodzi wszystko.',
+        version: '0.9.49',
+        author: 'Graphify-Labs',
+        rating: 5.0,
+        downloads: 1,
+        icon: '🕸️',
+        color: 'violet',
+        tags: ['graf', 'wiedza', 'ast', 'bez-llm', 'katalogi', '0.00G'],
+        status: 'active',
+        installedAt: new Date().toISOString(),
+        transport: 'stdio',
+        command: '~/.local/bin/graphify-mcp graphify-out/graph.json',
+        assignedAgents: ['klaudiusz', 'archiwista', 'ostry', 'mechanik'],
+        tools: [
+            { name: 'graph_stats', description: 'Rozmiar i jakosc grafu: wezly, krawedzie, spolecznosci, udzial wiedzy wydobytej vs wywnioskowanej.', inputSchema: { type: 'object', properties: {} } },
+            { name: 'query_graph', description: 'Szukaj wezlow po nazwie albo opisie.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
+            { name: 'get_node', description: 'Pelny opis jednego wezla: plik, linia, typ, spolecznosc.', inputSchema: { type: 'object', properties: { node: { type: 'string' } }, required: ['node'] } },
+            { name: 'get_neighbors', description: 'Co wola ten wezel i kto wola jego.', inputSchema: { type: 'object', properties: { node: { type: 'string' } }, required: ['node'] } },
+            { name: 'shortest_path', description: 'Najkrotsza droga miedzy dwoma miejscami w Katedrze.', inputSchema: { type: 'object', properties: { source: { type: 'string' }, target: { type: 'string' } }, required: ['source', 'target'] } },
+            { name: 'god_nodes', description: 'Wezly, przez ktore przechodzi wszystko — kandydaci do rozbicia.', inputSchema: { type: 'object', properties: {} } },
+            { name: 'get_community', description: 'Skupisko powiazanych wezlow.', inputSchema: { type: 'object', properties: { community: { type: 'string' } }, required: ['community'] } }
+        ],
+        isCustom: true
     }
 ];
 

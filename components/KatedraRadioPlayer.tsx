@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Disc3 } from 'lucide-react';
 import { useKatedraRadio } from '../context/KatedraRadioContext';
 import { QuantumForgeView } from './special/QuantumForgeView';
 import { Camera } from 'lucide-react';
@@ -12,8 +11,11 @@ import { Mic, FileText, Hammer } from 'lucide-react';
 import { TeoKaraokeForge } from './special/TeoKaraokeForge';
 import { TeOgochi } from './TeOgochi';
 import { TeOgochiDom } from './TeOgochiDom';
+import { TeogochiPanel } from './TeogochiPanel';
 import { loadTeogochi, saveTeogochi, tickListening, stageOf } from '../lib/teogochiState';
+import { aktywnyGatunek } from '../lib/teogochiStado';
 import { getTunnelUrl, setTunnelUrl } from '../lib/bridgeService';
+import WirTeogochi from './special/WirTeogochi';
 
 
 
@@ -286,29 +288,28 @@ export function KatedraRadioPlayer() {
             radio.setIsMinimized(false);
             setExpanded(true);
         };
-        return (
-            <button onClick={odpalAsystenta} style={launchButtonStyle}>
-                <span style={{ fontSize: '24px' }}>🎧</span>
-                <span style={{ fontSize: '9px', letterSpacing: '0.15em', textAlign: 'center', lineHeight: '1.2' }}>
-                    ASYSTENT<br />MUZYCZNY
-                </span>
-            </button>
-        );
+        // 🌀 Zamiast pojedynczego przycisku „asystenta" — WIR. Kliknięcie rozwija
+        // krążące TeOgochi ze stada; wybór Joanny odpala odtwarzacz tak jak dawniej,
+        // bo muzyka to JEJ warsztat. Reszta gatunków ma panele w Domu TeOgochi.
+        return <WirTeogochi naJoanne={() => { void odpalAsystenta(); }} />;
     }
 
     const progress = radio.duration > 0 ? (radio.currentTime / radio.duration) * 100 : 0;
 
     if (radio.isMinimized) {
+        // 🌀 TU BYŁ KRĘCĄCY SIĘ WINYL. Teraz stoi wir: klik rozwija krążące
+        // TeOgochi ze stada, a wybór Joanny rozwija odtwarzacz — bo muzyka to
+        // JEJ warsztat. Kropka stanu Wiesia zostaje, bo mówi prawdę o moście.
         return createPortal(
             <div style={{ position: 'fixed', bottom: '24px', left: '24px', zIndex: 2147483647 }}>
-                <button 
-                    onClick={() => radio.setIsMinimized(false)} 
-                    className="w-14 h-14 rounded-full bg-amber-950 border-2 border-amber-500 text-amber-500 flex items-center justify-center hover:scale-110 shadow-[0_0_20px_rgba(201,149,58,0.9)] relative"
-                    title="Rozwiń Katedrę"
-                >
-                    <Disc3 size={32} className="animate-spin" style={{ animationDuration: '3s' }} />
-                    <div className={`absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-black ${radio.wiesioAlive ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]' : 'bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]'}`} title={radio.wiesioAlive ? "Wiesław Aktywny" : "Wiesław Uśpiony"} />
-                </button>
+                <div style={{ position: 'relative' }}>
+                    <WirTeogochi naJoanne={() => radio.setIsMinimized(false)} />
+                    <div
+                        className={`absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-black ${radio.wiesioAlive ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]' : 'bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]'}`}
+                        title={radio.wiesioAlive ? 'Wiesław Aktywny' : 'Wiesław Uśpiony'}
+                        style={{ zIndex: 3, pointerEvents: 'none' }}
+                    />
+                </div>
             </div>,
             document.body
         );
@@ -372,7 +373,7 @@ export function KatedraRadioPlayer() {
                                     {radio.isLoading
                                         ? '⟳ INICJALIZACJA...'
                                         : radio.error
-                                            ? 'ASYSTENT GOTOWY'
+                                            ? 'TEOGOCHI GOTOWE'
                                             : radio.currentTrack?.title ?? 'BRAK DANYCH'
                                     }
                                 </div>
@@ -678,13 +679,14 @@ export function KatedraRadioPlayer() {
                             >
                                 {teogochiEmoji} 🏠
                             </button>
-                            {/* Dom przez portal na body — overflow panelu Biblioteki przycinał go do stopki */}
+                            {/* Panel TeOgochi przez portal na body */}
                             {createPortal(
                                 <AnimatePresence>
                                     {showTeogochiDom && (
-                                        <div style={{ position: 'fixed', left: 24, bottom: 96, zIndex: 9999 }}>
-                                            <TeOgochiDom onClose={() => setShowTeogochiDom(false)} />
-                                        </div>
+                                        <TeogochiPanel
+                                            gatunekId={aktywnyGatunek()}
+                                            onClose={() => setShowTeogochiDom(false)}
+                                        />
                                     )}
                                 </AnimatePresence>,
                                 document.body
@@ -872,19 +874,6 @@ const containerStyle: React.CSSProperties = {
     alignItems: 'flex-end', // ← wyrównaj do dołu (do poziomu playera)
     gap: 12,
     pointerEvents: 'none',
-};
-
-const launchButtonStyle: React.CSSProperties = {
-    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-    padding: '12px 18px',
-    background: 'rgba(15, 10, 25, 0.92)',
-    border: '1px solid rgba(180, 100, 255, 0.4)',
-    borderRadius: 16, color: '#e9d5ff', cursor: 'pointer',
-    backdropFilter: 'blur(16px)',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(180,100,255,0.15)',
-    transition: 'all 0.3s cubic-bezier(0.23, 1, 0.32, 1)',
-    fontFamily: "'JetBrains Mono', monospace",
-    pointerEvents: 'auto',
 };
 
 const playerShellStyle: React.CSSProperties = {

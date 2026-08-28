@@ -925,6 +925,89 @@ const KatedraChat: React.FC = () => {
         }
     }, [scrollToBottom]);
 
+
+    // ── 🧰 INSTALATOR SKILLI — „Klaudi, zainstaluj to repro" ──────────────────────
+    /**
+     * Suweren mówi do konsoli po ludzku, a nie slashem. Przechwyt łapie zdania typu
+     * „zainstaluj gstack", „Klaudi zainstaluj to repro gstack do MCP".
+     *
+     * ⚠️ CZAT NIE PODAJE ADRESU REPO — podaje IDENTYFIKATOR z białej listy, którą
+     * Suweren trzyma na dysku (_OtakOs_Wymiar/skille-biala-lista.json). Bez tego
+     * bezpiecznika okno czatu byłoby przyciskiem „uruchom dowolny kod z internetu",
+     * a Kwantowy Tunel wystawia ten czat na telefon.
+     *
+     * Gdy w zdaniu nie ma znanego id — Klaudiusz pokazuje, co wolno, i nic nie robi.
+     */
+    const dispatchInstalacjaSkilla = useCallback(async (tekst: string) => {
+        const widgetId = addMessage({
+            sender:  'mechanik',
+            content: '🧰 INSTALATOR SKILLI\n\n▸ Sprawdzam białą listę...',
+        });
+        setStatus('🧰 Czytam białą listę skilli...');
+        const MOST = 'http://127.0.0.1:3001';
+        try {
+            const lista = await (await fetch(`${MOST}/api/skille/biala-lista`)).json();
+            const skille: { id: string; nazwa?: string; opis?: string; repo?: string }[] = lista?.skille || [];
+            const niski = tekst.toLowerCase();
+            // Suweren czesto wkleja ADRES, nie nazwe. Dopasowujemy po obu — ale adres
+            // i tak musi stac na bialej liscie, wiec bezpiecznik zostaje nietkniety.
+            const trafiony = skille.find(s =>
+                niski.includes(s.id.toLowerCase()) ||
+                (s.repo ? niski.includes(s.repo.toLowerCase().replace(/\.git$/, '')) : false),
+            );
+
+            if (!trafiony) {
+                updateMessage(widgetId, {
+                    content:
+                        '🧰 INSTALATOR SKILLI\n\n' +
+                        '❌ Nie widzę w tym zdaniu żadnego skilla z białej listy.\n\n' +
+                        (skille.length
+                            ? '**Dopuszczone:**\n' + skille.map(s => `· \`${s.id}\` — ${s.opis || s.nazwa || ''}`).join('\n')
+                            : '_Biała lista jest pusta._') +
+                        `\n\n_Nowe repo dopisujesz sam do_ \`_OtakOs_Wymiar/skille-biala-lista.json\`.\n` +
+                        '_Czat nie może tego zrobić za Ciebie — i to jest celowe._',
+                });
+                setStatus('🧰 Nieznany skill', true);
+                return;
+            }
+
+            updateMessage(widgetId, {
+                content: `🧰 INSTALATOR SKILLI\n\n▸ Instaluję **${trafiony.nazwa || trafiony.id}**...\n_(klonowanie + setup, to może potrwać kilka minut)_`,
+            });
+            setStatus(`🧰 Instaluję ${trafiony.id}...`);
+
+            const res = await fetch(`${MOST}/api/skille/instaluj`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ id: trafiony.id }),
+            });
+            const d = await res.json();
+
+            if (!d.success) {
+                updateMessage(widgetId, {
+                    content: `🧰 INSTALATOR SKILLI\n\n❌ ${d.message}\n\n${d.hint ? `▸ ${d.hint}` : ''}` +
+                        (d.blad ? `\n\n\`\`\`\n${d.blad}\n\`\`\`` : ''),
+                });
+                setStatus('🧰 Instalacja odrzucona', true);
+                return;
+            }
+
+            updateMessage(widgetId, {
+                content:
+                    `🧰 INSTALATOR SKILLI\n\n✅ **${d.id}** wylądował w \`${d.katalog}\`\n\n` +
+                    '```\n' + (d.setup || '(brak wyjścia)') + '\n```\n' +
+                    `▸ ${d.uwaga}`,
+            });
+            setStatus('✅ Skill zainstalowany', true);
+            scrollToBottom(true);
+        } catch (err: any) {
+            updateMessage(widgetId, {
+                content: `🧰 INSTALATOR SKILLI\n\n❌ Most niedostępny: ${err.message}\n\n▸ Odpal Katedrę (START_KATEDRA.bat).`,
+            });
+            setStatus('❌ Instalator: most offline', true);
+        }
+    }, [scrollToBottom]);
+
     /**
      * NAPRAWKA: sendMessage ZAWSZE wysyła do Klaudiusza (heavy=false).
      * isCouncilMode NIE wpływa na routing tutaj — nie miksujemy ról!
@@ -947,6 +1030,19 @@ const KatedraChat: React.FC = () => {
         if (/^\/git\b/i.test(text)) {
             setCurrentInput('');
             await dispatchGitAssist();
+            return;
+        }
+
+        // ── Przechwyt: „zainstaluj … repo/repro" (albo /skill) → Instalator ──
+        // Naturalny język, bo Suweren mówi do konsoli po ludzku. Wymagamy słowa
+        // „zainstaluj" RAZEM z „repo/repro/skill", żeby zwykła rozmowa o instalacji
+        // („jak zainstalować bun?") nie porywała potoku czatu.
+        // Zmierzone: `\brepro?\b` lapalo „repro", ale NIE „repo" ani „repozytorium".
+        // `\brepr?o` lapie wszystkie trzy.
+        if (/^\/skill\b/i.test(text) ||
+            (/\bzainstaluj/i.test(text) && /\brepr?o|\bskill/i.test(text))) {
+            setCurrentInput('');
+            await dispatchInstalacjaSkilla(text);
             return;
         }
 

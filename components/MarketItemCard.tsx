@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { MarketListing } from '../lib/market/types';
 import toast from 'react-hot-toast';
 import * as marketClient from '../lib/market/client';
+import { pobierzPosiadane } from '../lib/market/client';
 import { useSetAtom, useAtomValue } from 'jotai';
 import { purchaseAssetAtom } from '../store/wallet';
 import { calculateAssetPrice, AssetType } from '../lib/graviton/economics';
@@ -39,7 +40,19 @@ export const MarketItemCard: React.FC<{ item: MarketListing }> = ({ item }) => {
     const { type, params } = mockParams;
     const [currentPrice, setCurrentPrice] = useState(item.price);
     const [isFluxing, setIsFluxing] = useState(false);
+    // ⚠️ BYŁO: `useState(false)` i NIC WIĘCEJ — posiadanie żyło tylko w pamięci
+    // karty. Po odświeżeniu strony wracało na „niekupione", więc ten sam produkt
+    // dawało się kupić w kółko, a GRV znikało za każdym razem. Prawda o posiadaniu
+    // mieszka teraz w moście; karta ją CZYTA, a nie wymyśla.
     const [isPurchased, setIsPurchased] = useState(false);
+
+    useEffect(() => {
+        let zywy = true;
+        void pobierzPosiadane().then(({ aktywa }) => {
+            if (zywy) setIsPurchased(aktywa.some(a => a.produktId === item.id));
+        });
+        return () => { zywy = false; };
+    }, [item.id]);
     const [showDetails, setShowDetails] = useState(false);
 
     // Kinetic Flux Simulation

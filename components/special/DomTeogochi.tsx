@@ -25,6 +25,7 @@ import PanelKodeks from './PanelKodeks';
 import PanelBilans from './PanelBilans';
 import KreatorPanelu from './KreatorPanelu';
 import PanelWlasny from './PanelWlasny';
+import { TeogochiPanel } from '../TeogochiPanel';
 import { pobierzPanele, type PanelDef } from '../../lib/paneleTeogochi';
 import { GATUNKI, type Gatunek } from '../../lib/teogochiGatunki';
 import { stageOf } from '../../lib/teogochiState';
@@ -45,7 +46,8 @@ const KartaGatunku: React.FC<{
     onWykluj: () => void;
     onDyzur: () => void;
     onKreator: () => void;
-}> = ({ gat, wyklute, aktywny, modele, wlasny, onWykluj, onDyzur, onKreator }) => {
+    onOtworzPanel?: () => void;
+}> = ({ gat, wyklute, aktywny, modele, wlasny, onWykluj, onDyzur, onKreator, onOtworzPanel }) => {
     const [rdzen, setRdzen] = useState<string>(() => modelGatunku(gat.id));
     const stan = useMemo(() => (wyklute ? stanGatunku(gat.id) : null), [gat.id, wyklute]);
     const etap = stan ? stageOf(stan.xp) : null;
@@ -132,14 +134,23 @@ const KartaGatunku: React.FC<{
                         🥚 Wykluj
                     </button>
                 ) : (
-                    <button
-                        onClick={onDyzur}
-                        disabled={aktywny}
-                        className="flex-1 rounded-lg py-2 text-xs font-bold border transition disabled:opacity-40"
-                        style={{ borderColor: gat.kolor, color: gat.kolor }}
-                    >
-                        {aktywny ? 'na dyżurze' : 'Weź na dyżur'}
-                    </button>
+                    <>
+                        <button
+                            onClick={onDyzur}
+                            disabled={aktywny}
+                            className="flex-1 rounded-lg py-2 text-xs font-bold border transition disabled:opacity-40"
+                            style={{ borderColor: gat.kolor, color: gat.kolor }}
+                        >
+                            {aktywny ? 'na dyżurze' : 'Weź na dyżur'}
+                        </button>
+                        <button
+                            onClick={onOtworzPanel}
+                            className="px-3 py-2 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 transition"
+                            title="Otwórz pełny panel zarządzania"
+                        >
+                            ⚙️ Panel
+                        </button>
+                    </>
                 )}
             </div>
 
@@ -168,6 +179,7 @@ export const DomTeogochi: React.FC = () => {
     const [modele, setModele] = useState<string[]>([]);
     const [wlasnePanele, setWlasnePanele] = useState<PanelDef[]>([]);
     const [kreatorDla, setKreatorDla] = useState<string | null>(null);
+    const [panelGatunekId, setPanelGatunekId] = useState<string | null>(null);
 
     // Panele zbudowane przez Suwerena leżą na MOŚCIE, nie w przeglądarce —
     // dzienny zrzut do skarbca zbiera pliki z dysku, a czego nie ma na dysku,
@@ -264,9 +276,22 @@ export const DomTeogochi: React.FC = () => {
                         onWykluj={() => wykluj_(g.id)}
                         onDyzur={() => naDyzur(g.id)}
                         onKreator={() => setKreatorDla(g.id)}
+                        onOtworzPanel={() => setPanelGatunekId(g.id)}
                     />
                 ))}
             </div>
+
+            {/* Uniwersalny Modal Panelu TeOgochi */}
+            {panelGatunekId && (
+                <TeogochiPanel
+                    gatunekId={panelGatunekId}
+                    onClose={() => setPanelGatunekId(null)}
+                    onSwitchGatunek={(id) => {
+                        setPanelGatunekId(id);
+                        naDyzur(id);
+                    }}
+                />
+            )}
         </div>
     );
 };

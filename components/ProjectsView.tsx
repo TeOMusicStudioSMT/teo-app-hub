@@ -19,7 +19,7 @@ import toast from 'react-hot-toast';
 import { NetworkOfLoci } from './NetworkOfLoci';
 import { UniverseCard } from './dashboard/UniverseCard';
 import { WarpTransition } from './effects/WarpTransition';
-import { FiMusic, FiPackage, FiShield, FiFeather } from 'react-icons/fi';
+import { FiMusic, FiPackage, FiShield, FiFeather, FiCpu } from 'react-icons/fi';
 import { getBridgeBase } from '../lib/bridgeService';
 import {
     pobierzModuly, dodajModul, usunModul, subskrybuj, anuluj,
@@ -163,6 +163,8 @@ export const ProjectsView: React.FC = () => {
                         onClick={() => wejdz('/apps/music/')} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
                     <UniverseCard title="TeO App Studio" subtitle="Narzędzia. Kod. Rzeczywistość."
                         onClick={() => wejdz('/apps/app/')} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
+                    <UniverseCard title="TeO Games Studio" subtitle="Galeria gier. Forge silników. Agenci światów."
+                        onClick={() => wejdz('/apps/games/')} icon={<FiCpu className="w-8 h-8" />} colorTheme="green" isLocked={false} />
                     {/* ⚠️ „TeO LaB V.1" NIE JEST aplikacją — sprawdzone: to katalog materiałów
                         (Edukacja/, TeOprinty/) plus KOPIA komponentu LaB, który już mieszka
                         w Story V2. Danych ani logiki GRV tam nie ma; księga żyje w Moście.

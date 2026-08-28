@@ -4,6 +4,8 @@
  * Etap 1 dał katalog: karty tego, co da się podpiąć. Tu zaczyna się to, co
  * naprawdę wydaje dźwięk. Jeden wspólny wjazd — `syntezuj()` — i trzy tory:
  *
+ *   · `piper-pl`       → Piper na dysku Suwerena — JEDYNY tor mówiący po POLSKU
+ *                       bez chmury i bez kluczy (wagi w _OtakOs_Voice/piper/),
  *   · `klon-lokalny`   → XTTS/OpenVoice na maszynie Suwerena (WAV z jego próbki),
  *   · `kokoro-tts`     → lokalny serwer zgodny z API OpenAI (`/v1/audio/speech`),
  *   · `elevenlabs-mcp` → chmura ElevenLabs (jedyny tor, który wychodzi z domu).
@@ -27,6 +29,10 @@
  */
 
 import fsSync from 'fs';
+import fsp    from 'fs/promises';
+import path   from 'path';
+import os     from 'os';
+import { spawn } from 'child_process';
 
 export class BladPrzewodu extends Error {
     constructor(message, status = 424, przewod = null) {
@@ -39,6 +45,13 @@ export class BladPrzewodu extends Error {
 
 /** Co który tor wypuszcza — most musi wiedzieć, z jakim rozszerzeniem zapisać plik. */
 export const SILNIKI = {
+    // 🇵🇱 Piper — jedyny przewód, który mówi po POLSKU lokalnie, bez chmury i bez
+    // kluczy. Wagi leżą w _OtakOs_Voice/piper/. Dodany po tym, jak sprawdziliśmy,
+    // że supervoice-voicebox obsługuje WYŁĄCZNIE angielski (ich README, nie opis).
+    'piper-pl': { mime: 'audio/wav', ext: 'wav', chmura: false },
+    // 🇬🇧 SuperVoice — WYŁĄCZNIE angielski (ich README, wers 11). Osobny przewód,
+    // żeby nikt nie wrzucił mu polskiego zdania i nie dziwił się akcentem.
+    'supervoice-en': { mime: 'audio/wav', ext: 'wav', chmura: false },
     'klon-lokalny': { mime: 'audio/wav', ext: 'wav', chmura: false },
     'kokoro-tts': { mime: 'audio/wav', ext: 'wav', chmura: false },
     'elevenlabs-mcp': { mime: 'audio/mpeg', ext: 'mp3', chmura: true },
@@ -211,6 +224,109 @@ export async function glosyElevenLabs(klucz) {
  * @returns {Promise<{audio: Buffer, mime: string, ext: string, przewod: string}>}
  * @throws {BladPrzewodu} zawsze z `status` i zdaniem mówiącym, co poszło nie tak.
  */
+/** Katalog wag Pipera i interpreter — oba nadpisywalne z env. */
+export const PIPER_GLOSY = process.env.OTAKOS_PIPER_GLOSY
+    || path.join(process.cwd(), '_OtakOs_Voice', 'piper');
+const PIPER_PYTHON = process.env.OTAKOS_PIPER_PYTHON
+    || path.join('C:', 'OpenMontage', '.venv', 'Scripts', 'python.exe');
+
+export const PIPER_DOMYSLNY = 'pl_PL-gosia-medium';
+
+/** Jakie polskie głosy realnie leżą na dysku. Bez zmyślania listy. */
+export async function glosyPiper() {
+    try {
+        const pliki = await fsp.readdir(PIPER_GLOSY);
+        return pliki.filter(f => f.endsWith('.onnx')).map(f => f.replace(/\.onnx$/, ''));
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Piper: tekst na stdin, WAV do pliku, plik z powrotem jako bufor.
+ * Piper nie umie pisać na stdout w tej wersji, więc idziemy przez plik tymczasowy
+ * i sprzątamy po sobie.
+ */
+/** Ostatnia niepusta linia stderr — po niej najlatwiej poznac, co Piperowi nie pasowalo. */
+const ostatniaLinia = (t) => String(t || '')
+    .split(/[\r\n]+/)
+    .map(x => x.trim())
+    .filter(Boolean)
+    .pop() || '';
+
+async function torPiper({ tekst, glos }) {
+    const dostepne = await glosyPiper();
+    if (!dostepne.length) {
+        throw new BladPrzewodu(
+            `Brak wag Pipera w ${PIPER_GLOSY}. Pobierz głos pl_PL z rhasspy/piper-voices.`,
+            424, 'piper-pl');
+    }
+    const wybrany = dostepne.includes(glos) ? glos
+        : (dostepne.includes(PIPER_DOMYSLNY) ? PIPER_DOMYSLNY : dostepne[0]);
+    const model = path.join(PIPER_GLOSY, `${wybrany}.onnx`);
+    const wyjscie = path.join(os.tmpdir(), `piper_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.wav`);
+
+    await new Promise((resolve, reject) => {
+        const dziecko = spawn(PIPER_PYTHON, ['-m', 'piper', '--model', model, '--output_file', wyjscie], {
+            windowsHide: true,
+        });
+        let blad = '';
+        dziecko.stderr.on('data', d => { blad = (blad + d.toString()).slice(-800); });
+        dziecko.on('error', e => reject(new BladPrzewodu(`Piper nie wstał: ${e.message}`, 424, 'piper-pl')));
+        dziecko.on('close', kod => kod === 0
+            ? resolve()
+            : reject(new BladPrzewodu(`Piper zakonczyl sie kodem ${kod}. ${ostatniaLinia(blad)}`, 502, 'piper-pl')));
+        dziecko.stdin.write(tekst);
+        dziecko.stdin.end();
+    });
+
+    try {
+        return await fsp.readFile(wyjscie);
+    } finally {
+        fsp.unlink(wyjscie).catch(() => { /* i tak zniknie z tempu */ });
+    }
+}
+
+/** Katalog SuperVoice i jego interpreter — poza Katedrą, bo torch ma głębokie ścieżki. */
+const SUPERVOICE_KORZEN = process.env.OTAKOS_SUPERVOICE || path.join('C:', 'SuperVoice');
+const SUPERVOICE_PYTHON = path.join(SUPERVOICE_KORZEN, '.venv', 'Scripts', 'python.exe');
+const SUPERVOICE_SKRYPT = path.join(SUPERVOICE_KORZEN, 'syntezuj.py');
+
+export const SUPERVOICE_GLOSY = ['voice_1', 'voice_2', 'voice_3'];
+export const SUPERVOICE_DOMYSLNY = 'voice_2';
+
+/**
+ * SuperVoice: angielski, na GPU. Ładowanie modeli to ~9 s przy każdym wywołaniu,
+ * synteza zdania ~15 s — dlatego limit czasu jest hojny. Na CPU liczy ~4× wolniej.
+ */
+async function torSuperVoice({ tekst, glos }) {
+    if (!fsSync.existsSync(SUPERVOICE_SKRYPT)) {
+        throw new BladPrzewodu(
+            `Brak SuperVoice w ${SUPERVOICE_KORZEN}. Ten przewód mówi tylko po angielsku i wymaga PyTorcha.`,
+            424, 'supervoice-en');
+    }
+    const wybrany = SUPERVOICE_GLOSY.includes(glos) ? glos : SUPERVOICE_DOMYSLNY;
+    const wyjscie = path.join(os.tmpdir(), `sv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.wav`);
+
+    await new Promise((resolve, reject) => {
+        const dziecko = spawn(SUPERVOICE_PYTHON, [
+            SUPERVOICE_SKRYPT, '--text', tekst, '--voice', wybrany, '--out', wyjscie, '--device', 'cuda',
+        ], { windowsHide: true });
+        let blad = '';
+        dziecko.stderr.on('data', d => { blad = (blad + d.toString()).slice(-1200); });
+        dziecko.on('error', e => reject(new BladPrzewodu(`SuperVoice nie wstał: ${e.message}`, 424, 'supervoice-en')));
+        dziecko.on('close', kod => kod === 0
+            ? resolve()
+            : reject(new BladPrzewodu(`SuperVoice zakończył się kodem ${kod}. ${ostatniaLinia(blad)}`, 502, 'supervoice-en')));
+    });
+
+    try {
+        return await fsp.readFile(wyjscie);
+    } finally {
+        fsp.unlink(wyjscie).catch(() => { /* temp i tak zniknie */ });
+    }
+}
+
 export async function syntezuj({ przewod, tekst, glos, jezyk = 'pl', probka = null, adresy = {}, klucz = null }) {
     const tresc = String(tekst ?? '').trim();
     if (!tresc) throw new BladPrzewodu('Brak tekstu do wypowiedzenia.', 400, przewod);
@@ -223,7 +339,11 @@ export async function syntezuj({ przewod, tekst, glos, jezyk = 'pl', probka = nu
     }
 
     let audio;
-    if (przewod === 'klon-lokalny') {
+    if (przewod === 'piper-pl') {
+        audio = await torPiper({ tekst: tresc, glos });
+    } else if (przewod === 'supervoice-en') {
+        audio = await torSuperVoice({ tekst: tresc, glos });
+    } else if (przewod === 'klon-lokalny') {
         audio = await torKlonLokalny({ tekst: tresc, jezyk, probka, base: adresy.VOICE_BASE });
     } else if (przewod === 'kokoro-tts') {
         audio = await torKokoro({ tekst: tresc, glos, base: adresy.KOKORO_BASE ?? KOKORO_BASE_DOMYSLNY });
@@ -237,4 +357,4 @@ export async function syntezuj({ przewod, tekst, glos, jezyk = 'pl', probka = nu
     return { audio, mime: def.mime, ext: def.ext, przewod };
 }
 
-export default { SILNIKI, KOKORO_BASE_DOMYSLNY, BladPrzewodu, syntezuj, glosyElevenLabs };
+export default { SILNIKI, KOKORO_BASE_DOMYSLNY, BladPrzewodu, syntezuj, glosyElevenLabs, glosyPiper, PIPER_GLOSY, PIPER_DOMYSLNY, SUPERVOICE_GLOSY, SUPERVOICE_DOMYSLNY };

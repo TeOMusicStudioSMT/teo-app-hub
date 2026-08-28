@@ -50,26 +50,45 @@ export const createListing = async (data: CreateListingRequest): Promise<MarketL
     return mockFetch(newListing);
 };
 
-// Realny zakup: przelew GRV z portfela Suwerena do twórcy (księga = portfel prawdy).
-// Atrapy (mock) lub produkty za 0 GRV / własne → przejście bez przelewu.
-export const createOrder = async (listingId: string): Promise<{success: boolean}> => {
+/**
+ * Realny zakup — JEDNO wywołanie mostu.
+ *
+ * ⚠️ BYŁO ŹLE: ta funkcja robiła przelew GRV i zwracała `{success:true}`, ale
+ * NIKT NIE ZAPISYWAŁ, że coś się kupiło. Posiadanie żyło w `useState(false)`
+ * w karcie produktu, więc po odświeżeniu strony ten sam produkt można było
+ * kupić ponownie, a nabyty moduł nie pojawiał się nigdzie — nie istniał rejestr,
+ * z którego Dashboard czy GRAVITON mogłyby go odczytać.
+ *
+ * Teraz most robi wszystko w jednym kroku: sprawdza posiadanie, przelewa,
+ * zapisuje właściciela. Front nie jest już źródłem prawdy o tym, co masz.
+ */
+export const createOrder = async (listingId: string): Promise<{ success: boolean }> => {
+    const r = await fetch(`${BRIDGE}/api/market/kup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: listingId, wezel: BUYER }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d?.success) throw new Error(d?.message || 'Most odrzucił zakup.');
+    return { success: true };
+};
+
+export interface PosiadaneAktywo {
+    id: string; produktId: string; nazwa: string; modul: string;
+    typ: string; wlasciciel: string; tworca: string;
+    zaplacono: number; kiedy: string;
+}
+
+/** Co węzeł faktycznie posiada — źródło dla Dashboard, GRAVITON i Universa. */
+export const pobierzPosiadane = async (
+    wezel: string = BUYER,
+): Promise<{ aktywa: PosiadaneAktywo[]; wartoscGrv: number }> => {
     try {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 2500);
-        const d = await (await fetch(`${BRIDGE}/api/market/products`, { signal: ctrl.signal })).json();
-        clearTimeout(t);
-        const p = (d.products || []).find((x: any) => x.id === listingId);
-        if (!p) return { success: true };                       // atrapa — brak realnego twórcy
-        const price = p.priceGrvDyn ?? p.priceGrv ?? 0;
-        if (price <= 0 || p.creator === BUYER) return { success: true };
-        const g = await (await fetch(`${BRIDGE}/api/grv/grant`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from: BUYER, to: p.creator, amount: price }),
-        })).json();
-        if (!g.success) throw new Error(g.message || 'Brak GRV / zakup odrzucony');
-        return { success: true };
-    } catch (e: any) {
-        throw new Error(e?.message || 'Most offline — transakcja GRV nieudana');
+        const r = await fetch(`${BRIDGE}/api/market/posiadane?wezel=${encodeURIComponent(wezel)}`);
+        const d = await r.json();
+        return { aktywa: d.aktywa ?? [], wartoscGrv: d.wartoscGrv ?? 0 };
+    } catch {
+        return { aktywa: [], wartoscGrv: 0 };
     }
 };
 

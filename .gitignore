@@ -71,3 +71,20 @@ TeO_Arcade_Forge/forge_plugins/__pycache__/
 # Manifesty filmów Reżysera (runtime użytkownika — generowane, nie do repo)
 TeO_Arcade_Forge/stories/
 public/apps/
+
+# 🕸️ Graf wiedzy Graphify — 29MB wyliczalnych danych, odtwarzalne z kodu
+graphify-out/
+
+# 📚 Korpusy wiedzy (klonowane repo + ich grafy) — odtwarzalne, nie do gita
+_OtakOs_Wiedza/
+
+# 🎬 Warsztat animacji — node_modules i rendery, odtwarzalne
+_OtakOs_Animacje/node_modules/
+_OtakOs_Animacje/projekty/
+
+# 🇵🇱 Wagi Pipera (~170 MB) — pobieralne z rhasspy/piper-voices
+_OtakOs_Voice/piper/*.onnx
+_OtakOs_Voice/piper/*.wav
+
+# 🗄️ Kopie komponentów — magazyn cofek dla Mechanika, nie kod
+_OtakOs_Kopie/

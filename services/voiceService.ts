@@ -38,6 +38,16 @@ export interface OpcjeMowy {
     rodzaj?: RodzajGlosu;
     /** Nie przerywaj tego, co właśnie leci (domyślnie przerywamy). */
     nieprzerywaj?: boolean;
+    /**
+     * Przewód głosu po stronie mostu: `piper-pl` (polski, lokalnie), `klon-lokalny`
+     * (XTTS na :5002), `kokoro-tts`, `elevenlabs-mcp`, `supervoice-en`.
+     *
+     * ⚠️ BEZ TEGO POLA most bierze domyślny `klon-lokalny` — czyli silnik XTTS,
+     * którego na tej maszynie NIE MA. Skutek: most nie oddawał audio, mowa
+     * spadała na syntezę przeglądarki, a ta bez gestu użytkownika milczy.
+     * Tak właśnie „nie działał" przycisk mówienia u Joanny.
+     */
+    przewod?: string;
 }
 
 export async function voiceStatus(): Promise<VoiceStatus> {
@@ -193,7 +203,7 @@ export async function speak(text: string, opcje: OpcjeMowy | string = {}): Promi
   try {
     const r = await fetch(`${BRIDGE}/api/voice/speak`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: doWypowiedzenia, voiceId }),
+      body: JSON.stringify({ text: doWypowiedzenia, voiceId, przewod: o.przewod }),
     });
     const ct = r.headers.get('content-type') || '';
     if (r.ok && ct.includes('audio')) {

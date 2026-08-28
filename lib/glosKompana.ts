@@ -31,7 +31,13 @@ const KLUCZ = 'teogochi_glos';
  * i bez tego pola Joanna dostawała pierwszy z listy — czyli Adama.
  * Dotyczy toru przeglądarki; lokalny klon ma własną barwę z próbki.
  */
-export const PROFIL_JOANNY = { pitch: 1.15, rate: 0.95, rodzaj: 'zenski' } as const;
+export const PROFIL_JOANNY = {
+    pitch: 1.15, rate: 0.95, rodzaj: 'zenski',
+    // 🇵🇱 Głos liczony LOKALNIE przez Pipera (wagi w _OtakOs_Voice/piper/).
+    // Wcześniej nie było tu przewodu, więc most brał domyślny `klon-lokalny`
+    // (XTTS na :5002 — nie istnieje u Suwerena) i Joanna milkła.
+    przewod: 'piper-pl',
+} as const;
 
 /** Identyfikator próbki dla lokalnego silnika klonu (`_OtakOs_AI/voices/joanna.wav`). */
 export const KLON_JOANNY = 'joanna';
