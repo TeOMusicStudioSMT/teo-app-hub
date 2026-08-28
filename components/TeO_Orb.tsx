@@ -9,7 +9,7 @@
  * @author BoB & TeO
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAtomValue } from 'jotai';
 import { resonanceColorAtom, RESONANCE_THEMES } from '../store/personalization';
@@ -19,6 +19,15 @@ import { toast } from 'react-hot-toast';
 import { useCityMemory, registerConsciousnessActivity } from '../lib/memory/CityMemory';
 import { ApiDyrygent } from '../lib/router/ApiDyrygent';
 import { useT } from '../lib/i18n';
+import { aktywnyGatunek, stanGatunku, ustawAktywny } from '../lib/teogochiStado';
+import { gatunekPo, GATUNKI } from '../lib/teogochiGatunki';
+import { stageOf } from '../lib/teogochiState';
+import { speak } from '../services/voiceService';
+import { powitajKompana, powitanieKompana } from '../lib/rozmowaKompana';
+import {
+  CONTEXT_FRAMES, detectContextFrame, runHarnessTask, getHarnessStatus,
+  switchBridgeFrame, type ContextFrameId, type HarnessRunStatus
+} from '../lib/contextFrames';
 
 // Aromaty API - mapowanie kolorów
 export type AromaType = 'groq' | 'gemini' | 'claude' | 'ollama' | 'default';
@@ -98,15 +107,118 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
   }, [activeAroma]);
   const [pendingKosto, setPendingKosto] = useState<{
     message: string;
-    aroma: AromaType; // Zmieniamy 'string' na szlachetne 'AromaType'
+    aroma: AromaType;
     tokens: number;
     estimatedCost: number;
-    model?: string; // Pozwalamy BoBow na jego dodatkowy klocek
+    model?: string;
   } | null>(null);
 
   const [orbPulse, setOrbPulse] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const [intentionExpanded, setIntentionExpanded] = useState(false);
+
+  // 🐣 Aktywne TeOgochi & Stan Mowy Kompana
+  const [activeTeogochiId, setActiveTeogochiId] = useState<string>(() => aktywnyGatunek());
+  const [isCompanionSpeaking, setIsCompanionSpeaking] = useState(false);
+  const [activeSpeechText, setActiveSpeechText] = useState<string | null>(null);
+
+  // Synchronizacja aktywnego TeOgochi
+  useEffect(() => {
+    const checkActive = () => {
+      const current = aktywnyGatunek();
+      setActiveTeogochiId(current);
+    };
+    checkActive();
+    const iv = setInterval(checkActive, 2000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const activeGatunek = useMemo(() => gatunekPo(activeTeogochiId) || GATUNKI[0], [activeTeogochiId]);
+  const activeStan = useMemo(() => stanGatunku(activeTeogochiId), [activeTeogochiId]);
+  const activeEtap = useMemo(() => stageOf(activeStan.xp), [activeStan.xp]);
+  const activeForma = activeGatunek.formy[activeEtap.stage] || '🥚';
+
+  // 🎞️ Dynamiczne Klatki Kontekstowe & DeepSeek-Harness
+  const [activeFrameId, setActiveFrameId] = useState<ContextFrameId>('CODE_HARNESS');
+  const [harnessRun, setHarnessRun] = useState<HarnessRunStatus | null>(null);
+  const [isHarnessRunning, setIsHarnessRunning] = useState(false);
+  const [audioLoopAsset, setAudioLoopAsset] = useState<{ bpm: number; key: string; title: string; playing: boolean } | null>(null);
+  const [videoScenesAsset, setVideoScenesAsset] = useState<{ id: number; title: string; cuts: number }[] | null>(null);
+
+  const switchContextFrame = useCallback((frameId: ContextFrameId, say = false) => {
+    setActiveFrameId(frameId);
+    const frame = CONTEXT_FRAMES[frameId];
+    if (frame) {
+      ustawAktywny(frame.companionId);
+      setActiveTeogochiId(frame.companionId);
+      void switchBridgeFrame(frameId);
+      if (say) {
+        const text = `Przełączam Klatkę na: ${frame.title}. Kompan ${frame.companionName} jest do Twojej dyspozycji.`;
+        setActiveSpeechText(text);
+        void speak(text, { voiceId: frame.companionId, przewod: 'piper-pl' });
+      }
+    }
+  }, []);
+
+  const handleQuickAction = async (action: string) => {
+    if (action === 'gen_audio_loop') {
+      const loop = {
+        title: `Beat_TeO_${Math.floor(Math.random() * 900 + 100)}`,
+        bpm: 126,
+        key: 'A minor',
+        playing: true,
+      };
+      setAudioLoopAsset(loop);
+      toast.success(`🎵 Wygenerowano pętlę audio: ${loop.title} (${loop.bpm} BPM, ${loop.key})`, { icon: '🎧' });
+      void speak(`Wygenerowałam nową pętlę audio w tempie ${loop.bpm} BPM. Gotowa do odsłuchu!`, { voiceId: 'joanna', przewod: 'piper-pl' });
+    } else if (action === 'preview_scenes' || action === 'render_frame') {
+      const scenes = [
+        { id: 1, title: 'Scena 1: Wejście do Katedry', cuts: 3 },
+        { id: 2, title: 'Scena 2: Rezonans Sfery', cuts: 5 },
+        { id: 3, title: 'Scena 3: Kwantowy Wymiar', cuts: 4 },
+      ];
+      setVideoScenesAsset(scenes);
+      toast.success(`🎬 Wyrenderowano podgląd 3 kadrów scen wideo.`, { icon: '🎞️' });
+      void speak(`Klatki ułożone! Trzy sceny zmontowane i gotowe do podglądu.`, { voiceId: 'klatka', przewod: 'piper-pl' });
+    } else if (action === 'run_harness_loop' || action === 'run_smart_ralph') {
+      setIsHarnessRunning(true);
+      const res = await runHarnessTask(`Autonomiczny Smart-Ralph cykl w ${CONTEXT_FRAMES[activeFrameId].title}`, activeFrameId, ollamaModel, true);
+      if (res.success && res.runId) {
+        toast.success(`⚡ Smart-Ralph wystartował (${res.runId}) w ${CONTEXT_FRAMES[activeFrameId].title}`);
+        const poll = setInterval(async () => {
+          const st = await getHarnessStatus(res.runId);
+          if (st) {
+            setHarnessRun(st);
+            if (st.assets && st.assets.length > 0) {
+              if (activeFrameId === 'MUSIC' && st.assets[0].type === 'audio_loop') {
+                setAudioLoopAsset({
+                  title: st.assets[0].title,
+                  bpm: st.assets[0].bpm || 128,
+                  key: st.assets[0].key || 'D minor',
+                  playing: true,
+                });
+              } else if (activeFrameId === 'VIDEO') {
+                setVideoScenesAsset([
+                  { id: 1, title: 'Scena 1: Smart-Ralph Intro', cuts: 4 },
+                  { id: 2, title: 'Scena 2: Rezonans Kadru', cuts: 6 },
+                  { id: 3, title: 'Scena 3: Finałowa Kompozycja', cuts: 5 },
+                ]);
+              }
+            }
+            if (st.status === 'COMPLETED' || st.status === 'ERROR' || st.status === 'CANCELLED') {
+              clearInterval(poll);
+              setIsHarnessRunning(false);
+              toast.success(`🏆 Smart-Ralph ukończył cykl: ${st.delivery?.verdict || st.status}`);
+              void speak(`Zadanie ukończone przez silnik Smart-Ralph w ${CONTEXT_FRAMES[activeFrameId].title}! Wszystkie kryteria spełnione.`, { voiceId: CONTEXT_FRAMES[activeFrameId].companionId, przewod: 'piper-pl' });
+            }
+          }
+        }, 1200);
+      } else {
+        setIsHarnessRunning(false);
+        toast.error(res.message);
+      }
+    }
+  };
 
   // Model dla Ollama (może być zmieniony przez użytkownika)
   const [ollamaModel, setOllamaModel] = useState(defaultModel);
@@ -129,13 +241,46 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
   const currentAroma = AROMA_CONFIGS[internalAroma];
   const grvBonus = grvEnergy.unlocked ? 0.3 : 0;
 
-  // Pulsowanie Orb
+  // Pulsowanie Orb (przyspieszone i zintensyfikowane gdy kompan mówi)
   useEffect(() => {
+    const pulseSpeed = isCompanionSpeaking ? 6 : isListening ? 4.5 : (currentAroma.pulseSpeed + grvBonus);
     const interval = setInterval(() => {
       setOrbPulse((prev) => (prev + 1) % 100);
-    }, 1000 / (currentAroma.pulseSpeed + grvBonus));
+    }, 1000 / pulseSpeed);
     return () => clearInterval(interval);
-  }, [currentAroma.pulseSpeed, grvBonus]);
+  }, [currentAroma.pulseSpeed, grvBonus, isCompanionSpeaking, isListening]);
+
+  /**
+   * 🌟 Interakcja z Orba — Powitanie głosowe aktywnego TeOgochi + pętla audio
+   */
+  const handleOrbCenterClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const currentId = aktywnyGatunek();
+    setActiveTeogochiId(currentId);
+
+    setIsCompanionSpeaking(true);
+    setIntentionExpanded(true);
+
+    // ⚠️ Powitanie liczy i wypowiada WSPÓLNY moduł (`lib/rozmowaKompana`) — ten
+    // sam, którego używa niewidzialny przycisk w środku Orbity. Wcześniej ta
+    // logika siedziała tylko tutaj; skopiowanie jej do Orbity dałoby dwie wersje
+    // rozjeżdżające się przy pierwszej poprawce.
+    const { tekst: greeting } = powitanieKompana(currentId);
+    setActiveSpeechText(greeting);
+
+    try {
+      await powitajKompana(currentId);
+    } finally {
+      setIsCompanionSpeaking(false);
+    }
+
+    // Płynne przejście w tryb ciągłego nasłuchu audio
+    if (!isRecording && !isTranscribing && !isProcessing) {
+      setTimeout(() => {
+        void toggleRecording();
+      }, 400);
+    }
+  };
 
   // Rejestracja nasłuchu
   useEffect(() => {
@@ -156,6 +301,23 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
     setIsProcessing(true);
 
     try {
+      // 0. Detekcja Klatki Kontekstowej i przełączenie w locie
+      const detectedFrame = detectContextFrame(message);
+      if (detectedFrame && detectedFrame !== activeFrameId) {
+        switchContextFrame(detectedFrame, false);
+        toast.success(`🎞️ Przełączono na ${CONTEXT_FRAMES[detectedFrame].title} (${CONTEXT_FRAMES[detectedFrame].companionName})`, { icon: '🔄' });
+      }
+
+      // Specyficzne wywołania generatorów klatkowych
+      const lower = message.toLowerCase();
+      if (lower.includes('generuj pętl') || lower.includes('zrób beat') || lower.includes('pętla audio') || lower.includes('utwór')) {
+        void handleQuickAction('gen_audio_loop');
+      } else if (lower.includes('kadr') || lower.includes('podgląd scen') || lower.includes('renderuj scen') || lower.includes('wideo')) {
+        void handleQuickAction('preview_scenes');
+      } else if (lower.includes('harness') || lower.includes('autonomicz') || lower.includes('pętla kodu') || lower.includes('refaktor')) {
+        void handleQuickAction('run_harness_loop');
+      }
+
       // 1. Zarejestruj wniosek w CityMemory
       addWniosek({
         type: 'TOZSAMOSC',
@@ -163,7 +325,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
         description: `Wiadomość: ${message}`,
         operator: 'TeO',
         status: 'PENDING',
-        tags: ['orb', 'rozmowa', 'świadomość', activeAroma],
+        tags: ['orb', 'rozmowa', 'świadomość', activeAroma, activeFrameId],
         providers: [activeAroma],
         result: 'Oczekuje autoryzacji KostoOpty...',
       });
@@ -467,80 +629,135 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
       {/* Sfera - jako wejście do Zero-UI */}
       <motion.div
         className={cn(
-          "relative w-32 h-32 md:w-40 md:h-40 rounded-full",
-          "bg-gradient-to-br shadow-2xl cursor-pointer",
+          "relative w-32 h-32 md:w-44 md:h-44 rounded-full select-none",
+          "bg-gradient-to-br shadow-2xl cursor-pointer flex items-center justify-center",
           currentAroma.color
         )}
         onMouseEnter={() => {
           setIsHovered(true);
-          setIntentionExpanded(true);
         }}
         onMouseLeave={() => {
           setIsHovered(false);
         }}
-        onClick={() => setIntentionExpanded(!intentionExpanded)}
+        onClick={handleOrbCenterClick}
         animate={{
-          scale: isProcessing ? [1, 1.05, 1] : isHovered ? [1, 1.08, 1] : [1, 1.02, 1],
-          boxShadow: isListening
+          scale: isProcessing ? [1, 1.05, 1] : isCompanionSpeaking ? [1, 1.12, 1.04, 1.12, 1] : isHovered ? [1, 1.08, 1] : [1, 1.02, 1],
+          boxShadow: isCompanionSpeaking
             ? [
-              `0 0 40px ${currentAroma.glowColor}`,
-              `0 0 80px ${currentAroma.glowColor}`,
-              `0 0 40px ${currentAroma.glowColor}`,
+              `0 0 50px ${activeGatunek.kolor}`,
+              `0 0 100px ${activeGatunek.kolor}`,
+              `0 0 50px ${activeGatunek.kolor}`,
             ]
-            : isHovered
+            : isListening
               ? [
-                `0 0 50px ${currentAroma.glowColor}`,
-                `0 0 100px ${currentAroma.glowColor}`,
-                `0 0 50px ${currentAroma.glowColor}`,
+                `0 0 40px ${currentAroma.glowColor}`,
+                `0 0 80px ${currentAroma.glowColor}`,
+                `0 0 40px ${currentAroma.glowColor}`,
               ]
-              : `0 0 ${30 * pulseIntensity}px ${currentAroma.glowColor}`,
+              : isHovered
+                ? [
+                  `0 0 50px ${currentAroma.glowColor}`,
+                  `0 0 100px ${currentAroma.glowColor}`,
+                  `0 0 50px ${currentAroma.glowColor}`,
+                ]
+                : `0 0 ${30 * pulseIntensity}px ${isCompanionSpeaking ? activeGatunek.kolor : currentAroma.glowColor}`,
         }}
         transition={{
-          duration: currentAroma.pulseSpeed,
-          repeat: isProcessing ? Infinity : 0,
+          duration: isCompanionSpeaking ? 1.2 : currentAroma.pulseSpeed,
+          repeat: isProcessing || isCompanionSpeaking ? Infinity : 0,
           ease: "easeInOut",
         }}
       >
+        {/* Górna etykieta z imieniem aktywnego TeOgochi */}
         {!isProcessing && (
-          <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
+          <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-900/80 border border-white/10 shadow-lg">
             <motion.span
-              animate={{ opacity: [0.5, 1, 0.5] }}
+              animate={{ opacity: [0.6, 1, 0.6] }}
               transition={{ duration: 2, repeat: Infinity }}
-              className="text-xs text-purple-300 font-medium"
+              className="text-[11px] font-mono font-bold"
+              style={{ color: isCompanionSpeaking ? activeGatunek.kolor : '#c084fc' }}
             >
-              {t('orb.jestem', 'JESTEM')}
+              {isCompanionSpeaking ? `🔊 ${activeStan.name || activeGatunek.imie} (${activeGatunek.dziedzina})` : `JESTEM • ${activeStan.name || activeGatunek.imie}`}
             </motion.span>
           </div>
         )}
 
-        <div className="absolute inset-2 rounded-full bg-slate-900/80 backdrop-blur-sm flex items-center justify-center">
+        {/* Wnętrze Sfery */}
+        <div
+          className="absolute inset-2 rounded-full bg-slate-900/85 backdrop-blur-md flex flex-col items-center justify-center border transition-all"
+          style={{
+            borderColor: isCompanionSpeaking ? `${activeGatunek.kolor}88` : 'rgba(255,255,255,0.15)',
+            boxShadow: isCompanionSpeaking ? `inset 0 0 20px ${activeGatunek.kolor}44` : 'none'
+          }}
+        >
           <div className="text-center">
             {isProcessing ? (
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                className="text-2xl md:text-3xl"
+                className="text-3xl md:text-4xl"
               >
                 🌀
               </motion.div>
+            ) : isCompanionSpeaking ? (
+              <motion.div
+                animate={{ scale: [1, 1.25, 1], rotate: [0, -5, 5, 0] }}
+                transition={{ duration: 0.8, repeat: Infinity }}
+                className="text-3xl md:text-4xl"
+                title={`${activeStan.name || activeGatunek.imie} — mówi`}
+              >
+                {activeForma}
+              </motion.div>
+            ) : isRecording ? (
+              <motion.div
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1, repeat: Infinity }}
+                className="text-3xl md:text-4xl"
+              >
+                🎙️
+              </motion.div>
             ) : (
-              <span className="text-2xl md:text-3xl">🟣</span>
+              <div className="flex flex-col items-center">
+                <span className="text-2xl md:text-3xl select-none">{activeForma}</span>
+                <span className="text-[9px] font-mono text-slate-400 mt-0.5 opacity-80">
+                  {activeGatunek.dziedzina}
+                </span>
+              </div>
             )}
           </div>
         </div>
 
+        {/* Pierścienie Rezonansu / Fali Dźwiękowej */}
         <motion.div
-          className="absolute -inset-4 rounded-full border-2 border-white/20"
+          className="absolute -inset-3 rounded-full border-2"
+          style={{ borderColor: isCompanionSpeaking ? activeGatunek.kolor : 'rgba(255,255,255,0.2)' }}
           animate={{
-            scale: [1, 1.1, 1],
-            opacity: [0.3, 0.6, 0.3],
+            scale: isCompanionSpeaking ? [1, 1.2, 1] : [1, 1.1, 1],
+            opacity: isCompanionSpeaking ? [0.4, 0.9, 0.4] : [0.3, 0.6, 0.3],
           }}
           transition={{
-            duration: currentAroma.pulseSpeed,
+            duration: isCompanionSpeaking ? 1 : currentAroma.pulseSpeed,
             repeat: Infinity,
             ease: "easeInOut",
           }}
         />
+
+        {/* Dodatkowy pierścień echa przy mówieniu */}
+        {isCompanionSpeaking && (
+          <motion.div
+            className="absolute -inset-6 rounded-full border border-dashed"
+            style={{ borderColor: `${activeGatunek.kolor}66` }}
+            animate={{
+              scale: [1, 1.35, 1.45],
+              opacity: [0.8, 0.2, 0],
+            }}
+            transition={{
+              duration: 1.5,
+              repeat: Infinity,
+              ease: "easeOut",
+            }}
+          />
+        )}
       </motion.div>
 
       {/* 🎯 KostoOpty - Panel autoryzacji */}
@@ -594,8 +811,159 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
             animate={{ opacity: 1, height: 'auto', y: 0 }}
             exit={{ opacity: 0, height: 0, y: -10 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
-            className="w-full max-w-md mt-4 px-4"
+            className="w-full max-w-lg mt-4 px-4 space-y-3"
           >
+            {/* 🎞️ Pasek Przełączania Klatek Kontekstowych (Multi-Frame) */}
+            <div className="flex items-center justify-between gap-1.5 p-1.5 rounded-2xl bg-slate-900/90 border border-white/10 overflow-x-auto">
+              {(Object.keys(CONTEXT_FRAMES) as ContextFrameId[]).map((fKey) => {
+                const f = CONTEXT_FRAMES[fKey];
+                const isActive = activeFrameId === fKey;
+                return (
+                  <button
+                    key={fKey}
+                    type="button"
+                    onClick={() => switchContextFrame(fKey, true)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-mono font-medium transition shrink-0",
+                      isActive
+                        ? "bg-white/15 text-white font-bold shadow-md border"
+                        : "text-slate-400 hover:text-slate-200"
+                    )}
+                    style={{
+                      borderColor: isActive ? f.color : 'transparent',
+                      color: isActive ? '#fff' : undefined,
+                    }}
+                  >
+                    <span>{f.icon}</span>
+                    <span>{f.companionName}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Szybkie Akcje Klatki */}
+            <div className="flex flex-wrap gap-1.5 justify-center">
+              {CONTEXT_FRAMES[activeFrameId]?.quickActions.map((qa) => (
+                <button
+                  key={qa.action}
+                  type="button"
+                  onClick={() => handleQuickAction(qa.action)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-white/5 text-[11px] font-mono text-slate-300 hover:text-white flex items-center gap-1.5 transition"
+                  style={{ borderColor: `${CONTEXT_FRAMES[activeFrameId].color}33` }}
+                >
+                  <span>{qa.icon}</span>
+                  <span>{qa.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* 🎧 Asset Viewer: Pętla Audio (Klatka Muzyczna) */}
+            {audioLoopAsset && activeFrameId === 'MUSIC' && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="p-3 rounded-2xl bg-purple-950/40 border border-purple-500/30 flex items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-600/30 flex items-center justify-center text-lg animate-pulse">
+                    🎵
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-purple-200">{audioLoopAsset.title}</div>
+                    <div className="text-[10px] font-mono text-purple-400">
+                      {audioLoopAsset.bpm} BPM • Tonacja: {audioLoopAsset.key}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAudioLoopAsset(prev => prev ? { ...prev, playing: !prev.playing } : null)}
+                  className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-xs font-bold text-white transition"
+                >
+                  {audioLoopAsset.playing ? '⏸️ Pauza' : '▶️ Odtwórz'}
+                </button>
+              </motion.div>
+            )}
+
+            {/* 🎬 Asset Viewer: Kadry i Sceny (Klatka Filmowa) */}
+            {videoScenesAsset && activeFrameId === 'VIDEO' && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="p-3 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 space-y-2"
+              >
+                <div className="flex justify-between items-center text-xs font-bold text-cyan-300">
+                  <span>🎬 Podgląd Kadrów & Storyboard</span>
+                  <span className="text-[10px] font-mono text-slate-400">3 Sceny</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {videoScenesAsset.map(sc => (
+                    <div key={sc.id} className="p-2 rounded-xl bg-black/40 border border-cyan-500/20 text-center">
+                      <div className="text-xl">🎞️</div>
+                      <div className="text-[10px] font-bold text-slate-200 truncate mt-1">{sc.title}</div>
+                      <div className="text-[9px] font-mono text-cyan-400">{sc.cuts} cięć</div>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* ⚡ Smart-Ralph & DeepSeek-Harness Monitor */}
+            {(isHarnessRunning || harnessRun) && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 space-y-2"
+              >
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+                    <span className={isHarnessRunning ? "animate-spin" : ""}>🔄</span>
+                    <span>Smart-Ralph ({CONTEXT_FRAMES[harnessRun?.frame || activeFrameId].title}): {harnessRun?.status || (isHarnessRunning ? 'EXECUTING' : 'READY')}</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {harnessRun?.steps?.length ? `${harnessRun.steps.filter(s => s.status === 'DONE').length}/${harnessRun.steps.length} subtasków` : 'Planowanie PRD...'}
+                  </span>
+                </div>
+
+                {/* PRD Spec Preview */}
+                {harnessRun?.plan?.prd && (
+                  <div className="text-[11px] font-mono bg-black/40 px-2.5 py-1 rounded-lg border border-emerald-500/20 text-emerald-200 truncate">
+                    📋 <b>PRD:</b> {harnessRun.plan.prd.title || harnessRun.plan.prd.objective}
+                  </div>
+                )}
+
+                {/* Subtaski & Statusy */}
+                {harnessRun?.steps && (
+                  <div className="space-y-1">
+                    {harnessRun.steps.map((st, idx) => (
+                      <div key={st.id || idx} className="flex items-center justify-between text-[11px] font-mono text-slate-300 bg-black/30 px-2.5 py-1 rounded-lg">
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="text-slate-500">{st.id || idx + 1}.</span>
+                          <span className="truncate">{st.title || st.desc}</span>
+                          {st.selfCorrection && (
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">
+                              🔧 Korekta #{st.selfCorrection.attempt}
+                            </span>
+                          )}
+                        </div>
+                        <span className={st.status === 'DONE' ? 'text-emerald-400 font-bold' : 'text-amber-400 animate-pulse'}>
+                          {st.status === 'DONE' ? '✓' : '...'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Manifest Dostarczenia */}
+                {harnessRun?.delivery && (
+                  <div className="flex items-center justify-between text-[10px] font-mono text-emerald-300 bg-emerald-900/30 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+                    <span>🏆 <b>Wynik:</b> {harnessRun.delivery.verdict}</span>
+                    <span>Czas: {(harnessRun.delivery.durationMs / 1000).toFixed(1)}s</span>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
             <form onSubmit={handleSubmit}>
               <div className="relative">
                 <motion.div
@@ -612,7 +980,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
                     type="text"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
-                    placeholder={t('orb.placeholder', 'Wprowadź Intencję, Mistrzu...')}
+                    placeholder={`Rozmawiaj w ${CONTEXT_FRAMES[activeFrameId].title} (${CONTEXT_FRAMES[activeFrameId].companionName})...`}
                     disabled={isProcessing}
                     className={cn(
                       "w-full px-4 py-3 pr-12 bg-slate-800/60 border border-purple-500/30 rounded-xl",
@@ -718,14 +1086,26 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
       )}
 
       <AnimatePresence>
-        {showResponse && lastResponse && (
+        {(showResponse && (lastResponse || activeSpeechText)) && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="mt-4 p-4 bg-slate-800/90 border border-purple-500/30 rounded-xl max-w-md text-center"
+            className="mt-4 p-4 bg-slate-800/95 border rounded-2xl max-w-md text-center shadow-xl backdrop-blur-md"
+            style={{
+              borderColor: isCompanionSpeaking ? `${activeGatunek.kolor}66` : 'rgba(168,85,247,0.3)',
+              boxShadow: `0 0 20px ${isCompanionSpeaking ? activeGatunek.kolor : '#a855f7'}22`
+            }}
           >
-            <p className="text-sm text-purple-200">{lastResponse}</p>
+            <div className="text-[10px] font-mono text-slate-400 mb-1 flex items-center justify-center gap-1.5">
+              <span>{activeForma}</span>
+              <span style={{ color: activeGatunek.kolor }}>{activeStan.name || activeGatunek.imie}</span>
+              <span>•</span>
+              <span>{activeGatunek.dziedzina}</span>
+            </div>
+            <p className="text-sm text-purple-100 leading-relaxed font-medium">
+              {lastResponse || activeSpeechText}
+            </p>
           </motion.div>
         )}
       </AnimatePresence>

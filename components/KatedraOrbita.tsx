@@ -4,6 +4,15 @@
  * Podłączona do activeAura z KatedraRadioContext.
  * Gdy agent mówi → Orbita zmienia kolor na jego aurę.
  * Gdy aura wygaśnie → wraca do złotego.
+ *
+ * 🗣️ ŚRODEK ORBITY TO NIEWIDZIALNY PRZYCISK. Kliknięcie łączy z aktualnie
+ * wybranym jajem (aktywnym TeOgochi): kompan wita się swoim głosem, potem
+ * słucha, a odpowiada własnym rdzeniem. To DOKŁADNIE ta sama logika, co
+ * w Sferze — obie powierzchnie wołają `lib/rozmowaKompana`, a nie dwie kopie.
+ *
+ * ⚠️ Przycisk jest niewidzialny, ale NIE niemy: w trakcie rozmowy pod orbitą
+ * pojawia się stan („słucha", „myśli", „mówi") i transkrypcja. Cichy przycisk,
+ * po którym nie wiadomo, czy cokolwiek się dzieje, byłby gorszy niż jego brak.
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -13,6 +22,7 @@ import { visualizerLayoutAtom, currentLyricAtom, isKaraokeEnabledAtom } from '..
 import { motion, AnimatePresence } from 'framer-motion';
 import { useKatedraRadio } from '../context/KatedraRadioContext';
 import QuantumEqualizer from './special/QuantumEqualizer';
+import { useRozmowaKompana } from '../lib/rozmowaKompana';
 import MatrixRainSkin from './special/MatrixRainSkin';
 
 interface KatedraOrbitaProps {
@@ -87,6 +97,8 @@ export function KatedraOrbita({
     className,
     style,
 }: KatedraOrbitaProps) {
+    // 🗣️ Rozmowa z wybranym jajem — ten sam hook, którego używa Sfera.
+    const rozmowa = useRozmowaKompana();
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef    = useRef<HTMLCanvasElement>(null);
     const [squareSize, setSquareSize] = useState(0);
@@ -915,6 +927,59 @@ export function KatedraOrbita({
                     }}
                     aria-label="Wizualizator orbity Katedry"
                 />
+
+                {/* ── 🗣️ NIEWIDZIALNY PRZYCISK ŚRODKA ──────────────────────────
+                    Bez tła, bez ramki, bez ikony — widać przez niego orbitę.
+                    Klik łączy z wybranym jajem i prowadzi całą rozmowę. */}
+                <button
+                    onClick={() => { void rozmowa.dotknij(); }}
+                    title={rozmowa.faza === 'cisza'
+                        ? `Porozmawiaj z: ${rozmowa.kompan.imie} (${rozmowa.kompan.dziedzina})`
+                        : `${rozmowa.kompan.imie} — ${rozmowa.opisFazy}`}
+                    aria-label={`Rozmowa z kompanem ${rozmowa.kompan.imie}`}
+                    style={{
+                        position: 'absolute',
+                        top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                        width: '22%', aspectRatio: '1 / 1',
+                        minWidth: 64, maxWidth: 220,
+                        borderRadius: '50%',
+                        background: 'transparent',
+                        border: 'none',
+                        padding: 0,
+                        cursor: 'pointer',
+                        zIndex: 20,
+                        // Puls tylko wtedy, gdy rozmowa TRWA. W ciszy — nic.
+                        boxShadow: rozmowa.faza === 'cisza'
+                            ? 'none'
+                            : `0 0 40px ${rozmowa.kompan.kolor}66, inset 0 0 30px ${rozmowa.kompan.kolor}33`,
+                        transition: 'box-shadow .4s ease',
+                    }}
+                />
+
+                {/* Stan rozmowy — pojawia się tylko, gdy coś się dzieje. */}
+                <AnimatePresence>
+                    {(rozmowa.faza !== 'cisza' || rozmowa.blad) && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 8 }}
+                            className="absolute left-1/2 bottom-4 -translate-x-1/2 z-30 pointer-events-none
+                                       max-w-[80%] rounded-xl px-3 py-2 text-center backdrop-blur-sm"
+                            style={{ background: 'rgba(8,6,16,0.72)', border: `1px solid ${rozmowa.kompan.kolor}55` }}
+                        >
+                            <div className="text-[10px] font-mono" style={{ color: rozmowa.kompan.kolor }}>
+                                {rozmowa.kompan.imie} · {rozmowa.opisFazy}
+                            </div>
+                            {rozmowa.blad
+                                ? <div className="text-[11px] text-amber-400 mt-0.5">{rozmowa.blad}</div>
+                                : rozmowa.tekst && (
+                                    <div className="text-[12px] text-slate-200 mt-0.5 leading-snug line-clamp-3">
+                                        {rozmowa.tekst}
+                                    </div>
+                                )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* Left Module Slot — unmounted entirely when PUSTKA */}
                 {layout.left !== 'PUSTKA' && (
