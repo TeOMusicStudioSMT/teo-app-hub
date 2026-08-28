@@ -61,6 +61,7 @@ import * as Szyna         from './services/SzynaZdarzen.js';
 import * as Rangi         from './services/Rangi.js';
 import * as Questy        from './services/Questy.js';
 import * as Konta         from './services/Konta.js';
+import * as PaneleTeogochi from './services/PaneleTeogochi.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
 import { stanAnimacji, renderuj, KATALOG_PROJEKTOW } from './services/Animacje.js';
 import { zProjektuAppV2 }   from './services/KompozytorUI.js';
@@ -4468,6 +4469,87 @@ app.post('/api/grv/klucze/uzyj', async (req, res) => {
 
     res.json({ success: true, wezel, ranga: 'founder', dosypano: dosyp, saldo: wpis.grv, wolneMiejsca: GRV_TIERS.founder.count - L.pools.founder });
 });
+
+// ── 🥚🛠️ KREATOR PANELI TeOgochi ────────────────────────────────────────────
+// Osiem gatunków wykluwa się bez warsztatu. Tu Suweren buduje im panel — ale
+// WYŁĄCZNIE z tras, które most naprawdę wystawia (odczyt z żywego routera).
+
+/** Domeny = prawdziwe grupy tras mostu. Nie lista życzeń, tylko stan routera. */
+app.get('/api/teogochi/domeny', (req, res) => {
+    try {
+        const domeny = PaneleTeogochi.katalogDomen(app);
+        res.json({ success: true, domeny, ile: domeny.length });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/teogochi/panele', async (req, res) => {
+    const d = await PaneleTeogochi.wczytajPanele();
+    res.json({ success: true, panele: d.panele ?? [] });
+});
+
+/** Losowanie jaja. Deterministyczne — to samo ziarno daje to samo jajo. */
+app.post('/api/teogochi/panel/jajo', (req, res) => {
+    const { ziarno } = req.body ?? {};
+    res.json({ success: true, jajo: PaneleTeogochi.losujJajo(ziarno) });
+});
+
+app.post('/api/teogochi/panel', async (req, res) => {
+    const { gatunek, domena, narzedzia, jajo, nazwa, opis, wlasneJajo } = req.body ?? {};
+
+    let jajoDoZapisu = jajo ?? null;
+    if (wlasneJajo) {
+        const s = PaneleTeogochi.sprawdzJajo(jajo);
+        if (!s.ok) return res.status(400).json({ success: false, message: s.powod });
+        jajoDoZapisu = s.jajo;
+    }
+
+    const r = await PaneleTeogochi.zapiszPanel(app, {
+        gatunek, domena, narzedzia, jajo: jajoDoZapisu, nazwa, opis,
+    });
+    if (!r.ok) return res.status(400).json({ success: false, message: r.powod });
+    res.json({ success: true, panel: r.panel });
+});
+
+/**
+ * Automatyczne wystawienie panelu w Marketplace — tą samą drogą co każdy inny
+ * produkt (wspólny plik rynku), żeby nie powstał drugi obieg ofert.
+ */
+app.post('/api/teogochi/panel/wystaw', async (req, res) => {
+    const { gatunek, priceGrv, creator } = req.body ?? {};
+    const d = await PaneleTeogochi.wczytajPanele();
+    const p = (d.panele ?? []).find(x => x.gatunek === gatunek);
+    if (!p) return res.status(404).json({ success: false, message: 'Najpierw zbuduj panel.' });
+    if (p.ofertaId) {
+        return res.status(409).json({ success: false, message: `Ten panel jest już wystawiony (${p.ofertaId}).` });
+    }
+
+    const m = await loadMarket();
+    const id = `teogochi-panel-${gatunek}-${Date.now().toString(36)}`;
+    const product = {
+        id, module: 'core', type: 'preset',
+        name: `Panel TeOgochi — ${p.nazwa}`,
+        desc: p.opis || `Warsztat gatunku ${p.nazwa}: ${p.narzedzia.length} narzędzi mostu z domeny ${p.domena ?? '—'}.`,
+        priceGrv: Number(priceGrv) || 0,
+        creator: creator || 'Mistrz Arkadiusz',
+        votes: 0, createdAt: Date.now(),
+        // Payload niesie PRZEPIS, nie obietnicę: kto to zaimportuje, dostanie
+        // te same trasy — a jeśli jego most ich nie ma, zapis się nie uda.
+        payload: { jajo: p.jajo, domena: p.domena, narzedzia: p.narzedzia },
+    };
+    m.products.push(product);
+    await saveMarket();
+    await PaneleTeogochi.oznaczWystawiony(gatunek, id);
+    res.json({ success: true, oferta: product });
+});
+
+app.post('/api/teogochi/panel/usun', async (req, res) => {
+    const r = await PaneleTeogochi.usunPanel(req.body?.gatunek);
+    if (!r.ok) return res.status(404).json({ success: false, message: r.powod });
+    res.json({ success: true });
+});
+
 
 app.get('/api/grv/:id', async (req, res) => {
     const L = await loadGrvLedger(); const n = L.nodes[req.params.id];
