@@ -156,9 +156,23 @@ export function oczyscDoMowy(tekst: string): string {
         // te zakresy są bezpieczne w każdej przeglądarce wspierającej speechSynthesis).
         .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu, ' ')
         .replace(/[„""»«]/g, '')
+        // ── Markdown i sciezki: syntezator czyta je ZNAK PO ZNAKU ──────────
+        // Agent potrafi oddac „**Gotowe** — patrz /api/music/generate", a Piper
+        // wypowiadal gwiazdki i ukosniki jako slowa. To nie jest tresc, tylko
+        // skladnia zapisu — do ucha nie ma po co trafiac.
+        .replace(/```[\s\S]*?```/g, ' ')
+        .replace(/`([^`]*)`/g, '$1')
+        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/https?:\/\/[^\s]+/g, ' ')
+        .replace(/(?:^|\s)\/[A-Za-z0-9_\-]+(?:\/[A-Za-z0-9_\.:-]+)+/g, ' ')
+        .replace(/[*_#>|~^]/g, ' ')
+        // Myslnik OTOCZONY SPACJAMI to pauza, nie slowo. „bialo-czerwony" zostaje.
+        .replace(/\s+[\u2013\u2014-]+\s+/g, ', ')
         .replace(/\.{2,}/g, '. ')          // „...(cisza)..." → „. (cisza). "
         .replace(/[()]/g, ' ')
         .replace(/[∴·•]/g, ' ')
+        // Osierocona kropka po wielokropku: „naprawde . i cisza" brzmi jak zaciecie.
+        .replace(/\s+\.(\s|$)/g, '.$1')
         .replace(/\s+/g, ' ')
         // Osad po zamianie wielokropka: „...(jajko drży)..." dawało „. jajko drży .".
         // Wiodąca kropka to dla syntezatora osobna pauza i słychać ją jak zacięcie.

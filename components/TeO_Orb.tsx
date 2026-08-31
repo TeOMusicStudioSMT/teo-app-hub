@@ -180,19 +180,35 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleQuickAction = async (action: string) => {
+  const handleQuickAction = async (action: string, opisZMowy?: string) => {
     obserwuj('narzedzie', action, CONTEXT_FRAMES[activeFrameId]?.title);
     if (action === 'gen_audio_loop') {
       // ⚠️ TU BYŁA ATRAPA. Ten przycisk losował tytuł (`Beat_TeO_` + Math.random()),
       // wpisywał na sztywno 126 BPM i A minor, po czym Joanna mówiła „wygenerowałam".
       // Nie powstawał ŻADEN dźwięk — most nie był nawet wołany. Teraz idzie realne
       // zlecenie do ComfyUI, na wskazanym grafie, a stan bierze się z odpowiedzi.
-      const graf = workflowy.find(w => w.plik === wybranyWorkflow);
+      // Lista mogła być pusta, bo most wstał PO zamontowaniu panelu. Zamiast
+      // odmawiać, pytamy jeszcze raz — dopiero potem mówimy „nie ma czym liczyć".
+      let dostepne = workflowy;
+      if (!dostepne.length) {
+        try {
+          const d = await fetch('http://127.0.0.1:3001/api/music/workflows').then(r => r.json());
+          dostepne = d?.workflows ?? [];
+          setWorkflowy(dostepne);
+        } catch { dostepne = []; }
+      }
+      const graf = dostepne.find(w => w.plik === wybranyWorkflow)
+        || dostepne.find(w => w.uruchamialny);
       if (!graf?.uruchamialny) {
-        toast.error(graf?.powod || 'Nie wybrano uruchamialnego workflow — bez grafu nie ma z czego liczyć.');
+        toast.error(graf?.powod
+          || 'Nie widzę uruchamialnego workflow — sprawdź most i katalog _OtakOs_AI/workflows.');
         return;
       }
-      const opis = inputValue.trim() || 'spokojna pętla instrumentalna, ciepłe brzmienie';
+      if (graf.plik !== wybranyWorkflow) setWybranyWorkflow(graf.plik);
+      // ⚠️ Przy komendzie GŁOSOWEJ pole tekstowe jest puste — opis przychodzi
+      // z transkrypcji. Wcześniej brało się tylko `inputValue`, więc mówione
+      // „zrób utwór o deszczu" gubiło temat.
+      const opis = (opisZMowy || inputValue).trim() || 'spokojna pętla instrumentalna, ciepłe brzmienie';
       setIsProcessing(true);
       toast(`🎛️ Zlecam ComfyUI na grafie ${graf.plik}…`, { icon: '⏳' });
       try {
@@ -222,7 +238,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
       // WPISANE W KOD („Wejście do Katedry", „Rezonans Sfery", „Kwantowy Wymiar"),
       // razem z liczbą cięć, a Klatka meldowała „wyrenderowano". Żaden plik nie
       // powstawał. Teraz idzie realny render przez HyperFrames i wraca MP4 z dysku.
-      const opis = inputValue.trim();
+      const opis = (opisZMowy || inputValue).trim();
       if (!opis) {
         // Nie wymyślamy scen za Suwerena — to było sednem poprzedniej atrapy.
         toast.error('Napisz, co ma być w kadrach. Bez opisu nie ma czego renderować.');
@@ -408,13 +424,24 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
       }
 
       // Specyficzne wywołania generatorów klatkowych
+      // ⚠️ TU GINĘŁA KOMENDA GŁOSOWA. Akcja szła `void` (bez czekania), a message
+      // leciał dalej do czatu — więc Suweren dostawał TYLKO komunikat modelu,
+      // jakby to była odpowiedź na prośbę o utwór. Teraz akcja jest wykonaniem
+      // polecenia i kończy obieg: czat nie dubluje jej gadaniem.
       const lower = message.toLowerCase();
-      if (lower.includes('generuj pętl') || lower.includes('zrób beat') || lower.includes('pętla audio') || lower.includes('utwór')) {
-        void handleQuickAction('gen_audio_loop');
-      } else if (lower.includes('kadr') || lower.includes('podgląd scen') || lower.includes('renderuj scen') || lower.includes('wideo')) {
-        void handleQuickAction('preview_scenes');
-      } else if (lower.includes('harness') || lower.includes('autonomicz') || lower.includes('pętla kodu') || lower.includes('refaktor')) {
-        void handleQuickAction('run_harness_loop');
+      const akcja =
+        (lower.includes('generuj pętl') || lower.includes('zrób beat') || lower.includes('pętla audio')
+          || lower.includes('utwór') || lower.includes('utwor') || lower.includes('muzyk')) ? 'gen_audio_loop'
+        : (lower.includes('kadr') || lower.includes('podgląd scen') || lower.includes('renderuj scen')
+          || lower.includes('wideo')) ? 'preview_scenes'
+        : (lower.includes('harness') || lower.includes('autonomicz') || lower.includes('pętla kodu')
+          || lower.includes('refaktor')) ? 'run_harness_loop'
+        : null;
+
+      if (akcja) {
+        await handleQuickAction(akcja, message);
+        setIsProcessing(false);
+        return;
       }
 
       // 🌑 Orbita patrzy z tła — pasywnie, tylko do własnej pamięci.

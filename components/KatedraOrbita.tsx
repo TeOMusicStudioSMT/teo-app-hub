@@ -25,7 +25,7 @@ import QuantumEqualizer from './special/QuantumEqualizer';
 import { useRozmowaKompana } from '../lib/rozmowaKompana';
 import {
     ZDARZENIE_AKTYWACJI, silnikOrbity, ustawSilnikOrbity, chmuraGotowa,
-    domenaSfery, ustawDomeneSfery, pamiec, zapomnij, type SilnikOrbity,
+    domenaSfery, ustawDomeneSfery, pamiec, zapomnij, chmuraGotowaDokladnie, type SilnikOrbity,
 } from '../lib/mozgOrbity';
 import MatrixRainSkin from './special/MatrixRainSkin';
 
@@ -109,7 +109,11 @@ export function KatedraOrbita({
     const [silnik, setSilnik] = useState<SilnikOrbity>(() => silnikOrbity());
     const [domena, setDomena] = useState(() => domenaSfery());
     const [sladow, setSladow] = useState(0);
-    const chmura = chmuraGotowa();
+    const [chmura, setChmura] = useState(() => chmuraGotowa());
+
+    // Szybkie sprawdzenie rysuje listę od razu; dokładne (IndexedDB) poprawia
+    // ją chwilę później, gdy klucz siedzi w zaszyfrowanym Kiblu.
+    useEffect(() => { void chmuraGotowaDokladnie().then(setChmura); }, [ustawienia]);
 
     useEffect(() => {
         const przelicz = () => setSladow(pamiec().length);

@@ -24,6 +24,8 @@
  * innym niż pamięć — i nikt by o tym nie wiedział.
  */
 import { ApiDyrygent } from './router/ApiDyrygent';
+import { flushKibel, retrieveKey } from './kibel';
+import { vaultList } from './VaultStorage';
 import { ZAKAZ_FORMULEK } from './szyna';
 
 const KLUCZ_PAMIEC = 'orbita_pamiec_v1';
@@ -100,12 +102,56 @@ export function ustawSilnikOrbity(s: SilnikOrbity): void {
     try { localStorage.setItem(KLUCZ_SILNIK, s); } catch { /* nic */ }
 }
 
-/** Czy chmura ma czym mówić. Bez klucza to nie jest opcja, tylko ślepy zaułek. */
-export function chmuraGotowa(): { gotowa: boolean; powod: string | null } {
-    const anthropic = ApiDyrygent.readKibelKey('anthropic');
-    const gemini = ApiDyrygent.readKibelKey('gemini');
-    if (anthropic || gemini) return { gotowa: true, powod: null };
-    return { gotowa: false, powod: 'Brak klucza w TeO Kibel — chmura nie ma czym odpowiedzieć.' };
+/**
+ * Czy chmura ma czym mówić.
+ *
+ * ⚠️ PIERWSZA WERSJA BYŁA ZA WĄSKA i mówiła „brak klucza" Suwerenowi, który
+ * klucze miał. Patrzyła tylko na dwa dokładne wpisy w localStorage, a Kibel
+ * trzyma je na trzy sposoby (wpis legacy, `kibel_key_*`, rejestr providerów),
+ * do tego istnieje osobny Skarbiec. Teraz pytamy KIBEL O JEGO WŁASNE ZDANIE
+ * (`flushKibel`) i dokładamy Skarbiec, zamiast zgadywać nazwy kluczy.
+ *
+ * Rozróżniamy też dwa różne „nie": brak jakichkolwiek kluczy, i klucze do
+ * dostawców, których tor chmurowy nie obsługuje (umie Anthropic i Gemini).
+ */
+export function chmuraGotowa(): { gotowa: boolean; powod: string | null; dostawcy: string[] } {
+    const dostawcy = new Set<string>();
+
+    // 1. Zdanie samego Kibla — obejmuje wpisy legacy i `kibel_key_*`.
+    try { for (const p of flushKibel().providers) dostawcy.add(String(p)); } catch { /* Kibel niemy */ }
+
+    // 2. Bezpośredni odczyt torów, których naprawdę używa dispatchCloud.
+    try { if (ApiDyrygent.readKibelKey('anthropic')) dostawcy.add('anthropic'); } catch { /* nic */ }
+    try { if (ApiDyrygent.readKibelKey('gemini')) dostawcy.add('gemini'); } catch { /* nic */ }
+
+    // 3. Skarbiec — osobny magazyn, po nazwach wpisów.
+    try {
+        for (const w of vaultList()) {
+            const n = w.toLowerCase();
+            if (n.includes('anthropic') || n.includes('claude')) dostawcy.add('anthropic');
+            if (n.includes('gemini') || n.includes('google')) dostawcy.add('gemini');
+            if (n.includes('groq')) dostawcy.add('groq');
+            if (n.includes('openai')) dostawcy.add('openai');
+        }
+    } catch { /* brak Skarbca */ }
+
+    const lista = [...dostawcy].filter(d => d && d !== 'unknown');
+    const obslugiwane = lista.filter(d => d === 'anthropic' || d === 'gemini');
+
+    if (obslugiwane.length) return { gotowa: true, powod: null, dostawcy: obslugiwane };
+    if (lista.length) {
+        return {
+            gotowa: false,
+            dostawcy: lista,
+            powod: `Widzę klucze: ${lista.join(', ')} — ale tor chmurowy Orbity obsługuje na razie `
+                + 'tylko Anthropic i Gemini.',
+        };
+    }
+    return {
+        gotowa: false,
+        dostawcy: [],
+        powod: 'Nie widzę żadnego klucza — ani w Kiblu, ani w Skarbcu.',
+    };
 }
 
 /**
@@ -123,7 +169,7 @@ export async function zapytajMozg(pytanie: string): Promise<{ odpowiedz: string;
 
     const silnik = silnikOrbity();
     if (silnik === 'chmura') {
-        const stan = chmuraGotowa();
+        const stan = await chmuraGotowaDokladnie();
         if (!stan.gotowa) throw new Error(stan.powod || 'Chmura niedostępna.');
         const model = ApiDyrygent.getCloudFastModel();
         const odp = await ApiDyrygent.dispatchCloud(pytanie, model, system);
@@ -173,8 +219,24 @@ export function wywolajOrbite(powod: string): void {
     catch { /* brak okna — środowisko bez DOM */ }
 }
 
+/**
+ * Dokładne sprawdzenie chmury — ASYNCHRONICZNE, bo Kibel potrafi trzymać klucz
+ * w IndexedDB i tam odczyt nie jest natychmiastowy. `chmuraGotowa()` odpowiada
+ * od razu (do rysowania listy), a to tutaj mówi ostatnie słowo przed pytaniem.
+ */
+export async function chmuraGotowaDokladnie(): Promise<{ gotowa: boolean; powod: string | null; dostawcy: string[] }> {
+    const szybka = chmuraGotowa();
+    if (szybka.gotowa) return szybka;
+    const znalezione: string[] = [];
+    for (const p of ['anthropic', 'gemini'] as const) {
+        try { if (await retrieveKey(p)) znalezione.push(p); } catch { /* brak */ }
+    }
+    if (znalezione.length) return { gotowa: true, powod: null, dostawcy: znalezione };
+    return szybka;
+}
+
 export default {
-    obserwuj, pamiec, zapomnij, pelenObraz,
+    obserwuj, pamiec, zapomnij, pelenObraz, chmuraGotowaDokladnie,
     silnikOrbity, ustawSilnikOrbity, chmuraGotowa, zapytajMozg,
     domenaSfery, ustawDomeneSfery, czyWolanie, wywolajOrbite,
 };
