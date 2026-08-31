@@ -52,7 +52,11 @@ function rodzajGlosu(g: Gatunek): 'zenski' | 'meski' {
 export function powitanieKompana(id: string): { gatunek: Gatunek; tekst: string } {
     const gatunek = gatunekPo(id) || GATUNKI[0];
     const stan = stanGatunku(gatunek.id);
-    const imie = stan.name || gatunek.imie;
+    // Stary stan kompana nosi generyczne „TeOgochi" (jeden kompan, przed podziałem
+    // na gatunki). Punkt 1 ma brzmieć „Joanna — domena: Muzyka", więc generyk
+    // ustępuje imieniu gatunku; własne imię nadane przez Suwerena zostaje.
+    const nadane = String(stan.name || '').trim();
+    const imie = (!nadane || /^teogochi$/i.test(nadane)) ? gatunek.imie : nadane;
     // Punkt 2 z opisu gatunku, przycięty do dwóch zdań — bez rozlewania się.
     const sluzba = gatunek.opis.split(/(?<=\.)\s+/).slice(0, 2).join(' ').trim();
     return {

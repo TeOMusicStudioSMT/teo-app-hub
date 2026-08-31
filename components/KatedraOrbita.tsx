@@ -23,6 +23,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useKatedraRadio } from '../context/KatedraRadioContext';
 import QuantumEqualizer from './special/QuantumEqualizer';
 import { useRozmowaKompana } from '../lib/rozmowaKompana';
+import {
+    ZDARZENIE_AKTYWACJI, silnikOrbity, ustawSilnikOrbity, chmuraGotowa,
+    domenaSfery, ustawDomeneSfery, pamiec, zapomnij, type SilnikOrbity,
+} from '../lib/mozgOrbity';
 import MatrixRainSkin from './special/MatrixRainSkin';
 
 interface KatedraOrbitaProps {
@@ -99,6 +103,27 @@ export function KatedraOrbita({
 }: KatedraOrbitaProps) {
     // 🗣️ Rozmowa z wybranym jajem — ten sam hook, którego używa Sfera.
     const rozmowa = useRozmowaKompana();
+
+    // 🌑 Mózg tła: silnik, własna pamięć i wołanie po domenie.
+    const [ustawienia, setUstawienia] = useState(false);
+    const [silnik, setSilnik] = useState<SilnikOrbity>(() => silnikOrbity());
+    const [domena, setDomena] = useState(() => domenaSfery());
+    const [sladow, setSladow] = useState(0);
+    const chmura = chmuraGotowa();
+
+    useEffect(() => {
+        const przelicz = () => setSladow(pamiec().length);
+        przelicz();
+        const iv = setInterval(przelicz, 4000);
+        return () => clearInterval(iv);
+    }, []);
+
+    // Wołanie po domenie Sfery budzi rozmowę tak samo jak dotknięcie środka.
+    useEffect(() => {
+        const naWywolanie = () => { if (rozmowa.faza === 'cisza') void rozmowa.dotknij(); };
+        window.addEventListener(ZDARZENIE_AKTYWACJI, naWywolanie);
+        return () => window.removeEventListener(ZDARZENIE_AKTYWACJI, naWywolanie);
+    }, [rozmowa]);
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef    = useRef<HTMLCanvasElement>(null);
     const [squareSize, setSquareSize] = useState(0);
@@ -933,8 +958,9 @@ export function KatedraOrbita({
                     Klik łączy z wybranym jajem i prowadzi całą rozmowę. */}
                 <button
                     onClick={() => { void rozmowa.dotknij(); }}
+                    onContextMenu={(e) => { e.preventDefault(); setUstawienia(u => !u); }}
                     title={rozmowa.faza === 'cisza'
-                        ? `Porozmawiaj z: ${rozmowa.kompan.imie} (${rozmowa.kompan.dziedzina})`
+                        ? `Porozmawiaj z: ${rozmowa.kompan.imie} (${rozmowa.kompan.dziedzina}) · prawy klik = ustawienia Orbity`
                         : `${rozmowa.kompan.imie} — ${rozmowa.opisFazy}`}
                     aria-label={`Rozmowa z kompanem ${rozmowa.kompan.imie}`}
                     style={{
@@ -955,6 +981,61 @@ export function KatedraOrbita({
                         transition: 'box-shadow .4s ease',
                     }}
                 />
+
+                {/* ── 🌑 USTAWIENIA ORBITY — prawy klik na środku ──────────────
+                    Świadomie schowane: Orbita jest tłem, nie kolejnym panelem
+                    zasłaniającym obraz. Widać je dopiero, gdy Suweren ich szuka. */}
+                {ustawienia && (
+                    <div className="absolute right-3 top-3 z-40 w-72 rounded-xl border border-white/10 bg-slate-950/90 p-3 backdrop-blur-sm space-y-3">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-mono text-slate-300">🌑 Mózg Orbity</span>
+                            <button onClick={() => setUstawienia(false)} className="text-slate-500 hover:text-white text-xs">✕</button>
+                        </div>
+
+                        <label className="block">
+                            <span className="text-[10px] font-mono text-slate-500">silnik</span>
+                            <select
+                                value={silnik}
+                                onChange={(e) => { const v = e.target.value as SilnikOrbity; setSilnik(v); ustawSilnikOrbity(v); }}
+                                className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200 outline-none focus:border-slate-500"
+                            >
+                                <option value="ollama">Lokalna Ollama (nic nie wychodzi z maszyny)</option>
+                                <option value="chmura" disabled={!chmura.gotowa}>
+                                    Chmura{chmura.gotowa ? '' : ' — brak klucza w TeO Kibel'}
+                                </option>
+                            </select>
+                            {!chmura.gotowa && (
+                                <span className="text-[10px] text-amber-500/80 leading-relaxed">{chmura.powod}</span>
+                            )}
+                        </label>
+
+                        <label className="block">
+                            <span className="text-[10px] font-mono text-slate-500">domena Sfery — wypowiedz ją, a Orbita się zbudzi</span>
+                            <input
+                                value={domena}
+                                onChange={(e) => { setDomena(e.target.value); ustawDomeneSfery(e.target.value); }}
+                                className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-slate-500"
+                            />
+                        </label>
+
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono text-slate-500">
+                                pamięć własna: {sladow} śladów
+                            </span>
+                            <button
+                                onClick={() => { zapomnij(); setSladow(0); }}
+                                className="text-[10px] text-slate-500 hover:text-red-400"
+                            >
+                                zapomnij
+                            </button>
+                        </div>
+
+                        <p className="text-[10px] text-slate-600 leading-relaxed">
+                            Obserwacja jest pasywna i zostaje na tej maszynie. Orbita niczego nie wysyła
+                            sama z siebie — zapisuje, co widziała, i czeka.
+                        </p>
+                    </div>
+                )}
 
                 {/* Stan rozmowy — pojawia się tylko, gdy coś się dzieje. */}
                 <AnimatePresence>

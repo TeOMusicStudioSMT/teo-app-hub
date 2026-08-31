@@ -24,6 +24,7 @@ import { gatunekPo, GATUNKI } from '../lib/teogochiGatunki';
 import { stageOf } from '../lib/teogochiState';
 import { speak } from '../services/voiceService';
 import { powitajKompana, powitanieKompana } from '../lib/rozmowaKompana';
+import { obserwuj, czyWolanie, wywolajOrbite, domenaSfery } from '../lib/mozgOrbity';
 import {
   CONTEXT_FRAMES, detectContextFrame, runHarnessTask, getHarnessStatus,
   switchBridgeFrame, type ContextFrameId, type HarnessRunStatus
@@ -143,7 +144,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
   const [harnessRun, setHarnessRun] = useState<HarnessRunStatus | null>(null);
   const [isHarnessRunning, setIsHarnessRunning] = useState(false);
   const [audioLoopAsset, setAudioLoopAsset] = useState<{ bpm: number; key: string; title: string; playing: boolean } | null>(null);
-  const [videoScenesAsset, setVideoScenesAsset] = useState<{ id: number; title: string; cuts: number }[] | null>(null);
+  const [videoScenesAsset, setVideoScenesAsset] = useState<{ id: number; title: string; cuts: number | null }[] | null>(null);
 
   const switchContextFrame = useCallback((frameId: ContextFrameId, say = false) => {
     setActiveFrameId(frameId);
@@ -163,6 +164,8 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
   // 🎛️ Katalog grafów ComfyUI — realny odczyt z katalogu mostu, nie lista życzeń.
   const [workflowy, setWorkflowy] = useState<Array<{ plik: string; format: string; nodow: number | null; rodzina: string | null; uruchamialny: boolean; powod: string | null }>>([]);
   const [wybranyWorkflow, setWybranyWorkflow] = useState<string>('');
+  // Realny wynik renderu Klatki Filmowej — plik, nie obietnica.
+  const [videoRender, setVideoRender] = useState<{ url: string; plik: string | null; sekund: number | null } | null>(null);
 
   useEffect(() => {
     fetch('http://127.0.0.1:3001/api/music/workflows')
@@ -178,6 +181,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
   }, []);
 
   const handleQuickAction = async (action: string) => {
+    obserwuj('narzedzie', action, CONTEXT_FRAMES[activeFrameId]?.title);
     if (action === 'gen_audio_loop') {
       // ⚠️ TU BYŁA ATRAPA. Ten przycisk losował tytuł (`Beat_TeO_` + Math.random()),
       // wpisywał na sztywno 126 BPM i A minor, po czym Joanna mówiła „wygenerowałam".
@@ -214,14 +218,51 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
         setIsProcessing(false);
       }
     } else if (action === 'preview_scenes' || action === 'render_frame') {
-      const scenes = [
-        { id: 1, title: 'Scena 1: Wejście do Katedry', cuts: 3 },
-        { id: 2, title: 'Scena 2: Rezonans Sfery', cuts: 5 },
-        { id: 3, title: 'Scena 3: Kwantowy Wymiar', cuts: 4 },
-      ];
-      setVideoScenesAsset(scenes);
-      toast.success(`🎬 Wyrenderowano podgląd 3 kadrów scen wideo.`, { icon: '🎞️' });
-      void speak(`Klatki ułożone! Trzy sceny zmontowane i gotowe do podglądu.`, { voiceId: 'klatka', przewod: 'piper-pl' });
+      // ⚠️ TU BYŁA DRUGA ATRAPA, bliźniacza do tej muzycznej. Trzy sceny były
+      // WPISANE W KOD („Wejście do Katedry", „Rezonans Sfery", „Kwantowy Wymiar"),
+      // razem z liczbą cięć, a Klatka meldowała „wyrenderowano". Żaden plik nie
+      // powstawał. Teraz idzie realny render przez HyperFrames i wraca MP4 z dysku.
+      const opis = inputValue.trim();
+      if (!opis) {
+        // Nie wymyślamy scen za Suwerena — to było sednem poprzedniej atrapy.
+        toast.error('Napisz, co ma być w kadrach. Bez opisu nie ma czego renderować.');
+        return;
+      }
+      setIsProcessing(true);
+      try {
+        const stan = await fetch('http://127.0.0.1:3001/api/animacja/stan').then(r => r.json());
+        if (!stan?.gotowy) {
+          const brak = [!stan?.silnik && 'silnik HyperFrames', !stan?.ffmpeg && 'ffmpeg'].filter(Boolean).join(' i ');
+          throw new Error(`Brak połączenia z silnikiem renderującym${brak ? ` — nie widzę: ${brak}` : ''}.`);
+        }
+
+        // Sceny biorą się z OPISU Suwerena, nie z fantazji: zdanie = kadr.
+        const kadry = opis.split(/(?<=[.!?;])\s+|\s*\|\s*/).map(t => t.trim()).filter(Boolean).slice(0, 6);
+        const projekt = {
+          elements: [
+            { type: 'header', text: `Storyboard — ${kadry.length} ${kadry.length === 1 ? 'kadr' : 'kadry'}` },
+            ...kadry.map((t, i) => ({ type: 'card', text: `Kadr ${i + 1}: ${t}` })),
+          ],
+        };
+
+        const r = await fetch('http://127.0.0.1:3001/api/animacja/z-projektu', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projekt, id: 'klatka-storyboard', sekundNaElement: 2 }),
+        });
+        const d = await r.json();
+        if (!d.success) throw new Error(d.message || `Most odmówił (HTTP ${r.status}).`);
+
+        setVideoScenesAsset(kadry.map((t, i) => ({ id: i + 1, title: `Kadr ${i + 1}: ${t}`, cuts: null })));
+        setVideoRender({ url: `http://127.0.0.1:3001${d.url}`, plik: d.plik ?? null, sekund: d.sekund ?? null });
+        toast.success(`🎬 Wyrenderowano ${kadry.length} kadrów do MP4.`, { icon: '🎞️' });
+        void speak('Kadry wyrenderowane. Plik leży na dysku.', { voiceId: 'klatka', przewod: 'piper-pl' });
+      } catch (e: any) {
+        setVideoRender(null);
+        toast.error(`Nie wygenerowano: ${e.message}`);
+        void speak('Nie udało się wyrenderować. Silnik nie oddał pliku.', { voiceId: 'klatka', przewod: 'piper-pl' });
+      } finally {
+        setIsProcessing(false);
+      }
     } else if (action === 'run_harness_loop' || action === 'run_smart_ralph') {
       setIsHarnessRunning(true);
       const res = await runHarnessTask(`Autonomiczny Smart-Ralph cykl w ${CONTEXT_FRAMES[activeFrameId].title}`, activeFrameId, ollamaModel, true);
@@ -232,26 +273,42 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
           if (st) {
             setHarnessRun(st);
             if (st.assets && st.assets.length > 0) {
+              // ⚠️ Pokazujemy TO, CO ODDAŁ HARNESS. Wcześniej przy klatce filmowej
+              // podstawiały się trzy wymyślone sceny („Smart-Ralph Intro"...) —
+              // niezależnie od tego, co silnik naprawdę wypracował. A w muzycznej
+              // brakujące BPM zastępowało 128 i „D minor" z palca. Brak danych ma
+              // wyglądać na brak danych.
               if (activeFrameId === 'MUSIC' && st.assets[0].type === 'audio_loop') {
                 setAudioLoopAsset({
                   title: st.assets[0].title,
-                  bpm: st.assets[0].bpm || 128,
-                  key: st.assets[0].key || 'D minor',
-                  playing: true,
+                  bpm: st.assets[0].bpm ?? null,
+                  key: st.assets[0].key ?? null,
+                  playing: false,
                 });
               } else if (activeFrameId === 'VIDEO') {
-                setVideoScenesAsset([
-                  { id: 1, title: 'Scena 1: Smart-Ralph Intro', cuts: 4 },
-                  { id: 2, title: 'Scena 2: Rezonans Kadru', cuts: 6 },
-                  { id: 3, title: 'Scena 3: Finałowa Kompozycja', cuts: 5 },
-                ]);
+                setVideoScenesAsset(
+                  st.assets.map((a: any, i: number) => ({
+                    id: i + 1,
+                    title: a.title || `Materiał ${i + 1}`,
+                    cuts: typeof a.cuts === 'number' ? a.cuts : null,
+                  })),
+                );
               }
             }
             if (st.status === 'COMPLETED' || st.status === 'ERROR' || st.status === 'CANCELLED') {
               clearInterval(poll);
               setIsHarnessRunning(false);
-              toast.success(`🏆 Smart-Ralph ukończył cykl: ${st.delivery?.verdict || st.status}`);
-              void speak(`Zadanie ukończone przez silnik Smart-Ralph w ${CONTEXT_FRAMES[activeFrameId].title}! Wszystkie kryteria spełnione.`, { voiceId: CONTEXT_FRAMES[activeFrameId].companionId, przewod: 'piper-pl' });
+              // Błąd i anulowanie to NIE sukces. Wcześniej każde zakończenie —
+              // także ERROR — meldowało „wszystkie kryteria spełnione".
+              const udane = st.status === 'COMPLETED';
+              const werdykt = st.delivery?.verdict || st.status;
+              if (udane) {
+                toast.success(`🏆 Smart-Ralph ukończył cykl: ${werdykt}`);
+                void speak(`Cykl zamknięty w ${CONTEXT_FRAMES[activeFrameId].title}. Werdykt: ${werdykt}.`, { voiceId: CONTEXT_FRAMES[activeFrameId].companionId, przewod: 'piper-pl' });
+              } else {
+                toast.error(`Smart-Ralph nie dokończył: ${werdykt}`);
+                void speak(`Cykl przerwany. ${werdykt}.`, { voiceId: CONTEXT_FRAMES[activeFrameId].companionId, przewod: 'piper-pl' });
+              }
             }
           }
         }, 1200);
@@ -360,6 +417,9 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
         void handleQuickAction('run_harness_loop');
       }
 
+      // 🌑 Orbita patrzy z tła — pasywnie, tylko do własnej pamięci.
+      obserwuj('pytanie', message, 'sfera');
+
       // 1. Zarejestruj wniosek w CityMemory
       addWniosek({
         type: 'TOZSAMOSC',
@@ -428,6 +488,12 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
           const data = await res.json();
           if (!data.success) throw new Error(data.message || 'Nie rozpoznano mowy');
           if (!data.transcript) { toast(t('orb.mic.noSpeech', '🎙️ Nie usłyszałem nic wyraźnego...'), { icon: '🤔' }); return; }
+          obserwuj('mowa', data.transcript, 'mikrofon');
+          // 🌑 Wołanie po domenie Sfery budzi Orbitę — bez klikania w środek.
+          if (czyWolanie(data.transcript)) {
+            wywolajOrbite(`padła domena „${domenaSfery()}"`);
+            toast(`🌑 Orbita usłyszała swoją domenę.`, { icon: '🌑' });
+          }
           await submitMessage(data.transcript);
         } catch (err: any) {
           toast.error(`${t('orb.mic.error', 'Głos nie dotarł')}: ${err.message}`);
@@ -447,6 +513,7 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
   // 🔊 Auto-mowa — gdy Sfera odpowiada, wypowiedz to (lokalny klon głosu albo przeglądarka)
   useEffect(() => {
     if (!showResponse || !lastResponse) return;
+    obserwuj('odpowiedz', lastResponse, 'sfera');
     let cancelled = false;
     (async () => {
       try {
@@ -938,7 +1005,9 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
                   <div>
                     <div className="text-xs font-bold text-purple-200">{audioLoopAsset.title}</div>
                     <div className="text-[10px] font-mono text-purple-400">
-                      {audioLoopAsset.bpm} BPM • Tonacja: {audioLoopAsset.key}
+                      {audioLoopAsset.bpm ? `${audioLoopAsset.bpm} BPM` : 'BPM: nieznane'}
+                      {' • '}
+                      {audioLoopAsset.key ? `Tonacja: ${audioLoopAsset.key}` : 'tonacja: nieznana'}
                     </div>
                   </div>
                 </div>
@@ -961,8 +1030,20 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
               >
                 <div className="flex justify-between items-center text-xs font-bold text-cyan-300">
                   <span>🎬 Podgląd Kadrów & Storyboard</span>
-                  <span className="text-[10px] font-mono text-slate-400">3 Sceny</span>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {videoScenesAsset.length} {videoScenesAsset.length === 1 ? 'kadr' : 'kadry'}
+                  </span>
                 </div>
+
+                {/* Realny plik z dysku — nie zapowiedz, tylko MP4, ktory da sie odtworzyc. */}
+                {videoRender && (
+                  <div className="space-y-1">
+                    <video src={videoRender.url} controls className="w-full rounded-lg border border-cyan-500/20" />
+                    <div className="text-[10px] font-mono text-slate-500 truncate" title={videoRender.plik ?? ''}>
+                      {videoRender.plik ?? videoRender.url}
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-2">
                   {videoScenesAsset.map(sc => (
                     <div key={sc.id} className="p-2 rounded-xl bg-black/40 border border-cyan-500/20 text-center">
