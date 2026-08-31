@@ -167,11 +167,14 @@ const App: React.FC = () => {
                     // Auto-connect wallet with the authenticated email
                     autoConnectWallet(user.email || undefined);
 
-                    // Update wallet balance from Firestore
+                    // ⚠️ SALDA Z FIRESTORE NIE BIERZEMY. Księga GRV (grv_ledger.json)
+                    // jest jedynym miejscem z łańcuchem i pieczęcią; Firestore trzyma
+                    // własną liczbę, która potrafiła wygrać wyścig z odczytem księgi
+                    // i pokazać 1 000 GRV przy 1 005 075 w księdze. Balans pisze
+                    // wyłącznie `autoConnectWallet` — z mostu. Ranga może przyjść stąd.
                     setWallet(prev => ({
                         ...prev,
-                        balance: userData.balance?.toString() || prev.balance,
-                        tier: userData.tier || 'observer'
+                        tier: userData.tier || prev.tier || 'observer'
                     }));
 
                     // CRITICAL FIX: Update Identity State with FULL data from Firestore

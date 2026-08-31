@@ -6322,13 +6322,49 @@ app.get('/api/voice/status', async (req, res) => {
     let voices = []; try { voices = (await fs.readdir(VOICES_DIR)).filter(f => f.endsWith('.wav')).map(f => f.replace('.wav', '')); } catch {}
     res.json({ success: true, available, base: VOICE_BASE, voices, note: available ? 'Lokalny silnik klonu głosu gotowy.' : 'Brak lokalnego silnika — fallback przeglądarki (speechSynthesis). Zainstaluj XTTS/OpenVoice na :5002 dla suwerennego klonu Twojego głosu.' });
 });
+/**
+ * 🎙️ Dekoder próbki audio z przeglądarki.
+ *
+ * ⚠️ TU BYŁ BŁĄD, KTÓRY UCISZAŁ CAŁĄ ROZMOWĘ. Prefiks zdejmował wzorzec
+ * `^data:audio/\w+;base64,` — a MediaRecorder w Chrome oddaje
+ * `data:audio/webm;codecs=opus;base64,...`. Człon `;codecs=opus` sprawiał, że
+ * wzorzec NIE pasował, prefiks zostawał w danych i Buffer dekodował śmieci.
+ * ffmpeg dostawał plik bez nagłówka i mówił „Invalid data found when processing
+ * input" — brzmiało jak awaria ffmpega, a było zwykłym obcięciem o dwa znaki za mało.
+ *
+ * Dlatego nie dopisujemy kolejnego wariantu wzorca, tylko szukamy `base64,`
+ * i bierzemy wszystko PO nim. Każdy typ MIME i każdy zestaw parametrów przejdzie.
+ */
+function dekodujProbkeAudio(sample) {
+    const surowe = String(sample || '');
+    const i = surowe.indexOf('base64,');
+    const czyste = i >= 0 ? surowe.slice(i + 'base64,'.length) : surowe;
+    const buf = Buffer.from(czyste.trim(), 'base64');
+    // Nagranie krótsze niż ~1 kB to w praktyce pusty strumień. Lepiej powiedzieć
+    // to wprost niż karmić ffmpeg plikiem, który i tak odrzuci.
+    if (buf.length < 1024) {
+        const e = new Error(`Nagranie jest puste (${buf.length} B) — mikrofon nic nie przechwycił.`);
+        e.pusteNagranie = true;
+        throw e;
+    }
+    return buf;
+}
+
+/** ffmpeg wypluwa ~40 linii banera przy każdym błędzie. Zostawiamy to, co niesie treść. */
+function sednoBleduFfmpeg(err) {
+    const tekst = String(err?.stderr || err?.message || '');
+    const linie = tekst.split(/\r?\n/).map(l => l.trim())
+        .filter(l => l && !/^(ffmpeg version|built with|configuration:|lib[a-z]+\s|\s*--)/.test(l));
+    return linie.slice(-3).join(' | ') || String(err?.message || 'ffmpeg nie podał powodu.');
+}
+
 app.post('/api/voice/clone', async (req, res) => {
     const { sample, voiceId } = req.body ?? {};
     if (!sample) return res.status(400).json({ success: false, message: 'Brak "sample" (base64 audio).' });
     try {
         await fs.mkdir(VOICES_DIR, { recursive: true });
         const id = String(voiceId || 'suweren').replace(/[^\w-]/g, '') || 'suweren';
-        const buf = Buffer.from(String(sample).replace(/^data:audio\/\w+;base64,/, ''), 'base64');
+        const buf = dekodujProbkeAudio(sample);
         // Normalizacja do czystego WAV (MediaRecorder daje webm/ogg) — ffmpeg.
         const tmp = path.join(TEMP_DIR, `voice_in_${Date.now()}`);
         await fs.writeFile(tmp, buf);
@@ -6351,12 +6387,17 @@ app.post('/api/voice/transcribe', async (req, res) => {
         if (!fsSync.existsSync(modelPath)) return res.status(424).json({ success: false, message: `Brak modelu Whisper: ggml-${model}.bin w _OtakOs_AI/models/.` });
         if (!fsSync.existsSync(WHISPER_EXE)) return res.status(424).json({ success: false, message: 'Brak whisper-cli.exe w _OtakOs_AI/bin/.' });
 
-        const buf = Buffer.from(String(sample).replace(/^data:audio\/\w+;base64,/, ''), 'base64');
+        const buf = dekodujProbkeAudio(sample);
         src = path.join(TEMP_DIR, `orb_voice_in_${Date.now()}`);
         await fs.writeFile(src, buf);
 
         wav = path.join(TEMP_DIR, `orb_voice_${Date.now()}.wav`);
-        await execFileAsync(ffmpegPath, ['-i', src, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', wav]);
+        try {
+            await execFileAsync(ffmpegPath, ['-i', src, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', wav]);
+        } catch (e) {
+            // Bez tego front dostawal 40 linii banera ffmpega zamiast powodu.
+            throw new Error(`Nagranie nie dalo sie przetworzyc: ${sednoBleduFfmpeg(e)}`);
+        }
 
         const outBase = path.join(TEMP_DIR, 'orb_voice_tr_' + Date.now());
         jsonFile = outBase + '.json';
@@ -6366,7 +6407,8 @@ app.post('/api/voice/transcribe', async (req, res) => {
         const transcript = (out.transcription || []).map(s => String(s.text || '').trim()).join(' ').replace(/\s+/g, ' ').trim();
         return res.json({ success: true, transcript });
     } catch (err) {
-        return res.status(500).json({ success: false, message: err.message });
+        // Puste nagranie to nie awaria mostu, tylko brak wejscia — 400, nie 500.
+        return res.status(err?.pusteNagranie ? 400 : 500).json({ success: false, message: err.message });
     } finally {
         try {
             if (src) await fs.rm(src, { force: true });
