@@ -77,6 +77,18 @@ export function sluchajSzyny(naZdarzenie: (z: Zdarzenie) => void): () => void {
  *
  * Przykład: Klatka pyta Joannę o podkład muzyczny do montażu.
  */
+/**
+ * Model sam z siebie dokleja prawnicze ozdobniki — o znakach towarowych,
+ * licencjach i o tym, czym jest jako model. W rozmowie z Suwerenem to czysty
+ * szum, a gorzej: raz wypowiedziany wzorzec wraca w kolejnych odpowiedziach.
+ * Dlatego zakaz jest częścią KAŻDEJ persony, a nie doklejką do jednego promptu.
+ */
+export const ZAKAZ_FORMULEK =
+    'Nie dodawaj zastrzeżeń prawnych: żadnych wzmianek o znakach towarowych, ' +
+    'prawach autorskich, licencjach, regulaminach ani not o tym, czym jesteś jako ' +
+    'model językowy. Żadnych ostrzeżeń, disclaimerów i formułek grzecznościowych ' +
+    'na końcu. Sama treść.';
+
 export async function zapytajAgenta(odKogo: string, doKogo: string, pytanie: string): Promise<string> {
     const cel = gatunekPo(doKogo);
     if (!cel) throw new Error(`Nie ma gatunku „${doKogo}".`);
@@ -84,8 +96,9 @@ export async function zapytajAgenta(odKogo: string, doKogo: string, pytanie: str
     const persona =
         `Jesteś ${cel.imie} — agentem TeOgochi w Katedrze OtakOS, dziedzina: ${cel.dziedzina}. ` +
         `${cel.opis} Masz do dyspozycji: ${cel.narzedzia.join(', ')}. ` +
-        `Odpowiadasz koledze-agentowi, więc mów krótko i konkretnie, po polsku. ` +
-        `Nie obiecuj rzeczy, których nie zrobisz — jeśli czegoś nie potrafisz, powiedz to wprost.`;
+        `Mów krótko i konkretnie, po polsku. ` +
+        `Nie obiecuj rzeczy, których nie zrobisz — jeśli czegoś nie potrafisz, powiedz to wprost. ` +
+        ZAKAZ_FORMULEK;
 
     const r = await fetch(`${MOST}/api/szyna/pytanie`, {
         method: 'POST',

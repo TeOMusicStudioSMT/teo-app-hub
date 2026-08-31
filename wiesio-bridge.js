@@ -5865,6 +5865,105 @@ const RODZINY_MUZYKI = {
     },
 };
 
+// ── 🎛️ WARSZTAT WORKFLOW ────────────────────────────────────────────────────
+// Do tej pory graf ComfyUI wybierał się SAM, po rodzinie modelu, a plik był
+// zaszyty w RODZINY_MUZYKI. Suweren nie miał jak zobaczyć, co się właściwie
+// uruchamia, ani dorzucić własnego grafu. Te trasy otwierają katalog na oścież
+// — i pozwalają agentom Katedry pisać workflow, zamiast tylko o nich mówić.
+
+/** Czy graf jest w formacie API (mapa node'ów), a nie UI (nodes[] + links[]). */
+function czyGrafApi(wf) {
+    if (!wf || typeof wf !== 'object' || Array.isArray(wf)) return false;
+    if (Array.isArray(wf.nodes) || Array.isArray(wf.links)) return false;
+    return Object.values(wf).some(n => n && typeof n === 'object' && typeof n.class_type === 'string');
+}
+
+/** Nazwa pliku bez wycieczek po dysku. `../../etc` nie przejdzie. */
+function bezpiecznaNazwaWorkflow(nazwa) {
+    const czysta = path.basename(String(nazwa || '')).replace(/[^\w.\-]/g, '');
+    if (!czysta.endsWith('.json')) return null;
+    if (czysta.startsWith('.')) return null;
+    return czysta;
+}
+
+app.get('/api/music/workflows', async (req, res) => {
+    try {
+        await fs.mkdir(WORKFLOWS_DIR, { recursive: true });
+        const pliki = (await fs.readdir(WORKFLOWS_DIR)).filter(f => f.endsWith('.json'));
+        // Która rodzina używa którego pliku — żeby panel mógł pokazać powiązanie.
+        const rodzinaPliku = {};
+        for (const [nazwa, c] of Object.entries(RODZINY_MUZYKI)) rodzinaPliku[c.workflow] = nazwa;
+
+        const lista = [];
+        for (const f of pliki) {
+            const p = path.join(WORKFLOWS_DIR, f);
+            const st = await fs.stat(p);
+            let wf = null, blad = null;
+            try { wf = JSON.parse(await fs.readFile(p, 'utf8')); }
+            catch (e) { blad = `Nie jest poprawnym JSON-em: ${e.message}`; }
+            const api = wf ? czyGrafApi(wf) : false;
+            lista.push({
+                plik: f,
+                bajty: st.size,
+                zmieniony: st.mtime.toISOString(),
+                nodow: wf && api ? Object.keys(wf).length : null,
+                format: blad ? 'uszkodzony' : (api ? 'api' : 'ui'),
+                // Uczciwie: graf w formacie UI da się trzymać, ale most go nie uruchomi.
+                uruchamialny: api,
+                powod: blad || (api ? null : 'Format UI — wyeksportuj z ComfyUI przez „Workflow → Export (API)".'),
+                rodzina: rodzinaPliku[f] || null,
+            });
+        }
+        res.json({ success: true, katalog: WORKFLOWS_DIR, workflows: lista, ile: lista.length });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/music/workflow/:plik', async (req, res) => {
+    const nazwa = bezpiecznaNazwaWorkflow(req.params.plik);
+    if (!nazwa) return res.status(400).json({ success: false, message: 'Zła nazwa pliku (oczekuję *.json).' });
+    try {
+        const tresc = await fs.readFile(path.join(WORKFLOWS_DIR, nazwa), 'utf8');
+        res.json({ success: true, plik: nazwa, graf: JSON.parse(tresc) });
+    } catch (e) {
+        res.status(404).json({ success: false, message: `Nie ma takiego workflow: ${nazwa}` });
+    }
+});
+
+/**
+ * POST /api/music/workflow — zapis grafu. Body: { plik, graf, nadpisz? }
+ * Tędy agent Katedry (Spawacz) oddaje napisany przez siebie workflow.
+ *
+ * ⚠️ Graf w formacie UI jest ODRZUCANY. Zapisany wyglądałby na gotowy, a przy
+ * pierwszym uruchomieniu most i tak by go odbił — lepiej powiedzieć to od razu.
+ */
+app.post('/api/music/workflow', async (req, res) => {
+    const { plik, graf, nadpisz = false } = req.body ?? {};
+    const nazwa = bezpiecznaNazwaWorkflow(plik);
+    if (!nazwa) return res.status(400).json({ success: false, message: 'Podaj „plik" z rozszerzeniem .json.' });
+    if (!graf || typeof graf !== 'object') return res.status(400).json({ success: false, message: 'Brak „graf" (obiekt JSON).' });
+    if (!czyGrafApi(graf)) {
+        return res.status(400).json({
+            success: false,
+            message: 'To nie jest graf w formacie API — brak node\'ów z „class_type". Most nie uruchomiłby go, więc go nie zapisuję.',
+        });
+    }
+    const sciezka = path.join(WORKFLOWS_DIR, nazwa);
+    if (!nadpisz && fsSync.existsSync(sciezka)) {
+        return res.status(409).json({ success: false, message: `„${nazwa}" już istnieje. Wyślij nadpisz:true, żeby zastąpić.` });
+    }
+    try {
+        await fs.mkdir(WORKFLOWS_DIR, { recursive: true });
+        await fs.writeFile(sciezka, JSON.stringify(graf, null, 2), 'utf8');
+        await Szyna.nadaj({ agent: 'Spawacz', rodzaj: 'praca', tresc: `zapisał workflow ${nazwa} (${Object.keys(graf).length} nodów)` });
+        res.json({ success: true, plik: nazwa, nodow: Object.keys(graf).length });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+
 app.get('/api/music/engine/status', async (req, res) => {
     const [modele, comfy] = await Promise.all([muzykaModeleStatus(), comfyStatus()]);
 
@@ -6072,7 +6171,13 @@ app.post('/api/music/generate', async (req, res) => {
     }
 
     // 3) Workflow tej rodziny (nazw nodów nie wymyślamy — czytamy z pliku)
-    const plikWorkflow = path.join(WORKFLOWS_DIR, cfgRodziny.workflow);
+    // Suweren (albo agent) moze wskazac wlasny graf. Bez tego wybor byl zaszyty
+    // w RODZINY_MUZYKI i drugi workflow w katalogu byl nieosiagalny z panelu.
+    const wskazany = bezpiecznaNazwaWorkflow(body.workflow);
+    if (body.workflow && !wskazany) {
+        return res.status(400).json({ success: false, etap: 'workflow', message: 'Zla nazwa workflow (oczekuje *.json).' });
+    }
+    const plikWorkflow = path.join(WORKFLOWS_DIR, wskazany || cfgRodziny.workflow);
     let wf;
     try {
         wf = JSON.parse(await fs.readFile(plikWorkflow, 'utf8'));

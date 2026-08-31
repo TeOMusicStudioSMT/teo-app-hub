@@ -95,12 +95,15 @@ export const GATUNKI: Gatunek[] = [
         zadania: ['Wektor, wyjaśnij TeoArcadeForge', 'Wektor, znajdź drogę od Orba do mostu', 'Wektor, przelicz graf'],
     },
     {
-        id: 'spawacz', imie: 'Spawacz', dziedzina: 'Montaż klocków',
-        opis: 'Skleja intro, wkład i outro w jedną całość. Robota brudna, ale bez niej nie ma wydania.',
+        id: 'spawacz', imie: 'Spawacz', dziedzina: 'Warsztat workflow',
+        opis: 'Pisze i spina grafy ComfyUI dla reszty stada — Joanna dostaje od niego to, na czym liczy. '
+            + 'Skleja też klocki wydania: intro, wkład, outro.',
         formy: { 'jajko': '🥚', 'pisklę': '🔩', 'młodzik': '⚙️', 'kompan': '🔧', 'legenda': '⚡' },
         kolor: '#f97316',
-        narzedzia: ['/api/bridge/execute'],
-        zadania: ['Spawacz, sklej odcinek do YT', 'Spawacz, dorzuć outro', 'Spawacz, pokaż klocki'],
+        // ⚠️ Graf w formacie UI most odrzuci przy zapisie — Spawacz ma oddawać
+        // eksport API („Workflow → Export (API)"), bo tylko taki da się uruchomić.
+        narzedzia: ['/api/music/workflows', '/api/music/workflow', '/api/bridge/execute'],
+        zadania: ['Spawacz, pokaż grafy w warsztacie', 'Spawacz, napisz workflow dla Joanny', 'Spawacz, sklej odcinek do YT'],
     },
     {
         id: 'glosek', imie: 'Głosek', dziedzina: 'Głos i lektor',

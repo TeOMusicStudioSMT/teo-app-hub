@@ -160,17 +160,59 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
     }
   }, []);
 
+  // 🎛️ Katalog grafów ComfyUI — realny odczyt z katalogu mostu, nie lista życzeń.
+  const [workflowy, setWorkflowy] = useState<Array<{ plik: string; format: string; nodow: number | null; rodzina: string | null; uruchamialny: boolean; powod: string | null }>>([]);
+  const [wybranyWorkflow, setWybranyWorkflow] = useState<string>('');
+
+  useEffect(() => {
+    fetch('http://127.0.0.1:3001/api/music/workflows')
+      .then(r => r.json())
+      .then(d => {
+        const lista = d?.workflows ?? [];
+        setWorkflowy(lista);
+        const pierwszy = lista.find((w: any) => w.uruchamialny);
+        if (pierwszy && !wybranyWorkflow) setWybranyWorkflow(pierwszy.plik);
+      })
+      .catch(() => setWorkflowy([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleQuickAction = async (action: string) => {
     if (action === 'gen_audio_loop') {
-      const loop = {
-        title: `Beat_TeO_${Math.floor(Math.random() * 900 + 100)}`,
-        bpm: 126,
-        key: 'A minor',
-        playing: true,
-      };
-      setAudioLoopAsset(loop);
-      toast.success(`🎵 Wygenerowano pętlę audio: ${loop.title} (${loop.bpm} BPM, ${loop.key})`, { icon: '🎧' });
-      void speak(`Wygenerowałam nową pętlę audio w tempie ${loop.bpm} BPM. Gotowa do odsłuchu!`, { voiceId: 'joanna', przewod: 'piper-pl' });
+      // ⚠️ TU BYŁA ATRAPA. Ten przycisk losował tytuł (`Beat_TeO_` + Math.random()),
+      // wpisywał na sztywno 126 BPM i A minor, po czym Joanna mówiła „wygenerowałam".
+      // Nie powstawał ŻADEN dźwięk — most nie był nawet wołany. Teraz idzie realne
+      // zlecenie do ComfyUI, na wskazanym grafie, a stan bierze się z odpowiedzi.
+      const graf = workflowy.find(w => w.plik === wybranyWorkflow);
+      if (!graf?.uruchamialny) {
+        toast.error(graf?.powod || 'Nie wybrano uruchamialnego workflow — bez grafu nie ma z czego liczyć.');
+        return;
+      }
+      const opis = inputValue.trim() || 'spokojna pętla instrumentalna, ciepłe brzmienie';
+      setIsProcessing(true);
+      toast(`🎛️ Zlecam ComfyUI na grafie ${graf.plik}…`, { icon: '⏳' });
+      try {
+        const r = await fetch('http://127.0.0.1:3001/api/music/generate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: opis, duration: 30, workflow: graf.plik, rodzina: graf.rodzina || undefined }),
+        });
+        const d = await r.json();
+        if (!d.success) throw new Error(d.message || `Most odmówił (HTTP ${r.status}).`);
+        setAudioLoopAsset({
+          title: d.plik || d.nazwa || `Zlecenie ${d.promptId ?? ''}`.trim(),
+          bpm: d.bpm ?? null,
+          key: d.keyscale ?? null,
+          playing: false,
+        });
+        toast.success(`🎵 Zlecenie przyjęte przez ComfyUI (graf ${graf.plik}).`);
+        void speak('Zlecenie poszło do silnika. Dam znać, gdy skończy liczyć.', { voiceId: 'joanna', przewod: 'piper-pl' });
+      } catch (e: any) {
+        // Uczciwie: brak wag albo śpiący ComfyUI to nie jest „wygenerowano".
+        toast.error(`Nie wygenerowano: ${e.message}`);
+        void speak('Nie udało się. Silnik nie przyjął zlecenia.', { voiceId: 'joanna', przewod: 'piper-pl' });
+      } finally {
+        setIsProcessing(false);
+      }
     } else if (action === 'preview_scenes' || action === 'render_frame') {
       const scenes = [
         { id: 1, title: 'Scena 1: Wejście do Katedry', cuts: 3 },
@@ -856,6 +898,31 @@ export const TeO_Orb: React.FC<TeO_OrbProps> = ({
                 </button>
               ))}
             </div>
+
+            {/* 🎛️ Wybór workflow — tylko w Klatce Muzycznej. Lista realna, z katalogu mostu. */}
+            {activeFrameId === 'MUSIC' && (
+              <div className="flex items-center gap-2 px-1">
+                <span className="text-[10px] font-mono text-slate-500 shrink-0">graf ComfyUI</span>
+                {workflowy.length === 0 ? (
+                  <span className="text-[10px] text-amber-500/80">
+                    Most milczy albo katalog _OtakOs_AI/workflows jest pusty — nie ma na czym liczyć.
+                  </span>
+                ) : (
+                  <select
+                    value={wybranyWorkflow}
+                    onChange={(e) => setWybranyWorkflow(e.target.value)}
+                    className="flex-1 min-w-0 rounded-lg border border-white/10 bg-slate-900/80 px-2 py-1 text-[11px] font-mono text-slate-200 outline-none focus:border-purple-500"
+                  >
+                    {workflowy.map(w => (
+                      <option key={w.plik} value={w.plik} disabled={!w.uruchamialny}>
+                        {w.plik}{w.rodzina ? ` · ${w.rodzina}` : ''}{w.nodow ? ` · ${w.nodow} nodów` : ''}
+                        {w.uruchamialny ? '' : ' — format UI, nie uruchomię'}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
 
             {/* 🎧 Asset Viewer: Pętla Audio (Klatka Muzyczna) */}
             {audioLoopAsset && activeFrameId === 'MUSIC' && (

@@ -16,7 +16,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { aktywnyGatunek, stanGatunku } from './teogochiStado';
 import { gatunekPo, GATUNKI, type Gatunek } from './teogochiGatunki';
-import { zapytajAgenta } from './szyna';
+import { zapytajAgenta, ZAKAZ_FORMULEK } from './szyna';
 import { speak } from '../services/voiceService';
 
 const MOST = 'http://127.0.0.1:3001';
@@ -38,20 +38,65 @@ function rodzajGlosu(g: Gatunek): 'zenski' | 'meski' {
     return (g.glos?.includes('female') || g.id === 'joanna' || g.id === 'paleta') ? 'zenski' : 'meski';
 }
 
+/**
+ * Przedstawienie ma STAŁY, trzypunktowy kształt:
+ *   1. Imię i domena,
+ *   2. w czym służy (jedno-dwa zdania),
+ *   3. wolny impuls — świeża myśl skierowana do Suwerena.
+ *
+ * ⚠️ Punkty 1 i 2 liczy KOD, nie model. Gdyby cała formułka szła z modelu, przy
+ * każdym uruchomieniu brzmiałaby inaczej, a przy okazji dokleiłby do niej
+ * zastrzeżenia prawne — dokładnie ten szum, który mamy stąd wyciąć. Modelowi
+ * zostawiamy wyłącznie punkt 3, bo tam świeżość jest wartością, nie usterką.
+ */
 export function powitanieKompana(id: string): { gatunek: Gatunek; tekst: string } {
     const gatunek = gatunekPo(id) || GATUNKI[0];
     const stan = stanGatunku(gatunek.id);
+    const imie = stan.name || gatunek.imie;
+    // Punkt 2 z opisu gatunku, przycięty do dwóch zdań — bez rozlewania się.
+    const sluzba = gatunek.opis.split(/(?<=\.)\s+/).slice(0, 2).join(' ').trim();
     return {
         gatunek,
-        tekst: `Cześć! Jestem ${stan.name || gatunek.imie}, Twój kompan Katedry w dziedzinie: ${gatunek.dziedzina}. Słucham Cię!`,
+        tekst: `${imie} — domena: ${gatunek.dziedzina}. ${sluzba}`,
     };
 }
 
-/** Powiedz powitanie aktywnego kompana. Używa tego Sfera i Orbita. */
-export async function powitajKompana(id?: string): Promise<Gatunek> {
-    const { gatunek, tekst } = powitanieKompana(id ?? aktywnyGatunek());
+/** Zdania z prawniczym szumem wycinamy z odpowiedzi modelu — na wszelki wypadek. */
+/** Odmiana polska jest bogata — `znak\w*` łapie „znaki", „znakami", „znakach". */
+const SZUM = /(znak\w*\s+towarow\w*|trademark|™|®|praw\w*\s+autorsk\w*|copyright|licencj\w*|regulamin\w*|jako\s+(?:model|sztuczna\s+inteligencja|AI)|nie\s+jestem\s+(?:prawnikiem|lekarzem|doradc)|zastrzeżon\w*\s+(?:znak|praw)\w*)/i;
+
+export function bezFormulek(tekst: string): string {
+    const zdania = String(tekst || '').split(/(?<=[.!?])\s+/);
+    const czyste = zdania.filter(z => !SZUM.test(z));
+    // Gdyby filtr zjadł wszystko, oddajemy oryginał — lepiej szum niż pustka.
+    return (czyste.length ? czyste.join(' ') : String(tekst || '')).trim();
+}
+
+/**
+ * Punkt 3: wolny start. Krótka, świeża myśl od gatunku — z jego rdzenia.
+ * Gdy most albo model milczy, po prostu jej nie ma. Podstawianie „inspiracji"
+ * z listy w kodzie byłoby udawaniem świeżości, której nikt nie policzył.
+ */
+export async function iskraKompana(gatunek: Gatunek): Promise<string | null> {
     try {
-        await speak(tekst, { voiceId: gatunek.id, rodzaj: rodzajGlosu(gatunek), przewod: 'piper-pl' });
+        const odp = await zapytajAgenta('Suweren', gatunek.id,
+            'Przywitaj się jednym zdaniem: rzuć Suwerenowi świeżą myśl, spostrzeżenie albo iskrę '
+            + `ze swojej dziedziny (${gatunek.dziedzina}). Jedno zdanie, bez powtarzania swojego imienia `
+            + `i bez opisywania, czym się zajmujesz — to już powiedziano. ${ZAKAZ_FORMULEK}`);
+        const czysta = bezFormulek(odp);
+        return czysta || null;
+    } catch {
+        return null;
+    }
+}
+
+/** Powiedz powitanie aktywnego kompana. Używa tego Sfera i Orbita. */
+export async function powitajKompana(id?: string, zIskra = true): Promise<Gatunek> {
+    const { gatunek, tekst } = powitanieKompana(id ?? aktywnyGatunek());
+    const iskra = zIskra ? await iskraKompana(gatunek) : null;
+    const pelne = iskra ? `${tekst} ${iskra}` : tekst;
+    try {
+        await speak(pelne, { voiceId: gatunek.id, rodzaj: rodzajGlosu(gatunek), przewod: 'piper-pl' });
     } catch (err) {
         // Głos to nie rdzeń rozmowy — brak Pipera nie może uciszyć całej Katedry.
         console.warn('[Rozmowa] Powitanie bez głosu:', err);
@@ -131,7 +176,7 @@ export function useRozmowaKompana() {
                 setFaza('mysli');
                 // Odpowiada GATUNEK, swoim rdzeniem i swoją personą — przez szynę,
                 // więc rozmowa zostawia ślad w faktach Katedry.
-                const odpowiedz = await zapytajAgenta('Suweren', gatunek.id, d.transcript);
+                const odpowiedz = bezFormulek(await zapytajAgenta('Suweren', gatunek.id, d.transcript));
                 setTekst(odpowiedz);
                 setFaza('mowi');
                 try {
