@@ -33,6 +33,7 @@ import { useAssistant } from '../hooks/useAssistant';
 import { InstallPWA } from './InstallPWA';
 import { CoBotDashboard } from './special/CoBotFactory';
 import DomTeogochi from './special/DomTeogochi';
+import KuzniaModeli from './special/KuzniaModeli';
 import { CrewCreator } from './special/CrewCreator';
 import { TeO_Orb, AromaType } from './TeO_Orb';
 import { IdentityCard, CoreStatusPanel } from './IdentityCard';
@@ -57,7 +58,7 @@ interface TeonautLoungeProps {
     onOpenCrewClub?: () => void;
 }
 
-type View = 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'gameforge' | 'mcp-skillboard' | 'twoje-biznesy';
+type View = 'kuznia' | 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'gameforge' | 'mcp-skillboard' | 'twoje-biznesy';
 
 export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionToggle, onFavoriteToggle, onLogout, onTriggerAnomaly, behavioralData, onVisualAssistantOpen, onOpenCrewClub }) => {
     const [activeView, setActiveView] = useState<View>('dashboard');
@@ -249,6 +250,7 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                                 CoBotFactory zostaje w kodzie nietknięta: to inna rzecz
                                 (fabryka autonomicznych agentów), nie ma powodu jej kasować. */}
                             {activeView === 'cobots' && <DomTeogochi />}
+                            {activeView === 'kuznia' && <KuzniaModeli />}
                             {activeView === 'crew-club' && <div className="text-center py-20 text-slate-500 italic">Ładowanie Kokpitu Mistrzów...</div>}
                             {activeView === 'academy' && <QuantumCompass />}
                             {activeView === 'field-control' && <FieldControlView />}

@@ -62,6 +62,7 @@ import * as Rangi         from './services/Rangi.js';
 import * as Questy        from './services/Questy.js';
 import * as Konta         from './services/Konta.js';
 import * as PaneleTeogochi from './services/PaneleTeogochi.js';
+import * as KuzniaModeli   from './services/KuzniaModeli.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
 import { stanAnimacji, renderuj, KATALOG_PROJEKTOW } from './services/Animacje.js';
 import { zProjektuAppV2 }   from './services/KompozytorUI.js';
@@ -5885,6 +5886,34 @@ function bezpiecznaNazwaWorkflow(nazwa) {
     if (czysta.startsWith('.')) return null;
     return czysta;
 }
+
+// ── 🔨 KUŹNIA MODELI ────────────────────────────────────────────────────────
+// Wagi z _OtakOs_AI/models → rejestracja w Ollamie. Skan robi MOST, bo
+// przeglądarka nie ma dostępu do dysku.
+
+app.get('/api/modele/lokalne', async (req, res) => {
+    try {
+        res.json({ success: true, ...(await KuzniaModeli.skanujModele(OLLAMA_BASE)) });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/modele/wykuj', async (req, res) => {
+    const { plik, nazwa, szablon } = req.body ?? {};
+    const r = await KuzniaModeli.wykuj({ plik, nazwa, szablon, ollamaBase: OLLAMA_BASE });
+    if (!r.ok) return res.status(400).json({ success: false, message: r.powod });
+    await Szyna.nadaj({ agent: 'Kuźnia', rodzaj: 'praca', tresc: `kuję model „${r.nazwa}" z ${r.plik}` });
+    res.json({ success: true, ...r });
+});
+
+app.get('/api/modele/wykuj/stan', (req, res) => {
+    const id = req.query.id;
+    const stan = KuzniaModeli.stanKucia(id);
+    if (id && !stan) return res.status(404).json({ success: false, message: 'Nie ma takiego przebiegu.' });
+    res.json({ success: true, [id ? 'przebieg' : 'przebiegi']: stan });
+});
+
 
 app.get('/api/music/workflows', async (req, res) => {
     try {
