@@ -88,3 +88,10 @@ _OtakOs_Voice/piper/*.wav
 
 # 🗄️ Kopie komponentów — magazyn cofek dla Mechanika, nie kod
 _OtakOs_Kopie/
+
+# 🎮 Unreal — sample Epica i instalki narzedzi. 57 GB + 8,4 GB: nie kod Katedry,
+# nie do gita, i tylko zasmiecaja graf wiedzy obcymi symbolami (ags_shader_*,
+# ASPPlayerCameraManager). Wlasne projekty (.uproject) zostaja widoczne.
+TeO_Arcade_Forge/ElectricDreamsEnv/
+TeO_Arcade_Forge/Twinmotion2026.1/
+TeO_Arcade_Forge/RealityScan_2.2/
