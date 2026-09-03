@@ -540,6 +540,67 @@ const KatedraChat: React.FC = () => {
         }
     }, []);
 
+    // ── 🧩 KOMENDA /kod — pamięć kodu dla Suwerena i dla agentów ──────────
+    /**
+     * `/kod <symbol>`               → czym jest ten węzeł
+     * `/kod sciezka <a> -> <b>`     → którędy biegnie droga
+     * `/kod architektura`           → obraz całości
+     * `/kod fragment <symbol>`      → treść funkcji (tylko codebase-memory-mcp)
+     *
+     * Odpowiedź NIESIE NAZWĘ SILNIKA. Katedra ma dwa źródła wiedzy o kodzie —
+     * własny graf (Graphify) i mocniejszy codebase-memory-mcp, gdy binarium jest
+     * na miejscu. Bez podpisu nie dałoby się odróżnić, czyja to odpowiedź.
+     */
+    const dispatchPamiecKodu = useCallback(async (rawCmd: string) => {
+        const reszta = rawCmd.replace(/^\/kod\s*/i, '').trim();
+        addMessage({ sender: 'human', content: `/kod ${reszta}` });
+
+        let rodzaj = 'szukaj';
+        let co = reszta;
+        let b: string | undefined;
+
+        if (/^architektura\b/i.test(reszta)) { rodzaj = 'architektura'; co = ''; }
+        else if (/^fragment\b/i.test(reszta)) { rodzaj = 'fragment'; co = reszta.replace(/^fragment\s*/i, '').trim(); }
+        else if (/^(sciezka|ścieżka)\b/i.test(reszta)) {
+            rodzaj = 'sciezka';
+            const bezSlowa = reszta.replace(/^(sciezka|ścieżka)\s*/i, '');
+            const [x, y] = bezSlowa.split(/\s*(?:->|→|\bdo\b)\s*/);
+            co = (x || '').trim(); b = (y || '').trim();
+            if (!b) {
+                addMessage({ sender: 'system', content: '⚠️ Podaj dwa końce: `/kod sciezka Orb -> most`.' });
+                return;
+            }
+        }
+
+        if (rodzaj !== 'architektura' && !co) {
+            addMessage({ sender: 'system', content: '⚠️ Podaj symbol: `/kod KatedraChat`.' });
+            return;
+        }
+
+        const id = addMessage({ sender: 'system', content: '🧩 Pytam pamięć kodu…', streaming: true });
+        try {
+            const r = await fetch('http://127.0.0.1:3001/api/pamiec-kodu/pytanie', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rodzaj, co, b }),
+            });
+            const d = await r.json();
+            if (!d.success) {
+                updateMessage(id, { streaming: false, content: `⚠️ ${d.message || 'Pamięć kodu nie odpowiedziała.'}` });
+                return;
+            }
+            updateMessage(id, {
+                streaming: false,
+                content: `🧩 **${d.silnik}** · \`${d.narzedzie}\`
+
+\`\`\`
+${String(d.tresc || '').slice(0, 4000)}
+\`\`\``,
+            });
+        } catch (e: any) {
+            updateMessage(id, { streaming: false, content: `⚠️ Most nie odpowiada: ${e.message}` });
+        }
+    }, []);
+
     // ── 💬 HISTORIA CZATU ─────────────────────────────────────────
     // Trzy ostatnie rozmowy z pliku-bazy. Odświeżamy po każdym zapisie, żeby
     // pasek pokazywał stan pliku, a nie to, co pamięta ten jeden komponent.
@@ -1076,6 +1137,13 @@ const KatedraChat: React.FC = () => {
         if (/^\/mechanik\b/i.test(text)) {
             setCurrentInput('');
             await dispatchToMechanik(text);
+            return;
+        }
+
+        // ── Przechwyt komendy /kod → Pamięć Kodu ──
+        if (/^\/kod\b/i.test(text)) {
+            setCurrentInput('');
+            await dispatchPamiecKodu(text);
             return;
         }
 
@@ -1772,6 +1840,9 @@ const KatedraChat: React.FC = () => {
                         </p>
                         <p className="text-emerald-300/70 text-xs">
                             🧠 <span className="font-mono">/git</span> → Git Assistant (Conventional Commit z diffu)
+                        </p>
+                        <p className="text-emerald-300/70 text-xs">
+                            🧩 <span className="font-mono">/kod &lt;symbol&gt;</span> → Pamięć Kodu (graf Katedry / codebase-memory-mcp)
                         </p>
                         <p className="text-purple-400 text-xs text-center">
                             {sourceMode === 'cloud'

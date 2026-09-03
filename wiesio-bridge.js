@@ -64,6 +64,7 @@ import * as Konta         from './services/Konta.js';
 import * as PaneleTeogochi from './services/PaneleTeogochi.js';
 import * as KuzniaModeli   from './services/KuzniaModeli.js';
 import * as HistoriaCzatu  from './services/HistoriaCzatu.js';
+import * as PamiecKodu     from './services/PamiecKodu.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
 import { stanAnimacji, renderuj, KATALOG_PROJEKTOW } from './services/Animacje.js';
 import { zProjektuAppV2 }   from './services/KompozytorUI.js';
@@ -5894,6 +5895,28 @@ function bezpiecznaNazwaWorkflow(nazwa) {
 
 // ── 💬 HISTORIA CZATU ───────────────────────────────────────────────────────
 // `_OtakOs_Wymiar/czaty.json` JEST bazą czatu operacyjnego — nie kopią zapasową.
+
+// ── 🧩 PAMIĘĆ KODU ──────────────────────────────────────────────────────────
+// codebase-memory-mcp (MIT) gdy binarium jest na miejscu; Graphify, gdy go nie ma.
+// Odpowiedź ZAWSZE niesie nazwę silnika — żadnej cichej podmiany.
+
+app.get('/api/pamiec-kodu/stan', async (req, res) => {
+    try { res.json({ success: true, ...(await PamiecKodu.stan()) }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/pamiec-kodu/pytanie', async (req, res) => {
+    const { rodzaj, co, b } = req.body ?? {};
+    if (!rodzaj) return res.status(400).json({ success: false, message: 'Wymagane: rodzaj (szukaj|sciezka|architektura|fragment).' });
+    if (rodzaj !== 'architektura' && !co) {
+        return res.status(400).json({ success: false, message: 'Wymagane: co (nazwa węzła/symbolu).' });
+    }
+    const r = await PamiecKodu.zapytaj({ rodzaj, co, b, mostBase: `http://127.0.0.1:${PORT}` });
+    if (!r.ok) return res.status(424).json({ success: false, ...r, message: r.powod });
+    await Szyna.nadaj({ agent: 'Wektor', rodzaj: 'praca', tresc: `pamięć kodu (${r.silnik}): ${rodzaj} ${co ?? ''}`.trim() });
+    res.json({ success: true, ...r });
+});
+
 
 app.get('/api/czat/sesje', async (req, res) => {
     try {
