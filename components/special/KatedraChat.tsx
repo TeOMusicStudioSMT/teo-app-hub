@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ApiDyrygent, CLOUD_MODELS, ImageAttachment } from '../../lib/router/ApiDyrygent';
+import * as Historia from '../../lib/historiaCzatu';
 
 // ══════════════════════════════════════════════════════════════════
 // BLOK KODU z przyciskiem "⚡ Wdróż do Katedry"
@@ -401,6 +402,12 @@ const KatedraChat: React.FC = () => {
 
     // ── Stan czatu ────────────────────────────────────────────────
     const [messages, setMessages]         = useState<Message[]>([]);
+
+    // ── 💬 HISTORIA — bazą jest PLIK po stronie mostu, nie pamięć przeglądarki ──
+    const [sesjaId, setSesjaId]           = useState<string>(() => Historia.nowaSesja());
+    const [historia, setHistoria]         = useState<Historia.StreszczenieSesji[]>([]);
+    const [plikBazy, setPlikBazy]         = useState<string>('');
+    const [historiaZywa, setHistoriaZywa] = useState<boolean | null>(null);
     const [currentInput, setCurrentInput] = useState('');
     const [chatMemory, setChatMemory]     = useState<ChatMemory[]>([]);
     const [isLoading, setIsLoading]       = useState(false);
@@ -532,6 +539,52 @@ const KatedraChat: React.FC = () => {
             localStorage.setItem('DIFFUSION_ENGINE_ACTIVE', 'false');
         }
     }, []);
+
+    // ── 💬 HISTORIA CZATU ─────────────────────────────────────────
+    // Trzy ostatnie rozmowy z pliku-bazy. Odświeżamy po każdym zapisie, żeby
+    // pasek pokazywał stan pliku, a nie to, co pamięta ten jeden komponent.
+    const odswiezHistorie = useCallback(async () => {
+        const d = await Historia.ostatnieSesje(3);
+        setHistoriaZywa(!!d);
+        if (!d) { setHistoria([]); return; }
+        setHistoria(d.sesje);
+        setPlikBazy(d.plik);
+    }, []);
+
+    useEffect(() => { void odswiezHistorie(); }, [odswiezHistorie]);
+
+    // Zapis z opóźnieniem: piszemy PO ucichnięciu rozmowy, a nie po każdym
+    // znaku streamowanej odpowiedzi — inaczej plik byłby przepisywany setki razy.
+    useEffect(() => {
+        if (!messages.length) return;
+        const t = setTimeout(() => {
+            void Historia.zapiszSesje(sesjaId, messages.map(m => ({
+                id: m.id, sender: m.sender, content: m.content,
+                timestamp: m.timestamp instanceof Date ? m.timestamp.getTime() : Date.now(),
+            }))).then(ok => { if (ok) void odswiezHistorie(); });
+        }, 1500);
+        return () => clearTimeout(t);
+    }, [messages, sesjaId, odswiezHistorie]);
+
+    /** Otwórz zapisaną rozmowę — wiadomości wracają z pliku, nie z pamięci. */
+    const otworzSesje = useCallback(async (id: string) => {
+        const s = await Historia.wczytajSesje(id);
+        if (!s) return;
+        setMessages((s.wiadomosci ?? []).map(w => ({
+            id: w.id || `${w.timestamp}`,
+            sender: w.sender as SenderType,
+            content: w.content,
+            timestamp: new Date(w.timestamp),
+        })));
+        setSesjaId(s.id);
+    }, []);
+
+    /** Nowa rozmowa. Poprzednia została w pliku — nic nie ginie. */
+    const nowaRozmowa = useCallback(() => {
+        setSesjaId(Historia.nowaSesja());
+        setMessages([]);
+        void odswiezHistorie();
+    }, [odswiezHistorie]);
 
     // ── Helpers wiadomości ────────────────────────────────────────
     const addMessage = (msg: Omit<Message, 'id' | 'timestamp'>): string => {
@@ -1651,6 +1704,55 @@ const KatedraChat: React.FC = () => {
                     </button>
                 </div>
             )}
+
+            {/* ── 💬 PASEK HISTORII — trzy ostatnie rozmowy z pliku-bazy ────── */}
+            <div className="shrink-0 flex items-center gap-1.5 px-3 py-2 border-b border-purple-500/10 overflow-x-auto">
+                <button
+                    onClick={nowaRozmowa}
+                    title="Nowa rozmowa — poprzednia zostaje w pliku"
+                    className="shrink-0 rounded-lg border border-purple-500/40 px-2.5 py-1 text-[11px] font-bold
+                               text-purple-200 hover:bg-purple-500/10 transition-colors"
+                >
+                    + nowa
+                </button>
+
+                {historiaZywa === false ? (
+                    <span className="text-[10px] text-amber-500/80 px-1">
+                        Most śpi — historii nie ma skąd wczytać (baza to plik po jego stronie).
+                    </span>
+                ) : historia.length === 0 ? (
+                    <span className="text-[10px] text-slate-600 px-1">
+                        Brak zapisanych rozmów — pierwsza zapisze się sama.
+                    </span>
+                ) : (
+                    historia.map(h => {
+                        const teraz = h.id === sesjaId;
+                        return (
+                            <button
+                                key={h.id}
+                                onClick={() => otworzSesje(h.id)}
+                                title={`${h.ile} wiadomości · ${new Date(h.zmieniona).toLocaleString('pl-PL')}`}
+                                className="shrink-0 max-w-[13rem] rounded-lg border px-2.5 py-1 text-left transition-colors"
+                                style={{
+                                    borderColor: teraz ? 'rgba(168,85,247,0.6)' : 'rgba(148,163,184,0.18)',
+                                    background: teraz ? 'rgba(168,85,247,0.12)' : 'rgba(0,0,0,0.25)',
+                                }}
+                            >
+                                <div className="text-[11px] text-slate-200 truncate">{h.tytul}</div>
+                                <div className="text-[9px] font-mono text-slate-500">
+                                    {h.ile} wiad. · {new Date(h.zmieniona).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                            </button>
+                        );
+                    })
+                )}
+
+                {plikBazy && (
+                    <span className="ml-auto shrink-0 text-[9px] font-mono text-slate-700 truncate max-w-[16rem]" title={plikBazy}>
+                        baza: czaty.json
+                    </span>
+                )}
+            </div>
 
             {/* ── WIADOMOŚCI ─────────────────────────────────────── */}
             <div

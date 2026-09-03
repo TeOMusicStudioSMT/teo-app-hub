@@ -63,6 +63,7 @@ import * as Questy        from './services/Questy.js';
 import * as Konta         from './services/Konta.js';
 import * as PaneleTeogochi from './services/PaneleTeogochi.js';
 import * as KuzniaModeli   from './services/KuzniaModeli.js';
+import * as HistoriaCzatu  from './services/HistoriaCzatu.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
 import { stanAnimacji, renderuj, KATALOG_PROJEKTOW } from './services/Animacje.js';
 import { zProjektuAppV2 }   from './services/KompozytorUI.js';
@@ -5890,6 +5891,37 @@ function bezpiecznaNazwaWorkflow(nazwa) {
 // ── 🔨 KUŹNIA MODELI ────────────────────────────────────────────────────────
 // Wagi z _OtakOs_AI/models → rejestracja w Ollamie. Skan robi MOST, bo
 // przeglądarka nie ma dostępu do dysku.
+
+// ── 💬 HISTORIA CZATU ───────────────────────────────────────────────────────
+// `_OtakOs_Wymiar/czaty.json` JEST bazą czatu operacyjnego — nie kopią zapasową.
+
+app.get('/api/czat/sesje', async (req, res) => {
+    try {
+        res.json({ success: true, ...(await HistoriaCzatu.listaSesji(req.query.ile ?? 3)) });
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/czat/sesja/:id', async (req, res) => {
+    const s = await HistoriaCzatu.wczytajSesje(req.params.id);
+    if (!s) return res.status(404).json({ success: false, message: 'Nie ma takiej rozmowy.' });
+    res.json({ success: true, sesja: s });
+});
+
+app.post('/api/czat/sesja', async (req, res) => {
+    const { id, wiadomosci, tytul } = req.body ?? {};
+    const r = await HistoriaCzatu.zapiszSesje({ id, wiadomosci, tytul });
+    if (!r.ok) return res.status(400).json({ success: false, message: r.powod });
+    res.json({ success: true, ...r });
+});
+
+app.post('/api/czat/sesja/usun', async (req, res) => {
+    const r = await HistoriaCzatu.usunSesje(req.body?.id);
+    if (!r.ok) return res.status(404).json({ success: false, message: r.powod });
+    res.json({ success: true });
+});
+
 
 app.get('/api/modele/lokalne', async (req, res) => {
     try {
