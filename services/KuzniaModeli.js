@@ -21,7 +21,34 @@ import path from 'path';
 import { spawn } from 'child_process';
 import os from 'os';
 
+/**
+ * Gdzie leżą wagi. Katalog Katedry ZAWSZE, plus dowolne dodatkowe wskazane
+ * przez Suwerena w `OTAKOS_MODELE_KATALOGI` (rozdzielone średnikiem) albo
+ * w `_OtakOs_Wymiar/katalogi-modeli.json`.
+ *
+ * ⚠️ Modele wideo (text-to-video) potrafią mieć 60+ GB i nikt ich nie wrzuca
+ * na dysk systemowy — leżą tam, gdzie jest miejsce (u Suwerena: `E:/Modele AI`).
+ * Kuźnia, która widzi tylko jeden katalog, po prostu ich nie zauważa.
+ */
 const KATALOG = () => path.join(process.cwd(), '_OtakOs_AI', 'models');
+
+function katalogiDodatkowe() {
+    const lista = [];
+    const zEnv = String(process.env.OTAKOS_MODELE_KATALOGI || '').split(';').map(x => x.trim()).filter(Boolean);
+    lista.push(...zEnv);
+    try {
+        const plik = path.join(process.cwd(), '_OtakOs_Wymiar', 'katalogi-modeli.json');
+        if (fsSync.existsSync(plik)) {
+            const d = JSON.parse(fsSync.readFileSync(plik, 'utf8'));
+            if (Array.isArray(d?.katalogi)) lista.push(...d.katalogi.map(String));
+        }
+    } catch { /* zly plik — jedziemy na samym katalogu Katedry */ }
+    return [...new Set(lista)];
+}
+
+export function wszystkieKatalogi() {
+    return [KATALOG(), ...katalogiDodatkowe()];
+}
 
 /** Co potrafimy rozpoznać. Reszta trafia na listę jako „nieznane" — bez zgadywania. */
 const RODZAJE = [
@@ -29,6 +56,8 @@ const RODZAJE = [
     { wzor: /^ggml-.*\.bin$/i, rodzaj: 'whisper', przeznaczenie: 'Wagi Whisper.cpp — używa ich transkrypcja mowy.', kowalny: false },
     { wzor: /\.safetensors$/i, rodzaj: 'safetensors', przeznaczenie: 'Wagi difuzyjne/HF — dla ComfyUI, nie dla Ollamy.', kowalny: false },
     { wzor: /\.(bin|pt|pth|onnx)$/i, rodzaj: 'inne-wagi', przeznaczenie: 'Wagi w formacie spoza Ollamy.', kowalny: false },
+    // Pobieranie w toku — plik JESZCZE nie jest modelem i nie ma sensu go liczyc.
+    { wzor: /\.(crdownload|part|tmp|download)$/i, rodzaj: 'pobieranie', przeznaczenie: 'Pobieranie w toku — plik niekompletny.', kowalny: false },
 ];
 
 function rozpoznaj(nazwa) {
@@ -54,14 +83,33 @@ export function proponowanaNazwa(plik) {
 }
 
 export async function skanujModele(ollamaBase) {
-    const katalog = KATALOG();
-    try { await fs.access(katalog); }
-    catch { return { katalog, istnieje: false, modele: [], ollama: null }; }
-
-    const pliki = await fs.readdir(katalog);
+    const katalogi = wszystkieKatalogi();
     const wOllamie = await modeleOllamy(ollamaBase);
 
     const modele = [];
+    const stanKatalogow = [];
+    for (const katalog of katalogi) {
+        let pliki = [];
+        let istnieje = true;
+        try { pliki = await fs.readdir(katalog); }
+        catch { istnieje = false; }
+        stanKatalogow.push({ sciezka: katalog, istnieje, ile: pliki.length });
+        if (!istnieje) continue;
+        await zbierzZKatalogu(katalog, pliki, wOllamie, modele);
+    }
+
+    modele.sort((a, b) => b.bajty - a.bajty);
+    return {
+        katalog: katalogi[0],
+        katalogi: stanKatalogow,
+        istnieje: stanKatalogow.some(k => k.istnieje),
+        modele,
+        ollama: wOllamie ? { zywa: true, ile: wOllamie.length } : { zywa: false, ile: 0 },
+        doWykucia: modele.filter(m => m.kowalny && m.wykuty === false).reduce((s, m) => s + m.bajty, 0),
+    };
+}
+
+async function zbierzZKatalogu(katalog, pliki, wOllamie, modele) {
     for (const plik of pliki) {
         const pelna = path.join(katalog, plik);
         let st;
@@ -85,16 +133,9 @@ export async function skanujModele(ollamaBase) {
             kowalny: r.kowalny,
             proponowanaNazwa: nazwa,
             wykuty,
+            katalog,
         });
     }
-
-    modele.sort((a, b) => b.bajty - a.bajty);
-    return {
-        katalog, istnieje: true, modele,
-        ollama: wOllamie ? { zywa: true, ile: wOllamie.length } : { zywa: false, ile: 0 },
-        // Suma tego, co dołoży się na dysku, gdy wykujemy wszystko kowalne.
-        doWykucia: modele.filter(m => m.kowalny && m.wykuty === false).reduce((s, m) => s + m.bajty, 0),
-    };
 }
 
 // ── KUCIE ───────────────────────────────────────────────────────────────────
@@ -115,9 +156,17 @@ export function stanKucia(id) {
  * dwa razy przez sieć na własnej maszynie.
  */
 export async function wykuj({ plik, nazwa, szablon, ollamaBase }) {
-    const katalog = KATALOG();
-    const pelna = path.join(katalog, path.basename(String(plik || '')));
-    if (!fsSync.existsSync(pelna)) return { ok: false, powod: `Nie ma pliku „${plik}" w ${katalog}.` };
+    // Plik moze lezec w dowolnym ze skonfigurowanych katalogow — szukamy po
+    // nazwie w kazdym z nich. `basename` zostaje: to on odcina wycieczki po dysku.
+    const nazwaPliku = path.basename(String(plik || ''));
+    let pelna = null;
+    for (const k of wszystkieKatalogi()) {
+        const kandydat = path.join(k, nazwaPliku);
+        if (fsSync.existsSync(kandydat)) { pelna = kandydat; break; }
+    }
+    if (!pelna) {
+        return { ok: false, powod: `Nie ma pliku „${nazwaPliku}" w żadnym z katalogów: ${wszystkieKatalogi().join(', ')}.` };
+    }
     if (!/\.gguf$/i.test(pelna)) {
         return { ok: false, powod: 'Kuć da się tylko GGUF — inne formaty Ollama odrzuci.' };
     }

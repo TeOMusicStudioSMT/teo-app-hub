@@ -85,6 +85,33 @@ export async function stan() {
 }
 
 /**
+ * Jak nazywa sie zaindeksowany projekt. Bierzemy to z `list_projects`, a nie
+ * z nazwy katalogu — CBM sam wyprowadza nazwe i potrafi ja zakodowac, gdy sciezka
+ * ma znaki spoza ASCII (a nasza ma spacje i polskie nazwy).
+ */
+let _projektCache = null;
+export async function nazwaProjektu(odswiez = false) {
+    if (_projektCache && !odswiez) return _projektCache;
+    const exe = znajdzSilnik();
+    if (!exe) return null;
+    try {
+        const p = mcpPolaczenie('codebase-memory', exe, []);
+        const w = await p.wywolaj('list_projects', {});
+        const tekst = (w?.content ?? []).map(c => (typeof c === 'string' ? c : c?.text ?? '')).join('\n');
+        // Odpowiedz bywa tekstem albo JSON-em — probujemy obu, bez zakladania ksztaltu.
+        try {
+            const j = JSON.parse(tekst);
+            const lista = Array.isArray(j) ? j : (j.projects ?? j.items ?? []);
+            const pierwszy = lista[0];
+            const nazwa = typeof pierwszy === 'string' ? pierwszy : (pierwszy?.name ?? pierwszy?.project);
+            if (nazwa) return (_projektCache = nazwa);
+        } catch { /* nie JSON — czytamy jako tekst */ }
+        const m = tekst.match(/^[ \t*-]*([A-Za-z0-9_.:-]{2,})/m);
+        return (_projektCache = m ? m[1] : null);
+    } catch { return null; }
+}
+
+/**
  * Zapytaj pamięć kodu.
  *
  * `rodzaj` mapuje się na narzędzie CBM, a przy jego braku — na trasę Graphify:
@@ -97,11 +124,22 @@ export async function zapytaj({ rodzaj, co, b, mostBase }) {
     const exe = znajdzSilnik();
 
     if (exe) {
+        // ⚠️ KAZDE narzedzie CBM wymaga `project` — to nie jest opcja. Nazwy
+        // parametrow wzialem ze SCHEMATOW (tools/list), nie z README: pierwsze
+        // podejscie strzelalo `path` i `from/to`, a silnik chce `repo_path`
+        // i `function_name`. Zgadywanie ksztaltu API konczy sie „required".
+        const projekt = await nazwaProjektu();
+        if (!projekt) {
+            return {
+                ok: false, silnik: 'codebase-memory-mcp',
+                powod: 'Zaden projekt nie jest zaindeksowany. Odpal /api/pamiec-kodu/indeksuj.',
+            };
+        }
         const mapa = {
-            szukaj: ['search_graph', { name_pattern: co }],
-            sciezka: ['trace_path', { from: co, to: b }],
-            architektura: ['get_architecture', {}],
-            fragment: ['get_code_snippet', { qualified_name: co }],
+            szukaj: ['search_graph', { project: projekt, query: co, limit: 20 }],
+            sciezka: ['trace_path', { project: projekt, function_name: co, direction: 'both' }],
+            architektura: ['get_architecture', { project: projekt }],
+            fragment: ['get_code_snippet', { project: projekt, qualified_name: co }],
         };
         const wpis = mapa[rodzaj];
         if (!wpis) return { ok: false, powod: `Nie znam rodzaju „${rodzaj}".` };
@@ -153,4 +191,22 @@ export async function zapytaj({ rodzaj, co, b, mostBase }) {
     }
 }
 
-export default { znajdzSilnik, stan, zapytaj };
+/**
+ * Zaindeksuj repozytorium w CBM. Bez tego graf jest pusty i kazde pytanie
+ * wraca z niczym — a „nic" bez powodu wyglada jak awaria.
+ */
+export async function indeksuj(sciezka) {
+    const exe = znajdzSilnik();
+    if (!exe) return { ok: false, powod: 'Brak binarium codebase-memory-mcp — nie ma czym indeksowac.' };
+    try {
+        const p = mcpPolaczenie('codebase-memory', exe, []);
+        // Indeksowanie to nie zapytanie — daj mu 20 minut, zanim uznasz, ze padlo.
+        const w = await p.wywolaj('index_repository', { repo_path: sciezka || process.cwd() }, 1200000);
+        const tresc = (w?.content ?? []).map(c => (typeof c === 'string' ? c : c?.text ?? '')).join('\n').trim();
+        return { ok: true, tresc };
+    } catch (e) {
+        return { ok: false, powod: e.message };
+    }
+}
+
+export default { znajdzSilnik, stan, zapytaj, indeksuj };

@@ -123,9 +123,14 @@ class Polaczenie {
         return this.narzedzia;
     }
 
-    async wywolaj(nazwa, argumenty) {
+    /**
+     * Wywolaj narzedzie. `czas` pozwala wydluzyc limit dla operacji, ktore
+     * z natury trwaja — indeksowanie repozytorium potrafi zajac kwadrans, a
+     * ucinanie go po 180 s wyglada jak awaria serwera, ktory pracuje poprawnie.
+     */
+    async wywolaj(nazwa, argumenty, czas) {
         await this.polacz();
-        return this._zapytaj('tools/call', { name: nazwa, arguments: argumenty || {} }, CZAS_WYWOLANIA);
+        return this._zapytaj('tools/call', { name: nazwa, arguments: argumenty || {} }, czas || CZAS_WYWOLANIA);
     }
 
     zamknij() {

@@ -197,6 +197,34 @@ export const DomTeogochi: React.FC = () => {
             .catch(() => setModele([]));
     }, []);
 
+    // 📱 PUBLIKACJA STADA DLA APKI. Wyklucie i XP żyją w localStorage tej
+    // przeglądarki, więc most sam z siebie ich nie zna — Katedra musi mu je
+    // podać. Bez tego aplikacja na telefonie pokazywałaby wymyślonych agentów
+    // zamiast Twojego stada.
+    useEffect(() => {
+        const migawka = {
+            aktywny: dyzurny,
+            gatunki: GATUNKI.map(g => {
+                const wyklute = stado.includes(g.id);
+                const stan = wyklute ? stanGatunku(g.id) : null;
+                const etap = stan ? stageOf(stan.xp) : null;
+                const wlasny = wlasnePanele.find(p => p.gatunek === g.id);
+                const formy = wlasny?.jajo?.formy ?? g.formy;
+                return {
+                    id: g.id, imie: g.imie, dziedzina: g.dziedzina, kolor: g.kolor,
+                    forma: wyklute && etap ? formy[etap.stage] : formy['jajko'],
+                    etap: etap?.stage ?? 'jajko',
+                    xp: stan?.xp ?? 0,
+                    wyklute,
+                };
+            }),
+        };
+        fetch('http://127.0.0.1:3001/api/stado/publikuj', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(migawka),
+        }).catch(() => { /* most śpi — apka zobaczy starszą migawkę i tak to nazwie */ });
+    }, [stado, dyzurny, wlasnePanele]);
+
     const wykluj_ = (id: string) => {
         if (wykluj(id)) setStado(wykluteGatunki());
     };

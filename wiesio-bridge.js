@@ -65,6 +65,7 @@ import * as PaneleTeogochi from './services/PaneleTeogochi.js';
 import * as KuzniaModeli   from './services/KuzniaModeli.js';
 import * as HistoriaCzatu  from './services/HistoriaCzatu.js';
 import * as PamiecKodu     from './services/PamiecKodu.js';
+import * as MostStada      from './services/MostStada.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
 import { stanAnimacji, renderuj, KATALOG_PROJEKTOW } from './services/Animacje.js';
 import { zProjektuAppV2 }   from './services/KompozytorUI.js';
@@ -5900,9 +5901,69 @@ function bezpiecznaNazwaWorkflow(nazwa) {
 // codebase-memory-mcp (MIT) gdy binarium jest na miejscu; Graphify, gdy go nie ma.
 // Odpowiedź ZAWSZE niesie nazwę silnika — żadnej cichej podmiany.
 
+// ── 📱 MOST STADA — stan TeOgochi dla aplikacji zewnętrznej ─────────────────
+// ⚠️ Odczyt WYMAGA tokenu ze sparowania. Ten most bywa wystawiony przez
+// Kwantowy Tunel, więc trasa bez tokenu oddawałaby stan Katedry każdemu,
+// kto zna adres.
+
+/** Katedra publikuje migawkę stada — z przeglądarki, bez tokenu (localhost). */
+app.post('/api/stado/publikuj', async (req, res) => {
+    const r = await MostStada.publikuj(req.body ?? {});
+    if (!r.ok) return res.status(400).json({ success: false, message: r.powod });
+    res.json({ success: true, ...r });
+});
+
+/** Kod parowania do przepisania na telefon. */
+app.post('/api/stado/parowanie', async (req, res) => {
+    res.json({ success: true, ...(await MostStada.zacznijParowanie()) });
+});
+
+/** Telefon wymienia kod na token. */
+app.post('/api/stado/paruj', async (req, res) => {
+    const { kod, urzadzenie } = req.body ?? {};
+    const r = await MostStada.sparuj(kod, urzadzenie);
+    if (!r.ok) return res.status(403).json({ success: false, message: r.powod });
+    console.log(`[Stado] 📱 Sparowano urządzenie „${urzadzenie || 'telefon'}".`);
+    res.json({ success: true, token: r.token });
+});
+
+app.get('/api/stado/urzadzenia', async (req, res) => {
+    res.json({ success: true, urzadzenia: await MostStada.urzadzenia() });
+});
+
+app.post('/api/stado/odlacz', async (req, res) => {
+    const r = await MostStada.odlacz(req.body?.skrot);
+    if (!r.ok) return res.status(404).json({ success: false, message: r.powod });
+    res.json({ success: true });
+});
+
+/** Stan dla apki. Token w nagłówku `X-Stado-Token` albo `?token=`. */
+app.get('/api/stado/stan', async (req, res) => {
+    const token = req.get('X-Stado-Token') || req.query.token;
+    const kto = await MostStada.sprawdzToken(token);
+    if (!kto) {
+        return res.status(401).json({
+            success: false,
+            message: 'Brak sparowania. Wygeneruj kod w Katedrze i sparuj urządzenie.',
+        });
+    }
+    // ⚠️ `ostatnie` bierze OBIEKT i jest synchroniczne — sprawdzone w SzynaZdarzen.js,
+    // nie zgadywane z nazwy. Podanie liczby dałoby `ile` undefined i pustą listę.
+    const zdarzenia = Szyna.ostatnie({ ile: 300 });
+    res.json({ success: true, urzadzenie: kto.nazwa, ...(await MostStada.stanDlaApki(zdarzenia)) });
+});
+
+
 app.get('/api/pamiec-kodu/stan', async (req, res) => {
     try { res.json({ success: true, ...(await PamiecKodu.stan()) }); }
     catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/pamiec-kodu/indeksuj', async (req, res) => {
+    const r = await PamiecKodu.indeksuj(req.body?.sciezka);
+    if (!r.ok) return res.status(424).json({ success: false, message: r.powod });
+    await Szyna.nadaj({ agent: 'Wektor', rodzaj: 'praca', tresc: 'zaindeksowal Katedre w pamieci kodu' });
+    res.json({ success: true, ...r });
 });
 
 app.post('/api/pamiec-kodu/pytanie', async (req, res) => {
