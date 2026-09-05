@@ -66,6 +66,7 @@ import * as KuzniaModeli   from './services/KuzniaModeli.js';
 import * as HistoriaCzatu  from './services/HistoriaCzatu.js';
 import * as PamiecKodu     from './services/PamiecKodu.js';
 import * as MostStada      from './services/MostStada.js';
+import * as TeoSim         from './services/TeoSim.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
 import { stanAnimacji, renderuj, KATALOG_PROJEKTOW } from './services/Animacje.js';
 import { zProjektuAppV2 }   from './services/KompozytorUI.js';
@@ -5907,6 +5908,28 @@ function bezpiecznaNazwaWorkflow(nazwa) {
 // kto zna adres.
 
 /** Katedra publikuje migawkę stada — z przeglądarki, bez tokenu (localhost). */
+// ── 🧪 TeO-SIM — pętla wnioskowania rozliczana w GRV ────────────────────────
+// Zastępuje `ReasoningLoopSimulator` z _OtakOs_Wymiar/src, który był atrapą:
+// nie wołał modelu i liczył wymyślone „tokeny" (10 albo 50).
+
+app.post('/api/teo-sim/petla', async (req, res) => {
+    const { agent, scenariusz, stanPrzed, model, modelCiezki, wezel } = req.body ?? {};
+    const r = await TeoSim.petlaWnioskowania({
+        agent, scenariusz, stanPrzed, model, modelCiezki,
+        ollamaBase: OLLAMA_BASE,
+        wezelAgenta: wezel,
+        // Rozliczenie idzie TĄ SAMĄ drogą co każdy ruch GRV — z pieczęcią w łańcuchu.
+        przelej: (from, to, ile) => przelejGrv(from, to, ile),
+    });
+    if (!r.ok) return res.status(400).json({ success: false, message: r.powod });
+    await Szyna.nadaj({
+        agent: agent || 'TeO-Sim', rodzaj: r.rozwiazane ? 'praca' : 'blad',
+        tresc: `pętla wnioskowania: ${r.obiegow} obiegów, ${r.tokeny} tokenów, ${r.grv.wyplacone} GRV`,
+    });
+    res.json({ success: true, ...r });
+});
+
+
 app.post('/api/stado/publikuj', async (req, res) => {
     const r = await MostStada.publikuj(req.body ?? {});
     if (!r.ok) return res.status(400).json({ success: false, message: r.powod });

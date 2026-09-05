@@ -28,6 +28,24 @@ import { mcpPolaczenie } from './McpStdioClient.js';
 
 const NAZWA_EXE = process.platform === 'win32' ? 'codebase-memory-mcp.exe' : 'codebase-memory-mcp';
 
+/**
+ * ⚠️ INDEKSOWANIE WIELOWATKOWE SIE SYPIE na tej maszynie: przy 20 workerach
+ * mimalloc melduje „corrupted free list entry" i worker ginie z 0xC0000409
+ * (STATUS_STACK_BUFFER_OVERRUN). Ekstrakcja przechodzi w calosci — pada dopiero
+ * rownolegle rozwiazywanie. Silnik ma na to wlasny przelacznik, wiec zamiast
+ * latac cudzy alokator wymuszamy jeden watek: wolniej, ale konczy sie wynikiem.
+ * Zdjac, gdy CBM naprawi to u siebie albo gdy zbudujemy go innym kompilatorem.
+ */
+const SRODOWISKO_CBM = {
+    ...process.env,
+    CBM_INDEX_SINGLE_THREAD: process.env.CBM_INDEX_SINGLE_THREAD ?? '1',
+};
+
+/** Jedno polaczenie do CBM w calym module — zawsze z tym samym srodowiskiem. */
+function polaczenieCbm(exe) {
+    return mcpPolaczenie('codebase-memory', exe, [], { env: SRODOWISKO_CBM });
+}
+
 /** Miejsca, w których binarium ląduje po instalacji — kolejność od najpewniejszej. */
 function kandydaci() {
     const dom = os.homedir();
@@ -66,7 +84,7 @@ export async function stan() {
         };
     }
     try {
-        const p = mcpPolaczenie('codebase-memory', exe, []);
+        const p = polaczenieCbm(exe);
         const narzedzia = await p.listaNarzedzi();
         return {
             silnik: 'codebase-memory-mcp',
@@ -95,7 +113,7 @@ export async function nazwaProjektu(odswiez = false) {
     const exe = znajdzSilnik();
     if (!exe) return null;
     try {
-        const p = mcpPolaczenie('codebase-memory', exe, []);
+        const p = polaczenieCbm(exe);
         const w = await p.wywolaj('list_projects', {});
         const tekst = (w?.content ?? []).map(c => (typeof c === 'string' ? c : c?.text ?? '')).join('\n');
         // Odpowiedz bywa tekstem albo JSON-em — probujemy obu, bez zakladania ksztaltu.
@@ -144,7 +162,7 @@ export async function zapytaj({ rodzaj, co, b, mostBase }) {
         const wpis = mapa[rodzaj];
         if (!wpis) return { ok: false, powod: `Nie znam rodzaju „${rodzaj}".` };
         try {
-            const p = mcpPolaczenie('codebase-memory', exe, []);
+            const p = polaczenieCbm(exe);
             const wynik = await p.wywolaj(wpis[0], wpis[1]);
             const tresc = (wynik?.content ?? [])
                 .map(c => (typeof c === 'string' ? c : c?.text ?? ''))
@@ -199,7 +217,7 @@ export async function indeksuj(sciezka) {
     const exe = znajdzSilnik();
     if (!exe) return { ok: false, powod: 'Brak binarium codebase-memory-mcp — nie ma czym indeksowac.' };
     try {
-        const p = mcpPolaczenie('codebase-memory', exe, []);
+        const p = polaczenieCbm(exe);
         // Indeksowanie to nie zapytanie — daj mu 20 minut, zanim uznasz, ze padlo.
         const w = await p.wywolaj('index_repository', { repo_path: sciezka || process.cwd() }, 1200000);
         const tresc = (w?.content ?? []).map(c => (typeof c === 'string' ? c : c?.text ?? '')).join('\n').trim();
