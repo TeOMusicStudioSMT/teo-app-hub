@@ -213,7 +213,9 @@ const pustaPamiec = (serial) => ({ serial, fakty: [], odcinki: [] });
 export async function pamiec(katalog, serial) {
     const nazwa = String(serial || '').trim() || 'bez nazwy';
     const wszystko = await wczytajPlik(katalog, PLIK_PAMIECI, {});
-    return wszystko[nazwa] ?? pustaPamiec(nazwa);
+    const p = wszystko[nazwa] ?? pustaPamiec(nazwa);
+    // Status uzupełniamy w locie — patrz `znormalizujOdcinek`.
+    return { ...p, odcinki: (p.odcinki ?? []).map(znormalizujOdcinek) };
 }
 
 /**
@@ -228,6 +230,7 @@ export async function listaSeriali(katalog) {
             serial,
             faktow: p.fakty?.length ?? 0,
             odcinkow: p.odcinki?.length ?? 0,
+            zrealizowanych: (p.odcinki ?? []).filter((o) => znormalizujOdcinek(o).status === 'zrealizowany').length,
         }))
         .filter(s => s.faktow > 0 || s.odcinkow > 0);
 }
@@ -265,13 +268,44 @@ export async function usunFakt(katalog, serial, id) {
     return usuniety;
 }
 
-/** Domknięcie odcinka — numer nadaje się sam, żeby nie było dwóch „odcinków 3". */
+/**
+ * Trzy stany odcinka — dokładnie te, o które prosił Suweren:
+ * „jakie są zrealizowane, jakie w produkcji, jakie w planie".
+ *
+ * ⚠️ Kolejność MA znaczenie — `dalej()` po niej chodzi.
+ */
+export const STATUSY = ['plan', 'produkcja', 'zrealizowany'];
+
+/**
+ * Ile streszczenia wymagamy na danym etapie. Pomysł na odcinek to jedno zdanie
+ * i wymaganie od niego 20 znaków kanonu byłoby udawaniem rygoru; ale odcinek
+ * ZREALIZOWANY bez streszczenia psuje pamięć serialu — następny nie ma na czym
+ * stanąć. Stąd próg rośnie razem ze statusem.
+ */
+const PROG_STRESZCZENIA = { plan: 5, produkcja: 10, zrealizowany: 20 };
+
+/**
+ * Odcinki sprzed wprowadzenia statusów nie mają pola `status`. Czytamy je jako
+ * `zrealizowany`, bo powstawały wyłącznie przez „domknij odcinek".
+ * ⚠️ Uzupełniamy PRZY ODCZYCIE, nie przepisując pliku — cicha migracja całej
+ * pamięci przy pierwszym wejściu na panel to zmiana, której nikt nie zlecił.
+ */
+export function znormalizujOdcinek(o) {
+    return { ...o, status: STATUSY.includes(o?.status) ? o.status : 'zrealizowany' };
+}
+
+/** Dopisz odcinek. Domyślnie „zrealizowany" — tak działał dotąd guzik DOMKNIJ. */
 export async function dodajOdcinek(katalog, serial, dane = {}) {
     const tytul = String(dane.tytul || '').trim();
     const streszczenie = String(dane.streszczenie || '').trim();
+    const status = STATUSY.includes(dane.status) ? dane.status : 'zrealizowany';
     if (tytul.length < 3) throw new Error('Odcinek potrzebuje tytułu (min. 3 znaki).');
-    if (streszczenie.length < 20) {
-        throw new Error('Streszczenie odcinka jest wymagane (min. 20 znaków) — bez niego następny odcinek nie ma na czym stanąć.');
+    if (streszczenie.length < PROG_STRESZCZENIA[status]) {
+        throw new Error(
+            status === 'zrealizowany'
+                ? 'Streszczenie odcinka jest wymagane (min. 20 znaków) — bez niego następny odcinek nie ma na czym stanąć.'
+                : `Opis odcinka „${status}" wymaga min. ${PROG_STRESZCZENIA[status]} znaków.`,
+        );
     }
 
     const nazwa = String(serial || '').trim() || 'bez nazwy';
@@ -284,13 +318,58 @@ export async function dodajOdcinek(katalog, serial, dane = {}) {
         // więc następny dostałby numer 3 — czyli ten sam, co istniejący. Numer
         // bierzemy z najwyższego, jaki padł, i nigdy się nie cofa.
         numer: p.odcinki.reduce((max, o) => Math.max(max, Number(o.numer) || 0), 0) + 1,
-        tytul, streszczenie,
+        tytul, streszczenie, status,
         kiedy: new Date().toISOString(),
     };
     p.odcinki.push(odcinek);
     wszystko[nazwa] = p;
     await zapiszPlik(katalog, PLIK_PAMIECI, wszystko);
     return odcinek;
+}
+
+/**
+ * Zmień odcinek: status, tytuł albo streszczenie.
+ *
+ * ⚠️ Przejście na „zrealizowany" sprawdza próg streszczenia PONOWNIE. Inaczej
+ * dałoby się przesunąć na tablicy pomysł w jednym zdaniu do kolumny GOTOWE
+ * i mieć w kanonie odcinek, o którym nic nie wiadomo.
+ */
+export async function zmienOdcinek(katalog, serial, id, zmiany = {}) {
+    const nazwa = String(serial || '').trim() || 'bez nazwy';
+    const wszystko = await wczytajPlik(katalog, PLIK_PAMIECI, {});
+    const p = wszystko[nazwa] ?? pustaPamiec(nazwa);
+    const i = p.odcinki.findIndex((o) => o.id === id);
+    if (i < 0) throw new Error(`Odcinek "${id}" nie istnieje w projekcie „${nazwa}".`);
+
+    const stary = znormalizujOdcinek(p.odcinki[i]);
+    const nowy = { ...stary };
+
+    if (zmiany.tytul !== undefined) {
+        const t = String(zmiany.tytul).trim();
+        if (t.length < 3) throw new Error('Tytuł odcinka jest za krótki (min. 3 znaki).');
+        nowy.tytul = t;
+    }
+    if (zmiany.streszczenie !== undefined) nowy.streszczenie = String(zmiany.streszczenie).trim();
+    if (zmiany.status !== undefined) {
+        if (!STATUSY.includes(zmiany.status)) {
+            throw new Error(`Nieznany status „${zmiany.status}". Dozwolone: ${STATUSY.join(', ')}.`);
+        }
+        nowy.status = zmiany.status;
+    }
+
+    const prog = PROG_STRESZCZENIA[nowy.status];
+    if ((nowy.streszczenie || '').length < prog) {
+        throw new Error(
+            `Żeby odcinek #${nowy.numer} był „${nowy.status}", streszczenie musi mieć min. ${prog} znaków `
+            + `(ma ${(nowy.streszczenie || '').length}).`,
+        );
+    }
+
+    nowy.zmieniono = new Date().toISOString();
+    p.odcinki[i] = nowy;
+    wszystko[nazwa] = p;
+    await zapiszPlik(katalog, PLIK_PAMIECI, wszystko);
+    return { odcinek: nowy, poprzedniStatus: stary.status };
 }
 
 /**
@@ -482,6 +561,7 @@ export const AKCJE_REZYSERA = new Set([
 export default {
     listaPostaci, dodajPostac, usunPostac, rozpoznajPostac,
     pamiec, listaSeriali, dodajFakt, usunFakt, dodajOdcinek, usunOdcinek,
+    zmienOdcinek, znormalizujOdcinek, STATUSY,
     zbudujKontekst, promptSystemowyRezysera, odczytajOdpowiedz, zdanieZWyniku,
     AKCJE_REZYSERA, przytnij, BUDZET,
 };

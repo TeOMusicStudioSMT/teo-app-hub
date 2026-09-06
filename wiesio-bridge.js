@@ -125,8 +125,13 @@ import {
 import {
     listaPostaci, dodajPostac, usunPostac,
     pamiec as rezyserPamiec, listaSeriali, dodajFakt, usunFakt, dodajOdcinek, usunOdcinek,
+    zmienOdcinek, STATUSY as STATUSY_ODCINKA,
     zbudujKontekst, promptSystemowyRezysera, odczytajOdpowiedz, zdanieZWyniku, AKCJE_REZYSERA,
 } from './services/RezyserService.js';
+import {
+    listaProjektow, utworzProjekt, usunProjekt,
+    zapiszOdcinek, materialyOdcinka,
+} from './services/Produkcje.js';
 import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
@@ -283,7 +288,11 @@ app.use(cors({
     // ale zgodny z `credentials: true` (przy gołej gwiazdce przeglądarka blokuje
     // żądania z ciasteczkami). Śluza i tak nasłuchuje tylko tam, gdzie Suweren ją wystawi.
     origin: true,
-    methods:         ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    // ⚠️ PATCH DOPISANY 2026-09-06. Bez niego przeglądarka odbijała żądanie już
+    // na preflighcie, `fetch` rzucał wyjątek sieciowy, a klient meldował
+    // „most milczy" — przy MOŚCIE, KTÓRY ODPOWIADAŁ. Objaw kłamał o przyczynie:
+    // trasa PATCH istniała i działała z curla, blokada była po stronie CORS.
+    methods:         ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders:  ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cache-Control'],
     exposedHeaders:  ['Content-Type', 'X-Error-Code'],
     credentials:     true,
@@ -9965,14 +9974,112 @@ app.delete('/api/rezyser/pamiec/fakt/:id', async (req, res) => {
     }
 });
 
+/**
+ * Zmaterializuj odcinek na dysku — z migawką kanonu i listą kadrów projektu.
+ * Zwraca `null`, gdy zapis się nie udał: odcinek w pamięci ma wtedy zostać,
+ * ale front NIE MOŻE dostać ścieżki do pliku, którego nie ma.
+ */
+async function zmaterializujOdcinek(serial, odcinek) {
+    try {
+        const [p, kadry] = await Promise.all([
+            rezyserPamiec(ANTIGRAVITY_DIR, serial),
+            produkcjaLista(ANTIGRAVITY_DIR, serial).catch(() => []),
+        ]);
+        return await zapiszOdcinek(ANTIGRAVITY_DIR, serial, odcinek, { fakty: p.fakty ?? [], kadry });
+    } catch (err) {
+        console.warn(`[Reżyser] ⚠️ Odcinek #${odcinek.numer} nie zapisał się na dysk: ${err.message}`);
+        return null;
+    }
+}
+
 app.post('/api/rezyser/pamiec/odcinek', async (req, res) => {
     try {
         const { serial = '', ...dane } = req.body ?? {};
         const odcinek = await dodajOdcinek(ANTIGRAVITY_DIR, serial, dane);
-        console.log(`[Reżyser] 📼 Odcinek #${odcinek.numer} „${odcinek.tytul}" domknięty (${serial || 'bez nazwy'}).`);
-        const oddech = await oddechZaPrace('odcinek.domkniety', `odc:${odcinek.id}`,
-            { nazwa: `Odcinek #${odcinek.numer}: ${odcinek.tytul}`, sciezka: null });
-        return res.json({ success: true, odcinek, oddech });
+
+        // Materializujemy TYLKO to, co domknięte. Pomysł wpisany „w plan" nie
+        // jest odcinkiem i katalog na dysku sugerowałby, że coś już powstało.
+        const zapis = odcinek.status === 'zrealizowany'
+            ? await zmaterializujOdcinek(serial, odcinek)
+            : null;
+
+        console.log(`[Reżyser] 📼 Odcinek #${odcinek.numer} „${odcinek.tytul}" → ${odcinek.status} (${serial || 'bez nazwy'})${zapis ? ` · ${zapis.plik}` : ''}.`);
+
+        // ⚠️ ODDECH PŁACI ZA DOMKNIĘCIE, NIE ZA POMYSŁ. Dopisanie pozycji „w planie"
+        // to jedno kliknięcie — gdyby liczyło się jak odcinek, GRV dałoby się
+        // drukować listą tytułów.
+        const oddech = odcinek.status === 'zrealizowany'
+            ? await oddechZaPrace('odcinek.domkniety', `odc:${odcinek.id}`,
+                { nazwa: `Odcinek #${odcinek.numer}: ${odcinek.tytul}`, sciezka: zapis?.plik ?? null })
+            : null;
+
+        return res.json({ success: true, odcinek, oddech, zapis });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+/** PATCH — przesunięcie odcinka między kolumnami tablicy (plan → produkcja → gotowe). */
+app.patch('/api/rezyser/pamiec/odcinek/:id', async (req, res) => {
+    try {
+        const { serial = '', ...zmiany } = req.body ?? {};
+        const { odcinek, poprzedniStatus } = await zmienOdcinek(ANTIGRAVITY_DIR, serial, req.params.id, zmiany);
+
+        // Materializacja dzieje się przy WEJŚCIU w „zrealizowany" — i tylko raz,
+        // bo powtórne domknięcie tego samego odcinka nie jest nową pracą.
+        const domkniety = odcinek.status === 'zrealizowany' && poprzedniStatus !== 'zrealizowany';
+        const zapis = domkniety ? await zmaterializujOdcinek(serial, odcinek) : null;
+        const oddech = domkniety
+            ? await oddechZaPrace('odcinek.domkniety', `odc:${odcinek.id}`,
+                { nazwa: `Odcinek #${odcinek.numer}: ${odcinek.tytul}`, sciezka: zapis?.plik ?? null })
+            : null;
+
+        console.log(`[Reżyser] 🎬 Odcinek #${odcinek.numer}: ${poprzedniStatus} → ${odcinek.status}.`);
+        return res.json({ success: true, odcinek, poprzedniStatus, zapis, oddech });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+/** Co NAPRAWDĘ leży w katalogu odcinka — lista plików, nie obietnica. */
+app.get('/api/rezyser/pamiec/odcinek/:id/materialy', async (req, res) => {
+    try {
+        const serial = String(req.query.serial || '');
+        const p = await rezyserPamiec(ANTIGRAVITY_DIR, serial);
+        const odcinek = (p.odcinki ?? []).find((o) => o.id === req.params.id);
+        if (!odcinek) return res.status(404).json({ success: false, message: `Odcinek "${req.params.id}" nie istnieje.` });
+        return res.json({ success: true, ...(await materialyOdcinka(ANTIGRAVITY_DIR, serial, odcinek)) });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ── Katalogi projektów ────────────────────────────────────────────────────────
+//  ⚠️ Te trasy MUSZĄ stać przed jakimkolwiek `/api/rezyser/:coś` — Express bierze
+//  pierwszą pasującą, a parametr zjadłby literał „projekty".
+
+app.get('/api/rezyser/projekty', async (req, res) => {
+    try {
+        return res.json({ success: true, projekty: await listaProjektow(ANTIGRAVITY_DIR), statusy: STATUSY_ODCINKA });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/rezyser/projekty', async (req, res) => {
+    try {
+        const { nazwa = '', notatka = '' } = req.body ?? {};
+        const projekt = await utworzProjekt(ANTIGRAVITY_DIR, nazwa, notatka);
+        console.log(`[Reżyser] 📁 Projekt „${projekt.nazwa}" ${projekt.nowy ? 'założony' : 'już był'}: ${projekt.sciezka}`);
+        return res.json({ success: true, projekt });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+app.delete('/api/rezyser/projekty/:slug', async (req, res) => {
+    try {
+        return res.json({ success: true, projekt: await usunProjekt(ANTIGRAVITY_DIR, req.params.slug) });
     } catch (err) {
         return res.status(400).json({ success: false, message: err.message });
     }
