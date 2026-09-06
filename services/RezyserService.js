@@ -187,9 +187,21 @@ export async function dodajPostac(katalog, dane = {}) {
         // 'ekipa'   — specjalista produkcyjny, Reżyser wzywa go do zadania.
         rola: dane.rola === 'ekipa' ? 'ekipa' : 'kompan',
         pochodzenie: dane.surowe ? 'wgrana' : 'zbudowana',
+        // ⚠️ `gatunek` ROZDZIELA DWA ŚWIATY, które dotąd leżały w jednym worku.
+        // Suweren: „wybór co-bota powinien korzystać z TeOgochi, a obecne
+        // kompany to AKTORZY i potrzebują osobnego miejsca".
+        //   · z gatunkiem  → CO-BOT: agent Katedry (Joanna, Klatka…), prowadzi pracę
+        //   · bez gatunku  → AKTOR: postać, którą się OBSADZA w opowieści
+        gatunek: String(dane.gatunek || '').trim() || null,
     };
 
     const postacie = await listaPostaci(katalog);
+    // Ten sam TeOgochi wcielony drugi raz nie ma być drugą postacią — inaczej
+    // po tygodniu obsada to piętnaście Joann i nie wiadomo, która rozmawia.
+    if (postac.gatunek) {
+        const juzJest = postacie.find((p) => p.gatunek === postac.gatunek);
+        if (juzJest) return juzJest;
+    }
     postacie.push(postac);
     await zapiszPlik(katalog, PLIK_POSTACI, postacie);
     return postac;

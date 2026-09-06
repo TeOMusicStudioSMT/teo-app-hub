@@ -4534,6 +4534,27 @@ app.get('/api/teogochi/domeny', (req, res) => {
     }
 });
 
+/**
+ * GET /api/teogochi/stado — kto ze stada jest wykluty i czym sie zajmuje.
+ *
+ * ⚠️ BEZ TOKENA URZĄDZENIA, w odróżnieniu od `/api/stado/stan`. Tamta trasa
+ * służy TELEFONOWI (parowanie ma sens: obcy telefon nie ma tu czego szukać).
+ * Tu pyta Story V2 — aplikacja z tej samej maszyny, która potrzebuje listy
+ * co-botów do obsadzenia w Reżyserze. Migawka zawiera imiona, etapy i XP;
+ * nie ma w niej nic, czego nie widać w oknie Katedry.
+ *
+ * Gdy Katedra nic jeszcze nie opublikowała, oddajemy POWÓD, nie pustą listę —
+ * „brak co-botów" i „nie otwarto jeszcze Domu TeOgochi" to dwie różne rzeczy.
+ */
+app.get('/api/teogochi/stado', async (req, res) => {
+    try {
+        const stan = await MostStada.stanDlaApki(Szyna.ostatnie({ ile: 300 }));
+        return res.json({ success: true, ...stan });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
 app.get('/api/teogochi/panele', async (req, res) => {
     const d = await PaneleTeogochi.wczytajPanele();
     res.json({ success: true, panele: d.panele ?? [] });
