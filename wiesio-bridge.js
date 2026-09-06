@@ -939,6 +939,39 @@ app.post('/api/ollama', async (req, res) => {
 });
 
 // ── /api/ollama/models — lista dostępnych modeli ────────────────────────
+/**
+ * POST /api/ollama/pisz — jedno wywolanie modelu BEZ strumienia.
+ *
+ * `/api/ollama` oddaje SSE, co jest dobre dla czatu, ale StoryLoom (Story V2)
+ * chce calego fragmentu naraz. Parsowanie strumienia po stronie kazdej aplikacji
+ * z osobna to trzy implementacje tego samego — lepiej jedna trasa.
+ */
+app.post('/api/ollama/pisz', async (req, res) => {
+    const { model, system, prompt } = req.body ?? {};
+    if (!prompt?.trim()) return res.status(400).json({ success: false, message: 'Brak "prompt".' });
+    const silnik = model || process.env.OTAKOS_MODEL || 'gemma4:e2b';
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 300000);
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+            body: JSON.stringify({ model: silnik, system, prompt, stream: false }),
+        });
+        clearTimeout(t);
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+        const d = await r.json();
+        res.json({
+            success: true,
+            tekst: String(d.response || '').trim(),
+            model: silnik,
+            tokeny: (Number(d.eval_count) || 0) + (Number(d.prompt_eval_count) || 0),
+        });
+    } catch (e) {
+        const powod = e.name === 'AbortError' ? 'Ollama nie zdazyla (300 s).' : e.message;
+        res.status(500).json({ success: false, message: powod });
+    }
+});
+
 app.get('/api/ollama/models', async (req, res) => {
     try {
         const resp = await fetch(`${OLLAMA_BASE}/api/tags`);
