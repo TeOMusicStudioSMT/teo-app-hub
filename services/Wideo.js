@@ -30,6 +30,9 @@ import path from 'path';
 
 const KATALOG_WF = () => path.join(process.cwd(), '_OtakOs_AI', 'workflows');
 
+/** Graf dopisywania ujecia od zadanej klatki — patrz `dopiszUjecie`. */
+const GRAF_KONTYNUACJI = 'wan22_kontynuacja.json';
+
 /**
  * Opis silnika: czym rozpoznać jego pliki i pod które węzły grafu je podstawić.
  * `wezly` trzyma NUMERY z pliku grafu — dzięki temu podmiana nie zgaduje po
@@ -189,6 +192,70 @@ export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, kla
 }
 
 /**
+ * Dopisz ujęcie ZACZYNAJĄCE SIĘ od podanej klatki (moduł Ciąg Dalszy).
+ *
+ * ⚠️ Format bierzemy Z FILMU ŹRÓDŁOWEGO, nie z domyślnych ustawień: inaczej
+ * sklejka miałaby skok rozdzielczości albo tempa w połowie. Wymiary muszą być
+ * podzielne przez 16 — VAE Wana pracuje na blokach i przy 703 px pada zamiast
+ * zaokrąglić, więc przycinamy w dół sami i mówimy o tym w odpowiedzi.
+ *
+ * ⚠️ Tylko tor Wan. Graf H3 nie ma wejścia `start_image` — udawanie, że ma,
+ * skończyłoby się błędem po kilkunastu minutach liczenia.
+ */
+export async function dopiszUjecie({ comfyBase, prompt, klatka, szerokosc, wysokosc, fps, klatek, kroki, ziarno }) {
+    if (!prompt?.trim()) return { ok: false, powod: 'Pusty opis ujęcia — nie ma czego dopisać.' };
+    if (!klatka) return { ok: false, powod: 'Brak klatki startowej — nie wiem, od czego zacząć.' };
+
+    const stan = await stanWideo(comfyBase);
+    if (!stan.gotowe) return { ok: false, powod: stan.braki.join(' | '), braki: stan.braki };
+    if (stan.silnik.id !== 'wan22') {
+        return { ok: false, powod: `Dopisywanie ujęć umie tylko tor Wan — aktywny jest ${stan.silnik.nazwa}.` };
+    }
+
+    const doBloku = (n, zapas) => Math.max(256, Math.floor((Number(n) || zapas) / 16) * 16);
+    const w = doBloku(szerokosc, 704);
+    const h = doBloku(wysokosc, 480);
+    const przyciete = (Number(szerokosc) && w !== Number(szerokosc)) || (Number(wysokosc) && h !== Number(wysokosc));
+
+    const graf = JSON.parse(await fs.readFile(path.join(KATALOG_WF(), GRAF_KONTYNUACJI), 'utf8'));
+    delete graf._opis;
+
+    graf['1'].inputs.unet_name = stan.silnik.modele[0];
+    graf['2'].inputs.clip_name = stan.silnik.enkodery[0];
+    graf['3'].inputs.vae_name = stan.silnik.vae[0];
+    graf['5'].inputs.text = prompt;
+    graf['12'].inputs.image = klatka;
+    graf['13'].inputs.width = w;
+    graf['13'].inputs.height = h;
+    graf['7'].inputs.width = w;
+    graf['7'].inputs.height = h;
+    graf['7'].inputs.length = Number(klatek) || 49;
+    graf['8'].inputs.steps = Number(kroki) || 20;
+    graf['8'].inputs.seed = Number.isFinite(Number(ziarno)) ? Number(ziarno) : Math.floor(Math.random() * 1e9);
+    graf['10'].inputs.fps = Number(fps) || 24;
+
+    try {
+        const r = await fetch(`${comfyBase}/prompt`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: graf }),
+        });
+        const d = await r.json();
+        if (!r.ok || d?.error) {
+            return { ok: false, powod: `ComfyUI odrzucił graf: ${JSON.stringify(d?.error ?? d).slice(0, 300)}` };
+        }
+        return {
+            ok: true, zlecenie: d.prompt_id, silnik: stan.silnik.nazwa,
+            format: { szerokosc: w, wysokosc: h, fps: Number(fps) || 24, klatek: Number(klatek) || 49 },
+            uwaga: przyciete
+                ? `Wymiary przycięte do wielokrotności 16: ${szerokosc}x${wysokosc} → ${w}x${h}.`
+                : null,
+        };
+    } catch (e) {
+        return { ok: false, powod: `Nie dowiozłem grafu do ComfyUI: ${e.message}` };
+    }
+}
+
+/**
  * Stan zlecenia. `gotowe:false` bez pliku to NIE jest sukces.
  *
  * ⚠️ ODDAJEMY TEŻ ŚCIEŻKĘ, nie samą nazwę. ComfyUI zapisuje wynik w podkatalogu
@@ -229,4 +296,4 @@ export async function stanZlecenia(comfyBase, id, comfyDir = null) {
     }
 }
 
-export default { stanWideo, generujScene, stanZlecenia };
+export default { stanWideo, generujScene, dopiszUjecie, stanZlecenia };

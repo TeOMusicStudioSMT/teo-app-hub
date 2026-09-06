@@ -133,6 +133,7 @@ import {
     zapiszOdcinek, materialyOdcinka, katalogOdcinka,
 } from './services/Produkcje.js';
 import { promptUzupelnienia, oczysc as oczyscPoleAI } from './services/ProdukcjaAI.js';
+import * as CiagDalszy from './services/CiagDalszy.js';
 import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
@@ -6002,6 +6003,80 @@ app.get('/api/wideo/zlecenie/:id', async (req, res) => {
     res.json({ success: true, ...r });
 });
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🎞️ CIĄG DALSZY — dopisywanie ujęć do włożonego filmu i sklejanie scen
+//
+//  Trzy czynności, każda osobno, żeby dało się przerwać po dowolnej:
+//    · /filmy + /opis   — co mamy na warsztacie i w jakim jest formacie
+//    · /dopisz          — nowe ujęcie startujące z OSTATNIEJ KLATKI tamtego
+//    · /sklej           — ffmpeg łączy wybrane ujęcia w jeden plik
+// ══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/ciag/filmy', async (req, res) => {
+    try {
+        return res.json({
+            success: true,
+            filmy: await CiagDalszy.listaFilmow(COMFY_DIR),
+            korzenie: CiagDalszy.korzenie(COMFY_DIR),
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/ciag/opis', async (req, res) => {
+    try {
+        return res.json({ success: true, opis: await CiagDalszy.opisFilmu(req.body?.plik, COMFY_DIR) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/ciag/dopisz { plik, prompt, klatek?, kroki?, ziarno? }
+ *
+ * ⚠️ FORMAT BIERZEMY Z FILMU, nie z pól formularza. Ujęcie dopisane w innej
+ * rozdzielczości albo innym tempie widać w sklejce jako skok — a to dokładnie
+ * ta wada, dla której ten moduł powstał.
+ */
+app.post('/api/ciag/dopisz', async (req, res) => {
+    const { plik, prompt = '', klatek, kroki, ziarno } = req.body ?? {};
+    try {
+        const opis = await CiagDalszy.opisFilmu(plik, COMFY_DIR);
+        const klatka = await CiagDalszy.ostatniaKlatka(plik, COMFY_DIR);
+
+        const r = await Wideo.dopiszUjecie({
+            comfyBase: COMFY_BASE, prompt, klatka: klatka.nazwa,
+            szerokosc: opis.szerokosc, wysokosc: opis.wysokosc, fps: opis.fps,
+            klatek, kroki, ziarno,
+        });
+        if (!r.ok) return res.status(400).json({ success: false, message: r.powod, braki: r.braki });
+
+        console.log(`[Ciąg Dalszy] 🎞️ Dopisuję do „${opis.nazwa}" (${opis.szerokosc}x${opis.wysokosc}@${opis.fps}) — zlecenie ${r.zlecenie}`);
+        return res.json({ success: true, ...r, zrodlo: opis, klatka: klatka.nazwa });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/ciag/sklej', async (req, res) => {
+    const { pliki, wyjscie, nazwa } = req.body ?? {};
+    try {
+        // Domyślnie kładziemy sklejkę obok ujęć, w wyjściu ComfyUI.
+        const cel = wyjscie || path.join(
+            COMFY_DIR, 'ComfyUI', 'output', 'katedra',
+            `${String(nazwa || 'sklejka').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60)}_${Date.now().toString(36)}.mp4`,
+        );
+        const w = await CiagDalszy.sklej({ pliki, wyjscie: cel, comfyDir: COMFY_DIR });
+        console.log(`[Ciąg Dalszy] 🔗 Sklejka (${w.metoda}): ${w.plik}`);
+        const oddech = await oddechZaPrace('wideo.sklejka', `sklejka:${path.basename(w.plik)}`,
+            { nazwa: `Sklejka ${w.zrodla.length} ujęć`, sciezka: w.plik });
+        return res.json({ success: true, ...w, oddech });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
 
 app.post('/api/teo-sim/petla', async (req, res) => {
     const { agent, scenariusz, stanPrzed, model, modelCiezki, wezel } = req.body ?? {};
