@@ -67,6 +67,7 @@ import * as HistoriaCzatu  from './services/HistoriaCzatu.js';
 import * as PamiecKodu     from './services/PamiecKodu.js';
 import * as MostStada      from './services/MostStada.js';
 import * as TeoSim         from './services/TeoSim.js';
+import * as Wideo          from './services/Wideo.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
 import { stanAnimacji, renderuj, KATALOG_PROJEKTOW } from './services/Animacje.js';
 import { zProjektuAppV2 }   from './services/KompozytorUI.js';
@@ -5944,6 +5945,30 @@ function bezpiecznaNazwaWorkflow(nazwa) {
 // ── 🧪 TeO-SIM — pętla wnioskowania rozliczana w GRV ────────────────────────
 // Zastępuje `ReasoningLoopSimulator` z _OtakOs_Wymiar/src, który był atrapą:
 // nie wołał modelu i liczył wymyślone „tokeny" (10 albo 50).
+
+// ── 🎬 WIDEO — prawdziwa generacja scen dla Story V2 ────────────────────────
+// Zastępuje atrapę z GoogleWorkflowService. Odmawia z listą braków zamiast
+// oddawać nazwę pliku, którego nie ma.
+
+app.get('/api/wideo/stan', async (req, res) => {
+    try { res.json({ success: true, ...(await Wideo.stanWideo(COMFY_BASE)) }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/wideo/generuj', async (req, res) => {
+    const { prompt, szerokosc, wysokosc, klatek, kroki, ziarno } = req.body ?? {};
+    const r = await Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, szerokosc, wysokosc, klatek, kroki, ziarno });
+    if (!r.ok) return res.status(424).json({ success: false, message: r.powod, braki: r.braki ?? null });
+    await Szyna.nadaj({ agent: 'Klatka', rodzaj: 'praca', tresc: `zlecila scene do ComfyUI (${r.model})` });
+    res.json({ success: true, ...r });
+});
+
+app.get('/api/wideo/zlecenie/:id', async (req, res) => {
+    const r = await Wideo.stanZlecenia(COMFY_BASE, req.params.id);
+    if (!r.ok) return res.status(500).json({ success: false, message: r.powod });
+    res.json({ success: true, ...r });
+});
+
 
 app.post('/api/teo-sim/petla', async (req, res) => {
     const { agent, scenariusz, stanPrzed, model, modelCiezki, wezel } = req.body ?? {};
