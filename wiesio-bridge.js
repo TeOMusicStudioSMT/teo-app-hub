@@ -130,8 +130,9 @@ import {
 } from './services/RezyserService.js';
 import {
     listaProjektow, utworzProjekt, usunProjekt,
-    zapiszOdcinek, materialyOdcinka,
+    zapiszOdcinek, materialyOdcinka, katalogOdcinka,
 } from './services/Produkcje.js';
+import { promptUzupelnienia, oczysc as oczyscPoleAI } from './services/ProdukcjaAI.js';
 import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
@@ -9881,6 +9882,114 @@ async function radaKreatywnaRozloz(zlecenie, projekt, temperatura = 0.7, sesjaRa
 
     return { model: DEFAULT_LLM, zaproponowano: propozycje.length, dodane, odrzucone };
 }
+
+/**
+ * POST /api/produkcja/uzupelnij  { projekt, etap, pole, kadrId?, wskazowka?, model? }
+ *
+ * Model pisze treść JEDNEGO pola karty, z instrukcją właściwą dla etapu
+ * (biblia ≠ prompt do obrazu ≠ lista montażowa) i z kotwicą spójności:
+ * biblia projektu + kanon Reżysera.
+ *
+ * ⚠️ NIE ZAPISUJE KARTY. Oddaje tekst — zapis zostaje decyzją Suwerena.
+ * Automatyczne wpisanie odpowiedzi modelu do tablicy sprawiłoby, że po kilku
+ * kliknięciach nie wiadomo, co napisał człowiek, a co maszyna.
+ */
+app.post('/api/produkcja/uzupelnij', async (req, res) => {
+    const { projekt = '', etap = 'BIBLIA', pole = 'opis', kadrId = null, wskazowka = '', model } = req.body ?? {};
+    try {
+        const [bibliaProjektu, pamiecProjektu, kadry] = await Promise.all([
+            projekt ? produkcjaBiblia(ANTIGRAVITY_DIR, projekt).catch(() => null) : null,
+            projekt ? rezyserPamiec(ANTIGRAVITY_DIR, projekt).catch(() => null) : null,
+            kadrId ? produkcjaLista(ANTIGRAVITY_DIR, projekt).catch(() => []) : [],
+        ]);
+        const kadr = kadrId ? (kadry.find((k) => k.id === kadrId) ?? null) : null;
+        if (kadrId && !kadr) {
+            return res.status(404).json({ success: false, message: `Kadr "${kadrId}" nie istnieje w projekcie „${projekt}".` });
+        }
+
+        const { system, prompt } = promptUzupelnienia({
+            etap, pole, projekt,
+            biblia: bibliaProjektu?.tekst ?? '',
+            fakty: pamiecProjektu?.fakty ?? [],
+            kadr, wskazowka,
+        });
+
+        const silnik = model || process.env.OTAKOS_MODEL || DEFAULT_LLM;
+        const ctrl = new AbortController();
+        const stoper = setTimeout(() => ctrl.abort(), 300000);
+        let dane;
+        try {
+            const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+                body: JSON.stringify({ model: silnik, system, prompt, stream: false }),
+            });
+            if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+            dane = await r.json();
+        } finally {
+            clearTimeout(stoper);
+        }
+
+        const tekst = oczyscPoleAI(dane.response, pole);
+        if (!tekst) return res.status(502).json({ success: false, message: 'Model nie oddał treści.' });
+
+        console.log(`[Produkcja] ✨ ${silnik} wypełnił pole „${pole}" [${String(etap).toUpperCase()}] (${projekt || 'bez nazwy'}).`);
+        return res.json({
+            success: true, tekst, pole, model: silnik,
+            // Uczciwie mówimy, czy praca miała kotwicę — bez biblii ujęcia się rozjadą.
+            kotwica: {
+                biblia: !bibliaProjektu?.pusta,
+                faktow: pamiecProjektu?.fakty?.length ?? 0,
+                uwaga: bibliaProjektu?.uwaga ?? null,
+            },
+        });
+    } catch (e) {
+        const powod = e.name === 'AbortError' ? 'Model nie zdążył (300 s).' : e.message;
+        return res.status(500).json({ success: false, message: powod });
+    }
+});
+
+/**
+ * POST /api/produkcja/do-odcinka  { projekt, kadrId, odcinekId }
+ *
+ * „Gdzie zapisać" z prośby Suwerena. Karta etapu GOTOWE ląduje jako plik
+ * w katalogu odcinka — tam, gdzie leży `odcinek.md`, a nie w osobnym worku.
+ *
+ * ⚠️ Wymaga, żeby odcinek MIAŁ katalog. Zapis „gdzieś obok" byłby gorszy niż
+ * odmowa: materiał zniknąłby z pola widzenia przy pierwszym porządkowaniu.
+ */
+app.post('/api/produkcja/do-odcinka', async (req, res) => {
+    const { projekt = '', kadrId = '', odcinekId = '' } = req.body ?? {};
+    try {
+        const [kadry, p] = await Promise.all([
+            produkcjaLista(ANTIGRAVITY_DIR, projekt),
+            rezyserPamiec(ANTIGRAVITY_DIR, projekt),
+        ]);
+        const kadr = kadry.find((k) => k.id === kadrId);
+        if (!kadr) return res.status(404).json({ success: false, message: `Kadr "${kadrId}" nie istnieje.` });
+        const odcinek = (p.odcinki ?? []).find((o) => o.id === odcinekId);
+        if (!odcinek) return res.status(404).json({ success: false, message: `Odcinek "${odcinekId}" nie istnieje w projekcie „${projekt}".` });
+
+        const katalog = await katalogOdcinka(ANTIGRAVITY_DIR, projekt, odcinek, true);
+        const nazwa = `kadr-${String(kadr.etapZrodlowy || kadr.etap).toLowerCase()}-${kadr.id}.md`;
+        const tresc = [
+            `# ${kadr.tytul}`, '',
+            `**Projekt:** ${projekt}  `,
+            `**Odcinek:** #${odcinek.numer} ${odcinek.tytul}  `,
+            `**Etap:** ${kadr.etap} (powstał na ${kadr.etapZrodlowy || kadr.etap})  `,
+            `**Zapisany:** ${new Date().toLocaleString('pl-PL')}`,
+            '', '## Opis', '', kadr.opis || '_(brak)_', '',
+            '## Co wróciło z narzędzia', '', kadr.zwrot || '_(nic — karta nie ma jeszcze materiału)_', '',
+            ...(kadr.notatki ? ['## Notatki', '', kadr.notatki, ''] : []),
+        ].join('\n');
+
+        const plik = path.join(katalog, nazwa);
+        await fs.writeFile(plik, tresc, 'utf8');
+        console.log(`[Produkcja] 📦 Kadr „${kadr.tytul}" → ${plik}`);
+        return res.json({ success: true, plik, bajtow: Buffer.byteLength(tresc, 'utf8'), odcinek: { id: odcinek.id, numer: odcinek.numer, tytul: odcinek.tytul } });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
 
 app.post('/api/produkcja/rozloz', async (req, res) => {
     const { zlecenie, projekt = '', temperatura = 0.7, sesjaRady = '' } = req.body ?? {};
