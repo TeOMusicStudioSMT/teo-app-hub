@@ -5995,7 +5995,9 @@ app.post('/api/wideo/generuj', async (req, res) => {
 });
 
 app.get('/api/wideo/zlecenie/:id', async (req, res) => {
-    const r = await Wideo.stanZlecenia(COMFY_BASE, req.params.id);
+    // COMFY_DIR dokładamy, żeby front dostał ŚCIEŻKĘ, którą da się otworzyć,
+    // a nie samą nazwę pliku ukrytego w podkatalogu wyjścia.
+    const r = await Wideo.stanZlecenia(COMFY_BASE, req.params.id, COMFY_DIR);
     if (!r.ok) return res.status(500).json({ success: false, message: r.powod });
     res.json({ success: true, ...r });
 });

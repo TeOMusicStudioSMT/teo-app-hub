@@ -188,8 +188,15 @@ export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, kla
     }
 }
 
-/** Stan zlecenia. `gotowe:false` bez pliku to NIE jest sukces. */
-export async function stanZlecenia(comfyBase, id) {
+/**
+ * Stan zlecenia. `gotowe:false` bez pliku to NIE jest sukces.
+ *
+ * ⚠️ ODDAJEMY TEŻ ŚCIEŻKĘ, nie samą nazwę. ComfyUI zapisuje wynik w podkatalogu
+ * (u nas `katedra/`), więc goła nazwa pliku nie wystarcza, żeby go otworzyć —
+ * a „gotowe" bez możliwości znalezienia pliku niczym się nie różni od atrapy.
+ * `comfyDir` jest opcjonalny: bez niego oddajemy ścieżkę względną wyjścia.
+ */
+export async function stanZlecenia(comfyBase, id, comfyDir = null) {
     try {
         const r = await fetch(`${comfyBase}/history/${encodeURIComponent(id)}`);
         if (!r.ok) return { ok: false, powod: `ComfyUI HTTP ${r.status}` };
@@ -198,13 +205,25 @@ export async function stanZlecenia(comfyBase, id) {
         if (!wpis) return { ok: true, gotowe: false, stan: 'w kolejce albo liczy' };
 
         const pliki = [];
+        const materialy = [];
         for (const out of Object.values(wpis.outputs ?? {})) {
             for (const klucz of ['videos', 'gifs', 'images']) {
-                for (const p of out?.[klucz] ?? []) pliki.push(p.filename);
+                for (const p of out?.[klucz] ?? []) {
+                    const wzgledna = p.subfolder ? `${p.subfolder}/${p.filename}` : p.filename;
+                    pliki.push(p.filename);
+                    materialy.push({
+                        nazwa: p.filename,
+                        podkatalog: p.subfolder ?? '',
+                        wzgledna,
+                        sciezka: comfyDir
+                            ? path.join(comfyDir, 'ComfyUI', 'output', p.subfolder ?? '', p.filename)
+                            : path.join('output', wzgledna),
+                    });
+                }
             }
         }
         const blad = wpis.status?.status_str === 'error' ? wpis.status : null;
-        return { ok: true, gotowe: !blad && pliki.length > 0, pliki, blad };
+        return { ok: true, gotowe: !blad && pliki.length > 0, pliki, materialy, blad };
     } catch (e) {
         return { ok: false, powod: e.message };
     }
