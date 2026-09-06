@@ -7,20 +7,68 @@
  * NAPISEM zbudowanym z `Date.now()`. Stąd „100% COMPLETED" obok komunikatu
  * „most milczy" — potok nie potrzebował mostu, bo niczego nie robił.
  *
- * ⚠️ SPRAWDZAMY, ZANIM OBIECAMY. Model wideo sam z siebie nie policzy nic:
- * MiniMax H3 potrzebuje SWOJEGO enkodera tekstu (CLIP typu `minimax`) i SWOJEGO
- * VAE. Jak długo ich nie ma, ta trasa ODMAWIA z listą braków — zamiast oddać
- * nazwę pliku, którego nie ma.
+ * ⚠️ DWA SILNIKI, JEDEN SPRZĘT (2026-09-06).
  *
- * Graf `_OtakOs_AI/workflows/minimax_h3_t2v.json` napisany jest z PRAWDZIWYCH
- * schematów nodów (`/object_info`), nie z pamięci: `MiniMaxH3ImageToVideo`,
- * `MiniMaxH3SigmaShift`, `EmptyMiniMaxH3LatentAV` istnieją w tej instalacji.
+ *   WAN 2.2 TI2V-5B — tor domyślny. Model 10 GB, enkoder umT5 w fp8 (6,7 GB),
+ *   VAE 1,4 GB. Mieści się w 6 GB VRAM RTX 3060 Laptop z offloadem i liczy
+ *   ujęcie w minutach.
+ *
+ *   MiniMax H3 — tor archiwalny. Wagi (33 GB) leżą na `E:/Modele AI` i czekają
+ *   na lepszą maszynę. Jego enkoder tekstu to Qwen3-VL 32B: 15 GB w najlżejszym
+ *   wariancie, czyli 2,5× VRAM tej karty. Zostawiamy go widocznym, ale NIE
+ *   wybieramy sami — obietnica sceny, która liczyłaby się godzinami albo padła
+ *   na OOM, jest gorsza niż uczciwe „ten model nie na ten sprzęt".
+ *
+ * ⚠️ SPRAWDZAMY, ZANIM OBIECAMY. Jak długo brakuje enkodera albo VAE, ta trasa
+ * ODMAWIA z listą braków — zamiast oddać nazwę pliku, którego nie ma.
+ *
+ * Grafy w `_OtakOs_AI/workflows/` napisane są z PRAWDZIWYCH schematów nodów
+ * (`/object_info`), nie z pamięci.
  */
 import fs from 'fs/promises';
 import path from 'path';
 
 const KATALOG_WF = () => path.join(process.cwd(), '_OtakOs_AI', 'workflows');
-const GRAF = 'minimax_h3_t2v.json';
+
+/**
+ * Opis silnika: czym rozpoznać jego pliki i pod które węzły grafu je podstawić.
+ * `wezly` trzyma NUMERY z pliku grafu — dzięki temu podmiana nie zgaduje po
+ * nazwach klas, a dodanie trzeciego silnika to jeden wpis w tej tablicy.
+ */
+const SILNIKI = [
+    {
+        id: 'wan22',
+        nazwa: 'Wan 2.2 TI2V-5B',
+        graf: 'wan22_ti2v_5b.json',
+        // Na tej karcie to jedyny tor, który realnie policzy scenę.
+        naTenSprzet: true,
+        model: (n) => /wan2\.2.*ti2v|wan22.*ti2v/i.test(n),
+        enkoder: (n) => /umt5/i.test(n),
+        vae: (n) => /wan.*vae|wan2\.2_vae/i.test(n),
+        wezly: { model: '1', enkoder: '2', vae: '3', prompt: '5', wymiary: '7', sampler: '8' },
+        czegoBrak: {
+            model: 'Brak modelu Wan 2.2 TI2V-5B (UNETLoader) — plik wan2.2_ti2v_5B_fp16.safetensors.',
+            enkoder: 'Brak enkodera umT5 dla Wan (CLIPLoader, type "wan") — umt5_xxl_fp8_e4m3fn_scaled.safetensors.',
+            vae: 'Brak VAE Wan 2.2 (VAELoader) — wan2.2_vae.safetensors.',
+        },
+    },
+    {
+        id: 'h3',
+        nazwa: 'MiniMax H3',
+        graf: 'minimax_h3_t2v.json',
+        // ⚠️ 6 GB VRAM kontra enkoder 32B. Widoczny, ale nie wybierany sam.
+        naTenSprzet: false,
+        model: (n) => /h3|minimax/i.test(n) && !/music/i.test(n),
+        enkoder: (n) => /h3|qwen3vl/i.test(n) && !/music/i.test(n),
+        vae: (n) => /h3/i.test(n) && !/music/i.test(n),
+        wezly: { model: '1', enkoder: '2', vae: '3', prompt: '5', wymiary: '5', sampler: '7' },
+        czegoBrak: {
+            model: 'Brak modelu wideo MiniMax H3 (UNETLoader).',
+            enkoder: 'Brak enkodera tekstu dla MiniMax H3 (CLIPLoader, type "minimax") — to Qwen3-VL 32B.',
+            vae: 'Brak VAE dla MiniMax H3 (VAELoader).',
+        },
+    },
+];
 
 /** Co ComfyUI naprawdę widzi w danym polu danego noda. */
 async function listaPola(base, nod, pole) {
@@ -34,57 +82,65 @@ async function listaPola(base, nod, pole) {
     } catch { return null; }
 }
 
+async function grafIstnieje(nazwa) {
+    try { await fs.access(path.join(KATALOG_WF(), nazwa)); return true; } catch { return false; }
+}
+
+/** Ocena jednego silnika na tle tego, co ComfyUI ma pod ręką. */
+async function ocen(silnik, { modele, enkodery, vae }) {
+    const braki = [];
+    const m = modele.filter(silnik.model);
+    const e = enkodery.filter(silnik.enkoder);
+    const v = vae.filter(silnik.vae);
+    if (!m.length) braki.push(silnik.czegoBrak.model);
+    if (!e.length) braki.push(silnik.czegoBrak.enkoder);
+    if (!v.length) braki.push(silnik.czegoBrak.vae);
+    if (!await grafIstnieje(silnik.graf)) braki.push(`Brak grafu ${silnik.graf} w _OtakOs_AI/workflows/.`);
+    return {
+        id: silnik.id, nazwa: silnik.nazwa, naTenSprzet: silnik.naTenSprzet,
+        modele: m, enkodery: e, vae: v, braki, gotowy: braki.length === 0,
+    };
+}
+
 /**
- * Czy da się w ogóle generować. Zwraca listę BRAKÓW, a nie samo „nie".
- * Bez tego Suweren dostawałby „nie wyszło" bez informacji, czego dokupić.
+ * Czy da się w ogóle generować. Zwraca listę BRAKÓW, a nie samo „nie" —
+ * bez tego Suweren dostawałby „nie wyszło" bez informacji, czego dokupić.
  */
 export async function stanWideo(comfyBase) {
-    const braki = [];
     let comfy = false;
     try { comfy = (await fetch(`${comfyBase}/object_info/UNETLoader`)).ok; } catch { comfy = false; }
     if (!comfy) {
         return {
-            gotowe: false, comfy: false, modele: [], enkodery: [], vae: [],
+            gotowe: false, comfy: false, silniki: [], silnik: null,
             braki: ['ComfyUI nie odpowiada na :8188 — obudź go (POST /api/comfy/ensure).'],
         };
     }
 
-    const modele = (await listaPola(comfyBase, 'UNETLoader', 'unet_name')) ?? [];
-    const enkodery = (await listaPola(comfyBase, 'CLIPLoader', 'clip_name')) ?? [];
-    const vae = (await listaPola(comfyBase, 'VAELoader', 'vae_name')) ?? [];
+    const widziane = {
+        modele: (await listaPola(comfyBase, 'UNETLoader', 'unet_name')) ?? [],
+        enkodery: (await listaPola(comfyBase, 'CLIPLoader', 'clip_name')) ?? [],
+        vae: (await listaPola(comfyBase, 'VAELoader', 'vae_name')) ?? [],
+    };
 
-    // Model wideo H3 — po nazwie pliku, bo tak go widzi ComfyUI.
-    const modeleH3 = modele.filter(m => /h3|minimax/i.test(m) && !/music/i.test(m));
-    if (!modeleH3.length) braki.push('Brak modelu wideo MiniMax H3 w ComfyUI (UNETLoader).');
+    const silniki = [];
+    for (const s of SILNIKI) silniki.push(await ocen(s, widziane));
 
-    // ⚠️ Enkoder MUSI być dla WIDEO. `minimax_music3_text_encoder` jest muzyczny
-    // i podstawienie go tutaj skończyłoby się błędem po kilkunastu minutach liczenia.
-    const enkoderyH3 = enkodery.filter(e => /h3/i.test(e) && !/music/i.test(e));
-    if (!enkoderyH3.length) {
-        braki.push(
-            'Brak enkodera tekstu dla MiniMax H3 (CLIPLoader, type "minimax"). '
-            + `Widzę tylko: ${enkodery.join(', ') || '—'} — to enkodery MUZYCZNE, nie wideo.`,
-        );
-    }
+    // Wybieramy TYLKO silnik gotowy I przeznaczony na ten sprzęt.
+    const wybrany = silniki.find((s) => s.gotowy && s.naTenSprzet) ?? null;
 
-    const vaeH3 = vae.filter(v => /h3/i.test(v) && !/music/i.test(v));
-    if (!vaeH3.length) {
-        braki.push(
-            'Brak VAE dla MiniMax H3 (VAELoader). '
-            + `Widzę tylko: ${vae.join(', ') || '—'}.`,
-        );
-    }
-
-    let grafJest = true;
-    try { await fs.access(path.join(KATALOG_WF(), GRAF)); } catch { grafJest = false; }
-    if (!grafJest) braki.push(`Brak grafu ${GRAF} w _OtakOs_AI/workflows/.`);
+    // Braki raportujemy z toru, który MA tu liczyć — lista braków H3 tylko
+    // myliłaby: on nie policzy tej sceny nawet w komplecie.
+    const dlaSprzetu = silniki.find((s) => s.naTenSprzet);
+    const braki = wybrany ? [] : (dlaSprzetu?.braki ?? ['Żaden silnik wideo nie jest skonfigurowany.']);
 
     return {
-        gotowe: braki.length === 0,
+        gotowe: !!wybrany,
         comfy: true,
-        modele: modeleH3, enkodery: enkoderyH3, vae: vaeH3,
-        wszystkieEnkodery: enkodery, wszystkieVae: vae,
-        graf: grafJest ? GRAF : null,
+        silnik: wybrany,
+        silniki,
+        wszystkieModele: widziane.modele,
+        wszystkieEnkodery: widziane.enkodery,
+        wszystkieVae: widziane.vae,
         braki,
     };
 }
@@ -99,17 +155,23 @@ export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, kla
     const stan = await stanWideo(comfyBase);
     if (!stan.gotowe) return { ok: false, powod: stan.braki.join(' | '), braki: stan.braki };
 
-    const graf = JSON.parse(await fs.readFile(path.join(KATALOG_WF(), GRAF), 'utf8'));
+    const opis = SILNIKI.find((s) => s.id === stan.silnik.id);
+    const w = opis.wezly;
+    const graf = JSON.parse(await fs.readFile(path.join(KATALOG_WF(), opis.graf), 'utf8'));
+    delete graf._opis;   // komentarz dla ludzi; ComfyUI odrzuciłby go jako nieznany node
+
     // Podstawiamy REALNE nazwy z ComfyUI — nie te z pliku, bo plik jest szablonem.
-    graf['1'].inputs.unet_name = stan.modele[0];
-    graf['2'].inputs.clip_name = stan.enkodery[0];
-    graf['3'].inputs.vae_name = stan.vae[0];
-    graf['5'].inputs.prompt = prompt;
-    graf['5'].inputs.width = Number(szerokosc) || 720;
-    graf['5'].inputs.height = Number(wysokosc) || 480;
-    graf['5'].inputs.length = Number(klatek) || 49;
-    graf['7'].inputs.steps = Number(kroki) || 20;
-    graf['7'].inputs.seed = Number.isFinite(Number(ziarno)) ? Number(ziarno) : Math.floor(Math.random() * 1e9);
+    graf[w.model].inputs.unet_name = stan.silnik.modele[0];
+    graf[w.enkoder].inputs.clip_name = stan.silnik.enkodery[0];
+    graf[w.vae].inputs.vae_name = stan.silnik.vae[0];
+    graf[w.prompt].inputs[graf[w.prompt].inputs.prompt !== undefined ? 'prompt' : 'text'] = prompt;
+
+    graf[w.wymiary].inputs.width = Number(szerokosc) || 704;
+    graf[w.wymiary].inputs.height = Number(wysokosc) || 480;
+    graf[w.wymiary].inputs.length = Number(klatek) || 49;
+
+    graf[w.sampler].inputs.steps = Number(kroki) || 20;
+    graf[w.sampler].inputs.seed = Number.isFinite(Number(ziarno)) ? Number(ziarno) : Math.floor(Math.random() * 1e9);
 
     try {
         const r = await fetch(`${comfyBase}/prompt`, {
@@ -120,7 +182,7 @@ export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, kla
         if (!r.ok || d?.error) {
             return { ok: false, powod: `ComfyUI odrzucił graf: ${JSON.stringify(d?.error ?? d).slice(0, 300)}` };
         }
-        return { ok: true, zlecenie: d.prompt_id, model: stan.modele[0] };
+        return { ok: true, zlecenie: d.prompt_id, model: stan.silnik.modele[0], silnik: stan.silnik.nazwa };
     } catch (e) {
         return { ok: false, powod: `Nie dowiozłem grafu do ComfyUI: ${e.message}` };
     }

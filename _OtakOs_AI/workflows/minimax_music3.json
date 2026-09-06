@@ -1,0 +1,137 @@
+{
+  "3": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "Encoder tekstu (MiniMax Music3)"
+    }
+  },
+  "6": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "minimax_music3_dit_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "Rdzen DiT"
+    }
+  },
+  "7": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_music3_dav.safetensors"
+    },
+    "_meta": {
+      "title": "DAV - dekoder audio"
+    }
+  },
+  "13": {
+    "class_type": "MiniMaxMusic3TextEncode",
+    "inputs": {
+      "clip": [
+        "3",
+        0
+      ],
+      "caption": "Global Metadata: ambient electronic, 72 BPM, A minor. Warm analog synthesizers, deep spatial reverb, slow evolving pads.\n\nVocal Details: no vocals, purely instrumental.\n\nArrangement: soft sub bass, gentle arpeggios, long swelling pads, distant bell tones. Slow build, no drums.",
+      "lyrics": "",
+      "seed": 222,
+      "max_duration": 60.0,
+      "cfg_scale": 1.7,
+      "top_k": 50
+    },
+    "_meta": {
+      "title": "Opis brzmienia + tekst"
+    }
+  },
+  "10": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": [
+        "13",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Negatyw (zero)"
+    }
+  },
+  "15": {
+    "class_type": "EmptyMiniMaxMusic3LatentAudio",
+    "inputs": {
+      "seconds": [
+        "13",
+        1
+      ],
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Pusty latent audio"
+    }
+  },
+  "9": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "seed": 222,
+      "steps": 30,
+      "cfg": 1.7,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": [
+        "13",
+        0
+      ],
+      "negative": [
+        "10",
+        0
+      ],
+      "latent_image": [
+        "15",
+        0
+      ],
+      "denoise": 1.0
+    },
+    "_meta": {
+      "title": "Dyfuzja"
+    }
+  },
+  "42": {
+    "class_type": "VAEDecodeAudioTiled",
+    "inputs": {
+      "samples": [
+        "9",
+        0
+      ],
+      "vae": [
+        "7",
+        0
+      ],
+      "tile_size": 1536,
+      "overlap": 64
+    },
+    "_meta": {
+      "title": "Dekod kafelkowy (oszczedza VRAM)"
+    }
+  },
+  "35": {
+    "class_type": "SaveAudioMP3",
+    "inputs": {
+      "audio": [
+        "42",
+        0
+      ],
+      "filename_prefix": "audio/teo_music_v2",
+      "quality": "V0"
+    },
+    "_meta": {
+      "title": "Zapis MP3"
+    }
+  }
+}

@@ -40,7 +40,15 @@ public/models/*.task
 public/models/*.h5
 public/models/*.bin
 # --- PIASKOWNICA OTAKOS (re-branding: _AntiGravity_* → _OtakOs_*) ---
-_OtakOs_AI/
+# ⚠️ WYJĄTEK NA GRAFY (2026-09-06). Cały `_OtakOs_AI/` jest ignorowany, bo leżą
+# w nim wagi liczone w dziesiątkach gigabajtów. Ale `workflows/*.json` to nie
+# wagi — to PRZEPIS: który node, w jakiej kolejności, z jakim parametrem.
+# Grafy powstały z żywych schematów `/object_info` i odtworzenie ich z pamięci
+# kosztowałoby godziny. Kilka kilobajtów w repo jest tego warte.
+_OtakOs_AI/*
+!_OtakOs_AI/workflows/
+_OtakOs_AI/workflows/*
+!_OtakOs_AI/workflows/*.json
 _OtakOs_Aula/
 _OtakOs_Build/
 _OtakOs_Components/

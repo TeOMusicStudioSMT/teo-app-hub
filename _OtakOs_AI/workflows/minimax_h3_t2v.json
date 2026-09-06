@@ -1,0 +1,60 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": { "unet_name": "10Eros_Max_h3_TURBO-hybrid_beta4_w4a8.safetensors", "weight_dtype": "default" }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": { "clip_name": "PODMIEN_ENCODER_H3.safetensors", "type": "minimax" }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": { "vae_name": "PODMIEN_VAE_H3.safetensors" }
+  },
+  "4": {
+    "class_type": "MiniMaxH3SigmaShift",
+    "inputs": { "model": ["1", 0], "shift_video": 5.0, "shift_audio": 5.0 }
+  },
+  "5": {
+    "class_type": "MiniMaxH3ImageToVideo",
+    "inputs": {
+      "clip": ["2", 0],
+      "vae": ["3", 0],
+      "prompt": "PODMIEN_PROMPT",
+      "width": 720,
+      "height": 480,
+      "length": 49
+    }
+  },
+  "6": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": { "conditioning": ["5", 0] }
+  },
+  "7": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["4", 0],
+      "seed": 0,
+      "steps": 20,
+      "cfg": 5.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": ["5", 0],
+      "negative": ["6", 0],
+      "latent_image": ["5", 1],
+      "denoise": 1.0
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["7", 0], "vae": ["3", 0] }
+  },
+  "9": {
+    "class_type": "CreateVideo",
+    "inputs": { "images": ["8", 0], "fps": 24.0 }
+  },
+  "10": {
+    "class_type": "SaveVideo",
+    "inputs": { "video": ["9", 0], "filename_prefix": "katedra/scena", "format": "auto", "codec": "auto" }
+  }
+}
