@@ -142,6 +142,8 @@ import * as Opowiesc from './services/PokojOpowiesci.js';
 import * as PostProdukcja from './services/PostProdukcja.js';
 import * as Blender from './services/Blender.js';
 import * as Uniwersum from './services/Uniwersum.js';
+import * as Scenografie from './services/Scenografie.js';
+import * as Produkty from './services/Produkty.js';
 import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
@@ -6341,6 +6343,117 @@ app.post('/api/blender/uruchom', async (req, res) => {
 });
 
 // ── 🌌 UNIWERSUM („Blender Blendera") ───────────────────────────────────────
+
+// ── WIRTUALNE STUDIO, KAMERZYSTA I SCENOGRAFIE DLA TGS ──────────────────────
+
+app.get('/api/blender/ruchy', (req, res) => res.json({ success: true, ruchy: Blender.RUCHY }));
+
+/** POST /api/blender/studio { projekt, kadr, nazwa?, aktorow? } — plan z kadru. */
+app.post('/api/blender/studio', async (req, res) => {
+    try {
+        const s = await Blender.zbudujStudio(req.body ?? {});
+        const stan = await Blender.stanBlendera();
+        if (!stan.jest) return res.json({ success: true, ...s, blender: stan, zbudowane: false });
+
+        const r = await Blender.uruchom(s.skrypt);
+        console.log('[Studio] ' + path.basename(r.scena) + ' z kadru ' + path.basename(s.kadr));
+        return res.json({ success: true, ...s, scena: r.scena, blender: stan, zbudowane: true });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/blender/ujecie { blend, ruch, sekundy?, fps?, szerokosc?, wysokosc? }
+ * TeOgochi w roli kamerzysty: render ujecia w gotowym studiu.
+ * UWAGA: to RENDER, nie generacja — Blender liczy klatki z tej sceny.
+ */
+app.post('/api/blender/ujecie', async (req, res) => {
+    const { fps = 24 } = req.body ?? {};
+    try {
+        const stan = await Blender.stanBlendera();
+        if (!stan.jest) return res.status(424).json({ success: false, message: stan.powod + ' ' + stan.cozrobic });
+
+        const u = await Blender.skryptUjecia(req.body ?? {});
+        const start = Date.now();
+        await Blender.uruchom(u.skrypt);
+        const film = await Blender.zlozKlatki(u.wyjscieBaza, Number(fps) || 24);
+        const sekund = Math.round((Date.now() - start) / 1000);
+
+        console.log('[Kamerzysta] ' + u.ruch + ': ' + film.klatek + ' klatek w ' + sekund + ' s');
+        await Szyna.nadaj({ agent: 'Klatka', rodzaj: 'praca', tresc: 'nakrecila ujecie w studiu (' + u.ruch + ', ' + film.klatek + ' klatek)' });
+        return res.json({ success: true, ...film, ruch: u.ruch, sekund });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/** GET/POST /api/tgs/scenografie — przekazanie sceny do TeO Game Studio. */
+app.get('/api/tgs/scenografie', async (req, res) => {
+    try { return res.json({ success: true, ...(await Scenografie.lista()) }); }
+    catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/tgs/scenografie', async (req, res) => {
+    const { blend = null, ...reszta } = req.body ?? {};
+    try {
+        // Gdy przychodzi .blend, sami robimy z niego .glb — przegladarka .blend
+        // nie czyta, a Suweren nie ma powodu znac tej roznicy.
+        let glb = reszta.glb;
+        if (!glb && blend) {
+            const g = await Blender.skryptGlb({ blend, nazwa: reszta.nazwa });
+            await Blender.uruchom(g.skrypt);
+            glb = g.glb;
+        }
+        if (!glb) return res.status(400).json({ success: false, message: 'Podaj .glb albo .blend do konwersji.' });
+
+        const w = await Scenografie.przekaz({ ...reszta, glb, blend });
+        console.log('[TGS] Scenografia ' + w.wpis.nazwa + ' -> ' + w.wpis.url);
+        return res.json({ success: true, ...w });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── PRODUKTY MARKI ──────────────────────────────────────────────────────────
+
+app.get('/api/produkty', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        const d = await Produkty.wczytaj(ANTIGRAVITY_DIR, projekt);
+        return res.json({ success: true, ...d, narzedzia: Produkty.NARZEDZIA, stany: Produkty.STANY });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/** POST /api/produkty/wymysl { projekt, ile? } — produkty z filarow uniwersum. */
+app.post('/api/produkty/wymysl', async (req, res) => {
+    const { projekt = '', ile = 5, model } = req.body ?? {};
+    try {
+        const u = await Uniwersum.wczytaj(ANTIGRAVITY_DIR, projekt);
+        if (!u) return res.status(400).json({ success: false, message: 'Produkty wyrastaja z uniwersum — najpierw je zaloz w zakladce UNIWERSUM.' });
+
+        const p = await rezyserPamiec(ANTIGRAVITY_DIR, projekt);
+        const { system, prompt } = Produkty.promptProduktow({
+            uniwersum: u, kanon: (p.fakty ?? []).map((f) => f.tresc), ile: Number(ile) || 5,
+        });
+        const { tekst, silnik } = await piszModelem(model, system, prompt);
+        const wymyslone = Produkty.odczytaj(tekst, Number(ile) || 5);
+        const w = await Produkty.dopisz(ANTIGRAVITY_DIR, projekt, wymyslone);
+
+        console.log('[Produkty] ' + w.dodane.length + ' nowych dla ' + projekt);
+        return res.json({ success: true, model: silnik, ...w, narzedzia: Produkty.NARZEDZIA });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/produkty/stan', async (req, res) => {
+    const { projekt = '', id = '', stan = '' } = req.body ?? {};
+    try { return res.json({ success: true, produkt: await Produkty.zmienStan(ANTIGRAVITY_DIR, projekt, id, stan) }); }
+    catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
 
 app.get('/api/uniwersum', async (req, res) => {
     try {
