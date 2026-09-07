@@ -6320,13 +6320,13 @@ app.get('/api/biblioteka', async (req, res) => {
             muzyka: (p) => MuzykaFilmowa.muzykaProjektu(ANTIGRAVITY_DIR, p),
             kadry: (p) => produkcjaLista(ANTIGRAVITY_DIR, p),
         });
+        // Stan YouTube'a bierzemy Z IMPRESARIATU — on trzyma klucze i on wysyła.
+        const yt = await ImpresarioService.getInstance().getYouTubeSecretsStatus().catch(() => null);
         return res.json({
             success: true,
             projekty: dane,
             odbiorcy: Biblioteka.ODBIORCY,
-            // Stan każdego kanału liczony NA ŻYWO ze środowiska — żeby panel nie
-            // obiecywał wysyłki, której nie ma czym wykonać.
-            kanaly: Biblioteka.KANALY.map((k) => Biblioteka.stanKanalu(k.id)),
+            kanaly: Biblioteka.KANALY.map((k) => Biblioteka.stanKanalu(k.id, yt)),
         });
     } catch (e) {
         return res.status(500).json({ success: false, message: e.message });
@@ -6339,6 +6339,56 @@ app.post('/api/biblioteka/plan', async (req, res) => {
         const w = await Biblioteka.ustawPlan(ANTIGRAVITY_DIR, projekt, odcinekId, dane);
         console.log(`[Biblioteka] 🗓️ Plan publikacji: ${projekt} / ${odcinekId} → ${w.plan.kanal} (${w.plan.kiedy ?? 'bez daty'}).`);
         return res.json({ success: true, ...w });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/biblioteka/wyslij { projekt, odcinekId }
+ *
+ * Oddaje odcinek IMPRESARIATOWI — temu samemu, który publikuje muzykę.
+ * Suweren: „to można bardzo łatwo zrealizować, łącząc to z impresariatem
+ * z głównej apki — po prostu wysyłał by wszelkie dane tam".
+ *
+ * ⚠️ Biblioteka NIE wysyła sama. Składa zlecenie i podaje je dalej; OAuth2
+ * i resumable upload siedzą w Impresariacie. Druga implementacja uploadu
+ * znaczyłaby dwa miejsca do naprawiania i dwa zestawy błędów.
+ */
+app.post('/api/biblioteka/wyslij', async (req, res) => {
+    const { projekt = '', odcinekId = '' } = req.body ?? {};
+    try {
+        const p = await rezyserPamiec(ANTIGRAVITY_DIR, projekt);
+        const odcinek = (p.odcinki ?? []).find((o) => o.id === odcinekId);
+        if (!odcinek) return res.status(404).json({ success: false, message: `Odcinek "${odcinekId}" nie istnieje.` });
+
+        const materialy = await materialyOdcinka(ANTIGRAVITY_DIR, projekt, odcinek);
+        const z = await Biblioteka.zlecenieDlaImpresariatu(ANTIGRAVITY_DIR, projekt, odcinek, materialy);
+
+        // Przy YouTubie sprawdzamy klucze ZANIM cokolwiek trafi do kolejki —
+        // zadanie, które i tak padnie na braku tokenu, tylko zaśmieca listę.
+        if (z.plan.kanal === 'youtube') {
+            const yt = await ImpresarioService.getInstance().getYouTubeSecretsStatus();
+            if (!yt.allPresent) {
+                return res.status(424).json({
+                    success: false,
+                    message: `Impresariat nie ma kompletu kluczy YouTube (brakuje: ${yt.missing.join(', ')}). Wpisz je raz: POST /api/impresario/secrets/youtube.`,
+                    braki: yt.missing,
+                });
+            }
+        }
+
+        const job = await ImpresarioService.getInstance()
+            .enqueuePublication(z.tytul, z.album, z.platformy, z.plik);
+        const plan = await Biblioteka.oznaczWyslany(ANTIGRAVITY_DIR, projekt, odcinekId, job.id);
+
+        await Szyna.nadaj({
+            agent: 'Kupiec', rodzaj: 'praca',
+            tresc: `oddal odcinek #${odcinek.numer} „${odcinek.tytul}" do Impresariatu (${z.platformy.join(', ')})`,
+        });
+        console.log(`[Biblioteka] 📤 #${odcinek.numer} → Impresariat, zlecenie ${job.id} (${z.plik})`);
+
+        return res.json({ success: true, job, plan, plik: z.plik, tytul: z.tytul });
     } catch (e) {
         return res.status(400).json({ success: false, message: e.message });
     }

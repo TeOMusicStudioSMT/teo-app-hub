@@ -77,25 +77,45 @@ async function zapiszPlan(katalog, projekt, dane) {
 
 /**
  * Stan kanału publikacji — uczciwa odpowiedź na „czy to działa automatycznie".
- * `gotowy:false` z listą braków, dopóki poświadczeń naprawdę nie ma.
+ *
+ * ⚠️ POPRAWKA 2026-09-07 — MYLIŁEM SIĘ CO DO MECHANIZMU. Pierwsza wersja
+ * szukała poświadczeń w zmiennych środowiskowych (`YT_CLIENT_ID` itd.) i pisała,
+ * że „Katedra tego nie zrobi". Nieprawda: Katedra MA gotowy tor — Impresariat
+ * (`services/ImpresarioService.js`) trzyma klucze w `_OtakOs_Wymiar/media/
+ * media_secrets.json` i wysyła plik prawdziwym OAuth2 + resumable upload na
+ * `googleapis.com/upload/youtube/v3/videos`. Suweren miał rację, że „to można
+ * bardzo łatwo zrealizować, łącząc z impresariatem".
+ *
+ * Dlatego stan YouTube'a czytamy TERAZ Z IMPRESARIATU, a nie ze środowiska.
+ * `stanYouTube` wstrzykuje most (getYouTubeSecretsStatus).
  */
-export function stanKanalu(id, srodowisko = process.env) {
+export function stanKanalu(id, stanYouTube = null) {
     const kanal = KANALY.find((k) => k.id === id) ?? KANALY[2];
     if (kanal.id === 'lokalny') return { kanal: kanal.id, nazwa: kanal.nazwa, gotowy: true, braki: [] };
 
     if (kanal.id === 'youtube') {
-        const braki = [];
-        if (!srodowisko.YT_CLIENT_ID) braki.push('YT_CLIENT_ID — identyfikator klienta OAuth z Google Cloud Console');
-        if (!srodowisko.YT_CLIENT_SECRET) braki.push('YT_CLIENT_SECRET — sekret tego klienta');
-        if (!srodowisko.YT_REFRESH_TOKEN) braki.push('YT_REFRESH_TOKEN — token odświeżania po jednorazowej zgodzie właściciela kanału');
+        // Bez odpowiedzi Impresariatu nie zgadujemy — mówimy, że nie wiemy.
+        if (!stanYouTube) {
+            return {
+                kanal: kanal.id, nazwa: kanal.nazwa, gotowy: false,
+                braki: ['Impresariat nie odpowiedział — nie wiem, czy klucze są.'],
+                uwaga: 'Sprawdź GET /api/impresario/status.',
+            };
+        }
+        const braki = (stanYouTube.missing ?? []).map((f) => ({
+            CLIENT_ID: 'CLIENT_ID — identyfikator klienta OAuth z Google Cloud Console',
+            CLIENT_SECRET: 'CLIENT_SECRET — sekret tego klienta',
+            REFRESH_TOKEN: 'REFRESH_TOKEN — token po jednorazowej zgodzie właściciela kanału',
+        }[f] ?? f));
+
         return {
             kanal: kanal.id, nazwa: kanal.nazwa,
-            gotowy: braki.length === 0,
+            gotowy: !!stanYouTube.allPresent,
             braki,
-            // Mówimy też, czego NIE załatwi nawet komplet poświadczeń.
-            uwaga: braki.length
-                ? 'Bez tych trzech rzeczy publikacja jest PLANEM, nie wysyłką. Katedra nie wygeneruje ich lokalnie — trzeba je raz założyć po stronie Google.'
-                : 'Poświadczenia są. Wysyłka nadal zużywa limit dobowy API (upload ≈ 1600 z 10 000 jednostek).',
+            przezImpresariat: true,
+            uwaga: stanYouTube.allPresent
+                ? 'Klucze są w Impresariacie. Wysyłka zużywa limit dobowy API (upload ≈ 1600 z 10 000 jednostek).'
+                : 'Klucze wpisuje się RAZ: POST /api/impresario/secrets/youtube. Potem wysyłka idzie sama przez Impresariat.',
         };
     }
 
@@ -196,4 +216,50 @@ export async function przekaz(katalog, projekt, odcinekId, agentId, notatka = ''
     };
 }
 
-export default { ODBIORCY, KANALY, stanKanalu, biblioteka, ustawPlan, przekaz };
+/**
+ * Przygotuj zlecenie dla Impresariatu z planu publikacji odcinka.
+ *
+ * ⚠️ TA FUNKCJA NIC NIE WYSYŁA. Składa dane i sprawdza warunki; wysyłką
+ * zajmuje się Impresariat, który ma do tego OAuth2 i resumable upload.
+ * Rozdzielenie jest celowe: gdyby biblioteka wysyłała sama, mielibyśmy
+ * drugą implementację uploadu i dwa miejsca do naprawiania.
+ */
+export async function zlecenieDlaImpresariatu(katalog, projekt, odcinek, materialy) {
+    const plany = await wczytajPlan(katalog, projekt);
+    const plan = plany[odcinek.id];
+    if (!plan) throw new Error('Ten odcinek nie ma planu publikacji — najpierw zapisz plan.');
+
+    const wideo = (materialy.pliki ?? []).filter((f) => /\.(mp4|webm|mov|mkv)$/i.test(f.nazwa));
+    if (!wideo.length) {
+        throw new Error(`W katalogu odcinka nie ma pliku wideo. Nie ma czego wysłać — najpierw zmontuj odcinek.`);
+    }
+    // Największy plik = zmontowana całość, a nie pojedyncze ujęcie próbne.
+    const najwiekszy = wideo.reduce((a, b) => ((b.bajtow ?? 0) > (a.bajtow ?? 0) ? b : a));
+
+    return {
+        plan,
+        plik: path.join(materialy.sciezka, najwiekszy.nazwa),
+        tytul: plan.tytul || `${projekt} — #${odcinek.numer} ${odcinek.tytul}`,
+        album: projekt,
+        platformy: [plan.kanal === 'youtube' ? 'youtube' : 'lokalny'],
+        opis: plan.opis || odcinek.streszczenie,
+        tagi: plan.tagi ?? [],
+    };
+}
+
+/** Odnotuj, że odcinek poszedł do Impresariatu — razem z numerem zlecenia. */
+export async function oznaczWyslany(katalog, projekt, odcinekId, jobId) {
+    const plany = await wczytajPlan(katalog, projekt);
+    const plan = plany[odcinekId] ?? {};
+    plan.stan = 'w impresariacie';
+    plan.zlecenie = jobId;
+    plan.wyslano = new Date().toISOString();
+    plany[odcinekId] = plan;
+    await zapiszPlan(katalog, projekt, plany);
+    return plan;
+}
+
+export default {
+    ODBIORCY, KANALY, stanKanalu, biblioteka, ustawPlan, przekaz,
+    zlecenieDlaImpresariatu, oznaczWyslany,
+};
