@@ -6183,6 +6183,97 @@ app.post('/api/ciag/scena', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/ciag/kamery
+ *   { plik, kamery: [{ nazwa?, odSekundy?, ruch?, ruchId?, opis? }], projekt?, sklejaj?, klatek?, kroki? }
+ *
+ * POKRYCIE TEGO SAMEGO MOMENTU z kilku kamer. Każda kamera startuje od
+ * WSKAZANEJ SEKUNDY materiału głównego — nie od poprzedniej kamery.
+ *
+ * ⚠️ To nie jest druga kamera stojąca obok planu. Model dostaje klatkę
+ * z materiału głównego, więc nowe ujęcie ZACZYNA się tym samym kadrem
+ * i dopiero ruch kamery odsuwa je w inną perspektywę. Ruchy zdecydowane
+ * (obrót, przeciwujęcie) dają różnicę; subtelne dadzą prawie to samo ujęcie.
+ */
+app.post('/api/ciag/kamery', async (req, res) => {
+    const { plik, kamery = [], projekt = '', sklejaj = false, klatek, kroki } = req.body ?? {};
+    if (!plik) return res.status(400).json({ success: false, message: 'Brak materiału głównego.' });
+    if (!Array.isArray(kamery) || !kamery.length) {
+        return res.status(400).json({ success: false, message: 'Nie podano żadnej kamery.' });
+    }
+    if (kamery.length > Sekwencja.MAX_UJEC) {
+        return res.status(400).json({ success: false, message: `Za dużo kamer (max ${Sekwencja.MAX_UJEC}).` });
+    }
+    try {
+        const stan = await Wideo.stanWideo(COMFY_BASE);
+        if (!stan.gotowe) return res.status(400).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
+
+        const glowny = await CiagDalszy.opisFilmu(plik, COMFY_DIR);
+
+        // Kotwica jak przy scenie — bez niej postać rozjedzie się między kamerami.
+        let kotwica = '';
+        if (projekt) {
+            const [b, p2] = await Promise.all([
+                produkcjaBiblia(ANTIGRAVITY_DIR, projekt).catch(() => null),
+                rezyserPamiec(ANTIGRAVITY_DIR, projekt).catch(() => null),
+            ]);
+            kotwica = [b?.tekst || '', (p2?.fakty ?? []).map((f) => f.tresc).join('\n')].filter(Boolean).join('\n\n');
+        }
+
+        const ujecia = kamery.map((k, i) => {
+            const preset = Sekwencja.RUCHY_KAMERY.find((r) => r.id === k.ruchId);
+            return {
+                nr: i + 1,
+                nazwa: String(k.nazwa || preset?.nazwa || `Kamera ${i + 2}`).slice(0, 40),
+                // Sekundę przycina i tak `klatkaZCzasu`, ale zapisujemy, co przyszło.
+                odSekundy: Number.isFinite(Number(k.odSekundy)) ? Number(k.odSekundy) : 0,
+                prompt: Sekwencja.promptKamery({
+                    ruch: k.ruch || preset?.opis || '',
+                    opis: k.opis || '',
+                    kotwica,
+                }),
+            };
+        });
+
+        const id = Sekwencja.odpal({
+            tryb: 'kamery',
+            sklejaj: !!sklejaj,
+            opisSceny: `Pokrycie „${glowny.nazwa}" z ${ujecia.length} kamer`,
+            ujecia,
+            filmStartowy: glowny.sciezka,
+            dolaczZrodlo: false,
+
+            generujZTekstu: ({ prompt }) => Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, klatek, kroki }),
+
+            dopiszDoFilmu: async ({ plik: p2, prompt, odSekundy }) => {
+                // ⚠️ Klatka z PODANEJ sekundy, nie z końca — na tym polega pokrycie.
+                const kl = await CiagDalszy.klatkaZCzasu(p2, odSekundy ?? 0, COMFY_DIR);
+                return Wideo.dopiszUjecie({
+                    comfyBase: COMFY_BASE, prompt, klatka: kl.nazwa,
+                    szerokosc: kl.zrodlo.szerokosc, wysokosc: kl.zrodlo.wysokosc, fps: kl.zrodlo.fps,
+                    klatek, kroki,
+                });
+            },
+
+            czekajNaPlik: czekajNaPlikWideo,
+
+            sklej: async (pliki, nazwa) => CiagDalszy.sklej({
+                pliki,
+                wyjscie: path.join(COMFY_DIR, 'ComfyUI', 'output', 'katedra', `${nazwa}.mp4`),
+                comfyDir: COMFY_DIR,
+            }),
+        });
+
+        console.log(`[Kamery] 🎥 ${ujecia.length} kamer do „${glowny.nazwa}" (${glowny.sekundy}s) — zadanie ${id}.`);
+        return res.json({ success: true, id, glowny, ...Sekwencja.stanZadania(id) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/** Presety ruchów — front nie ma ich wymyślać po swojemu. */
+app.get('/api/ciag/ruchy', (req, res) => res.json({ success: true, ruchy: Sekwencja.RUCHY_KAMERY }));
+
 app.get('/api/ciag/scena/:id', (req, res) => {
     const s = Sekwencja.stanZadania(req.params.id);
     // ⚠️ Po restarcie mostu zadania znikają — mówimy to wprost, zamiast milczeć.

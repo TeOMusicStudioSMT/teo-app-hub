@@ -140,6 +140,38 @@ export async function ostatniaKlatka(plik, comfyDir) {
     return { nazwa, sciezka: wyjscie, bajtow: st.size };
 }
 
+/**
+ * Klatka z DOWOLNEGO momentu — dla ujęć z drugiej kamery.
+ *
+ * ⚠️ `-ss` PRZED `-i`. Po `-i` ffmpeg dekoduje cały materiał do wskazanego
+ * miejsca: przy 135-megabajtowym pliku to kilkanaście sekund czekania zamiast
+ * ułamka. Przed `-i` skacze po kluczowych klatkach i wraca od razu.
+ *
+ * ⚠️ Sekunda poza materiałem daje pusty plik i cichy błąd „nie ma klatki",
+ * więc przycinamy ją do długości filmu, zanim ffmpeg się zdziwi.
+ */
+export async function klatkaZCzasu(plik, sekunda, comfyDir) {
+    const p = bezpieczna(plik, comfyDir);
+    if (!comfyDir) throw new Error('Nie znam katalogu ComfyUI — nie mam gdzie odłożyć klatki.');
+
+    const opis = await opisFilmu(p, comfyDir);
+    const s = Math.max(0, Math.min(Number(sekunda) || 0, Math.max(0, opis.sekundy - 0.1)));
+
+    const katalogWejscia = path.join(comfyDir, 'ComfyUI', 'input');
+    await fs.mkdir(katalogWejscia, { recursive: true });
+    const nazwa = `kam_${path.basename(p, path.extname(p)).slice(0, 32).replace(/[^a-zA-Z0-9_-]/g, '_')}_${s.toFixed(2).replace('.', 'p')}_${Date.now().toString(36)}.png`;
+    const wyjscie = path.join(katalogWejscia, nazwa);
+
+    await uruchom(ffmpegPath, [
+        '-ss', String(s), '-i', p,
+        '-update', '1', '-frames:v', '1', '-y', wyjscie,
+    ], { maxBuffer: 8 * 1024 * 1024 });
+
+    const st = await fs.stat(wyjscie);
+    if (!st.size) throw new Error(`ffmpeg nie wyjął klatki z sekundy ${s} pliku ${opis.nazwa}.`);
+    return { nazwa, sciezka: wyjscie, bajtow: st.size, sekunda: s, zrodlo: opis };
+}
+
 /** Czy dwa opisy da się skleić bez przekodowania. */
 function zgodne(a, b) {
     return a.kodek === b.kodek
@@ -198,4 +230,4 @@ export async function sklej({ pliki, wyjscie, comfyDir }) {
     };
 }
 
-export default { korzenie, bezpieczna, listaFilmow, opisFilmu, ostatniaKlatka, sklej };
+export default { korzenie, bezpieczna, listaFilmow, opisFilmu, ostatniaKlatka, klatkaZCzasu, sklej };

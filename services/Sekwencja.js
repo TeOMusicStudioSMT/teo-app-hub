@@ -104,6 +104,44 @@ export function promptUjecia(ujecie, kotwica = '') {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  WIELE KAMER — pokrycie TEGO SAMEGO momentu z innych perspektyw
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Gotowe ruchy kamery. To nie ozdoba: w trybie kamer RUCH jest jedynym
+ * narzędziem, którym da się odejść od kadru głównego — patrz uwaga niżej.
+ */
+export const RUCHY_KAMERY = [
+    { id: 'obrot', nazwa: 'Obrót wokół postaci', opis: 'kamera obraca się wokół postaci, orbituje w prawo, płynny ruch' },
+    { id: 'przeciw', nazwa: 'Przeciwujęcie', opis: 'kamera przechodzi na drugą stronę, pokazuje scenę z przeciwnej strony' },
+    { id: 'zblizenie', nazwa: 'Zbliżenie na detal', opis: 'kamera zbliża się do detalu, bliski plan, płytka głębia ostrości' },
+    { id: 'odjazd', nazwa: 'Odjazd na szeroki plan', opis: 'kamera odjeżdża do tyłu, odsłania szeroki plan i otoczenie' },
+    { id: 'zgory', nazwa: 'Z góry', opis: 'kamera unosi się nad scenę, ujęcie z góry, widok z lotu ptaka' },
+    { id: 'zdolu', nazwa: 'Z dołu', opis: 'kamera opada nisko, ujęcie z dołu, bohater góruje nad kadrem' },
+    { id: 'bok', nazwa: 'Przejazd bokiem', opis: 'kamera przesuwa się bokiem, trawelling równoległy do postaci' },
+];
+
+/**
+ * Prompt dla dodatkowej kamery.
+ *
+ * ⚠️ UCZCIWIE O OGRANICZENIU. Model dostaje KLATKĘ z materiału głównego, więc
+ * pierwsze klatki nowego ujęcia mają kadr taki jak oryginał — to nie jest druga
+ * kamera stojąca obok, tylko ten sam moment, od którego kamera RUSZA w inną
+ * stronę. Nowa perspektywa rodzi się z ruchu, dlatego ruch idzie na POCZĄTEK
+ * promptu i dlatego warto wybierać ruchy zdecydowane (obrót, przeciwujęcie),
+ * a nie subtelne — przy subtelnych oba ujęcia wyjdą prawie identyczne.
+ */
+export function promptKamery({ ruch = '', opis = '', kotwica = '' }) {
+    const r = String(ruch).trim();
+    const czesci = [];
+    if (r) czesci.push(r);
+    if (String(opis).trim()) czesci.push(String(opis).trim());
+    if (kotwica.trim()) czesci.push(kotwica.trim().slice(0, 400));
+    if (!czesci.length) throw new Error('Kamera bez ruchu i bez opisu — nie ma czego kręcić.');
+    return czesci.join(', ');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  ZADANIE — łańcuch ujęć liczony w tle
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -119,8 +157,12 @@ export function stanZadania(id) {
     return {
         id: z.id,
         stan: z.stan,
+        tryb: z.tryb,
         opisSceny: z.opisSceny,
-        ujecia: z.ujecia.map((u) => ({ nr: u.nr, prompt: u.prompt, stan: u.stan, plik: u.plik, sekundy: u.sekundy })),
+        ujecia: z.ujecia.map((u) => ({
+            nr: u.nr, prompt: u.prompt, stan: u.stan, plik: u.plik, sekundy: u.sekundy,
+            nazwa: u.nazwa ?? null, odSekundy: u.odSekundy ?? null,
+        })),
         biezace: z.biezace,
         ile: z.ujecia.length,
         plik: z.plik,
@@ -162,10 +204,14 @@ export function przerwij(id) {
  */
 export function odpal(p) {
     const id = `sek-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const tryb = p.tryb === 'kamery' ? 'kamery' : 'lancuch';
     const z = {
         id,
         start: Date.now(),
         stan: 'liczy',
+        tryb,
+        // Łańcuch skleja domyślnie (to jedna scena), kamery domyślnie nie.
+        sklejaj: p.sklejaj ?? (tryb !== 'kamery'),
         opisSceny: p.opisSceny || '',
         ujecia: p.ujecia.map((u) => ({ ...u, stan: 'czeka', plik: null, sekundy: null })),
         biezace: 0,
@@ -187,9 +233,14 @@ export function odpal(p) {
                 u.stan = 'liczy';
                 const start = Date.now();
 
-                // Pierwsze ujęcie bez włożonego filmu leci z samego tekstu.
-                const r = poprzedni
-                    ? await p.dopiszDoFilmu({ plik: poprzedni, prompt: u.prompt })
+                // ⚠️ TU SIĘ ROZCHODZĄ DWA TRYBY.
+                //   łańcuch — każde ujęcie startuje z POPRZEDNIEGO (scena płynie dalej),
+                //   kamery  — każde ujęcie startuje z TEGO SAMEGO materiału głównego,
+                //             tylko z innej sekundy i z innym ruchem kamery.
+                const zrodlo = z.tryb === 'kamery' ? p.filmStartowy : poprzedni;
+
+                const r = zrodlo
+                    ? await p.dopiszDoFilmu({ plik: zrodlo, prompt: u.prompt, odSekundy: u.odSekundy })
                     : await p.generujZTekstu({ prompt: u.prompt });
                 if (!r.ok) throw new Error(`Ujęcie ${u.nr}: ${r.powod}`);
 
@@ -200,16 +251,25 @@ export function odpal(p) {
                 u.plik = plik;
                 u.stan = 'gotowe';
                 u.sekundy = Math.round((Date.now() - start) / 1000);
-                poprzedni = plik;   // następne ogniwo startuje z tego pliku
+                // Ogniwo przesuwamy TYLKO w łańcuchu. W trybie kamer każde ujęcie
+                // ma wracać do materiału głównego, inaczej druga kamera kręciłaby
+                // ciąg dalszy pierwszej zamiast tego samego momentu.
+                if (z.tryb !== 'kamery') poprzedni = plik;
             }
 
             if (z.przerwane) return;
 
             // KLAPS — koniec sceny. Sklejamy ujęcia w jeden plik.
+            // ⚠️ W trybie kamer sklejka jest OPCJĄ, nie regułą: ujęcia z różnych
+            // kamer to POKRYCIE tego samego momentu, a nie następujące po sobie
+            // sceny. Sklejone jedno po drugim dają podgląd wariantów, nie film.
             const doSklejki = z.ujecia.map((u) => u.plik).filter(Boolean);
             if (p.dolaczZrodlo && p.filmStartowy) doSklejki.unshift(p.filmStartowy);
 
-            if (doSklejki.length < 2) {
+            if (!z.sklejaj) {
+                z.plik = null;
+                z.sklejka = { metoda: 'bez sklejania — każda kamera osobnym plikiem' };
+            } else if (doSklejki.length < 2) {
                 // Jedno ujęcie to nie sklejka — oddajemy je jako scenę i mówimy to.
                 z.plik = doSklejki[0] ?? null;
                 z.sklejka = { metoda: 'jedno ujęcie — nie było czego sklejać' };
@@ -234,6 +294,6 @@ export function odpal(p) {
 export const nazwaPliku = (p) => (p ? path.basename(p) : null);
 
 export default {
-    MAX_UJEC, promptRozpisania, odczytajUjecia, promptUjecia,
+    MAX_UJEC, RUCHY_KAMERY, promptRozpisania, odczytajUjecia, promptUjecia, promptKamery,
     odpal, stanZadania, listaZadan, przerwij, nazwaPliku,
 };
