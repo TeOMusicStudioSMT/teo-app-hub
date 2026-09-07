@@ -134,6 +134,7 @@ import {
 } from './services/Produkcje.js';
 import { promptUzupelnienia, oczysc as oczyscPoleAI } from './services/ProdukcjaAI.js';
 import * as CiagDalszy from './services/CiagDalszy.js';
+import * as Sekwencja from './services/Sekwencja.js';
 import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
@@ -6075,6 +6076,127 @@ app.post('/api/ciag/sklej', async (req, res) => {
         return res.json({ success: true, ...w, oddech });
     } catch (e) {
         return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── SCENA ŁAŃCUCHOWA: opis → ujęcia → łańcuch → klaps ────────────────────────
+
+/**
+ * POST /api/ciag/rozpisz { opis, ile?, projekt? }
+ * Model rozpisuje scenę na ujęcia. Sam nic nie liczy — oddaje listę do
+ * przejrzenia, bo to Suweren decyduje, co idzie na taśmę.
+ */
+app.post('/api/ciag/rozpisz', async (req, res) => {
+    const { opis = '', ile = 4, projekt = '', model } = req.body ?? {};
+    if (String(opis).trim().length < 10) {
+        return res.status(400).json({ success: false, message: 'Opisz scenę (min. 10 znaków).' });
+    }
+    try {
+        // Kotwica: biblia projektu + kanon Reżysera. Bez niej postać rozjedzie się
+        // już przy drugim ujęciu, bo model liczy każde osobno.
+        let kotwica = '';
+        if (projekt) {
+            const [b, p] = await Promise.all([
+                produkcjaBiblia(ANTIGRAVITY_DIR, projekt).catch(() => null),
+                rezyserPamiec(ANTIGRAVITY_DIR, projekt).catch(() => null),
+            ]);
+            kotwica = [b?.tekst || '', (p?.fakty ?? []).map((f) => f.tresc).join('\n')]
+                .filter(Boolean).join('\n\n');
+        }
+
+        const { system, prompt } = Sekwencja.promptRozpisania({ opis, kotwica, ile: Number(ile) || 4 });
+        const silnik = model || process.env.OTAKOS_MODEL || DEFAULT_LLM;
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: silnik, system, prompt, stream: false }),
+        });
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+        const d = await r.json();
+
+        const ujecia = Sekwencja.odczytajUjecia(d.response, Number(ile) || 4);
+        console.log(`[Sekwencja] 📝 ${silnik} rozpisał scenę na ${ujecia.length} ujęć.`);
+        return res.json({
+            success: true, model: silnik, kotwica: kotwica.length,
+            ujecia: ujecia.map((u) => ({ ...u, prompt: Sekwencja.promptUjecia(u, kotwica) })),
+        });
+    } catch (e) {
+        return res.status(502).json({ success: false, message: e.message });
+    }
+});
+
+/** Poczekaj na plik z ComfyUI. `czyPrzerwane` pozwala wyjść z pętli na żądanie. */
+async function czekajNaPlikWideo(zlecenie, czyPrzerwane) {
+    const DO_KIEDY = Date.now() + 45 * 60 * 1000;
+    while (Date.now() < DO_KIEDY) {
+        if (czyPrzerwane?.()) return null;
+        await new Promise((r) => setTimeout(r, 5000));
+        const s = await Wideo.stanZlecenia(COMFY_BASE, zlecenie, COMFY_DIR);
+        if (s.ok && s.blad) throw new Error(`ComfyUI: ${JSON.stringify(s.blad).slice(0, 200)}`);
+        if (s.ok && s.gotowe && s.materialy?.length) return s.materialy[0].sciezka;
+    }
+    throw new Error('45 minut bez pliku — silnik nie oddał wyniku.');
+}
+
+/** POST /api/ciag/scena — odpal łańcuch ujęć. Zwraca id od razu, praca leci w tle. */
+app.post('/api/ciag/scena', async (req, res) => {
+    const { ujecia = [], filmStartowy = null, dolaczZrodlo = false, opisSceny = '', klatek, kroki } = req.body ?? {};
+    if (!Array.isArray(ujecia) || !ujecia.length) {
+        return res.status(400).json({ success: false, message: 'Brak ujęć do nakręcenia.' });
+    }
+    if (ujecia.length > Sekwencja.MAX_UJEC) {
+        return res.status(400).json({ success: false, message: `Za dużo ujęć (max ${Sekwencja.MAX_UJEC}) — dłuższy łańcuch i tak rozjedzie postać.` });
+    }
+    try {
+        const stan = await Wideo.stanWideo(COMFY_BASE);
+        if (!stan.gotowe) return res.status(400).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
+        if (filmStartowy) CiagDalszy.bezpieczna(filmStartowy, COMFY_DIR);
+
+        const id = Sekwencja.odpal({
+            opisSceny,
+            ujecia: ujecia.map((u, i) => ({ nr: i + 1, prompt: String(u.prompt || u.opis || '').trim() })),
+            filmStartowy, dolaczZrodlo,
+
+            generujZTekstu: ({ prompt }) => Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, klatek, kroki }),
+
+            dopiszDoFilmu: async ({ plik, prompt }) => {
+                const opis = await CiagDalszy.opisFilmu(plik, COMFY_DIR);
+                const klatka = await CiagDalszy.ostatniaKlatka(plik, COMFY_DIR);
+                return Wideo.dopiszUjecie({
+                    comfyBase: COMFY_BASE, prompt, klatka: klatka.nazwa,
+                    szerokosc: opis.szerokosc, wysokosc: opis.wysokosc, fps: opis.fps, klatek, kroki,
+                });
+            },
+
+            czekajNaPlik: czekajNaPlikWideo,
+
+            sklej: async (pliki, nazwa) => CiagDalszy.sklej({
+                pliki,
+                wyjscie: path.join(COMFY_DIR, 'ComfyUI', 'output', 'katedra', `${nazwa}.mp4`),
+                comfyDir: COMFY_DIR,
+            }),
+        });
+
+        console.log(`[Sekwencja] 🎬 Scena ${id}: ${ujecia.length} ujęć${filmStartowy ? ` od „${path.basename(filmStartowy)}"` : ' od tekstu'}.`);
+        return res.json({ success: true, id, ...Sekwencja.stanZadania(id) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/ciag/scena/:id', (req, res) => {
+    const s = Sekwencja.stanZadania(req.params.id);
+    // ⚠️ Po restarcie mostu zadania znikają — mówimy to wprost, zamiast milczeć.
+    if (!s) return res.status(404).json({ success: false, message: 'Nie znam tego zadania. Most mógł się w międzyczasie zrestartować — zadania żyją w pamięci.' });
+    return res.json({ success: true, ...s });
+});
+
+app.get('/api/ciag/sceny', (req, res) => res.json({ success: true, sceny: Sekwencja.listaZadan() }));
+
+app.post('/api/ciag/scena/:id/przerwij', (req, res) => {
+    try {
+        return res.json({ success: true, ...Sekwencja.przerwij(req.params.id) });
+    } catch (e) {
+        return res.status(404).json({ success: false, message: e.message });
     }
 });
 
