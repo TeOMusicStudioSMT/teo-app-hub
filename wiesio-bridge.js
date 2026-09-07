@@ -125,11 +125,11 @@ import {
 import {
     listaPostaci, dodajPostac, usunPostac,
     pamiec as rezyserPamiec, listaSeriali, dodajFakt, usunFakt, dodajOdcinek, usunOdcinek,
-    zmienOdcinek, dodajOdcinki, STATUSY as STATUSY_ODCINKA,
+    zmienOdcinek, dodajOdcinki, usunSerial, STATUSY as STATUSY_ODCINKA,
     zbudujKontekst, promptSystemowyRezysera, odczytajOdpowiedz, zdanieZWyniku, AKCJE_REZYSERA,
 } from './services/RezyserService.js';
 import {
-    listaProjektow, utworzProjekt, usunProjekt,
+    listaProjektow, utworzProjekt, usunProjekt, slug as slugProjektu,
     zapiszOdcinek, materialyOdcinka, katalogOdcinka,
 } from './services/Produkcje.js';
 import { promptUzupelnienia, oczysc as oczyscPoleAI } from './services/ProdukcjaAI.js';
@@ -144,6 +144,7 @@ import * as Blender from './services/Blender.js';
 import * as Uniwersum from './services/Uniwersum.js';
 import * as Scenografie from './services/Scenografie.js';
 import * as Produkty from './services/Produkty.js';
+import * as KolejkaKadrow from './services/KolejkaKadrow.js';
 import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
@@ -6038,6 +6039,51 @@ app.post('/api/wideo/generuj', async (req, res) => {
     res.json({ success: true, ...r });
 });
 
+/**
+ * POST /api/wideo/do-projektu { projekt, plik, tytul? }
+ *
+ * Suweren: „wygenerowane sceny są zapisywane w confy, a nie OtakOS".
+ * I miał rację — potok zwracał ścieżkę do wyjścia ComfyUI i na tym kończył.
+ * Ta trasa PRZENOSI wynik do katalogu projektu w Katedrze, tak samo jak robi
+ * to kolejka kadrów.
+ *
+ * ⚠️ KOPIUJEMY, NIE PRZENOSIMY. Wyjście ComfyUI bywa jeszcze potrzebne
+ * (podgląd w jego własnym interfejsie), a kasowanie cudzych plików przy okazji
+ * porządków to nie nasza rola.
+ *
+ * ⚠️ STRAŻ ŚCIEŻKI: bierzemy WYŁĄCZNIE pliki leżące pod katalogiem ComfyUI.
+ * Panel bywa wystawiony przez Kwantowy Tunel na telefon; bez tego sprawdzenia
+ * „plik" mógłby wskazać cokolwiek na dysku.
+ */
+app.post('/api/wideo/do-projektu', async (req, res) => {
+    const { projekt = '', plik = '', tytul = '' } = req.body ?? {};
+    try {
+        if (!String(projekt).trim()) throw new Error('Bez nazwy projektu nie wiem, gdzie to zapisa\u0107.');
+        if (!String(plik).trim()) throw new Error('Nie podano pliku do przeniesienia.');
+
+        const zrodlo = path.resolve(String(plik));
+        const korzen = path.resolve(COMFY_DIR);
+        if (!zrodlo.toLowerCase().startsWith(korzen.toLowerCase())) {
+            throw new Error('Ten plik nie le\u017cy w wyj\u015bciu ComfyUI \u2014 odmawiam kopiowania spoza niego.');
+        }
+        await fs.access(zrodlo);
+
+        const katUjec = await KolejkaKadrow.katalogUjec(ANTIGRAVITY_DIR, projekt);
+        const bezpiecznyTytul = String(tytul || path.basename(zrodlo, path.extname(zrodlo)))
+            .replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'ujecie';
+        const znacznik = Date.now().toString(36);
+        const cel = path.join(katUjec, `${znacznik}_${bezpiecznyTytul}${path.extname(zrodlo)}`);
+
+        await fs.copyFile(zrodlo, cel);
+        const { size } = await fs.stat(cel);
+
+        console.log(`[Wideo] ${path.basename(zrodlo)} \u2192 ${cel} (${size} B)`);
+        return res.json({ success: true, sciezka: cel, katalog: katUjec, bajtow: size, zrodlo });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
 app.get('/api/wideo/zlecenie/:id', async (req, res) => {
     // COMFY_DIR dokładamy, żeby front dostał ŚCIEŻKĘ, którą da się otworzyć,
     // a nie samą nazwę pliku ukrytego w podkatalogu wyjścia.
@@ -6345,6 +6391,194 @@ app.post('/api/blender/uruchom', async (req, res) => {
 // ── 🌌 UNIWERSUM („Blender Blendera") ───────────────────────────────────────
 
 // ── WIRTUALNE STUDIO, KAMERZYSTA I SCENOGRAFIE DLA TGS ──────────────────────
+
+// ── KOLEJKA KADROW: wyrenderuj wszystkie po kolei i zmontuj w jedno ─────────
+
+/**
+ * GET /api/kolejka/kadry?projekt=&etap=KADR
+ * Co czeka na render: karty etapu KADR bez gotowego ujecia.
+ */
+// ── HISTORIA POKOJU OPOWIESCI ───────────────────────────────────────────────
+
+app.get('/api/opowiesc/historia', async (req, res) => {
+    try { return res.json({ success: true, rozmowy: await Opowiesc.historia(ANTIGRAVITY_DIR) }); }
+    catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/opowiesc/historia', async (req, res) => {
+    try {
+        const r = await Opowiesc.zapisz(ANTIGRAVITY_DIR, req.body ?? {});
+        return res.json({ success: true, rozmowa: r });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/opowiesc/historia/:id', async (req, res) => {
+    try { return res.json({ success: true, rozmowa: await Opowiesc.usun(ANTIGRAVITY_DIR, req.params.id) }); }
+    catch (e) { return res.status(404).json({ success: false, message: e.message }); }
+});
+
+/**
+ * POST /api/rezyser/projekty/usun { nazwa, potwierdzenie, zKadrami?, zKatalogiem? }
+ *
+ * Suweren: „w Rezyserze i pamieci nie mozna usunac projektow".
+ * Teraz mozna — ale POTWIERDZENIEM NAZWY, bo panel bywa wystawiony przez
+ * Kwantowy Tunel na telefon, a kasowanie kanonu jest nieodwracalne.
+ *
+ * Kasujemy WARSTWAMI i mowimy, co znika: pamiec zawsze, kadry i katalog
+ * tylko na zyczenie. Pliki wideo zostaja ZAWSZE — one sa efektem godzin
+ * liczenia i nie moga zniknac przy porzadkach.
+ */
+app.post('/api/rezyser/projekty/usun', async (req, res) => {
+    const { nazwa = '', potwierdzenie = '', zKadrami = false, zKatalogiem = false } = req.body ?? {};
+    try {
+        const wynik = { pamiec: null, kadrow: 0, katalog: null };
+
+        // 1. Pamiec (fakty + odcinki) — z potwierdzeniem nazwy.
+        // ⚠️ Projekt moze istniec SAM KATALOG, bez wpisu w pamieci (np. zalozony
+        // przez muzyke albo plan publikacji). Brak pamieci nie moze wtedy blokowac
+        // sprzatania — inaczej takiego projektu nie da sie usunac wcale.
+        try {
+            wynik.pamiec = await usunSerial(ANTIGRAVITY_DIR, nazwa, potwierdzenie);
+        } catch (e) {
+            const brakPamieci = /nie istnieje w pami/i.test(e.message);
+            if (!brakPamieci) throw e;              // zle potwierdzenie — odmawiamy
+            if (!zKadrami && !zKatalogiem) throw e; // nie ma pamieci i nic wiecej do zrobienia
+            if (String(potwierdzenie || '').trim() !== String(nazwa).trim()) {
+                throw new Error(`Potwierdź kasowanie, przepisując dokładną nazwę: „${nazwa}".`);
+            }
+            wynik.pamiec = { serial: nazwa, faktow: 0, odcinkow: 0, uwaga: 'Ten projekt nie miał wpisu w pamięci — istniał tylko jako katalog.' };
+        }
+
+        // 2. Karty z Tablicy Produkcji — tylko gdy poproszono.
+        if (zKadrami) {
+            const kadry = (await produkcjaLista(ANTIGRAVITY_DIR, nazwa)).filter((k) => k.projekt === nazwa);
+            for (const k of kadry) {
+                try { await produkcjaUsun(ANTIGRAVITY_DIR, k.id); wynik.kadrow += 1; } catch { /* juz nie ma */ }
+            }
+        }
+
+        // 3. Katalog projektu — `usunProjekt` sam odmowi, gdy sa w nim odcinki.
+        if (zKatalogiem) {
+            try {
+                const u = await usunProjekt(ANTIGRAVITY_DIR, slugProjektu(nazwa));
+                wynik.katalog = u.sciezka;
+            } catch (e) {
+                wynik.katalog = `nie skasowany: ${e.message}`;
+            }
+        }
+
+        console.log('[Rezyser] Skasowano projekt ' + nazwa + ' (kadrow: ' + wynik.kadrow + ')');
+        return res.json({ success: true, ...wynik });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/kolejka/kadry', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        const etap = String(req.query.etap || 'KADR').toUpperCase();
+        const kadry = await produkcjaLista(ANTIGRAVITY_DIR, projekt);
+        const wybrane = kadry.filter((k) => k.etap === etap);
+
+        const lista = [];
+        for (const k of wybrane) {
+            const juz = await KolejkaKadrow.maJuzUjecie(k);
+            lista.push({ id: k.id, tytul: k.tytul, opis: k.opis, etap: k.etap, gotowe: juz });
+        }
+        return res.json({
+            success: true, projekt, etap,
+            kadry: lista,
+            doZrobienia: lista.filter((k) => !k.gotowe).length,
+            maxNaRaz: KolejkaKadrow.MAX_KADROW,
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/kolejka/odpal { projekt, etap?, ile?, odNowa?, klatek?, kroki?, sklejaj? }
+ *
+ * Renderuje kadry PO KOLEI (karta ma 6 GB VRAM — rownolegle to OOM),
+ * zapisuje wyniki W KATEDRZE i na koncu skleja je w jeden film.
+ */
+app.post('/api/kolejka/odpal', async (req, res) => {
+    const { projekt = '', etap = 'KADR', ile, odNowa = false, klatek, kroki, sklejaj = true } = req.body ?? {};
+    try {
+        const stan = await stanWideoZBudzeniem('kolejka kadrow');
+        if (!stan.gotowe) return res.status(424).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
+
+        const wszystkie = (await produkcjaLista(ANTIGRAVITY_DIR, projekt)).filter((k) => k.etap === String(etap).toUpperCase());
+        if (!wszystkie.length) return res.status(400).json({ success: false, message: `Zaden kadr na etapie ${etap} w projekcie „${projekt}".` });
+
+        // Kotwica: biblia projektu + kanon. Bez niej sto ujec rozjedzie sie na sto stron.
+        const [biblia, pamiec] = await Promise.all([
+            produkcjaBiblia(ANTIGRAVITY_DIR, projekt).catch(() => null),
+            rezyserPamiec(ANTIGRAVITY_DIR, projekt).catch(() => null),
+        ]);
+        const kotwica = [biblia?.tekst || '', (pamiec?.fakty ?? []).map((f) => f.tresc).join('\n')].filter(Boolean).join('\n\n');
+
+        // Domyslnie pomijamy karty, ktore MAJA juz plik — powtorny render
+        // kosztuje minuty i nadpisuje prace, ktora ktos moze akceptowal.
+        const doKolejki = [];
+        for (const k of wszystkie) {
+            if (!odNowa && await KolejkaKadrow.maJuzUjecie(k)) continue;
+            doKolejki.push({ id: k.id, tytul: k.tytul, prompt: KolejkaKadrow.promptZKadru(k, kotwica) });
+        }
+        if (!doKolejki.length) {
+            return res.status(400).json({ success: false, message: 'Wszystkie kadry maja juz ujecia. Uzyj odNowa=true, zeby policzyc je jeszcze raz.' });
+        }
+
+        const limit = Math.max(1, Math.min(Number(ile) || KolejkaKadrow.MAX_KADROW, KolejkaKadrow.MAX_KADROW));
+        const kadry = doKolejki.slice(0, limit);
+        const katUjec = await KolejkaKadrow.katalogUjec(ANTIGRAVITY_DIR, projekt);
+
+        const id = KolejkaKadrow.odpal({
+            projekt, kadry, sklejaj,
+
+            generuj: ({ prompt }) => Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, klatek, kroki }),
+            czekaj: czekajNaPlikWideo,
+
+            // Wynik z ComfyUI KOPIUJEMY do katalogu projektu i zwracamy TE sciezke.
+            zapisz: async (zComfy, poz) => {
+                const nazwa = `${String(poz.nr).padStart(3, '0')}_${String(poz.tytul || 'ujecie').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)}.mp4`;
+                const cel = path.join(katUjec, nazwa);
+                await fs.copyFile(zComfy, cel);
+                return cel;
+            },
+
+            oznacz: async (kadrId, zmiany) => { await produkcjaZmien(ANTIGRAVITY_DIR, kadrId, zmiany); },
+
+            sklej: async (pliki) => CiagDalszy.sklej({
+                pliki,
+                wyjscie: path.join(katUjec, `_calosc_${Date.now().toString(36)}.mp4`),
+                comfyDir: COMFY_DIR,
+            }),
+        });
+
+        console.log(`[Kolejka] ${kadry.length} kadrow do renderu w projekcie ${projekt} (zadanie ${id}).`);
+        await Szyna.nadaj({ agent: 'Klatka', rodzaj: 'praca', tresc: `wziela ${kadry.length} kadrow do renderu (${projekt})` });
+        return res.json({ success: true, id, ...KolejkaKadrow.stanZadania(id), pominietych: doKolejki.length - kadry.length, katalog: katUjec });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/kolejka/:id', (req, res) => {
+    const s = KolejkaKadrow.stanZadania(req.params.id);
+    if (!s) return res.status(404).json({ success: false, message: 'Nie znam tego zadania. Most mogl sie zrestartowac — kolejki zyja w jego pamieci.' });
+    return res.json({ success: true, ...s });
+});
+
+app.get('/api/kolejka', (req, res) => res.json({ success: true, zadania: KolejkaKadrow.listaZadan() }));
+
+app.post('/api/kolejka/:id/przerwij', (req, res) => {
+    try { return res.json({ success: true, ...KolejkaKadrow.przerwij(req.params.id) }); }
+    catch (e) { return res.status(404).json({ success: false, message: e.message }); }
+});
 
 app.get('/api/blender/ruchy', (req, res) => res.json({ success: true, ruchy: Blender.RUCHY }));
 

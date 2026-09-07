@@ -22,6 +22,9 @@
  * podstawiać „asystenta".
  */
 
+import fs from 'fs/promises';
+import path from 'path';
+
 /** Ile ostatnich tur wchodzi do promptu. Mały model gubi początek instrukcji. */
 const OKNO_ROZMOWY = 12;
 
@@ -137,4 +140,96 @@ export function odczytajPrzekucie(surowe, ile = 3) {
     return { serial, fakty, odcinki };
 }
 
-export default { promptRozmowy, zwezHistorie, promptPrzekucia, odczytajPrzekucie, OKNO_ROZMOWY };
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  HISTORIA ROZMÓW — „potrzebuje historię opowieści, jakie tam się odbyły"
+// ══════════════════════════════════════════════════════════════════════════════
+
+const PLIK_HISTORII = 'opowiesci.json';
+const MAX_ROZMOW = 60;
+
+/**
+ * ⚠️ ZAPIS ATOMOWY (tmp → rename). Rozmowa bywa zapisywana w trakcie pisania
+ * następnej tury; przerwany zapis w połowie zostawiłby plik, którego nie da się
+ * odczytać — czyli utratę CAŁEJ historii, nie jednej rozmowy.
+ */
+async function zapiszPlik(katalog, dane) {
+    await fs.mkdir(katalog, { recursive: true });
+    const cel = path.join(katalog, PLIK_HISTORII);
+    const tmp = `${cel}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(dane, null, 2), 'utf8');
+    await fs.rename(tmp, cel);
+}
+
+export async function historia(katalog) {
+    try {
+        const d = JSON.parse(await fs.readFile(path.join(katalog, PLIK_HISTORII), 'utf8'));
+        return Array.isArray(d.rozmowy) ? d.rozmowy : [];
+    } catch { return []; }
+}
+
+/** Tytuł rozmowy z pierwszej wypowiedzi Suwerena — tak się ją potem poznaje. */
+function tytulZRozmowy(turyRozmowy) {
+    const pierwsza = turyRozmowy.find((t) => t.kto === 'suweren')?.tresc ?? '';
+    const czysta = pierwsza.trim().replace(/\s+/g, ' ');
+    return czysta.length > 70 ? `${czysta.slice(0, 67)}…` : (czysta || 'rozmowa bez tytułu');
+}
+
+/**
+ * Zapisz albo zaktualizuj rozmowę. `id` puste = nowa.
+ * ⚠️ Pusta rozmowa NIE jest zapisywana — lista zapełniona sesjami po jednym
+ * kliknięciu byłaby bezużyteczna.
+ */
+export async function zapisz(katalog, { id = '', tury = [], gatunek = null, serial = null }) {
+    const sensowne = (tury ?? []).filter((t) => t?.tresc?.trim());
+    if (sensowne.length < 2) throw new Error('Za krótka rozmowa, żeby ją zapisywać.');
+
+    const rozmowy = await historia(katalog);
+    const teraz = new Date().toISOString();
+    const istniejaca = id ? rozmowy.find((r) => r.id === id) : null;
+
+    if (istniejaca) {
+        istniejaca.tury = sensowne;
+        istniejaca.gatunek = gatunek ?? istniejaca.gatunek;
+        istniejaca.serial = serial ?? istniejaca.serial;
+        istniejaca.tytul = tytulZRozmowy(sensowne);
+        istniejaca.zmieniono = teraz;
+    } else {
+        rozmowy.unshift({
+            id: `opow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+            tytul: tytulZRozmowy(sensowne),
+            tury: sensowne, gatunek, serial,
+            kiedy: teraz, zmieniono: teraz,
+        });
+    }
+
+    // Najstarsze wypadają — plik ma zostać czytelny, nie kompletny co do joty.
+    const przyciete = rozmowy.slice(0, MAX_ROZMOW);
+    await zapiszPlik(katalog, { rozmowy: przyciete });
+    return istniejaca ?? przyciete[0];
+}
+
+/** Odnotuj, że z tej rozmowy powstał projekt — po to, żeby było widać skutek. */
+export async function oznaczPrzekute(katalog, id, serial) {
+    const rozmowy = await historia(katalog);
+    const r = rozmowy.find((x) => x.id === id);
+    if (!r) return null;
+    r.serial = serial;
+    r.przekute = new Date().toISOString();
+    await zapiszPlik(katalog, { rozmowy });
+    return r;
+}
+
+export async function usun(katalog, id) {
+    const rozmowy = await historia(katalog);
+    const i = rozmowy.findIndex((r) => r.id === id);
+    if (i < 0) throw new Error(`Nie znam rozmowy „${id}".`);
+    const [usunieta] = rozmowy.splice(i, 1);
+    await zapiszPlik(katalog, { rozmowy });
+    return usunieta;
+}
+
+export default {
+    promptRozmowy, zwezHistorie, promptPrzekucia, odczytajPrzekucie, OKNO_ROZMOWY,
+    historia, zapisz, oznaczPrzekute, usun,
+};

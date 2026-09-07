@@ -670,7 +670,41 @@ export const AKCJE_REZYSERA = new Set([
 export default {
     listaPostaci, dodajPostac, usunPostac, rozpoznajPostac,
     pamiec, listaSeriali, dodajFakt, usunFakt, dodajOdcinek, usunOdcinek,
-    zmienOdcinek, dodajOdcinki, znormalizujOdcinek, STATUSY,
+    zmienOdcinek, dodajOdcinki, znormalizujOdcinek, usunSerial, STATUSY,
     zbudujKontekst, promptSystemowyRezysera, odczytajOdpowiedz, zdanieZWyniku,
     AKCJE_REZYSERA, przytnij, BUDZET,
 };
+
+/**
+ * Usuń CAŁY serial z pamięci: fakty i odcinki.
+ *
+ * ⚠️ TO JEST NIEODWRACALNE i dlatego wymaga potwierdzenia NAZWĄ. Suweren:
+ * „w Reżyserze i pamięci nie można usunąć projektów, trzeba dać taką
+ * możliwość" — ale kasowanie kanonu jednym kliknięciem w panelu wystawionym
+ * przez Kwantowy Tunel na telefon to dokładnie ta operacja, po której nie ma
+ * powrotu. Wołający musi przepisać nazwę serialu.
+ *
+ * Zwraca, CO zostało skasowane — żeby dało się to zobaczyć, zanim zniknie
+ * z ekranu.
+ */
+export async function usunSerial(katalog, serial, potwierdzenie) {
+    const nazwa = String(serial || '').trim();
+    if (!nazwa) throw new Error('Brak nazwy serialu.');
+    if (String(potwierdzenie || '').trim() !== nazwa) {
+        throw new Error(`Potwierdź kasowanie, przepisując dokładną nazwę: „${nazwa}".`);
+    }
+
+    const wszystko = await wczytajPlik(katalog, PLIK_PAMIECI, {});
+    const p = wszystko[nazwa];
+    if (!p) throw new Error(`Serial „${nazwa}" nie istnieje w pamięci.`);
+
+    delete wszystko[nazwa];
+    await zapiszPlik(katalog, PLIK_PAMIECI, wszystko);
+    return {
+        serial: nazwa,
+        faktow: p.fakty?.length ?? 0,
+        odcinkow: p.odcinki?.length ?? 0,
+        // Uczciwie: pamięć znika, ale pliki na dysku zostają.
+        uwaga: 'Skasowana została PAMIĘĆ serialu. Katalog projektu, kadry na Tablicy i pliki wideo zostały nietknięte.',
+    };
+}
