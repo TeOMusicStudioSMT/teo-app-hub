@@ -52,6 +52,56 @@ export function promptZKadru(kadr, kotwica = '') {
     return czesci.join(', ');
 }
 
+/**
+ * ⚠️ KOLEJNOŚĆ FABULARNA — NIE TA Z TABLICY.
+ *
+ * Suweren: „trzeba odwrócić kolejność układania kadrów, bo teraz kolejka
+ * scala to jakby od końca". Miał rację: Tablica Produkcji sortuje karty
+ * NAJNOWSZE NA WIERZCHU (i słusznie — to tablica robocza), więc kolejka brała
+ * je od ostatniej sceny do pierwszej i sklejony film lecił tyłem naprzód.
+ *
+ * Film ma swój własny porządek i bierzemy go z NUMERU W TYTULE („#2.19",
+ * „#1.5", „3.04 — …"). Numer bije datę utworzenia, bo kadr dopisany później
+ * między sceny ma lądować tam, gdzie mówi jego numer, a nie na końcu filmu.
+ * Karty bez numeru idą po ponumerowanych, w kolejności powstawania.
+ */
+export function numerSceny(kadr) {
+    const t = String(kadr?.tytul || '').trim();
+    // Numer musi stać NA POCZĄTKU tytułu — „Scena 7" w środku zdania to opis,
+    // nie numeracja, a losowa liczba z treści przestawiłaby cały film.
+    const m = t.match(/^#?\s*(\d+(?:[.\-_]\d+)*)/);
+    if (!m) return null;
+    return m[1].split(/[.\-_]/).map(Number);
+}
+
+/** Porównanie numerów scen: [2,9] < [2,10] (liczbowo, nie alfabetycznie). */
+function porownajNumery(a, b) {
+    const n = Math.max(a.length, b.length);
+    for (let i = 0; i < n; i += 1) {
+        const x = a[i] ?? 0;
+        const y = b[i] ?? 0;
+        if (x !== y) return x - y;
+    }
+    return 0;
+}
+
+/**
+ * Ułóż karty tak, jak mają lecieć w filmie.
+ * `odwrotnie` daje kolejność z Tablicy (od końca) — furtka, gdyby numeracja
+ * projektu szła wspak.
+ */
+export function poKolei(kadry = [], odwrotnie = false) {
+    const zNumerem = [];
+    const bezNumeru = [];
+    for (const k of kadry) (numerSceny(k) ? zNumerem : bezNumeru).push(k);
+
+    zNumerem.sort((a, b) => porownajNumery(numerSceny(a), numerSceny(b)));
+    bezNumeru.sort((a, b) => String(a.utworzono).localeCompare(String(b.utworzono)));
+
+    const ulozone = [...zNumerem, ...bezNumeru];
+    return odwrotnie ? ulozone.reverse() : ulozone;
+}
+
 /** Czy karta ma już gotowe ujęcie (ścieżkę do istniejącego pliku). */
 export async function maJuzUjecie(kadr) {
     const z = String(kadr?.zwrot || '');

@@ -6481,7 +6481,12 @@ app.get('/api/kolejka/kadry', async (req, res) => {
         const projekt = String(req.query.projekt || '');
         const etap = String(req.query.etap || 'KADR').toUpperCase();
         const kadry = await produkcjaLista(ANTIGRAVITY_DIR, projekt);
-        const wybrane = kadry.filter((k) => k.etap === etap);
+        // ⚠️ Układamy PO FABULE, nie po dacie — Tablica oddaje najnowsze na
+        // wierzchu, więc bez tego podgląd pokazywałby film od końca.
+        const wybrane = KolejkaKadrow.poKolei(
+            kadry.filter((k) => k.etap === etap),
+            String(req.query.odwrotnie || '') === 'true',
+        );
 
         const lista = [];
         for (const k of wybrane) {
@@ -6506,12 +6511,15 @@ app.get('/api/kolejka/kadry', async (req, res) => {
  * zapisuje wyniki W KATEDRZE i na koncu skleja je w jeden film.
  */
 app.post('/api/kolejka/odpal', async (req, res) => {
-    const { projekt = '', etap = 'KADR', ile, odNowa = false, klatek, kroki, sklejaj = true } = req.body ?? {};
+    const { projekt = '', etap = 'KADR', ile, odNowa = false, klatek, kroki, sklejaj = true, odwrotnie = false } = req.body ?? {};
     try {
         const stan = await stanWideoZBudzeniem('kolejka kadrow');
         if (!stan.gotowe) return res.status(424).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
 
-        const wszystkie = (await produkcjaLista(ANTIGRAVITY_DIR, projekt)).filter((k) => k.etap === String(etap).toUpperCase());
+        const wszystkie = KolejkaKadrow.poKolei(
+            (await produkcjaLista(ANTIGRAVITY_DIR, projekt)).filter((k) => k.etap === String(etap).toUpperCase()),
+            Boolean(odwrotnie),
+        );
         if (!wszystkie.length) return res.status(400).json({ success: false, message: `Zaden kadr na etapie ${etap} w projekcie „${projekt}".` });
 
         // Kotwica: biblia projektu + kanon. Bez niej sto ujec rozjedzie sie na sto stron.
@@ -6562,6 +6570,54 @@ app.post('/api/kolejka/odpal', async (req, res) => {
         console.log(`[Kolejka] ${kadry.length} kadrow do renderu w projekcie ${projekt} (zadanie ${id}).`);
         await Szyna.nadaj({ agent: 'Klatka', rodzaj: 'praca', tresc: `wziela ${kadry.length} kadrow do renderu (${projekt})` });
         return res.json({ success: true, id, ...KolejkaKadrow.stanZadania(id), pominietych: doKolejki.length - kadry.length, katalog: katUjec });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/kolejka/sklej-projekt { projekt, etapy?, odwrotnie? }
+ *
+ * Złóż JEDEN film ze WSZYSTKICH ujęć, które już powstały w tym projekcie —
+ * w kolejności fabularnej, niezależnie od tego, w ilu przebiegach kolejki je
+ * policzono i w jakiej kolejności wtedy szły.
+ *
+ * ⚠️ PO CO OSOBNA TRASA. Ujęcia powstają godzinami i partiami po kilkanaście.
+ * Bez tego jedyną całością byłaby sklejka z ostatniego przebiegu, czyli
+ * fragment. Tutaj bierzemy wszystko, co ma plik na dysku.
+ *
+ * ⚠️ Bierzemy ŚcieŻKĘ Z KARTY, nie zawartość katalogu — w `ujecia/` leżą też
+ * poprzednie sklejki i próby, a karta wskazuje ujęcie, które do niej należy.
+ */
+app.post('/api/kolejka/sklej-projekt', async (req, res) => {
+    const { projekt = '', etapy = ['KADR', 'RUCH', 'MONTAZ', 'GOTOWE'], odwrotnie = false } = req.body ?? {};
+    try {
+        if (!String(projekt).trim()) throw new Error('Bez nazwy projektu nie wiem, co sklejam.');
+
+        const chciane = new Set((Array.isArray(etapy) ? etapy : [etapy]).map((e) => String(e).toUpperCase()));
+        const wszystkie = KolejkaKadrow.poKolei(
+            (await produkcjaLista(ANTIGRAVITY_DIR, projekt)).filter((k) => chciane.has(k.etap)),
+            Boolean(odwrotnie),
+        );
+
+        const pliki = [];
+        const spis = [];
+        for (const k of wszystkie) {
+            const p = await KolejkaKadrow.maJuzUjecie(k);
+            if (!p) continue;
+            pliki.push(p);
+            spis.push({ tytul: k.tytul, etap: k.etap, plik: p });
+        }
+        if (pliki.length < 2) {
+            throw new Error(`Znalaz\u0142em ${pliki.length} uj\u0119\u0107 z plikiem \u2014 do sklejenia trzeba co najmniej dw\u00f3ch.`);
+        }
+
+        const katUjec = await KolejkaKadrow.katalogUjec(ANTIGRAVITY_DIR, projekt);
+        const wyjscie = path.join(katUjec, `_film_${Date.now().toString(36)}.mp4`);
+        const r = await CiagDalszy.sklej({ pliki, wyjscie, comfyDir: COMFY_DIR });
+
+        console.log(`[Kolejka] Sklejono ${pliki.length} uj\u0119\u0107 projektu ${projekt} \u2192 ${wyjscie}`);
+        return res.json({ success: true, film: r.plik ?? wyjscie, sklejka: r.metoda ?? null, ujec: pliki.length, spis });
     } catch (e) {
         return res.status(400).json({ success: false, message: e.message });
     }
