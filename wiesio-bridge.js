@@ -138,6 +138,7 @@ import * as Sekwencja from './services/Sekwencja.js';
 import * as Realizacja from './services/RealizacjaOdcinka.js';
 import * as MuzykaFilmowa from './services/MuzykaFilmowa.js';
 import * as Biblioteka from './services/BibliotekaOdcinkow.js';
+import * as Opowiesc from './services/PokojOpowiesci.js';
 import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
@@ -6306,6 +6307,103 @@ app.post('/api/ciag/kamery', async (req, res) => {
         return res.json({ success: true, id, glowny, ...Sekwencja.stanZadania(id) });
     } catch (e) {
         return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── 💭 POKÓJ OPOWIEŚCI: rozmowa, z której rodzi się serial ──────────────────
+
+/** Wspólne wołanie modelu — jedna implementacja zamiast trzech kopii. */
+async function piszModelem(model, system, prompt) {
+    const silnik = model || process.env.OTAKOS_MODEL || DEFAULT_LLM;
+    const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: silnik, system, prompt, stream: false }),
+    });
+    if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+    return { tekst: String((await r.json()).response || '').trim(), silnik };
+}
+
+/**
+ * POST /api/opowiesc/rozmowa { wypowiedz, historia[], gatunekId?, projekt?, model? }
+ * Partner od wymyślania. NIC NIE ZAPISUJE — od zapisu jest /przekuj.
+ */
+app.post('/api/opowiesc/rozmowa', async (req, res) => {
+    const { wypowiedz = '', historia = [], gatunekId = '', projekt = '', model } = req.body ?? {};
+    if (String(wypowiedz).trim().length < 2) {
+        return res.status(400).json({ success: false, message: 'Pusta wypowiedź.' });
+    }
+    try {
+        // Partner to PRAWDZIWY TeOgochi z migawki stada, nie wymyślona persona.
+        let gatunek = null;
+        if (gatunekId) {
+            const stado = await MostStada.stanDlaApki(Szyna.ostatnie({ ile: 100 })).catch(() => null);
+            gatunek = (stado?.gatunki ?? []).find((g) => g.id === gatunekId) ?? null;
+        }
+
+        // Kotwica: kanon istniejącego projektu, żeby nie wymyślać wbrew niemu.
+        let kotwica = '';
+        if (projekt) {
+            const p = await rezyserPamiec(ANTIGRAVITY_DIR, projekt).catch(() => null);
+            kotwica = (p?.fakty ?? []).map((f) => f.tresc).join('\n');
+        }
+
+        const system = Opowiesc.promptRozmowy({ gatunek, kotwica });
+        const prompt = [Opowiesc.zwezHistorie(historia), `SUWEREN: ${wypowiedz}`].filter(Boolean).join('\n');
+        const { tekst, silnik } = await piszModelem(model, system, prompt);
+
+        return res.json({
+            success: true, mowa: tekst, model: silnik,
+            gatunek: gatunek ? { id: gatunek.id, imie: gatunek.imie, dziedzina: gatunek.dziedzina, forma: gatunek.forma } : null,
+        });
+    } catch (e) {
+        return res.status(502).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/opowiesc/przekuj { historia[], ile?, serial?, model? }
+ *
+ * Rozmowa → PROJEKT: katalog, fakty kanoniczne i odcinki w planie.
+ * Stąd Suweren idzie prosto do Reżysera i realizuje odcinek po odcinku.
+ */
+app.post('/api/opowiesc/przekuj', async (req, res) => {
+    const { historia = [], ile = 3, serial: nazwaRecznie = '', model } = req.body ?? {};
+    if (!Array.isArray(historia) || historia.length < 2) {
+        return res.status(400).json({ success: false, message: 'Za mało rozmowy, żeby było co przekuwać.' });
+    }
+    try {
+        const { system, prompt } = Opowiesc.promptPrzekucia({ historia, ile: Number(ile) || 3 });
+        const { tekst, silnik } = await piszModelem(model, system, prompt);
+        const wynik = Opowiesc.odczytajPrzekucie(tekst, Number(ile) || 3);
+
+        // Nazwa podana ręcznie ma pierwszeństwo nad tą z modelu.
+        const serial = String(nazwaRecznie || '').trim() || wynik.serial;
+
+        // 1. Katalog projektu — bez niego odcinki nie mają gdzie wylądować.
+        const projekt = await utworzProjekt(ANTIGRAVITY_DIR, serial);
+
+        // 2. Fakty kanoniczne. Duplikat nie jest błędem, tylko pominięciem.
+        const fakty = [];
+        for (const f of wynik.fakty) {
+            const w = await dodajFakt(ANTIGRAVITY_DIR, serial, f, 'opowiesc').catch(() => null);
+            if (w && !w.duplikat) fakty.push(w.fakt);
+        }
+
+        // 3. Odcinki w planie — jednym zapisem, przez tę samą trasę co paczka.
+        const odcinki = await dodajOdcinki(ANTIGRAVITY_DIR, serial, wynik.odcinki);
+
+        await Szyna.nadaj({
+            agent: 'Reżyser', rodzaj: 'praca',
+            tresc: `dostal z Pokoju Opowiesci projekt „${serial}": ${odcinki.dodane.length} odcinkow w planie`,
+        });
+        console.log(`[Opowieść] 💭 „${serial}" — ${fakty.length} faktów, ${odcinki.dodane.length} odcinków.`);
+
+        return res.json({
+            success: true, model: silnik, serial, projekt,
+            fakty, odcinki: odcinki.dodane, odrzucone: odcinki.odrzucone,
+        });
+    } catch (e) {
+        return res.status(502).json({ success: false, message: e.message });
     }
 });
 
