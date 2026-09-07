@@ -303,7 +303,37 @@ const PROG_STRESZCZENIA = { plan: 5, produkcja: 10, zrealizowany: 20 };
  * pamięci przy pierwszym wejściu na panel to zmiana, której nikt nie zlecił.
  */
 export function znormalizujOdcinek(o) {
-    return { ...o, status: STATUSY.includes(o?.status) ? o.status : 'zrealizowany' };
+    return {
+        // Metadane dołożone 2026-09-07 — odcinki sprzed nich mają `null`, a nie
+        // wymyśloną wartość. „Nie wiem, ile trwa" i „trwa 0 minut" to dwie różne
+        // rzeczy i realizacja liczy z nich inną liczbę kadrów.
+        czasMinut: null, styl: '', agent: null,
+        ...o,
+        status: STATUSY.includes(o?.status) ? o.status : 'zrealizowany',
+    };
+}
+
+/**
+ * Metadane odcinka, o które prosił Suweren: „tytuł i numer, czas trwania,
+ * opis, styl". Numer nadaje się sam, reszta przychodzi z formularza.
+ *
+ * ⚠️ Czas trwania NIE jest ozdobą — z niego wylicza się, ile kadrów ma powstać
+ * przy realizacji. Dlatego pilnujemy zakresu: 0 minut to odcinek, którego nie ma,
+ * a 600 to nie odcinek, tylko sezon.
+ */
+function metadane(dane) {
+    const czas = Number(dane.czasMinut);
+    if (dane.czasMinut !== undefined && dane.czasMinut !== null && dane.czasMinut !== '') {
+        if (!Number.isFinite(czas) || czas <= 0 || czas > 600) {
+            throw new Error(`Czas trwania „${dane.czasMinut}" jest poza zakresem (0-600 minut).`);
+        }
+    }
+    return {
+        czasMinut: Number.isFinite(czas) && czas > 0 ? Math.round(czas * 100) / 100 : null,
+        styl: String(dane.styl || '').trim().slice(0, 300),
+        // Który TeOgochi bierze ten odcinek na warsztat (np. „klatka").
+        agent: String(dane.agent || '').trim().toLowerCase() || null,
+    };
 }
 
 /** Dopisz odcinek. Domyślnie „zrealizowany" — tak działał dotąd guzik DOMKNIJ. */
@@ -331,12 +361,67 @@ export async function dodajOdcinek(katalog, serial, dane = {}) {
         // bierzemy z najwyższego, jaki padł, i nigdy się nie cofa.
         numer: p.odcinki.reduce((max, o) => Math.max(max, Number(o.numer) || 0), 0) + 1,
         tytul, streszczenie, status,
+        ...metadane(dane),
         kiedy: new Date().toISOString(),
     };
     p.odcinki.push(odcinek);
     wszystko[nazwa] = p;
     await zapiszPlik(katalog, PLIK_PAMIECI, wszystko);
     return odcinek;
+}
+
+/**
+ * Dopisz KILKA odcinków naraz — „podając opis 2. odcinka można od razu
+ * zapisać więcej".
+ *
+ * ⚠️ JEDEN ZAPIS PLIKU NA CAŁĄ PACZKĘ. Wołanie `dodajOdcinek` w pętli czyta
+ * i zapisuje `rezyser_pamiec.json` przy każdym odcinku; przy dziesięciu to
+ * dziesięć wyścigów o ten sam plik i realne ryzyko, że numery się powtórzą.
+ *
+ * ⚠️ Paczka nie jest „wszystko albo nic": odcinki poprawne wchodzą, a odrzucone
+ * wracają z POWODEM. Wywalenie całej listy przez jedną literówkę w piątym
+ * wierszu byłoby karą za nie tę rzecz.
+ */
+export async function dodajOdcinki(katalog, serial, lista = []) {
+    if (!Array.isArray(lista) || !lista.length) throw new Error('Pusta paczka odcinków.');
+    if (lista.length > 50) throw new Error('Maksymalnie 50 odcinków w jednej paczce.');
+
+    const nazwa = String(serial || '').trim() || 'bez nazwy';
+    const wszystko = await wczytajPlik(katalog, PLIK_PAMIECI, {});
+    const p = wszystko[nazwa] ?? pustaPamiec(nazwa);
+
+    let numer = p.odcinki.reduce((max, o) => Math.max(max, Number(o.numer) || 0), 0);
+    const dodane = [];
+    const odrzucone = [];
+
+    for (const [i, dane] of lista.entries()) {
+        try {
+            const tytul = String(dane.tytul || '').trim();
+            const streszczenie = String(dane.streszczenie || '').trim();
+            const status = STATUSY.includes(dane.status) ? dane.status : 'plan';
+            if (tytul.length < 3) throw new Error('tytuł za krótki (min. 3 znaki)');
+            if (streszczenie.length < PROG_STRESZCZENIA[status]) {
+                throw new Error(`opis za krótki dla statusu „${status}" (min. ${PROG_STRESZCZENIA[status]} znaków)`);
+            }
+            const odcinek = {
+                id: nowyId('odc'),
+                numer: ++numer,
+                tytul, streszczenie, status,
+                ...metadane(dane),
+                kiedy: new Date().toISOString(),
+            };
+            p.odcinki.push(odcinek);
+            dodane.push(odcinek);
+        } catch (e) {
+            odrzucone.push({ pozycja: i + 1, tytul: String(dane?.tytul || '(bez tytułu)'), powod: e.message });
+        }
+    }
+
+    if (dodane.length) {
+        wszystko[nazwa] = p;
+        await zapiszPlik(katalog, PLIK_PAMIECI, wszystko);
+    }
+    return { dodane, odrzucone };
 }
 
 /**
@@ -362,6 +447,11 @@ export async function zmienOdcinek(katalog, serial, id, zmiany = {}) {
         nowy.tytul = t;
     }
     if (zmiany.streszczenie !== undefined) nowy.streszczenie = String(zmiany.streszczenie).trim();
+    // Metadane: czas, styl, przypisany TeOgochi. Podmieniamy tylko to, co przyszło —
+    // `undefined` znaczy „nie ruszaj", a nie „wyczyść".
+    for (const pole of ['czasMinut', 'styl', 'agent']) {
+        if (zmiany[pole] !== undefined) Object.assign(nowy, metadane({ ...nowy, [pole]: zmiany[pole] }));
+    }
     if (zmiany.status !== undefined) {
         if (!STATUSY.includes(zmiany.status)) {
             throw new Error(`Nieznany status „${zmiany.status}". Dozwolone: ${STATUSY.join(', ')}.`);
@@ -497,7 +587,9 @@ export function promptSystemowyRezysera(kontekst, imiePostaci = null) {
         '  {"typ":"rozloz","zlecenie":"..."} — rozłóż większe zlecenie na kilka kart naraz\n' +
         '  {"typ":"zapamietaj","fakt":"..."} — zapisz fakt kanoniczny serialu\n' +
         '  {"typ":"domknij_odcinek","tytul":"...","streszczenie":"..."} — domknij odcinek w pamięci\n' +
-        '  {"typ":"otworz","modul":"tablica|kadr"} — otwórz Suwerenowi moduł\n\n' +
+        '  {"typ":"otworz","modul":"tablica|kadr|ciag"} — otwórz Suwerenowi moduł\n' +
+        '  {"typ":"zrealizuj_odcinek","odcinek":"numer albo id"} — rozłóż odcinek na biblię i kadry (bez numeru: pierwszy z planu)\n' +
+        '  {"typ":"utworz_film","opis":"co ma być na filmie"} — zleć scenę wideo silnikowi\n\n' +
         'Odpowiadaj WYŁĄCZNIE takim JSON-em, bez markdown, bez niczego poza nim:\n' +
         '{"mowa":"to, co mówisz na głos","akcja":null}\n\n' +
         'PRZYKŁAD z akcją — pole "mowa" JEST OBOWIĄZKOWE, a akcja siedzi W ŚRODKU pola "akcja":\n' +
@@ -561,6 +653,8 @@ export function zdanieZWyniku(typ, wynik) {
         case 'zapamietaj':       return `Zapisałem w kanonie: ${wynik.fakt?.tresc ?? wynik.opis}.`;
         case 'domknij_odcinek':  return `Domknięte — ${wynik.opis}.`;
         case 'otworz':           return 'Otwieram.';
+        case 'zrealizuj_odcinek': return `Rozłożone — ${wynik.opis}.`;
+        case 'utworz_film':      return `Zlecone — ${wynik.opis}.`;
         default:                 return `Zrobione — ${wynik.opis}.`;
     }
 }
@@ -568,12 +662,15 @@ export function zdanieZWyniku(typ, wynik) {
 /** Akcje, które Reżyser może wykonać. Biała lista — model nie wymyśli sobie nowej. */
 export const AKCJE_REZYSERA = new Set([
     'dodaj_kadr', 'rozloz', 'zapamietaj', 'domknij_odcinek', 'otworz',
+    // Dołożone 2026-09-07: te dwie robią najwięcej roboty jednym zdaniem —
+    // „zrealizuj drugi odcinek" i „utwórz film". Obie budzą ComfyUI po drodze.
+    'zrealizuj_odcinek', 'utworz_film',
 ]);
 
 export default {
     listaPostaci, dodajPostac, usunPostac, rozpoznajPostac,
     pamiec, listaSeriali, dodajFakt, usunFakt, dodajOdcinek, usunOdcinek,
-    zmienOdcinek, znormalizujOdcinek, STATUSY,
+    zmienOdcinek, dodajOdcinki, znormalizujOdcinek, STATUSY,
     zbudujKontekst, promptSystemowyRezysera, odczytajOdpowiedz, zdanieZWyniku,
     AKCJE_REZYSERA, przytnij, BUDZET,
 };

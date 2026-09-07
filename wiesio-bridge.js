@@ -125,7 +125,7 @@ import {
 import {
     listaPostaci, dodajPostac, usunPostac,
     pamiec as rezyserPamiec, listaSeriali, dodajFakt, usunFakt, dodajOdcinek, usunOdcinek,
-    zmienOdcinek, STATUSY as STATUSY_ODCINKA,
+    zmienOdcinek, dodajOdcinki, STATUSY as STATUSY_ODCINKA,
     zbudujKontekst, promptSystemowyRezysera, odczytajOdpowiedz, zdanieZWyniku, AKCJE_REZYSERA,
 } from './services/RezyserService.js';
 import {
@@ -135,6 +135,9 @@ import {
 import { promptUzupelnienia, oczysc as oczyscPoleAI } from './services/ProdukcjaAI.js';
 import * as CiagDalszy from './services/CiagDalszy.js';
 import * as Sekwencja from './services/Sekwencja.js';
+import * as Realizacja from './services/RealizacjaOdcinka.js';
+import * as MuzykaFilmowa from './services/MuzykaFilmowa.js';
+import * as Biblioteka from './services/BibliotekaOdcinkow.js';
 import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
@@ -5983,13 +5986,46 @@ function bezpiecznaNazwaWorkflow(nazwa) {
 // Zastępuje atrapę z GoogleWorkflowService. Odmawia z listą braków zamiast
 // oddawać nazwę pliku, którego nie ma.
 
+/**
+ * Stan silnika, ale z BUDZENIEM.
+ *
+ * ⚠️ Suweren: „podczas pierwszej kreacji niech się włącza ComfyUI, tak jak
+ * w przypadku music". Do tej pory każda trasa wideo mówiła tylko „ComfyUI nie
+ * odpowiada" i zostawiała Suwerena z zadaniem, które MOST potrafi wykonać sam.
+ *
+ * Budzenie jest jednorazowe i nieblokujące: oddajemy stan od razu z informacją,
+ * że silnik wstaje (~30 s), zamiast trzymać żądanie otwarte pół minuty.
+ */
+async function stanWideoZBudzeniem(powod = 'żądanie wideo') {
+    const stan = await Wideo.stanWideo(COMFY_BASE);
+    if (stan.comfy) return stan;
+    const obudzony = await zapewnijComfyUI(powod);
+    return {
+        ...stan,
+        budzenie: obudzony,
+        braki: obudzony?.started
+            ? ['ComfyUI właśnie wstaje (~30 s od startu). Spróbuj ponownie za chwilę.']
+            : stan.braki,
+    };
+}
+
 app.get('/api/wideo/stan', async (req, res) => {
-    try { res.json({ success: true, ...(await Wideo.stanWideo(COMFY_BASE)) }); }
-    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+    try {
+        // `?obudz=0` dla podglądu, który tylko pyta i nie chce nic uruchamiać.
+        const stan = req.query.obudz === '0'
+            ? await Wideo.stanWideo(COMFY_BASE)
+            : await stanWideoZBudzeniem('podgląd stanu');
+        res.json({ success: true, ...stan });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 app.post('/api/wideo/generuj', async (req, res) => {
     const { prompt, szerokosc, wysokosc, klatek, kroki, ziarno } = req.body ?? {};
+    // Pierwsza kreacja po starcie Katedry trafia na śpiące ComfyUI — budzimy je
+    // tu, zamiast odsyłać Suwerena do ręcznego odpalania run_nvidia_gpu.bat.
+    const przed = await stanWideoZBudzeniem('generowanie sceny');
+    if (!przed.comfy) return res.status(424).json({ success: false, message: przed.braki.join(' | '), braki: przed.braki, budzenie: przed.budzenie });
+
     const r = await Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, szerokosc, wysokosc, klatek, kroki, ziarno });
     if (!r.ok) return res.status(424).json({ success: false, message: r.powod, braki: r.braki ?? null });
     await Szyna.nadaj({ agent: 'Klatka', rodzaj: 'praca', tresc: `zlecila scene do ComfyUI (${r.model})` });
@@ -6147,8 +6183,9 @@ app.post('/api/ciag/scena', async (req, res) => {
         return res.status(400).json({ success: false, message: `Za dużo ujęć (max ${Sekwencja.MAX_UJEC}) — dłuższy łańcuch i tak rozjedzie postać.` });
     }
     try {
-        const stan = await Wideo.stanWideo(COMFY_BASE);
-        if (!stan.gotowe) return res.status(400).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
+        // Budzimy silnik, zamiast tylko meldowac, ze spi — patrz stanWideoZBudzeniem.
+        const stan = await stanWideoZBudzeniem('lancuch/kamery');
+        if (!stan.gotowe) return res.status(400).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki, budzenie: stan.budzenie });
         if (filmStartowy) CiagDalszy.bezpieczna(filmStartowy, COMFY_DIR);
 
         const id = Sekwencja.odpal({
@@ -6205,8 +6242,9 @@ app.post('/api/ciag/kamery', async (req, res) => {
         return res.status(400).json({ success: false, message: `Za dużo kamer (max ${Sekwencja.MAX_UJEC}).` });
     }
     try {
-        const stan = await Wideo.stanWideo(COMFY_BASE);
-        if (!stan.gotowe) return res.status(400).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
+        // Budzimy silnik, zamiast tylko meldowac, ze spi — patrz stanWideoZBudzeniem.
+        const stan = await stanWideoZBudzeniem('lancuch/kamery');
+        if (!stan.gotowe) return res.status(400).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki, budzenie: stan.budzenie });
 
         const glowny = await CiagDalszy.opisFilmu(plik, COMFY_DIR);
 
@@ -6266,6 +6304,90 @@ app.post('/api/ciag/kamery', async (req, res) => {
 
         console.log(`[Kamery] 🎥 ${ujecia.length} kamer do „${glowny.nazwa}" (${glowny.sekundy}s) — zadanie ${id}.`);
         return res.json({ success: true, id, glowny, ...Sekwencja.stanZadania(id) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── 📚 BIBLIOTEKA ODCINKÓW: co powstało i co z tym dalej ─────────────────────
+
+app.get('/api/biblioteka', async (req, res) => {
+    try {
+        const dane = await Biblioteka.biblioteka(ANTIGRAVITY_DIR, {
+            projekty: () => listaProjektow(ANTIGRAVITY_DIR),
+            pamiec: (p) => rezyserPamiec(ANTIGRAVITY_DIR, p),
+            materialy: (p, o) => materialyOdcinka(ANTIGRAVITY_DIR, p, o),
+            muzyka: (p) => MuzykaFilmowa.muzykaProjektu(ANTIGRAVITY_DIR, p),
+            kadry: (p) => produkcjaLista(ANTIGRAVITY_DIR, p),
+        });
+        return res.json({
+            success: true,
+            projekty: dane,
+            odbiorcy: Biblioteka.ODBIORCY,
+            // Stan każdego kanału liczony NA ŻYWO ze środowiska — żeby panel nie
+            // obiecywał wysyłki, której nie ma czym wykonać.
+            kanaly: Biblioteka.KANALY.map((k) => Biblioteka.stanKanalu(k.id)),
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/biblioteka/plan', async (req, res) => {
+    try {
+        const { projekt = '', odcinekId = '', ...dane } = req.body ?? {};
+        const w = await Biblioteka.ustawPlan(ANTIGRAVITY_DIR, projekt, odcinekId, dane);
+        console.log(`[Biblioteka] 🗓️ Plan publikacji: ${projekt} / ${odcinekId} → ${w.plan.kanal} (${w.plan.kiedy ?? 'bez daty'}).`);
+        return res.json({ success: true, ...w });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/biblioteka/przekaz', async (req, res) => {
+    try {
+        const { projekt = '', odcinekId = '', agent = '', notatka = '' } = req.body ?? {};
+        const w = await Biblioteka.przekaz(ANTIGRAVITY_DIR, projekt, odcinekId, agent, notatka);
+        // Zadanie ląduje na szynie, więc agent widzi je u siebie — nie „gdzieś w systemie".
+        await Szyna.nadaj(w.zdarzenie);
+        console.log(`[Biblioteka] 🤝 ${w.agent.imie} dostał odcinek ${projekt} / ${odcinekId}.`);
+        return res.json({ success: true, ...w });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── 🎼 MUZYKA FILMOWA: to, co Joanna nagrała, wpięte w produkcję ─────────────
+
+/** Biblioteka Katedry + to, co już wpięte w projekt. Jedno pytanie, bo UI i tak chce obu. */
+app.get('/api/muzyka/katalog', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        const [biblioteka, wpiete] = await Promise.all([
+            MuzykaFilmowa.bibliotekaKatedry(MUSIC_DIR),
+            projekt ? MuzykaFilmowa.muzykaProjektu(ANTIGRAVITY_DIR, projekt) : Promise.resolve({ utwory: [], role: MuzykaFilmowa.ROLE }),
+        ]);
+        return res.json({ success: true, katalogMuzyki: MUSIC_DIR, biblioteka, ...wpiete });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/muzyka/wepnij', async (req, res) => {
+    try {
+        const { projekt = '', ...dane } = req.body ?? {};
+        const w = await MuzykaFilmowa.dodajUtwor(ANTIGRAVITY_DIR, projekt, dane);
+        if (!w.duplikat) console.log(`[Muzyka] 🎼 „${w.utwor.nazwa}" jako ${w.utwor.rola} → ${projekt}`);
+        return res.json({ success: true, ...w });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/muzyka/:id', async (req, res) => {
+    try {
+        const w = await MuzykaFilmowa.usunUtwor(ANTIGRAVITY_DIR, String(req.query.projekt || ''), req.params.id);
+        return res.json({ success: true, ...w });
     } catch (e) {
         return res.status(400).json({ success: false, message: e.message });
     }
@@ -10439,6 +10561,134 @@ app.post('/api/rezyser/pamiec/odcinek', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/rezyser/pamiec/odcinki — PACZKA odcinków naraz.
+ * „Podając opis 2. odcinka można od razu zapisać więcej."
+ * Odcinki niepoprawne wracają z powodem; poprawne wchodzą.
+ */
+app.post('/api/rezyser/pamiec/odcinki', async (req, res) => {
+    try {
+        const { serial = '', odcinki = [] } = req.body ?? {};
+        const w = await dodajOdcinki(ANTIGRAVITY_DIR, serial, odcinki);
+        console.log(`[Reżyser] 📚 Paczka: ${w.dodane.length} odcinków dodanych, ${w.odrzucone.length} odrzuconych (${serial || 'bez nazwy'}).`);
+        return res.json({ success: true, ...w });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/rezyser/pamiec/odcinek/:id/realizuj { serial }
+ *
+ * Reżyser z TeOgochi biorą odcinek i rozkładają go na Tablicę Produkcji:
+ * biblia (gdy jej nie ma) → kadry na cały czas trwania → odcinek w „produkcji".
+ *
+ * ⚠️ COMFYUI BUDZI SIĘ TUTAJ, nie przy pierwszym kliknięciu „generuj".
+ * Suweren: „w momencie przejścia z 1 do 2 punktu niech się włącza ComfyUI".
+ * Budzenie leci W TLE — model pisze kadry przez tę samą minutę, w której
+ * ComfyUI się ładuje, więc czekanie dzieje się raz, nie dwa razy.
+ */
+app.post('/api/rezyser/pamiec/odcinek/:id/realizuj', async (req, res) => {
+    const { serial = '', model } = req.body ?? {};
+    try {
+        const p = await rezyserPamiec(ANTIGRAVITY_DIR, serial);
+        const odcinek = (p.odcinki ?? []).find((o) => o.id === req.params.id);
+        if (!odcinek) return res.status(404).json({ success: false, message: `Odcinek "${req.params.id}" nie istnieje.` });
+
+        // 🎛️ ComfyUI w tle — patrz uwaga wyżej.
+        const comfy = zapewnijComfyUI('realizacja odcinka').catch((e) => ({ online: false, message: e.message }));
+
+        const bibliaProjektu = await produkcjaBiblia(ANTIGRAVITY_DIR, serial).catch(() => null);
+        const kotwica = [
+            bibliaProjektu?.tekst || '',
+            (p.fakty ?? []).map((f) => f.tresc).join('\n'),
+        ].filter(Boolean).join('\n\n');
+
+        const silnik = model || process.env.OTAKOS_MODEL || DEFAULT_LLM;
+        const pisz = async (system, prompt) => {
+            const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: silnik, system, prompt, stream: false }),
+            });
+            if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+            return (await r.json()).response;
+        };
+
+        const zrobione = { biblia: null, kadry: [], odrzucone: [] };
+
+        // 1. BIBLIA — tylko gdy projekt jej nie ma. Druga biblia rozjeżdża serial.
+        if (bibliaProjektu?.pusta !== false) {
+            const { system, prompt } = Realizacja.promptBiblii({ projekt: serial, odcinek, kotwica });
+            const tekst = Realizacja.oczysc(await pisz(system, prompt));
+            if (tekst) {
+                const karta = await produkcjaDodaj(ANTIGRAVITY_DIR, {
+                    projekt: serial,
+                    tytul: `Biblia — ${serial || 'projekt'}`,
+                    opis: `Powstała przy realizacji odcinka #${odcinek.numer} „${odcinek.tytul}".`,
+                    // ⚠️ Treść idzie w `zwrot`, bo TYLKO stamtąd `produkcjaBiblia`
+                    // czyta kotwicę. Wpisana w `opis` byłaby niewidoczna dla kadrów.
+                    zwrot: tekst,
+                    etap: 'BIBLIA',
+                    zrodlo: 'rada',
+                    sesjaRady: odcinek.id,
+                });
+                zrobione.biblia = { id: karta.id, znakow: tekst.length };
+            }
+        }
+
+        // 2. KADRY — ile ich ma być, mówi czas trwania odcinka.
+        const { ile, zgadywane, policzone } = Realizacja.ileKadrow(odcinek.czasMinut);
+        const kotwicaPoBiblii = zrobione.biblia
+            ? [kotwica, (await produkcjaBiblia(ANTIGRAVITY_DIR, serial).catch(() => null))?.tekst || ''].filter(Boolean).join('\n\n')
+            : kotwica;
+
+        const { system, prompt } = Realizacja.promptKadrow({ projekt: serial, odcinek, kotwica: kotwicaPoBiblii, ile });
+        const kadry = Realizacja.odczytajKadry(await pisz(system, prompt), ile);
+
+        for (const k of kadry) {
+            try {
+                const karta = await produkcjaDodaj(ANTIGRAVITY_DIR, {
+                    projekt: serial,
+                    tytul: `#${odcinek.numer}.${k.nr} ${k.tytul}`,
+                    opis: k.opis,
+                    etap: 'KADR',
+                    zrodlo: 'rada',
+                    sesjaRady: odcinek.id,
+                });
+                zrobione.kadry.push({ id: karta.id, tytul: karta.tytul });
+            } catch (e) {
+                zrobione.odrzucone.push({ tytul: k.tytul, powod: e.message });
+            }
+        }
+
+        // 3. Odcinek wchodzi w produkcję — ale tylko jeśli COKOLWIEK powstało.
+        let odcinekPo = odcinek;
+        if (zrobione.kadry.length && odcinek.status === 'plan') {
+            odcinekPo = (await zmienOdcinek(ANTIGRAVITY_DIR, serial, odcinek.id, { status: 'produkcja' })).odcinek;
+        }
+
+        const stanComfy = await comfy;
+        console.log(`[Reżyser] 🎬 Realizacja #${odcinek.numer} „${odcinek.tytul}": ${zrobione.kadry.length} kadrów${zrobione.biblia ? ' + biblia' : ''}.`);
+
+        return res.json({
+            success: true,
+            odcinek: odcinekPo,
+            ...zrobione,
+            model: silnik,
+            plan: {
+                ile, zgadywane,
+                // Uczciwie: gdy odcinek jest dłuższy niż sufit, mówimy to wprost.
+                przyciete: policzone && policzone > ile
+                    ? `Odcinek na ${odcinek.czasMinut} min to ${policzone} kadrów — więcej niż sufit ${Realizacja.MAX_KADROW}. Rozbij go na części albo dorób kadry ręcznie.`
+                    : null,
+            },
+            comfy: stanComfy,
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 /** PATCH — przesunięcie odcinka między kolumnami tablicy (plan → produkcja → gotowe). */
 app.patch('/api/rezyser/pamiec/odcinek/:id', async (req, res) => {
     try {
@@ -10619,6 +10869,57 @@ app.post('/api/rezyser/rozmowa', async (req, res) => {
                             // Jedyna akcja bez skutku na serwerze — front ma otworzyć moduł.
                             wynikAkcji = { wykonana: true, opis: `otwórz moduł: ${akcja.modul}`, modul: akcja.modul };
                             break;
+
+                        /**
+                         * „Zrealizuj odcinek" — to samo, co guzik REALIZUJ, tylko z głosu.
+                         * ⚠️ Wołamy WŁASNĄ TRASĘ mostu, a nie kopiujemy jej logiki:
+                         * dwie implementacje tej samej realizacji rozjechałyby się
+                         * przy pierwszej poprawce i nikt by nie wiedział, która działa.
+                         */
+                        case 'zrealizuj_odcinek': {
+                            const p2 = await rezyserPamiec(ANTIGRAVITY_DIR, nazwaSerialu);
+                            const szukany = String(akcja.odcinek ?? akcja.numer ?? '').trim();
+                            const odc = szukany
+                                ? (p2.odcinki ?? []).find((o) => o.id === szukany || String(o.numer) === szukany)
+                                // Bez wskazania bierzemy pierwszy „w planie" — tak brzmi
+                                // „zrealizuj następny odcinek" w ustach człowieka.
+                                : (p2.odcinki ?? []).find((o) => o.status === 'plan');
+                            if (!odc) { wynikAkcji = { wykonana: false, powod: szukany ? `nie znam odcinka „${szukany}"` : 'żaden odcinek nie czeka w planie' }; break; }
+
+                            const r = await fetch(`http://127.0.0.1:${PORT}/api/rezyser/pamiec/odcinek/${odc.id}/realizuj`, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ serial: nazwaSerialu }),
+                            });
+                            const d2 = await r.json();
+                            wynikAkcji = d2.success
+                                ? {
+                                    wykonana: true,
+                                    opis: `odcinek #${odc.numer} „${odc.tytul}" rozłożony na ${d2.kadry.length} kadrów${d2.biblia ? ' i biblię' : ''}`,
+                                    kadrow: d2.kadry.length, comfy: d2.comfy,
+                                }
+                                : { wykonana: false, powod: d2.message };
+                            break;
+                        }
+
+                        /**
+                         * „Utwórz film" — scena prosto z opisu.
+                         * ComfyUI budzi się w trasie `/api/wideo/generuj`, więc mówienie
+                         * do Orba działa tak samo po świeżym starcie Katedry.
+                         */
+                        case 'utworz_film': {
+                            const opisSceny = String(akcja.opis ?? akcja.prompt ?? '').trim();
+                            if (opisSceny.length < 5) { wynikAkcji = { wykonana: false, powod: 'nie wiem, co ma być na filmie' }; break; }
+                            const r = await fetch(`http://127.0.0.1:${PORT}/api/wideo/generuj`, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ prompt: opisSceny }),
+                            });
+                            const d2 = await r.json();
+                            wynikAkcji = d2.success
+                                ? { wykonana: true, opis: `scena zlecona do ${d2.silnik} (zlecenie ${d2.zlecenie})`, zlecenie: d2.zlecenie }
+                                // Gdy silnik wstaje, mówimy to zamiast „nie udało się".
+                                : { wykonana: false, powod: d2.message, budzenie: d2.budzenie ?? null };
+                            break;
+                        }
                     }
                 } catch (e) {
                     // Akcja padła — mówimy to wprost. Reżyser, który „zrobił" coś,

@@ -87,7 +87,14 @@ export async function listaProjektow(katalog) {
                 notatka: '', faktow: 0, odcinkow: 0, kadrow: 0,
             });
         }
-        return wpisy.get(s);
+        const w = wpisy.get(s);
+        // ⚠️ LEPSZA NAZWA WYGRYWA. Katalog bez `projekt.json` daje nazwę z NAZWY
+        // FOLDERU, czyli sam slug („proba-realizacji"). Gdy potem z pamięci
+        // przychodzi prawdziwa nazwa („Proba Realizacji"), musi ją nadpisać —
+        // inaczej `pamiec(nazwa)` szuka pod slugiem, nic nie znajduje i projekt
+        // wygląda na pusty, choć ma odcinki. Złapane 2026-09-07 w bibliotece.
+        if (w.nazwa === s && nazwa !== s) w.nazwa = nazwa;
+        return w;
     };
 
     // 1. Katalogi na dysku
