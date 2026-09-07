@@ -139,6 +139,9 @@ import * as Realizacja from './services/RealizacjaOdcinka.js';
 import * as MuzykaFilmowa from './services/MuzykaFilmowa.js';
 import * as Biblioteka from './services/BibliotekaOdcinkow.js';
 import * as Opowiesc from './services/PokojOpowiesci.js';
+import * as PostProdukcja from './services/PostProdukcja.js';
+import * as Blender from './services/Blender.js';
+import * as Uniwersum from './services/Uniwersum.js';
 import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
@@ -6305,6 +6308,158 @@ app.post('/api/ciag/kamery', async (req, res) => {
 
         console.log(`[Kamery] 🎥 ${ujecia.length} kamer do „${glowny.nazwa}" (${glowny.sekundy}s) — zadanie ${id}.`);
         return res.json({ success: true, id, glowny, ...Sekwencja.stanZadania(id) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── 🧊 BLENDER: sceny cyfrowe z kadrów ──────────────────────────────────────
+
+app.get('/api/blender/stan', async (req, res) => {
+    try { return res.json({ success: true, ...(await Blender.stanBlendera()), katalog: Blender.KATALOG() }); }
+    catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
+/**
+ * POST /api/blender/scenariusz { projekt, kadry[], nazwa? }
+ * Zapisuje PRAWDZIWY skrypt .py — użyteczny nawet bez zainstalowanego Blendera,
+ * bo można go otworzyć na dowolnej maszynie.
+ */
+app.post('/api/blender/scenariusz', async (req, res) => {
+    try {
+        const w = await Blender.zbudujScenariusz(req.body ?? {});
+        console.log(`[Blender] 🧊 Scenariusz na ${w.kadrow} kadrów: ${w.skrypt}`);
+        return res.json({ success: true, ...w, blender: await Blender.stanBlendera() });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/blender/uruchom', async (req, res) => {
+    try { return res.json({ success: true, ...(await Blender.uruchom(String(req.body?.skrypt || ''))) }); }
+    catch (e) { return res.status(424).json({ success: false, message: e.message }); }
+});
+
+// ── 🌌 UNIWERSUM („Blender Blendera") ───────────────────────────────────────
+
+app.get('/api/uniwersum', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        return res.json({ success: true, uniwersum: await Uniwersum.wczytaj(ANTIGRAVITY_DIR, projekt) });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/** POST /api/uniwersum/zaloz { projekt } — RAZ, po pierwszym odcinku. */
+app.post('/api/uniwersum/zaloz', async (req, res) => {
+    const { projekt = '', model } = req.body ?? {};
+    try {
+        const p = await rezyserPamiec(ANTIGRAVITY_DIR, projekt);
+        if (!(p.odcinki ?? []).length) {
+            return res.status(400).json({ success: false, message: 'Uniwersum wyprowadza się z tego, co powstało — najpierw zrób choć jeden odcinek.' });
+        }
+        const { system, prompt } = Uniwersum.promptZalozenia({
+            projekt,
+            kanon: (p.fakty ?? []).map((f) => f.tresc),
+            odcinki: p.odcinki,
+        });
+        const { tekst, silnik } = await piszModelem(model, system, prompt);
+        const u = await Uniwersum.zaloz(ANTIGRAVITY_DIR, projekt, Uniwersum.odczytajZalozenie(tekst));
+        console.log(`[Uniwersum] 🌌 „${u.domena}" założone dla ${projekt}.`);
+        return res.json({ success: true, model: silnik, uniwersum: u });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/uniwersum/rozwin { projekt, ile? }
+ * Kampania wraca do Reżysera jako odcinki w planie — pętla się zamyka.
+ */
+app.post('/api/uniwersum/rozwin', async (req, res) => {
+    const { projekt = '', ile = 3, model } = req.body ?? {};
+    try {
+        const u = await Uniwersum.wczytaj(ANTIGRAVITY_DIR, projekt);
+        if (!u) return res.status(400).json({ success: false, message: 'To uniwersum jeszcze nie istnieje — najpierw je załóż.' });
+
+        const p = await rezyserPamiec(ANTIGRAVITY_DIR, projekt);
+        const { system, prompt } = Uniwersum.promptRozwiniecia({
+            uniwersum: u,
+            kanon: (p.fakty ?? []).map((f) => f.tresc),
+            odcinki: p.odcinki ?? [],
+            ile: Number(ile) || 3,
+        });
+        const { tekst, silnik } = await piszModelem(model, system, prompt);
+        const kampania = Uniwersum.odczytajRozwiniecie(tekst, Number(ile) || 3);
+
+        // Odcinki kampanii lądują W PLANIE — czyli u Reżysera, gotowe do realizacji.
+        const dodane = await dodajOdcinki(ANTIGRAVITY_DIR, projekt, kampania.odcinki);
+        const po = await Uniwersum.dopiszKampanie(ANTIGRAVITY_DIR, projekt, kampania, dodane.dodane.map((o) => o.id));
+
+        await Szyna.nadaj({
+            agent: 'Rezyser', rodzaj: 'praca',
+            tresc: `dostal kampanie „${kampania.kampania}" z uniwersum ${u.domena}: ${dodane.dodane.length} odcinkow w planie`,
+        });
+        console.log(`[Uniwersum] 🌌 Kampania „${kampania.kampania}" — ${dodane.dodane.length} odcinków w planie.`);
+
+        return res.json({
+            success: true, model: silnik, kampania,
+            odcinki: dodane.dodane, odrzucone: dodane.odrzucone, uniwersum: po,
+        });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── ✂️ POST-PRODUKCJA: poprawki fragmentów i muzyka ─────────────────────────
+
+/**
+ * POST /api/post/podmien { plik, od, do, prompt, kroki? }
+ *
+ * „Zaznacz fragment i wpisz, by wygenerował poprawione."
+ * Trzy kroki: klatka sprzed cięcia → Wan liczy nowy fragment → ffmpeg wstawia
+ * go w miejsce starego. Odpowiedź wraca PO ZAKOŃCZENIU generacji, bo bez
+ * gotowego fragmentu nie ma czego wstawiać.
+ */
+app.post('/api/post/podmien', async (req, res) => {
+    const { plik, od, do: doCzasu, prompt = '', kroki } = req.body ?? {};
+    if (String(prompt).trim().length < 5) {
+        return res.status(400).json({ success: false, message: 'Napisz, co ma być w poprawionym fragmencie.' });
+    }
+    try {
+        const stan = await stanWideoZBudzeniem('poprawka fragmentu');
+        if (!stan.gotowe) return res.status(424).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
+
+        const przy = await PostProdukcja.przygotujPodmiane({ plik, od, doCzasu, comfyDir: COMFY_DIR });
+
+        const r = await Wideo.dopiszUjecie({
+            comfyBase: COMFY_BASE, prompt, klatka: przy.klatka.nazwa,
+            szerokosc: przy.opis.szerokosc, wysokosc: przy.opis.wysokosc, fps: przy.opis.fps,
+            klatek: przy.klatek, kroki,
+        });
+        if (!r.ok) return res.status(424).json({ success: false, message: r.powod });
+
+        console.log(`[Post] ✂️ Podmiana ${przy.start}-${przy.koniec}s w ${path.basename(przy.zrodlo)} — zlecenie ${r.zlecenie}`);
+        const nowy = await czekajNaPlikWideo(r.zlecenie, () => false);
+        if (!nowy) return res.status(504).json({ success: false, message: 'Silnik nie oddał fragmentu.' });
+
+        const w = await PostProdukcja.wstawFragment({
+            zrodlo: przy.zrodlo, nowyFragment: nowy,
+            start: przy.start, koniec: przy.koniec, comfyDir: COMFY_DIR,
+        });
+        return res.json({ success: true, ...w, fragment: nowy, zakres: { od: przy.start, do: przy.koniec } });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/** POST /api/post/muzyka { plik, utwor, odSekundy?, odUtworu?, glosnosc?, wyciszenie? } */
+app.post('/api/post/muzyka', async (req, res) => {
+    try {
+        const w = await PostProdukcja.dodajMuzyke({ ...(req.body ?? {}), comfyDir: COMFY_DIR });
+        console.log(`[Post] 🎼 Muzyka → ${path.basename(w.plik)} (${w.miks})`);
+        return res.json({ success: true, ...w });
     } catch (e) {
         return res.status(400).json({ success: false, message: e.message });
     }
