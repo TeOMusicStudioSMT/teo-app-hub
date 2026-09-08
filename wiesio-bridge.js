@@ -145,6 +145,9 @@ import * as Uniwersum from './services/Uniwersum.js';
 import * as Scenografie from './services/Scenografie.js';
 import * as Produkty from './services/Produkty.js';
 import * as KolejkaKadrow from './services/KolejkaKadrow.js';
+import * as Assety from './services/Assety.js';
+import * as Arkusz from './services/ArkuszWielokat.js';
+import * as Brief from './services/BriefOpowiesci.js';
 import {
     strazMostu, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA,
 } from './services/StrazMostu.js';
@@ -6391,6 +6394,254 @@ app.post('/api/blender/uruchom', async (req, res) => {
 // ── 🌌 UNIWERSUM („Blender Blendera") ───────────────────────────────────────
 
 // ── WIRTUALNE STUDIO, KAMERZYSTA I SCENOGRAFIE DLA TGS ──────────────────────
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🎭 BIBLIOTEKA ASSETÓW — aktorzy, sceny, rekwizyty, głosy, muzyka filmowa
+//
+//  Suweren, po obejrzeniu Director Studio: „zakładka Aktorzy powinna mieć takie
+//  możliwości, ponadto wybór roli", „dodanie modułu scen otoczenia", „menu
+//  assetowe dla sceny — możemy tam dodać moduł muzyki filmowej".
+//
+//  ⚠️ ASSET NALEŻY DO PROJEKTU. Obsada „alchemicznej fluktuacji" nie ma czego
+//  szukać w Cafe Martens — każdy projekt ma własny katalog i własny indeks.
+// ══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/assety', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        if (!projekt.trim()) return res.status(400).json({ success: false, message: 'Podaj projekt.' });
+        const typ = String(req.query.typ || '');
+        return res.json({
+            success: true,
+            assety: await Assety.lista(ANTIGRAVITY_DIR, projekt, typ),
+            typy: Assety.TYPY,
+            role: Assety.ROLE,
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/** Kafelki „Project library" — ile czego jest i co pokazać na podglądzie. */
+app.get('/api/assety/bilans', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        if (!projekt.trim()) return res.status(400).json({ success: false, message: 'Podaj projekt.' });
+        return res.json({ success: true, ...(await Assety.bilans(ANTIGRAVITY_DIR, projekt)), role: Assety.ROLE });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/assety', async (req, res) => {
+    const { projekt = '', ...dane } = req.body ?? {};
+    try {
+        if (!String(projekt).trim()) throw new Error('Podaj projekt — asset należy do projektu, nie do Katedry.');
+        const asset = await Assety.zapisz(ANTIGRAVITY_DIR, projekt, dane);
+        return res.json({ success: true, asset });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/assety/:id', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        return res.json({ success: true, asset: await Assety.usun(ANTIGRAVITY_DIR, projekt, req.params.id) });
+    } catch (e) {
+        return res.status(404).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/assety/referencja { projekt, id, pole, nazwaPliku, base64 }
+ * ⚠️ Przyjmujemy DANE, nie ścieżkę z dysku — panel bywa wystawiony przez
+ * Kwantowy Tunel na telefon.
+ */
+app.post('/api/assety/referencja', async (req, res) => {
+    const { projekt = '', ...dane } = req.body ?? {};
+    try {
+        const r = await Assety.zapiszReferencje(ANTIGRAVITY_DIR, projekt, dane);
+        console.log(`[Assety] Referencja ${dane.pole} dla ${r.asset.nazwa} (${r.bajtow} B)`);
+        return res.json({ success: true, ...r });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/** Podgląd pliku assetu. Wyłącznie spod katalogu assetów projektu. */
+app.get('/api/assety/plik', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        const plik = String(req.query.plik || '');
+        if (!projekt.trim() || !plik.trim()) return res.status(400).send('Brak projektu albo pliku.');
+
+        const korzen = path.resolve(await Assety.katalog(ANTIGRAVITY_DIR, projekt));
+        const cel = path.resolve(plik);
+        // ⚠️ STRAŻ ŚCIEŻKI: bez tego „podgląd" czytałby dowolny plik z dysku.
+        if (!cel.toLowerCase().startsWith(korzen.toLowerCase())) {
+            return res.status(403).send('Ten plik nie leży w bibliotece tego projektu.');
+        }
+        await fs.access(cel);
+        return res.sendFile(cel);
+    } catch {
+        return res.status(404).send('Nie ma takiego pliku.');
+    }
+});
+
+/** Przeniesienie starych „aktorów" z pamięci Reżysera do biblioteki projektu. */
+app.post('/api/assety/przenies-aktorow', async (req, res) => {
+    const { projekt = '' } = req.body ?? {};
+    try {
+        const postacie = await listaPostaci(ANTIGRAVITY_DIR);
+        const przeniesione = await Assety.przenies(ANTIGRAVITY_DIR, projekt, postacie);
+        return res.json({ success: true, przeniesione, ile: przeniesione.length });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🧭 ARKUSZ WIELOKĄTOWY — jedna klatka → widoki z wielu stron kamery
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Czy w ogóle jest czym liczyć. Odpowiada CO DO PLIKU, czego brakuje. */
+app.get('/api/arkusz/stan', async (req, res) => {
+    try {
+        const s = await Arkusz.stanSilnika(COMFY_BASE);
+        return res.json({
+            success: true, ...s,
+            katy: { scena: Arkusz.KATY_SCENY, aktor: Arkusz.KATY_AKTORA },
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/arkusz/policz { projekt, id, katy?, ziarno? }
+ *
+ * Liczy widoki SZEREGOWO i zapisuje je w katalogu assetu. Zadanie żyje
+ * w pamięci mostu — front odpytuje o stan, bo siedem widoków to minuty.
+ */
+const zadaniaArkusza = new Map();
+
+app.post('/api/arkusz/policz', async (req, res) => {
+    const { projekt = '', id = '', katy = null, ziarno = null } = req.body ?? {};
+    try {
+        const stan = await Arkusz.stanSilnika(COMFY_BASE);
+        if (!stan.gotowe) return res.status(424).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
+
+        const asset = await Assety.jeden(ANTIGRAVITY_DIR, projekt, id);
+        // Płyta odniesienia: dla sceny plate, dla aktora twarz. Bez niej nie ma z czego liczyć.
+        const zrodlo = asset.referencje?.plyta ?? asset.referencje?.aktor ?? asset.miniatura ?? null;
+        if (!zrodlo) throw new Error(`Asset „${asset.nazwa}" nie ma jeszcze obrazu odniesienia — wgraj go najpierw.`);
+
+        const wszystkie = Arkusz.katy(asset.typ);
+        const wybrane = Array.isArray(katy) && katy.length
+            ? wszystkie.filter((k) => katy.includes(k.klucz))
+            : wszystkie;
+
+        const plyta = await Arkusz.wstawPlyte(COMFY_DIR, zrodlo, `katedra_${slugProjektu(asset.nazwa)}.png`);
+        const katAssetu = path.dirname(zrodlo);
+
+        const zadanieId = `ark-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        const z = {
+            id: zadanieId, stan: 'liczy', projekt, asset: asset.nazwa, typ: asset.typ,
+            start: Date.now(), blad: null,
+            pozycje: wybrane.map((k) => ({ ...k, stan: 'czeka', plik: null, sekundy: null, powod: null })),
+        };
+        zadaniaArkusza.set(zadanieId, z);
+
+        (async () => {
+            for (const poz of z.pozycje) {
+                if (z.przerwane) { poz.stan = 'pominiete'; continue; }
+                const t0 = Date.now();
+                poz.stan = 'liczy';
+                try {
+                    const { graf } = Arkusz.graf({
+                        modele: stan.modele, plyta, prompt: poz.prompt,
+                        kotwica: Arkusz.kotwica(asset.typ), kroki: stan.kroki, ziarno,
+                        prefiks: `katedra/arkusz_${poz.klucz}`,
+                    });
+                    const odp = await fetch(`${COMFY_BASE}/prompt`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: graf }),
+                    });
+                    const d = await odp.json();
+                    if (!d?.prompt_id) throw new Error(`ComfyUI odrzucil graf: ${JSON.stringify(d).slice(0, 300)}`);
+
+                    const wynik = await czekajNaPlikWideo(d.prompt_id, () => z.przerwane);
+                    if (!wynik) throw new Error('Przerwane przez Suwerena.');
+                    // Nazwa 1:1 z konwencja Director Studio, zeby arkusze z obu
+                    // narzedzi lezaly obok siebie czytelnie.
+                    const cel = path.join(katAssetu, `${slugProjektu(asset.nazwa)}_${String(poz.nr).padStart(2, '0')}_${poz.klucz}.png`);
+                    await fs.copyFile(wynik, cel);
+                    poz.plik = cel;
+                    poz.stan = 'gotowe';
+                } catch (e) {
+                    poz.stan = 'blad';
+                    poz.powod = e.message;
+                } finally {
+                    poz.sekundy = Math.round((Date.now() - t0) / 1000);
+                }
+            }
+
+            const gotowe = z.pozycje.filter((p) => p.plik);
+            if (gotowe.length) {
+                await Assety.zapisz(ANTIGRAVITY_DIR, projekt, {
+                    id: asset.id, typ: asset.typ, nazwa: asset.nazwa,
+                    arkusz: gotowe.map((p) => ({ klucz: p.klucz, nr: p.nr, plik: p.plik })),
+                }).catch(() => { /* indeks zapiszemy przy nastepnej zmianie */ });
+            }
+            if (z.stan === 'liczy') z.stan = gotowe.length ? 'gotowe' : 'blad';
+            if (!gotowe.length && !z.blad) z.blad = 'Zaden widok sie nie policzyl — powody przy pozycjach.';
+        })().catch((e) => { z.stan = 'blad'; z.blad = e.message; });
+
+        return res.json({ success: true, id: zadanieId, ile: z.pozycje.length, kroki: stan.kroki, ostrzezenie: stan.ostrzezenie ?? null });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/arkusz/zadanie/:id', (req, res) => {
+    const z = zadaniaArkusza.get(req.params.id);
+    if (!z) return res.status(404).json({ success: false, message: 'Nie znam tego zadania. Most mogl sie zrestartowac — arkusze zyja w jego pamieci.' });
+    return res.json({
+        success: true, id: z.id, stan: z.stan, asset: z.asset, typ: z.typ, blad: z.blad,
+        sekundOd: Math.round((Date.now() - z.start) / 1000),
+        pozycje: z.pozycje.map((p) => ({ nr: p.nr, klucz: p.klucz, stan: p.stan, plik: p.plik, sekundy: p.sekundy, powod: p.powod })),
+    });
+});
+
+app.post('/api/arkusz/zadanie/:id/przerwij', (req, res) => {
+    const z = zadaniaArkusza.get(req.params.id);
+    if (!z) return res.status(404).json({ success: false, message: 'Nie znam tego zadania.' });
+    if (z.stan === 'liczy') { z.przerwane = true; z.stan = 'przerwane'; }
+    return res.json({ success: true, stan: z.stan });
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  📋 BRIEF POKOJU OPOWIESCI — zywe streszczenie ustalen z rozmowy
+// ══════════════════════════════════════════════════════════════════════════════
+
+app.post('/api/opowiesc/brief', async (req, res) => {
+    const { historia = [], model } = req.body ?? {};
+    try {
+        const sensowne = (historia ?? []).filter((t) => t?.tresc?.trim());
+        if (sensowne.length < 2) {
+            return res.status(400).json({ success: false, message: 'Za krotka rozmowa — brief nie ma z czego powstac.' });
+        }
+        const { system, prompt } = Brief.promptBriefu(sensowne);
+        const { tekst, silnik } = await piszModelem(model, system, prompt);
+        return res.json({ success: true, brief: Brief.odczytaj(tekst), model: silnik, coIleTur: Brief.CO_ILE_TUR });
+    } catch (e) {
+        return res.status(502).json({ success: false, message: e.message });
+    }
+});
 
 // ── KOLEJKA KADROW: wyrenderuj wszystkie po kolei i zmontuj w jedno ─────────
 
