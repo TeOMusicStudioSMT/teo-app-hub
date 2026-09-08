@@ -81,7 +81,18 @@ export function kotwica(typ) {
 
 /** Wzorce plików. Dopuszczamy GGUF, bo na 6 GB VRAM to jedyna rozsądna droga. */
 const POTRZEBNE = {
-    unet: { wzor: /qwen.*image.*edit.*2511/i, czym: 'model Qwen Image Edit 2511', przyklad: 'qwen_image_edit_2511_fp8mixed.safetensors' },
+    // ⚠️ `nieWzor` NIE JEST OZDOBĄ. Gdy `extra_model_paths.yaml` mapuje
+    // `diffusion_models: .`, ComfyUI wystawia CAŁĄ zawartość katalogu jako
+    // kandydatów na model — razem z podkatalogiem `loras/`. Bez tego wykluczenia
+    // most wybierał `loras\Qwen-Image-Edit-2511-Lightning-4steps.safetensors`
+    // jako UNET, bo nazwa pasowała. LoRA załadowana jako model to wywrotka
+    // w środku liczenia, a nie „prawie dobrze".
+    unet: {
+        wzor: /qwen.*image.*edit.*2511/i,
+        nieWzor: /(^|[\\/])(loras|text_encoders|clip|vae)[\\/]|lora|lightning/i,
+        czym: 'model Qwen Image Edit 2511',
+        przyklad: 'qwen_image_edit_2511_fp8mixed.safetensors',
+    },
     loraKaty: { wzor: /multiple.?angles/i, czym: 'LoRA wielu kątów', przyklad: 'qwen-image-edit-2511-multiple-angles-lora.safetensors' },
     clip: { wzor: /qwen.*2\.5.*vl.*7b/i, czym: 'enkoder tekstu Qwen2.5-VL 7B', przyklad: 'qwen_2.5_vl_7b_fp8_scaled.safetensors' },
     vae: { wzor: /qwen.*image.*vae/i, czym: 'VAE Qwen Image', przyklad: 'qwen_image_vae.safetensors' },
@@ -125,7 +136,8 @@ export async function stanSilnika(comfyBase) {
     const braki = [];
 
     const szukaj = (gdzie, spec, klucz) => {
-        const t = (widziane[gdzie] ?? []).find((n) => spec.wzor.test(n));
+        const t = (widziane[gdzie] ?? [])
+            .find((n) => spec.wzor.test(n) && !(spec.nieWzor && spec.nieWzor.test(n)));
         if (t) { znalezione[klucz] = t; return; }
         braki.push(`Brak: ${spec.czym}${spec.przyklad ? ` (np. ${spec.przyklad})` : ''}.`);
     };
