@@ -177,6 +177,43 @@ export async function usun(katalogKatedry, projekt, id) {
     return { ...usuniety, uwaga: 'Wpis usunięty z biblioteki. Pliki referencji i arkusza zostały na dysku.' };
 }
 
+
+/**
+ * Rozszerzenie pliku Z JEGO ZAWARTOŚCI, nie z nazwy.
+ *
+ * ⚠️ TO BYŁ PRAWDZIWY BŁĄD. Wcześniej domyślnym rozszerzeniem było `.png`
+ * dla KAŻDEJ referencji — więc próbka głosu wgrana bez rozszerzenia w nazwie
+ * lądowała na dysku jako `probka.png`, będąc w środku plikiem WAV. Panel
+ * pokazywał zepsuty obrazek, a wyglądało to na „dziwny format" cudzego programu.
+ *
+ * Nazwa pliku bywa zmyślona albo pusta — pierwsze bajty nie kłamią.
+ */
+function rozpoznajRozszerzenie(bufor, nazwaPliku = '') {
+    const h = bufor.subarray(0, 12);
+    const hex = h.toString('hex');
+    const znaki = h.toString('latin1');
+
+    if (znaki.startsWith('RIFF') && znaki.slice(8, 12) === 'WAVE') return '.wav';
+    if (hex.startsWith('494433') || hex.startsWith('fffb') || hex.startsWith('fff3') || hex.startsWith('fff2')) return '.mp3';
+    if (hex.startsWith('4f676753')) return '.ogg';
+    if (hex.startsWith('664c6143')) return '.flac';
+    if (hex.startsWith('89504e47')) return '.png';
+    if (hex.startsWith('ffd8ff')) return '.jpg';
+    if (znaki.startsWith('RIFF') && znaki.slice(8, 12) === 'WEBP') return '.webp';
+    if (hex.slice(8, 16) === '66747970') return '.mp4';        // ftyp — MP4/M4A
+    if (hex.startsWith('47494638')) return '.gif';
+
+    // Nie poznaliśmy — dopiero teraz wierzymy nazwie, a na końcu `.bin`.
+    // `.bin` jest lepsze niż zmyślone `.png`: mówi „nie wiem", zamiast kłamać.
+    const zNazwy = path.extname(String(nazwaPliku || '')).toLowerCase().slice(0, 6);
+    return /^\.[a-z0-9]{2,5}$/.test(zNazwy) ? zNazwy : '.bin';
+}
+
+/** Czy ta referencja to dźwięk — front rysuje wtedy odtwarzacz, nie obrazek. */
+export function czyAudio(sciezka) {
+    return /\.(wav|mp3|ogg|flac|m4a|aac)$/i.test(String(sciezka || ''));
+}
+
 /**
  * Zapisz plik referencyjny (obraz/audio) w katalogu assetu.
  *
@@ -198,7 +235,7 @@ export async function zapiszReferencje(katalogKatedry, projekt, { id, pole, nazw
     const mojKat = path.join(kat, asset.typ, slug(asset.nazwa));
     await fs.mkdir(mojKat, { recursive: true });
 
-    const rozszerzenie = (path.extname(String(nazwaPliku || '')) || '.png').toLowerCase().slice(0, 5);
+    const rozszerzenie = rozpoznajRozszerzenie(bufor, nazwaPliku);
     const bezpieczne = String(pole).replace(/[^a-z0-9_-]/gi, '_').slice(0, 30);
     const cel = path.join(mojKat, `${bezpieczne}${rozszerzenie}`);
     await fs.writeFile(cel, bufor);
@@ -251,6 +288,6 @@ export async function przenies(katalogKatedry, projekt, postacie = []) {
 }
 
 export default {
-    TYPY, ROLE, katalog, lista, bilans, jeden, zapisz, usun,
+    TYPY, ROLE, katalog, lista, bilans, jeden, zapisz, usun, czyAudio,
     zapiszReferencje, obsadaKadru, przenies,
 };

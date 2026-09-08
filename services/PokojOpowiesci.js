@@ -32,7 +32,7 @@ const OKNO_ROZMOWY = 12;
  * Prompt rozmowy. Partner ma DRĄŻYĆ, nie streszczać — najczęstsza wada małych
  * modeli w burzy mózgów to zgadzanie się ze wszystkim i podsumowywanie.
  */
-export function promptRozmowy({ gatunek = null, kotwica = '' }) {
+export function promptRozmowy({ gatunek = null, kotwica = '', assety = '', rece = false }) {
     const kto = gatunek
         ? `Jesteś ${gatunek.imie} — agentem Katedry OtakOS od dziedziny „${gatunek.dziedzina}".`
         : 'Jesteś towarzyszem od wymyślania opowieści w Katedrze OtakOS.';
@@ -48,6 +48,13 @@ export function promptRozmowy({ gatunek = null, kotwica = '' }) {
         '· NIE streszczasz tego, co Suweren przed chwilą powiedział — to strata jego czasu.',
         '· NIE zapisujesz niczego i nie obiecujesz, że zapisałeś. Od zapisu jest osobny przycisk.',
         kotwica.trim() ? `\nCO JUŻ ISTNIEJE W TYM ŚWIECIE (nie zaprzeczaj):\n${kotwica.trim().slice(0, 1200)}` : '',
+        // ⚠️ Biblioteka OSOBNO od kanonu. Fakt „Molita nosi perukę" i wpis
+        // „Molita — aktorka z arkuszem 6 widoków" to dwie różne rzeczy; sklejone
+        // w jeden blok gubiłyby się nawzajem.
+        assety.trim()
+            ? `\nBIBLIOTEKA TEGO PROJEKTU — to JUŻ istnieje, nie wymyślaj tego od nowa:\n${assety.trim().slice(0, 1400)}`
+            : '',
+        rece ? instrukcjaRak() : '',
     ].filter(Boolean).join('\n');
 }
 
@@ -229,7 +236,223 @@ export async function usun(katalog, id) {
     return usunieta;
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+//  OCZY I RĘCE — partner widzi bibliotekę projektu i może do niej dopisywać
+//
+//  Suweren: „mam przygotowane te wszystkie assety w projekcie Solita — jak
+//  przejdę do modułu opowieści i powiem memu TeOgochi o tych assetach, to je
+//  zobaczy? I czy w przyszłym projekcie będzie można to wytworzyć już w samym
+//  czacie, bo sam będzie korzystał z modułu i dodawał assety".
+//
+//  Do tej pory partner NIE widział assetow — do promptu szły wyłącznie fakty
+//  kanonu. Mógł więc wymyślić postać, która od dawna ma już twarz i arkusz
+//  sylwetek, i nikt by tego nie złapał.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Biblioteka projektu w formie, którą model ogarnie jednym spojrzeniem.
+ *
+ * ⚠️ MÓWIMY, CZEGO ASSET NIE MA. „Solita — aktorka, bez roli, bez arkusza"
+ * niesie więcej niż sama nazwa: partner może zapytać o rolę, zamiast wymyślać
+ * drugą Solitę od zera.
+ */
+export function spisAssetow(assety = [], role = {}) {
+    if (!assety.length) return '';
+    const wg = {};
+    for (const a of assety) (wg[a.typ] ??= []).push(a);
+
+    const etykiety = { aktor: 'AKTORZY', scena: 'SCENY', rekwizyt: 'REKWIZYTY', glos: 'GŁOSY', muzyka: 'MUZYKA' };
+    const linie = [];
+    for (const [typ, lista] of Object.entries(wg)) {
+        linie.push(`${etykiety[typ] ?? typ.toUpperCase()}:`);
+        for (const a of lista) {
+            const cechy = [];
+            if (a.rola) cechy.push(role[a.rola] ?? a.rola);
+            else if (typ === 'aktor') cechy.push('bez roli');
+            if (a.arkusz?.length) cechy.push(`${a.arkusz.length} widoków`);
+            if (a.referencje && Object.keys(a.referencje).length) cechy.push(`referencje: ${Object.keys(a.referencje).join('/')}`);
+            if (a.notatki) cechy.push(a.notatki.slice(0, 80));
+            linie.push(`  · ${a.nazwa}${cechy.length ? ` (${cechy.join(', ')})` : ''}`);
+        }
+    }
+    return linie.join('\n');
+}
+
+/**
+ * Co partner wolno mu ZROBIĆ, nie tylko powiedzieć.
+ *
+ * ⚠️ KASOWANIA TU NIE MA I NIE BĘDZIE. Pokój Opowieści bywa wystawiony przez
+ * Kwantowy Tunel na telefon; rozmowa, która potrafi skasować obsadę, to jedno
+ * niefortunne zdanie od straty dorobku. Kasuje się ręcznie, w Assetach.
+ */
+export const AKCJE = new Set(['dodaj_asset', 'zmien_asset']);
+
+/** Instrukcja rąk doklejana do promptu — tylko gdy jest do czego (znany projekt). */
+export function instrukcjaRak() {
+    return [
+        '',
+        'MASZ RĘCE. Gdy Suweren PROSI, żeby coś dopisać do biblioteki projektu,',
+        'kończysz wypowiedź osobną linią w tej postaci (i niczym po niej):',
+        '[[AKCJA: {"akcja":"dodaj_asset","typ":"aktor","nazwa":"…","rola":"glowna","notatki":"…"}]]',
+        '',
+        'ZASADY RĄK:',
+        '· `typ`: aktor | scena | rekwizyt | glos | muzyka.',
+        '· `rola` (tylko aktor): glowna | drugoplanowa | epizod | tlo | narrator | antagonista.',
+        '  Nie znasz roli — pomiń pole. Zgadywanie obsady za człowieka to nie jest pomoc.',
+        '· `zmien_asset` działa tak samo, ale na assecie o TEJ SAMEJ nazwie i typie.',
+        '· JEDNA akcja na wypowiedź. Nie dopisujesz nic, o co nie poproszono.',
+        '· Nie kasujesz — nie masz takiej akcji.',
+        '· Nie meldujesz „dopisałem", dopóki nie zobaczysz potwierdzenia. Katedra',
+        '  wykonuje akcję i sama mówi, co naprawdę powstało.',
+    ].join('\n');
+}
+
+/**
+ * Wyłuskaj akcję z wypowiedzi. Zwraca `{ mowa, akcja }` — mowa BEZ linii akcji,
+ * bo Suweren nie ma oglądać nawiasu z JSON-em.
+ *
+ * ⚠️ Nieznana akcja jest ODRZUCANA po cichu, ale mowa zostaje. Model, który
+ * wymyślił sobie `skasuj_wszystko`, ma zostać bez rąk, a nie wywalić rozmowę.
+ */
+export function odczytajAkcje(surowe) {
+    const t = String(surowe || '');
+    const m = t.match(/\[\[AKCJA:\s*(\{[\s\S]*?\})\s*\]\]/);
+    if (!m) return { mowa: t.trim(), akcja: null };
+
+    const mowa = t.replace(m[0], '').trim();
+    let d;
+    try { d = JSON.parse(m[1]); } catch { return { mowa, akcja: null, powod: 'Akcja nie była poprawnym JSON-em.' }; }
+
+    const akcja = String(d?.akcja || '').trim();
+    if (!AKCJE.has(akcja)) return { mowa, akcja: null, powod: `Nie znam akcji „${akcja}".` };
+
+    return {
+        mowa,
+        akcja: {
+            akcja,
+            typ: String(d.typ || '').trim(),
+            nazwa: String(d.nazwa || '').trim(),
+            rola: d.rola === undefined ? undefined : String(d.rola || '').trim(),
+            notatki: String(d.notatki || '').trim(),
+        },
+    };
+}
+
+/**
+ * Czy Suweren PROSI o dopisanie czegoś do biblioteki.
+ *
+ * ⚠️ BRAMKA JEST PO TO, ŻEBY NIE PŁACIĆ DWA RAZY ZA KAŻDĄ TURĘ. Ręce to
+ * osobne wywołanie modelu; odpalanie go przy każdym zdaniu podwoiłoby czas
+ * odpowiedzi w rozmowie, która w 90% jest zwykłym gadaniem o pomyśle.
+ *
+ * Potrzebne są OBA warunki: czasownik polecenia I rzeczownik z biblioteki.
+ * Samo „dodajmy jej tajemniczości" nie jest prośbą o asset.
+ */
+export function czyProsiOAsset(wypowiedz = '') {
+    const w = String(wypowiedz);
+    const polecenie = /\b(dopisz|dodaj|utw[o\u00f3]rz|stw[o\u00f3]rz|zapisz|wpisz|za\u0142\u00f3\u017c)\b/i.test(w);
+    const rzecz = /(asset|posta\u0107|postac|aktor|bohater|scen|lokacj|miejsc|rekwizyt|przedmiot|g\u0142os|glos|muzyk)/i.test(w);
+    return polecenie && rzecz;
+}
+
+/**
+ * Osobne, WĄSKIE wywołanie: jedno zadanie — zamień prośbę w akcję albo odmów.
+ *
+ * ⚠️ DLACZEGO OSOBNO, A NIE W ROZMOWIE. Pierwsza wersja prosiła partnera, żeby
+ * DOKLEIŁ linię `[[AKCJA: …]]` do swojej wypowiedzi. Sprawdzone na żywym
+ * `gemma4:e2b`: model zignorował instrukcję i po prostu ładnie pogadał o barmanie.
+ * Mały model robi dobrze JEDNĄ rzecz naraz — więc rozmowa jest rozmową,
+ * a akcja osobnym pytaniem z jedną odpowiedzią do wydania.
+ */
+export function promptRak({ wypowiedz, spis = '' }) {
+    const system = [
+        'Zamieniasz prośbę człowieka w JEDEN wpis do biblioteki projektu filmowego.',
+        'Odpowiadasz WYŁĄCZNIE obiektem JSON, bez komentarza i bez płotu z backticków.',
+        '',
+        'Kształt:',
+        '{"akcja":"dodaj_asset","typ":"aktor","nazwa":"…","rola":"epizod","notatki":"…"}',
+        'albo, gdy to nie jest prośba o wpis: {"akcja":null}',
+        '',
+        'ŻELAZNE ZASADY:',
+        '1. `typ`: aktor | scena | rekwizyt | glos | muzyka. Nic innego.',
+        '2. `rola` TYLKO dla aktora: glowna | drugoplanowa | epizod | tlo | narrator | antagonista.',
+        '   Nie pada w prośbie — pomiń pole. Nie zgadujesz obsady za człowieka.',
+        '3. `nazwa` to samo imię albo nazwa, bez opisu. „Barman Krys", nie „Barman Krys, który…".',
+        '4. `notatki` to jedno zdanie z tego, co POWIEDZIANO. Nie dopowiadasz.',
+        '5. Jeden wpis. Gdy prośba dotyczy kilku rzeczy — bierzesz pierwszą.',
+        '6. Gdy taki asset już jest na liście — `{"akcja":null}`. Od poprawiania jest panel.',
+    ].join('\n');
+
+    const prompt = [
+        spis ? `— CO JUŻ JEST W BIBLIOTECE —\n${spis}\n` : '',
+        `— PROŚBA —\n${String(wypowiedz).slice(0, 600)}`,
+        '',
+        'Sam JSON.',
+    ].filter(Boolean).join('\n');
+
+    return { system, prompt };
+}
+
+/**
+ * Odmiana roli → postać kanoniczna.
+ *
+ * ⚠️ TO NIE JEST ZGADYWANIE. Model oddał `"epizodyczna"` zamiast `"epizod"` —
+ * to TA SAMA rola w innej formie gramatycznej, nie inna decyzja obsadowa.
+ * Odrzucanie tego to karanie za polską fleksję.
+ *
+ * Lista jest ZAMKNIĘTA i jawna. Dopasowanie „na oko" (np. po podobieństwie
+ * napisów) potrafiłoby zamienić `antagonista` na `narrator` i nikt by nie
+ * zauważył — dlatego każda forma jest tu wypisana z ręki.
+ */
+const ODMIANY_ROL = {
+    glowna: 'glowna', 'g\u0142\u00f3wna': 'glowna', glowny: 'glowna', 'g\u0142\u00f3wny': 'glowna', 'g\u0142\u00f3wna rola': 'glowna',
+    drugoplanowa: 'drugoplanowa', drugoplanowy: 'drugoplanowa', 'drugi plan': 'drugoplanowa',
+    epizod: 'epizod', epizodyczna: 'epizod', epizodyczny: 'epizod', epizodystka: 'epizod',
+    tlo: 'tlo', 't\u0142o': 'tlo', statysta: 'tlo', statystka: 'tlo',
+    narrator: 'narrator', narratorka: 'narrator', lektor: 'narrator',
+    antagonista: 'antagonista', antagonistka: 'antagonista', 'czarny charakter': 'antagonista',
+};
+
+/** Sprowadź rolę do postaci kanonicznej albo oddaj `undefined`, gdy nie znamy. */
+export function znormalizujRole(rola) {
+    const r = String(rola ?? '').trim().toLowerCase();
+    if (!r) return undefined;
+    return ODMIANY_ROL[r];
+}
+
+/** Wyłuskaj i sprawdź akcję z odpowiedzi wąskiego wywołania. */
+export function odczytajRece(surowe) {
+    const t = String(surowe || '');
+    const start = t.indexOf('{');
+    const koniec = t.lastIndexOf('}');
+    if (start < 0 || koniec <= start) return { akcja: null, powod: 'Model nie oddał JSON-a.' };
+
+    let d;
+    try { d = JSON.parse(t.slice(start, koniec + 1)); } catch { return { akcja: null, powod: 'Niepoprawny JSON.' }; }
+    if (!d || d.akcja === null || d.akcja === undefined) return { akcja: null };
+
+    const akcja = String(d.akcja).trim();
+    if (!AKCJE.has(akcja)) return { akcja: null, powod: `Nie znam akcji „${akcja}".` };
+
+    const nazwa = String(d.nazwa || '').trim();
+    if (nazwa.length < 2) return { akcja: null, powod: 'Akcja bez nazwy.' };
+
+    return {
+        akcja: {
+            akcja,
+            typ: String(d.typ || '').trim(),
+            nazwa,
+            // Odmiana przyjmowana, nieznana rola — pomijana. Lepszy asset bez roli
+            // niż odrzucona prośba przez jedną końcówkę.
+            rola: znormalizujRole(d.rola),
+            notatki: String(d.notatki || '').trim(),
+        },
+    };
+}
+
 export default {
     promptRozmowy, zwezHistorie, promptPrzekucia, odczytajPrzekucie, OKNO_ROZMOWY,
+    spisAssetow, instrukcjaRak, odczytajAkcje, AKCJE,
+    czyProsiOAsset, promptRak, odczytajRece, znormalizujRole,
     historia, zapisz, oznaczPrzekute, usun,
 };

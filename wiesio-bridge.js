@@ -7409,17 +7409,67 @@ app.post('/api/opowiesc/rozmowa', async (req, res) => {
 
         // Kotwica: kanon istniejącego projektu, żeby nie wymyślać wbrew niemu.
         let kotwica = '';
+        let spisAssetow = '';
         if (projekt) {
             const p = await rezyserPamiec(ANTIGRAVITY_DIR, projekt).catch(() => null);
             kotwica = (p?.fakty ?? []).map((f) => f.tresc).join('\n');
+
+            // ⚠️ BIBLIOTEKA PROJEKTU DO PROMPTU. Bez tego partner wymyślał postać,
+            // która od dawna ma twarz, garderobę i arkusz sylwetek — i nikt tego
+            // nie łapał. Suweren: „powiem mu o tych assetach, to je zobaczy?"
+            const lista = await Assety.lista(ANTIGRAVITY_DIR, projekt).catch(() => []);
+            spisAssetow = Opowiesc.spisAssetow(lista, Assety.ROLE);
         }
 
-        const system = Opowiesc.promptRozmowy({ gatunek, kotwica });
+        // Ręce dostaje TYLKO rozmowa o konkretnym projekcie — bez projektu nie ma
+        // gdzie dopisać assetu, więc instrukcja rąk byłaby obietnicą bez pokrycia.
+        const rece = Boolean(projekt);
+        const system = Opowiesc.promptRozmowy({ gatunek, kotwica, assety: spisAssetow, rece });
         const prompt = [Opowiesc.zwezHistorie(historia), `SUWEREN: ${wypowiedz}`].filter(Boolean).join('\n');
         const { tekst, silnik } = await piszModelem(model, system, prompt);
 
+        // Wyłuskujemy akcję i WYKONUJEMY ją sami. Model nie melduje sukcesu —
+        // melduje go Katedra, na podstawie tego, co naprawdę zapisała.
+        let { mowa, akcja, powod } = Opowiesc.odczytajAkcje(tekst);
+
+        // ⚠️ DRUGIE, WĄSKIE WYWOŁANIE. Mały model nie doklei składni akcji do
+        // swobodnej wypowiedzi — sprawdzone na `gemma4:e2b`: zignorował instrukcję
+        // i pogadał o barmanie. Więc rozmowa jest rozmową, a akcja osobnym
+        // pytaniem z jedną odpowiedzią do wydania. Bramka `czyProsiOAsset`
+        // pilnuje, żeby nie płacić drugim wywołaniem za każde zdanie.
+        if (!akcja && rece && Opowiesc.czyProsiOAsset(wypowiedz)) {
+            try {
+                const r = Opowiesc.promptRak({ wypowiedz, spis: spisAssetow });
+                const { tekst: jsonAkcji } = await piszModelem(model, r.system, r.prompt);
+                const wynik = Opowiesc.odczytajRece(jsonAkcji);
+                akcja = wynik.akcja;
+                powod = powod ?? wynik.powod ?? null;
+            } catch (e) {
+                powod = `Ręce nie odpowiedziały: ${e.message}`;
+            }
+        }
+
+        let wykonane = null;
+        if (akcja && rece) {
+            try {
+                const zapisany = await Assety.zapisz(ANTIGRAVITY_DIR, projekt, {
+                    typ: akcja.typ, nazwa: akcja.nazwa,
+                    notatki: akcja.notatki || undefined,
+                    rola: akcja.rola,
+                });
+                wykonane = { akcja: akcja.akcja, asset: zapisany };
+                console.log(`[Opowieść] Ręce: ${akcja.akcja} → ${zapisany.typ}/${zapisany.nazwa} w ${projekt}`);
+            } catch (e) {
+                // Nieudana akcja NIE psuje rozmowy — ale ma zostać powiedziana wprost.
+                wykonane = { akcja: akcja.akcja, blad: e.message };
+            }
+        }
+
         return res.json({
-            success: true, mowa: tekst, model: silnik,
+            success: true, mowa, model: silnik,
+            wykonane,
+            odrzucona: powod ?? null,
+            widzianychAssetow: spisAssetow ? spisAssetow.split('\n').filter((l) => l.startsWith('  ·')).length : 0,
             gatunek: gatunek ? { id: gatunek.id, imie: gatunek.imie, dziedzina: gatunek.dziedzina, forma: gatunek.forma } : null,
         });
     } catch (e) {
