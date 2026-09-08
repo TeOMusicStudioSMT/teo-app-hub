@@ -147,6 +147,7 @@ import * as Produkty from './services/Produkty.js';
 import * as KolejkaKadrow from './services/KolejkaKadrow.js';
 import * as Assety from './services/Assety.js';
 import * as Rekopis from './services/Rekopis.js';
+import * as GlosStudio from './services/GlosStudio.js';
 import * as Arkusz from './services/ArkuszWielokat.js';
 import * as Brief from './services/BriefOpowiesci.js';
 import {
@@ -6398,6 +6399,71 @@ app.post('/api/blender/uruchom', async (req, res) => {
 
 
 // ══════════════════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════
+//  🗣️ GŁOS STUDIO — spięcie z VoiceStudio (klonowanie i synteza głosu)
+//
+//  Suweren pytał, czy głosy da się wytworzyć wskazanymi repo. OpenWhispr robi
+//  kierunek ODWROTNY (mowa → tekst). VoiceStudio robi to, czego brakuje.
+//
+//  ⚠️ VoiceStudio zostaje OSOBNYM PROGRAMEM (licencja AGPL-3.0). Rozmawiamy
+//  z nim po HTTP, tak jak z ComfyUI — jego kodu w tym repo nie ma i nie będzie.
+// ════════════════════════════════════════
+
+app.get('/api/glos-studio/stan', async (req, res) => {
+    try {
+        return res.json({ success: true, ...(await GlosStudio.stan()) });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/glos-studio/mow { projekt, id, tekst, glos, format? }
+ *
+ * Wypowiada tekst i zapisuje nagranie W KATALOGU ASSETU — z tego samego powodu,
+ * dla którego ujęcia nie zostają w ComfyUI. Ścieżka trafia do referencji assetu,
+ * więc następnym razem widać ją w bibliotece.
+ */
+app.post('/api/glos-studio/mow', async (req, res) => {
+    const { projekt = '', id = '', tekst = '', glos = '', format = 'wav' } = req.body ?? {};
+    try {
+        if (!String(projekt).trim()) throw new Error('Podaj projekt.');
+        const asset = await Assety.jeden(ANTIGRAVITY_DIR, projekt, id);
+        if (asset.typ !== 'glos') throw new Error(`Asset „${asset.nazwa}" nie jest głosem (jest: ${asset.typ}).`);
+
+        const katAssetow = await Assety.katalog(ANTIGRAVITY_DIR, projekt);
+        const katalogDocelowy = path.join(katAssetow, 'glos', slugProjektu(asset.nazwa));
+
+        const r = await GlosStudio.mow({ tekst, glos, format, katalogDocelowy, nazwa: 'wypowiedz' });
+
+        // Zapamietujemy, KTORYM glosem to powiedziano — bez tego nagranie jest
+        // anonimowe i za tydzien nikt nie wie, czym je powtorzyc.
+        const zapisany = await Assety.zapisz(ANTIGRAVITY_DIR, projekt, {
+            id: asset.id, typ: 'glos', nazwa: asset.nazwa,
+            referencje: { wypowiedz: r.sciezka },
+            utwor: glos,
+        });
+
+        console.log(`[GłosStudio] ${asset.nazwa}: ${r.znakow} znaków głosem ${glos} → ${r.sciezka}`);
+        return res.json({ success: true, ...r, asset: zapisany });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/** Transkrypcja próbki wgranej do assetu — co na niej właściwie padło. */
+app.post('/api/glos-studio/przepisz', async (req, res) => {
+    const { projekt = '', id = '' } = req.body ?? {};
+    try {
+        const asset = await Assety.jeden(ANTIGRAVITY_DIR, projekt, id);
+        const probka = asset.referencje?.probka;
+        if (!probka) throw new Error(`Asset „${asset.nazwa}" nie ma wgranej próbki głosu.`);
+        return res.json({ success: true, ...(await GlosStudio.przepisz(probka)) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  ✒️ RĘKOPIS — moduł pisania opowieści
