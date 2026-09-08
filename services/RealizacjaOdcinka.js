@@ -25,17 +25,65 @@
  */
 
 /** Ile sekund ekranu przypada na jeden kadr tablicy. */
-export const SEKUND_NA_KADR = 15;
+/**
+ * Ile sekund EKRANU pokrywa jeden kadr.
+ *
+ * ⚠️ BYŁO 15 I BYŁO TO NIEPRAWDĄ — 7,4 raza za dużo. Suweren: „błędnie
+ * wskazuje kadry do minut... 24 kadry są za krótkie". Sprawdzone na gotowych
+ * ujęciach z tego projektu: KAŻDE trwa 2,04 s (Wan 2.2 przy obecnych
+ * ustawieniach klatek). Osiem plików z rzędu, ta sama wartość co do setnej.
+ *
+ * Więc 24 kadry to nie 6 minut, tylko 49 SEKUND filmu. Plan, który obiecywał
+ * 20-minutowy odcinek z 24 kadrów, kłamał o rząd wielkości.
+ *
+ * Wartość zależy od ustawień silnika (więcej klatek = dłuższe ujęcie, ale
+ * więcej VRAM i czasu), dlatego da się ją nadpisać: OTAKOS_SEKUND_NA_KADR.
+ */
+export const SEKUND_NA_KADR = Number(process.env.OTAKOS_SEKUND_NA_KADR) || 2.04;
 
-/** Więcej kart niż tyle robi z tablicy śmietnik, a z czekania mękę. */
+/**
+ * Ile kadrów model rozpisuje w JEDNYM przebiegu.
+ *
+ * ⚠️ TO SUFIT PRZEBIEGU, NIE SUFIT ODCINKA. Mały model nie napisze 400 opisów
+ * w jednym wywołaniu — rozjechałby się po dwudziestym. REALIZUJ można kliknąć
+ * ponownie i kadry się DOKŁADAJĄ (odcinek #1 SOLLET ma tak 72 z trzech przebiegów).
+ */
 export const MAX_KADROW = 24;
 
-/** Ile kadrów dla odcinka o danej długości. Bez czasu — ostrożne minimum. */
-export function ileKadrow(czasMinut) {
+/**
+ * Ile kadrów dla odcinka o danej długości — i ile z tego zmieści się w tym
+ * przebiegu.
+ *
+ * Zwraca `potrzebne` (prawda o długości), `ile` (ten przebieg) i `przebiegow`
+ * (ile razy trzeba kliknąć REALIZUJ). Bez czasu — ostrożne minimum.
+ */
+export function ileKadrow(czasMinut, { juzMa = 0 } = {}) {
     const m = Number(czasMinut);
-    if (!Number.isFinite(m) || m <= 0) return { ile: 4, zgadywane: true };
-    const ile = Math.round((m * 60) / SEKUND_NA_KADR);
-    return { ile: Math.max(2, Math.min(MAX_KADROW, ile)), zgadywane: false, policzone: ile };
+    if (!Number.isFinite(m) || m <= 0) {
+        return { ile: 4, zgadywane: true, potrzebne: null, przebiegow: null, sekundNaKadr: SEKUND_NA_KADR };
+    }
+
+    const potrzebne = Math.max(2, Math.round((m * 60) / SEKUND_NA_KADR));
+    const zostalo = Math.max(0, potrzebne - Math.max(0, juzMa));
+    const ile = Math.max(2, Math.min(MAX_KADROW, zostalo || potrzebne));
+
+    return {
+        ile,
+        zgadywane: false,
+        potrzebne,
+        zostalo,
+        przebiegow: Math.ceil(zostalo / MAX_KADROW) || 0,
+        sekundNaKadr: SEKUND_NA_KADR,
+        // Zachowane pod starą nazwą — most raportuje tym polem „przycięcie".
+        policzone: potrzebne,
+    };
+}
+
+/** Ile minut filmu daje N kadrów — odwrotność, do uczciwych komunikatów. */
+export function minutZKadrow(ile) {
+    const n = Number(ile);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.round((n * SEKUND_NA_KADR) / 6) / 10;
 }
 
 /**
@@ -70,7 +118,7 @@ export function promptBiblii({ projekt, odcinek, kotwica = '' }) {
 export function promptKadrow({ projekt, odcinek, kotwica = '', ile }) {
     const system = [
         'Jesteś RYSOWNIKIEM rozkładającym odcinek na KADRY. Odpowiadasz po polsku.',
-        `Odcinek ma ${ile} kadrów, każdy to około ${SEKUND_NA_KADR} sekund ekranu.`,
+        `Rozpisujesz ${ile} kadrów. Każdy to około ${SEKUND_NA_KADR} s ekranu — czyli KRÓTKIE ujęcie, jedna myśl obrazowa, nie cała scena.`,
         '',
         'ŻELAZNE ZASADY:',
         '1. Kadry układają się w CIĄG: pierwszy otwiera odcinek, ostatni go domyka.',
@@ -134,6 +182,6 @@ export function oczysc(tekst) {
 }
 
 export default {
-    SEKUND_NA_KADR, MAX_KADROW, ileKadrow,
+    SEKUND_NA_KADR, MAX_KADROW, ileKadrow, minutZKadrow,
     promptBiblii, promptKadrow, odczytajKadry, oczysc,
 };

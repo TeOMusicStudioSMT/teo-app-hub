@@ -11999,12 +11999,26 @@ app.get('/api/rezyser/pamiec/kadry', async (req, res) => {
             let gotowych = 0;
             for (const k of moje) if (await KolejkaKadrow.maJuzUjecie(k)) gotowych += 1;
 
+            // ⚠️ UCZCIWA ARYTMETYKA DŁUGOŚCI. Suweren: „błędnie wskazuje kadry
+            // do minut — 24 kadry są za krótkie". Ujęcie trwa 2,04 s (zmierzone),
+            // więc 24 kadry to 49 SEKUND filmu, nie 6 minut. Mowimy ile odcinek
+            // MA naprawde i ile mu brakuje do zapowiedzianej dlugosci.
+            const plan = Realizacja.ileKadrow(o.czasMinut, { juzMa: moje.length });
+
             wynik[o.id] = {
                 razem: moje.length,
                 gotowych,
                 // Ta liczba idzie wprost do pola „ile na raz" w kolejce kadrów.
                 doPoliczenia: moje.length - gotowych,
                 etapy: moje.reduce((a, k) => { a[k.etap] = (a[k.etap] ?? 0) + 1; return a; }, {}),
+
+                // Ile filmu te kadry NAPRAWDĘ dają i ile go zapowiedziano.
+                minutTeraz: Realizacja.minutZKadrow(moje.length),
+                minutPlan: o.czasMinut ?? null,
+                potrzebne: plan.potrzebne,
+                brakuje: plan.zostalo ?? null,
+                przebiegow: plan.przebiegow ?? null,
+                sekundNaKadr: plan.sekundNaKadr,
             };
         }
 
