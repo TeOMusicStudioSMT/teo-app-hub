@@ -58,6 +58,12 @@ const WHITELIST_DOMYSLNA = [
     'ollama', 'cursor', 'dwm.exe', 'explorer.exe', 'nvcontainer.exe',
     'python', 'pythonw', 'unrealeditor', 'ue4editor', 'ue5editor',
     'chrome', 'chromium', 'msedge', 'node', 'ffmpeg',
+    // ⚠️ 2026-09-08: VoiceStudio. Jego zaplecze ML chodzi jako `python.exe`
+    // (juz chronione), ale powloka Tauri to `voicestudio.exe`, a jej interfejs
+    // renderuje `msedgewebview2.exe`. Bez tych dwoch wpisow straznik ubilby
+    // program w trakcie syntezy, a Suweren zobaczylby „VoiceStudio samo sie
+    // zamknelo" — dokladnie ta sama mina, co kiedys z ComfyUI.
+    'voicestudio', 'msedgewebview2',
 ];
 const WHITELIST = getEnvValue('TACOS_GUARD_WHITELIST', '')
     .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
