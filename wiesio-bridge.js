@@ -11965,6 +11965,55 @@ app.post('/api/rezyser/pamiec/odcinki', async (req, res) => {
  * Budzenie leci W TLE — model pisze kadry przez tę samą minutę, w której
  * ComfyUI się ładuje, więc czekanie dzieje się raz, nie dwa razy.
  */
+/**
+ * GET /api/rezyser/pamiec/kadry?serial=
+ *
+ * Ile kadrów ma każdy odcinek i ile z nich CZEKA jeszcze na render.
+ *
+ * PO CO. Suweren: „w tablicy dodaj do kolumny w produkcji info, ile dany
+ * odcinek ma kadrów — to wtedy mogę ustawić w kolejce i pójdzie cały plan
+ * po kolei". Bez tej liczby ustawienie kolejki jest zgadywanem.
+ *
+ * ⚠️ WIĄZANIE IDZIE PRZEZ `sesjaRady`, nie przez osobne pole. Realizacja
+ * odcinka stempluje tym polem każdy kadr, który z niego powstał — 415 z 433
+ * kart na tablicy je ma. Kadry dodane ręcznie nie mają go i nie liczą się do
+ * żadnego odcinka; to uczciwe, bo nikt nie powiedział, gdzie należą.
+ *
+ * ⚠️ BIBLIA NIE JEST KADREM. Karta etapu BIBLIA też nosi `sesjaRady`, ale
+ * liczona razem z kadrami zawyżałaby kolejkę o jeden nieistniejący render.
+ */
+app.get('/api/rezyser/pamiec/kadry', async (req, res) => {
+    try {
+        const serial = String(req.query.serial || '').trim();
+        if (!serial) throw new Error('Podaj serial.');
+
+        const [pamiec, kadry] = await Promise.all([
+            rezyserPamiec(ANTIGRAVITY_DIR, serial),
+            produkcjaLista(ANTIGRAVITY_DIR, serial),
+        ]);
+
+        const wynik = {};
+        for (const o of pamiec.odcinki ?? []) {
+            const moje = kadry.filter((k) => k.sesjaRady === o.id && k.etap !== 'BIBLIA');
+
+            let gotowych = 0;
+            for (const k of moje) if (await KolejkaKadrow.maJuzUjecie(k)) gotowych += 1;
+
+            wynik[o.id] = {
+                razem: moje.length,
+                gotowych,
+                // Ta liczba idzie wprost do pola „ile na raz" w kolejce kadrów.
+                doPoliczenia: moje.length - gotowych,
+                etapy: moje.reduce((a, k) => { a[k.etap] = (a[k.etap] ?? 0) + 1; return a; }, {}),
+            };
+        }
+
+        return res.json({ success: true, serial, odcinki: wynik });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
 app.post('/api/rezyser/pamiec/odcinek/:id/realizuj', async (req, res) => {
     const { serial = '', model } = req.body ?? {};
     try {
