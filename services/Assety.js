@@ -287,7 +287,88 @@ export async function przenies(katalogKatedry, projekt, postacie = []) {
     return przeniesione;
 }
 
+/**
+ * Skopiuj assety z jednego projektu do drugiego — razem z plikami.
+ *
+ * PO CO. Suweren: „TeOgochi assety zobaczył, lecz jak dałem przekuć z tego
+ * serial, to w nowym projekcie tego nie uwzględnił". I nie mógł: asset należy
+ * do projektu, a przekucie zakłada NOWY projekt. Trzeba było drogi, która
+ * przenosi obsadę tam, gdzie powstała nowa opowieść.
+ *
+ * ⚠️ KOPIUJEMY, NIE PRZENOSIMY. Stary projekt zostaje kompletny. Arkusz
+ * sylwetek to godziny liczenia — „przeniesienie", które opróżnia źródło, przy
+ * pomyłce kosztuje całą obsadę. Kasowanie źródła zostaje ręczne i świadome.
+ *
+ * ⚠️ PLIKI IDĄ RAZEM Z WPISEM. Sam wpis wskazywałby na katalog cudzego
+ * projektu — skasowanie tamtego zabrałoby twarze z tego. Kopie są tanie
+ * (obrazy), a niezależność projektów jest warta więcej.
+ */
+export async function skopiujDoProjektu(katalogKatedry, zProjektu, doProjektu, idki = null) {
+    const zrodlo = String(zProjektu || '').trim();
+    const cel = String(doProjektu || '').trim();
+    if (!zrodlo || !cel) throw new Error('Podaj projekt źródłowy i docelowy.');
+    if (zrodlo.toLowerCase() === cel.toLowerCase()) throw new Error('To ten sam projekt.');
+
+    const wszystkie = await lista(katalogKatedry, zrodlo);
+    const doSkopiowania = Array.isArray(idki) && idki.length
+        ? wszystkie.filter((a) => idki.includes(a.id))
+        : wszystkie;
+    if (!doSkopiowania.length) throw new Error(`Projekt „${zrodlo}" nie ma assetów do skopiowania.`);
+
+    const katCelu = await katalog(katalogKatedry, cel);
+    const juzTam = await lista(katalogKatedry, cel);
+
+    const skopiowane = [];
+    const pominiete = [];
+
+    for (const a of doSkopiowania) {
+        // Ten sam typ i nazwa po drugiej stronie — nie nadpisujemy cudzej pracy.
+        if (juzTam.some((x) => x.typ === a.typ && x.nazwa.toLowerCase() === a.nazwa.toLowerCase())) {
+            pominiete.push({ nazwa: a.nazwa, powod: 'już jest w projekcie docelowym' });
+            continue;
+        }
+
+        const mojKat = path.join(katCelu, a.typ, slug(a.nazwa));
+        await fs.mkdir(mojKat, { recursive: true });
+
+        const przenies = async (sciezkaZrodla) => {
+            try {
+                await fs.access(sciezkaZrodla);
+                const docelowy = path.join(mojKat, path.basename(sciezkaZrodla));
+                await fs.copyFile(sciezkaZrodla, docelowy);
+                return docelowy;
+            } catch {
+                // Plik zniknAął z dysku — wpis kopiujemy bez niego, zamiast
+                // wywracać całe kopiowanie na jednej brakującej twarzy.
+                return null;
+            }
+        };
+
+        const referencje = {};
+        for (const [pole, sc] of Object.entries(a.referencje ?? {})) {
+            const nowa = await przenies(sc);
+            if (nowa) referencje[pole] = nowa;
+        }
+
+        const arkusz = [];
+        for (const w of a.arkusz ?? []) {
+            const nowa = await przenies(w.plik);
+            if (nowa) arkusz.push({ ...w, plik: nowa });
+        }
+
+        const wpis = await zapisz(katalogKatedry, cel, {
+            typ: a.typ, nazwa: a.nazwa, notatki: a.notatki, rola: a.rola ?? '',
+            referencje, arkusz,
+            miniatura: referencje[Object.keys(referencje)[0]] ?? null,
+            utwor: a.utwor ?? null,
+        });
+        skopiowane.push(wpis);
+    }
+
+    return { zProjektu: zrodlo, doProjektu: cel, skopiowane, pominiete };
+}
+
 export default {
     TYPY, ROLE, katalog, lista, bilans, jeden, zapisz, usun, czyAudio,
-    zapiszReferencje, obsadaKadru, przenies,
+    zapiszReferencje, obsadaKadru, przenies, skopiujDoProjektu,
 };

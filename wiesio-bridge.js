@@ -148,6 +148,7 @@ import * as KolejkaKadrow from './services/KolejkaKadrow.js';
 import * as Assety from './services/Assety.js';
 import * as Rekopis from './services/Rekopis.js';
 import * as GlosStudio from './services/GlosStudio.js';
+import * as Montazownia from './services/Montazownia.js';
 import * as Arkusz from './services/ArkuszWielokat.js';
 import * as Brief from './services/BriefOpowiesci.js';
 import {
@@ -6401,6 +6402,97 @@ app.post('/api/blender/uruchom', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════
+// ════════════════════════════════════════
+//  🎚️ MONTAŻOWNIA — sklej gotowe filmy i podłóż pod nie dźwięk
+//
+//  Suweren: „z wczorajszej generacji mam 5 filmów, które potrzebuję skleic
+//  i podłożyć dźwięk — a w zasadzie nie mam gdzie". Kolejka kadrów skleja
+//  UJĘCIA jednego przebiegu, Ciąg Dalszy dopisuje ujęcie — ale nie było miejsca,
+//  gdzie bierze się kilka GOTOWYCH filmów i kładzie pod nie muzykę.
+//
+//  ⚠️ Sklejanie robi sprawdzony `CiagDalszy.sklej`, nie druga implementacja obok.
+// ════════════════════════════════════════
+
+/** Co w projekcie da się zmontować + czym podłożyć dźwięk. */
+app.get('/api/montazownia/materialy', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '').trim();
+        if (!projekt) throw new Error('Podaj projekt.');
+        const minSekund = Number(req.query.minSekund) || 3;
+
+        const [filmy, muzyka] = await Promise.all([
+            Montazownia.materialy(ANTIGRAVITY_DIR, projekt, { minSekund }),
+            Montazownia.utwory(MUSIC_DIR),
+        ]);
+        return res.json({
+            success: true, projekt, filmy, muzyka,
+            katalog: await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+        });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/montazownia/zloz { projekt, pliki[], muzyka?, glosnosc?, zanikanie?, nazwa? }
+ *
+ * ⚠️ KOLEJNOŚĆ `pliki` JEST ŚWIĘTA — to jest montaż, więc bierzemy dokładnie
+ * to, co Suweren ułożył, bez sortowania „po swojemu".
+ *
+ * ⚠️ STRAŻ ŚCIEŻKI: sklejamy WYŁĄCZNIE pliki z katalogu tego projektu. Panel
+ * bywa wystawiony przez Kwantowy Tunel na telefon.
+ */
+app.post('/api/montazownia/zloz', async (req, res) => {
+    const { projekt = '', pliki = [], muzyka = null, glosnosc, zanikanie, nazwa = 'montaz' } = req.body ?? {};
+    try {
+        if (!String(projekt).trim()) throw new Error('Podaj projekt.');
+        if (!Array.isArray(pliki) || !pliki.length) throw new Error('Nie wskaza\u0142e\u015b \u017cadnego filmu.');
+
+        const dozwolone = new Set((await Montazownia.materialy(ANTIGRAVITY_DIR, projekt, { minSekund: 0 })).map((m) => path.resolve(m.sciezka).toLowerCase()));
+        for (const f of pliki) {
+            if (!dozwolone.has(path.resolve(f).toLowerCase())) {
+                throw new Error(`Plik spoza projektu „${projekt}": ${path.basename(f)}`);
+            }
+        }
+        if (muzyka) {
+            const korzen = path.resolve(MUSIC_DIR);
+            if (!path.resolve(muzyka).toLowerCase().startsWith(korzen.toLowerCase())) {
+                throw new Error('Utw\u00f3r spoza biblioteki muzyki Katedry.');
+            }
+            await fs.access(muzyka);
+        }
+
+        const katalog = await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt);
+        const r = await Montazownia.zloz({
+            pliki, muzyka, glosnosc, zanikanie, katalog, nazwa,
+            sklejaczem: CiagDalszy.sklej, comfyDir: COMFY_DIR,
+        });
+
+        console.log(`[Monta\u017c] ${pliki.length} film\u00f3w \u2192 ${r.plik}${r.dzwiek ? ` (+ ${r.dzwiek})` : ''}`);
+        return res.json({ success: true, ...r, zlozonych: pliki.length });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/** Sam dźwięk pod gotowy film — gdy sklejone już jest, brakuje tylko muzyki. */
+app.post('/api/montazownia/dzwiek', async (req, res) => {
+    const { projekt = '', film = '', muzyka = '', glosnosc, zanikanie } = req.body ?? {};
+    try {
+        const dozwolone = new Set((await Montazownia.materialy(ANTIGRAVITY_DIR, projekt, { minSekund: 0 })).map((m) => path.resolve(m.sciezka).toLowerCase()));
+        if (!dozwolone.has(path.resolve(film).toLowerCase())) throw new Error('Film spoza tego projektu.');
+        const korzen = path.resolve(MUSIC_DIR);
+        if (!path.resolve(muzyka).toLowerCase().startsWith(korzen.toLowerCase())) throw new Error('Utw\u00f3r spoza biblioteki muzyki.');
+
+        const katalog = await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt);
+        const wyjscie = path.join(katalog, `${path.basename(film, path.extname(film))}_dzwiek_${Date.now().toString(36)}.mp4`);
+        const r = await Montazownia.podlozDzwiek({ film, muzyka, wyjscie, glosnosc, zanikanie });
+        return res.json({ success: true, ...r });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
 //  🗣️ GŁOS STUDIO — spięcie z VoiceStudio (klonowanie i synteza głosu)
 //
 //  Suweren pytał, czy głosy da się wytworzyć wskazanymi repo. OpenWhispr robi
@@ -6745,6 +6837,26 @@ app.get('/api/assety/plik', async (req, res) => {
         return res.sendFile(cel);
     } catch {
         return res.status(404).send('Nie ma takiego pliku.');
+    }
+});
+
+/**
+ * POST /api/assety/skopiuj { zProjektu, doProjektu, idki? }
+ *
+ * Suweren: „przekułem serial, a w nowym projekcie assety się nie uwzględniły —
+ * przerzuć je do nowego". Asset należy do projektu, a przekucie zakłada NOWY
+ * projekt — więc potrzebna jest droga, która przenosi obsadę za opowieścią.
+ *
+ * ⚠️ KOPIUJE, nie przenosi. Źródło zostaje kompletne.
+ */
+app.post('/api/assety/skopiuj', async (req, res) => {
+    const { zProjektu = '', doProjektu = '', idki = null } = req.body ?? {};
+    try {
+        const r = await Assety.skopiujDoProjektu(ANTIGRAVITY_DIR, zProjektu, doProjektu, idki);
+        console.log(`[Assety] ${r.skopiowane.length} asset\u00f3w: ${r.zProjektu} \u2192 ${r.doProjektu} (pomini\u0119tych ${r.pominiete.length})`);
+        return res.json({ success: true, ...r });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
     }
 });
 
