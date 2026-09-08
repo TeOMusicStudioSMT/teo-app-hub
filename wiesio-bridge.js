@@ -146,6 +146,7 @@ import * as Scenografie from './services/Scenografie.js';
 import * as Produkty from './services/Produkty.js';
 import * as KolejkaKadrow from './services/KolejkaKadrow.js';
 import * as Assety from './services/Assety.js';
+import * as Rekopis from './services/Rekopis.js';
 import * as Arkusz from './services/ArkuszWielokat.js';
 import * as Brief from './services/BriefOpowiesci.js';
 import {
@@ -6397,6 +6398,197 @@ app.post('/api/blender/uruchom', async (req, res) => {
 
 
 // ══════════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ✒️ RĘKOPIS — moduł pisania opowieści
+//
+//  Suweren: „Story V2 musi mieć też moduł pisania opowieści". Wzorzec z repo
+//  hughhowey/neo (MIT) — pomysły, nie kod: rozdział to osobny plik, Enter/Enter/
+//  Enter, wycięte fragmenty wracają tam, skąd wyszły, znaczniki zamiast przerw
+//  w pisaniu.
+//
+//  ⚠️ Rękopis należy do PROJEKTU, tak jak assety.
+// ══════════════════════════════════════════════════════════════════════════════
+
+function wymagajProjektu(q) {
+    const p = String(q || '').trim();
+    if (!p) throw new Error('Podaj projekt — rękopis należy do projektu, nie do Katedry.');
+    return p;
+}
+
+app.get('/api/rekopis', async (req, res) => {
+    try {
+        const projekt = wymagajProjektu(req.query.projekt);
+        return res.json({ success: true, rekopis: await Rekopis.wczytaj(ANTIGRAVITY_DIR, projekt) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.patch('/api/rekopis', async (req, res) => {
+    const { projekt = '', ...zmiany } = req.body ?? {};
+    try {
+        return res.json({ success: true, meta: await Rekopis.zmienMeta(ANTIGRAVITY_DIR, wymagajProjektu(projekt), zmiany) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/rekopis/rozdzial', async (req, res) => {
+    const { projekt = '', tytul = '', poId = null, tresc = '' } = req.body ?? {};
+    try {
+        const r = await Rekopis.dodajRozdzial(ANTIGRAVITY_DIR, wymagajProjektu(projekt), { tytul, poId, tresc });
+        return res.json({ success: true, rozdzial: r });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/** Zapis treści rozdziału. Front woła to z opóźnieniem — nie po każdym znaku. */
+app.put('/api/rekopis/rozdzial/:id', async (req, res) => {
+    const { projekt = '', tresc = '' } = req.body ?? {};
+    try {
+        return res.json({ success: true, ...(await Rekopis.zapiszTresc(ANTIGRAVITY_DIR, wymagajProjektu(projekt), req.params.id, tresc)) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.patch('/api/rekopis/rozdzial/:id', async (req, res) => {
+    const { projekt = '', tytul = '' } = req.body ?? {};
+    try {
+        return res.json({ success: true, ...(await Rekopis.zmienTytulRozdzialu(ANTIGRAVITY_DIR, wymagajProjektu(projekt), req.params.id, tytul)) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/rekopis/rozdzial/:id', async (req, res) => {
+    try {
+        const projekt = wymagajProjektu(req.query.projekt);
+        const r = await Rekopis.usunRozdzial(ANTIGRAVITY_DIR, projekt, req.params.id);
+        return res.json({
+            success: true, ...r,
+            // Mowimy WPROST, ze tresc nie zginela — inaczej skasowanie rozdzialu
+            // wyglada jak strata dnia pisania.
+            uwaga: r.zachowanychSlow ? `Treść (${r.zachowanychSlow} słów) leży w wyciętych — da się ją odzyskać.` : null,
+        });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/rekopis/kolejnosc', async (req, res) => {
+    const { projekt = '', kolejnosc = [] } = req.body ?? {};
+    try {
+        return res.json({ success: true, kolejnosc: await Rekopis.przestawRozdzialy(ANTIGRAVITY_DIR, wymagajProjektu(projekt), kolejnosc) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── Wycięte fragmenty ─────────────────────────────────────────────────────────
+app.post('/api/rekopis/wytnij', async (req, res) => {
+    const { projekt = '', ...dane } = req.body ?? {};
+    try {
+        return res.json({ success: true, wyciety: await Rekopis.wytnij(ANTIGRAVITY_DIR, wymagajProjektu(projekt), dane) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/rekopis/wyciety/:id', async (req, res) => {
+    try {
+        return res.json({ success: true, wyciety: await Rekopis.usunWyciety(ANTIGRAVITY_DIR, wymagajProjektu(req.query.projekt), req.params.id) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── Znaczniki ─────────────────────────────────────────────────────────────────
+app.post('/api/rekopis/znacznik', async (req, res) => {
+    const { projekt = '', ...dane } = req.body ?? {};
+    try {
+        return res.json({ success: true, znacznik: await Rekopis.dodajZnacznik(ANTIGRAVITY_DIR, wymagajProjektu(projekt), dane) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.patch('/api/rekopis/znacznik/:id', async (req, res) => {
+    const { projekt = '', ...zmiany } = req.body ?? {};
+    try {
+        return res.json({ success: true, znacznik: await Rekopis.zmienZnacznik(ANTIGRAVITY_DIR, wymagajProjektu(projekt), req.params.id, zmiany) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/rekopis/znacznik/:id', async (req, res) => {
+    try {
+        return res.json({ success: true, znacznik: await Rekopis.usunZnacznik(ANTIGRAVITY_DIR, wymagajProjektu(req.query.projekt), req.params.id) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── Konspekt ──────────────────────────────────────────────────────────────────
+app.post('/api/rekopis/konspekt', async (req, res) => {
+    const { projekt = '', rozdzial = '', notatki = [] } = req.body ?? {};
+    try {
+        return res.json({ success: true, notatki: await Rekopis.ustawKonspekt(ANTIGRAVITY_DIR, wymagajProjektu(projekt), rozdzial, notatki) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── Eksport i przekazanie Reżyserowi ─────────────────────────────────────────
+app.get('/api/rekopis/tekst', async (req, res) => {
+    try {
+        return res.json({ success: true, ...(await Rekopis.jakoTekst(ANTIGRAVITY_DIR, wymagajProjektu(req.query.projekt))) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * POST /api/rekopis/na-odcinki { projekt, ile? }
+ * Rękopis → odcinki w pamięci Reżysera. Model DZIELI to, co napisane;
+ * nie wolno mu dopisywać scen, których w tekście nie ma.
+ */
+app.post('/api/rekopis/na-odcinki', async (req, res) => {
+    const { projekt = '', ile = 6, model } = req.body ?? {};
+    try {
+        const p = wymagajProjektu(projekt);
+        const { tekst, slow } = await Rekopis.jakoTekst(ANTIGRAVITY_DIR, p);
+        if (slow < 200) throw new Error(`Rękopis ma ${slow} słów — za mało, żeby było co dzielić na odcinki.`);
+
+        const { system, prompt } = Rekopis.promptNaOdcinki(tekst, Math.max(1, Math.min(Number(ile) || 6, 20)));
+        const { tekst: odp, silnik } = await piszModelem(model, system, prompt);
+
+        const start = odp.indexOf('{');
+        const koniec = odp.lastIndexOf('}');
+        if (start < 0 || koniec <= start) throw new Error(`Model nie oddał JSON-a. Dostałem: ${odp.slice(0, 200)}`);
+        const d = JSON.parse(odp.slice(start, koniec + 1));
+        const odcinki = (Array.isArray(d.odcinki) ? d.odcinki : [])
+            .map((o) => ({
+                tytul: String(o?.tytul || '').trim().slice(0, 90),
+                streszczenie: String(o?.streszczenie || '').trim(),
+                czasMinut: Number.isFinite(Number(o?.czasMinut)) ? Number(o.czasMinut) : null,
+                styl: String(o?.styl || '').trim().slice(0, 200),
+                status: 'plan',
+            }))
+            .filter((o) => o.tytul.length >= 3 && o.streszczenie.length >= 10);
+        if (!odcinki.length) throw new Error('Model nie oddał ani jednego odcinka z tytułem i opisem.');
+
+        const zapisane = await dodajOdcinki(ANTIGRAVITY_DIR, p, odcinki);
+        console.log(`[Rękopis] ${odcinki.length} odcinków z rękopisu projektu ${p}.`);
+        return res.json({ success: true, odcinki: zapisane, model: silnik, zeSlow: slow });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
 //  🎭 BIBLIOTEKA ASSETÓW — aktorzy, sceny, rekwizyty, głosy, muzyka filmowa
 //
 //  Suweren, po obejrzeniu Director Studio: „zakładka Aktorzy powinna mieć takie
