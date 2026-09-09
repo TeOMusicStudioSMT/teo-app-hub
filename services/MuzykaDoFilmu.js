@@ -39,8 +39,28 @@ const uruchom = promisify(execFile);
 /** Ostrożny podział materiału na segmenty (sekundy). Patrz uwaga wyżej. */
 export const MAX_SEGMENT = Number(process.env.OTAKOS_MUZYKA_SEGMENT) || 120;
 
-/** Ile sekund trwa przenikanie między segmentami. */
-export const PRZENIKANIE = 3;
+/**
+ * Ile sekund trwa przenikanie między segmentami.
+ *
+ * ⚠️ ZMIERZONE, NIE ZGADNIĘTE: przy 3 s złączenia były słyszalne. Profil
+ * głośności pierwszej ścieżki pokazał doliny do −64 dB tuż przed każdym
+ * złączeniem — bo ACE kończy każdy segment WYCISZENIEM. Dłuższe przenikanie
+ * przykrywa to, co z ogona zostanie.
+ */
+export const PRZENIKANIE = 8;
+
+/**
+ * Ile sekund ucinamy z KOŃCA każdego segmentu przed sklejeniem.
+ *
+ * ⚠️ TO JEST SEDNO PROBLEMU, NIE OZDOBNIK. ACE-Step komponuje za każdym razem
+ * SKOŃCZONY utwór — z intro i z zakończeniem. Sklejone bez przycięcia trzy
+ * takie kawałki brzmią jak trzy utwory po sobie, a nie jak jedna ścieżka:
+ * zmierzone doliny −64,4 dB przy 100 s i 200 s, przy średniej całości −19 dB.
+ * Ucinamy ogon i przenikamy w to, co jeszcze gra.
+ *
+ * Ostatniego segmentu NIE tniemy — tam zakończenie jest na miejscu.
+ */
+export const PRZYTNIJ_OGON = 6;
 
 /**
  * Plan generacji: na ile części pociąć i jak długa jest każda.
@@ -50,12 +70,28 @@ export const PRZENIKANIE = 3;
  */
 export function planSegmentow(sekundy, maxSegment = MAX_SEGMENT) {
     const s = Math.max(1, Math.round(Number(sekundy) || 0));
-    if (s <= maxSegment) return { ile: 1, dlugosc: s, zachodzenie: 0, razem: s };
+    if (s <= maxSegment) return { ile: 1, dlugosc: s, zachodzenie: 0, ogon: 0, razem: s };
 
-    // Każde złączenie zjada `PRZENIKANIE` sekund, więc materiału potrzeba więcej.
-    const ile = Math.ceil((s - PRZENIKANIE) / (maxSegment - PRZENIKANIE));
-    const dlugosc = Math.ceil((s + (ile - 1) * PRZENIKANIE) / ile);
-    return { ile, dlugosc, zachodzenie: PRZENIKANIE, razem: ile * dlugosc - (ile - 1) * PRZENIKANIE };
+    /**
+     * Ile UŻYTECZNEGO materiału daje jeden segment o długości `d`:
+     *   · z każdego oprócz ostatniego ucinamy ogon (PRZYTNIJ_OGON),
+     *   · każde złączenie zjada PRZENIKANIE sekund.
+     * Razem: N·d − (N−1)·(ogon + przenikanie).
+     *
+     * ⚠️ Liczymy DO GÓRY na obu krokach. Ścieżka krótsza od filmu choćby
+     * o sekundę oznacza ciszę na końcu — a tego nikt nie zauważy przed
+     * publikacją.
+     */
+    const strataNaZlaczu = PRZYTNIJ_OGON + PRZENIKANIE;
+    const ile = Math.max(2, Math.ceil((s - strataNaZlaczu) / Math.max(1, maxSegment - strataNaZlaczu)));
+    const dlugosc = Math.ceil((s + (ile - 1) * strataNaZlaczu) / ile);
+
+    return {
+        ile, dlugosc,
+        zachodzenie: PRZENIKANIE,
+        ogon: PRZYTNIJ_OGON,
+        razem: ile * dlugosc - (ile - 1) * strataNaZlaczu,
+    };
 }
 
 /**
@@ -123,6 +159,15 @@ export function odczytajBrief(surowe) {
     };
 }
 
+/** Długość pliku audio w sekundach — potrzebna, żeby wiedzieć, gdzie uciąć ogon. */
+async function dlugoscAudio(plik) {
+    const { stderr } = await uruchom(ffmpegPath, ['-i', plik, '-f', 'null', '-'], { maxBuffer: 8 * 1024 * 1024 })
+        .catch((e) => ({ stderr: e.stderr ?? '' }));
+    const m = String(stderr).match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+    if (!m) throw new Error(`Nie umiem odczytać długości segmentu: ${plik}`);
+    return (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]);
+}
+
 /**
  * Sklej segmenty muzyki przenikaniem i przytnij do długości filmu.
  *
@@ -147,13 +192,28 @@ export async function zloz({ segmenty, sekundy, wyjscie, wyciszenie = 3 }) {
         return { plik: wyjscie, segmentow: 1, sekundy: dlugosc };
     }
 
-    // Wejścia + łańcuch przenikań: [0][1]->[a1], [a1][2]->[a2], …
+    // ⚠️ NAJPIERW UCINAMY OGONY, potem przenikamy. Bez tego przenikanie miesza
+    // wyciszenie jednego utworu z ciszą przed drugim — i słychać dziurę.
+    // Ostatniego segmentu nie tniemy: jego zakończenie jest zakończeniem ścieżki.
     const wejscia = segmenty.flatMap((s) => ['-i', s]);
     const kroki = [];
-    let poprzedni = '[0:a]';
+    const etykiety = [];
+    for (let i = 0; i < segmenty.length; i += 1) {
+        const et = `[s${i}]`;
+        if (i < segmenty.length - 1 && PRZYTNIJ_OGON > 0) {
+            const dl = await dlugoscAudio(segmenty[i]);
+            const doKiedy = Math.max(1, dl - PRZYTNIJ_OGON);
+            kroki.push(`[${i}:a]atrim=0:${doKiedy.toFixed(2)},asetpts=N/SR/TB${et}`);
+        } else {
+            kroki.push(`[${i}:a]asetpts=N/SR/TB${et}`);
+        }
+        etykiety.push(et);
+    }
+
+    let poprzedni = etykiety[0];
     for (let i = 1; i < segmenty.length; i += 1) {
         const wynik = i === segmenty.length - 1 ? '[mix]' : `[a${i}]`;
-        kroki.push(`${poprzedni}[${i}:a]acrossfade=d=${PRZENIKANIE}:c1=tri:c2=tri${wynik}`);
+        kroki.push(`${poprzedni}${etykiety[i]}acrossfade=d=${PRZENIKANIE}:c1=tri:c2=tri${wynik}`);
         poprzedni = wynik;
     }
     const filtr = `${kroki.join(';')};[mix]atrim=0:${dlugosc},afade=t=out:st=${Math.max(0, dlugosc - zanik)}:d=${zanik}[out]`;
@@ -165,7 +225,7 @@ export async function zloz({ segmenty, sekundy, wyjscie, wyciszenie = 3 }) {
         '-y', wyjscie,
     ], { maxBuffer: 32 * 1024 * 1024 });
 
-    return { plik: wyjscie, segmentow: segmenty.length, sekundy: dlugosc, przenikanie: PRZENIKANIE };
+    return { plik: wyjscie, segmentow: segmenty.length, sekundy: dlugosc, przenikanie: PRZENIKANIE, ogon: PRZYTNIJ_OGON };
 }
 
-export default { MAX_SEGMENT, PRZENIKANIE, planSegmentow, promptKompozycji, odczytajBrief, zloz };
+export default { MAX_SEGMENT, PRZENIKANIE, PRZYTNIJ_OGON, planSegmentow, promptKompozycji, odczytajBrief, zloz };
