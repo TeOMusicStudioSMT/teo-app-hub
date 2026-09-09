@@ -207,7 +207,8 @@ export function przerwij(id) {
  * Odpal kolejkę. Zwraca id NATYCHMIAST — praca leci w tle.
  *
  * Zależności wstrzykiwane, żeby ten plik nie znał ani ComfyUI, ani ffmpega:
- * @param {function} p.generuj  ({prompt}) => {ok, zlecenie, powod}
+ * @param {function} p.generuj  ({prompt, zrodlo}) => {ok, zlecenie, powod}
+ * @param {string}   p.nastepnyEtap  na którą kolumnę przenieść gotową kartę
  * @param {function} p.czekaj   (zlecenie, czyPrzerwane) => sciezka pliku
  * @param {function} p.oznacz   (kadrId, {zwrot, etap}) => void
  * @param {function} p.sklej    (pliki, cel) => {plik, metoda, wynik}
@@ -221,8 +222,14 @@ export function odpal(p) {
         projekt: p.projekt,
         pozycje: p.kadry.map((k, i) => ({
             nr: i + 1, kadrId: k.id, tytul: k.tytul, prompt: k.prompt,
+            // ⚠️ `zrodlo` niesie plik z POPRZEDNIEGO etapu — na etapie RUCH to
+            // klatka kluczowa, z której ma powstać ujęcie. Bez tego kadr i ruch
+            // byłyby dwoma niezależnymi losowaniami tego samego opisu.
+            zrodlo: k.zrodlo ?? null,
             stan: 'czeka', plik: null, sekundy: null, powod: null,
         })),
+        // Domyślnie RUCH — tak zachowywała się kolejka, zanim etapy się rozeszły.
+        nastepnyEtap: String(p.nastepnyEtap || 'RUCH').toUpperCase(),
         biezaca: 0,
         film: null,
         sklejka: null,
@@ -241,7 +248,7 @@ export function odpal(p) {
                 const start = Date.now();
 
                 try {
-                    const r = await p.generuj({ prompt: poz.prompt });
+                    const r = await p.generuj({ prompt: poz.prompt, zrodlo: poz.zrodlo });
                     if (!r.ok) throw new Error(r.powod);
 
                     const zComfy = await p.czekaj(r.zlecenie, () => z.przerwane);
@@ -251,7 +258,7 @@ export function odpal(p) {
                     // ⚠️ TU WYNIK WCHODZI DO KATEDRY. Bez tego kroku plik zostaje
                     // wyłącznie w wyjściu ComfyUI i projekt o nim nie wie.
                     poz.plik = await p.zapisz(zComfy, poz);
-                    await p.oznacz(poz.kadrId, { zwrot: poz.plik, etap: 'RUCH' });
+                    await p.oznacz(poz.kadrId, { zwrot: poz.plik, etap: z.nastepnyEtap });
 
                     poz.stan = 'gotowe';
                     poz.sekundy = Math.round((Date.now() - start) / 1000);

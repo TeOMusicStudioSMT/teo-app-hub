@@ -6506,8 +6506,33 @@ app.post('/api/montazownia/zloz', async (req, res) => {
             sklejaczem: CiagDalszy.sklej, comfyDir: COMFY_DIR,
         });
 
+        // \u26a0\ufe0f OSTATNIE OGNIWO POTOKU. Suweren: \u201ete kafelki wideo na monta\u017c, gdzie
+        // mo\u017cna je zamienia\u0107 kolejno\u015bci\u0105, i wtedy gotowe". Dot\u0105d sklejka powstawa\u0142a,
+        // ale karty zostawa\u0142y na MONTA\u017bU \u2014 tablica nigdy nie pokazywa\u0142a, \u017ce co\u015b
+        // jest domkni\u0119te, a kolumna GOTOWE sta\u0142a pusta na zawsze.
+        //
+        // Kart\u0119 rozpoznajemy po `zwrot`, bo to w nim le\u017cy \u015bcie\u017cka pliku, kt\u00f3ry
+        // z niej powsta\u0142. Pliki bez karty (np. wgrane r\u0119cznie) pomijamy \u2014 sklejka
+        // jest wa\u017cniejsza ni\u017c porz\u0105dek w tablicy.
+        const domkniete = [];
+        try {
+            const karty = await produkcjaLista(ANTIGRAVITY_DIR, projekt);
+            const uzyte = new Set(pliki.map((f) => path.resolve(f).toLowerCase()));
+            for (const k of karty) {
+                if (k.etap === 'GOTOWE') continue;
+                const m = String(k.zwrot || '').match(/[^\n|"]+\.(mp4|webm|mov|mkv)/i);
+                if (!m || !uzyte.has(path.resolve(m[0].trim()).toLowerCase())) continue;
+                await produkcjaZmien(ANTIGRAVITY_DIR, k.id, { etap: 'GOTOWE' });
+                domkniete.push(k.tytul);
+            }
+        } catch (e) {
+            // Nieudane domkni\u0119cie NIE mo\u017ce uniewa\u017cni\u0107 gotowej sklejki.
+            console.warn(`[Monta\u017c] sklejka gotowa, ale nie domkn\u0105\u0142em kart: ${e.message}`);
+        }
+
         console.log(`[Monta\u017c] ${pliki.length} film\u00f3w \u2192 ${r.plik}${r.dzwiek ? ` (+ ${r.dzwiek})` : ''}`);
-        return res.json({ success: true, ...r, zlozonych: pliki.length });
+        if (domkniete.length) console.log(`[Monta\u017c] \u2192 GOTOWE: ${domkniete.join(', ')}`);
+        return res.json({ success: true, ...r, zlozonych: pliki.length, domkniete });
     } catch (e) {
         return res.status(400).json({ success: false, message: e.message });
     }
@@ -7515,10 +7540,21 @@ app.get('/api/kolejka/kadry', async (req, res) => {
 });
 
 /**
- * POST /api/kolejka/odpal { projekt, etap?, ile?, odNowa?, klatek?, kroki?, sklejaj? }
+ * POST /api/kolejka/odpal { projekt, etap?, ile?, odNowa?, klatek?, kroki?, sklejaj?, rezyser? }
  *
- * Renderuje kadry PO KOLEI (karta ma 6 GB VRAM — rownolegle to OOM),
- * zapisuje wyniki W KATEDRZE i na koncu skleja je w jeden film.
+ * Renderuje PO KOLEI (karta ma 6 GB VRAM — rownolegle to OOM), zapisuje wyniki
+ * W KATEDRZE i przesuwa karty na następną kolumnę.
+ *
+ * ⚠️ CO ROBI KOLEJKA, ZALEŻY OD KOLUMNY. Suweren: „kadr powinien produkować
+ * kadry, czyli image, potem przenoszone jest do ruchu, gdzie z tego jest robione
+ * wideo, a potem te kafelki wideo na montaż”. Tablica mówiła to od początku
+ * (KADR = „nieruchome klatki kluczowe”, RUCH = „ożywienie klatki kluczowej”),
+ * ale kolejka liczyła wideo na obu etapach — więc kadr i ujęcie były dwoma
+ * niezależnymi losowaniami tego samego opisu, z dwiema różnymi twarzami.
+ *
+ *   KADR  → jedna klatka (SaveImage, length 1)   → karta idzie na RUCH
+ *   RUCH  → ujęcie Z TEJ KLATKI (start_image)     → karta idzie na MONTAŻ
+ *   inne  → jak dotąd: wideo z samego tekstu
  */
 app.post('/api/kolejka/odpal', async (req, res) => {
     const { projekt = '', etap = 'KADR', ile, odNowa = false, klatek, sekundy, kroki,
@@ -7556,6 +7592,12 @@ app.post('/api/kolejka/odpal', async (req, res) => {
             return res.status(400).json({ success: false, message: `Nie ma reżysera „${idRezysera}”.` });
         }
         const styl = Rezyserzy.promptStylu(rezyser);
+
+        // ⚠️ Kolumna decyduje o torze. `etapWlk` jest już wielkimi literami —
+        // filtr kart wyżej też po nim chodzi.
+        const etapWlk = String(etap).toUpperCase();
+        const toKadry = etapWlk === 'KADR';
+        const toRuch = etapWlk === 'RUCH';
         const szer = Number(req.body?.szerokosc) || rezyser?.szerokosc || undefined;
         const wys = Number(req.body?.wysokosc) || rezyser?.wysokosc || undefined;
         const sek = Number(sekundy) || rezyser?.sekundNaKadr || undefined;
@@ -7563,14 +7605,28 @@ app.post('/api/kolejka/odpal', async (req, res) => {
 
         // Domyslnie pomijamy karty, ktore MAJA juz plik — powtorny render
         // kosztuje minuty i nadpisuje prace, ktora ktos moze akceptowal.
+        // ⚠️ „MA JUŻ WYNIK” ZNACZY CO INNEGO NA KAŻDEJ KOLUMNIE. Na etapie KADR
+        // szukamy OBRAZU, na pozostałych — pliku wideo. Wspólny sprawdzian
+        // kazałby liczyć od nowa każdą kartę, która ma dopiero klatkę.
+        const maJuzWynik = async (k) => {
+            if (!toKadry) return KolejkaKadrow.maJuzUjecie(k);
+            const m = String(k?.zwrot || '').match(/[^\n|"]+\.(png|jpg|jpeg|webp)/i);
+            if (!m) return null;
+            try { await fs.access(m[0].trim()); return m[0].trim(); } catch { return null; }
+        };
+
         const doKolejki = [];
         for (const k of wszystkie) {
-            if (!odNowa && await KolejkaKadrow.maJuzUjecie(k)) continue;
+            if (!odNowa && await maJuzWynik(k)) continue;
             const bazowy = KolejkaKadrow.promptZKadru(k, kotwica, assetyProjektu);
             // ⚠️ STYL REŻYSERA DOPISUJEMY NA KOŃCU, nie na początku. Wan waży
             // początek promptu mocniej — tam ma zostać treść kadru, a styl ma
             // go ubrać, nie zastąpić.
-            doKolejki.push({ id: k.id, tytul: k.tytul, prompt: styl ? `${bazowy}, ${styl}` : bazowy });
+            // Na etapie RUCH karta niesie klatkę kluczową z etapu KADR.
+            const zrodlo = toRuch
+                ? (String(k?.zwrot || '').match(/[^\n|"]+\.(png|jpg|jpeg|webp)/i)?.[0]?.trim() ?? null)
+                : null;
+            doKolejki.push({ id: k.id, tytul: k.tytul, zrodlo, prompt: styl ? `${bazowy}, ${styl}` : bazowy });
         }
         if (!doKolejki.length) {
             return res.status(400).json({ success: false, message: 'Wszystkie kadry maja juz ujecia. Uzyj odNowa=true, zeby policzyc je jeszcze raz.' });
@@ -7581,20 +7637,53 @@ app.post('/api/kolejka/odpal', async (req, res) => {
         const katUjec = await KolejkaKadrow.katalogUjec(ANTIGRAVITY_DIR, projekt);
 
         const id = KolejkaKadrow.odpal({
-            projekt, kadry, sklejaj,
+            projekt, kadry,
+            // ⚠️ Obrazów nie ma jak skleić w film — na etapie KADR sklejka
+            // milczkiem by nie powstała, a panel obiecywałby ją dalej.
+            sklejaj: toKadry ? false : sklejaj,
 
             // ⚠️ `sekundy` steruje długością UJĘCIA. Domyślnie 2,04 s (49 klatek);
             // dłuższe ujęcie to mniej renderów na minutę filmu, ale więcej VRAM
             // i czasu na sztukę — na 6 GB to realna granica.
-            generuj: ({ prompt }) => Wideo.generujScene({
-                comfyBase: COMFY_BASE, prompt, klatek,
-                szerokosc: szer, wysokosc: wys, sekundy: sek, kroki: krokow,
-            }),
+            // KADR → RUCH → MONTAŻ. Poza tymi kolumnami zostaje stare zachowanie.
+            nastepnyEtap: toKadry ? 'RUCH' : (toRuch ? 'MONTAZ' : 'RUCH'),
+
+            generuj: async ({ prompt, zrodlo }) => {
+                if (toKadry) {
+                    return Wideo.generujKadrObraz({
+                        comfyBase: COMFY_BASE, prompt,
+                        szerokosc: szer, wysokosc: wys, kroki: krokow,
+                    });
+                }
+
+                // ⚠️ ComfyUI ŁADUJE OBRAZY WYŁĄCZNIE ZE SWOJEGO `input/`, po nazwie —
+                // nie po ścieżce. Kopiujemy tam klatkę (nie przenosimy: oryginał
+                // musi zostać w projekcie) i podajemy nazwę, którą on widzi.
+                let obrazStartowy = '';
+                if (toRuch && zrodlo) {
+                    try {
+                        obrazStartowy = await Arkusz.wstawPlyte(COMFY_DIR, zrodlo);
+                    } catch (e) {
+                        // ⚠️ Bez klatki ujęcie byłoby NOWYM losowaniem, a nie ożywieniem
+                        // tego kadru. Lepiej powiedzieć wprost niż cicho podmienić.
+                        throw new Error(`Nie umiem podać klatki kluczowej silnikowi: ${e.message}`);
+                    }
+                }
+                return Wideo.generujScene({
+                    comfyBase: COMFY_BASE, prompt, klatek,
+                    szerokosc: szer, wysokosc: wys, sekundy: sek, kroki: krokow,
+                    obrazStartowy,
+                });
+            },
             czekaj: czekajNaPlikWideo,
 
             // Wynik z ComfyUI KOPIUJEMY do katalogu projektu i zwracamy TE sciezke.
             zapisz: async (zComfy, poz) => {
-                const nazwa = `${String(poz.nr).padStart(3, '0')}_${String(poz.tytul || 'ujecie').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)}.mp4`;
+                // Rozszerzenie bierzemy Z PLIKU, który oddał silnik — na etapie KADR
+                // to .png, dalej .mp4. Wpisane na sztywno „.mp4” robiłoby z obrazu
+                // plik, którego żaden odtwarzacz nie otworzy.
+                const rozsz = path.extname(zComfy) || (toKadry ? '.png' : '.mp4');
+                const nazwa = `${String(poz.nr).padStart(3, '0')}_${String(poz.tytul || 'ujecie').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)}${rozsz}`;
                 const cel = path.join(katUjec, nazwa);
                 await fs.copyFile(zComfy, cel);
                 return cel;

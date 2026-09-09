@@ -38,8 +38,11 @@ const PLIK_POSTACI = 'rezyser_postacie.json';
  */
 export const DOMYSLNE = {
     silnikWideo: 'wan22',
-    szerokosc: 704,
-    wysokosc: 480,
+    // ⚠️ KOMPROMIS WYBRANY ŚWIADOMIE: 704×480 to 171 s/ujęcie i wygląd „lat 80.”,
+    // 1280×704 to 611 s i 51 h na dziesięciominutowy odcinek. 960×544 kosztuje
+    // 351 s — dwa razy więcej niż dotąd, ale połowę tego, co natywna Wan.
+    szerokosc: 960,
+    wysokosc: 544,
     sekundNaKadr: 2.04,   // 49 klatek @ 24 fps — Wan wymaga długości 4n+1
     kroki: 20,
 };

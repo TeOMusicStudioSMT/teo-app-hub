@@ -132,6 +132,22 @@ export const KLATEK_NA_SEKUNDE = 24;
 export const KLATEK_DOMYSLNIE = 49;
 
 /**
+ * Rozdzielczość domyślna — KOMPROMIS, nie przypadek.
+ *
+ * ⚠️ ZMIERZONE na tej karcie (RTX 3060 Laptop, 6 GB), 49 klatek, 20 kroków,
+ * ten sam prompt i to samo ziarno:
+ *     704×480   171 s   — stąd brał się wygląd „lat 80.”
+ *     960×544   351 s   — TU JESTEŚMY
+ *    1280×704   611 s   — natywna Wan, 3,6× drożej niż 704
+ *
+ * Suweren wybrał środek świadomie: 10-minutowy odcinek to ~300 ujęć, czyli
+ * 14 h przy 704, 29 h przy 960 i 51 h przy 1280. Natywna rozdzielczość
+ * zostaje do pojedynczych, ważnych ujęć — ustawia sią ją w profilu Reżysera.
+ */
+export const SZEROKOSC_DOMYSLNIE = Number(process.env.OTAKOS_SZEROKOSC) || 960;
+export const WYSOKOSC_DOMYSLNIE = Number(process.env.OTAKOS_WYSOKOSC) || 544;
+
+/**
  * Sekundy → klatki dla Wan.
  *
  * PO CO. Suweren: „można by wydłużyć kadry, teraz mają 2 sec... choć może
@@ -214,7 +230,7 @@ export async function stanWideo(comfyBase) {
  * Zleć scenę. Zwraca id zlecenia ComfyUI albo POWÓD odmowy.
  * ⚠️ Nie ma tu ścieżki „udało się mimo braków" — jeśli czegoś nie ma, mówimy to.
  */
-export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, klatek, sekundy, kroki, ziarno }) {
+export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, klatek, sekundy, kroki, ziarno, obrazStartowy = '' }) {
     if (!prompt?.trim()) return { ok: false, powod: 'Pusty opis sceny — nie ma czego generować.' };
 
     const stan = await stanWideo(comfyBase);
@@ -231,14 +247,24 @@ export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, kla
     graf[w.vae].inputs.vae_name = stan.silnik.vae[0];
     graf[w.prompt].inputs[graf[w.prompt].inputs.prompt !== undefined ? 'prompt' : 'text'] = prompt;
 
-    graf[w.wymiary].inputs.width = Number(szerokosc) || 704;
-    graf[w.wymiary].inputs.height = Number(wysokosc) || 480;
+    graf[w.wymiary].inputs.width = Number(szerokosc) || SZEROKOSC_DOMYSLNIE;
+    graf[w.wymiary].inputs.height = Number(wysokosc) || WYSOKOSC_DOMYSLNIE;
     // `sekundy` ma pierwszeństwo — to nimi myśli człowiek, klatkami silnik.
     const ileKlatek = sekundy ? klatekZSekund(sekundy) : (Number(klatek) || KLATEK_DOMYSLNIE);
     graf[w.wymiary].inputs.length = ileKlatek;
 
     graf[w.sampler].inputs.steps = Number(kroki) || 20;
     graf[w.sampler].inputs.seed = Number.isFinite(Number(ziarno)) ? Number(ziarno) : Math.floor(Math.random() * 1e9);
+
+    // ⚠️ ETAP RUCH: wideo powstaje Z GOTOWEJ KLATKI, nie z samego tekstu.
+    // Bez tego „KADR” i „RUCH” byłyby dwoma niezależnymi losowaniami tego samego
+    // opisu — postać z kadru i postać z ujęcia to byliby dwaj różni ludzie.
+    // `Wan22ImageToVideoLatent` ma `start_image` jako wejście OPCJONALNE, więc
+    // ten sam graf obsługuje oba tory bez drugiego pliku workflow.
+    if (obrazStartowy) {
+        graf['90'] = { class_type: 'LoadImage', inputs: { image: obrazStartowy } };
+        graf[w.wymiary].inputs.start_image = ['90', 0];
+    }
 
     try {
         const r = await pobierzZLimitem(`${comfyBase}/prompt`, {
@@ -252,6 +278,69 @@ export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, kla
         return { ok: true, zlecenie: d.prompt_id, model: stan.silnik.modele[0], silnik: stan.silnik.nazwa };
     } catch (e) {
         return { ok: false, powod: `Nie dowiozłem grafu do ComfyUI: ${e.message}` };
+    }
+}
+
+/**
+ * KADR — jedna NIERUCHOMA klatka kluczowa.
+ *
+ * PO CO OSOBNO. Suweren: „kadr powinien produkować kadry, czyli image, potem
+ * przenoszone jest do ruchu, gdzie z tego jest robione wideo”. Tablica mówiła
+ * to od początku (etap KADR = „nieruchome klatki kluczowe”, RUCH = „ożywienie
+ * klatki kluczowej”), ale kolejka i tak liczyła wideo na obu etapach.
+ *
+ * ⚠️ TO NIE JEST DRUGI MODEL. Ten sam Wan 2.2 liczy JEDNą klatkę zamiast 49
+ * (`length: 1` — Wan wymaga 4n+1, a 1 = 4·0+1). Wychodzi z tego kilkanaście
+ * razy taniej niż ujęcie, więc cały odcinek da się obejrzeć w kadrach ZANIM
+ * zapłaci się godzinami za ruch.
+ *
+ * ⚠️ Podmieniamy końcówkę grafu: CreateVideo + SaveVideo znikają, wchodzi
+ * SaveImage prosto z VAEDecode. Oba węzły są w rdzeniu ComfyUI — sprawdzone.
+ */
+export async function generujKadrObraz({ comfyBase, prompt, szerokosc, wysokosc, kroki, ziarno }) {
+    if (!prompt?.trim()) return { ok: false, powod: 'Pusty opis kadru — nie ma czego rysować.' };
+
+    const stan = await stanWideo(comfyBase);
+    if (!stan.gotowe) return { ok: false, powod: stan.braki.join(' | '), braki: stan.braki };
+
+    const opis = SILNIKI.find((s) => s.id === stan.silnik.id);
+    const w = opis.wezly;
+    const graf = JSON.parse(await fs.readFile(path.join(KATALOG_WF(), opis.graf), 'utf8'));
+    delete graf._opis;
+
+    graf[w.model].inputs.unet_name = stan.silnik.modele[0];
+    graf[w.enkoder].inputs.clip_name = stan.silnik.enkodery[0];
+    graf[w.vae].inputs.vae_name = stan.silnik.vae[0];
+    graf[w.prompt].inputs[graf[w.prompt].inputs.prompt !== undefined ? 'prompt' : 'text'] = prompt;
+
+    graf[w.wymiary].inputs.width = Number(szerokosc) || SZEROKOSC_DOMYSLNIE;
+    graf[w.wymiary].inputs.height = Number(wysokosc) || WYSOKOSC_DOMYSLNIE;
+    graf[w.wymiary].inputs.length = 1;
+
+    graf[w.sampler].inputs.steps = Number(kroki) || 20;
+    graf[w.sampler].inputs.seed = Number.isFinite(Number(ziarno)) ? Number(ziarno) : Math.floor(Math.random() * 1e9);
+
+    // Wyrzucamy składanie wideo i zapisujemy obraz. Szukamy węzłów po KLASIE,
+    // a nie po numerze — numer w pliku grafu może się kiedyś zmienić.
+    const dekoder = Object.keys(graf).find((k) => graf[k].class_type === 'VAEDecode');
+    if (!dekoder) return { ok: false, powod: 'Graf nie ma węzła VAEDecode — nie wiem, skąd wziąć obraz.' };
+    for (const k of Object.keys(graf)) {
+        if (['CreateVideo', 'SaveVideo', 'SaveWEBM', 'SaveAnimatedWEBP'].includes(graf[k].class_type)) delete graf[k];
+    }
+    graf['99'] = { class_type: 'SaveImage', inputs: { images: [dekoder, 0], filename_prefix: 'katedra/kadr' } };
+
+    try {
+        const r = await pobierzZLimitem(`${comfyBase}/prompt`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: graf }),
+        }, 30000);
+        const d = await r.json();
+        if (!r.ok || d?.error) {
+            return { ok: false, powod: `ComfyUI odrzucił graf kadru: ${JSON.stringify(d?.error ?? d).slice(0, 300)}` };
+        }
+        return { ok: true, zlecenie: d.prompt_id, model: stan.silnik.modele[0], silnik: stan.silnik.nazwa, obraz: true };
+    } catch (e) {
+        return { ok: false, powod: `Nie dowiozłem grafu kadru do ComfyUI: ${e.message}` };
     }
 }
 
@@ -360,4 +449,5 @@ export async function stanZlecenia(comfyBase, id, comfyDir = null) {
     }
 }
 
-export default { stanWideo, generujScene, dopiszUjecie, stanZlecenia };
+export default {
+    generujKadrObraz, SZEROKOSC_DOMYSLNIE, WYSOKOSC_DOMYSLNIE, stanWideo, generujScene, dopiszUjecie, stanZlecenia };
