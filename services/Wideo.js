@@ -257,6 +257,13 @@ export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, kla
     graf[w.sampler].inputs.seed = Number.isFinite(Number(ziarno)) ? Number(ziarno) : Math.floor(Math.random() * 1e9);
 
     // ⚠️ ETAP RUCH: wideo powstaje Z GOTOWEJ KLATKI, nie z samego tekstu.
+    //
+    // ZMIERZONE, NIE ZAŁOŻONE (SOLLET, 960×544, 49 klatek). PSNR pierwszej
+    // klatki ujęcia względem obrazu podanego jako `start_image`:
+    //     klatka 0        33,19 dB   — to ten sam obraz
+    //     ostatnia klatka 15,04 dB   — czyli ujęcie naprawdę się rusza
+    //     obcy obraz      10,35 dB   — poziom odniesienia „inna scena"
+    // Gdyby `start_image` był ignorowany, klatka 0 leżałaby przy 10 dB.
     // Bez tego „KADR” i „RUCH” byłyby dwoma niezależnymi losowaniami tego samego
     // opisu — postać z kadru i postać z ujęcia to byliby dwaj różni ludzie.
     // `Wan22ImageToVideoLatent` ma `start_image` jako wejście OPCJONALNE, więc
