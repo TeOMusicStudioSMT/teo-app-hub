@@ -25,6 +25,13 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import ffmpegPath from 'ffmpeg-static';
+
+// ⚠️ ffmpeg jest tu po to, żeby SPRAWDZIĆ, czy nagranie nie jest ciszą —
+// nie do przetwarzania dźwięku. Patrz `sprawdzNagranie`.
+const uruchom = promisify(execFile);
 
 /** Domyślnie loopback: na tym samym komputerze VoiceStudio nie wymaga klucza. */
 export const BAZA = process.env.OTAKOS_VOICESTUDIO || 'http://127.0.0.1:3900';
@@ -122,7 +129,55 @@ export async function stan() {
  * ⚠️ Plik ląduje w katalogu assetu, nie w katalogu VoiceStudio — dokładnie
  * z tego samego powodu, dla którego ujęcia nie zostają w ComfyUI.
  */
-export async function mow({ tekst, glos, format = 'wav', katalogDocelowy, nazwa = 'probka' }) {
+/**
+ * Czy to, co wróciło, jest NAGRANIEM, a nie plikiem.
+ *
+ * ⚠️ ZMIERZONE, NIE ZAŁOŻONE. Profil `b468a820` z `language: 'pl'` oddał
+ * HTTP 200 i poprawny WAV o długości 4,72 s — o średniej głośności **−72,1 dB**,
+ * czyli ciszę. Ten sam profil bez `language` oddał 0,79 s na zdanie
+ * o 37 znakach, czyli uciętą połówkę. Sprawdzanie samego rozmiaru pliku
+ * przepuściłoby oba jako sukces — i Suweren dostałby nieną ścieżkę dialogową,
+ * dowiadując się o tym dopiero przy montażu.
+ *
+ * Progi są rozmyślnie łagodne: łapiemy KATASTROFę (ciszę, ucinek o połowę),
+ * a nie oceniamy jakości aktorskiej.
+ */
+export async function sprawdzNagranie(sciezka, znakow) {
+    const { stderr } = await uruchom(ffmpegPath, ['-i', sciezka, '-af', 'volumedetect', '-f', 'null', '-'], { maxBuffer: 8 * 1024 * 1024 })
+        .catch((e) => ({ stderr: e.stderr ?? '' }));
+    const s = String(stderr);
+
+    const d = s.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+    const sekundy = d ? (+d[1]) * 3600 + (+d[2]) * 60 + parseFloat(d[3]) : null;
+    const g = s.match(/mean_volume:\s*(-?[\d.]+) dB/);
+    const glosnosc = g ? parseFloat(g[1]) : null;
+
+    const uwagi = [];
+    // Cisza. −50 dB to już szept na granicy słyszalności; −72 dB to nic.
+    if (glosnosc !== null && glosnosc < -50) {
+        uwagi.push(`nagranie jest NIEME (średnia ${glosnosc.toFixed(1)} dB) — silnik oddał ciszę`);
+    }
+    // Mowa to grubo ponad 20 znaków na sekundę tylko przy ucinku.
+    if (sekundy !== null && znakow > 20 && sekundy < znakow / 40) {
+        uwagi.push(`nagranie ma ${sekundy.toFixed(2)} s na ${znakow} znaków — wygląda na ucięte`);
+    }
+    return { sekundy, glosnosc, uwagi, ok: uwagi.length === 0 };
+}
+
+/**
+ * Wypowiedz tekst.
+ *
+ * ⚠️ `jezyk` MA ZNACZENIE. Bez niego OmniVoice czyta polski tekst tak, jak
+ * mu wyjdzie — a wspiera 600+ języków, więc szkoda tego nie powiedzieć.
+ *
+ * ⚠️ `ziarno` decyduje o TYM SAMYM brzmieniu w kolejnych ujęciach. Bez niego
+ * ta sama postać może zabrzmieć inaczej w kadrze 3 i w kadrze 40 — a widz
+ * słyszy wtedy dwie różne osoby.
+ */
+export async function mow({
+    tekst, glos, format = 'wav', katalogDocelowy, nazwa = 'probka',
+    jezyk = 'pl', ziarno = null, instrukcja = null, opisGlosu = null,
+}) {
     const t = String(tekst ?? '').trim();
     if (t.length < 2) throw new Error('Pusty tekst — nie ma czego wypowiadać.');
     if (!glos) throw new Error('Nie wskazano głosu.');
@@ -134,7 +189,18 @@ export async function mow({ tekst, glos, format = 'wav', katalogDocelowy, nazwa 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             // Kształt zgodny z API audio OpenAI — VoiceStudio je wystawia.
-            body: JSON.stringify({ model: 'tts-1', input: t.slice(0, 4000), voice: glos, response_format: format }),
+            body: JSON.stringify({
+                model: 'tts-1',
+                input: t.slice(0, 4000),
+                voice: glos,
+                response_format: format,
+                ...(jezyk ? { language: jezyk } : {}),
+                ...(Number.isFinite(Number(ziarno)) ? { seed: Number(ziarno) } : {}),
+                ...(instrukcja ? { instruct: String(instrukcja).slice(0, 400) } : {}),
+                // Działa tylko na silnikach z projektowaniem głosu (VoxCPM2).
+                // Na OmniVoice jest po prostu ignorowane — nie szkodzi.
+                ...(opisGlosu ? { description: String(opisGlosu).slice(0, 400) } : {}),
+            }),
         }, 180000);
     } catch (e) {
         throw new Error(`VoiceStudio nie odpowiedział: ${e.message}`);
@@ -152,7 +218,15 @@ export async function mow({ tekst, glos, format = 'wav', katalogDocelowy, nazwa 
     const bezpieczna = String(nazwa).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'probka';
     const cel = path.join(katalogDocelowy, `${bezpieczna}_${Date.now().toString(36)}.${format}`);
     await fs.writeFile(cel, bufor);
-    return { sciezka: cel, bajtow: bufor.length, glos, znakow: t.length };
+
+    // ⚠️ PLIK POWSTAŁ ≠ NAGRANIE POWSTAŁO. Patrz `sprawdzNagranie`.
+    const kontrola = await sprawdzNagranie(cel, t.length).catch(() => ({ ok: true, uwagi: [] }));
+    return {
+        sciezka: cel, bajtow: bufor.length, glos, znakow: t.length,
+        sekundy: kontrola.sekundy, glosnosc: kontrola.glosnosc,
+        uwagi: kontrola.uwagi,
+        podejrzane: !kontrola.ok,
+    };
 }
 
 /**
@@ -174,4 +248,31 @@ export async function przepisz(sciezkaAudio) {
     return { tekst: String(d?.text ?? '').trim() };
 }
 
-export default { BAZA, stan, mow, przepisz };
+/**
+ * Profile głosowe VoiceStudio — to one dają UNIKATOWE głosy.
+ *
+ * ⚠️ To NIE są wbudowane presety (alloy, echo, nova). Profil powstaje
+ * z próbki albo z projektu głosu i ma własne id, które podaje się jako `voice`.
+ * Zmierzone: w Katedrze leży ich dziś dziewięć, w tym kilka „— DESIGN”.
+ *
+ * ⚠️ NIE KAŻDY PROFIL JEST SPRAWNY. `b468a820` oddał ciszę na jednym ustawieniu
+ * i ucinek na drugim. Dlatego panel ma pozwolić PRZESŁUCHAĆ próbkę przed
+ * przypisaniem profilu do postaci.
+ */
+export async function profile() {
+    try {
+        const r = await pobierz('/profiles', {}, 15000);
+        if (!r.ok) return [];
+        const d = await r.json();
+        const lista = Array.isArray(d) ? d : (d.profiles ?? d.data ?? d.items ?? []);
+        return lista.map((v) => ({
+            id: String(v.id ?? v.profile_id ?? ''),
+            nazwa: String(v.name ?? v.title ?? v.id ?? '').trim(),
+            opis: String(v.description ?? '').trim(),
+        })).filter((v) => v.id);
+    } catch {
+        return [];
+    }
+}
+
+export default { BAZA, stan, mow, przepisz, profile, sprawdzNagranie };

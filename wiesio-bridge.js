@@ -148,6 +148,7 @@ import * as KolejkaKadrow from './services/KolejkaKadrow.js';
 import * as Assety from './services/Assety.js';
 import * as Oko from './services/Oko.js';
 import * as Dialogi from './services/SciezkaDialogowa.js';
+import * as Karta from './services/RuchNaKarcie.js';
 import * as Rezyserzy from './services/Rezyserzy.js';
 import * as Rekopis from './services/Rekopis.js';
 import * as GlosStudio from './services/GlosStudio.js';
@@ -7381,6 +7382,13 @@ app.post('/api/dialogi/nagraj', async (req, res) => {
         const katalog = await Dialogi.katalogDialogow(ANTIGRAVITY_DIR, projekt);
 
         const t0 = Date.now();
+        // ⚠️ Ta sama zasada, druga strona: prosimy ComfyUI o oddanie karty,
+        // żeby mowa nie weszła w kolizję z trwającym renderem.
+        const miejsceNaMowe = await Karta.zrobMiejsceNaMowe({ comfyBase: COMFY_BASE });
+        if (!miejsceNaMowe.wolno) {
+            return res.status(507).json({ success: false, message: miejsceNaMowe.powod, karta: miejsceNaMowe });
+        }
+
         const r = await Dialogi.nagrajProjekt({
             kadry, glosy, katalogDocelowy: katalog,
             naBiezaco: (w) => console.log(`[Dialogi] ${w.ok ? '✓' : '✗'} ${w.tytul}: ${w.ok ? w.udanych + '/' + w.wszystkich : w.powod}`),
@@ -7766,6 +7774,22 @@ app.post('/api/kolejka/odpal', async (req, res) => {
     try {
         const stan = await stanWideoZBudzeniem('kolejka kadrow');
         if (!stan.gotowe) return res.status(424).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
+
+        // ⚠️ KARTA MA 6 GB I DWA PROGRAMY JEJ CHCĄ. Suweren włączył VoiceStudio
+        // w trakcie liczenia kadrów i render padł na `CUDA error: unspecified
+        // launch failure` — po czym kontekst CUDA był martwy i KAŻDE następne
+        // zlecenie wywalało się w 6 sekund, aż do ubicia procesu.
+        //
+        // Prosimy więc VoiceStudio, żeby oddał kartę, ZANIM zaczniemy. Gdy to
+        // nie wystarczy — mówimy wprost, zamiast wchodzić w tę samą ścianę.
+        const miejsce = await Karta.zrobMiejsceNaRender();
+        if (!miejsce.wolno) {
+            return res.status(507).json({ success: false, message: miejsce.powod, karta: miejsce });
+        }
+        if (miejsce.zwolniono?.zdjete?.length) {
+            const ile = miejsce.zwolniono.zdjete.reduce((s, m) => s + m.vramMiB, 0);
+            console.log(`[Karta] 🚦 zdjęto modele mowy (${ile} MiB) — wolne ${miejsce.przed.wolneMiB} → ${miejsce.po.wolneMiB} MiB`);
+        }
 
         const wszystkie = KolejkaKadrow.poKolei(
             (await produkcjaLista(ANTIGRAVITY_DIR, projekt)).filter((k) => k.etap === String(etap).toUpperCase()),
