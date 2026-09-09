@@ -120,7 +120,7 @@ import {
     lista as produkcjaLista, projekty as produkcjaProjekty, biblia as produkcjaBiblia,
     dodaj as produkcjaDodaj, zmien as produkcjaZmien, usun as produkcjaUsun,
     zbudujPrompt as produkcjaPrompt, statystyka as produkcjaStatystyka,
-    promptSystemowyRozkladu, odczytajRozklad,
+    promptSystemowyRozkladu, odczytajRozklad, znormalizujKwestie,
 } from './services/ProdukcjaService.js';
 import {
     listaPostaci, dodajPostac, usunPostac,
@@ -147,6 +147,7 @@ import * as Produkty from './services/Produkty.js';
 import * as KolejkaKadrow from './services/KolejkaKadrow.js';
 import * as Assety from './services/Assety.js';
 import * as Oko from './services/Oko.js';
+import * as Dialogi from './services/SciezkaDialogowa.js';
 import * as Rezyserzy from './services/Rezyserzy.js';
 import * as Rekopis from './services/Rekopis.js';
 import * as GlosStudio from './services/GlosStudio.js';
@@ -7201,6 +7202,200 @@ app.post('/api/aktorzy-otakos/przenies', async (req, res) => {
 
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  🗣️ ŚCIEŻKA DIALOGOWA — kwestie z kart zamieniane w nagrania
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Co stoi na przeszkodzie, żeby film przestał być niemy.
+ *
+ * ⚠️ Odpowiada NA TRZY OSOBNE PYTANIA, bo to trzy osobne braki i mieszanie
+ * ich dałoby bezużyteczne „nie da się”: czy są kwestie do powiedzenia, czy są
+ * głosy w bibliotece, i czy VoiceStudio w ogóle stoi.
+ */
+app.get('/api/dialogi/stan', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        if (!projekt.trim()) return res.status(400).json({ success: false, message: 'Podaj projekt.' });
+
+        const kadry = await produkcjaLista(ANTIGRAVITY_DIR, projekt);
+        const glosy = await Assety.lista(ANTIGRAVITY_DIR, projekt, 'glos').catch(() => []);
+        const zKwestiami = kadry.filter((k) => Array.isArray(k.kwestie) && k.kwestie.length);
+
+        // Kto mówi, a nie ma głosu — to jedyna lista, która realnie blokuje.
+        const mowiacy = new Map();
+        for (const k of zKwestiami) {
+            for (const q of k.kwestie) {
+                const kto = String(q.kto || '').trim();
+                if (kto) mowiacy.set(kto.toLowerCase(), kto);
+            }
+        }
+        const bezGlosu = [...mowiacy.values()].filter((kto) => !Dialogi.dopasujGlos(kto, glosy));
+
+        let silnik = { zywe: false, braki: ['Nie pytano.'] };
+        try { silnik = await GlosStudio.stan(); } catch (e) { silnik = { zywe: false, braki: [e.message] }; }
+
+        return res.json({
+            success: true, projekt,
+            kart: kadry.length,
+            kartZKwestiami: zKwestiami.length,
+            kwestii: zKwestiami.reduce((s, k) => s + k.kwestie.length, 0),
+            glosy: glosy.map((g) => g.nazwa),
+            mowiacy: [...mowiacy.values()],
+            bezGlosu,
+            silnik: { zywe: !!silnik.zywe, baza: silnik.baza ?? null, glosy: silnik.glosy ?? [], braki: silnik.braki ?? [] },
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * Dopisz kwestie do JUŻ ISTNIEJĄCYCH kadrów.
+ *
+ * PO CO. SOLLET ma 218 kart rozpisanych, zanim kwestie w ogóle istniały
+ * w modelu danych — zmierzone: 0 z 218 miało cokolwiek do powiedzenia. Bez tego
+ * przejścia ścieżka dialogowa działałaby wyłącznie dla odcinków pisanych OD NOWA,
+ * czyli nie dałaby nic temu, co już jest.
+ *
+ * ⚠️ PACZKAMI PO 20 KADRÓW. Dwieście osiemnaście opisów naraz to prompt, którego
+ * mały model nie utrzyma — zaczyna gubić numery i przypisywać kwestie nie tym kadrom.
+ *
+ * ⚠️ WŁASNE WOŁANIE MODELU Z `think: false`, a nie wspólny `piszModelem`.
+ * Powod jest zmierzony: bez tego pola model przepala cały budżet tokenów na blok
+ * myślenia i oddaje PUSTĄ treść (eval_count 60, response ""). Przy kwestiach,
+ * gdzie budzet jest ciasny, to różnica między odpowiedzią a ciszą.
+ */
+app.post('/api/dialogi/dopisz', async (req, res) => {
+    const { projekt = '', etap = 'KADR', ile = 60, nadpisuj = false, model = null } = req.body ?? {};
+    try {
+        if (!String(projekt).trim()) throw new Error('Podaj projekt.');
+
+        const wszystkie = KolejkaKadrow.poKolei(
+            (await produkcjaLista(ANTIGRAVITY_DIR, projekt)).filter((k) => k.etap === String(etap).toUpperCase()),
+            false,
+        );
+        const doPracy = wszystkie
+            .filter((k) => nadpisuj || !(Array.isArray(k.kwestie) && k.kwestie.length))
+            .slice(0, Math.max(1, Number(ile) || 60));
+        if (!doPracy.length) {
+            return res.status(400).json({ success: false, message: `Wszystkie kadry na etapie ${etap} maj\u0105 ju\u017c kwestie. U\u017cyj nadpisuj=true.` });
+        }
+
+        const assety = await Assety.lista(ANTIGRAVITY_DIR, projekt).catch(() => []);
+        const obsada = assety.filter((a) => a.typ === 'aktor')
+            .map((a) => `${a.nazwa} \u2014 ${String(a.notatki || '').replace(/\s+/g, ' ').slice(0, 140)}`)
+            .join('\n');
+        if (!obsada.trim()) {
+            return res.status(400).json({ success: false, message: 'Projekt nie ma ani jednego aktora w bibliotece \u2014 nie ma komu m\u00f3wi\u0107.' });
+        }
+
+        const silnik = String(model || '').trim() || DEFAULT_LLM;
+        const pytaj = async (system, prompt) => {
+            const r = await fetch(`${OLLAMA_BASE}/api/chat`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: silnik,
+                    messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+                    stream: false, think: false,
+                    options: { num_predict: 1500, temperature: 0.6, num_ctx: 8192 },
+                }),
+                signal: AbortSignal.timeout(15 * 60 * 1000),
+            });
+            if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+            return String((await r.json())?.message?.content ?? '').trim();
+        };
+
+        const t0 = Date.now();
+        const wyniki = [];
+        let dopisanych = 0;
+        let pozaKadrem = 0;
+
+        for (let i = 0; i < doPracy.length; i += Realizacja.KADROW_NA_PYTANIE) {
+            const paczka = doPracy.slice(i, i + Realizacja.KADROW_NA_PYTANIE)
+                .map((k, j) => ({ nr: i + j + 1, id: k.id, tytul: k.tytul, opis: k.opis }));
+            const zakres = `${paczka[0].nr}-${paczka.at(-1).nr}`;
+
+            let odczytane = [];
+            try {
+                const { system, prompt } = Realizacja.promptKwestii({ kadry: paczka, obsada });
+                odczytane = Realizacja.odczytajKwestie(await pytaj(system, prompt), paczka.map((k) => k.nr));
+            } catch (e) {
+                // ⚠️ Jedna nieudana paczka nie zatrzymuje pozostałych dziesięciu.
+                wyniki.push({ paczka: zakres, blad: e.message });
+                continue;
+            }
+
+            for (const w of odczytane) {
+                const karta = paczka.find((k) => k.nr === w.nr);
+                if (!karta) continue;
+                const kwestie = znormalizujKwestie(w.kwestie);
+                if (!kwestie.length) continue;
+
+                // ⚠️ KTO MÓWI, A NIE MA GO W OPISIE. Model łamie tę zasadę — zmierzone
+                // na SOLLET: w kadrze „Migotanie koloru” (czysta abstrakcja, bez ludzi)
+                // kazał mówić Solicie. NIE kasujemy tego — głos zza kadru to normalne
+                // kino — ale oznaczamy, żeby Suweren zobaczył, gdzie to się dzieje.
+                const opis = String(karta.opis || '');
+                for (const q of kwestie) {
+                    const rdzen = q.kto.slice(0, 4).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    q.pozaKadrem = !(new RegExp(`(^|[^\\p{L}])${rdzen}`, 'iu').test(opis));
+                    if (q.pozaKadrem) pozaKadrem += 1;
+                }
+
+                await produkcjaZmien(ANTIGRAVITY_DIR, karta.id, { kwestie });
+                dopisanych += 1;
+                wyniki.push({ nr: w.nr, id: karta.id, tytul: karta.tytul, kwestie });
+            }
+        }
+
+        console.log(`[Dialogi] \u270d\ufe0f \u201e${projekt}\u201d: kwestie w ${dopisanych} z ${doPracy.length} kadr\u00f3w (${silnik}) w ${Math.round((Date.now() - t0) / 1000)}s`);
+        return res.json({
+            success: true, projekt, model: silnik,
+            przejrzanych: doPracy.length,
+            zKwestiami: dopisanych,
+            niemych: doPracy.length - dopisanych,
+            pozaKadrem,
+            wyniki,
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * Nagraj kwestie całego projektu.
+ *
+ * ⚠️ NAGRANIE NIE JEST DUBBINGIEM. Powstaje z tekstu kwestii i ląduje jako
+ * osobny plik w `dialogi/`. Synchronizacji ust nie ma — Wan 2.2 nie animuje
+ * mowy i nie udajemy, że animuje.
+ */
+app.post('/api/dialogi/nagraj', async (req, res) => {
+    const { projekt = '', idki = null } = req.body ?? {};
+    try {
+        if (!String(projekt).trim()) throw new Error('Podaj projekt.');
+
+        const wszystkie = await produkcjaLista(ANTIGRAVITY_DIR, projekt);
+        const kadry = idki ? wszystkie.filter((k) => idki.includes(k.id)) : wszystkie;
+        const glosy = await Assety.lista(ANTIGRAVITY_DIR, projekt, 'glos').catch(() => []);
+
+        const katalog = await Dialogi.katalogDialogow(ANTIGRAVITY_DIR, projekt);
+
+        const t0 = Date.now();
+        const r = await Dialogi.nagrajProjekt({
+            kadry, glosy, katalogDocelowy: katalog,
+            naBiezaco: (w) => console.log(`[Dialogi] ${w.ok ? '✓' : '✗'} ${w.tytul}: ${w.ok ? w.udanych + '/' + w.wszystkich : w.powod}`),
+        });
+        if (!r.ok) return res.status(424).json({ success: false, message: r.powod, ...r });
+
+        console.log(`[Dialogi] 🗣️ „${projekt}”: ${r.nagranych} nagrań z ${r.kartZKwestiami} kart w ${Math.round((Date.now() - t0) / 1000)}s`);
+        return res.json({ success: true, katalog, ...r });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  👁️ OKO — jajo, które patrzy na assety i pisze, co widzi
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -12626,6 +12821,10 @@ app.post('/api/rezyser/pamiec/odcinek/:id/realizuj', async (req, res) => {
                     projekt: serial,
                     tytul: `#${odcinek.numer}.${k.nr} ${k.tytul}`,
                     opis: k.opis,
+                    // ⚠️ KWESTIE JADĄ RAZEM Z KADREM. Bez tej linii pisarz rozpisywałby
+                    // dialogi, a karta lądowałaby niema — i cała ścieżka dźwiękowa
+                    // nie miałaby czego mówić.
+                    kwestie: k.kwestie,
                     etap: 'KADR',
                     zrodlo: 'rada',
                     sesjaRady: odcinek.id,

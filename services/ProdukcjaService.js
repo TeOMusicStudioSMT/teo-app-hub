@@ -171,6 +171,30 @@ export async function biblia(katalog, projekt) {
 // ── Zapis ─────────────────────────────────────────────────────────────────────
 
 /** Dodaj kadr. `tytul` wymagany — karta bez tytułu jest nieczytelna na tablicy. */
+/**
+ * Kwestie kadru — KTO co mówi.
+ *
+ * ⚠️ OSOBNE POLE, NIE CZĘŚĆ OPISU. `opis` jedzie wprost do promptu obrazu;
+ * dialog wrzucony do niego sprawia, że silnik RYSUJE te słowa — dosłownie,
+ * jako napis w kadrze. Dlatego kwestie mieszkają obok i do promptu wideo
+ * nie trafiają nigdy.
+ *
+ * ⚠️ PUSTA LISTA JEST POPRAWNĄ ODPOWIEDZIĄ. Większość dwusekundowych ujęć
+ * to czysty obraz. Zmuszanie modelu, żeby każdemu kadrowi dopisał zdanie,
+ * dałoby film, w którym wszyscy gadają bez przerwy.
+ */
+export function znormalizujKwestie(surowe) {
+    if (!Array.isArray(surowe)) return [];
+    return surowe
+        .map((k) => ({
+            kto: String(k?.kto ?? k?.postac ?? k?.kim ?? '').trim().slice(0, 60),
+            tekst: String(k?.tekst ?? k?.kwestia ?? k?.tresc ?? '').trim().slice(0, 400),
+        }))
+        // Kwestia bez mówiącego jest bezużyteczna — nie ma czyim głosem jej powiedzieć.
+        .filter((k) => k.kto.length >= 2 && k.tekst.length >= 2)
+        .slice(0, 6);
+}
+
 export async function dodaj(katalog, dane = {}) {
     const tytul = String(dane.tytul || '').trim();
     if (tytul.length < 3) throw new Error('Pole "tytul" jest wymagane (min. 3 znaki).');
@@ -195,6 +219,8 @@ export async function dodaj(katalog, dane = {}) {
         // Co wróciło z zewnętrznego narzędzia: tekst od Gema, ścieżka pliku, URL.
         zwrot: String(dane.zwrot || '').trim(),
         notatki: String(dane.notatki || '').trim(),
+        // KTO co mówi w tym ujęciu. Pusto = ujęcie nieme, i to jest w porządku.
+        kwestie: znormalizujKwestie(dane.kwestie),
         // Skąd się wzięła karta — 'reka' albo 'rada' (dekompozycja Rady Kreatywnej).
         zrodlo: dane.zrodlo === 'rada' ? 'rada' : 'reka',
         sesjaRady: String(dane.sesjaRady || '').trim() || null,
@@ -231,6 +257,7 @@ export async function zmien(katalog, id, zmiany = {}) {
         const p = String(zmiany.priorytet).toUpperCase();
         if (PRIORYTETY.includes(p)) kadr.priorytet = p;
     }
+    if (zmiany.kwestie !== undefined) kadr.kwestie = znormalizujKwestie(zmiany.kwestie);
     kadr.zmieniono = new Date().toISOString();
 
     kadry[i] = kadr;
@@ -398,6 +425,7 @@ export async function statystyka(katalog, projekt = '') {
 }
 
 export default {
+    znormalizujKwestie,
     ETAPY, lista, projekty, biblia, dodaj, zmien, usun, nastepny,
     zbudujPrompt, promptSystemowyRozkladu, odczytajRozklad, statystyka, przytnijNaGranicy,
 };

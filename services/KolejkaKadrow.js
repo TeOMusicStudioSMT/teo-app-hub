@@ -96,6 +96,12 @@ export function opisObsady(kadr, assety = []) {
  * obsady), na końcu JAK (styl z biblii). Modele obrazowe ważą początek promptu
  * mocniej, a najważniejsza jest treść ujęcia.
  */
+/**
+ * ⚠️ KWESTIE NIE WCHODZĄ TU NIGDY. Prompt składamy z `tytul` i `opis` —
+ * dialog dopisany do promptu obrazu zostanie przez silnik NARYSOWANY: jako
+ * napis, dymek albo bezkształtny tekst na ścianie. Kwestie żyją w osobnym
+ * polu karty i idą do ścieżki dźwiękowej, nie do obrazu.
+ */
 export function promptZKadru(kadr, kotwica = '', assety = []) {
     const czesci = [];
     if (kadr.opis?.trim()) czesci.push(kadr.opis.trim());
