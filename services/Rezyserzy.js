@@ -32,9 +32,9 @@ const PLIK_POSTACI = 'rezyser_postacie.json';
 /**
  * Domyślne parametry kadru.
  *
- * ⚠️ ZMIERZONE NA TEJ KARCIE (RTX 3060 Laptop, 6 GB): kadr 704×480, 49 klatek,
- * 20 kroków liczy się 171 s. To jest punkt odniesienia dla każdej zmiany —
- * podniesienie rozdzielczości kosztuje czas, a nie „nic".
+ * ⚠️ ZMIERZONE NA TEJ KARCIE (RTX 3060 Laptop, 6 GB), 49 klatek, 20 kroków:
+ *     704×480 — 171 s,  960×544 — 351 s,  1280×704 — 611 s.
+ * Podniesienie rozdzielczości kosztuje czas, a nie „nic".
  */
 export const DOMYSLNE = {
     silnikWideo: 'wan22',
