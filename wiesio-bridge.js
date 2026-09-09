@@ -149,6 +149,7 @@ import * as Assety from './services/Assety.js';
 import * as Rekopis from './services/Rekopis.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
+import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
 import * as Arkusz from './services/ArkuszWielokat.js';
 import * as Brief from './services/BriefOpowiesci.js';
 import {
@@ -6508,6 +6509,180 @@ app.post('/api/montazownia/zloz', async (req, res) => {
     } catch (e) {
         return res.status(400).json({ success: false, message: e.message });
     }
+});
+
+// ── JOANNA KOMPONUJE POD DŁUGOŚĆ FILMU ──────────────────────────────────────
+//
+// Suweren: „trzeba dać możliwość, by TeOgochi od muzyki (Joanna) mógł
+// skomponować cały utwór do całej długości materiału video".
+//
+// Dotąd montażownia podkładała GOTOWY utwór i zapętlała go, gdy był krótszy.
+// Zapętlenie słychać. Tu Joanna pisze brief brzmienia, silnik liczy tyle
+// segmentów, ile trzeba, a my sklejamy je przenikaniem i przycinamy CO DO
+// SEKUNDY do długości filmu.
+
+const zadaniaMuzyki = new Map();
+
+/** Czekanie na PLIK AUDIO z ComfyUI. Ta sama zasada co przy wideo: limit na każdym pytaniu. */
+async function czekajNaAudio(promptId, limitMinut = 40) {
+    const DO_KIEDY = Date.now() + limitMinut * 60 * 1000;
+    let milczenia = 0;
+
+    while (Date.now() < DO_KIEDY) {
+        await new Promise((r) => setTimeout(r, 5000));
+        let wpis;
+        try {
+            const r = await Wideo.pobierzZLimitem(`${COMFY_BASE}/history/${encodeURIComponent(promptId)}`, {}, 20000);
+            if (!r.ok) throw new Error(`ComfyUI HTTP ${r.status}`);
+            wpis = (await r.json())?.[promptId];
+            milczenia = 0;
+        } catch (e) {
+            milczenia += 1;
+            if (milczenia >= 3) throw new Error(`ComfyUI przestał odpowiadać przy komponowaniu: ${e.message}`);
+            continue;
+        }
+        if (!wpis) continue;
+
+        const blad = wpis.status?.messages?.find((m) => m[0] === 'execution_error');
+        if (blad) throw new Error(`ComfyUI: ${JSON.stringify(blad[1]).slice(0, 200)}`);
+
+        for (const out of Object.values(wpis.outputs ?? {})) {
+            // Audio bywa pod „audio", ale różne nody wystawiają je też jako „gifs".
+            for (const klucz of ['audio', 'gifs', 'videos']) {
+                const p0 = out?.[klucz]?.[0];
+                if (p0?.filename) {
+                    return path.join(COMFY_DIR, 'ComfyUI', 'output', p0.subfolder ?? '', p0.filename);
+                }
+            }
+        }
+    }
+    throw new Error(`${limitMinut} minut bez pliku — silnik muzyki nie oddał wyniku.`);
+}
+
+/**
+ * POST /api/montazownia/skomponuj { projekt, film, wyciszenie?, model? }
+ *
+ * ⚠️ SILNIKIEM JEST ACE-STEP. MiniMax na tej maszynie liczy ~7 h na minutę
+ * muzyki — ścieżka do pięciominutowego filmu szłaby ponad dobę.
+ */
+app.post('/api/montazownia/skomponuj', async (req, res) => {
+    const { projekt = '', film = '', wyciszenie = 3, model } = req.body ?? {};
+    try {
+        if (!String(projekt).trim()) throw new Error('Podaj projekt.');
+
+        // Straż ścieżki — ten sam warunek co przy sklejaniu.
+        const dozwolone = new Set((await Montazownia.materialy(ANTIGRAVITY_DIR, projekt, { minSekund: 0 })).map((m) => path.resolve(m.sciezka).toLowerCase()));
+        if (!dozwolone.has(path.resolve(film).toLowerCase())) throw new Error('Film spoza tego projektu.');
+
+        const opis = await Montazownia.opisz(film);
+        const sekundy = opis.sekundy;
+        if (!sekundy) throw new Error(`Nie umiem odczytać długości „${path.basename(film)}".`);
+
+        // 1. JOANNA PISZE BRIEF. Kanon projektu jest kotwicą, żeby muzyka nie
+        //    rozjechała się ze światem, który już istnieje.
+        const pamiecProjektu = await rezyserPamiec(ANTIGRAVITY_DIR, projekt).catch(() => null);
+        const kanon = (pamiecProjektu?.fakty ?? []).map((f) => f.tresc).join('\n');
+        // Joanna jest importowana nazwanie (joannaPamiec / joannaKontekst),
+        // nie jako moduł — wołamy dokładnie te symbole, które istnieją.
+        const kontekstJoanny = await joannaPamiec(ANTIGRAVITY_DIR)
+            .then((d) => joannaKontekst(d))
+            .catch(() => '');
+
+        const { system, prompt } = MuzykaDoFilmu.promptKompozycji({
+            film, projekt, kanon, sekundy, kontekstJoanny: String(kontekstJoanny || ''),
+        });
+        const { tekst, silnik } = await piszModelem(model, system, prompt);
+        const brief = MuzykaDoFilmu.odczytajBrief(tekst);
+
+        // 2. PLAN SEGMENTÓW.
+        const plan = MuzykaDoFilmu.planSegmentow(sekundy);
+
+        const id = `muz-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        const z = {
+            id, stan: 'liczy', projekt, film: path.basename(film),
+            sekundy, brief, model: silnik, start: Date.now(), blad: null, plik: null,
+            segmenty: Array.from({ length: plan.ile }, (_, i) => ({
+                nr: i + 1, dlugosc: plan.dlugosc, stan: 'czeka', plik: null, sekundyPracy: null,
+            })),
+        };
+        zadaniaMuzyki.set(id, z);
+
+        (async () => {
+            const gotowe = [];
+            for (const seg of z.segmenty) {
+                if (z.przerwane) { seg.stan = 'pominiete'; continue; }
+                const t0 = Date.now();
+                seg.stan = 'liczy';
+                try {
+                    // Wołamy własną, sprawdzoną trasę generacji — zamiast drugiej
+                    // implementacji obok. Tagi od Joanny, długość z planu.
+                    const odp = await fetch(`http://127.0.0.1:${PORT}/api/music/generate`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            prompt: brief.tagi + (brief.unikaj ? `. avoid: ${brief.unikaj}` : ''),
+                            duration: seg.dlugosc,
+                            rodzina: 'ace',
+                        }),
+                    });
+                    const d = await odp.json();
+                    if (!d.success) throw new Error(d.message || 'Silnik muzyki odmówił.');
+
+                    seg.plik = await czekajNaAudio(d.promptId);
+                    gotowe.push(seg.plik);
+                    seg.stan = 'gotowe';
+                } catch (e) {
+                    seg.stan = 'blad';
+                    seg.powod = e.message;
+                } finally {
+                    seg.sekundyPracy = Math.round((Date.now() - t0) / 1000);
+                }
+            }
+
+            if (!gotowe.length) {
+                z.stan = 'blad';
+                z.blad = 'Żaden segment się nie policzył — powody przy segmentach.';
+                return;
+            }
+
+            try {
+                const katalog = await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt);
+                const cel = path.join(katalog, `muzyka_${path.basename(film, path.extname(film))}_${Date.now().toString(36)}.flac`);
+                const w = await MuzykaDoFilmu.zloz({ segmenty: gotowe, sekundy, wyjscie: cel, wyciszenie });
+                z.plik = w.plik;
+                z.stan = 'gotowe';
+                console.log(`[Joanna] 🎼 Ścieżka na ${Math.round(sekundy)} s z ${w.segmentow} segmentów → ${w.plik}`);
+                await Szyna.nadaj({ agent: 'Joanna', rodzaj: 'praca', tresc: `skomponowała ścieżkę na ${Math.round(sekundy)} s do ${path.basename(film)}` }).catch(() => null);
+            } catch (e) {
+                z.stan = 'blad';
+                z.blad = `Segmenty są, ale nie dało się ich złożyć: ${e.message}`;
+            }
+        })().catch((e) => { z.stan = 'blad'; z.blad = e.message; });
+
+        return res.json({
+            success: true, id, sekundy, brief, model: silnik,
+            segmentow: plan.ile, dlugoscSegmentu: plan.dlugosc,
+        });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/montazownia/skomponuj/:id', (req, res) => {
+    const z = zadaniaMuzyki.get(req.params.id);
+    if (!z) return res.status(404).json({ success: false, message: 'Nie znam tego zadania — most mógł się zrestartować.' });
+    return res.json({
+        success: true, id: z.id, stan: z.stan, film: z.film, sekundy: z.sekundy,
+        brief: z.brief, model: z.model, plik: z.plik, blad: z.blad,
+        sekundOd: Math.round((Date.now() - z.start) / 1000),
+        segmenty: z.segmenty,
+    });
+});
+
+app.post('/api/montazownia/skomponuj/:id/przerwij', (req, res) => {
+    const z = zadaniaMuzyki.get(req.params.id);
+    if (!z) return res.status(404).json({ success: false, message: 'Nie znam tego zadania.' });
+    if (z.stan === 'liczy') { z.przerwane = true; z.stan = 'przerwane'; }
+    return res.json({ success: true, stan: z.stan });
 });
 
 /** Sam dźwięk pod gotowy film — gdy sklejone już jest, brakuje tylko muzyki. */
