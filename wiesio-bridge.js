@@ -7207,6 +7207,49 @@ app.post('/api/aktorzy-otakos/przenies', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
+ * 🚦 Kto trzyma kartę graficzną.
+ *
+ * ⚠️ ISTNIEJE, BO KOMUNIKAT „zamknij VoiceStudio" BYŁ BEZUŻYTECZNY, gdy
+ * VoiceStudio było już zamknięte, a kartę trzymała Ollama. Panel ma pokazywać
+ * WINOWAJCĘ z nazwy i liczbą megabajtów, a nie kazać Suwerenowi zgadywać,
+ * który z trzech programów zjadł pamięć.
+ */
+app.get('/api/karta/stan', async (_req, res) => {
+    try {
+        const [karta, glos, mysl] = await Promise.all([
+            Karta.stanKarty(),
+            Karta.modeleGlosu(),
+            Karta.modeleMysli(OLLAMA_BASE),
+        ]);
+        return res.json({
+            success: true,
+            karta,
+            progi: { render: Karta.POTRZEBA_NA_RENDER, mowa: Karta.POTRZEBA_NA_MOWE },
+            wystarczyNaRender: !karta.znane || karta.wolneMiB >= Karta.POTRZEBA_NA_RENDER,
+            trzymaja: [
+                ...(glos.modele ?? []).filter((m) => /cuda|gpu/i.test(m.urzadzenie))
+                    .map((m) => ({ kto: 'VoiceStudio', co: m.nazwa || m.id, vramMiB: m.vramMiB })),
+                ...(mysl.modele ?? []).map((m) => ({ kto: 'Ollama', co: m.nazwa, vramMiB: m.vramMiB })),
+            ],
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/** Poproś wszystkich o oddanie karty. Nikogo nie ubija — patrz RuchNaKarcie.js. */
+app.post('/api/karta/zwolnij', async (_req, res) => {
+    try {
+        const r = await Karta.zrobMiejsceNaRender({ ollamaBase: OLLAMA_BASE });
+        const ile = (r.zwolniono?.zdjete ?? []).reduce((s, m) => s + (m.vramMiB || 0), 0);
+        console.log(`[Karta] 🚦 zwolniono ${ile} MiB — wolne ${r.przed?.wolneMiB} → ${r.po?.wolneMiB} MiB`);
+        return res.json({ success: true, ...r });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
  * Co stoi na przeszkodzie, żeby film przestał być niemy.
  *
  * ⚠️ Odpowiada NA TRZY OSOBNE PYTANIA, bo to trzy osobne braki i mieszanie
@@ -7782,7 +7825,7 @@ app.post('/api/kolejka/odpal', async (req, res) => {
         //
         // Prosimy więc VoiceStudio, żeby oddał kartę, ZANIM zaczniemy. Gdy to
         // nie wystarczy — mówimy wprost, zamiast wchodzić w tę samą ścianę.
-        const miejsce = await Karta.zrobMiejsceNaRender();
+        const miejsce = await Karta.zrobMiejsceNaRender({ ollamaBase: OLLAMA_BASE });
         if (!miejsce.wolno) {
             return res.status(507).json({ success: false, message: miejsce.powod, karta: miejsce });
         }

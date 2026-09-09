@@ -16,10 +16,15 @@
  * Dwa programy, każdy chcący 6 GB, na karcie mającej 6 GB. To nie jest
  * sytuacja, którą da się „lepiej zaplanować" — jeden musi ustąpić.
  *
+ * ⚠️ TRZECH GRACZY, NIE DWÓCH. Poza VoiceStudio i ComfyUI kartę trzyma też
+ * OLLAMA — zostawia model wczytany po ostatnim pytaniu. Pierwsza wersja tego
+ * modułu o niej zapomniała i Suweren dostał blokadę „wolne 193 MiB” przy
+ * WYŁĄCZONYM VoiceStudio, bo kartę trzymał `qwen3.6:35b-a3b` (1892 MiB).
+ *
  * ⚠️ TEN MODUŁ NIKOGO NIE UBIJA. Prosi grzecznie: VoiceStudio ma trasę
- * wyładowania modelu, ComfyUI ma `/free`. Zabijanie procesów zostawiamy
- * Suwerenowi — to jego maszyna, a TACOS GUARD już raz pokazał, czym kończy
- * się automatyczne strzelanie do procesów GPU.
+ * wyładowania modelu, Ollama rozumie `keep_alive: 0`, ComfyUI ma `/free`.
+ * Zabijanie procesów zostawiamy Suwerenowi — to jego maszyna, a TACOS GUARD
+ * już raz pokazał, czym kończy się automatyczne strzelanie do procesów GPU.
  */
 
 import { execFile } from 'child_process';
@@ -126,6 +131,60 @@ export async function oddajKarteZMowy() {
 }
 
 /**
+ * Co OLLAMA trzyma na karcie.
+ *
+ * ⚠️ TRZECI GRACZ, O KTÓRYM ZAPOMNIAŁEM. Pierwsza wersja tego modułu pytała
+ * tylko VoiceStudio — i Suweren dostał blokadę „wolne 193 MiB" MIMO wyłączonego
+ * VoiceStudio. Kartę trzymał `llama-server.exe` z modelem `qwen3.6:35b-a3b`
+ * (1892 MiB), bo Ollama zostawia model wczytany po ostatnim pytaniu.
+ *
+ * Rozjemca, który zna dwóch z trzech graczy, jest gorszy niż żaden — bo mówi
+ * „zamknij VoiceStudio", gdy VoiceStudio już nie żyje.
+ */
+export async function modeleMysli(ollamaBase) {
+    try {
+        const r = await fetch(`${ollamaBase}/api/ps`, { signal: AbortSignal.timeout(10000) });
+        if (!r.ok) return { zywe: false, modele: [] };
+        const d = await r.json();
+        return {
+            zywe: true,
+            modele: (d.models ?? [])
+                .map((m) => ({ nazwa: String(m.name ?? m.model ?? ''), vramMiB: Math.round(Number(m.size_vram ?? 0) / 1048576) }))
+                .filter((m) => m.nazwa && m.vramMiB > 0),
+        };
+    } catch {
+        return { zywe: false, modele: [] };
+    }
+}
+
+/**
+ * Poproś Ollamę, żeby oddała kartę.
+ *
+ * ⚠️ `keep_alive: 0` to oficjalny sposób zdjęcia modelu — nie ubijamy procesu.
+ * Model wczyta się z powrotem przy następnym pytaniu, kosztem paru sekund.
+ * Przy renderze trwającym godzinę to uczciwa zamiana.
+ */
+export async function oddajKarteZMysli(ollamaBase) {
+    const { zywe, modele } = await modeleMysli(ollamaBase);
+    if (!zywe) return { zrobione: false, powod: 'Ollama nie odpowiada — nie ma kogo prosić.', zdjete: [] };
+    if (!modele.length) return { zrobione: true, zdjete: [], powod: 'Ollama nic nie trzyma na karcie.' };
+
+    const zdjete = [];
+    for (const m of modele) {
+        try {
+            const r = await fetch(`${ollamaBase}/api/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: m.nazwa, keep_alive: 0 }),
+                signal: AbortSignal.timeout(60000),
+            });
+            if (r.ok) zdjete.push({ nazwa: m.nazwa, vramMiB: m.vramMiB });
+        } catch { /* jeden nieudany nie przerywa reszty */ }
+    }
+    return { zrobione: zdjete.length > 0, zdjete, powod: null };
+}
+
+/**
  * Poproś ComfyUI, żeby oddał kartę.
  *
  * ⚠️ `/free` z `unload_models` zdejmuje wagi, ale NIE ubija procesu — kolejka
@@ -152,24 +211,40 @@ export async function oddajKarteZRenderu(comfyBase) {
  * Zwraca `{ wolno, ... }` — `wolno: false` znaczy, że mimo próśb miejsca nie ma
  * i puszczanie renderu skończy się tak samo jak wtedy: martwym kontekstem CUDA.
  */
-export async function zrobMiejsceNaRender({ potrzeba = POTRZEBA_NA_RENDER } = {}) {
+export async function zrobMiejsceNaRender({ potrzeba = POTRZEBA_NA_RENDER, ollamaBase = null } = {}) {
     const przed = await stanKarty();
     if (!przed.znane) return { wolno: true, znane: false, powod: 'Nie widzę karty — nie blokuję.' };
     if (przed.wolneMiB >= potrzeba) {
         return { wolno: true, znane: true, przed, po: przed, zwolniono: null, potrzeba };
     }
 
-    const zwolniono = await oddajKarteZMowy();
+    // ⚠️ PYTAMY OBU, nie jednego. Zmierzone: przy wyłączonym VoiceStudio kartę
+    // trzymała Ollama (qwen3.6:35b-a3b, 1892 MiB) i komunikat „zamknij
+    // VoiceStudio" był dla Suwerena bezużyteczny — bo już był zamknięty.
+    const zMowy = await oddajKarteZMowy();
+    const zMysli = ollamaBase ? await oddajKarteZMysli(ollamaBase) : { zrobione: false, zdjete: [], powod: 'Nie znam adresu Ollamy.' };
+
     const po = await stanKarty();
+    const wolno = po.wolneMiB >= potrzeba;
+
+    // Kto NADAL trzyma kartę — żeby komunikat wskazywał winnego, a nie zgadywał.
+    const trzymaja = [];
+    if ((await modeleGlosu()).modele.some((m) => /cuda|gpu/i.test(m.urzadzenie))) trzymaja.push('VoiceStudio');
+    if (ollamaBase && (await modeleMysli(ollamaBase)).modele.length) trzymaja.push('Ollama');
+
     return {
-        wolno: po.wolneMiB >= potrzeba,
-        znane: true,
-        przed, po, zwolniono, potrzeba,
-        powod: po.wolneMiB >= potrzeba
+        wolno, znane: true, przed, po, potrzeba,
+        zwolniono: {
+            zdjete: [...(zMowy.zdjete ?? []), ...(zMysli.zdjete ?? [])],
+            mowa: zMowy, mysl: zMysli,
+        },
+        powod: wolno
             ? null
             : `Na karcie wolne ${po.wolneMiB} MiB, a render potrzebuje ${potrzeba} MiB. `
-              + 'Zamknij VoiceStudio albo inny program trzymający kartę — dwa silniki naraz '
-              + 'kończą się błędem CUDA i martwym kontekstem.',
+              + (trzymaja.length
+                  ? `Kartę trzyma nadal: ${trzymaja.join(' i ')}.`
+                  : 'Trzyma ją program spoza Katedry (przeglądarka, antywirus, gra).')
+              + ' Dwa silniki naraz kończą się błędem CUDA i martwym kontekstem.',
     };
 }
 
@@ -195,6 +270,6 @@ export async function zrobMiejsceNaMowe({ comfyBase, potrzeba = POTRZEBA_NA_MOWE
 
 export default {
     POTRZEBA_NA_RENDER, POTRZEBA_NA_MOWE,
-    stanKarty, modeleGlosu, oddajKarteZMowy, oddajKarteZRenderu,
+    stanKarty, modeleGlosu, modeleMysli, oddajKarteZMowy, oddajKarteZMysli, oddajKarteZRenderu,
     zrobMiejsceNaRender, zrobMiejsceNaMowe,
 };
