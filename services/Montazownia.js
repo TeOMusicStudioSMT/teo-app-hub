@@ -249,3 +249,61 @@ export async function zloz({ pliki, muzyka = null, glosnosc, zanikanie, katalog,
 }
 
 export default { katalogMontazy, opisz, materialy, utwory, podlozDzwiek, zloz };
+
+/**
+ * Jakiej rozdzielczości są ujęcia, które projekt JUŻ MA.
+ *
+ * ⚠️ PO CO. Suweren: „zostawiamy 704×480 do końca SOLLET". Sklejka plików
+ * o różnych wymiarach nie pójdzie bezstratnie — ffmpeg musi wtedy przekodować
+ * całość, co kosztuje czas i jakość. Zamiast wymagać, żeby człowiek pamiętał
+ * o tym przy każdym uruchomieniu, panel po prostu pyta projekt, co w nim leży.
+ *
+ * ⚠️ SPRAWDZAMY KILKA NAJNOWSZYCH, NIE WSZYSTKIE. ffprobe na 85 plikach to
+ * kilka sekund czekania przy każdym otwarciu panelu, za informację, którą
+ * niosą trzy ostatnie. Bierzemy najnowsze, bo one mówią, co projekt produkuje
+ * TERAZ — a nie czym był rok temu.
+ */
+export async function rozdzielczoscProjektu(katalogKatedry, projekt, { probek = 3 } = {}) {
+    const { sciezka } = await utworzProjekt(katalogKatedry, projekt);
+    const kat = path.join(sciezka, 'ujecia');
+
+    let pliki = [];
+    try {
+        const wpisy = await fs.readdir(kat, { withFileTypes: true });
+        for (const w of wpisy) {
+            if (!w.isFile() || !WIDEO.test(w.name)) continue;
+            const p = path.join(kat, w.name);
+            const s = await fs.stat(p).catch(() => null);
+            if (s) pliki.push({ p, czas: s.mtimeMs });
+        }
+    } catch {
+        return { szerokosc: null, wysokosc: null, plikow: 0, zbadanych: 0 };
+    }
+    if (!pliki.length) return { szerokosc: null, wysokosc: null, plikow: 0, zbadanych: 0 };
+
+    pliki.sort((a, b) => b.czas - a.czas);
+    const wybrane = pliki.slice(0, Math.max(1, probek));
+
+    const liczniki = new Map();
+    for (const { p } of wybrane) {
+        const { stderr } = await uruchom(ffmpegPath, ['-i', p, '-f', 'null', '-'], { maxBuffer: 8 * 1024 * 1024 })
+            .catch((e) => ({ stderr: e.stderr ?? '' }));
+        // Bierzemy PIERWSZE dopasowanie w linii strumienia wideo — ffmpeg pisze
+        // wymiary tuż za kodekiem, a dalej w tej samej linii bywa np. SAR/DAR.
+        const m = String(stderr).match(/Video:.*?[ ,](\d{2,5})x(\d{2,5})[ ,]/);
+        if (!m) continue;
+        const klucz = `${m[1]}x${m[2]}`;
+        liczniki.set(klucz, (liczniki.get(klucz) ?? 0) + 1);
+    }
+    if (!liczniki.size) return { szerokosc: null, wysokosc: null, plikow: pliki.length, zbadanych: wybrane.length };
+
+    const [najczestsza] = [...liczniki.entries()].sort((a, b) => b[1] - a[1]);
+    const [w, h] = najczestsza[0].split('x').map(Number);
+    return {
+        szerokosc: w, wysokosc: h,
+        plikow: pliki.length,
+        zbadanych: wybrane.length,
+        // `true`, gdy próbki NIE były zgodne — panel ma o tym powiedzieć.
+        niejednolite: liczniki.size > 1,
+    };
+}

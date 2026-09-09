@@ -7528,11 +7528,20 @@ app.get('/api/kolejka/kadry', async (req, res) => {
             const juz = await KolejkaKadrow.maJuzUjecie(k);
             lista.push({ id: k.id, tytul: k.tytul, opis: k.opis, etap: k.etap, gotowe: juz });
         }
+        // ⚠️ CZEGO PROJEKT JUŻ UŻYWA. Suweren: „zostawiamy 704×480 do końca
+        // SOLLET”. Sklejka plików o różnych wymiarach nie pójdzie bezstratnie —
+        // ffmpeg musi wtedy przekodować całość. Panel dostaje tę liczbę, żeby
+        // ustawić się sam, zamiast wymagać pamiętania o tym przy każdym starcie.
+        const rozdzielczosc = await Montazownia.rozdzielczoscProjektu(ANTIGRAVITY_DIR, projekt)
+            .catch(() => ({ szerokosc: null, wysokosc: null, plikow: 0 }));
+
         return res.json({
             success: true, projekt, etap,
             kadry: lista,
             doZrobienia: lista.filter((k) => !k.gotowe).length,
             maxNaRaz: KolejkaKadrow.MAX_KADROW,
+            rozdzielczosc,
+            domyslna: { szerokosc: Wideo.SZEROKOSC_DOMYSLNIE, wysokosc: Wideo.WYSOKOSC_DOMYSLNIE },
         });
     } catch (e) {
         return res.status(500).json({ success: false, message: e.message });
