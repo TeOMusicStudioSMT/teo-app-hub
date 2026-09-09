@@ -43,11 +43,68 @@ export async function katalogUjec(katalog, projekt) {
  * Prompt ujęcia z karty kadru. Kotwica doklejana ZAWSZE — każdy kadr liczy
  * się osobno i model nie pamięta poprzedniego.
  */
-export function promptZKadru(kadr, kotwica = '') {
+/**
+ * Wygląd postaci, które NAPRAWDĘ występują w tym kadrze.
+ *
+ * PO CO. Suweren: „chyba nie bardzo korzysta z przygotowanych assetów — mam
+ * wielowymiarową prezentację bytów". I miał rację: prompt renderu dostawał
+ * opis kadru („Solita i Molita są blisko siebie") i biblię projektu, ale NIGDY
+ * wyglądu Solity. Silnik nie miał się czego złapać i rysował abstrakcyjne kształty.
+ *
+ * ⚠️ DOKŁADAMY TYLKO TYCH, KTÓRZY SĄ W KADRZE. Wklejenie całej obsady do
+ * każdego ujęcia zapełniłoby prompt opisami ludzi, których w nim nie ma —
+ * a model rysuje to, co przeczyta.
+ *
+ * ⚠️ DOPASOWANIE PO CAŁYM SŁOWIE. „Tim" nie może złapać się w „intymny";
+ * bez granicy słowa krótkie imiona wciągałyby do kadru przypadkowych ludzi.
+ */
+export function opisObsady(kadr, assety = []) {
+    const tekst = `${kadr?.tytul ?? ''} ${kadr?.opis ?? ''}`;
+    const opisy = [];
+
+    for (const a of assety) {
+        if (!['aktor', 'rekwizyt', 'scena'].includes(a.typ)) continue;
+        const nazwa = String(a.nazwa ?? '').trim();
+        if (nazwa.length < 3) continue;
+
+        // ⚠️ POLSKA ODMIANA. „Solitę", „Solitą", „Klubie" — dosłowne dopasowanie
+        // przepuszczałoby tylko mianownik, a kadry pisze się zdaniami. Bierzemy
+        // RDZEŃ: nazwę bez końcowej samogłoski, i żądamy granicy słowa PRZED nim.
+        // Granicy PO rdzeniu celowo nie ma — właśnie tam siedzi końcówka.
+        //
+        // ⚠️ Skracamy dopiero od 5 znaków. Krótkie imiona („Tim") bez końcówki
+        // złapałyby się w połowie słownika — sprawdzone: „intymny" wciągałoby Tima.
+        const rdzen = nazwa.length >= 5
+            ? nazwa.replace(/[aeąęioyu]$/i, '')
+            : nazwa;
+        const uciekly = rdzen.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&');
+        const wzor = new RegExp(`(^|[^\\p{L}])${uciekly}`, 'iu');
+        if (!wzor.test(tekst)) continue;
+
+        // Notatka assetu to jego WYGLĄD — to jedyna rzecz, która pomaga silnikowi.
+        const wyglad = String(a.notatki ?? '').trim();
+        opisy.push(wyglad ? `${nazwa}: ${wyglad.slice(0, 220)}` : nazwa);
+    }
+    return opisy;
+}
+
+/**
+ * Prompt ujęcia z karty kadru. Kotwica doklejana ZAWSZE — każdy kadr liczy
+ * się osobno i model nie pamięta poprzedniego.
+ *
+ * Kolejność jest celowa: najpierw CO WIDAĆ (opis kadru), potem KTO (wygląd
+ * obsady), na końcu JAK (styl z biblii). Modele obrazowe ważą początek promptu
+ * mocniej, a najważniejsza jest treść ujęcia.
+ */
+export function promptZKadru(kadr, kotwica = '', assety = []) {
     const czesci = [];
     if (kadr.opis?.trim()) czesci.push(kadr.opis.trim());
     // Tytuł tylko wtedy, gdy opisu brak — inaczej dubluje treść.
     else if (kadr.tytul?.trim()) czesci.push(kadr.tytul.trim());
+
+    const obsada = opisObsady(kadr, assety);
+    if (obsada.length) czesci.push(obsada.join('. '));
+
     if (kotwica.trim()) czesci.push(kotwica.trim().slice(0, 400));
     return czesci.join(', ');
 }

@@ -189,12 +189,52 @@ function zgodne(a, b) {
  * różnych ffmpeg produkuje plik, który się „psuje" dopiero w połowie
  * odtwarzania. Gdy parametry się różnią, przekodowujemy i to widać w wyniku.
  */
+/**
+ * Opis filmu Z UPOREM — trzy podejścia, rosnąca przerwa.
+ *
+ * ⚠️ TO NIE JEST OZDOBNIK. Suweren: „przestał sklejać". W dzienniku:
+ * `Command failed: … ffprobe.exe … 001__1_1_Otwarcie__Ciemno__.mp4` — a ten
+ * sam plik uruchomiony ręcznie chwilę później czyta się bez błędu (kod 0).
+ * Czyli plik był w tamtym momencie ZAJĘTY: świeżo skopiowany, jeszcze pod
+ * ręką antywirusa albo niedomknięty przez system plików.
+ *
+ * Jedno takie mrugnięcie wywracało CAŁE sklejanie — po 78 i po 330 minutach
+ * liczenia. Materiał był na dysku, film nie powstawał.
+ */
+async function opisFilmuZUporem(plik, comfyDir, prob = 3) {
+    let ostatni = null;
+    for (let i = 0; i < prob; i += 1) {
+        try { return await opisFilmu(plik, comfyDir); }
+        catch (e) {
+            ostatni = e;
+            // 400 ms, 800 ms — tyle wystarcza, żeby skaner puścił plik.
+            if (i < prob - 1) await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+        }
+    }
+    throw ostatni;
+}
+
 export async function sklej({ pliki, wyjscie, comfyDir }) {
     if (!Array.isArray(pliki) || pliki.length < 2) {
         throw new Error('Do sklejenia potrzeba co najmniej dwóch ujęć.');
     }
+    // ⚠️ JEDEN ZŁY PLIK NIE MOŻE ZABIĆ CAŁEGO MONTAŻU. Wcześniej `sklej` leciał
+    // przez listę i pierwszy nieczytalny plik wywracał wszystko — razem z pracą
+    // z kilku godzin renderu. Teraz: trzy podejścia, a gdy plik naprawdę jest
+    // zepsuty — POMIJAMY GO i mówimy o tym w wyniku, zamiast oddawać błąd.
     const opisy = [];
-    for (const p of pliki) opisy.push(await opisFilmu(p, comfyDir));
+    const pominiete = [];
+    for (const p of pliki) {
+        try { opisy.push(await opisFilmuZUporem(p, comfyDir)); }
+        catch (e) { pominiete.push({ plik: p, powod: String(e.message).slice(0, 160) }); }
+    }
+
+    if (opisy.length < 2) {
+        throw new Error(
+            `Do sklejenia zostało ${opisy.length} czytelnych ujęć z ${pliki.length}`
+            + `${pominiete.length ? ` — odpadły: ${pominiete.map((x) => x.plik.split(/[\\/]/).pop()).join(', ')}` : ''}.`,
+        );
+    }
 
     const wszystkieZgodne = opisy.every((o) => zgodne(o, opisy[0]));
     const cel = bezpieczna(wyjscie, comfyDir);
@@ -226,6 +266,9 @@ export async function sklej({ pliki, wyjscie, comfyDir }) {
         plik: cel,
         metoda: wszystkieZgodne ? 'kopia strumienia (bezstratnie)' : 'przekodowanie (parametry ujęć się różniły)',
         zrodla: opisy.map((o) => ({ nazwa: o.nazwa, sekundy: o.sekundy, format: `${o.szerokosc}x${o.wysokosc}@${o.fps}` })),
+        // Pominięte wypisujemy ZAWSZE — cichy montaż z brakującym ujęciem to
+        // gorsze kłamstwo niż błąd, bo nikt nie policzy, czego nie ma.
+        pominiete,
         wynik: wynikowy,
     };
 }

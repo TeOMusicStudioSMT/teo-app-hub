@@ -76,7 +76,7 @@ const SILNIKI = [
 /** Co ComfyUI naprawdę widzi w danym polu danego noda. */
 async function listaPola(base, nod, pole) {
     try {
-        const r = await fetch(`${base}/object_info/${nod}`);
+        const r = await pobierzZLimitem(`${base}/object_info/${nod}`, {}, 8000);
         if (!r.ok) return null;
         const d = await r.json();
         const k = Object.keys(d)[0];
@@ -109,9 +109,71 @@ async function ocen(silnik, { modele, enkodery, vae }) {
  * Czy da się w ogóle generować. Zwraca listę BRAKÓW, a nie samo „nie" —
  * bez tego Suweren dostawałby „nie wyszło" bez informacji, czego dokupić.
  */
+/**
+ * fetch do ComfyUI Z LIMITEM CZASU.
+ *
+ * ⚠️ TO BYŁ PRAWDZIWY BŁĄD I KOSZTOWAŁ SUWERENA GODZINY. Zgłoszenie: „wbija
+ * mu błąd, jak wejdzie w stan czuwania". W dzienniku kolejki jedna pozycja
+ * zajęła 16 056 s — cztery i pół godziny — mimo że termin oczekiwania to
+ * 45 minut.
+ *
+ * Dlaczego termin nie zadziałał: pętla sprawdza zegar MIĘDZY zapytaniami, a
+ * `fetch` bez sygnału przerwania potrafi wisieć w nieskończoność, gdy druga
+ * strona uśnie (Windows usypia proces, połączenie TCP zostaje otwarte i nikt
+ * nie odpowiada). `await` nigdy nie wraca, więc warunek `Date.now() < DO_KIEDY`
+ * nie jest nawet sprawdzany.
+ *
+ * Limit na każdym zapytaniu zamienia zawieszenie w błąd, który da się obsłużyć.
+ */
+/** Ile klatek na sekundę produkuje Wan — z workflow (`CreateVideo.fps`). */
+export const KLATEK_NA_SEKUNDE = 24;
+
+/** Domyślna długość ujęcia: 49 klatek / 24 fps = 2,04 s. */
+export const KLATEK_DOMYSLNIE = 49;
+
+/**
+ * Sekundy → klatki dla Wan.
+ *
+ * PO CO. Suweren: „można by wydłużyć kadry, teraz mają 2 sec... choć może
+ * jakaś możliwość wyboru długości kadru". Odcinek 10–20 min z ujęć po 2 s to
+ * setki renderów; dłuższe ujęcie zmienia całą arytmetykę planu.
+ *
+ * ⚠️ WAN CHCE DŁUGOŚCI POSTACI 4n+1. Latent układa się w paczki po cztery
+ * klatki plus jedna; wartość spoza tego wzoru bywa po cichu zaokrąglana przez
+ * silnik i dostajesz inną długość, niż prosiłeś.
+ *
+ * ⚠️ DŁUŻSZE UJĘCIE = WIĘCEJ VRAM I CZASU, liniowo do liczby klatek. Na 6 GB
+ * to jest realna granica — dlatego funkcja nie wybiera za nikogo, tylko
+ * przelicza to, o co poproszono.
+ */
+export function klatekZSekund(sekundy) {
+    const s = Number(sekundy);
+    if (!Number.isFinite(s) || s <= 0) return KLATEK_DOMYSLNIE;
+    const surowe = Math.round(s * KLATEK_NA_SEKUNDE);
+    const n = Math.max(1, Math.round((surowe - 1) / 4));
+    return 4 * n + 1;
+}
+
+/** Odwrotność — ile sekund da N klatek. */
+export function sekundZKlatek(klatek) {
+    const k = Number(klatek) || KLATEK_DOMYSLNIE;
+    return Math.round((k / KLATEK_NA_SEKUNDE) * 100) / 100;
+}
+
+export async function pobierzZLimitem(url, opcje = {}, limitMs = 20000) {
+    try {
+        return await fetch(url, { ...opcje, signal: AbortSignal.timeout(limitMs) });
+    } catch (e) {
+        if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+            throw new Error(`ComfyUI nie odpowiedzia\u0142 w ${Math.round(limitMs / 1000)} s \u2014 prawdopodobnie u\u015bpiony.`);
+        }
+        throw e;
+    }
+}
+
 export async function stanWideo(comfyBase) {
     let comfy = false;
-    try { comfy = (await fetch(`${comfyBase}/object_info/UNETLoader`)).ok; } catch { comfy = false; }
+    try { comfy = (await pobierzZLimitem(`${comfyBase}/object_info/UNETLoader`, {}, 6000)).ok; } catch { comfy = false; }
     if (!comfy) {
         return {
             gotowe: false, comfy: false, silniki: [], silnik: null,
@@ -152,7 +214,7 @@ export async function stanWideo(comfyBase) {
  * Zleć scenę. Zwraca id zlecenia ComfyUI albo POWÓD odmowy.
  * ⚠️ Nie ma tu ścieżki „udało się mimo braków" — jeśli czegoś nie ma, mówimy to.
  */
-export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, klatek, kroki, ziarno }) {
+export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, klatek, sekundy, kroki, ziarno }) {
     if (!prompt?.trim()) return { ok: false, powod: 'Pusty opis sceny — nie ma czego generować.' };
 
     const stan = await stanWideo(comfyBase);
@@ -171,16 +233,18 @@ export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, kla
 
     graf[w.wymiary].inputs.width = Number(szerokosc) || 704;
     graf[w.wymiary].inputs.height = Number(wysokosc) || 480;
-    graf[w.wymiary].inputs.length = Number(klatek) || 49;
+    // `sekundy` ma pierwszeństwo — to nimi myśli człowiek, klatkami silnik.
+    const ileKlatek = sekundy ? klatekZSekund(sekundy) : (Number(klatek) || KLATEK_DOMYSLNIE);
+    graf[w.wymiary].inputs.length = ileKlatek;
 
     graf[w.sampler].inputs.steps = Number(kroki) || 20;
     graf[w.sampler].inputs.seed = Number.isFinite(Number(ziarno)) ? Number(ziarno) : Math.floor(Math.random() * 1e9);
 
     try {
-        const r = await fetch(`${comfyBase}/prompt`, {
+        const r = await pobierzZLimitem(`${comfyBase}/prompt`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: graf }),
-        });
+        }, 30000);   // zlecenie grafu: 30 s wystarczy, dluzej = silnik spi
         const d = await r.json();
         if (!r.ok || d?.error) {
             return { ok: false, powod: `ComfyUI odrzucił graf: ${JSON.stringify(d?.error ?? d).slice(0, 300)}` };
@@ -235,10 +299,10 @@ export async function dopiszUjecie({ comfyBase, prompt, klatka, szerokosc, wysok
     graf['10'].inputs.fps = Number(fps) || 24;
 
     try {
-        const r = await fetch(`${comfyBase}/prompt`, {
+        const r = await pobierzZLimitem(`${comfyBase}/prompt`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: graf }),
-        });
+        }, 30000);   // zlecenie grafu: 30 s wystarczy, dluzej = silnik spi
         const d = await r.json();
         if (!r.ok || d?.error) {
             return { ok: false, powod: `ComfyUI odrzucił graf: ${JSON.stringify(d?.error ?? d).slice(0, 300)}` };
@@ -265,7 +329,7 @@ export async function dopiszUjecie({ comfyBase, prompt, klatka, szerokosc, wysok
  */
 export async function stanZlecenia(comfyBase, id, comfyDir = null) {
     try {
-        const r = await fetch(`${comfyBase}/history/${encodeURIComponent(id)}`);
+        const r = await pobierzZLimitem(`${comfyBase}/history/${encodeURIComponent(id)}`, {}, 20000);
         if (!r.ok) return { ok: false, powod: `ComfyUI HTTP ${r.status}` };
         const d = await r.json();
         const wpis = d?.[id];

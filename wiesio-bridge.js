@@ -6219,12 +6219,47 @@ app.post('/api/ciag/rozpisz', async (req, res) => {
 });
 
 /** Poczekaj na plik z ComfyUI. `czyPrzerwane` pozwala wyjść z pętli na żądanie. */
+/**
+ * Czekanie na plik z ComfyUI — odporne na to, że silnik po drodze uśnie.
+ *
+ * ⚠️ POPRZEDNIA WERSJA WISIAŁA GODZINAMI. Termin 45 minut sprawdzał się MIĘDZY
+ * zapytaniami, a zapytanie bez limitu czasu potrafiło nie wrócić nigdy: gdy
+ * Windows uśpi proces, połączenie TCP zostaje otwarte i nikt nie odpowiada,
+ * więc `await` nie wraca i warunek `Date.now() < DO_KIEDY` nie jest nawet
+ * sprawdzany. W dzienniku Suwerena jedna pozycja zajęła 16 056 s — cztery
+ * i pół godziny zamiast czterdziestu pięciu minut.
+ *
+ * Teraz każde zapytanie ma własny limit (`Wideo.pobierzZLimitem`), a tutaj
+ * dochodzi BUDZENIE: gdy silnik milczy trzy razy z rzędu, budzimy go zamiast
+ * czekać na trupa.
+ */
 async function czekajNaPlikWideo(zlecenie, czyPrzerwane) {
     const DO_KIEDY = Date.now() + 45 * 60 * 1000;
+    let poMilczeniu = 0;
+
     while (Date.now() < DO_KIEDY) {
         if (czyPrzerwane?.()) return null;
         await new Promise((r) => setTimeout(r, 5000));
-        const s = await Wideo.stanZlecenia(COMFY_BASE, zlecenie, COMFY_DIR);
+
+        let s;
+        try {
+            s = await Wideo.stanZlecenia(COMFY_BASE, zlecenie, COMFY_DIR);
+            poMilczeniu = 0;
+        } catch (e) {
+            // ⚠️ JEDNO MILCZENIE TO NIE KONIEC ŚWIATA — zdarza się przy ładowaniu
+            // modelu. Dopiero seria oznacza, że silnik usnął.
+            poMilczeniu += 1;
+            if (poMilczeniu >= 3) {
+                console.warn(`[Kolejka] ComfyUI milczy ${poMilczeniu} raz — budzę go (${e.message}).`);
+                await zapewnijComfyUI('silnik przestał odpowiadać w trakcie liczenia').catch(() => null);
+                // ⚠️ Po przebudzeniu ComfyUI NIE PAMIĘTA zlecenia — jego kolejka
+                // żyje w pamięci procesu i ginie razem z nim. Mówimy to wprost,
+                // zamiast czekać do końca terminu na wynik, który nie powstanie.
+                throw new Error('ComfyUI usnął w trakcie liczenia i został obudzony — to ujęcie trzeba policzyć od nowa.');
+            }
+            continue;
+        }
+
         if (s.ok && s.blad) throw new Error(`ComfyUI: ${JSON.stringify(s.blad).slice(0, 200)}`);
         if (s.ok && s.gotowe && s.materialy?.length) return s.materialy[0].sciezka;
     }
@@ -7132,7 +7167,7 @@ app.get('/api/kolejka/kadry', async (req, res) => {
  * zapisuje wyniki W KATEDRZE i na koncu skleja je w jeden film.
  */
 app.post('/api/kolejka/odpal', async (req, res) => {
-    const { projekt = '', etap = 'KADR', ile, odNowa = false, klatek, kroki, sklejaj = true, odwrotnie = false } = req.body ?? {};
+    const { projekt = '', etap = 'KADR', ile, odNowa = false, klatek, sekundy, kroki, sklejaj = true, odwrotnie = false } = req.body ?? {};
     try {
         const stan = await stanWideoZBudzeniem('kolejka kadrow');
         if (!stan.gotowe) return res.status(424).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
@@ -7150,12 +7185,19 @@ app.post('/api/kolejka/odpal', async (req, res) => {
         ]);
         const kotwica = [biblia?.tekst || '', (pamiec?.fakty ?? []).map((f) => f.tresc).join('\n')].filter(Boolean).join('\n\n');
 
+        // ⚠️ WYGLĄD OBSADY DO PROMPTU RENDERU. Suweren: „nie bardzo korzysta
+        // z przygotowanych assetów — mam wielowymiarową prezentację bytów".
+        // Prompt dostawał opis kadru i biblię, ale NIGDY wyglądu Solity — silnik
+        // nie miał się czego złapać. `promptZKadru` dokłada teraz opisy TYCH
+        // postaci, które w danym kadrze naprawdę występują.
+        const assetyProjektu = await Assety.lista(ANTIGRAVITY_DIR, projekt).catch(() => []);
+
         // Domyslnie pomijamy karty, ktore MAJA juz plik — powtorny render
         // kosztuje minuty i nadpisuje prace, ktora ktos moze akceptowal.
         const doKolejki = [];
         for (const k of wszystkie) {
             if (!odNowa && await KolejkaKadrow.maJuzUjecie(k)) continue;
-            doKolejki.push({ id: k.id, tytul: k.tytul, prompt: KolejkaKadrow.promptZKadru(k, kotwica) });
+            doKolejki.push({ id: k.id, tytul: k.tytul, prompt: KolejkaKadrow.promptZKadru(k, kotwica, assetyProjektu) });
         }
         if (!doKolejki.length) {
             return res.status(400).json({ success: false, message: 'Wszystkie kadry maja juz ujecia. Uzyj odNowa=true, zeby policzyc je jeszcze raz.' });
@@ -7168,7 +7210,10 @@ app.post('/api/kolejka/odpal', async (req, res) => {
         const id = KolejkaKadrow.odpal({
             projekt, kadry, sklejaj,
 
-            generuj: ({ prompt }) => Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, klatek, kroki }),
+            // ⚠️ `sekundy` steruje długością UJĘCIA. Domyślnie 2,04 s (49 klatek);
+            // dłuższe ujęcie to mniej renderów na minutę filmu, ale więcej VRAM
+            // i czasu na sztukę — na 6 GB to realna granica.
+            generuj: ({ prompt }) => Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, klatek, sekundy, kroki }),
             czekaj: czekajNaPlikWideo,
 
             // Wynik z ComfyUI KOPIUJEMY do katalogu projektu i zwracamy TE sciezke.
@@ -11986,6 +12031,7 @@ app.get('/api/rezyser/pamiec/kadry', async (req, res) => {
     try {
         const serial = String(req.query.serial || '').trim();
         if (!serial) throw new Error('Podaj serial.');
+        const sekundNaKadr = Number(req.query.sekundNaKadr) || undefined;
 
         const [pamiec, kadry] = await Promise.all([
             rezyserPamiec(ANTIGRAVITY_DIR, serial),
@@ -12003,7 +12049,10 @@ app.get('/api/rezyser/pamiec/kadry', async (req, res) => {
             // do minut — 24 kadry są za krótkie". Ujęcie trwa 2,04 s (zmierzone),
             // więc 24 kadry to 49 SEKUND filmu, nie 6 minut. Mowimy ile odcinek
             // MA naprawde i ile mu brakuje do zapowiedzianej dlugosci.
-            const plan = Realizacja.ileKadrow(o.czasMinut, { juzMa: moje.length });
+            // Długość ujęcia wybiera człowiek w kolejce kadrów — front przekazuje ją
+            // tutaj, żeby arytmetyka odcinka liczyła się według TEGO ustawienia,
+            // a nie stałej sprzed wyboru.
+            const plan = Realizacja.ileKadrow(o.czasMinut, { juzMa: moje.length, sekundNaKadr });
 
             wynik[o.id] = {
                 razem: moje.length,
@@ -12082,7 +12131,19 @@ app.post('/api/rezyser/pamiec/odcinek/:id/realizuj', async (req, res) => {
             ? [kotwica, (await produkcjaBiblia(ANTIGRAVITY_DIR, serial).catch(() => null))?.tekst || ''].filter(Boolean).join('\n\n')
             : kotwica;
 
-        const { system, prompt } = Realizacja.promptKadrow({ projekt: serial, odcinek, kotwica: kotwicaPoBiblii, ile });
+        // ⚠️ OBSADA DO PROMPTU PISANIA. Sprawdzone na SOLLET: tylko 38 ze 164
+        // kadrów wymieniało jakąkolwiek postać, a Tim i Krys — ani razu. Model
+        // nie miał skąd wiedzieć, że ta obsada w ogóle istnieje.
+        const spisObsady = (await Assety.lista(ANTIGRAVITY_DIR, serial).catch(() => []))
+            .filter((a) => ['aktor', 'scena', 'rekwizyt'].includes(a.typ))
+            .map((a) => {
+                const rola = a.rola ? ` (${Assety.ROLE[a.rola] ?? a.rola})` : '';
+                const wyglad = String(a.notatki ?? '').trim();
+                return `· ${a.nazwa}${rola}${wyglad ? ` — ${wyglad.slice(0, 160)}` : ''}`;
+            })
+            .join('\n');
+
+        const { system, prompt } = Realizacja.promptKadrow({ projekt: serial, odcinek, kotwica: kotwicaPoBiblii, obsada: spisObsady, ile });
         const kadry = Realizacja.odczytajKadry(await pisz(system, prompt), ile);
 
         for (const k of kadry) {

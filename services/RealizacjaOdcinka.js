@@ -57,13 +57,15 @@ export const MAX_KADROW = 24;
  * Zwraca `potrzebne` (prawda o długości), `ile` (ten przebieg) i `przebiegow`
  * (ile razy trzeba kliknąć REALIZUJ). Bez czasu — ostrożne minimum.
  */
-export function ileKadrow(czasMinut, { juzMa = 0 } = {}) {
+export function ileKadrow(czasMinut, { juzMa = 0, sekundNaKadr } = {}) {
+    // Długość ujęcia bywa wybrana w kolejce — wtedy liczymy według niej.
+    const NA_KADR = Number(sekundNaKadr) > 0 ? Number(sekundNaKadr) : SEKUND_NA_KADR;
     const m = Number(czasMinut);
     if (!Number.isFinite(m) || m <= 0) {
         return { ile: 4, zgadywane: true, potrzebne: null, przebiegow: null, sekundNaKadr: SEKUND_NA_KADR };
     }
 
-    const potrzebne = Math.max(2, Math.round((m * 60) / SEKUND_NA_KADR));
+    const potrzebne = Math.max(2, Math.round((m * 60) / NA_KADR));
     const zostalo = Math.max(0, potrzebne - Math.max(0, juzMa));
     const ile = Math.max(2, Math.min(MAX_KADROW, zostalo || potrzebne));
 
@@ -73,7 +75,7 @@ export function ileKadrow(czasMinut, { juzMa = 0 } = {}) {
         potrzebne,
         zostalo,
         przebiegow: Math.ceil(zostalo / MAX_KADROW) || 0,
-        sekundNaKadr: SEKUND_NA_KADR,
+        sekundNaKadr: NA_KADR,
         // Zachowane pod starą nazwą — most raportuje tym polem „przycięcie".
         policzone: potrzebne,
     };
@@ -115,7 +117,7 @@ export function promptBiblii({ projekt, odcinek, kotwica = '' }) {
  * odcinku, a nie streścił go w pierwszych trzech kartach i zostawił resztę
  * na „bohater idzie dalej".
  */
-export function promptKadrow({ projekt, odcinek, kotwica = '', ile }) {
+export function promptKadrow({ projekt, odcinek, kotwica = '', obsada = '', ile }) {
     const system = [
         'Jesteś RYSOWNIKIEM rozkładającym odcinek na KADRY. Odpowiadasz po polsku.',
         `Rozpisujesz ${ile} kadrów. Każdy to około ${SEKUND_NA_KADR} s ekranu — czyli KRÓTKIE ujęcie, jedna myśl obrazowa, nie cała scena.`,
@@ -126,6 +128,8 @@ export function promptKadrow({ projekt, odcinek, kotwica = '', ile }) {
         '2. Każdy kadr opisuje, CO WIDAĆ: plan, światło, kto jest w kadrze, co robi.',
         '   Bez dialogów, bez myśli bohatera, bez rzeczy niewidocznych na obrazie.',
         '3. Powtarzaj krótko wygląd postaci — każdy kadr będzie generowany osobno.',
+        '4. OBSADZAJ POSTACIE Z LISTY PONIŻEJ, po imieniu. Odcinek bez ludzi to',
+        '   nie odcinek, tylko pokaz tekstur — w większości kadrów ktoś ma być widoczny.',
         '',
         'Odpowiadasz WYŁĄCZNIE tablicą JSON, bez komentarza i bez płotu z backticków:',
         '[{"nr":1,"tytul":"krótki tytuł kadru","opis":"co widać"}, …]',
@@ -138,6 +142,11 @@ export function promptKadrow({ projekt, odcinek, kotwica = '', ile }) {
         odcinek.styl ? `STYL: ${odcinek.styl}` : '',
         `TREŚĆ: ${odcinek.streszczenie}`,
     ].filter(Boolean);
+    // ⚠️ OBSADA OSOBNO OD KOTWICY. Suweren: „nie bardzo korzysta z przygotowanych
+    // assetów". Sprawdzone na SOLLET: tylko 38 ze 164 kadrów wymieniało
+    // jakąkolwiek postać, a Tim i Krys — ani razu. Model nie miał skąd wiedzieć,
+    // że ta obsada istnieje.
+    if (obsada.trim()) czesci.push(`\nOBSADA (używaj tych imion, nie wymyślaj innych):\n${obsada.trim().slice(0, 1200)}`);
     if (kotwica.trim()) czesci.push(`\nKOTWICA (nie wolno jej zaprzeczyć):\n${kotwica.trim().slice(0, 2000)}`);
     czesci.push(`\nRozpisz ${ile} kadrów. Sama tablica JSON.`);
 
