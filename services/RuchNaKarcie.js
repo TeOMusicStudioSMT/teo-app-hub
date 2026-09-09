@@ -214,37 +214,56 @@ export async function oddajKarteZRenderu(comfyBase) {
 export async function zrobMiejsceNaRender({ potrzeba = POTRZEBA_NA_RENDER, ollamaBase = null } = {}) {
     const przed = await stanKarty();
     if (!przed.znane) return { wolno: true, znane: false, powod: 'Nie widzę karty — nie blokuję.' };
-    if (przed.wolneMiB >= potrzeba) {
-        return { wolno: true, znane: true, przed, po: przed, zwolniono: null, potrzeba };
-    }
 
-    // ⚠️ PYTAMY OBU, nie jednego. Zmierzone: przy wyłączonym VoiceStudio kartę
-    // trzymała Ollama (qwen3.6:35b-a3b, 1892 MiB) i komunikat „zamknij
-    // VoiceStudio" był dla Suwerena bezużyteczny — bo już był zamknięty.
+    // ⚠️ PYTAMY OBU KONKURENTÓW. Zmierzone: przy wyłączonym VoiceStudio kartę
+    // trzymała Ollama (qwen3.6:35b-a3b, 1892 MiB), więc komunikat „zamknij
+    // VoiceStudio" był bezużyteczny — bo już był zamknięty.
     const zMowy = await oddajKarteZMowy();
     const zMysli = ollamaBase ? await oddajKarteZMysli(ollamaBase) : { zrobione: false, zdjete: [], powod: 'Nie znam adresu Ollamy.' };
 
     const po = await stanKarty();
-    const wolno = po.wolneMiB >= potrzeba;
 
-    // Kto NADAL trzyma kartę — żeby komunikat wskazywał winnego, a nie zgadywał.
+    // Kto NADAL trzyma kartę PO poproszeniu.
     const trzymaja = [];
     if ((await modeleGlosu()).modele.some((m) => /cuda|gpu/i.test(m.urzadzenie))) trzymaja.push('VoiceStudio');
     if (ollamaBase && (await modeleMysli(ollamaBase)).modele.length) trzymaja.push('Ollama');
 
+    /**
+     * ⚠️ TU BYŁ MÓJ BŁĄD W SAMEJ ZASADZIE, nie w progu.
+     *
+     * Pierwsza wersja blokowała render, gdy wolnego VRAM-u było mniej niż próg.
+     * Skutek: Suweren dostał blokadę „wolne 2150 MiB" przy WYŁĄCZONYM
+     * VoiceStudio i PUSTEJ Ollamie — bo pamięć trzymał **sam ComfyUI**, który
+     * wczytał wagi Wana przy poprzednim przebiegu i użyłby ich ponownie.
+     * Renderer był blokowany za to, że jest gotowy do renderowania.
+     *
+     * Prawdziwym zagrożeniem nie jest „mało wolnego VRAM-u" — Wan i tak nie
+     * mieści się w tej karcie i ComfyUI zrzuca wagi do RAM-u. Zagrożeniem jest
+     * DRUGI SILNIK sięgający po tę samą pamięć w trakcie liczenia. Dlatego
+     * blokujemy wyłącznie wtedy, gdy konkurent NADAL trzyma kartę mimo prośby.
+     *
+     * Niski poziom wolnej pamięci bez konkurenta zwracamy jako `ostrzezenie` —
+     * do pokazania, nie do blokowania.
+     */
+    const wolno = trzymaja.length === 0;
+    const malo = po.wolneMiB < potrzeba;
+
     return {
-        wolno, znane: true, przed, po, potrzeba,
+        wolno, znane: true, przed, po, potrzeba, trzymaja,
         zwolniono: {
             zdjete: [...(zMowy.zdjete ?? []), ...(zMysli.zdjete ?? [])],
             mowa: zMowy, mysl: zMysli,
         },
+        ostrzezenie: (wolno && malo)
+            ? `Na karcie wolne tylko ${po.wolneMiB} MiB, ale trzyma ją ComfyUI albo program spoza `
+              + 'Katedry. Puszczam render — jeśli padnie na błędzie CUDA, zamknij to, co jeszcze '
+              + 'sięga po kartę (przeglądarka z akceleracją, gra, antywirus).'
+            : null,
         powod: wolno
             ? null
-            : `Na karcie wolne ${po.wolneMiB} MiB, a render potrzebuje ${potrzeba} MiB. `
-              + (trzymaja.length
-                  ? `Kartę trzyma nadal: ${trzymaja.join(' i ')}.`
-                  : 'Trzyma ją program spoza Katedry (przeglądarka, antywirus, gra).')
-              + ' Dwa silniki naraz kończą się błędem CUDA i martwym kontekstem.',
+            : `Kartę trzyma nadal: ${trzymaja.join(' i ')} (wolne ${po.wolneMiB} MiB). `
+              + 'Dwa silniki naraz kończą się błędem CUDA i martwym kontekstem — '
+              + 'zamknij ten program i spróbuj ponownie.',
     };
 }
 

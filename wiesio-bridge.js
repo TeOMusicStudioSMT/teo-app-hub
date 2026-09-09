@@ -7830,9 +7830,11 @@ app.post('/api/kolejka/odpal', async (req, res) => {
             return res.status(507).json({ success: false, message: miejsce.powod, karta: miejsce });
         }
         if (miejsce.zwolniono?.zdjete?.length) {
-            const ile = miejsce.zwolniono.zdjete.reduce((s, m) => s + m.vramMiB, 0);
-            console.log(`[Karta] 🚦 zdjęto modele mowy (${ile} MiB) — wolne ${miejsce.przed.wolneMiB} → ${miejsce.po.wolneMiB} MiB`);
+            const ile = miejsce.zwolniono.zdjete.reduce((s, m) => s + (m.vramMiB || 0), 0);
+            console.log(`[Karta] 🚦 zwolniono ${ile} MiB — wolne ${miejsce.przed.wolneMiB} → ${miejsce.po.wolneMiB} MiB`);
         }
+        // Mało pamięci, ale bez konkurenta — mówimy o tym i PUSZCZAMY.
+        if (miejsce.ostrzezenie) console.warn(`[Karta] ⚠️ ${miejsce.ostrzezenie}`);
 
         const wszystkie = KolejkaKadrow.poKolei(
             (await produkcjaLista(ANTIGRAVITY_DIR, projekt)).filter((k) => k.etap === String(etap).toUpperCase()),
