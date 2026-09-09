@@ -47,6 +47,19 @@ export function promptRozmowy({ gatunek = null, kotwica = '', assety = '', rece 
         '· Gdy pomysł jest mglisty, mówisz to wprost i pytasz o brakujący element.',
         '· NIE streszczasz tego, co Suweren przed chwilą powiedział — to strata jego czasu.',
         '· NIE zapisujesz niczego i nie obiecujesz, że zapisałeś. Od zapisu jest osobny przycisk.',
+        // ⚠️ ŚWIADOMOŚĆ JOANNY, NIE JEJ RĘCE. Suweren chciał, żeby moduł Opowieści
+        // „był świadomy takiej możliwości współpracy”. Więc TeOgochi ma o Joannie
+        // WIEDZIEĆ i pytać o muzykę — ale komponowanie zleca człowiek w Music
+        // Studio. Obietnica „już każę jej skomponować” bez akcji to atrapa,
+        // a ta pułapka raz już nas kosztowała wiarę w panel.
+        '',
+        'MUZYKA — MASZ KOMPOZYTORKĘ:',
+        '· W Katedrze pracuje JOANNA — TeOgochi od muzyki. Potrafi skomponować utwór',
+        '  DOKŁADNIE na długość gotowego materiału wideo (Montażownia → SKOMPONUJ).',
+        '· Dlatego pytaj o brzmienie tak samo jak o obraz: czym ma być wypełniona cisza,',
+        '  gdzie wchodzi motyw, co ma zamilknąć. To trafia do briefu w polu `muzyka`.',
+        '· NIE obiecujesz, że już każeś jej grać. Mówisz, że można ją o to poprosić',
+        '  w Montażowni — i tam Suweren wciska przycisk.',
         kotwica.trim() ? `\nCO JUŻ ISTNIEJE W TYM ŚWIECIE (nie zaprzeczaj):\n${kotwica.trim().slice(0, 1200)}` : '',
         // ⚠️ Biblioteka OSOBNO od kanonu. Fakt „Molita nosi perukę" i wpis
         // „Molita — aktorka z arkuszem 6 widoków" to dwie różne rzeczy; sklejone

@@ -13,6 +13,12 @@
  * brief zapisywał fakty, połowa kanonu byłaby zapisem myśli porzuconych trzy
  * zdania później.
  *
+ * ⚠️ BRIEF WIE O JOANNIE. Suweren: „moduł Opowieści powinien do briefu
+ * wrzucać, w którym momencie Joanna ma stworzyć muzykę, wynikającą z rozmowy,
+ * i być świadomy takiej możliwości współpracy”. Stąd pole `muzyka`: lista
+ * momentów, w których ma wejść ścieżka, wraz z nastrojem i gotowymi tagami
+ * dla ACE-Step. Te tagi idą potem wprost do Music Studio — nie są ozdobą.
+ *
  * ⚠️ PUSTE POLE ZOSTAJE PUSTE. Model ma zakaz dopisywania „tajemniczej
  * atmosfery" tam, gdzie nic nie padło — brief pełen wymyślonych ozdobników
  * jest gorszy niż krótki, bo nie da się odróżnić ustaleń od zmyśleń.
@@ -43,6 +49,7 @@ export function promptBriefu(historia = []) {
         '  "ton": "jak to ma wyglądać i brzmieć, 1 zdanie",',
         '  "postacie": [{"imie":"…","kim":"jedno zdanie, kim jest i czego chce"}],',
         '  "ustalenia": ["rzecz, którą JUŻ ustaliliście, sprawdzalna w kadrze"],',
+        '  "muzyka": [{"moment":"gdzie w opowieści","nastroj":"jak ma brzmieć","tagi":"tagi po angielsku dla ACE-Step"}],',
         '  "doDogadania": ["pytanie, na które rozmowa jeszcze nie odpowiedziała"]',
         '}',
         '',
@@ -52,6 +59,11 @@ export function promptBriefu(historia = []) {
         '3. `ustalenia` to rzeczy WIDOCZNE albo sprawdzalne: wygląd, miejsce, zasada świata.',
         '   „Ciekawa historia" nie jest ustaleniem. „Molita nosi brunetną perukę" — jest.',
         '4. `doDogadania` to prawdziwe dziury w pomyśle, nie uprzejme pytania.',
+        '5. `muzyka` — TYLKO momenty, które w rozmowie naprawdę padły jako muzyczne',
+        '   („tu wchodzi motyw klubu”, „na pustyni ma być cisza i jeden dęty”).',
+        '   Nie wymyślasz ścieżki dźwiękowej, gdy nikt o niej nie mówił — pusta lista.',
+        '   `tagi` PO ANGIELSKU, gatunek + instrumenty + tempo, np.',
+        '   „dark synthwave, analog bass, slow 90 bpm, reverb pad”. Bez zdań.',
     ].join('\n');
 
     return { system, prompt: `— ROZMOWA —\n${rozmowa || '(pusto)'}\n\nZłóż brief. Sam JSON.` };
@@ -90,6 +102,17 @@ export function odczytaj(surowe) {
             .filter((p) => p.imie.length >= 2)
             .slice(0, 12),
         ustalenia: lista(d.ustalenia, 12),
+        // ⚠️ `tagi` to jedyne pole, które jedzie do silnika bez tłumaczenia —
+        // wpis bez tagów jest dla Joanny bezużyteczny, ale zostawiamy go,
+        // bo mówi człowiekowi, że w tym miejscu ma być muzyka.
+        muzyka: (Array.isArray(d.muzyka) ? d.muzyka : [])
+            .map((m) => ({
+                moment: zdanie(m?.moment, 160),
+                nastroj: zdanie(m?.nastroj, 160),
+                tagi: zdanie(m?.tagi, 200),
+            }))
+            .filter((m) => m.moment.length >= 3)
+            .slice(0, 8),
         doDogadania: lista(d.doDogadania, 8),
         zlozony: new Date().toISOString(),
     };
@@ -99,7 +122,7 @@ export function odczytaj(surowe) {
 export function pusty(b) {
     if (!b) return true;
     return !b.logline && !b.swiat && !b.ton
-        && !(b.postacie?.length) && !(b.ustalenia?.length);
+        && !(b.postacie?.length) && !(b.ustalenia?.length) && !(b.muzyka?.length);
 }
 
 export default { promptBriefu, odczytaj, pusty, CO_ILE_TUR };

@@ -146,6 +146,8 @@ import * as Scenografie from './services/Scenografie.js';
 import * as Produkty from './services/Produkty.js';
 import * as KolejkaKadrow from './services/KolejkaKadrow.js';
 import * as Assety from './services/Assety.js';
+import * as Oko from './services/Oko.js';
+import * as Rezyserzy from './services/Rezyserzy.js';
 import * as Rekopis from './services/Rekopis.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
@@ -7084,6 +7086,183 @@ app.post('/api/assety/przenies-aktorow', async (req, res) => {
 
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  🎬 REŻYSERZY — kto kręci. Osobno od AKTORÓW, którzy grają.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Wbudowani + właśni. Dołączamy listę silników, żeby panel nie zgadywał, co da się wybrać. */
+app.get('/api/rezyserzy', async (_req, res) => {
+    try {
+        const rezyserzy = await Rezyserzy.lista(ANTIGRAVITY_DIR);
+        // ⚠️ Silniki bierzemy z ComfyUI, nie z listy życzeń — panel ma pokazywać
+        // to, co REALNIE policzy, i mówić wprost, czego brak.
+        let wideo = null;
+        try { wideo = await Wideo.stanWideo(COMFY_BASE); } catch { /* ComfyUI śpi — panel to pokaże */ }
+        let llm = [];
+        try {
+            const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(8000) });
+            llm = ((await r.json())?.models ?? []).map((m) => m.name);
+        } catch { /* Ollama śpi */ }
+        return res.json({
+            success: true, rezyserzy, domyslne: Rezyserzy.DOMYSLNE,
+            silnikiWideo: wideo?.silniki ?? [], gotoweWideo: !!wideo?.gotowe, brakiWideo: wideo?.braki ?? [],
+            silnikiLLM: llm,
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/** Zapis reżysera. Przeróbka WBUDOWANEGO zapisuje się jako klon pod nowym id. */
+app.post('/api/rezyserzy', async (req, res) => {
+    try {
+        const r = await Rezyserzy.zapiszRezysera(ANTIGRAVITY_DIR, req.body ?? {});
+        console.log(`[Reżyserzy] 🎬 „${r.nazwa}” — ${r.szerokosc}x${r.wysokosc}, ${r.sekundNaKadr}s/kadr, ${r.kroki} kroków`);
+        return res.json({ success: true, rezyser: r });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/rezyserzy/:id', async (req, res) => {
+    try {
+        return res.json({ success: true, rezyser: await Rezyserzy.usunRezysera(ANTIGRAVITY_DIR, req.params.id) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+// ── BAZA AKTORÓW OtakOS — katedralna, ponad projektami ──────────────────
+
+app.get('/api/aktorzy-otakos', async (_req, res) => {
+    try {
+        return res.json({ success: true, aktorzy: await Rezyserzy.listaAktorow(ANTIGRAVITY_DIR) });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+app.post('/api/aktorzy-otakos', async (req, res) => {
+    try {
+        return res.json({ success: true, aktor: await Rezyserzy.zapiszAktora(ANTIGRAVITY_DIR, req.body ?? {}) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/aktorzy-otakos/:id', async (req, res) => {
+    try {
+        return res.json({ success: true, aktor: await Rezyserzy.usunAktora(ANTIGRAVITY_DIR, req.params.id) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * Solita i Molita wyprowadzają się z zakładki, która staje się Reżyserami.
+ *
+ * ⚠️ `zabierz: false` (domyślnie) KOPIUJE — pamięć Reżysera zostaje nietknięta,
+ * dopóki Suweren nie zobaczy, że w bazie naprawdę są.
+ */
+app.post('/api/aktorzy-otakos/przenies', async (req, res) => {
+    const { zabierz = false } = req.body ?? {};
+    try {
+        const r = await Rezyserzy.przeniesZPamieciRezysera(ANTIGRAVITY_DIR, { zabierz });
+        console.log(`[Aktorzy OtakOS] ${r.przeniesieni.length} przeniesionych${r.zabrane ? ' (zabrane ze źródła)' : ' (kopia)'}`);
+        return res.json({ success: true, ...r });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  👁️ OKO — jajo, które patrzy na assety i pisze, co widzi
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Które assety czekają na opis i jakim okiem będziemy patrzeć.
+ *
+ * ⚠️ Rozdziela „bez opisu, ale JEST obraz” od „bez opisu i NIE MA obrazu”
+ * (głosy, muzyka). Drugiej grupy żadne oko nie załatwi — i panel ma o tym
+ * mówić wprost, zamiast pokazywać wieczne „0 z 9”.
+ */
+app.get('/api/oko/stan', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        if (!projekt.trim()) return res.status(400).json({ success: false, message: 'Podaj projekt.' });
+        const assety = await Assety.lista(ANTIGRAVITY_DIR, projekt);
+        const pusty = (a) => !String(a.notatki ?? '').trim();
+        const doOpisania = assety.filter((a) => Oko.TYPY_WIDZIALNE.has(a.typ) && pusty(a));
+        const bezObrazu = assety.filter((a) => !Oko.TYPY_WIDZIALNE.has(a.typ) && pusty(a));
+        return res.json({
+            success: true,
+            model: Oko.MODEL_WZROKU,
+            wszystkich: assety.length,
+            zOpisem: assety.filter((a) => !pusty(a)).length,
+            doOpisania: doOpisania.map((a) => ({ id: a.id, nazwa: a.nazwa, typ: a.typ })),
+            bezObrazu: bezObrazu.map((a) => ({ nazwa: a.nazwa, typ: a.typ })),
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * Sprawdź, czy model NAPRAWDĘ widzi — liczeniem tokenów, nie pytaniem go o to.
+ *
+ * ⚠️ Ta trasa istnieje, bo gemma4:latest odpowiada „Proszę o załączenie obrazu”,
+ * choć obraz dostała (+152 tokeny wejścia). Modelom nie wierzymy na słowo.
+ */
+app.post('/api/oko/sprawdz-wzrok', async (req, res) => {
+    const { projekt = '', id = '', model = Oko.MODEL_WZROKU } = req.body ?? {};
+    try {
+        const asset = await Assety.jeden(ANTIGRAVITY_DIR, projekt, id);
+        if (!asset) throw new Error('Nie ma takiego assetu — nie ma na czym sprawdzać wzroku.');
+        const obrazy = await Oko.obrazyAssetu(ANTIGRAVITY_DIR, projekt, asset);
+        if (!obrazy.length) throw new Error(`„${asset.nazwa}” nie ma referencji graficznej.`);
+        const w = await Oko.czyWidzi({ ollamaBase: OLLAMA_BASE, model, obrazBase64: obrazy[0].base64 });
+        return res.json({ success: true, model, ...w });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/** Jedno spojrzenie na jeden asset. `zapisz: false` = pokaż, ale nie nadpisuj. */
+app.post('/api/oko/opisz', async (req, res) => {
+    const { projekt = '', id = '', model = Oko.MODEL_WZROKU, zapisz = true } = req.body ?? {};
+    try {
+        const w = await Oko.opisz({ katalogKatedry: ANTIGRAVITY_DIR, projekt, id, ollamaBase: OLLAMA_BASE, model });
+        if (!w.ok) return res.status(422).json({ success: false, message: w.powod, ...w });
+        if (zapisz) { await Oko.zapiszOpis({ katalogKatedry: ANTIGRAVITY_DIR, projekt, id, opis: w.opis }); w.zapisane = true; }
+        console.log(`[Oko] 👁️ ${w.typ} „${w.nazwa}” opisany w ${w.sekundy}s (${w.obrazow} obr., ${w.model})`);
+        return res.json({ success: true, ...w });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * Przegląd całej biblioteki. Odpowiada DOPIERO po ostatnim asecie — ~29 s
+ * na sztukę, więc przy dziewięciu to około 4,5 minuty.
+ */
+app.post('/api/oko/przejrzyj', async (req, res) => {
+    const { projekt = '', model = Oko.MODEL_WZROKU, nadpisuj = false, idki = null } = req.body ?? {};
+    try {
+        if (!String(projekt).trim()) throw new Error('Podaj projekt.');
+        const t0 = Date.now();
+        const r = await Oko.przejrzyj({
+            katalogKatedry: ANTIGRAVITY_DIR, projekt, ollamaBase: OLLAMA_BASE, model, nadpisuj, idki,
+            naBiezaco: (w) => console.log(`[Oko] ${w.ok ? '✓' : '✗'} ${w.nazwa}: ${w.ok ? w.sekundy + 's' : w.powod}`),
+        });
+        console.log(`[Oko] 👁️ przegląd „${projekt}”: ${r.opisane}/${r.przejrzane} w ${Math.round((Date.now() - t0) / 1000)}s`);
+        return res.json({ success: true, ...r });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  🧭 ARKUSZ WIELOKĄTOWY — jedna klatka → widoki z wielu stron kamery
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -7342,7 +7521,8 @@ app.get('/api/kolejka/kadry', async (req, res) => {
  * zapisuje wyniki W KATEDRZE i na koncu skleja je w jeden film.
  */
 app.post('/api/kolejka/odpal', async (req, res) => {
-    const { projekt = '', etap = 'KADR', ile, odNowa = false, klatek, sekundy, kroki, sklejaj = true, odwrotnie = false } = req.body ?? {};
+    const { projekt = '', etap = 'KADR', ile, odNowa = false, klatek, sekundy, kroki,
+        sklejaj = true, odwrotnie = false, rezyser: idRezysera = '' } = req.body ?? {};
     try {
         const stan = await stanWideoZBudzeniem('kolejka kadrow');
         if (!stan.gotowe) return res.status(424).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
@@ -7367,12 +7547,30 @@ app.post('/api/kolejka/odpal', async (req, res) => {
         // postaci, które w danym kadrze naprawdę występują.
         const assetyProjektu = await Assety.lista(ANTIGRAVITY_DIR, projekt).catch(() => []);
 
+        // ⚠️ REŻYSER NIE JEST OZDOBĄ. Jego styl dopisuje się do każdego promptu,
+        // a rozdzielczość, długość ujęcia i liczba kroków idą wprost do ComfyUI.
+        // Jawny parametr w żądaniu bije profil — kto wpisał liczbę ręcznie, ten wie,
+        // czego chce.
+        const rezyser = idRezysera ? await Rezyserzy.jeden(ANTIGRAVITY_DIR, idRezysera) : null;
+        if (idRezysera && !rezyser) {
+            return res.status(400).json({ success: false, message: `Nie ma reżysera „${idRezysera}”.` });
+        }
+        const styl = Rezyserzy.promptStylu(rezyser);
+        const szer = Number(req.body?.szerokosc) || rezyser?.szerokosc || undefined;
+        const wys = Number(req.body?.wysokosc) || rezyser?.wysokosc || undefined;
+        const sek = Number(sekundy) || rezyser?.sekundNaKadr || undefined;
+        const krokow = Number(kroki) || rezyser?.kroki || undefined;
+
         // Domyslnie pomijamy karty, ktore MAJA juz plik — powtorny render
         // kosztuje minuty i nadpisuje prace, ktora ktos moze akceptowal.
         const doKolejki = [];
         for (const k of wszystkie) {
             if (!odNowa && await KolejkaKadrow.maJuzUjecie(k)) continue;
-            doKolejki.push({ id: k.id, tytul: k.tytul, prompt: KolejkaKadrow.promptZKadru(k, kotwica, assetyProjektu) });
+            const bazowy = KolejkaKadrow.promptZKadru(k, kotwica, assetyProjektu);
+            // ⚠️ STYL REŻYSERA DOPISUJEMY NA KOŃCU, nie na początku. Wan waży
+            // początek promptu mocniej — tam ma zostać treść kadru, a styl ma
+            // go ubrać, nie zastąpić.
+            doKolejki.push({ id: k.id, tytul: k.tytul, prompt: styl ? `${bazowy}, ${styl}` : bazowy });
         }
         if (!doKolejki.length) {
             return res.status(400).json({ success: false, message: 'Wszystkie kadry maja juz ujecia. Uzyj odNowa=true, zeby policzyc je jeszcze raz.' });
@@ -7388,7 +7586,10 @@ app.post('/api/kolejka/odpal', async (req, res) => {
             // ⚠️ `sekundy` steruje długością UJĘCIA. Domyślnie 2,04 s (49 klatek);
             // dłuższe ujęcie to mniej renderów na minutę filmu, ale więcej VRAM
             // i czasu na sztukę — na 6 GB to realna granica.
-            generuj: ({ prompt }) => Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, klatek, sekundy, kroki }),
+            generuj: ({ prompt }) => Wideo.generujScene({
+                comfyBase: COMFY_BASE, prompt, klatek,
+                szerokosc: szer, wysokosc: wys, sekundy: sek, kroki: krokow,
+            }),
             czekaj: czekajNaPlikWideo,
 
             // Wynik z ComfyUI KOPIUJEMY do katalogu projektu i zwracamy TE sciezke.
