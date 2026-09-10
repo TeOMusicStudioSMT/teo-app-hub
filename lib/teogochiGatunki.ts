@@ -165,6 +165,22 @@ export const GATUNKI: Gatunek[] = [
         narzedzia: ['/api/kadry', '/api/wykuj', '/api/narysuj', '/api/obraz/policz'],
         zadania: ['Krawcowa, wykuj kreację z tego kadru', 'Krawcowa, narysuj tę kreację', 'Krawcowa, pokaż kadry z SOLLET'],
     },
+    {
+        id: 'latarnik', imie: 'Latarnik', dziedzina: 'Twoje Biznesy',
+        opis: 'Pilnuje, żeby dane firmy — godziny, adres, telefon — mówiły to samo na stronie i na mapie. '
+            + 'Świeci na rozbieżność; niczego nie poprawia sam.',
+        formy: { 'jajko': '🥚', 'pisklę': '🕯️', 'młodzik': '🔦', 'kompan': '🗼', 'legenda': '🌟' },
+        kolor: '#38bdf8',
+        // ⚠️ Trasa istnieje naprawdę i została sprawdzona na żywym moście — obie gałęzie:
+        // spójne dane (HTTP 200, rozjazdow 0) i rozjazd (HTTP 200, ok:true, rozjazdow 1).
+        // Gatunek z wypisaną trasą, której nie ma, jest atrapą.
+        narzedzia: ['/api/latarnik/przeglad'],
+        zadania: [
+            'Latarniku, sprawdź spójność Café Martens',
+            'Latarniku, co się rozjechało?',
+            'Latarniku, podaj godziny do wpisania w wizytówce Google',
+        ],
+    },
 ];
 
 export const gatunekPo = (id: string): Gatunek | undefined => GATUNKI.find(g => g.id === id);

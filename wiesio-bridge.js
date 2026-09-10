@@ -7237,6 +7237,54 @@ app.post('/api/aktorzy-otakos/przenies', async (req, res) => {
 // zamówił, ten decyduje, co z nim zrobić.
 
 /**
+ * 🔦 LATARNIK — spójność danych firmowych w Twoich Biznesach.
+ *
+ * Uruchamia strażnika, który mieszka w repozytorium pilnowanej strony
+ * (latarnik.mjs), i oddaje jego raport. Most go NIE duplikuje: gdyby logika
+ * porównywania żyła w dwóch miejscach, sam Latarnik zacząłby się rozjeżdżać
+ * z Latarnikiem — dokładnie ta choroba, którą ma leczyć.
+ *
+ * ⚠️ Kod wyjścia 1 oznacza ZNALEZIONE ROZJAZDY, a nie awarię skryptu. Dlatego
+ * czytamy stdout także wtedy, gdy proces „padł" — inaczej jedyny przypadek,
+ * dla którego to narzędzie istnieje, wyglądałby jak błąd serwera.
+ */
+app.get('/api/latarnik/przeglad', async (req, res) => {
+    const KATALOGI = {
+        'cafe-martens': 'F:\\Caffe-Martens.com',
+    };
+    const biznes = String(req.query.biznes || 'cafe-martens');
+    try {
+        const katalog = KATALOGI[biznes];
+        if (!katalog) throw new Error(`Nie znam biznesu „${biznes}". Znane: ${Object.keys(KATALOGI).join(', ')}`);
+
+        const skrypt = path.join(katalog, 'latarnik.mjs');
+        // ⚠️ fsSync, nie fs — w tym pliku `fs` to fs/promises i nie ma existsSync.
+        if (!fsSync.existsSync(skrypt)) throw new Error(`Brak strażnika: ${skrypt}`);
+
+        let stdout = '';
+        try {
+            ({ stdout } = await execFileAsync(process.execPath, [skrypt], { cwd: katalog, timeout: 60000 }));
+        } catch (e) {
+            // Kod 1 = są rozjazdy. Raport jest wtedy najcenniejszy, więc go nie gubimy.
+            if (e.stdout) stdout = e.stdout;
+            else throw e;
+        }
+        const rozjazdow = Number((stdout.match(/ROZJAZDÓW:\s*(\d+)/) || [])[1] ?? 0);
+        res.json({
+            ok: true,
+            biznes,
+            spojne: /ROZJAZDÓW BRAK/.test(stdout),
+            rozjazdow,
+            gbpPotwierdzony: !/nikt nie potwierdził/.test(stdout),
+            raport: stdout.trim(),
+            silnik: 'latarnik.mjs (lokalnie, bez chmury)',
+        });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+/**
  * Policz jeden obraz wybranym silnikiem.
  *
  * Zwraca id zlecenia NATYCHMIAST. Liczenie trwa dziesiątki sekund do kilku
