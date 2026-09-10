@@ -7408,6 +7408,81 @@ app.get('/api/obraz/plik', async (req, res) => {
     }
 });
 
+/**
+ * 🔄 OBRÓT KREACJI — prezentacja produktu z narysowanej kreacji.
+ *
+ * Suweren: „u krawca nie widzę modułu obracania tych wykonanych… i widzę, że
+ * mamy z automatu na wybieg z modelem… może jak już wygeneruje, to można go
+ * przenieść do dalszej obróbki, by skupić się na samym ubraniu".
+ *
+ * ⚠️ SILNIK: Wan 2.2 TI2V-5B, NIE SVD. Stable Video Diffusion wymaga zgody na
+ * licencję na koncie HuggingFace Suwerena — nie akceptuję cudzych regulaminów.
+ * Wan jest na miejscu i został zmierzony na tym sprzęcie (257 s, 33,18 dB).
+ *
+ * ⚠️ TO JEST i2v, NIE NOWE LOSOWANIE. Kreacja idzie jako klatka startowa, więc
+ * obrót pokazuje TĘ suknię, a nie podobną. Bez klatki startowej dostalibyśmy
+ * inny strój przy każdym kliknięciu — i nikt by nie zauważył, że to podmiana.
+ *
+ * ⚠️ ComfyUI ładuje obrazy wyłącznie ze swojego `input/`, po nazwie. Kopiujemy
+ * tam plik (kopiujemy, nie przenosimy — oryginał musi zostać w wyjściu).
+ */
+app.post('/api/moda/obrot', async (req, res) => {
+    const {
+        nazwa = '', pod = 'katedra',
+        klatek = 49, szerokosc = 704, wysokosc = 480, kroki, ziarno,
+        opis = '',
+    } = req.body ?? {};
+    try {
+        // Straż ścieżki taka sama jak w /api/obraz/plik — panel bywa wystawiony
+        // przez Kwantowy Tunel na telefon.
+        const plik = path.basename(String(nazwa));
+        const podkat = path.basename(String(pod || 'katedra'));
+        if (!plik.trim()) throw new Error('Nie podałeś kreacji do obrócenia.');
+
+        const korzen = path.resolve(path.join(COMFY_DIR, 'ComfyUI', 'output'));
+        const zrodlo = path.resolve(path.join(korzen, podkat, plik));
+        if (zrodlo !== korzen && !zrodlo.toLowerCase().startsWith(korzen.toLowerCase() + path.sep)) {
+            throw new Error('Ten plik nie leży w wyjściu ComfyUI.');
+        }
+        await fs.access(zrodlo);
+
+        const przed = await stanWideoZBudzeniem('obrót kreacji');
+        if (!przed.comfy) {
+            return res.status(424).json({ success: false, message: przed.braki.join(' | '), braki: przed.braki });
+        }
+
+        const obrazStartowy = await Arkusz.wstawPlyte(COMFY_DIR, zrodlo);
+
+        /**
+         * ⚠️ OPIS CELOWO BEZ WYBIEGU I BEZ MODELKI.
+         *
+         * Kreacje powstają z promptem „editorial runway photograph", więc silnik
+         * sam ciągnie w stronę pokazu: modelka idzie, kamera jedzie, ubranie
+         * ucieka z kadru. Tutaj chodzi o SAM PRODUKT, więc mówimy wprost:
+         * obrót w miejscu, kamera stoi, całość widoczna.
+         */
+        const prompt = String(opis).trim() || (
+            'slow smooth 360 degree turntable rotation of the garment, '
+            + 'the outfit rotates steadily in place on a display form, '
+            + 'static locked-off camera, even studio lighting, plain seamless backdrop, '
+            + 'the whole garment stays fully in frame, fabric and seams clearly visible, '
+            + 'no walking, no runway, no camera movement'
+        );
+
+        const r = await Wideo.generujScene({
+            comfyBase: COMFY_BASE, prompt,
+            szerokosc, wysokosc, klatek, kroki, ziarno,
+            obrazStartowy,
+        });
+        if (!r.ok) return res.status(424).json({ success: false, message: r.powod, braki: r.braki ?? null });
+
+        await Szyna.nadaj({ agent: 'Krawcowa', rodzaj: 'praca', tresc: `zleciła obrót kreacji ${plik} (${r.model})` });
+        res.json({ success: true, ...r, klatkaStartowa: obrazStartowy, silnikOpis: 'Wan 2.2 TI2V-5B (i2v, lokalnie)' });
+    } catch (e) {
+        res.status(400).json({ success: false, message: e.message });
+    }
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  👗 OKNO DLA DZIAŁU MODY — kadry produkcji widziane z zewnątrz
 // ══════════════════════════════════════════════════════════════════════════════
