@@ -33,8 +33,25 @@ export const WBUDOWANE = [
     {
         id: 'flux2-klein-4b',
         nazwa: 'FLUX.2 [klein] 4B',
-        opis: 'Silnik OBRAZU, wariant distilled — 4 kroki zamiast 20. '
-            + 'Licencja Apache 2.0, komercyjnie wolno. Model 3,79 GB + enkoder 3,58 GB + VAE 0,31 GB.',
+        opis: 'Silnik OBRAZU, wariant distilled — 4 kroki. Obraz nieporównanie lepszy niż '
+            + 'z Wana (tekstura skóry, pojedyncze włosy, tło z głębią), ale czas ZALEŻY OD '
+            + 'WOLNEGO VRAM-u: zmierzone 57 s i 407 s na tych samych ustawieniach. '
+            + 'Zamknij przeglądarkę i launchery przed dużym przebiegiem.',
+        /**
+         * ⚠️ ZMIERZONE NA TEJ KARCIE (RTX 3060 Laptop 6 GB), 704×480, 4 kroki:
+         *   pierwszy przebieg (ładowanie 7,7 GB wag)   176 s
+         *   drugi przebieg, wolne ~1,6 GB VRAM          57 s
+         *   trzeci przebieg, wolne ~0,8 GB VRAM        407 s
+         *
+         * Rozrzut 57 → 407 s to NIE jest wahanie modelu, tylko wagi krążące
+         * między RAM-em a VRAM-em. W chwili pomiaru kartę trzymały jednocześnie
+         * EpicGamesLauncher, dwa procesy Brave, Avast, dwm, ComfyUI i Ollama —
+         * na FLUX zostawało 847 MiB z 6144.
+         *
+         * Dla porównania Wan 2.2 liczy jedną klatkę w ~25 s stabilnie, bo jest
+         * mniejszy. To jest cała różnica: FLUX daje lepszy obraz, ale trzeba mu
+         * zrobić miejsce.
+         */
         graf: 'flux2_klein_4b.json',
         // ⚠️ Ile kroków NAPRAWDĘ. Distilled policzy i przy 20, ale to strata
         // czasu bez zysku — model jest destylowany właśnie po to.
