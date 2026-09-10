@@ -7224,6 +7224,123 @@ app.post('/api/aktorzy-otakos/przenies', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  🖌️ POJEDYNCZY OBRAZ — liczenie POZA kolejką produkcyjną
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// PO CO OSOBNO. Kolejka kadrów liczy KARTY z Tablicy: bierze kadr, zapisuje
+// wynik przy karcie, przesuwa ją na następny etap. Dział mody nie ma kart —
+// ma `imagePrompt` przy kreacji i chce zobaczyć samą sztukę odzieży.
+// Przepychanie tego przez kolejkę produkcyjną wymagałoby zakładania sztucznych
+// kart w cudzym projekcie.
+//
+// ⚠️ TA TRASA NIE ZAPISUJE NICZEGO W KATEDRZE. Oddaje obraz i tyle — kto go
+// zamówił, ten decyduje, co z nim zrobić.
+
+/**
+ * Policz jeden obraz wybranym silnikiem.
+ *
+ * Zwraca id zlecenia NATYCHMIAST. Liczenie trwa dziesiątki sekund do kilku
+ * minut (zmierzone na FLUX.2 klein: 57–407 s, zależnie od wolnego VRAM-u),
+ * więc trzymanie otwartego HTTP przez ten czas jest proszeniem się o timeout
+ * po drodze.
+ */
+app.post('/api/obraz/policz', async (req, res) => {
+    const { prompt = '', silnik: idSilnika = '', szerokosc, wysokosc, kroki, ziarno } = req.body ?? {};
+    try {
+        if (!String(prompt).trim()) throw new Error('Pusty opis — nie ma czego rysować.');
+
+        const stan = await stanWideoZBudzeniem('liczenie obrazu');
+        if (!stan.comfy) {
+            return res.status(424).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
+        }
+
+        // ⚠️ Ta sama zasada co przy renderze kadrów: prosimy konkurentów o kartę,
+        // zanim zaczniemy. Dwa silniki naraz na 6 GB kończą się martwym CUDA.
+        const miejsce = await Karta.zrobMiejsceNaRender({ ollamaBase: OLLAMA_BASE });
+        if (!miejsce.wolno) {
+            return res.status(507).json({ success: false, message: miejsce.powod, karta: miejsce });
+        }
+
+        const silnik = await SilnikiObrazu.jeden(ANTIGRAVITY_DIR, idSilnika || SilnikiObrazu.WBUDOWANE[0].id);
+        if (!silnik) throw new Error(`Nie ma silnika obrazu „${idSilnika}".`);
+
+        if (silnik.wlasnaSciezka) {
+            const r = await Wideo.generujKadrObraz({ comfyBase: COMFY_BASE, prompt, szerokosc, wysokosc, kroki });
+            if (!r.ok) return res.status(422).json({ success: false, message: r.powod });
+            return res.json({ success: true, zlecenie: r.zlecenie, silnik: silnik.nazwa });
+        }
+
+        const st = await SilnikiObrazu.stan({ silnik, comfyBase: COMFY_BASE, pobierz: fetch });
+        if (!st.gotowy) {
+            return res.status(424).json({ success: false, message: st.braki.join(' | '), braki: st.braki });
+        }
+
+        const r = await Wideo.generujObrazSilnikiem({
+            comfyBase: COMFY_BASE, silnik, znalezione: st.znalezione,
+            prompt, szerokosc, wysokosc, kroki: kroki ?? silnik.kroki, ziarno,
+        });
+        if (!r.ok) return res.status(422).json({ success: false, message: r.powod });
+
+        console.log(`[Obraz] 🖌️ zlecenie ${r.zlecenie} — ${silnik.nazwa}, ${r.kroki} kroków`);
+        return res.json({ success: true, zlecenie: r.zlecenie, silnik: silnik.nazwa, kroki: r.kroki });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * Czy obraz gotowy.
+ *
+ * ⚠️ Oddajemy NAZWĘ i adres tej trasy, nie ścieżkę dyskową — z tego samego
+ * powodu co przy kadrach produkcji: pełne ścieżki to darmowa mapa dysku.
+ */
+app.get('/api/obraz/stan', async (req, res) => {
+    try {
+        const zlecenie = String(req.query.zlecenie || '');
+        if (!zlecenie.trim()) return res.status(400).json({ success: false, message: 'Podaj zlecenie.' });
+
+        const s = await Wideo.stanZlecenia(COMFY_BASE, zlecenie, COMFY_DIR);
+        if (!s.ok) return res.json({ success: true, gotowe: false, stan: s.powod ?? 'czekam' });
+        if (s.blad) return res.status(422).json({ success: false, message: `ComfyUI: ${JSON.stringify(s.blad).slice(0, 300)}` });
+        if (!s.gotowe || !s.materialy?.length) return res.json({ success: true, gotowe: false, stan: s.stan ?? 'liczy' });
+
+        const m = s.materialy[0];
+        return res.json({
+            success: true, gotowe: true,
+            nazwa: m.nazwa,
+            plik: `/api/obraz/plik?nazwa=${encodeURIComponent(m.nazwa)}${m.podkatalog ? `&pod=${encodeURIComponent(m.podkatalog)}` : ''}`,
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * Podgląd policzonego obrazu.
+ *
+ * ⚠️ SAMA NAZWA, nie ścieżka — `path.basename` na obu polach. Ścieżka
+ * z zewnątrz to zaproszenie do `../../`, a panel bywa wystawiony na telefon
+ * przez Kwantowy Tunel.
+ */
+app.get('/api/obraz/plik', async (req, res) => {
+    try {
+        const nazwa = path.basename(String(req.query.nazwa || ''));
+        const pod = path.basename(String(req.query.pod || 'katedra'));
+        if (!nazwa.trim()) return res.status(400).send('Brak nazwy pliku.');
+
+        const korzen = path.resolve(path.join(COMFY_DIR, 'ComfyUI', 'output'));
+        const cel = path.resolve(path.join(korzen, pod, nazwa));
+        if (!cel.toLowerCase().startsWith(korzen.toLowerCase())) {
+            return res.status(403).send('Ten plik nie leży w wyjściu ComfyUI.');
+        }
+        await fs.access(cel);
+        return res.sendFile(cel);
+    } catch {
+        return res.status(404).send('Nie ma takiego pliku.');
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  👗 OKNO DLA DZIAŁU MODY — kadry produkcji widziane z zewnątrz
 // ══════════════════════════════════════════════════════════════════════════════
 //
