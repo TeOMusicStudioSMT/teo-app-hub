@@ -4103,7 +4103,8 @@ const LAUNCH_APPS = {
     // ⚠️ Dział mody chodzi na Expressie (`tsx server.ts`), nie na Vite — stąd
     // port 3000 i `bezPortu`. Podanie mu `--port` jak pozostałym nic nie da,
     // bo jego serwer czyta własną konfigurację, a nie argument npm.
-    fashion: { dir: 'OtakOs_Fashion/otakos-fashion-__-0.00g-app', port: 3000, bezPortu: true },
+    // `sprawdz` — ścieżka, która dowodzi, że na tym porcie stoi NASZA apka.
+    fashion: { dir: 'OtakOs_Fashion/otakos-fashion-__-0.00g-app', port: 3000, bezPortu: true, sprawdz: '/api/krawiec/stan' },
 };
 app.post('/api/launch', async (req, res) => {
     const nazwaApki = (req.body ?? {}).app;
@@ -4113,10 +4114,20 @@ app.post('/api/launch', async (req, res) => {
     if (nazwaApki === 'music') zapewnijComfyUI('uruchomienie Music V2').catch(() => {});
     const url = `http://localhost:${cfg.port}`;
     // Już działa?
+    // ⚠️ „COŚ ODPOWIADA” TO NIE TO SAMO CO „NASZA APKA DZIAŁA”. Port 3000 to
+    // najpospolitszy port świata — gdy siedzi na nim cudzy serwer, ta wersja
+    // ogłaszałaby „działa” i otwierała Suwerenowi nie tę stronę. Dlatego apka
+    // mająca `sprawdz` musi jeszcze potwierdzić to własną trasą.
     try {
-        const c = new AbortController(); const t = setTimeout(() => c.abort(), 1000);
-        await fetch(url, { signal: c.signal }); clearTimeout(t);
-        return res.json({ success: true, url, running: true });
+        const c = new AbortController(); const t = setTimeout(() => c.abort(), 1500);
+        const odp = await fetch(url + (cfg.sprawdz ?? ''), { signal: c.signal });
+        clearTimeout(t);
+        if (!cfg.sprawdz || odp.ok) return res.json({ success: true, url, running: true });
+        console.warn(`[Automat-Studia] Port ${cfg.port} zajęty przez coś innego (HTTP ${odp.status} na ${cfg.sprawdz}).`);
+        return res.json({
+            success: false, url,
+            message: `Na porcie ${cfg.port} stoi COŚ INNEGO niż ${nazwaApki}. Zamknij to albo zmień port.`,
+        });
     } catch { /* nie działa — uruchamiamy */ }
     const dir = path.resolve(process.cwd(), '..', cfg.dir);
     if (!fsSync.existsSync(dir)) return res.json({ success: true, url, running: false, message: `Katalog ${cfg.dir} nie istnieje — otwórz ręcznie.` });
