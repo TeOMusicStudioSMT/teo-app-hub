@@ -4,7 +4,7 @@ import { CreativeZoneCard } from './dashboard/CreativeZoneCard';
 import { AssistantLogCard } from './dashboard/AssistantLogCard';
 import { ValueClarityCard } from './dashboard/ValueClarityCard';
 import { UniverseCard } from './dashboard/UniverseCard';
-import { FiMusic, FiPackage, FiFeather } from 'react-icons/fi';
+import { FiMusic, FiPackage, FiFeather, FiScissors } from 'react-icons/fi';
 import { ManifestHistoryCard } from './dashboard/ManifestHistoryCard';
 import { Biblioteka } from './special/Biblioteka';
 import DashboardCard from './DashboardCard';
@@ -22,7 +22,7 @@ interface DashboardViewProps {
 export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantOpen }) => {
     const { t, lang } = useT();
     // Automat: odpala lokalne studio (jeśli nie działa) i przekierowuje.
-    const launchStudio = async (app: 'music' | 'story' | 'app', port: number) => {
+    const launchStudio = async (app: 'music' | 'story' | 'app' | 'fashion', port: number) => {
         const fallback = `http://localhost:${port}`;
         try {
             const r = await fetch('http://127.0.0.1:3001/api/launch', {
@@ -71,6 +71,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
                 <UniverseCard title={t('studio.story')} subtitle={t('studio.storySub')} onClick={() => launchStudio('story', 5174)} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
                 <UniverseCard title={t('studio.music')} subtitle={t('studio.musicSub')} onClick={() => launchStudio('music', 5173)} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
                 <UniverseCard title={t('studio.app')} subtitle={t('studio.appSub')} onClick={() => launchStudio('app', 5175)} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
+                {/* ⚠️ Dział mody chodzi na Expressie (port 3000), nie na Vite jak pozostałe —
+                    dlatego numer portu jest inny i most odpala go bez `--port`. */}
+                <UniverseCard title="OtakOS Fashion" subtitle="Kreacje z kadrów Katedry" onClick={() => launchStudio('fashion', 3000)} icon={<FiScissors className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
             </div>
 
             {/* 7. SIEĆ KATEDR — żywa mapa AGI (LIVE z mostu, same-origin) */}

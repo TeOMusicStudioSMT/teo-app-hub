@@ -4100,11 +4100,15 @@ const LAUNCH_APPS = {
     music: { dir: 'TeO_Music_V2', port: 5173 },
     story: { dir: 'TeO_Story_V2', port: 5174 },
     app:   { dir: 'TeO_App_V2',   port: 5175 },
+    // ⚠️ Dział mody chodzi na Expressie (`tsx server.ts`), nie na Vite — stąd
+    // port 3000 i `bezPortu`. Podanie mu `--port` jak pozostałym nic nie da,
+    // bo jego serwer czyta własną konfigurację, a nie argument npm.
+    fashion: { dir: 'OtakOs_Fashion/otakos-fashion-__-0.00g-app', port: 3000, bezPortu: true },
 };
 app.post('/api/launch', async (req, res) => {
     const nazwaApki = (req.body ?? {}).app;
     const cfg = LAUNCH_APPS[nazwaApki];
-    if (!cfg) return res.status(400).json({ success: false, message: 'Nieznana apka (music|story|app).' });
+    if (!cfg) return res.status(400).json({ success: false, message: 'Nieznana apka (music|story|app|fashion).' });
     // Music V2 bez ComfyUI nie policzy ani nuty — budzimy go razem ze studiem.
     if (nazwaApki === 'music') zapewnijComfyUI('uruchomienie Music V2').catch(() => {});
     const url = `http://localhost:${cfg.port}`;
@@ -4117,7 +4121,8 @@ app.post('/api/launch', async (req, res) => {
     const dir = path.resolve(process.cwd(), '..', cfg.dir);
     if (!fsSync.existsSync(dir)) return res.json({ success: true, url, running: false, message: `Katalog ${cfg.dir} nie istnieje — otwórz ręcznie.` });
     try {
-        const child = spawn('npm', ['run', 'dev', '--', '--port', String(cfg.port)], { cwd: dir, detached: true, shell: true, stdio: 'ignore' });
+        const argumenty = cfg.bezPortu ? ['run', 'dev'] : ['run', 'dev', '--', '--port', String(cfg.port)];
+        const child = spawn('npm', argumenty, { cwd: dir, detached: true, shell: true, stdio: 'ignore' });
         child.unref();
         console.log(`[Automat-Studia] 🚀 Uruchamiam ${cfg.dir} (:${cfg.port})`);
         return res.json({ success: true, url, started: true, message: `Uruchamiam ${cfg.dir} (:${cfg.port}) — chwilę potrwa.` });
@@ -7206,6 +7211,82 @@ app.post('/api/aktorzy-otakos/przenies', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 //  🗣️ ŚCIEŻKA DIALOGOWA — kwestie z kart zamieniane w nagrania
 // ══════════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  👗 OKNO DLA DZIAŁU MODY — kadry produkcji widziane z zewnątrz
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Suweren: „można by połączyć katalog produkcyjny z Story, tak by AI z Fashion
+// widziały KADRY — zawsze mają z czego robić".
+//
+// ⚠️ TO JEST OKNO, NIE DRZWI. Dział mody CZYTA kadry i pobiera obrazy; nie
+// może przez te trasy nic w produkcji zmienić ani usunąć. Zmiany kart robi się
+// tam, gdzie karty żyją — w Tablicy.
+
+/**
+ * Kadry, które MAJĄ już obraz albo ujęcie — czyli to, z czego moda ma co robić.
+ *
+ * ⚠️ Oddajemy `plik` jako ADRES TEJ TRASY, nie ścieżkę dyskową. Ścieżka
+ * `F:\...` jest bezużyteczna dla przeglądarki, a wyciek pełnych ścieżek to
+ * darmowa mapa dysku dla kogoś, kto dostanie się do panelu przez Kwantowy Tunel.
+ */
+app.get('/api/produkcja/kadry-z-obrazem', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        if (!projekt.trim()) return res.status(400).json({ success: false, message: 'Podaj projekt.' });
+
+        const wszystkie = await produkcjaLista(ANTIGRAVITY_DIR, projekt);
+        const kadry = [];
+        for (const k of KolejkaKadrow.poKolei(wszystkie, false)) {
+            const m = String(k.zwrot || '').match(/[^\n|"]+\.(png|jpg|jpeg|webp|mp4)/i);
+            if (!m) continue;
+            const sciezka = m[0].trim();
+            try { await fs.access(sciezka); } catch { continue; }
+
+            const nazwa = path.basename(sciezka);
+            kadry.push({
+                id: k.id,
+                tytul: k.tytul,
+                opis: k.opis,
+                etap: k.etap,
+                obraz: /\.(png|jpg|jpeg|webp)$/i.test(nazwa),
+                nazwaPliku: nazwa,
+                plik: `/api/produkcja/plik?projekt=${encodeURIComponent(projekt)}&plik=${encodeURIComponent(nazwa)}`,
+                // Kwestie są tu przydatne: strój bywa odpowiedzią na to, co postać mówi.
+                kwestie: Array.isArray(k.kwestie) ? k.kwestie : [],
+            });
+        }
+        return res.json({ success: true, projekt, ile: kadry.length, kadry });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * Podgląd pliku ujęcia. Wyłącznie spod katalogu `ujecia/` danego projektu.
+ *
+ * ⚠️ PRZYJMUJEMY SAMĄ NAZWĘ PLIKU, nie ścieżkę. Ścieżka z zewnątrz to zaproszenie
+ * do `../../` — a panel bywa wystawiony na telefon przez Kwantowy Tunel.
+ * `path.basename` ucina wszystko poza nazwą, straż katalogu domyka resztę.
+ */
+app.get('/api/produkcja/plik', async (req, res) => {
+    try {
+        const projekt = String(req.query.projekt || '');
+        const plik = path.basename(String(req.query.plik || ''));
+        if (!projekt.trim() || !plik.trim()) return res.status(400).send('Brak projektu albo pliku.');
+
+        const { sciezka } = await utworzProjekt(ANTIGRAVITY_DIR, projekt);
+        const korzen = path.resolve(path.join(sciezka, 'ujecia'));
+        const cel = path.resolve(path.join(korzen, plik));
+        if (!cel.toLowerCase().startsWith(korzen.toLowerCase())) {
+            return res.status(403).send('Ten plik nie leży w ujęciach tego projektu.');
+        }
+        await fs.access(cel);
+        return res.sendFile(cel);
+    } catch {
+        return res.status(404).send('Nie ma takiego pliku.');
+    }
+});
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  🎨 SILNIKI OBRAZU — czym rysujemy KADR
