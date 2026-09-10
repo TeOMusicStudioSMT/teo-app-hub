@@ -6511,15 +6511,35 @@ app.post('/api/montazownia/zloz', async (req, res) => {
                 throw new Error(`Plik spoza projektu „${projekt}": ${path.basename(f)}`);
             }
         }
+        const katalog = await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt);
+
+        /**
+         * \u26a0\ufe0f DWA PRAWOWITE KORZENIE MUZYKI, NIE JEDEN.
+         *
+         * Stra\u017cnik przepuszcza\u0142 wy\u0142\u0105cznie bibliotek\u0119 Katedry \u2014 a Joanna zapisuje
+         * skomponowany podk\u0142ad do katalogu monta\u017cu TEGO projektu
+         * (\u2026/produkcje/<projekt>/montaz/muzyka__film_*.flac). Efekt: u\u017cytkownik
+         * klika\u0142 SKOMPONUJ, dostawa\u0142 \u201eJoanna sko\u0144czy\u0142a", a zaraz potem
+         * \u201eUtw\u00f3r spoza biblioteki muzyki Katedry" i monta\u017c nie rusza\u0142.
+         * Muzyka wykuta dla filmu by\u0142a odrzucana jako obca.
+         *
+         * \u26a0\ufe0f Por\u00f3wnanie z separatorem, nie samym prefiksem. Poprzednia wersja
+         * u\u017cywa\u0142a go\u0142ego startsWith, wi\u0119c katalog \u201e\u2026\Muzyka-obca" przechodzi\u0142
+         * jako \u201e\u2026\Muzyka\u201d. Stra\u017cnik trasy wystawionej przez Kwantowy Tunel na
+         * telefon nie mo\u017ce mie\u0107 takiej dziury.
+         */
         if (muzyka) {
-            const korzen = path.resolve(MUSIC_DIR);
-            if (!path.resolve(muzyka).toLowerCase().startsWith(korzen.toLowerCase())) {
-                throw new Error('Utw\u00f3r spoza biblioteki muzyki Katedry.');
+            const cel = path.resolve(muzyka).toLowerCase();
+            const korzenie = [path.resolve(MUSIC_DIR), path.resolve(katalog)]
+                .map((k) => k.toLowerCase().replace(/[\\/]+$/, ''));
+            const wolno = korzenie.some((k) => cel === k || cel.startsWith(k + path.sep));
+            if (!wolno) {
+                throw new Error(
+                    'Utw\u00f3r spoza biblioteki muzyki Katedry i spoza katalogu monta\u017cu projektu.',
+                );
             }
             await fs.access(muzyka);
         }
-
-        const katalog = await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt);
         const r = await Montazownia.zloz({
             pliki, muzyka, glosnosc, zanikanie, katalog, nazwa,
             sklejaczem: CiagDalszy.sklej, comfyDir: COMFY_DIR,
