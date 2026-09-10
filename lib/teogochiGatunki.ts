@@ -1,5 +1,5 @@
 /**
- * 🥚 Gatunki TeOgochi — 13 szablonów, z których wykluwają się agenci zadaniowi.
+ * 🥚 Gatunki TeOgochi — 14 szablonów, z których wykluwają się agenci zadaniowi.
  *
  * Joanna była pierwsza i jedyna. Teraz jest JEDNYM z gatunków — muzycznym.
  * Każdy gatunek to osobny agent z własną dziedziną, własnym jajem, własną
@@ -145,6 +145,25 @@ export const GATUNKI: Gatunek[] = [
         kolor: '#f43f5e',
         narzedzia: ['/api/rezyser/pamiec', '/api/rezyser/postacie'],
         zadania: ['Reżyser, dopisz fakt do kanonu', 'Reżyser, kto gra w tym odcinku', 'Reżyser, domknij odcinek'],
+    },
+    {
+        /**
+         * ⚠️ DOPISANA PO FAKCIE, i to jest ważne. Usługa `jajo-mody.ts` w dziale
+         * mody działała i kuła kreacje z kadrów, ale NIE BYŁO JEJ W TYM REJESTRZE —
+         * więc w Domu TeOgochi żadne jajo Krawcowej się nie świeciło. Suweren
+         * zauważył to pierwszy: „nie widzę w teogochi". Agent, który pracuje,
+         * a nie ma jaja, jest niewidzialny dla własnego domu.
+         *
+         * ⚠️ Trasy poniżej to trasy DZIAŁU MODY (port 3000), nie mostu Katedry
+         * (3001). Jedyny wyjątek to `/api/obraz/policz` — rysowanie kreacji dzieje
+         * się w Katedrze, bo tam stoi karta graficzna.
+         */
+        id: 'krawcowa', imie: 'Krawcowa', dziedzina: 'Moda',
+        opis: 'Patrzy na kadry z produkcji, kuje z nich kreacje i rysuje samą sztukę odzieży.',
+        formy: { 'jajko': '🥚', 'pisklę': '🧵', 'młodzik': '🧶', 'kompan': '👗', 'legenda': '👑' },
+        kolor: '#ec4899',
+        narzedzia: ['/api/kadry', '/api/wykuj', '/api/narysuj', '/api/obraz/policz'],
+        zadania: ['Krawcowa, wykuj kreację z tego kadru', 'Krawcowa, narysuj tę kreację', 'Krawcowa, pokaż kadry z SOLLET'],
     },
 ];
 
