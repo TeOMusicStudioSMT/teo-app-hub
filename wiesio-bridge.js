@@ -149,6 +149,7 @@ import * as Assety from './services/Assety.js';
 import * as Oko from './services/Oko.js';
 import * as Dialogi from './services/SciezkaDialogowa.js';
 import * as Karta from './services/RuchNaKarcie.js';
+import * as SilnikiObrazu from './services/SilnikiObrazu.js';
 import * as Rezyserzy from './services/Rezyserzy.js';
 import * as Rekopis from './services/Rekopis.js';
 import * as GlosStudio from './services/GlosStudio.js';
@@ -7206,6 +7207,58 @@ app.post('/api/aktorzy-otakos/przenies', async (req, res) => {
 //  🗣️ ŚCIEŻKA DIALOGOWA — kwestie z kart zamieniane w nagrania
 // ══════════════════════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  🎨 SILNIKI OBRAZU — czym rysujemy KADR
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Lista silników obrazu wraz z tym, CZY MAJĄ CZYM LICZYĆ.
+ *
+ * ⚠️ Stan sprawdzamy w ComfyUI, nie na dysku — katalogi wag są mapowane przez
+ * `extra_model_paths.yaml`, więc plik leżący na dysku wcale nie musi być dla
+ * niego widoczny. `fs.existsSync` dałby fałszywe „gotowe".
+ */
+app.get('/api/silniki-obrazu', async (_req, res) => {
+    try {
+        const silniki = await SilnikiObrazu.lista(ANTIGRAVITY_DIR);
+        const zeStanem = [];
+        for (const s of silniki) {
+            // Wan idzie własną ścieżką (podmiana końcówki grafu) i jego stan
+            // ocenia `Wideo.stanWideo` — nie duplikujemy tej logiki.
+            const st = s.wlasnaSciezka
+                ? { gotowy: true, braki: [], znalezione: {}, uwaga: 'Stan sprawdza tor wideo.' }
+                : await SilnikiObrazu.stan({ silnik: s, comfyBase: COMFY_BASE, pobierz: fetch }).catch((e) => ({ gotowy: false, braki: [e.message], znalezione: {} }));
+            zeStanem.push({
+                id: s.id, nazwa: s.nazwa, opis: s.opis, kroki: s.kroki,
+                wbudowany: !!s.wbudowany, graf: s.graf,
+                gotowy: st.gotowy, braki: st.braki, znalezione: st.znalezione,
+            });
+        }
+        return res.json({ success: true, silniki: zeStanem, domyslny: SilnikiObrazu.WBUDOWANE[0].id });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/** Dodaj albo popraw WŁASNY silnik. Wbudowanych nie ruszamy. */
+app.post('/api/silniki-obrazu', async (req, res) => {
+    try {
+        const s = await SilnikiObrazu.zapisz(ANTIGRAVITY_DIR, req.body ?? {});
+        console.log(`[Silniki obrazu] 🎨 zapisany „${s.nazwa}" (graf ${s.graf}, ${s.kroki} kroków)`);
+        return res.json({ success: true, silnik: s });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.delete('/api/silniki-obrazu/:id', async (req, res) => {
+    try {
+        return res.json({ success: true, silnik: await SilnikiObrazu.usun(ANTIGRAVITY_DIR, req.params.id) });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
 /**
  * 🚦 Kto trzyma kartę graficzną.
  *
@@ -7866,6 +7919,30 @@ app.post('/api/kolejka/odpal', async (req, res) => {
         }
         const styl = Rezyserzy.promptStylu(rezyser);
 
+        // ⚠️ SILNIK OBRAZU WYBIERAMY TYLKO NA ETAPIE KADR i sprawdzamy go ZANIM
+        // ruszymy. Silnik bez wag albo bez węzła w tej wersji ComfyUI wywala się
+        // dopiero przy pierwszym zleceniu — po minutach czekania i z cudzym
+        // komunikatem, z którego nic nie wynika.
+        let silnikObrazu = null;
+        let stanObrazu = null;
+        if (String(etap).toUpperCase() === 'KADR') {
+            const idSilnika = String(req.body?.silnikObrazu || '').trim() || SilnikiObrazu.WBUDOWANE[0].id;
+            silnikObrazu = await SilnikiObrazu.jeden(ANTIGRAVITY_DIR, idSilnika);
+            if (!silnikObrazu) {
+                return res.status(400).json({ success: false, message: `Nie ma silnika obrazu „${idSilnika}".` });
+            }
+            if (!silnikObrazu.wlasnaSciezka) {
+                stanObrazu = await SilnikiObrazu.stan({ silnik: silnikObrazu, comfyBase: COMFY_BASE, pobierz: fetch });
+                if (!stanObrazu.gotowy) {
+                    return res.status(424).json({
+                        success: false,
+                        message: `Silnik „${silnikObrazu.nazwa}" nie ma czym liczyć: ${stanObrazu.braki.join(' | ')}`,
+                        braki: stanObrazu.braki,
+                    });
+                }
+            }
+        }
+
         // ⚠️ Kolumna decyduje o torze. `etapWlk` jest już wielkimi literami —
         // filtr kart wyżej też po nim chodzi.
         const etapWlk = String(etap).toUpperCase();
@@ -7923,6 +8000,21 @@ app.post('/api/kolejka/odpal', async (req, res) => {
 
             generuj: async ({ prompt, zrodlo }) => {
                 if (toKadry) {
+                    // ⚠️ KADR RYSUJE SILNIK OBRAZU, nie silnik wideo. Do 2026-09-10
+                    // klatki liczył Wan 2.2 — silnik WIDEO, dla którego pojedynczy
+                    // obraz jest produktem ubocznym jednej klatki z czterdziestu
+                    // dziewięciu. Rejestr `SilnikiObrazu` pozwala wybrać właściwe
+                    // narzędzie i dodać nowe bez tykania kodu.
+                    if (silnikObrazu && !silnikObrazu.wlasnaSciezka) {
+                        return Wideo.generujObrazSilnikiem({
+                            comfyBase: COMFY_BASE,
+                            silnik: silnikObrazu,
+                            znalezione: stanObrazu?.znalezione ?? {},
+                            prompt, szerokosc: szer, wysokosc: wys,
+                            kroki: krokow ?? silnikObrazu.kroki,
+                        });
+                    }
+                    // Droga odwrotu: Wan liczący jedną klatkę.
                     return Wideo.generujKadrObraz({
                         comfyBase: COMFY_BASE, prompt,
                         szerokosc: szer, wysokosc: wys, kroki: krokow,

@@ -458,3 +458,82 @@ export async function stanZlecenia(comfyBase, id, comfyDir = null) {
 
 export default {
     generujKadrObraz, SZEROKOSC_DOMYSLNIE, WYSOKOSC_DOMYSLNIE, stanWideo, generujScene, dopiszUjecie, stanZlecenia };
+
+/**
+ * Policz OBRAZ dowolnym silnikiem z rejestru (services/SilnikiObrazu.js).
+ *
+ * PO CO OSOBNO OD `generujKadrObraz`. Tamta funkcja umie jedno: wziąć graf
+ * WIDEO Wana i podmienić mu końcówkę na SaveImage. To sztuczka, nie droga —
+ * działa tylko dla Wana i tylko dlatego, że znamy jego graf od środka.
+ *
+ * Ta funkcja nie zna żadnego modelu. Dostaje graf, odwzorowanie węzłów
+ * i nazwy plików, które ComfyUI NAPRAWDĘ widzi — i podstawia. Dzięki temu
+ * dodanie nowego silnika obrazu nie wymaga tknięcia tego pliku.
+ *
+ * ⚠️ NAZWY PLIKÓW BIERZEMY Z `znalezione`, nie z grafu. Graf jest szablonem;
+ * to, co widzi ComfyUI, zależy od `extra_model_paths.yaml` i bywa inne niż
+ * nazwa wpisana ręcznie. Raz już most wybrał LoRA jako UNET, bo ufał wzorcowi
+ * nazwy zamiast liście z silnika.
+ */
+export async function generujObrazSilnikiem({
+    comfyBase, silnik, znalezione = {}, prompt,
+    szerokosc, wysokosc, kroki, ziarno,
+}) {
+    if (!prompt?.trim()) return { ok: false, powod: 'Pusty opis kadru — nie ma czego rysować.' };
+    if (!silnik?.graf) return { ok: false, powod: 'Silnik nie ma pliku grafu.' };
+
+    let graf;
+    try {
+        graf = JSON.parse(await fs.readFile(path.join(KATALOG_WF(), silnik.graf), 'utf8'));
+    } catch (e) {
+        return { ok: false, powod: `Nie umiem wczytać grafu „${silnik.graf}": ${e.message}` };
+    }
+    delete graf._opis;   // komentarz dla ludzi; ComfyUI odrzuciłby go jako nieznany node
+
+    const w = silnik.wezly ?? {};
+    const brak = ['model', 'enkoder', 'vae', 'prompt', 'wymiary'].filter((p) => !w[p] || !graf[w[p]]);
+    if (brak.length) {
+        return { ok: false, powod: `Graf „${silnik.graf}" nie ma węzłów: ${brak.join(', ')}.` };
+    }
+
+    if (znalezione.model) graf[w.model].inputs.unet_name = znalezione.model;
+    if (znalezione.enkoder) graf[w.enkoder].inputs.clip_name = znalezione.enkoder;
+    if (znalezione.vae) graf[w.vae].inputs.vae_name = znalezione.vae;
+
+    const polePromptu = graf[w.prompt].inputs.prompt !== undefined ? 'prompt' : 'text';
+    graf[w.prompt].inputs[polePromptu] = prompt;
+
+    const szer = Number(szerokosc) || SZEROKOSC_DOMYSLNIE;
+    const wys = Number(wysokosc) || WYSOKOSC_DOMYSLNIE;
+    graf[w.wymiary].inputs.width = szer;
+    graf[w.wymiary].inputs.height = wys;
+
+    // ⚠️ Flux2Scheduler DRUGI RAZ chce wymiarów — i musi dostać te same.
+    // Rozjechane wymiary między latentem a harmonogramem dają obraz rozmyty
+    // albo przycięty, bez żadnego błędu po drodze.
+    const ileKrokow = Math.max(1, Number(kroki) || Number(silnik.kroki) || 20);
+    if (w.harmonogram && graf[w.harmonogram]) {
+        graf[w.harmonogram].inputs.steps = ileKrokow;
+        graf[w.harmonogram].inputs.width = szer;
+        graf[w.harmonogram].inputs.height = wys;
+    }
+    if (w.sampler && graf[w.sampler]) graf[w.sampler].inputs.steps = ileKrokow;
+
+    const nasiono = Number.isFinite(Number(ziarno)) ? Number(ziarno) : Math.floor(Math.random() * 1e9);
+    if (w.ziarno && graf[w.ziarno]) graf[w.ziarno].inputs.noise_seed = nasiono;
+    if (w.sampler && graf[w.sampler]) graf[w.sampler].inputs.seed = nasiono;
+
+    try {
+        const r = await pobierzZLimitem(`${comfyBase}/prompt`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: graf }),
+        }, 30000);
+        const d = await r.json();
+        if (!r.ok || d?.error) {
+            return { ok: false, powod: `ComfyUI odrzucił graf „${silnik.nazwa}": ${JSON.stringify(d?.error ?? d).slice(0, 300)}` };
+        }
+        return { ok: true, zlecenie: d.prompt_id, silnik: silnik.nazwa, model: znalezione.model ?? null, obraz: true, kroki: ileKrokow };
+    } catch (e) {
+        return { ok: false, powod: `Nie dowiozłem grafu do ComfyUI: ${e.message}` };
+    }
+}

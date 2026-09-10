@@ -1,0 +1,89 @@
+{
+  "_opis": "FLUX.2 [klein] 4B — obraz z tekstu, wariant DISTILLED (4 kroki). Węzły z rdzenia ComfyUI 0.33+: EmptyFlux2LatentImage, Flux2Scheduler, CLIPLoader type=flux2. Numery węzłów są ODWZOROWANE w services/SilnikiObrazu.js — zmiana numeru tutaj wymaga zmiany tam. Distilled NIE UŻYWA CFG: prowadzi BasicGuider bez negatywu. Podpięcie CFGGuider z pustym negatywem dałoby rozmyty obraz i dwukrotnie dłuższe liczenie.",
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "flux-2-klein-4b-fp8.safetensors",
+      "weight_dtype": "fp8_e4m3fn"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_3_4b_fp4_flux2.safetensors",
+      "type": "flux2"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": ["2", 0]
+    }
+  },
+  "7": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {
+      "width": 704,
+      "height": 480,
+      "batch_size": 1
+    }
+  },
+  "8": {
+    "class_type": "Flux2Scheduler",
+    "inputs": {
+      "steps": 4,
+      "width": 704,
+      "height": 480
+    }
+  },
+  "9": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "10": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": ["1", 0],
+      "conditioning": ["5", 0]
+    }
+  },
+  "11": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 0
+    }
+  },
+  "12": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": ["11", 0],
+      "guider": ["10", 0],
+      "sampler": ["9", 0],
+      "sigmas": ["8", 0],
+      "latent_image": ["7", 0]
+    }
+  },
+  "13": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["12", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "14": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["13", 0],
+      "filename_prefix": "katedra/kadr"
+    }
+  }
+}
