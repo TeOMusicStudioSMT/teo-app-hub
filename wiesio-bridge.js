@@ -152,6 +152,7 @@ import * as Karta from './services/RuchNaKarcie.js';
 import * as SilnikiObrazu from './services/SilnikiObrazu.js';
 import * as Rezyserzy from './services/Rezyserzy.js';
 import * as Rekopis from './services/Rekopis.js';
+import * as Skryba from './services/Skryba.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -6983,6 +6984,123 @@ app.get('/api/rekopis/tekst', async (req, res) => {
     } catch (e) {
         return res.status(400).json({ success: false, message: e.message });
     }
+});
+
+// ── ✍️ SKRYBA — z Opowieści do Rękopisu ──────────────────────────────────────
+//
+// Suweren: „Rękopis miał spisać z Opowieści omawianą historię i brief, i z tego
+// scenariusz dla agentów rysowania tych scen, dodając assety do opisów… jak
+// i też pisze książkę dla tego Uniwersum… a potem reżyser może kręcić".
+//
+// ⚠️ ZADANIE W TLE, NIE JEDNO POŁĄCZENIE. Osiem scen × (scenariusz + proza)
+// to kilkanaście wołań modelu po 30–90 s — żadne HTTP tyle nie przetrzyma.
+// Rozdziały lądują w Rękopisie W MIARĘ PISANIA, więc postęp widać w edytorze,
+// a stan można odpytać. Zadania żyją w pamięci mostu: restart je gubi, ale
+// rozdziały już zapisane zostają na dysku.
+
+const zadaniaSkryby = new Map();
+
+app.post('/api/rekopis/z-opowiesci', async (req, res) => {
+    const { projekt = '', rozmowa: rozmowaId = '', co = 'oba', ileScen = 8, model = null } = req.body ?? {};
+    try {
+        const p = wymagajProjektu(projekt);
+        const silnik = String(model || '').trim() || DEFAULT_LLM;
+        const chce = String(co);
+        const pisacScenariusz = chce === 'oba' || chce === 'scenariusz';
+        const pisacProze = chce === 'oba' || chce === 'ksiazka';
+
+        // Rozmowa: wskazana albo NAJNOWSZA związana z projektem (pole `serial`).
+        const rozmowy = await Opowiesc.historia(ANTIGRAVITY_DIR);
+        const rozmowa = rozmowaId
+            ? rozmowy.find((r) => r.id === rozmowaId)
+            : rozmowy
+                .filter((r) => String(r.serial || '').toLowerCase() === p.toLowerCase())
+                .sort((a, b) => String(b.zmieniono || b.kiedy || '').localeCompare(String(a.zmieniono || a.kiedy || '')))[0];
+        if (!rozmowa) throw new Error(`Nie ma rozmowy Opowieści związanej z projektem „${p}". Najpierw omów historię w Pokoju Opowieści.`);
+        if (!Array.isArray(rozmowa.tury) || rozmowa.tury.length < 2) throw new Error('Ta rozmowa jest pusta — nie ma z czego spisywać.');
+
+        const [uniwersum, assety] = await Promise.all([
+            Uniwersum.wczytaj(ANTIGRAVITY_DIR, p).catch(() => null),
+            Assety.lista(ANTIGRAVITY_DIR, p).catch(() => []),
+        ]);
+        const tekstRozmowy = Skryba.zwezRozmowe(rozmowa.tury);
+
+        const id = `skryba-${Date.now().toString(36)}`;
+        const stan = {
+            id, projekt: p, rozmowa: rozmowa.id, silnik, co: chce,
+            stan: 'planuje', scen: 0, gotowych: 0, rozdzialy: [], braki: [],
+            blad: null, start: Date.now(), koniec: null,
+        };
+        zadaniaSkryby.set(id, stan);
+        res.json({ success: true, zadanie: id, rozmowa: rozmowa.id, silnik });
+
+        // ⚠️ `think: false` — bez tego model przepala budżet na blok myślenia
+        // i oddaje pustą treść (zmierzone: eval_count 60, response "").
+        const pytaj = async (system, prompt, num_predict) => {
+            const r = await fetch(`${OLLAMA_BASE}/api/chat`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: silnik,
+                    messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+                    stream: false, think: false,
+                    options: { num_predict, temperature: 0.7, num_ctx: 12288 },
+                }),
+                signal: AbortSignal.timeout(15 * 60 * 1000),
+            });
+            if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+            return String((await r.json())?.message?.content ?? '').trim();
+        };
+
+        (async () => {
+            try {
+                const { system, prompt } = Skryba.promptPlanu({ rozmowa: tekstRozmowy, uniwersum, assety, ile: Number(ileScen) || 8 });
+                const plan = Skryba.odczytajPlan(await pytaj(system, prompt, 2000), Number(ileScen) || 8);
+                if (!plan.length) throw new Error('Model nie oddał planu scen w JSON — nie ma czego pisać.');
+                stan.scen = plan.length;
+                stan.braki = Skryba.brakujaceAssety(plan, assety);
+                stan.stan = 'pisze';
+
+                let poprzedniaProza = '';
+                for (const scena of plan) {
+                    if (pisacScenariusz) {
+                        const s = Skryba.promptScenariusza({ scena, uniwersum, assety, rozmowa: tekstRozmowy });
+                        const tekst = await pytaj(s.system, s.prompt, 1800);
+                        const r = await Rekopis.dodajRozdzial(ANTIGRAVITY_DIR, p, {
+                            tytul: Skryba.tytulRozdzialu('scenariusz', scena),
+                            tresc: Skryba.jakoRozdzial(tekst, { silnik, rodzaj: 'scenariusz', scena, rozmowaId: rozmowa.id }),
+                        });
+                        stan.rozdzialy.push({ id: r.id, tytul: r.tytul, slow: r.slow, rodzaj: 'scenariusz' });
+                    }
+                    if (pisacProze) {
+                        const s = Skryba.promptProzy({ scena, uniwersum, poprzedni: poprzedniaProza });
+                        const tekst = await pytaj(s.system, s.prompt, 1600);
+                        poprzedniaProza = tekst;
+                        const r = await Rekopis.dodajRozdzial(ANTIGRAVITY_DIR, p, {
+                            tytul: Skryba.tytulRozdzialu('proza', scena),
+                            tresc: Skryba.jakoRozdzial(tekst, { silnik, rodzaj: 'proza', scena, rozmowaId: rozmowa.id }),
+                        });
+                        stan.rozdzialy.push({ id: r.id, tytul: r.tytul, slow: r.slow, rodzaj: 'proza' });
+                    }
+                    stan.gotowych += 1;
+                }
+                stan.stan = 'gotowe';
+                await Szyna.nadaj({ agent: 'Skryba', rodzaj: 'praca', tresc: `spisał ${stan.rozdzialy.length} rozdziałów z Opowieści do Rękopisu „${p}" (${silnik})` }).catch(() => {});
+            } catch (e) {
+                stan.stan = 'blad';
+                stan.blad = e.message;
+            } finally {
+                stan.koniec = Date.now();
+            }
+        })();
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+app.get('/api/rekopis/z-opowiesci/:id', (req, res) => {
+    const s = zadaniaSkryby.get(req.params.id);
+    if (!s) return res.status(404).json({ success: false, message: 'Nie znam tego zadania. Most mógł się zrestartować — zadania żyją w jego pamięci, ale zapisane rozdziały zostały na dysku.' });
+    res.json({ success: true, ...s, sekund: Math.round(((s.koniec ?? Date.now()) - s.start) / 1000) });
 });
 
 /**

@@ -26,6 +26,13 @@
  * ⚠️ NIE GENERUJEMY TU PROZY ZA SUWERENA. Model pomaga na żądanie (konspekt,
  * podpowiedź), ale rękopis pisze człowiek — moduł, który sam dopisuje akapity,
  * po tygodniu daje książkę, której nikt nie napisał.
+ *
+ * ⚠️ …Z JEDNYM JAWNYM WYJĄTKIEM: Skryba (services/Skryba.js) spisuje z Opowieści
+ * scenariusz i prozę DO tego rękopisu — bo między rozmową a tekstem nie było
+ * nikogo, kto by przeniósł ustaloną historię (zmierzone: rozdział 0 bajtów).
+ * Każdy jego rozdział nosi w tytule „[szkic AI]" i stopkę z silnikiem, więc
+ * zasada wyżej nadal trzyma: ten plik nie pisze, a co napisał agent, jest
+ * podpisane. Rekopis.js pozostaje edytorem człowieka.
  */
 
 import fs from 'fs/promises';
