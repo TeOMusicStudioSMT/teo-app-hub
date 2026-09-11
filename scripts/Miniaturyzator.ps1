@@ -172,6 +172,35 @@ if ($SkipUsb) {
     $global:LASTEXITCODE = 0
 }
 
+
+# ── 6. Studia ŹRÓDŁOWE obok Katedry (te bez statycznego buildu) ──────────────
+# Story/Music/App/Games jadą w distro jako buildy w public/apps (most serwuje je
+# pod /apps/…). Fashion chodzi na własnym Expressie (tsx server.ts) i buildu na
+# moście NIE MA — więc na pendrive jedzie jego ŹRÓDŁO, obok Katedry, pod nazwą,
+# którą zna LAUNCH_APPS mostu. Bez node_modules (npm install na maszynie
+# docelowej), bez danych instancji (marki, logo, narysowane kreacje — cudze
+# portfolio) i bez sekretów — tym samym sitem, co Katedra.
+Step "6/6 Studia źródłowe (Fashion) obok Katedry"
+$studiaZrodlowe = @(
+    @{ nazwa = 'TeO_Fashion_Studio'; kandydaci = @('TeO_Fashion_Studio', 'OtakOs_Fashion\otakos-fashion-__-0.00g-app') }
+)
+# /XD i /XF robocopy dopasowuja NAZWY (nie sciezki wzgledne) - 'OtakOs_Fashion\marki.json'
+# nie wykluczalo niczego i marki Suwerena wjechaly na pendrive. Gole nazwy dzialaja.
+$xdStudio = @('node_modules', '.git', 'dist', '.vite', '.claude', 'logo', 'ofirmowane', 'kadry')
+$xfStudio = $XF + @('marki.json', 'wizualizacje.json', 'obroty.json', 'kreacje.json')
+foreach ($s in $studiaZrodlowe) {
+    $src = $null
+    foreach ($k in $s.kandydaci) { $p = Join-Path $AppRoot $k; if (Test-Path $p) { $src = $p; break } }
+    if (-not $src) { Warn "$($s.nazwa): brak katalogu źródłowego — pomijam."; continue }
+    $cele = @((Join-Path (Split-Path -Parent $UsbLocal) $s.nazwa))
+    if (-not $SkipUsb -and (Test-Path "${DriveLetter}:\")) { $cele += "${DriveLetter}:\$($s.nazwa)" }
+    foreach ($cel in $cele) {
+        $rc6 = @($src, $cel, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1', '/XD') + $xdStudio + @('/XF') + $xfStudio
+        & robocopy @rc6 | Out-Null
+        if ($LASTEXITCODE -ge 8) { Warn "robocopy $($s.nazwa) -> $cel kod $LASTEXITCODE" } else { Ok "$($s.nazwa) -> $cel" }
+    }
+}
+
 Write-Host "`n🏛️ MINIATURYZACJA $Version ZAKOŃCZONA." -ForegroundColor Green
 Info "Distro:   $fileCount plików / $sizeMB MB"
 Info "ZIP:      $WebDir\public\V_ZERO_archive.zip"
