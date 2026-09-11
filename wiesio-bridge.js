@@ -3568,15 +3568,48 @@ app.post('/api/mechanic/git-assist', async (req, res) => {
 });
 
 // ── 🚨 AUTO-PANIC — pętla samonaprawy Katedry ────────────────────────────────
-// Anty-sztorm: ten sam crash w krótkim oknie nie generuje nowego zadania.
-const autoPanicRecent = new Map();   // hash → { taskId, ts }
-const AUTO_PANIC_COOLDOWN_MS = 60_000;
+//
+// ⚠️ STONOWANE 2026-09-11 po nocy, w której Mechanik położył maszynę.
+// Poprzednia wersja: KAŻDE pojedyncze HTTP 500 → zadanie CRITICAL → model
+// ładowany natychmiast. Z modelem 35B w Kodeksie jedno 500 uruchamiało 24,8 GB
+// w RAM, most padał, front widział kolejne 500 i zgłaszał kolejne paniki.
+// Anty-sztorm nie działał, bo hasz liczono z komunikatu, a komunikat zawierał
+// „po 0.2s" — ten sam crash z inną setną sekundy miał inny hasz.
+//
+// Teraz:
+//   1. SYGNATURA BEZ LICZB — moduł + ścieżka + rodzaj błędu; czasy i porty wypadają.
+//   2. ESKALACJA — pierwsza i druga panika tej samej sygnatury w oknie 10 min
+//      jest tylko ZAPISANA. Zadanie dla Mechanika powstaje od TRZECIEJ.
+//      Jedno 500 to zdarzenie; trzy to wzorzec, który warto zdiagnozować.
+//   3. PRIORYTET HIGH, nie CRITICAL — CRITICAL zostawiamy człowiekowi.
+//   4. JEDNA PANIKA NARAZ — gdy Mechanik już pracuje nad paniką, nowej nie
+//      kolejkujemy. Kolejka trzech diagnoz to trzy ładowania modelu z rzędu.
+const autoPanicRecent = new Map();   // sygnatura → { taskId, ts, ile, pierwszy }
+const AUTO_PANIC_OKNO_MS = 10 * 60_000;
+const AUTO_PANIC_PROG = 3;
 
 /** Deterministyczny, krótki hash crashu (dla deduplikacji). */
 function hashPanic(str) {
     let h = 0;
     for (let i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) | 0; }
     return Math.abs(h).toString(36);
+}
+
+/**
+ * Sygnatura paniki: to, co identyfikuje AWARIĘ, bez tego, co zmienia się między
+ * jej wystąpieniami (czasy, porty, identyfikatory zleceń, kody HTTP przy sieci).
+ */
+function sygnaturaPaniki(errMsg, stack) {
+    const modul = (String(errMsg).match(/^\[([^\]]+)\]/) || [])[1] || '';
+    const sciezka = (String(errMsg).match(/https?:\/\/[^\s/]+(\/api\/[\w./-]+)/) || [])[1] || '';
+    const rodzaj = String(errMsg)
+        .replace(/^\[[^\]]+\]\s*/, '')
+        .split('\n')[0]
+        .replace(/\d+([.,]\d+)?\s*(s|ms|MB|GB)?/g, '#')
+        .replace(/[a-f0-9]{6,}/gi, '#')
+        .slice(0, 80);
+    const pierwszaLiniaStosu = String(stack).split('\n')[0].replace(/:\d+:\d+/g, '').slice(0, 120);
+    return hashPanic(`${modul}|${sciezka}|${rodzaj}|${pierwszaLiniaStosu}`);
 }
 
 /**
@@ -3595,14 +3628,36 @@ app.post('/api/mechanic/auto-panic', async (req, res) => {
     const errMsg = String(message).trim();
     if (!errMsg) return res.status(400).json({ success: false, error: 'Brak treści błędu (message).' });
 
-    // ── Deduplikacja (anty-sztorm) ──────────────────────────────────────────
-    const sig  = hashPanic(errMsg.slice(0, 200) + '|' + String(stack).slice(0, 200));
-    const now  = Date.now();
-    const prev = autoPanicRecent.get(sig);
-    if (prev && (now - prev.ts) < AUTO_PANIC_COOLDOWN_MS) {
-        console.log(`[Auto-Panic] 🔁 Duplikat crashu (${sig}) w oknie cooldown — pomijam enqueue.`);
-        return res.json({ success: true, taskId: prev.taskId, deduped: true });
+    // ── Sygnatura + eskalacja (anty-sztorm, który naprawdę działa) ─────────
+    const sig = sygnaturaPaniki(errMsg, stack);
+    const now = Date.now();
+    for (const [k, v] of autoPanicRecent) {
+        if (now - v.pierwszy > AUTO_PANIC_OKNO_MS * 3) autoPanicRecent.delete(k);
     }
+    const prev = autoPanicRecent.get(sig);
+    const wpis = prev && (now - prev.pierwszy) < AUTO_PANIC_OKNO_MS
+        ? { ...prev, ile: prev.ile + 1, ts: now }
+        : { taskId: null, ts: now, ile: 1, pierwszy: now };
+    autoPanicRecent.set(sig, wpis);
+
+    if (wpis.taskId) {
+        console.log(`[Auto-Panic] 🔁 Powtórka (${sig}, ${wpis.ile}×) — zadanie ${wpis.taskId} już istnieje.`);
+        return res.json({ success: true, taskId: wpis.taskId, deduped: true, ile: wpis.ile });
+    }
+    if (wpis.ile < AUTO_PANIC_PROG) {
+        console.log(`[Auto-Panic] 👁️  Zapisane (${sig}, ${wpis.ile}/${AUTO_PANIC_PROG}) — zadanie powstanie od ${AUTO_PANIC_PROG}. wystąpienia w ${AUTO_PANIC_OKNO_MS / 60000} min.`);
+        return res.json({ success: true, observed: true, ile: wpis.ile, prog: AUTO_PANIC_PROG });
+    }
+
+    // ── Jedna panika naraz — kolejka diagnoz to kolejka ładowań modelu ──────
+    try {
+        const kolejka = await MechanicService.getInstance().getQueue();
+        const zajety = kolejka.find((t) => /^panic-/.test(t.id) && (t.status === 'PENDING' || t.status === 'IN_PROGRESS'));
+        if (zajety) {
+            console.log(`[Auto-Panic] ⏸️  Mechanik pracuje nad ${zajety.id} — nowej paniki nie kolejkuję.`);
+            return res.json({ success: true, busy: true, taskId: zajety.id, ile: wpis.ile });
+        }
+    } catch { /* kolejka nieczytelna — nie blokujemy na tym */ }
 
     // ── Wyciągnij pliki źródłowe ze stack trace + message ───────────────────
     const haystack = `${errMsg}\n${stack}`;
@@ -3616,6 +3671,7 @@ app.post('/api/mechanic/auto-panic', async (req, res) => {
     const description =
         `[AUTO-PANIC — automatyczne zgłoszenie crashu z frontu]\n` +
         `Źródło: ${source}\n` +
+        `Wystąpień tej samej awarii w ${AUTO_PANIC_OKNO_MS / 60000} min: ${wpis.ile}\n` +
         `Komunikat: ${errMsg}\n\n` +
         `Stack trace:\n${String(stack).slice(0, 1500) || '(brak)'}\n\n` +
         `Zadanie: zdiagnozuj przyczynę awarii i wygeneruj poprawkę dla wskazanych ` +
@@ -3624,17 +3680,13 @@ app.post('/api/mechanic/auto-panic', async (req, res) => {
     try {
         await MechanicService.getInstance().enqueueTask({
             id:       taskId,
-            title:    `[AUTO-PANIC] ${errMsg.slice(0, 70)}`,
+            title:    `[AUTO-PANIC ×${wpis.ile}] ${errMsg.slice(0, 70)}`,
             description,
-            priority: 'CRITICAL',
+            priority: 'HIGH',
             targetFiles,
         });
 
-        autoPanicRecent.set(sig, { taskId, ts: now });
-        // Sprzątanie starych wpisów (utrzymanie mapy małej)
-        for (const [k, v] of autoPanicRecent) {
-            if (now - v.ts > AUTO_PANIC_COOLDOWN_MS * 5) autoPanicRecent.delete(k);
-        }
+        autoPanicRecent.set(sig, { ...wpis, taskId });
 
         // Wyzwól Mechanika natychmiast (fire-and-forget, Session Isolation)
         MechanicService.getInstance().processPendingTasks()

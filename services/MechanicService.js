@@ -14,6 +14,7 @@
  * Standard: ES Modules ("type": "module" w package.json)
  */
 
+import os            from 'os';
 import path          from 'path';
 import { promises as fs } from 'fs';
 import fsSync        from 'fs';
@@ -445,8 +446,55 @@ class MechanicService {
         return this._callGemmaRaw(prompt, task.id);
     }
 
+    /**
+     * ⚠️ STRAŻNIK PAMIĘCI — Mechanik nie ładuje modelu, który położy maszynę.
+     *
+     * Zmierzone 2026-09-11 ~01:45: w mechanik.json stał `qwen3.6:35b-a3b` (24,8 GB;
+     * w VRAM mieści się 2 GB, reszta idzie do RAM). Jedno HTTP 500 → auto-panic →
+     * Mechanik ładuje 35B → wolne RAM 3,7 GB z 39,7, plik wymiany 5,5 GB → most pada →
+     * kolejne 500 → kolejne paniki. Diagnosta, który sam kładzie maszynę. A dead-letter
+     * dowodził, że i tak nic z tego nie było: każde zapytanie padało po 300 s.
+     *
+     * Reguła: model już załadowany → OK (nic nowego nie zajmie). Inaczej rozmiar
+     * modelu + 4 GB zapasu musi mieścić się w WOLNYM RAM. Zapas jest po to, żeby
+     * po załadowaniu Windows nie wpadł w plik wymiany, bo wtedy Ollama i tak
+     * nie zdąży w limicie. Gdy model nie mieści się, mówimy DLACZEGO i ILE brakuje —
+     * zamiast abortu po 300 s z hipotezą „może VRAM".
+     */
+    async _sprawdzCzyModelSieZmiesci(model) {
+        const ZAPAS_GB = 4;
+        let zaladowane = [];
+        let rozmiarGb = null;
+        try {
+            const ps = await fetch('http://127.0.0.1:11434/api/ps', { signal: AbortSignal.timeout(5000) }).then((r) => r.json());
+            zaladowane = (ps.models ?? []).map((m) => m.name);
+        } catch { /* Ollama milczy — dalej i tak wywali się z jasnym HTTP */ }
+        if (zaladowane.includes(model)) return { ok: true, powod: 'model już w pamięci' };
+
+        try {
+            const tags = await fetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(5000) }).then((r) => r.json());
+            const wpis = (tags.models ?? []).find((m) => m.name === model);
+            if (wpis) rozmiarGb = wpis.size / 1e9;
+        } catch { /* bez rozmiaru nie ma jak ocenić — przepuszczamy z ostrzeżeniem */ }
+        if (rozmiarGb === null) return { ok: true, powod: 'rozmiar modelu nieznany — nie blokuję' };
+
+        const wolneGb = os.freemem() / 1e9;
+        const potrzebaGb = rozmiarGb + ZAPAS_GB;
+        if (wolneGb >= potrzebaGb) return { ok: true, powod: `${rozmiarGb.toFixed(1)} GB + ${ZAPAS_GB} GB zapasu ≤ ${wolneGb.toFixed(1)} GB wolnych` };
+        return {
+            ok: false,
+            powod: `model ${model} ma ${rozmiarGb.toFixed(1)} GB, a wolnego RAM jest ${wolneGb.toFixed(1)} GB ` +
+                   `(potrzeba ${potrzebaGb.toFixed(1)} GB z zapasem). NIE ŁADUJĘ — załadowanie położyłoby maszynę. ` +
+                   `Wybierz mniejszy model w Kodeksie (POST /api/mechanic/model) albo zwolnij pamięć.`,
+        };
+    }
+
     /** Wspólny niski-poziom caller Gemma4 (reużywany przez napraw-loop i Git Assistant). */
     async _callGemmaRaw(prompt, tag = 'raw') {
+        const model = modelMechanika();
+        const miejsce = await this._sprawdzCzyModelSieZmiesci(model);
+        if (!miejsce.ok) throw new Error(`[STRAŻNIK PAMIĘCI] ${miejsce.powod}`);
+
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
         let raw = '';
@@ -455,7 +503,9 @@ class MechanicService {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 signal:  controller.signal,
-                body: JSON.stringify({ model: modelMechanika(), prompt, stream: false }),
+                // ⚠️ think:false — modele qwen3.x myślą; bez tego przepalają budżet na blok
+                // myślenia i oddają PUSTĄ treść (zmierzone: eval_count 60, response "").
+                body: JSON.stringify({ model, prompt, stream: false, think: false }),
             });
             if (!resp.ok) throw new Error(`Ollama HTTP ${resp.status}`);
             const json = await resp.json();
