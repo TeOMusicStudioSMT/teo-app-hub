@@ -28,7 +28,10 @@ const REPO_ACE = 'Comfy-Org/ace_step_1.5_ComfyUI_files';
  * Podmiana bez ruszania kodu: OTAKOS_MUSIC_MODELS.
  */
 export const KATALOG_MODELI = process.env.OTAKOS_MUSIC_MODELS
-    || path.resolve(process.cwd(), '..', 'TeO_Music_V2', 'models');
+    || ['TeO_Music_Studio', 'TeO_Music_V2']
+        .map((d) => path.resolve(process.cwd(), '..', d, 'models'))
+        .find((d) => fsSync.existsSync(d))
+    || path.resolve(process.cwd(), '..', 'TeO_Music_Studio', 'models');
 
 export const MANIFEST = [
     { id: 'dit-int8',                 path: 'diffusion_models/minimax_music3_dit_int8_convrot.safetensors',            role: 'diffusion_models', precision: 'int8', bytes: 2_502_161_682,  label: 'DiT int8 (convrot)',        fitsVram6gb: true  },

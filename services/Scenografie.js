@@ -21,10 +21,14 @@
  */
 
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 
 /** Gdzie TGS trzyma swoje zasoby. */
-export const KATALOG_TGS = () => path.join(process.cwd(), '..', 'TeO_Game_Studio', 'public', 'assets', 'scenografie');
+export const KATALOG_TGS = () => ['TeO_Games_Studio', 'TeO_Game_Studio']
+    .map((d) => path.join(process.cwd(), '..', d, 'public', 'assets', 'scenografie'))
+    .find((d) => fsSync.existsSync(d))
+    ?? path.join(process.cwd(), '..', 'TeO_Games_Studio', 'public', 'assets', 'scenografie');
 const MANIFEST = 'scenografie.json';
 
 async function wczytajManifest(katalog) {

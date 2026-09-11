@@ -4149,19 +4149,30 @@ app.post('/api/teledysk/plan', async (req, res) => {
 // ── 🚀 AUTOMAT URUCHAMIAJĄCY LOKALNE STUDIA (kafle dashboardu) ───────────────
 // Sprawdza czy lokalna strona działa; jak nie — odpala `npm run dev` (detached)
 // i zwraca URL do przekierowania. Suwerennie, lokalnie.
+/**
+ * ⚠️ NAZWY KATALOGÓW STUDIÓW (2026-09-11). Suweren: „OtakOS zostaje jako nazwa
+ * silnika, Katedry, OS, Uniwersum; studia noszą nazwy TeO". Katalogi
+ * przemianowane z *_V2 / OtakOs_Fashion na TeO_*_Studio. `dir` to LISTA
+ * kandydatów: pierwszy istniejący wygrywa, więc most działa zarówno po
+ * przeprowadzce, jak i na kopii USB, która ma jeszcze stare nazwy.
+ */
 const LAUNCH_APPS = {
-    music: { dir: 'TeO_Music_V2', port: 5173 },
-    story: { dir: 'TeO_Story_V2', port: 5174 },
-    app:   { dir: 'TeO_App_V2',   port: 5175 },
-    // Games Studio miało build na moście (/apps/games), ale nie miało wpisu tutaj —
-    // kafel na dashboardzie nie miał czego odpalić. Port z jego package.json.
-    games: { dir: 'TeO_Game_Studio', port: 5177 },
+    music:   { dir: ['TeO_Music_Studio', 'TeO_Music_V2'],   port: 5173 },
+    story:   { dir: ['TeO_Story_Studio', 'TeO_Story_V2'],   port: 5174 },
+    app:     { dir: ['TeO_App_Studio',   'TeO_App_V2'],     port: 5175 },
+    games:   { dir: ['TeO_Games_Studio', 'TeO_Game_Studio'], port: 5177 },
     // ⚠️ Dział mody chodzi na Expressie (`tsx server.ts`), nie na Vite — stąd
     // port 3000 i `bezPortu`. Podanie mu `--port` jak pozostałym nic nie da,
     // bo jego serwer czyta własną konfigurację, a nie argument npm.
     // `sprawdz` — ścieżka, która dowodzi, że na tym porcie stoi NASZA apka.
-    fashion: { dir: 'OtakOs_Fashion/otakos-fashion-__-0.00g-app', port: 3000, bezPortu: true, sprawdz: '/api/krawiec/stan' },
+    fashion: { dir: ['TeO_Fashion_Studio', 'OtakOs_Fashion/otakos-fashion-__-0.00g-app'], port: 3000, bezPortu: true, sprawdz: '/api/krawiec/stan' },
 };
+/** Pierwszy istniejący katalog studia — albo pierwszy z listy, gdy żaden (błąd zgłosi wywołujący). */
+function katalogStudia(cfg) {
+    const lista = Array.isArray(cfg.dir) ? cfg.dir : [cfg.dir];
+    const znaleziony = lista.find((d) => fsSync.existsSync(path.resolve(process.cwd(), '..', d)));
+    return znaleziony ?? lista[0];
+}
 app.post('/api/launch', async (req, res) => {
     const nazwaApki = (req.body ?? {}).app;
     const cfg = LAUNCH_APPS[nazwaApki];
@@ -4185,14 +4196,15 @@ app.post('/api/launch', async (req, res) => {
             message: `Na porcie ${cfg.port} stoi COŚ INNEGO niż ${nazwaApki}. Zamknij to albo zmień port.`,
         });
     } catch { /* nie działa — uruchamiamy */ }
-    const dir = path.resolve(process.cwd(), '..', cfg.dir);
-    if (!fsSync.existsSync(dir)) return res.json({ success: true, url, running: false, message: `Katalog ${cfg.dir} nie istnieje — otwórz ręcznie.` });
+    const nazwaKatalogu = katalogStudia(cfg);
+    const dir = path.resolve(process.cwd(), '..', nazwaKatalogu);
+    if (!fsSync.existsSync(dir)) return res.json({ success: true, url, running: false, message: `Katalog ${nazwaKatalogu} nie istnieje — otwórz ręcznie.` });
     try {
         const argumenty = cfg.bezPortu ? ['run', 'dev'] : ['run', 'dev', '--', '--port', String(cfg.port)];
         const child = spawn('npm', argumenty, { cwd: dir, detached: true, shell: true, stdio: 'ignore' });
         child.unref();
-        console.log(`[Automat-Studia] 🚀 Uruchamiam ${cfg.dir} (:${cfg.port})`);
-        return res.json({ success: true, url, started: true, message: `Uruchamiam ${cfg.dir} (:${cfg.port}) — chwilę potrwa.` });
+        console.log(`[Automat-Studia] 🚀 Uruchamiam ${nazwaKatalogu} (:${cfg.port})`);
+        return res.json({ success: true, url, started: true, message: `Uruchamiam ${nazwaKatalogu} (:${cfg.port}) — chwilę potrwa.` });
     } catch (e) {
         return res.json({ success: true, url, started: false, message: `Nie udało się uruchomić: ${e.message}` });
     }

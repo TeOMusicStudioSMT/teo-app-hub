@@ -40,7 +40,7 @@ export const STUDIA: Studio[] = [
     { id: 'music',   tytul: 'TeO Music Studio',   podtytul: 'Rezonans harmoniczny. Synteza dźwięku.',       apka: 'music',   port: 5173, naMoscie: '/apps/music/', kolor: 'pink' },
     { id: 'app',     tytul: 'TeO App Studio',     podtytul: 'Narzędzia. Kod. Rzeczywistość.',               apka: 'app',     port: 5175, naMoscie: '/apps/app/',   kolor: 'cyan' },
     { id: 'games',   tytul: 'TeO Games Studio',   podtytul: 'Galeria gier. Forge silników. Agenci światów.', apka: 'games',   port: 5177, naMoscie: '/apps/games/', kolor: 'green' },
-    { id: 'fashion', tytul: 'OtakOS Fashion',     podtytul: 'Kreacje z kadrów Katedry.',                     apka: 'fashion', port: 3000, kolor: 'pink' },
+    { id: 'fashion', tytul: 'TeO Fashion Studio',  podtytul: 'Kreacje z kadrów Katedry.',                     apka: 'fashion', port: 3000, kolor: 'pink' },
     { id: 'lab',     tytul: 'TeO LaB · TeOPrinty', podtytul: 'Kuźnia schematów. Wycena w GRV.',             apka: 'story',   port: 5174, naMoscie: '/apps/story/', hash: '#lab', kolor: 'blue' },
 ];
 
