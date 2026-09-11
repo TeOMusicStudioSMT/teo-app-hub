@@ -24,7 +24,6 @@ import Kancelaria from './special/Kancelaria';
 import TeoTrust from './special/TeoTrust';
 import PralkaKompasji from './special/PralkaKompasji';
 import KompasSuwerena from './special/KompasSuwerena';
-import TeoArcadeForge from './special/TeoArcadeForge';
 import AntresolaPanel from './special/AntresolaPanel';
 import McpSkillboardPanel from './McpSkillboardPanel';
 import YourBusinessPanel from './YourBusinessPanel';
@@ -58,7 +57,7 @@ interface TeonautLoungeProps {
     onOpenCrewClub?: () => void;
 }
 
-type View = 'kuznia' | 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'gameforge' | 'mcp-skillboard' | 'twoje-biznesy';
+type View = 'kuznia' | 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'mcp-skillboard' | 'twoje-biznesy';
 
 export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionToggle, onFavoriteToggle, onLogout, onTriggerAnomaly, behavioralData, onVisualAssistantOpen, onOpenCrewClub }) => {
     const [activeView, setActiveView] = useState<View>('dashboard');
@@ -261,7 +260,6 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                             {activeView === 'trust' && <TeoTrust />}
                             {activeView === 'pralka' && <PralkaKompasji />}
                             {activeView === 'kompas' && <KompasSuwerena />}
-                            {activeView === 'gameforge' && <TeoArcadeForge />}
                             {activeView === 'mcp-skillboard' && <McpSkillboardPanel embedded />}
                             {activeView === 'twoje-biznesy' && <YourBusinessPanel embedded />}
                             {activeView === 'profile' && <ProfileView onLogout={onLogout} />}

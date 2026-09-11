@@ -46,7 +46,6 @@ type View =
     | 'trust'
     | 'pralka'
     | 'kompas'
-    | 'gameforge'
     | 'mcp-skillboard'
     | 'twoje-biznesy';
 
@@ -69,23 +68,49 @@ const PRIMARY_NAV: { id: View; label: string; icon: React.ReactNode }[] = [
 ];
 
 // ── Pozycje schowane w panelu "Więcej" ────────────────────────────────
-const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string }[] = [
-    { id: 'kuznia',        label: '🔨 KUŹNIA MODELI', icon: <span className="text-base">🔨</span>, desc: 'Wagi z dysku → rdzeń w Ollamie, ze ścieżką zadania' },
-    { id: 'twoje-biznesy', label: '🏢 TWOJE BIZNESY', icon: <span className="text-base">🏢</span>, desc: 'Rejestr działalności, głos agentów i Służba rozliczana w GRV' },
-    { id: 'mcp-skillboard',label: '⚡ MCP SKILLBOARD', icon: <span className="text-base font-bold text-cyan-400">⚡</span>, desc: 'Centralny rejestr skilli i narzędzi MCP (0.00G Protocol)' },
-    { id: 'kompas',        label: 'Kompas Suwerena', icon: <span className="text-base">🧭</span>, desc: 'Mapa gry Odkrywania — od Karmy do Miłości 2.0' },
-    { id: 'trust',         label: 'TeO Trust',      icon: <span className="text-base">🏛️</span>, desc: 'Certyfikat Beneficjenta — punkt startowy' },
-    { id: 'pralka',        label: 'Pralka Kompasji', icon: <span className="text-base">🤍</span>, desc: 'Sumienie energetyczne — uzdrawia, nie karze (Filar I)' },
-    { id: 'sonic',         label: 'Kolektor Soniczny', icon: <span className="text-base">🎼</span>, desc: 'Zbiór wektorów z własnej muzyki (Filar I)' },
-    { id: 'identity',      label: 'Identity',      icon: <UserCircleIcon />,  desc: 'Karta tożsamości Suwerena' },
-    { id: 'crew-club',     label: '🏆 Klub',        icon: <TrophyIcon />,      desc: 'Załoga, rankingi i wspólne wyprawy' },
-    { id: 'graviton-wallet', label: 'GRAVITON',     icon: <WalletIcon />,      desc: 'Portfel GRV — saldo, księga, oddech' },
-    { id: 'academy',       label: 'Academy',        icon: <MortarBoardIcon />, desc: 'Quantum Compass & nauka' },
-    { id: 'field-control', label: 'Field Control',  icon: <ShieldCheckIcon />, desc: 'Tarcza Pola i bezpieczeństwo' },
-    { id: 'teolab',        label: 'TeO Lab',        icon: <span className="text-base">🧪</span>, desc: 'Laboratorium eksperymentów (Filar II)' },
-    { id: 'robotics',      label: 'OtakOS Robotics', icon: <span className="text-base">🚜</span>, desc: 'Garaż: Agro Traktorek i flota (Filar II)' },
-    { id: 'kancelaria',    label: 'Kancelaria 0.00G', icon: <span className="text-base">⚖️</span>, desc: 'Tarcza prawna: licencje, prawa, zgodność (Filar II)' },
-    { id: 'gameforge',     label: 'TeO Arcade Forge', icon: <span className="text-base">🔨</span>, desc: 'Kuj światy w UE — GENESIS OVERRIDE (Filar II)' },
+/**
+ * ⚠️ MENU „…" W GRUPACH, NIE JEDNA ŚCIANA (2026-09-11). Szesnaście pozycji bez
+ * porządku — Suweren: „przejrzyj menu, zobacz, które panele pasują do działu-kafelka;
+ * jak pasują, to tam je przenieś, a jak już tam są, to usuń z menu; resztę spiąć w grupy".
+ *
+ * Wypadło: „TeO Arcade Forge" — Games Studio ma już własny Forge (Multi-Engine), a to,
+ * czego mu brakowało („Wykuj świat": plan craftu, zasilenie wyspy, skrypt UE z modelu),
+ * przejechało tam jako zakładka. Hubowa kopia wpinała jeszcze Reżysera i Księgarnię
+ * Skilli, które mają swoje domy w Story i Marketplace — tych nie przenosiliśmy.
+ *
+ * Grupa „Działy w budowie" to poczekalnia: Twoje Biznesy, giełda, Ted Trader,
+ * Kupiec i biznesowe Oko pójdą do planowanego Freedom Studio; Kolektor Soniczny
+ * czeka na Music V2, który go jeszcze nie ma.
+ */
+type GrupaMenu = 'departamenty' | 'sciezka' | 'ekonomia' | 'rdzen';
+
+const GRUPY: { id: GrupaMenu; nazwa: string }[] = [
+    { id: 'departamenty', nazwa: 'Działy w budowie' },
+    { id: 'sciezka',      nazwa: 'Tożsamość i ścieżka' },
+    { id: 'ekonomia',     nazwa: 'Ekonomia GRV' },
+    { id: 'rdzen',        nazwa: 'Rdzeń i tarcza' },
+];
+
+const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string; grupa: GrupaMenu }[] = [
+    // ── Działy w budowie — kandydaci do własnych kafelków ──
+    { id: 'twoje-biznesy', label: '🏢 TWOJE BIZNESY', icon: <span className="text-base">🏢</span>, desc: 'Rejestr działalności, głos agentów, Służba w GRV → Freedom Studio', grupa: 'departamenty' },
+    { id: 'sonic',         label: 'Kolektor Soniczny', icon: <span className="text-base">🎼</span>, desc: 'Zbiór wektorów z własnej muzyki (Filar I)', grupa: 'departamenty' },
+    { id: 'teolab',        label: 'TeO Lab',        icon: <span className="text-base">🧪</span>, desc: 'Symulator Agro i pipeline RadioSMT (Filar II)', grupa: 'departamenty' },
+    { id: 'robotics',      label: 'OtakOS Robotics', icon: <span className="text-base">🚜</span>, desc: 'Garaż: Agro Traktorek i flota (Filar II)', grupa: 'departamenty' },
+    // ── Tożsamość i ścieżka ──
+    { id: 'identity',      label: 'Identity',      icon: <UserCircleIcon />,  desc: 'Karta tożsamości Suwerena', grupa: 'sciezka' },
+    { id: 'trust',         label: 'TeO Trust',      icon: <span className="text-base">🏛️</span>, desc: 'Certyfikat Beneficjenta — punkt startowy', grupa: 'sciezka' },
+    { id: 'kompas',        label: 'Kompas Suwerena', icon: <span className="text-base">🧭</span>, desc: 'Mapa gry Odkrywania — od Karmy do Miłości 2.0', grupa: 'sciezka' },
+    { id: 'pralka',        label: 'Pralka Kompasji', icon: <span className="text-base">🤍</span>, desc: 'Sumienie energetyczne — uzdrawia, nie karze (Filar I)', grupa: 'sciezka' },
+    { id: 'academy',       label: 'Academy',        icon: <MortarBoardIcon />, desc: 'Quantum Compass & nauka', grupa: 'sciezka' },
+    { id: 'crew-club',     label: '🏆 Klub',        icon: <TrophyIcon />,      desc: 'Załoga, rankingi i wspólne wyprawy', grupa: 'sciezka' },
+    // ── Ekonomia ──
+    { id: 'graviton-wallet', label: 'GRAVITON',     icon: <WalletIcon />,      desc: 'Portfel GRV — saldo, księga, oddech', grupa: 'ekonomia' },
+    // ── Rdzeń i tarcza ──
+    { id: 'kuznia',        label: '🔨 KUŹNIA MODELI', icon: <span className="text-base">🔨</span>, desc: 'Wagi z dysku → rdzeń w Ollamie, ze ścieżką zadania', grupa: 'rdzen' },
+    { id: 'mcp-skillboard',label: '⚡ MCP SKILLBOARD', icon: <span className="text-base font-bold text-cyan-400">⚡</span>, desc: 'Centralny rejestr skilli i narzędzi MCP (0.00G Protocol)', grupa: 'rdzen' },
+    { id: 'field-control', label: 'Field Control',  icon: <ShieldCheckIcon />, desc: 'Tarcza Pola i bezpieczeństwo', grupa: 'rdzen' },
+    { id: 'kancelaria',    label: 'Kancelaria 0.00G', icon: <span className="text-base">⚖️</span>, desc: 'Tarcza prawna: licencje, prawa, zgodność (Filar II)', grupa: 'rdzen' },
 ];
 
 // ── Komponent ─────────────────────────────────────────────────────────
@@ -221,12 +246,15 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
                             {/* Nagłówek panelu */}
                             <div className="px-3 py-2 mb-1">
                                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">
-                                    Pozostałe moduły
+                                    Moduły Katedry
                                 </p>
                             </div>
 
-                            {/* Pozycje */}
-                            {MORE_NAV.map((item, idx) => {
+                            {/* Pozycje — w grupach; nagłówek grupy to nie przycisk */}
+                            {GRUPY.map((g) => (
+                                <React.Fragment key={g.id}>
+                                    <p className="px-3 pt-2 pb-1 text-[9px] font-bold text-slate-600 uppercase tracking-[0.18em]">{g.nazwa}</p>
+                                    {MORE_NAV.filter((i) => i.grupa === g.id).map((item, idx) => {
                                 const locked = !canAccess(item.id, tier);
                                 return (
                                 <motion.button
@@ -278,6 +306,8 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
                                     )}
                                 </motion.button>
                             );})}
+                                </React.Fragment>
+                            ))}
 
                             {/* Separator */}
                             <div className="mx-3 my-2 h-px bg-slate-700/50" />
