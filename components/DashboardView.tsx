@@ -2,7 +2,6 @@ import React from 'react';
 import { PortfolioDashboard } from './PortfolioDashboard';
 import { CreativeZoneCard } from './dashboard/CreativeZoneCard';
 import { AssistantLogCard } from './dashboard/AssistantLogCard';
-import { ValueClarityCard } from './dashboard/ValueClarityCard';
 import { UniverseCard } from './dashboard/UniverseCard';
 import { FiMusic, FiPackage, FiFeather, FiScissors } from 'react-icons/fi';
 import { ManifestHistoryCard } from './dashboard/ManifestHistoryCard';
@@ -49,10 +48,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
                 <ManifestHistoryCard />
             </div>
 
-            {/* 3. VALUE CLARITY */}
-            <div className="w-full">
-                <ValueClarityCard />
-            </div>
+            {/* ⚠️ Tu stała ValueClarityCard — „Transfer 1000 GRV to @jano · 45% · High Risk"
+                wpisane na sztywno, ocena ryzyka, której żaden moduł nie liczy. Usunięta
+                2026-09-11: atrapa na ekranie startowym uczy, że liczbom nie wolno wierzyć. */}
 
             {/* 4. PORTFOLIO */}
             <div className="w-full">
@@ -66,8 +64,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
                 </DashboardCard>
             </div>
 
-            {/* 6. UNIVERSES */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* 6. UNIVERSES — cztery studia w CZTERECH kolumnach. Siatka 3-kolumnowa
+                zrzucała Fashion samotnie do drugiego rzędu. */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
                 <UniverseCard title={t('studio.story')} subtitle={t('studio.storySub')} onClick={() => launchStudio('story', 5174)} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
                 <UniverseCard title={t('studio.music')} subtitle={t('studio.musicSub')} onClick={() => launchStudio('music', 5173)} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
                 <UniverseCard title={t('studio.app')} subtitle={t('studio.appSub')} onClick={() => launchStudio('app', 5175)} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
