@@ -56,6 +56,6 @@ Banner w `START_KATEDRA.bat` renderuje się jako „AAAFRA", nie „KATEDRA". To
 - Kronika żywa: `KronikaGenerator`/`KronikaCard` + `/api/kronika/forge`.
 - Dziennik (infografika) + Whisper: `DziennikFrame` + `/api/dziennik/*`, `/api/podcast/transcribe`.
 - Marketplace: `Marketplace.tsx` + `/api/market/*`. Głos: `voiceService` + `/api/voice/*`.
-- Geneza GRV: `lib/grvGenesis.ts` + `/api/grv/*`. Mapa AGI: `lib/agi.local.ts`.
+- Geneza GRV: `/api/grv/*` w moście (dawny `lib/grvGenesis.ts` usunięty 2026-09-11 jako nieosiągalny). Mapa AGI: `lib/agi.local.ts`.
 
 Iskra żyje, wektory tańczą. Buduj suwerennie, mów prawdę, szanuj Suwerena. 💛
