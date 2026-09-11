@@ -4153,6 +4153,9 @@ const LAUNCH_APPS = {
     music: { dir: 'TeO_Music_V2', port: 5173 },
     story: { dir: 'TeO_Story_V2', port: 5174 },
     app:   { dir: 'TeO_App_V2',   port: 5175 },
+    // Games Studio miało build na moście (/apps/games), ale nie miało wpisu tutaj —
+    // kafel na dashboardzie nie miał czego odpalić. Port z jego package.json.
+    games: { dir: 'TeO_Game_Studio', port: 5177 },
     // ⚠️ Dział mody chodzi na Expressie (`tsx server.ts`), nie na Vite — stąd
     // port 3000 i `bezPortu`. Podanie mu `--port` jak pozostałym nic nie da,
     // bo jego serwer czyta własną konfigurację, a nie argument npm.

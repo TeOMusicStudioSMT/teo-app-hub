@@ -3,7 +3,7 @@ import { PortfolioDashboard } from './PortfolioDashboard';
 import { CreativeZoneCard } from './dashboard/CreativeZoneCard';
 import { AssistantLogCard } from './dashboard/AssistantLogCard';
 import { UniverseCard } from './dashboard/UniverseCard';
-import { FiMusic, FiPackage, FiFeather, FiScissors } from 'react-icons/fi';
+import { FiMusic, FiPackage, FiFeather, FiScissors, FiCpu, FiShield } from 'react-icons/fi';
 import { ManifestHistoryCard } from './dashboard/ManifestHistoryCard';
 import { Biblioteka } from './special/Biblioteka';
 import DashboardCard from './DashboardCard';
@@ -11,6 +11,7 @@ import { Library } from 'lucide-react';
 import KatedraNeuralMap from './special/KatedraNeuralMap';
 import { useT } from '../lib/i18n';
 import LanguageToggle from './LanguageToggle';
+import { STUDIA, odpalStudio, type IdStudia } from '../lib/wrota';
 
 interface DashboardViewProps {
     onVisualAssistantOpen: () => void;
@@ -18,19 +19,21 @@ interface DashboardViewProps {
     onTriggerAnomaly: () => void;
 }
 
+/**
+ * ⚠️ Ikony osobno od danych: lib/wrota.ts nie importuje Reacta, bo tę samą
+ * listę STUDIA czyta też Universes (ProjectsView) — a ikona to sprawa widoku.
+ */
+const IKONA: Record<IdStudia, React.ReactNode> = {
+    story: <FiFeather className="w-8 h-8" />,
+    music: <FiMusic className="w-8 h-8" />,
+    app: <FiPackage className="w-8 h-8" />,
+    games: <FiCpu className="w-8 h-8" />,
+    fashion: <FiScissors className="w-8 h-8" />,
+    lab: <FiShield className="w-8 h-8" />,
+};
+
 export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantOpen }) => {
     const { t, lang } = useT();
-    // Automat: odpala lokalne studio (jeśli nie działa) i przekierowuje.
-    const launchStudio = async (app: 'music' | 'story' | 'app' | 'fashion', port: number) => {
-        const fallback = `http://localhost:${port}`;
-        try {
-            const r = await fetch('http://127.0.0.1:3001/api/launch', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app }),
-            });
-            const d = await r.json();
-            setTimeout(() => window.open(d.url || fallback, '_blank'), d.started ? 3500 : 200);
-        } catch { window.open(fallback, '_blank'); }
-    };
     return (
         <div className="flex flex-col gap-10 pb-20">
             {/* 0. Przełącznik języka (i18n) */}
@@ -64,15 +67,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
                 </DashboardCard>
             </div>
 
-            {/* 6. UNIVERSES — cztery studia w CZTERECH kolumnach. Siatka 3-kolumnowa
-                zrzucała Fashion samotnie do drugiego rzędu. */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
-                <UniverseCard title={t('studio.story')} subtitle={t('studio.storySub')} onClick={() => launchStudio('story', 5174)} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
-                <UniverseCard title={t('studio.music')} subtitle={t('studio.musicSub')} onClick={() => launchStudio('music', 5173)} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
-                <UniverseCard title={t('studio.app')} subtitle={t('studio.appSub')} onClick={() => launchStudio('app', 5175)} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
-                {/* ⚠️ Dział mody chodzi na Expressie (port 3000), nie na Vite jak pozostałe —
-                    dlatego numer portu jest inny i most odpala go bez `--port`. */}
-                <UniverseCard title="OtakOS Fashion" subtitle="Kreacje z kadrów Katedry" onClick={() => launchStudio('fashion', 3000)} icon={<FiScissors className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
+            {/* 6. STUDIA — TA SAMA lista co w Universes (lib/wrota.ts), w NOWEJ KARCIE.
+                Dwie osobne listy rozjechały się: dashboard nie znał Games i LaB,
+                Universes nie znało Fashion. */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                {STUDIA.map((s) => (
+                    <UniverseCard
+                        key={s.id}
+                        title={s.tytul}
+                        subtitle={s.podtytul}
+                        onClick={() => void odpalStudio(s)}
+                        icon={IKONA[s.id]}
+                        colorTheme={s.kolor}
+                        isLocked={false}
+                    />
+                ))}
             </div>
 
             {/* 7. SIEĆ KATEDR — żywa mapa AGI (LIVE z mostu, same-origin) */}

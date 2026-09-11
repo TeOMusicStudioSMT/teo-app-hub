@@ -19,7 +19,8 @@ import toast from 'react-hot-toast';
 import { NetworkOfLoci } from './NetworkOfLoci';
 import { UniverseCard } from './dashboard/UniverseCard';
 import { WarpTransition } from './effects/WarpTransition';
-import { FiMusic, FiPackage, FiShield, FiFeather, FiCpu } from 'react-icons/fi';
+import { FiMusic, FiPackage, FiShield, FiFeather, FiCpu, FiScissors } from 'react-icons/fi';
+import { STUDIA, otworzNaMoscie, type IdStudia } from '../lib/wrota';
 import { getBridgeBase } from '../lib/bridgeService';
 import {
     pobierzModuly, dodajModul, usunModul, subskrybuj, anuluj,
@@ -71,14 +72,21 @@ export const ProjectsView: React.FC = () => {
      * (`teo_gemini_key`) i zapisuje u siebie. Bez tego LaB i Rada w substronie
      * milczą, a Suweren nie wie dlaczego.
      */
-    const wejdz = (sciezka: string, hash = '') => {
+    /**
+     * Wrota otwierają studio w NOWEJ KARCIE (Suweren: „ustaw tym z Universe,
+     * by się otwierały w nowym oknie"). Warp zostaje jako mrugnięcie, ale musi
+     * ZGASNĄĆ — poprzednia wersja nawigowała w miejscu, więc nigdy nie musiała
+     * go wyłączać; teraz Hub zostaje na ekranie.
+     */
+    const wejdz = (s: (typeof STUDIA)[number]) => {
         setIsWarping(true);
-        const baza = getBridgeBase().replace(/\/+$/, '');
-        const klucz = (() => {
-            try { return localStorage.getItem('teo_gemini_key') || ''; } catch { return ''; }
-        })();
-        const q = klucz ? `?gemini_key=${encodeURIComponent(klucz)}` : '';
-        setTimeout(() => { window.location.href = `${baza}${sciezka}${q}${hash}`; }, 1000);
+        setTimeout(() => { otworzNaMoscie(s); setIsWarping(false); }, 600);
+    };
+
+    const IKONA: Record<IdStudia, React.ReactNode> = {
+        story: <FiFeather className="w-8 h-8" />, music: <FiMusic className="w-8 h-8" />,
+        app: <FiPackage className="w-8 h-8" />, games: <FiCpu className="w-8 h-8" />,
+        fashion: <FiScissors className="w-8 h-8" />, lab: <FiShield className="w-8 h-8" />,
     };
 
     const zmienSubskrypcje = async (m: Modul) => {
@@ -156,22 +164,21 @@ export const ProjectsView: React.FC = () => {
                     <span className="text-xs text-slate-500">otwarte — bez progów</span>
                 </div>
 
+                {/* ⚠️ TA SAMA lista co na dashboardzie (lib/wrota.ts). Fashion nie ma buildu
+                    na moście — chodzi na własnym Expressie — więc jego kafel odpala serwer
+                    dev przez /api/launch; pozostałe otwierają statyczne buildy spod /apps/. */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    <UniverseCard title="TeO Story Studio" subtitle="Narracje. Reżyser. Tablica Produkcji."
-                        onClick={() => wejdz('/apps/story/')} icon={<FiFeather className="w-8 h-8" />} colorTheme="purple" isLocked={false} />
-                    <UniverseCard title="TeO Music Studio" subtitle="Rezonans harmoniczny. Synteza dźwięku."
-                        onClick={() => wejdz('/apps/music/')} icon={<FiMusic className="w-8 h-8" />} colorTheme="pink" isLocked={false} />
-                    <UniverseCard title="TeO App Studio" subtitle="Narzędzia. Kod. Rzeczywistość."
-                        onClick={() => wejdz('/apps/app/')} icon={<FiPackage className="w-8 h-8" />} colorTheme="cyan" isLocked={false} />
-                    <UniverseCard title="TeO Games Studio" subtitle="Galeria gier. Forge silników. Agenci światów."
-                        onClick={() => wejdz('/apps/games/')} icon={<FiCpu className="w-8 h-8" />} colorTheme="green" isLocked={false} />
-                    {/* ⚠️ „TeO LaB V.1" NIE JEST aplikacją — sprawdzone: to katalog materiałów
-                        (Edukacja/, TeOprinty/) plus KOPIA komponentu LaB, który już mieszka
-                        w Story V2. Danych ani logiki GRV tam nie ma; księga żyje w Moście.
-                        Kafel prowadzi więc tam, gdzie GRV realnie POWSTAJE: do Kuźni TeOPrintów,
-                        która każdemu schematowi nadaje sekcję „Ekonomia Graviton". */}
-                    <UniverseCard title="TeO LaB · TeOPrinty" subtitle="Kuźnia schematów. Wycena w GRV."
-                        onClick={() => wejdz('/apps/story/', '#lab')} icon={<FiShield className="w-8 h-8" />} colorTheme="blue" isLocked={false} />
+                    {STUDIA.map((s) => (
+                        <UniverseCard
+                            key={s.id}
+                            title={s.tytul}
+                            subtitle={s.podtytul}
+                            onClick={() => wejdz(s)}
+                            icon={IKONA[s.id]}
+                            colorTheme={s.kolor}
+                            isLocked={false}
+                        />
+                    ))}
                 </div>
                 <p className="mt-3 text-[11px] text-slate-500 leading-relaxed max-w-3xl">
                     Wrota prowadzą do aplikacji serwowanych przez <b>Twój Most</b>, nie do zewnętrznych domen —
