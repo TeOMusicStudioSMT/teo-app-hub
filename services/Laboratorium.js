@@ -622,9 +622,11 @@ print("ZAPISANO: " + blend)
 export async function chipy() {
     await upewnijKatalogi();
     const dir = path.join(WYMIAR(), 'chipy');
-    const pliki = (await fs.readdir(dir)).filter((f) => f.endsWith('.json')).sort().reverse();
+    // ⚠️ Bez `analiza-*.json` — to wyniki analizy plików, nie projekty. Pierwsza wersja
+    // brała wszystko i pierwsza analiza Suwerena wywracała listę projektów (brak `liczby`).
+    const pliki = (await fs.readdir(dir)).filter((f) => f.endsWith('.json') && !f.startsWith('analiza-')).sort().reverse();
     const l = [];
-    for (const f of pliki) { const c = await czytajJson(path.join(dir, f), null); if (c) l.push({ ...c, nota: undefined, notaZnakow: (c.nota || '').length }); }
+    for (const f of pliki) { const c = await czytajJson(path.join(dir, f), null); if (c?.liczby) l.push({ ...c, nota: undefined, notaZnakow: (c.nota || '').length }); }
     return l;
 }
 
