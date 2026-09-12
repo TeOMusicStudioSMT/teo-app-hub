@@ -7586,6 +7586,14 @@ app.post('/api/lab/chipy/analiza', labUpload.single('plik'), async (req, res) =>
     const uciete = tresc.length > LIMIT ? tresc.length - LIMIT : 0;
     return labOdp(res, Laboratorium.analizujPlik({ nazwa, tresc: tresc.slice(0, LIMIT), pytanie: req.body?.pytanie, model: req.body?.model, stron }).then((a) => ({ ...a, uciete })));
 });
+/** Projekt jako żywa rzecz: notatki Suwerena, pytania otwarte, badania TeOgochi (Arena z kontekstem projektu → dziennik). */
+app.post('/api/lab/chipy/:id/notatka', (req, res) => labOdp(res, Laboratorium.dodajNotatke(req.params.id, req.body ?? {})));
+app.post('/api/lab/chipy/:id/pytanie', (req, res) => labOdp(res, Laboratorium.dodajPytanie(req.params.id, req.body ?? {})));
+app.delete('/api/lab/chipy/:id/pytanie/:pid', (req, res) => labOdp(res, Laboratorium.usunPytanie(req.params.id, req.params.pid)));
+app.delete('/api/lab/chipy/:id/wpis/:wid', (req, res) => labOdp(res, Laboratorium.usunWpis(req.params.id, req.params.wid)));
+app.post('/api/lab/chipy/:id/badaj', (req, res) => labOdp(res, Laboratorium.badajPytanie(req.params.id, req.body ?? {}).then((r) => ({ ...r, sondaz: `/api/lab/arena/${r.arena}` }))));
+/** Nocna Zmiana: bez pól — pierwsze otwarte pytanie w pierwszym projekcie. */
+app.post('/api/lab/badaj', (req, res) => labOdp(res, (req.body?.projekt ? Laboratorium.badajPytanie(req.body.projekt, req.body) : Laboratorium.nastepneBadanie(req.body ?? {})).then((r) => (r.arena ? { ...r, sondaz: `/api/lab/arena/${r.arena}` } : r))));
 /** Przekucie analizy w projekt: model wyciąga parametry (null = nie było w pliku), UI wypełnia formularz. */
 app.post('/api/lab/chipy/analizy/:id/spec', (req, res) => labOdp(res, Laboratorium.specZAnalizy(req.params.id, { model: req.body?.model })));
 

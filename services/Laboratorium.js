@@ -466,7 +466,7 @@ const areny = new Map(); // id → rekord w pamięci (plik jest zwierciadłem)
 
 export async function stado() {
     const s = await MostStada.stanDlaApki([]);
-    return { migawka: s.migawka, powod: s.powod || null, gatunki: (s.gatunki || []).map(({ id, imie, dziedzina, kolor, forma, etap, xp }) => ({ id, imie, dziedzina, kolor, forma, etap, xp })) };
+    return { migawka: s.migawka, powod: s.powod || null, gatunki: (s.gatunki || []).map(({ id, imie, dziedzina, kolor, forma, etap, xp, wyklute }) => ({ id, imie, dziedzina, kolor, forma, etap, xp, wyklute: !!wyklute })) };
 }
 
 export async function areny_lista() {
@@ -485,7 +485,7 @@ export async function arena(id) {
     return a;
 }
 
-export async function zacznijArene({ uczestnicy, temat, rundy = 3, model }) {
+export async function zacznijArene({ uczestnicy, temat, rundy = 3, model, kontekst = '', naKoniec = null }) {
     if (!Array.isArray(uczestnicy) || uczestnicy.length < 2) throw new Error('Arena potrzebuje co najmniej dwóch TeOgochi.');
     if (!temat?.trim()) throw new Error('Arena potrzebuje tematu.');
     const s = await stado();
@@ -493,7 +493,7 @@ export async function zacznijArene({ uczestnicy, temat, rundy = 3, model }) {
     if (osoby.length < 2) throw new Error(`W stadzie widzę tylko: ${s.gatunki.map((g) => g.id).join(', ') || 'nikogo (Katedra nie opublikowała migawki)'}.`);
     await upewnijKatalogi();
     const id = `${Date.now()}-${id8()}`;
-    const rek = { id, temat: temat.trim(), rundy: Math.max(1, Math.min(8, Number(rundy) || 3)), model: model || modelDomyslny, uczestnicy: osoby, start: teraz(), stan: 'trwa', runda: 0, transkrypt: [], wnioski: null, blad: null };
+    const rek = { id, temat: temat.trim(), rundy: Math.max(1, Math.min(8, Number(rundy) || 3)), model: model || modelDomyslny, uczestnicy: osoby, start: teraz(), stan: 'trwa', runda: 0, transkrypt: [], wnioski: null, blad: null, kontekst: kontekst ? kontekst.slice(0, 12_000) : null };
     areny.set(id, rek);
     const plik = path.join(WYMIAR(), 'arena', `${id}.json`);
     await zapiszJson(plik, rek);
@@ -507,7 +507,7 @@ export async function zacznijArene({ uczestnicy, temat, rundy = 3, model }) {
                     const ostatnie = rek.transkrypt.slice(-12).map((w) => `${w.imie} (${w.dziedzina}): ${w.tekst}`).join('\n');
                     const w = await pisz({
                         system: `Jesteś ${o.imie} — TeOgochi Katedry OtakOS, dziedzina: ${o.dziedzina}, etap: ${o.etap}. Mówisz po polsku, w pierwszej osobie, 2–4 zdania, TYLKO z perspektywy swojej dziedziny. Odnosisz się do tego, co powiedzieli inni. Bez powtarzania tematu, bez grzeczności na wstępie. Jeśli nie masz nic nowego — powiedz jedno zdanie i oddaj głos.`,
-                        prompt: `TEMAT ARENY: ${rek.temat}\nRUNDA ${r}/${rek.rundy}\n\nDOTĄD:\n${ostatnie || '(cisza — zaczynasz)'}\n\nTwoja wypowiedź:`,
+                        prompt: `TEMAT ARENY: ${rek.temat}\n${rek.kontekst ? `\nKONTEKST PROJEKTU (liczby i notatki — trzymaj się ich, nie wymyślaj nowych):\n${rek.kontekst}\n` : ''}RUNDA ${r}/${rek.rundy}\n\nDOTĄD:\n${ostatnie || '(cisza — zaczynasz)'}\n\nTwoja wypowiedź:`,
                         model: rek.model, timeoutMs: 180_000,
                     });
                     rek.transkrypt.push({ runda: r, id: o.id, imie: o.imie, dziedzina: o.dziedzina, kolor: o.kolor, forma: o.forma, tekst: w.tekst.slice(0, 1200), kiedy: teraz() });
@@ -526,6 +526,7 @@ export async function zacznijArene({ uczestnicy, temat, rundy = 3, model }) {
         rek.koniec = teraz();
         await zapiszJson(plik, rek);
         zdarzenie('arena', `Arena „${rek.temat}" ${rek.stan === 'gotowa' ? 'skończona — wnioski gotowe' : `padła: ${rek.blad}`}`);
+        if (naKoniec) { try { await naKoniec(rek); } catch (e) { console.warn(`[Lab] naKoniec areny ${id}: ${e.message}`); } }
         setTimeout(() => areny.delete(id), 10 * 60_000);
     })();
 
@@ -639,15 +640,125 @@ export async function chipy() {
     // brała wszystko i pierwsza analiza Suwerena wywracała listę projektów (brak `liczby`).
     const pliki = (await fs.readdir(dir)).filter((f) => f.endsWith('.json') && !f.startsWith('analiza-')).sort().reverse();
     const l = [];
-    for (const f of pliki) { const c = await czytajJson(path.join(dir, f), null); if (c?.liczby) l.push({ ...c, nota: undefined, notaZnakow: (c.nota || '').length }); }
+    for (const f of pliki) { const c = await czytajJson(path.join(dir, f), null); if (c?.liczby) { ozyw(c); l.push({ ...c, nota: undefined, dziennik: undefined, notaZnakow: (c.nota || '').length, pytanOtwartych: c.pytania.filter((p) => p.stan === 'otwarte').length, badan: c.dziennik.filter((w) => w.rodzaj === 'badanie').length, notatek: c.dziennik.filter((w) => w.rodzaj === 'notatka').length }); } }
     return l;
+}
+
+const PLIK_CHIPU = (id) => path.join(WYMIAR(), 'chipy', `${id}.json`);
+
+/**
+ * Pytania z sekcji „Czego nie wiemy" noty — każdy punkt listy to otwarte pytanie
+ * projektu. Model pisze tę sekcję, ale to Suweren i TeOgochi ją zamykają.
+ */
+function pytaniaZNoty(nota) {
+    if (!nota) return [];
+    const m = nota.match(/#+\s*\d*\.?\s*Czego\s+(?:NIE\s+)?wiemy[^\n]*\n([\s\S]*?)(?:\n#+\s|\n---|$)/i);
+    if (!m) return [];
+    // Tylko punkty listy — akapit wstępny („W szczególności nie wiemy:") to nie pytanie.
+    return m[1].split('\n').filter((l) => /^\s*(?:[-*•]|\d+[.)])\s+/.test(l))
+        .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').replace(/\*\*/g, '').trim()).filter((l) => l.length > 8)
+        .filter((l, i, a) => a.indexOf(l) === i).slice(0, 8);
+}
+
+/** Projekt = żywa rzecz: dziennik (notatki + badania) i pytania otwarte. Starsze wpisy dostają je przy pierwszym odczycie. */
+function ozyw(c) {
+    if (!Array.isArray(c.dziennik)) c.dziennik = [];
+    if (!Array.isArray(c.pytania)) {
+        c.pytania = pytaniaZNoty(c.nota).map((tresc) => ({ id: id8(), tresc, stan: 'otwarte', kto: `nota (${c.model || 'model'})`, data: c.data, badanieId: null }));
+    }
+    return c;
 }
 
 export async function chip(id) {
     if (!/^[\w-]+$/.test(id)) throw new Error('Złe id.');
-    const c = await czytajJson(path.join(WYMIAR(), 'chipy', `${id}.json`), null);
+    const c = await czytajJson(PLIK_CHIPU(id), null);
     if (!c) throw new Error(`Nie ma projektu ${id}.`);
-    return c;
+    return ozyw(c);
+}
+
+async function zapiszChip(c) { await zapiszJson(PLIK_CHIPU(c.id), c); return c; }
+
+export async function dodajNotatke(id, { tresc, kto = 'Suweren' }) {
+    if (!tresc?.trim()) throw new Error('Pusta notatka.');
+    const c = await chip(id);
+    c.dziennik.push({ id: id8(), rodzaj: 'notatka', kto, tresc: tresc.trim().slice(0, 8000), data: teraz() });
+    return zapiszChip(c);
+}
+
+export async function dodajPytanie(id, { tresc, kto = 'Suweren' }) {
+    if (!tresc?.trim()) throw new Error('Puste pytanie.');
+    const c = await chip(id);
+    c.pytania.push({ id: id8(), tresc: tresc.trim().slice(0, 600), stan: 'otwarte', kto, data: teraz(), badanieId: null });
+    return zapiszChip(c);
+}
+
+export async function usunWpis(id, wpisId) {
+    const c = await chip(id);
+    c.dziennik = c.dziennik.filter((w) => w.id !== wpisId);
+    return zapiszChip(c);
+}
+
+export async function usunPytanie(id, pytanieId) {
+    const c = await chip(id);
+    c.pytania = c.pytania.filter((p) => p.id !== pytanieId);
+    return zapiszChip(c);
+}
+
+/** Kontekst projektu dla TeOgochi: liczby + nota (skrót) + notatki Suwerena + dotychczasowe badania. */
+function kontekstProjektu(c) {
+    const l = c.liczby;
+    return [
+        `PROJEKT: ${c.nazwa}`,
+        `MODEL: ${JSON.stringify(c.spec)}`,
+        `LICZBY (jawne wzory): wagi ${l.wagiGB} GB · KV/token ${l.kvNaTokenKB} KB · KV cache ${l.kvGB} GB · pamięć ${l.pamiecGB} GB · ${l.tflops} TFLOPS · pasmo ${l.pasmoGBs} GB/s · ${l.stosyHbm} stosów HBM3 (${l.hbm.gbsNaStos} GB/s, ${l.hbm.gbNaStos} GB)`,
+        c.nota ? `NOTA (skrót): ${c.nota.replace(/\s+/g, ' ').slice(0, 2500)}` : '',
+        ...c.dziennik.filter((w) => w.rodzaj === 'notatka').slice(-6).map((w) => `NOTATKA SUWERENA (${w.data.slice(0, 10)}): ${w.tresc.slice(0, 800)}`),
+        ...c.dziennik.filter((w) => w.rodzaj === 'badanie').slice(-3).map((w) => `WCZEŚNIEJSZE BADANIE „${w.pytanie}": ${String(w.wnioski || '').slice(0, 800)}`),
+    ].filter(Boolean).join('\n');
+}
+
+/**
+ * Badanie: TeOgochi (2–4) labują jedno otwarte pytanie projektu w Arenie z pełnym
+ * kontekstem projektu; wnioski wracają do dziennika, pytanie → „zbadane".
+ * Bez `uczestnicy` bierze wyklute ze stada (max 3) — jajka jeszcze nie pracują.
+ */
+export async function badajPytanie(id, { pytanieId, uczestnicy, rundy = 2, model } = {}) {
+    const c = await chip(id);
+    const p = pytanieId ? c.pytania.find((x) => x.id === pytanieId) : c.pytania.find((x) => x.stan === 'otwarte');
+    if (!p) throw new Error(pytanieId ? 'Nie ma takiego pytania.' : 'Projekt nie ma otwartych pytań.');
+    if (p.stan === 'bada') throw new Error('To pytanie już ktoś bada.');
+    let kto = Array.isArray(uczestnicy) && uczestnicy.length >= 2 ? uczestnicy : null;
+    if (!kto) {
+        const s = await stado();
+        const wyklute = s.gatunki.filter((g) => g.wyklute).slice(0, 3).map((g) => g.id);
+        kto = wyklute.length >= 2 ? wyklute : s.gatunki.slice(0, 3).map((g) => g.id);
+    }
+    const arena = await zacznijArene({
+        uczestnicy: kto, rundy, model,
+        temat: `Projekt układu „${c.nazwa}": ${p.tresc}`,
+        kontekst: kontekstProjektu(c),
+        naKoniec: async (rek) => {
+            const c2 = await chip(id);
+            const p2 = c2.pytania.find((x) => x.id === p.id);
+            const wpis = { id: id8(), rodzaj: 'badanie', kto: rek.uczestnicy.map((u) => u.imie).join(', '), pytanie: p.tresc, pytanieId: p.id, arenaId: rek.id, wnioski: rek.wnioski, stan: rek.stan, blad: rek.blad, model: rek.model, data: teraz() };
+            c2.dziennik.push(wpis);
+            if (p2) { p2.stan = rek.stan === 'gotowa' ? 'zbadane' : 'otwarte'; p2.badanieId = wpis.id; }
+            await zapiszChip(c2);
+        },
+    });
+    p.stan = 'bada'; p.arenaId = arena.id;
+    await zapiszChip(c);
+    zdarzenie('badanie', `TeOgochi badają „${p.tresc.slice(0, 80)}" w projekcie „${c.nazwa}"`);
+    return { projekt: c.id, pytanie: p, arena: arena.id, uczestnicy: arena.uczestnicy.map((u) => u.imie) };
+}
+
+/** Dla Nocnej Zmiany: pierwsze otwarte pytanie w pierwszym projekcie, który je ma. */
+export async function nastepneBadanie({ model, rundy } = {}) {
+    for (const c of await chipy()) {
+        const pelny = await chip(c.id);
+        if (pelny.pytania.some((p) => p.stan === 'otwarte')) return badajPytanie(c.id, { model, rundy });
+    }
+    return { nic: true, message: 'Żaden projekt nie ma otwartych pytań — TeOgochi nie mają czego badać.' };
 }
 
 export async function projektujChip({ nazwa, spec, model, bezNoty = false, zAnalizy = null }) {
@@ -667,6 +778,8 @@ export async function projektujChip({ nazwa, spec, model, bezNoty = false, zAnal
         rek.model = w.model; rek.nota = w.tekst;
     }
 
+    rek.dziennik = [];
+    rek.pytania = pytaniaZNoty(rek.nota).map((tresc) => ({ id: id8(), tresc, stan: 'otwarte', kto: `nota (${rek.model})`, data: teraz(), badanieId: null }));
     const skrypt = skryptBpyChipu({ nazwa: `${bezpiecznaNazwa}_${id}`, liczby });
     const plikPy = path.join(WYMIAR(), 'chipy', `${id}.py`);
     await fs.writeFile(plikPy, skrypt, 'utf8');
@@ -800,4 +913,5 @@ export default {
     apki, plikiApki, zlecenia, dodajZlecenie, usunZlecenie, eksperymenty, eksperymentPelny, eksperyment, zatwierdz, odrzuc, nastepneZlecenie,
     stado, areny_lista, arena, zacznijArene,
     policzChip, chipy, chip, projektujChip, renderujChip, stanBlendera, analizujPlik, analizy, tekstZPdf, specZAnalizy, powiazAnalize,
+    dodajNotatke, dodajPytanie, usunPytanie, usunWpis, badajPytanie, nastepneBadanie,
 };

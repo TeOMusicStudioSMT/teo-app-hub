@@ -54,6 +54,8 @@ export const ROBOTY = {
     'latarnik':        { opis: 'Latarnik sprawdza spójność danych biznesu',      metoda: 'GET',  sciezka: '/api/latarnik/przeglad',      pola: ['biznes'] },
     // 🧪 TeO Lab: bez pól bierze pierwsze otwarte zlecenie (apka+plik+cel) i labuje je w piaskownicy — rano decyzja Suwerena.
     'lab-eksperyment': { opis: 'Lab: eksperyment w piaskownicy z kolejki zleceń', metoda: 'POST', sciezka: '/api/lab/eksperyment',         pola: ['apka', 'plik', 'cel', 'model'] },
+    // 🔬 TeO Lab: TeOgochi badają otwarte pytanie projektu chipu (Arena z kontekstem → dziennik projektu).
+    'lab-badanie':     { opis: 'Lab: TeOgochi badają otwarte pytanie projektu chipu', metoda: 'POST', sciezka: '/api/lab/badaj',              pola: ['projekt', 'pytanieId', 'uczestnicy', 'rundy', 'model'], czekajNa: 'sondaz' },
     // 🎬 Story (2026-09-12). Produkcja = kadry → ruch → montaż → plik w katalogu projektu/odcinka → GOTOWE (Klatka).
     // Tablica = każdy niezrealizowany odcinek po kolei, z osobna: Reżyser pisze kadry, potem produkcja, potem status.
     // Oba trwają godzinami — most oddaje `sondaz`, a Zmiana czeka, aż stan przestanie być „trwa".
@@ -204,13 +206,14 @@ async function wykonaj(zadanie) {
         }
         throw new Error('Skryba nie skończył w 30 minut');
     }
+    if (d.nic) return d;
     // Realizacja Nocna oddaje `sondaz` — czekamy, aż stan przestanie być „trwa" (to są godziny, sufit 12 h).
     if (robota.czekajNa === 'sondaz' && d.sondaz) {
         for (let i = 0; i < 12 * 60 * 2; i++) {
             await new Promise((res) => setTimeout(res, 30_000));
             const s = await fetch(`${mostBase}${d.sondaz}`).then((x) => x.json()).catch(() => null);
             if (!s || s.stan === 'trwa') continue;
-            if (s.stan === 'blad') throw new Error(s.blad || 'realizacja padła');
+            if (s.stan === 'blad' || s.stan === 'padla') throw new Error(s.blad || 'zadanie padło');
             return { ...d, stan: s.stan, podsumowanie: s.podsumowanie ?? null, film: s.film ?? null, odcinki: s.odcinki?.map((o) => `#${o.numer} ${o.stan}`) ?? undefined };
         }
         throw new Error('Realizacja nie skończyła się w 12 godzin');
