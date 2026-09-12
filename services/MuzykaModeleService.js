@@ -1,7 +1,7 @@
 /**
  * 🧠 MUZYKA — KATALOG MODELI (MiniMax-Music-3)
  *
- * Wagi modeli muzycznych żyją SUWERENNIE w katalogu TeO_Music_V2/models/, nie w repo
+ * Wagi modeli muzycznych żyją SUWERENNIE w katalogu TeO_Music_Studio/models/, nie w repo
  * (16+ GB). Ten serwis: skanuje katalog, mówi czego brakuje, i realnie ściąga pliki
  * z HuggingFace z wznawianiem (Range) — żeby zerwane 9-gigabajtowe pobieranie nie
  * zaczynało od zera na łączu, które potrafi mrugnąć.
@@ -10,7 +10,7 @@
  * ComfyUI/models/ — dzięki temu ComfyUI widzi ten katalog przez extra_model_paths.yaml
  * i nie trzeba trzymać wag w dwóch miejscach na dysku.
  *
- * Manifest jest bliźniakiem src/services/musicModelCatalog.ts w TeO_Music_V2.
+ * Manifest jest bliźniakiem src/services/musicModelCatalog.ts w TeO_Music_Studio.
  * Rozmiary zweryfikowane przez HuggingFace API — nie zgadywane.
  */
 
@@ -24,14 +24,21 @@ const REPO = 'Comfy-Org/MiniMax-Music-3';
 const REPO_ACE = 'Comfy-Org/ace_step_1.5_ComfyUI_files';
 
 /**
- * Katalog wag. Domyślnie obok mostu: <cwd>/../TeO_Music_V2/models
+ * Katalog wag. Domyślnie obok mostu: <cwd>/../TeO_Music_Studio/models
  * Podmiana bez ruszania kodu: OTAKOS_MUSIC_MODELS.
+ *
+ * ⚠️ LICZONY PRZY KAŻDYM UŻYCIU, nie raz przy starcie mostu. 2026-09-12 Suweren
+ * przemianował TeO_Music_V2 → TeO_Music_Studio przy żyjącym moście; stała
+ * policzona na boot wskazywała katalog, którego już nie było, i panel pokazał
+ * „Na dysku: 0 B" przy 72 GB wag na dysku. Funkcja widzi rename od razu.
  */
-export const KATALOG_MODELI = process.env.OTAKOS_MUSIC_MODELS
-    || ['TeO_Music_Studio', 'TeO_Music_V2']
-        .map((d) => path.resolve(process.cwd(), '..', d, 'models'))
-        .find((d) => fsSync.existsSync(d))
-    || path.resolve(process.cwd(), '..', 'TeO_Music_Studio', 'models');
+export function katalogModeli() {
+    return process.env.OTAKOS_MUSIC_MODELS
+        || ['TeO_Music_Studio', 'TeO_Music_V2']
+            .map((d) => path.resolve(process.cwd(), '..', d, 'models'))
+            .find((d) => fsSync.existsSync(d))
+        || path.resolve(process.cwd(), '..', 'TeO_Music_Studio', 'models');
+}
 
 export const MANIFEST = [
     { id: 'dit-int8',                 path: 'diffusion_models/minimax_music3_dit_int8_convrot.safetensors',            role: 'diffusion_models', precision: 'int8', bytes: 2_502_161_682,  label: 'DiT int8 (convrot)',        fitsVram6gb: true  },
@@ -74,8 +81,9 @@ function urlHf(m) {
 
 /** Bezpieczne złożenie ścieżki — manifest jest nasz, ale nie ufamy wejściu z sieci. */
 function sciezkaNaDysku(m) {
-    const pelna = path.resolve(KATALOG_MODELI, m.path);
-    if (!pelna.startsWith(path.resolve(KATALOG_MODELI))) {
+    const katalog = katalogModeli();
+    const pelna = path.resolve(katalog, m.path);
+    if (!pelna.startsWith(path.resolve(katalog))) {
         throw new Error(`Ścieżka ucieka z katalogu modeli: ${m.path}`);
     }
     return pelna;
@@ -148,7 +156,7 @@ export async function status() {
 
     return {
         success: true,
-        katalog: KATALOG_MODELI,
+        katalog: katalogModeli(),
         repo: REPO,
         pliki,
         rodziny,

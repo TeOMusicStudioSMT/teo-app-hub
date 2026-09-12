@@ -165,7 +165,7 @@ import {
 } from './services/StrazMostu.js';
 import CryptoAgility from './services/CryptoAgility.js';
 import {
-    KATALOG_MODELI as MUZYKA_KATALOG_MODELI,
+    katalogModeli as muzykaKatalogModeli,
     MANIFEST as MUZYKA_MANIFEST,
     status as muzykaModeleStatus,
     pull as muzykaModelePull,
@@ -9569,7 +9569,7 @@ app.get('/api/music/engine/status', async (req, res) => {
         gotowy: !!ktoraGotowa,
         gotowaRodzina: ktoraGotowa,
         rodziny,
-        katalogModeli: MUZYKA_KATALOG_MODELI,
+        katalogModeli: muzykaKatalogModeli(),
         comfy: { base: COMFY_BASE, ...comfy },
         // Zgodność wstecz z panelem
         modele: { pipelineGotowy: modele.pipelineGotowy, brakujaceRole: modele.brakujaceRole },
@@ -9813,7 +9813,7 @@ app.post('/api/music/generate', async (req, res) => {
             // Nie milczymy o korektach — Suweren ma widziec, ze cos podmienilismy.
             poprawione: zObcejRodziny.length ? zObcejRodziny : undefined,
             engine: `ComfyUI × ${cfgRodziny.etykieta}`,
-            katalogModeli: MUZYKA_KATALOG_MODELI,
+            katalogModeli: muzykaKatalogModeli(),
             // Gotowy plik zjedzie do output ComfyUI; przenosinami do _OtakOs_Muzyka
             // zajmuje się /api/music/collect po zakończeniu.
             message: 'Graf w kolejce ComfyUI. Postęp: GET /api/music/progress?promptId=...',
