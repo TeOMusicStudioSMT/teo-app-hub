@@ -155,6 +155,7 @@ import * as Rekopis from './services/Rekopis.js';
 import * as Skryba from './services/Skryba.js';
 import * as NocnaZmiana from './services/NocnaZmiana.js';
 import * as Laboratorium from './services/Laboratorium.js';
+import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -7497,6 +7498,32 @@ NocnaZmiana.uruchomPetle();
 // ═════════════════════════════════════════════════════════════════════════════
 Laboratorium.skonfiguruj({ ollama: OLLAMA_BASE, model: process.env.OTAKOS_MODEL, modelMechanika: () => modelMechanika(), szynaZdarzen: Szyna });
 
+// ═════════════════════════════════════════════════════════════════════════════
+// 🌙🎬 REALIZACJA NOCNA — „Zrealizuj zaplanowaną Produkcję" (Klatka) i „Zrealizuj
+// Tablicę Reżysera" (Reżyser). services/RealizacjaNocna.js — tam „po co".
+// ═════════════════════════════════════════════════════════════════════════════
+RealizacjaNocna.skonfiguruj({
+    katalogKatedry: ANTIGRAVITY_DIR, mostBase: `http://127.0.0.1:${PORT}`, szyna: Szyna, comfyDir: COMFY_DIR,
+    produkcjaLista, produkcjaZmien, produkcjaDodaj, rezyserPamiec, katalogOdcinka,
+    katalogUjec: KolejkaKadrow.katalogUjec, poKolei: KolejkaKadrow.poKolei, maJuzUjecie: KolejkaKadrow.maJuzUjecie,
+    sklej: CiagDalszy.sklej,
+});
+const realizacjaOdp = (res, fn) => {
+    try {
+        const z = fn();
+        // `sondaz` — adres, pod którym Nocna Zmiana czeka na koniec (godziny).
+        return res.json({ success: true, zadanie: z.id, sondaz: `/api/realizacja-nocna/${z.id}`, ...z });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+};
+app.post('/api/produkcja/zrealizuj', (req, res) => realizacjaOdp(res, () => RealizacjaNocna.zrealizujProdukcje(req.body ?? {})));
+app.post('/api/rezyser/tablica/zrealizuj', (req, res) => realizacjaOdp(res, () => RealizacjaNocna.zrealizujTablice(req.body ?? {})));
+app.get('/api/realizacja-nocna', (req, res) => res.json({ success: true, zadania: RealizacjaNocna.listaZadan() }));
+app.get('/api/realizacja-nocna/:id', (req, res) => {
+    const z = RealizacjaNocna.stanZadania(req.params.id);
+    return z ? res.json({ success: true, ...z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania.' });
+});
+app.post('/api/realizacja-nocna/:id/przerwij', (req, res) => res.json({ success: true, przerwane: RealizacjaNocna.przerwij(req.params.id) }));
+
 const labOdp = (res, p) => p.then((d) => res.json({ success: true, ...(Array.isArray(d) ? { lista: d } : d) })).catch((e) => res.status(400).json({ success: false, message: e.message }));
 
 app.get('/api/lab/stan', (req, res) => labOdp(res, Promise.resolve(Laboratorium.stan())));
@@ -8514,7 +8541,7 @@ app.get('/api/kolejka/kadry', async (req, res) => {
  */
 app.post('/api/kolejka/odpal', async (req, res) => {
     const { projekt = '', etap = 'KADR', ile, odNowa = false, klatek, sekundy, kroki,
-        sklejaj = true, odwrotnie = false, rezyser: idRezysera = '' } = req.body ?? {};
+        sklejaj = true, odwrotnie = false, rezyser: idRezysera = '', odcinekId = '' } = req.body ?? {};
     try {
         const stan = await stanWideoZBudzeniem('kolejka kadrow');
         if (!stan.gotowe) return res.status(424).json({ success: false, message: stan.braki.join(' | '), braki: stan.braki });
@@ -8537,11 +8564,13 @@ app.post('/api/kolejka/odpal', async (req, res) => {
         // Mało pamięci, ale bez konkurenta — mówimy o tym i PUSZCZAMY.
         if (miejsce.ostrzezenie) console.warn(`[Karta] ⚠️ ${miejsce.ostrzezenie}`);
 
+        // `odcinekId` (Realizacja Nocna, 2026-09-12): tylko kadry TEGO odcinka — tablica
+        // Reżysera realizuje odcinki z osobna, a nie cały serial na raz.
         const wszystkie = KolejkaKadrow.poKolei(
-            (await produkcjaLista(ANTIGRAVITY_DIR, projekt)).filter((k) => k.etap === String(etap).toUpperCase()),
+            (await produkcjaLista(ANTIGRAVITY_DIR, projekt)).filter((k) => k.etap === String(etap).toUpperCase() && (!odcinekId || k.sesjaRady === odcinekId)),
             Boolean(odwrotnie),
         );
-        if (!wszystkie.length) return res.status(400).json({ success: false, message: `Zaden kadr na etapie ${etap} w projekcie „${projekt}".` });
+        if (!wszystkie.length) return res.status(400).json({ success: false, message: `Zaden kadr na etapie ${etap} w projekcie „${projekt}"${odcinekId ? ` (odcinek ${odcinekId})` : ''}.` });
 
         // Kotwica: biblia projektu + kanon. Bez niej sto ujec rozjedzie sie na sto stron.
         const [biblia, pamiec] = await Promise.all([
