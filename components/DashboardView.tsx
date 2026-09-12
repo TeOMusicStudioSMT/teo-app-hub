@@ -12,6 +12,7 @@ import KatedraNeuralMap from './special/KatedraNeuralMap';
 import { useT } from '../lib/i18n';
 import LanguageToggle from './LanguageToggle';
 import { STUDIA, odpalStudio, type IdStudia } from '../lib/wrota';
+import { PulsMaszyny } from './dashboard/PulsMaszyny';
 
 interface DashboardViewProps {
     onVisualAssistantOpen: () => void;
@@ -51,9 +52,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
                 <ManifestHistoryCard />
             </div>
 
-            {/* ⚠️ Tu stała ValueClarityCard — „Transfer 1000 GRV to @jano · 45% · High Risk"
-                wpisane na sztywno, ocena ryzyka, której żaden moduł nie liczy. Usunięta
-                2026-09-11: atrapa na ekranie startowym uczy, że liczbom nie wolno wierzyć. */}
+            {/* 3. PULS MASZYNY — RAM / VRAM / temperatura karty na żywo (liveline, MIT).
+                Tu stała ValueClarityCard: „Transfer 1000 GRV to @jano · 45% · High Risk"
+                wpisane na sztywno. Usunięta 2026-09-11; jej miejsce zajmują liczby,
+                które naprawdę się mierzą — bo noc wcześniej nikt nie widział, jak
+                RAM spada do 3,7 GB, dopóki most nie padł. */}
+            <div className="w-full">
+                <PulsMaszyny />
+            </div>
+
 
             {/* 4. PORTFOLIO */}
             <div className="w-full">

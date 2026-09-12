@@ -22,6 +22,7 @@ import {
     Brain, Sparkles, Terminal, Zap, Settings, RefreshCw,
     Cloud, Cpu, X, Eye, Play,
 } from 'lucide-react';
+import { ThinkingOrb } from 'thinking-orbs';
 import toast from 'react-hot-toast';
 import { ApiDyrygent, CLOUD_MODELS, ImageAttachment } from '../../lib/router/ApiDyrygent';
 import * as Historia from '../../lib/historiaCzatu';
@@ -1663,8 +1664,11 @@ ${String(d.tresc || '').slice(0, 4000)}
                 </div>
 
                 {statusLine && (
-                    <div className="mt-1 text-xs text-purple-300/70 flex items-center gap-1">
-                        <Terminal size={10} /><span>{statusLine}</span>
+                    <div className="mt-1 text-xs text-purple-300/70 flex items-center gap-1.5">
+                        {/* thinking-orbs (MIT, canvas 2D): orb myśli tylko, gdy model NAPRAWDĘ liczy —
+                            isLoading. Statyczny status dostaje statyczną ikonę. */}
+                        {isLoading ? <ThinkingOrb state="working" size={20} theme="dark" aria-label="model liczy" /> : <Terminal size={10} />}
+                        <span>{statusLine}</span>
                     </div>
                 )}
             </div>
