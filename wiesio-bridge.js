@@ -992,7 +992,9 @@ app.post('/api/ollama/pisz', async (req, res) => {
         const t = setTimeout(() => ctrl.abort(), 300000);
         const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
-            body: JSON.stringify({ model: silnik, system, prompt, stream: false }),
+            // ⚠️ think:false — modele qwen3.x bez tego przepalają budżet na myślenie i oddają
+            // PUSTĄ treść (zmierzone: eval_count 60, response ""). Gemma to ignoruje.
+            body: JSON.stringify({ model: silnik, system, prompt, stream: false, think: false }),
         });
         clearTimeout(t);
         if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
