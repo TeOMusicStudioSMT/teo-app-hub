@@ -7609,6 +7609,8 @@ app.post('/api/lab/chipy/analizy/:id/spec', (req, res) => labOdp(res, Laboratori
  * czytamy stdout także wtedy, gdy proces „padł" — inaczej jedyny przypadek,
  * dla którego to narzędzie istnieje, wyglądałby jak błąd serwera.
  */
+/** Lista pilnowanych biznesów — dla karty Nocnej Zmiany (wybór, nie wpisywanie z pamięci). */
+app.get('/api/latarnik/biznesy', (_req, res) => res.json({ success: true, biznesy: [{ id: 'cafe-martens', nazwa: 'Café Martens & More' }] }));
 app.get('/api/latarnik/przeglad', async (req, res) => {
     const KATALOGI = {
         'cafe-martens': 'F:\\Caffe-Martens.com',
@@ -9066,11 +9068,49 @@ async function piszModelem(model, system, prompt) {
     const silnik = model || process.env.OTAKOS_MODEL || DEFAULT_LLM;
     const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: silnik, system, prompt, stream: false }),
+        // think:false — qwen3.x bez tego oddaje pustą treść (zmierzone przy /api/ollama/pisz).
+        body: JSON.stringify({ model: silnik, system, prompt, stream: false, think: false }),
     });
     if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
     return { tekst: String((await r.json()).response || '').trim(), silnik };
 }
+
+/**
+ * POST /api/opowiesc/doradca { historia[], gatunekId?, model? }
+ *
+ * Suweren (2026-09-12): „przy rozmowie i ustalaniu strasznie jest dużo pytań —
+ * potrzebuję drugiego TeOgochi, by mu odpowiadał, i możliwości kliknięcia na
+ * jego odpowiedź potwierdzającego ten wybór". Doradca czyta OSTATNIĄ wypowiedź
+ * partnera, wyławia pytania i do każdego proponuje 2 krótkie odpowiedzi, spójne
+ * z dotychczasową rozmową. NIC nie zapisuje i NIC nie wysyła — kliknięcie
+ * w Pokoju Opowieści robi z propozycji wypowiedź Suwerena. Decyzja zostaje jego.
+ */
+app.post('/api/opowiesc/doradca', async (req, res) => {
+    const { historia = [], gatunekId = '', model } = req.body ?? {};
+    const ostatnia = [...historia].reverse().find((t) => t.kto === 'teogochi');
+    if (!ostatnia) return res.status(400).json({ success: false, message: 'Partner jeszcze o nic nie zapytał.' });
+    try {
+        let doradca = null;
+        if (gatunekId) {
+            const stado = await MostStada.stanDlaApki(Szyna.ostatnie({ ile: 100 })).catch(() => null);
+            doradca = (stado?.gatunki ?? []).find((g) => g.id === gatunekId) ?? null;
+        }
+        const kim = doradca ? `${doradca.imie} — TeOgochi Katedry, dziedzina: ${doradca.dziedzina}` : 'Doradca Suwerena';
+        const system = `Jesteś ${kim}. Suweren wymyśla opowieść z partnerem, a partner zasypuje go pytaniami. Twoja rola: wyłowić pytania z OSTATNIEJ wypowiedzi partnera i do każdego zaproponować DWIE krótkie, konkretne odpowiedzi (po polsku, jedno zdanie każda, w pierwszej osobie jak Suweren: „Niech…", „Chcę…"), różniące się kierunkiem, spójne z tym, co już ustalono. Nie dodawaj pytań od siebie. Odpowiadasz WYŁĄCZNIE jednym obiektem JSON: {"propozycje":[{"pytanie":"<pytanie partnera, skrót>","odpowiedzi":["<A>","<B>"]}]}. Gdy partner o nic nie pyta — {"propozycje":[]}.`;
+        const prompt = [Opowiesc.zwezHistorie(historia.slice(0, -1)), `PARTNER (ostatnia wypowiedź): ${ostatnia.tresc}`, '', 'JSON:'].filter(Boolean).join('\n');
+        const { tekst, silnik } = await piszModelem(model, system, prompt);
+        const m = tekst.match(/\{[\s\S]*\}/);
+        let propozycje = [];
+        try { propozycje = JSON.parse(m ? m[0] : '{}').propozycje ?? []; } catch { propozycje = []; }
+        propozycje = (Array.isArray(propozycje) ? propozycje : []).slice(0, 8).map((p) => ({
+            pytanie: String(p?.pytanie || '').slice(0, 200),
+            odpowiedzi: (Array.isArray(p?.odpowiedzi) ? p.odpowiedzi : []).map((o) => String(o).trim()).filter(Boolean).slice(0, 3),
+        })).filter((p) => p.odpowiedzi.length);
+        return res.json({ success: true, propozycje, model: silnik, doradca: doradca ? { id: doradca.id, imie: doradca.imie, forma: doradca.forma, dziedzina: doradca.dziedzina } : null });
+    } catch (e) {
+        return res.status(502).json({ success: false, message: e.message });
+    }
+});
 
 /**
  * POST /api/opowiesc/rozmowa { wypowiedz, historia[], gatunekId?, projekt?, model? }

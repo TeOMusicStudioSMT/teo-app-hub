@@ -44,23 +44,70 @@ export const CO_ILE_MS = 60_000;
  * Biała lista robót. Klucz = `rodzaj` zadania; wartość opisuje, jak wywołać most.
  * `body` z zadania jest przepuszczany tylko przez `pola` — reszta wypada.
  */
+/**
+ * ⚠️ POLA Z WYBOREM (2026-09-12). Suweren: „wybór realizacji zadania musi mieć
+ * wybór projektu z bazy danych, inaczej nie wie, co ma robić". Każde pole roboty
+ * ma teraz opis: `wybor` mówi karcie, skąd wziąć listę (trasa mostu), `wymagane`
+ * blokuje dodanie bez wskazania. Bez tego JSON „{"projekt": …}" w karcie był
+ * loterią — a Produkcja bez projektu robiłaby to, co akurat ma w pamięci.
+ *
+ * Źródła list (`wybor`):
+ *   projekt-story   /api/rezyser/projekty          nazwa projektu Story (serial)
+ *   odcinek         /api/rezyser/pamiec?serial=    odcinek TEGO projektu (zależy od pola projekt/serial)
+ *   rezyser         /api/rezyserzy                 styl reżysera
+ *   silnik-obrazu   /api/silniki-obrazu            silnik obrazu do kadrów
+ *   lab-apka        /api/lab/apki                  apka do piaskownicy
+ *   lab-chip        /api/lab/chipy                 projekt chipu
+ *   biznes          /api/latarnik/biznesy          pilnowany biznes
+ *   opcje           lista wpisana tu, na miejscu
+ */
+export const POLA = {
+    projekt:       { etykieta: 'projekt Story',   wybor: 'projekt-story' },
+    serial:        { etykieta: 'serial Story',    wybor: 'projekt-story' },
+    odcinekId:     { etykieta: 'odcinek',         wybor: 'odcinek', zalezyOd: ['projekt', 'serial'] },
+    rezyser:       { etykieta: 'reżyser (styl)',  wybor: 'rezyser' },
+    silnikObrazu:  { etykieta: 'silnik obrazu',   wybor: 'silnik-obrazu' },
+    apka:          { etykieta: 'apka',            wybor: 'lab-apka' },
+    biznes:        { etykieta: 'biznes',          wybor: 'biznes' },
+    co:            { etykieta: 'co spisać',       wybor: 'opcje', opcje: ['oba', 'scenariusz', 'proza'] },
+    sekundy:       { etykieta: 'sekund na kadr',  typ: 'liczba' },
+    kroki:         { etykieta: 'kroki',           typ: 'liczba' },
+    ileScen:       { etykieta: 'ile scen',        typ: 'liczba' },
+    rundy:         { etykieta: 'rundy',           typ: 'liczba' },
+    klatek:        { etykieta: 'klatek',          typ: 'liczba' },
+    szerokosc:     { etykieta: 'szerokość',       typ: 'liczba' },
+    wysokosc:      { etykieta: 'wysokość',        typ: 'liczba' },
+    ziarno:        { etykieta: 'ziarno',          typ: 'liczba' },
+    model:         { etykieta: 'model (Ollama)',  typ: 'tekst' },
+    prompt:        { etykieta: 'prompt',          typ: 'tekst' },
+    silnik:        { etykieta: 'silnik',          wybor: 'silnik-obrazu' },
+    plik:          { etykieta: 'plik (ścieżka)',  typ: 'tekst' },
+    tylko:         { etykieta: 'tylko stem',      typ: 'tekst' },
+    nazwa:         { etykieta: 'nazwa kreacji',   typ: 'tekst' },
+    pod:           { etykieta: 'pod (katalog)',   typ: 'tekst' },
+    opis:          { etykieta: 'opis',            typ: 'tekst' },
+    cel:           { etykieta: 'cel',             typ: 'tekst' },
+    pytanieId:     { etykieta: 'pytanie (id)',    typ: 'tekst' },
+    uczestnicy:    { etykieta: 'uczestnicy (id, po przecinku)', typ: 'lista' },
+};
+
 export const ROBOTY = {
     'mechanik':        { opis: 'Mechanik przerabia kolejkę łatek',              metoda: 'POST', sciezka: '/api/mechanic/process',       pola: [] },
-    'skryba':          { opis: 'Skryba spisuje scenariusz i prozę z Opowieści', metoda: 'POST', sciezka: '/api/rekopis/z-opowiesci',    pola: ['projekt', 'co', 'ileScen', 'model'], czekajNa: 'skryba' },
+    'skryba':          { opis: 'Skryba spisuje scenariusz i prozę z Opowieści', metoda: 'POST', sciezka: '/api/rekopis/z-opowiesci',    pola: ['projekt', 'co', 'ileScen', 'model'], wymagane: ['projekt'], czekajNa: 'skryba' },
     'graf-wiedzy':     { opis: 'Przeliczenie grafu wiedzy Katedry (AST)',       metoda: 'POST', sciezka: '/api/wiedza/buduj',           pola: [] },
-    'stemy':           { opis: 'Rozdzielenie utworu na stemy (Demucs, CPU)',    metoda: 'POST', sciezka: '/api/stemy/rozdziel',         pola: ['plik', 'tylko'] },
-    'obraz':           { opis: 'Policzenie jednego obrazu wybranym silnikiem',  metoda: 'POST', sciezka: '/api/obraz/policz',           pola: ['prompt', 'silnik', 'szerokosc', 'wysokosc', 'kroki', 'ziarno'] },
-    'obrot-kreacji':   { opis: 'Obrót kreacji (Wan, i2v)',                       metoda: 'POST', sciezka: '/api/moda/obrot',             pola: ['nazwa', 'pod', 'klatek', 'opis'] },
+    'stemy':           { opis: 'Rozdzielenie utworu na stemy (Demucs, CPU)',    metoda: 'POST', sciezka: '/api/stemy/rozdziel',         pola: ['plik', 'tylko'], wymagane: ['plik'] },
+    'obraz':           { opis: 'Policzenie jednego obrazu wybranym silnikiem',  metoda: 'POST', sciezka: '/api/obraz/policz',           pola: ['prompt', 'silnik', 'szerokosc', 'wysokosc', 'kroki', 'ziarno'], wymagane: ['prompt'] },
+    'obrot-kreacji':   { opis: 'Obrót kreacji (Wan, i2v)',                       metoda: 'POST', sciezka: '/api/moda/obrot',             pola: ['nazwa', 'pod', 'klatek', 'opis'], wymagane: ['nazwa'] },
     'latarnik':        { opis: 'Latarnik sprawdza spójność danych biznesu',      metoda: 'GET',  sciezka: '/api/latarnik/przeglad',      pola: ['biznes'] },
     // 🧪 TeO Lab: bez pól bierze pierwsze otwarte zlecenie (apka+plik+cel) i labuje je w piaskownicy — rano decyzja Suwerena.
     'lab-eksperyment': { opis: 'Lab: eksperyment w piaskownicy z kolejki zleceń', metoda: 'POST', sciezka: '/api/lab/eksperyment',         pola: ['apka', 'plik', 'cel', 'model'] },
     // 🔬 TeO Lab: TeOgochi badają otwarte pytanie projektu chipu (Arena z kontekstem → dziennik projektu).
-    'lab-badanie':     { opis: 'Lab: TeOgochi badają otwarte pytanie projektu chipu', metoda: 'POST', sciezka: '/api/lab/badaj',              pola: ['projekt', 'pytanieId', 'uczestnicy', 'rundy', 'model'], czekajNa: 'sondaz' },
+    'lab-badanie':     { opis: 'Lab: TeOgochi badają otwarte pytanie projektu chipu', metoda: 'POST', sciezka: '/api/lab/badaj',              pola: ['projekt', 'pytanieId', 'uczestnicy', 'rundy', 'model'], polaInaczej: { projekt: { etykieta: 'projekt chipu', wybor: 'lab-chip' } }, czekajNa: 'sondaz' },
     // 🎬 Story (2026-09-12). Produkcja = kadry → ruch → montaż → plik w katalogu projektu/odcinka → GOTOWE (Klatka).
     // Tablica = każdy niezrealizowany odcinek po kolei, z osobna: Reżyser pisze kadry, potem produkcja, potem status.
     // Oba trwają godzinami — most oddaje `sondaz`, a Zmiana czeka, aż stan przestanie być „trwa".
-    'produkcja':       { opis: 'Zrealizuj zaplanowaną Produkcję (Klatka): kadry → ruch → montaż → GOTOWE', metoda: 'POST', sciezka: '/api/produkcja/zrealizuj', pola: ['projekt', 'odcinekId', 'sekundy', 'silnikObrazu', 'rezyser', 'kroki'], czekajNa: 'sondaz' },
-    'tablica-rezysera': { opis: 'Zrealizuj Tablicę Reżysera (Reżyser): odcinki po kolei, z osobna',        metoda: 'POST', sciezka: '/api/rezyser/tablica/zrealizuj', pola: ['serial', 'sekundy', 'silnikObrazu', 'rezyser', 'kroki', 'model'], czekajNa: 'sondaz' },
+    'produkcja':       { opis: 'Zrealizuj zaplanowaną Produkcję (Klatka): kadry → ruch → montaż → GOTOWE', metoda: 'POST', sciezka: '/api/produkcja/zrealizuj', pola: ['projekt', 'odcinekId', 'sekundy', 'silnikObrazu', 'rezyser', 'kroki'], wymagane: ['projekt'], czekajNa: 'sondaz' },
+    'tablica-rezysera': { opis: 'Zrealizuj Tablicę Reżysera (Reżyser): odcinki po kolei, z osobna',        metoda: 'POST', sciezka: '/api/rezyser/tablica/zrealizuj', pola: ['serial', 'sekundy', 'silnikObrazu', 'rezyser', 'kroki', 'model'], wymagane: ['serial'], czekajNa: 'sondaz' },
 };
 
 let plikKolejki = null;
@@ -282,7 +329,11 @@ export async function stanZmiany() {
         prog: { bezczynnoscS: PROG_BEZCZYNNOSCI_S, minRamGb: MIN_RAM_GB, minVramMiB: MIN_VRAM_MIB, coIleS: CO_ILE_MS / 1000 },
         zadania: d.zadania,
         dziennik: d.dziennik.slice(0, 30),
-        roboty: Object.entries(ROBOTY).map(([rodzaj, r]) => ({ rodzaj, opis: r.opis, pola: r.pola })),
+        roboty: Object.entries(ROBOTY).map(([rodzaj, r]) => ({
+            rodzaj, opis: r.opis, pola: r.pola, wymagane: r.wymagane ?? [],
+            // Opis każdego pola: skąd lista, czy liczba, czy wymagane — karta buduje z tego formularz.
+            opisPol: r.pola.map((p) => ({ nazwa: p, ...(POLA[p] ?? { etykieta: p, typ: 'tekst' }), ...(r.polaInaczej?.[p] ?? {}), wymagane: (r.wymagane ?? []).includes(p) })),
+        })),
     };
 }
 
@@ -296,6 +347,9 @@ export async function przelacz(wlaczona) {
 
 export async function dodaj({ rodzaj, parametry = {}, notatka = '' }) {
     if (!ROBOTY[rodzaj]) throw new Error(`Nie znam roboty „${rodzaj}". Znane: ${Object.keys(ROBOTY).join(', ')}`);
+    // Bez wskazania celu robota nie wie, co ma robić — odmawiamy od razu, nie o 3 w nocy.
+    const brak = (ROBOTY[rodzaj].wymagane ?? []).filter((p) => parametry[p] === undefined || parametry[p] === null || String(parametry[p]).trim() === '');
+    if (brak.length) throw new Error(`Robota „${ROBOTY[rodzaj].opis}" wymaga wskazania: ${brak.map((p) => POLA[p]?.etykieta ?? p).join(', ')}.`);
     const d = await wczytaj();
     const z = { id: id(), rodzaj, parametry, notatka: String(notatka).slice(0, 200), stan: 'czeka', dodano: new Date().toISOString() };
     d.zadania.push(z);

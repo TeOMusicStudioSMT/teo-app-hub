@@ -16,7 +16,8 @@ import { toast } from 'react-hot-toast';
 
 const MOST = 'http://127.0.0.1:3001';
 
-interface Robota { rodzaj: string; opis: string; pola: string[] }
+interface OpisPola { nazwa: string; etykieta: string; wybor?: string; opcje?: string[]; typ?: 'liczba' | 'tekst' | 'lista'; zalezyOd?: string[]; wymagane: boolean }
+interface Robota { rodzaj: string; opis: string; pola: string[]; wymagane?: string[]; opisPol?: OpisPola[] }
 interface Zadanie { id: string; rodzaj: string; parametry: Record<string, unknown>; notatka: string; stan: 'czeka' | 'trwa' | 'gotowe' | 'blad'; dodano: string; sekund?: number; blad?: string | null; recznie?: boolean }
 interface Stan {
     wlaczona: boolean;
@@ -45,7 +46,8 @@ export const NocnaZmianaCard: React.FC = () => {
     // null = nie wiadomo · 'zyje' · 'milczy' · 'stary' (most odpowiada, ale nie zna trasy — wymaga restartu)
     const [most, setMost] = useState<null | 'zyje' | 'milczy' | 'stary'>(null);
     const [rodzaj, setRodzaj] = useState('');
-    const [parametry, setParametry] = useState('');
+    // Parametry jako obiekt — pola z wyborem (projekt, odcinek, reżyser…) idą z list mostu, nie z pamięci.
+    const [parametry, setParametry] = useState<Record<string, string>>({});
     const [zajety, setZajety] = useState(false);
 
     const odswiez = useCallback(async () => {
@@ -80,12 +82,17 @@ export const NocnaZmianaCard: React.FC = () => {
 
     const dodaj = async () => {
         if (!rodzaj) return;
-        let p: Record<string, unknown> = {};
-        if (parametry.trim()) {
-            try { p = JSON.parse(parametry); } catch { toast.error('Parametry muszą być JSON-em, np. {"projekt":"SOLLET"}'); return; }
+        const robota = stan?.roboty.find((r) => r.rodzaj === rodzaj);
+        const brak = (robota?.opisPol ?? []).filter((o) => o.wymagane && !String(parametry[o.nazwa] ?? '').trim());
+        if (brak.length) { toast.error(`Wskaż: ${brak.map((o) => o.etykieta).join(', ')} — bez tego robota nie wie, co ma robić.`); return; }
+        const p: Record<string, unknown> = {};
+        for (const o of robota?.opisPol ?? []) {
+            const v = String(parametry[o.nazwa] ?? '').trim();
+            if (!v) continue;
+            p[o.nazwa] = o.typ === 'liczba' ? Number(v) : o.typ === 'lista' ? v.split(',').map((x) => x.trim()).filter(Boolean) : v;
         }
         setZajety(true);
-        try { await zMostu('/api/nocna/dodaj', { method: 'POST', body: JSON.stringify({ rodzaj, parametry: p }) }); setParametry(''); await odswiez(); toast.success('Dodane do kolejki — ruszy, gdy odejdziesz od klawiatury.'); }
+        try { await zMostu('/api/nocna/dodaj', { method: 'POST', body: JSON.stringify({ rodzaj, parametry: p }) }); setParametry({}); await odswiez(); toast.success('Dodane do kolejki — ruszy, gdy odejdziesz od klawiatury.'); }
         catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
         finally { setZajety(false); }
     };
@@ -169,19 +176,17 @@ export const NocnaZmianaCard: React.FC = () => {
                         {/* ── Dodaj z białej listy ── */}
                         <div className="flex flex-col gap-1.5 rounded-lg border border-slate-700/50 p-2">
                             <div className="flex gap-1.5">
-                                <select value={rodzaj} onChange={(e) => setRodzaj(e.target.value)} className="flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1 text-[11px] text-slate-200">
+                                <select value={rodzaj} onChange={(e) => { setRodzaj(e.target.value); setParametry({}); }} className="flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1 text-[11px] text-slate-200">
                                     <option value="">— robota z białej listy —</option>
                                     {stan.roboty.map((r) => <option key={r.rodzaj} value={r.rodzaj}>{r.opis}</option>)}
                                 </select>
                                 <button onClick={dodaj} disabled={!rodzaj || zajety} className="rounded bg-indigo-500/30 px-2 text-indigo-200 disabled:opacity-40" title="Dodaj do kolejki"><Plus size={14} /></button>
                             </div>
-                            {wybrana && wybrana.pola.length > 0 && (
-                                <input
-                                    value={parametry}
-                                    onChange={(e) => setParametry(e.target.value)}
-                                    placeholder={`JSON: {${wybrana.pola.map((p) => `"${p}": …`).join(', ')}}`}
-                                    className="rounded border border-slate-700 bg-black/40 px-2 py-1 font-mono text-[10px] text-slate-200"
-                                />
+                            {wybrana && (wybrana.opisPol?.length ?? 0) > 0 && (
+                                <PolaRoboty opisy={wybrana.opisPol!} wartosci={parametry} onChange={(k, v) => setParametry((p) => ({ ...p, [k]: v }))} />
+                            )}
+                            {wybrana && !wybrana.opisPol && wybrana.pola.length > 0 && (
+                                <div className="text-[10px] text-amber-300">Most sprzed restartu — nie zna jeszcze opisów pól. Zrestartuj Katedrę, żeby wybierać projekt z listy.</div>
                             )}
                         </div>
 
@@ -202,5 +207,79 @@ export const NocnaZmianaCard: React.FC = () => {
                 )}
             </div>
         </DashboardCard>
+    );
+};
+
+/**
+ * Formularz pól roboty. Pole z `wybor` bierze listę z mostu (projekt Story, odcinek
+ * tego projektu, reżyser, silnik obrazu, apka Labu, projekt chipu, biznes); reszta
+ * to liczba/tekst. Wymagane pole ma gwiazdkę i blokuje „Dodaj".
+ */
+const ZRODLA: Record<string, (zalezne: Record<string, string>) => Promise<{ id: string; nazwa: string }[]>> = {
+    'projekt-story': async () => (await zMostu<{ projekty: { nazwa: string; odcinkow?: number }[] }>('/api/rezyser/projekty')).projekty.map((p) => ({ id: p.nazwa, nazwa: `${p.nazwa}${p.odcinkow ? ` · ${p.odcinkow} odc.` : ''}` })),
+    'odcinek': async (z) => {
+        const serial = z.projekt || z.serial || '';
+        if (!serial) return [];
+        const d = await zMostu<{ pamiec: { odcinki?: { id: string; numer: number; tytul: string; status: string }[] } }>(`/api/rezyser/pamiec?serial=${encodeURIComponent(serial)}`);
+        return (d.pamiec.odcinki ?? []).map((o) => ({ id: o.id, nazwa: `#${o.numer} ${o.tytul} · ${o.status}` }));
+    },
+    'rezyser': async () => (await zMostu<{ rezyserzy: { id: string; nazwa: string }[] }>('/api/rezyserzy')).rezyserzy,
+    'silnik-obrazu': async () => (await zMostu<{ silniki: { id: string; nazwa: string }[] }>('/api/silniki-obrazu')).silniki,
+    'lab-apka': async () => (await zMostu<{ apki: { id: string; nazwa: string; jest: boolean }[] }>('/api/lab/apki')).apki.filter((a) => a.jest),
+    'lab-chip': async () => (await zMostu<{ lista: { id: string; nazwa: string; pytanOtwartych?: number }[] }>('/api/lab/chipy')).lista.map((c) => ({ id: c.id, nazwa: `${c.nazwa}${c.pytanOtwartych ? ` · ${c.pytanOtwartych} pytań` : ''}` })),
+    'biznes': async () => (await zMostu<{ biznesy: { id: string; nazwa: string }[] }>('/api/latarnik/biznesy')).biznesy,
+};
+
+const PolaRoboty: React.FC<{ opisy: OpisPola[]; wartosci: Record<string, string>; onChange: (k: string, v: string) => void }> = ({ opisy, wartosci, onChange }) => {
+    const [listy, setListy] = useState<Record<string, { id: string; nazwa: string }[]>>({});
+    const [bledy, setBledy] = useState<Record<string, string>>({});
+    const zalezne = `${wartosci.projekt ?? ''}|${wartosci.serial ?? ''}`;
+
+    useEffect(() => {
+        let zywy = true;
+        for (const o of opisy) {
+            if (!o.wybor || o.wybor === 'opcje') continue;
+            const zr = ZRODLA[o.wybor];
+            if (!zr) continue;
+            zr(wartosci).then((l) => { if (zywy) { setListy((s) => ({ ...s, [o.nazwa]: l })); setBledy((b) => ({ ...b, [o.nazwa]: '' })); } })
+                .catch((e) => { if (zywy) setBledy((b) => ({ ...b, [o.nazwa]: e instanceof Error ? e.message : String(e) })); });
+        }
+        return () => { zywy = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [opisy, zalezne]);
+
+    return (
+        <div className="grid grid-cols-2 gap-1.5">
+            {opisy.map((o) => {
+                const wspolne = 'rounded border border-slate-700 bg-black/40 px-2 py-1 text-[11px] text-slate-200';
+                const et = <span className="text-[9px] uppercase tracking-wider text-slate-500">{o.etykieta}{o.wymagane && <span className="text-amber-300"> *</span>}</span>;
+                if (o.wybor === 'opcje') return (
+                    <label key={o.nazwa} className="flex flex-col gap-0.5">{et}
+                        <select value={wartosci[o.nazwa] ?? ''} onChange={(e) => onChange(o.nazwa, e.target.value)} className={wspolne}>
+                            <option value="">— domyślnie —</option>
+                            {(o.opcje ?? []).map((x) => <option key={x} value={x}>{x}</option>)}
+                        </select>
+                    </label>
+                );
+                if (o.wybor) {
+                    const l = listy[o.nazwa];
+                    const czekaNa = o.zalezyOd && !o.zalezyOd.some((z) => wartosci[z]);
+                    return (
+                        <label key={o.nazwa} className="flex flex-col gap-0.5">{et}
+                            <select value={wartosci[o.nazwa] ?? ''} onChange={(e) => onChange(o.nazwa, e.target.value)} className={wspolne} disabled={!!czekaNa}>
+                                <option value="">{czekaNa ? `najpierw ${o.zalezyOd!.join('/')}` : bledy[o.nazwa] ? 'lista niedostępna' : l ? (o.wymagane ? '— wybierz —' : '— wszystkie / domyślnie —') : 'ładuję…'}</option>
+                                {(l ?? []).map((x) => <option key={x.id} value={x.id}>{x.nazwa}</option>)}
+                            </select>
+                            {bledy[o.nazwa] && <span className="text-[9px] text-red-300">{bledy[o.nazwa]}</span>}
+                        </label>
+                    );
+                }
+                return (
+                    <label key={o.nazwa} className="flex flex-col gap-0.5">{et}
+                        <input type={o.typ === 'liczba' ? 'number' : 'text'} value={wartosci[o.nazwa] ?? ''} onChange={(e) => onChange(o.nazwa, e.target.value)} className={wspolne} placeholder={o.typ === 'lista' ? 'joanna, klatka' : ''} />
+                    </label>
+                );
+            })}
+        </div>
     );
 };
