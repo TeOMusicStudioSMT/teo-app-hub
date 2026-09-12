@@ -43,7 +43,7 @@ Write-Host "  OK - build zielony." -ForegroundColor Green
 # [1b] Build studiow -> public/apps ------------------------------------------
 # Kazde studio buduje z base './', wiec jego dist/ wchodzi 1:1 pod /apps/<nazwa>.
 # Katalogi: nowa nazwa TeO_*_Studio, a gdy jej nie ma - stara (*_V2), bo
-# TeO_Music_V2 bywa zablokowany przez otwarty serwer dev i jeszcze nie przemianowany.
+# Katalog przemianowany 2026-09-12 na TeO_Music_Studio; stara nazwa zostaje jako zapas dla starych kopii.
 # Fashion tu NIE MA: chodzi na wlasnym Expressie, nie ma statycznego buildu.
 if (-not $SkipStudia) {
     Write-Host "`n[1b/3] Build studiow -> public/apps..." -ForegroundColor Magenta
