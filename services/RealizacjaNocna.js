@@ -171,8 +171,21 @@ async function montaz(z, { projekt, odcinek }) {
             if (r.plik && r.plik !== wyjscie && fsSync.existsSync(r.plik) && !fsSync.existsSync(wyjscie)) await fs.copyFile(r.plik, wyjscie);
         }
         if (!fsSync.existsSync(wyjscie)) throw new Error('montaż nie zostawił pliku');
-        krok.film = wyjscie;
-        krok.bajtow = (await fs.stat(wyjscie)).size;
+
+        // 🎵 TELEDYSK: projekt ma utwór (teledysk.json) → podkładamy go pod film.
+        // `-shortest`: film ~N×2,04 s, utwór ma swoją długość — tniemy do krótszego,
+        // zamiast zostawiać ciszę albo obraz stojący na ostatniej klatce.
+        const teledysk = cfg.teledyskProjektu ? await cfg.teledyskProjektu(projekt).catch(() => null) : null;
+        let film = wyjscie;
+        if (teledysk?.audio && cfg.ffmpeg) {
+            const zMuzyka = wyjscie.replace(/\.mp4$/i, '_z_muzyka.mp4');
+            try {
+                await cfg.execFile(cfg.ffmpeg, ['-y', '-i', wyjscie, '-i', teledysk.audio, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', zMuzyka], { windowsHide: true, timeout: 10 * 60_000 });
+                if (fsSync.existsSync(zMuzyka)) { film = zMuzyka; krok.muzyka = teledysk.audio; }
+            } catch (e) { krok.uwagaMuzyka = `muzyka nie weszła pod film: ${(e.stderr || e.message).slice(-300)}`; }
+        }
+        krok.film = film;
+        krok.bajtow = (await fs.stat(film)).size;
 
         // GOTOWE: karty ujęć przechodzą, plus jedna karta filmu (klucz = ścieżka w notatkach,
         // tak samo jak `wpiszDoGotowych` w Tablicy Produkcji — żeby się nie dublowały).
@@ -181,12 +194,12 @@ async function montaz(z, { projekt, odcinek }) {
         }
         await cfg.produkcjaDodaj(cfg.katalogKatedry, {
             projekt,
-            tytul: nazwa,
+            tytul: path.basename(film),
             opis: odcinek
                 ? `Odcinek #${odcinek.numer} „${odcinek.tytul}" złożony nocą z ${pliki.length} ujęć.`
                 : `Cały projekt złożony nocą z ${pliki.length} ujęć.`,
             etap: 'GOTOWE', zrodlo: 'reka',
-            zwrot: '', notatki: wyjscie,
+            zwrot: '', notatki: film,
             sesjaRady: odcinek?.id ?? undefined,
         });
         Object.assign(krok, { stan: 'gotowy', do: teraz() });

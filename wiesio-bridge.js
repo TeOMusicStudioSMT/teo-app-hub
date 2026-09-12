@@ -156,6 +156,7 @@ import * as Skryba from './services/Skryba.js';
 import * as NocnaZmiana from './services/NocnaZmiana.js';
 import * as Laboratorium from './services/Laboratorium.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
+import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -7507,6 +7508,22 @@ RealizacjaNocna.skonfiguruj({
     produkcjaLista, produkcjaZmien, produkcjaDodaj, rezyserPamiec, katalogOdcinka,
     katalogUjec: KolejkaKadrow.katalogUjec, poKolei: KolejkaKadrow.poKolei, maJuzUjecie: KolejkaKadrow.maJuzUjecie,
     sklej: CiagDalszy.sklej,
+    // 🎵 Teledysk z nowych scen: montaż podkłada utwór projektu (teledysk.json) pod sklejony film.
+    teledyskProjektu: async (projekt) => TeledyskNowy.teledyskProjektu((await utworzProjekt(ANTIGRAVITY_DIR, projekt)).sciezka),
+    ffmpeg: ffmpegPath, execFile: execFileAsync,
+});
+TeledyskNowy.skonfiguruj({
+    katalog: ANTIGRAVITY_DIR, mostBase: `http://127.0.0.1:${PORT}`, szyna: Szyna,
+    pisz: piszModelem, listaProjektow, utworzProjekt, dodajFakt, dodajOdcinek, dodajUtwor: MuzykaFilmowa.dodajUtwor,
+});
+/**
+ * POST /api/teledysk/nowy { audioUrl | audioPlik, tytul, styl, prompt, lyrics, sekundy, model?, realizujTeraz? }
+ * Joanna mówi, o czym utwór → projekt Story z jednym odcinkiem o długości utworu →
+ * (opcjonalnie) Reżyser pisze kadry i rusza produkcja z montażem pod muzykę.
+ */
+app.post('/api/teledysk/nowy', async (req, res) => {
+    try { return res.json({ success: true, ...(await TeledyskNowy.zaplanuj(req.body ?? {})) }); }
+    catch (e) { return res.status(400).json({ success: false, message: e.message }); }
 });
 const realizacjaOdp = (res, fn) => {
     try {
