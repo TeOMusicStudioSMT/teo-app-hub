@@ -7569,15 +7569,25 @@ app.get('/api/lab/chipy/:id/render', async (req, res) => {
 });
 app.post('/api/lab/chipy', (req, res) => labOdp(res, Laboratorium.projektujChip(req.body ?? {})));
 app.post('/api/lab/chipy/:id/render', (req, res) => labOdp(res, Laboratorium.renderujChip(req.params.id)));
-/** Własny plik do analizy — tekstowy, ≤ 2 MB, w pamięci (nic nie ląduje na dysku poza wynikiem). */
-const labUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
-app.post('/api/lab/chipy/analiza', labUpload.single('plik'), (req, res) => {
+/** Własny plik do analizy — tekstowy albo PDF (warstwa tekstu), ≤ 20 MB, w pamięci (na dysk idzie wynik + tekst źródła). */
+const labUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+app.post('/api/lab/chipy/analiza', labUpload.single('plik'), async (req, res) => {
     const nazwa = req.file?.originalname || String(req.body?.nazwa || 'wklejka.txt');
-    const ok = /\.(txt|md|csv|json|yaml|yml|py|v|sv|vhd|vhdl|toml|ini|cfg|log|ts|js|gguf\.txt)$/i.test(nazwa);
-    if (req.file && !ok) return res.status(415).json({ success: false, message: `Analiza przyjmuje pliki tekstowe (txt/md/csv/json/yaml/py/v/sv/vhdl…), nie „${nazwa}".` });
-    const tresc = req.file ? req.file.buffer.toString('utf8') : String(req.body?.tresc || '');
-    return labOdp(res, Laboratorium.analizujPlik({ nazwa, tresc, pytanie: req.body?.pytanie, model: req.body?.model }));
+    const toPdf = /\.pdf$/i.test(nazwa) || req.file?.mimetype === 'application/pdf';
+    const ok = toPdf || /\.(txt|md|csv|json|yaml|yml|py|v|sv|vhd|vhdl|toml|ini|cfg|log|ts|js|gguf\.txt)$/i.test(nazwa);
+    if (req.file && !ok) return res.status(415).json({ success: false, message: `Analiza przyjmuje PDF i pliki tekstowe (txt/md/csv/json/yaml/py/v/sv/vhdl…), nie „${nazwa}".` });
+    let tresc, stron = null;
+    try {
+        if (req.file && toPdf) ({ tekst: tresc, stron } = await Laboratorium.tekstZPdf(req.file.buffer));
+        else tresc = req.file ? req.file.buffer.toString('utf8') : String(req.body?.tresc || '');
+    } catch (e) { return res.status(422).json({ success: false, message: e.message }); }
+    // PDF-y bywają długie — bierzemy początek do limitu modelu i mówimy, ile ucięto.
+    const LIMIT = 200_000;
+    const uciete = tresc.length > LIMIT ? tresc.length - LIMIT : 0;
+    return labOdp(res, Laboratorium.analizujPlik({ nazwa, tresc: tresc.slice(0, LIMIT), pytanie: req.body?.pytanie, model: req.body?.model, stron }).then((a) => ({ ...a, uciete })));
 });
+/** Przekucie analizy w projekt: model wyciąga parametry (null = nie było w pliku), UI wypełnia formularz. */
+app.post('/api/lab/chipy/analizy/:id/spec', (req, res) => labOdp(res, Laboratorium.specZAnalizy(req.params.id, { model: req.body?.model })));
 
 /**
  * 🔦 LATARNIK — spójność danych firmowych w Twoich Biznesach.

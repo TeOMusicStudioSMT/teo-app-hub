@@ -106,6 +106,19 @@ async function zapiszJson(plik, dane) {
 }
 
 const id8 = () => crypto.randomBytes(4).toString('hex');
+
+/** Pierwszy obiekt JSON z tekstu modelu (z poszanowaniem nawiasów w łańcuchach) — mały model lubi dopisać zdanie wokół. */
+function pierwszyObiekt(s) {
+    let g = 0, start = -1, wL = false, esc = false;
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (wL) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') wL = false; continue; }
+        if (c === '"') { wL = true; continue; }
+        if (c === '{') { if (g === 0) start = i; g++; }
+        else if (c === '}') { g--; if (g === 0 && start >= 0) { try { return JSON.parse(s.slice(start, i + 1)); } catch { start = -1; } } }
+    }
+    return null;
+}
 const teraz = () => new Date().toISOString();
 
 function zdarzenie(rodzaj, tresc) {
@@ -637,12 +650,13 @@ export async function chip(id) {
     return c;
 }
 
-export async function projektujChip({ nazwa, spec, model, bezNoty = false }) {
+export async function projektujChip({ nazwa, spec, model, bezNoty = false, zAnalizy = null }) {
     await upewnijKatalogi();
     const liczby = policzChip(spec || {});
     const id = `${Date.now()}-${id8()}`;
     const bezpiecznaNazwa = (nazwa || 'chip').replace(/[^\w-]+/g, '_').slice(0, 40) || 'chip';
-    const rek = { id, nazwa: nazwa?.trim() || `Układ ${liczby.wejscie.parametryMld}B`, spec: liczby.wejscie, liczby, data: teraz(), model: null, nota: null, skrypt: null, render: null, blend: null };
+    const rek = { id, nazwa: nazwa?.trim() || `Układ ${liczby.wejscie.parametryMld}B`, spec: liczby.wejscie, liczby, data: teraz(), model: null, nota: null, skrypt: null, render: null, blend: null, zAnalizy: zAnalizy || null };
+    if (zAnalizy) await powiazAnalize(zAnalizy, id).catch(() => {});
 
     if (!bezNoty) {
         const w = await pisz({
@@ -680,8 +694,22 @@ export async function renderujChip(id) {
 
 export async function stanBlendera() { return Blender.stanBlendera(); }
 
-/** Analiza własnego pliku (tekst ≤ 200 KB) modelem — pod kątem projektu układu. */
-export async function analizujPlik({ nazwa, tresc, pytanie, model }) {
+/**
+ * Tekst z PDF-a (pdf-parse, czysty JS). Import z `lib/`, nie z głównego `index.js` —
+ * ten drugi przy każdym załadowaniu poza NODE_ENV=production otwiera własny plik
+ * testowy `test/data/05-versions-space.pdf` i pada z ENOENT. Sprawdzone 2026-09-12.
+ * PDF ze skanu (bez warstwy tekstu) oddaje pusty tekst — mówimy to wprost, nie OCR-ujemy.
+ */
+export async function tekstZPdf(bufor) {
+    const { default: pdf } = await import('pdf-parse/lib/pdf-parse.js');
+    const d = await pdf(bufor, { max: 0 });
+    const tekst = String(d.text || '').replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (!tekst) throw new Error(`PDF ma ${d.numpages} stron, ale żadnej warstwy tekstu — to skan. Lab nie robi OCR; wklej tekst ręcznie.`);
+    return { tekst, stron: d.numpages, info: d.info ? { tytul: d.info.Title || null, autor: d.info.Author || null } : null };
+}
+
+/** Analiza własnego pliku (tekst ≤ 200 KB) modelem — pod kątem projektu układu. Zapisuje też ŹRÓDŁO, bo „przekucie w projekt" musi mieć z czego czytać. */
+export async function analizujPlik({ nazwa, tresc, pytanie, model, stron = null }) {
     if (!tresc?.trim()) throw new Error('Pusty plik.');
     if (tresc.length > 200_000) throw new Error(`Plik ma ${tresc.length} znaków — limit 200 000.`);
     const w = await pisz({
@@ -689,10 +717,65 @@ export async function analizujPlik({ nazwa, tresc, pytanie, model }) {
         prompt: `PLIK: ${nazwa}\nPYTANIE: ${pytanie?.trim() || 'Co z tego wynika dla projektu układu pod ten model?'}\n\nTREŚĆ:\n${tresc}\n\nAnaliza:`,
         model, timeoutMs: 600_000,
     });
-    const rek = { id: `${Date.now()}-${id8()}`, nazwa, znakow: tresc.length, pytanie: pytanie?.trim() || null, model: w.model, analiza: w.tekst, data: teraz() };
+    const rek = { id: `${Date.now()}-${id8()}`, nazwa, znakow: tresc.length, stron, pytanie: pytanie?.trim() || null, model: w.model, analiza: w.tekst, data: teraz(), zrodlo: tresc, projektId: null };
     await upewnijKatalogi();
     await zapiszJson(path.join(WYMIAR(), 'chipy', `analiza-${rek.id}.json`), rek);
-    return rek;
+    const { zrodlo: _z, ...bezZrodla } = rek;
+    return bezZrodla;
+}
+
+/**
+ * Przekucie analizy w projekt: model wyciąga z analizy + źródła parametry modelu
+ * (JSON), reszta to jawne wzory `policzChip`. Pola, których w tekście NIE MA,
+ * wracają jako null — UI pokazuje je jako „domyślne, nie z pliku". Zero zgadywania
+ * podanego jako fakt.
+ */
+export async function specZAnalizy(id, { model } = {}) {
+    if (!/^[\w-]+$/.test(id)) throw new Error('Złe id.');
+    const a = await czytajJson(path.join(WYMIAR(), 'chipy', `analiza-${id}.json`), null);
+    if (!a) throw new Error(`Nie ma analizy ${id}.`);
+    const zrodlo = String(a.zrodlo || '');
+    const w = await pisz({
+        system: 'Wyciągasz parametry modelu AI z tekstu. Odpowiadasz WYŁĄCZNIE jednym obiektem JSON. Pole, którego w tekście nie ma — null. NIE zgaduj typowych wartości.',
+        prompt: [
+            'Pola: {"nazwa": "<krótka nazwa układu/modelu, 2-5 słów>", "parametryMld": <liczba parametrów w miliardach lub null>, "bity": <4|8|16 precyzja wag lub null>, "warstwy": <liczba warstw lub null>, "dModel": <wymiar ukryty lub null>, "kontekst": <długość kontekstu w tokenach lub null>, "kvBity": <8|16 lub null>, "grupyGqa": <liczba głów Q / liczba głów KV lub null>, "tokS": <docelowe tok/s lub null>, "strumienie": <liczba równoległych sesji lub null>, "uzasadnienie": "<jedno zdanie: skąd te liczby>"}',
+            '', 'ANALIZA:', a.analiza.slice(0, 12_000),
+            zrodlo ? `\nŹRÓDŁO (fragment):\n${zrodlo.slice(0, 40_000)}` : '\n(źródła nie zachowano — analiza sprzed 2026-09-12)',
+        ].join('\n'),
+        model, timeoutMs: 300_000,
+    });
+    const j = pierwszyObiekt(w.tekst) ?? {};
+    const liczba = (v) => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
+    const spec = { parametryMld: liczba(j.parametryMld), bity: liczba(j.bity), warstwy: liczba(j.warstwy), dModel: liczba(j.dModel), kontekst: liczba(j.kontekst), kvBity: liczba(j.kvBity), grupyGqa: liczba(j.grupyGqa), tokS: liczba(j.tokS), strumienie: liczba(j.strumienie) };
+    // ⚠️ KLUCZE Z config.json (HF) SĄ DETERMINISTYCZNE — wygrywają z modelem. Sprawdzone
+    // na Llama-3-8B: gemma4:e2b oddała grupyGqa = 32 (liczba głów), a nie 32/8 = 4.
+    const zKonfigu = konfigZTekstu(zrodlo);
+    for (const [k, v] of Object.entries(zKonfigu)) spec[k] = v;
+    const zPliku = Object.entries(spec).filter(([, v]) => v !== null).map(([k]) => k);
+    const domyslne = Object.entries(spec).filter(([, v]) => v === null).map(([k]) => k);
+    return { analizaId: id, nazwa: String(j.nazwa || a.nazwa.replace(/\.[a-z0-9]+$/i, '')).slice(0, 60), spec, zPliku, domyslne, uzasadnienie: String(j.uzasadnienie || '').slice(0, 300), model: w.model };
+}
+
+/** Pola, które da się odczytać wprost z config.json (HF) — regexem, bez modelu. */
+function konfigZTekstu(t) {
+    if (!t) return {};
+    const n = (klucz) => { const m = t.match(new RegExp(`"${klucz}"\\s*:\\s*(\\d+)`)); return m ? Number(m[1]) : null; };
+    const wyn = {};
+    const warstwy = n('num_hidden_layers'); if (warstwy) wyn.warstwy = warstwy;
+    const dModel = n('hidden_size'); if (dModel) wyn.dModel = dModel;
+    const kontekst = n('max_position_embeddings'); if (kontekst) wyn.kontekst = kontekst;
+    const glowy = n('num_attention_heads'), kv = n('num_key_value_heads');
+    if (glowy && kv) wyn.grupyGqa = Math.max(1, Math.round(glowy / kv));
+    const dtype = t.match(/"torch_dtype"\s*:\s*"(\w+)"/)?.[1];
+    if (dtype) wyn.bity = /int4|4bit|nf4/i.test(dtype) ? 4 : /int8|fp8|8bit/i.test(dtype) ? 8 : 16;
+    return wyn;
+}
+
+/** Odnotowanie, że z analizy powstał projekt — żeby lista pokazywała powiązanie. */
+export async function powiazAnalize(id, projektId) {
+    const plik = path.join(WYMIAR(), 'chipy', `analiza-${id}.json`);
+    const a = await czytajJson(plik, null);
+    if (a) { a.projektId = projektId; await zapiszJson(plik, a); }
 }
 
 export async function analizy() {
@@ -700,7 +783,7 @@ export async function analizy() {
     const dir = path.join(WYMIAR(), 'chipy');
     const pliki = (await fs.readdir(dir)).filter((f) => f.startsWith('analiza-') && f.endsWith('.json')).sort().reverse().slice(0, 50);
     const l = [];
-    for (const f of pliki) { const a = await czytajJson(path.join(dir, f), null); if (a) l.push(a); }
+    for (const f of pliki) { const a = await czytajJson(path.join(dir, f), null); if (a) { const { zrodlo: _z, ...bez } = a; l.push({ ...bez, maZrodlo: !!a.zrodlo }); } }
     return l;
 }
 
@@ -716,5 +799,5 @@ export default {
     printy, print, syntezujPrint, usunPrint,
     apki, plikiApki, zlecenia, dodajZlecenie, usunZlecenie, eksperymenty, eksperymentPelny, eksperyment, zatwierdz, odrzuc, nastepneZlecenie,
     stado, areny_lista, arena, zacznijArene,
-    policzChip, chipy, chip, projektujChip, renderujChip, stanBlendera, analizujPlik, analizy,
+    policzChip, chipy, chip, projektujChip, renderujChip, stanBlendera, analizujPlik, analizy, tekstZPdf, specZAnalizy, powiazAnalize,
 };
