@@ -27,7 +27,7 @@ export interface Studio {
     tytul: string;
     podtytul: string;
     /** Klucz w LAUNCH_APPS mostu (dla trybu dev). */
-    apka: 'story' | 'music' | 'app' | 'games' | 'fashion';
+    apka: 'story' | 'music' | 'app' | 'games' | 'fashion' | 'lab';
     port: number;
     /** Ścieżka statycznego buildu na moście; brak = tylko dev. */
     naMoscie?: string;
@@ -41,7 +41,9 @@ export const STUDIA: Studio[] = [
     { id: 'app',     tytul: 'TeO App Studio',     podtytul: 'Narzędzia. Kod. Rzeczywistość.',               apka: 'app',     port: 5175, naMoscie: '/apps/app/',   kolor: 'cyan' },
     { id: 'games',   tytul: 'TeO Games Studio',   podtytul: 'Galeria gier. Forge silników. Agenci światów.', apka: 'games',   port: 5177, naMoscie: '/apps/games/', kolor: 'green' },
     { id: 'fashion', tytul: 'TeO Fashion Studio',  podtytul: 'Kreacje z kadrów Katedry.',                     apka: 'fashion', port: 3000, kolor: 'pink' },
-    { id: 'lab',     tytul: 'TeO LaB · TeOPrinty', podtytul: 'Kuźnia schematów. Wycena w GRV.',             apka: 'story',   port: 5174, naMoscie: '/apps/story/', hash: '#lab', kolor: 'blue' },
+    // 🧪 Od 2026-09-12 własne studio (było komponentem Story): printy z lokalnego modelu,
+    // piaskownica Nocnej Zmiany, arena TeOgochi, projekt chipów.
+    { id: 'lab',     tytul: 'TeO Lab Studio',     podtytul: 'Printy. Piaskownica Nocnej Zmiany. Arena. Chipy.', apka: 'lab',     port: 5178, naMoscie: '/apps/lab/',   kolor: 'blue' },
 ];
 
 /** Klucz Gemini jedzie w adresie: substrona ma inny origin i nie widzi pamięci Huba. */

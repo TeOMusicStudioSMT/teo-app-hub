@@ -154,6 +154,7 @@ import * as Rezyserzy from './services/Rezyserzy.js';
 import * as Rekopis from './services/Rekopis.js';
 import * as Skryba from './services/Skryba.js';
 import * as NocnaZmiana from './services/NocnaZmiana.js';
+import * as Laboratorium from './services/Laboratorium.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -350,7 +351,7 @@ app.use('/components', express.static(COMPONENTS_DIR));
 // routing działają po stronie klienta — fallback SPA zbędny). Buildy w public/apps/
 // jadą z distro. UWAGA: Express 5 — żadnych gołych `*` w routach (crash boota).
 const APPS_DIR = path.join(__dirname, 'public', 'apps');
-for (const app_ of ['music', 'story', 'app', 'games']) {
+for (const app_ of ['music', 'story', 'app', 'games', 'lab']) {
     const middlewares = [cors({ origin: '*' })];
     // 🎹 Teleport na Music V2 budzi ComfyUI. Suweren wchodzil do studia i dopiero
     // tam dowiadywal sie, ze silnik nie dziala — musial go odpalac recznie z .bat.
@@ -4164,6 +4165,7 @@ const LAUNCH_APPS = {
     story:   { dir: ['TeO_Story_Studio', 'TeO_Story_V2'],   port: 5174 },
     app:     { dir: ['TeO_App_Studio',   'TeO_App_V2'],     port: 5175 },
     games:   { dir: ['TeO_Games_Studio', 'TeO_Game_Studio'], port: 5177 },
+    lab:     { dir: ['TeO_Lab_Studio'],                     port: 5178 },
     // ⚠️ Dział mody chodzi na Expressie (`tsx server.ts`), nie na Vite — stąd
     // port 3000 i `bezPortu`. Podanie mu `--port` jak pozostałym nic nie da,
     // bo jego serwer czyta własną konfigurację, a nie argument npm.
@@ -7488,6 +7490,67 @@ app.get('/api/nocna/bramy', async (req, res) => {
 
 NocnaZmiana.skonfiguruj({ katalogKatedry: ANTIGRAVITY_DIR, portMostu: PORT, szynaZdarzen: Szyna, comfy: COMFY_BASE });
 NocnaZmiana.uruchomPetle();
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 🧪 TeO LAB — printy z lokalnego modelu, piaskownica Nocnej Zmiany, arena
+// TeOgochi, projekt chipów. Zaplecze: services/Laboratorium.js (tam „po co").
+// ═════════════════════════════════════════════════════════════════════════════
+Laboratorium.skonfiguruj({ ollama: OLLAMA_BASE, model: process.env.OTAKOS_MODEL, modelMechanika: () => modelMechanika(), szynaZdarzen: Szyna });
+
+const labOdp = (res, p) => p.then((d) => res.json({ success: true, ...(Array.isArray(d) ? { lista: d } : d) })).catch((e) => res.status(400).json({ success: false, message: e.message }));
+
+app.get('/api/lab/stan', (req, res) => labOdp(res, Promise.resolve(Laboratorium.stan())));
+
+// ── 1. Printy ──
+app.get('/api/lab/printy', (req, res) => labOdp(res, Laboratorium.printy()));
+app.get('/api/lab/printy/:id', (req, res) => labOdp(res, Laboratorium.print(req.params.id)));
+app.post('/api/lab/printy', (req, res) => labOdp(res, Laboratorium.syntezujPrint(req.body ?? {})));
+app.delete('/api/lab/printy/:id', (req, res) => labOdp(res, Laboratorium.usunPrint(req.params.id)));
+
+// ── 2. Piaskownica ──
+app.get('/api/lab/apki', (req, res) => labOdp(res, Promise.resolve({ apki: Laboratorium.apki() })));
+app.get('/api/lab/apki/:id/pliki', (req, res) => labOdp(res, Laboratorium.plikiApki(req.params.id, String(req.query.q || ''))));
+app.get('/api/lab/zlecenia', (req, res) => labOdp(res, Laboratorium.zlecenia()));
+app.post('/api/lab/zlecenia', (req, res) => labOdp(res, Laboratorium.dodajZlecenie(req.body ?? {})));
+app.delete('/api/lab/zlecenia/:id', (req, res) => labOdp(res, Laboratorium.usunZlecenie(req.params.id)));
+app.get('/api/lab/eksperymenty', (req, res) => labOdp(res, Laboratorium.eksperymenty()));
+app.get('/api/lab/eksperymenty/:id', (req, res) => labOdp(res, Laboratorium.eksperymentPelny(req.params.id)));
+/** Eksperyment TERAZ (Suweren) albo z robota Nocnej Zmiany (bez pól → pierwsze otwarte zlecenie). */
+app.post('/api/lab/eksperyment', (req, res) => {
+    const b = req.body ?? {};
+    const p = b.apka && b.plik && b.cel ? Laboratorium.eksperyment(b) : Laboratorium.nastepneZlecenie({ model: b.model });
+    return labOdp(res, p);
+});
+app.post('/api/lab/eksperymenty/:id/zatwierdz', (req, res) => labOdp(res, Laboratorium.zatwierdz(req.params.id)));
+app.post('/api/lab/eksperymenty/:id/odrzuc', (req, res) => labOdp(res, Laboratorium.odrzuc(req.params.id, req.body?.powod)));
+
+// ── 3. Arena ──
+app.get('/api/lab/stado', (req, res) => labOdp(res, Laboratorium.stado()));
+app.get('/api/lab/arena', (req, res) => labOdp(res, Laboratorium.areny_lista()));
+app.get('/api/lab/arena/:id', (req, res) => labOdp(res, Laboratorium.arena(req.params.id)));
+app.post('/api/lab/arena', (req, res) => labOdp(res, Laboratorium.zacznijArene(req.body ?? {})));
+
+// ── 4. Chipy ──
+app.post('/api/lab/chipy/policz', (req, res) => labOdp(res, Promise.resolve(Laboratorium.policzChip(req.body ?? {}))));
+app.get('/api/lab/chipy', (req, res) => labOdp(res, Laboratorium.chipy()));
+app.get('/api/lab/chipy/blender', (req, res) => labOdp(res, Laboratorium.stanBlendera()));
+app.get('/api/lab/chipy/analizy', (req, res) => labOdp(res, Laboratorium.analizy()));
+app.get('/api/lab/chipy/:id', (req, res) => labOdp(res, Laboratorium.chip(req.params.id)));
+app.get('/api/lab/chipy/:id/render', async (req, res) => {
+    try { const c = await Laboratorium.chip(req.params.id); if (!c.render) return res.status(404).json({ success: false, message: 'Brak renderu.' }); res.sendFile(c.render); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/lab/chipy', (req, res) => labOdp(res, Laboratorium.projektujChip(req.body ?? {})));
+app.post('/api/lab/chipy/:id/render', (req, res) => labOdp(res, Laboratorium.renderujChip(req.params.id)));
+/** Własny plik do analizy — tekstowy, ≤ 2 MB, w pamięci (nic nie ląduje na dysku poza wynikiem). */
+const labUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+app.post('/api/lab/chipy/analiza', labUpload.single('plik'), (req, res) => {
+    const nazwa = req.file?.originalname || String(req.body?.nazwa || 'wklejka.txt');
+    const ok = /\.(txt|md|csv|json|yaml|yml|py|v|sv|vhd|vhdl|toml|ini|cfg|log|ts|js|gguf\.txt)$/i.test(nazwa);
+    if (req.file && !ok) return res.status(415).json({ success: false, message: `Analiza przyjmuje pliki tekstowe (txt/md/csv/json/yaml/py/v/sv/vhdl…), nie „${nazwa}".` });
+    const tresc = req.file ? req.file.buffer.toString('utf8') : String(req.body?.tresc || '');
+    return labOdp(res, Laboratorium.analizujPlik({ nazwa, tresc, pytanie: req.body?.pytanie, model: req.body?.model }));
+});
 
 /**
  * 🔦 LATARNIK — spójność danych firmowych w Twoich Biznesach.

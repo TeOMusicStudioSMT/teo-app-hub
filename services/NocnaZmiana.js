@@ -52,6 +52,8 @@ export const ROBOTY = {
     'obraz':           { opis: 'Policzenie jednego obrazu wybranym silnikiem',  metoda: 'POST', sciezka: '/api/obraz/policz',           pola: ['prompt', 'silnik', 'szerokosc', 'wysokosc', 'kroki', 'ziarno'] },
     'obrot-kreacji':   { opis: 'Obrót kreacji (Wan, i2v)',                       metoda: 'POST', sciezka: '/api/moda/obrot',             pola: ['nazwa', 'pod', 'klatek', 'opis'] },
     'latarnik':        { opis: 'Latarnik sprawdza spójność danych biznesu',      metoda: 'GET',  sciezka: '/api/latarnik/przeglad',      pola: ['biznes'] },
+    // 🧪 TeO Lab: bez pól bierze pierwsze otwarte zlecenie (apka+plik+cel) i labuje je w piaskownicy — rano decyzja Suwerena.
+    'lab-eksperyment': { opis: 'Lab: eksperyment w piaskownicy z kolejki zleceń', metoda: 'POST', sciezka: '/api/lab/eksperyment',         pola: ['apka', 'plik', 'cel', 'model'] },
 };
 
 let plikKolejki = null;

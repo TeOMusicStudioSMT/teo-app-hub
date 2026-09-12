@@ -51,7 +51,8 @@ if (-not $SkipStudia) {
         @{ nazwa='story'; katalogi=@('TeO_Story_Studio','TeO_Story_V2') },
         @{ nazwa='music'; katalogi=@('TeO_Music_Studio','TeO_Music_V2') },
         @{ nazwa='app';   katalogi=@('TeO_App_Studio','TeO_App_V2') },
-        @{ nazwa='games'; katalogi=@('TeO_Games_Studio','TeO_Game_Studio') }
+        @{ nazwa='games'; katalogi=@('TeO_Games_Studio','TeO_Game_Studio') },
+        @{ nazwa='lab';   katalogi=@('TeO_Lab_Studio') }
     )
     foreach ($s in $studia) {
         $src = $null
