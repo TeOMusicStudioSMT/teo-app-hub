@@ -157,6 +157,7 @@ import * as NocnaZmiana from './services/NocnaZmiana.js';
 import * as Laboratorium from './services/Laboratorium.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
+import * as WarsztatUtworow from './services/WarsztatUtworow.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -7516,6 +7517,19 @@ TeledyskNowy.skonfiguruj({
     katalog: ANTIGRAVITY_DIR, mostBase: `http://127.0.0.1:${PORT}`, szyna: Szyna,
     pisz: piszModelem, listaProjektow, utworzProjekt, dodajFakt, dodajOdcinek, dodajUtwor: MuzykaFilmowa.dodajUtwor,
 });
+// ── 🔧🎵 WARSZTAT UTWORÓW: przedłuż / remiks / cover istniejącego utworu (ACE-Step 1.5) ──
+WarsztatUtworow.skonfiguruj({ comfyBase: COMFY_BASE, comfyDir: COMFY_DIR, musicDir: MUSIC_DIR, katalogKatedry: ANTIGRAVITY_DIR, workflowsDir: WORKFLOWS_DIR, mostBase: `http://127.0.0.1:${PORT}`, ffmpeg: ffmpegPath, ffprobe: ffprobePath, execFile: execFileAsync, szyna: Szyna });
+app.get('/api/music/warsztat', (_req, res) => res.json({ success: true, tryby: WarsztatUtworow.TRYBY, zadania: WarsztatUtworow.listaZadan() }));
+app.get('/api/music/warsztat/:id', (req, res) => { const z = WarsztatUtworow.stanZadania(req.params.id); return z ? res.json({ success: true, ...z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania.' }); });
+app.post('/api/music/warsztat', async (req, res) => {
+    try {
+        const comfy = await comfyStatus();
+        if (!comfy.online) return res.status(424).json({ success: false, message: comfy.message || 'ComfyUI nie odpowiada.' });
+        return res.json({ success: true, ...(await WarsztatUtworow.przerob(req.body ?? {})) });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/music/warsztat/:id/przerwij', async (req, res) => res.json({ success: true, przerwane: await WarsztatUtworow.przerwij(req.params.id) }));
+
 /**
  * POST /api/teledysk/nowy { audioUrl | audioPlik, tytul, styl, prompt, lyrics, sekundy, model?, realizujTeraz? }
  * Joanna mówi, o czym utwór → projekt Story z jednym odcinkiem o długości utworu →
