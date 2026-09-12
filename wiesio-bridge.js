@@ -153,6 +153,7 @@ import * as SilnikiObrazu from './services/SilnikiObrazu.js';
 import * as Rezyserzy from './services/Rezyserzy.js';
 import * as Rekopis from './services/Rekopis.js';
 import * as Skryba from './services/Skryba.js';
+import * as NocnaZmiana from './services/NocnaZmiana.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -7440,6 +7441,51 @@ app.post('/api/aktorzy-otakos/przenies', async (req, res) => {
 //
 // ⚠️ TA TRASA NIE ZAPISUJE NICZEGO W KATEDRZE. Oddaje obraz i tyle — kto go
 // zamówił, ten decyduje, co z nim zrobić.
+
+// ── 🌙 NOCNA ZMIANA — długie roboty, gdy Suweren nie pracuje ─────────────────
+//
+// Suweren: „by się włączał, jak nic nie robię na kompie". Pętla co 60 s sprawdza
+// trzy bramy (bezczynność ≥ 10 min, karta wolna, RAM ≥ 8 GB) i dopiero wtedy
+// rusza JEDNO zadanie z kolejki — wyłącznie z białej listy robót mostu.
+// Szczegóły i powody w services/NocnaZmiana.js.
+
+app.get('/api/nocna/stan', async (req, res) => {
+    try { res.json({ success: true, ...(await NocnaZmiana.stanZmiany()) }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/nocna/przelacz', async (req, res) => {
+    try {
+        const wlaczona = await NocnaZmiana.przelacz(!!(req.body ?? {}).wlaczona);
+        await Szyna.nadaj({ agent: 'Nocna Zmiana', rodzaj: 'stan', tresc: wlaczona ? 'włączona — ruszy, gdy Suweren odejdzie od klawiatury' : 'wyłączona' }).catch(() => {});
+        res.json({ success: true, wlaczona });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/nocna/dodaj', async (req, res) => {
+    try { res.json({ success: true, zadanie: await NocnaZmiana.dodaj(req.body ?? {}) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+app.delete('/api/nocna/:id', async (req, res) => {
+    try { res.json({ success: true, usunieto: await NocnaZmiana.usun(req.params.id) }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+/** Uruchom zadanie teraz, z pominięciem bram — świadomie, ręką człowieka. */
+app.post('/api/nocna/:id/teraz', async (req, res) => {
+    try { res.json({ success: true, ...(await NocnaZmiana.uruchomTeraz(req.params.id)) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+/** Sprawdź bramy TERAZ — panel pokazuje, dlaczego Zmiana (nie) rusza. */
+app.get('/api/nocna/bramy', async (req, res) => {
+    try { res.json({ success: true, ...(await NocnaZmiana.sprawdzTeraz()) }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+NocnaZmiana.skonfiguruj({ katalogKatedry: ANTIGRAVITY_DIR, portMostu: PORT, szynaZdarzen: Szyna, comfy: COMFY_BASE });
+NocnaZmiana.uruchomPetle();
 
 /**
  * 🔦 LATARNIK — spójność danych firmowych w Twoich Biznesach.

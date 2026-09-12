@@ -13,6 +13,7 @@ import { useT } from '../lib/i18n';
 import LanguageToggle from './LanguageToggle';
 import { STUDIA, odpalStudio, type IdStudia } from '../lib/wrota';
 import { PulsMaszyny } from './dashboard/PulsMaszyny';
+import { NocnaZmianaCard } from './dashboard/NocnaZmianaCard';
 
 interface DashboardViewProps {
     onVisualAssistantOpen: () => void;
@@ -57,8 +58,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
                 wpisane na sztywno. Usunięta 2026-09-11; jej miejsce zajmują liczby,
                 które naprawdę się mierzą — bo noc wcześniej nikt nie widział, jak
                 RAM spada do 3,7 GB, dopóki most nie padł. */}
-            <div className="w-full">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <PulsMaszyny />
+                {/* 🌙 Nocna Zmiana obok Pulsu — bo to Puls decyduje, czy Zmiana ma prawo ruszyć. */}
+                <NocnaZmianaCard />
             </div>
 
 
