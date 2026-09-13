@@ -7526,6 +7526,34 @@ app.post('/api/tgs/3d/swiat', async (req, res) => {
     catch (e) { return res.status(400).json({ success: false, message: e.message }); }
 });
 /**
+ * POST /api/tgs/3d/scenografia { projekt, kadrId, nazwa?, szerokoscSceny?, aktorow? }
+ * Scenografia do gry z KADRU STORY: kadr (png) → wirtualne studio w Blenderze
+ * (cyklorama z kadru, podłoga, światło) → .glb → public/assets/scenografie TGS.
+ * Suweren: „scenografie z kadrów Story jako drugi przycisk" — ta sama droga co
+ * teren, tylko źródłem jest obraz z Tablicy Produkcji, nie kafle.
+ */
+app.post('/api/tgs/3d/scenografia', async (req, res) => {
+    const { projekt = '', kadrId = '', nazwa = '', szerokoscSceny = 16, aktorow = 0 } = req.body ?? {};
+    try {
+        const kadr = (await produkcjaLista(ANTIGRAVITY_DIR, projekt)).find((k) => k.id === kadrId);
+        if (!kadr) return res.status(404).json({ success: false, message: `Nie ma kadru „${kadrId}" w projekcie „${projekt}".` });
+        const m = String(kadr.zwrot || '').match(/[^\n|"]+\.(png|jpg|jpeg|webp)/i);
+        if (!m) return res.status(400).json({ success: false, message: `Kadr „${kadr.tytul}" nie ma obrazu (ma: ${String(kadr.zwrot || '').slice(0, 60) || 'nic'}). Scenografia buduje się z KADRU .png — policz go w kolejce KADR.` });
+        const obraz = m[0].trim();
+        const stan = await Blender.stanBlendera();
+        if (!stan.jest) return res.status(424).json({ success: false, message: `${stan.powod} ${stan.cozrobic}` });
+        const t0 = Date.now();
+        const s = await Blender.zbudujStudio({ projekt, kadr: obraz, nazwa: nazwa || kadr.tytul, szerokoscSceny, aktorow });
+        const r = await Blender.uruchom(s.skrypt);
+        const g = await Blender.skryptGlb({ blend: r.scena, nazwa: nazwa || kadr.tytul });
+        await Blender.uruchom(g.skrypt);
+        const w = await Scenografie.przekaz({ projekt, glb: g.glb, blend: r.scena, kadr: obraz, nazwa: nazwa || kadr.tytul, przeznaczenie: 'gra', opis: `Z kadru „${kadr.tytul}": ${String(kadr.opis || '').slice(0, 200)}` });
+        console.log(`[TGS] Scenografia z kadru „${kadr.tytul}" → ${w.wpis.url} (${Math.round((Date.now() - t0) / 1000)} s)`);
+        return res.json({ success: true, ...w, kadr: { id: kadr.id, tytul: kadr.tytul, obraz }, sekundy: Math.round((Date.now() - t0) / 1000), blender: stan.wersja });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
+
+/**
  * POST /api/tgs/npc/rozmowa { teogochiId, wypowiedz, historia[], swiat, kafel, gracz }
  * NPC w grze to PRAWDZIWY TeOgochi ze stada (imię, dziedzina, etap) — wciela się
  * w mieszkańca Teterhii. Suweren: „w postacie i NPC mogły się wcielać nasze TeOgochi".
