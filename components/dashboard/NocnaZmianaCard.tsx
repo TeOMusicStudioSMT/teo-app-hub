@@ -92,7 +92,11 @@ export const NocnaZmianaCard: React.FC = () => {
             p[o.nazwa] = o.typ === 'liczba' ? Number(v) : o.typ === 'lista' ? v.split(',').map((x) => x.trim()).filter(Boolean) : v;
         }
         setZajety(true);
-        try { await zMostu('/api/nocna/dodaj', { method: 'POST', body: JSON.stringify({ rodzaj, parametry: p }) }); setParametry({}); await odswiez(); toast.success('Dodane do kolejki — ruszy, gdy odejdziesz od klawiatury.'); }
+        try {
+            await zMostu('/api/nocna/dodaj', { method: 'POST', body: JSON.stringify({ rodzaj, parametry: p }) }); setParametry({}); await odswiez();
+            if (stan?.wlaczona) toast.success('Dodane do kolejki — ruszy, gdy odejdziesz od klawiatury.');
+            else toast('Dodane — ale Zmiana jest WYŁĄCZONA. Włącz ją, inaczej zadanie będzie czekać na ręczny start.', { icon: '⚠️', duration: 9000 });
+        }
         catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
         finally { setZajety(false); }
     };
@@ -143,6 +147,14 @@ export const NocnaZmianaCard: React.FC = () => {
                             </div>
                         </div>
 
+                        {/* ⚠️ 2026-09-13: Suweren dodał trzy zadania, poszedł spać — i nic nie ruszyło, bo
+                            przełącznik stał na WYŁĄCZONA (zadania robił potem ręcznie). Szare „WYŁĄCZONA"
+                            nie krzyczało. Teraz krzyczy, gdy coś czeka. */}
+                        {!stan.wlaczona && stan.zadania.some((z) => z.stan === 'czeka') && (
+                            <div className="rounded-lg border border-amber-500/50 bg-amber-950/30 p-2.5 text-[11px] text-amber-100">
+                                ⚠️ Zmiana jest <b>WYŁĄCZONA</b> — {stan.zadania.filter((z) => z.stan === 'czeka').length} zadań czeka i <b>nic nie ruszy samo w nocy</b>. Kliknij „WYŁĄCZONA", żeby włączyć (bramy: bezczynność, karta, RAM nadal pilnują).
+                            </div>
+                        )}
                         <p className="text-[10px] leading-relaxed text-slate-500">
                             Rusza jedno zadanie naraz, gdy nie dotykasz klawiatury ≥ {Math.round(stan.prog.bezczynnoscS / 60)} min, karta nie liczy i wolnego RAM jest ≥ {stan.prog.minRamGb} GB.
                             Sprawdza co {stan.prog.coIleS} s{stan.ostatnieSprawdzenie ? ` · ostatnio ${new Date(stan.ostatnieSprawdzenie).toLocaleTimeString('pl-PL')}` : ''}.

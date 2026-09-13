@@ -158,6 +158,7 @@ import * as Laboratorium from './services/Laboratorium.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as WarsztatUtworow from './services/WarsztatUtworow.js';
+import * as Teterhia3D from './services/Teterhia3D.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -7517,6 +7518,34 @@ TeledyskNowy.skonfiguruj({
     katalog: ANTIGRAVITY_DIR, mostBase: `http://127.0.0.1:${PORT}`, szyna: Szyna,
     pisz: piszModelem, listaProjektow, utworzProjekt, dodajFakt, dodajOdcinek, dodajUtwor: MuzykaFilmowa.dodajUtwor,
 });
+// ── 🧊🎮 TGS 3D: teren świata z planszy → Blender → .glb w public/assets/swiaty ──
+Teterhia3D.skonfiguruj({ szyna: Szyna });
+app.get('/api/tgs/3d/swiaty', async (_req, res) => res.json({ success: true, swiaty: await Teterhia3D.listaSwiatow() }));
+app.post('/api/tgs/3d/swiat', async (req, res) => {
+    try { return res.json({ success: true, ...(await Teterhia3D.zbudujSwiat(req.body ?? {})) }); }
+    catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
+/**
+ * POST /api/tgs/npc/rozmowa { teogochiId, wypowiedz, historia[], swiat, kafel, gracz }
+ * NPC w grze to PRAWDZIWY TeOgochi ze stada (imię, dziedzina, etap) — wciela się
+ * w mieszkańca Teterhii. Suweren: „w postacie i NPC mogły się wcielać nasze TeOgochi".
+ * Nic nie zapisuje; to rozmowa. Nagrody/questy dalej daje Kustosz (/api/tgs/quest).
+ */
+app.post('/api/tgs/npc/rozmowa', async (req, res) => {
+    const { teogochiId = '', wypowiedz = '', historia = [], swiat = '', kafel = '', gracz = '', model } = req.body ?? {};
+    if (!String(wypowiedz).trim()) return res.status(400).json({ success: false, message: 'Pusta wypowiedź.' });
+    try {
+        const stado = await MostStada.stanDlaApki(Szyna.ostatnie({ ile: 100 })).catch(() => null);
+        const t = (stado?.gatunki ?? []).find((g) => g.id === teogochiId);
+        if (!t) return res.status(404).json({ success: false, message: `W stadzie nie ma TeOgochi „${teogochiId}" — Katedra musi opublikować migawkę (Dom TeOgochi).` });
+        const system = `Jesteś ${t.imie} — TeOgochi Katedry OtakOS (dziedzina: ${t.dziedzina}, etap: ${t.etap}), który WCIELA SIĘ w mieszkańca świata Teterhia w grze „To Get Sauce". Mówisz po polsku, w pierwszej osobie, 1–3 zdania, w duchu swojej dziedziny. Znasz tylko to, co widać w kontekście; nie wymyślasz przedmiotów ani nagród (od tego jest Kustosz). Możesz dać wskazówkę, zagadkę albo opinię o graczu. Bez grzeczności na wstępie.`;
+        const kontekst = [swiat ? `ŚWIAT: ${swiat}` : '', kafel ? `MIEJSCE: ${kafel}` : '', gracz ? `GRACZ: ${gracz}` : ''].filter(Boolean).join('\n');
+        const prompt = [kontekst, ...(Array.isArray(historia) ? historia.slice(-8).map((h) => `${h.kto === 'gracz' ? 'GRACZ' : t.imie.toUpperCase()}: ${h.tresc}`) : []), `GRACZ: ${wypowiedz}`, `${t.imie.toUpperCase()}:`].filter(Boolean).join('\n');
+        const { tekst, silnik } = await piszModelem(model, system, prompt);
+        return res.json({ success: true, mowa: tekst.slice(0, 800), model: silnik, npc: { id: t.id, imie: t.imie, forma: t.forma, dziedzina: t.dziedzina, kolor: t.kolor } });
+    } catch (e) { return res.status(502).json({ success: false, message: e.message }); }
+});
+
 // ── 🔧🎵 WARSZTAT UTWORÓW: przedłuż / remiks / cover istniejącego utworu (ACE-Step 1.5) ──
 WarsztatUtworow.skonfiguruj({ comfyBase: COMFY_BASE, comfyDir: COMFY_DIR, musicDir: MUSIC_DIR, katalogKatedry: ANTIGRAVITY_DIR, workflowsDir: WORKFLOWS_DIR, mostBase: `http://127.0.0.1:${PORT}`, ffmpeg: ffmpegPath, ffprobe: ffprobePath, execFile: execFileAsync, szyna: Szyna });
 app.get('/api/music/warsztat', (_req, res) => res.json({ success: true, tryby: WarsztatUtworow.TRYBY, zadania: WarsztatUtworow.listaZadan() }));
