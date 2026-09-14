@@ -14,6 +14,7 @@ import LanguageToggle from './LanguageToggle';
 import { STUDIA, odpalStudio, type IdStudia } from '../lib/wrota';
 import { PulsMaszyny } from './dashboard/PulsMaszyny';
 import { NocnaZmianaCard } from './dashboard/NocnaZmianaCard';
+import { WystawaCard } from './dashboard/WystawaCard';
 
 interface DashboardViewProps {
     onVisualAssistantOpen: () => void;
@@ -64,6 +65,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
                 <NocnaZmianaCard />
             </div>
 
+
+            {/* 3b. WYSTAWA teo.center — kuracja tego, co Katedra pokazuje światu (filmy, Suno, produkty). */}
+            <div className="w-full">
+                <WystawaCard />
+            </div>
 
             {/* 4. PORTFOLIO */}
             <div className="w-full">

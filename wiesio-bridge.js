@@ -159,6 +159,7 @@ import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as WarsztatUtworow from './services/WarsztatUtworow.js';
 import * as Teterhia3D from './services/Teterhia3D.js';
+import * as Wystawa from './services/Wystawa.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -7518,6 +7519,31 @@ TeledyskNowy.skonfiguruj({
     katalog: ANTIGRAVITY_DIR, mostBase: `http://127.0.0.1:${PORT}`, szyna: Szyna,
     pisz: piszModelem, listaProjektow, utworzProjekt, dodajFakt, dodajOdcinek, dodajUtwor: MuzykaFilmowa.dodajUtwor,
 });
+// ── 🖼️ WYSTAWA — katalog Katedry dla teo.center (services/Wystawa.js: „po co" i granice) ──
+Wystawa.skonfiguruj({ katalogKatedry: ANTIGRAVITY_DIR, musicDir: MUSIC_DIR, comfyDir: COMFY_DIR, ffmpeg: ffmpegPath, ffprobe: ffprobePath, execFile: execFileAsync, szyna: Szyna });
+const wystawaOdp = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(400).json({ success: false, message: e.message }));
+app.get('/api/wystawa', cors({ origin: '*' }), (_req, res) => wystawaOdp(res, Wystawa.zbierz()));
+app.get('/api/wystawa/kuracja', (_req, res) => wystawaOdp(res, Wystawa.kuracja()));
+app.post('/api/wystawa/suno', (req, res) => wystawaOdp(res, Wystawa.dodajSuno(req.body ?? {})));
+app.delete('/api/wystawa/suno/:id', (req, res) => wystawaOdp(res, Wystawa.usunSuno(req.params.id)));
+app.post('/api/wystawa/youtube', (req, res) => wystawaOdp(res, Wystawa.ustawYouTube(req.body ?? {})));
+app.post('/api/wystawa/ukryj', (req, res) => wystawaOdp(res, Wystawa.ukryj(req.body ?? {})));
+app.post('/api/wystawa/opis', (req, res) => wystawaOdp(res, Wystawa.ustawOpis(req.body ?? {})));
+app.post('/api/wystawa/publikuj', (req, res) => wystawaOdp(res, Wystawa.opublikuj(req.body ?? {})));
+/**
+ * Strumień pliku z wystawy — TYLKO id z białej listy zbudowanej przez zbierz()
+ * (nigdy ścieżka z URL-a). Tryb gospodarza: teo.center otwarte na tej maszynie
+ * gra film/utwór prosto z dysku, z Range (seek), bez YouTube.
+ */
+app.get('/wystawa/plik/:id', cors({ origin: '*' }), async (req, res) => {
+    let p = Wystawa.sciezkaZBialej(req.params.id);
+    if (!p) { await Wystawa.zbierz().catch(() => {}); p = Wystawa.sciezkaZBialej(req.params.id); }
+    if (!p || !fsSync.existsSync(p)) return res.status(404).json({ success: false, message: 'Nie ma takiej pozycji na wystawie.' });
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.sendFile(p);
+});
+
 // ── 🧊🎮 TGS 3D: teren świata z planszy → Blender → .glb w public/assets/swiaty ──
 Teterhia3D.skonfiguruj({ szyna: Szyna });
 app.get('/api/tgs/3d/swiaty', async (_req, res) => res.json({ success: true, swiaty: await Teterhia3D.listaSwiatow() }));
