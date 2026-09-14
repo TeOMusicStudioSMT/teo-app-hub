@@ -70,7 +70,7 @@ import { KlaudiuszTerminal } from './KlaudiuszTerminal'; // ← NOWOŚĆ: Alchem
 import { AutobusDashboard } from './AutobusDashboard';  // ← NOWOŚĆ: Magistrala Zdarzeń
 import { WydawnictwoForge } from './WydawnictwoForge';  // ← NOWOŚĆ: Kuźnia Wydawnictwa 0.00G
 import { Rafineria } from './Rafineria';               // ← NOWOŚĆ: Transmutacja WebM → MP4
-import { Play, BrainCircuit, RefreshCw, Eye, Terminal, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, BrainCircuit, RefreshCw, Eye, Terminal, ChevronDown, ChevronUp, Scissors } from 'lucide-react';
 import AgentDashboard      from './AgentDashboard';
 import ImpresarioDashboard from './ImpresarioDashboard';
 import TostMessenger       from './TostMessenger';
@@ -170,6 +170,34 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   const [isSpawanie, setIsSpawanie] = useState(false);
   const [videoList, setVideoList] = useState<string[]>([]);
   const [videoEngOpen, setVideoEngOpen] = useState(false); // 🔽 Inżynieria Wideo — DOMYŚLNIE ZWINIĘTA
+  // ✂️ Wiesio-Nożyce (2026-09-15): cięcie wideo na równe klocki. Źródła: _OtakOs_Move i _OtakOs_Klocki (z podkatalogami).
+  const [ciecieZrodlo, setCiecieZrodlo] = useState<'klocki' | 'move'>('klocki');
+  const [ciecieLista, setCiecieLista] = useState<{ rel: string; nazwa: string; sekundy: number | null }[]>([]);
+  const [cieciePlik, setCieciePlik] = useState('');
+  const [ciecieSek, setCiecieSek] = useState(10);
+  const [tnie, setTnie] = useState(false);
+  const [ciecieWynik, setCiecieWynik] = useState<{ katalog: string; kawalki: { nazwa: string; sekundy: number | null }[]; czas: number } | null>(null);
+  const odswiezCiecie = async (zrodlo = ciecieZrodlo) => {
+    try {
+      const r = await fetch(`http://127.0.0.1:3001/api/wideo/pliki?zrodlo=${zrodlo}`);
+      const d = await r.json();
+      if (d.success) { setCiecieLista(d.pliki); setCieciePlik((p) => (d.pliki.some((x: { rel: string }) => x.rel === p) ? p : d.pliki[0]?.rel ?? '')); }
+    } catch { setCiecieLista([]); }
+  };
+  useEffect(() => { if (videoEngOpen) void odswiezCiecie(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [videoEngOpen, ciecieZrodlo]);
+  const potnij = async () => {
+    if (!cieciePlik) return;
+    setTnie(true); setCiecieWynik(null);
+    try {
+      const r = await fetch('http://127.0.0.1:3001/api/wideo/potnij', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zrodlo: ciecieZrodlo, plik: cieciePlik, sekundy: ciecieSek }) });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.message || 'most odmówił');
+      setCiecieWynik(d);
+      toast.success(`✂️ ${d.kawalki.length} kawałków po ${d.sekundy} s (${d.czas} s).`);
+      void odswiezCiecie();
+    } catch (e) { toast.error(`Nożyce: ${e instanceof Error ? e.message : String(e)}`, { duration: 8000 }); }
+    finally { setTnie(false); }
+  };
   // 🏛️ FILARY — aktualny tier + podgląd (gra Odkrywania)
   const [tier, setTierState] = useState(() => currentTier());
   const cycleTier = () => {
@@ -777,6 +805,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
                 <option value="Podcat">Podcat</option>
                 <option value="Kronika">Kronika</option>
                 <option value="Muzyka">Muzyka</option>
+                <option value="Movie">Movie (Klocki do Movie)</option>
               </select>
             </div>
             <div>
@@ -823,6 +852,35 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               <>🎬 SKLEJ MATERIAŁ (Wiesio-Spawacz)</>
             )}
           </button>
+
+          {/* ✂️ NOŻYCE — cięcie na równe klocki (z przekodowaniem, żeby 10 s było 10 s, nie 8,7 z klatki kluczowej) */}
+          <div className="mt-4 rounded-lg border border-slate-700/60 bg-black/20 p-3">
+            <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-400"><Scissors size={12} /> Nożyce — potnij na klocki</div>
+            <div className="grid grid-cols-1 md:grid-cols-[110px_1fr_90px_auto] gap-2">
+              <select value={ciecieZrodlo} onChange={(e) => setCiecieZrodlo(e.target.value as 'klocki' | 'move')} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-emerald-300 outline-none">
+                <option value="klocki">_OtakOs_Klocki</option>
+                <option value="move">_OtakOs_Move</option>
+              </select>
+              <div className="flex gap-1">
+                <select value={cieciePlik} onChange={(e) => setCieciePlik(e.target.value)} className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-emerald-300 outline-none">
+                  <option value="">-- plik --</option>
+                  {ciecieLista.map((p) => <option key={p.rel} value={p.rel}>{p.rel}{p.sekundy ? ` · ${p.sekundy} s` : ''}</option>)}
+                </select>
+                <button onClick={() => void odswiezCiecie()} className="p-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg border border-slate-700" title="Odśwież"><RefreshCw size={14} /></button>
+              </div>
+              <label className="flex items-center gap-1 text-[10px] text-slate-400">co <input type="number" min={1} max={600} value={ciecieSek} onChange={(e) => setCiecieSek(Number(e.target.value) || 10)} className="w-14 bg-slate-900 border border-slate-700 rounded px-1 py-1.5 text-xs text-emerald-300 text-center" /> s</label>
+              <button onClick={() => void potnij()} disabled={tnie || !cieciePlik} className="bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-500/50 rounded-lg px-4 py-2 text-xs font-bold disabled:opacity-40 flex items-center gap-1">
+                {tnie ? <RefreshCw size={12} className="animate-spin" /> : <Scissors size={12} />} {tnie ? 'tnę…' : 'Potnij'}
+              </button>
+            </div>
+            {ciecieWynik && (
+              <div className="mt-2 text-[10px] font-mono text-slate-400">
+                <div className="text-emerald-300">→ {ciecieWynik.katalog}</div>
+                <div className="flex flex-wrap gap-x-3">{ciecieWynik.kawalki.map((k) => <span key={k.nazwa}>{k.nazwa} <span className="text-slate-600">{k.sekundy ?? '?'} s</span></span>)}</div>
+              </div>
+            )}
+            <p className="mt-1 text-[10px] text-slate-600">Kawałki lądują w podkatalogu <code>&lt;nazwa&gt;_po_&lt;N&gt;s</code> obok pliku; ostatni bywa krótszy. Przekodowanie libx264 CRF 18 — równe cięcia, nie na klatkach kluczowych.</p>
+          </div>
           </>)}
         </div>
       </div>

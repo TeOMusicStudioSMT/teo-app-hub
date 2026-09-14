@@ -2178,6 +2178,9 @@ app.post('/api/bridge/execute', async (req, res) => {
             if (type === 'YT') klockiSubDir = 'Klocki do YT';
             if (type === 'Podcat') klockiSubDir = 'Klocki do Podcatów';
             if (type === 'Kronika') klockiSubDir = 'Klocki do Kronik';
+            if (type === 'Muzyka') klockiSubDir = 'Klocki do Muzyki';
+            // 🎞️ Movie (2026-09-15): klocki filmowe Suwerena — `_OtakOs_Klocki/Klocki do Movie`.
+            if (type === 'Movie') klockiSubDir = 'Klocki do Movie';
 
             const klockiDir = path.join(process.cwd(), '_OtakOs_Klocki', klockiSubDir);
             const mainVideoPath = path.join(MOVE_DIR, mainVideoFilename);
@@ -2197,7 +2200,8 @@ app.post('/api/bridge/execute', async (req, res) => {
             };
 
             const introVideos = getVideosFromDir(path.join(klockiDir, 'Start'));
-            const addVideos = getVideosFromDir(path.join(klockiDir, 'Adds'));
+            // Katalog wstawek nazywa się „Adds" w starych zestawach i „Add" w Klockach do Movie — bierzemy oba.
+            const addVideos = [...getVideosFromDir(path.join(klockiDir, 'Adds')), ...getVideosFromDir(path.join(klockiDir, 'Add'))];
             const outroVideos = getVideosFromDir(path.join(klockiDir, 'End'));
 
             const toPosix = (p) => p.replace(/\\/g, '/');
@@ -7519,6 +7523,71 @@ TeledyskNowy.skonfiguruj({
     katalog: ANTIGRAVITY_DIR, mostBase: `http://127.0.0.1:${PORT}`, szyna: Szyna,
     pisz: piszModelem, listaProjektow, utworzProjekt, dodajFakt, dodajOdcinek, dodajUtwor: MuzykaFilmowa.dodajUtwor,
 });
+// ── ✂️ CIĘCIE WIDEO NA KLOCKI (Wiesio-Nożyce) ──────────────────────────────
+/**
+ * Suweren (2026-09-15): „mam w Klockach do Movie 3 pliki 0:20, 0:30, 0:40 —
+ * potrzebuję je pociąć na 10 s". Źródła: `_OtakOs_Move` i `_OtakOs_Klocki/*`
+ * (tylko te dwa korzenie — ścieżka z URL-a nie wychodzi poza nie).
+ *
+ * ⚠️ TNIEMY Z PRZEKODOWANIEM, nie `-c copy`. Kopia strumienia tnie tylko na
+ * klatkach kluczowych — przy 10 s wychodziłoby 8,7 s albo 12,4 s, zależnie od
+ * GOP-u. `force_key_frames` co N s + segment daje równe kawałki; libx264 CRF 18,
+ * dźwięk AAC. Ostatni kawałek bywa krótszy — mówimy, ile ma.
+ */
+const KORZENIE_WIDEO = () => ({ move: MOVE_DIR, klocki: path.join(process.cwd(), '_OtakOs_Klocki') });
+function sciezkaWKorzeniu(zrodlo, rel, { musiIstniec = true } = {}) {
+    const korzen = KORZENIE_WIDEO()[zrodlo];
+    if (!korzen) throw new Error(`Nieznane źródło „${zrodlo}" (move | klocki).`);
+    const abs = path.resolve(korzen, String(rel || ''));
+    if (!abs.toLowerCase().startsWith(path.resolve(korzen).toLowerCase())) throw new Error('Ścieżka poza katalogiem źródłowym.');
+    if (musiIstniec && !fsSync.existsSync(abs)) throw new Error(`Nie ma pliku: ${rel}`);
+    return abs;
+}
+async function sekundyWideo(p) {
+    try { const { stdout } = await execFileAsync(ffprobePath, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', p]); const d = Number(stdout); return Number.isFinite(d) ? Math.round(d * 10) / 10 : null; } catch { return null; }
+}
+app.get('/api/wideo/pliki', async (req, res) => {
+    try {
+        const zrodlo = String(req.query.zrodlo || 'klocki');
+        const korzen = KORZENIE_WIDEO()[zrodlo];
+        if (!korzen) return res.status(400).json({ success: false, message: 'zrodlo: move | klocki' });
+        const lista = [];
+        const wejdz = async (dir, glebokosc) => {
+            for (const w of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+                const abs = path.join(dir, w.name);
+                if (w.isDirectory()) { if (glebokosc < 3) await wejdz(abs, glebokosc + 1); continue; }
+                if (!/\.(mp4|mov|webm|m4v)$/i.test(w.name)) continue;
+                const st = await fs.stat(abs);
+                lista.push({ rel: path.relative(korzen, abs).split(path.sep).join('/'), nazwa: w.name, bajtow: st.size, sekundy: await sekundyWideo(abs), kiedy: st.mtime.toISOString() });
+            }
+        };
+        await wejdz(korzen, 0);
+        lista.sort((a, b) => a.rel.localeCompare(b.rel));
+        return res.json({ success: true, zrodlo, korzen, pliki: lista });
+    } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/wideo/potnij', async (req, res) => {
+    const { zrodlo = 'klocki', plik = '', sekundy = 10, doKatalogu = '' } = req.body ?? {};
+    try {
+        const abs = sciezkaWKorzeniu(zrodlo, plik);
+        const n = Math.max(1, Math.min(600, Number(sekundy) || 10));
+        const baza = path.basename(abs).replace(/\.[^.]+$/, '');
+        // Wynik: podkatalog `<nazwa>_po_<N>s` obok pliku (albo wskazany katalog w tym samym korzeniu).
+        const cel = doKatalogu ? sciezkaWKorzeniu(zrodlo, doKatalogu, { musiIstniec: false }) : path.join(path.dirname(abs), `${baza}_po_${n}s`);
+        await fs.mkdir(cel, { recursive: true });
+        const wzor = path.join(cel, `${baza}_%02d.mp4`);
+        const t0 = Date.now();
+        await execFileAsync(ffmpegPath, ['-y', '-i', abs, '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-force_key_frames', `expr:gte(t,n_forced*${n})`, '-c:a', 'aac', '-b:a', '192k', '-f', 'segment', '-segment_time', String(n), '-reset_timestamps', '1', '-movflags', '+faststart', wzor], { windowsHide: true, timeout: 20 * 60_000, maxBuffer: 16 * 1024 * 1024 });
+        const kawalki = [];
+        for (const f of (await fs.readdir(cel)).filter((f) => f.startsWith(`${baza}_`) && f.endsWith('.mp4')).sort()) {
+            const p = path.join(cel, f);
+            kawalki.push({ nazwa: f, rel: path.relative(KORZENIE_WIDEO()[zrodlo], p).split(path.sep).join('/'), sekundy: await sekundyWideo(p), bajtow: (await fs.stat(p)).size });
+        }
+        console.log(`[Wiesio-Nożyce] ✂️ ${path.basename(abs)} → ${kawalki.length} kawałków po ${n} s w ${cel}`);
+        return res.json({ success: true, plik: abs, katalog: cel, sekundy: n, kawalki, czas: Math.round((Date.now() - t0) / 1000) });
+    } catch (e) { return res.status(400).json({ success: false, message: e.stderr ? String(e.stderr).slice(-400) : e.message }); }
+});
+
 // ── 🖼️ WYSTAWA — katalog Katedry dla teo.center (services/Wystawa.js: „po co" i granice) ──
 Wystawa.skonfiguruj({ katalogKatedry: ANTIGRAVITY_DIR, musicDir: MUSIC_DIR, comfyDir: COMFY_DIR, ffmpeg: ffmpegPath, ffprobe: ffprobePath, execFile: execFileAsync, szyna: Szyna });
 const wystawaOdp = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(400).json({ success: false, message: e.message }));
