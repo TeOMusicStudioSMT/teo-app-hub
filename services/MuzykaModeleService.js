@@ -22,6 +22,7 @@ import { Readable } from 'stream';
 
 const REPO = 'Comfy-Org/MiniMax-Music-3';
 const REPO_ACE = 'Comfy-Org/ace_step_1.5_ComfyUI_files';
+const REPO_YUE = 'Comfy-Org/YuE2';
 
 /**
  * Katalog wag. Domyślnie obok mostu: <cwd>/../TeO_Music_Studio/models
@@ -63,12 +64,29 @@ export const MANIFEST = [
     { id: 'ace-clip-06b',  path: 'text_encoders/qwen_0.6b_ace15.safetensors',       repoPath: 'split_files/text_encoders/qwen_0.6b_ace15.safetensors',       role: 'text_encoders',    precision: 'bf16', bytes: 1_191_588_248, repo: REPO_ACE, label: 'ACE Qwen 0.6B (encoder A)', fitsVram6gb: true, family: 'ace' },
     { id: 'ace-clip-17b',  path: 'text_encoders/qwen_1.7b_ace15.safetensors',       repoPath: 'split_files/text_encoders/qwen_1.7b_ace15.safetensors',       role: 'text_encoders',    precision: 'bf16', bytes: 3_708_523_360, repo: REPO_ACE, label: 'ACE Qwen 1.7B (encoder B)', fitsVram6gb: true, family: 'ace' },
     { id: 'ace-vae',       path: 'vae/ace_1.5_vae.safetensors',                     repoPath: 'split_files/vae/ace_1.5_vae.safetensors',                     role: 'vae',              precision: 'fp32', bytes:   337_431_732, repo: REPO_ACE, label: 'ACE 1.5 VAE',               fitsVram6gb: true, family: 'ace' },
+
+    // ── YuE2 (m-a-p, 2026-09-15) — piosenki z wokalem, JEDEN plik checkpoint ────
+    // Suweren: „chcę ten nowy model do muzyki" (github multimodal-art-projection/YuE,
+    // huggingface Comfy-Org/YuE2). Rodzina inna niż dwie powyższe: checkpoint niesie
+    // model + encoder tekstu + VAE naraz (CheckpointLoaderSimple), więc rola to
+    // `checkpoints`, a nie trójka DiT/encoder/VAE. SheetSage2 to encoder AUDIO —
+    // potrzebny tylko do coverów (melodia z nagrania), nie do text-to-music.
+    // ⚠️ Węzły YuE2 (YuE2GenerateMusic, EmptyYuE2LatentAudio) są w ComfyUI od wersji
+    // nowszej niż 0.33.0 zainstalowana 2026-09-15 — most sprawdza to przed startem
+    // i mówi „zaktualizuj ComfyUI", zamiast wysyłać graf, który padnie.
+    // ⚠️ Faza autoregresywna (tokeny muzyki z LM 3B) — to NIE jest 8 kroków ACE.
+    // Czas na tej maszynie NIEZMIERZONY; oficjalny szablon domyślnie bierze int8.
+    { id: 'yue2-3b-int8', path: 'checkpoints/yue2_3b_int8_convrot.safetensors', role: 'checkpoints',    precision: 'int8', bytes: 3_960_938_800, repo: REPO_YUE, label: 'YuE2 3B int8 (convrot)',     fitsVram6gb: true,  family: 'yue2' },
+    { id: 'yue2-3b-bf16', path: 'checkpoints/yue2_3b_bf16.safetensors',         role: 'checkpoints',    precision: 'bf16', bytes: 7_799_983_228, repo: REPO_YUE, label: 'YuE2 3B bf16',              fitsVram6gb: false, family: 'yue2' },
+    { id: 'sheetsage2',   path: 'audio_encoders/sheetsage2_bf16.safetensors',    role: 'audio_encoders', precision: 'bf16', bytes: 1_386_868_122, repo: REPO_YUE, label: 'SheetSage2 (encoder audio, do coverów)', fitsVram6gb: true, family: 'yue2', opcjonalny: true },
 ];
 
 /** Rodzina modelu: 'minimax' (domyslnie) albo 'ace'. */
 export function rodzina(m) { return m.family || 'minimax'; }
 
 const ROLE = ['diffusion_models', 'text_encoders', 'vae'];
+/** Role WYMAGANE per rodzina — YuE2 gra z samego checkpointa. */
+const ROLE_RODZINY = { ace: ROLE, minimax: ROLE, yue2: ['checkpoints'] };
 
 export function modelPoId(id) {
     return MANIFEST.find((m) => m.id === id);
@@ -136,12 +154,12 @@ export async function status() {
     // ACE wymaga DWÓCH encoderów (DualCLIPLoader), MiniMax jednego.
     const rodziny = {};
     // ACE pierwsza — na slabszym sprzecie to ona realnie liczy (8 krokow vs faza AR).
-    for (const nazwa of ['ace', 'minimax']) {
+    for (const nazwa of ['ace', 'minimax', 'yue2']) {
         const swoje = gotowe.filter((p) => rodzina(p) === nazwa);
         const maRole = new Set(swoje.map((p) => p.role));
-        const brakujaceRole = ROLE.filter((r) => !maRole.has(r));
+        const brakujaceRole = ROLE_RODZINY[nazwa].filter((r) => !maRole.has(r));
         const encoderow = swoje.filter((p) => p.role === 'text_encoders').length;
-        const potrzebaEncoderow = nazwa === 'ace' ? 2 : 1;
+        const potrzebaEncoderow = nazwa === 'ace' ? 2 : nazwa === 'yue2' ? 0 : 1;
         rodziny[nazwa] = {
             gotowy: brakujaceRole.length === 0 && encoderow >= potrzebaEncoderow,
             brakujaceRole,

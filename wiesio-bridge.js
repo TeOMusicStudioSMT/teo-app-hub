@@ -6055,7 +6055,36 @@ const RODZINY_MUZYKI = {
         steps: 30, cfg: 1.7, cfgScale: 1.7,
         uwaga: 'UWAGA: faza autoregresywna ~25 kroków na sekundę audio. Zmierzone na 16 GB RAM: ~6h50m na minutę muzyki. Sensowne dopiero od ~32 GB RAM.',
     },
+    // 🎤 YuE2 (2026-09-15): piosenki z wokalem z jednego checkpointa. Graf z oficjalnego
+    // szablonu Comfy-Org (audio_yue2_text2music): KSampler 32 kroków, dpm_2/sgm_uniform,
+    // cfg 1. Wymaga ComfyUI z węzłem YuE2GenerateMusic — sprawdzane przed startem.
+    yue2: {
+        workflow: 'yue2.json',
+        etykieta: 'YuE2 3B',
+        dit: 'yue2-3b-int8', enc: null, enc2: null, vae: null,
+        steps: 32, cfg: 1.0, cfgScale: undefined,
+        wezel: 'YuE2GenerateMusic',
+        uwaga: 'Model językowy 3B generuje tokeny muzyki (faza autoregresywna) — czas na tej maszynie jeszcze niezmierzony. Styl po angielsku, tekst w [Verse]/[Chorus].',
+    },
 };
+
+/**
+ * Ustawienia muzyki Katedry — m.in. rodzina, którą Joanna bierze do MUZYKI FILMOWEJ.
+ * Suweren (2026-09-15): „czy Joanna, jak tworzy muzykę filmową, ma na sztywno wpisany
+ * model?" — miała (`rodzina: 'ace'` w kodzie). Teraz czyta stąd; zmiana z panelu.
+ */
+const PLIK_USTAWIEN_MUZYKI = path.join(ANTIGRAVITY_DIR, 'muzyka-ustawienia.json');
+async function ustawieniaMuzyki() {
+    try { return { rodzinaFilmowa: 'ace', ...JSON.parse(await fs.readFile(PLIK_USTAWIEN_MUZYKI, 'utf8')) }; } catch { return { rodzinaFilmowa: 'ace' }; }
+}
+app.get('/api/music/ustawienia', async (_req, res) => res.json({ success: true, ...(await ustawieniaMuzyki()), rodziny: Object.fromEntries(Object.entries(RODZINY_MUZYKI).map(([k, v]) => [k, { etykieta: v.etykieta, uwaga: v.uwaga }])) }));
+app.post('/api/music/ustawienia', async (req, res) => {
+    const { rodzinaFilmowa } = req.body ?? {};
+    if (rodzinaFilmowa && !RODZINY_MUZYKI[rodzinaFilmowa]) return res.status(400).json({ success: false, message: `Nieznana rodzina „${rodzinaFilmowa}". Znane: ${Object.keys(RODZINY_MUZYKI).join(', ')}.` });
+    const u = { ...(await ustawieniaMuzyki()), ...(rodzinaFilmowa ? { rodzinaFilmowa } : {}) };
+    await fs.writeFile(PLIK_USTAWIEN_MUZYKI, JSON.stringify(u, null, 2), 'utf8');
+    return res.json({ success: true, ...u });
+});
 
 // ── 🎛️ WARSZTAT WORKFLOW ────────────────────────────────────────────────────
 // Do tej pory graf ComfyUI wybierał się SAM, po rodzinie modelu, a plik był
@@ -6714,7 +6743,9 @@ async function czekajNaAudio(promptId, limitMinut = 40) {
  * muzyki — ścieżka do pięciominutowego filmu szłaby ponad dobę.
  */
 app.post('/api/montazownia/skomponuj', async (req, res) => {
-    const { projekt = '', film = '', wyciszenie = 3, model } = req.body ?? {};
+    const { projekt = '', film = '', wyciszenie = 3, model, rodzina: rodzinaZadana } = req.body ?? {};
+    // Rodzina silnika muzycznego: z żądania → z ustawień (panel) → 'ace'. Dotąd była na sztywno.
+    const rodzinaFilmowa = RODZINY_MUZYKI[rodzinaZadana] ? rodzinaZadana : (await ustawieniaMuzyki()).rodzinaFilmowa;
     try {
         if (!String(projekt).trim()) throw new Error('Podaj projekt.');
 
@@ -6748,7 +6779,7 @@ app.post('/api/montazownia/skomponuj', async (req, res) => {
         const id = `muz-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
         const z = {
             id, stan: 'liczy', projekt, film: path.basename(film),
-            sekundy, brief, model: silnik, start: Date.now(), blad: null, plik: null,
+            sekundy, brief, model: silnik, rodzina: rodzinaFilmowa, start: Date.now(), blad: null, plik: null,
             segmenty: Array.from({ length: plan.ile }, (_, i) => ({
                 nr: i + 1, dlugosc: plan.dlugosc, stan: 'czeka', plik: null, sekundyPracy: null,
             })),
@@ -6769,7 +6800,7 @@ app.post('/api/montazownia/skomponuj', async (req, res) => {
                         body: JSON.stringify({
                             prompt: brief.tagi + (brief.unikaj ? `. avoid: ${brief.unikaj}` : ''),
                             duration: seg.dlugosc,
-                            rodzina: 'ace',
+                            rodzina: rodzinaFilmowa,
                         }),
                     });
                     const d = await odp.json();
@@ -9898,6 +9929,8 @@ function wstrzyknijDoWorkflow(wf, p) {
         // ACE-Step: tempo, tonacja, metrum i jezyk to WEJSCIA noda, nie tekst w prompcie.
         // Dzieki temu suwak BPM i wybor tonacji z panelu trafiaja wprost do modelu.
         if (p.tags     !== undefined && 'tags' in we) ustaw(id, 'tags', p.tags, '<tagi stylu>');
+        // YuE2: opis brzmienia to `style` (YuE2GenerateMusic / YuE2GenerateABC).
+        if ('style' in we && p.prompt) ustaw(id, 'style', p.prompt, '<styl>');
         if (p.bpm      !== undefined) ustaw(id, 'bpm', p.bpm);
         if (p.keyscale !== undefined) ustaw(id, 'keyscale', p.keyscale);
         if (p.language !== undefined) ustaw(id, 'language', p.language);
@@ -10012,6 +10045,17 @@ app.post('/api/music/generate', async (req, res) => {
     // 3) Workflow tej rodziny (nazw nodów nie wymyślamy — czytamy z pliku)
     // Suweren (albo agent) moze wskazac wlasny graf. Bez tego wybor byl zaszyty
     // w RODZINY_MUZYKI i drugi workflow w katalogu byl nieosiagalny z panelu.
+    // Rodzina z własnym węzłem (YuE2): ComfyUI musi go znać, inaczej graf padnie na kolejce.
+    if (cfgRodziny.wezel) {
+        const zna = await fetch(`${COMFY_BASE}/object_info/${cfgRodziny.wezel}`).then((r) => r.ok).catch(() => false);
+        if (!zna) {
+            return res.status(424).json({
+                success: false, etap: 'comfy-wersja',
+                message: `ComfyUI (${comfy.nodeCount} nodów) nie zna węzła ${cfgRodziny.wezel} — ta wersja jest sprzed ${cfgRodziny.etykieta}.`,
+                hint: 'Zaktualizuj ComfyUI: update/update_comfyui.bat (NIE update_comfyui_and_python_dependencies.bat — pada na limicie 260 znaków ścieżki). Po aktualizacji zrestartuj ComfyUI.',
+            });
+        }
+    }
     const wskazany = bezpiecznaNazwaWorkflow(body.workflow);
     if (body.workflow && !wskazany) {
         return res.status(400).json({ success: false, etap: 'workflow', message: 'Zla nazwa workflow (oczekuje *.json).' });
