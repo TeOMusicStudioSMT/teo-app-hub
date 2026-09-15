@@ -311,8 +311,32 @@ async function cykl() {
     }
 }
 
+/**
+ * Pogrzeb sierot po restarcie. Zadanie „trwa" żyje tylko w procesie mostu — jeśli most
+ * wstaje i widzi „trwa" w pliku, to znaczy, że poprzedni proces zginął w trakcie
+ * (Suweren 2026-09-15: Windows zaktualizował się w nocy, Tablica Reżysera została
+ * „trwa" na zawsze — nie szła do usunięcia ani ponownego startu). Oznaczamy jako błąd
+ * z jasnym powodem; człowiek może odpalić ponownie albo usunąć.
+ */
+async function pogrzebSieroty() {
+    const d = await wczytaj();
+    const sieroty = d.zadania.filter((z) => z.stan === 'trwa');
+    if (!sieroty.length) return 0;
+    for (const z of sieroty) {
+        z.stan = 'blad';
+        z.koniec = new Date().toISOString();
+        z.blad = `Przerwane restartem mostu (ruszyło ${z.od ?? '?'}; most lub komputer wyłączył się w trakcie). Uruchom ponownie albo usuń.`;
+        d.dziennik.unshift({ kiedy: z.koniec, id: z.id, rodzaj: z.rodzaj, stan: 'blad', sekund: z.od ? Math.round((Date.now() - Date.parse(z.od)) / 1000) : 0, blad: z.blad, przerwane: true });
+    }
+    d.dziennik = d.dziennik.slice(0, 200);
+    await zapisz(d);
+    await szyna?.nadaj?.({ agent: 'Nocna Zmiana', rodzaj: 'blad', tresc: `po restarcie mostu: ${sieroty.length} zadanie/a zastałem „w trakcie" — oznaczam jako przerwane (${sieroty.map((z) => z.rodzaj).join(', ')})` }).catch(() => {});
+    return sieroty.length;
+}
+
 export function uruchomPetle() {
     if (tik) return;
+    pogrzebSieroty().catch(() => {});
     tik = setInterval(() => { cykl().catch(() => {}); }, CO_ILE_MS);
     tik.unref?.();
 }
@@ -360,7 +384,9 @@ export async function dodaj({ rodzaj, parametry = {}, notatka = '' }) {
 export async function usun(idZadania) {
     const d = await wczytaj();
     const przed = d.zadania.length;
-    d.zadania = d.zadania.filter((z) => z.id !== idZadania || z.stan === 'trwa');
+    // „trwa" chroni tylko zadanie, które NAPRAWDĘ biegnie w tym procesie (stan.trwa);
+    // „trwa" z pliku bez biegu w pamięci to sierota po restarcie — wolno ją usunąć.
+    d.zadania = d.zadania.filter((z) => z.id !== idZadania || (z.stan === 'trwa' && stan.trwa?.id === z.id));
     await zapisz(d);
     return przed - d.zadania.length;
 }
@@ -373,8 +399,9 @@ export async function uruchomTeraz(idZadania) {
     const d = await wczytaj();
     const z = d.zadania.find((x) => x.id === idZadania);
     if (!z) throw new Error('Nie ma takiego zadania.');
-    if (z.stan === 'trwa') throw new Error('To zadanie już trwa.');
-    z.stan = 'trwa'; z.od = new Date().toISOString(); z.recznie = true;
+    if (z.stan === 'trwa' && stan.trwa?.id === z.id) throw new Error('To zadanie już trwa.');
+    if (stan.trwa) throw new Error(`Inne zadanie właśnie biegnie (${stan.trwa.rodzaj}) — jedno naraz.`);
+    z.stan = 'trwa'; z.od = new Date().toISOString(); z.recznie = true; z.blad = null; z.koniec = undefined;
     await zapisz(d);
     stan.trwa = { id: z.id, rodzaj: z.rodzaj, od: z.od };
     const t0 = Date.now();
