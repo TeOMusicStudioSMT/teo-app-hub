@@ -18,7 +18,7 @@ import toast from 'react-hot-toast';
 const MOST = 'http://127.0.0.1:3001';
 
 interface Film { id: string; rodzaj: string; projekt: string; tytul: string; kiedy: string; bajtow: number; muzyka: boolean | null; ukryty: boolean; youtube: { id: string; url: string } | null }
-interface Suno { id: string; url: string; tytul: string; embed: string }
+interface Suno { typ?: 'utwor' | 'playlista'; id: string; url: string; tytul: string; embed?: string; utwory?: { id: string; tytul: string }[] }
 interface Katalog { filmy: Film[]; utwory: { id: string; tytul: string; ukryty: boolean }[]; produkty: { id: string; tytul: string; dzial: string; ukryty: boolean }[]; suno: Suno[]; ostatniaPublikacja: string | null }
 
 async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
@@ -77,14 +77,14 @@ export const WystawaCard: React.FC = () => {
 
                         {/* ── Suno ── */}
                         <div className="flex gap-1.5">
-                            <input value={suno} onChange={(e) => setSuno(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void dodajSuno(); }} placeholder="link share z Suno: https://suno.com/song/…" className="flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1 font-mono text-[10px] text-slate-200" />
+                            <input value={suno} onChange={(e) => setSuno(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void dodajSuno(); }} placeholder="link Suno: https://suno.com/song/… albo /playlist/…" className="flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1 font-mono text-[10px] text-slate-200" />
                             <button onClick={() => void dodajSuno()} className="rounded bg-fuchsia-500/30 px-2 text-fuchsia-100">+ Suno</button>
                         </div>
                         {k.suno.length > 0 && (
                             <ul className="space-y-0.5">
                                 {k.suno.map((s) => (
                                     <li key={s.id} className="flex items-center gap-2 text-[10px]">
-                                        <span className="truncate text-slate-300">🎵 {s.tytul || s.id}</span>
+                                        <span className="truncate text-slate-300">{s.typ === 'playlista' ? `📀 ${s.tytul} · ${s.utwory?.length ?? 0} utworów` : `🎵 ${s.tytul || s.id}`}</span>
                                         <button onClick={() => zMostu(`/api/wystawa/suno/${s.id}`, { method: 'DELETE' }).then(odswiez)} className="ml-auto text-slate-600 hover:text-red-400"><Trash2 size={11} /></button>
                                     </li>
                                 ))}
@@ -104,7 +104,28 @@ export const WystawaCard: React.FC = () => {
                                 </div>
                             ))}
                         </div>
-                        <p className="text-[10px] leading-relaxed text-slate-600">Film bez linku YouTube gra tylko na tej maszynie (strona pyta Most). Wgraj go na kanał, wklej link — i gra u każdego. Suno gra z ramki Suno wszędzie.</p>
+                        <p className="text-[10px] leading-relaxed text-slate-600">Film bez linku YouTube gra tylko na tej maszynie (strona pyta Most). Wgraj go na kanał, wklej link — i gra u każdego. Suno gra z ramki Suno wszędzie. <b>Oko = ukryj</b> — pozycja znika ze strony po następnym „Publikuj".</p>
+
+                        {/* ── Produkty i utwory z dysku: to samo oko ── */}
+                        <details className="rounded-lg border border-slate-800 p-2">
+                            <summary className="cursor-pointer text-[10px] uppercase tracking-widest text-slate-400">Produkty ({k.produkty.length}) · utwory z dysku ({k.utwory.length}) — co pokazać</summary>
+                            <div className="mt-2 max-h-56 space-y-1 overflow-y-auto">
+                                {k.produkty.map((p) => (
+                                    <div key={p.id} className={`flex items-center gap-1.5 text-[10px] ${p.ukryty ? 'opacity-40' : ''}`}>
+                                        <button onClick={() => void ukryj(p.id, !p.ukryty)} title={p.ukryty ? 'pokaż' : 'ukryj'} className="text-slate-500 hover:text-white">{p.ukryty ? <EyeOff size={11} /> : <Eye size={11} />}</button>
+                                        <span className="text-slate-600">{p.dzial}</span>
+                                        <span className="truncate text-slate-200">{p.tytul}</span>
+                                    </div>
+                                ))}
+                                {k.utwory.map((u) => (
+                                    <div key={u.id} className={`flex items-center gap-1.5 text-[10px] ${u.ukryty ? 'opacity-40' : ''}`}>
+                                        <button onClick={() => void ukryj(u.id, !u.ukryty)} title={u.ukryty ? 'pokaż' : 'ukryj'} className="text-slate-500 hover:text-white">{u.ukryty ? <EyeOff size={11} /> : <Eye size={11} />}</button>
+                                        <span className="text-slate-600">🎧</span>
+                                        <span className="truncate text-slate-200">{u.tytul}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </details>
 
                         <button onClick={() => void publikuj()} disabled={publikuje} className="flex items-center justify-center gap-2 rounded-lg bg-indigo-500/30 py-2 text-[11px] font-bold text-indigo-100 disabled:opacity-50">
                             {publikuje ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} Publikuj wystawę do teo-center

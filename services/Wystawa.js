@@ -53,21 +53,77 @@ export function idSuno(url) {
     const m = String(url || '').match(/suno\.(?:com|ai)\/(?:song|s|embed)\/([A-Za-z0-9-]{8,})/i);
     return m ? m[1] : null;
 }
+/** Suno: link playlisty `https://suno.com/playlist/<uuid>`. */
+export function idPlaylistySuno(url) {
+    const m = String(url || '').match(/suno\.(?:com|ai)\/playlist\/([A-Za-z0-9-]{8,})/i);
+    return m ? m[1] : null;
+}
+
+/**
+ * Publiczne API Suno (to samo, z którego korzysta ich strona; bez klucza, tylko
+ * publiczne treści). Sprawdzone 2026-09-15: /api/playlist/<id>/?page=N oddaje
+ * `playlist_clips[].clip` (id, title, image_url, metadata.duration);
+ * /api/clip/<id> — pojedynczy utwór. Gdy Suno zmieni API — dostajemy błąd HTTP
+ * i wpis zostaje bez tytułów/okładek, ale ramka embed nadal gra.
+ */
+const SUNO_API = 'https://studio-api.prod.suno.com/api';
+async function sunoJson(sciezka) {
+    const r = await fetch(`${SUNO_API}${sciezka}`, { headers: { 'User-Agent': 'Mozilla/5.0 (Katedra OtakOS)' }, signal: AbortSignal.timeout(15_000) });
+    if (!r.ok) throw new Error(`Suno API HTTP ${r.status}`);
+    return r.json();
+}
+/** suno.com/s/<kod> → uuid utworu (z nagłówka Location, bez ściągania strony). */
+async function rozwiazKrotkiSuno(url) {
+    try {
+        const r = await fetch(url, { method: 'HEAD', redirect: 'manual', headers: { 'User-Agent': 'Mozilla/5.0 (Katedra OtakOS)' }, signal: AbortSignal.timeout(15_000) });
+        const cel = r.headers.get('location') || '';
+        return cel.match(/\/song\/([0-9a-f-]{36})/i)?.[1] ?? null;
+    } catch { return null; }
+}
+const utworZClipu = (c) => ({ id: c.id, tytul: String(c.title || '').slice(0, 120), sekundy: Math.round(Number(c?.metadata?.duration) || 0) || null, okladka: c.image_url || null, embed: `https://suno.com/embed/${c.id}`, url: `https://suno.com/song/${c.id}` });
+
+export async function dodajSuno({ url, tytul = '', opis = '' }) {
+    const k = await kuracja();
+    const idPl = idPlaylistySuno(url);
+    if (idPl) {
+        // Playlista: ściągamy wszystkie strony (Suno stronicuje po ~20), zapisujemy utwory.
+        const utwory = [];
+        let nazwa = '', okladka = null, autor = '';
+        for (let strona = 1; strona <= 10; strona++) {
+            const d = await sunoJson(`/playlist/${idPl}/?page=${strona}`);
+            nazwa = nazwa || String(d.name || '');
+            okladka = okladka || d.image_url || null;
+            autor = autor || String(d.user_display_name || d.user_handle || '');
+            for (const pc of d.playlist_clips ?? []) if (pc?.clip?.id) utwory.push(utworZClipu(pc.clip));
+            if (!d.playlist_clips?.length || utwory.length >= Number(d.num_total_results || 0)) break;
+        }
+        if (!utwory.length) throw new Error('Playlista jest pusta albo niepubliczna — Suno nie oddało żadnego utworu.');
+        k.suno = k.suno.filter((s) => s.id !== idPl);
+        k.suno.unshift({ typ: 'playlista', id: idPl, url: String(url).trim(), tytul: String(tytul || nazwa || 'Playlista').slice(0, 120), opis: String(opis || '').slice(0, 400), autor, okladka, utwory, dodano: teraz() });
+        return zapiszKuracje(k);
+    }
+    let id = idSuno(url);
+    if (!id) throw new Error('To nie wygląda na link Suno (oczekuję https://suno.com/song/<id> albo /playlist/<id>).');
+    // Krótki link „share" (suno.com/s/<kod>) to przekierowanie 307 do /song/<uuid> — ramka embed
+    // gra tylko z uuid. Sprawdzone 2026-09-15 na dwóch linkach Suwerena.
+    if (!/^[0-9a-f-]{36}$/i.test(id)) {
+        const uuid = await rozwiazKrotkiSuno(url);
+        if (!uuid) throw new Error(`Suno nie rozwinęło krótkiego linku ${url} — wklej link z /song/<uuid> (menu „Share → Copy link" na stronie utworu).`);
+        id = uuid;
+    }
+    if (k.suno.some((s) => s.id === id)) return k;
+    // Tytuł i okładka z API — gdy API milczy, wpis zostaje z tym, co podał Suweren.
+    let meta = null;
+    try { meta = utworZClipu(await sunoJson(`/clip/${id}`)); } catch { /* ramka embed i tak zagra */ }
+    k.suno.unshift({ typ: 'utwor', id, url: String(url).trim(), tytul: String(tytul || meta?.tytul || '').trim().slice(0, 120), opis: String(opis || '').trim().slice(0, 400), sekundy: meta?.sekundy ?? null, okladka: meta?.okladka ?? null, embed: `https://suno.com/embed/${id}`, dodano: teraz() });
+    return zapiszKuracje(k);
+}
+export async function usunSuno(id) { const k = await kuracja(); k.suno = k.suno.filter((s) => s.id !== id); return zapiszKuracje(k); }
 /** YouTube: watch?v=, youtu.be/, shorts/, embed/ → id. */
 export function idYouTube(url) {
     const m = String(url || '').match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/i);
     return m ? m[1] : null;
 }
-
-export async function dodajSuno({ url, tytul = '', opis = '' }) {
-    const id = idSuno(url);
-    if (!id) throw new Error('To nie wygląda na link Suno (oczekuję https://suno.com/song/<id>).');
-    const k = await kuracja();
-    if (k.suno.some((s) => s.id === id)) return k;
-    k.suno.unshift({ id, url: String(url).trim(), tytul: String(tytul || '').trim().slice(0, 120), opis: String(opis || '').trim().slice(0, 400), embed: `https://suno.com/embed/${id}`, dodano: teraz() });
-    return zapiszKuracje(k);
-}
-export async function usunSuno(id) { const k = await kuracja(); k.suno = k.suno.filter((s) => s.id !== id); return zapiszKuracje(k); }
 export async function ustawYouTube({ filmId, url }) {
     const k = await kuracja();
     if (!url) { delete k.youtube[filmId]; return zapiszKuracje(k); }
@@ -239,4 +295,4 @@ export async function opublikuj({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     return { plik: path.join(tc, 'public', 'wystawa.json'), media, filmy: filmyPub.length, bezYouTube: filmyPub.filter((f) => !f.youtube).length, utwory: utworyPub.length, suno: zywy.suno.length, produkty: produktyPub.length, sekundy: Math.round((Date.now() - t0) / 1000), opublikowano: katalog.opublikowano };
 }
 
-export default { skonfiguruj, kuracja, idSuno, idYouTube, dodajSuno, usunSuno, ustawYouTube, ukryj, ustawOpis, zbierz, sciezkaZBialej, opublikuj };
+export default { skonfiguruj, kuracja, idSuno, idPlaylistySuno, idYouTube, dodajSuno, usunSuno, ustawYouTube, ukryj, ustawOpis, zbierz, sciezkaZBialej, opublikuj };
