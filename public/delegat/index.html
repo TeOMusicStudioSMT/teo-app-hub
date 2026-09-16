@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Delegat Katedry</title>
+<!--
+  📱🕊️ DELEGAT MOBILNY — TeOgochi w telefonie Suwerena.
+  Strona statyczna serwowana przez most (/delegat), otwierana przez Kwantowy Tunel.
+  Klucz Straży przychodzi we fragmencie (#k=…) — fragment nie opuszcza przeglądarki.
+  Cały ruch: ten sam origin (most przez tunel). Logika w app.js — nagłówek tam.
+-->
+<style>
+  :root { --tlo:#0b0f1a; --karta:#121829; --kreska:#243049; --tekst:#e6ecff; --mut:#8a97b8; --akcent:#a855f7; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--tlo); color:var(--tekst); font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; height:100%; }
+  body { display:flex; flex-direction:column; min-height:100dvh; padding-bottom: env(safe-area-inset-bottom); }
+  header { display:flex; align-items:center; gap:10px; padding:12px 14px; border-bottom:1px solid var(--kreska); background:var(--karta); position:sticky; top:0; z-index:2; }
+  header .emoji { font-size:26px; }
+  header .kto { font-weight:700; }
+  header .kto small { display:block; font-weight:400; color:var(--mut); font-size:12px; }
+  header select { margin-left:auto; background:#0e1424; color:var(--tekst); border:1px solid var(--kreska); border-radius:10px; padding:6px 8px; font-size:13px; max-width:44vw; }
+  #stan { font-size:11px; color:var(--mut); padding:6px 14px; border-bottom:1px solid var(--kreska); min-height:26px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #stan.zle { color:#fca5a5; }
+  main { flex:1; overflow-y:auto; padding:12px 12px 8px; display:flex; flex-direction:column; gap:8px; }
+  .dymek { max-width:88%; padding:10px 12px; border-radius:16px; white-space:pre-wrap; word-wrap:break-word; }
+  .dymek.suweren { align-self:flex-end; background:#1f2a44; border-bottom-right-radius:4px; }
+  .dymek.delegat { align-self:flex-start; background:var(--karta); border:1px solid var(--kreska); border-bottom-left-radius:4px; }
+  .dymek.narzedzie { align-self:center; font-size:12px; color:var(--mut); background:transparent; border:1px dashed var(--kreska); }
+  .dymek.narzedzie.ok { border-color:#14532d; color:#86efac; }
+  .dymek.narzedzie.blad { border-color:#7f1d1d; color:#fca5a5; }
+  .dymek.system { align-self:center; font-size:12px; color:var(--mut); }
+  footer { padding:8px 10px 10px; border-top:1px solid var(--kreska); background:var(--karta); display:flex; gap:8px; align-items:flex-end; }
+  textarea { flex:1; resize:none; min-height:44px; max-height:120px; background:#0e1424; color:var(--tekst); border:1px solid var(--kreska); border-radius:14px; padding:10px 12px; font:inherit; }
+  button { border:0; border-radius:14px; padding:0 14px; height:44px; font:inherit; font-weight:600; color:#fff; background:#334155; }
+  button:disabled { opacity:.45; }
+  #mik { width:56px; height:56px; border-radius:50%; background:var(--akcent); font-size:22px; padding:0; flex:none; }
+  #mik.nagrywa { background:#dc2626; animation:puls 1s infinite; }
+  @keyframes puls { 50% { transform:scale(1.08); } }
+  #wyslij { background:var(--akcent); }
+  .pasek { display:flex; gap:8px; padding:0 10px 8px; background:var(--karta); flex-wrap:wrap; }
+  .pasek button { height:34px; font-size:12px; font-weight:500; background:#1e293b; border:1px solid var(--kreska); }
+  #fakty { font-size:12px; color:var(--mut); padding:6px 14px; }
+  #fakty li { margin:2px 0; color:#c7d2fe; }
+  a { color:#93c5fd; }
+</style>
+</head>
+<body>
+<header>
+  <span class="emoji" id="emoji">🕊️</span>
+  <div class="kto"><span id="imie">Delegat</span><small id="dziedzina">łączę z Katedrą…</small></div>
+  <select id="profil" aria-label="Wybór TeOgochi"></select>
+</header>
+<div id="stan">…</div>
+<main id="log" aria-live="polite"></main>
+<div id="fakty" hidden></div>
+<div class="pasek">
+  <button id="nowa">Nowa rozmowa</button>
+  <button id="podsumuj">Zakończ i zapisz fakty</button>
+  <button id="cisza">Wycisz</button>
+</div>
+<footer>
+  <button id="mik" aria-label="Mów (przytrzymaj albo dotknij)">🎙️</button>
+  <textarea id="tekst" placeholder="Napisz albo mów…" rows="1"></textarea>
+  <button id="wyslij">➤</button>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>

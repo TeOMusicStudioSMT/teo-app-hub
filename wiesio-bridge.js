@@ -155,6 +155,8 @@ import * as Rekopis from './services/Rekopis.js';
 import * as Skryba from './services/Skryba.js';
 import * as NocnaZmiana from './services/NocnaZmiana.js';
 import * as Laboratorium from './services/Laboratorium.js';
+import * as Delegat from './services/Delegat.js';
+import * as Artemis from './services/Artemis.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as WarsztatUtworow from './services/WarsztatUtworow.js';
@@ -381,6 +383,9 @@ for (const app_ of ['music', 'story', 'app', 'games', 'lab']) {
 // a i tak nie trafi on na pulpit, dopóki Suweren świadomie nie kliknie „NA PULPIT".
 // Odczytać stąd nie da się niczego.
 app.use('/gosc', cors({ origin: '*' }), express.static(path.join(__dirname, 'public', 'gosc')));
+// 📱 Delegat Mobilny — strona telefonu. Statyczna i bez klucza (to tylko HTML);
+// klucz Straży telefon dostaje we fragmencie adresu (#k=…) i dokłada do każdego wywołania API.
+app.use('/delegat', cors({ origin: '*' }), express.static(path.join(__dirname, 'public', 'delegat')));
 
 // ── 🛡️ STRAŻ MOSTU ───────────────────────────────────────────────────────────
 // Wpięta TUTAJ celowo: po trasach statycznych (żeby strumień muzyki i substrony
@@ -7530,6 +7535,68 @@ app.get('/api/nocna/bramy', async (req, res) => {
 
 NocnaZmiana.skonfiguruj({ katalogKatedry: ANTIGRAVITY_DIR, portMostu: PORT, szynaZdarzen: Szyna, comfy: COMFY_BASE });
 NocnaZmiana.uruchomPetle();
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 📱🕊️ DELEGAT MOBILNY — TeOgochi w telefonie Suwerena + ręce na telefonie (Artemis)
+// Zaplecze: services/Delegat.js (persona, biała lista narzędzi, pamięć rozmów,
+// fakty na szynę) i services/Artemis.js (adapter google/artemis — automatyzacja
+// Androida podpiętego do tej maszyny). Strona telefonu: public/delegat (statyczna,
+// przez tunel + klucz Straży). Powody i granice — w nagłówkach tych plików.
+// ═════════════════════════════════════════════════════════════════════════════
+Delegat.skonfiguruj({ ollamaBase: OLLAMA_BASE, portMostu: PORT, szyna: Szyna, nocna: NocnaZmiana, artemis: Artemis, katalog: path.join(ANTIGRAVITY_DIR, 'delegat'), model: DEFAULT_LLM, pelnyTunel: PELNY_TUNEL });
+
+app.get('/api/delegat/profile', (req, res) => res.json({ success: true, profile: Delegat.profile(), lokalne: !!req.lokalny, pelnyTunel: PELNY_TUNEL }));
+
+/**
+ * POST /api/delegat/rozmowa { delegat, tekst, rozmowaId?, model?, strumien? }
+ * strumien:true → SSE: {typ:'narzedzie'|'wynik'|'token'|'koniec'|'blad'} — telefon czyta od razu.
+ * Bez strumienia → jeden JSON z odpowiedzią.
+ */
+app.post('/api/delegat/rozmowa', async (req, res) => {
+    const { delegat = 'joanna', tekst, rozmowaId, model, strumien } = req.body ?? {};
+    const p = { delegat, tekst, rozmowaId, model, lokalne: !!req.lokalny };
+    if (!strumien) {
+        try { return res.json({ success: true, ...(await Delegat.rozmawiaj(p)) }); }
+        catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+    }
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'Access-Control-Allow-Origin': '*' });
+    const wyslij = (z) => { try { res.write(`data: ${JSON.stringify(z)}\n\n`); } catch { /* telefon się rozłączył */ } };
+    try { await Delegat.rozmawiaj(p, wyslij); }
+    catch (e) { wyslij({ typ: 'blad', message: e.message }); }
+    res.end();
+});
+
+app.get('/api/delegat/rozmowy', async (_req, res) => res.json({ success: true, rozmowy: await Delegat.rozmowy() }));
+app.get('/api/delegat/rozmowa/:id', async (req, res) => {
+    const r = await Delegat.rozmowa(req.params.id);
+    return r ? res.json({ success: true, rozmowa: r }) : res.status(404).json({ success: false, message: 'Nie ma takiej rozmowy.' });
+});
+app.post('/api/delegat/rozmowa/:id/podsumuj', async (req, res) => {
+    try { res.json({ success: true, ...(await Delegat.podsumuj(req.params.id, { model: req.body?.model })) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/delegat/fakty', async (req, res) => res.json({ success: true, fakty: await Delegat.fakty(Number(req.query.ile) || 50) }));
+
+// ── Ręce na telefonie (Artemis) — urządzenie podpięte do TEJ maszyny ──
+app.get('/api/telefon/stan', async (_req, res) => res.json({ success: true, ...(await Artemis.stan()) }));
+app.post('/api/telefon/zadanie', async (req, res) => {
+    const { cel, profil, urzadzenie, oczekiwane, czekaj } = req.body ?? {};
+    try {
+        const s = await Artemis.stan();
+        if (!s.zywy) return res.status(424).json({ success: false, message: s.blad, hint: s.hint });
+        const z = czekaj ? await Artemis.zlecICzekaj({ cel, profil, urzadzenie, oczekiwane }) : await Artemis.zlec({ cel, profil, urzadzenie, oczekiwane });
+        await Szyna.nadaj({ agent: 'Artemis', rodzaj: 'telefon', tresc: `zadanie na telefonie: ${String(cel).slice(0, 200)} [${z.status}]`, dane: { id: z.id } });
+        return res.json({ success: true, ...z });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/telefon/zadanie/:id', async (req, res) => {
+    try { res.json({ success: true, ...(await Artemis.sonduj(req.params.id)) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/telefon/zadanie/:id/stop', async (req, res) => {
+    try { res.json({ success: true, zatrzymane: await Artemis.zatrzymaj(req.params.id) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 🧪 TeO LAB — printy z lokalnego modelu, piaskownica Nocnej Zmiany, arena

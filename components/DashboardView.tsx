@@ -15,6 +15,7 @@ import { STUDIA, odpalStudio, type IdStudia } from '../lib/wrota';
 import { PulsMaszyny } from './dashboard/PulsMaszyny';
 import { NocnaZmianaCard } from './dashboard/NocnaZmianaCard';
 import { WystawaCard } from './dashboard/WystawaCard';
+import { DelegatCard } from './dashboard/DelegatCard';
 
 interface DashboardViewProps {
     onVisualAssistantOpen: () => void;
@@ -69,6 +70,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
             {/* 3b. WYSTAWA teo.center — kuracja tego, co Katedra pokazuje światu (filmy, Suno, produkty). */}
             <div className="w-full">
                 <WystawaCard />
+            </div>
+
+            {/* 3c. DELEGAT MOBILNY — TeOgochi w telefonie Suwerena (QR przez tunel, fakty z rozmów, ręce Artemisa). */}
+            <div className="w-full">
+                <DelegatCard />
             </div>
 
             {/* 4. PORTFOLIO */}

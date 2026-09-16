@@ -54,6 +54,7 @@ import NotebookTwinPanel from './components/special/NotebookTwinPanel';
 import SimulationDashboard from './components/special/SimulationDashboard';
 import TeoLab from './components/special/TeoLab';
 import McpSkillboardPanel from './components/McpSkillboardPanel';
+import { sluchajTelefonu } from './lib/teogochiDelegate';
 
 
 
@@ -282,6 +283,11 @@ const App: React.FC = () => {
         // Uruchom tętno
         startHeartBeat(30000); // Co 30 sekund
     }, []);
+
+    // 5. DELEGAT MOBILNY → MÓZG ORBITY. Rozmowy Suwerena z TeOgochi na telefonie
+    // idą przez szynę mostu; tu Katedra je czyta i dopisuje do pamięci Orbity jako
+    // ślady „telefon". Nasłuch tylko czyta — nic nie wysyła (lib/teogochiDelegate.ts).
+    useEffect(() => sluchajTelefonu(), []);
 
     // 5a. KWANTOWA CZYTELNIA — nasłuchiwacz mostów danych
     useEffect(() => {
