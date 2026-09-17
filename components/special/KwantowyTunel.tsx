@@ -15,6 +15,7 @@ import React, { useState, useEffect } from 'react';
 import { Radio, Check, QrCode, Copy } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getTunnelUrl, setTunnelUrl, buildDispatchUrl, sendCommand } from '../../lib/bridgeService';
+import { uruchomTunel } from '../../lib/tunel';
 import { isSuweren, isLocalKatedra } from '../../lib/suweren';
 
 /** Baza hostingu Katedry — tu ląduje telefon po zeskanowaniu QR. */
@@ -27,6 +28,21 @@ export const KwantowyTunel: React.FC<{ compact?: boolean; dispatchBase?: string 
     const [testing, setTesting] = useState(false);
     const [qr, setQr] = useState<string | null>(null);
     const [showQr, setShowQr] = useState(false);
+    const [odpalam, setOdpalam] = useState(false);
+
+    // 🛰️ Jednym przyciskiem: most odpala cloudflared, tu ląduje adres. Wpisujemy go do pola,
+    // ale NIE zapisujemy sami — „Zapisz Tunel" to decyzja Suwerena, bo przełącza tę Katedrę
+    // na ruch przez Cloudflare (Straż widzi ją wtedy jako zdalną). Do QR na telefon
+    // wystarczy karta Delegata na pulpicie, która bierze adres prosto z mostu.
+    const odpalTunel = async () => {
+        setOdpalam(true); setStatus('Otwieram tunel Cloudflare (pierwszy raz pobiera cloudflared)…');
+        try {
+            const t = await uruchomTunel();
+            setValue(t.adres || '');
+            setStatus(`Tunel działa: ${t.adres}. „Zapisz Tunel", jeśli TA Katedra ma iść przez tunel; QR na telefon jest w karcie Delegata.`);
+        } catch (e) { setStatus(`Nie udało się: ${(e as Error).message}`); }
+        finally { setOdpalam(false); }
+    };
 
     const dispatchUrl = saved ? buildDispatchUrl(saved, dispatchBase) : '';
 
@@ -105,6 +121,10 @@ export const KwantowyTunel: React.FC<{ compact?: boolean; dispatchBase?: string 
                 <button onClick={test} disabled={testing} title="Sprawdź połączenie ze Śluzą"
                     className="px-3 py-2 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 disabled:opacity-40">
                     {testing ? '...' : 'Test'}
+                </button>
+                <button onClick={odpalTunel} disabled={odpalam} title="Most uruchamia cloudflared i wpisuje tu adres"
+                    className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-emerald-800/60 hover:bg-emerald-700/70 text-emerald-100 border border-emerald-500/30 disabled:opacity-40">
+                    <Radio size={13} /> {odpalam ? 'Otwieram…' : 'Uruchom tunel'}
                 </button>
             </div>
 

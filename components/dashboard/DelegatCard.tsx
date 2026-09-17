@@ -12,11 +12,12 @@
  */
 import React, { useEffect, useState } from 'react';
 import DashboardCard from '../DashboardCard';
-import { Smartphone, QrCode, RefreshCw, Copy } from 'lucide-react';
+import { Smartphone, QrCode, RefreshCw, Copy, Radio, Loader2, Square } from 'lucide-react';
 import QRCode from 'qrcode';
 import { toast } from 'react-hot-toast';
-import { getTunnelUrl } from '../../lib/bridgeService';
+import { getKluczStrazy, getTunnelUrl } from '../../lib/bridgeService';
 import { adresDelegataNaTelefon, pobierzFakty, pobierzProfile, sluchajTelefonu, type FaktZTelefonu, type ProfilDelegata, type ZdarzenieSzyny } from '../../lib/teogochiDelegate';
+import { linkDelegata, stanTunelu, uruchomTunel, zatrzymajTunel, type StanTunelu } from '../../lib/tunel';
 
 const MOST = 'http://127.0.0.1:3001';
 
@@ -30,8 +31,15 @@ export const DelegatCard: React.FC = () => {
     const [zywe, setZywe] = useState<ZdarzenieSzyny[]>([]);
     const [artemis, setArtemis] = useState<StanArtemisa | null>(null);
     const [blad, setBlad] = useState<string | null>(null);
-    const tunel = getTunnelUrl();
-    const adres = adresDelegataNaTelefon(profil);
+    // 🛰️ Tunel z mostu (cloudflared jednym przyciskiem). Gdy działa, QR bierze JEGO adres;
+    // w przeciwnym razie — tunel wpisany ręcznie w karcie Kwantowego Tunelu (jak dotąd).
+    const [tunel, setTunel] = useState<(StanTunelu & { klucz?: string }) | null>(null);
+    const [tunelPracuje, setTunelPracuje] = useState(false);
+    const [tunelBlad, setTunelBlad] = useState<string | null>(null);
+    const tunelReczny = getTunnelUrl();
+    const adres = tunel?.stan === 'dziala' && tunel.adres
+        ? linkDelegata(tunel.adres, tunel.klucz || getKluczStrazy(), profil)
+        : adresDelegataNaTelefon(profil);
 
     const odswiez = async () => {
         try {
@@ -42,6 +50,24 @@ export const DelegatCard: React.FC = () => {
             ]);
             setProfile(p.profile); setFakty(f); setArtemis(a); setBlad(null);
         } catch (e) { setBlad((e as Error).message); }
+        try { setTunel(await stanTunelu()); } catch { /* most nie odpowiada — pokaże to `blad` wyżej */ }
+    };
+
+    const odpalTunel = async () => {
+        setTunelPracuje(true); setTunelBlad(null);
+        try {
+            const t = await uruchomTunel();
+            setTunel(t);
+            toast.success(`Tunel otwarty: ${t.adres}`);
+        } catch (e) {
+            setTunelBlad((e as Error).message);
+            try { setTunel(await stanTunelu()); } catch { /* jw. */ }
+        } finally { setTunelPracuje(false); }
+    };
+    const zgasTunel = async () => {
+        setTunelPracuje(true);
+        try { setTunel(await zatrzymajTunel()); } catch (e) { setTunelBlad((e as Error).message); }
+        finally { setTunelPracuje(false); }
     };
 
     useEffect(() => { void odswiez(); }, []);
@@ -74,10 +100,32 @@ export const DelegatCard: React.FC = () => {
                     {qr ? (
                         <img src={qr} alt="Kod QR — Delegat na telefonie" className="rounded-xl border border-violet-500/30 w-[200px] h-[200px]" />
                     ) : (
-                        <div className="w-[200px] h-[200px] rounded-xl border border-dashed border-slate-700 flex items-center justify-center text-center text-[11px] text-slate-500 p-3">
-                            <span><QrCode className="w-5 h-5 mx-auto mb-1 opacity-60" />{tunel ? 'Generuję QR…' : 'Brak Kwantowego Tunelu — wpisz adres tunelu w karcie Tunelu, wtedy powstanie QR na telefon.'}</span>
+                        <div className="w-[200px] h-[200px] rounded-xl border border-dashed border-slate-700 flex flex-col items-center justify-center text-center text-[11px] text-slate-500 p-3 gap-2">
+                            <QrCode className="w-5 h-5 opacity-60" />
+                            {tunelPracuje || tunel?.stan === 'startuje' || tunel?.stan === 'instaluje' ? (
+                                <span className="flex items-center gap-1.5 text-violet-300"><Loader2 className="w-3.5 h-3.5 animate-spin" />{tunel?.stan === 'instaluje' ? 'Pobieram cloudflared (raz, ~20 MB)…' : 'Otwieram tunel Cloudflare…'}</span>
+                            ) : (
+                                <>
+                                    <span>{adres ? 'Generuję QR…' : 'Bez tunelu telefon nie dosięgnie Katedry.'}</span>
+                                    {!adres && (
+                                        <button onClick={odpalTunel} className="px-3 py-1.5 rounded-lg text-[11px] font-mono bg-cyan-700/70 hover:bg-cyan-600 text-white flex items-center gap-1.5">
+                                            <Radio className="w-3 h-3" /> Uruchom tunel
+                                        </button>
+                                    )}
+                                </>
+                            )}
                         </div>
                     )}
+                    {tunel?.stan === 'dziala' && tunel.adres && (
+                        <div className="w-full text-[10px] font-mono text-cyan-300/90 flex items-center gap-1.5">
+                            <span className="truncate flex-1" title={tunel.adres}>🛰️ {tunel.adres.replace(/^https:\/\//, '')}</span>
+                            <button onClick={zgasTunel} disabled={tunelPracuje} title="Zamknij tunel" className="p-1 rounded hover:bg-white/10 text-slate-400"><Square className="w-3 h-3" /></button>
+                        </div>
+                    )}
+                    {tunel?.stan !== 'dziala' && adres && tunelReczny && (
+                        <p className="text-[10px] text-slate-500 text-center">QR z tunelu wpisanego ręcznie. <button onClick={odpalTunel} className="underline text-cyan-400">Uruchom własny</button></p>
+                    )}
+                    {tunelBlad && <p className="text-[10px] text-amber-300 leading-snug">{tunelBlad}{tunel?.log?.length ? ` · ${tunel.log[tunel.log.length - 1]}` : ''}</p>}
                     {adres && (
                         <button onClick={kopiuj} className="w-full px-2 py-1.5 rounded-lg text-[10px] font-mono bg-violet-600/70 hover:bg-violet-600 text-white flex items-center justify-center gap-1.5">
                             <Copy className="w-3 h-3" /> Skopiuj link na telefon

@@ -157,6 +157,7 @@ import * as NocnaZmiana from './services/NocnaZmiana.js';
 import * as Laboratorium from './services/Laboratorium.js';
 import * as Delegat from './services/Delegat.js';
 import * as Artemis from './services/Artemis.js';
+import * as Tunel from './services/Tunel.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as WarsztatUtworow from './services/WarsztatUtworow.js';
@@ -7580,6 +7581,15 @@ app.post('/api/delegat/rozmowa/:id/podsumuj', async (req, res) => {
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.get('/api/delegat/fakty', async (req, res) => res.json({ success: true, fakty: await Delegat.fakty(Number(req.query.ile) || 50) }));
+
+// ── 🛰️ Kwantowy Tunel jednym przyciskiem (services/Tunel.js) — TYLKO LOKALNIE (Straż) ──
+Tunel.skonfiguruj({ portMostu: PORT, szyna: Szyna });
+app.get('/api/tunel/stan', async (_req, res) => res.json({ success: true, ...(await Tunel.stanTunelu()), klucz: KLUCZ_STRAZY }));
+app.post('/api/tunel/start', async (_req, res) => {
+    try { res.json({ success: true, ...(await Tunel.start()), klucz: KLUCZ_STRAZY }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message, ...(await Tunel.stanTunelu()) }); }
+});
+app.post('/api/tunel/stop', async (_req, res) => res.json({ success: true, ...(await Tunel.stop()) }));
 
 // ── Ręce na telefonie (Artemis) — urządzenie podpięte do TEJ maszyny ──
 app.get('/api/telefon/stan', async (_req, res) => res.json({ success: true, ...(await Artemis.stan()) }));

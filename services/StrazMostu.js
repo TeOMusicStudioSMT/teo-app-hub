@@ -55,10 +55,22 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/forge/', '/api/gameforge/', '/api/voice/clone',
     '/api/teledysk/render', '/api/video/edit', '/api/chaos/inject',
     '/api/straz/',
+    '/api/tunel/',   // tunelu nie odpala się (ani nie gasi) z tunelu
 ];
 
-/** Czy żądanie przyszło z tej samej maszyny. */
+/**
+ * Czy żądanie przyszło z tej samej maszyny.
+ *
+ * ⚠️ DZIURA ZAŁATANA 2026-09-17: cloudflared działa NA TEJ MASZYNIE i łączy się z mostem
+ * z 127.0.0.1 — więc każde żądanie z tunelu wyglądało jak lokalne: bez klucza, bez
+ * ograniczenia zasięgu (zmierzone: /api/tunel/stan z internetu → 200 zamiast 403).
+ * Cloudflare dokłada nagłówki `cf-connecting-ip` / `x-forwarded-for` do każdego
+ * żądania z tunelu; lokalna przeglądarka ich nie wysyła. Kto je ma — jest zdalny,
+ * choćby gniazdo mówiło 127.0.0.1. (Ktoś lokalny może je pominąć — ale on i tak
+ * siedzi przy klawiaturze.)
+ */
 export function czyLokalny(req) {
+    if (req.get?.('cf-connecting-ip') || req.get?.('x-forwarded-for') || req.get?.('cf-ray')) return false;
     const ip = String(req.ip || req.socket?.remoteAddress || '');
     return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
 }
