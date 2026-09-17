@@ -21,6 +21,7 @@
   header .emoji { font-size:26px; }
   header .kto { font-weight:700; }
   header .kto small { display:block; font-weight:400; color:var(--mut); font-size:12px; }
+  header .tor { height:32px; padding:0 10px; font-size:12px; font-weight:500; background:#1e293b; border:1px solid var(--kreska); border-radius:10px; flex:none; }
   header select { margin-left:auto; background:#0e1424; color:var(--tekst); border:1px solid var(--kreska); border-radius:10px; padding:6px 8px; font-size:13px; max-width:44vw; }
   #stan { font-size:11px; color:var(--mut); padding:6px 14px; border-bottom:1px solid var(--kreska); min-height:26px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   #stan.zle { color:#fca5a5; }
@@ -52,6 +53,7 @@
   <span class="emoji" id="emoji">🕊️</span>
   <div class="kto"><span id="imie">Delegat</span><small id="dziedzina">łączę z Katedrą…</small></div>
   <select id="profil" aria-label="Wybór TeOgochi"></select>
+  <button id="tor" class="tor" aria-label="Skąd rozpoznawanie mowy"></button>
 </header>
 <div id="stan">…</div>
 <main id="log" aria-live="polite"></main>

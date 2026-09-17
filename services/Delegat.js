@@ -58,7 +58,7 @@ export const PROFILE = {
         id: 'joanna', gatunek: 'joanna', imie: 'Joanna', emoji: '🕊️', kolor: '#a855f7',
         dziedzina: 'Muzyka i nastrój Katedry', glos: 'pl_PL-gosia-medium',
         persona: 'Jesteś Joanna — TeOgochi od muzyki, radia i nastroju Katedry OtakOS. Reprezentujesz Suwerena, gdy jest poza domem. Mówisz po polsku, ciepło i konkretnie, zdaniami do wypowiedzenia na głos (bez list, bez markdownu). Znasz się na brzmieniu, BPM, tonacjach i tekstach piosenek.',
-        narzedzia: ['katedra.stan', 'szyna.pytanie', 'szyna.notatka', 'music.generate', 'nocna.dodaj', 'telefon.zadanie'],
+        narzedzia: ['katedra.stan', 'szyna.pytanie', 'szyna.notatka', 'music.generate', 'music.status', 'nocna.dodaj', 'telefon.zadanie'],
     },
     kodeks: {
         id: 'kodeks', gatunek: 'kodeks', imie: 'Kodeks', emoji: '🐙', kolor: '#10b981',
@@ -93,16 +93,67 @@ async function most(sciezka, body, ms = 60_000) {
     } finally { clearTimeout(t); }
 }
 
+/**
+ * Utwór zlecony z telefonu nikt nie „odbiera" — Music Studio robi to z przeglądarki
+ * (progress → collect), a na telefonie tej pętli nie ma. Więc most sam czeka w tle:
+ * co 10 s pyta ComfyUI, a gdy gotowe, przenosi plik do _OtakOs_Muzyka i melduje na
+ * szynie (telefon pokazuje to w pasku, Katedra w Orbicie). Sufit 45 min — ACE liczy
+ * minutę w ~1–2 min, ale za renderem WAN potrafi stać długo.
+ */
+const zlecenia = new Map(); // promptId → { stan, plik, tytul, od }
+async function odbierzWTle({ promptId, tytul, agent }) {
+    zlecenia.set(promptId, { stan: 'w-kolejce', plik: null, tytul, od: Date.now() });
+    const t0 = Date.now();
+    while (Date.now() - t0 < 45 * 60_000) {
+        await new Promise((r) => setTimeout(r, 10_000));
+        let d = null;
+        try { d = await most(`/api/music/progress?promptId=${encodeURIComponent(promptId)}`); } catch { continue; }
+        const z = zlecenia.get(promptId);
+        if (!d?.success && (d?.stan === 'blad' || d?.stan === 'przerwane')) {
+            z.stan = 'blad'; z.blad = d.message || d.stan;
+            await cfg.szyna?.nadaj({ agent, rodzaj: 'blad', tresc: `utwór „${tytul}" padł w ComfyUI: ${z.blad}`, dane: { promptId } });
+            return;
+        }
+        if (d?.stan === 'gotowe' && d.audio?.length) {
+            try {
+                const a = d.audio[0];
+                const c = await most('/api/music/collect', { filename: a.filename, subfolder: a.subfolder, type: a.type, title: tytul });
+                z.stan = 'gotowe'; z.plik = c.savedPath ?? a.filename;
+                await cfg.szyna?.nadaj({ agent, rodzaj: 'praca', tresc: `utwór gotowy: „${tytul}" → ${path.basename(String(z.plik))}`, dane: { promptId, plik: z.plik } });
+            } catch (e) {
+                z.stan = 'blad'; z.blad = `odbiór: ${e.message}`;
+                await cfg.szyna?.nadaj({ agent, rodzaj: 'blad', tresc: `utwór „${tytul}" policzony, ale odbiór padł: ${e.message}`, dane: { promptId } });
+            }
+            return;
+        }
+        if (z) z.stan = d?.stan || z.stan;
+    }
+    const z = zlecenia.get(promptId);
+    if (z) { z.stan = 'przeterminowane'; }
+    await cfg.szyna?.nadaj({ agent, rodzaj: 'blad', tresc: `utwór „${tytul}" nie policzył się w 45 min — sprawdź kolejkę ComfyUI`, dane: { promptId } });
+}
+
 export const NARZEDZIA = {
     'katedra.stan': {
-        opis: 'Stan Katedry: Nocna Zmiana (co czeka/trwa), ComfyUI, ostatnie zdarzenia na szynie.',
+        opis: 'Stan Katedry: Nocna Zmiana (co czeka/trwa), ComfyUI, ostatnie zdarzenia na szynie. Użyj, gdy Suweren pyta „co się dzieje", „co robisz", „jaki stan".',
         argumenty: {},
         ciezkie: false,
         async wykonaj() {
             const nocna = cfg.nocna ? await cfg.nocna.stanZmiany().catch(() => null) : null;
             const comfy = await fetch('http://127.0.0.1:8188/queue').then((r) => r.json()).catch(() => null);
             const szyna = cfg.szyna ? cfg.szyna.ostatnie({ ile: 8 }).map((z) => `${z.agent}: ${z.tresc.slice(0, 100)}`) : [];
+            // Zdanie po ludzku na początku — model brał `wlaczona:true` za „Nocna Zmiana trwa".
+            const czeka = nocna ? nocna.zadania.filter((z) => z.stan === 'czeka').length : 0;
+            const opisNocnej = !nocna ? 'Nocna Zmiana niedostępna.'
+                : !nocna.wlaczona ? 'Nocna Zmiana WYŁĄCZONA.'
+                : nocna.trwa ? `Nocna Zmiana właśnie wykonuje: ${nocna.trwa.rodzaj}.`
+                : czeka ? `Nocna Zmiana włączona, czeka na noc z ${czeka} zadaniem/ami.`
+                : 'Nocna Zmiana włączona, ale nic teraz nie robi — kolejka pusta.';
+            const opisComfy = !comfy ? 'ComfyUI nie odpowiada.'
+                : (comfy.queue_running?.length ?? 0) ? `ComfyUI liczy ${comfy.queue_running.length} zadanie/a (kolejka: ${comfy.queue_pending?.length ?? 0}).`
+                : 'ComfyUI wolne.';
             return {
+                opis: `${opisNocnej} ${opisComfy}`,
                 nocnaZmiana: nocna ? { wlaczona: nocna.wlaczona, trwa: nocna.trwa, zadania: nocna.zadania.map((z) => `${z.rodzaj} [${z.stan}]`) } : 'niedostępna',
                 comfy: comfy ? { wToku: comfy.queue_running?.length ?? 0, wKolejce: comfy.queue_pending?.length ?? 0 } : 'nie odpowiada',
                 szyna,
@@ -129,16 +180,28 @@ export const NARZEDZIA = {
         },
     },
     'music.generate': {
-        opis: 'Zleć Joannie utwór w ComfyUI. Wraca od razu z identyfikatorem — muzyka liczy się w tle.',
+        opis: 'ZAWSZE, gdy Suweren prosi o utwór, muzykę, piosenkę, podkład, kawałek „w stylu…" — nie pytaj o zgodę, zleć od razu. Utwór liczy się w ComfyUI w tle; wraca identyfikator.',
         argumenty: { prompt: 'opis brzmienia po angielsku', duration: 'sekundy (30–120)', lyrics: 'opcjonalny tekst' },
         ciezkie: false,
-        async wykonaj(a) {
-            const d = await most('/api/music/generate', { prompt: String(a.prompt || ''), duration: Math.min(180, Math.max(10, Number(a.duration) || 60)), lyrics: String(a.lyrics || '') }, 30_000);
-            return { promptId: d.promptId, rodzina: d.rodzina, uwaga: d.uwaga };
+        async wykonaj(a, ctx) {
+            const prompt = String(a.prompt || '');
+            const d = await most('/api/music/generate', { prompt, duration: Math.min(180, Math.max(10, Number(a.duration) || 60)), lyrics: String(a.lyrics || '') }, 30_000);
+            const tytul = prompt.slice(0, 40) || 'Utwór z telefonu';
+            odbierzWTle({ promptId: d.promptId, tytul, agent: ctx.agent }).catch(() => {});
+            return { promptId: d.promptId, rodzina: d.rodzina, uwaga: 'Liczy się w tle; gdy skończy, plik trafi do _OtakOs_Muzyka, a na szynie pojawi się „utwór gotowy". Suweren może zapytać „czy utwór gotowy?" (music.status).' };
+        },
+    },
+    'music.status': {
+        opis: 'Czy utwory zlecone w tej sesji są już policzone. Użyj, gdy Suweren pyta „czy gotowe", „co z muzyką".',
+        argumenty: {},
+        ciezkie: false,
+        async wykonaj() {
+            const lista = [...zlecenia.entries()].map(([id, z]) => ({ promptId: id, tytul: z.tytul, stan: z.stan, plik: z.plik ? path.basename(String(z.plik)) : null, blad: z.blad ?? null, minut: Math.round((Date.now() - z.od) / 60_000) }));
+            return lista.length ? { utwory: lista } : { utwory: [], opis: 'W tej sesji mostu nic nie zlecono.' };
         },
     },
     'nocna.dodaj': {
-        opis: 'Dodaj zadanie do Nocnej Zmiany (robot z białej listy, np. "produkcja" z parametrem projekt, "lab-eksperyment", "tablica-rezysera" z parametrem serial).',
+        opis: 'Dodaj zadanie do Nocnej Zmiany, gdy Suweren mówi „na noc", „jak będę spał", „zaplanuj" (robot z białej listy, np. "produkcja" z parametrem projekt, "lab-eksperyment", "tablica-rezysera" z parametrem serial).',
         argumenty: { rodzaj: 'nazwa robota', parametry: 'obiekt z polami robota', notatka: 'krótki opis' },
         ciezkie: false,
         async wykonaj(a) {
@@ -187,7 +250,9 @@ Masz narzędzia. Gdy CHCESZ COŚ ZROBIĆ (nie tylko powiedzieć), odpowiedz WYŁ
 Dostępne narzędzia:
 ${narzedzia || '- (żadne — tylko rozmowa)'}
 
-Po wykonaniu narzędzia dostaniesz jego wynik w wiadomości „WYNIK NARZĘDZIA" — wtedy odpowiedz Suwerenowi zwyczajnie, po polsku, jak człowiekowi. Nie wymyślaj wyników, których nie dostałeś. Jeśli narzędzie zawiodło, powiedz to wprost.`;
+Po wykonaniu narzędzia dostaniesz jego wynik w wiadomości „WYNIK NARZĘDZIA" — wtedy odpowiedz Suwerenowi zwyczajnie, po polsku, jak człowiekowi. Nie wymyślaj wyników, których nie dostałeś. Jeśli narzędzie zawiodło, powiedz to wprost.
+
+ZASADA: prośba o działanie („stwórz", „zrób", „zleć", „sprawdź", „dodaj") = narzędzie, nie obietnica. Nie mów „przygotuję", jeśli nie wywołałeś narzędzia. Gdy wypowiedź Suwerena jest bełkotem albo samymi nawiasami, powiedz krótko, że nie dosłyszałeś, i poproś o powtórzenie.`;
 }
 
 /** Wyłów JSON z wywołaniem narzędzia — tolerujemy płot ``` i śmieci wokół. */

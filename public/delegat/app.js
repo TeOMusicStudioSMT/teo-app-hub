@@ -122,7 +122,9 @@
         if (wyciszony || !tekst) return;
         zatrzymajGlos(); mowi = true;
         try {
-            const r = await fetch(`${BAZA}/api/voice/speak`, { method: 'POST', headers: naglowki(), body: JSON.stringify({ text: tekst, voiceId: glos || undefined }) });
+            // Profil z głosem Pipera → przewód piper-pl wprost; bez niego most bierze domyślny
+            // (klon-lokalny), który bez XTTS na :5002 oddaje 424 → głos przeglądarki.
+            const r = await fetch(`${BAZA}/api/voice/speak`, { method: 'POST', headers: naglowki(), body: JSON.stringify({ text: tekst, voiceId: glos || undefined, przewod: glos ? 'piper-pl' : undefined }) });
             if (r.ok) {
                 const blob = await r.blob();
                 audio = new Audio(URL.createObjectURL(blob));
@@ -141,19 +143,23 @@
     $('cisza').addEventListener('click', () => { wyciszony = !wyciszony; $('cisza').textContent = wyciszony ? 'Odcisz' : 'Wycisz'; if (wyciszony) zatrzymajGlos(); });
 
     // ── mowa: mikrofon → Whisper w Katedrze, zapasowo SpeechRecognition ──
-    let rec = null, kawalki = [], nagrywa = false, rozpoznawanie = null;
+    let rec = null, kawalki = [], nagrywa = false, rozpoznawanie = null, startNagraniaMs = 0;
     const Rozp = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     async function startNagrania() {
         if (nagrywa) return;
         zatrzymajGlos();
         try {
-            const strumien = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Mono, z odszumianiem i AGC — Whisper na cichym nagraniu z telefonu zmyślał tagi.
+            const strumien = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
             kawalki = [];
-            rec = new MediaRecorder(strumien);
+            const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+            rec = new MediaRecorder(strumien, mime ? { mimeType: mime, audioBitsPerSecond: 64000 } : undefined);
+            startNagraniaMs = Date.now();
             rec.ondataavailable = (e) => { if (e.data.size) kawalki.push(e.data); };
             rec.onstop = async () => {
                 strumien.getTracks().forEach((t) => t.stop());
+                if (Date.now() - startNagraniaMs < 700) return stan('Za krótko — przytrzymaj 🎙️ i mów.');
                 const blob = new Blob(kawalki, { type: rec.mimeType || 'audio/webm' });
                 await przepisz(blob);
             };
@@ -174,9 +180,10 @@
         stan('Przepisuję (Whisper w Katedrze)…');
         try {
             const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
-            const d = await api('/api/voice/transcribe', { sample: b64, model: 'small' });
+            const d = await api('/api/voice/transcribe', { sample: b64, model: 'auto' });
+            if (d.pusto || !d.transcript) { stan('Nie dosłyszałem nic sensownego — powtórz bliżej mikrofonu albo napisz.', true); return; }
             stan(`Usłyszałem: ${d.transcript.slice(0, 80)}`);
-            if (d.transcript) await wyslij(d.transcript);
+            await wyslij(d.transcript);
         } catch (e) {
             if ((e.status === 424 || e.status === 500) && Rozp) { stan('Katedra bez Whispera — rozpoznaję w telefonie.'); return rozpoznawajWPrzegladarce(); }
             stan(`Nie udało się przepisać: ${e.message}`, true);
@@ -188,14 +195,32 @@
             $('mik').classList.add('nagrywa'); stan('Słucham (rozpoznawanie w telefonie)…');
             let koncowy = '';
             rozpoznawanie.onresult = (e) => { let t = ''; for (const r of e.results) { t += r[0].transcript; if (r.isFinal) koncowy = t; } $('tekst').value = t; };
-            rozpoznawanie.onend = () => { $('mik').classList.remove('nagrywa'); if (koncowy || $('tekst').value) wyslij(koncowy || $('tekst').value); };
-            rozpoznawanie.onerror = (e) => { $('mik').classList.remove('nagrywa'); stan(`Rozpoznawanie: ${e.error}`, true); };
+            rozpoznawanie.onend = () => { rozpoznawanie = null; $('mik').classList.remove('nagrywa'); if (koncowy || $('tekst').value) wyslij(koncowy || $('tekst').value); };
+            rozpoznawanie.onerror = (e) => { rozpoznawanie = null; $('mik').classList.remove('nagrywa'); stan(`Rozpoznawanie: ${e.error}`, true); };
             rozpoznawanie.start();
         } catch (e) { stan(`Rozpoznawanie niedostępne: ${e.message}`, true); }
     }
+    // ── skąd rozpoznawanie mowy ──
+    // „katedra" = Whisper small w moście (suwerennie, ale po polsku słabo: „Jelanna… dzienniku”).
+    // „telefon" = SpeechRecognition przeglądarki (na Androidzie idzie do Google — dokładne,
+    // ale dźwięk opuszcza Katedrę). Domyślnie telefon, gdy go ma; przełącznik w nagłówku.
+    let tor = 'katedra';
+    try { tor = localStorage.getItem('teo_delegat_stt') || (Rozp ? 'telefon' : 'katedra'); } catch {}
+    const przycisk = $('tor');
+    const pokazTor = () => { if (przycisk) { przycisk.textContent = tor === 'telefon' ? '🎧 telefon' : '🏛️ Katedra'; przycisk.title = tor === 'telefon' ? 'Rozpoznawanie w telefonie (Google). Dotknij, by przełączyć na Whisper w Katedrze.' : 'Whisper w Katedrze (suwerennie, mniej dokładnie). Dotknij, by przełączyć na telefon.'; } };
+    if (przycisk) {
+        if (!Rozp) przycisk.hidden = true;
+        przycisk.addEventListener('click', () => { tor = tor === 'telefon' ? 'katedra' : 'telefon'; try { localStorage.setItem('teo_delegat_stt', tor); } catch {} pokazTor(); stan(tor === 'telefon' ? 'Rozpoznawanie: telefon (dokładne, przez Google).' : 'Rozpoznawanie: Whisper w Katedrze (suwerennie).'); });
+        pokazTor();
+    }
+
     // Przytrzymanie = push-to-talk; krótkie dotknięcie = start, drugie = stop.
     let dotkniecie = 0;
-    $('mik').addEventListener('pointerdown', (e) => { e.preventDefault(); dotkniecie = Date.now(); if (nagrywa) stopNagrania(); else startNagrania(); });
+    $('mik').addEventListener('pointerdown', (e) => {
+        e.preventDefault(); dotkniecie = Date.now();
+        if (tor === 'telefon' && Rozp) { if (rozpoznawanie) { try { rozpoznawanie.stop(); } catch {} rozpoznawanie = null; } else { zatrzymajGlos(); rozpoznawajWPrzegladarce(); } return; }
+        if (nagrywa) stopNagrania(); else startNagrania();
+    });
     $('mik').addEventListener('pointerup', () => { if (nagrywa && Date.now() - dotkniecie > 600) stopNagrania(); });
     $('mik').addEventListener('pointerleave', () => { if (nagrywa && Date.now() - dotkniecie > 600) stopNagrania(); });
 

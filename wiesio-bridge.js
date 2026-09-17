@@ -10438,10 +10438,13 @@ app.post('/api/voice/clone', async (req, res) => {
 });
 // 🎙️ Wejście głosowe do Orba — nagranie z przeglądarki (base64) → transkrypt (Whisper.cpp lokalnie).
 app.post('/api/voice/transcribe', async (req, res) => {
-    const { sample, model = 'small' } = req.body ?? {};
+    const { sample, model: modelZadany = 'small' } = req.body ?? {};
     if (!sample) return res.status(400).json({ success: false, message: 'Brak "sample" (base64 audio).' });
     let src = null, wav = null, jsonFile = null;
     try {
+        // 'auto' = small (zmierzone 2026-09-17 na CPU: small ~3 s na 5 s nagrania, large-v3-turbo 78 s —
+        // turbo jest dokładniejszy po polsku, ale do rozmowy na żywo bezużyteczny bez GPU).
+        const model = modelZadany === 'auto' ? 'small' : String(modelZadany).replace(/[^a-z0-9.-]/gi, '');
         const modelPath = path.join(MODELS_DIR, `ggml-${model}.bin`);
         if (!fsSync.existsSync(modelPath)) return res.status(424).json({ success: false, message: `Brak modelu Whisper: ggml-${model}.bin w _OtakOs_AI/models/.` });
         if (!fsSync.existsSync(WHISPER_EXE)) return res.status(424).json({ success: false, message: 'Brak whisper-cli.exe w _OtakOs_AI/bin/.' });
@@ -10460,11 +10463,34 @@ app.post('/api/voice/transcribe', async (req, res) => {
 
         const outBase = path.join(TEMP_DIR, 'orb_voice_tr_' + Date.now());
         jsonFile = outBase + '.json';
-        await execFileAsync(WHISPER_EXE, ['-m', modelPath, '-f', wav, '--output-json-full', '-p', '4', '-l', 'pl', '-of', outBase], { cwd: BIN_DIR });
+        // 2026-09-17 (Delegat z telefonu): Whisper small na cichym/zaszumionym nagraniu zmyślał
+        // „[wypowiedź w języku ukraińskim] (pogodna muzyka) [oklaski]" — tagi z napisów, na
+        // których go uczono. `-sns` tłumi tokeny nie-mowy, `--prompt` kotwiczy polski i styl
+        // rozmowy, a resztę nawiasów wycinamy niżej. Pusty wynik oddajemy JAKO PUSTY, nie
+        // jako „słowa", które Delegat weźmie za polecenie.
+        await execFileAsync(WHISPER_EXE, ['-m', modelPath, '-f', wav, '--output-json-full', '-p', '4', '-l', 'pl', '-sns', '--prompt', 'Rozmowa po polsku z Katedrą OtakOS.', '-of', outBase], { cwd: BIN_DIR });
         if (!fsSync.existsSync(jsonFile)) throw new Error('Whisper nie wygenerował wyniku.');
         const out = JSON.parse(fsSync.readFileSync(jsonFile, 'utf8'));
-        const transcript = (out.transcription || []).map(s => String(s.text || '').trim()).join(' ').replace(/\s+/g, ' ').trim();
-        return res.json({ success: true, transcript });
+        const segmenty = out.transcription || [];
+        const surowy = segmenty.map(s => String(s.text || '').trim()).join(' ').replace(/\s+/g, ' ').trim();
+        // BRAMKA HALUCYNACJI (zmierzone na szumie różowym): Whisper zmyśla „Dziękuję za uwagę." ×4
+        // albo „Cześć, cześć, cześć." ze średnim p tokenów ~0,55; prawdziwa mowa ma ~0,75.
+        // Segment odpada, gdy średnie p < 0,5 albo ten sam tekst powtarza się ≥3 razy.
+        const licznik = new Map();
+        for (const s of segmenty) { const k = String(s.text || '').trim().toLowerCase(); licznik.set(k, (licznik.get(k) || 0) + 1); }
+        const zdrowe = segmenty.filter((s) => {
+            const ps = (s.tokens || []).filter((t) => !String(t.text || '').startsWith('[_')).map((t) => Number(t.p) || 0);
+            const srednie = ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : 0;
+            const powtorka = (licznik.get(String(s.text || '').trim().toLowerCase()) || 0) >= 3;
+            const wewn = /^(.{3,}?)([,.!?]\s*\1){2,}[,.!?]?$/i.test(String(s.text || '').trim());
+            return srednie >= 0.5 && !powtorka && !wewn;
+        });
+        const transcript = zdrowe.map(s => String(s.text || '').trim()).join(' ')
+            .replace(/\[[^\]]*\]|\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+        // Gdy większość segmentów to zmyślenia, resztka („Dzień dobry.") też jest zmyśleniem.
+        const odrzucone = segmenty.length - zdrowe.length;
+        const pusto = !/[\p{L}]{2,}/u.test(transcript) || (odrzucone > 0 && odrzucone >= zdrowe.length);
+        return res.json({ success: true, transcript: pusto ? '' : transcript, pusto, model, odrzucone, surowy: surowy !== transcript ? surowy : undefined });
     } catch (err) {
         // Puste nagranie to nie awaria mostu, tylko brak wejscia — 400, nie 500.
         return res.status(err?.pusteNagranie ? 400 : 500).json({ success: false, message: err.message });
