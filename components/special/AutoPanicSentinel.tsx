@@ -175,8 +175,10 @@ export const AutoPanicSentinel: React.FC = () => {
             if (input instanceof URL) return input.href;
             return (input as Request)?.url ?? '';
         };
+        // Strumienie SSE (szyna) żyją godzinami i URYWAJĄ się przy każdym restarcie mostu
+        // z założenia — to nie crash, tylko koniec strumienia. Nasłuch sam wraca.
         const isWatchedBridgeCall = (url: string) =>
-            /127\.0\.0\.1:3001|localhost:3001/.test(url) && !/\/api\/mechanic/.test(url);
+            /127\.0\.0\.1:3001|localhost:3001/.test(url) && !/\/api\/mechanic|\/api\/szyna\/strumien/.test(url);
 
         // Rozpoznaj MODUŁ z URL-a — wcześniej wszystko (radio, teledysk, czat...)
         // było podpisywane "W.I.D.O.K.", bo /api/ollama i /api/bridge/execute są

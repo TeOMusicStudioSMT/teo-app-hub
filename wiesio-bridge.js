@@ -328,8 +328,12 @@ app.use(cors({
     // „most milczy" — przy MOŚCIE, KTÓRY ODPOWIADAŁ. Objaw kłamał o przyczynie:
     // trasa PATCH istniała i działała z curla, blokada była po stronie CORS.
     methods:         ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders:  ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cache-Control'],
-    exposedHeaders:  ['Content-Type', 'X-Error-Code'],
+    // ⚠️ 2026-09-17: brakowało tu nagłówka klucza Straży (x-teo-klucz). Skutek: gdy
+    // Katedra miała zapisany klucz (po dispatchu na telefon), KAŻDE wywołanie z tym
+    // nagłówkiem padało na preflighcie w 0,0 s — „Failed to fetch" przy moście, który
+    // odpowiadał — a Auto-Panic robił z tego 32 zadania dla Mechanika.
+    allowedHeaders:  ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cache-Control', 'x-teo-klucz'],
+    exposedHeaders:  ['Content-Type', 'X-Error-Code', 'X-Przewod'],
     credentials:     true,
     maxAge:          86400,  // preflight cache 24h
 }));

@@ -175,13 +175,19 @@ export function sluchajTelefonu(onZdarzenie?: (z: ZdarzenieSzyny) => void): () =
     let zywy = true;
     let ctrl: AbortController | null = null;
     let ostatnieId = 0;
+    // Odstęp rośnie, gdy most nie odpowiada (15 s → 5 min), i wraca do 15 s po udanym połączeniu.
+    // Bez tego padający most dostawał od nas cztery próby na minutę przez całą noc.
+    let odstepMs = 15_000;
 
     const petla = async () => {
         while (zywy) {
             ctrl = new AbortController();
             try {
-                const r = await fetch(`${getBridgeBase()}/api/szyna/strumien`, { headers: naglowki(), signal: ctrl.signal });
+                // GET bez Content-Type: bez klucza nie ma preflightu; klucz sam jest nagłówkiem prostym dopiero po stronie CORS mostu.
+                const k = getKluczStrazy();
+                const r = await fetch(`${getBridgeBase()}/api/szyna/strumien`, { headers: k ? { [NAGLOWEK_KLUCZA]: k } : {}, signal: ctrl.signal });
                 if (r.ok) {
+                    odstepMs = 15_000;
                     await czytajSse(r, (surowe) => {
                         const z = surowe as ZdarzenieSzyny;
                         if (!z?.agent || z.id <= ostatnieId) return;
@@ -196,8 +202,9 @@ export function sluchajTelefonu(onZdarzenie?: (z: ZdarzenieSzyny) => void): () =
                         else if (z.agent === 'Artemis') obserwuj('narzedzie', z.tresc, 'Artemis');
                     });
                 }
-            } catch { /* most padł albo tunel zerwany — próbujemy dalej */ }
-            if (zywy) await new Promise((res) => setTimeout(res, 15000));
+            } catch { /* most padł albo tunel zerwany — próbujemy dalej, coraz rzadziej */ }
+            if (zywy) await new Promise((res) => setTimeout(res, odstepMs));
+            odstepMs = Math.min(odstepMs * 2, 300_000);
         }
     };
     void petla();
