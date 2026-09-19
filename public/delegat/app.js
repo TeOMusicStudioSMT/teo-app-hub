@@ -100,6 +100,7 @@
                     if (!linia) continue;
                     let z; try { z = JSON.parse(linia.slice(6)); } catch { continue; }
                     if (z.typ === 'token') { calosc += z.tekst; odp.textContent = calosc; $('log').scrollTop = $('log').scrollHeight; }
+                    else if (z.typ === 'obciazenie') { stan(`⏳ ${z.tekst}`); if (!calosc) odp.textContent = `⏳ ${z.tekst}`; }
                     else if (z.typ === 'narzedzie') { odp.before(Object.assign(document.createElement('div'), { className: 'dymek narzedzie', textContent: `⚙️ ${z.narzedzie} ${JSON.stringify(z.argumenty)}` })); }
                     else if (z.typ === 'wynik') { const el = $('log').querySelector('.dymek.narzedzie:last-of-type'); if (el) { el.classList.add(z.ok ? 'ok' : 'blad'); el.textContent += z.ok ? ' ✓' : ` ✗ ${z.wynik?.blad || ''}`; } }
                     else if (z.typ === 'koniec') { rozmowaId = z.rozmowaId; calosc = z.odpowiedz; odp.textContent = calosc; await powiedz(calosc, z.glos); }

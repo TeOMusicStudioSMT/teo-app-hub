@@ -58,6 +58,7 @@ export type ZdarzenieDelegata =
     | { typ: 'narzedzie'; narzedzie: string; argumenty: Record<string, unknown> }
     | { typ: 'wynik'; narzedzie: string; ok: boolean; wynik: unknown }
     | { typ: 'token'; tekst: string }
+    | { typ: 'obciazenie'; tekst: string }
     | { typ: 'koniec'; rozmowaId: string; delegat: string; odpowiedz: string; glos: string | null; model: string }
     | { typ: 'blad'; message: string };
 

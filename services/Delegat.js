@@ -392,6 +392,16 @@ export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = fa
     }
 
     const ctx = { agent, profil, rozmowaId: id, model: silnik };
+
+    // Gdy ComfyUI liczy wideo, Ollama dostaje resztki karty (zmierzone: 11 s → 93 s na turę).
+    // Mówimy to telefonowi ZANIM model ruszy — inaczej wygląda to jak zawieszenie.
+    try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 1500);
+        const q = await fetch('http://127.0.0.1:8188/queue', { signal: ctrl.signal }).then((r) => r.json()).finally(() => clearTimeout(t));
+        const liczy = (q.queue_running?.length ?? 0) + (q.queue_pending?.length ?? 0);
+        if (liczy) naZdarzenie({ typ: 'obciazenie', tekst: `Katedra liczy teraz wideo (${liczy} w ComfyUI) — ${profil.imie} odpowie, ale może to potrwać nawet minutę lub dwie.` });
+    } catch { /* ComfyUI nie odpowiada — nie ma obciążenia */ }
+
     let odpowiedz = '';
     for (let krok = 0; krok < 4; krok++) {
         const ostatniKrok = krok === 3;
