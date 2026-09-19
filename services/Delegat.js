@@ -245,8 +245,10 @@ function systemPrompt(profil, lokalne) {
 
 Rozmawiasz z Suwerenem przez telefon — odpowiedzi są czytane na głos, więc: 1–3 zdania, bez list, bez nagłówków, bez emoji.
 
-Masz narzędzia. Gdy CHCESZ COŚ ZROBIĆ (nie tylko powiedzieć), odpowiedz WYŁĄCZNIE jedną linią JSON, bez żadnego innego tekstu:
-{"narzedzie":"<nazwa>","argumenty":{...}}
+Masz narzędzia. Gdy CHCESZ COŚ ZROBIĆ (nie tylko powiedzieć), odpowiedz WYŁĄCZNIE jedną linią JSON, bez żadnego innego tekstu, dokładnie w tej formie:
+{"narzedzie":"katedra.stan","argumenty":{}}
+Przykład dla muzyki: {"narzedzie":"music.generate","argumenty":{"prompt":"wild west, harmonica, acoustic guitar","duration":60}}
+NIE pisz „katedra.stan:{}" ani nazwy narzędzia w zdaniu — tylko JSON jak wyżej, albo zwykła odpowiedź.
 Dostępne narzędzia:
 ${narzedzia || '- (żadne — tylko rozmowa)'}
 
@@ -266,6 +268,17 @@ function wylowNarzedzie(tekst) {
             const j = JSON.parse(k);
             if (j && typeof j.narzedzie === 'string') return { narzedzie: j.narzedzie, argumenty: j.argumenty && typeof j.argumenty === 'object' ? j.argumenty : {} };
         } catch { /* następny kandydat */ }
+    }
+    // 2026-09-18 z telefonu Suwerena: gemma4 napisała „katedra.stan:{} Rozumiem, że chcesz…" —
+    // nazwa narzędzia i argumenty, ale nie w naszym JSON-ie. Parser tego nie łapał, narzędzie
+    // nie poszło, a Joanna mówiła „nie mam informacji". Łapiemy więc też luźne formy:
+    //   katedra.stan:{}   katedra.stan({...})   katedra.stan {"prompt":"…"}   `katedra.stan`
+    // — pod warunkiem, że nazwa jest z białej listy (żadnego zgadywania po podobieństwie).
+    const luzne = t.match(/(?:^|[\s`"'*])([a-z]+\.[a-z]+)\s*[:(]?\s*(\{[\s\S]*?\})?/i);
+    if (luzne && NARZEDZIA[luzne[1].toLowerCase()]) {
+        let argumenty = {};
+        if (luzne[2]) { try { argumenty = JSON.parse(luzne[2]); } catch { argumenty = {}; } }
+        return { narzedzie: luzne[1].toLowerCase(), argumenty: argumenty && typeof argumenty === 'object' ? argumenty : {} };
     }
     return null;
 }

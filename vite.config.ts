@@ -23,6 +23,10 @@ if (fs.existsSync(envPath)) {
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // Skaner zależności Vite chodził po public/apps/*/index.html (zbudowane studia trzymane
+  // jako statyki) i wywracał się na `@emotion/is-prop-valid` z bundla Story, którego Genesis
+  // nie ma i mieć nie musi. Wejście jest jedno: index.html w korzeniu (2026-09-19).
+  optimizeDeps: { entries: ['index.html'] },
   define: {
     'process.env': {},
     'import.meta.env.VITE_TEO_ISKA_KEY': JSON.stringify(envVars['VITE_TEO_ISKA_KEY'] || ''),
