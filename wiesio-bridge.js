@@ -9716,7 +9716,17 @@ app.post('/api/teo-sim/petla', async (req, res) => {
 app.post('/api/stado/publikuj', async (req, res) => {
     const r = await MostStada.publikuj(req.body ?? {});
     if (!r.ok) return res.status(400).json({ success: false, message: r.powod });
+    // Regres = ktoś wykluty wrócił do jajka albo stracił XP. Mówimy o tym głośno,
+    // bo to prawie na pewno pusta przeglądarka, a nie decyzja Suwerena.
+    if (r.cofniete?.length) {
+        await Szyna.nadaj({ agent: 'Stado', rodzaj: 'blad', tresc: `migawka stada COFNĘŁA ${r.cofniete.map((c) => `${c.imie}: ${c.bylo.etap} ${c.bylo.xp} XP → ${c.jest?.etap ?? '?'} ${c.jest?.xp ?? 0} XP`).join('; ')}. Stara migawka w kopii${r.kopia ? ` ${r.kopia}` : ''} — Dom TeOgochi ma „Przywróć z kopii mostu".`, dane: { kopia: r.kopia, cofniete: r.cofniete } }).catch(() => {});
+    }
     res.json({ success: true, ...r });
+});
+app.get('/api/stado/kopie', async (_req, res) => res.json({ success: true, kopie: await MostStada.kopie() }));
+app.get('/api/stado/kopie/:nazwa', async (req, res) => {
+    const m = await MostStada.kopia(req.params.nazwa);
+    return m ? res.json({ success: true, migawka: m }) : res.status(404).json({ success: false, message: 'Nie ma takiej kopii.' });
 });
 
 /** Kod parowania do przepisania na telefon. */

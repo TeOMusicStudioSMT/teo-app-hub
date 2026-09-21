@@ -31,8 +31,57 @@ import { GATUNKI, type Gatunek } from '../../lib/teogochiGatunki';
 import { stageOf } from '../../lib/teogochiState';
 import {
     wykluteGatunki, wykluj, aktywnyGatunek, ustawAktywny, stanGatunku,
-    modelGatunku, ustawModelGatunku,
+    modelGatunku, ustawModelGatunku, przywrocZMigawki,
 } from '../../lib/teogochiStado';
+
+interface KopiaStada { plik: string; czas: number; wyklutych: number; joanna: { etap: string; xp: number } | null; }
+
+/**
+ * 🧯 Przywracanie stada z kopii mostu. Stan stada żyje w localStorage TEJ przeglądarki;
+ * inna przeglądarka / inny adres = puste stado, a most przy publikacji nadpisywał jedyny
+ * ślad (2026-09-21: Joanna z Legendy 11 923 XP do pisklęcia). Most trzyma teraz kopie
+ * przy regresie — tu Suweren wgrywa je z powrotem. Bez kopii sekcja się nie pokazuje.
+ */
+const PrzywracanieStada: React.FC<{ onPrzywrocono: () => void }> = ({ onPrzywrocono }) => {
+    const [kopie, setKopie] = useState<KopiaStada[]>([]);
+    const [wybrana, setWybrana] = useState('');
+    const [pracuje, setPracuje] = useState(false);
+    const [wynik, setWynik] = useState<string | null>(null);
+    useEffect(() => {
+        fetch('http://127.0.0.1:3001/api/stado/kopie').then(r => r.json())
+            .then(d => { const k: KopiaStada[] = d.kopie ?? []; setKopie(k); if (k[0]) setWybrana(k[0].plik); })
+            .catch(() => setKopie([]));
+    }, []);
+    if (!kopie.length) return null;
+    const przywroc = async () => {
+        setPracuje(true); setWynik(null);
+        try {
+            const d = await fetch(`http://127.0.0.1:3001/api/stado/kopie/${encodeURIComponent(wybrana)}`).then(r => r.json());
+            if (!d.migawka) throw new Error(d.message || 'Most nie oddał kopii.');
+            const { zmienione } = przywrocZMigawki(d.migawka);
+            setWynik(zmienione.length ? `Przywrócono: ${zmienione.join(', ')}.` : 'Ta przeglądarka ma już wszystko co najmniej na tym poziomie — nic do przywrócenia.');
+            onPrzywrocono();
+        } catch (e) { setWynik(`Nie udało się: ${(e as Error).message}`); }
+        finally { setPracuje(false); }
+    };
+    return (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 space-y-2">
+            <p className="text-[11px] text-amber-200 leading-relaxed">
+                🧯 Most ma <b>{kopie.length}</b> {kopie.length === 1 ? 'kopię' : 'kopii'} stada sprzed regresu (ktoś wykluty wrócił do jajka albo stracił XP — tak wygląda pusta przeglądarka lub inny adres Katedry).
+                Przywrócenie podnosi XP i wyklucie tylko w górę.
+            </p>
+            <div className="flex flex-wrap gap-2 items-center">
+                <select value={wybrana} onChange={e => setWybrana(e.target.value)} className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-[11px] font-mono text-white">
+                    {kopie.map(k => <option key={k.plik} value={k.plik}>{new Date(k.czas).toLocaleString('pl-PL')} · wyklutych {k.wyklutych}{k.joanna ? ` · Joanna ${k.joanna.etap} ${k.joanna.xp} XP` : ''}</option>)}
+                </select>
+                <button onClick={przywroc} disabled={pracuje || !wybrana} className="px-3 py-1 rounded-lg text-[11px] font-mono bg-amber-600/70 hover:bg-amber-600 text-white disabled:opacity-40">
+                    {pracuje ? 'Przywracam…' : 'Przywróć stado z kopii mostu'}
+                </button>
+            </div>
+            {wynik && <p className="text-[11px] text-slate-300">{wynik}</p>}
+        </div>
+    );
+};
 
 /** Gatunki z panelem napisanym ręcznie. Reszta buduje swój w kreatorze. */
 const WBUDOWANE = ['joanna', 'klatka', 'wektor', 'kodeks', 'bilans'];
@@ -251,6 +300,8 @@ export const DomTeogochi: React.FC = () => {
                     </b>
                 </p>
             </header>
+
+            <PrzywracanieStada onPrzywrocono={() => { setStado(wykluteGatunki()); setDyzurny(aktywnyGatunek()); }} />
 
             {/* Panel dyżurnego gatunku. Na razie mają go DWA: Joanna (własny Dom,
                 otwierany z odtwarzacza) i Klatka — tutaj. Reszta czeka na swój. */}

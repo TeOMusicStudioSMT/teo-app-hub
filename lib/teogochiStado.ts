@@ -81,6 +81,38 @@ export function zapiszStanGatunku(id: string, s: TeogochiState): void {
     try { localStorage.setItem(`teogochi_state_${id}`, JSON.stringify(s)); } catch { /* nic */ }
 }
 
+/** Migawka stada, jaką Katedra publikuje do mostu (i jaką most trzyma w kopiach). */
+export interface MigawkaStada {
+    czas?: number;
+    aktywny?: string;
+    gatunki: Array<{ id: string; xp: number; wyklute: boolean; etap?: string }>;
+}
+
+/**
+ * Przywróć stado z migawki mostu. Stan tej przeglądarki żyje w localStorage, więc
+ * inna przeglądarka albo inny adres (localhost vs 127.0.0.1, tunel) to PUSTE stado —
+ * a most przy publikacji nadpisałby jedyny ślad. Od 2026-09-21 most trzyma kopie
+ * przy regresie; tu je wgrywamy z powrotem. XP i wyklucie tylko W GÓRĘ — kopia nie
+ * odbierze niczego, co w tej przeglądarce jest już wyżej.
+ */
+export function przywrocZMigawki(m: MigawkaStada): { zmienione: string[] } {
+    const zmienione: string[] = [];
+    const lista = wykluteGatunki();
+    for (const g of m.gatunki ?? []) {
+        if (!GATUNKI.some(x => x.id === g.id)) continue;
+        const stan = stanGatunku(g.id);
+        const xp = Math.max(Number(g.xp) || 0, stan.xp || 0);
+        const wyklute = g.wyklute || lista.includes(g.id);
+        if (xp === stan.xp && wyklute === lista.includes(g.id)) continue;
+        zapiszStanGatunku(g.id, { ...stan, xp, hatchedAt: stan.hatchedAt ?? (wyklute ? (m.czas ?? Date.now()) : null) });
+        if (wyklute && !lista.includes(g.id)) lista.push(g.id);
+        zmienione.push(g.id);
+    }
+    try { localStorage.setItem(KLUCZ_STADA, JSON.stringify(lista)); } catch { /* pełny storage */ }
+    if (m.aktywny && GATUNKI.some(x => x.id === m.aktywny)) ustawAktywny(m.aktywny);
+    return { zmienione };
+}
+
 
 const KLUCZ_MODEL = 'teogochi_model_';
 

@@ -117,9 +117,34 @@ export async function odlacz(skrot) {
  * Katedra publikuje stan stada. Przyjmujemy tylko to, co potrzebne apce —
  * bez przepuszczania dowolnego JSON-a z przeglądarki do pliku.
  */
+const KATALOG_KOPII = () => path.join(process.cwd(), '_OtakOs_Wymiar', 'kopie');
+
+/**
+ * Czy nowa migawka COFA stado względem zapisanej: ktoś wykluty wraca do jajka albo
+ * traci XP. Tak wygląda pusty localStorage (inna przeglądarka, inny adres, wyczyszczone
+ * dane) publikujący się na świeżo — 2026-09-21 Joanna z Legendy (11 923 XP) spadła
+ * do pisklęcia (105 XP), a most nadpisał jedyny ślad. Teraz stara migawka idzie do kopii.
+ */
+function regres(stara, nowa) {
+    if (!stara?.gatunki?.length) return [];
+    const nowe = new Map(nowa.map((g) => [g.id, g]));
+    return stara.gatunki
+        .filter((s) => { const n = nowe.get(s.id); return n && ((s.wyklute && !n.wyklute) || (Number(s.xp) || 0) > (Number(n.xp) || 0) + 50); })
+        .map((s) => ({ id: s.id, imie: s.imie, bylo: { etap: s.etap, xp: s.xp }, jest: nowe.get(s.id) ? { etap: nowe.get(s.id).etap, xp: nowe.get(s.id).xp } : null }));
+}
+
 export async function publikuj(stado) {
     if (!Array.isArray(stado?.gatunki)) return { ok: false, powod: 'Wymagane: { gatunki: [...] }.' };
     const d = await czytaj();
+    const cofniete = regres(d.migawka, stado.gatunki);
+    let kopia = null;
+    if (cofniete.length) {
+        try {
+            await fs.mkdir(KATALOG_KOPII(), { recursive: true });
+            kopia = `stado-most-${new Date(d.migawka.czas || Date.now()).toISOString().replace(/[:.]/g, '-')}.json`;
+            await fs.writeFile(path.join(KATALOG_KOPII(), kopia), JSON.stringify(d.migawka, null, 2), 'utf8');
+        } catch { kopia = null; }
+    }
     d.migawka = {
         czas: Date.now(),
         aktywny: String(stado.aktywny || ''),
@@ -135,7 +160,28 @@ export async function publikuj(stado) {
         })),
     };
     await zapisz(d);
-    return { ok: true, ile: d.migawka.gatunki.length };
+    return { ok: true, ile: d.migawka.gatunki.length, cofniete, kopia };
+}
+
+/** Kopie migawek (od najnowszej) z krótkim opisem: kiedy i ile XP miała Joanna. */
+export async function kopie() {
+    const dir = KATALOG_KOPII();
+    if (!fsSync.existsSync(dir)) return [];
+    const pliki = (await fs.readdir(dir)).filter((p) => /^stado-most-.*\.json$/.test(p)).sort().reverse();
+    const lista = [];
+    for (const p of pliki.slice(0, 30)) {
+        try {
+            const m = JSON.parse(await fs.readFile(path.join(dir, p), 'utf8'));
+            const j = (m.gatunki || []).find((g) => g.id === 'joanna');
+            lista.push({ plik: p, czas: m.czas, wyklutych: (m.gatunki || []).filter((g) => g.wyklute).length, joanna: j ? { etap: j.etap, xp: j.xp } : null });
+        } catch { /* uszkodzona kopia — pomijamy */ }
+    }
+    return lista;
+}
+
+export async function kopia(nazwa) {
+    if (!/^stado-most-[0-9A-Za-z-]+\.json$/.test(String(nazwa))) return null;
+    try { return JSON.parse(await fs.readFile(path.join(KATALOG_KOPII(), nazwa), 'utf8')); } catch { return null; }
 }
 
 /**
