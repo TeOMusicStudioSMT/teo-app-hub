@@ -28,6 +28,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import http from 'http';
 import * as Persony from './Persony.js';
 
 const run = promisify(execFile);
@@ -408,36 +409,40 @@ export async function silniki() {
 async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naKawalek = null }) {
     if (/^claude:/.test(model)) return piszAnthropic({ system, prompt, model: model.slice(7), timeoutMs: Math.min(timeoutMs, 10 * 60_000) });
     if (/^gemini:/.test(model)) return piszGemini({ system, prompt, model: model.slice(7), timeoutMs: Math.min(timeoutMs, 10 * 60_000) });
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-        const r = await fetch(`${cfg.ollamaBase}/api/generate`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
-            // think:false — qwen3.x bez tego oddaje pustą treść (zmierzone).
-            body: JSON.stringify({ model, system, prompt, stream: true, think: false, options: { temperature: 0.2, num_ctx: 16384 } }),
+    // Ollama przez node:http, NIE przez fetch. undici w Node urywa połączenie po 300 s bez
+    // bajtu w treści (bodyTimeout) — a Ollama potrafi tyle milczeć, gdy liczy prompt na CPU
+    // albo stoi w kolejce za innym zadaniem (zmierzone 2026-09-21: „fetch failed" po 304 s
+    // w rundzie 2, mimo strumienia). http.request nie ma takich sufitów; nasz jest jeden: timeoutMs.
+    const url = new URL('/api/generate', cfg.ollamaBase);
+    const body = JSON.stringify({ model, system, prompt, stream: true, think: false, options: { temperature: 0.2, num_ctx: 16384 } });
+    return new Promise((resolve, reject) => {
+        let tekst = '', tokeny = 0, bufor = '', zakonczone = false;
+        const koniec = (fn) => (v) => { if (!zakonczone) { zakonczone = true; clearTimeout(zegar); fn(v); } };
+        const ok = koniec(resolve), pad = koniec(reject);
+        const zegar = setTimeout(() => { req.destroy(); pad(new Error(`Ollama nie zdążyła w ${Math.round(timeoutMs / 1000)} s`)); }, timeoutMs);
+        const req = http.request({ hostname: url.hostname, port: url.port || 80, path: url.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, (res) => {
+            if (res.statusCode !== 200) { let e = ''; res.on('data', (c) => { e += c; }); res.on('end', () => pad(new Error(`Ollama HTTP ${res.statusCode}: ${e.slice(0, 200)}`))); return; }
+            res.setEncoding('utf8');
+            res.on('data', (kawalek) => {
+                bufor += kawalek;
+                let i;
+                while ((i = bufor.indexOf('\n')) >= 0) {
+                    const linia = bufor.slice(0, i).trim(); bufor = bufor.slice(i + 1);
+                    if (!linia) continue;
+                    try {
+                        const j = JSON.parse(linia);
+                        if (j.error) return pad(new Error(`Ollama: ${j.error}`));
+                        if (j.response) { tekst += j.response; naKawalek?.(tekst.length); }
+                        if (j.done) tokeny = (Number(j.eval_count) || 0) + (Number(j.prompt_eval_count) || 0);
+                    } catch { /* niepełna linia */ }
+                }
+            });
+            res.on('end', () => ok({ tekst, tokeny }));
+            res.on('error', (e) => pad(new Error(`Ollama: ${e.message}`)));
         });
-        if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
-        let tekst = '', tokeny = 0, bufor = '';
-        const czytnik = r.body.getReader();
-        const dek = new TextDecoder();
-        for (;;) {
-            const { value, done } = await czytnik.read();
-            if (done) break;
-            bufor += dek.decode(value, { stream: true });
-            let i;
-            while ((i = bufor.indexOf('\n')) >= 0) {
-                const linia = bufor.slice(0, i).trim(); bufor = bufor.slice(i + 1);
-                if (!linia) continue;
-                try {
-                    const j = JSON.parse(linia);
-                    if (j.response) { tekst += j.response; naKawalek?.(tekst.length); }
-                    if (j.done) tokeny = (Number(j.eval_count) || 0) + (Number(j.prompt_eval_count) || 0);
-                } catch { /* niepełna linia */ }
-            }
-        }
-        return { tekst, tokeny };
-    } catch (e) { throw new Error(e.name === 'AbortError' ? `Ollama nie zdążyła w ${Math.round(timeoutMs / 1000)} s` : e.message); }
-    finally { clearTimeout(t); }
+        req.on('error', (e) => pad(new Error(`Ollama: ${e.message}`)));
+        req.end(body);
+    });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -462,17 +467,51 @@ async function dopiszLinie(dir, log) {
     return wyjscie.length ? wyjscie.join('\n') : log;
 }
 
-async function weryfikujBuild(dir) {
+/**
+ * AUTONAPRAWA literówek: tsc mówi „Cannot find name 'plataformaLanding'. Did you mean
+ * 'platformaLanding'?" (TS2552) — a 9B trzy rundy z rzędu oddawał ten sam plik (zmierzone
+ * 2026-09-21 na żywym moście: 24 min zmarnowane). Podmiana całego słowa wg podpowiedzi tsc
+ * jest deterministyczna i bezpieczna; po niej tsc leci jeszcze raz. Zwraca listę podmian.
+ */
+async function autonaprawLiterowki(dir, log) {
+    const re = /^(src\/[^\s(]+)\(\d+,\d+\): error TS2552: Cannot find name '([A-Za-z_$][\w$]*)'\. Did you mean '([A-Za-z_$][\w$]*)'\?/gm;
+    const podmiany = [];
+    const widziane = new Set();
+    let m;
+    while ((m = re.exec(log))) {
+        const [, plik, zle, dobrze] = m;
+        const klucz = `${plik}:${zle}`;
+        if (widziane.has(klucz) || zle === dobrze) continue;
+        widziane.add(klucz);
+        try {
+            const pelna = path.join(dir, plik);
+            const tresc = await fs.readFile(pelna, 'utf8');
+            const nowa = tresc.replace(new RegExp(`\\b${zle.replace(/[$]/g, '\\$&')}\\b`, 'g'), dobrze);
+            if (nowa !== tresc) { await fs.writeFile(pelna, nowa, 'utf8'); podmiany.push(`${plik}: ${zle} → ${dobrze}`); }
+        } catch { /* plik nie do odczytu — zostawiamy modelowi */ }
+    }
+    return podmiany;
+}
+
+export async function weryfikujBuild(dir) {
     const t0 = Date.now();
     const nm = path.join(dir, 'node_modules');
     if (!fsSync.existsSync(nm)) return { ok: false, etap: 'node_modules', log: `Brak node_modules (junction do ${cfg.nodeModules} nie powstał).`, sekundy: 0 };
+    const tsc = () => run(process.execPath, [path.join(nm, 'typescript', 'bin', 'tsc'), '--noEmit', '-p', 'tsconfig.json'], { cwd: dir, windowsHide: true, timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
+    let autonaprawy = [];
     try {
-        await run(process.execPath, [path.join(nm, 'typescript', 'bin', 'tsc'), '--noEmit', '-p', 'tsconfig.json'], { cwd: dir, windowsHide: true, timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
-    } catch (e) { return { ok: false, etap: 'tsc', log: await dopiszLinie(dir, `${e.stdout || ''}\n${e.stderr || ''}`.trim().slice(-6000)), sekundy: Math.round((Date.now() - t0) / 1000) }; }
+        await tsc();
+    } catch (e) {
+        const log1 = `${e.stdout || ''}\n${e.stderr || ''}`.trim().slice(-6000);
+        autonaprawy = await autonaprawLiterowki(dir, log1);
+        if (!autonaprawy.length) return { ok: false, etap: 'tsc', log: await dopiszLinie(dir, log1), sekundy: Math.round((Date.now() - t0) / 1000) };
+        try { await tsc(); }
+        catch (e2) { return { ok: false, etap: 'tsc', autonaprawy, log: `(autonaprawa literówek: ${autonaprawy.join(', ')} — nadal błędy)\n` + await dopiszLinie(dir, `${e2.stdout || ''}\n${e2.stderr || ''}`.trim().slice(-6000)), sekundy: Math.round((Date.now() - t0) / 1000) }; }
+    }
     try {
         await run(process.execPath, [path.join(nm, 'vite', 'bin', 'vite.js'), 'build', '--logLevel', 'error'], { cwd: dir, windowsHide: true, timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
     } catch (e) { return { ok: false, etap: 'vite build', log: `${e.stdout || ''}\n${e.stderr || ''}`.trim().slice(-6000), sekundy: Math.round((Date.now() - t0) / 1000) }; }
-    return { ok: true, etap: 'build', log: 'tsc + vite build: OK', sekundy: Math.round((Date.now() - t0) / 1000) };
+    return { ok: true, etap: 'build', autonaprawy, log: `tsc + vite build: OK${autonaprawy.length ? ` (autonaprawa literówek: ${autonaprawy.join(', ')})` : ''}`, sekundy: Math.round((Date.now() - t0) / 1000) };
 }
 
 /** Puppeteer: otwórz zbudowaną apkę na moście, zbierz błędy, zrób zrzut. */
