@@ -217,6 +217,7 @@ const PRZEWODNIK_THREE = `PRZEWODNIK SILNIKA (three.js 0.170, TypeScript, Vite) 
 - HUD: element #hud (textContent), nie canvas. Wynik, monety, czas.
 - ZAWSZE aktualizuj window.__gra w każdej klatce: { wynik, pozycja:{x,z}, monety (ile zostało), czas } — tak testuje się grę. Dodawaj własne pola, nie usuwaj tych.
 - Resize: aktualizuj aspect kamery i rozmiar renderera. Nie używaj OrbitControls (kamera podąża za graczem).
+- Kamera ORTOGRAFICZNA (izometria): frustum liczony z aspektu i WYSOKOŚCI WIDOKU W JEDNOSTKACH ŚWIATA (np. 20): \`const h = 20, a = innerWidth / innerHeight; kamera = new OrthographicCamera(-h * a / 2, h * a / 2, h / 2, -h / 2, 0.1, 200)\`; to samo przy resize + updateProjectionMatrix. NIGDY frustum -1..1 — gracz 1×1 zasłoni wtedy cały ekran. Kamera stoi w (gracz.x + 20, 20, gracz.z + 20) i patrzy na gracza; podłoga i przeszkody muszą być widoczne wokół niego.
 - Deterministycznie: losowość tylko przez własny generator z ziarnem (np. mulberry32), żeby test był powtarzalny.
 - Wydajność: maks ~200 meshy, żadnych świateł per moneta; jedna geometria + jeden materiał współdzielone.`;
 
@@ -478,6 +479,22 @@ async function autonaprawLiterowki(dir, log) {
     const podmiany = [];
     const widziane = new Set();
     let m;
+    // TS2588 „Cannot assign to 'seed' because it is a constant" — 9B trzy rundy z rzędu zostawiał
+    // `const seed` przy `seed++` (zmierzone 2026-09-21, 39 min na jednym zadaniu). Deklarację
+    // `const nazwa` zamieniamy na `let nazwa` — tylko tę jedną zmienną, tylko w tym pliku.
+    const reConst = /^(src\/[^\s(]+)\(\d+,\d+\): error TS2588: Cannot assign to '([A-Za-z_$][\w$]*)' because it is a constant\./gm;
+    while ((m = reConst.exec(log))) {
+        const [, plik, nazwa] = m;
+        const klucz = `${plik}:const:${nazwa}`;
+        if (widziane.has(klucz)) continue;
+        widziane.add(klucz);
+        try {
+            const pelna = path.join(dir, plik);
+            const tresc = await fs.readFile(pelna, 'utf8');
+            const nowa = tresc.replace(new RegExp(`\\bconst(\\s+)${nazwa.replace(/[$]/g, '\\$&')}\\b`, 'g'), `let$1${nazwa}`);
+            if (nowa !== tresc) { await fs.writeFile(pelna, nowa, 'utf8'); podmiany.push(`${plik}: const ${nazwa} → let ${nazwa}`); }
+        } catch { /* zostawiamy modelowi */ }
+    }
     while ((m = re.exec(log))) {
         const [, plik, zle, dobrze] = m;
         const klucz = `${plik}:${zle}`;
@@ -586,6 +603,36 @@ export async function ocenZachowanie({ cel, migawki, model }) {
         if (!j || typeof j.ok !== 'boolean') return { ok: true, powod: null, niepewne: true };
         return { ok: j.ok, powod: j.ok ? null : String(j.powod || 'po kliknięciu nic się nie dzieje, a zadanie wymaga zmian w czasie').slice(0, 300) };
     } catch { return { ok: true, powod: null, niepewne: true }; }
+}
+
+/**
+ * SĘDZIA Z OCZAMI (tylko gry): stan w window.__gra może być poprawny, a ekran pusty albo
+ * zasłonięty jedną bryłą (zmierzone 2026-09-21: kamera ortograficzna z frustum -1..1 — gracz
+ * na cały ekran, 8 zadań „zdało"). Model z widzeniem ogląda zrzut i mówi tylko o WIDOCZNOŚCI.
+ * qwen3.5 (4b/9b) widzi poprawnie; gemma4:e2b w tym Ollamie (0.34) zwraca halucynację
+ * o „kobiecie z ciemnymi włosami" dla każdego obrazu — nie używać do obrazów.
+ * Niepewność (błąd, brak JSON, timeout) = przepuszczamy; sędzia ma łapać, nie blokować.
+ */
+export async function ocenZrzut({ cel, sciezkaZrzutu, model }) {
+    const modelOczu = /^(claude|gemini):/.test(model || '') || !/qwen3\.5/.test(model || '') ? 'qwen3.5:9b' : model;
+    try {
+        const obraz = (await fs.readFile(sciezkaZrzutu)).toString('base64');
+        const prompt = `To zrzut ekranu z automatycznego testu gry 3D w three.js (rzut z góry/izometria, Chrome bez GPU). Zadanie gry: ${String(cel).slice(0, 400)}\nOceń WIDOCZNOŚĆ, nie jakość grafiki. Odpowiedz WYŁĄCZNIE JSON-em:\n{"ok": true/false, "powod": "jedno zdanie po polsku"}\nok=false tylko gdy: (a) ekran pusty/czarny bez sceny, (b) jedna bryła zasłania prawie cały ekran (kamera za blisko lub zły frustum), (c) nie widać podłogi/świata wokół gracza. Proste bryły zamiast modeli to NIE błąd, HUD z zerami to NIE błąd.`;
+        const body = JSON.stringify({ model: modelOczu, stream: false, think: false, options: { temperature: 0.1 }, messages: [{ role: 'user', content: prompt, images: [obraz] }] });
+        const url = new URL('/api/chat', cfg.ollamaBase);
+        const tekst = await new Promise((resolve, reject) => {
+            const req = http.request({ hostname: url.hostname, port: url.port || 80, path: url.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }, timeout: 180_000 }, (res) => {
+                let d = ''; res.setEncoding('utf8'); res.on('data', (c) => { d += c; }); res.on('end', () => { try { resolve(JSON.parse(d).message?.content ?? ''); } catch (e) { reject(e); } });
+            });
+            req.on('timeout', () => { req.destroy(new Error('oczy: timeout 180 s')); });
+            req.on('error', reject);
+            req.end(body);
+        });
+        const m = tekst.match(/\{[\s\S]*\}/);
+        const j = m ? JSON.parse(m[0]) : null;
+        if (!j || typeof j.ok !== 'boolean') return { ok: true, powod: null, niepewne: true, model: modelOczu };
+        return { ok: j.ok, powod: j.ok ? null : String(j.powod || 'na zrzucie nie widać sceny').slice(0, 300), opis: String(j.powod || '').slice(0, 300), model: modelOczu };
+    } catch (e) { return { ok: true, powod: null, niepewne: true, blad: e.message }; }
 }
 
 /**
@@ -717,7 +764,13 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                 if (t.zrzut) ostatniZrzut = t.zrzut;
                 krok(t.ok === false ? 'blad' : 'test', `przeglądarka (${t.sekundy} s): ${t.log.slice(0, 1500)}`, { zrzut: t.zrzut ?? null });
                 if (t.ok === false) { feedback = `Aplikacja zbudowała się, ale w przeglądarce:\n${t.bledy.join('\n')}`; continue; }
-                // Gra ma sędziego deterministycznego w teście (pozycja po klawiszach) — model pytamy tylko przy apce.
+                // Gra ma sędziego deterministycznego w teście (pozycja po klawiszach) + sędziego z oczami
+                // (zrzut → model z widzeniem: czy w ogóle widać scenę). Apka: sędzia zachowania z migawek tekstu.
+                if (typProjektu === 'gra') {
+                    const oczy = t.zrzut ? await ocenZrzut({ cel, sciezkaZrzutu: path.join(dir, t.zrzut), model: z.model }) : { ok: true, niepewne: true };
+                    krok(oczy.ok ? 'test' : 'blad', oczy.ok ? `oczy (${oczy.model ?? '?'}): ${oczy.niepewne ? 'sędzia niepewny — przepuszczam' + (oczy.blad ? ' (' + oczy.blad + ')' : '') : 'scenę widać — ' + (oczy.opis || 'OK')}` : `oczy (${oczy.model}): ${oczy.powod}`);
+                    if (!oczy.ok) { feedback = `Gra buduje się i stan window.__gra się zmienia, ale NA EKRANIE: ${oczy.powod}\nSPRAWDŹ KAMERĘ: OrthographicCamera musi mieć frustum z aspektu i wysokości widoku w jednostkach świata (np. h=20: left=-h*a/2, right=h*a/2, top=h/2, bottom=-h/2), NIE -1..1; PerspectiveCamera — pozycja (gracz.x, 10, gracz.z + 10) i lookAt(gracz). Podłoga (PlaneGeometry 40×40, obrócona -PI/2) i światło muszą być w scenie. Oddaj poprawiony plik w całości.`; continue; }
+                }
                 const o = typProjektu === 'gra' ? { ok: true, powod: null } : await ocenZachowanie({ cel, migawki: t.migawki, model: z.model });
                 krok(o.ok ? 'test' : 'blad', o.ok ? `ocena zachowania: zgodne z zadaniem${o.niepewne ? ' (sędzia niepewny — przepuszczam)' : ''}` : `ocena zachowania: ${o.powod}`, { migawki: t.migawki });
                 if (!o.ok) { feedback = `Aplikacja działa bez błędów konsoli, ale ZACHOWUJE SIĘ źle: ${o.powod}
@@ -847,4 +900,4 @@ export async function rozwin(projektId, { model } = {}) {
     return { ...z, zadanie: analiza.nastepneZadanie, analiza: analiza.stan };
 }
 
-export default { skonfiguruj, projekty, nowyProjekt, projekt, pliki, zrzut, buduj, zadanie, zadaniaProjektu, cofnij, usunProjekt, silniki, analizuj, rozwin };
+export default { skonfiguruj, projekty, nowyProjekt, projekt, pliki, zrzut, buduj, zadanie, zadaniaProjektu, cofnij, usunProjekt, silniki, analizuj, rozwin, ocenZrzut };
