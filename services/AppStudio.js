@@ -39,6 +39,10 @@ let cfg = {
     portMostu: 3001,
     szyna: null,
     puppeteer: null,   // wstrzykiwany z mostu (import dynamiczny), żeby AppStudio nie ciągnął Chrome przy każdym imporcie
+    // Klucze chmury z Kibla (funkcje mostu). Suweren (2026-09-21): „klucze niech będą dodatkową
+    // opcją, lecz domyślnie lokalnie" — więc chmura tylko, gdy zlecenie wprost poda model
+    // `claude:…` albo `gemini:…`; bez klucza uczciwy błąd, nigdy ciche przełączenie.
+    klucze: { anthropic: async () => null, gemini: async () => null },
 };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
 
@@ -223,7 +227,60 @@ function wylowPliki(tekst) {
  * 2026-09-21: pad po 304 s). Ze strumieniem nagłówki są od razu, a my składamy kawałki;
  * sufit dotyczy CAŁEJ generacji. `naKawalek` pozwala pokazać postęp (liczba znaków).
  */
+/** Anthropic Messages API — bez strumienia (odpowiedź w sekundach), klucz z Kibla. */
+async function piszAnthropic({ system, prompt, model, timeoutMs }) {
+    const klucz = await cfg.klucze.anthropic();
+    if (!klucz) throw new Error('Brak klucza Anthropic w TeO Kibel — wybierz silnik lokalny albo dodaj klucz (sk-ant-…).');
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST', signal: ctrl.signal,
+            headers: { 'content-type': 'application/json', 'x-api-key': klucz, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model, max_tokens: 16000, system, messages: [{ role: 'user', content: prompt }] }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(`Anthropic HTTP ${r.status}: ${d?.error?.message || ''}`.trim());
+        const tekst = (d.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
+        return { tekst, tokeny: (d.usage?.input_tokens || 0) + (d.usage?.output_tokens || 0) };
+    } finally { clearTimeout(t); }
+}
+
+/** Gemini generateContent — bez strumienia, klucz z Kibla. */
+async function piszGemini({ system, prompt, model, timeoutMs }) {
+    const klucz = await cfg.klucze.gemini();
+    if (!klucz) throw new Error('Brak klucza Gemini w TeO Kibel — wybierz silnik lokalny albo dodaj klucz (AIza…).');
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+            method: 'POST', signal: ctrl.signal,
+            headers: { 'content-type': 'application/json', 'x-goog-api-key': klucz },
+            body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 16000 } }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(`Gemini HTTP ${r.status}: ${d?.error?.message || ''}`.trim());
+        const tekst = (d.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+        return { tekst, tokeny: d.usageMetadata?.totalTokenCount || 0 };
+    } finally { clearTimeout(t); }
+}
+
+/** Silniki do wyboru w App Studio — lokalne zawsze pierwsze i domyślne; chmura tylko z kluczem. */
+export async function silniki() {
+    const lokalny = cfg.model();
+    const lista = [{ id: 'lokalny', model: lokalny, etykieta: `Lokalnie — ${lokalny}`, domyslny: true, dostepny: true, uwaga: 'Domyślny. Na tej maszynie runda ≈ 4–5 min.' }];
+    try {
+        const t = await fetch(`${cfg.ollamaBase}/api/tags`).then((r) => r.json());
+        const duzy = (t.models || []).map((m) => m.name).find((n) => /27b/i.test(n));
+        if (duzy && duzy !== lokalny) lista.push({ id: 'lokalny-duzy', model: duzy, etykieta: `Lokalnie — ${duzy}`, domyslny: false, dostepny: true, uwaga: 'Dokładniejszy, ~2 tok/s — runda kilkanaście minut. Raczej do Nocnej Zmiany.' });
+    } catch { /* Ollama śpi — zostaje wpis domyślny */ }
+    const [a, g] = await Promise.all([cfg.klucze.anthropic().catch(() => null), cfg.klucze.gemini().catch(() => null)]);
+    lista.push({ id: 'claude', model: 'claude:claude-sonnet-5', etykieta: 'Chmura — Claude Sonnet 5', domyslny: false, dostepny: !!a, uwaga: a ? 'Klucz z Kibla. Kod wychodzi z Katedry.' : 'Brak klucza Anthropic w TeO Kibel.' });
+    lista.push({ id: 'gemini', model: 'gemini:gemini-2.5-flash', etykieta: 'Chmura — Gemini 2.5 Flash', domyslny: false, dostepny: !!g, uwaga: g ? 'Klucz z Kibla. Kod wychodzi z Katedry.' : 'Brak klucza Gemini w TeO Kibel.' });
+    return lista;
+}
+
 async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naKawalek = null }) {
+    if (/^claude:/.test(model)) return piszAnthropic({ system, prompt, model: model.slice(7), timeoutMs: Math.min(timeoutMs, 10 * 60_000) });
+    if (/^gemini:/.test(model)) return piszGemini({ system, prompt, model: model.slice(7), timeoutMs: Math.min(timeoutMs, 10 * 60_000) });
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -521,4 +578,4 @@ export async function usunProjekt(projektId) {
     return true;
 }
 
-export default { skonfiguruj, projekty, nowyProjekt, projekt, pliki, zrzut, buduj, zadanie, zadaniaProjektu, cofnij, usunProjekt };
+export default { skonfiguruj, projekty, nowyProjekt, projekt, pliki, zrzut, buduj, zadanie, zadaniaProjektu, cofnij, usunProjekt, silniki };

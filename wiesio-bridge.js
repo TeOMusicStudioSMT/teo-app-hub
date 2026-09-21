@@ -7611,10 +7611,16 @@ AppStudio.skonfiguruj({
     katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'),
     nodeModules: path.join(process.cwd(), '..', 'TeO_App_Studio', 'node_modules'),
     puppeteer: null,
+    // Chmura tylko na wyraźne życzenie (model `claude:…`/`gemini:…`); klucze z Kibla, domyślnie lokalnie.
+    klucze: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey() },
 });
 // Chrome puppeteera ładujemy leniwie — przy pierwszym teście, nie przy starcie mostu.
 import('puppeteer').then((m) => AppStudio.skonfiguruj({ puppeteer: m.default })).catch((e) => console.warn(`[AppStudio] puppeteer niedostępny: ${e.message}`));
 
+app.get('/api/appstudio/silniki', async (_req, res) => {
+    try { res.json({ success: true, silniki: await AppStudio.silniki() }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
 app.get('/api/appstudio/projekty', async (_req, res) => {
     try { res.json({ success: true, projekty: await AppStudio.projekty() }); }
     catch (e) { res.status(500).json({ success: false, message: e.message }); }
