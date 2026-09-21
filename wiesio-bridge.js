@@ -159,6 +159,7 @@ import * as Delegat from './services/Delegat.js';
 import * as Artemis from './services/Artemis.js';
 import * as Tunel from './services/Tunel.js';
 import * as Stado from './services/Stado.js';
+import * as AppStudio from './services/AppStudio.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as WarsztatUtworow from './services/WarsztatUtworow.js';
@@ -392,6 +393,12 @@ app.use('/gosc', cors({ origin: '*' }), express.static(path.join(__dirname, 'pub
 // 📱 Delegat Mobilny — strona telefonu. Statyczna i bez klucza (to tylko HTML);
 // klucz Straży telefon dostaje we fragmencie adresu (#k=…) i dokłada do każdego wywołania API.
 app.use('/delegat', cors({ origin: '*' }), express.static(path.join(__dirname, 'public', 'delegat')));
+// 🛠️ Apki zbudowane przez Kodeksa (App Studio 2.0): /apki/<id>/ → <ToO APP>/_OtakOs_Apki/<id>/dist
+const APKI_DIR = path.join(process.cwd(), '..', '_OtakOs_Apki');
+app.use('/apki/:id', (req, res, next) => {
+    if (!/^[a-z0-9-]{2,48}$/.test(req.params.id)) return res.status(400).send('zły identyfikator apki');
+    return express.static(path.join(APKI_DIR, req.params.id, 'dist'))(req, res, next);
+});
 
 // ── 🛡️ STRAŻ MOSTU ───────────────────────────────────────────────────────────
 // Wpięta TUTAJ celowo: po trasach statycznych (żeby strumień muzyki i substrony
@@ -7591,6 +7598,71 @@ app.post('/api/tunel/start', async (_req, res) => {
     catch (e) { res.status(500).json({ success: false, message: e.message, ...(await Tunel.stanTunelu()) }); }
 });
 app.post('/api/tunel/stop', async (_req, res) => res.json({ success: true, ...(await Tunel.stop()) }));
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 🛠️ TeO APP STUDIO 2.0 — Kodeks buduje aplikacje w piaskownicy z pętlą testów.
+// Zaplecze: services/AppStudio.js (tam „po co" i granice). Projekty żyją w
+// <ToO APP>/_OtakOs_Apki/<id> (git, node_modules jako junction do TeO_App_Studio),
+// zbudowany dist jest serwowany pod /apki/<id>/ — to tam patrzy puppeteer i podgląd.
+// ═════════════════════════════════════════════════════════════════════════════
+AppStudio.skonfiguruj({
+    ollamaBase: OLLAMA_BASE, model: () => modelMechanika(), portMostu: PORT, szyna: Szyna,
+    katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'),
+    nodeModules: path.join(process.cwd(), '..', 'TeO_App_Studio', 'node_modules'),
+    puppeteer: null,
+});
+// Chrome puppeteera ładujemy leniwie — przy pierwszym teście, nie przy starcie mostu.
+import('puppeteer').then((m) => AppStudio.skonfiguruj({ puppeteer: m.default })).catch((e) => console.warn(`[AppStudio] puppeteer niedostępny: ${e.message}`));
+
+app.get('/api/appstudio/projekty', async (_req, res) => {
+    try { res.json({ success: true, projekty: await AppStudio.projekty() }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/appstudio/projekty', async (req, res) => {
+    try { res.json({ success: true, projekt: await AppStudio.nowyProjekt(req.body ?? {}) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/appstudio/projekty/:id', async (req, res) => {
+    const p = await AppStudio.projekt(req.params.id);
+    return p ? res.json({ success: true, projekt: p, zadania: AppStudio.zadaniaProjektu(req.params.id) }) : res.status(404).json({ success: false, message: 'Nie ma takiego projektu.' });
+});
+app.delete('/api/appstudio/projekty/:id', async (req, res) => {
+    try { res.json({ success: true, usunieto: await AppStudio.usunProjekt(req.params.id) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/appstudio/projekty/:id/zrzut', async (req, res) => {
+    const f = await AppStudio.zrzut(req.params.id);
+    return f ? res.sendFile(f) : res.status(404).json({ success: false, message: 'Jeszcze bez zrzutu — Kodeks nie testował.' });
+});
+/**
+ * POST /api/appstudio/projekty/:id/buduj { zadanie, model?, rundy?, strumien? }
+ * strumien:true → SSE z krokami (model → pliki → build → test → koniec). Bez → id zadania, potem GET /zadania/:id.
+ */
+app.post('/api/appstudio/projekty/:id/buduj', async (req, res) => {
+    const { zadanie, model, rundy, strumien } = req.body ?? {};
+    if (!strumien) {
+        try { return res.json({ success: true, ...(await AppStudio.buduj(req.params.id, { zadanie, model, rundy })) }); }
+        catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+    }
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'Access-Control-Allow-Origin': '*' });
+    const wyslij = (k) => { try { res.write(`data: ${JSON.stringify(k)}\n\n`); } catch { /* front się rozłączył */ } };
+    try {
+        const z = await AppStudio.buduj(req.params.id, { zadanie, model, rundy }, wyslij);
+        wyslij({ typ: 'start', zadanie: z.id, model: z.model });
+        // Zamykamy strumień, gdy zadanie przestanie „trwać" — kroki i tak lecą callbackiem.
+        const zegar = setInterval(() => { const s = AppStudio.zadanie(z.id); if (s && s.stan !== 'trwa') { clearInterval(zegar); wyslij({ typ: 'stan', stan: s.stan, wynik: s.wynik }); res.end(); } }, 1000);
+        req.on('close', () => clearInterval(zegar));
+    } catch (e) { wyslij({ typ: 'blad', tekst: e.message }); res.end(); }
+});
+app.get('/api/appstudio/zadania/:id', (req, res) => {
+    const z = AppStudio.zadanie(req.params.id);
+    return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania.' });
+});
+app.post('/api/appstudio/projekty/:id/cofnij', async (req, res) => {
+    try { res.json({ success: true, ...(await AppStudio.cofnij(req.params.id)) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 
 // ── Ręce na telefonie (Artemis) — urządzenie podpięte do TEJ maszyny ──
 app.get('/api/telefon/stan', async (_req, res) => res.json({ success: true, ...(await Artemis.stan()) }));
