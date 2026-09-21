@@ -7627,7 +7627,7 @@ app.get('/api/appstudio/projekty', async (_req, res) => {
     catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 app.post('/api/appstudio/projekty', async (req, res) => {
-    try { res.json({ success: true, projekt: await AppStudio.nowyProjekt(req.body ?? {}) }); }
+    try { res.json({ success: true, projekt: await AppStudio.nowyProjekt(req.body ?? {}) }); }   // body: { nazwa, opis, typ: 'apka' | 'gra' }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.get('/api/appstudio/projekty/:id', async (req, res) => {
@@ -7661,6 +7661,24 @@ app.post('/api/appstudio/projekty/:id/buduj', async (req, res) => {
         const zegar = setInterval(() => { const s = AppStudio.zadanie(z.id); if (s && s.stan !== 'trwa') { clearInterval(zegar); wyslij({ typ: 'stan', stan: s.stan, wynik: s.wynik }); res.end(); } }, 1000);
         req.on('close', () => clearInterval(zegar));
     } catch (e) { wyslij({ typ: 'blad', tekst: e.message }); res.end(); }
+});
+app.post('/api/appstudio/projekty/:id/analiza', async (req, res) => {
+    try { res.json({ success: true, analiza: await AppStudio.analizuj(req.params.id, { model: req.body?.model }) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** Nocna Zmiana: analiza + następne zadanie w jednym; oddaje `sondaz`, którym Zmiana czeka na koniec. */
+app.post('/api/appstudio/projekty/:id/rozwin', async (req, res) => {
+    try { const r = await AppStudio.rozwin(req.params.id, { model: req.body?.model }); res.json({ success: true, ...r, sondaz: `/api/appstudio/zadania/${r.id}/sondaz` }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/appstudio/projekty/:id/buduj-w-tle', async (req, res) => {
+    try { const r = await AppStudio.buduj(req.params.id, { zadanie: req.body?.zadanie, model: req.body?.model }); res.json({ success: true, ...r, sondaz: `/api/appstudio/zadania/${r.id}/sondaz` }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/appstudio/zadania/:id/sondaz', (req, res) => {
+    const z = AppStudio.zadanie(req.params.id);
+    if (!z) return res.json({ stan: 'blad', blad: 'nie ma takiego zadania (most zrestartowany?)' });
+    return res.json({ stan: z.stan, podsumowanie: z.wynik ? `${z.wynik.ok ? 'gotowe' : 'padło'}: ${z.rundy} rund, ${z.wynik.sekundy} s${z.wynik.commit ? ', commit ' + z.wynik.commit : ''}${z.wynik.powod ? ' — ' + z.wynik.powod.slice(0, 200) : ''}` : null, blad: z.stan === 'blad' ? (z.wynik?.powod || 'padło') : null });
 });
 app.get('/api/appstudio/zadania/:id', (req, res) => {
     const z = AppStudio.zadanie(req.params.id);

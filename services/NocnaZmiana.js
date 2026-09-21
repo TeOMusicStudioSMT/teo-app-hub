@@ -68,6 +68,8 @@ export const POLA = {
     rezyser:       { etykieta: 'reżyser (styl)',  wybor: 'rezyser' },
     silnikObrazu:  { etykieta: 'silnik obrazu',   wybor: 'silnik-obrazu' },
     apka:          { etykieta: 'apka',            wybor: 'lab-apka' },
+    projektKodeksa:{ etykieta: 'projekt Kodeksa (gra/apka)', wybor: 'kodeks-projekt' },
+    zadanie:       { etykieta: 'zadanie dla Kodeksa', typ: 'tekst' },
     biznes:        { etykieta: 'biznes',          wybor: 'biznes' },
     co:            { etykieta: 'co spisać',       wybor: 'opcje', opcje: ['oba', 'scenariusz', 'proza'] },
     sekundy:       { etykieta: 'sekund na kadr',  typ: 'liczba' },
@@ -101,6 +103,10 @@ export const ROBOTY = {
     'latarnik':        { opis: 'Latarnik sprawdza spójność danych biznesu',      metoda: 'GET',  sciezka: '/api/latarnik/przeglad',      pola: ['biznes'] },
     // 🧪 TeO Lab: bez pól bierze pierwsze otwarte zlecenie (apka+plik+cel) i labuje je w piaskownicy — rano decyzja Suwerena.
     'lab-eksperyment': { opis: 'Lab: eksperyment w piaskownicy z kolejki zleceń', metoda: 'POST', sciezka: '/api/lab/eksperyment',         pola: ['apka', 'plik', 'cel', 'model'] },
+    // 🛠️ Kodeks (App/Games Studio 2.0): analiza + następne zadanie, albo konkretne zlecenie. Ścieżka ma :id —
+    // wstawiamy go z parametru (patrz wykonaj). Zmiana czeka sondażem, aż pętla Kodeksa skończy.
+    'kodeks-rozwin':   { opis: 'Kodeks: przeanalizuj grę/apkę i zrób następny krok rozwoju', metoda: 'POST', sciezka: '/api/appstudio/projekty/:projektKodeksa/rozwin', pola: ['projektKodeksa', 'model'], wymagane: ['projektKodeksa'], czekajNa: 'sondaz' },
+    'kodeks-zadanie':  { opis: 'Kodeks: wykonaj zadanie w grze/apce',                          metoda: 'POST', sciezka: '/api/appstudio/projekty/:projektKodeksa/buduj-w-tle', pola: ['projektKodeksa', 'zadanie', 'model'], wymagane: ['projektKodeksa', 'zadanie'], czekajNa: 'sondaz' },
     // 🔬 TeO Lab: TeOgochi badają otwarte pytanie projektu chipu (Arena z kontekstem → dziennik projektu).
     'lab-badanie':     { opis: 'Lab: TeOgochi badają otwarte pytanie projektu chipu', metoda: 'POST', sciezka: '/api/lab/badaj',              pola: ['projekt', 'pytanieId', 'uczestnicy', 'rundy', 'model'], polaInaczej: { projekt: { etykieta: 'projekt chipu', wybor: 'lab-chip' } }, czekajNa: 'sondaz' },
     // 🎬 Story (2026-09-12). Produkcja = kadry → ruch → montaż → plik w katalogu projektu/odcinka → GOTOWE (Klatka).
@@ -224,10 +230,12 @@ async function sprawdzBramy() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function wykonaj(zadanie) {
-    const robota = ROBOTY[zadanie.rodzaj];
+    let robota = ROBOTY[zadanie.rodzaj];
     if (!robota) throw new Error(`Rodzaj „${zadanie.rodzaj}" nie jest na białej liście.`);
     const body = {};
     for (const k of robota.pola) if (zadanie.parametry && zadanie.parametry[k] !== undefined) body[k] = zadanie.parametry[k];
+    // Ścieżki z :parametrem (np. /projekty/:projektKodeksa/rozwin) — podstawiamy z parametrów zadania.
+    robota = { ...robota, sciezka: robota.sciezka.replace(/:([a-zA-Z]+)/g, (_, k) => encodeURIComponent(String(body[k] ?? zadanie.parametry?.[k] ?? ''))) };
 
     const url = robota.metoda === 'GET'
         ? `${mostBase}${robota.sciezka}${Object.keys(body).length ? '?' + new URLSearchParams(Object.entries(body).map(([k, v]) => [k, String(v)])).toString() : ''}`

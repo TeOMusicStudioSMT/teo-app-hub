@@ -37,6 +37,8 @@ let cfg = {
     model: () => 'qwen3.5:9b',
     katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'),
     nodeModules: path.join(process.cwd(), '..', 'TeO_App_Studio', 'node_modules'),
+    // Gry: three.js + @types/three leżą w Games Studio — osobna junction dla typu 'gra'.
+    nodeModulesGry: path.join(process.cwd(), '..', 'TeO_Games_Studio', 'node_modules'),
     portMostu: 3001,
     szyna: null,
     puppeteer: null,   // wstrzykiwany z mostu (import dynamiczny), żeby AppStudio nie ciągnął Chrome przy każdym imporcie
@@ -113,6 +115,127 @@ body { margin: 0; background: #0b0f1a; color: #e6ecff; }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SZABLON GRY — three.js + TS (bez Reacta), okno stanu `window.__gra` do testów
+// Suweren (2026-09-21): „buduj z three.js, zacznij od gry zbieraj monety GRV — to będzie
+// pierwsza część przyszłej platformówki". Inspiracja: godogen (przewodnik silnika na jedną
+// stronę + dowód przez uruchomienie), tylko lokalnie: three.js z Games Studio, puppeteer
+// wciska klawisze i czyta `window.__gra`, sędzia patrzy, czy stan gry się zmienia.
+// ─────────────────────────────────────────────────────────────────────────────
+const SZABLON_GRY = {
+    'package.json': (nazwa) => JSON.stringify({
+        name: nazwa, private: true, version: '0.1.0', type: 'module',
+        scripts: { dev: 'vite', build: 'tsc --noEmit -p tsconfig.json && vite build', preview: 'vite preview' },
+        dependencies: { three: '^0.170.0' },
+        devDependencies: { '@types/three': '^0.170.0', typescript: '~5.9.3', vite: '^7.2.4' },
+    }, null, 2),
+    'vite.config.ts': () => `import { defineConfig } from 'vite';
+// base './' — gra działa pod /apki/<id>/ na moście i z USB.
+export default defineConfig({ base: './' });
+`,
+    'tsconfig.json': () => JSON.stringify({
+        compilerOptions: { target: 'ES2022', lib: ['ES2022', 'DOM', 'DOM.Iterable'], module: 'ESNext', moduleResolution: 'bundler', strict: true, noEmit: true, skipLibCheck: true, isolatedModules: true, allowImportingTsExtensions: true, types: [] },
+        include: ['src'],
+    }, null, 2),
+    'index.html': (nazwa) => `<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>${nazwa}</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #05070d; color: #e6ecff; font-family: system-ui, sans-serif; overflow: hidden; }
+      #gra { position: fixed; inset: 0; }
+      #hud { position: fixed; top: 12px; left: 12px; padding: 8px 12px; background: rgba(0,0,0,.55); border-radius: 10px; font-size: 14px; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <div id="gra"></div>
+    <div id="hud">GRV: 0</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+`,
+    'src/main.ts': (nazwa) => `// ${nazwa} — szablon gry three.js z TeO Games Studio. Kodeks rozbuduje go wg zadania.
+import * as THREE from 'three';
+
+// Okno stanu do testów (puppeteer czyta window.__gra po wciśnięciu klawiszy) — ZAWSZE aktualne.
+declare global { interface Window { __gra: { wynik: number; pozycja: { x: number; z: number }; monety: number; czas: number } } }
+
+const kontener = document.getElementById('gra')!;
+const hud = document.getElementById('hud')!;
+const scena = new THREE.Scene();
+scena.background = new THREE.Color(0x05070d);
+const kamera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+kontener.appendChild(renderer.domElement);
+scena.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.2));
+
+const ziemia = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+ziemia.rotation.x = -Math.PI / 2;
+scena.add(ziemia);
+
+const gracz = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x22c55e }));
+gracz.position.y = 0.5;
+scena.add(gracz);
+
+const klawisze: Record<string, boolean> = {};
+addEventListener('keydown', (e) => { klawisze[e.key.toLowerCase()] = true; });
+addEventListener('keyup', (e) => { klawisze[e.key.toLowerCase()] = false; });
+addEventListener('resize', () => { kamera.aspect = innerWidth / innerHeight; kamera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+window.__gra = { wynik: 0, pozycja: { x: 0, z: 0 }, monety: 0, czas: 0 };
+
+let ostatni = performance.now();
+function petla(teraz: number) {
+  const dt = Math.min((teraz - ostatni) / 1000, 0.05);
+  ostatni = teraz;
+  const v = 6 * dt;
+  if (klawisze['w'] || klawisze['arrowup']) gracz.position.z -= v;
+  if (klawisze['s'] || klawisze['arrowdown']) gracz.position.z += v;
+  if (klawisze['a'] || klawisze['arrowleft']) gracz.position.x -= v;
+  if (klawisze['d'] || klawisze['arrowright']) gracz.position.x += v;
+  kamera.position.set(gracz.position.x, 10, gracz.position.z + 10);
+  kamera.lookAt(gracz.position);
+  window.__gra.pozycja = { x: gracz.position.x, z: gracz.position.z };
+  window.__gra.czas += dt;
+  hud.textContent = 'GRV: ' + window.__gra.wynik;
+  renderer.render(scena, kamera);
+  requestAnimationFrame(petla);
+}
+requestAnimationFrame(petla);
+`,
+};
+
+const PRZEWODNIK_THREE = `PRZEWODNIK SILNIKA (three.js 0.170, TypeScript, Vite) — jedna strona, trzymaj się go:
+- Wejście: src/main.ts. Bez Reacta, bez innych bibliotek, tylko \`import * as THREE from 'three'\`. Wolno dzielić kod na moduły w src/ (np. src/monety.ts) i importować je z main.ts.
+- Scena: PerspectiveCamera, WebGLRenderer do #gra, HemisphereLight/DirectionalLight. Ziemia = PlaneGeometry obrócona o -PI/2. Obiekty: Mesh(Geometry, MeshStandardMaterial({ color })). Współrzędne: y w górę, gracz na y=0.5.
+- Pętla: requestAnimationFrame z dt (sekundy, ograniczone do 0.05). Ruch = prędkość * dt. Klawisze: mapa keydown/keyup po e.key.toLowerCase() (w/a/s/d, strzałki, ' ' = spacja).
+- Kolizje proste: odległość środków (a.position.distanceTo(b.position) < promienA + promienB). Podniesiona moneta: scena.remove(mesh) + geometry.dispose().
+- HUD: element #hud (textContent), nie canvas. Wynik, monety, czas.
+- ZAWSZE aktualizuj window.__gra w każdej klatce: { wynik, pozycja:{x,z}, monety (ile zostało), czas } — tak testuje się grę. Dodawaj własne pola, nie usuwaj tych.
+- Resize: aktualizuj aspect kamery i rozmiar renderera. Nie używaj OrbitControls (kamera podąża za graczem).
+- Deterministycznie: losowość tylko przez własny generator z ziarnem (np. mulberry32), żeby test był powtarzalny.
+- Wydajność: maks ~200 meshy, żadnych świateł per moneta; jedna geometria + jeden materiał współdzielone.`;
+
+const SYSTEM_KODEKSA_GRY = `Jesteś Kodeks — TeOgochi od kodu w Katedrze OtakOS. Budujesz GRĘ przeglądarkową w three.js + TypeScript (strict) + Vite. Teksty w grze po polsku.
+
+${PRZEWODNIK_THREE}
+
+ZASADY, KTÓRYCH NIE ŁAMIESZ:
+- Oddajesz WYŁĄCZNIE pliki, w blokach dokładnie tej postaci (bez markdownu wokół, bez komentarzy poza blokami):
+=== PLIK: src/main.ts ===
+...cała treść pliku...
+=== KONIEC ===
+- Każdy plik oddajesz W CAŁOŚCI. Żadnych „reszta bez zmian".
+- Wolno Ci pisać tylko w src/** i index.html. Nie ruszasz package.json, vite.config.ts, tsconfig.json.
+- Zależności: tylko three. Żadnych CDN, żadnego fetch do obcych adresów, żadnych assetów z internetu — bryły i kolory z kodu.
+- TypeScript strict: typuj; \`declare global\` dla window.__gra zostaje.
+- Gdy dostajesz BŁĘDY z weryfikacji — poprawiasz tylko to, co trzeba, i znów oddajesz całe pliki, których dotknąłeś.
+- Timery i czas: w sekundach, z dt z pętli — nie setInterval.`;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PROJEKTY
 // ─────────────────────────────────────────────────────────────────────────────
 const slug = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32) || 'apka';
@@ -133,26 +256,29 @@ export async function projekty() {
     const lista = [];
     for (const d of await fs.readdir(cfg.katalog)) {
         const p = await czytajProjekt(d);
-        if (p) lista.push({ id: p.id, nazwa: p.nazwa, opis: p.opis, utworzono: p.utworzono, ostatnia: p.historia.at(-1)?.kiedy ?? p.utworzono, zbudowana: fsSync.existsSync(path.join(dirProjektu(d), 'dist', 'index.html')), zrzut: !!p.ostatniZrzut, iteracji: p.historia.length });
+        if (p) lista.push({ id: p.id, typ: p.typ ?? 'apka', nazwa: p.nazwa, opis: p.opis, utworzono: p.utworzono, ostatnia: p.historia.at(-1)?.kiedy ?? p.utworzono, zbudowana: fsSync.existsSync(path.join(dirProjektu(d), 'dist', 'index.html')), zrzut: !!p.ostatniZrzut, iteracji: p.historia.length });
     }
     return lista.sort((a, b) => (a.ostatnia < b.ostatnia ? 1 : -1));
 }
 
-export async function nowyProjekt({ nazwa, opis = '' }) {
+export async function nowyProjekt({ nazwa, opis = '', typ = 'apka' }) {
     const czysta = String(nazwa || '').trim();
     if (!czysta) throw new Error('Podaj nazwę aplikacji.');
+    const rodzaj = typ === 'gra' ? 'gra' : 'apka';
+    const szablon = rodzaj === 'gra' ? SZABLON_GRY : SZABLON;
+    const nodeModules = rodzaj === 'gra' ? cfg.nodeModulesGry : cfg.nodeModules;
     let id = slug(czysta);
     if (fsSync.existsSync(dirProjektu(id))) id = `${id}-${crypto.randomBytes(2).toString('hex')}`;
     const dir = dirProjektu(id);
     await fs.mkdir(path.join(dir, 'src'), { recursive: true });
-    for (const [rel, tresc] of Object.entries(SZABLON)) await fs.writeFile(path.join(dir, rel), tresc(czysta, String(opis).trim()), 'utf8');
+    for (const [rel, tresc] of Object.entries(szablon)) await fs.writeFile(path.join(dir, rel), tresc(czysta, String(opis).trim()), 'utf8');
     await fs.writeFile(path.join(dir, '.gitignore'), 'node_modules\ndist\nzrzut*.png\nnieudane\nprojekt.json\n', 'utf8');
     // node_modules jako junction do App Studio — react/vite/typescript bez instalowania czegokolwiek.
-    if (fsSync.existsSync(cfg.nodeModules)) { try { await fs.symlink(cfg.nodeModules, path.join(dir, 'node_modules'), 'junction'); } catch { /* bez node_modules build powie, czego brak */ } }
+    if (fsSync.existsSync(nodeModules)) { try { await fs.symlink(nodeModules, path.join(dir, 'node_modules'), 'junction'); } catch { /* bez node_modules build powie, czego brak */ } }
     await git(dir, ['init', '-q']);
     await git(dir, ['add', '-A']);
-    await git(dir, ['-c', 'user.name=Kodeks', '-c', 'user.email=kodeks@katedra.local', 'commit', '-q', '-m', 'szablon: nowa aplikacja z TeO App Studio']);
-    const p = { id, nazwa: czysta, opis: String(opis).trim(), utworzono: new Date().toISOString(), historia: [], ostatniZrzut: null };
+    await git(dir, ['-c', 'user.name=Kodeks', '-c', 'user.email=kodeks@katedra.local', 'commit', '-q', '-m', rodzaj === 'gra' ? 'szablon: nowa gra three.js z TeO Games Studio' : 'szablon: nowa aplikacja z TeO App Studio']);
+    const p = { id, typ: rodzaj, nazwa: czysta, opis: String(opis).trim(), utworzono: new Date().toISOString(), historia: [], ostatniZrzut: null };
     await zapiszProjekt(p);
     await szyna('praca', `nowa apka „${czysta}" (${id}) — szablon gotowy`, { projekt: id });
     return p;
@@ -350,10 +476,11 @@ async function weryfikujBuild(dir) {
 }
 
 /** Puppeteer: otwórz zbudowaną apkę na moście, zbierz błędy, zrób zrzut. */
-async function przetestujWPrzegladarce(id) {
+async function przetestujWPrzegladarce(id, typ = 'apka') {
     const t0 = Date.now();
     if (!cfg.puppeteer) return { ok: null, bledy: [], log: 'puppeteer niedostępny — test w przeglądarce pominięty', sekundy: 0 };
     const dir = dirProjektu(id);
+    if (typ === 'gra') return przetestujGre(id, dir, t0);
     const nazwaZrzutu = `zrzut-${Date.now()}.png`;
     const bledy = [];
     let przegladarka = null;
@@ -422,6 +549,56 @@ export async function ocenZachowanie({ cel, migawki, model }) {
     } catch { return { ok: true, powod: null, niepewne: true }; }
 }
 
+/**
+ * Test GRY: canvas w #gra, potem WSAD przez klawiaturę puppeteera i odczyt window.__gra po każdym
+ * ruchu. Migawki to JSON stanu — sędzia dostaje twarde liczby (pozycja, wynik, monety), nie tekst.
+ * Chrome headless bez GPU renderuje WebGL programowo (SwiftShader) — wolno, ale wystarcza.
+ */
+async function przetestujGre(id, dir, t0) {
+    const nazwaZrzutu = `zrzut-${Date.now()}.png`;
+    const bledy = [];
+    let przegladarka = null;
+    try {
+        przegladarka = await cfg.puppeteer.launch({ headless: true, args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+        const strona = await przegladarka.newPage();
+        await strona.setViewport({ width: 960, height: 640 });
+        strona.on('console', (m) => { if (m.type() === 'error' && !/favicon/i.test(m.location?.()?.url || '')) bledy.push(`console.error: ${m.text().slice(0, 400)}`); });
+        strona.on('pageerror', (e) => bledy.push(`wyjątek: ${String(e.message || e).slice(0, 400)}`));
+        strona.on('requestfailed', (r) => { if (!/favicon/.test(r.url())) bledy.push(`nie doszło: ${r.url().slice(0, 200)}`); });
+        await strona.goto(`http://127.0.0.1:${cfg.portMostu}/apki/${id}/`, { waitUntil: 'load', timeout: 20_000 });
+        await new Promise((r) => setTimeout(r, 2500));
+        const canvas = await strona.$('#gra canvas');
+        if (!canvas) bledy.push('brak <canvas> w #gra — renderer three.js nie wystartował');
+        const stan = () => strona.evaluate(() => (window.__gra ? JSON.stringify(window.__gra) : null)).catch(() => null);
+        const migawki = [];
+        const s0 = await stan();
+        if (!s0) bledy.push('brak window.__gra — przewodnik wymaga okna stanu aktualizowanego w każdej klatce');
+        migawki.push({ kiedy: 'po załadowaniu', tekst: s0 || '(brak)' });
+        for (const [klawisz, ms] of [['w', 1500], ['d', 1500], [' ', 300]]) {
+            await strona.keyboard.down(klawisz === ' ' ? 'Space' : klawisz.toUpperCase());
+            await new Promise((r) => setTimeout(r, ms));
+            await strona.keyboard.up(klawisz === ' ' ? 'Space' : klawisz.toUpperCase());
+            await new Promise((r) => setTimeout(r, 300));
+            migawki.push({ kiedy: `po ${klawisz === ' ' ? 'spacji' : 'klawiszu ' + klawisz.toUpperCase()} (${ms} ms)`, tekst: (await stan()) || '(brak)' });
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+        migawki.push({ kiedy: '1,5 s później, bez klawiszy', tekst: (await stan()) || '(brak)' });
+        await strona.screenshot({ path: path.join(dir, nazwaZrzutu) });
+        for (const f of await fs.readdir(dir)) if (/^zrzut-.*\.png$/.test(f) && f !== nazwaZrzutu) await fs.rm(path.join(dir, f), { force: true });
+        // Deterministycznie: po W i D pozycja gracza MUSI się zmienić; inaczej gra nie reaguje na klawisze.
+        try {
+            const a = JSON.parse(migawki[0].tekst), b = JSON.parse(migawki[2].tekst);
+            if (a?.pozycja && b?.pozycja && Math.abs(a.pozycja.x - b.pozycja.x) + Math.abs(a.pozycja.z - b.pozycja.z) < 0.01) bledy.push('gracz nie ruszył się po W i D — sterowanie nie działa (window.__gra.pozycja bez zmian)');
+            // Wynik nie ma prawa SPADAĆ (zmierzone 2026-09-21: zebrana moneta wracała, bo liczono ją co klatkę z odległości).
+            const wyniki = migawki.map((m) => { try { return Number(JSON.parse(m.tekst)?.wynik); } catch { return NaN; } }).filter((w) => !Number.isNaN(w));
+            for (let i = 1; i < wyniki.length; i++) if (wyniki[i] < wyniki[i - 1]) { bledy.push(`wynik spadł z ${wyniki[i - 1]} na ${wyniki[i]} między migawkami — zebrane rzeczy nie mogą „wracać" (usuń je z tablicy, nie tylko ze sceny)`); break; }
+        } catch { /* brak stanu — już zgłoszone */ }
+        return { ok: bledy.length === 0, bledy, migawki, zrzut: nazwaZrzutu, log: bledy.length ? bledy.join('\n') : `gra: canvas OK, stan po klawiszach: ${migawki.at(-1).tekst.slice(0, 200)}`, sekundy: Math.round((Date.now() - t0) / 1000) };
+    } catch (e) {
+        return { ok: false, bledy: [`puppeteer: ${e.message.slice(0, 300)}`], migawki: [], log: `puppeteer: ${e.message}`, sekundy: Math.round((Date.now() - t0) / 1000) };
+    } finally { try { await przegladarka?.close(); } catch { /* — */ } }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ZADANIA — pętla Kodeksa w tle
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,6 +630,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
     (async () => {
         const dir = dirProjektu(projektId);
         const t0 = Date.now();
+        const typProjektu = (await czytajProjekt(projektId))?.typ ?? 'apka';
         await szyna('praca', `buduję w „${projektId}": ${cel.slice(0, 160)}`, { projekt: projektId, zadanie: z.id });
         let feedback = '';
         let ostatniZrzut = null;
@@ -474,7 +652,8 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                 const kPisze = krok('model', `runda ${runda}/${rundy}: Kodeks (${z.model}) pisze…`);
                 let ostatniMeldunek = 0;
                 const kartaKodeksa = await Persony.karta('kodeks').catch(() => null);
-                const odp = await pisz({ system: kartaKodeksa ? `${kartaKodeksa.tresc}\n\n${SYSTEM_KODEKSA}` : SYSTEM_KODEKSA, prompt, model: z.model, naKawalek: (n) => {
+                const regulyKodeksa = typProjektu === 'gra' ? SYSTEM_KODEKSA_GRY : SYSTEM_KODEKSA;
+                const odp = await pisz({ system: kartaKodeksa ? `${kartaKodeksa.tresc}\n\n${regulyKodeksa}` : regulyKodeksa, prompt, model: z.model, naKawalek: (n) => {
                     // meldunek co ~2000 znaków — żeby front widział, że model żyje, bez zalewania szyny
                     if (n - ostatniMeldunek >= 2000) { ostatniMeldunek = n; kPisze.znakow = n; naKrok({ typ: 'postep', tekst: `Kodeks napisał ${n} znaków…`, znakow: n, kiedy: new Date().toISOString() }); }
                 } });
@@ -495,11 +674,12 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                     continue;
                 }
 
-                const t = await przetestujWPrzegladarce(projektId);
+                const t = await przetestujWPrzegladarce(projektId, typProjektu);
                 if (t.zrzut) ostatniZrzut = t.zrzut;
                 krok(t.ok === false ? 'blad' : 'test', `przeglądarka (${t.sekundy} s): ${t.log.slice(0, 1500)}`, { zrzut: t.zrzut ?? null });
                 if (t.ok === false) { feedback = `Aplikacja zbudowała się, ale w przeglądarce:\n${t.bledy.join('\n')}`; continue; }
-                const o = await ocenZachowanie({ cel, migawki: t.migawki, model: z.model });
+                // Gra ma sędziego deterministycznego w teście (pozycja po klawiszach) — model pytamy tylko przy apce.
+                const o = typProjektu === 'gra' ? { ok: true, powod: null } : await ocenZachowanie({ cel, migawki: t.migawki, model: z.model });
                 krok(o.ok ? 'test' : 'blad', o.ok ? `ocena zachowania: zgodne z zadaniem${o.niepewne ? ' (sędzia niepewny — przepuszczam)' : ''}` : `ocena zachowania: ${o.powod}`, { migawki: t.migawki });
                 if (!o.ok) { feedback = `Aplikacja działa bez błędów konsoli, ale ZACHOWUJE SIĘ źle: ${o.powod}
 PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy czas trwania jest w ms (4000), a odliczasz po 1 na sekundę? Trzymaj wszystko w sekundach. (2) useEffect — czy interwał/timeout jest tworzony i czyszczony w tym samym efekcie, z właściwymi zależnościami? (3) czy stan naprawdę się zmienia (setState na nowej wartości, nie mutacja)? (4) czy przycisk woła funkcję, która startuje timer?\nMigawki tekstu strony:\n${(t.migawki || []).map((m) => `[${m.kiedy}] ${m.tekst}`).join('\n')}`; continue; }
@@ -580,4 +760,52 @@ export async function usunProjekt(projektId) {
     return true;
 }
 
-export default { skonfiguruj, projekty, nowyProjekt, projekt, pliki, zrzut, buduj, zadanie, zadaniaProjektu, cofnij, usunProjekt, silniki };
+/**
+ * ANALIZA PROJEKTU — „obecny stan gry i jak może się rozwinąć" (Suweren, 2026-09-21).
+ * Kodeks czyta kod i historię, a z kartą Reżysera (narracja, questy) proponuje kierunki.
+ * Oddaje JSON: stan, dziala[], brakuje[], kierunki[{tytul, opis, zadanie}], nastepneZadanie.
+ * `nastepneZadanie` jest gotowym zleceniem — panel produkcyjny i Nocna Zmiana biorą je 1:1.
+ * Zapis do projekt.json → historia analiz zostaje, żeby kolejna widziała poprzednie.
+ */
+export async function analizuj(projektId, { model } = {}) {
+    const p = idOk(projektId) ? await czytajProjekt(projektId) : null;
+    if (!p) throw new Error('Nie ma takiego projektu.');
+    const silnik = model || cfg.model();
+    const obecne = await pliki(projektId);
+    const [kodeks, rezyser] = await Promise.all([Persony.karta('kodeks').catch(() => null), Persony.karta('rezyser').catch(() => null)]);
+    const poprzednie = (p.analizy ?? []).slice(-2).map((a) => `- ${a.kiedy.slice(0, 10)}: ${a.stan}`).join('\n');
+    const system = `${kodeks ? kodeks.tresc + '\n\n' : ''}${p.typ === 'gra' && rezyser ? 'DRUGI GŁOS — Reżyser (narracja, questy, świat):\n' + rezyser.tresc + '\n\n' : ''}Analizujesz PROJEKT ${p.typ === 'gra' ? 'GRY (three.js)' : 'APLIKACJI (React)'} w Katedrze OtakOS. Odpowiadasz WYŁĄCZNIE JSON-em po polsku, bez markdownu:
+{"stan":"2–3 zdania: co ten projekt dziś robi","dziala":["co działa"],"brakuje":["co kuleje albo jest atrapą"],"kierunki":[{"tytul":"krótki tytuł","opis":"1–2 zdania","zadanie":"gotowe zlecenie dla Kodeksa, konkretne, wykonalne w jednej rundzie"}],"nastepneZadanie":"jedno zlecenie, które warto zrobić jako pierwsze"}
+Kierunków: 3–5, od najmniejszego (dodatek na godzinę) do największego (nowa mechanika). Nie wymyślaj funkcji, których nie widać w kodzie, jako „działających".`;
+    const prompt = `PROJEKT: ${p.nazwa} (${p.id}, typ: ${p.typ ?? 'apka'})\nOPIS SUWERENA: ${p.opis || '(brak)'}\n\nHISTORIA ZLECEŃ:\n${p.historia.slice(-8).map((h) => `- ${h.ok ? '✓' : '✗'} ${h.tresc.slice(0, 140)}`).join('\n') || '(tylko szablon)'}\n${poprzednie ? `\nPOPRZEDNIE ANALIZY:\n${poprzednie}\n` : ''}\nKOD:\n${kontekstPlikow(obecne)}`;
+    const odp = await pisz({ system, prompt, model: silnik, timeoutMs: 15 * 60_000 });
+    const m = odp.tekst.match(/\{[\s\S]*\}/);
+    let j;
+    try { j = JSON.parse(m ? m[0] : odp.tekst); } catch { throw new Error(`Model nie oddał poprawnego JSON-a analizy (${odp.tokeny} tokenów). Spróbuj ponownie albo innym silnikiem.`); }
+    const analiza = {
+        kiedy: new Date().toISOString(), model: silnik,
+        stan: String(j.stan || '').slice(0, 600),
+        dziala: Array.isArray(j.dziala) ? j.dziala.map(String).slice(0, 8) : [],
+        brakuje: Array.isArray(j.brakuje) ? j.brakuje.map(String).slice(0, 8) : [],
+        kierunki: Array.isArray(j.kierunki) ? j.kierunki.slice(0, 6).map((k) => ({ tytul: String(k.tytul || '').slice(0, 80), opis: String(k.opis || '').slice(0, 300), zadanie: String(k.zadanie || '').slice(0, 600) })) : [],
+        nastepneZadanie: String(j.nastepneZadanie || j.kierunki?.[0]?.zadanie || '').slice(0, 600),
+    };
+    p.analizy = [...(p.analizy ?? []), analiza].slice(-10);
+    await zapiszProjekt(p);
+    await szyna('praca', `analiza „${p.id}": ${analiza.stan.slice(0, 120)} → następne: ${analiza.nastepneZadanie.slice(0, 80)}`, { projekt: p.id });
+    return analiza;
+}
+
+/** Nocna Zmiana: „rozwiń projekt" = analiza (jeśli nie ma świeżej) + zlecenie `nastepneZadanie` Kodeksowi. */
+export async function rozwin(projektId, { model } = {}) {
+    const p = idOk(projektId) ? await czytajProjekt(projektId) : null;
+    if (!p) throw new Error('Nie ma takiego projektu.');
+    const ostatnia = p.analizy?.at(-1);
+    const swieza = ostatnia && (Date.now() - Date.parse(ostatnia.kiedy)) < 24 * 3600_000 && !p.historia.some((h) => h.kiedy > ostatnia.kiedy);
+    const analiza = swieza ? ostatnia : await analizuj(projektId, { model });
+    if (!analiza.nastepneZadanie) throw new Error('Analiza nie wskazała następnego zadania.');
+    const z = await buduj(projektId, { zadanie: analiza.nastepneZadanie, model });
+    return { ...z, zadanie: analiza.nastepneZadanie, analiza: analiza.stan };
+}
+
+export default { skonfiguruj, projekty, nowyProjekt, projekt, pliki, zrzut, buduj, zadanie, zadaniaProjektu, cofnij, usunProjekt, silniki, analizuj, rozwin };

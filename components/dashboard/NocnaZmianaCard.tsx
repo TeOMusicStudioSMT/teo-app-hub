@@ -239,6 +239,8 @@ const ZRODLA: Record<string, (zalezne: Record<string, string>) => Promise<{ id: 
     'silnik-obrazu': async () => (await zMostu<{ silniki: { id: string; nazwa: string }[] }>('/api/silniki-obrazu')).silniki,
     'lab-apka': async () => (await zMostu<{ apki: { id: string; nazwa: string; jest: boolean }[] }>('/api/lab/apki')).apki.filter((a) => a.jest),
     'lab-chip': async () => (await zMostu<{ lista: { id: string; nazwa: string; pytanOtwartych?: number }[] }>('/api/lab/chipy')).lista.map((c) => ({ id: c.id, nazwa: `${c.nazwa}${c.pytanOtwartych ? ` · ${c.pytanOtwartych} pytań` : ''}` })),
+    // 🛠️ projekty Kodeksa (App/Games Studio 2.0) — gry i apki z _OtakOs_Apki
+    'kodeks-projekt': async () => (await zMostu<{ projekty: { id: string; nazwa: string; typ?: string; iteracji: number }[] }>('/api/appstudio/projekty')).projekty.map((p) => ({ id: p.id, nazwa: `${p.typ === 'gra' ? '🎮' : '🛠️'} ${p.nazwa} · ${p.iteracji} iter.` })),
     'biznes': async () => (await zMostu<{ biznesy: { id: string; nazwa: string }[] }>('/api/latarnik/biznesy')).biznesy,
 };
 
