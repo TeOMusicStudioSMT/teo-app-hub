@@ -25,6 +25,7 @@ import PanelKodeks from './PanelKodeks';
 import PanelBilans from './PanelBilans';
 import KreatorPanelu from './KreatorPanelu';
 import PanelWlasny from './PanelWlasny';
+import KartyRol from './KartyRol';
 import { TeogochiPanel } from '../TeogochiPanel';
 import { pobierzPanele, type PanelDef } from '../../lib/paneleTeogochi';
 import { GATUNKI, type Gatunek } from '../../lib/teogochiGatunki';
@@ -302,6 +303,9 @@ export const DomTeogochi: React.FC = () => {
             </header>
 
             <PrzywracanieStada onPrzywrocono={() => { setStado(wykluteGatunki()); setDyzurny(aktywnyGatunek()); }} />
+
+            {/* 🎭 Karty ról — co każdy gatunek dostaje do promptu (kanon z repo / karta własna). */}
+            <KartyRol />
 
             {/* Panel dyżurnego gatunku. Na razie mają go DWA: Joanna (własny Dom,
                 otwierany z odtwarzacza) i Klatka — tutaj. Reszta czeka na swój. */}
