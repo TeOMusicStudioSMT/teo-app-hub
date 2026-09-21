@@ -62,7 +62,10 @@ $xdStatic = @(
     # XTTS). Bez tego distro rosło do 1.1GB (ZIP 406MB > limit GitHub 100MB). Małe
     # skrypty/docs (ue_scripts, forge_plugins, *.md) zostają — ważą grosze.
     'TeO_Arcade_Forge\ElectricDreamsEnv','TeO_Arcade_Forge\Twinmotion2026.1','TeO_Arcade_Forge\GENESIS_OVERRIDE 5.8',
-    'TeO_Arcade_Forge\RealityScan_2.2','TeO_Arcade_Forge\OtakOS','TeO_Arcade_Forge\GENESIS_OVERRIDE'
+    'TeO_Arcade_Forge\RealityScan_2.2','TeO_Arcade_Forge\OtakOS','TeO_Arcade_Forge\GENESIS_OVERRIDE',
+    # 2026-09-21: distro urosło do 643 MB (ZIP 143 MB > limit GitHub 100 MB). Winni:
+    # projekt Unreal Suwerena (258 MB) i cache analizy kodu graphify (39 MB) — nie są Katedrą.
+    'TeO_Arcade_Forge\MojProjekt','graphify-out'
 )
 # Dołap dynamicznie wszelkie inne _OtakOs_* (na wypadek nowych).
 # _OtakOs_AI pomijamy tu celowo — ma własne, częściowe wykluczenia wyżej
@@ -77,7 +80,9 @@ $XD = ($xdStatic + $xdDynamic) | Select-Object -Unique
 $XF = @(
     '.env','.env.local','.env.development','.env.production','.env.*.local',
     '.anthropic_key.env','media_secrets.json','*.key','*.pem',
-    '*.log','*.bak','*.tmp','dev_server.log','.eve.example.txt'
+    '*.log','*.bak','*.tmp','dev_server.log','.eve.example.txt',
+    # narzędzie deweloperskie MCP (289 MB) — leżało w _OtakOs_AIin obok whispera, nie do distro
+    'codebase-memory-mcp.exe'
 )
 
 # ── 1. STAGING (robocopy /MIR do tymczasowego — czysty obraz) ────────────────
