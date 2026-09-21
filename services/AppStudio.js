@@ -28,6 +28,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import * as Persony from './Persony.js';
 
 const run = promisify(execFile);
 
@@ -472,7 +473,8 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                 const prompt = `PROJEKT: ${projektId}\n\nOBECNE PLIKI:\n${kontekstPlikow(obecne)}\nZADANIE SUWERENA:\n${cel}\n${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
                 const kPisze = krok('model', `runda ${runda}/${rundy}: Kodeks (${z.model}) pisze…`);
                 let ostatniMeldunek = 0;
-                const odp = await pisz({ system: SYSTEM_KODEKSA, prompt, model: z.model, naKawalek: (n) => {
+                const kartaKodeksa = await Persony.karta('kodeks').catch(() => null);
+                const odp = await pisz({ system: kartaKodeksa ? `${kartaKodeksa.tresc}\n\n${SYSTEM_KODEKSA}` : SYSTEM_KODEKSA, prompt, model: z.model, naKawalek: (n) => {
                     // meldunek co ~2000 znaków — żeby front widział, że model żyje, bez zalewania szyny
                     if (n - ostatniMeldunek >= 2000) { ostatniMeldunek = n; kPisze.znakow = n; naKrok({ typ: 'postep', tekst: `Kodeks napisał ${n} znaków…`, znakow: n, kiedy: new Date().toISOString() }); }
                 } });

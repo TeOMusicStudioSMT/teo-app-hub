@@ -32,6 +32,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import * as Persony from './Persony.js';
 
 let cfg = {
     ollamaBase: 'http://127.0.0.1:11434',
@@ -239,9 +240,12 @@ function opisNarzedzi(profil, lokalne) {
         .join('\n');
 }
 
-function systemPrompt(profil, lokalne) {
+async function systemPrompt(profil, lokalne) {
     const narzedzia = opisNarzedzi(profil, lokalne);
-    return `${profil.persona}
+    // Karta roli (services/Persony.js) wygrywa z jednozdaniową personą — ta zostaje zapasem.
+    const karta = await Persony.karta(profil.gatunek);
+    const tozsamosc = karta ? `${karta.tresc}\n\nReprezentujesz Suwerena, gdy jest poza domem.` : profil.persona;
+    return `${tozsamosc}
 
 Rozmawiasz z Suwerenem przez telefon — odpowiedzi są czytane na głos, więc: 1–3 zdania, bez list, bez nagłówków, bez emoji.
 
@@ -384,7 +388,7 @@ export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = fa
     r.tury.push({ kto: 'suweren', tresc, kiedy: new Date().toISOString() });
     await cfg.szyna?.nadaj({ agent, rodzaj: 'telefon', tresc: `Suweren: ${tresc.slice(0, 300)}`, dane: { rozmowaId: id, kto: 'suweren' } });
 
-    const messages = [{ role: 'system', content: systemPrompt(profil, lokalne) }];
+    const messages = [{ role: 'system', content: await systemPrompt(profil, lokalne) }];
     for (const t of r.tury.slice(-12)) {
         if (t.kto === 'suweren') messages.push({ role: 'user', content: t.tresc });
         else if (t.kto === 'delegat') messages.push({ role: 'assistant', content: t.tresc });

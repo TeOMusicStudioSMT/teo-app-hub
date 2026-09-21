@@ -74,7 +74,9 @@ const APKI = {
     lab:     { nazwa: 'TeO Lab Studio',          dir: ['TeO_Lab_Studio'] },
 };
 
-export function skonfiguruj({ ollama, model, modelMechanika, szynaZdarzen } = {}) {
+let persony = null;
+export function skonfiguruj({ ollama, model, modelMechanika, szynaZdarzen, personyKart } = {}) {
+    if (personyKart) persony = personyKart;
     if (ollama) ollamaBase = ollama;
     if (model) modelDomyslny = model;
     if (modelMechanika) modelKodu = modelMechanika;
@@ -505,8 +507,10 @@ export async function zacznijArene({ uczestnicy, temat, rundy = 3, model, kontek
                 rek.runda = r;
                 for (const o of osoby) {
                     const ostatnie = rek.transkrypt.slice(-12).map((w) => `${w.imie} (${w.dziedzina}): ${w.tekst}`).join('\n');
+                    // Karta roli (services/Persony.js) przed ramką areny — gatunek bez karty gra jak dotąd.
+                    const kartaRoli = persony ? await persony.karta(o.id).catch(() => null) : null;
                     const w = await pisz({
-                        system: `Jesteś ${o.imie} — TeOgochi Katedry OtakOS, dziedzina: ${o.dziedzina}, etap: ${o.etap}. Mówisz po polsku, w pierwszej osobie, 2–4 zdania, TYLKO z perspektywy swojej dziedziny. Odnosisz się do tego, co powiedzieli inni. Bez powtarzania tematu, bez grzeczności na wstępie. Jeśli nie masz nic nowego — powiedz jedno zdanie i oddaj głos.`,
+                        system: `${kartaRoli ? kartaRoli.tresc + '\n\n' : ''}Jesteś ${o.imie} — TeOgochi Katedry OtakOS, dziedzina: ${o.dziedzina}, etap: ${o.etap}. Mówisz po polsku, w pierwszej osobie, 2–4 zdania, TYLKO z perspektywy swojej dziedziny. Odnosisz się do tego, co powiedzieli inni. Bez powtarzania tematu, bez grzeczności na wstępie. Jeśli nie masz nic nowego — powiedz jedno zdanie i oddaj głos.`,
                         prompt: `TEMAT ARENY: ${rek.temat}\n${rek.kontekst ? `\nKONTEKST PROJEKTU (liczby i notatki — trzymaj się ich, nie wymyślaj nowych):\n${rek.kontekst}\n` : ''}RUNDA ${r}/${rek.rundy}\n\nDOTĄD:\n${ostatnie || '(cisza — zaczynasz)'}\n\nTwoja wypowiedź:`,
                         model: rek.model, timeoutMs: 180_000,
                     });

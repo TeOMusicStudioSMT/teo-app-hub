@@ -160,6 +160,7 @@ import * as Artemis from './services/Artemis.js';
 import * as Tunel from './services/Tunel.js';
 import * as Stado from './services/Stado.js';
 import * as AppStudio from './services/AppStudio.js';
+import * as Persony from './services/Persony.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as WarsztatUtworow from './services/WarsztatUtworow.js';
@@ -7695,7 +7696,27 @@ app.post('/api/telefon/zadanie/:id/stop', async (req, res) => {
 // 🧪 TeO LAB — printy z lokalnego modelu, piaskownica Nocnej Zmiany, arena
 // TeOgochi, projekt chipów. Zaplecze: services/Laboratorium.js (tam „po co").
 // ═════════════════════════════════════════════════════════════════════════════
-Laboratorium.skonfiguruj({ ollama: OLLAMA_BASE, model: process.env.OTAKOS_MODEL, modelMechanika: () => modelMechanika(), szynaZdarzen: Szyna });
+Laboratorium.skonfiguruj({ ollama: OLLAMA_BASE, model: process.env.OTAKOS_MODEL, modelMechanika: () => modelMechanika(), szynaZdarzen: Szyna, personyKart: Persony });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 🎭 PERSONY — karty ról TeOgochi (services/Persony.js). Kanon w services/persony/,
+// własne Suwerena w _OtakOs_Wymiar/persony/ (wygrywają). Czytają: Delegat, Arena,
+// /api/szyna/pytanie, Kodeks w App Studio.
+// ═════════════════════════════════════════════════════════════════════════════
+Persony.skonfiguruj({ katalogWymiar: ANTIGRAVITY_DIR });
+app.get('/api/persony', async (_req, res) => res.json({ success: true, persony: await Persony.lista() }));
+app.get('/api/persony/:id', async (req, res) => {
+    const k = await Persony.karta(req.params.id);
+    return k ? res.json({ success: true, karta: k }) : res.status(404).json({ success: false, message: 'Ten gatunek nie ma karty roli.' });
+});
+app.put('/api/persony/:id', async (req, res) => {
+    try { res.json({ success: true, karta: await Persony.zapiszWlasna(req.params.id, req.body?.tresc) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.delete('/api/persony/:id', async (req, res) => {
+    try { res.json({ success: true, usunieto: await Persony.usunWlasna(req.params.id) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 🌙🎬 REALIZACJA NOCNA — „Zrealizuj zaplanowaną Produkcję" (Klatka) i „Zrealizuj
@@ -15451,7 +15472,8 @@ app.post('/api/szyna/pytanie', async (req, res) => {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
             body: JSON.stringify({
                 model: silnik,
-                system: persona || `Jesteś agentem „${doKogo}" w Katedrze OtakOS. Odpowiadaj po polsku, krótko i konkretnie.`,
+                // Karta roli (services/Persony.js) po imieniu, gdy front nie przysłał persony — most dalej nie dubluje katalogu gatunków.
+                system: persona || (await Persony.kartaPoImieniu(doKogo).then((k) => k ? `${k.tresc}\n\nOdpowiadasz po polsku, krótko i konkretnie.` : null).catch(() => null)) || `Jesteś agentem „${doKogo}" w Katedrze OtakOS. Odpowiadaj po polsku, krótko i konkretnie.`,
                 prompt: `Pyta Cię agent „${odKogo}".\n\n${pytanie}`,
                 stream: false, options: { temperature: 0.7 },
             }),
