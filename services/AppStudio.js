@@ -202,6 +202,7 @@ ZASADY, KTÓRYCH NIE ŁAMIESZ:
 - Gdy dostajesz BŁĘDY z weryfikacji — poprawiasz tylko to, co trzeba, i znów oddajesz całe pliki, których dotknąłeś.
 - Nie dodawaj plików, których nikt nie importuje. main.tsx i index.css zmieniasz tylko, gdy to konieczne.
 - Timery: typ ReturnType<typeof setTimeout>, NIE NodeJS.Timeout (projekt nie ma typów Node — zmierzony błąd tsc).
+- CZAS TRZYMAJ W SEKUNDACH (duration: 4, nie 4000) i odliczaj po 1 co 1000 ms przez setInterval w jednym useEffect zależnym tylko od tego, czy timer biegnie. Mieszanie ms z sekundami to zmierzona przyczyna „martwego” timera.
 - W useEffect sprzątaj interwały i timeouty; nie zostawiaj pętli, które ciągle zapisują do localStorage.`;
 
 function wylowPliki(tekst) {
