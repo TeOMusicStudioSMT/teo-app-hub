@@ -6,6 +6,7 @@ import { Provider } from 'jotai';
 import { KatedraRadioProvider } from './context/KatedraRadioContext';
 import { I18nProvider } from './lib/i18n';
 import { hydrateTunnelFromLocation, zapewnijKluczLokalnie } from './lib/bridgeService';
+import { hydratujStadoZMostu } from './lib/stadoSync';
 import './index.css';
 
 // 📡 Dispatch: `?tunnel=...` w adresie (kod QR z Katedry) → zapis tunelu przed startem UI.
@@ -22,8 +23,13 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
+// 🥚 Stado z mostu PRZED pierwszym renderem: komponenty czytają XP z localStorage przy
+// montowaniu, więc most musi zdążyć je tam wpisać. Sufit 2,5 s — bez mostu Katedra
+// startuje z tym, co ma przeglądarka, a synchronizacja dogania przy pierwszym zapisie.
 const root = ReactDOM.createRoot(rootElement);
-root.render(
+hydratujStadoZMostu().then((w) => {
+  if (w.mostZywy && (w.zMostu.length || w.doMostu.length)) console.info(`[Stado] z mostu: ${w.zMostu.join(', ') || '—'} · do mostu: ${w.doMostu.join(', ') || '—'}`);
+}).catch(() => { /* nigdy nie blokuj startu */ }).finally(() => root.render(
   <React.StrictMode>
     <KatedraRadioProvider>
       <Provider>
@@ -33,4 +39,4 @@ root.render(
       </Provider>
     </KatedraRadioProvider>
   </React.StrictMode>
-);
+));

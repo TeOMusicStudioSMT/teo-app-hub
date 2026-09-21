@@ -10,6 +10,7 @@
  */
 import { GATUNKI } from './teogochiGatunki';
 import { loadTeogochi, saveTeogochi, type TeogochiState } from './teogochiState';
+import { zsynchronizujStan, zsynchronizujWyklute, zsynchronizujAktywny } from './stadoSync';
 
 const KLUCZ_STADA = 'teogochi_stado_v1';
 const KLUCZ_AKTYWNY = 'teogochi_aktywny';
@@ -36,6 +37,7 @@ export function wykluj(id: string): boolean {
     if (lista.includes(id)) return false;
     try {
         localStorage.setItem(KLUCZ_STADA, JSON.stringify([...lista, id]));
+        zsynchronizujWyklute([...lista, id]);
         return true;
     } catch {
         return false;
@@ -53,6 +55,7 @@ export function aktywnyGatunek(): string {
 
 export function ustawAktywny(id: string): void {
     try { localStorage.setItem(KLUCZ_AKTYWNY, id); } catch { /* pełny storage */ }
+    zsynchronizujAktywny(id);
 }
 
 /**
@@ -79,6 +82,7 @@ export function stanGatunku(id: string): TeogochiState {
 export function zapiszStanGatunku(id: string, s: TeogochiState): void {
     if (id === 'joanna') { saveTeogochi(s); return; }
     try { localStorage.setItem(`teogochi_state_${id}`, JSON.stringify(s)); } catch { /* nic */ }
+    zsynchronizujStan(id, s as unknown as { xp: number });
 }
 
 /** Migawka stada, jaką Katedra publikuje do mostu (i jaką most trzyma w kopiach). */
@@ -109,6 +113,7 @@ export function przywrocZMigawki(m: MigawkaStada): { zmienione: string[] } {
         zmienione.push(g.id);
     }
     try { localStorage.setItem(KLUCZ_STADA, JSON.stringify(lista)); } catch { /* pełny storage */ }
+    zsynchronizujWyklute(lista);
     if (m.aktywny && GATUNKI.some(x => x.id === m.aktywny)) ustawAktywny(m.aktywny);
     return { zmienione };
 }

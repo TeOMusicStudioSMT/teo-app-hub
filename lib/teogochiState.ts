@@ -27,6 +27,8 @@ export interface TeogochiState {
     favoritesPlayed?: number;  // ile ulubionych mu zagrano
 }
 
+import { zsynchronizujStan } from './stadoSync';
+
 const KEY = 'teogochi_state';
 
 export const STAGES: { stage: TeogochiStage; minXp: number; emoji: string; title: string }[] = [
@@ -68,6 +70,8 @@ export function loadTeogochi(): TeogochiState {
 
 export function saveTeogochi(s: TeogochiState): void {
     try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* brak localStorage */ }
+    // Od 2026-09-21 źródłem prawdy jest most (lib/stadoSync.ts) — przeglądarka to pamięć podręczna.
+    zsynchronizujStan('joanna', s as unknown as { xp: number });
 }
 
 const clamp = (v: number) => Math.max(0, Math.min(100, v));

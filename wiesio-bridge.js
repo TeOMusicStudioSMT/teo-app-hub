@@ -158,6 +158,7 @@ import * as Laboratorium from './services/Laboratorium.js';
 import * as Delegat from './services/Delegat.js';
 import * as Artemis from './services/Artemis.js';
 import * as Tunel from './services/Tunel.js';
+import * as Stado from './services/Stado.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as WarsztatUtworow from './services/WarsztatUtworow.js';
@@ -9722,6 +9723,15 @@ app.post('/api/stado/publikuj', async (req, res) => {
         await Szyna.nadaj({ agent: 'Stado', rodzaj: 'blad', tresc: `migawka stada COFNĘŁA ${r.cofniete.map((c) => `${c.imie}: ${c.bylo.etap} ${c.bylo.xp} XP → ${c.jest?.etap ?? '?'} ${c.jest?.xp ?? 0} XP`).join('; ')}. Stara migawka w kopii${r.kopia ? ` ${r.kopia}` : ''} — Dom TeOgochi ma „Przywróć z kopii mostu".`, dane: { kopia: r.kopia, cofniete: r.cofniete } }).catch(() => {});
     }
     res.json({ success: true, ...r });
+});
+// ── 🥚 ŹRÓDŁO PRAWDY XP (services/Stado.js) — przeglądarka ściąga przy starcie, odsyła przy zapisie ──
+app.get('/api/stado/stan', async (_req, res) => res.json({ success: true, ...(await Stado.stan()) }));
+app.post('/api/stado/stan', async (req, res) => {
+    try {
+        const r = await Stado.scal(req.body ?? {});
+        if (r.odrzucone.length) console.warn(`[Stado] ⛔ odrzucone niższe XP: ${r.odrzucone.map((o) => `${o.id} ${o.przyszlo}<${o.naDysku}`).join(', ')}`);
+        res.json({ success: true, ...r });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 app.get('/api/stado/kopie', async (_req, res) => res.json({ success: true, kopie: await MostStada.kopie() }));
 app.get('/api/stado/kopie/:nazwa', async (req, res) => {
