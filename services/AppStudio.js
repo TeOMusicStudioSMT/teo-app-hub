@@ -515,7 +515,8 @@ export async function usunProjekt(projektId) {
     const dir = dirProjektu(projektId);
     if (!fsSync.existsSync(dir)) return false;
     // junction node_modules odpinamy jawnie — rm -rf przez junction NIE wchodzi do celu, ale wolę nie zgadywać.
-    try { await fs.unlink(path.join(dir, 'node_modules')); } catch { /* nie było */ }
+    // junction na Windows odpina fs.rmdir (unlink oddaje EPERM); rm -r i tak nie wchodzi w link — pas i szelki
+    try { await fs.rmdir(path.join(dir, 'node_modules')); } catch { try { await fs.unlink(path.join(dir, 'node_modules')); } catch { /* nie było */ } }
     await fs.rm(dir, { recursive: true, force: true });
     return true;
 }
