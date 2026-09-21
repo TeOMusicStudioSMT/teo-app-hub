@@ -161,6 +161,7 @@ import * as Tunel from './services/Tunel.js';
 import * as Stado from './services/Stado.js';
 import * as AppStudio from './services/AppStudio.js';
 import * as Persony from './services/Persony.js';
+import * as Gdd from './services/Gdd.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as WarsztatUtworow from './services/WarsztatUtworow.js';
@@ -7680,6 +7681,47 @@ app.get('/api/appstudio/zadania/:id/sondaz', (req, res) => {
     if (!z) return res.json({ stan: 'blad', blad: 'nie ma takiego zadania (most zrestartowany?)' });
     return res.json({ stan: z.stan, podsumowanie: z.wynik ? `${z.wynik.ok ? 'gotowe' : 'padło'}: ${z.rundy} rund, ${z.wynik.sekundy} s${z.wynik.commit ? ', commit ' + z.wynik.commit : ''}${z.wynik.powod ? ' — ' + z.wynik.powod.slice(0, 200) : ''}` : null, blad: z.stan === 'blad' ? (z.wynik?.powod || 'padło') : null });
 });
+// ═════════════════════════════════════════════════════════════════════════════
+// 📜 GDD + REŻYSER GRY + PRODUKCJA Z PLANU (services/Gdd.js). GDD leży w projekcie gry
+// (_OtakOs_Apki/<id>/gdd.json); produkcja karmi pętlę Kodeksa zadanie po zadaniu.
+// ═════════════════════════════════════════════════════════════════════════════
+Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, model: () => modelMechanika() });
+const gddUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+app.get('/api/gdd/silniki', (_req, res) => res.json({ success: true, silniki: Gdd.SILNIKI }));
+app.get('/api/gdd/:id', async (req, res) => {
+    const g = await Gdd.wczytaj(req.params.id);
+    return g ? res.json({ success: true, gdd: g, produkcja: Gdd.produkcja(req.params.id) }) : res.json({ success: true, gdd: null, produkcja: null });
+});
+app.put('/api/gdd/:id', async (req, res) => {
+    try { res.json({ success: true, gdd: await Gdd.zapisz(req.params.id, req.body?.gdd ?? req.body ?? {}) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** Import: PDF (pole `plik`) albo { tekst } — model przekuwa w GDD pod silnik docelowy (domyślnie three). */
+app.post('/api/gdd/:id/import', gddUpload.single('plik'), async (req, res) => {
+    try {
+        let tekst = String(req.body?.tekst || '');
+        if (req.file) {
+            if (!/pdf$/i.test(req.file.mimetype) && !/\.pdf$/i.test(req.file.originalname)) tekst = req.file.buffer.toString('utf8');
+            else { const { default: pdf } = await import('pdf-parse/lib/pdf-parse.js'); tekst = (await pdf(req.file.buffer)).text; }
+        }
+        res.json({ success: true, gdd: await Gdd.importuj(req.params.id, { tekst, silnikDocelowy: req.body?.silnik || 'three', model: req.body?.model }) });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/gdd/:id/rozmowa', async (req, res) => {
+    try { res.json({ success: true, ...(await Gdd.rozmowa(req.params.id, req.body ?? {})) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/gdd/:id/plan', async (req, res) => {
+    try { res.json({ success: true, gdd: await Gdd.plan(req.params.id, { model: req.body?.model, odNowa: !!req.body?.odNowa }) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/gdd/:id/realizuj', async (req, res) => {
+    try { res.json({ success: true, ...(await Gdd.realizuj(req.params.id, { model: req.body?.model, tylkoKamien: req.body?.kamien || null })) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/gdd/:id/produkcja', (req, res) => res.json({ success: true, produkcja: Gdd.produkcja(req.params.id) }));
+app.post('/api/gdd/:id/przerwij', (req, res) => res.json({ success: true, przerwano: Gdd.przerwij(req.params.id) }));
+
 app.get('/api/appstudio/zadania/:id', (req, res) => {
     const z = AppStudio.zadanie(req.params.id);
     return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania.' });

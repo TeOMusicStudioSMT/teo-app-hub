@@ -406,7 +406,7 @@ export async function silniki() {
     return lista;
 }
 
-async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naKawalek = null }) {
+export async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naKawalek = null }) {
     if (/^claude:/.test(model)) return piszAnthropic({ system, prompt, model: model.slice(7), timeoutMs: Math.min(timeoutMs, 10 * 60_000) });
     if (/^gemini:/.test(model)) return piszGemini({ system, prompt, model: model.slice(7), timeoutMs: Math.min(timeoutMs, 10 * 60_000) });
     // Ollama przez node:http, NIE przez fetch. undici w Node urywa połączenie po 300 s bez
@@ -414,7 +414,7 @@ async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naKawalek 
     // albo stoi w kolejce za innym zadaniem (zmierzone 2026-09-21: „fetch failed" po 304 s
     // w rundzie 2, mimo strumienia). http.request nie ma takich sufitów; nasz jest jeden: timeoutMs.
     const url = new URL('/api/generate', cfg.ollamaBase);
-    const body = JSON.stringify({ model, system, prompt, stream: true, think: false, options: { temperature: 0.2, num_ctx: 16384 } });
+    const body = JSON.stringify({ model, system, prompt, stream: true, think: false, options: { temperature: 0.2, num_ctx: 16384, num_predict: 8192 } });
     return new Promise((resolve, reject) => {
         let tekst = '', tokeny = 0, bufor = '', zakonczone = false;
         const koniec = (fn) => (v) => { if (!zakonczone) { zakonczone = true; clearTimeout(zegar); fn(v); } };
@@ -433,7 +433,7 @@ async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naKawalek 
                         const j = JSON.parse(linia);
                         if (j.error) return pad(new Error(`Ollama: ${j.error}`));
                         if (j.response) { tekst += j.response; naKawalek?.(tekst.length); }
-                        if (j.done) tokeny = (Number(j.eval_count) || 0) + (Number(j.prompt_eval_count) || 0);
+                        if (j.done) { tokeny = (Number(j.eval_count) || 0) + (Number(j.prompt_eval_count) || 0); if (j.done_reason === 'length') tekst += '\n/* UCIĘTE: limit tokenów */'; }
                     } catch { /* niepełna linia */ }
                 }
             });
