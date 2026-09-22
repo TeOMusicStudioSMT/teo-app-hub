@@ -598,6 +598,25 @@ async function zrzucNieudaneIPrzywroc(dir, id) {
     return true;
 }
 
+/**
+ * Nowe moduły, których nikt nie importuje. Patrzymy tylko na pliki .ts/.tsx w src/ oddane w tej
+ * rundzie i szukamy ich nazwy w importach pozostałych plików projektu (bez rozszerzenia, bo
+ * bundler pozwala na `./wrogowie`). Pliki typów (.d.ts) i wejście (main) pomijamy.
+ */
+async function modulyBezImportu(dir, nowe) {
+    const kandydaci = nowe.filter((p) => /^src\/.+\.tsx?$/.test(p.sciezka) && !/\.d\.ts$/.test(p.sciezka) && !/^src\/(main|index)\./.test(p.sciezka));
+    if (!kandydaci.length) return [];
+    let caly = '';
+    try {
+        const wszystkie = await pliki(path.basename(dir));
+        caly = wszystkie.filter((p) => !kandydaci.some((k) => k.sciezka === p.sciezka)).map((p) => p.tresc).join('\n');
+    } catch { return []; }
+    return kandydaci.filter((k) => {
+        const nazwa = path.basename(k.sciezka).replace(/\.tsx?$/, '');
+        return !new RegExp(`from\\s*['"\`][^'"\`]*${nazwa}(\\.tsx?)?['"\`]`).test(caly);
+    }).map((k) => ({ plik: k.sciezka }));
+}
+
 export async function weryfikujBuild(dir) {
     const t0 = Date.now();
     const nm = path.join(dir, 'node_modules');
@@ -854,6 +873,17 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                     continue;
                 }
                 for (const p of nowe) { await fs.mkdir(path.dirname(path.join(dir, p.sciezka)), { recursive: true }); await fs.writeFile(path.join(dir, p.sciezka), p.tresc, 'utf8'); }
+
+                // MARTWY MODUŁ: nowy plik src/*.ts, którego nikt nie importuje, kompiluje się i
+                // przechodzi testy — a w grze nic się nie dzieje. Tak wyglądały obie nocne roboty
+                // 2026-09-22 (wrogowie.ts napisany, nigdzie nie podpięty; Suweren: „nie widzę tych
+                // efektów"). Sprawdzamy to deterministycznie, zanim ucieszymy się z „GOTOWE".
+                const martwe = await modulyBezImportu(dir, nowe);
+                if (martwe.length) {
+                    feedback = `Dodałeś ${martwe.map((m) => m.plik).join(', ')}, ale ŻADEN plik projektu tego nie importuje — ten kod nigdy się nie wykona i w grze nic nie widać. Podepnij go tam, gdzie ma działać (zwykle src/main.ts: import + wywołanie w pętli gry), i oddaj też ten plik.`;
+                    krok('blad', `martwy moduł: ${martwe.map((m) => m.plik).join(', ')} — nikt nie importuje, wymuszam podpięcie`);
+                    continue;
+                }
                 krok('pliki', `runda ${runda}: zapisano ${nowe.length} plik(ów): ${nowe.map((p) => p.sciezka).join(', ')}`, { pliki: nowe.map((p) => p.sciezka), tokeny: odp.tokeny });
 
                 const w = await weryfikujBuild(dir);
