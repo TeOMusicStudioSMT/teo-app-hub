@@ -15,7 +15,7 @@ import { NodeIO, Document } from '@gltf-transform/core';
 import { MeshoptSimplifier } from 'meshoptimizer';
 
 /** Wczytaj GLB → jedna spawana siatka { pozycje: Float32Array, kolory: Float32Array|null, indeksy: Uint32Array }. */
-export async function wczytajISpawaj(sciezka) {
+export async function wczytajISpawaj(sciezka, podzialka = 4096) {
     const io = new NodeIO();
     const doc = await io.read(sciezka);
     const pozycje = [], kolory = [], indeksy = [];
@@ -39,7 +39,7 @@ export async function wczytajISpawaj(sciezka) {
     let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
     for (let i = 0; i < pozycje.length; i += 3) { const x = pozycje[i], y = pozycje[i + 1], z = pozycje[i + 2]; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; if (z < minZ) minZ = z; if (z > maxZ) maxZ = z; }
     const rozmiar = Math.max(maxX - minX, maxY - minY, maxZ - minZ) || 1;
-    const q = rozmiar / 4096;
+    const q = rozmiar / podzialka;
     const mapa = new Map(); const remap = new Int32Array(pozycje.length / 3);
     const nP = [], nC = [], licznik = [];
     for (let v = 0; v < pozycje.length / 3; v++) {
@@ -83,7 +83,8 @@ export async function zapiszGlb(siatka, indeksy, sciezka) {
     const buf = doc.createBuffer();
     const pos = doc.createAccessor('POSITION').setType('VEC3').setArray(Float32Array.from(P)).setBuffer(buf);
     const idx = doc.createAccessor('indeksy').setType('SCALAR').setArray(P.length / 3 > 65535 ? I : Uint16Array.from(I)).setBuffer(buf);
-    const mat = doc.createMaterial('kolory').setMetallicFactor(0).setRoughnessFactor(1).setDoubleSided(false);
+    // Dwustronnie: siatki z TRELLIS.2 bywaja otwarte i pod izometria widac przez sciany (2026-09-22).
+    const mat = doc.createMaterial('kolory').setMetallicFactor(0).setRoughnessFactor(1).setDoubleSided(true);
     const prim = doc.createPrimitive().setMode(4).setAttribute('POSITION', pos).setIndices(idx).setMaterial(mat);
     if (siatka.kolory) prim.setAttribute('COLOR_0', doc.createAccessor('COLOR_0').setType('VEC3').setArray(Float32Array.from(C)).setBuffer(buf));
     const mesh = doc.createMesh('asset').addPrimitive(prim);
