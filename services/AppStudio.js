@@ -157,12 +157,24 @@ export default defineConfig({ base: './' });
   </body>
 </html>
 `,
+    'src/global.d.ts': () => `// Typ okna stanu do testów (puppeteer czyta window.__gra po wciśnięciu klawiszy).
+// Rozszerzaj TUTAJ (nowe pola dopisuj w nowych liniach), nie w main.ts.
+declare global {
+  interface Window {
+    __gra: {
+      wynik: number;
+      pozycja: { x: number; z: number };
+      monety: number;
+      czas: number;
+    };
+  }
+}
+export {};
+`,
     'src/main.ts': (nazwa) => `// ${nazwa} — szablon gry three.js z TeO Games Studio. Kodeks rozbuduje go wg zadania.
 import * as THREE from 'three';
 
-// Okno stanu do testów (puppeteer czyta window.__gra po wciśnięciu klawiszy) — ZAWSZE aktualne.
-declare global { interface Window { __gra: { wynik: number; pozycja: { x: number; z: number }; monety: number; czas: number } } }
-
+// Okno stanu do testów — typ w src/global.d.ts, wartość ZAWSZE aktualna w każdej klatce.
 const kontener = document.getElementById('gra')!;
 const hud = document.getElementById('hud')!;
 const scena = new THREE.Scene();
@@ -233,7 +245,7 @@ ZASADY, KTÓRYCH NIE ŁAMIESZ:
 - Każdy plik oddajesz W CAŁOŚCI. Żadnych „reszta bez zmian".
 - Wolno Ci pisać tylko w src/** i index.html. Nie ruszasz package.json, vite.config.ts, tsconfig.json.
 - Zależności: tylko three. Żadnych CDN, żadnego fetch do obcych adresów, żadnych assetów z internetu — bryły i kolory z kodu.
-- TypeScript strict: typuj; \`declare global\` dla window.__gra zostaje.
+- TypeScript strict: typuj. Typ window.__gra mieszka w src/global.d.ts (wieloliniowo, z \`export {}\` na końcu) — nowe pola dopisuj TAM, nie deklaruj \`declare global\` w main.ts.
 - Gdy dostajesz BŁĘDY z weryfikacji — poprawiasz tylko to, co trzeba, i znów oddajesz całe pliki, których dotknąłeś.
 - Timery i czas: w sekundach, z dt z pętli — nie setInterval.`;
 
@@ -407,6 +419,12 @@ export async function silniki() {
     return lista;
 }
 
+export // 32k zamiast 16k: zmierzone 2026-09-21 — przy main.ts 16 KB prompt + przepisany plik dobijały do
+// 16384 i model oddawał ucięty bełkot bez bloków PLIK (3 rundy stracone). KV-cache 32k dla 9B
+// mieści się obok wag (część i tak leży w RAM na 6 GB VRAM); koszt: wolniejszy prompt-eval.
+const NUM_CTX = 32768;
+const DUZY_PLIK_LINII = 300;   // powyżej — Kodeks ma wydzielać moduły zamiast rosnąć w jednym pliku
+
 export async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naKawalek = null }) {
     if (/^claude:/.test(model)) return piszAnthropic({ system, prompt, model: model.slice(7), timeoutMs: Math.min(timeoutMs, 10 * 60_000) });
     if (/^gemini:/.test(model)) return piszGemini({ system, prompt, model: model.slice(7), timeoutMs: Math.min(timeoutMs, 10 * 60_000) });
@@ -415,7 +433,7 @@ export async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naK
     // albo stoi w kolejce za innym zadaniem (zmierzone 2026-09-21: „fetch failed" po 304 s
     // w rundzie 2, mimo strumienia). http.request nie ma takich sufitów; nasz jest jeden: timeoutMs.
     const url = new URL('/api/generate', cfg.ollamaBase);
-    const body = JSON.stringify({ model, system, prompt, stream: true, think: false, options: { temperature: 0.2, num_ctx: 16384, num_predict: 8192 } });
+    const body = JSON.stringify({ model, system, prompt, stream: true, think: false, options: { temperature: 0.2, num_ctx: NUM_CTX, num_predict: 8192 } });
     return new Promise((resolve, reject) => {
         let tekst = '', tokeny = 0, bufor = '', zakonczone = false;
         const koniec = (fn) => (v) => { if (!zakonczone) { zakonczone = true; clearTimeout(zegar); fn(v); } };
@@ -734,7 +752,9 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                 const eskalacja = powtorki >= 1
                     ? `\nUWAGA: to DOKŁADNIE TEN SAM błąd, co w poprzedniej rundzie — Twoja poprawka go nie usunęła. Zanim oddasz pliki, napisz w pierwszej linii odpowiedzi jednym zdaniem, co konkretnie zmieniasz (np. „dodaję 'idle' do typu Phase"), a potem bloki plików. Sprawdź numer linii z błędu i popraw TĘ linię i jej typ.\n`
                     : '';
-                const prompt = `PROJEKT: ${projektId}\n\nOBECNE PLIKI:\n${kontekstPlikow(obecne)}\nZADANIE SUWERENA:\n${cel}\n${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
+                const duze = obecne.filter((p) => /\.(ts|tsx)$/.test(p.sciezka) && p.tresc.split('\n').length > DUZY_PLIK_LINII).map((p) => `${p.sciezka} (${p.tresc.split('\n').length} linii)`);
+                const podzial = duze.length ? `\nPLIKI ZA DUŻE: ${duze.join(', ')}. Nie dopisuj do nich kolejnych funkcji — WYDZIEL spójne części (np. wrogowie, loot, HUD, poziom, questy) do osobnych plików src/*.ts z eksportami i importuj je w main.ts. Oddaj każdy plik, którego treść zmieniasz, W CAŁOŚCI; plików, których nie ruszasz, nie oddawaj.\n` : '';
+                const prompt = `PROJEKT: ${projektId}\n\nOBECNE PLIKI:\n${kontekstPlikow(obecne)}\nZADANIE SUWERENA:\n${cel}\n${podzial}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
                 const kPisze = krok('model', `runda ${runda}/${rundy}: Kodeks (${z.model}) pisze…`);
                 let ostatniMeldunek = 0;
                 const kartaKodeksa = await Persony.karta('kodeks').catch(() => null);
@@ -744,7 +764,14 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                     if (n - ostatniMeldunek >= 2000) { ostatniMeldunek = n; kPisze.znakow = n; naKrok({ typ: 'postep', tekst: `Kodeks napisał ${n} znaków…`, znakow: n, kiedy: new Date().toISOString() }); }
                 } });
                 const nowe = wylowPliki(odp.tekst);
-                if (!nowe.length) { feedback = 'Nie znalazłem żadnego bloku === PLIK: … === w Twojej odpowiedzi. Oddaj pliki DOKŁADNIE w tym formacie.'; krok('blad', `runda ${runda}: model nie oddał plików (${odp.tokeny} tokenów)`); continue; }
+                if (!nowe.length) {
+                    const sufit = odp.tokeny >= NUM_CTX - 64;
+                    feedback = sufit
+                        ? `Twoja poprzednia odpowiedź nie zmieściła się w oknie modelu (${odp.tokeny} tokenów) i nie było w niej ani jednego kompletnego bloku === PLIK: … ===. Oddaj MNIEJ: tylko pliki, które zmieniasz, a duże pliki podziel na moduły (patrz PLIKI ZA DUŻE).`
+                        : 'Nie znalazłem żadnego bloku === PLIK: … === w Twojej odpowiedzi. Oddaj pliki DOKŁADNIE w tym formacie.';
+                    krok('blad', sufit ? `runda ${runda}: kontekst modelu wyczerpany (${odp.tokeny}/${NUM_CTX} tokenów) — projekt za duży na jeden prompt, wymuszam podział na moduły` : `runda ${runda}: model nie oddał plików (${odp.tokeny} tokenów)`);
+                    continue;
+                }
                 for (const p of nowe) { await fs.mkdir(path.dirname(path.join(dir, p.sciezka)), { recursive: true }); await fs.writeFile(path.join(dir, p.sciezka), p.tresc, 'utf8'); }
                 krok('pliki', `runda ${runda}: zapisano ${nowe.length} plik(ów): ${nowe.map((p) => p.sciezka).join(', ')}`, { pliki: nowe.map((p) => p.sciezka), tokeny: odp.tokeny });
 
@@ -753,7 +780,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                 ostatniBuildOk = w.ok;
                 if (!w.ok) {
                     feedback = `${w.etap}:\n${w.log}`;
-                    const odcisk = w.log.replace(/\s+/g, ' ').trim().slice(0, 400);
+                    const odcisk = w.log.replace(/\(\d+,\d+\)/g, '(_)').replace(/linia \d+:/g, 'linia _:').replace(/\s+/g, ' ').trim().slice(0, 400);
                     powtorki = odcisk === poprzedniBlad ? powtorki + 1 : 0;
                     poprzedniBlad = odcisk;
                     if (powtorki >= 2) { krok('blad', `ten sam błąd trzeci raz z rzędu — przerywam, żeby nie palić kolejnych rund`); break; }
