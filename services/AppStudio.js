@@ -843,6 +843,25 @@ PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy
             z.stan = 'blad'; z.koniec = new Date().toISOString();
             z.wynik = { ok: false, rundy: z.rundy, sekundy: Math.round((Date.now() - t0) / 1000), powod: e.message };
             krok('blad', `padło: ${e.message}`);
+            // Wyjątek w środku rundy (np. timeout Ollamy) zostawiał w projekcie pliki z połowy
+            // odpowiedzi (zmierzone 2026-09-22: main.ts zmieniony + questy.ts bez commita).
+            // Robimy to samo, co przy nieudanych rundach: diff do nieudane/, powrót do ostatniego commita.
+            try {
+                const diff = await git(dir, ['diff']);
+                const nowePliki = (await git(dir, ['ls-files', '--others', '--exclude-standard', '--', 'src'])).split('\n').filter(Boolean);
+                if (diff || nowePliki.length) {
+                    await fs.mkdir(path.join(dir, 'nieudane'), { recursive: true });
+                    let zrzutDiff = diff;
+                    for (const f of nowePliki) { try { zrzutDiff += `\n=== NOWY PLIK: ${f} ===\n${await fs.readFile(path.join(dir, f), 'utf8')}`; } catch { /* nic */ } }
+                    await fs.writeFile(path.join(dir, 'nieudane', `${z.id}.diff`), zrzutDiff, 'utf8');
+                    await git(dir, ['checkout', '--', '.']);
+                    await git(dir, ['clean', '-fdq', '--', 'src']);
+                    krok('stan', `przywrócono ostatni dobry stan projektu; niedokończona próba w nieudane/${z.id}.diff`);
+                }
+                const p = await czytajProjekt(projektId);
+                p.historia.push({ zadanie: z.id, tresc: cel, ok: false, rundy: z.rundy, sekundy: z.wynik.sekundy, kiedy: z.koniec, commit: null, model: z.model, powod: e.message });
+                await zapiszProjekt(p);
+            } catch (e2) { krok('blad', `nie udało się przywrócić projektu: ${e2.message}`); }
             await szyna('blad', `„${projektId}": ${e.message}`, { projekt: projektId, zadanie: z.id });
         }
     })();
