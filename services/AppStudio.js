@@ -229,6 +229,7 @@ const PRZEWODNIK_THREE = `PRZEWODNIK SILNIKA (three.js 0.170, TypeScript, Vite) 
 - HUD: element #hud (textContent), nie canvas. Wynik, monety, czas.
 - ZAWSZE aktualizuj window.__gra w każdej klatce: { wynik, pozycja:{x,z}, monety (ile zostało), czas } — tak testuje się grę. Dodawaj własne pola, nie usuwaj tych.
 - Resize: aktualizuj aspect kamery i rozmiar renderera. Nie używaj OrbitControls (kamera podąża za graczem).
+- ASSETY GLB: \`loader.load(url, (g) => …)\` daje \`g.scene\` typu **THREE.Group**, NIE Mesh. Pole, w którym trzymasz bryłę wroga/gracza, typuj \`THREE.Object3D\` (wspólna nadklasa Group i Mesh) — wtedy placeholder \`new THREE.Mesh(...)\` i wczytany model pasują bez rzutowań. Nie pisz \`as THREE.Group\` ani \`as THREE.Mesh\`. Kolor/materiał zmieniaj przez \`obj.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) … })\`.
 - Kamera ORTOGRAFICZNA (izometria): frustum liczony z aspektu i WYSOKOŚCI WIDOKU W JEDNOSTKACH ŚWIATA (np. 20): \`const h = 20, a = innerWidth / innerHeight; kamera = new OrthographicCamera(-h * a / 2, h * a / 2, h / 2, -h / 2, 0.1, 200)\`; to samo przy resize + updateProjectionMatrix. NIGDY frustum -1..1 — gracz 1×1 zasłoni wtedy cały ekran. Kamera stoi w (gracz.x + 20, 20, gracz.z + 20) i patrzy na gracza; podłoga i przeszkody muszą być widoczne wokół niego.
 - Deterministycznie: losowość tylko przez własny generator z ziarnem (np. mulberry32), żeby test był powtarzalny.
 - Wydajność: maks ~200 meshy, żadnych świateł per moneta; jedna geometria + jeden materiał współdzielone.`;
@@ -438,7 +439,12 @@ export async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naK
     // albo stoi w kolejce za innym zadaniem (zmierzone 2026-09-21: „fetch failed" po 304 s
     // w rundzie 2, mimo strumienia). http.request nie ma takich sufitów; nasz jest jeden: timeoutMs.
     const url = new URL('/api/generate', cfg.ollamaBase);
-    const body = JSON.stringify({ model, system, prompt, stream: true, think: false, options: { temperature: 0.2, num_ctx: NUM_CTX, num_predict: 8192 } });
+    // Okno kontekstu POD MIARĘ, nie na sztywno: przy 32k KV-cache 9B zajmuje ~4,8 GB VRAM i
+    // prawie całe wagi lądują w RAM-ie — prompt 7k tokenów liczył się 20 min bez jednego znaku
+    // (zmierzone 2026-09-22). Bierzemy tyle, ile prompt + 8k odpowiedzi, zaokrąglone do 2k.
+    const szacunekTokenow = Math.ceil((String(system).length + String(prompt).length) / 2.5) + 8192 + 1024;
+    const numCtx = Math.min(NUM_CTX, Math.max(8192, Math.ceil(szacunekTokenow / 2048) * 2048));
+    const body = JSON.stringify({ model, system, prompt, stream: true, think: false, options: { temperature: 0.2, num_ctx: numCtx, num_predict: 8192 } });
     return new Promise((resolve, reject) => {
         let tekst = '', tokeny = 0, bufor = '', zakonczone = false;
         const koniec = (fn) => (v) => { if (!zakonczone) { zakonczone = true; clearTimeout(zegar); fn(v); } };
@@ -461,7 +467,7 @@ export async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naK
                     } catch { /* niepełna linia */ }
                 }
             });
-            res.on('end', () => ok({ tekst, tokeny }));
+            res.on('end', () => ok({ tekst, tokeny, numCtx }));
             res.on('error', (e) => pad(new Error(`Ollama: ${e.message}`)));
         });
         req.on('error', (e) => pad(new Error(`Ollama: ${e.message}`)));
@@ -497,7 +503,17 @@ async function dopiszLinie(dir, log) {
  * 2026-09-21 na żywym moście: 24 min zmarnowane). Podmiana całego słowa wg podpowiedzi tsc
  * jest deterministyczna i bezpieczna; po niej tsc leci jeszcze raz. Zwraca listę podmian.
  */
-async function autonaprawLiterowki(dir, log) {
+/** Klasy z three/examples/jsm, po ktore Kodeks siega najczesciej - do autonaprawy TS2339. */
+const SCIEZKI_JSM = {
+    GLTFLoader: 'three/examples/jsm/loaders/GLTFLoader.js',
+    OrbitControls: 'three/examples/jsm/controls/OrbitControls.js',
+    DRACOLoader: 'three/examples/jsm/loaders/DRACOLoader.js',
+    FontLoader: 'three/examples/jsm/loaders/FontLoader.js',
+    TextGeometry: 'three/examples/jsm/geometries/TextGeometry.js',
+    EffectComposer: 'three/examples/jsm/postprocessing/EffectComposer.js',
+};
+
+export async function autonaprawLiterowki(dir, log) {
     const re = /^(src\/[^\s(]+)\(\d+,\d+\): error TS2552: Cannot find name '([A-Za-z_$][\w$]*)'\. Did you mean '([A-Za-z_$][\w$]*)'\?/gm;
     const podmiany = [];
     const widziane = new Set();
@@ -529,6 +545,35 @@ async function autonaprawLiterowki(dir, log) {
             const nowa = tresc.replace(new RegExp(`\\b${zle.replace(/[$]/g, '\\$&')}\\b`, 'g'), dobrze);
             if (nowa !== tresc) { await fs.writeFile(pelna, nowa, 'utf8'); podmiany.push(`${plik}: ${zle} → ${dobrze}`); }
         } catch { /* plik nie do odczytu — zostawiamy modelowi */ }
+    }
+    // TS2339 "Property 'GLTFLoader' does not exist on type typeof import(...three...)" - 9B trzy
+    // rundy z rzedu pisal `new THREE.GLTFLoader()` (zmierzone 2026-09-22, 75 min zmarnowane).
+    // Klasy z three/examples/jsm nie siedza w namespace THREE: zamieniamy `THREE.X` na `X`
+    // i dokladamy import, jesli go nie ma.
+    const reJsm = /^(src\/[^\s(]+)\(\d+,\d+\): error TS2339: Property '([A-Za-z_$][\w$]*)' does not exist on type 'typeof import\([^)]*three[^)]*\)'/gm;
+    while ((m = reJsm.exec(log))) {
+        const [, plik, klasa] = m;
+        const sciezka = SCIEZKI_JSM[klasa];
+        const klucz = plik + ':jsm:' + klasa;
+        if (!sciezka || widziane.has(klucz)) continue;
+        widziane.add(klucz);
+        try {
+            const pelna = path.join(dir, plik);
+            let tresc = await fs.readFile(pelna, 'utf8');
+            const uzycie = new RegExp('\\bTHREE\\.' + klasa + '\\b', 'g');
+            if (!uzycie.test(tresc)) continue;
+            tresc = tresc.replace(new RegExp('\\bTHREE\\.' + klasa + '\\b', 'g'), klasa);
+            const maImport = new RegExp('import\\s*\\{[^}]*\\b' + klasa + '\\b[^}]*\\}\\s*from').test(tresc);
+            if (!maImport) {
+                const linie = tresc.split('\n');
+                let ostatniImport = -1;
+                linie.forEach((l, i) => { if (/^\s*import\s/.test(l)) ostatniImport = i; });
+                linie.splice(ostatniImport + 1, 0, "import { " + klasa + " } from '" + sciezka + "';");
+                tresc = linie.join('\n');
+            }
+            await fs.writeFile(pelna, tresc, 'utf8');
+            podmiany.push(plik + ': THREE.' + klasa + ' -> import { ' + klasa + " } from '" + sciezka + "'");
+        } catch { /* zostawiamy modelowi */ }
     }
     return podmiany;
 }
@@ -780,25 +825,32 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                 const duze = obecne.filter((p) => /\.(ts|tsx)$/.test(p.sciezka) && p.tresc.split('\n').length > DUZY_PLIK_LINII).map((p) => `${p.sciezka} (${p.tresc.split('\n').length} linii)`);
                 const assety = typProjektu === 'gra' && cfg.assetyProjektu ? await cfg.assetyProjektu(projektId).catch(() => []) : [];
                 const blokAssetow = assety.length
-                    ? `\nASSETY 3D W PROJEKCIE (public/assety/, gotowe pliki GLB z kolorami wierzchołków — UŻYWAJ ich zamiast brył, gdy pasują): ${assety.map((a) => `${a.plik} (${a.opis || a.nazwa}${a.sciany ? ', ~' + a.sciany + ' ścian' : ''})`).join('; ')}. Ładowanie: \`import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'\`; \`new GLTFLoader().load('./assety/NAZWA.glb', (g) => { const m = g.scene; m.scale.setScalar(S); scena.add(m); })\` — do czasu wczytania trzymaj placeholder (Box), a po wczytaniu podmień; kolizje nadal po odległości. Model ma ~1 jednostkę wysokości — dobierz scale.\n`
+                    ? `\nASSETY 3D W PROJEKCIE (public/assety/, gotowe pliki GLB z kolorami wierzchołków — UŻYWAJ ich zamiast brył, gdy pasują): ${assety.map((a) => `${a.plik} (${a.opis || a.nazwa}${a.sciany ? ', ~' + a.sciany + ' ścian' : ''})`).join('; ')}. Ładowanie: \`import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'\`; \`new GLTFLoader().load('./assety/NAZWA.glb', (g) => { const m = g.scene; m.scale.setScalar(S); scena.add(m); })\` — do czasu wczytania trzymaj placeholder (Box), a po wczytaniu podmień; pole na bryłę typuj THREE.Object3D (g.scene to Group, nie Mesh — żadnych rzutowań as THREE.Mesh/as THREE.Group); kolizje nadal po odległości. Model ma ~1 jednostkę wysokości — dobierz scale.\n`
                     : '';
                 const podzial = duze.length ? `\nPLIKI ZA DUŻE: ${duze.join(', ')}. Nie dopisuj do nich kolejnych funkcji — WYDZIEL spójne części (np. wrogowie, loot, HUD, poziom, questy) do osobnych plików src/*.ts z eksportami i importuj je w main.ts. Oddaj każdy plik, którego treść zmieniasz, W CAŁOŚCI; plików, których nie ruszasz, nie oddawaj.\n` : '';
                 const prompt = `PROJEKT: ${projektId}\n\nOBECNE PLIKI:\n${kontekstPlikow(obecne)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${podzial}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
+                // ComfyUI po renderze trzyma modele w karcie (zmierzone: ~2 GB po TRELLIS.2) — Ollama
+                // dostaje resztkę i liczy prompt na CPU. Prosimy o zwolnienie, jeśli ComfyUI nie liczy.
+                if (runda === 1 && cfg.zwolnijComfy) await cfg.zwolnijComfy().catch(() => {});
                 const kPisze = krok('model', `runda ${runda}/${rundy}: Kodeks (${z.model}) pisze…`);
                 let ostatniMeldunek = 0;
+                // Limit rundy WEDŁUG ROZMIARU PROJEKTU, nie na sztywno 20 min: 9B pisze ~25 znaków/s,
+                // a przepisanie czterech plików ARPG to ~21 tys. znaków. Zmierzone 2026-09-22: runda
+                // urwana na 20 010 znakach po 1200 s - brakowało minuty. Widełki 15-45 min.
+                const limitRundy = Math.min(45, Math.max(15, Math.ceil(prompt.length / 25 / 60 * 1.6))) * 60_000;
                 const kartaKodeksa = await Persony.karta('kodeks').catch(() => null);
                 const regulyKodeksa = typProjektu === 'gra' ? SYSTEM_KODEKSA_GRY : SYSTEM_KODEKSA;
-                const odp = await pisz({ system: kartaKodeksa ? `${kartaKodeksa.tresc}\n\n${regulyKodeksa}` : regulyKodeksa, prompt, model: z.model, naKawalek: (n) => {
+                const odp = await pisz({ system: kartaKodeksa ? `${kartaKodeksa.tresc}\n\n${regulyKodeksa}` : regulyKodeksa, prompt, model: z.model, timeoutMs: limitRundy, naKawalek: (n) => {
                     // meldunek co ~2000 znaków — żeby front widział, że model żyje, bez zalewania szyny
                     if (n - ostatniMeldunek >= 2000) { ostatniMeldunek = n; kPisze.znakow = n; naKrok({ typ: 'postep', tekst: `Kodeks napisał ${n} znaków…`, znakow: n, kiedy: new Date().toISOString() }); }
                 } });
                 const nowe = wylowPliki(odp.tekst);
                 if (!nowe.length) {
-                    const sufit = odp.tokeny >= NUM_CTX - 64;
+                    const sufit = odp.tokeny >= (odp.numCtx ?? NUM_CTX) - 64;
                     feedback = sufit
-                        ? `Twoja poprzednia odpowiedź nie zmieściła się w oknie modelu (${odp.tokeny} tokenów) i nie było w niej ani jednego kompletnego bloku === PLIK: … ===. Oddaj MNIEJ: tylko pliki, które zmieniasz, a duże pliki podziel na moduły (patrz PLIKI ZA DUŻE).`
+                        ? `Twoja poprzednia odpowiedź nie zmieściła się w oknie modelu (${odp.tokeny}/${odp.numCtx ?? NUM_CTX} tokenów) i nie było w niej ani jednego kompletnego bloku === PLIK: … ===. Oddaj MNIEJ: tylko pliki, które zmieniasz, a duże pliki podziel na moduły (patrz PLIKI ZA DUŻE).`
                         : 'Nie znalazłem żadnego bloku === PLIK: … === w Twojej odpowiedzi. Oddaj pliki DOKŁADNIE w tym formacie.';
-                    krok('blad', sufit ? `runda ${runda}: kontekst modelu wyczerpany (${odp.tokeny}/${NUM_CTX} tokenów) — projekt za duży na jeden prompt, wymuszam podział na moduły` : `runda ${runda}: model nie oddał plików (${odp.tokeny} tokenów)`);
+                    krok('blad', sufit ? `runda ${runda}: kontekst modelu wyczerpany (${odp.tokeny}/${odp.numCtx ?? NUM_CTX} tokenów) — projekt za duży na jeden prompt, wymuszam podział na moduły` : `runda ${runda}: model nie oddał plików (${odp.tokeny} tokenów)`);
                     continue;
                 }
                 for (const p of nowe) { await fs.mkdir(path.dirname(path.join(dir, p.sciezka)), { recursive: true }); await fs.writeFile(path.join(dir, p.sciezka), p.tresc, 'utf8'); }
