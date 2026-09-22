@@ -33,6 +33,7 @@ const cfg = {
     katalogApek: null,              // _OtakOs_Apki
     szyna: null,
     pisz: null,                     // AppStudio.pisz — tłumaczenie opisu na prompt obrazu
+    ollamaBase: 'http://127.0.0.1:11434',
     model: () => 'gemma4:e2b',
 };
 export function skonfiguruj(o) { Object.assign(cfg, o); }
@@ -176,6 +177,12 @@ async function czekajNaComfy(promptId, { limitMs, naPostep }) {
     }
 }
 
+/** Wyładuj model Ollamy z karty (keep_alive 0). Zmierzone 2026-09-22: gemma4:e2b po przetłumaczeniu
+ *  promptu trzymał 1,7 GB VRAM — a TRELLIS.2 na 6 GB liczy się wtedy dużo wolniej albo pada. */
+async function zwolnijOllame(model) {
+    try { await fetch(`${cfg.ollamaBase}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, keep_alive: 0 }), signal: AbortSignal.timeout(15000) }); } catch { /* nie krytyczne */ }
+}
+
 /** POST /free — wyładuj modele i zwolnij pamięć karty (między etapami; w środku grafu się nie da). */
 async function zwolnijVram() {
     try { await fetch(`${cfg.comfyBase}/free`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unload_models: true, free_memory: true }), signal: AbortSignal.timeout(30000) }); } catch { /* nie krytyczne */ }
@@ -235,6 +242,7 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, projekt = null, sci
             } else {
                 krok('prompt', 'tłumaczę opis na prompt obrazu…');
                 const prompt = await promptObrazu(tekst);
+                await zwolnijOllame(cfg.model());
                 m.promptObrazu = prompt;
                 krok('obraz', `FLUX.2 klein rysuje: ${prompt.slice(0, 160)}…`);
                 const g = JSON.parse(await fs.readFile(path.join(cfg.katalogWorkflow, GRAF_OBRAZ), 'utf8')); delete g._opis;

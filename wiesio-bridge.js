@@ -7728,12 +7728,20 @@ app.post('/api/gdd/:id/przerwij', (req, res) => res.json({ success: true, przerw
 // → TRELLIS.2 na żywym ComfyUI. Biblioteka w _OtakOs_AI/assety3d, „do gry" kopiuje GLB do projektu.
 // ═════════════════════════════════════════════════════════════════════════════
 Assety3D.skonfiguruj({
-    comfyBase: COMFY_BASE, comfyDir: COMFY_DIR, szyna: Szyna, pisz: AppStudio.pisz, model: () => DEFAULT_LLM,
+    comfyBase: COMFY_BASE, comfyDir: COMFY_DIR, szyna: Szyna, pisz: AppStudio.pisz, model: () => DEFAULT_LLM, ollamaBase: OLLAMA_BASE,
     katalogWorkflow: path.join(process.cwd(), '_OtakOs_AI', 'workflows'),
     katalogBiblioteki: path.join(process.cwd(), '_OtakOs_AI', 'assety3d'),
     katalogApek: path.join(process.cwd(), '..', '_OtakOs_Apki'),
 });
-AppStudio.skonfiguruj({ assetyProjektu: (id) => Assety3D.assetyProjektu(id) });
+AppStudio.skonfiguruj({
+    assetyProjektu: (id) => Assety3D.assetyProjektu(id),
+    // Zwolnij VRAM ComfyUI przed rundą Kodeksa — tylko gdy ComfyUI nic nie liczy (nie przerywamy renderów Story).
+    zwolnijComfy: async () => {
+        const q = await fetch(`${COMFY_BASE}/queue`, { signal: AbortSignal.timeout(3000) }).then((r) => r.json()).catch(() => null);
+        if (!q || q.queue_running?.length || q.queue_pending?.length) return;
+        await fetch(`${COMFY_BASE}/free`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unload_models: true, free_memory: true }), signal: AbortSignal.timeout(10000) }).catch(() => {});
+    },
+});
 const assetUpload = multer({ storage: multer.diskStorage({ destination: os.tmpdir(), filename: (_req, f, cb) => cb(null, `asset3d-${Date.now()}${path.extname(f.originalname).toLowerCase() || '.png'}`) }), limits: { fileSize: 30 * 1024 * 1024 } });
 app.get('/api/assety3d/stan', async (_req, res) => res.json({ success: true, ...(await Assety3D.stan()) }));
 app.get('/api/assety3d', async (_req, res) => res.json({ success: true, assety: await Assety3D.lista(), zadania: Assety3D.zadaniaLista() }));

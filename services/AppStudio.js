@@ -1008,10 +1008,38 @@ export async function rozwin(projektId, { model } = {}) {
     if (!p) throw new Error('Nie ma takiego projektu.');
     const ostatnia = p.analizy?.at(-1);
     const swieza = ostatnia && (Date.now() - Date.parse(ostatnia.kiedy)) < 24 * 3600_000 && !p.historia.some((h) => h.kiedy > ostatnia.kiedy);
-    const analiza = swieza ? ostatnia : await analizuj(projektId, { model });
-    if (!analiza.nastepneZadanie) throw new Error('Analiza nie wskazała następnego zadania.');
-    const z = await buduj(projektId, { zadanie: analiza.nastepneZadanie, model });
-    return { ...z, zadanie: analiza.nastepneZadanie, analiza: analiza.stan };
+    if (swieza && ostatnia.nastepneZadanie) {
+        const z = await buduj(projektId, { zadanie: ostatnia.nastepneZadanie, model });
+        return { ...z, zadanie: ostatnia.nastepneZadanie, analiza: ostatnia.stan };
+    }
+    // ANALIZA TRWA KILKA MINUT, A TO ZABIJAŁO NOCNĄ ZMIANĘ: jej fetch do mostu leciał
+    // przez cały czas analizy i undici ucinał połączenie po 300 s („fetch failed",
+    // zmierzone 2026-09-22 15:35→15:40). Oddajemy id od razu, a analiza i budowa lecą
+    // w tle — sondaż (`/api/appstudio/zadania/<id>/sondaz`) pokazuje, co się dzieje.
+    const z = { id: noweId(), projekt: projektId, zadanie: '(analiza: co dalej z projektem)', stan: 'trwa', kroki: [], rundy: 0, wynik: null, od: new Date().toISOString(), model: model || cfg.model() };
+    zadania.set(z.id, z);
+    z.kroki.push({ typ: 'model', tekst: `analiza projektu (${z.model}) — z niej wyjdzie następne zadanie…`, kiedy: z.od });
+    (async () => {
+        try {
+            const analiza = await analizuj(projektId, { model });
+            if (!analiza.nastepneZadanie) throw new Error('Analiza nie wskazała następnego zadania.');
+            z.kroki.push({ typ: 'stan', tekst: `analiza gotowa: ${analiza.nastepneZadanie.slice(0, 200)}`, kiedy: new Date().toISOString() });
+            const wewn = await buduj(projektId, { zadanie: analiza.nastepneZadanie, model });
+            // przepinamy sondaż na zadanie budowy: kroki dopisują się do naszego wpisu
+            const zrodlo = zadania.get(wewn.id);
+            const tik = setInterval(() => {
+                if (!zrodlo) return clearInterval(tik);
+                z.kroki = [...z.kroki.slice(0, 2), ...zrodlo.kroki];
+                z.rundy = zrodlo.rundy;
+                if (zrodlo.stan !== 'trwa') { z.stan = zrodlo.stan; z.wynik = zrodlo.wynik; z.koniec = zrodlo.koniec; clearInterval(tik); }
+            }, 5000);
+        } catch (e) {
+            z.stan = 'blad'; z.koniec = new Date().toISOString();
+            z.wynik = { ok: false, rundy: 0, sekundy: Math.round((Date.now() - Date.parse(z.od)) / 1000), powod: e.message };
+            z.kroki.push({ typ: 'blad', tekst: `padło: ${e.message}`, kiedy: z.koniec });
+        }
+    })();
+    return { id: z.id, projekt: projektId, model: z.model, zadanie: '(analiza w toku)' };
 }
 
 export default { skonfiguruj, projekty, nowyProjekt, projekt, pliki, zrzut, buduj, zadanie, zadaniaProjektu, cofnij, usunProjekt, silniki, analizuj, rozwin, ocenZrzut };
