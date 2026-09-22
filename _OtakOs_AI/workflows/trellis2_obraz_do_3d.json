@@ -1,0 +1,37 @@
+{
+  "_opis": "TRELLIS.2 — obraz → siatka 3D z kolorami wierzchołków (GLB). Węzły z rdzenia ComfyUI 0.35 (Trellis2Conditioning, Trellis2ShapeStage, Trellis2UpsampleStage, Trellis2TextureStage, VaeDecode*Trellis*, PaintMesh, SaveGLB). Numery węzłów są ODWZOROWANE w services/Assety3D.js. Trzy etapy: struktura (wokselowy zarys, 12 kroków) → kształt (20 kroków) → upsampling do target_resolution → tekstura (12 kroków, cfg 1) → PaintMesh maluje wierzchołki → DecimateMesh do ~200 tys. ścian (MASTER; niżej ComfyUI rozwala siatkę albo pada na VRAM — uproszczenie pod grę robi services/Siatka3D.js na CPU). CFGOverride/RescaleCFG/ModelSamplingSD3 odwzorowują domyślny pipeline Microsoftu (z szablonu Comfy).",
+  "1": { "class_type": "LoadImage", "inputs": { "image": "golem.png" } },
+  "2": { "class_type": "LoadBackgroundRemovalModel", "inputs": { "bg_removal_name": "katedra-3d\\birefnet.safetensors" } },
+  "3": { "class_type": "RemoveBackground", "inputs": { "bg_removal_model": ["2", 0], "image": ["1", 0] } },
+  "4": { "class_type": "ImageCropToMask", "inputs": { "images": ["1", 0], "masks": ["3", 0], "width": 1024, "height": 1024, "pad_factor": 1.0, "grow_mask": 0, "background": "#000000" } },
+  "5": { "class_type": "CLIPVisionLoader", "inputs": { "clip_name": "katedra-3d\\dino_v3_vit_l.safetensors" } },
+  "6": { "class_type": "Trellis2Conditioning", "inputs": { "clip_vision_model": ["5", 0], "image": ["4", 0] } },
+  "7": { "class_type": "UNETLoader", "inputs": { "unet_name": "katedra-3d\\trellis_2_int8_convrot.safetensors", "weight_dtype": "default" } },
+  "8": { "class_type": "VAELoader", "inputs": { "vae_name": "katedra-3d\\trellis_2_shape_vae_bf16.safetensors" } },
+  "9": { "class_type": "VAELoader", "inputs": { "vae_name": "katedra-3d\\trellis_2_texture_vae_bf16.safetensors" } },
+
+  "10": { "class_type": "CFGOverride", "inputs": { "model": ["7", 0], "cfg": 1.0, "start_percent": 0.667, "end_percent": 1.0 } },
+  "11": { "class_type": "RescaleCFG", "inputs": { "model": ["10", 0], "multiplier": 0.7 } },
+  "12": { "class_type": "ModelSamplingSD3", "inputs": { "model": ["11", 0], "shift": 5.0 } },
+  "13": { "class_type": "EmptyTrellis2LatentStructure", "inputs": { "batch_size": 1 } },
+  "14": { "class_type": "KSampler", "inputs": { "model": ["12", 0], "seed": 56, "steps": 12, "cfg": 7.5, "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0, "positive": ["6", 0], "negative": ["6", 1], "latent_image": ["13", 0] } },
+  "15": { "class_type": "VaeDecodeStructureTrellis2", "inputs": { "samples": ["14", 0], "vae": ["8", 0], "resolution": "32" } },
+
+  "16": { "class_type": "Trellis2ShapeStage", "inputs": { "positive": ["6", 0], "negative": ["6", 1], "voxel": ["15", 0] } },
+  "17": { "class_type": "CFGOverride", "inputs": { "model": ["7", 0], "cfg": 1.0, "start_percent": 0.769, "end_percent": 1.0 } },
+  "18": { "class_type": "RescaleCFG", "inputs": { "model": ["17", 0], "multiplier": 0.5 } },
+  "19": { "class_type": "KSampler", "inputs": { "model": ["18", 0], "seed": 42, "steps": 20, "cfg": 7.5, "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0, "positive": ["16", 0], "negative": ["16", 1], "latent_image": ["16", 2] } },
+
+  "20": { "class_type": "Trellis2UpsampleStage", "inputs": { "positive": ["16", 0], "negative": ["16", 1], "shape_latent": ["19", 0], "vae": ["8", 0], "target_resolution": 1024 } },
+  "21": { "class_type": "KSampler", "inputs": { "model": ["18", 0], "seed": 42, "steps": 12, "cfg": 7.5, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0, "positive": ["20", 0], "negative": ["20", 1], "latent_image": ["20", 2] } },
+  "22": { "class_type": "VaeDecodeShapeTrellis", "inputs": { "samples": ["21", 0], "vae": ["8", 0] } },
+
+  "23": { "class_type": "Trellis2TextureStage", "inputs": { "positive": ["20", 0], "negative": ["20", 1], "shape_latent": ["21", 0] } },
+  "24": { "class_type": "KSampler", "inputs": { "model": ["7", 0], "seed": 43, "steps": 12, "cfg": 1.0, "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0, "positive": ["23", 0], "negative": ["23", 1], "latent_image": ["23", 2] } },
+  "25": { "class_type": "VaeDecodeTextureTrellis", "inputs": { "samples": ["24", 0], "vae": ["9", 0], "shape_subdivides": ["22", 1] } },
+
+  "26": { "class_type": "DecimateMesh", "inputs": { "mesh": ["22", 0], "target_face_count": 200000, "placement_mode": "midpoint" } },
+  "27": { "class_type": "MeshSmoothNormals", "inputs": { "mesh": ["26", 0], "crease_angle": 60.0 } },
+  "28": { "class_type": "PaintMesh", "inputs": { "mesh": ["27", 0], "voxel_colors": ["25", 0] } },
+  "29": { "class_type": "SaveGLB", "inputs": { "mesh": ["28", 0], "filename_prefix": "katedra/assety/golem" } }
+}

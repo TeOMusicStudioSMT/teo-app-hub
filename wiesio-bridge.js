@@ -162,6 +162,7 @@ import * as Stado from './services/Stado.js';
 import * as AppStudio from './services/AppStudio.js';
 import * as Persony from './services/Persony.js';
 import * as Gdd from './services/Gdd.js';
+import * as Assety3D from './services/Assety3D.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as WarsztatUtworow from './services/WarsztatUtworow.js';
@@ -7721,6 +7722,46 @@ app.post('/api/gdd/:id/realizuj', async (req, res) => {
 });
 app.get('/api/gdd/:id/produkcja', (req, res) => res.json({ success: true, produkcja: Gdd.produkcja(req.params.id) }));
 app.post('/api/gdd/:id/przerwij', (req, res) => res.json({ success: true, przerwano: Gdd.przerwij(req.params.id) }));
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 🗿 ASSETY 3D — bryły do gier z tekstu i zdjęć (services/Assety3D.js): FLUX.2 klein → BiRefNet
+// → TRELLIS.2 na żywym ComfyUI. Biblioteka w _OtakOs_AI/assety3d, „do gry" kopiuje GLB do projektu.
+// ═════════════════════════════════════════════════════════════════════════════
+Assety3D.skonfiguruj({
+    comfyBase: COMFY_BASE, comfyDir: COMFY_DIR, szyna: Szyna, pisz: AppStudio.pisz, model: () => DEFAULT_LLM,
+    katalogWorkflow: path.join(process.cwd(), '_OtakOs_AI', 'workflows'),
+    katalogBiblioteki: path.join(process.cwd(), '_OtakOs_AI', 'assety3d'),
+    katalogApek: path.join(process.cwd(), '..', '_OtakOs_Apki'),
+});
+AppStudio.skonfiguruj({ assetyProjektu: (id) => Assety3D.assetyProjektu(id) });
+const assetUpload = multer({ storage: multer.diskStorage({ destination: os.tmpdir(), filename: (_req, f, cb) => cb(null, `asset3d-${Date.now()}${path.extname(f.originalname).toLowerCase() || '.png'}`) }), limits: { fileSize: 30 * 1024 * 1024 } });
+app.get('/api/assety3d/stan', async (_req, res) => res.json({ success: true, ...(await Assety3D.stan()) }));
+app.get('/api/assety3d', async (_req, res) => res.json({ success: true, assety: await Assety3D.lista(), zadania: Assety3D.zadaniaLista() }));
+app.get('/api/assety3d/zadania/:id', (req, res) => { const z = Assety3D.zadanie(req.params.id); return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania.' }); });
+/** Generuj: JSON { tekst, nazwa, opis, projekt?, sciany?, rozdzielczosc?, ziarno? } albo multipart z polem `zdjecie`. */
+app.post('/api/assety3d/generuj', assetUpload.single('zdjecie'), async (req, res) => {
+    try {
+        const b = req.body ?? {};
+        const w = await Assety3D.generuj({ nazwa: b.nazwa, opis: b.opis, tekst: b.tekst, zdjecie: req.file?.path ?? null, projekt: b.projekt || null, sciany: b.sciany, rozdzielczosc: b.rozdzielczosc, ziarno: b.ziarno });
+        res.json({ success: true, ...w });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+    finally { if (req.file?.path) setTimeout(() => fs.rm(req.file.path, { force: true }).catch(() => {}), 60_000); }
+});
+app.get('/api/assety3d/:id/plik/:plik', (req, res) => {
+    const p = Assety3D.sciezkaPliku(req.params.id, req.params.plik);
+    if (!p) return res.status(404).json({ success: false, message: 'Nie ma takiego pliku.' });
+    if (p.endsWith('.glb')) res.type('model/gltf-binary');
+    return res.sendFile(p);
+});
+app.post('/api/assety3d/:id/uprosc', async (req, res) => {
+    try { res.json({ success: true, asset: await Assety3D.uprosc(req.params.id, req.body?.sciany) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/assety3d/:id/do-gry', async (req, res) => {
+    try { res.json({ success: true, ...(await Assety3D.doGry(req.params.id, req.body?.projekt)) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.delete('/api/assety3d/:id', async (req, res) => res.json({ success: true, usunieto: await Assety3D.usun(req.params.id) }));
 
 app.get('/api/appstudio/zadania/:id', (req, res) => {
     const z = AppStudio.zadanie(req.params.id);

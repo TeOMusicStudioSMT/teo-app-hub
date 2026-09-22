@@ -222,7 +222,7 @@ requestAnimationFrame(petla);
 };
 
 const PRZEWODNIK_THREE = `PRZEWODNIK SILNIKA (three.js 0.170, TypeScript, Vite) — jedna strona, trzymaj się go:
-- Wejście: src/main.ts. Bez Reacta, bez innych bibliotek, tylko \`import * as THREE from 'three'\`. Wolno dzielić kod na moduły w src/ (np. src/monety.ts) i importować je z main.ts.
+- Wejście: src/main.ts. Bez Reacta, bez innych bibliotek, tylko \`import * as THREE from 'three'\` (plus \`GLTFLoader\` z \`three/examples/jsm/loaders/GLTFLoader.js\`, gdy projekt ma assety w public/assety/). Wolno dzielić kod na moduły w src/ (np. src/monety.ts) i importować je z main.ts.
 - Scena: PerspectiveCamera, WebGLRenderer do #gra, HemisphereLight/DirectionalLight. Ziemia = PlaneGeometry obrócona o -PI/2. Obiekty: Mesh(Geometry, MeshStandardMaterial({ color })). Współrzędne: y w górę, gracz na y=0.5.
 - Pętla: requestAnimationFrame z dt (sekundy, ograniczone do 0.05). Ruch = prędkość * dt. Klawisze: mapa keydown/keyup po e.key.toLowerCase() (w/a/s/d, strzałki, ' ' = spacja).
 - Kolizje proste: odległość środków (a.position.distanceTo(b.position) < promienA + promienB). Podniesiona moneta: scena.remove(mesh) + geometry.dispose().
@@ -778,8 +778,12 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                     ? `\nUWAGA: to DOKŁADNIE TEN SAM błąd, co w poprzedniej rundzie — Twoja poprawka go nie usunęła. Zanim oddasz pliki, napisz w pierwszej linii odpowiedzi jednym zdaniem, co konkretnie zmieniasz (np. „dodaję 'idle' do typu Phase"), a potem bloki plików. Sprawdź numer linii z błędu i popraw TĘ linię i jej typ.\n`
                     : '';
                 const duze = obecne.filter((p) => /\.(ts|tsx)$/.test(p.sciezka) && p.tresc.split('\n').length > DUZY_PLIK_LINII).map((p) => `${p.sciezka} (${p.tresc.split('\n').length} linii)`);
+                const assety = typProjektu === 'gra' && cfg.assetyProjektu ? await cfg.assetyProjektu(projektId).catch(() => []) : [];
+                const blokAssetow = assety.length
+                    ? `\nASSETY 3D W PROJEKCIE (public/assety/, gotowe pliki GLB z kolorami wierzchołków — UŻYWAJ ich zamiast brył, gdy pasują): ${assety.map((a) => `${a.plik} (${a.opis || a.nazwa}${a.sciany ? ', ~' + a.sciany + ' ścian' : ''})`).join('; ')}. Ładowanie: \`import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'\`; \`new GLTFLoader().load('./assety/NAZWA.glb', (g) => { const m = g.scene; m.scale.setScalar(S); scena.add(m); })\` — do czasu wczytania trzymaj placeholder (Box), a po wczytaniu podmień; kolizje nadal po odległości. Model ma ~1 jednostkę wysokości — dobierz scale.\n`
+                    : '';
                 const podzial = duze.length ? `\nPLIKI ZA DUŻE: ${duze.join(', ')}. Nie dopisuj do nich kolejnych funkcji — WYDZIEL spójne części (np. wrogowie, loot, HUD, poziom, questy) do osobnych plików src/*.ts z eksportami i importuj je w main.ts. Oddaj każdy plik, którego treść zmieniasz, W CAŁOŚCI; plików, których nie ruszasz, nie oddawaj.\n` : '';
-                const prompt = `PROJEKT: ${projektId}\n\nOBECNE PLIKI:\n${kontekstPlikow(obecne)}\nZADANIE SUWERENA:\n${cel}\n${podzial}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
+                const prompt = `PROJEKT: ${projektId}\n\nOBECNE PLIKI:\n${kontekstPlikow(obecne)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${podzial}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
                 const kPisze = krok('model', `runda ${runda}/${rundy}: Kodeks (${z.model}) pisze…`);
                 let ostatniMeldunek = 0;
                 const kartaKodeksa = await Persony.karta('kodeks').catch(() => null);
