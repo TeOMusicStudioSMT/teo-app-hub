@@ -23,7 +23,6 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import * as Persony from './Persony.js';
 
 let cfg = { katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: null, appStudio: null, pisz: null, model: () => 'qwen3.5:9b' };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
@@ -76,10 +75,10 @@ export async function zapewnij(projektId, tytul) {
 }
 
 /** Tekst GDD do promptu — zwięzły, żeby zmieścić się w 16k kontekstu obok kodu. */
-export function jakoTekst(g, { zKamieniami = true } = {}) {
+export function jakoTekst(g, { zKamieniami = true, zId = false } = {}) {
     const linie = [`TYTUŁ: ${g.tytul || '—'} · GATUNEK: ${g.gatunek || '—'} · SILNIK DOKUMENTU: ${g.silnik} · PERSPEKTYWA: ${g.perspektywa || '—'} · PLATFORMY: ${(g.platformy || []).join(', ') || '—'}`];
     for (const s of SEKCJE) if (g.sekcje?.[s]) linie.push(`## ${ETYKIETY[s]}\n${g.sekcje[s]}`);
-    if (zKamieniami && g.kamienie?.length) linie.push('## Kamienie milowe\n' + g.kamienie.map((k, i) => `${i + 1}. ${k.tytul} — ${k.opis}\n${k.zadania.map((z) => `   - [${z.stan}] ${z.tresc}`).join('\n')}`).join('\n'));
+    if (zKamieniami && g.kamienie?.length) linie.push('## Kamienie milowe\n' + g.kamienie.map((k, i) => `${i + 1}. ${zId ? `(id: ${k.id}) ` : ''}${k.tytul} — ${k.opis}\n${k.zadania.map((z) => `   - [${z.stan}] ${z.tresc}`).join('\n')}`).join('\n'));
     return linie.join('\n\n').slice(0, 14_000);
 }
 
@@ -162,6 +161,26 @@ Kamieni DOKŁADNIE 5, w kolejności budowania (najpierw to, na czym stoi reszta:
 }
 
 /**
+ * Propozycja kamieni od Reżysera → pełna lista kamieni do zapisu. Kamienie spoza propozycji
+ * zostają bez zmian; w zmienianym kamieniu zadanie o tej samej treści zachowuje id i stan,
+ * nowe dostają 'czeka'. Kamień bez znanego id = nowy, na końcu.
+ */
+export function scalKamienie(obecne, proponowane) {
+    const norm = (t) => String(t || '').trim().toLowerCase();
+    const wynik = obecne.map((k) => ({ ...k, zadania: k.zadania.map((z) => ({ ...z })) }));
+    for (const pk of Array.isArray(proponowane) ? proponowane : []) {
+        // model przepisuje zadania z planu razem ze znacznikiem „[gotowe] " — zdejmujemy go, żeby dopasować po treści
+        const zadaniaProp = (Array.isArray(pk.zadania) ? pk.zadania : []).map((z) => typeof z === 'string' ? z : z?.tresc).filter(Boolean).map((t) => String(t).replace(/^\s*\[(czeka|trwa|gotowe|blad|pominiete)\]\s*/i, '').trim());
+        const istn = wynik.find((k) => k.id === pk.id) ?? wynik.find((k) => norm(k.tytul) === norm(pk.tytul));
+        if (!istn) { wynik.push({ tytul: pk.tytul, opis: pk.opis, zadania: zadaniaProp }); continue; }
+        if (typeof pk.tytul === 'string' && pk.tytul.trim()) istn.tytul = pk.tytul;
+        if (typeof pk.opis === 'string' && pk.opis.trim()) istn.opis = pk.opis;
+        if (zadaniaProp.length) istn.zadania = zadaniaProp.map((t) => istn.zadania.find((z) => norm(z.tresc) === norm(t)) ?? { tresc: t, stan: 'czeka' });
+    }
+    return wynik;
+}
+
+/**
  * ROZMOWA Z REŻYSEREM GRY — jak w Pokoju Opowieści: historia z frontu, kotwica = GDD.
  * Reżyser może dodać blok PROPOZYCJA_GDD: {"sekcje":{…}} — front pokaże „Wpisz do GDD".
  */
@@ -169,17 +188,20 @@ export async function rozmowa(projektId, { wypowiedz, historia = [], model } = {
     const g = (await wczytaj(projektId)) ?? puste();
     const tresc = String(wypowiedz || '').trim();
     if (tresc.length < 2) throw new Error('Pusta wypowiedź.');
-    const rezyser = await Persony.karta('rezyser').catch(() => null);
-    const system = `${rezyser ? rezyser.tresc + '\n\n' : ''}Jesteś Reżyserem Gry w Katedrze OtakOS — rozmawiasz z Suwerenem o JEGO grze i pilnujesz GDD. Mówisz po polsku, konkretnie, 2–6 zdań; zadajesz jedno pytanie naraz, gdy czegoś brakuje. ${RAMKA_SILNIKA}
-Gdy ustalicie coś, co powinno trafić do dokumentu, dopisz na końcu odpowiedzi blok:
-PROPOZYCJA_GDD: {"sekcje":{"mechanika":"pełna nowa treść sekcji"}, "tytul":"…"}
-(tylko pola, które się zmieniają; treść sekcji w całości, nie diff). Bez propozycji, gdy nic nie ustalono.`;
+    // Bez karty Reżysera serialu (patrz importuj) — tu ma być reżyser GRY. Może proponować też
+    // zmiany w PLANIE: podać kamień po id z nową listą zadań (Suweren 2026-09-22: „rozbij ostatni
+    // kamień na mniejsze zadania"). Zadania gotowe zostają — front dopasowuje po treści.
+    const system = `Jesteś Reżyserem Gry — rozmawiasz z Suwerenem o JEGO grze i pilnujesz GDD oraz planu produkcji (kamienie milowe → zadania dla programisty Kodeksa, lokalny model 9B, jedno zadanie = jedna runda ≤ 20 min, więc zadania mają być MAŁE i sprawdzalne). Mówisz po polsku, konkretnie, 2–6 zdań; zadajesz jedno pytanie naraz, gdy czegoś brakuje. ${RAMKA_SILNIKA}
+Gdy ustalicie coś, co powinno trafić do dokumentu albo planu, dopisz na końcu odpowiedzi blok (poprawny JSON, nic po nim):
+PROPOZYCJA_GDD: {"sekcje":{"mechanika":"pełna nowa treść sekcji"}, "tytul":"…", "kamienie":[{"id":"km-…","tytul":"…","opis":"…","zadania":["zadanie 1","zadanie 2"]}]}
+Zasady: tylko pola, które się zmieniają; treść sekcji w całości; w "kamienie" podajesz TYLKO kamienie, które zmieniasz, z ich id z planu i PEŁNĄ nową listą zadań tego kamienia — zadania oznaczone [gotowe] przepisz dosłownie, żeby nie zgubić ich stanu. Bez propozycji, gdy nic nie ustalono.`;
     const dialog = historia.slice(-12).map((h) => `${h.kto === 'suweren' ? 'Suweren' : 'Reżyser'}: ${String(h.tresc).slice(0, 800)}`).join('\n');
-    const odp = await cfg.pisz({ system, prompt: `GDD (kotwica — nie wymyślaj wbrew niemu):\n${jakoTekst(g)}\n\nROZMOWA:\n${dialog}\nSuweren: ${tresc}\nReżyser:`, model: model || cfg.model(), timeoutMs: 10 * 60_000 });
+    const odp = await cfg.pisz({ system, prompt: `GDD (kotwica — nie wymyślaj wbrew niemu):\n${jakoTekst(g, { zId: true })}\n\nROZMOWA:\n${dialog}\nSuweren: ${tresc}\nReżyser:`, model: model || cfg.model(), timeoutMs: 10 * 60_000 });
     let odpowiedz = odp.tekst.trim();
     let propozycja = null;
     const m = odpowiedz.match(/PROPOZYCJA_GDD:\s*(\{[\s\S]*\})\s*$/);
-    if (m) { try { propozycja = JSON.parse(m[1]); odpowiedz = odpowiedz.slice(0, m.index).trim(); } catch { /* zostawiamy w tekście */ } }
+    if (m) { try { propozycja = JSON.parse(m[1]); odpowiedz = odpowiedz.slice(0, m.index).trim(); } catch { try { propozycja = JSON.parse(domknijJson(m[1])); odpowiedz = odpowiedz.slice(0, m.index).trim(); } catch { /* zostawiamy w tekście */ } } }
+    if (propozycja?.kamienie) propozycja.kamienie = scalKamienie(g.kamienie ?? [], propozycja.kamienie);
     const wpisy = [{ kiedy: new Date().toISOString(), kto: 'suweren', tresc }, { kiedy: new Date().toISOString(), kto: 'rezyser', tresc: odpowiedz }];
     if (fsSync.existsSync(path.join(cfg.katalog, projektId))) { g.historia = [...(g.historia ?? []), ...wpisy].slice(-200); await fs.writeFile(plik(projektId), JSON.stringify(g, null, 2), 'utf8'); }
     return { odpowiedz, propozycja, model: odp.model ?? (model || cfg.model()) };
@@ -243,4 +265,4 @@ export async function realizuj(projektId, { model, tylkoKamien = null } = {}) {
     return { start: true, zadan: kolejka.length, model: prod.model };
 }
 
-export default { skonfiguruj, SILNIKI, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, produkcja, przerwij, jakoTekst };
+export default { skonfiguruj, SILNIKI, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, produkcja, przerwij, jakoTekst, scalKamienie };

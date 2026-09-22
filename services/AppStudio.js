@@ -286,7 +286,7 @@ export async function nowyProjekt({ nazwa, opis = '', typ = 'apka' }) {
     const dir = dirProjektu(id);
     await fs.mkdir(path.join(dir, 'src'), { recursive: true });
     for (const [rel, tresc] of Object.entries(szablon)) await fs.writeFile(path.join(dir, rel), tresc(czysta, String(opis).trim()), 'utf8');
-    await fs.writeFile(path.join(dir, '.gitignore'), 'node_modules\ndist\nzrzut*.png\nnieudane\nprojekt.json\n', 'utf8');
+    await fs.writeFile(path.join(dir, '.gitignore'), 'node_modules\ndist\nzrzut*.png\nnieudane\nprojekt.json\ngdd.json\n', 'utf8');
     // node_modules jako junction do App Studio — react/vite/typescript bez instalowania czegokolwiek.
     if (fsSync.existsSync(nodeModules)) { try { await fs.symlink(nodeModules, path.join(dir, 'node_modules'), 'junction'); } catch { /* bez node_modules build powie, czego brak */ } }
     await git(dir, ['init', '-q']);
@@ -546,7 +546,9 @@ async function zrzucNieudaneIPrzywroc(dir, id) {
     let tresc = diff;
     for (const f of nowe) { try { tresc += `\n=== NOWY PLIK: ${f} ===\n${await fs.readFile(path.join(dir, f), 'utf8')}\n=== KONIEC ===\n`; } catch { /* nic */ } }
     await fs.writeFile(path.join(dir, 'nieudane', `${id}.diff`), tresc, 'utf8');
-    await git(dir, ['checkout', '--', '.']);
+    // Tylko kod: gdd.json (stan planu) i projekt.json nie są częścią próby — checkout „." cofał
+    // gdd.json do stanu z ostatniego commita i zadanie „gotowe" wracało na „trwa" (2026-09-22).
+    await git(dir, ['checkout', '--', 'src', 'index.html']);
     await git(dir, ['clean', '-fdq', '--', 'src']);
     return true;
 }
