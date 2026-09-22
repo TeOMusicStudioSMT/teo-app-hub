@@ -410,7 +410,12 @@ export async function silniki() {
     const lista = [{ id: 'lokalny', model: lokalny, etykieta: `Lokalnie — ${lokalny}`, domyslny: true, dostepny: true, uwaga: 'Domyślny. Na tej maszynie runda ≈ 4–5 min.' }];
     try {
         const t = await fetch(`${cfg.ollamaBase}/api/tags`).then((r) => r.json());
-        const duzy = (t.models || []).map((m) => m.name).find((n) => /27b/i.test(n));
+        const nazwy = (t.models || []).map((m) => m.name);
+        // Szybki 4B: mieści się w 6 GB VRAM w całości (9B ma połowę wag w RAM). Do dużych
+        // projektów, gdzie 9B nie wyrabia się w 20 min na rundę (zmierzone 2026-09-22, ARPG zad. 10).
+        const szybki = nazwy.find((n) => /^qwen3\.5:4b$/i.test(n));
+        if (szybki && szybki !== lokalny) lista.push({ id: 'lokalny-szybki', model: szybki, etykieta: `Lokalnie — ${szybki} (szybki)`, domyslny: false, dostepny: true, uwaga: 'Cały w VRAM, 2–3× szybszy od 9B, słabszy w typach. Do dużych plików i wielu modułów.' });
+        const duzy = nazwy.find((n) => /27b/i.test(n));
         if (duzy && duzy !== lokalny) lista.push({ id: 'lokalny-duzy', model: duzy, etykieta: `Lokalnie — ${duzy}`, domyslny: false, dostepny: true, uwaga: 'Dokładniejszy, ~2 tok/s — runda kilkanaście minut. Raczej do Nocnej Zmiany.' });
     } catch { /* Ollama śpi — zostaje wpis domyślny */ }
     const [a, g] = await Promise.all([cfg.klucze.anthropic().catch(() => null), cfg.klucze.gemini().catch(() => null)]);
@@ -419,7 +424,7 @@ export async function silniki() {
     return lista;
 }
 
-export // 32k zamiast 16k: zmierzone 2026-09-21 — przy main.ts 16 KB prompt + przepisany plik dobijały do
+// 32k zamiast 16k: zmierzone 2026-09-21 — przy main.ts 16 KB prompt + przepisany plik dobijały do
 // 16384 i model oddawał ucięty bełkot bez bloków PLIK (3 rundy stracone). KV-cache 32k dla 9B
 // mieści się obok wag (część i tak leży w RAM na 6 GB VRAM); koszt: wolniejszy prompt-eval.
 const NUM_CTX = 32768;
@@ -526,6 +531,24 @@ async function autonaprawLiterowki(dir, log) {
         } catch { /* plik nie do odczytu — zostawiamy modelowi */ }
     }
     return podmiany;
+}
+
+/**
+ * Nieudana próba NIE zostaje w projekcie: diff + treść NOWYCH plików (git diff ich nie widzi —
+ * zmierzone 2026-09-22: 4B oddał 5 nowych modułów, po nieudanej rundzie diff miał 573 bajty
+ * i nic do obejrzenia) idą do nieudane/<id>.diff, projekt wraca do ostatniego dobrego commita.
+ */
+async function zrzucNieudaneIPrzywroc(dir, id) {
+    const diff = await git(dir, ['diff']);
+    const nowe = (await git(dir, ['ls-files', '--others', '--exclude-standard', '--', 'src', 'index.html'])).split('\n').filter(Boolean);
+    if (!diff && !nowe.length) return false;
+    await fs.mkdir(path.join(dir, 'nieudane'), { recursive: true });
+    let tresc = diff;
+    for (const f of nowe) { try { tresc += `\n=== NOWY PLIK: ${f} ===\n${await fs.readFile(path.join(dir, f), 'utf8')}\n=== KONIEC ===\n`; } catch { /* nic */ } }
+    await fs.writeFile(path.join(dir, 'nieudane', `${id}.diff`), tresc, 'utf8');
+    await git(dir, ['checkout', '--', '.']);
+    await git(dir, ['clean', '-fdq', '--', 'src']);
+    return true;
 }
 
 export async function weryfikujBuild(dir) {
@@ -819,10 +842,7 @@ PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy
                 // i wracamy do ostatniego dobrego commitu + przebudowujemy dist, żeby podgląd
                 // dalej pokazywał działającą apkę (a nie kod, który nie przechodzi tsc).
                 try {
-                    const diff = await git(dir, ['diff']);
-                    if (diff) { await fs.mkdir(path.join(dir, 'nieudane'), { recursive: true }); await fs.writeFile(path.join(dir, 'nieudane', `${z.id}.diff`), diff, 'utf8'); }
-                    await git(dir, ['checkout', '--', '.']);
-                    await git(dir, ['clean', '-fdq', '--', 'src']);
+                    await zrzucNieudaneIPrzywroc(dir, z.id);
                     const w = await weryfikujBuild(dir);
                     krok('stan', `przywrócono ostatni dobry stan projektu (${w.ok ? 'dist przebudowany' : 'build starego stanu: ' + w.etap}); nieudana próba w nieudane/${z.id}.diff`);
                 } catch (e) { krok('blad', `nie udało się przywrócić projektu: ${e.message}`); }
@@ -847,17 +867,7 @@ PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy
             // odpowiedzi (zmierzone 2026-09-22: main.ts zmieniony + questy.ts bez commita).
             // Robimy to samo, co przy nieudanych rundach: diff do nieudane/, powrót do ostatniego commita.
             try {
-                const diff = await git(dir, ['diff']);
-                const nowePliki = (await git(dir, ['ls-files', '--others', '--exclude-standard', '--', 'src'])).split('\n').filter(Boolean);
-                if (diff || nowePliki.length) {
-                    await fs.mkdir(path.join(dir, 'nieudane'), { recursive: true });
-                    let zrzutDiff = diff;
-                    for (const f of nowePliki) { try { zrzutDiff += `\n=== NOWY PLIK: ${f} ===\n${await fs.readFile(path.join(dir, f), 'utf8')}`; } catch { /* nic */ } }
-                    await fs.writeFile(path.join(dir, 'nieudane', `${z.id}.diff`), zrzutDiff, 'utf8');
-                    await git(dir, ['checkout', '--', '.']);
-                    await git(dir, ['clean', '-fdq', '--', 'src']);
-                    krok('stan', `przywrócono ostatni dobry stan projektu; niedokończona próba w nieudane/${z.id}.diff`);
-                }
+                if (await zrzucNieudaneIPrzywroc(dir, z.id)) krok('stan', `przywrócono ostatni dobry stan projektu; niedokończona próba w nieudane/${z.id}.diff`);
                 const p = await czytajProjekt(projektId);
                 p.historia.push({ zadanie: z.id, tresc: cel, ok: false, rundy: z.rundy, sekundy: z.wynik.sekundy, kiedy: z.koniec, commit: null, model: z.model, powod: e.message });
                 await zapiszProjekt(p);
