@@ -176,6 +176,12 @@ async function czekajNaComfy(promptId, { limitMs, naPostep }) {
     }
 }
 
+/** POST /free — wyładuj modele i zwolnij pamięć karty (między etapami; w środku grafu się nie da). */
+async function zwolnijVram() {
+    try { await fetch(`${cfg.comfyBase}/free`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unload_models: true, free_memory: true }), signal: AbortSignal.timeout(30000) }); } catch { /* nie krytyczne */ }
+    await new Promise((r) => setTimeout(r, 3000));
+}
+
 async function zlecGraf(graf) {
     const r = await fetch(`${cfg.comfyBase}/prompt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: graf }), signal: AbortSignal.timeout(30000) });
     const d = await r.json().catch(() => ({}));
@@ -201,7 +207,7 @@ function plikZOutputs(outputs, klucze) {
  * Zlecenie. `zrodlo`: { tekst } albo { zdjecie: <ścieżka pliku> }. Opcje: sciany (domyślnie 20000),
  * rozdzielczosc (1024|1152|…|2048 — wokselowa, więcej = dokładniej i wolniej), ziarno.
  */
-export async function generuj({ nazwa, opis, tekst, zdjecie, projekt = null, sciany = 20000, rozdzielczosc = 1024, ziarno = null } = {}) {
+export async function generuj({ nazwa, opis, tekst, zdjecie, projekt = null, sciany = 8000, rozdzielczosc = 512, ziarno = null } = {}) {
     if (!tekst && !zdjecie) throw new Error('Podaj opis albo zdjęcie.');
     const s = await stan();
     if (!s.gotowe) throw new Error(s.braki.join(' | '));
@@ -214,7 +220,7 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, projekt = null, sci
     const z = { id: `a3-${Date.now().toString(36)}`, asset: assetId, stan: 'trwa', etap: 'start', kroki: [], od: new Date().toISOString(), czasy: {} };
     zadania.set(z.id, z);
     const krok = (etap, tekst) => { z.etap = etap; z.kroki.push({ kiedy: new Date().toISOString(), etap, tekst: String(tekst).slice(0, 500) }); };
-    const m = { id: assetId, nazwa: baza, opis: String(opis || tekst || nazwa || '').slice(0, 500), zrodlo: tekst ? 'tekst' : 'zdjecie', tekst: tekst ? String(tekst).slice(0, 1000) : null, sciany: Number(sciany) || 20000, rozdzielczosc: Number(rozdzielczosc) || 1024, utworzono: z.od, stan: 'trwa', silnik: 'TRELLIS.2', czasy: {}, wGrach: [] };
+    const m = { id: assetId, nazwa: baza, opis: String(opis || tekst || nazwa || '').slice(0, 500), zrodlo: tekst ? 'tekst' : 'zdjecie', tekst: tekst ? String(tekst).slice(0, 1000) : null, sciany: Number(sciany) || 8000, rozdzielczosc: Number(rozdzielczosc) || 512, utworzono: z.od, stan: 'trwa', silnik: 'TRELLIS.2', czasy: {}, wGrach: [] };
     await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(m, null, 2), 'utf8');
 
     (async () => {
@@ -247,16 +253,38 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, projekt = null, sci
             }
             if (!fsSync.existsSync(path.join(dir, 'obraz.png'))) await fs.copyFile(obraz, path.join(dir, 'obraz.png')).catch(() => {});
 
+            // Zwalniamy VRAM po FLUX-ie: z jego wagami w karcie TRELLIS.2 dochodził do DecimateMesh
+            // i padał na „Allocation on device" (zmierzone 2026-09-22 w pełnym przebiegu).
+            await zwolnijVram();
             krok('3d', 'TRELLIS.2: tło → struktura → kształt → tekstura…');
             const nazwaWejscia = await wgrajObraz(obraz, `${assetId}.png`);
             const g3 = JSON.parse(await fs.readFile(path.join(cfg.katalogWorkflow, GRAF_3D), 'utf8')); delete g3._opis;
             g3['1'].inputs.image = nazwaWejscia;
-            g3['20'].inputs.target_resolution = Math.min(2048, Math.max(1024, Math.round((Number(rozdzielczosc) || 1024) / 128) * 128));
+            // 512 = bez etapu upsamplingu (węzły 20/21): tekstura liczona na kształcie 512. Zmierzone
+            // 2026-09-22: 1024 → 712 s i OOM na VaeDecodeTextureTrellis przy gęstszej bryle (6 GB);
+            // 512 → ~70 s końcówki, 94 tys. ścian mastera, golem w pełni czytelny przy 6 tys. ścian.
+            const rozdz = Number(rozdzielczosc) || 512;
+            if (rozdz < 1024) {
+                delete g3['20']; delete g3['21'];
+                g3['22'].inputs.samples = ['19', 0];
+                g3['23'].inputs = { positive: ['16', 0], negative: ['16', 1], shape_latent: ['19', 0] };
+            } else {
+                g3['20'].inputs.target_resolution = Math.min(2048, Math.max(1024, Math.round(rozdz / 128) * 128));
+            }
             g3['26'].inputs.target_face_count = 200000;   // master; pod grę upraszcza Siatka3D (patrz niżej)
             g3['29'].inputs.filename_prefix = `katedra/assety/${assetId}`;
-            if (Number.isFinite(Number(ziarno))) for (const n of ['14', '19', '21', '24']) g3[n].inputs.seed = Number(ziarno) + Number(n);
+            if (Number.isFinite(Number(ziarno))) for (const n of ['14', '19', '21', '24']) if (g3[n]) g3[n].inputs.seed = Number(ziarno) + Number(n);
             const t2 = Date.now();
-            const w3 = await czekajNaComfy(await zlecGraf(g3), { limitMs: 60 * 60_000, naPostep: (s) => { z.sekundyEtapu = s; } });
+            let w3;
+            try { w3 = await czekajNaComfy(await zlecGraf(g3), { limitMs: 60 * 60_000, naPostep: (s) => { z.sekundyEtapu = s; } }); }
+            catch (e) {
+                // OOM na końcówce (DecimateMesh): etapy modelu są w cache ComfyUI, więc druga próba po
+                // zwolnieniu VRAM liczy tylko decymację + malowanie (~3 min), nie 12 min od nowa.
+                if (!/Allocation on device|out of memory/i.test(e.message)) throw e;
+                krok('3d', `VRAM się skończył (${e.message.slice(0, 60)}…) — zwalniam i ponawiam końcówkę`);
+                await zwolnijVram();
+                w3 = await czekajNaComfy(await zlecGraf(g3), { limitMs: 30 * 60_000, naPostep: (s) => { z.sekundyEtapu = s; } });
+            }
             m.czasy['3d'] = Math.round((Date.now() - t2) / 1000);
             // SaveGLB nie zgłasza pliku w outputs — szukamy po prefiksie w output/katedra/assety
             let glb = plikZOutputs(w3.outputs, ['3d', 'result', 'files']);
