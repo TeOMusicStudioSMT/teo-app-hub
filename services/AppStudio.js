@@ -604,14 +604,15 @@ async function zrzucNieudaneIPrzywroc(dir, id) {
  * rundzie i szukamy ich nazwy w importach pozostałych plików projektu (bez rozszerzenia, bo
  * bundler pozwala na `./wrogowie`). Pliki typów (.d.ts) i wejście (main) pomijamy.
  */
-async function modulyBezImportu(dir, nowe) {
-    const kandydaci = nowe.filter((p) => /^src\/.+\.tsx?$/.test(p.sciezka) && !/\.d\.ts$/.test(p.sciezka) && !/^src\/(main|index)\./.test(p.sciezka));
+async function modulyBezImportu(dir) {
+    // Sprawdzamy WSZYSTKIE moduly projektu, nie tylko oddane w tej rundzie: modul potrafi
+    // powstac w jednej rundzie, a import zniknac w kolejnej (tak w nocy 2026-09-23 przepadl
+    // src/fale.ts - zadanie zameldowalo sukces, a w grze fal nie bylo).
+    let wszystkie = [];
+    try { wszystkie = await pliki(path.basename(dir)); } catch { return []; }
+    const kandydaci = wszystkie.filter((p) => /^src\/.+\.tsx?$/.test(p.sciezka) && !/\.d\.ts$/.test(p.sciezka) && !/^src\/(main|index)\./.test(p.sciezka));
     if (!kandydaci.length) return [];
-    let caly = '';
-    try {
-        const wszystkie = await pliki(path.basename(dir));
-        caly = wszystkie.filter((p) => !kandydaci.some((k) => k.sciezka === p.sciezka)).map((p) => p.tresc).join('\n');
-    } catch { return []; }
+    const caly = wszystkie.filter((p) => !kandydaci.some((k) => k.sciezka === p.sciezka)).map((p) => p.tresc).join('\n');
     return kandydaci.filter((k) => {
         const nazwa = path.basename(k.sciezka).replace(/\.tsx?$/, '');
         return !new RegExp(`from\\s*['"\`][^'"\`]*${nazwa}(\\.tsx?)?['"\`]`).test(caly);
@@ -895,7 +896,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                 // przechodzi testy — a w grze nic się nie dzieje. Tak wyglądały obie nocne roboty
                 // 2026-09-22 (wrogowie.ts napisany, nigdzie nie podpięty; Suweren: „nie widzę tych
                 // efektów"). Sprawdzamy to deterministycznie, zanim ucieszymy się z „GOTOWE".
-                const martwe = await modulyBezImportu(dir, nowe);
+                const martwe = await modulyBezImportu(dir);
                 if (martwe.length) {
                     feedback = `Dodałeś ${martwe.map((m) => m.plik).join(', ')}, ale ŻADEN plik projektu tego nie importuje — ten kod nigdy się nie wykona i w grze nic nie widać. Podepnij go tam, gdzie ma działać (zwykle src/main.ts: import + wywołanie w pętli gry), i oddaj też ten plik.`;
                     krok('blad', `martwy moduł: ${martwe.map((m) => m.plik).join(', ')} — nikt nie importuje, wymuszam podpięcie`);
