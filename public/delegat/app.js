@@ -108,7 +108,15 @@
                 }
             }
             if (!calosc) odp.textContent = '(bez odpowiedzi)';
-        } catch (e) { odp.textContent = `⚠️ ${e.message}`; }
+        } catch (e) {
+            // „Failed to fetch" na telefonie prawie zawsze znaczy jedno: strona zostala wczytana
+            // ze STAREGO adresu tunelu (trycloudflare zmienia go przy kazdym starcie mostu).
+            const sieciowy = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+            odp.textContent = sieciowy
+                ? `⚠️ Most nie odpowiada pod ${location.origin}. Jesli jestes poza domem: adres tunelu zmienia sie po kazdym restarcie mostu — zeskanuj nowy kod QR z karty Delegat w Katedrze.`
+                : `⚠️ ${e.message}`;
+            odp.classList.add('narzedzie', 'blad');
+        }
     }
     $('wyslij').addEventListener('click', () => wyslij($('tekst').value));
     $('tekst').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); wyslij($('tekst').value); } });

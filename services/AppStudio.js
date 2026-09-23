@@ -52,6 +52,7 @@ export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
 
 const RUND = 4;
 const MAX_KONTEKST_ZNAKOW = 60_000;
+const PROG_SKROTU_ZNAKOW = 26_000;   // powyżej tego moduły spoza zadania idą jako szkic
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SZABLON PROJEKTU — minimalny Vite + React + TS, base './' (działa pod /apki/<id>/ i z USB)
@@ -803,9 +804,34 @@ const noweId = () => `kx-${Date.now().toString(36)}-${crypto.randomBytes(2).toSt
 export function zadanie(id) { return zadania.get(id) ?? null; }
 export function zadaniaProjektu(projektId) { return [...zadania.values()].filter((z) => z.projekt === projektId).map((z) => ({ id: z.id, stan: z.stan, zadanie: z.zadanie, rundy: z.rundy, od: z.od, koniec: z.koniec ?? null })); }
 
-function kontekstPlikow(lista) {
-    let calosc = '';
-    for (const p of lista) calosc += `=== PLIK: ${p.sciezka} ===\n${p.tresc.trimEnd()}\n=== KONIEC ===\n\n`;
+/** Szkic modułu: nagłówek (komentarz na górze) + linie eksportów. Kilkanaście linii zamiast setek. */
+function szkicModulu(tresc) {
+    const linie = tresc.split('\n');
+    const naglowek = [];
+    for (const l of linie) { if (!/^\s*(\/\/|\/\*|\*)/.test(l) && l.trim()) break; naglowek.push(l); }
+    const eksporty = linie.filter((l) => /^export\s+(async\s+)?(function|const|interface|type|class)/.test(l)).map((l) => l.replace(/\s*\{\s*$/, ' { … }'));
+    return [...naglowek.slice(0, 6), '', ...eksporty].join('\n');
+}
+
+/**
+ * Kontekst dla Kodeksa. MAŁY PROJEKT: wszystko w całości, jak dotąd. DUŻY: w całości tylko to,
+ * czego zadanie naprawdę dotyczy (main.ts, global.d.ts i moduły wymienione w zleceniu), reszta
+ * jako szkic — nagłówek i lista eksportów. Zmierzone 2026-09-23: ARPG urósł do 50 kB w dziewięciu
+ * modułach, prompt szedł w 18 tys. tokenów i 9B nie kończył rundy w 45 min („Ollama nie zdążyła").
+ */
+function kontekstPlikow(lista, cel = '') {
+    const pelny = (p) => `=== PLIK: ${p.sciezka} ===\n${p.tresc.trimEnd()}\n=== KONIEC ===\n\n`;
+    let calosc = lista.map(pelny).join('');
+    if (calosc.length <= PROG_SKROTU_ZNAKOW) return calosc;
+
+    const wTresci = String(cel).toLowerCase();
+    const wazny = (p) => /(^|\/)(main|global)\.(ts|tsx|d\.ts)$/.test(p.sciezka) || wTresci.includes(path.basename(p.sciezka).replace(/\.tsx?$/, '').toLowerCase());
+    calosc = '';
+    for (const p of lista) {
+        calosc += wazny(p) || !/\.tsx?$/.test(p.sciezka)
+            ? pelny(p)
+            : `=== SZKIC PLIKU: ${p.sciezka} (pełnej treści nie dostajesz — NIE zmieniaj go) ===\n${szkicModulu(p.tresc)}\n=== KONIEC ===\n\n`;
+    }
     return calosc.length > MAX_KONTEKST_ZNAKOW ? calosc.slice(0, MAX_KONTEKST_ZNAKOW) + '\n[…ucięto — projekt za duży na jeden prompt…]' : calosc;
 }
 
@@ -849,7 +875,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                     ? `\nASSETY 3D W PROJEKCIE (public/assety/, gotowe pliki GLB z kolorami wierzchołków — UŻYWAJ ich zamiast brył, gdy pasują): ${assety.map((a) => `${a.plik} (${a.opis || a.nazwa}${a.sciany ? ', ~' + a.sciany + ' ścian' : ''})`).join('; ')}. Ładowanie: \`import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'\`; \`new GLTFLoader().load('./assety/NAZWA.glb', (g) => { const m = g.scene; m.scale.setScalar(S); scena.add(m); })\` — do czasu wczytania trzymaj placeholder (Box), a po wczytaniu podmień; pole na bryłę typuj THREE.Object3D (g.scene to Group, nie Mesh — żadnych rzutowań as THREE.Mesh/as THREE.Group); kolizje nadal po odległości. Model ma ~1 jednostkę wysokości — dobierz scale.\n`
                     : '';
                 const podzial = duze.length ? `\nPLIKI ZA DUŻE: ${duze.join(', ')}. Nie dopisuj do nich kolejnych funkcji — WYDZIEL spójne części (np. wrogowie, loot, HUD, poziom, questy) do osobnych plików src/*.ts z eksportami i importuj je w main.ts. Oddaj każdy plik, którego treść zmieniasz, W CAŁOŚCI; plików, których nie ruszasz, nie oddawaj.\n` : '';
-                const prompt = `PROJEKT: ${projektId}\n\nOBECNE PLIKI:\n${kontekstPlikow(obecne)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${podzial}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
+                const prompt = `PROJEKT: ${projektId}\n\nOBECNE PLIKI:\n${kontekstPlikow(obecne, cel)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${podzial}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
                 // ComfyUI po renderze trzyma modele w karcie (zmierzone: ~2 GB po TRELLIS.2) — Ollama
                 // dostaje resztkę i liczy prompt na CPU. Prosimy o zwolnienie, jeśli ComfyUI nie liczy.
                 if (runda === 1 && cfg.zwolnijComfy) await cfg.zwolnijComfy().catch(() => {});
@@ -858,7 +884,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                 // Limit rundy WEDŁUG ROZMIARU PROJEKTU, nie na sztywno 20 min: 9B pisze ~25 znaków/s,
                 // a przepisanie czterech plików ARPG to ~21 tys. znaków. Zmierzone 2026-09-22: runda
                 // urwana na 20 010 znakach po 1200 s - brakowało minuty. Widełki 15-45 min.
-                const limitRundy = Math.min(45, Math.max(15, Math.ceil(prompt.length / 25 / 60 * 1.6))) * 60_000;
+                const limitRundy = Math.min(60, Math.max(15, Math.ceil(prompt.length / 25 / 60 * 1.6))) * 60_000;
                 const kartaKodeksa = await Persony.karta('kodeks').catch(() => null);
                 const regulyKodeksa = typProjektu === 'gra' ? SYSTEM_KODEKSA_GRY : SYSTEM_KODEKSA;
                 const odp = await pisz({ system: kartaKodeksa ? `${kartaKodeksa.tresc}\n\n${regulyKodeksa}` : regulyKodeksa, prompt, model: z.model, timeoutMs: limitRundy, naKawalek: (n) => {
