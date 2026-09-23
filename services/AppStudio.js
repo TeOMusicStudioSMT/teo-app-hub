@@ -222,6 +222,7 @@ requestAnimationFrame(petla);
 };
 
 const PRZEWODNIK_THREE = `PRZEWODNIK SILNIKA (three.js 0.170, TypeScript, Vite) — jedna strona, trzymaj się go:
+- Nowy moduł: eksportuj FUNKCJE (export function) i importuj je nazwanym importem: import { f } from './plik'. Bez klas i bez export default; NIE używaj nazwy interfejsu jako wartości — new EkranSmierci() przy interface EkranSmierci to błąd TS2693 (tak padły dwie rundy 2026-09-23).
 - Wejście: src/main.ts. Bez Reacta, bez innych bibliotek, tylko \`import * as THREE from 'three'\` (plus \`GLTFLoader\` z \`three/examples/jsm/loaders/GLTFLoader.js\`, gdy projekt ma assety w public/assety/). Wolno dzielić kod na moduły w src/ (np. src/monety.ts) i importować je z main.ts.
 - Scena: PerspectiveCamera, WebGLRenderer do #gra, HemisphereLight/DirectionalLight. Ziemia = PlaneGeometry obrócona o -PI/2. Obiekty: Mesh(Geometry, MeshStandardMaterial({ color })). Współrzędne: y w górę, gracz na y=0.5.
 - Pętla: requestAnimationFrame z dt (sekundy, ograniczone do 0.05). Ruch = prędkość * dt. Klawisze: mapa keydown/keyup po e.key.toLowerCase() (w/a/s/d, strzałki, ' ' = spacja).
@@ -872,7 +873,23 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                     krok('blad', sufit ? `runda ${runda}: kontekst modelu wyczerpany (${odp.tokeny}/${odp.numCtx ?? NUM_CTX} tokenów) — projekt za duży na jeden prompt, wymuszam podział na moduły` : `runda ${runda}: model nie oddał plików (${odp.tokeny} tokenów)`);
                     continue;
                 }
-                for (const p of nowe) { await fs.mkdir(path.dirname(path.join(dir, p.sciezka)), { recursive: true }); await fs.writeFile(path.join(dir, p.sciezka), p.tresc, 'utf8'); }
+                // BEZ ZMIAN: model bywa, że oddaje pliki IDENTYCZNE z tym, co już leży w projekcie —
+                // build i testy wtedy przechodzą, commit nie powstaje (nie ma czego commitować),
+                // a zadanie melduje sukces. Tak „zrobił się" respawn wrogów w nocy 2026-09-23.
+                let zmienione = 0;
+                for (const p of nowe) {
+                    const pelna = path.join(dir, p.sciezka);
+                    const stara = await fs.readFile(pelna, 'utf8').catch(() => null);
+                    if (stara !== null && stara.replace(/\r\n/g, '\n').trimEnd() === p.tresc.replace(/\r\n/g, '\n').trimEnd()) continue;
+                    await fs.mkdir(path.dirname(pelna), { recursive: true });
+                    await fs.writeFile(pelna, p.tresc, 'utf8');
+                    zmienione++;
+                }
+                if (!zmienione) {
+                    feedback = `Oddałeś ${nowe.length} plik(ów) IDENTYCZNYCH z tym, co już jest w projekcie — nic się nie zmieniło i zadanie nadal nie jest zrobione. Napisz KOD, który realizuje zadanie, i oddaj zmienione pliki.`;
+                    krok('blad', `runda ${runda}: pliki bez żadnej zmiany (${nowe.map((p) => p.sciezka).join(', ')}) — to nie jest wykonane zadanie`);
+                    continue;
+                }
 
                 // MARTWY MODUŁ: nowy plik src/*.ts, którego nikt nie importuje, kompiluje się i
                 // przechodzi testy — a w grze nic się nie dzieje. Tak wyglądały obie nocne roboty
