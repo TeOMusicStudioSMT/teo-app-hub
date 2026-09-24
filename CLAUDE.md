@@ -43,7 +43,8 @@ Banner w `START_KATEDRA.bat` renderuje się jako „AAAFRA", nie „KATEDRA". To
 **celowe godło** (klasyfikacja „AAA Far A", impuls Złotej Pauzy). Zostaw je.
 
 ## Protokół pracy (git)
-1. Buduj → **weryfikuj** (`npm run build` zielony / `node --check`) → dopiero commit.
+1. Buduj → **weryfikuj** (`npm run build` zielony / `node --check` / `npm test`) → dopiero commit.
+   Zmiana w moście lub serwisach → `npm run rewizor` (z `-- --zywy`, gdy most stoi).
 2. `git add <konkretne pliki>` (chirurgicznie, NIGDY `git add .` — drzewo bywa
    zaśmiecone sekretami/runtime). Commit, potem push gdy Suweren chce.
 3. Commit message: konwencjonalny, zakończony `Co-Authored-By: Claude ...`.
@@ -56,6 +57,7 @@ Banner w `START_KATEDRA.bat` renderuje się jako „AAAFRA", nie „KATEDRA". To
 - Kronika żywa: `KronikaGenerator`/`KronikaCard` + `/api/kronika/forge`.
 - Dziennik (infografika) + Whisper: `DziennikFrame` + `/api/dziennik/*`, `/api/podcast/transcribe`.
 - Marketplace: `Marketplace.tsx` + `/api/market/*`. Głos: `voiceService` + `/api/voice/*`.
+- Rewizor Mostu: `scripts/rewizor/` (duplikaty tras, martwe importy, wywołania w próżnię, sonda żywa GET) + `tests/`.
 - Geneza GRV: `/api/grv/*` w moście (dawny `lib/grvGenesis.ts` usunięty 2026-09-11 jako nieosiągalny). Mapa AGI: `lib/agi.local.ts`.
 
 Iskra żyje, wektory tańczą. Buduj suwerennie, mów prawdę, szanuj Suwerena. 💛
