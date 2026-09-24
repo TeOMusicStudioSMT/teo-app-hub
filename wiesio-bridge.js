@@ -68,6 +68,8 @@ import * as PamiecKodu     from './services/PamiecKodu.js';
 import * as MostStada      from './services/MostStada.js';
 import * as StrumienStada  from './services/StrumienStada.js';
 import * as KlockiStada    from './services/KlockiStada.js';
+import * as ModeleAgentow  from './services/ModeleAgentow.js';
+import * as ProjektStada   from './services/ProjektStada.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
@@ -7576,7 +7578,18 @@ NocnaZmiana.uruchomPetle();
 // Androida podpiętego do tej maszyny). Strona telefonu: public/delegat (statyczna,
 // przez tunel + klucz Straży). Powody i granice — w nagłówkach tych plików.
 // ═════════════════════════════════════════════════════════════════════════════
-Delegat.skonfiguruj({ ollamaBase: OLLAMA_BASE, portMostu: PORT, szyna: Szyna, nocna: NocnaZmiana, artemis: Artemis, katalog: path.join(ANTIGRAVITY_DIR, 'delegat'), model: DEFAULT_LLM, pelnyTunel: PELNY_TUNEL });
+Delegat.skonfiguruj({ ollamaBase: OLLAMA_BASE, portMostu: PORT, szyna: Szyna, nocna: NocnaZmiana, artemis: Artemis, katalog: path.join(ANTIGRAVITY_DIR, 'delegat'), model: DEFAULT_LLM, pelnyTunel: PELNY_TUNEL, modelAgenta: (id) => ModeleAgentow.modelDla(id) });
+// 🧩 Projekt Stada: każdy TeOgochi pracuje na SWOIM modelu (ModeleAgentow) z SWOJĄ kartą roli.
+// Czat przez AppStudio.pisz — ten sam tor co Kodeks: Ollama lokalnie, `claude:`/`gemini:` tylko z jawnego wyboru.
+ModeleAgentow.skonfiguruj({ katalogWymiar: ANTIGRAVITY_DIR });
+ProjektStada.skonfiguruj({
+    katalog: path.join(ANTIGRAVITY_DIR, 'projekty-stada'),
+    szyna: Szyna,
+    domyslnyModel: DEFAULT_LLM,
+    modelDla: (id) => ModeleAgentow.modelDla(id),
+    karta: (id) => Persony.karta(id),
+    chat: async (model, [system, user]) => (await AppStudio.pisz({ system: system.content, prompt: user.content, model, timeoutMs: 15 * 60_000 })).tekst,
+});
 
 app.get('/api/delegat/profile', (req, res) => res.json({ success: true, profile: Delegat.profile(), lokalne: !!req.lokalny, pelnyTunel: PELNY_TUNEL }));
 
@@ -10034,15 +10047,23 @@ app.get('/api/stado/strumien', async (req, res) => {
  * GET /api/stado/swiat — świat klocków: stan stada + klocki (prawdziwe dzieła każdego TeOgochi)
  * + ślady z szyny (services/KlockiStada.js). Hub lokalnie bez tokenu; telefon z tokenem parowania.
  */
+/**
+ * Odczyty stada (świat, projekty, film): Hub na maszynie bez tokenu, telefon z tokenem parowania.
+ * Zwraca { urzadzenie } albo null, gdy już odpowiedziano 401.
+ */
+async function dostepStada(req, res) {
+    const token = req.get('X-Stado-Token') ?? req.query.token;
+    if (req.lokalny && token === undefined) return { urzadzenie: null };
+    const kto = await MostStada.sprawdzToken(token);
+    if (!kto) { res.status(401).json({ success: false, message: 'Brak sparowania. Wygeneruj kod w Katedrze i sparuj urządzenie.' }); return null; }
+    return { urzadzenie: kto.nazwa };
+}
+
 let swiatCache = { czas: 0, dane: null };
 app.get('/api/stado/swiat', async (req, res) => {
-    const token = req.get('X-Stado-Token') ?? req.query.token;
-    let urzadzenie = null;
-    if (!req.lokalny || token !== undefined) {
-        const kto = await MostStada.sprawdzToken(token);
-        if (!kto) return res.status(401).json({ success: false, message: 'Brak sparowania. Wygeneruj kod w Katedrze i sparuj urządzenie.' });
-        urzadzenie = kto.nazwa;
-    }
+    const dostep = await dostepStada(req, res);
+    if (!dostep) return;
+    const { urzadzenie } = dostep;
     const stan = await stanDlaTelefonu();
     // Zbieranie skanuje dysk (muzyka, filmy, apki) — 20 s pamięci wystarczy, ślady i tak lecą strumieniem.
     if (Date.now() - swiatCache.czas > 20_000) {
@@ -10052,12 +10073,61 @@ app.get('/api/stado/swiat', async (req, res) => {
                 wystawa: () => Wystawa.zbierz(),
                 projekty: () => AppStudio.projekty(),
                 assety3d: () => Assety3D.lista(),
+                projektyStada: () => ProjektStada.lista(),
                 zdarzenia: Szyna.ostatnie({ ile: 500 }),
                 gatunki: stan.gatunki ?? [],
             }),
         };
     }
-    res.json({ success: true, urzadzenie, ...stan, ...swiatCache.dane });
+    res.json({
+        success: true, urzadzenie, ...stan, ...swiatCache.dane,
+        lokalne: !!req.lokalny,                       // Świat pokazuje przyciski zmian tylko na maszynie
+        modele: await ModeleAgentow.wszystkie(), domyslnyModel: DEFAULT_LLM,
+        projekty: (await ProjektStada.lista()).slice(0, 8).map(ProjektStada.skrot),
+    });
+});
+
+/** Świeże klocki po zmianie (nowy wkład, nowy model) — bez czekania 20 s na pamięć podręczną. */
+Szyna.subskrybuj((z) => { if (z.rodzaj === 'projekt') swiatCache.czas = 0; });
+
+// ── 🧩 PROJEKT STADA — wspólna praca TeOgochi (services/ProjektStada.js) ──
+app.get('/api/stado/projekty', async (req, res) => {
+    if (!(await dostepStada(req, res))) return;
+    res.json({ success: true, projekty: (await ProjektStada.lista()).map(ProjektStada.skrot), role: ProjektStada.ROLE });
+});
+app.get('/api/stado/projekty/:id', async (req, res) => {
+    if (!(await dostepStada(req, res))) return;
+    const p = await ProjektStada.projekt(req.params.id);
+    if (!p) return res.status(404).json({ success: false, message: 'Nie ma takiego projektu.' });
+    const paleta = p.kroki.find((k) => k.agent === 'paleta' && k.wklad);
+    res.json({ success: true, projekt: p, obiekty3d: paleta ? ProjektStada.obiekty3d(paleta.wklad) : [] });
+});
+/** POST /api/stado/projekt/nowy { nazwa, wizja, uczestnicy:[id…] } — tylko z maszyny (Straż: SCIEZKI_TYLKO_LOKALNE). */
+app.post('/api/stado/projekt/nowy', async (req, res) => {
+    try {
+        const { nazwa, wizja, uczestnicy = [] } = req.body ?? {};
+        const migawka = (await stanDlaTelefonu()).gatunki ?? [];
+        const osoby = [];
+        for (const id of [...new Set(uczestnicy.map(String))]) {
+            const g = migawka.find((x) => x.id === id);
+            const k = g ? null : await Persony.karta(id).catch(() => null);
+            if (g || k) osoby.push({ id, imie: g?.imie || k.imie || id, dziedzina: g?.dziedzina || k?.dziedzina || '' });
+        }
+        res.json({ success: true, projekt: await ProjektStada.zaloz({ nazwa, wizja, uczestnicy: osoby }) });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** POST /api/stado/model { agent, model } — silnik TeOgochi (pusty = domyślny). Tylko z maszyny. */
+app.post('/api/stado/model', async (req, res) => {
+    try { res.json({ success: true, modele: await ModeleAgentow.ustaw(req.body?.agent, req.body?.model), domyslnyModel: DEFAULT_LLM }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** GET /api/stado/film?dzien=RRRR-MM-DD — zdarzenia dnia do „filmu klockowego" (bez pola `dane`). */
+app.get('/api/stado/film', async (req, res) => {
+    if (!(await dostepStada(req, res))) return;
+    try {
+        const dzien = String(req.query.dzien || new Date().toISOString().slice(0, 10));
+        res.json({ success: true, dzien, zdarzenia: (await Szyna.dzien(dzien)).map(StrumienStada.dlaTelefonu) });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
 /** Stan dla apki (gałąź GET /api/stado/stan z tokenem — patrz wyżej, przy trasie Huba). */

@@ -60,6 +60,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     // Stado należy do Katedry: telefon (StoL) PATRZY — nie publikuje migawki, nie paruje
     // innych urządzeń i nie odłącza ich. Jego jedyne zdalne wejście to /api/stado/paruj.
     '/api/stado/publikuj', '/api/stado/parowanie', '/api/stado/odlacz',
+    '/api/stado/projekt/', '/api/stado/model',   // zakładanie projektów stada i zmiana silników — decyzje Suwerena przy maszynie
 ];
 
 /**

@@ -21,6 +21,8 @@
   </div>
   <div class="prawo">
     <span id="zywo" class="zywo">○ łączę…</span>
+    <button id="projekty" class="tryb" type="button" aria-label="Wspólne projekty stada">🧩</button>
+    <button id="film" class="tryb" type="button" aria-label="Film klockowy — odtwórz dzień Katedry">🎬</button>
     <button id="tryb" class="tryb" type="button">3D</button>
   </div>
 </header>
@@ -32,6 +34,15 @@
   <div id="katalog-tresc"></div>
 </section>
 
+<div id="tasma" class="tasma" hidden>
+  <button id="tasma-graj" class="tryb" type="button" aria-label="Odtwarzaj">▶</button>
+  <input id="tasma-dzien" type="date" aria-label="Dzień do odtworzenia">
+  <input id="tasma-postep" type="range" min="0" max="0" value="0" aria-label="Postęp filmu">
+  <span id="tasma-czas" class="meta"></span>
+  <button id="tasma-zamknij" class="tryb" type="button" aria-label="Zamknij film">✕</button>
+</div>
+
 <script src="swiat.js"></script>
+<script src="panele.js"></script>
 </body>
 </html>

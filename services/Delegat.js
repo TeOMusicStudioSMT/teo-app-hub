@@ -43,6 +43,8 @@ let cfg = {
     katalog: path.join(process.cwd(), '_OtakOs_Wymiar', 'delegat'),
     model: 'gemma4:e2b',
     pelnyTunel: false,
+    /** Model przypisany agentowi (services/ModeleAgentow.js) — null = domyślny. */
+    modelAgenta: async () => null,
 };
 
 export function skonfiguruj(opcje) { cfg = { ...cfg, ...opcje }; }
@@ -375,12 +377,30 @@ async function ollamaChat(model, messages, { strumien = false, naToken } = {}) {
  * @param {{ delegat:string, tekst:string, rozmowaId?:string, model?:string, lokalne?:boolean }} p
  * @param {(zdarzenie:object)=>void} [naZdarzenie]  — {typ:'narzedzie'|'wynik'|'token'|'koniec'|'blad', ...}
  */
+/**
+ * Profil delegata: jeden z trzech pełnych (z narzędziami muzyki, kodu, telefonu) albo —
+ * dla każdego innego gatunku z kartą roli (services/Persony.js) — profil ROZMOWNY:
+ * persona z karty i tylko narzędzia bez skutków ubocznych (stan Katedry, pytanie do
+ * stada, notatka na szynę). Tak każdy TeOgochi w Świecie klocków może porozmawiać.
+ */
+export async function profilDla(id) {
+    if (PROFILE[id]) return PROFILE[id];
+    const k = await Persony.karta(id);
+    if (!k) return null;
+    const imie = k.imie || String(id).charAt(0).toUpperCase() + String(id).slice(1);
+    return {
+        id, gatunek: id, imie, emoji: k.emoji || '🥚', kolor: '#94a3b8', dziedzina: k.dziedzina || '', glos: null,
+        persona: `Jesteś ${imie} — TeOgochi Katedry OtakOS. Mówisz po polsku, krótko i konkretnie.`,
+        narzedzia: ['katedra.stan', 'szyna.pytanie', 'szyna.notatka'],
+    };
+}
+
 export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = false }, naZdarzenie = () => {}) {
-    const profil = PROFILE[delegat];
-    if (!profil) throw new Error(`Nie ma takiego delegata: ${delegat}. Znane: ${Object.keys(PROFILE).join(', ')}.`);
+    const profil = await profilDla(delegat);
+    if (!profil) throw new Error(`Nie ma takiego delegata: ${delegat}. Znane: ${Object.keys(PROFILE).join(', ')} i gatunki z kartą roli.`);
     const tresc = String(tekst || '').trim();
     if (!tresc) throw new Error('Pusta wypowiedź.');
-    const silnik = model || cfg.model;
+    const silnik = model || (await cfg.modelAgenta(profil.gatunek).catch(() => null)) || cfg.model;
     const agent = `Delegat·${profil.imie}`;
 
     const id = bezpieczneId(rozmowaId) || `tel-${Date.now().toString(36)}-${crypto.randomBytes(2).toString('hex')}`;
@@ -483,4 +503,4 @@ export function profile() {
     return Object.values(PROFILE).map(({ persona, ...p }) => ({ ...p, narzedziaZdalne: p.narzedzia.filter((n) => NARZEDZIA[n] && (cfg.pelnyTunel || !NARZEDZIA[n].ciezkie)) }));
 }
 
-export default { skonfiguruj, PROFILE, NARZEDZIA, rozmawiaj, podsumuj, profile, rozmowy, rozmowa, fakty };
+export default { skonfiguruj, PROFILE, NARZEDZIA, profilDla, rozmawiaj, podsumuj, profile, rozmowy, rozmowa, fakty };

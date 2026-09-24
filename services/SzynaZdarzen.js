@@ -78,6 +78,22 @@ export function sluchaj(res) {
     return () => sluchacze.delete(res);
 }
 
+/**
+ * Zdarzenia z jednego dnia (UTC, `RRRR-MM-DD`) z dziennika na dysku — do „filmu klockowego".
+ * Pierścień w pamięci trzyma tylko 500 ostatnich; dzień bywa dłuższy, więc czytamy plik.
+ */
+export async function dzien(data, { max = 2000 } = {}) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data))) throw new Error('Data w formacie RRRR-MM-DD.');
+    let tekst = '';
+    try { tekst = await fs.readFile(PLIK(), 'utf8'); } catch { return []; }
+    const out = [];
+    for (const l of tekst.split('\n')) {
+        if (!l.includes(`"kiedy":"${data}`)) continue;
+        try { out.push(JSON.parse(l)); } catch { /* uszkodzona linia */ }
+    }
+    return out.slice(-max);
+}
+
 /** Subskrypcja w obrębie mostu: `fn(zdarzenie)` po każdym nadaniu. Zwraca funkcję odpinającą. */
 export function subskrybuj(fn) {
     subskrybenci.add(fn);
@@ -102,4 +118,4 @@ export async function wczytajOgon() {
     }
 }
 
-export default { nadaj, ostatnie, ktoPracuje, sluchaj, subskrybuj, wczytajOgon };
+export default { nadaj, ostatnie, ktoPracuje, sluchaj, subskrybuj, dzien, wczytajOgon };

@@ -30,7 +30,8 @@
   const dymki = new Map();       // id gatunku → { tekst, od }
   let otwarty = null;            // id gatunku w katalogu
   let tryb = '2d';               // '2d' (Canvas, lekki) albo '3d' (three.js, swiat3d.js)
-  const sluchacze = new Set();   // tryb 3D słucha: ('dane') i ('zdarzenie', idGatunku, tekst)
+  const sluchacze = new Set();   // tryb 3D i panele słuchają: ('dane'), ('zdarzenie', idGatunku, tekst), ('szyna', z)
+  const rozszerzenia = new Set(); // panele.js dokłada sekcje do katalogu agenta (rozmowa, silnik, rzeźbienie)
   const powiadom = (...a) => sluchacze.forEach((f) => { try { f(...a); } catch (e) { console.error('[Świat]', e); } });
 
   const $ = (id) => document.getElementById(id);
@@ -42,8 +43,8 @@
   const dziel = (n) => { const d = n % 10, s = n % 100; return n === 1 ? 'dzieło' : d >= 2 && d <= 4 && (s < 12 || s > 14) ? 'dzieła' : 'dzieł'; };
   const kiedyTekst = (iso) => { const t = Date.parse(iso || ''); return Number.isFinite(t) ? ileTemu(t) : ''; };
 
-  const IKONY = { utwor: '🎵', film: '🎬', odcinek: '📺', kreacja: '👗', apka: '🧩', gra: '🎮', model3d: '🧊', chip: '💠', print: '🖨️' };
-  const NAZWY = { utwor: 'utwór', film: 'film', odcinek: 'odcinek', kreacja: 'kreacja', apka: 'apka', gra: 'gra', model3d: 'model 3D', chip: 'chip', print: 'print' };
+  const IKONY = { utwor: '🎵', film: '🎬', odcinek: '📺', kreacja: '👗', apka: '🧩', gra: '🎮', model3d: '🧊', chip: '💠', print: '🖨️', wklad: '📜' };
+  const NAZWY = { utwor: 'utwór', film: 'film', odcinek: 'odcinek', kreacja: 'kreacja', apka: 'apka', gra: 'gra', model3d: 'model 3D', chip: 'chip', print: 'print', wklad: 'wkład do projektu' };
 
   // ── Kolory ──────────────────────────────────────────────────────────────────
   function hexNaRgb(hex) {
@@ -55,7 +56,7 @@
   const jasniej = (c, f) => c.map((v) => v + (255 - v) * f);
   const ciemniej = (c, f) => c.map((v) => v * (1 - f));
   /** Każdy rodzaj klocka to inny odcień koloru agenta — płytka jest „jego", a klocki się różnią. */
-  const ODCIEN = { utwor: 0, film: 0.15, odcinek: -0.2, kreacja: 0.25, apka: 0, gra: -0.25, model3d: 0.3, chip: 0.1, print: -0.1 };
+  const ODCIEN = { utwor: 0, film: 0.15, odcinek: -0.2, kreacja: 0.25, apka: 0, gra: -0.25, model3d: 0.3, chip: 0.1, print: -0.1, wklad: 0.4 };
   const kolorKlocka = (baza, rodzaj) => { const f = ODCIEN[rodzaj] ?? 0; return f >= 0 ? jasniej(baza, f) : ciemniej(baza, -f); };
 
   // ── Rzut izometryczny ───────────────────────────────────────────────────────
@@ -267,6 +268,7 @@
       <h3>Ślady na szynie</h3>
       ${(a.slady ?? []).length ? `<ul class="slady">${a.slady.map((s) => `<li><time>${esc(kiedyTekst(s.kiedy))} · ${esc(s.rodzaj)}</time>${esc(s.tresc)}</li>`).join('')}</ul>` : '<p class="cisza">Nic nie zameldował.</p>'}`;
     kat.hidden = false;
+    for (const f of rozszerzenia) { try { f(g, $('katalog-tresc'), a); } catch (e) { console.error('[Świat] panel:', e); } }
     $('klocki')?.addEventListener('click', (e) => {
       const b = e.target.closest('.klocek'); if (!b) return;
       pokazKlocek(klocki[Number(b.dataset.i)], b);
@@ -282,7 +284,8 @@
     d.innerHTML = `${m && k.media.typ === 'obraz' && !(k.model && window.SwiatKatedry.podglad3d) ? `<img alt="${esc(k.tytul)}" src="${esc(m)}" onerror="this.remove()">` : ''}
       ${m && k.media.typ === 'audio' ? `<audio controls preload="none" src="${esc(m)}"></audio>` : ''}
       ${m && k.media.typ === 'wideo' ? `<video controls preload="metadata" playsinline src="${esc(m)}"></video>` : ''}
-      <p><b>${esc(k.tytul)}</b>${k.opis ? ` — ${esc(k.opis)}` : ''}</p>
+      ${k.rodzaj === 'wklad' ? `<p><b>${esc(k.tytul)}</b>${k.silnik ? ` <span class="meta">· ${esc(k.silnik)}</span>` : ''}</p><div class="wklad">${esc(k.opis)}</div>`
+        : `<p><b>${esc(k.tytul)}</b>${k.opis ? ` — ${esc(k.opis)}` : ''}</p>`}
       ${k.otworz ? `<p><a href="${esc(zKluczem(k.otworz))}" target="_blank" rel="noopener">Otwórz ${esc(NAZWY[k.rodzaj])} ↗</a>${k.iteracji ? ` · ${k.iteracji} iteracji Kodeksa` : ''}</p>` : ''}
       ${k.model ? `<div class="model3d"></div><p>${window.SwiatKatedry.podglad3d ? 'Bryła z modułu Assety3D (GLB) — obracaj palcem.' : 'Bryła z modułu Assety3D (GLB) — obejrzysz ją w trybie 3D.'}</p>` : ''}`;
     // Podgląd pod rzędem klikniętego klocka (siatka — wstawiamy za ostatnim w wierszu).
@@ -323,7 +326,20 @@
 
   function zywo(tak) { const z = $('zywo'); z.textContent = tak ? '● na żywo' : '○ łączę…'; z.classList.toggle('tak', tak); }
 
+  /** Tylko dymek i podskok — bez zmiany stanu (film klockowy odtwarza przeszłość). */
+  function pokazDymek(z) {
+    const kto = String(z.agent || '').toLowerCase();
+    const pl = plytki.find((p) => p.g.imie.toLowerCase() === kto || p.g.id.toLowerCase() === kto);
+    if (!pl) return false;
+    const tekst = `${pl.g.imie}: ${z.tresc || z.rodzaj}`;
+    dymki.set(pl.g.id, { tekst, od: performance.now() });
+    obudz();
+    powiadom('zdarzenie', pl.g.id, tekst);
+    return true;
+  }
+
   function naZdarzenie(z) {
+    powiadom('szyna', z);
     const kto = String(z.agent || '').toLowerCase();
     const pl = plytki.find((p) => p.g.imie.toLowerCase() === kto || p.g.id.toLowerCase() === kto);
     if (!pl) return;
@@ -355,7 +371,11 @@
   window.SwiatKatedry = {
     get dane() { return swiat; },
     get plytki() { return plytki; },
-    zKluczem, esc, otworzKatalog,
+    zKluczem, esc, otworzKatalog, naglowki, pokazDymek, ileTemu, kiedyTekst,
+    odswiez: () => wczytaj(),
+    rozszerzKatalog: (fn) => rozszerzenia.add(fn),
+    /** Własna treść w szufladzie katalogu (projekty, film…). */
+    pokazPanel: (html) => { otwarty = null; $('katalog-tresc').innerHTML = html; $('katalog').hidden = false; $('katalog').style.setProperty('--akcent', '#f4c84a'); $('katalog').style.setProperty('--akcent-tlo', 'rgba(244,200,74,0.14)'); return $('katalog-tresc'); },
     sluchaj: (fn) => { sluchacze.add(fn); return () => sluchacze.delete(fn); },
     podglad3d: null,   // swiat3d.js wstawia tu przeglądarkę pojedynczej bryły (katalog)
   };
