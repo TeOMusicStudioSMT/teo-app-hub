@@ -24,9 +24,39 @@
 
 import { spawn, execFileSync } from 'child_process';
 import fsSync from 'fs';
+import path from 'path';
 
 let cfg = { portMostu: 3001, szyna: null };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
+
+/**
+ * NAZWANY TUNEL (stały adres) — Suweren 2026-09-24: „moją osobistą możemy pod moje konto
+ * cloudflare ustawić". Quick tunnel daje nowy adres przy każdym starcie i telefon co restart
+ * dostaje „Failed to fetch"; nazwany tunel ma adres na stałe.
+ *
+ * MOST NICZEGO NIE LOGUJE I NIE TWORZY. Suweren robi u siebie raz:
+ *   cloudflared tunnel login
+ *   cloudflared tunnel create katedra
+ *   cloudflared tunnel route dns katedra katedra.twojadomena.pl
+ * i zapisuje w `_OtakOs_Wymiar/tunel.json`:
+ *   { "nazwa": "katedra", "host": "katedra.twojadomena.pl", "poswiadczenia": "C:/Users/…/.cloudflared/<id>.json" }
+ * Poświadczenia zostają tam, gdzie są — most tylko wskazuje na nie cloudflared, nigdy ich nie czyta
+ * ani nie kopiuje.
+ */
+function konfiguracjaNazwanego() {
+    try {
+        const plik = path.join(cfg.katalogWymiaru ?? path.join(process.cwd(), '_OtakOs_Wymiar'), 'tunel.json');
+        if (!fsSync.existsSync(plik)) return null;
+        const j = JSON.parse(fsSync.readFileSync(plik, 'utf8'));
+        if (!j?.nazwa || !j?.host) return null;
+        if (j.poswiadczenia && !fsSync.existsSync(j.poswiadczenia)) {
+            return { blad: `tunel.json wskazuje na plik poświadczeń, którego nie ma: ${j.poswiadczenia}` };
+        }
+        return { nazwa: String(j.nazwa), host: String(j.host), poswiadczenia: j.poswiadczenia ? String(j.poswiadczenia) : null };
+    } catch (e) {
+        return { blad: `tunel.json nie do odczytu: ${e.message}` };
+    }
+}
 
 const stan = {
     stan: 'zatrzymany',   // zatrzymany | instaluje | startuje | dziala | blad
@@ -34,6 +64,7 @@ const stan = {
     od: null,
     blad: null,
     binarka: null,
+    tryb: 'quick',        // quick (trycloudflare, adres zmienny) | nazwany (stały adres z konta Suwerena)
     log: [],              // ostatnie linie cloudflared (bez sekretów — quick tunnel ich nie ma)
 };
 let proces = null;
@@ -78,7 +109,15 @@ export async function start() {
     stan.binarka = binarka;
     stan.stan = 'startuje'; stan.adres = null; stan.blad = null; stan.od = new Date().toISOString(); stan.log = [];
 
-    const p = spawn(binarka, ['tunnel', '--url', `http://127.0.0.1:${cfg.portMostu}`, '--no-autoupdate'], { windowsHide: true });
+    const nazwany = konfiguracjaNazwanego();
+    if (nazwany?.blad) dopiszLog(`nazwany tunel pominięty: ${nazwany.blad}`);
+    stan.tryb = nazwany && !nazwany.blad ? 'nazwany' : 'quick';
+    const args = stan.tryb === 'nazwany'
+        ? ['tunnel', '--no-autoupdate', ...(nazwany.poswiadczenia ? ['--credentials-file', nazwany.poswiadczenia] : []), 'run', '--url', `http://127.0.0.1:${cfg.portMostu}`, nazwany.nazwa]
+        : ['tunnel', '--url', `http://127.0.0.1:${cfg.portMostu}`, '--no-autoupdate'];
+    if (stan.tryb === 'nazwany') { stan.adres = `https://${nazwany.host}`; dopiszLog(`nazwany tunel „${nazwany.nazwa}" → ${stan.adres}`); }
+
+    const p = spawn(binarka, args, { windowsHide: true });
     proces = p;
 
     const adres = await new Promise((resolve) => {
@@ -88,6 +127,8 @@ export async function start() {
                 dopiszLog(linia);
                 const m = linia.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
                 if (m && !stan.adres) { stan.adres = m[0]; clearTimeout(t); resolve(m[0]); }
+                // Nazwany tunel nie ogłasza adresu — ogłasza zarejestrowane połączenie.
+                if (stan.tryb === 'nazwany' && /Registered tunnel connection|Connection .* registered/i.test(linia)) { clearTimeout(t); resolve(stan.adres); }
             }
         };
         p.stdout.on('data', czytaj);
@@ -102,7 +143,9 @@ export async function start() {
 
     if (!adres) {
         stan.stan = 'blad';
-        stan.blad = stan.blad || 'Nie dostałem adresu trycloudflare w 45 s — sprawdź internet i log poniżej.';
+        stan.blad = stan.blad || (stan.tryb === 'nazwany'
+            ? 'Nazwany tunel nie zgłosił połączenia w 45 s — sprawdź nazwę tunelu, plik poświadczeń i wpis DNS (log poniżej).'
+            : 'Nie dostałem adresu trycloudflare w 45 s — sprawdź internet i log poniżej.');
         try { p.kill(); } catch { /* już nie żyje */ }
         proces = null;
         throw new Error(stan.blad);

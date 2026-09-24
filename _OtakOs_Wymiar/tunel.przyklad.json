@@ -1,0 +1,13 @@
+{
+  "_opis": "Nazwany tunel Cloudflare = STAŁY adres dla telefonu. Most tego pliku nie tworzy i nie loguje się za Ciebie.",
+  "_jak": [
+    "1. cloudflared tunnel login          (otworzy przeglądarkę, wybierasz swoją domenę)",
+    "2. cloudflared tunnel create katedra (wypisze ID i ścieżkę pliku poświadczeń .json)",
+    "3. cloudflared tunnel route dns katedra katedra.twojadomena.pl",
+    "4. skopiuj ten plik na _OtakOs_Wymiar/tunel.json i wpisz swoje wartości",
+    "5. w Katedrze: karta Delegat → uruchom tunel. Adres będzie już zawsze ten sam."
+  ],
+  "nazwa": "katedra",
+  "host": "katedra.twojadomena.pl",
+  "poswiadczenia": "C:/Users/arkad/.cloudflared/PODMIEN-NA-ID.json"
+}
