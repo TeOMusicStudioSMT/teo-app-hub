@@ -143,7 +143,7 @@ function definicja(zrodlo, nazwa) {
 function prefiksToMost(przed, zrodlo, serwer) {
     if (przed === '') return !serwer;
     if (/^(https?:)?\/\/(127\.0\.0\.1|localhost):3001$/.test(przed)) return true;
-    const m = przed.match(/^\$\{([^}]*)\}$/);
+    const m = przed.match(/^\$\{([^}]*)\}$/) ?? przed.match(/^\$([A-Za-z_]\w*)$/);   // JS `${x}` albo Kotlin/Dart `$x`
     if (!m) return false;
     const nazwa = m[1].replace(/\(\)$/, '').split('.').pop();
     const def = definicja(zrodlo, nazwa);

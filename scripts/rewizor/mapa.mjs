@@ -4,6 +4,10 @@
  *
  *   npm run mapa                 podsumowanie w terminalu + docs/mapa-katedry.json
  *   npm run mapa -- --bez-zapisu tylko podsumowanie
+ *   npm run mapa -- --repo ../teostory-studio --repo ../TGS
+ *                                dołóż klientów z sąsiednich repo (substrony, apki) — liczą się
+ *                                tylko wywołania, które trafiają w trasę mostu; własne /api
+ *                                innych backendów (Caffe Martens, Dział Mody) nie są mostem.
  *
  * Graphify (/api/wiedza/*) liczy surowy graf AST: funkcja → funkcja. Ta mapa jest o piętro
  * wyżej — o PRZEPŁYWACH, tak jak czyta się system, żeby go zrozumieć:
@@ -77,8 +81,20 @@ function ciala(zrodlo, trasy) {
     return new Map(pos.map((t, i) => [t, linie.slice(t.linia - 1, Math.min((pos[i + 1]?.linia ?? t.linia + 80) - 1, t.linia + 250)).join('\n')]));
 }
 
-/** Pełna mapa. */
-export function zbudujMape(korzen) {
+/** Pliki klienta w sąsiednim repo (bez zależności, buildów, minifikatów). */
+const POMIJANE_OBCE = ['node_modules', '/dist/', '/.git/', '/build/', '.min.js', '/vendor/'];
+function plikiObcegoRepo(katalog) {
+    return spisPlikow(katalog, ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.html', '.vue', '.kt', '.dart'], POMIJANE_OBCE)
+        .filter((p) => { try { return fs.statSync(p).size < 800_000; } catch { return false; } });
+}
+
+/**
+ * Pełna mapa.
+ * @param {string} korzen repo Huba (z wiesio-bridge.js)
+ * @param {{ repozytoria?: string[] }} [o] katalogi sąsiednich repo — ich klienci trafiają na mapę
+ *        jako `<repo>:<plik>`.
+ */
+export function zbudujMape(korzen, { repozytoria = [] } = {}) {
     const zrodloMostu = fs.readFileSync(path.join(korzen, 'wiesio-bridge.js'), 'utf8');
     const trasy = wyciagnijTrasy(zrodloMostu).filter((t) => !t.prefiks || t.sciezka.startsWith('/api'));
     const importy = mapaImportow(zrodloMostu);
@@ -118,6 +134,27 @@ export function zbudujMape(korzen) {
             klienci.get(k).add(r);
             (ekrany[r] ||= new Set()).add(domenaTrasy(t.sciezka));
         }
+    }
+
+    // Sąsiednie repo: tylko wywołania, które trafiają w trasę mostu.
+    const obce = [];
+    for (const katalog of repozytoria) {
+        const nazwa = path.basename(path.resolve(katalog));
+        const pliki = plikiObcegoRepo(katalog);
+        const trafione = new Set();
+        for (const p of pliki) {
+            let zrodlo; try { zrodlo = fs.readFileSync(p, 'utf8'); } catch { continue; }
+            for (const w of wyciagnijWywolania(zrodlo)) {
+                const t = znajdzTrase(w, wzory);
+                if (!t) continue;
+                const k = `${t.metoda} ${t.sciezka}`, r = `${nazwa}:${rel(katalog, p)}`;
+                trafione.add(k);
+                if (!klienci.has(k)) klienci.set(k, new Set());
+                klienci.get(k).add(r);
+                (ekrany[r] ||= new Set()).add(domenaTrasy(t.sciezka));
+            }
+        }
+        obce.push({ nazwa, plikow: pliki.length, trasMostu: trafione.size });
     }
 
     const domeny = {};
@@ -160,6 +197,7 @@ export function zbudujMape(korzen) {
             ekrany: Object.keys(ekrany).length, komponenty: komponenty.length,
             trasyBezKlientaWRepo: Object.values(domeny).reduce((a, d) => a + d.bezKlientaWRepo, 0),
         },
+        repozytoria: obce,
         swiat: SWIAT.map(({ id, nazwa }) => ({ id, nazwa })),
         domeny: zbiory(domeny),
         serwisy,
@@ -171,11 +209,14 @@ export function zbudujMape(korzen) {
 // ── CLI ──────────────────────────────────────────────────────────────────────
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
     const KORZEN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-    const m = zbudujMape(KORZEN);
+    const repozytoria = process.argv.flatMap((a, i, t) => (a === '--repo' && t[i + 1] ? [t[i + 1]] : []));
+    const m = zbudujMape(KORZEN, { repozytoria });
     const L = m.liczby;
     console.log('🗺️  MAPA KATEDRY');
     console.log(`   ${L.ekrany} plików frontu woła most · ${L.domeny} domen API · ${L.trasy} tras · ${L.serwisy} serwisów`);
-    console.log(`   ${L.trasyBezKlientaWRepo} tras bez klienta w tym repo (substrony V2 / apki zewnętrzne — poza zasięgiem mapy)\n`);
+    console.log(`   ${L.trasyBezKlientaWRepo} tras bez klienta ${m.repozytoria.length ? `w ${m.repozytoria.length + 1} przeczytanych repo` : 'w tym repo (dołóż --repo, żeby zajrzeć do substron)'}\n`);
+    for (const r of m.repozytoria) console.log(`   + ${r.nazwa.padEnd(26)} ${String(r.plikow).padStart(4)} plików · trafia w ${r.trasMostu} tras mostu`);
+    if (m.repozytoria.length) console.log('');
     const top = Object.entries(m.domeny).sort((a, b) => b[1].trasy - a[1].trasy).slice(0, 15);
     for (const [d, x] of top) {
         console.log(`   /api/${d.padEnd(16)} ${String(x.trasy).padStart(3)} tras · ${String(x.klienci.length).padStart(2)} ekranów · serwisy: ${x.serwisy.map((s) => path.basename(s)).slice(0, 3).join(', ') || '—'}${x.swiat.length ? ` · świat: ${x.swiat.join(', ')}` : ''}`);
