@@ -405,6 +405,9 @@ app.use('/delegat', cors({ origin: '*' }), express.static(path.join(__dirname, '
 // 🧱 Świat klocków (StoL i Hub) — statyczny jak Delegat; klucz Straży i token telefonu jadą
 // we fragmencie adresu (#k=…&t=…), a dane strona bierze z /api/stado/swiat za Strażą.
 app.use('/swiat', cors({ origin: '*' }), express.static(path.join(__dirname, 'public', 'swiat')));
+// three.js dla trybu 3D świata — tylko build/ i examples/jsm/ z node_modules (ta sama wersja co Games Studio).
+app.use('/swiat/three/build', express.static(path.join(__dirname, 'node_modules', 'three', 'build')));
+app.use('/swiat/three/examples/jsm', express.static(path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm')));
 // 🛠️ Apki zbudowane przez Kodeksa (App Studio 2.0): /apki/<id>/ → <ToO APP>/_OtakOs_Apki/<id>/dist
 const APKI_DIR = path.join(process.cwd(), '..', '_OtakOs_Apki');
 app.use('/apki/:id', (req, res, next) => {

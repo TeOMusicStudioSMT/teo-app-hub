@@ -6,15 +6,23 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--noc); color: var(--tekst); font: 15px/1.45 var(--f); overflow: hidden; }
-canvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
-canvas.ciagnie { cursor: grabbing; }
+#scena, #scena3d { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#scena.ciagnie { cursor: grabbing; }
+#scena3d { display: none; }
+body[data-tryb="3d"] #scena { display: none; }
+body[data-tryb="3d"] #scena3d { display: block; }
+.prawo { display: flex; gap: 10px; align-items: center; pointer-events: auto; }
+.tryb { font: 600 12px var(--f); color: var(--tekst); background: var(--noc-2); border: 1px solid var(--linia); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.tryb:focus-visible { outline: 2px solid var(--zloto); outline-offset: 2px; }
+.model3d { width: 100%; aspect-ratio: 4/3; border-radius: 8px; overflow: hidden; background: #0b1020; touch-action: none; }
+.model3d canvas { width: 100% !important; height: 100% !important; display: block; }
 
 .pasek { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start;
   padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px; pointer-events: none;
   background: linear-gradient(var(--noc) 30%, transparent); }
 .pasek h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
 .pasek p { margin: 2px 0 0; font-size: 12px; color: var(--cichy); }
-.zywo { font-size: 12px; color: var(--cichy); white-space: nowrap; padding-top: 4px; }
+.zywo { font-size: 12px; color: var(--cichy); white-space: nowrap; }
 .zywo.tak { color: var(--zywe); }
 
 .pusto { position: fixed; left: 16px; right: 16px; top: 42%; text-align: center; color: var(--cichy); margin: 0; }
