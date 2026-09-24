@@ -104,3 +104,6 @@ TeO_Arcade_Forge/ElectricDreamsEnv/
 TeO_Arcade_Forge/Twinmotion2026.1/
 TeO_Arcade_Forge/RealityScan_2.2/
 _OtakOs_Wymiar/tunel.json
+
+# Mapa Katedry — generowana (`npm run mapa`), nie trzymamy starej migawki w repo
+docs/mapa-katedry.json

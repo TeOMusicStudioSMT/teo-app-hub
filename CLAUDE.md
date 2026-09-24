@@ -57,6 +57,7 @@ Banner w `START_KATEDRA.bat` renderuje się jako „AAAFRA", nie „KATEDRA". To
 - Kronika żywa: `KronikaGenerator`/`KronikaCard` + `/api/kronika/forge`.
 - Dziennik (infografika) + Whisper: `DziennikFrame` + `/api/dziennik/*`, `/api/podcast/transcribe`.
 - Marketplace: `Marketplace.tsx` + `/api/market/*`. Głos: `voiceService` + `/api/voice/*`.
+- Mapa Katedry: `npm run mapa` (`scripts/rewizor/mapa.mjs`) — ekran → domena API → serwis → świat; martwe komponenty.
 - Recenzent Kodeksa: `services/RecenzentKodeksa.js` — czyta diff rundy AppStudio (zaślepki, @ts-ignore, pusty catch, atrapy, wycięty kod) zanim ruszy build.
 - Rewizor Mostu: `scripts/rewizor/` (duplikaty tras, martwe importy, wywołania w próżnię, sonda żywa GET) + `tests/`.
 - Geneza GRV: `/api/grv/*` w moście (dawny `lib/grvGenesis.ts` usunięty 2026-09-11 jako nieosiągalny). Mapa AGI: `lib/agi.local.ts`.
