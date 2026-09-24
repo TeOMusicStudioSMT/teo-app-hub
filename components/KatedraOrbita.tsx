@@ -261,9 +261,12 @@ export function KatedraOrbita({
 
         const applySize = (w: number, h: number) => {
             const canvas = canvasRef.current;
-            if (canvas) { 
-                canvas.width = 1920; 
-                canvas.height = 1080; 
+            if (canvas) {
+                // Bufor pod RZECZYWISTY rozmiar na ekranie (maks 1.5x gestosci), nie sztywne 1920x1080:
+                // orbita wyswietla sie w kwadracie kilkuset pikseli, a platnismy za pelne FullHD.
+                const gestosc = Math.min(window.devicePixelRatio || 1, 1.5);
+                const bok = Math.max(320, Math.min(1920, Math.round((w || 720) * gestosc)));
+                if (canvas.width !== bok) { canvas.width = bok; canvas.height = Math.round(bok * 9 / 16); }
             }
             setSquareSize(w); // Używamy szerokości do skalowania CSS
             stateRef.current.particles = createParticles(CONFIG.PARTICLE_COUNT, 1920 * 0.15);
@@ -911,8 +914,15 @@ export function KatedraOrbita({
     }, [showParticles, radio.isAutoAura, radio.showIntro, radio.showOutro, radio.currentLyric, radio.currentTrack]);
 
     useEffect(() => {
-        stateRef.current.animId = requestAnimationFrame(draw);
-        return () => cancelAnimationFrame(stateRef.current.animId);
+        // Orbita rysuje sie tylko przy widocznej karcie (2026-09-24: dziewiec petli rAF krecilo sie
+        // non stop, takze w tle — proces GPU siedzial na 107 % CPU).
+        const wznow = () => {
+            cancelAnimationFrame(stateRef.current.animId);
+            if (!document.hidden) stateRef.current.animId = requestAnimationFrame(draw);
+        };
+        document.addEventListener('visibilitychange', wznow);
+        wznow();
+        return () => { cancelAnimationFrame(stateRef.current.animId); document.removeEventListener('visibilitychange', wznow); };
     }, [draw]);
 
     return (

@@ -119,12 +119,16 @@ export const CosmicBackground: React.FC<CosmicBackgroundProps> = ({ riskLevel })
             });
         };
 
+        // Rysujemy TYLKO wtedy, gdy karta jest widoczna — w tle tlo i tak nikogo nie interesuje,
+        // a kompozytor placil za nie pelna cene (proces GPU 757 MB / 107 % CPU, 2026-09-24).
         const animate = () => {
             draw();
             update();
             animationFrameId = requestAnimationFrame(animate);
         };
-        animate();
+        const wznow = () => { cancelAnimationFrame(animationFrameId); if (!document.hidden) animate(); };
+        document.addEventListener('visibilitychange', wznow);
+        wznow();
 
         const handleMouseMove = (e: MouseEvent) => {
             const { clientX, clientY } = e;
@@ -139,6 +143,7 @@ export const CosmicBackground: React.FC<CosmicBackgroundProps> = ({ riskLevel })
 
         return () => {
             cancelAnimationFrame(animationFrameId);
+            document.removeEventListener('visibilitychange', wznow);
             window.removeEventListener('resize', resizeCanvas);
             window.removeEventListener('mousemove', handleMouseMove);
         };
