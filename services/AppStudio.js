@@ -31,6 +31,7 @@ import { promisify } from 'util';
 import http from 'http';
 import * as Persony from './Persony.js';
 import * as WikiProjektu from './WikiProjektu.js';
+import * as SedziaGry from './SedziaGry.js';
 
 const run = promisify(execFile);
 
@@ -643,11 +644,11 @@ export async function weryfikujBuild(dir) {
 }
 
 /** Puppeteer: otwórz zbudowaną apkę na moście, zbierz błędy, zrób zrzut. */
-async function przetestujWPrzegladarce(id, typ = 'apka') {
+async function przetestujWPrzegladarce(id, typ = 'apka', cel = '') {
     const t0 = Date.now();
     if (!cfg.puppeteer) return { ok: null, bledy: [], log: 'puppeteer niedostępny — test w przeglądarce pominięty', sekundy: 0 };
     const dir = dirProjektu(id);
-    if (typ === 'gra') return przetestujGre(id, dir, t0);
+    if (typ === 'gra') return przetestujGre(id, dir, t0, cel);
     const nazwaZrzutu = `zrzut-${Date.now()}.png`;
     const bledy = [];
     let przegladarka = null;
@@ -751,7 +752,7 @@ export async function ocenZrzut({ cel, sciezkaZrzutu, model }) {
  * ruchu. Migawki to JSON stanu — sędzia dostaje twarde liczby (pozycja, wynik, monety), nie tekst.
  * Chrome headless bez GPU renderuje WebGL programowo (SwiftShader) — wolno, ale wystarcza.
  */
-async function przetestujGre(id, dir, t0) {
+async function przetestujGre(id, dir, t0, cel = '') {
     const nazwaZrzutu = `zrzut-${Date.now()}.png`;
     const bledy = [];
     let przegladarka = null;
@@ -780,6 +781,35 @@ async function przetestujGre(id, dir, t0) {
         }
         await new Promise((r) => setTimeout(r, 1500));
         migawki.push({ kiedy: '1,5 s później, bez klawiszy', tekst: (await stan()) || '(brak)' });
+
+        // MATERIAŁ DLA SĘDZIEGO ZACHOWANIA (services/SedziaGry.js): stan gry, DOM i reakcja na
+        // klawisze wymienione w zleceniu. Zbieramy tylko wtedy, gdy jest co sprawdzać.
+        let material = null;
+        if (SedziaGry.czyWarto(cel)) {
+            const zdjecie = () => strona.evaluate(() => ({
+                gra: window.__gra ? JSON.parse(JSON.stringify(window.__gra)) : null,
+                hud: document.getElementById('hud')?.textContent ?? '',
+                dom: {
+                    minimapa: document.getElementById('minimapa')?.children.length ?? null,
+                    paskiHp: document.getElementById('paski-hp')?.children.length ?? undefined,
+                    elementow: document.body.querySelectorAll('div,button,canvas').length,
+                    widoczne: [...document.querySelectorAll('[id]')].filter((e) => getComputedStyle(e).display !== 'none').map((e) => e.id).join(','),
+                },
+            })).catch(() => null);
+            const po = await zdjecie();
+            const klawisze = {};
+            for (const k of SedziaGry.klawiszeZeZlecenia(cel)) {
+                const a = await zdjecie();
+                await strona.keyboard.press(k);
+                await new Promise((r) => setTimeout(r, 700));
+                const b = await zdjecie();
+                klawisze[k] = {
+                    przed: { stan: JSON.stringify(a?.gra ?? {}), dom: JSON.stringify(a?.dom ?? {}) },
+                    po: { stan: JSON.stringify(b?.gra ?? {}), dom: JSON.stringify(b?.dom ?? {}) },
+                };
+            }
+            material = { po, klawisze };
+        }
         await strona.screenshot({ path: path.join(dir, nazwaZrzutu) });
         for (const f of await fs.readdir(dir)) if (/^zrzut-.*\.png$/.test(f) && f !== nazwaZrzutu) await fs.rm(path.join(dir, f), { force: true });
         // Deterministycznie: po W i D pozycja gracza MUSI się zmienić; inaczej gra nie reaguje na klawisze.
@@ -790,7 +820,7 @@ async function przetestujGre(id, dir, t0) {
             const wyniki = migawki.map((m) => { try { return Number(JSON.parse(m.tekst)?.wynik); } catch { return NaN; } }).filter((w) => !Number.isNaN(w));
             for (let i = 1; i < wyniki.length; i++) if (wyniki[i] < wyniki[i - 1]) { bledy.push(`wynik spadł z ${wyniki[i - 1]} na ${wyniki[i]} między migawkami — zebrane rzeczy nie mogą „wracać" (usuń je z tablicy, nie tylko ze sceny)`); break; }
         } catch { /* brak stanu — już zgłoszone */ }
-        return { ok: bledy.length === 0, bledy, migawki, zrzut: nazwaZrzutu, log: bledy.length ? bledy.join('\n') : `gra: canvas OK, stan po klawiszach: ${migawki.at(-1).tekst.slice(0, 200)}`, sekundy: Math.round((Date.now() - t0) / 1000) };
+        return { ok: bledy.length === 0, bledy, migawki, material, zrzut: nazwaZrzutu, log: bledy.length ? bledy.join('\n') : `gra: canvas OK, stan po klawiszach: ${migawki.at(-1).tekst.slice(0, 200)}`, sekundy: Math.round((Date.now() - t0) / 1000) };
     } catch (e) {
         return { ok: false, bledy: [`puppeteer: ${e.message.slice(0, 300)}`], migawki: [], log: `puppeteer: ${e.message}`, sekundy: Math.round((Date.now() - t0) / 1000) };
     } finally { try { await przegladarka?.close(); } catch { /* — */ } }
@@ -946,7 +976,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                     continue;
                 }
 
-                const t = await przetestujWPrzegladarce(projektId, typProjektu);
+                const t = await przetestujWPrzegladarce(projektId, typProjektu, cel);
                 if (t.zrzut) ostatniZrzut = t.zrzut;
                 krok(t.ok === false ? 'blad' : 'test', `przeglądarka (${t.sekundy} s): ${t.log.slice(0, 1500)}`, { zrzut: t.zrzut ?? null });
                 if (t.ok === false) { feedback = `Aplikacja zbudowała się, ale w przeglądarce:\n${t.bledy.join('\n')}`; continue; }
@@ -956,6 +986,16 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                     const oczy = t.zrzut ? await ocenZrzut({ cel, sciezkaZrzutu: path.join(dir, t.zrzut), model: z.model }) : { ok: true, niepewne: true };
                     krok(oczy.ok ? 'test' : 'blad', oczy.ok ? `oczy (${oczy.model ?? '?'}): ${oczy.niepewne ? 'sędzia niepewny — przepuszczam' + (oczy.blad ? ' (' + oczy.blad + ')' : '') : 'scenę widać — ' + (oczy.opis || 'OK')}` : `oczy (${oczy.model}): ${oczy.powod}`);
                     if (!oczy.ok) { feedback = `Gra buduje się i stan window.__gra się zmienia, ale NA EKRANIE: ${oczy.powod}\nSPRAWDŹ KAMERĘ: OrthographicCamera musi mieć frustum z aspektu i wysokości widoku w jednostkach świata (np. h=20: left=-h*a/2, right=h*a/2, top=h/2, bottom=-h/2), NIE -1..1; PerspectiveCamera — pozycja (gracz.x, 10, gracz.z + 10) i lookAt(gracz). Podłoga (PlaneGeometry 40×40, obrócona -PI/2) i światło muszą być w scenie. Oddaj poprawiony plik w całości.`; continue; }
+                }
+                // SĘDZIA ZACHOWANIA (gry): czy to, o co prosiło zlecenie, naprawdę działa w grze.
+                // Build i „canvas żyje" przepuszczały martwy kod — moduł bez importu, dźwięk,
+                // którego nikt nie odtwarza, mikstury nigdy nie dodane do sceny (2026-09-22/24).
+                if (typProjektu === 'gra' && t.material) {
+                    const s = SedziaGry.ocen(cel, t.material);
+                    krok(s.ok ? 'test' : 'blad', s.ok
+                        ? `sędzia zachowania: ${s.zdane.join('; ') || 'brak sprawdzianów'}${s.nieocenione.length ? ` (nieocenione: ${s.nieocenione.join('; ')})` : ''}`
+                        : `sędzia zachowania: ${s.powod}`);
+                    if (!s.ok) { feedback = `Kod się kompiluje i gra działa, ale ZADANIE NIE JEST ZROBIONE: ${s.powod}`; continue; }
                 }
                 const o = typProjektu === 'gra' ? { ok: true, powod: null } : await ocenZachowanie({ cel, migawki: t.migawki, model: z.model });
                 krok(o.ok ? 'test' : 'blad', o.ok ? `ocena zachowania: zgodne z zadaniem${o.niepewne ? ' (sędzia niepewny — przepuszczam)' : ''}` : `ocena zachowania: ${o.powod}`, { migawki: t.migawki });
