@@ -29,6 +29,9 @@
   let plytki = [];               // { g, x, y, klocki[], razem } w siatce świata
   const dymki = new Map();       // id gatunku → { tekst, od }
   let otwarty = null;            // id gatunku w katalogu
+  let tryb = '2d';               // '2d' (Canvas, lekki) albo '3d' (three.js, swiat3d.js)
+  const sluchacze = new Set();   // tryb 3D słucha: ('dane') i ('zdarzenie', idGatunku, tekst)
+  const powiadom = (...a) => sluchacze.forEach((f) => { try { f(...a); } catch (e) { console.error('[Świat]', e); } });
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -130,6 +133,7 @@
 
   // ── Rysowanie ───────────────────────────────────────────────────────────────
   function rysuj() {
+    if (tryb === '3d') return;   // scenę rysuje wtedy swiat3d.js na własnym płótnie
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#0d1320'; ctx.fillRect(0, 0, W, H);
     const teraz = performance.now();
@@ -274,17 +278,21 @@
     const d = document.createElement('div');
     d.className = 'podglad';
     const m = k.media ? zKluczem(k.media.url) : null;
-    d.innerHTML = `${m && k.media.typ === 'obraz' ? `<img alt="${esc(k.tytul)}" src="${esc(m)}">` : ''}
+    // Przy bryle 3D pokazujemy samą bryłę (niżej), nie miniaturę — a zepsuty obrazek po prostu znika.
+    d.innerHTML = `${m && k.media.typ === 'obraz' && !(k.model && window.SwiatKatedry.podglad3d) ? `<img alt="${esc(k.tytul)}" src="${esc(m)}" onerror="this.remove()">` : ''}
       ${m && k.media.typ === 'audio' ? `<audio controls preload="none" src="${esc(m)}"></audio>` : ''}
       ${m && k.media.typ === 'wideo' ? `<video controls preload="metadata" playsinline src="${esc(m)}"></video>` : ''}
       <p><b>${esc(k.tytul)}</b>${k.opis ? ` — ${esc(k.opis)}` : ''}</p>
       ${k.otworz ? `<p><a href="${esc(zKluczem(k.otworz))}" target="_blank" rel="noopener">Otwórz ${esc(NAZWY[k.rodzaj])} ↗</a>${k.iteracji ? ` · ${k.iteracji} iteracji Kodeksa` : ''}</p>` : ''}
-      ${k.model ? '<p>Model 3D (GLB) z modułu Assety3D — w świecie jako klocek; podgląd bryły przyjdzie z wersją 3D sceny.</p>' : ''}`;
+      ${k.model ? `<div class="model3d"></div><p>${window.SwiatKatedry.podglad3d ? 'Bryła z modułu Assety3D (GLB) — obracaj palcem.' : 'Bryła z modułu Assety3D (GLB) — obejrzysz ją w trybie 3D.'}</p>` : ''}`;
     // Podgląd pod rzędem klikniętego klocka (siatka — wstawiamy za ostatnim w wierszu).
     const siatka = przycisk.parentElement, dzieci = [...siatka.children].filter((c) => c.classList.contains('klocek'));
     const top = przycisk.offsetTop;
     const ostatniWRzedzie = dzieci.filter((c) => c.offsetTop === top).pop() || przycisk;
     ostatniWRzedzie.after(d);
+    const miejsce = d.querySelector('.model3d');
+    if (miejsce && window.SwiatKatedry.podglad3d) window.SwiatKatedry.podglad3d(miejsce, zKluczem(k.model));
+    else miejsce?.remove();
   }
 
   $('zamknij').addEventListener('click', () => { $('katalog').hidden = true; otwarty = null; });
@@ -306,7 +314,7 @@
       const r = await fetch('/api/stado/swiat', { headers: naglowki });
       const d = await r.json();
       if (!r.ok || d.success === false) throw new Error(d.message || `HTTP ${r.status}`);
-      swiat = d; zbudujPlytki(); podpisz(); rysuj();
+      swiat = d; zbudujPlytki(); podpisz(); rysuj(); powiadom('dane');
       if (otwarty) otworzKatalog(otwarty);
     } catch (e) {
       $('podpis').textContent = `Most nie odpowiada: ${e.message}`;
@@ -324,6 +332,7 @@
     a.slady = [{ kiedy: z.kiedy, rodzaj: z.rodzaj, tresc: z.tresc }, ...(a.slady ?? [])].slice(0, 15);
     dymki.set(pl.g.id, { tekst: `${pl.g.imie}: ${z.tresc || z.rodzaj}`, od: performance.now() });
     obudz();
+    powiadom('zdarzenie', pl.g.id, `${pl.g.imie}: ${z.tresc || z.rodzaj}`);
     if (otwarty === pl.g.id) otworzKatalog(otwarty);
   }
 
@@ -335,15 +344,51 @@
     const es = new EventSource(TOKEN ? `/api/stado/strumien?${q}` : `/api/szyna/strumien`);
     es.onopen = () => zywo(true);
     es.onerror = () => zywo(false);   // EventSource sam wznawia połączenie
-    es.addEventListener('stan', (e) => { try { const s = JSON.parse(e.data); swiat = { ...swiat, ...s, agenci: swiat?.agenci ?? {} }; zbudujPlytki(); podpisz(); rysuj(); } catch { /* zła ramka */ } });
+    es.addEventListener('stan', (e) => { try { const s = JSON.parse(e.data); swiat = { ...swiat, ...s, agenci: swiat?.agenci ?? {} }; zbudujPlytki(); podpisz(); rysuj(); powiadom('dane'); } catch { /* zła ramka */ } });
     const zd = (e) => { try { naZdarzenie(JSON.parse(e.data)); } catch { /* zła ramka */ } };
     es.addEventListener('szyna', zd);
     if (!TOKEN) es.onmessage = zd;    // /api/szyna/strumien wysyła zwykłe `data:` bez nazwy zdarzenia
     es.addEventListener('rozparowany', () => { es.close(); zywo(false); $('podpis').textContent = 'Ten telefon został odłączony w Katedrze. Sparuj go od nowa.'; });
   }
 
+  // ── Tryb 2D / 3D ────────────────────────────────────────────────────────────
+  window.SwiatKatedry = {
+    get dane() { return swiat; },
+    get plytki() { return plytki; },
+    zKluczem, esc, otworzKatalog,
+    sluchaj: (fn) => { sluchacze.add(fn); return () => sluchacze.delete(fn); },
+    podglad3d: null,   // swiat3d.js wstawia tu przeglądarkę pojedynczej bryły (katalog)
+  };
+  const przycisk = $('tryb');
+  let modul3d = null;
+  async function ustawTryb(nowy) {
+    if (nowy === '3d') {
+      try {
+        modul3d ||= await import('./swiat3d.js').then((m) => m.start(window.SwiatKatedry));
+        document.body.dataset.tryb = '3d';   // płótno 3D musi być widoczne, ZANIM policzy swój rozmiar
+        modul3d.wlacz();
+      } catch (e) {
+        console.error('[Świat] 3D niedostępne:', e);
+        $('podpis').textContent = `Tryb 3D niedostępny na tym urządzeniu (${e.message}). Zostaję w 2D.`;
+        nowy = '2d';
+      }
+    } else modul3d?.wylacz();
+    tryb = nowy;
+    document.body.dataset.tryb = tryb;
+    przycisk.textContent = tryb === '3d' ? '2D' : '3D';
+    przycisk.setAttribute('aria-label', tryb === '3d' ? 'Przełącz na płaski widok 2D' : 'Przełącz na widok 3D');
+    try { localStorage.setItem('swiat_tryb', tryb); } catch { /* bez pamięci wyboru */ }
+    rysuj();
+  }
+  przycisk.addEventListener('click', () => ustawTryb(tryb === '3d' ? '2d' : '3d'));
+  const maWebGL = (() => { try { return !!document.createElement('canvas').getContext('webgl2'); } catch { return false; } })();
+  let zapamietany = null;
+  try { zapamietany = localStorage.getItem('swiat_tryb'); } catch { /* prywatne okno */ }
+  const startowy = new URLSearchParams(location.hash.slice(1)).get('tryb') || zapamietany || (maWebGL ? '3d' : '2d');
+
   window.addEventListener('resize', rozmiar);
   rozmiar();
+  ustawTryb(startowy === '3d' && maWebGL ? '3d' : '2d');
   wczytaj().then(strumien);
   setInterval(wczytaj, 120_000);   // nowe dzieła na dysku (klocki) — rzadko; zdarzenia i tak lecą strumieniem
 })();

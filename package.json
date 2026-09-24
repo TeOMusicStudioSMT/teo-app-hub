@@ -53,6 +53,7 @@
     "stream-json": "^3.4.0",
     "tailwind-merge": "^2.2.1",
     "thinking-orbs": "^0.3.1",
+    "three": "^0.170.0",
     "uuid": "^9.0.1",
     "ws": "^8.19.0",
     "youtube-transcript": "^1.0.6",

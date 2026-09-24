@@ -7,16 +7,22 @@
 <link rel="icon" href="data:,">
 <title>Świat Katedry</title>
 <link rel="stylesheet" href="swiat.css">
+<!-- three.js z mostu (node_modules/three, ta sama wersja co Games Studio) — bez CDN, działa offline. -->
+<script type="importmap">{ "imports": { "three": "./three/build/three.module.min.js", "three/addons/": "./three/examples/jsm/" } }</script>
 </head>
 <body>
 <canvas id="scena" aria-label="Świat klocków: płytki TeOgochi"></canvas>
+<canvas id="scena3d" aria-label="Świat klocków w 3D"></canvas>
 
 <header class="pasek">
   <div>
     <h1>Świat Katedry</h1>
     <p id="podpis">Łączę się z mostem…</p>
   </div>
-  <span id="zywo" class="zywo">○ łączę…</span>
+  <div class="prawo">
+    <span id="zywo" class="zywo">○ łączę…</span>
+    <button id="tryb" class="tryb" type="button">3D</button>
+  </div>
 </header>
 
 <p id="pusto" class="pusto" hidden></p>
