@@ -165,6 +165,17 @@ export async function stop() {
 }
 
 // Most gaśnie → tunel też, żeby nie został sierocy proces wskazujący na martwy port.
-for (const s of ['SIGINT', 'SIGTERM', 'exit']) process.on(s, () => { try { proces?.kill(); } catch { /* — */ } });
+// ⚠️ NAPRAWIONE 2026-09-24: samo `process.on('SIGINT'|'SIGTERM')` ZDEJMUJE w Node domyślne
+// zamknięcie procesu — handler gasił cloudflared, a most żył dalej (Ctrl+C i kill nie działały,
+// odtworzone). Teraz `once` + ponowne wysłanie sygnału: po sprzątnięciu działa domyślna śmierć.
+const zgasTunel = () => { try { proces?.kill(); } catch { /* — */ } };
+process.on('exit', zgasTunel);
+for (const s of ['SIGINT', 'SIGTERM']) {
+    process.once(s, () => {
+        zgasTunel();
+        // Ktoś inny też słucha tego sygnału (i sam decyduje o zamknięciu)? Nie wchodzimy mu w drogę.
+        if (process.listenerCount(s) === 0) process.kill(process.pid, s);
+    });
+}
 
 export default { skonfiguruj, stanTunelu, start, stop };
