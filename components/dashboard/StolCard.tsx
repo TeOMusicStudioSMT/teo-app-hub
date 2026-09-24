@@ -123,6 +123,9 @@ export const StolCard: React.FC = () => {
                         Telefon tylko obserwuje stado: widzi, kto jest wykluty, na jakim etapie i co ostatnio robił. Niczego tu nie zmienia.
                         Kod działa 5 minut i tylko raz.
                     </p>
+                    <a href={`${MOST}/swiat/`} target="_blank" rel="noopener" className="text-xs text-sky-300 hover:text-sky-200 w-fit">
+                        🧱 Otwórz świat klocków na tym komputerze ↗
+                    </a>
                     {link && <input readOnly value={link} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-mono text-slate-400" onFocus={(e) => e.currentTarget.select()} />}
                     <div>
                         <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-1">Sparowane telefony</div>

@@ -304,7 +304,7 @@ export function plikiSerwera(korzen) {
 
 /** Pliki klienta mostu: wszystko, co może zawołać `/api/...`, poza samym mostem. */
 export function plikiKlienta(korzen) {
-    const katalogi = ['components', 'lib', 'hooks', 'context', 'store', 'src', 'services', 'core', 'constants', path.join('public', 'delegat'), path.join('public', 'gosc')];
+    const katalogi = ['components', 'lib', 'hooks', 'context', 'store', 'src', 'services', 'core', 'constants', path.join('public', 'delegat'), path.join('public', 'gosc'), path.join('public', 'swiat')];
     const pliki = katalogi.flatMap((k) => spisPlikow(path.join(korzen, k), ['.ts', '.tsx', '.js', '.mjs', '.html'], POMIJANE));
     for (const p of ['App.tsx', 'index.tsx', 'constants.tsx']) if (fs.existsSync(path.join(korzen, p))) pliki.push(path.join(korzen, p));
     return pliki;
