@@ -16,6 +16,7 @@ import { PulsMaszyny } from './dashboard/PulsMaszyny';
 import { NocnaZmianaCard } from './dashboard/NocnaZmianaCard';
 import { WystawaCard } from './dashboard/WystawaCard';
 import { DelegatCard } from './dashboard/DelegatCard';
+import PamiecHelper from './special/PamiecHelper';
 
 interface DashboardViewProps {
     onVisualAssistantOpen: () => void;
@@ -64,6 +65,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
                 <PulsMaszyny />
                 {/* 🌙 Nocna Zmiana obok Pulsu — bo to Puls decyduje, czy Zmiana ma prawo ruszyć. */}
                 <NocnaZmianaCard />
+            </div>
+
+            {/* 3a. PAMIĘĆ — co zjada RAM i zamknięcie WSKAZANYCH procesów (Suweren wybiera; tylko lokalnie). */}
+            <div className="w-full">
+                <PamiecHelper />
             </div>
 
 

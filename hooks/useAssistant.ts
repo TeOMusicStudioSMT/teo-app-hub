@@ -13,6 +13,7 @@ import { COSMIC_VENTURES } from '../constants';
 import { walletAtom } from '../store/wallet';
 import { SYSTEM_INSTRUCTION_VISEL, getCloudProvider } from '../services/cloudService';
 import { userApiKeyAtom } from '../store/settings';
+import { speak } from '../services/voiceService';
 
 // --- Function Declarations ---
 const getBalanceFunctionDeclaration: FunctionDeclaration = {
@@ -61,6 +62,7 @@ export const useAssistant = () => {
     const currentInputTranscription = useRef('');
     const currentOutputTranscription = useRef('');
     const hasTriggeredBalanceMode = useRef(false);
+    const hasWelcomed = useRef(false);
 
     // GORGOO: Wake Lock Reference
     const wakeLockRef = useRef<any>(null);
@@ -303,9 +305,31 @@ export const useAssistant = () => {
         sessionPromiseRef.current?.then((session: any) => session.close());
     }, []);
 
+    // ⚠️ ODTWORZONE 2026-09-24. Od co najmniej marca 2026 (archiwum V_ZERO w OtakOS-DeeP) była tu
+    // tylko zaślepka „// ... (Welcome logic bez zmian)" — TeonautLounge wołał powitanie, które nic
+    // nie robiło. Oryginału nie ma w żadnym repo, więc to nowa wersja, nie kopia: jedno powitanie
+    // na sesję, tekst do historii rozmowy, głos najpierw lokalny (most → Piper/Kokoro), potem
+    // przeglądarka. Gdy nic nie zabrzmi (brak gestu, brak głosu), status wraca do 'idle' od razu.
     const triggerWelcome = useCallback(() => {
-        // ... (Welcome logic bez zmian)
-    }, [setAssistantState]);
+        if (hasWelcomed.current || !identity?.username) return;
+        hasWelcomed.current = true;
+        const imie = identity.assistantDomain ? `Tu ${identity.assistantDomain}. ` : '';
+        const tekst = `Witaj w Katedrze, ${identity.username}. ${imie}Jestem gotów, kiedy Ty będziesz.`;
+        setAssistantState(prev => ({
+            ...prev,
+            status: 'speaking',
+            response: tekst,
+            conversationHistory: [...prev.conversationHistory, { role: 'model', text: tekst, timestamp: Date.now() }],
+        }));
+        const wrocDoCiszy = () => setAssistantState(prev => (prev.status === 'speaking' ? { ...prev, status: 'idle' } : prev));
+        speak(tekst)
+            .then((zrodlo) => {
+                // speak() kończy się, gdy dźwięk RUSZY — nie gdy ucichnie. Czas mowy szacujemy z długości.
+                if (zrodlo === 'cisza') wrocDoCiszy();
+                else window.setTimeout(wrocDoCiszy, Math.min(12000, 1500 + tekst.length * 70));
+            })
+            .catch((e) => { console.warn('[Powitanie] głos niedostępny:', e); wrocDoCiszy(); });
+    }, [identity?.username, identity?.assistantDomain, setAssistantState]);
 
     useEffect(() => {
         getCloudProvider().then(({ provider, apiKey }) => {

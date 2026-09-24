@@ -5875,14 +5875,19 @@ app.get('/api/system/memory', (req, res) => {
         });
 });
 // Bezpieczne zamknięcie WSKAZANYCH procesów (krytyczne systemowe są blokowane).
+// ⚠️ NAPRAWIONE 2026-09-24: nazwa procesu szła do powłoki (`exec(\`taskkill /IM "${img}"\`)`), więc
+// `x" & del … & "` przechodziło przez BLOCK i wykonywało dowolną komendę. Teraz: nazwa tylko z liter,
+// cyfr, kropki, myślnika i podkreślnika; taskkill przez execFile (bez powłoki); trasa tylko lokalna
+// (SCIEZKI_TYLKO_LOKALNE w services/StrazMostu.js) — z tunelu nie zamknie się niczego.
 app.post('/api/system/free', async (req, res) => {
+    if (!req.lokalny) return res.status(403).json({ success: false, message: 'Zamykanie procesów działa tylko z maszyny Suwerena.' });
     const BLOCK = /node|wiesio|powershell|cmd|explorer|system|svchost|csrss|winlogon|dwm|services|lsass|conhost/i;
-    const names = (req.body?.names || []).filter(n => typeof n === 'string' && n.trim() && !BLOCK.test(n));
+    const names = (req.body?.names || []).filter(n => typeof n === 'string' && /^[A-Za-z0-9._-]{1,64}$/.test(n) && !BLOCK.test(n));
     if (!names.length) return res.json({ success: false, message: 'Brak bezpiecznych procesów do zamknięcia.' });
     const closed = [];
     await Promise.all(names.map(n => new Promise(resolve => {
         const img = /\.exe$/i.test(n) ? n : `${n}.exe`;
-        exec(`taskkill /IM "${img}" /F`, { timeout: 6000, windowsHide: true }, (err) => { if (!err) closed.push(n); resolve(); });
+        execFile('taskkill', ['/IM', img, '/F'], { timeout: 6000, windowsHide: true }, (err) => { if (!err) closed.push(n); resolve(); });
     })));
     console.log(`[System] 🧹 Zwolniono pamięć — zamknięto: ${closed.join(', ') || '(nic)'}.`);
     res.json({ success: true, closed });

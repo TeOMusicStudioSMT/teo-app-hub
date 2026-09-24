@@ -56,6 +56,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/teledysk/render', '/api/video/edit', '/api/chaos/inject',
     '/api/straz/',
     '/api/tunel/',   // tunelu nie odpala się (ani nie gasi) z tunelu
+    '/api/system/free',   // zamyka procesy na maszynie
 ];
 
 /**

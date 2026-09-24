@@ -30,6 +30,8 @@ import PanelWektor from './special/PanelWektor';
 import PanelKodeks from './special/PanelKodeks';
 import PanelBilans from './special/PanelBilans';
 import PanelWlasny from './special/PanelWlasny';
+import RezyserView from './special/RezyserView';
+import KsiegarniaSkili from './special/KsiegarniaSkili';
 import { TeOgochiDom } from './TeOgochiDom';
 
 interface TeogochiPanelProps {
@@ -512,6 +514,10 @@ export const TeogochiPanel: React.FC<TeogochiPanelProps> = ({
                             {gatunek.id === 'klatka' && <PanelKlatka />}
                             {gatunek.id === 'wektor' && <PanelWektor />}
                             {gatunek.id === 'kodeks' && <PanelKodeks />}
+                            {/* Księgozbiór skilli gamedev (SKILL.md) — Kodeks dobiera z niego przepisy do zadania. */}
+                            {gatunek.id === 'kodeks' && <KsiegarniaSkili />}
+                            {/* Kompozytor opowieści → manifest dla UE. Dawniej panel TeoArcadeForge (usuniętej); tu ma dom. */}
+                            {gatunek.id === 'rezyser' && <RezyserView />}
                             {gatunek.id === 'bilans' && <PanelBilans />}
 
                             {/* Własny warsztat z kreatora */}
