@@ -163,6 +163,7 @@ import * as AppStudio from './services/AppStudio.js';
 import * as Persony from './services/Persony.js';
 import * as Gdd from './services/Gdd.js';
 import * as Assety3D from './services/Assety3D.js';
+import * as WikiProjektu from './services/WikiProjektu.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as WarsztatUtworow from './services/WarsztatUtworow.js';
@@ -7771,6 +7772,16 @@ app.post('/api/assety3d/:id/do-gry', async (req, res) => {
 });
 app.delete('/api/assety3d/:id', async (req, res) => res.json({ success: true, usunieto: await Assety3D.usun(req.params.id) }));
 
+/** Mapa projektu (WIKI.md) — dla Suwerena i dla robotów; budowana z kodu, bez modelu. */
+app.get('/api/appstudio/projekty/:id/wiki', async (req, res) => {
+    try {
+        const katalog = path.join(process.cwd(), '..', '_OtakOs_Apki', req.params.id);
+        if (!/^[a-z0-9-]{2,48}$/.test(req.params.id) || !fsSync.existsSync(katalog)) return res.status(404).json({ success: false, message: 'Nie ma takiego projektu.' });
+        const skrot = await WikiProjektu.odswiez(katalog, req.params.id);
+        const markdown = await fs.readFile(path.join(katalog, 'WIKI.md'), 'utf8').catch(() => '');
+        res.json({ success: true, skrot, markdown });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 app.get('/api/appstudio/zadania/:id', (req, res) => {
     const z = AppStudio.zadanie(req.params.id);
     return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania.' });

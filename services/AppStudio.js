@@ -30,6 +30,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import http from 'http';
 import * as Persony from './Persony.js';
+import * as WikiProjektu from './WikiProjektu.js';
 
 const run = promisify(execFile);
 
@@ -875,7 +876,10 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                     ? `\nASSETY 3D W PROJEKCIE (public/assety/, gotowe pliki GLB z kolorami wierzchołków — UŻYWAJ ich zamiast brył, gdy pasują): ${assety.map((a) => `${a.plik} (${a.opis || a.nazwa}${a.sciany ? ', ~' + a.sciany + ' ścian' : ''})`).join('; ')}. Ładowanie: \`import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'\`; \`new GLTFLoader().load('./assety/NAZWA.glb', (g) => { const m = g.scene; m.scale.setScalar(S); scena.add(m); })\` — do czasu wczytania trzymaj placeholder (Box), a po wczytaniu podmień; pole na bryłę typuj THREE.Object3D (g.scene to Group, nie Mesh — żadnych rzutowań as THREE.Mesh/as THREE.Group); kolizje nadal po odległości. Model ma ~1 jednostkę wysokości — dobierz scale.\n`
                     : '';
                 const podzial = duze.length ? `\nPLIKI ZA DUŻE: ${duze.join(', ')}. Nie dopisuj do nich kolejnych funkcji — WYDZIEL spójne części (np. wrogowie, loot, HUD, poziom, questy) do osobnych plików src/*.ts z eksportami i importuj je w main.ts. Oddaj każdy plik, którego treść zmieniasz, W CAŁOŚCI; plików, których nie ruszasz, nie oddawaj.\n` : '';
-                const prompt = `PROJEKT: ${projektId}\n\nOBECNE PLIKI:\n${kontekstPlikow(obecne, cel)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${podzial}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
+                // Mapa projektu (services/WikiProjektu.js) — Suweren 2026-09-24: „nie mogą się odnaleźć".
+                // Kilkanaście linii: co jest w którym module, kto kogo używa, gdzie w main.ts podpiąć.
+                const mapa = await WikiProjektu.skrot(dir).catch(() => '');
+                const prompt = `PROJEKT: ${projektId}\n${mapa ? mapa + '\n\n' : ''}\nOBECNE PLIKI:\n${kontekstPlikow(obecne, cel)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${podzial}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
                 // ComfyUI po renderze trzyma modele w karcie (zmierzone: ~2 GB po TRELLIS.2) — Ollama
                 // dostaje resztkę i liczy prompt na CPU. Prosimy o zwolnienie, jeśli ComfyUI nie liczy.
                 if (runda === 1 && cfg.zwolnijComfy) await cfg.zwolnijComfy().catch(() => {});
@@ -985,6 +989,7 @@ PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy
             }
             const sekundy = Math.round((Date.now() - t0) / 1000);
             p.historia.push({ zadanie: z.id, tresc: cel, ok, rundy: z.rundy, sekundy, kiedy: new Date().toISOString(), commit, model: z.model });
+            await WikiProjektu.odswiez(dir, p.nazwa ?? projektId).catch(() => {});   // WIKI.md zawsze aktualne
             await zapiszProjekt(p);
             z.stan = ok ? 'gotowe' : 'blad';
             z.wynik = { ok, rundy: z.rundy, sekundy, commit, zrzut: ostatniZrzut, powod: ok ? null : `Po ${z.rundy} rundach nadal błędy — ostatnie: ${feedback.slice(0, 600)}` };
