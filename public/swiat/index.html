@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1320">
+<link rel="icon" href="data:,">
+<title>Świat Katedry</title>
+<link rel="stylesheet" href="swiat.css">
+</head>
+<body>
+<canvas id="scena" aria-label="Świat klocków: płytki TeOgochi"></canvas>
+
+<header class="pasek">
+  <div>
+    <h1>Świat Katedry</h1>
+    <p id="podpis">Łączę się z mostem…</p>
+  </div>
+  <span id="zywo" class="zywo">○ łączę…</span>
+</header>
+
+<p id="pusto" class="pusto" hidden></p>
+
+<section id="katalog" class="katalog" hidden aria-live="polite">
+  <button id="zamknij" class="zamknij" aria-label="Zamknij katalog">✕</button>
+  <div id="katalog-tresc"></div>
+</section>
+
+<script src="swiat.js"></script>
+</body>
+</html>

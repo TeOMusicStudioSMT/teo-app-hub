@@ -67,6 +67,7 @@ import * as HistoriaCzatu  from './services/HistoriaCzatu.js';
 import * as PamiecKodu     from './services/PamiecKodu.js';
 import * as MostStada      from './services/MostStada.js';
 import * as StrumienStada  from './services/StrumienStada.js';
+import * as KlockiStada    from './services/KlockiStada.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
@@ -401,6 +402,9 @@ app.use('/gosc', cors({ origin: '*' }), express.static(path.join(__dirname, 'pub
 // 📱 Delegat Mobilny — strona telefonu. Statyczna i bez klucza (to tylko HTML);
 // klucz Straży telefon dostaje we fragmencie adresu (#k=…) i dokłada do każdego wywołania API.
 app.use('/delegat', cors({ origin: '*' }), express.static(path.join(__dirname, 'public', 'delegat')));
+// 🧱 Świat klocków (StoL i Hub) — statyczny jak Delegat; klucz Straży i token telefonu jadą
+// we fragmencie adresu (#k=…&t=…), a dane strona bierze z /api/stado/swiat za Strażą.
+app.use('/swiat', cors({ origin: '*' }), express.static(path.join(__dirname, 'public', 'swiat')));
 // 🛠️ Apki zbudowane przez Kodeksa (App Studio 2.0): /apki/<id>/ → <ToO APP>/_OtakOs_Apki/<id>/dist
 const APKI_DIR = path.join(process.cwd(), '..', '_OtakOs_Apki');
 app.use('/apki/:id', (req, res, next) => {
@@ -10021,6 +10025,36 @@ app.get('/api/stado/strumien', async (req, res) => {
         stan: async () => ({ success: true, urzadzenie, ...(await stanDlaTelefonu()) }),
         zyje: (t) => MostStada.czyTokenZyje(t),
     });
+});
+
+/**
+ * GET /api/stado/swiat — świat klocków: stan stada + klocki (prawdziwe dzieła każdego TeOgochi)
+ * + ślady z szyny (services/KlockiStada.js). Hub lokalnie bez tokenu; telefon z tokenem parowania.
+ */
+let swiatCache = { czas: 0, dane: null };
+app.get('/api/stado/swiat', async (req, res) => {
+    const token = req.get('X-Stado-Token') ?? req.query.token;
+    let urzadzenie = null;
+    if (!req.lokalny || token !== undefined) {
+        const kto = await MostStada.sprawdzToken(token);
+        if (!kto) return res.status(401).json({ success: false, message: 'Brak sparowania. Wygeneruj kod w Katedrze i sparuj urządzenie.' });
+        urzadzenie = kto.nazwa;
+    }
+    const stan = await stanDlaTelefonu();
+    // Zbieranie skanuje dysk (muzyka, filmy, apki) — 20 s pamięci wystarczy, ślady i tak lecą strumieniem.
+    if (Date.now() - swiatCache.czas > 20_000) {
+        swiatCache = {
+            czas: Date.now(),
+            dane: await KlockiStada.zbierzKlocki({
+                wystawa: () => Wystawa.zbierz(),
+                projekty: () => AppStudio.projekty(),
+                assety3d: () => Assety3D.lista(),
+                zdarzenia: Szyna.ostatnie({ ile: 500 }),
+                gatunki: stan.gatunki ?? [],
+            }),
+        };
+    }
+    res.json({ success: true, urzadzenie, ...stan, ...swiatCache.dane });
 });
 
 /** Stan dla apki (gałąź GET /api/stado/stan z tokenem — patrz wyżej, przy trasie Huba). */
