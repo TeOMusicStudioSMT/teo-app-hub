@@ -5,6 +5,8 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+/* `hidden` ma wygrywać z każdym display: bez tego ukryty pasek filmu leżał na dole ekranu i zjadał dotyk. */
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--noc); color: var(--tekst); font: 15px/1.45 var(--f); overflow: hidden; }
 #scena, #scena3d { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 #scena.ciagnie { cursor: grabbing; }
@@ -22,6 +24,8 @@ body[data-tryb="3d"] #scena3d { display: block; }
   background: linear-gradient(var(--noc) 30%, transparent); }
 .pasek h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
 .pasek p { margin: 2px 0 0; font-size: 12px; color: var(--cichy); }
+.pasek > div:first-child { min-width: 0; }
+@media (max-width: 440px) { .pasek h1 { font-size: 17px; white-space: nowrap; } .prawo { gap: 6px; } .tryb { padding: 6px 10px; } }
 .zywo { font-size: 12px; color: var(--cichy); white-space: nowrap; }
 .zywo.tak { color: var(--zywe); }
 
@@ -52,6 +56,28 @@ h3 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: v
 .podglad audio { width: 100%; }
 .podglad p { margin: 8px 0 0; font-size: 13px; color: var(--cichy); }
 .podglad a { color: var(--zloto); }
+.wklad { white-space: pre-wrap; font-size: 14px; line-height: 1.5; margin-top: 8px; max-height: 50vh; overflow-y: auto; }
+.meta { font-size: 12px; color: var(--cichy); }
+.sekcja { margin-top: 16px; display: grid; gap: 8px; }
+.sekcja textarea, .sekcja input[type=text], .sekcja select { width: 100%; font: 14px var(--f); color: var(--tekst); background: var(--noc); border: 1px solid var(--linia); border-radius: 10px; padding: 10px; }
+.sekcja textarea { min-height: 70px; resize: vertical; }
+.guzik { font: 600 14px var(--f); color: #0d1320; background: var(--akcent, var(--zloto)); border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer; justify-self: start; }
+.guzik:disabled { opacity: .5; cursor: default; }
+.guzik.maly { font-size: 12px; padding: 6px 10px; }
+.odpowiedz { white-space: pre-wrap; font-size: 14px; background: var(--noc); border: 1px solid var(--linia); border-radius: 10px; padding: 10px 12px; }
+.odpowiedz.suweren { border-color: transparent; color: var(--cichy); }
+.projekt { background: var(--noc); border: 1px solid var(--linia); border-radius: 12px; padding: 10px 12px; cursor: pointer; text-align: left; color: inherit; font: inherit; width: 100%; }
+.kroki { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.krok { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--linia); }
+.krok.gotowe { border-color: var(--zywe); color: var(--zywe); }
+.krok.trwa { border-color: var(--zloto); color: var(--zloto); }
+.krok.blad { border-color: var(--blad); color: var(--blad); }
+.uczestnicy { display: flex; flex-wrap: wrap; gap: 8px; }
+.uczestnicy label { font-size: 13px; background: var(--noc); border: 1px solid var(--linia); border-radius: 999px; padding: 5px 10px; display: flex; gap: 6px; align-items: center; }
+.tasma { position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); display: flex; gap: 8px; align-items: center;
+  background: var(--noc-2); border: 1px solid var(--linia); border-radius: 14px; padding: 8px 10px; }
+.tasma input[type=range] { flex: 1; min-width: 60px; accent-color: var(--zloto); }
+.tasma input[type=date] { font: 12px var(--f); color: var(--tekst); background: var(--noc); border: 1px solid var(--linia); border-radius: 8px; padding: 4px 6px; color-scheme: dark; }
 .slady { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .slady li { font-size: 13px; padding: 8px 10px; background: var(--noc); border-radius: 10px; border-left: 3px solid var(--akcent); }
 .slady time { display: block; font-size: 11px; color: var(--cichy); }

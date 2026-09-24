@@ -60,6 +60,8 @@ Banner w `START_KATEDRA.bat` renderuje się jako „AAAFRA", nie „KATEDRA". To
 - Kronika żywa: `KronikaGenerator`/`KronikaCard` + `/api/kronika/forge`.
 - Dziennik (infografika) + Whisper: `DziennikFrame` + `/api/dziennik/*`, `/api/podcast/transcribe`.
 - Marketplace: `Marketplace.tsx` + `/api/market/*`. Głos: `voiceService` + `/api/voice/*`.
+- Świat Katedry: `public/swiat/` (`/swiat/`, 2D + 3D three.js) — płytki TeOgochi z prawdziwych dzieł (`services/KlockiStada.js`), rozmowa, film klockowy, rzeźba Assety3D. Telefon: StoL.
+- Projekt Stada: `services/ProjektStada.js` — wspólna praca TeOgochi (fale: fundament → dziedziny → całość → Biblia), każdy na swoim modelu (`services/ModeleAgentow.js`).
 - Mapa Katedry: `npm run mapa` (`scripts/rewizor/mapa.mjs`) — ekran → domena API → serwis → świat; martwe komponenty.
 - Recenzent Kodeksa: `services/RecenzentKodeksa.js` — czyta diff rundy AppStudio (zaślepki, @ts-ignore, pusty catch, atrapy, wycięty kod) zanim ruszy build.
 - Rewizor Mostu: `scripts/rewizor/` (duplikaty tras, martwe importy, wywołania w próżnię, sonda żywa GET) + `tests/`.

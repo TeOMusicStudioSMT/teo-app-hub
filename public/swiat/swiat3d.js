@@ -21,7 +21,7 @@ const WYS_KLOCKA = 1.2;
 const MIEJSCA = [[0, 0, 2, 1], [3, 0, 1, 1], [4, 0, 2, 1], [0, 4, 1, 2], [5, 2, 1, 2], [0, 2, 1, 1], [4, 4, 2, 1], [2, 5, 2, 1]];
 /** Pola na bryły GLB (większe, 2×2) — żeby model nie wchodził w figurkę na środku. */
 const MIEJSCA_BRYL = [[0.2, 0.2], [3.8, 0.2], [0.2, 3.8], [3.8, 3.8]];
-const ODCIEN = { utwor: 0, film: 0.15, odcinek: -0.2, kreacja: 0.25, apka: 0, gra: -0.25, model3d: 0.3, chip: 0.1, print: -0.1 };
+const ODCIEN = { utwor: 0, film: 0.15, odcinek: -0.2, kreacja: 0.25, apka: 0, gra: -0.25, model3d: 0.3, chip: 0.1, print: -0.1, wklad: 0.4 };
 
 const loader = new GLTFLoader();
 const pamiecGlb = new Map();   // url → Promise<THREE.Group>

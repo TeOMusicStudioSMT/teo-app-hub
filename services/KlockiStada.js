@@ -26,6 +26,7 @@ export const WLASCICIELE = {
     model3d: 'paleta',
     chip: 'wektor',
     print: 'wektor',
+    // wklad — wkład do Projektu Stada: właścicielem jest agent, który go oddał (pole `wlasciciel`).
 };
 
 const NA_AGENTA = 24;   // tyle klocków na płytkę — więcej nie zmieści się czytelnie na telefonie
@@ -36,11 +37,12 @@ const SLADOW = 15;
  * (np. brak katalogu apek), reszta świata i tak się pokaże.
  * @param {{ wystawa?:()=>Promise<any>, projekty?:()=>Promise<any[]>, assety3d?:()=>Promise<any[]>, zdarzenia?:any[], gatunki?:{id:string,imie:string}[] }} zrodla
  */
-export async function zbierzKlocki({ wystawa, projekty, assety3d, zdarzenia = [], gatunki = [] } = {}) {
-    const [w, p, a] = await Promise.all([
+export async function zbierzKlocki({ wystawa, projekty, assety3d, projektyStada, zdarzenia = [], gatunki = [] } = {}) {
+    const [w, p, a, ps] = await Promise.all([
         wystawa ? wystawa().catch(() => null) : null,
         projekty ? projekty().catch(() => []) : [],
         assety3d ? assety3d().catch(() => []) : [],
+        projektyStada ? projektyStada().catch(() => []) : [],
     ]);
     const klocki = [];
 
@@ -74,9 +76,20 @@ export async function zbierzKlocki({ wystawa, projekty, assety3d, zdarzenia = []
         });
     }
 
+    for (const pr of ps ?? []) {
+        for (const k of pr.kroki ?? []) {
+            if (k.stan !== 'gotowe' || !k.wklad) continue;
+            klocki.push({
+                id: `wklad-${pr.id}-${k.agent}${k.synteza ? '-biblia' : ''}`, rodzaj: 'wklad', wlasciciel: k.agent,
+                tytul: `${pr.nazwa}: ${k.synteza ? 'Biblia projektu' : k.zadanie.split(':')[0]}`,
+                opis: k.wklad, kiedy: k.do, projekt: pr.id, model: null, silnik: k.model,
+            });
+        }
+    }
+
     const agenci = {};
     for (const k of klocki.sort((x, y) => String(y.kiedy ?? '').localeCompare(String(x.kiedy ?? '')))) {
-        const kto = WLASCICIELE[k.rodzaj];
+        const kto = k.wlasciciel ?? WLASCICIELE[k.rodzaj];
         if (!kto) continue;
         const a2 = (agenci[kto] ||= { klocki: [], razem: 0 });
         a2.razem++;
