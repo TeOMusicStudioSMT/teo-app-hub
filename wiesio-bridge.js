@@ -9944,7 +9944,16 @@ app.post('/api/stado/publikuj', async (req, res) => {
     res.json({ success: true, ...r });
 });
 // ── 🥚 ŹRÓDŁO PRAWDY XP (services/Stado.js) — przeglądarka ściąga przy starcie, odsyła przy zapisie ──
-app.get('/api/stado/stan', async (_req, res) => res.json({ success: true, ...(await Stado.stan()) }));
+// ⚠️ NAPRAWIONE 2026-09-24 (Rewizor Mostu): GET /api/stado/stan był zarejestrowany DWA RAZY —
+// dla Huba (tutaj) i dla sparowanej apki (niżej, z tokenem). Express oddaje pierwszej trasie,
+// więc wersja apki była martwa: telefon z tokenem dostawał migawkę XP zamiast stanDlaApki.
+// Teraz jedna trasa, dwie drogi: kto niesie token parowania (nagłówek `X-Stado-Token`
+// albo `?token=`), ten jest apką i token MUSI być ważny; bez tokenu — Hub, jak dotąd.
+app.get('/api/stado/stan', async (req, res) => {
+    const token = req.get('X-Stado-Token') ?? req.query.token;
+    if (token === undefined) return res.json({ success: true, ...(await Stado.stan()) });
+    return odpowiedzApce(res, token);
+});
 app.post('/api/stado/stan', async (req, res) => {
     try {
         const r = await Stado.scal(req.body ?? {});
@@ -9982,9 +9991,8 @@ app.post('/api/stado/odlacz', async (req, res) => {
     res.json({ success: true });
 });
 
-/** Stan dla apki. Token w nagłówku `X-Stado-Token` albo `?token=`. */
-app.get('/api/stado/stan', async (req, res) => {
-    const token = req.get('X-Stado-Token') || req.query.token;
+/** Stan dla apki (gałąź GET /api/stado/stan z tokenem — patrz wyżej, przy trasie Huba). */
+async function odpowiedzApce(res, token) {
     const kto = await MostStada.sprawdzToken(token);
     if (!kto) {
         return res.status(401).json({
@@ -9996,7 +10004,7 @@ app.get('/api/stado/stan', async (req, res) => {
     // nie zgadywane z nazwy. Podanie liczby dałoby `ile` undefined i pustą listę.
     const zdarzenia = Szyna.ostatnie({ ile: 300 });
     res.json({ success: true, urzadzenie: kto.nazwa, ...(await MostStada.stanDlaApki(zdarzenia)) });
-});
+}
 
 
 app.get('/api/pamiec-kodu/stan', async (req, res) => {
@@ -15700,6 +15708,14 @@ app.get('/api/wiedza/design/temat', async (req, res) => {
         if (!t) return res.status(404).json({ success: false, message: 'Nie ma takiego tematu.', dostepne: tematy.map(x => x.id) });
         res.json({ success: true, temat: t, brief: brief(t, 99) });
     } catch (e) {
+        // Brak korpusu to brak danych (404, jak /tematy), a nie awaria mostu.
+        if (e.code === 'ENOENT') {
+            return res.status(404).json({
+                success: false,
+                message: `Brak korpusu wiedzy projektowej: ${e.message}`,
+                hint: `Sklonuj go do ${SCIEZKA_KORPUSU.replace(/README\.md$/, '')}`,
+            });
+        }
         res.status(500).json({ success: false, message: e.message });
     }
 });

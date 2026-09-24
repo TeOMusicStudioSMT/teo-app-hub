@@ -96,6 +96,10 @@ describe('wywołania klienta', () => {
         const w = wyciagnijWywolania(src);
         assert.deepEqual(w.map((x) => [x.sciezka, x.prefiks]), [['/api/tunel', false], ['/api/forge', true]]);
     });
+    test('jawny wyjątek // rewizor: poza-mostem pomija całą linię', () => {
+        const src = "const a = ['/api/kadry', '/api/wykuj']; // rewizor: poza-mostem (Dział Mody)\nfetch('/api/b');";
+        assert.deepEqual(wyciagnijWywolania(src).map((w) => w.sciezka), ['/api/b']);
+    });
     test('prefiksy proxy Vite są pomijane', () => {
         const pomin = prefiksyProxy("proxy: { '/api/suno': { target: 'https://x' } }");
         assert.deepEqual(pomin, ['/api/suno']);
@@ -196,5 +200,11 @@ describe('repo: most i serwisy', () => {
     });
     test('każda importowana nazwa jest eksportowana przez swój moduł', () => {
         assert.deepEqual(r.brakujaceEksporty, []);
+    });
+    test('żadna trasa nie jest zarejestrowana dwa razy', () => {
+        assert.deepEqual(r.duplikaty, []);
+    });
+    test('klient nie woła tras, których most nie ma', () => {
+        assert.deepEqual(r.osierocone.map((o) => `${o.plik}:${o.linia} ${o.surowa}`), []);
     });
 });
