@@ -35,6 +35,9 @@ Odkrywaniem prawdziwego Suwerena (tierowe roszczenia nie są równe — energia 
 - **Tożsamość lokalna** (DID, `identity.json`) — NIE Google/banki. Wejście suwerenne
   (przycisk „Wejdź suwerennie") domyślne; Firebase opcjonalny.
 - **Ekonomia GRV**: TeO = ∞ (zarządca), founderzy/filary/heroldowie; nowy węzeł = 1000.
+- **Straż Mostu** (`services/StrazMostu.js`) — „maszyna Suwerena" to Hub/substrony z localhost
+  i narzędzia bez przeglądarki; obca strona w przeglądarce = zdalny gość (klucz). Publiczne strony
+  Suwerena (otakos.wtf, teo.center, `OTAKOS_ZAUFANE_ORIGINY`) — tylko odczyt. CORS to nie ochrona.
 - **Tarcza Prawdy** (`services/AlignmentShield.js`) skanuje patche przed zapisem —
   blokuje sekrety, `rm -rf`, eval, sabotaż.
 

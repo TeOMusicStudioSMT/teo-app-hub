@@ -329,6 +329,9 @@ app.use(cors({
     // (*.trycloudflare.com), więc odbijamy KAŻDY origin — odpowiednik `origin: '*'`,
     // ale zgodny z `credentials: true` (przy gołej gwiazdce przeglądarka blokuje
     // żądania z ciasteczkami). Śluza i tak nasłuchuje tylko tam, gdzie Suweren ją wystawi.
+    // ⚠️ 2026-09-24: CORS NIE jest tu zabezpieczeniem (formularz HTML wysyła POST bez preflightu).
+    // O tym, kto jest „maszyną Suwerena", decyduje Straż (services/StrazMostu.js → zrodloZadania):
+    // obca strona w przeglądarce Suwerena dostaje status zdalnego gościa i bez klucza — 401.
     origin: true,
     // ⚠️ PATCH DOPISANY 2026-09-06. Bez niego przeglądarka odbijała żądanie już
     // na preflighcie, `fetch` rzucał wyjątek sieciowy, a klient meldował
