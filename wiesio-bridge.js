@@ -66,6 +66,7 @@ import * as KuzniaModeli   from './services/KuzniaModeli.js';
 import * as HistoriaCzatu  from './services/HistoriaCzatu.js';
 import * as PamiecKodu     from './services/PamiecKodu.js';
 import * as MostStada      from './services/MostStada.js';
+import * as StrumienStada  from './services/StrumienStada.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
@@ -9946,6 +9947,8 @@ app.post('/api/stado/publikuj', async (req, res) => {
     if (!r.ok) return res.status(400).json({ success: false, message: r.powod });
     // Regres = ktoś wykluty wrócił do jajka albo stracił XP. Mówimy o tym głośno,
     // bo to prawie na pewno pusta przeglądarka, a nie decyzja Suwerena.
+    // Telefony na strumieniu dostają nową migawkę od razu (services/StrumienStada.js).
+    StrumienStada.rozeslijStan().catch(() => {});
     if (r.cofniete?.length) {
         await Szyna.nadaj({ agent: 'Stado', rodzaj: 'blad', tresc: `migawka stada COFNĘŁA ${r.cofniete.map((c) => `${c.imie}: ${c.bylo.etap} ${c.bylo.xp} XP → ${c.jest?.etap ?? '?'} ${c.jest?.xp ?? 0} XP`).join('; ')}. Stara migawka w kopii${r.kopia ? ` ${r.kopia}` : ''} — Dom TeOgochi ma „Przywróć z kopii mostu".`, dane: { kopia: r.kopia, cofniete: r.cofniete } }).catch(() => {});
     }
@@ -9997,6 +10000,27 @@ app.post('/api/stado/odlacz', async (req, res) => {
     const r = await MostStada.odlacz(req.body?.skrot);
     if (!r.ok) return res.status(404).json({ success: false, message: r.powod });
     res.json({ success: true });
+});
+
+/** Stan dla telefonu — ten sam w GET /api/stado/stan (z tokenem) i w strumieniu. */
+const stanDlaTelefonu = async () => MostStada.stanDlaApki(Szyna.ostatnie({ ile: 300 }));
+// Każde zdarzenie szyny → do telefonów na strumieniu (bez pola `dane`).
+Szyna.subskrybuj((z) => StrumienStada.rozeslijZdarzenie(z));
+
+/**
+ * GET /api/stado/strumien — SSE dla sparowanego telefonu (StoL). Token w `X-Stado-Token`
+ * albo `?token=`. Zamiast odpytywania co 20 s: stan od razu, potem zdarzenia na żywo.
+ */
+app.get('/api/stado/strumien', async (req, res) => {
+    const token = req.get('X-Stado-Token') ?? req.query.token;
+    const kto = await MostStada.sprawdzToken(token);
+    if (!kto) return res.status(401).json({ success: false, message: 'Brak sparowania. Wygeneruj kod w Katedrze i sparuj urządzenie.' });
+    const urzadzenie = kto.nazwa;
+    await StrumienStada.podlacz(req, res, {
+        token,
+        stan: async () => ({ success: true, urzadzenie, ...(await stanDlaTelefonu()) }),
+        zyje: (t) => MostStada.czyTokenZyje(t),
+    });
 });
 
 /** Stan dla apki (gałąź GET /api/stado/stan z tokenem — patrz wyżej, przy trasie Huba). */

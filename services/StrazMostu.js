@@ -57,6 +57,9 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/straz/',
     '/api/tunel/',   // tunelu nie odpala się (ani nie gasi) z tunelu
     '/api/system/free',   // zamyka procesy na maszynie
+    // Stado należy do Katedry: telefon (StoL) PATRZY — nie publikuje migawki, nie paruje
+    // innych urządzeń i nie odłącza ich. Jego jedyne zdalne wejście to /api/stado/paruj.
+    '/api/stado/publikuj', '/api/stado/parowanie', '/api/stado/odlacz',
 ];
 
 /**

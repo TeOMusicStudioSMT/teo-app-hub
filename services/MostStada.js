@@ -93,6 +93,13 @@ export async function sprawdzToken(token) {
     return { nazwa: u.nazwa, sparowane: u.sparowane };
 }
 
+/** Czy token jest nadal sparowany — BEZ zapisu na dysk (dla pulsu strumienia co 25 s). */
+export async function czyTokenZyje(token) {
+    if (!token) return false;
+    const d = await czytaj();
+    return (d.urzadzenia || []).some(x => x.token === token);
+}
+
 export async function urzadzenia() {
     const d = await czytaj();
     return (d.urzadzenia || []).map(u => ({
@@ -237,6 +244,6 @@ export function plik() { return PLIK(); }
 export function istnieje() { return fsSync.existsSync(PLIK()); }
 
 export default {
-    zacznijParowanie, sparuj, sprawdzToken, urzadzenia, odlacz,
+    zacznijParowanie, sparuj, sprawdzToken, czyTokenZyje, urzadzenia, odlacz,
     publikuj, stanDlaApki, plik, istnieje,
 };
