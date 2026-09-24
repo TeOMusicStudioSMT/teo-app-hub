@@ -152,6 +152,19 @@ function prefiksToMost(przed, zrodlo, serwer) {
 }
 
 /**
+ * Jawny wyjątek: linia z komentarzem `// rewizor: poza-mostem (powód)` wskazuje trasy
+ * celowo spoza mostu (np. Dział Mody na porcie 3000). Powód ma stać w komentarzu.
+ */
+const POZA_MOSTEM = /\/\/\s*rewizor:\s*poza-mostem\b/;
+
+/** Cała linia, w której leży pozycja. */
+function liniaTekstu(zrodlo, poz) {
+    const a = zrodlo.lastIndexOf('\n', poz - 1) + 1;
+    const b = zrodlo.indexOf('\n', poz);
+    return zrodlo.slice(a, b === -1 ? undefined : b);
+}
+
+/**
  * Ścieżki `/api/...` wołane w kodzie klienta.
  * Fragmenty `${…}` w środku ścieżki zamieniane są na „X" (jeden segment);
  * `${…}` doklejone na końcu bez ukośnika to query (`/api/tunel${sprawdz}`) — odcinane.
@@ -165,6 +178,7 @@ export function wyciagnijWywolania(zrodlo, { serwer = false, pominPrefiksy = [] 
     const re = /\/api\/(?:[A-Za-z0-9_.:-]|\/|\$\{[^}\n]*\})*/g;
     for (const m of zrodlo.matchAll(re)) {
         if (kod[m.index] !== '/') continue;                  // w komentarzu
+        if (POZA_MOSTEM.test(liniaTekstu(zrodlo, m.index))) continue;   // jawny wyjątek w kodzie
         // Cofnij się do otwierającego cudzysłowu w tej samej linii.
         let i = m.index - 1, przed = '';
         while (i >= 0 && !`'"\`\n`.includes(zrodlo[i])) przed = zrodlo[i--] + przed;

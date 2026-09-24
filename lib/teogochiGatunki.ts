@@ -83,7 +83,7 @@ export const GATUNKI: Gatunek[] = [
         opis: 'Prowadzi Kronikę, zapisuje dzień Katedry i pilnuje, żeby nic ważnego nie przepadło.',
         formy: { 'jajko': '🥚', 'pisklę': '🐁', 'młodzik': '🐀', 'kompan': '🦉', 'legenda': '📜' },
         kolor: '#8b5cf6',
-        narzedzia: ['/api/kronika/forge', '/api/dziennik/wpis'],
+        narzedzia: ['/api/kronika/forge', '/api/dziennik/forge', '/api/dziennik/list'],
         zadania: ['Kronikarz, zapisz dzisiejszy dzień', 'Kronikarz, streść ostatni tydzień', 'Kronikarz, znajdź wpis o Joannie'],
     },
     {
@@ -135,7 +135,7 @@ export const GATUNKI: Gatunek[] = [
         opis: 'Wystawia, wycenia i pilnuje obiegu w Marketplace — po stronie Prawej Ekonomii.',
         formy: { 'jajko': '🥚', 'pisklę': '🐹', 'młodzik': '🦫', 'kompan': '🦝', 'legenda': '💎' },
         kolor: '#eab308',
-        narzedzia: ['/api/market/list', '/api/grv/register'],
+        narzedzia: ['/api/market/products', '/api/market/create', '/api/grv/register'],
         zadania: ['Kupiec, wystaw ten skill', 'Kupiec, wyceń pakiet', 'Kupiec, pokaż obrót'],
     },
     {
@@ -162,7 +162,7 @@ export const GATUNKI: Gatunek[] = [
         opis: 'Patrzy na kadry z produkcji, kuje z nich kreacje i rysuje samą sztukę odzieży.',
         formy: { 'jajko': '🥚', 'pisklę': '🧵', 'młodzik': '🧶', 'kompan': '👗', 'legenda': '👑' },
         kolor: '#ec4899',
-        narzedzia: ['/api/kadry', '/api/wykuj', '/api/narysuj', '/api/obraz/policz'],
+        narzedzia: ['/api/kadry', '/api/wykuj', '/api/narysuj', '/api/obraz/policz'], // rewizor: poza-mostem (Dział Mody, port 3000)
         zadania: ['Krawcowa, wykuj kreację z tego kadru', 'Krawcowa, narysuj tę kreację', 'Krawcowa, pokaż kadry z SOLLET'],
     },
     {

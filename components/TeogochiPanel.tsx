@@ -186,6 +186,27 @@ export const TeogochiPanel: React.FC<TeogochiPanelProps> = ({
     const testNarzedzie = async (endpoint: string) => {
         setNarzedziaStatus(prev => ({ ...prev, [endpoint]: 'checking' }));
         try {
+            // ⚠️ 2026-09-24: sam GET kłamał. Trasa, której most nie ma, dostaje od Expressa
+            // 404 „Cannot GET" — a `status < 500` liczyło to jako „odpowiada prawidłowo".
+            // Najpierw pytamy żywy router (/api/teogochi/domeny), czy trasa w ogóle istnieje
+            // i jaką metodą. Trasy tylko-POST nie wołamy: one zapisują albo uruchamiają.
+            const kat = await fetch('http://127.0.0.1:3001/api/teogochi/domeny').then(r => r.json());
+            const pasuje = (sciezka: string) =>
+                new RegExp(`^${sciezka.replace(/:[A-Za-z0-9_]+/g, '[^/]+')}$`).test(endpoint);
+            const metody = ((kat?.domeny ?? []) as { narzedzia: { metoda: string; sciezka: string }[] }[])
+                .flatMap(d => d.narzedzia)
+                .filter(t => pasuje(t.sciezka))
+                .map(t => t.metoda);
+            if (!metody.length) {
+                setNarzedziaStatus(prev => ({ ...prev, [endpoint]: 'err' }));
+                void powiedz(`Most nie ma trasy ${endpoint}. To narzędzie jest tylko na papierze.`);
+                return;
+            }
+            if (!metody.includes('GET')) {
+                setNarzedziaStatus(prev => ({ ...prev, [endpoint]: 'ok' }));
+                void powiedz(`Trasa ${endpoint} istnieje (${metody.join('/')}). Nie wołam jej na próbę, bo coś zapisuje lub uruchamia.`);
+                return;
+            }
             const res = await fetch(`http://127.0.0.1:3001${endpoint}`, {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' },
