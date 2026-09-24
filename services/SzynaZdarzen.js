@@ -24,6 +24,7 @@ const MAX_TRESC = 4000;         // dłuższe tniemy — szyna to dziennik, nie m
 
 const pierscien = [];
 const sluchacze = new Set();    // odpowiedzi SSE
+const subskrybenci = new Set(); // funkcje w moście (np. Strumień Stada dla telefonów)
 let licznik = 0;
 
 /** Dopisz zdarzenie. Zwraca zapisany rekord. */
@@ -50,6 +51,9 @@ export async function nadaj({ agent, rodzaj, tresc, zadanie = null, dane = null 
         try { res.write(`data: ${JSON.stringify(zdarzenie)}\n\n`); }
         catch { sluchacze.delete(res); }
     }
+    for (const fn of subskrybenci) {
+        try { fn(zdarzenie); } catch { /* słuchacz nie może wywrócić nadania */ }
+    }
     return zdarzenie;
 }
 
@@ -74,6 +78,12 @@ export function sluchaj(res) {
     return () => sluchacze.delete(res);
 }
 
+/** Subskrypcja w obrębie mostu: `fn(zdarzenie)` po każdym nadaniu. Zwraca funkcję odpinającą. */
+export function subskrybuj(fn) {
+    subskrybenci.add(fn);
+    return () => subskrybenci.delete(fn);
+}
+
 /** Wczytaj ogon dziennika z dysku po starcie mostu — żeby nie zaczynać od pustki. */
 export async function wczytajOgon() {
     try {
@@ -92,4 +102,4 @@ export async function wczytajOgon() {
     }
 }
 
-export default { nadaj, ostatnie, ktoPracuje, sluchaj, wczytajOgon };
+export default { nadaj, ostatnie, ktoPracuje, sluchaj, subskrybuj, wczytajOgon };
