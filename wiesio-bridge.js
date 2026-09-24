@@ -7589,6 +7589,17 @@ ProjektStada.skonfiguruj({
     modelDla: (id) => ModeleAgentow.modelDla(id),
     karta: (id) => Persony.karta(id),
     chat: async (model, [system, user]) => (await AppStudio.pisz({ system: system.content, prompt: user.content, model, timeoutMs: 15 * 60_000 })).tekst,
+    // Wkłady same zlecają moduły (services/ZleceniaStada.js) — tymi samymi trasami, co panele Suwerena.
+    most: async (sciezka, body) => {
+        const r = await fetch(`http://127.0.0.1:${PORT}${sciezka}`, {
+            method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(90_000),
+            headers: body ? { 'Content-Type': 'application/json' } : undefined,
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d?.message || `HTTP ${r.status}`);
+        return d;
+    },
 });
 
 app.get('/api/delegat/profile', (req, res) => res.json({ success: true, profile: Delegat.profile(), lokalne: !!req.lokalny, pelnyTunel: PELNY_TUNEL }));
@@ -10105,7 +10116,7 @@ app.get('/api/stado/projekty/:id', async (req, res) => {
 /** POST /api/stado/projekt/nowy { nazwa, wizja, uczestnicy:[id…] } — tylko z maszyny (Straż: SCIEZKI_TYLKO_LOKALNE). */
 app.post('/api/stado/projekt/nowy', async (req, res) => {
     try {
-        const { nazwa, wizja, uczestnicy = [] } = req.body ?? {};
+        const { nazwa, wizja, uczestnicy = [], samoZlecanie = true } = req.body ?? {};
         const migawka = (await stanDlaTelefonu()).gatunki ?? [];
         const osoby = [];
         for (const id of [...new Set(uczestnicy.map(String))]) {
@@ -10113,8 +10124,13 @@ app.post('/api/stado/projekt/nowy', async (req, res) => {
             const k = g ? null : await Persony.karta(id).catch(() => null);
             if (g || k) osoby.push({ id, imie: g?.imie || k.imie || id, dziedzina: g?.dziedzina || k?.dziedzina || '' });
         }
-        res.json({ success: true, projekt: await ProjektStada.zaloz({ nazwa, wizja, uczestnicy: osoby }) });
+        res.json({ success: true, projekt: await ProjektStada.zaloz({ nazwa, wizja, uczestnicy: osoby, samoZlecanie: samoZlecanie !== false }) });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** POST /api/stado/projekt/:id/zlec — wkłady zlecają moduły Katedry (ponownie: tylko to, co nie wyszło). Tylko z maszyny. */
+app.post('/api/stado/projekt/:id/zlec', async (req, res) => {
+    try { res.json({ success: true, ...(await ProjektStada.zlec(req.params.id)) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 /** POST /api/stado/model { agent, model } — silnik TeOgochi (pusty = domyślny). Tylko z maszyny. */
 app.post('/api/stado/model', async (req, res) => {

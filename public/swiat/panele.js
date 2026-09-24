@@ -17,7 +17,8 @@
   const esc = S.esc;
   const lokalne = () => !!S.dane?.lokalne;
   const json = (body) => ({ method: 'POST', headers: { ...S.naglowki, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const STAN = { czeka: '○', trwa: '◐', gotowe: '●', blad: '✕' };
+  const STAN = { czeka: '○', trwa: '◐', gotowe: '●', blad: '✕', przerwane: '◌', przerwany: '◌' };
+  const MODUL = { merch: '🛒 Marketplace', muzyka: '🎵 Muzyka', model3d: '🧊 Assety3D', wideo: '🎬 Wideo' };
 
   // ── Rozmowa + silnik + rzeźba: sekcje w katalogu agenta ────────────────────
   const rozmowy = new Map();   // id gatunku → { rozmowaId, tury: [{kto, tresc}] }
@@ -144,16 +145,17 @@
         <input type="text" id="p-nazwa" placeholder="Nazwa, np. Uniwersum Teterhia">
         <textarea id="p-wizja" placeholder="Twoja wizja: świat, klimat, co ma powstać — film, gra, moda, muzyka, merch…"></textarea>
         <div class="uczestnicy">${wyklute.map((g) => `<label><input type="checkbox" value="${esc(g.id)}" checked> ${esc(g.forma)} ${esc(g.imie)}</label>`).join('') || '<span class="meta">Najpierw musi się ktoś wykluć.</span>'}</div>
+        <label class="meta"><input type="checkbox" id="p-zlecaj" checked> Wkłady same zlecają moduły Katedry (merch, muzyka, 3D, wideo)</label>
         <button class="guzik" id="p-start" type="button" ${wyklute.length < 2 ? 'disabled' : ''}>Zacznijcie razem</button>
         <p class="meta" id="p-stan"></p>
       </div>` : '<p class="meta">Nowy projekt zakłada się przy Katedrze — tu widać postęp.</p>'}
       <h3>Projekty</h3>
-      <div class="sekcja">${lista.length ? lista.map((p) => `<button class="projekt" data-id="${esc(p.id)}"><b>${esc(p.nazwa)}</b> <span class="meta">· ${p.gotowe}/${p.razem} · ${esc(p.stan)}</span>${krokiHtml(p)}</button>`).join('') : '<p class="cisza">Jeszcze żadnego.</p>'}</div>`);
+      <div class="sekcja">${lista.length ? lista.map((p) => `<button class="projekt" data-id="${esc(p.id)}"><b>${esc(p.nazwa)}</b> <span class="meta">· ${p.gotowe}/${p.razem} · ${esc(p.stan)}${p.zlecenia?.length ? ` · zlecenia ${p.zlecenia.filter((z) => z.stan === 'gotowe').length}/${p.zlecenia.length}` : ''}</span>${krokiHtml(p)}</button>`).join('') : '<p class="cisza">Jeszcze żadnego.</p>'}</div>`);
     k.querySelectorAll('.projekt').forEach((b) => b.addEventListener('click', () => pokazProjekt(b.dataset.id)));
     k.querySelector('#p-start')?.addEventListener('click', async () => {
       const uczestnicy = [...k.querySelectorAll('.uczestnicy input:checked')].map((i) => i.value);
       const st = k.querySelector('#p-stan');
-      const w = await fetch('/api/stado/projekt/nowy', json({ nazwa: k.querySelector('#p-nazwa').value, wizja: k.querySelector('#p-wizja').value, uczestnicy }))
+      const w = await fetch('/api/stado/projekt/nowy', json({ nazwa: k.querySelector('#p-nazwa').value, wizja: k.querySelector('#p-wizja').value, uczestnicy, samoZlecanie: k.querySelector('#p-zlecaj').checked }))
         .then((r) => r.json()).catch((e) => ({ message: e.message }));
       if (!w.success) { st.textContent = `⚠️ ${w.message}`; return; }
       pokazProjekt(w.projekt.id);
@@ -172,12 +174,46 @@
       ${krokiHtml(p)}
       ${p.kroki.map((kr) => `<div class="sekcja"><h3>${STAN[kr.stan] || ''} ${esc(kr.imie)} · ${esc(kr.zadanie.split(':')[0])} <span class="meta">· ${esc(kr.model)}</span></h3>
         ${kr.wklad ? `<div class="wklad">${esc(kr.wklad)}</div>` : kr.stan === 'blad' ? `<p class="meta" style="color:var(--blad)">${esc(kr.blad || 'błąd')}</p>` : `<p class="cisza">${kr.stan === 'trwa' ? 'Pracuje…' : 'Czeka na swoją kolej.'}</p>`}</div>`).join('')}
+      ${zleceniaHtml(p)}
       ${d.obiekty3d?.length ? `<div class="sekcja"><h3>🧊 Obiekty Palety do wyrzeźbienia</h3>
         ${d.obiekty3d.map((o, i) => `<div><span>${esc(o)}</span> ${lokalne() ? `<button class="guzik maly" data-o="${i}" type="button">Wyrzeźbij</button>` : ''}</div>`).join('')}
         <p class="meta" id="o-stan"></p></div>` : ''}
       <button class="guzik maly" id="p-wstecz" type="button">← Wszystkie projekty</button>`);
     k.querySelector('#p-wstecz').addEventListener('click', pokazProjekty);
+    k.querySelector('#z-zlec')?.addEventListener('click', async () => {
+      const st = k.querySelector('#z-stan');
+      st.textContent = 'Zlecam…';
+      const w = await fetch(`/api/stado/projekt/${encodeURIComponent(p.id)}/zlec`, json({})).then((r) => r.json()).catch((e) => ({ message: e.message }));
+      if (!w.success) { st.textContent = `⚠️ ${w.message}`; return; }
+      w.ile ? pokazProjekt(p.id) : (st.textContent = 'Wkłady nie mają linii dla modułów (PRODUKT:, MUZYKA:, OBIEKT:, UJĘCIE:).');
+    });
+    k.querySelectorAll('[data-glb]').forEach((b) => b.addEventListener('click', () => {
+      const url = S.zKluczem(`/api/assety3d/${encodeURIComponent(b.dataset.glb)}/plik/model.glb`);
+      if (!S.podglad3d) { window.open(url, '_blank'); return; }
+      const miejsce = document.createElement('div'); miejsce.className = 'model3d';
+      b.replaceWith(miejsce); S.podglad3d(miejsce, url);
+    }));
     k.querySelectorAll('[data-o]').forEach((b) => b.addEventListener('click', () => rzezbij(d.obiekty3d[Number(b.dataset.o)], k.querySelector('#o-stan'))));
+  }
+
+  /** Co wkłady zleciły modułom Katedry i co z tego wyszło — wynik albo prawdziwy błąd modułu. */
+  function zleceniaHtml(p) {
+    const z = p.zlecenia ?? [];
+    const koniec = p.stan !== 'trwa';
+    const doPonowienia = koniec && (!z.length || z.some((x) => x.stan === 'blad' || x.stan === 'przerwane'));
+    if (!z.length && !(koniec && lokalne())) return '';
+    const wynik = (x) => {
+      if (x.stan === 'blad' || x.stan === 'przerwane') return `<div class="meta" style="color:var(--blad)">${esc(x.blad || 'przerwane (restart mostu) — można ponowić')}</div>`;
+      if (x.stan !== 'gotowe' || !x.wynik) return '';
+      const w = x.wynik;
+      if (w.asset) return `<div class="meta">bryła: ${esc(w.asset)} <button class="guzik maly" data-glb="${esc(w.asset)}" type="button">Obejrzyj</button></div>`;
+      if (w.produkt) return `<div class="meta">w Marketplace: ${esc(w.produkt)} · ${esc(w.cenaGrv)} GRV</div>`;
+      return w.plik ? `<div class="meta">plik: ${esc(String(w.plik).split(/[\\/]/).pop())}</div>` : '';
+    };
+    return `<div class="sekcja"><h3>🏭 Zlecenia dla modułów Katedry</h3>
+      ${z.map((x) => `<div class="zlecenie ${esc(x.stan)}"><span class="krok ${esc(x.stan)}">${STAN[x.stan] || ''} ${MODUL[x.modul] || esc(x.modul)}</span> <b>${esc(x.imie)}</b>: ${esc(x.opis)}${wynik(x)}</div>`).join('') || '<p class="cisza">Nic jeszcze nie zlecono.</p>'}
+      ${doPonowienia && lokalne() ? `<button class="guzik maly" id="z-zlec" type="button">${z.length ? 'Ponów, co nie wyszło' : 'Zleć moduły z wkładów'}</button>` : ''}
+      <p class="meta" id="z-stan"></p></div>`;
   }
 
   $('projekty').addEventListener('click', pokazProjekty);
