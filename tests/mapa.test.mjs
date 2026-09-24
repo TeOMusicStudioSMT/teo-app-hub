@@ -28,3 +28,18 @@ test('mapa repo: domeny, serwisy i przepływy są spójne', () => {
     assert.ok(m.domeny.stado.serwisy.includes('services/Stado.js'));
     assert.ok(m.domeny.stado.klienci.includes('lib/stadoSync.ts'));
 });
+
+test('sąsiednie repo: liczą się tylko wywołania trafiające w most (i Kotlin $baza)', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const obce = fs.mkdtempSync(path.join(os.tmpdir(), 'mapa-'));
+    fs.mkdirSync(path.join(obce, 'src'));
+    fs.writeFileSync(path.join(obce, 'src', 'a.ts'), "fetch('/api/stado/stan'); fetch('/api/wlasny-backend/menu');");
+    fs.writeFileSync(path.join(obce, 'src', 'B.kt'), 'val u = "$baza/api/stado/kopie"');
+    const m = zbudujMape(KORZEN, { repozytoria: [obce] });
+    const nazwa = path.basename(obce);
+    assert.deepEqual(m.repozytoria, [{ nazwa, plikow: 2, trasMostu: 2 }]);
+    assert.ok(m.domeny.stado.klienci.includes(`${nazwa}:src/a.ts`));
+    assert.ok(m.domeny.stado.klienci.includes(`${nazwa}:src/B.kt`));
+    fs.rmSync(obce, { recursive: true });
+});
