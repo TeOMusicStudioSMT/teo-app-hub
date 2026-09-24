@@ -32,6 +32,7 @@ import http from 'http';
 import * as Persony from './Persony.js';
 import * as WikiProjektu from './WikiProjektu.js';
 import * as SedziaGry from './SedziaGry.js';
+import * as Recenzent from './RecenzentKodeksa.js';
 
 const run = promisify(execFile);
 
@@ -938,12 +939,14 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                 // build i testy wtedy przechodzą, commit nie powstaje (nie ma czego commitować),
                 // a zadanie melduje sukces. Tak „zrobił się" respawn wrogów w nocy 2026-09-23.
                 let zmienione = 0;
+                const doRecenzji = [];   // stara/nowa treść każdego zmienionego pliku — dla Recenzenta
                 for (const p of nowe) {
                     const pelna = path.join(dir, p.sciezka);
                     const stara = await fs.readFile(pelna, 'utf8').catch(() => null);
                     if (stara !== null && stara.replace(/\r\n/g, '\n').trimEnd() === p.tresc.replace(/\r\n/g, '\n').trimEnd()) continue;
                     await fs.mkdir(path.dirname(pelna), { recursive: true });
                     await fs.writeFile(pelna, p.tresc, 'utf8');
+                    doRecenzji.push({ sciezka: p.sciezka, stara, nowa: p.tresc });
                     zmienione++;
                 }
                 if (!zmienione) {
@@ -962,6 +965,21 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                     krok('blad', `martwy moduł: ${martwe.map((m) => m.plik).join(', ')} — nikt nie importuje, wymuszam podpięcie`);
                     continue;
                 }
+                // RECENZENT KODU (services/RecenzentKodeksa.js): zaślepki „// … reszta", uciszony tsc,
+                // pusty catch, atrapy, wycięte funkcje — rzeczy, które przechodzą build i testy.
+                // Odrzucona runda wraca do stanu sprzed niej: model w następnej rundzie musi widzieć
+                // PEŁNY stary plik, inaczej nie ma skąd odtworzyć tego, co wyciął.
+                const rec = Recenzent.recenzuj({ pliki: doRecenzji, cel });
+                if (!rec.ok) {
+                    for (const p of doRecenzji) {
+                        const pelna = path.join(dir, p.sciezka);
+                        if (p.stara === null) await fs.rm(pelna, { force: true }); else await fs.writeFile(pelna, p.stara, 'utf8');
+                    }
+                    feedback = rec.feedback;
+                    krok('blad', `runda ${runda}: ${rec.podsumowanie} — pliki wróciły do stanu sprzed rundy`, { recenzja: rec.blokujace });
+                    continue;
+                }
+                krok('test', rec.podsumowanie, rec.uwagi.length ? { uwagi: rec.uwagi } : undefined);
                 krok('pliki', `runda ${runda}: zapisano ${nowe.length} plik(ów): ${nowe.map((p) => p.sciezka).join(', ')}`, { pliki: nowe.map((p) => p.sciezka), tokeny: odp.tokeny });
 
                 const w = await weryfikujBuild(dir);
