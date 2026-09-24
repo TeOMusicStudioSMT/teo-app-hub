@@ -16,6 +16,7 @@ import { PulsMaszyny } from './dashboard/PulsMaszyny';
 import { NocnaZmianaCard } from './dashboard/NocnaZmianaCard';
 import { WystawaCard } from './dashboard/WystawaCard';
 import { DelegatCard } from './dashboard/DelegatCard';
+import { StolCard } from './dashboard/StolCard';
 import PamiecHelper from './special/PamiecHelper';
 
 interface DashboardViewProps {
@@ -81,6 +82,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
             {/* 3c. DELEGAT MOBILNY — TeOgochi w telefonie Suwerena (QR przez tunel, fakty z rozmów, ręce Artemisa). */}
             <div className="w-full">
                 <DelegatCard />
+            </div>
+
+            {/* 3d. StoL — apka na telefon: obserwacja stada TeOgochi przez tunel (parowanie kodem). */}
+            <div className="w-full">
+                <StolCard />
             </div>
 
             {/* 4. PORTFOLIO */}
