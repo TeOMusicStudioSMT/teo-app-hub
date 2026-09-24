@@ -40,9 +40,18 @@ export const CosmicBackground: React.FC<CosmicBackgroundProps> = ({ riskLevel })
         let particles: any[] = [];
         const numParticles = 150;
 
+        // Bufor kanwy liczy sie w PAMIECI: szerokosc x wysokosc x 4 bajty. Przy `innerWidth * 2`
+        // na ekranie 2560x1440 to 5120x2880 = ~59 MB na jedna kanwe, a Hub ma ich osiem.
+        // Tlo jest rozmyte i gwiazdziste — nie potrzebuje wiecej niz gestosc ekranu (maks 1.5x),
+        // a i tak ograniczamy calosc do ~4 Mpx (Suweren 2026-09-24: karta HuBa zjadala 1,8 GB).
+        const MAKS_PIKSELI = 4_000_000;
         const resizeCanvas = () => {
-            canvas.width = window.innerWidth * 2;
-            canvas.height = window.innerHeight * 2;
+            const gestosc = Math.min(window.devicePixelRatio || 1, 1.5);
+            let w = Math.round(window.innerWidth * gestosc);
+            let h = Math.round(window.innerHeight * gestosc);
+            const nadmiar = (w * h) / MAKS_PIKSELI;
+            if (nadmiar > 1) { const k = Math.sqrt(nadmiar); w = Math.round(w / k); h = Math.round(h / k); }
+            if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
         };
         resizeCanvas();
 
