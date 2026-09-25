@@ -10113,8 +10113,13 @@ app.get('/api/stado/projekty/:id', async (req, res) => {
     const paleta = p.kroki.find((k) => k.agent === 'paleta' && k.wklad);
     res.json({ success: true, projekt: p, obiekty3d: paleta ? ProjektStada.obiekty3d(paleta.wklad) : [] });
 });
-/** POST /api/stado/projekt/nowy { nazwa, wizja, uczestnicy:[id…] } — tylko z maszyny (Straż: SCIEZKI_TYLKO_LOKALNE). */
+/**
+ * POST /api/stado/projekt/nowy { nazwa, wizja, uczestnicy:[id…], samoZlecanie? }
+ * Z maszyny albo ze SPAROWANEGO telefonu (token; Straż przepuszcza tę jedną ścieżkę z kluczem sesji).
+ */
 app.post('/api/stado/projekt/nowy', async (req, res) => {
+    const dostep = await dostepStada(req, res);
+    if (!dostep) return;
     try {
         const { nazwa, wizja, uczestnicy = [], samoZlecanie = true } = req.body ?? {};
         const migawka = (await stanDlaTelefonu()).gatunki ?? [];
@@ -10124,7 +10129,7 @@ app.post('/api/stado/projekt/nowy', async (req, res) => {
             const k = g ? null : await Persony.karta(id).catch(() => null);
             if (g || k) osoby.push({ id, imie: g?.imie || k.imie || id, dziedzina: g?.dziedzina || k?.dziedzina || '' });
         }
-        res.json({ success: true, projekt: await ProjektStada.zaloz({ nazwa, wizja, uczestnicy: osoby, samoZlecanie: samoZlecanie !== false }) });
+        res.json({ success: true, projekt: await ProjektStada.zaloz({ nazwa, wizja, uczestnicy: osoby, samoZlecanie: samoZlecanie !== false, zalozyl: dostep.urzadzenie }) });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 /** POST /api/stado/projekt/:id/zlec — wkłady zlecają moduły Katedry (ponownie: tylko to, co nie wyszło). Tylko z maszyny. */

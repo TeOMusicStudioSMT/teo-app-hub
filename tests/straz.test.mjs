@@ -62,4 +62,13 @@ describe('strazMostu (middleware)', () => {
         assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/bridge/execute', body: { action: 'EXEC_SYSTEM_CMD' } })), 403);
         assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/system/free', body: {} })), 403);
     });
+    test('telefon: nowy projekt stada przez tunel z kluczem (token sprawdza trasa); reszta projektu i silniki lokalnie', () => {
+        const tunel = { 'cf-connecting-ip': '1.2.3.4', 'x-teo-klucz': KLUCZ };
+        assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/stado/projekt/nowy' })), 'dalej');
+        assert.equal(przepusc(zadanie({ naglowki: { 'cf-connecting-ip': '1.2.3.4' }, method: 'POST', path: '/api/stado/projekt/nowy' })), 401);
+        assert.equal(przepusc(zadanie({ naglowki: { origin: 'https://teo.center' }, method: 'POST', path: '/api/stado/projekt/nowy' })), 403);
+        assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/stado/projekt/x-1/zlec' })), 403);
+        assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/stado/projekt/nowy/../x' })), 403);
+        assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/stado/model' })), 403);
+    });
 });

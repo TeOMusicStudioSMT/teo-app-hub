@@ -35,12 +35,22 @@ async function czytaj() {
     try { return JSON.parse(await fs.readFile(PLIK(), 'utf8')); }
     catch { return { wersja: 1, migawka: null, urzadzenia: [], kod: null }; }
 }
-async function zapisz(d) {
-    const cel = PLIK();
-    await fs.mkdir(path.dirname(cel), { recursive: true });
-    const tmp = `${cel}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(d, null, 2), 'utf8');
-    await fs.rename(tmp, cel);
+/**
+ * Zapisy idą po kolei, każdy przez własny plik tymczasowy. Wspólny `.tmp` wywracał się, gdy telefon
+ * pytał równolegle (świat + strumień → dwa sprawdzToken naraz): drugi rename nie zastawał pliku → 500.
+ */
+let kolejkaZapisu = Promise.resolve();
+function zapisz(d) {
+    const tresc = JSON.stringify(d, null, 2);
+    const krok = kolejkaZapisu.then(async () => {
+        const cel = PLIK();
+        await fs.mkdir(path.dirname(cel), { recursive: true });
+        const tmp = `${cel}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+        try { await fs.writeFile(tmp, tresc, 'utf8'); await fs.rename(tmp, cel); }
+        catch (e) { await fs.rm(tmp, { force: true }).catch(() => {}); throw e; }
+    });
+    kolejkaZapisu = krok.catch(() => {});
+    return krok;
 }
 
 // ── PAROWANIE ───────────────────────────────────────────────────────────────
