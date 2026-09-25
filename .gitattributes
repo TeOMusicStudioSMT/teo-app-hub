@@ -5,3 +5,7 @@ docker/**       text eol=lf
 Dockerfile      text eol=lf
 *.yml           text eol=lf
 *.yaml          text eol=lf
+
+# To nie skrypt, tylko nagranie MP3 z mylącym rozszerzeniem .sh — reguła `*.sh text eol=lf`
+# wycinała z niego bajty (2026-09-24). Binarne: git nie rusza końców linii.
+TeO[[:space:]]Soul/Conf/Budowa[[:space:]]suwerennej[[:space:]]AI[[:space:]]z[[:space:]]Moltbotem[[:space:]]i[[:space:]]skills.sh binary
