@@ -47,7 +47,9 @@ type View =
     | 'pralka'
     | 'kompas'
     | 'mcp-skillboard'
-    | 'twoje-biznesy';
+    | 'twoje-biznesy'
+    | 'swiat'
+    | 'telefon';
 
 interface LoungeNavigationProps {
     activeView: View;
@@ -82,9 +84,10 @@ const PRIMARY_NAV: { id: View; label: string; icon: React.ReactNode }[] = [
  * Kupiec i biznesowe Oko pójdą do planowanego Freedom Studio; Kolektor Soniczny
  * czeka na Music V2, który go jeszcze nie ma.
  */
-type GrupaMenu = 'departamenty' | 'sciezka' | 'ekonomia' | 'rdzen';
+type GrupaMenu = 'swiat' | 'departamenty' | 'sciezka' | 'ekonomia' | 'rdzen';
 
 const GRUPY: { id: GrupaMenu; nazwa: string }[] = [
+    { id: 'swiat',        nazwa: 'Świat i telefon' },
     { id: 'departamenty', nazwa: 'Działy w budowie' },
     { id: 'sciezka',      nazwa: 'Tożsamość i ścieżka' },
     { id: 'ekonomia',     nazwa: 'Ekonomia GRV' },
@@ -92,6 +95,9 @@ const GRUPY: { id: GrupaMenu; nazwa: string }[] = [
 ];
 
 const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string; grupa: GrupaMenu }[] = [
+    // ── Świat i telefon — stado TeOgochi poza Dashboardem (2026-09-25: „nie mogę znaleźć Stołu") ──
+    { id: 'swiat',         label: '🧱 Świat klocków', icon: <span className="text-base">🧱</span>, desc: 'Płytki TeOgochi z prawdziwych dzieł, projekty stada, film klockowy', grupa: 'swiat' },
+    { id: 'telefon',       label: '📱 StoL i Delegat', icon: <span className="text-base">📱</span>, desc: 'Parowanie telefonu (StoL) i Delegat Mobilny przez tunel', grupa: 'swiat' },
     // ── Działy w budowie — kandydaci do własnych kafelków ──
     { id: 'twoje-biznesy', label: '🏢 TWOJE BIZNESY', icon: <span className="text-base">🏢</span>, desc: 'Rejestr działalności, głos agentów, Służba w GRV → Freedom Studio', grupa: 'departamenty' },
     { id: 'sonic',         label: 'Kolektor Soniczny', icon: <span className="text-base">🎼</span>, desc: 'Zbiór wektorów z własnej muzyki (Filar I)', grupa: 'departamenty' },
