@@ -60,7 +60,7 @@ Banner w `START_KATEDRA.bat` renderuje się jako „AAAFRA", nie „KATEDRA". To
 - Kronika żywa: `KronikaGenerator`/`KronikaCard` + `/api/kronika/forge`.
 - Dziennik (infografika) + Whisper: `DziennikFrame` + `/api/dziennik/*`, `/api/podcast/transcribe`.
 - Marketplace: `Marketplace.tsx` + `/api/market/*`. Głos: `voiceService` + `/api/voice/*`.
-- Świat Katedry: `public/swiat/` (`/swiat/`, 2D + 3D three.js) — płytki TeOgochi z prawdziwych dzieł (`services/KlockiStada.js`), rozmowa, film klockowy, rzeźba Assety3D. Telefon: StoL.
+- Świat Katedry: `public/swiat/` (`/swiat/`, 2D + 3D three.js) — płytki TeOgochi z prawdziwych dzieł (`services/KlockiStada.js`), rozmowa, film klockowy, rzeźba Assety3D. Telefon: StoL. W Hubie: menu „•••” → „Świat i telefon” (`components/SwiatITelefon.tsx`).
 - Projekt Stada: `services/ProjektStada.js` — wspólna praca TeOgochi (fale: fundament → dziedziny → całość → Biblia), każdy na swoim modelu (`services/ModeleAgentow.js`). Zakłada Suweren przy Katedrze albo ze sparowanego telefonu (klucz sesji + token; Straż: `SCIEZKI_DLA_SPAROWANYCH`).
 - Zlecenia Stada: `services/ZleceniaStada.js` — linie wkładów (`PRODUKT:`, `MUZYKA:`/`REFREN:`, `OBIEKT:`, `UJĘCIE:`) same zlecają Marketplace, muzykę, Assety3D i wideo (jedna kolejka, prawdziwe trasy mostu; ponów: `POST /api/stado/projekt/:id/zlec`).
 - Mapa Katedry: `npm run mapa` (`scripts/rewizor/mapa.mjs`) — ekran → domena API → serwis → świat; martwe komponenty.
