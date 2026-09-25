@@ -60,8 +60,15 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     // Stado należy do Katedry: telefon (StoL) PATRZY — nie publikuje migawki, nie paruje
     // innych urządzeń i nie odłącza ich. Jego jedyne zdalne wejście to /api/stado/paruj.
     '/api/stado/publikuj', '/api/stado/parowanie', '/api/stado/odlacz',
-    '/api/stado/projekt/', '/api/stado/model',   // zakładanie projektów stada i zmiana silników — decyzje Suwerena przy maszynie
+    '/api/stado/projekt/', '/api/stado/model',   // ponawianie zleceń i zmiana silników — decyzje Suwerena przy maszynie
 ];
+
+/**
+ * Wyjątki od SCIEZKI_TYLKO_LOKALNE (dokładna ścieżka): zdalnie z kluczem sesji wolno, ale sama
+ * trasa i tak żąda tokenu SPAROWANEGO telefonu (dostepStada) — sam klucz tunelu nie wystarczy.
+ * Suweren (2026-09-24): „tak, pozwól zakładać projekty z telefonu".
+ */
+export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy']);
 
 /**
  * Publiczne strony Suwerena, które w JEGO przeglądarce czytają żywe dane z mostu
@@ -206,7 +213,8 @@ export function strazMostu({ klucz, pelnyTunel = false, zaufane = null }) {
         // ── Klucz poprawny (albo zaufana strona), ale zasięg zdalny jest węższy niż lokalny ──
         // Pełny tunel (OTAKOS_TUNEL_PELNY=1) dotyczy tylko tunelu z kluczem — nie stron publicznych.
         if (!pelnyTunel || req.zrodlo === 'publiczne') {
-            const sciezkaZakazana = SCIEZKI_TYLKO_LOKALNE.some(p => req.path.startsWith(p));
+            const sciezkaZakazana = SCIEZKI_TYLKO_LOKALNE.some(p => req.path.startsWith(p))
+                && !(req.zrodlo !== 'publiczne' && SCIEZKI_DLA_SPAROWANYCH.has(req.path));
             if (sciezkaZakazana) {
                 console.warn(`[Straż] ⛔ Ścieżka tylko lokalna, żądanie zdalne odrzucone: ${req.path}`);
                 return res.status(403).json({

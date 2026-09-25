@@ -103,7 +103,7 @@ export async function lista() {
 /** Krótki opis do listy i do Świata (bez pełnych wkładów). */
 export function skrot(p) {
     return {
-        id: p.id, nazwa: p.nazwa, wizja: p.wizja.slice(0, 300), stan: p.stan, od: p.od, do: p.do ?? null,
+        id: p.id, nazwa: p.nazwa, wizja: p.wizja.slice(0, 300), stan: p.stan, od: p.od, do: p.do ?? null, zalozyl: p.zalozyl ?? null,
         kroki: p.kroki.map(({ agent, imie, zadanie, model, stan, fala }) => ({ agent, imie, zadanie, model, stan, fala })),
         gotowe: p.kroki.filter((k) => k.stan === 'gotowe').length, razem: p.kroki.length,
         zlecenia: (p.zlecenia ?? []).map(({ id, modul, agent, imie, opis, stan }) => ({ id, modul, agent, imie, opis, stan })),
@@ -130,7 +130,7 @@ export function zaplanuj(uczestnicy) {
  * Załóż projekt i uruchom pracę w tle. Zwraca od razu (id); postęp idzie szyną i plikiem.
  * @param {{ nazwa:string, wizja:string, uczestnicy:{id:string, imie:string, dziedzina?:string}[] }} o
  */
-export async function zaloz({ nazwa, wizja, uczestnicy, samoZlecanie = true }) {
+export async function zaloz({ nazwa, wizja, uczestnicy, samoZlecanie = true, zalozyl = null }) {
     const n = String(nazwa ?? '').trim().slice(0, 80);
     const w = String(wizja ?? '').trim().slice(0, 3000);
     if (!n) throw new Error('Nadaj projektowi nazwę.');
@@ -142,13 +142,14 @@ export async function zaloz({ nazwa, wizja, uczestnicy, samoZlecanie = true }) {
     const id = `${n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'projekt'}-${crypto.randomBytes(2).toString('hex')}`;
     const p = {
         id, nazwa: n, wizja: w, stan: 'trwa', od: new Date().toISOString(), samoZlecanie: samoZlecanie !== false,
+        zalozyl: zalozyl ? String(zalozyl).slice(0, 60) : null,   // null = przy Katedrze; inaczej nazwa sparowanego urządzenia
         kroki: await Promise.all(zaplanuj(lista2).map(async (k) => ({
             ...k, model: (await cfg.modelDla(k.agent).catch(() => null)) || cfg.domyslnyModel, stan: 'czeka', wklad: null,
         }))),
     };
     trwajace.add(id);   // przed zapisem — inaczej czytelnik zobaczyłby „trwa" bez pracy i uznał za przerwany
     try { await zapisz(p); } catch (e) { trwajace.delete(id); throw e; }
-    nadaj('Stado', `nowy wspólny projekt „${n}" — ${lista2.map((u) => u.imie).join(', ')}`, { projekt: id });
+    nadaj('Stado', `nowy wspólny projekt „${n}" — ${lista2.map((u) => u.imie).join(', ')}${p.zalozyl ? ` (zlecony z urządzenia „${p.zalozyl}")` : ''}`, { projekt: id });
     pracuj(p).catch(() => {}).finally(() => trwajace.delete(id));
     return skrot(p);
 }

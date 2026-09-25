@@ -16,6 +16,8 @@
   const $ = (id) => document.getElementById(id);
   const esc = S.esc;
   const lokalne = () => !!S.dane?.lokalne;
+  /** Projekt zakłada Suweren przy Katedrze albo ze sparowanego telefonu (most sprawdza token). */
+  const mozeZakladac = () => lokalne() || !!S.dane?.urzadzenie;
   const json = (body) => ({ method: 'POST', headers: { ...S.naglowki, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const STAN = { czeka: '○', trwa: '◐', gotowe: '●', blad: '✕', przerwane: '◌', przerwany: '◌' };
   const MODUL = { merch: '🛒 Marketplace', muzyka: '🎵 Muzyka', model3d: '🧊 Assety3D', wideo: '🎬 Wideo' };
@@ -140,7 +142,7 @@
     const k = S.pokazPanel(`
       <div class="glowa"><div class="forma">🧩</div><div><h2>Wspólne projekty stada</h2>
         <div class="meta">Każdy TeOgochi wnosi swoją dziedzinę, na swoim modelu. Na końcu scalenie w Biblię projektu.</div></div></div>
-      ${lokalne() ? `<div class="sekcja">
+      ${mozeZakladac() ? `<div class="sekcja">
         <h3>Nowy projekt</h3>
         <input type="text" id="p-nazwa" placeholder="Nazwa, np. Uniwersum Teterhia">
         <textarea id="p-wizja" placeholder="Twoja wizja: świat, klimat, co ma powstać — film, gra, moda, muzyka, merch…"></textarea>
@@ -148,7 +150,7 @@
         <label class="meta"><input type="checkbox" id="p-zlecaj" checked> Wkłady same zlecają moduły Katedry (merch, muzyka, 3D, wideo)</label>
         <button class="guzik" id="p-start" type="button" ${wyklute.length < 2 ? 'disabled' : ''}>Zacznijcie razem</button>
         <p class="meta" id="p-stan"></p>
-      </div>` : '<p class="meta">Nowy projekt zakłada się przy Katedrze — tu widać postęp.</p>'}
+      </div>` : '<p class="meta">Nowy projekt zakłada się przy Katedrze albo ze sparowanego telefonu — tu widać postęp.</p>'}
       <h3>Projekty</h3>
       <div class="sekcja">${lista.length ? lista.map((p) => `<button class="projekt" data-id="${esc(p.id)}"><b>${esc(p.nazwa)}</b> <span class="meta">· ${p.gotowe}/${p.razem} · ${esc(p.stan)}${p.zlecenia?.length ? ` · zlecenia ${p.zlecenia.filter((z) => z.stan === 'gotowe').length}/${p.zlecenia.length}` : ''}</span>${krokiHtml(p)}</button>`).join('') : '<p class="cisza">Jeszcze żadnego.</p>'}</div>`);
     k.querySelectorAll('.projekt').forEach((b) => b.addEventListener('click', () => pokazProjekt(b.dataset.id)));
@@ -169,7 +171,7 @@
     const p = d.projekt;
     const k = S.pokazPanel(`
       <div class="glowa"><div class="forma">🧩</div><div><h2>${esc(p.nazwa)}</h2>
-        <div class="meta">${esc(p.stan)} · od ${esc(S.kiedyTekst(p.od))}</div></div></div>
+        <div class="meta">${esc(p.stan)} · od ${esc(S.kiedyTekst(p.od))}${p.zalozyl ? ` · z urządzenia „${esc(p.zalozyl)}"` : ''}</div></div></div>
       <p class="teraz">${esc(p.wizja)}</p>
       ${krokiHtml(p)}
       ${p.kroki.map((kr) => `<div class="sekcja"><h3>${STAN[kr.stan] || ''} ${esc(kr.imie)} · ${esc(kr.zadanie.split(':')[0])} <span class="meta">· ${esc(kr.model)}</span></h3>
