@@ -35,6 +35,8 @@
   const powiadom = (...a) => sluchacze.forEach((f) => { try { f(...a); } catch (e) { console.error('[Świat]', e); } });
 
   const $ = (id) => document.getElementById(id);
+  /** Wkłady modeli bez surowych znaczków (**, ###, $\rightarrow$) — public/swiat/tekst.js. */
+  const bogaty = (s) => (window.TekstStada ? window.TekstStada.bogaty(s) : esc(s));
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const ileTemu = (ms) => {
     const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
@@ -284,7 +286,7 @@
     d.innerHTML = `${m && k.media.typ === 'obraz' && !(k.model && window.SwiatKatedry.podglad3d) ? `<img alt="${esc(k.tytul)}" src="${esc(m)}" onerror="this.remove()">` : ''}
       ${m && k.media.typ === 'audio' ? `<audio controls preload="none" src="${esc(m)}"></audio>` : ''}
       ${m && k.media.typ === 'wideo' ? `<video controls preload="metadata" playsinline src="${esc(m)}"></video>` : ''}
-      ${k.rodzaj === 'wklad' ? `<p><b>${esc(k.tytul)}</b>${k.silnik ? ` <span class="meta">· ${esc(k.silnik)}</span>` : ''}</p><div class="wklad">${esc(k.opis)}</div>`
+      ${k.rodzaj === 'wklad' ? `<p><b>${esc(k.tytul)}</b>${k.silnik ? ` <span class="meta">· ${esc(k.silnik)}</span>` : ''}</p><div class="wklad">${bogaty(k.opis)}</div>`
         : `<p><b>${esc(k.tytul)}</b>${k.opis ? ` — ${esc(k.opis)}` : ''}</p>`}
       ${k.otworz ? `<p><a href="${esc(zKluczem(k.otworz))}" target="_blank" rel="noopener">Otwórz ${esc(NAZWY[k.rodzaj])} ↗</a>${k.iteracji ? ` · ${k.iteracji} iteracji Kodeksa` : ''}</p>` : ''}
       ${k.model ? `<div class="model3d"></div><p>${window.SwiatKatedry.podglad3d ? 'Bryła z modułu Assety3D (GLB) — obracaj palcem.' : 'Bryła z modułu Assety3D (GLB) — obejrzysz ją w trybie 3D.'}</p>` : ''}`;
