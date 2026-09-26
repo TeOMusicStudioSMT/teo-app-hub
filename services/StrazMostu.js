@@ -61,6 +61,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     // innych urządzeń i nie odłącza ich. Jego jedyne zdalne wejście to /api/stado/paruj.
     '/api/stado/publikuj', '/api/stado/parowanie', '/api/stado/odlacz',
     '/api/stado/projekt/', '/api/stado/model',   // ponawianie zleceń i zmiana silników — decyzje Suwerena przy maszynie
+    '/api/stado/powitanie/zrob',   // film powitania liczy się na karcie graficznej maszyny
 ];
 
 /**

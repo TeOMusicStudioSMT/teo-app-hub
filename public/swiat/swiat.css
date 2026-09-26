@@ -76,8 +76,10 @@ h3 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: v
 .uczestnicy label { font-size: 13px; background: var(--noc); border: 1px solid var(--linia); border-radius: 999px; padding: 5px 10px; display: flex; gap: 6px; align-items: center; }
 .tasma { position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); display: flex; gap: 8px; align-items: center;
   background: var(--noc-2); border: 1px solid var(--linia); border-radius: 14px; padding: 8px 10px; }
-/* Pasek filmu i szuflada projektów leżą oba na dole — przy otwartych projektach pasek znika (film pauzuje w panele.js). */
-body[data-panel="projekty"] .tasma { display: none; }
+/* Pasek filmu i szuflada (projekty, powitanie) leżą oba na dole — przy nich pasek znika (film pauzuje w panele.js). */
+body[data-panel="projekty"] .tasma, body[data-panel="powitanie"] .tasma { display: none; }
+.powitanie-film { width: 100%; aspect-ratio: 16/9; border-radius: 10px; background: #000; margin: 10px 0 4px; }
+.sentencja { margin: 8px 0; line-height: 1.5; }
 .tasma input[type=range] { flex: 1; min-width: 60px; accent-color: var(--zloto); }
 .tasma input[type=date] { font: 12px var(--f); color: var(--tekst); background: var(--noc); border: 1px solid var(--linia); border-radius: 8px; padding: 4px 6px; color-scheme: dark; }
 .slady { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }

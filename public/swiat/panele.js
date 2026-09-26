@@ -5,6 +5,7 @@
  *  · SILNIK    — na jakim modelu pracuje; na maszynie Suwerena można go zmienić (POST /api/stado/model).
  *  · PROJEKTY  — wspólna praca stada nad wizją Suwerena (uniwersum: film, gra, moda, muzyka, merch).
  *  · FILM      — „film klockowy": odtworzenie dnia z szyny jako dymki nad płytkami.
+ *  · POWITANIE — film dnia od stada (sentencje TeOgochi w kadrach); sam się pokazuje raz dziennie.
  *  · RZEŹBA    — nowy klocek 3D z Assety3D (opis → bryła GLB na płytce Palety), tylko na maszynie.
  *
  * Zmiany (projekt, silnik, rzeźba) są tylko na maszynie Suwerena — Straż Mostu i tak odrzuci
@@ -282,4 +283,71 @@
     tasma.hidden = false; wczytajFilm();
   });
   $('tasma-zamknij').addEventListener('click', () => { stop(); tasma.hidden = true; });
+
+  // ── Powitanie dnia ─────────────────────────────────────────────────────────
+  // Film od stada (services/PowitanieDnia.js). Dzisiejszy pokazuje się sam RAZ na urządzeniu —
+  // StoL startuje w tym świecie, więc telefon wita Suwerena filmem, potem są klocki.
+  const TLO = { ujecie: 'ujęcie z ComfyUI', dzielo: 'kadr z własnego dzieła', kolor: 'własna barwa' };
+  const WIDZIANE = 'swiat_powitanie_widziane';
+  /** <video> nie doda nagłówka — klucz Straży i token telefonu jadą w adresie. */
+  const zDostepem = (url) => {
+    const u = S.zKluczem(url), t = S.naglowki['X-Stado-Token'];
+    return t ? `${u}${u.includes('?') ? '&' : '?'}token=${encodeURIComponent(t)}` : u;
+  };
+  const pamietaj = (klucz, wartosc) => { try { if (wartosc === undefined) return localStorage.getItem(klucz); localStorage.setItem(klucz, wartosc); } catch { /* bez pamięci: pokaże się znowu */ } return null; };
+  const pobierzPowitanie = () => fetch('/api/stado/powitanie', { headers: S.naglowki }).then((r) => r.json()).catch(() => null);
+
+  function dataLadnie(d) {
+    try { return new Date(`${d}T12:00:00`).toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }); } catch { return d; }
+  }
+
+  async function pokazPowitanie({ sam = false } = {}) {
+    const d = await pobierzPowitanie();
+    if (!d?.success) { if (!sam) S.pokazPanel(`<p class="cisza">Most nie oddał powitania${d?.message ? `: ${esc(d.message)}` : ''}.</p>`, 'powitanie'); return; }
+    const m = d.gotowe, dzis = d.dzisiejsze;
+    stop();
+    const stanDzis = d.trwa ? `◐ Stado pisze dzisiejsze powitanie — ${esc(d.trwa.etap)}.`
+      : dzis?.stan === 'blad' ? `✕ Dzisiejsze nie wyszło: ${esc(dzis.blad)}`
+        : dzis?.stan === 'przerwane' ? '◌ Dzisiejsze przerwał restart mostu.'
+          : !dzis ? 'Dzisiejsze jeszcze nie powstało — stado nagrywa je raz dziennie, od rana.' : '';
+    const k = S.pokazPanel(`
+      <div class="glowa"><div class="forma">🌅</div><div><h2>Powitanie dnia</h2>
+        <div class="meta">${m ? `${esc(dataLadnie(m.data))}${m.data !== d.dzis ? ' · ostatnie gotowe' : ''} · ${m.sceny.filter((x) => x.sentencja).length} sentencji${m.muzyka ? ` · muzyka „${esc(m.muzyka)}"` : ''}` : 'Jeszcze nie było powitania.'}</div></div></div>
+      ${m ? `<video class="powitanie-film" src="${esc(zDostepem(m.film))}" controls playsinline preload="auto"></video>
+        <p class="meta" id="pw-dzwiek" hidden><button class="guzik maly" type="button" id="pw-glos">🔊 Włącz dźwięk</button></p>
+        <div class="sekcja"><h3>Sentencje</h3>${m.sceny.filter((x) => x.sentencja).map((x) => `
+          <p class="sentencja"><b style="color:${/^#[0-9a-f]{3,8}$/i.test(x.kolor ?? '') ? x.kolor : 'var(--zloto)'}">${esc(x.imie)}</b> ${esc(x.sentencja)}
+          <span class="meta">· ${esc(TLO[x.tlo] || x.tlo)} · ${esc(x.model || '')}</span></p>`).join('')}
+          ${m.comfy ? `<p class="meta">ComfyUI tego ranka nie liczyło (${esc(m.comfy)}) — kadry z dzieł i barw.</p>` : ''}</div>` : ''}
+      ${stanDzis || d.lokalne ? `<div class="sekcja">${stanDzis ? `<p class="meta">${stanDzis}</p>` : ''}
+        ${d.lokalne && !d.trwa ? `<button class="guzik maly" id="pw-zrob" type="button">${dzis ? 'Nagraj dzisiejsze od nowa' : 'Nagraj dzisiejsze teraz'}</button><p class="meta" id="pw-stan"></p>` : ''}</div>` : ''}`, 'powitanie');
+    if (m) pamietaj(WIDZIANE, m.data);
+    const v = k.querySelector('video');
+    if (v) {
+      // Przeglądarka nie gra z dźwiękiem bez dotknięcia — wtedy po cichu i guzik „włącz dźwięk".
+      v.play().catch(() => { v.muted = true; $('pw-dzwiek').hidden = false; v.play().catch(() => {}); });
+      $('pw-glos')?.addEventListener('click', () => { v.muted = false; $('pw-dzwiek').hidden = true; v.play().catch(() => {}); });
+    }
+    $('pw-zrob')?.addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      const w = await fetch('/api/stado/powitanie/zrob', json({ data: d.dzis })).then((r) => r.json()).catch((er) => ({ message: er.message }));
+      $('pw-stan').textContent = w.success ? w.message : `Nie ruszyło: ${w.message}`;
+    });
+  }
+  $('powitanie').addEventListener('click', () => pokazPowitanie());
+
+  // Sam raz dziennie: dzisiejszy film, jeszcze niewidziany na tym urządzeniu, i nic innego nie jest otwarte.
+  async function samoPowitanie() {
+    if (document.body.dataset.panel || !$('katalog').hidden) return;
+    const d = await pobierzPowitanie();
+    if (d?.gotowe?.data === d?.dzis && pamietaj(WIDZIANE) !== d.dzis) pokazPowitanie({ sam: true });
+  }
+  let pierwszeDane = true;
+  S.sluchaj((co, z) => {
+    if (co === 'dane' && pierwszeDane) { pierwszeDane = false; samoPowitanie(); }
+    if (co === 'szyna' && z?.rodzaj === 'powitanie') {
+      if (document.body.dataset.panel === 'powitanie') setTimeout(() => pokazPowitanie(), 400);
+      else samoPowitanie();
+    }
+  });
 })();

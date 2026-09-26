@@ -70,6 +70,7 @@ import * as StrumienStada  from './services/StrumienStada.js';
 import * as KlockiStada    from './services/KlockiStada.js';
 import * as ModeleAgentow  from './services/ModeleAgentow.js';
 import * as ProjektStada   from './services/ProjektStada.js';
+import * as PowitanieDnia  from './services/PowitanieDnia.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
@@ -10100,6 +10101,79 @@ app.get('/api/stado/swiat', async (req, res) => {
 
 /** Świeże klocki po zmianie (nowy wkład, nowy model) — bez czekania 20 s na pamięć podręczną. */
 Szyna.subskrybuj((z) => { if (z.rodzaj === 'projekt') swiatCache.czas = 0; });
+
+// ── 🌅 POWITANIE DNIA — codzienny film od stada (services/PowitanieDnia.js) ──
+// Sentencje TeOgochi (każdy na swoim modelu) wpisane w kadry: ujęcie z ComfyUI → prawdziwe dzieło → barwa.
+PowitanieDnia.skonfiguruj({
+    katalog: path.join(ANTIGRAVITY_DIR, 'powitania'),
+    szyna: Szyna,
+    domyslnyModel: DEFAULT_LLM,
+    modelDla: (id) => ModeleAgentow.modelDla(id),
+    karta: (id) => Persony.karta(id),
+    chat: async (model, [system, user]) => (await AppStudio.pisz({ system: system.content, prompt: user.content, model, timeoutMs: 5 * 60_000 })).tekst,
+    gatunki: async () => (await stanDlaTelefonu()).gatunki ?? [],
+    zdarzenia: () => Szyna.ostatnie({ ile: 2000 }),
+    dziela: async (id) => {
+        const d = await KlockiStada.zbierzKlocki({
+            wystawa: () => Wystawa.zbierz(), projekty: () => AppStudio.projekty(), assety3d: () => Assety3D.lista(),
+            projektyStada: () => ProjektStada.lista(), zdarzenia: [], gatunki: [],
+        });
+        return d.agenci?.[id]?.klocki ?? [];
+    },
+    // Obrazy dzieł tą samą trasą, którą widzi Świat (na maszynie, więc Straż przepuszcza).
+    pobierz: async (url) => {
+        const r = await fetch(`http://127.0.0.1:${PORT}${url}`, { signal: AbortSignal.timeout(30_000) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return Buffer.from(await r.arrayBuffer());
+    },
+    most: async (sciezka, body) => {
+        const r = await fetch(`http://127.0.0.1:${PORT}${sciezka}`, {
+            method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(90_000),
+            headers: body ? { 'Content-Type': 'application/json' } : undefined,
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.success === false) throw new Error(d.message || `HTTP ${r.status}`);
+        return d;
+    },
+    // Najnowszy utwór z _OtakOs_Muzyka (np. ostatni motyw Joanny); brak muzyki = film bez dźwięku.
+    muzyka: async () => {
+        const lista = await Montazownia.utwory(MUSIC_DIR);
+        let naj = null;
+        for (const u of lista) {
+            const t = (await fs.stat(u.sciezka).catch(() => null))?.mtimeMs ?? 0;
+            if (!naj || t > naj.t) naj = { t, sciezka: u.sciezka };
+        }
+        return naj?.sciezka ?? null;
+    },
+    // ffmpeg-static bywa bez binarki (instalacja bez skryptów) — wtedy ten z @ffmpeg-installer.
+    ffmpeg: fsSync.existsSync(ffmpegPath) ? ffmpegPath : ffmpegInstaller.path,
+});
+if (process.env.OTAKOS_POWITANIE !== '0') PowitanieDnia.uruchomPetle();
+
+/** GET /api/stado/powitanie — najnowszy gotowy film + to, co dziś (maszyna albo sparowany telefon). */
+app.get('/api/stado/powitanie', async (req, res) => {
+    if (!(await dostepStada(req, res))) return;
+    const o = await PowitanieDnia.ostatnie();
+    const zFilmem = (m) => (m ? { ...m, film: m.maFilm ? `/api/stado/powitanie/film/${m.data}` : null } : null);
+    res.json({ success: true, dzis: o.dzis, trwa: o.trwa, gotowe: zFilmem(o.gotowe), dzisiejsze: zFilmem(o.dzisiejsze), lokalne: !!req.lokalny });
+});
+/** GET /api/stado/powitanie/film/:data — plik filmu (zakresy bajtów dla <video>); token może jechać w ?token=. */
+app.get('/api/stado/powitanie/film/:data', async (req, res) => {
+    if (!(await dostepStada(req, res))) return;
+    const m = await PowitanieDnia.powitanie(req.params.data);
+    if (!m?.maFilm) return res.status(404).json({ success: false, message: 'Nie ma filmu powitania z tego dnia.' });
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(PowitanieDnia.plikFilmu(m.data));
+});
+/** POST /api/stado/powitanie/zrob { data? } — zrób (albo powtórz) powitanie teraz. Tylko przy maszynie (Straż). */
+app.post('/api/stado/powitanie/zrob', async (req, res) => {
+    const data = req.body?.data || PowitanieDnia.dzien();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data))) return res.status(400).json({ success: false, message: 'Data w formacie RRRR-MM-DD.' });
+    if (PowitanieDnia.stan()) return res.status(409).json({ success: false, message: 'Powitanie już powstaje.', trwa: PowitanieDnia.stan() });
+    PowitanieDnia.zrob({ data }).catch(() => {});   // wynik: szyna + powitanie.json
+    res.json({ success: true, data, message: 'Stado pisze powitanie — film pojawi się, gdy ffmpeg skończy (z ujęciami ComfyUI to kilkanaście minut).' });
+});
 
 // ── 🧩 PROJEKT STADA — wspólna praca TeOgochi (services/ProjektStada.js) ──
 app.get('/api/stado/projekty', async (req, res) => {
