@@ -129,18 +129,24 @@
   }
 
   // ── Projekty stada ─────────────────────────────────────────────────────────
-  let panelProjektow = false, otwartyProjekt = null;
+  let otwartyProjekt = null;
+
+  /** Szuflada projektów zajmuje dół ekranu — pasek filmu chowa się pod nią (CSS: body[data-panel="projekty"]), a film staje. */
+  function panelProjektu(html) {
+    stop();
+    return S.pokazPanel(html, 'projekty');
+  }
 
   function krokiHtml(p) {
     return `<div class="kroki">${p.kroki.map((k) => `<span class="krok ${k.stan}" title="${esc(k.zadanie)}">${STAN[k.stan] || ''} ${esc(k.imie)}${k.fala === 4 ? ' · scala' : ''}</span>`).join('')}</div>`;
   }
 
   async function pokazProjekty() {
-    panelProjektow = true; otwartyProjekt = null;
+    otwartyProjekt = null;
     let lista = S.dane?.projekty ?? [];
     try { lista = (await fetch('/api/stado/projekty', { headers: S.naglowki }).then((r) => r.json())).projekty ?? lista; } catch { /* zostaje to, co w świecie */ }
     const wyklute = (S.dane?.gatunki ?? []).filter((g) => g.wyklute);
-    const k = S.pokazPanel(`
+    const k = panelProjektu(`
       <div class="glowa"><div class="forma">🧩</div><div><h2>Wspólne projekty stada</h2>
         <div class="meta">Każdy TeOgochi wnosi swoją dziedzinę, na swoim modelu. Na końcu scalenie w Biblię projektu.</div></div></div>
       ${mozeZakladac() ? `<div class="sekcja">
@@ -166,11 +172,11 @@
   }
 
   async function pokazProjekt(id) {
-    panelProjektow = true; otwartyProjekt = id;
+    otwartyProjekt = id;
     const d = await fetch(`/api/stado/projekty/${encodeURIComponent(id)}`, { headers: S.naglowki }).then((r) => r.json()).catch(() => null);
-    if (!d?.success) { S.pokazPanel(`<p class="cisza">Nie udało się wczytać projektu.</p>`); return; }
+    if (!d?.success) { panelProjektu(`<p class="cisza">Nie udało się wczytać projektu.</p>`); return; }
     const p = d.projekt;
-    const k = S.pokazPanel(`
+    const k = panelProjektu(`
       <div class="glowa"><div class="forma">🧩</div><div><h2>${esc(p.nazwa)}</h2>
         <div class="meta">${esc(p.stan)} · od ${esc(S.kiedyTekst(p.od))}${p.zalozyl ? ` · z urządzenia „${esc(p.zalozyl)}"` : ''}</div></div></div>
       <p class="teraz">${esc(p.wizja)}</p>
@@ -220,7 +226,7 @@
   }
 
   $('projekty').addEventListener('click', pokazProjekty);
-  $('zamknij').addEventListener('click', () => { panelProjektow = false; otwartyProjekt = null; });
+  $('zamknij').addEventListener('click', () => { otwartyProjekt = null; });
 
   // Projekt idzie naprzód → odśwież otwarty panel i klocki (nowy wkład = nowy klocek).
   let odswiezanie = 0;
@@ -229,7 +235,7 @@
     clearTimeout(odswiezanie);
     odswiezanie = setTimeout(() => {
       S.odswiez();
-      if (panelProjektow && !$('katalog').hidden) (otwartyProjekt ? pokazProjekt(otwartyProjekt) : pokazProjekty());
+      if (document.body.dataset.panel === 'projekty') (otwartyProjekt ? pokazProjekt(otwartyProjekt) : pokazProjekty());
     }, 400);
   });
 

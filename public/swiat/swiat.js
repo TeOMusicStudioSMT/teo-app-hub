@@ -247,6 +247,7 @@
   // ── Katalog ─────────────────────────────────────────────────────────────────
   function otworzKatalog(id) {
     otwarty = id;
+    delete document.body.dataset.panel;
     const pl = plytki.find((p) => p.g.id === id);
     if (!pl) return;
     const g = pl.g, a = swiat?.agenci?.[id] ?? { klocki: [], slady: [], razem: 0 };
@@ -300,7 +301,7 @@
     else miejsce?.remove();
   }
 
-  $('zamknij').addEventListener('click', () => { $('katalog').hidden = true; otwarty = null; });
+  $('zamknij').addEventListener('click', () => { $('katalog').hidden = true; otwarty = null; delete document.body.dataset.panel; });
 
   // ── Dane i strumień ─────────────────────────────────────────────────────────
   function podpisz() {
@@ -376,8 +377,8 @@
     zKluczem, esc, otworzKatalog, naglowki, pokazDymek, ileTemu, kiedyTekst,
     odswiez: () => wczytaj(),
     rozszerzKatalog: (fn) => rozszerzenia.add(fn),
-    /** Własna treść w szufladzie katalogu (projekty, film…). */
-    pokazPanel: (html) => { otwarty = null; $('katalog-tresc').innerHTML = html; $('katalog').hidden = false; $('katalog').style.setProperty('--akcent', '#f4c84a'); $('katalog').style.setProperty('--akcent-tlo', 'rgba(244,200,74,0.14)'); return $('katalog-tresc'); },
+    /** Własna treść w szufladzie katalogu (projekty, film…). `rodzaj` trafia do body[data-panel] — CSS po nim chowa, co zasłania. */
+    pokazPanel: (html, rodzaj = 'wlasny') => { otwarty = null; document.body.dataset.panel = rodzaj; $('katalog-tresc').innerHTML = html; $('katalog').hidden = false; $('katalog').style.setProperty('--akcent', '#f4c84a'); $('katalog').style.setProperty('--akcent-tlo', 'rgba(244,200,74,0.14)'); return $('katalog-tresc'); },
     sluchaj: (fn) => { sluchacze.add(fn); return () => sluchacze.delete(fn); },
     podglad3d: null,   // swiat3d.js wstawia tu przeglądarkę pojedynczej bryły (katalog)
   };
