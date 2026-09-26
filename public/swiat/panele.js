@@ -13,6 +13,7 @@
 (() => {
   'use strict';
   const S = window.SwiatKatedry;
+  const bogaty = (s) => (window.TekstStada ? window.TekstStada.bogaty(s) : S.esc(s));
   const $ = (id) => document.getElementById(id);
   const esc = S.esc;
   const lokalne = () => !!S.dane?.lokalne;
@@ -48,7 +49,7 @@
       </div>
       ${g.wyklute ? `<div class="sekcja">
         <h3>Porozmawiaj z ${esc(g.imie)}</h3>
-        <div id="rozmowa">${r.tury.map((t) => `<div class="odpowiedz ${t.kto}">${esc(t.tresc)}</div>`).join('')}</div>
+        <div id="rozmowa">${r.tury.map((t) => `<div class="odpowiedz ${t.kto}">${t.kto === 'suweren' ? esc(t.tresc) : bogaty(t.tresc)}</div>`).join('')}</div>
         <textarea id="pytanie" placeholder="Napisz do ${esc(g.imie)}…"></textarea>
         <button class="guzik" id="wyslij" type="button">Wyślij</button>
       </div>` : ''}
@@ -103,9 +104,9 @@
           const dane = ramka.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('');
           if (!dane) continue;
           const z = JSON.parse(dane);
-          if (z.typ === 'token') { calosc += z.tekst ?? z.token ?? ''; odp.textContent = calosc; }
+          if (z.typ === 'token') { calosc += z.tekst ?? z.token ?? ''; odp.innerHTML = bogaty(calosc); }
           else if (z.typ === 'narzedzie') odp.textContent = `${calosc}\n⚙️ ${z.narzedzie}…`;
-          else if (z.typ === 'koniec') { calosc = z.odpowiedz ?? calosc; r.rozmowaId = z.rozmowaId ?? r.rozmowaId; odp.textContent = calosc; }
+          else if (z.typ === 'koniec') { calosc = z.odpowiedz ?? calosc; r.rozmowaId = z.rozmowaId ?? r.rozmowaId; odp.innerHTML = bogaty(calosc); }
           else if (z.typ === 'blad') throw new Error(z.message);
         }
       }
@@ -175,7 +176,7 @@
       <p class="teraz">${esc(p.wizja)}</p>
       ${krokiHtml(p)}
       ${p.kroki.map((kr) => `<div class="sekcja"><h3>${STAN[kr.stan] || ''} ${esc(kr.imie)} · ${esc(kr.zadanie.split(':')[0])} <span class="meta">· ${esc(kr.model)}</span></h3>
-        ${kr.wklad ? `<div class="wklad">${esc(kr.wklad)}</div>` : kr.stan === 'blad' ? `<p class="meta" style="color:var(--blad)">${esc(kr.blad || 'błąd')}</p>` : `<p class="cisza">${kr.stan === 'trwa' ? 'Pracuje…' : 'Czeka na swoją kolej.'}</p>`}</div>`).join('')}
+        ${kr.wklad ? `<div class="wklad">${bogaty(kr.wklad)}</div>` : kr.stan === 'blad' ? `<p class="meta" style="color:var(--blad)">${esc(kr.blad || 'błąd')}</p>` : `<p class="cisza">${kr.stan === 'trwa' ? 'Pracuje…' : 'Czeka na swoją kolej.'}</p>`}</div>`).join('')}
       ${zleceniaHtml(p)}
       ${d.obiekty3d?.length ? `<div class="sekcja"><h3>🧊 Obiekty Palety do wyrzeźbienia</h3>
         ${d.obiekty3d.map((o, i) => `<div><span>${esc(o)}</span> ${lokalne() ? `<button class="guzik maly" data-o="${i}" type="button">Wyrzeźbij</button>` : ''}</div>`).join('')}
@@ -213,7 +214,7 @@
       return w.plik ? `<div class="meta">plik: ${esc(String(w.plik).split(/[\\/]/).pop())}</div>` : '';
     };
     return `<div class="sekcja"><h3>🏭 Zlecenia dla modułów Katedry</h3>
-      ${z.map((x) => `<div class="zlecenie ${esc(x.stan)}"><span class="krok ${esc(x.stan)}">${STAN[x.stan] || ''} ${MODUL[x.modul] || esc(x.modul)}</span> <b>${esc(x.imie)}</b>: ${esc(x.opis)}${wynik(x)}</div>`).join('') || '<p class="cisza">Nic jeszcze nie zlecono.</p>'}
+      ${z.map((x) => `<div class="zlecenie ${esc(x.stan)}"><span class="krok ${esc(x.stan)}">${STAN[x.stan] || ''} ${MODUL[x.modul] || esc(x.modul)}</span> <b>${esc(x.imie)}</b>: ${bogaty(x.opis)}${wynik(x)}</div>`).join('') || '<p class="cisza">Nic jeszcze nie zlecono.</p>'}
       ${doPonowienia && lokalne() ? `<button class="guzik maly" id="z-zlec" type="button">${z.length ? 'Ponów, co nie wyszło' : 'Zleć moduły z wkładów'}</button>` : ''}
       <p class="meta" id="z-stan"></p></div>`;
   }
