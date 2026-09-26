@@ -30,6 +30,13 @@ export function linkParowaniaStol(adres: string, klucz: string, kod: string): st
     return `otakos-stol://paruj?adres=${q(adres.replace(/\/+$/, ''))}&k=${q(klucz)}&kod=${q(kod)}`;
 }
 
+/**
+ * Apka StoL do pobrania: GitHub buduje ją po każdej zmianie w OtakOS-StoL (workflow „StoL APK”)
+ * i podmienia plik w wydaniu „najnowszy”, więc ten adres zawsze daje aktualną wersję.
+ * Repo jest prywatne — na telefonie trzeba być zalogowanym do GitHuba.
+ */
+export const ADRES_APKI_STOL = 'https://github.com/TeOMusicStudioSMT/OtakOS-StoL/releases/download/najnowszy/StoL.apk';
+
 const kiedy = (ms: number | null) => (ms ? new Date(ms).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' }) : 'jeszcze nie');
 
 export const StolCard: React.FC = () => {
@@ -40,6 +47,10 @@ export const StolCard: React.FC = () => {
     const [pracuje, setPracuje] = useState(false);
     const [blad, setBlad] = useState<string | null>(null);
     const [teraz, setTeraz] = useState(Date.now());
+    const [qrApki, setQrApki] = useState<string | null>(null);
+    useEffect(() => {
+        QRCode.toDataURL(ADRES_APKI_STOL, { margin: 1, width: 140, color: { dark: '#0b1220', light: '#f8fafc' } }).then(setQrApki).catch(() => setQrApki(null));
+    }, []);
 
     const odswiez = useCallback(async () => {
         try {
@@ -116,11 +127,17 @@ export const StolCard: React.FC = () => {
                             {pracuje ? (tunel?.stan === 'dziala' ? 'Generuję kod…' : 'Otwieram tunel…') : kod ? 'Kod wygasł — nowy' : 'Paruj telefon'}
                         </button>
                     )}
+                    {/* Krok 0: bez zainstalowanej apki link parowania ląduje w wyszukiwarce przeglądarki. */}
+                    <div className="flex flex-col items-center gap-1 pt-2 border-t border-white/5 w-full">
+                        {qrApki && <img src={qrApki} alt="QR do pobrania apki StoL" className="rounded-lg w-[140px] h-[140px]" />}
+                        <a href={ADRES_APKI_STOL} target="_blank" rel="noopener" className="text-xs text-sky-300 hover:text-sky-200 text-center">📲 Nie masz StoL-a? Zeskanuj i zainstaluj</a>
+                    </div>
                 </div>
                 <div className="flex flex-col gap-3 text-sm text-slate-300">
                     <p className="text-slate-400 text-xs leading-relaxed">
-                        Zeskanuj QR aparatem telefonu z zainstalowanym StoL-em (albo skopiuj link i wklej w apce, zakładka „Katedra”).
-                        Telefon tylko obserwuje stado: widzi, kto jest wykluty, na jakim etapie i co ostatnio robił. Niczego tu nie zmienia.
+                        <b className="text-slate-300">1.</b> Zainstaluj StoL: zeskanuj mały QR pod spodem (pobiera się StoL.apk; na telefonie zaloguj się do GitHuba i pozwól na instalację z przeglądarki).{' '}
+                        <b className="text-slate-300">2.</b> „Paruj telefon” i zeskanuj duży QR aparatem — otworzy się StoL (albo skopiuj link i wklej w apce, zakładka „Katedra”; w przeglądarce nie zadziała).
+                        Telefon obserwuje stado na żywo i może zlecić mu nowy wspólny projekt — nic więcej w Katedrze nie zmienia.
                         Kod działa 5 minut i tylko raz.
                     </p>
                     <a href={`${MOST}/swiat/`} target="_blank" rel="noopener" className="text-xs text-sky-300 hover:text-sky-200 w-fit">
