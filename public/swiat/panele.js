@@ -163,17 +163,21 @@
         <input type="text" id="p-nazwa" placeholder="Nazwa, np. Uniwersum Teterhia">
         <textarea id="p-wizja" placeholder="Twoja wizja: świat, klimat, co ma powstać — film, gra, moda, muzyka, merch…"></textarea>
         <div class="uczestnicy">${wyklute.map((g) => `<label><input type="checkbox" value="${esc(g.id)}" checked> ${esc(g.forma)} ${esc(g.imie)}</label>`).join('') || '<span class="meta">Najpierw musi się ktoś wykluć.</span>'}</div>
+        <div class="rundy">
+          <label title="Po każdej rundzie Sędzia ocenia Biblię względem wizji; stado dokłada cegiełki na jego brakach. Ocena ≥ 9/10 kończy wcześniej.">Rundy doskonalenia <input type="number" id="p-rundy" min="1" max="5" value="1"></label>
+          <label title="Każdy punkt planu: autor czyta swój szkic krytycznie i oddaje lepszą wersję — tyle razy, zanim pójdzie dalej.">Pętla kreatywna na punkt <input type="number" id="p-petla" min="0" max="3" value="0"></label>
+        </div>
         <label class="meta"><input type="checkbox" id="p-zlecaj" checked> Wkłady same zlecają moduły Katedry (merch, muzyka, 3D, wideo)</label>
         <button class="guzik" id="p-start" type="button" ${wyklute.length < 2 ? 'disabled' : ''}>Zacznijcie razem</button>
         <p class="meta" id="p-stan"></p>
       </div>` : '<p class="meta">Nowy projekt zakłada się przy Katedrze albo ze sparowanego telefonu — tu widać postęp.</p>'}
       <h3>Projekty</h3>
-      <div class="sekcja">${lista.length ? lista.map((p) => `<button class="projekt" data-id="${esc(p.id)}"><b>${esc(p.nazwa)}</b> <span class="meta">· ${p.gotowe}/${p.razem} · ${esc(p.stan)}${p.zlecenia?.length ? ` · zlecenia ${p.zlecenia.filter((z) => z.stan === 'gotowe').length}/${p.zlecenia.length}` : ''}</span>${krokiHtml(p)}</button>`).join('') : '<p class="cisza">Jeszcze żadnego.</p>'}</div>`);
+      <div class="sekcja">${lista.length ? lista.map((p) => `<button class="projekt" data-id="${esc(p.id)}"><b>${esc(p.nazwa)}</b> <span class="meta">· ${p.gotowe}/${p.razem} · ${esc(p.stan)}${rundaTekst(p)}${p.zlecenia?.length ? ` · zlecenia ${p.zlecenia.filter((z) => z.stan === 'gotowe').length}/${p.zlecenia.length}` : ''}</span>${krokiHtml(p)}</button>`).join('') : '<p class="cisza">Jeszcze żadnego.</p>'}</div>`);
     k.querySelectorAll('.projekt').forEach((b) => b.addEventListener('click', () => pokazProjekt(b.dataset.id)));
     k.querySelector('#p-start')?.addEventListener('click', async () => {
       const uczestnicy = [...k.querySelectorAll('.uczestnicy input:checked')].map((i) => i.value);
       const st = k.querySelector('#p-stan');
-      const w = await fetch('/api/stado/projekt/nowy', json({ nazwa: k.querySelector('#p-nazwa').value, wizja: k.querySelector('#p-wizja').value, uczestnicy, samoZlecanie: k.querySelector('#p-zlecaj').checked }))
+      const w = await fetch('/api/stado/projekt/nowy', json({ nazwa: k.querySelector('#p-nazwa').value, wizja: k.querySelector('#p-wizja').value, uczestnicy, samoZlecanie: k.querySelector('#p-zlecaj').checked, rundy: Number(k.querySelector('#p-rundy').value) || 1, petla: Number(k.querySelector('#p-petla').value) || 0 }))
         .then((r) => r.json()).catch((e) => ({ message: e.message }));
       if (!w.success) { st.textContent = `⚠️ ${w.message}`; return; }
       pokazProjekt(w.projekt.id);
@@ -187,17 +191,28 @@
     const p = d.projekt;
     const k = panelProjektu(`
       <div class="glowa"><div class="forma">🧩</div><div><h2>${esc(p.nazwa)}</h2>
-        <div class="meta">${esc(p.stan)} · od ${esc(S.kiedyTekst(p.od))}${p.zalozyl ? ` · z urządzenia „${esc(p.zalozyl)}"` : ''}</div></div></div>
+        <div class="meta">${esc(p.stan)}${rundaTekst(p)} · od ${esc(S.kiedyTekst(p.od))}${p.zalozyl ? ` · z urządzenia „${esc(p.zalozyl)}"` : ''}</div></div></div>
       <p class="teraz">${esc(p.wizja)}</p>
       ${krokiHtml(p)}
+      ${ocenyHtml(p)}
       ${p.kroki.map((kr) => `<div class="sekcja"><h3>${STAN[kr.stan] || ''} ${esc(kr.imie)} · ${esc(kr.zadanie.split(':')[0])} <span class="meta">· ${esc(kr.model)}</span></h3>
+        ${kr.petle ? `<p class="meta">🔁 po ${kr.petle} ${kr.petle === 1 ? 'pętli' : 'pętlach'} kreatywnych${kr.runda > 1 ? ` · runda ${kr.runda}` : ''}</p>` : kr.runda > 1 ? `<p class="meta">runda ${kr.runda}</p>` : ''}
         ${kr.wklad ? `<div class="wklad">${bogaty(kr.wklad)}</div>` : kr.stan === 'blad' ? `<p class="meta" style="color:var(--blad)">${esc(kr.blad || 'błąd')}</p>` : `<p class="cisza">${kr.stan === 'trwa' ? 'Pracuje…' : 'Czeka na swoją kolej.'}</p>`}</div>`).join('')}
+      ${doskonalHtml(p)}
       ${zleceniaHtml(p)}
       ${d.obiekty3d?.length ? `<div class="sekcja"><h3>🧊 Obiekty Palety do wyrzeźbienia</h3>
         ${d.obiekty3d.map((o, i) => `<div><span>${esc(o)}</span> ${lokalne() ? `<button class="guzik maly" data-o="${i}" type="button">Wyrzeźbij</button>` : ''}</div>`).join('')}
         <p class="meta" id="o-stan"></p></div>` : ''}
       <button class="guzik maly" id="p-wstecz" type="button">← Wszystkie projekty</button>`);
     k.querySelector('#p-wstecz').addEventListener('click', pokazProjekty);
+    k.querySelector('#d-start')?.addEventListener('click', async () => {
+      const st = k.querySelector('#d-stan');
+      st.textContent = 'Odsyłam na warsztat…';
+      const w = await fetch(`/api/stado/projekt/${encodeURIComponent(p.id)}/runda`, json({ rundy: Number(k.querySelector('#d-rundy').value) || 1, petla: Number(k.querySelector('#d-petla').value) || 0 }))
+        .then((r) => r.json()).catch((e) => ({ message: e.message }));
+      if (!w.success) { st.textContent = `⚠️ ${w.message}`; return; }
+      pokazProjekt(p.id);
+    });
     k.querySelector('#z-zlec')?.addEventListener('click', async () => {
       const st = k.querySelector('#z-stan');
       st.textContent = 'Zlecam…';
@@ -212,6 +227,34 @@
       b.replaceWith(miejsce); S.podglad3d(miejsce, url);
     }));
     k.querySelectorAll('[data-o]').forEach((b) => b.addEventListener('click', () => rzezbij(d.obiekty3d[Number(b.dataset.o)], k.querySelector('#o-stan'))));
+  }
+
+  /** „· runda 2/3 · 7/10" — gdzie projekt jest w rundach doskonalenia i co ostatnio powiedział Sędzia. */
+  function rundaTekst(p) {
+    const o = (p.oceny ?? []).at(-1)?.ocena;
+    return `${(p.rundy ?? 1) > 1 ? ` · runda ${p.runda ?? 1}/${p.rundy}` : ''}${o != null ? ` · ${o}/10` : ''}`;
+  }
+
+  /** Oceny Sędziego po każdej rundzie: zgodność z wizją i braki, na których stado buduje dalej. */
+  function ocenyHtml(p) {
+    const oceny = p.oceny ?? [];
+    if (!oceny.length) return '';
+    return `<div class="sekcja"><h3>⚖️ Sędzia: zgodność z wizją</h3>
+      ${oceny.map((o) => `<div class="ocena">Runda ${o.runda}: <b>${o.ocena != null ? `${o.ocena}/10` : 'bez oceny'}</b> <span class="meta">· ${esc(o.kto || '')}</span>
+        ${o.braki?.length ? `<div class="meta">${o.braki.map((b) => `· ${esc(b)}`).join('<br>')}</div>` : ''}</div>`).join('')}</div>`;
+  }
+
+  /** Skończony projekt można odesłać na kolejne rundy (tylko przy maszynie — to godziny pracy karty). */
+  function doskonalHtml(p) {
+    if (p.stan === 'trwa' || !lokalne()) return '';
+    return `<div class="sekcja"><h3>🔁 Doskonal dalej</h3>
+      <p class="meta">Stado dołoży kolejne cegiełki na brakach Sędziego — każdy na swoim poprzednim wkładzie. Na noc: Nocna Zmiana → „Projekt Stada: rundy doskonalenia" ×N.</p>
+      <div class="rundy">
+        <label>Rund <input type="number" id="d-rundy" min="1" max="5" value="1"></label>
+        <label>Pętla kreatywna <input type="number" id="d-petla" min="0" max="3" value="${p.petla ?? 0}"></label>
+        <button class="guzik maly" id="d-start" type="button">Doskonal</button>
+      </div>
+      <p class="meta" id="d-stan"></p></div>`;
   }
 
   /** Co wkłady zleciły modułom Katedry i co z tego wyszło — wynik albo prawdziwy błąd modułu. */

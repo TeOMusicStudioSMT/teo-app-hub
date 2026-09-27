@@ -26,6 +26,7 @@ function swiat() {
             return p;
         },
         zlec: async (id) => { zlecone.push(id); return { ile: 3 }; },
+        doskonal: async (id, o) => { const p = projekty.get(id); Object.assign(p, { stan: 'trwa', rundy: (p.runda ?? 1) + o.rundy, petla: o.petla, doskonal: o }); return { ...p, runda: p.runda ?? 1 }; },
         uczestnicy: async (kogo) => (kogo.length ? STADO.filter((g) => kogo.includes(g.imie) || kogo.includes(g.id)) : STADO),
     });
     return { projekty, zalozone, zlecone, szyna };
@@ -93,4 +94,24 @@ test('walidacja i błąd Projektu Stada przechodzi do Suwerena', async () => {
     Stol.skonfiguruj({ zaloz: async () => { throw new Error('Stado pracuje już nad innym projektem'); } });
     await assert.rejects(Stol.przyjmij(k.id), /innym projektem/);
     assert.equal((await Stol.karta(k.id)).etap, 'na_stole', 'karta zostaje na stole');
+});
+
+test('doskonal zamiast ratyfikacji: Biblia wraca do stada na kolejne rundy, potem znów do akceptacji', async () => {
+    const w = swiat();
+    const k = await Stol.dodaj({ tytul: 'Forge Fashion', tresc: KARTA, zrodlo: 'plik' });
+    await assert.rejects(Stol.doskonal(k.id), /etapie „na_stole"/);
+    const { projekt } = await Stol.przyjmij(k.id, { rundy: 3, petla: 2 });
+    assert.deepEqual([w.zalozone[0].rundy, w.zalozone[0].petla], [3, 2]);
+    Object.assign(w.projekty.get(projekt.id), { stan: 'gotowe', runda: 3, rundy: 3, oceny: [{ runda: 3, ocena: 7, braki: ['AR nieopisane'] }], kroki: [{ agent: 'rezyser', stan: 'gotowe', synteza: true, wklad: 'BIBLIA v3' }] });
+    const gotowa = await Stol.karta(k.id);
+    assert.equal(gotowa.etap, 'do_akceptacji');
+    assert.deepEqual([gotowa.projektSkrot.runda, gotowa.projektSkrot.rundy, gotowa.projektSkrot.braki], [3, 3, ['AR nieopisane']]);
+    assert.deepEqual(gotowa.projektSkrot.oceny, [{ runda: 3, ocena: 7 }]);
+
+    await Stol.doskonal(k.id, { rundy: 2, petla: 1, kto: 'Pixel' });
+    assert.deepEqual(w.projekty.get(projekt.id).doskonal, { rundy: 2, petla: 1 });
+    assert.equal((await Stol.karta(k.id)).etap, 'opracowuje');
+    assert.deepEqual(w.zlecone, [], 'doskonalenie niczego nie zleca');
+    assert.ok(w.szyna.some((t) => /odesłał „Forge Fashion" do doskonalenia — 2 rund, pętla kreatywna ×1/.test(t)));
+    assert.deepEqual((await Stol.karta(k.id)).decyzje.map((d) => d.co), ['przyjeta', 'doskonalona']);
 });

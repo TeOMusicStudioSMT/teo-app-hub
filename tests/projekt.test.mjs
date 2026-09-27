@@ -76,3 +76,77 @@ test('Delegat: pełny profil dla trzech, rozmowny z karty roli dla reszty', asyn
     assert.deepEqual(paleta.narzedzia, ['katedra.stan', 'szyna.pytanie', 'szyna.notatka']);
     assert.equal(await Delegat.profilDla('nie-ma-takiego'), null);
 });
+
+test('ocena Sędziego: liczba i braki z odpowiedzi modelu (też z gwiazdkami i numeracją)', () => {
+    assert.deepEqual(ProjektStada.czytajOcene('**ZGODNOŚĆ:** 6/10\nBRAKI:\n1. brak pętli „stwórz i udowodnij"\n- **AR** nieopisane\n'), { ocena: 6, braki: ['brak pętli „stwórz i udowodnij"', 'AR nieopisane'] });
+    assert.deepEqual(ProjektStada.czytajOcene('Zgodnosc: 9\nBRAKI: brak'), { ocena: 9, braki: [] });
+    assert.deepEqual(ProjektStada.czytajOcene('Świetny projekt, gratuluję!'), { ocena: null, braki: [] });
+});
+
+/** Model na niby: pamięta wywołania, Sędzia daje oceny z listy. */
+function stadoNaNiby(oceny) {
+    const wywolania = [], zdarzenia = [];
+    let i = 0;
+    ProjektStada.skonfiguruj({
+        katalog: tmp(), domyslnyModel: 'gemma4:e2b', nagroda: null,
+        szyna: { nadaj: async (z) => { zdarzenia.push(z); } },
+        modelDla: async () => null,
+        karta: async (id) => ({ tresc: `KARTA ${id}` }),
+        chat: async (model, [sys, user]) => {
+            wywolania.push({ sys: sys.content, user: user.content });
+            if (sys.content.includes('SĘDZIĄ')) return `ZGODNOŚĆ: ${oceny[i++] ?? 5}/10\nBRAKI:\n- dołóż mechanikę Grade\n- opisz kolekcję seed`;
+            if (user.content.includes('PĘTLA KREATYWNA')) return `${user.content.match(/TWÓJ SZKIC:\n([^\n]*)/)[1]} +szlif`;
+            const r = user.content.match(/RUNDA (\d+)/)?.[1] ?? '1';
+            return `wkład r${r}`;
+        },
+    });
+    return { wywolania, zdarzenia };
+}
+const zespol = [{ id: 'rezyser', imie: 'Reżyser' }, { id: 'kodeks', imie: 'Kodeks' }, { id: 'wektor', imie: 'Wektor' }];
+const skonczony = (id) => czekaj(async () => { const x = await ProjektStada.projekt(id); return x?.stan !== 'trwa' && x; });
+
+test('rundy: stado doskonali swoje wkłady na brakach Sędziego i kończy wcześniej, gdy wizja spełniona', async () => {
+    const { wywolania, zdarzenia } = stadoNaNiby([6, 9]);
+    const s = await ProjektStada.zaloz({ nazwa: 'Forge Fashion', wizja: 'Gra RPG-fashion z Marketplace GRV.', uczestnicy: zespol, rundy: 4 });
+    assert.equal(s.rundy, 4);
+    const p = await skonczony(s.id);
+    assert.equal(p.stan, 'gotowe');
+    assert.equal(p.runda, 2, 'po ocenie 9/10 w rundzie 2 stado nie robi rund 3 i 4');
+    assert.deepEqual(p.oceny.map((o) => [o.runda, o.ocena, o.kto]), [[1, 6, 'Wektor'], [2, 9, 'Wektor']]);
+    assert.deepEqual(p.kroki.map((k) => k.wklad), ['wkład r2', 'wkład r2', 'wkład r2', 'wkład r2']);
+    const kodeksR2 = wywolania.find((w) => w.sys.includes('KARTA kodeks') && w.user.includes('RUNDA 2'));
+    assert.match(kodeksR2.user, /TWÓJ WKŁAD Z POPRZEDNIEJ RUNDY:\nwkład r1/);          // buduje na swojej poprzedniej pracy
+    assert.match(kodeksR2.user, /zgodność z wizją 6\/10[^]*- dołóż mechanikę Grade/);   // i na brakach Sędziego
+    assert.match(kodeksR2.user, /BIBLIA Z RUNDY 1:\nwkład r1/);
+    const koniec = zdarzenia.find((z) => z.dane?.koniec);
+    assert.match(koniec.tresc, /skończony po 2 z 4 rund, zgodność z wizją 9\/10 — wizja spełniona przed czasem/);
+    assert.equal(koniec.dane.glos, 'Stado skończyło projekt Forge Fashion po 2 rundach, zgodność z wizją 9 na 10.');
+    assert.equal(ProjektStada.skrot(p).oceny.length, 2);
+});
+
+test('pętla kreatywna: każdy punkt planu szlifowany N razy, zanim pójdzie dalej', async () => {
+    const { wywolania } = stadoNaNiby([]);
+    const s = await ProjektStada.zaloz({ nazwa: 'Szlif', wizja: 'Mały projekt z pętlą kreatywną.', uczestnicy: zespol.slice(0, 2), petla: 2 });
+    const p = await skonczony(s.id);
+    assert.deepEqual(p.kroki.map((k) => [k.wklad, k.petle]), [['wkład r1 +szlif +szlif', 2], ['wkład r1 +szlif +szlif', 2], ['wkład r1 +szlif +szlif', 2]]);
+    assert.equal(wywolania.length, 9);                                                   // 3 kroki × (szkic + 2 pętle), bez Sędziego (1 runda)
+    assert.match(wywolania.find((w) => w.sys.includes('KARTA kodeks') && !w.user.includes('PĘTLA')).user, /Reżyser: wkład r1 \+szlif \+szlif/);   // następny widzi wersję po szlifie
+    assert.equal(ProjektStada.skrot(p).kroki[0].petle, 2);
+});
+
+test('kontynuuj: skończony projekt dostaje kolejne rundy (Nocna Zmiana, Stół), sondaż mówi prawdę', async () => {
+    stadoNaNiby([4, 5, 7]);
+    const s = await ProjektStada.zaloz({ nazwa: 'Warsztat', wizja: 'Projekt do dalszego doskonalenia.', uczestnicy: zespol });
+    let p = await skonczony(s.id);
+    assert.equal(p.runda, 1); assert.deepEqual(p.oceny, []);                            // jedna runda: bez Sędziego
+    assert.equal((await ProjektStada.sondaz(s.id)).stan, 'gotowe');
+    const k = await ProjektStada.kontynuuj(s.id, { rundy: 2, petla: 1 });
+    assert.deepEqual([k.runda, k.rundy, k.petla], [1, 3, 1]);                          // najpierw Sędzia ocenia rundę 1, potem runda 2
+    assert.equal((await ProjektStada.sondaz(s.id)).stan, 'trwa');
+    await assert.rejects(ProjektStada.kontynuuj(s.id), /właśnie pracuje/);
+    p = await skonczony(s.id);
+    assert.deepEqual(p.oceny.map((o) => [o.runda, o.ocena]), [[1, 4], [2, 5], [3, 7]]);   // ocena rundy 1 dopisana przed doskonaleniem
+    assert.equal(p.runda, 3);
+    assert.match((await ProjektStada.sondaz(s.id)).podsumowanie, /runda 3\/3, 4\/4 wkładów, zgodność 7\/10/);
+    await assert.rejects(ProjektStada.kontynuuj('nie-ma-go'), /Nie ma takiego/);
+});

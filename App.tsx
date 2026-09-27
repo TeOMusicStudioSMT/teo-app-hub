@@ -36,6 +36,7 @@ import { CrewCreator } from './components/special/CrewCreator';
 import TeODash from './components/special/TeODash';
 import { initializeKwantowaKotwica } from './lib/KwantowaKotwica';
 import OtakOSGateway from './components/special/OtakOSGateway';
+import ZapowiedziStada from './components/ZapowiedziStada';
 import { RadaPodstawowa } from './components/special/RadaPodstawowa';
 import { WniosekO } from './components/special/WniosekO';
 import ScenographyManager from './components/special/ScenographyManager';
@@ -1032,6 +1033,7 @@ const App: React.FC = () => {
                             </>
                         )}
                         <KatedraRadioPlayer />
+                        <ZapowiedziStada />
                     </div>
                 </div>
 
