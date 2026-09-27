@@ -8,8 +8,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Mic, Play, RotateCcw } from 'lucide-react';
-import { NotebookPodcastService, SOVEREIGN_WELCOME, type PodcastTurn, type TwinAnimation } from '../../src/services/NotebookPodcastService';
+import { Mic, Play, RotateCcw, Download } from 'lucide-react';
+import { NotebookPodcastService, SOVEREIGN_WELCOME, rozmowaDoTekstu, czyBlad, type PodcastTurn, type TwinAnimation } from '../../src/services/NotebookPodcastService';
 import KsiegaOdbioru from './KsiegaOdbioru';
 import KwantowyTunel from './KwantowyTunel';
 import { PodcastCore } from '../PodcastCore';
@@ -113,6 +113,18 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
         }
     }, [busy, topic, turns]);
 
+    // 💾 Rozmowa do pliku .txt (Suweren składał je dotąd ręcznie) — bez tur z błędem mostu.
+    const pobierzTxt = () => {
+        const tekst = rozmowaDoTekstu(topic, turns);
+        const nazwa = (topic.trim().slice(0, 40).replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '') || 'rozmowa');
+        const url = URL.createObjectURL(new Blob([tekst], { type: 'text/plain;charset=utf-8' }));
+        const a = document.createElement('a');
+        a.href = url; a.download = `PodcastTwin_${nazwa}.txt`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    const turWRozmowie = turns.filter(t => !czyBlad(t)).length;
+
     const reset = () => {
         setTurns([]); setAnim('IDLE');
         try { localStorage.removeItem(STORE_KEY); } catch { /* noop */ }
@@ -194,6 +206,10 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
                 <button onClick={generate} disabled={busy || !topic.trim()}
                     className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-fuchsia-700/70 hover:bg-fuchsia-600 text-white border border-fuchsia-400/40 disabled:opacity-40 transition-all">
                     <Play size={14} /> {busy ? 'GENERUJĘ...' : turns.length ? 'KOLEJNA TURA' : 'START ROZMOWY'}
+                </button>
+                <button onClick={pobierzTxt} disabled={turWRozmowie === 0} title="Zapisz rozmowę do pliku .txt (bez tur z błędem mostu)"
+                    className="px-3 py-2 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 disabled:opacity-40 flex items-center gap-1">
+                    <Download size={14} /> .txt
                 </button>
                 <button onClick={reset} disabled={busy} title="Nowy odcinek (wyczyść pamięć rozmowy)"
                     className="px-3 py-2 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 disabled:opacity-40">
