@@ -78,6 +78,13 @@ export const TeogochiPanel: React.FC<TeogochiPanelProps> = ({
     const [dymekMowy, setDymekMowy] = useState<string | null>(null);
     const [narzedziaStatus, setNarzedziaStatus] = useState<Record<string, 'ok' | 'checking' | 'err'>>({});
 
+    // XP za pracę stada nalicza most (Stado.nagrodz) — lib/stadoSync wpisuje je do localStorage,
+    // a panel pokazuje je bez zamykania (jak TeOgochiDom).
+    useEffect(() => {
+        const iv = setInterval(() => setStan(stanGatunku(gatunek.id)), 5_000);
+        return () => clearInterval(iv);
+    }, [gatunek.id]);
+
     // Uciszanie przy zamknięciu
     useEffect(() => {
         return () => { ucisz(); };
@@ -140,7 +147,7 @@ export const TeogochiPanel: React.FC<TeogochiPanelProps> = ({
 
     // Głaskanie
     const handlePet = () => {
-        const { state, ok } = petAction(stan);
+        const { state, ok } = petAction(stanGatunku(gatunek.id));   // świeży stan: most mógł dodać XP za pracę
         zapiszStanGatunku(gatunek.id, state);
         setStan({ ...state });
         if (ok) {
@@ -155,7 +162,7 @@ export const TeogochiPanel: React.FC<TeogochiPanelProps> = ({
 
     // Karmienie smakołykiem
     const handleTreat = () => {
-        const { state, ok } = feedTreat(stan);
+        const { state, ok } = feedTreat(stanGatunku(gatunek.id));
         zapiszStanGatunku(gatunek.id, state);
         setStan({ ...state });
         if (ok) {
@@ -170,7 +177,7 @@ export const TeogochiPanel: React.FC<TeogochiPanelProps> = ({
     const handleRename = () => {
         const newName = window.prompt(`Nadaj nowe imię swojemu kompanowi (${gatunek.imie}):`, stan.name || gatunek.imie);
         if (!newName || !newName.trim()) return;
-        const nextState = { ...stan, name: newName.trim().slice(0, 24) };
+        const nextState = { ...stanGatunku(gatunek.id), name: newName.trim().slice(0, 24) };
         zapiszStanGatunku(gatunek.id, nextState);
         setStan(nextState);
         void powiedz(`Od teraz z dumą noszę imię ${nextState.name}!`);

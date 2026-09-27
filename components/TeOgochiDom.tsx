@@ -114,13 +114,13 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const handleRename = () => {
         const newName = window.prompt('Nadaj imię swojemu kompanowi:', s.name);
         if (!newName || !newName.trim()) return;
-        const next = { ...s, name: newName.trim().slice(0, 24) };
+        const next = { ...loadTeogochi(), name: newName.trim().slice(0, 24) };
         saveTeogochi(next); setS(next);
         say(`Suweren właśnie uroczyście ochrzcił Cię imieniem ${next.name}`);
     };
 
     const handlePet = () => {
-        const { state, ok } = petAction(s);
+        const { state, ok } = petAction(loadTeogochi());   // świeży stan: most mógł dodać XP za pracę
         saveTeogochi(state); setS(state);
         setWiggle(w => w + 1);
         if (ok) say(isEgg ? 'ktoś czule pogłaskał Twoją skorupkę' : 'Suweren właśnie Cię pogłaskał');
@@ -128,7 +128,7 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     };
 
     const handleTreat = () => {
-        const { state, ok } = feedTreat(s);
+        const { state, ok } = feedTreat(loadTeogochi());
         saveTeogochi(state); setS(state);
         setWiggle(w => w + 1);
         if (ok) say('dostał pyszny smakołyk: świeży wektor soniczny');
@@ -142,7 +142,7 @@ export const TeOgochiDom: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         const suno: SunoTrack = { id: t.id, title: t.title, audio_url: t.url || '', filename: t.filename };
         radio.playFavorite(suno);
 
-        const { state, ok } = feedFavorite(s);
+        const { state, ok } = feedFavorite(loadTeogochi());
         saveTeogochi(state); setS(state);
         setWiggle(w => w + 1);
         if (ok) say(`słucha właśnie swojego ulubionego kawałka: „${t.title}"`);

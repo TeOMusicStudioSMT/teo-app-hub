@@ -29,14 +29,19 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 hydratujStadoZMostu().then((w) => {
   if (w.mostZywy && (w.zMostu.length || w.doMostu.length)) console.info(`[Stado] z mostu: ${w.zMostu.join(', ') || '—'} · do mostu: ${w.doMostu.join(', ') || '—'}`);
-}).catch(() => { /* nigdy nie blokuj startu */ }).finally(() => root.render(
-  <React.StrictMode>
-    <KatedraRadioProvider>
-      <Provider>
-        <I18nProvider>
-          <App />
-        </I18nProvider>
-      </Provider>
-    </KatedraRadioProvider>
-  </React.StrictMode>
-));
+}).catch(() => { /* nigdy nie blokuj startu */ }).finally(() => {
+  // XP za pracę stada (wkłady, zlecenia, sentencje) nalicza most — co minutę dociągamy je do
+  // przeglądarki (wyższe XP wygrywa), żeby Dom i panele widziały nagrody bez restartu Katedry.
+  setInterval(() => { void hydratujStadoZMostu(); }, 60_000);
+  root.render(
+    <React.StrictMode>
+      <KatedraRadioProvider>
+        <Provider>
+          <I18nProvider>
+            <App />
+          </I18nProvider>
+        </Provider>
+      </KatedraRadioProvider>
+    </React.StrictMode>
+  );
+});

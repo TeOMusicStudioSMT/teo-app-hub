@@ -54,13 +54,64 @@ function oczysc(s) {
     };
 }
 
-export async function stan() { return czytaj(); }
+/** Stan dla Huba — bez rejestru nagród (klucze jednokrotności to księgowość mostu, nie stan). */
+export async function stan() { const { nagrody, ...d } = await czytaj(); return d; }
+
+// Zapisy po kolei: scal (przeglądarka) i nagrodz (praca stada) czytają-zmieniają-piszą ten sam plik —
+// dwa naraz = jedna zmiana zgubiona. Ogon obietnic szereguje je w obrębie mostu.
+let ogon = Promise.resolve();
+const poKolei = (fn) => { const w = ogon.then(fn, fn); ogon = w.catch(() => {}); return w; };
+
+/**
+ * Progi etapów — KOPIA `STAGES` z lib/teogochiState.ts (most nie importuje TS-a). Zmieniasz tam,
+ * zmień i tu: Świat i StoL liczą z tego etap po nagrodzie, zanim Dom TeOgochi opublikuje nową migawkę.
+ */
+export const ETAPY = [[0, 'jajko'], [15, 'pisklę'], [120, 'młodzik'], [600, 'kompan'], [2400, 'legenda']];
+export const etapZXp = (xp) => ETAPY.filter(([min]) => xp >= min).at(-1)[1];
+
+/** XP za prawdziwą pracę dla stada (wkład, oddane zlecenie, sentencja). */
+export const NAGRODY = { wklad: 25, biblia: 40, zlecenie: 15, sentencja: 5 };
+const MAX_KLUCZY = 5000;
+
+/**
+ * Nagródź TeOgochi za pracę. `klucz` = jednokrotność (ta sama praca płaci RAZ — ponowienie zlecenia,
+ * restart mostu czy drugie nagranie powitania nie drukują XP). XP tylko rośnie, więc przeglądarka
+ * ze starszym stanem dostanie przy najbliższym zapisie „odrzucone" i weźmie stan z mostu.
+ * @param {{ id:string, xp:number, klucz:string, powod?:string, baza?:number }} o  baza = XP z migawki Domu
+ * @returns {{ przyznane:boolean, xp:number, powod?:string }}
+ */
+export function nagrodz({ id, xp, klucz, powod = '', baza = 0 }) {
+    return poKolei(async () => {
+        if (!ID_OK(id)) return { przyznane: false, xp: 0, powod: 'Nieznany TeOgochi.' };
+        const ile = Math.max(0, Math.min(500, Math.round(Number(xp) || 0)));
+        if (!ile || !klucz) return { przyznane: false, xp: 0, powod: 'Brak XP albo klucza jednokrotności.' };
+        const d = await czytaj();
+        d.nagrody = d.nagrody && typeof d.nagrody === 'object' ? d.nagrody : {};
+        const k = String(klucz).slice(0, 200);
+        if (d.nagrody[k]) return { przyznane: false, xp: d.stany[id]?.xp ?? 0, powod: 'Ta praca już została nagrodzona.' };
+        const teraz = Date.now();
+        const s = d.stany[id] ?? oczysc({ xp: 0, bornAt: teraz, lastTickAt: teraz });
+        // `baza` = XP z migawki Domu TeOgochi: gatunek, którego przeglądarka jeszcze nie zsynchronizowała,
+        // nie może dostać nagrody „od zera" (późniejszy zapis przeglądarki by ją przykrył). XP tylko rośnie,
+        // więc wyższa z dwóch wartości jest prawdziwa.
+        s.xp = Math.max(Number(s.xp) || 0, Number(baza) || 0) + ile;
+        if (s.hatchedAt == null && s.xp >= ETAPY[1][0]) s.hatchedAt = teraz;
+        d.stany[id] = s;
+        d.nagrody[k] = { id, xp: ile, powod: String(powod).slice(0, 160), kiedy: new Date(teraz).toISOString() };
+        const klucze = Object.keys(d.nagrody);
+        if (klucze.length > MAX_KLUCZY) for (const stary of klucze.slice(0, klucze.length - MAX_KLUCZY)) delete d.nagrody[stary];
+        d.zmieniono = new Date(teraz).toISOString();
+        await zapisz(d);
+        return { przyznane: true, xp: s.xp, dodano: ile };
+    });
+}
 
 /**
  * Scal delta z przeglądarki. { aktywny?, wyklute?: string[], stany?: { id: state }, wymus?: boolean }
  * Zwraca stan po scaleniu + `odrzucone` (gatunki, których XP był niższy niż na dysku).
  */
-export async function scal(delta = {}) {
+export function scal(delta = {}) { return poKolei(() => scalTeraz(delta)); }
+async function scalTeraz(delta) {
     const d = await czytaj();
     const odrzucone = [];
     if (delta.stany && typeof delta.stany === 'object') {
@@ -84,7 +135,8 @@ export async function scal(delta = {}) {
     if (delta.aktywny && ID_OK(delta.aktywny)) d.aktywny = String(delta.aktywny);
     d.zmieniono = new Date().toISOString();
     await zapisz(d);
-    return { ...d, odrzucone };
+    const { nagrody, ...bez } = d;
+    return { ...bez, odrzucone };
 }
 
-export default { stan, scal };
+export default { stan, scal, nagrodz, etapZXp, ETAPY, NAGRODY };
