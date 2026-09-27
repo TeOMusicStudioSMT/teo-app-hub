@@ -65,3 +65,25 @@ test('kolejna tura: tura z błędem nie trafia do kontekstu modelu; błąd mostu
     assert.equal(zla.blad, true);
     assert.match(zla.hostA, /rdzeń milczy \(TIMEOUT\)/);
 });
+
+test('projekt wraca do gospodarzy: materiał z Biblią, oceną Sędziego i brakami trafia do promptu', async () => {
+    const material = P.materialProjektu({
+        id: 'forge', nazwa: 'Forge Fashion', wizja: 'Gra RPG-fashion z Marketplace GRV.', stan: 'gotowe', runda: 2, rundy: 2,
+        oceny: [{ runda: 1, ocena: 6, braki: [] }, { runda: 2, ocena: 7, braki: ['brak AR', 'kolekcja seed ogólnikowa'] }],
+        kroki: [{ imie: 'Kodeks', stan: 'gotowe', wklad: 'Pętla „stwórz i udowodnij".' }, { imie: 'Reżyser', stan: 'gotowe', synteza: true, wklad: 'BIBLIA Forge' }],
+    });
+    assert.match(material, /„Forge Fashion" — gotowe, po rundzie 2 z 2/);
+    assert.match(material, /SĘDZIA \(zgodność z wizją\): R1: 6\/10, R2: 7\/10/);
+    assert.match(material, /- brak AR\n- kolekcja seed ogólnikowa/);
+    assert.match(material, /BIBLIA PROJEKTU:\nBIBLIA Forge/);
+    assert.match(material, /— Kodeks: Pętla/);
+    const wyslane = [];
+    globalThis.fetch = async (_url, opcje) => {
+        wyslane.push(JSON.parse(opcje.body));
+        return new Response(`data: ${JSON.stringify({ type: 'text', text: '{"hostA":"A","hostB":"B","triggerAnimation":"BOTH"}' })}\n\n`, { status: 200 });
+    };
+    await new P.NotebookPodcastService().generateTurn('Forge wraca', [], material);
+    assert.match(wyslane[0].messages[0].content, /MATERIAŁ: projekt stada wrócił do Was[^]*NASTĘPNEJ rundzie[^]*BIBLIA Forge/);
+    await new P.NotebookPodcastService().generateTurn('Zwykły temat', []);
+    assert.ok(!wyslane[1].messages[0].content.includes('MATERIAŁ'), 'bez projektu — zwykła rozmowa');
+});

@@ -14,7 +14,7 @@ const STADO = [
 
 /** Świat na niby dla Stołu: projekty stada w pamięci, zlecenia liczone. */
 function swiat() {
-    const projekty = new Map(), zalozone = [], zlecone = [], szyna = [];
+    const projekty = new Map(), zalozone = [], zlecone = [], szyna = [], noc = { wlaczona: false, zadania: [] };
     Stol.skonfiguruj({
         plik: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'stol-')), 'stol.json'),
         szyna: { nadaj: async (z) => { szyna.push(z.tresc); } },
@@ -27,9 +27,11 @@ function swiat() {
         },
         zlec: async (id) => { zlecone.push(id); return { ile: 3 }; },
         doskonal: async (id, o) => { const p = projekty.get(id); Object.assign(p, { stan: 'trwa', rundy: (p.runda ?? 1) + o.rundy, petla: o.petla, doskonal: o }); return { ...p, runda: p.runda ?? 1 }; },
+        nocna: async (o) => { noc.zadania.push({ id: `nz-${noc.zadania.length + 1}`, rodzaj: 'projekt-stada-rundy', stan: 'czeka', wykonane: 0, powtorzenia: o.powtorzenia, parametry: o.parametry, notatka: o.notatka }); return noc.zadania.at(-1); },
+        nocnaStan: async () => noc,
         uczestnicy: async (kogo) => (kogo.length ? STADO.filter((g) => kogo.includes(g.imie) || kogo.includes(g.id)) : STADO),
     });
-    return { projekty, zalozone, zlecone, szyna };
+    return { projekty, zalozone, zlecone, szyna, noc };
 }
 
 test('karta z rozmowy: wizja i uczestnicy z „KARTY DLA STOŁU"', () => {
@@ -109,9 +111,34 @@ test('doskonal zamiast ratyfikacji: Biblia wraca do stada na kolejne rundy, pote
     assert.deepEqual(gotowa.projektSkrot.oceny, [{ runda: 3, ocena: 7 }]);
 
     await Stol.doskonal(k.id, { rundy: 2, petla: 1, kto: 'Pixel' });
-    assert.deepEqual(w.projekty.get(projekt.id).doskonal, { rundy: 2, petla: 1 });
+    assert.deepEqual(w.projekty.get(projekt.id).doskonal, { rundy: 2, petla: 1, uwagi: undefined, zrodloUwag: 'z telefonu „Pixel"' });
     assert.equal((await Stol.karta(k.id)).etap, 'opracowuje');
     assert.deepEqual(w.zlecone, [], 'doskonalenie niczego nie zleca');
-    assert.ok(w.szyna.some((t) => /odesłał „Forge Fashion" do doskonalenia — 2 rund, pętla kreatywna ×1/.test(t)));
+    assert.ok(w.szyna.some((t) => /odesłał „Forge Fashion" do doskonalenia — 2 rundy, pętla kreatywna ×1/.test(t)));
     assert.deepEqual((await Stol.karta(k.id)).decyzje.map((d) => d.co), ['przyjeta', 'doskonalona']);
+});
+
+test('po ratyfikacji też można doskonalić (z uwagami) i dać na Nocną Zmianę ×N — z telefonu', async () => {
+    const w = swiat();
+    const k = await Stol.dodaj({ tytul: 'Forge Fashion', tresc: KARTA, zrodlo: 'plik' });
+    await assert.rejects(Stol.naNoc(k.id), /etapie „na_stole"/);
+    const { projekt } = await Stol.przyjmij(k.id);
+    Object.assign(w.projekty.get(projekt.id), { stan: 'gotowe', runda: 1, rundy: 1, kroki: [{ agent: 'rezyser', stan: 'gotowe', synteza: true, wklad: 'BIBLIA' }] });
+    await Stol.ratyfikuj(k.id);
+    assert.equal((await Stol.karta(k.id)).etap, 'zratyfikowane');
+
+    const r = await Stol.naNoc(k.id, { rundy: 2, petla: 1, powtorzenia: 3, kto: 'Pixel' });
+    assert.equal(r.wlaczona, false);
+    assert.deepEqual(w.noc.zadania[0].parametry, { projektStada: projekt.id, rundy: 2, petla: 1 });
+    assert.equal(w.noc.zadania[0].powtorzenia, 3);
+    assert.ok(w.szyna.some((t) => /idzie na Nocną Zmianę: 3 × 2 rundy \(Zmiana jest WYŁĄCZONA/.test(t)));
+    const zNoca = await Stol.karta(k.id);
+    assert.deepEqual(zNoca.nocna, { wlaczona: false, zadania: [{ id: 'nz-1', stan: 'czeka', wykonane: 0, powtorzenia: 3, rundy: 2, blad: null }] });
+
+    await Stol.doskonal(k.id, { rundy: 1, uwagi: 'Iskra: dołóżcie AR', kto: 'Pixel' });
+    assert.deepEqual(w.projekty.get(projekt.id).doskonal, { rundy: 1, petla: undefined, uwagi: 'Iskra: dołóżcie AR', zrodloUwag: 'z telefonu „Pixel"' });
+    assert.equal((await Stol.karta(k.id)).etap, 'opracowuje');
+    w.projekty.get(projekt.id).stan = 'gotowe';
+    assert.equal((await Stol.karta(k.id)).etap, 'do_akceptacji', 'po doskonaleniu czeka na NOWĄ ratyfikację');
+    assert.deepEqual((await Stol.karta(k.id)).decyzje.map((d) => d.co), ['przyjeta', 'zratyfikowana', 'na_noc', 'doskonalona']);
 });

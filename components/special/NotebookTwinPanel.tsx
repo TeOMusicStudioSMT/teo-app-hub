@@ -8,9 +8,9 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Mic, Play, RotateCcw, Download, Send, FileUp } from 'lucide-react';
+import { Mic, Play, RotateCcw, Download, Send, FileUp, Repeat, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { NotebookPodcastService, SOVEREIGN_WELCOME, rozmowaDoTekstu, czyBlad, type PodcastTurn, type TwinAnimation } from '../../src/services/NotebookPodcastService';
+import { NotebookPodcastService, SOVEREIGN_WELCOME, rozmowaDoTekstu, czyBlad, materialProjektu, type PodcastTurn, type TwinAnimation, type ProjektDoRozmowy } from '../../src/services/NotebookPodcastService';
 import KsiegaOdbioru from './KsiegaOdbioru';
 import KwantowyTunel from './KwantowyTunel';
 import { PodcastCore } from '../PodcastCore';
@@ -18,7 +18,11 @@ import { PodcastCore } from '../PodcastCore';
 const service = new NotebookPodcastService();
 const STORE_KEY = 'teo_podcast_twin_log';   // pamięć trwała rozmowy (Rozczytelnia agentów)
 
-interface PodcastMemory { topic: string; turns: PodcastTurn[]; }
+/** 🔁 Projekt stada, który wrócił do gospodarzy: o nim jest rozmowa, z niej idą uwagi na kolejne rundy. */
+interface Warsztat { id: string; nazwa: string; material: string; stan: string; runda: number; rundy: number; ocena: number | null; karta: { id: string; etap: string } | null; }
+interface PodcastMemory { topic: string; turns: PodcastTurn[]; warsztat?: Warsztat | null; }
+interface ProjektNaLiscie { id: string; nazwa: string; stan: string; runda?: number; rundy?: number; oceny?: { ocena: number | null }[] }
+const MOST = 'http://127.0.0.1:3001';
 const loadMemory = (): PodcastMemory => {
     try { const m = JSON.parse(localStorage.getItem(STORE_KEY) || ''); if (m && Array.isArray(m.turns)) return m; } catch { /* brak */ }
     return { topic: 'Suwerenność danych i lokalne AI w Katedrze OtakOS', turns: [] };
@@ -64,14 +68,18 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
     const [anim, setAnim]   = useState<TwinAnimation>('IDLE');
     const [busy, setBusy]   = useState(false);
     const [view, setView]   = useState<'rozmowa' | 'video_podcast' | 'koom'>('rozmowa');
+    const [warsztat, setWarsztat] = useState<Warsztat | null>(mem0.warsztat ?? null);
+    const [projekty, setProjekty] = useState<ProjektNaLiscie[] | null>(null);   // lista do wyboru (null = zamknięta)
+    const [rundyDalej, setRundyDalej] = useState(1);
+    const [odsylam, setOdsylam] = useState(false);
     const logRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [turns]);
 
     // 💾 Pamięć trwała — zapis rozmowy, by gospodarze kontynuowali zamiast zaczynać od nowa.
     useEffect(() => {
-        try { localStorage.setItem(STORE_KEY, JSON.stringify({ topic, turns })); } catch { /* limit storage */ }
-    }, [topic, turns]);
+        try { localStorage.setItem(STORE_KEY, JSON.stringify({ topic, turns, warsztat })); } catch { /* limit storage */ }
+    }, [topic, turns, warsztat]);
 
     const handleStreamStateChange = useCallback((isBroadcasting: boolean) => {
         const timestamp = new Date().toLocaleTimeString();
@@ -103,7 +111,7 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
         if (busy || !topic.trim()) return;
         setBusy(true); setAnim('BOTH');
         try {
-            const turn = await service.generateTurn(topic, turns);
+            const turn = await service.generateTurn(topic, turns, warsztat?.material);
             setTurns(prev => [...prev, turn]);
             // Sekwencja mowy: najpierw A, potem B (efekt rozmowy).
             setAnim('A_SPEAKING');
@@ -112,7 +120,50 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
         } finally {
             setBusy(false);
         }
-    }, [busy, topic, turns]);
+    }, [busy, topic, turns, warsztat]);
+
+    // 🔁 Projekt stada wraca do rozmowy: lista projektów z mostu → wybrany staje się materiałem odcinka.
+    const pokazProjekty = async () => {
+        if (projekty) { setProjekty(null); return; }
+        try {
+            const d = await fetch(`${MOST}/api/stado/projekty`).then((r) => r.json());
+            setProjekty(d.projekty ?? []);
+        } catch (e) { toast.error(`Most nie odpowiada: ${(e as Error).message}`); }
+    };
+    const wezProjekt = async (id: string) => {
+        try {
+            const [d, st] = await Promise.all([
+                fetch(`${MOST}/api/stado/projekty/${encodeURIComponent(id)}`).then((r) => r.json()),
+                fetch(`${MOST}/api/stol`).then((r) => r.json()).catch(() => ({ karty: [] })),
+            ]);
+            if (!d.success) throw new Error(d.message || 'brak projektu');
+            const p = d.projekt as ProjektDoRozmowy;
+            if (turns.length && !window.confirm('Zacząć nowy odcinek o tym projekcie? Obecna rozmowa zniknie (zapisz ją wcześniej do .txt).')) return;
+            const karta = (st.karty ?? []).find((k: { projektSkrot?: { id: string } }) => k.projektSkrot?.id === p.id);
+            setWarsztat({
+                id: p.id, nazwa: p.nazwa, material: materialProjektu(p), stan: p.stan, runda: p.runda ?? 1, rundy: p.rundy ?? 1,
+                ocena: p.oceny?.at(-1)?.ocena ?? null, karta: karta ? { id: karta.id, etap: karta.etap } : null,
+            });
+            setTopic(`Projekt „${p.nazwa}" wraca z warsztatu — co mamy i co dalej?`);
+            setTurns([]); setAnim('IDLE'); setProjekty(null);
+        } catch (e) { toast.error(`Nie wczytałem projektu: ${(e as Error).message}`); }
+    };
+    /** Odeślij projekt na kolejne rundy z tą rozmową jako uwagami (karta Stołu → „Doskonal", inaczej wprost). */
+    const odeslijNaRundy = async () => {
+        if (!warsztat) return;
+        setOdsylam(true);
+        try {
+            const uwagi = rozmowaDoTekstu(topic, turns);
+            const przezStol = warsztat.karta && ['do_akceptacji', 'zratyfikowane'].includes(warsztat.karta.etap);
+            const url = przezStol ? `${MOST}/api/stol/${encodeURIComponent(warsztat.karta!.id)}/doskonal` : `${MOST}/api/stado/projekt/${encodeURIComponent(warsztat.id)}/runda`;
+            const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rundy: rundyDalej, uwagi, zrodloUwag: 'rozmowa Podcast Twin' }) });
+            const d = await r.json().catch(() => ({ success: false, message: `most odpowiedział ${r.status}` }));
+            if (!d.success) throw new Error(d.message);
+            toast.success(`„${warsztat.nazwa}" wraca do stada — ${rundyDalej} ${rundyDalej === 1 ? 'runda' : 'rundy'} z uwagami z tej rozmowy. Katedra powie, gdy skończą.`, { duration: 7000 });
+            setWarsztat({ ...warsztat, stan: 'trwa', karta: warsztat.karta ? { ...warsztat.karta, etap: 'opracowuje' } : null });
+        } catch (e) { toast.error(`Nie odesłałem: ${(e as Error).message}`); }
+        finally { setOdsylam(false); }
+    };
 
     // 💾 Rozmowa do pliku .txt (Suweren składał je dotąd ręcznie) — bez tur z błędem mostu.
     const pobierzTxt = () => {
@@ -150,7 +201,7 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
     };
 
     const reset = () => {
-        setTurns([]); setAnim('IDLE');
+        setTurns([]); setAnim('IDLE'); setWarsztat(null);
         try { localStorage.removeItem(STORE_KEY); } catch { /* noop */ }
     };
 
@@ -246,11 +297,57 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
                     <FileUp size={14} /> Plik
                 </button>
                 <input ref={plikRef} type="file" accept=".txt,text/plain" className="hidden" onChange={e => plikNaStol(e.target.files?.[0])} />
+                <button onClick={pokazProjekty} disabled={busy}
+                    title="Projekt stada wraca do rozmowy: Iskra i Echo omawiają Biblię, oceny Sędziego i braki — potem odsyłasz go na kolejne rundy"
+                    className="px-3 py-2 rounded-xl text-xs bg-violet-900/40 hover:bg-violet-800/50 border border-violet-500/40 text-violet-200 disabled:opacity-40 flex items-center gap-1">
+                    <Repeat size={14} /> Projekt stada
+                </button>
                 <button onClick={reset} disabled={busy} title="Nowy odcinek (wyczyść pamięć rozmowy)"
                     className="px-3 py-2 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 disabled:opacity-40">
                     <RotateCcw size={14} />
                 </button>
             </div>
+
+            {/* 🔁 Wybór projektu stada do rozmowy */}
+            {projekty && (
+                <div className="mx-6 mb-3 rounded-xl border border-violet-500/30 bg-violet-950/20 p-2 space-y-1">
+                    {projekty.length === 0 && <div className="text-[11px] text-slate-500">Stado nie ma jeszcze projektów.</div>}
+                    {projekty.map((p) => {
+                        const o = p.oceny?.at(-1)?.ocena;
+                        return (
+                            <button key={p.id} onClick={() => wezProjekt(p.id)} disabled={p.stan === 'trwa'}
+                                className="w-full text-left rounded-lg px-2 py-1.5 text-xs hover:bg-violet-900/40 disabled:opacity-40">
+                                <b className="text-violet-100">{p.nazwa}</b>
+                                <span className="text-slate-500"> · {p.stan === 'trwa' ? 'stado pracuje' : p.stan}{(p.rundy ?? 1) > 1 ? ` · runda ${p.runda ?? 1}/${p.rundy}` : ''}{o != null ? ` · Sędzia ${o}/10` : ''}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* 🔁 Projekt na warsztacie: o nim jest rozmowa, z niej idą uwagi na kolejne rundy */}
+            {warsztat && (
+                <div className="mx-6 mb-3 rounded-xl border border-violet-500/40 bg-violet-950/30 p-3 text-xs space-y-2">
+                    <div className="flex items-center gap-2">
+                        <Repeat size={14} className="text-violet-300" />
+                        <span className="text-violet-100 font-bold">{warsztat.nazwa}</span>
+                        <span className="text-slate-400">· runda {warsztat.runda}/{warsztat.rundy}{warsztat.ocena != null ? ` · Sędzia ${warsztat.ocena}/10` : ''}{warsztat.karta ? ` · karta Stołu (${warsztat.karta.etap})` : ''}{warsztat.stan === 'trwa' ? ' · stado pracuje' : ''}</span>
+                        <button onClick={() => setWarsztat(null)} title="Odłącz projekt od rozmowy" className="ml-auto text-slate-500 hover:text-slate-200"><X size={14} /></button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-slate-400 flex items-center gap-1">rund
+                            <input type="number" min={1} max={5} value={rundyDalej} onChange={(e) => setRundyDalej(Math.min(5, Math.max(1, Number(e.target.value) || 1)))}
+                                className="w-12 bg-black/60 border border-violet-700/40 rounded px-1 py-0.5 text-slate-200" />
+                        </label>
+                        <button onClick={odeslijNaRundy} disabled={odsylam || turWRozmowie === 0 || warsztat.stan === 'trwa'}
+                            title="Stado dostanie tę rozmowę jako uwagi Suwerena do kolejnych rund (i Sędzia sprawdzi, czy je uwzględniło)"
+                            className="px-3 py-1.5 rounded-lg bg-violet-700/60 hover:bg-violet-600 text-white border border-violet-400/40 disabled:opacity-40 flex items-center gap-1">
+                            <Send size={12} /> {odsylam ? 'Odsyłam…' : 'Odeślij na rundy z uwagami z rozmowy'}
+                        </button>
+                        {turWRozmowie === 0 && <span className="text-slate-500">— najpierw niech porozmawiają (START).</span>}
+                    </div>
+                </div>
+            )}
 
             {/* Log skryptu rozmowy */}
             <div ref={logRef} className="mx-6 mb-6 max-h-72 overflow-y-auto bg-black/40 rounded-xl border border-fuchsia-900/30 p-3 space-y-2">
