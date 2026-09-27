@@ -59,6 +59,7 @@ export const CO_ILE_MS = 60_000;
  *   lab-apka        /api/lab/apki                  apka do piaskownicy
  *   lab-chip        /api/lab/chipy                 projekt chipu
  *   biznes          /api/latarnik/biznesy          pilnowany biznes
+ *   projekt-stada   /api/stado/projekty            wspólny projekt TeOgochi (rundy doskonalenia)
  *   opcje           lista wpisana tu, na miejscu
  */
 export const POLA = {
@@ -91,7 +92,12 @@ export const POLA = {
     cel:           { etykieta: 'cel',             typ: 'tekst' },
     pytanieId:     { etykieta: 'pytanie (id)',    typ: 'tekst' },
     uczestnicy:    { etykieta: 'uczestnicy (id, po przecinku)', typ: 'lista' },
+    projektStada:  { etykieta: 'projekt stada',   wybor: 'projekt-stada' },
+    petla:         { etykieta: 'pętla kreatywna na punkt planu (0–3)', typ: 'liczba' },
 };
+
+/** Ile razy zadanie może się powtórzyć (każde powtórzenie po pełnym przejściu przez bramy). */
+export const MAX_POWTORZEN = 20;
 
 export const ROBOTY = {
     'mechanik':        { opis: 'Mechanik przerabia kolejkę łatek',              metoda: 'POST', sciezka: '/api/mechanic/process',       pola: [] },
@@ -114,6 +120,9 @@ export const ROBOTY = {
     // Oba trwają godzinami — most oddaje `sondaz`, a Zmiana czeka, aż stan przestanie być „trwa".
     'produkcja':       { opis: 'Zrealizuj zaplanowaną Produkcję (Klatka): kadry → ruch → montaż → GOTOWE', metoda: 'POST', sciezka: '/api/produkcja/zrealizuj', pola: ['projekt', 'odcinekId', 'sekundy', 'silnikObrazu', 'rezyser', 'kroki'], wymagane: ['projekt'], czekajNa: 'sondaz' },
     'tablica-rezysera': { opis: 'Zrealizuj Tablicę Reżysera (Reżyser): odcinki po kolei, z osobna',        metoda: 'POST', sciezka: '/api/rezyser/tablica/zrealizuj', pola: ['serial', 'sekundy', 'silnikObrazu', 'rezyser', 'kroki', 'model'], wymagane: ['serial'], czekajNa: 'sondaz' },
+    // 🧩 Projekt Stada (2026-09-27): kolejne rundy doskonalenia — stado dokłada cegiełki do Biblii na brakach Sędziego,
+    // aż wizja będzie spełniona (Sędzia ≥ 9/10 kończy wcześniej). Małe lokalne modele potrzebują wielu przejść — to robota na noc.
+    'projekt-stada-rundy': { opis: 'Projekt Stada: rundy doskonalenia (stado dokłada cegiełki, Sędzia ocenia)', metoda: 'POST', sciezka: '/api/stado/projekt/:projektStada/runda', pola: ['projektStada', 'rundy', 'petla'], wymagane: ['projektStada'], polaInaczej: { rundy: { etykieta: 'rund doskonalenia (1–5)', typ: 'liczba' } }, czekajNa: 'sondaz' },
 };
 
 let plikKolejki = null;
@@ -276,6 +285,22 @@ async function wykonaj(zadanie) {
     return d;
 }
 
+/**
+ * Koniec jednego przebiegu zadania. Z powtórzeniami (×N) udany przebieg wraca do kolejki jako „czeka"
+ * — następny ruszy przy kolejnym otwarciu bram (Suweren śpi dalej, karta wolna). Błąd przerywa serię:
+ * powtarzanie czegoś, co pada, tylko pali noc. Zwraca „k/N" dla dziennika albo null (bez powtórzeń).
+ */
+function zakoncz(z, { blad, wynik, t0 }) {
+    z.koniec = new Date().toISOString();
+    z.sekund = Math.round((Date.now() - t0) / 1000);
+    z.blad = blad;
+    z.wynik = wynik ? JSON.stringify(wynik).slice(0, 600) : null;
+    const razy = Math.max(1, Number(z.powtorzenia) || 1);
+    z.wykonane = (z.wykonane ?? 0) + 1;
+    z.stan = blad ? 'blad' : z.wykonane < razy ? 'czeka' : 'gotowe';
+    return razy > 1 ? `${z.wykonane}/${razy}` : null;
+}
+
 async function cykl() {
     if (wTrakcie) return;
     wTrakcie = true;
@@ -299,19 +324,13 @@ async function cykl() {
 
         const d2 = await wczytaj();
         const z = d2.zadania.find((x) => x.id === czeka.id);
-        if (z) {
-            z.stan = blad ? 'blad' : 'gotowe';
-            z.koniec = new Date().toISOString();
-            z.sekund = Math.round((Date.now() - t0) / 1000);
-            z.blad = blad;
-            z.wynik = wynik ? JSON.stringify(wynik).slice(0, 600) : null;
-        }
-        d2.dziennik.unshift({ kiedy: new Date().toISOString(), id: czeka.id, rodzaj: czeka.rodzaj, stan: blad ? 'blad' : 'gotowe', sekund: Math.round((Date.now() - t0) / 1000), blad });
+        const powtorka = z ? zakoncz(z, { blad, wynik, t0 }) : null;
+        d2.dziennik.unshift({ kiedy: new Date().toISOString(), id: czeka.id, rodzaj: czeka.rodzaj, stan: blad ? 'blad' : 'gotowe', sekund: Math.round((Date.now() - t0) / 1000), blad, ...(powtorka ? { powtorzenie: powtorka } : {}) });
         d2.dziennik = d2.dziennik.slice(0, 200);
         await zapisz(d2);
         stan.trwa = null;
         stan.ostatniWynik = { id: czeka.id, rodzaj: czeka.rodzaj, stan: blad ? 'blad' : 'gotowe', blad };
-        await szyna?.nadaj?.({ agent: 'Nocna Zmiana', rodzaj: blad ? 'blad' : 'praca', tresc: blad ? `padło: ${czeka.rodzaj} — ${blad}` : `skończyła: ${czeka.rodzaj} w ${Math.round((Date.now() - t0) / 1000)} s` }).catch(() => {});
+        await szyna?.nadaj?.({ agent: 'Nocna Zmiana', rodzaj: blad ? 'blad' : 'praca', tresc: blad ? `padło: ${czeka.rodzaj} — ${blad}` : `skończyła: ${czeka.rodzaj} w ${Math.round((Date.now() - t0) / 1000)} s${powtorka ? ` (powtórzenie ${powtorka})` : ''}` }).catch(() => {});
     } catch (e) {
         stan.powody = [`cykl: ${e.message}`];
     } finally {
@@ -358,7 +377,7 @@ export async function stanZmiany() {
     stan.wlaczona = d.wlaczona;
     return {
         ...stan,
-        prog: { bezczynnoscS: PROG_BEZCZYNNOSCI_S, minRamGb: MIN_RAM_GB, minVramMiB: MIN_VRAM_MIB, coIleS: CO_ILE_MS / 1000 },
+        prog: { bezczynnoscS: PROG_BEZCZYNNOSCI_S, minRamGb: MIN_RAM_GB, minVramMiB: MIN_VRAM_MIB, coIleS: CO_ILE_MS / 1000, maxPowtorzen: MAX_POWTORZEN },
         zadania: d.zadania,
         dziennik: d.dziennik.slice(0, 30),
         roboty: Object.entries(ROBOTY).map(([rodzaj, r]) => ({
@@ -377,13 +396,15 @@ export async function przelacz(wlaczona) {
     return d.wlaczona;
 }
 
-export async function dodaj({ rodzaj, parametry = {}, notatka = '' }) {
+export async function dodaj({ rodzaj, parametry = {}, notatka = '', powtorzenia = 1 }) {
     if (!ROBOTY[rodzaj]) throw new Error(`Nie znam roboty „${rodzaj}". Znane: ${Object.keys(ROBOTY).join(', ')}`);
     // Bez wskazania celu robota nie wie, co ma robić — odmawiamy od razu, nie o 3 w nocy.
     const brak = (ROBOTY[rodzaj].wymagane ?? []).filter((p) => parametry[p] === undefined || parametry[p] === null || String(parametry[p]).trim() === '');
     if (brak.length) throw new Error(`Robota „${ROBOTY[rodzaj].opis}" wymaga wskazania: ${brak.map((p) => POLA[p]?.etykieta ?? p).join(', ')}.`);
     const d = await wczytaj();
-    const z = { id: id(), rodzaj, parametry, notatka: String(notatka).slice(0, 200), stan: 'czeka', dodano: new Date().toISOString() };
+    const razy = Math.round(Number(powtorzenia));
+    if (!Number.isFinite(razy) || razy < 1 || razy > MAX_POWTORZEN) throw new Error(`Powtórzeń może być od 1 do ${MAX_POWTORZEN}.`);
+    const z = { id: id(), rodzaj, parametry, notatka: String(notatka).slice(0, 200), stan: 'czeka', dodano: new Date().toISOString(), powtorzenia: razy, wykonane: 0 };
     d.zadania.push(z);
     await zapisz(d);
     return z;
@@ -417,8 +438,8 @@ export async function uruchomTeraz(idZadania) {
     try { wynik = await wykonaj(z); } catch (e) { blad = e.message; }
     const d2 = await wczytaj();
     const z2 = d2.zadania.find((x) => x.id === idZadania);
-    if (z2) { z2.stan = blad ? 'blad' : 'gotowe'; z2.koniec = new Date().toISOString(); z2.sekund = Math.round((Date.now() - t0) / 1000); z2.blad = blad; z2.wynik = wynik ? JSON.stringify(wynik).slice(0, 600) : null; }
-    d2.dziennik.unshift({ kiedy: new Date().toISOString(), id: idZadania, rodzaj: z.rodzaj, stan: blad ? 'blad' : 'gotowe', sekund: Math.round((Date.now() - t0) / 1000), blad, recznie: true });
+    const powtorka = z2 ? zakoncz(z2, { blad, wynik, t0 }) : null;
+    d2.dziennik.unshift({ kiedy: new Date().toISOString(), id: idZadania, rodzaj: z.rodzaj, stan: blad ? 'blad' : 'gotowe', sekund: Math.round((Date.now() - t0) / 1000), blad, recznie: true, ...(powtorka ? { powtorzenie: powtorka } : {}) });
     d2.dziennik = d2.dziennik.slice(0, 200);
     await zapisz(d2);
     stan.trwa = null;

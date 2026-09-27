@@ -10223,7 +10223,7 @@ app.post('/api/stado/projekt/nowy', async (req, res) => {
     const dostep = await dostepStada(req, res);
     if (!dostep) return;
     try {
-        const { nazwa, wizja, uczestnicy = [], samoZlecanie = true } = req.body ?? {};
+        const { nazwa, wizja, uczestnicy = [], samoZlecanie = true, rundy = 1, petla = 0 } = req.body ?? {};
         const migawka = (await stanDlaTelefonu()).gatunki ?? [];
         const osoby = [];
         for (const id of [...new Set(uczestnicy.map(String))]) {
@@ -10231,8 +10231,24 @@ app.post('/api/stado/projekt/nowy', async (req, res) => {
             const k = g ? null : await Persony.karta(id).catch(() => null);
             if (g || k) osoby.push({ id, imie: g?.imie || k.imie || id, dziedzina: g?.dziedzina || k?.dziedzina || '' });
         }
-        res.json({ success: true, projekt: await ProjektStada.zaloz({ nazwa, wizja, uczestnicy: osoby, samoZlecanie: samoZlecanie !== false, zalozyl: dostep.urzadzenie }) });
+        res.json({ success: true, projekt: await ProjektStada.zaloz({ nazwa, wizja, uczestnicy: osoby, samoZlecanie: samoZlecanie !== false, zalozyl: dostep.urzadzenie, rundy, petla }) });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/**
+ * POST /api/stado/projekt/:id/runda { rundy?, petla? } — kolejne rundy doskonalenia skończonego projektu
+ * (stado dokłada cegiełki do Biblii na brakach Sędziego). Tylko z maszyny: Nocna Zmiana („×N") albo Hub.
+ * Oddaje `sondaz` — Nocna Zmiana czeka na nim, aż stado skończy.
+ */
+app.post('/api/stado/projekt/:id/runda', async (req, res) => {
+    try {
+        const projekt = await ProjektStada.kontynuuj(req.params.id, { rundy: req.body?.rundy ?? 1, petla: req.body?.petla });
+        res.json({ success: true, projekt, sondaz: `/api/stado/projekt/${encodeURIComponent(projekt.id)}/sondaz` });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/stado/projekt/:id/sondaz', async (req, res) => {
+    const s = await ProjektStada.sondaz(req.params.id);
+    if (!s) return res.status(404).json({ success: false, message: 'Nie ma takiego projektu.' });
+    res.json({ success: true, ...s });
 });
 /** POST /api/stado/projekt/:id/zlec — wkłady zlecają moduły Katedry (ponownie: tylko to, co nie wyszło). Tylko z maszyny. */
 app.post('/api/stado/projekt/:id/zlec', async (req, res) => {
@@ -10247,6 +10263,7 @@ Stol.skonfiguruj({
     projekt: (id) => ProjektStada.projekt(id),
     zaloz: (o) => ProjektStada.zaloz(o),
     zlec: (id) => ProjektStada.zlec(id),
+    doskonal: (id, o) => ProjektStada.kontynuuj(id, o),
     // Imiona albo id → wyklute TeOgochi; pusta lista = całe wyklute stado (Projekt Stada bierze do 12).
     uczestnicy: async (kogo = []) => {
         const wyklute = ((await stanDlaTelefonu()).gatunki ?? []).filter((g) => g.wyklute);
@@ -10274,13 +10291,14 @@ app.post('/api/stol', async (req, res) => {
         res.json({ success: true, karta: await Stol.dodaj({ tytul, tresc, zrodlo: dostep.urzadzenie ? 'telefon' : zrodlo, zalozyl: dostep.urzadzenie }) });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
-for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc], ['ratyfikuj', Stol.ratyfikuj]]) {
+for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc], ['ratyfikuj', Stol.ratyfikuj], ['doskonal', Stol.doskonal]]) {
     app.post(`/api/stol/:id/${akcja}`, async (req, res) => {
         const dostep = await dostepStada(req, res);
         if (!dostep) return;
         try {
             const uczestnicy = Array.isArray(req.body?.uczestnicy) ? req.body.uczestnicy.map(String).slice(0, 12) : [];
-            res.json({ success: true, ...(await fn(req.params.id, { uczestnicy, kto: dostep.urzadzenie || 'Katedra' })) });
+            const { rundy, petla } = req.body ?? {};   // przyjmij / doskonal: rundy doskonalenia i pętla kreatywna
+            res.json({ success: true, ...(await fn(req.params.id, { uczestnicy, rundy, petla, kto: dostep.urzadzenie || 'Katedra' })) });
         } catch (e) { res.status(400).json({ success: false, message: e.message }); }
     });
 }

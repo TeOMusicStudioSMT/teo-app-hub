@@ -75,6 +75,11 @@ h3 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: v
 .krok.trwa { border-color: var(--zloto); color: var(--zloto); }
 .krok.blad { border-color: var(--blad); color: var(--blad); }
 .uczestnicy { display: flex; flex-wrap: wrap; gap: 8px; }
+.rundy { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.rundy label { font-size: 13px; display: flex; gap: 6px; align-items: center; color: var(--cichy); }
+.rundy input[type=number] { width: 56px; font: 14px var(--f); color: var(--tekst); background: var(--noc); border: 1px solid var(--linia); border-radius: 8px; padding: 6px; }
+.ocena { font-size: 13px; margin: 4px 0; }
+.ocena b { color: var(--zloto); }
 .uczestnicy label { font-size: 13px; background: var(--noc); border: 1px solid var(--linia); border-radius: 999px; padding: 5px 10px; display: flex; gap: 6px; align-items: center; }
 .tasma { position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); display: flex; gap: 8px; align-items: center;
   background: var(--noc-2); border: 1px solid var(--linia); border-radius: 14px; padding: 8px 10px; }

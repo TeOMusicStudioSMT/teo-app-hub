@@ -70,6 +70,20 @@ export const ROLE = {
 
 const MAX_UCZESTNIKOW = 12;
 const MAX_WKLADU = 4000;
+/**
+ * RUNDY DOSKONALENIA i PĘTLA KREATYWNA (Suweren 2026-09-27: „małe modele i lokalne… rundy
+ * samoudoskonalenia… dokładanie kolejnych cegiełek… aż produkt będzie miał ten cały obiecany efekt").
+ *   runda  = całe stado jeszcze raz: każdy bierze SWÓJ poprzedni wkład, Biblię i braki wskazane przez
+ *            Sędziego i oddaje pełną, lepszą wersję; potem nowa Biblia i nowa ocena. Koniec po `rundy`
+ *            albo wcześniej, gdy Sędzia da ≥ CEL_OCENY (wizja spełniona).
+ *   pętla  = na każdym punkcie planu: autor czyta swój szkic krytycznie względem wizji i oddaje
+ *            poprawioną wersję — `petla` razy, zanim przekaże pałeczkę dalej.
+ * Sędzia to Wektor (spójność), gdy jest w zespole, inaczej scalacz — na swoim modelu.
+ */
+export const MAX_RUND = 5;
+export const MAX_PETLI = 3;
+export const CEL_OCENY = 9;
+const wLimicie = (v, min, max, dom) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dom; };
 const ID = /^[a-z0-9-]{2,40}$/;
 const trwajace = new Set();
 /** `${projekt}/${zlecenie}` — zlecenia w kolejce albo w pracy w TYM procesie mostu. */
@@ -85,11 +99,19 @@ async function zapisz(p) {
 }
 export async function projekt(id) {
     if (!ID.test(String(id))) return null;
+    // ⚠️ Stan pracy łapiemy PRZED i PO odczycie. Odczyt pliku bywa sprzed ostatniego zapisu (otwarty stary plik,
+    // a w międzyczasie praca zapisała koniec i zeszła z listy) — sam test „po" widział wtedy „trwa" bez pracy
+    // i mówił „przerwany", a Nocna Zmiana brała udaną rundę za błąd. Przerwane = nie żyło ani przed, ani po.
+    const zywyPrzed = trwajace.has(id);
+    const aktywnePrzed = new Set([...aktywne].filter((a) => a.startsWith(`${id}/`)));
     let p;
     try { p = JSON.parse(await fs.readFile(plik(id), 'utf8')); } catch { return null; }
     // Po restarcie mostu praca z pliku nie wraca sama — mówimy „przerwane", a nie udajemy, że trwa.
-    if (p.stan === 'trwa' && !trwajace.has(p.id)) p.stan = 'przerwany';
-    for (const z of p.zlecenia ?? []) if ((z.stan === 'czeka' || z.stan === 'trwa') && !aktywne.has(`${p.id}/${z.id}`)) z.stan = 'przerwane';
+    if (p.stan === 'trwa' && !zywyPrzed && !trwajace.has(p.id)) p.stan = 'przerwany';
+    for (const z of p.zlecenia ?? []) {
+        const klucz = `${p.id}/${z.id}`;
+        if ((z.stan === 'czeka' || z.stan === 'trwa') && !aktywnePrzed.has(klucz) && !aktywne.has(klucz)) z.stan = 'przerwane';
+    }
     return p;
 }
 export async function lista() {
@@ -106,8 +128,10 @@ export async function lista() {
 export function skrot(p) {
     return {
         id: p.id, nazwa: p.nazwa, wizja: p.wizja.slice(0, 300), stan: p.stan, od: p.od, do: p.do ?? null, zalozyl: p.zalozyl ?? null,
-        kroki: p.kroki.map(({ agent, imie, zadanie, model, stan, fala }) => ({ agent, imie, zadanie, model, stan, fala })),
+        kroki: p.kroki.map(({ agent, imie, zadanie, model, stan, fala, petle }) => ({ agent, imie, zadanie, model, stan, fala, petle: petle ?? 0 })),
         gotowe: p.kroki.filter((k) => k.stan === 'gotowe').length, razem: p.kroki.length,
+        runda: p.runda ?? 1, rundy: p.rundy ?? 1, petla: p.petla ?? 0,
+        oceny: (p.oceny ?? []).map(({ runda, ocena, braki, kto }) => ({ runda, ocena, braki, kto })),
         zlecenia: (p.zlecenia ?? []).map(({ id, modul, agent, imie, opis, stan }) => ({ id, modul, agent, imie, opis, stan })),
     };
 }
@@ -132,7 +156,7 @@ export function zaplanuj(uczestnicy) {
  * Załóż projekt i uruchom pracę w tle. Zwraca od razu (id); postęp idzie szyną i plikiem.
  * @param {{ nazwa:string, wizja:string, uczestnicy:{id:string, imie:string, dziedzina?:string}[] }} o
  */
-export async function zaloz({ nazwa, wizja, uczestnicy, samoZlecanie = true, zalozyl = null }) {
+export async function zaloz({ nazwa, wizja, uczestnicy, samoZlecanie = true, zalozyl = null, rundy = 1, petla = 0 }) {
     const n = String(nazwa ?? '').trim().slice(0, 80);
     const w = String(wizja ?? '').trim().slice(0, 3000);
     if (!n) throw new Error('Nadaj projektowi nazwę.');
@@ -145,57 +169,234 @@ export async function zaloz({ nazwa, wizja, uczestnicy, samoZlecanie = true, zal
     const p = {
         id, nazwa: n, wizja: w, stan: 'trwa', od: new Date().toISOString(), samoZlecanie: samoZlecanie !== false,
         zalozyl: zalozyl ? String(zalozyl).slice(0, 60) : null,   // null = przy Katedrze; inaczej nazwa sparowanego urządzenia
+        runda: 1, rundy: wLimicie(rundy, 1, MAX_RUND, 1), petla: wLimicie(petla, 0, MAX_PETLI, 0), oceny: [],
         kroki: await Promise.all(zaplanuj(lista2).map(async (k) => ({
             ...k, model: (await cfg.modelDla(k.agent).catch(() => null)) || cfg.domyslnyModel, stan: 'czeka', wklad: null,
         }))),
     };
     trwajace.add(id);   // przed zapisem — inaczej czytelnik zobaczyłby „trwa" bez pracy i uznał za przerwany
     try { await zapisz(p); } catch (e) { trwajace.delete(id); throw e; }
-    nadaj('Stado', `nowy wspólny projekt „${n}" — ${lista2.map((u) => u.imie).join(', ')}${p.zalozyl ? ` (zlecony z urządzenia „${p.zalozyl}")` : ''}`, { projekt: id });
+    nadaj('Stado', `nowy wspólny projekt „${n}" — ${lista2.map((u) => u.imie).join(', ')}${p.rundy > 1 ? ` · ${p.rundy} rund doskonalenia` : ''}${p.petla ? ` · pętla kreatywna ×${p.petla}` : ''}${p.zalozyl ? ` (zlecony z urządzenia „${p.zalozyl}")` : ''}`, { projekt: id });
     pracuj(p).catch(() => {}).finally(() => trwajace.delete(id));
     return skrot(p);
 }
 
-async function pracuj(p) {
-    for (const k of p.kroki) {
-        k.stan = 'trwa'; k.od = new Date().toISOString();
-        await zapisz(p);
-        nadaj(k.imie, `pracuje nad „${p.nazwa}": ${k.zadanie.split(':')[0]}`, { projekt: p.id });
-        try {
-            const karta = await cfg.karta(k.agent).catch(() => null);
-            const poprzednie = p.kroki.filter((x) => x.stan === 'gotowe' && x.wklad);
-            const system = `${karta?.tresc ?? `Jesteś ${k.imie} — TeOgochi Katedry OtakOS.`}
+const scalacz = (p) => p.kroki.find((k) => k.synteza);
+const biblia = (p) => { const s = scalacz(p); return s?.stan === 'gotowe' ? s.wklad ?? '' : ''; };
+
+/** System dla autora wkładu: jego karta roli + zasady pracy zespołu. */
+async function systemDla(k) {
+    const karta = await cfg.karta(k.agent).catch(() => null);
+    return `${karta?.tresc ?? `Jesteś ${k.imie} — TeOgochi Katedry OtakOS.`}
 
 PRACUJESZ W ZESPOLE. Stado TeOgochi robi razem jeden projekt Suwerena; każdy wnosi to, co umie najlepiej.
 Opieraj się na wkładach kolegów, nie przecz im. Piszesz po polsku, konkretnie, bez wstępów i bez markdownowych nagłówków.
 ${k.synteza ? 'Jesteś SCALACZEM: masz przed sobą wszystkie wkłady — złóż z nich jedną całość (do 450 słów).' : 'Twój wkład: do 250 słów.'}`;
-            const user = `PROJEKT: ${p.nazwa}
+}
+
+/** Treść zadania dla kroku `k` w bieżącej rundzie — pierwsza runda buduje, kolejne doskonalą. */
+function zadanieDla(p, k) {
+    const inni = p.kroki.filter((x) => x !== k && !x.synteza && x.wklad && (x.stan === 'gotowe' || p.runda > 1));
+    const zespol = inni.length
+        ? `WKŁADY ZESPOŁU DO TEJ PORY:\n${inni.map((x) => `— ${x.imie}: ${x.wklad.slice(0, k.synteza ? 1800 : 1200)}`).join('\n\n')}`
+        : 'Jesteś pierwszy — kładziesz fundament.';
+    const naglowek = `PROJEKT: ${p.nazwa}\nWIZJA SUWERENA:\n${p.wizja}`;
+    if (p.runda <= 1) return `${naglowek}\n\n${zespol}\n\nTWOJE ZADANIE (${k.imie}):\n${k.zadanie}`;
+    const ocena = (p.oceny ?? []).find((o) => o.runda === p.runda - 1);
+    const braki = ocena?.braki?.length ? ocena.braki.map((b) => `- ${b}`).join('\n') : '- (Sędzia nie wskazał braków — pogłębiaj i konkretyzuj)';
+    const poprzedniaBiblia = (p.bibliaPoprzednia ?? '').slice(0, 1500);
+    return `${naglowek}
+
+RUNDA ${p.runda} z ${p.rundy} — DOSKONALENIE. Nie zaczynaj od zera: projekt już ma kształt, Ty go rozbudowujesz.
+${poprzedniaBiblia ? `BIBLIA Z RUNDY ${p.runda - 1}:\n${poprzedniaBiblia}\n` : ''}
+BRAKI WSKAZANE PRZEZ SĘDZIEGO${ocena?.ocena != null ? ` (zgodność z wizją ${ocena.ocena}/10)` : ''}:
+${braki}
+
+${zespol}
+
+${k.synteza ? 'TWOJA POPRZEDNIA BIBLIA' : 'TWÓJ WKŁAD Z POPRZEDNIEJ RUNDY'}:
+${(k.wklad ?? '(nie powstał — napisz go teraz)').slice(0, 2000)}
+
+TWOJE ZADANIE (${k.imie}):
+${k.zadanie}
+Dołóż kolejne cegiełki: domknij braki ze swojej dziedziny, usuń sprzeczności z zespołem, zamień ogólniki na konkrety.
+Oddaj PEŁNĄ nową wersję (nie listę zmian). Linie dla maszyny (PRODUKT:, MUZYKA:, REFREN:, OBIEKT:, UJĘCIE:) zachowaj albo popraw.`;
+}
+
+/** Pętla kreatywna jednego punktu planu: autor krytycznie czyta swój szkic i oddaje lepszą wersję. */
+async function szlifuj(p, k, system, szkic) {
+    let tekst = szkic;
+    k.petle = 0;
+    for (let i = 1; i <= (p.petla ?? 0); i++) {
+        nadaj(k.imie, `szlifuje ${k.synteza ? 'Biblię' : 'wkład do'} „${p.nazwa}" — pętla ${i}/${p.petla}`, { projekt: p.id });
+        try {
+            const lepszy = String(await cfg.chat(k.model, [{ role: 'system', content: system }, { role: 'user', content: `PROJEKT: ${p.nazwa}
 WIZJA SUWERENA:
 ${p.wizja}
 
-${poprzednie.length ? `WKŁADY ZESPOŁU DO TEJ PORY:\n${poprzednie.map((x) => `— ${x.imie}: ${x.wklad.slice(0, k.synteza ? 1800 : 1200)}`).join('\n\n')}` : 'Jesteś pierwszy — kładziesz fundament.'}
-
 TWOJE ZADANIE (${k.imie}):
-${k.zadanie}`;
-            const tekst = String(await cfg.chat(k.model, [{ role: 'system', content: system }, { role: 'user', content: user }]) ?? '').trim();
-            if (!tekst) throw new Error('model oddał pustą odpowiedź');
-            k.wklad = tekst.slice(0, MAX_WKLADU);
-            k.stan = 'gotowe';
-            nadaj(k.imie, `oddał${k.synteza ? ' Biblię projektu' : ' wkład do'} „${p.nazwa}"`, { projekt: p.id });
-            await nagrodz(k.agent, k.imie, k.synteza ? 'biblia' : 'wklad', `projekt:${p.id}:${k.agent}${k.synteza ? ':biblia' : ''}`, `${k.synteza ? 'Biblię' : 'wkład'} „${p.nazwa}"`, p.id);
+${k.zadanie}
+
+TWÓJ SZKIC:
+${tekst}
+
+PĘTLA KREATYWNA ${i}/${p.petla}: przeczytaj szkic krytycznie względem wizji Suwerena i zadania — co jest ogólnikowe, czego brakuje, co kłóci się z zespołem, co można zrobić odważniej? Potem oddaj WYŁĄCZNIE poprawioną, pełną wersję (bez komentarza o poprawkach). Linie dla maszyny (PRODUKT:, MUZYKA:, REFREN:, OBIEKT:, UJĘCIE:) zachowaj.` }]) ?? '').trim();
+            if (!lepszy) break;          // pusta odpowiedź — zostaje poprzednia wersja
+            tekst = lepszy;
+            k.petle = i;
         } catch (e) {
+            k.bladPetli = String(e.message || e).slice(0, 200);   // szkic przed pętlą zostaje — to nie jest błąd kroku
+            break;
+        }
+    }
+    return tekst;
+}
+
+/** Jedna runda: każdy krok planu po kolei (w pierwszej budowa, w kolejnych doskonalenie), na końcu scalenie. */
+async function runda(p) {
+    for (const k of p.kroki) {
+        k.stan = 'trwa'; k.od = new Date().toISOString();
+        await zapisz(p);
+        nadaj(k.imie, p.runda > 1
+            ? `doskonali „${p.nazwa}" (runda ${p.runda}/${p.rundy}): ${k.zadanie.split(':')[0]}`
+            : `pracuje nad „${p.nazwa}": ${k.zadanie.split(':')[0]}`, { projekt: p.id });
+        try {
+            const system = await systemDla(k);
+            const szkic = String(await cfg.chat(k.model, [{ role: 'system', content: system }, { role: 'user', content: zadanieDla(p, k) }]) ?? '').trim();
+            if (!szkic) throw new Error('model oddał pustą odpowiedź');
+            k.wklad = (await szlifuj(p, k, system, szkic)).slice(0, MAX_WKLADU);
+            k.stan = 'gotowe'; k.blad = null; k.runda = p.runda;
+            nadaj(k.imie, `oddał${k.synteza ? ' Biblię projektu' : ' wkład do'} „${p.nazwa}"${p.rundy > 1 ? ` (runda ${p.runda}/${p.rundy})` : ''}${k.petle ? ` po ${k.petle} ${k.petle === 1 ? 'pętli' : 'pętlach'}` : ''}`, { projekt: p.id });
+            // Każda runda to nowa praca — płaci osobno (runda 1 zostaje przy starym kluczu).
+            const r = p.runda > 1 ? `:r${p.runda}` : '';
+            await nagrodz(k.agent, k.imie, k.synteza ? 'biblia' : 'wklad', `projekt:${p.id}:${k.agent}${k.synteza ? ':biblia' : ''}${r}`, `${k.synteza ? 'Biblię' : 'wkład'} „${p.nazwa}"${r ? ` (runda ${p.runda})` : ''}`, p.id);
+        } catch (e) {
+            // W rundzie doskonalenia stary wkład zostaje (wklad) — padła tylko ta próba.
             k.stan = 'blad'; k.blad = String(e.message || e).slice(0, 300);
             nadaj(k.imie, `nie dał rady w „${p.nazwa}": ${k.blad}`, { projekt: p.id });
         }
         k.do = new Date().toISOString();
         await zapisz(p);
     }
+}
+
+/**
+ * Sędzia: na ile Biblia spełnia wizję (0–10) i czego brakuje. Format odpowiedzi jest sztywny, bo czyta
+ * go maszyna; gdy model go nie trzyma, ocena = null (rundy idą dalej, tylko bez wczesnego końca).
+ */
+export function czytajOcene(tekst) {
+    const t = String(tekst ?? '');
+    const m = t.match(/ZGODNO[SŚ][CĆ]\s*\**\s*:\s*\**\s*(\d{1,2})(?:[.,]\d)?\s*(?:\/\s*10)?/i);
+    const ocena = m ? Math.min(10, Number(m[1])) : null;
+    const po = t.split(/BRAKI\s*\**\s*:/i)[1] ?? '';
+    const braki = po.split('\n').map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/\*\*/g, '').trim())
+        .filter((l) => l.length > 3 && !/^(brak|nic|żadnych)\.?$/i.test(l)).slice(0, 6).map((l) => l.slice(0, 240));
+    return { ocena, braki };
+}
+
+async function ocen(p) {
+    const tekstBiblii = biblia(p);
+    if (!tekstBiblii) return null;
+    const sedzia = p.kroki.find((k) => k.agent === 'wektor' && !k.synteza) ?? scalacz(p);
+    nadaj(sedzia.imie, `ocenia „${p.nazwa}" względem wizji (runda ${p.runda}/${p.rundy})`, { projekt: p.id });
+    let wpis;
+    try {
+        const odp = await cfg.chat(sedzia.model, [
+            { role: 'system', content: `${await systemDla({ ...sedzia, synteza: false })}\n\nJesteś teraz SĘDZIĄ projektu: surowo, uczciwie, konkretnie.` },
+            { role: 'user', content: `PROJEKT: ${p.nazwa}
+WIZJA SUWERENA (wszystkie założenia muszą być spełnione):
+${p.wizja}
+
+BIBLIA PROJEKTU (runda ${p.runda}):
+${tekstBiblii.slice(0, 3000)}
+
+Oceń, na ile Biblia spełnia WSZYSTKIE założenia wizji. Odpowiedz dokładnie w tym formacie:
+ZGODNOŚĆ: <liczba 0–10>/10
+BRAKI:
+- <konkretny brak albo sprzeczność — co zespół ma dołożyć w następnej rundzie>
+(najwyżej 5 braków; gdy wizja jest spełniona, napisz „BRAKI: brak")` },
+        ]);
+        wpis = { runda: p.runda, kto: sedzia.imie, ...czytajOcene(odp) };
+    } catch (e) {
+        wpis = { runda: p.runda, kto: sedzia.imie, ocena: null, braki: [], blad: String(e.message || e).slice(0, 200) };
+    }
+    p.oceny = [...(p.oceny ?? []).filter((o) => o.runda !== p.runda), wpis];
+    await zapisz(p);
+    nadaj(sedzia.imie, wpis.ocena != null
+        ? `„${p.nazwa}" po rundzie ${p.runda}: zgodność z wizją ${wpis.ocena}/10${wpis.braki.length ? ` — braki: ${wpis.braki.slice(0, 2).join('; ')}` : ''}`
+        : `nie umiał ocenić „${p.nazwa}"${wpis.blad ? `: ${wpis.blad}` : ' (odpowiedź bez oceny)'}`, { projekt: p.id });
+    return wpis;
+}
+
+function nastepnaRunda(p) {
+    p.bibliaPoprzednia = biblia(p);
+    p.runda = (p.runda ?? 1) + 1;
+    for (const k of p.kroki) { k.stan = 'czeka'; k.petle = 0; }
+    nadaj('Stado', `„${p.nazwa}" — runda ${p.runda}/${p.rundy}: stado dokłada kolejne cegiełki`, { projekt: p.id });
+}
+
+async function pracuj(p, { kontynuacja = false } = {}) {
+    if (kontynuacja) {
+        if (!(p.oceny ?? []).some((o) => o.runda === p.runda)) await ocen(p);   // braki poprzedniej rundy dla zespołu
+        nastepnaRunda(p);
+    }
+    let cel = false;
+    for (;;) {
+        await runda(p);
+        const cokolwiek = p.kroki.some((k) => k.stan === 'gotowe');
+        const wpis = p.rundy > 1 && cokolwiek ? await ocen(p) : null;
+        cel = wpis?.ocena != null && wpis.ocena >= CEL_OCENY;
+        if (cel || !cokolwiek || p.runda >= p.rundy) break;
+        nastepnaRunda(p);
+    }
     const bledy = p.kroki.filter((k) => k.stan === 'blad').length;
     p.stan = bledy === p.kroki.length ? 'blad' : bledy ? 'czesciowo' : 'gotowe';
     p.do = new Date().toISOString();
     await zapisz(p);
-    nadaj('Stado', `projekt „${p.nazwa}" ${p.stan === 'gotowe' ? 'skończony' : p.stan === 'czesciowo' ? `skończony z ${bledy} brakami` : 'nie powiódł się'}`, { projekt: p.id });
+    const ocena = (p.oceny ?? []).at(-1)?.ocena;
+    const tresc = `projekt „${p.nazwa}" ${p.stan === 'gotowe' ? 'skończony' : p.stan === 'czesciowo' ? `skończony z ${bledy} brakami` : 'nie powiódł się'}` +
+        `${p.rundy > 1 ? ` po ${p.runda} z ${p.rundy} rund` : ''}${ocena != null ? `, zgodność z wizją ${ocena}/10` : ''}${cel && p.runda < p.rundy ? ' — wizja spełniona przed czasem' : ''}`;
+    // `glos` = zdanie dla zapowiedzi głosowej (Hub przy maszynie, StoL na telefonie).
+    const glos = p.stan === 'blad'
+        ? `Uwaga, projekt ${p.nazwa} nie powiódł się.`
+        : `Stado skończyło projekt ${p.nazwa}${p.rundy > 1 ? ` po ${p.runda} rundach` : ''}${ocena != null ? `, zgodność z wizją ${ocena} na 10` : ''}.`;
+    nadaj('Stado', tresc, { projekt: p.id, koniec: true, stan: p.stan, ocena: ocena ?? null, glos });
     if (p.samoZlecanie && cfg.most) await zlecWszystko(p);
+}
+
+/**
+ * Kolejne rundy doskonalenia już skończonego projektu (Nocna Zmiana „×N", Stół „Doskonal").
+ * Dokłada `rundy` rund do tych, które były; `petla` zmienia pętlę kreatywną (bez podania — zostaje).
+ */
+export async function kontynuuj(id, { rundy = 1, petla } = {}) {
+    const p = await projekt(id);
+    if (!p) throw new Error('Nie ma takiego projektu.');
+    if (trwajace.has(p.id)) throw new Error('Stado właśnie pracuje nad tym projektem.');
+    if (trwajace.size) throw new Error('Stado pracuje już nad innym projektem — jedna karta graficzna, jeden projekt naraz.');
+    if (!p.kroki.some((k) => k.wklad)) throw new Error('Projekt nie ma jeszcze żadnego wkładu — nie ma czego doskonalić.');
+    if ((p.zlecenia ?? []).some((z) => aktywne.has(`${p.id}/${z.id}`))) throw new Error('Moduły jeszcze pracują nad zleceniami tego projektu.');
+    p.runda = p.runda ?? 1;
+    p.rundy = p.runda + wLimicie(rundy, 1, MAX_RUND, 1);
+    if (petla !== undefined && petla !== null && petla !== '') p.petla = wLimicie(petla, 0, MAX_PETLI, 0);
+    p.petla = p.petla ?? 0;
+    p.stan = 'trwa'; p.do = null;
+    trwajace.add(p.id);
+    try { await zapisz(p); } catch (e) { trwajace.delete(p.id); throw e; }
+    nadaj('Stado', `„${p.nazwa}" wraca na warsztat: ${p.rundy - p.runda} rund doskonalenia${p.petla ? `, pętla kreatywna ×${p.petla}` : ''}`, { projekt: p.id });
+    pracuj(p, { kontynuacja: true }).catch(() => {}).finally(() => trwajace.delete(p.id));
+    return skrot(p);
+}
+
+/** Dla sondażu Nocnej Zmiany: „trwa" dopóki stado pracuje, potem stan i ocena. */
+export async function sondaz(id) {
+    const p = await projekt(id);
+    if (!p) return null;
+    const ocena = (p.oceny ?? []).at(-1)?.ocena ?? null;
+    return {
+        stan: p.stan === 'trwa' ? 'trwa' : p.stan === 'blad' || p.stan === 'przerwany' ? 'blad' : 'gotowe',
+        blad: p.stan === 'przerwany' ? 'przerwany restartem mostu' : p.stan === 'blad' ? 'żaden krok nie wyszedł' : undefined,
+        podsumowanie: `${p.nazwa}: runda ${p.runda ?? 1}/${p.rundy ?? 1}, ${p.kroki.filter((k) => k.stan === 'gotowe').length}/${p.kroki.length} wkładów${ocena != null ? `, zgodność ${ocena}/10` : ''}`,
+    };
 }
 
 /**
@@ -267,4 +468,4 @@ export function obiekty3d(wklad) {
     return [...String(wklad ?? '').matchAll(/^\s*[-*•]?\s*OBIEKT\s*:\s*(.+)$/gim)].map((m) => m[1].trim()).filter(Boolean).slice(0, 6);
 }
 
-export default { skonfiguruj, ROLE, zaplanuj, zaloz, zlec, projekt, lista, skrot, obiekty3d };
+export default { skonfiguruj, ROLE, zaplanuj, zaloz, zlec, kontynuuj, sondaz, czytajOcene, projekt, lista, skrot, obiekty3d, MAX_RUND, MAX_PETLI, CEL_OCENY };

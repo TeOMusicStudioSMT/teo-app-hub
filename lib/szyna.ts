@@ -21,6 +21,8 @@ export interface Zdarzenie {
     rodzaj: string;
     tresc: string;
     zadanie?: string | null;
+    /** Dane dla maszyn (np. `glos` — zdanie do zapowiedzi głosowej końca projektu). */
+    dane?: unknown;
 }
 
 export interface Pracujacy {

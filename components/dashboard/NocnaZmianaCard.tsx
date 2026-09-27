@@ -18,7 +18,7 @@ const MOST = 'http://127.0.0.1:3001';
 
 interface OpisPola { nazwa: string; etykieta: string; wybor?: string; opcje?: string[]; typ?: 'liczba' | 'tekst' | 'lista'; zalezyOd?: string[]; wymagane: boolean }
 interface Robota { rodzaj: string; opis: string; pola: string[]; wymagane?: string[]; opisPol?: OpisPola[] }
-interface Zadanie { id: string; rodzaj: string; parametry: Record<string, unknown>; notatka: string; stan: 'czeka' | 'trwa' | 'gotowe' | 'blad'; dodano: string; sekund?: number; blad?: string | null; recznie?: boolean }
+interface Zadanie { id: string; rodzaj: string; parametry: Record<string, unknown>; notatka: string; stan: 'czeka' | 'trwa' | 'gotowe' | 'blad'; dodano: string; sekund?: number; blad?: string | null; recznie?: boolean; powtorzenia?: number; wykonane?: number }
 interface Stan {
     wlaczona: boolean;
     bezczynnySek: number | null;
@@ -26,9 +26,9 @@ interface Stan {
     powody: string[];
     trwa: { id: string; rodzaj: string; od: string } | null;
     ostatnieSprawdzenie: number | null;
-    prog: { bezczynnoscS: number; minRamGb: number; minVramMiB: number; coIleS: number };
+    prog: { bezczynnoscS: number; minRamGb: number; minVramMiB: number; coIleS: number; maxPowtorzen?: number };
     zadania: Zadanie[];
-    dziennik: { kiedy: string; rodzaj: string; stan: string; sekund: number; blad: string | null; recznie?: boolean }[];
+    dziennik: { kiedy: string; rodzaj: string; stan: string; sekund: number; blad: string | null; recznie?: boolean; powtorzenie?: string }[];
     roboty: Robota[];
 }
 
@@ -48,6 +48,8 @@ export const NocnaZmianaCard: React.FC = () => {
     const [rodzaj, setRodzaj] = useState('');
     // Parametry jako obiekt — pola z wyborem (projekt, odcinek, reżyser…) idą z list mostu, nie z pamięci.
     const [parametry, setParametry] = useState<Record<string, string>>({});
+    // ×N: zadanie wraca do kolejki po każdym udanym przebiegu (np. kolejne rundy Projektu Stada przez całą noc).
+    const [powtorzenia, setPowtorzenia] = useState('1');
     const [zajety, setZajety] = useState(false);
 
     const odswiez = useCallback(async () => {
@@ -93,7 +95,7 @@ export const NocnaZmianaCard: React.FC = () => {
         }
         setZajety(true);
         try {
-            await zMostu('/api/nocna/dodaj', { method: 'POST', body: JSON.stringify({ rodzaj, parametry: p }) }); setParametry({}); await odswiez();
+            await zMostu('/api/nocna/dodaj', { method: 'POST', body: JSON.stringify({ rodzaj, parametry: p, powtorzenia: Number(powtorzenia) || 1 }) }); setParametry({}); setPowtorzenia('1'); await odswiez();
             if (stan?.wlaczona) toast.success('Dodane do kolejki — ruszy, gdy odejdziesz od klawiatury.');
             else toast('Dodane — ale Zmiana jest WYŁĄCZONA. Włącz ją, inaczej zadanie będzie czekać na ręczny start.', { icon: '⚠️', duration: 9000 });
         }
@@ -174,6 +176,7 @@ export const NocnaZmianaCard: React.FC = () => {
                                     <div className="min-w-0">
                                         <span className={`font-mono ${KOLOR_STANU[z.stan]}`}>{z.stan}</span>
                                         <span className="ml-2 text-slate-200">{stan.roboty.find((r) => r.rodzaj === z.rodzaj)?.opis ?? z.rodzaj}</span>
+                                        {(z.powtorzenia ?? 1) > 1 && <span className="ml-2 rounded bg-indigo-500/20 px-1 font-mono text-[10px] text-indigo-200" title="przebiegi zrobione / zaplanowane">×{z.wykonane ?? 0}/{z.powtorzenia}</span>}
                                         {Object.keys(z.parametry ?? {}).length > 0 && <span className="ml-2 text-[10px] text-slate-500">{JSON.stringify(z.parametry)}</span>}
                                         {z.blad && <div className="text-[10px] text-red-300">{z.blad}</div>}
                                     </div>
@@ -192,6 +195,9 @@ export const NocnaZmianaCard: React.FC = () => {
                                     <option value="">— robota z białej listy —</option>
                                     {stan.roboty.map((r) => <option key={r.rodzaj} value={r.rodzaj}>{r.opis}</option>)}
                                 </select>
+                                <label className="flex items-center gap-1 text-[10px] text-slate-500" title="Ile razy powtórzyć — każdy przebieg po otwarciu bram; błąd przerywa serię">
+                                    ×<input type="number" min={1} max={stan.prog.maxPowtorzen ?? 20} value={powtorzenia} onChange={(e) => setPowtorzenia(e.target.value)} className="w-11 rounded border border-slate-700 bg-black/40 px-1 py-1 text-[11px] text-slate-200" />
+                                </label>
                                 <button onClick={dodaj} disabled={!rodzaj || zajety} className="rounded bg-indigo-500/30 px-2 text-indigo-200 disabled:opacity-40" title="Dodaj do kolejki"><Plus size={14} /></button>
                             </div>
                             {wybrana && (wybrana.opisPol?.length ?? 0) > 0 && (
@@ -209,7 +215,7 @@ export const NocnaZmianaCard: React.FC = () => {
                                 <ul className="mt-1 space-y-0.5">
                                     {stan.dziennik.slice(0, 10).map((w, i) => (
                                         <li key={i} className="font-mono">
-                                            {new Date(w.kiedy).toLocaleString('pl-PL')} · {w.rodzaj} · <span className={w.stan === 'gotowe' ? 'text-emerald-400' : 'text-red-300'}>{w.stan}</span> · {w.sekund}s{w.recznie ? ' · ręcznie' : ''}{w.blad ? ` · ${w.blad}` : ''}
+                                            {new Date(w.kiedy).toLocaleString('pl-PL')} · {w.rodzaj}{w.powtorzenie ? ` ×${w.powtorzenie}` : ''} · <span className={w.stan === 'gotowe' ? 'text-emerald-400' : 'text-red-300'}>{w.stan}</span> · {w.sekund}s{w.recznie ? ' · ręcznie' : ''}{w.blad ? ` · ${w.blad}` : ''}
                                         </li>
                                     ))}
                                 </ul>
@@ -242,6 +248,9 @@ const ZRODLA: Record<string, (zalezne: Record<string, string>) => Promise<{ id: 
     // 🛠️ projekty Kodeksa (App/Games Studio 2.0) — gry i apki z _OtakOs_Apki
     'kodeks-projekt': async () => (await zMostu<{ projekty: { id: string; nazwa: string; typ?: string; iteracji: number }[] }>('/api/appstudio/projekty')).projekty.map((p) => ({ id: p.id, nazwa: `${p.typ === 'gra' ? '🎮' : '🛠️'} ${p.nazwa} · ${p.iteracji} iter.` })),
     'biznes': async () => (await zMostu<{ biznesy: { id: string; nazwa: string }[] }>('/api/latarnik/biznesy')).biznesy,
+    // 🧩 wspólne projekty TeOgochi — z rundą i ostatnią oceną Sędziego, żeby było widać, który jeszcze nie spełnia wizji
+    'projekt-stada': async () => (await zMostu<{ projekty: { id: string; nazwa: string; stan: string; runda?: number; oceny?: { ocena: number | null }[] }[] }>('/api/stado/projekty')).projekty
+        .map((p) => { const o = p.oceny?.at(-1)?.ocena; return { id: p.id, nazwa: `${p.nazwa} · ${p.stan} · runda ${p.runda ?? 1}${o != null ? ` · ${o}/10` : ''}` }; }),
 };
 
 const PolaRoboty: React.FC<{ opisy: OpisPola[]; wartosci: Record<string, string>; onChange: (k: string, v: string) => void }> = ({ opisy, wartosci, onChange }) => {
