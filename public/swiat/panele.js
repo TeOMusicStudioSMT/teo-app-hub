@@ -14,6 +14,13 @@
 (() => {
   'use strict';
   const S = window.SwiatKatedry;
+  // Suweren (2026-09-27): na telefonie „kliknę 🌅 i nic się nie dzieje". Błąd strony nie może
+  // być niemy — pokazujemy go w podpisie pod tytułem (widać na zrzucie ekranu z telefonu).
+  const zglos = (tekst) => { const p = document.getElementById('podpis'); if (p) p.textContent = `⚠️ ${String(tekst).slice(0, 160)}`; };
+  window.addEventListener('error', (e) => zglos(e.message || 'błąd strony'));
+  window.addEventListener('unhandledrejection', (e) => zglos(e.reason?.message || e.reason || 'błąd strony'));
+  /** Zapytanie do mostu, które nie wisi w nieskończoność (tunel bywa wolny albo zerwany). */
+  const zCzasem = (ms = 15_000) => (typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(ms) } : {});
   const bogaty = (s) => (window.TekstStada ? window.TekstStada.bogaty(s) : S.esc(s));
   const $ = (id) => document.getElementById(id);
   const esc = S.esc;
@@ -145,7 +152,8 @@
   async function pokazProjekty() {
     otwartyProjekt = null;
     let lista = S.dane?.projekty ?? [];
-    try { lista = (await fetch('/api/stado/projekty', { headers: S.naglowki }).then((r) => r.json())).projekty ?? lista; } catch { /* zostaje to, co w świecie */ }
+    if (document.body.dataset.panel !== 'projekty') panelProjektu('<p class="cisza">Wczytuję projekty stada…</p>');   // od razu widać, że klik zadziałał
+    try { lista = (await fetch('/api/stado/projekty', { headers: S.naglowki, ...zCzasem() }).then((r) => r.json())).projekty ?? lista; } catch { /* zostaje to, co w świecie */ }
     const wyklute = (S.dane?.gatunki ?? []).filter((g) => g.wyklute);
     const k = panelProjektu(`
       <div class="glowa"><div class="forma">🧩</div><div><h2>Wspólne projekty stada</h2>
@@ -295,15 +303,18 @@
     return t ? `${u}${u.includes('?') ? '&' : '?'}token=${encodeURIComponent(t)}` : u;
   };
   const pamietaj = (klucz, wartosc) => { try { if (wartosc === undefined) return localStorage.getItem(klucz); localStorage.setItem(klucz, wartosc); } catch { /* bez pamięci: pokaże się znowu */ } return null; };
-  const pobierzPowitanie = () => fetch('/api/stado/powitanie', { headers: S.naglowki }).then((r) => r.json()).catch(() => null);
+  const pobierzPowitanie = () => fetch('/api/stado/powitanie', { headers: S.naglowki, ...zCzasem() })
+    .then(async (r) => { try { return await r.json(); } catch { return { success: false, message: `most odpowiedział ${r.status} — czy Katedra po git pull została uruchomiona od nowa?` }; } })
+    .catch((e) => ({ success: false, message: e.name === 'TimeoutError' ? 'most nie odpowiedział w 15 s' : e.message }));
 
   function dataLadnie(d) {
     try { return new Date(`${d}T12:00:00`).toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }); } catch { return d; }
   }
 
   async function pokazPowitanie({ sam = false } = {}) {
+    if (!sam && document.body.dataset.panel !== 'powitanie') S.pokazPanel('<p class="cisza">🌅 Wczytuję powitanie dnia…</p>', 'powitanie');   // od razu widać, że klik zadziałał
     const d = await pobierzPowitanie();
-    if (!d?.success) { if (!sam) S.pokazPanel(`<p class="cisza">Most nie oddał powitania${d?.message ? `: ${esc(d.message)}` : ''}.</p>`, 'powitanie'); return; }
+    if (!d?.success) { if (!sam) S.pokazPanel(`<p class="cisza">Most nie oddał powitania${d?.message ? `: ${esc(d.message)}` : ''}${/[.?!]$/.test(d?.message ?? '') ? '' : '.'}</p>`, 'powitanie'); return; }
     const m = d.gotowe, dzis = d.dzisiejsze;
     stop();
     const stanDzis = d.trwa ? `◐ Stado pisze dzisiejsze powitanie — ${esc(d.trwa.etap)}.`
