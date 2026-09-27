@@ -1,0 +1,53 @@
+FORGE FASHION — linia modowa TeOgochi (wersja GRV, na Stół)
+Źródło: rozmowa Podcast Twin (Iskra 🔥 / Echo 🌊), 2026-09-27. Przepisane na realia Katedry OtakOS:
+zamiast DAO / tokenów / „mintowania" — to, co ekonomia GRV i moduły Katedry już potrafią.
+Usunięte: dwie linie z błędem Ollamy (TIMEOUT) i powtórzona końcówka rozmowy.
+
+Suweren: „Pomysł na nowy projekt, jakim mogą się zająć nasze TeOgochi… jakaś cała nowa marka… zdjęcia, film, moda, gra…"
+
+🔥 ISKRA: Ruszamy! Tylko zawęźmy: coś filmowego, co opowiada historię, czy coś grywalnego, co wciąga?
+🌊 ECHO: Przy obecnym klimacie stada — doświadczenie. RPG-fashion, w którym moda sama jest mechaniką gry.
+🔥 ISKRA: RPG-fashion brzmi świeżo! Mobile czy pełna gra na PC?
+🌊 ECHO: Mobile — to nasz ekosystem (StoL, Świat klocków). A mechanika „wyboru stylu" niech buduje status: „Teogochi Grade".
+🔥 ISKRA: „Teogochi Grade" jak nowy wskaźnik! Stylizacje z realnej mody czy high-fantasy w duchu anime/Otaku?
+🌊 ECHO: Hybryda: realne trendy + motyw fantastyczny. I każdy look ma być „wearable" — z drogą do prawdziwego produktu w naszym Marketplace.
+🔥 ISKRA: Skoro każdy look da się nosić, to co napędza gracza: „wybierz i załóż" czy „stwórz i udowodnij"?
+🌊 ECHO: „Stwórz i udowodnij". Gracze projektują całe style, a ich projekty konkurują o Teogochi Grade i nagrody.
+🔥 ISKRA: A co się dzieje ze zwycięskimi projektami? Cyfrowa laurka czy prawdziwe ubranie?
+🌊 ECHO: Prawdziwy produkt. W Katedrze to już jest: najlepszy projekt trafia do Marketplace jako produkt z ceną w GRV, a każdy zakup
+       zapisuje się w rejestrze posiadanych aktywów — z pieczęcią w łańcuchu GRV. Nie potrzebujemy żadnego „mintowania":
+       księga GRV sama jest dowodem, kto co stworzył i kto co posiada.
+🔥 ISKRA: A gdyby gracze mogli zobaczyć swoje dzieła „na sobie" — w świecie gry albo przez AR w salonie?
+🌊 ECHO: W grze — tak, to droga przez Assety3D (bryła GLB) i Świat klocków. AR to jeszcze nie nasz moduł — zapisuję jako kierunek na później,
+       nie jako obietnicę.
+🔥 ISKRA: Jak to odpalić, żeby ludzie chcieli projektować i się dzielić?
+🌊 ECHO: Otwarcie przez „Teogochi Fashion Battle" — publiczny wyścig projektów. A żeby był poziom od startu: kolekcja bazowa („seed")
+       od naszych TeOgochi — Krawcowa projektuje stroje, Paleta daje barwy, a potem pole otwiera się dla fanów.
+🔥 ISKRA: A twórcy hitów — dostają tylko prestiż czy też coś realnego?
+🌊 ECHO: Realne GRV — i to już działa: przy zakupie w Marketplace 100% ceny w GRV idzie przelewem do twórcy produktu,
+       z pieczęcią w łańcuchu. To jest nasz „royalty" — bez pośredników.
+🔥 ISKRA: Trzeba to nazwać tak, żeby było czuć partnerstwo, nie tylko nagrodę!
+🌊 ECHO: „Forge Fashion" — wspólne kucie marki. Twórca nie jest podwykonawcą, jest współautorem linii.
+🔥 ISKRA: A jak twórcy mają współdecydować, co wchodzi do linii?
+🌊 ECHO: Też mamy na to narzędzia, bez DAO i bez tokenów: głosy w Marketplace — co 30 dni zostaje top 10 na moduł, reszta jest „spalana",
+       a jej cena bazowa w GRV wraca do twórców. Społeczność kuratoruje kolekcję głosami.
+       Prestiż i głos w Katedrze daje ranga: Heroldem zostaje się za osiągnięcia (nie da się tego kupić), a questy płacą GRV z puli TeO
+       za realną pracę. Nowe propozycje linii zgłasza się jako projekt — trafia na Stół, a Suweren je ratyfikuje.
+🔥 ISKRA: Czyli twórcy nie tylko głosują, ale też wnoszą propozycje — i sami decydują, ile i kiedy wypuścić?
+🌊 ECHO: Tak: twórca sam wystawia produkt i ustala cenę w GRV, głosy decydują, co zostaje w kolekcji. Popyt i podaż reguluje rynek
+       Marketplace, a nie token.
+
+──────────────────────────────────────────────
+KARTA DLA STOŁU — propozycja projektu stada
+──────────────────────────────────────────────
+Nazwa: Forge Fashion
+Wizja (dla Projektu Stada):
+  Mobilna gra RPG-fashion „stwórz i udowodnij": gracze projektują stylizacje (realne trendy + high-fantasy Otaku),
+  konkurują o „Teogochi Grade" w publicznej „Teogochi Fashion Battle". Start z kolekcją bazową od TeOgochi.
+  Zwycięskie projekty stają się produktami w Marketplace z ceną w GRV — zakup = przelew 100% do twórcy + wpis
+  w rejestrze posiadanych aktywów z pieczęcią. Kuracja kolekcji: głosy + spalanie (top 10). Prestiż: rangi i questy GRV.
+Uczestnicy (TeOgochi): Krawcowa (kolekcja strojów), Paleta (barwy, bryły 3D), Kodeks (pętla gry „stwórz i udowodnij"),
+  Reżyser (świat i bohaterowie, zwiastun), Joanna (motyw muzyczny linii), Kupiec (produkty do Marketplace).
+Co już jest w Katedrze: Marketplace GRV (przelew do twórcy, głosy, spalanie), rejestr posiadanych aktywów, Rejestr Zasobów
+  Trwałych, rangi i questy, Projekt Stada + zlecenia modułów (produkty, muzyka, bryły 3D, wideo), Świat klocków, StoL.
+Czego jeszcze NIE ma (uczciwie): gra mobilna jako osobna apka, AR, „Teogochi Grade" jako mechanika, konkurs Fashion Battle.

@@ -71,6 +71,7 @@ import * as KlockiStada    from './services/KlockiStada.js';
 import * as ModeleAgentow  from './services/ModeleAgentow.js';
 import * as ProjektStada   from './services/ProjektStada.js';
 import * as PowitanieDnia  from './services/PowitanieDnia.js';
+import * as Stol           from './services/Stol.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
@@ -10238,6 +10239,52 @@ app.post('/api/stado/projekt/:id/zlec', async (req, res) => {
     try { res.json({ success: true, ...(await ProjektStada.zlec(req.params.id)) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
+// ── 🪑 STÓŁ RATYFIKACJI (services/Stol.js) — propozycje → Projekt Stada → Biblia → ratyfikacja → moduły ──
+// Maszyna albo sparowany telefon (dostepStada). Projekt ze Stołu nie zleca modułów sam — dopiero ratyfikacja.
+Stol.skonfiguruj({
+    plik: path.join(ANTIGRAVITY_DIR, 'stol.json'),
+    szyna: Szyna,
+    projekt: (id) => ProjektStada.projekt(id),
+    zaloz: (o) => ProjektStada.zaloz(o),
+    zlec: (id) => ProjektStada.zlec(id),
+    // Imiona albo id → wyklute TeOgochi; pusta lista = całe wyklute stado (Projekt Stada bierze do 12).
+    uczestnicy: async (kogo = []) => {
+        const wyklute = ((await stanDlaTelefonu()).gatunki ?? []).filter((g) => g.wyklute);
+        const szukane = kogo.map((x) => String(x).toLowerCase());
+        const wybrani = szukane.length ? wyklute.filter((g) => szukane.includes(String(g.imie).toLowerCase()) || szukane.includes(String(g.id).toLowerCase())) : wyklute;
+        return wybrani.map((g) => ({ id: g.id, imie: g.imie, dziedzina: g.dziedzina || '' }));
+    },
+});
+app.get('/api/stol', async (req, res) => {
+    if (!(await dostepStada(req, res))) return;
+    res.json({ success: true, karty: await Stol.lista(), zrodla: Stol.ZRODLA });
+});
+app.get('/api/stol/:id', async (req, res) => {
+    if (!(await dostepStada(req, res))) return;
+    const k = await Stol.karta(req.params.id);
+    if (!k) return res.status(404).json({ success: false, message: 'Nie ma takiej karty na stole.' });
+    res.json({ success: true, karta: k });
+});
+/** POST /api/stol { tytul, tresc, zrodlo? } — połóż propozycję na stół (Podcast Twin, plik .txt, telefon). */
+app.post('/api/stol', async (req, res) => {
+    const dostep = await dostepStada(req, res);
+    if (!dostep) return;
+    try {
+        const { tytul, tresc, zrodlo } = req.body ?? {};
+        res.json({ success: true, karta: await Stol.dodaj({ tytul, tresc, zrodlo: dostep.urzadzenie ? 'telefon' : zrodlo, zalozyl: dostep.urzadzenie }) });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc], ['ratyfikuj', Stol.ratyfikuj]]) {
+    app.post(`/api/stol/:id/${akcja}`, async (req, res) => {
+        const dostep = await dostepStada(req, res);
+        if (!dostep) return;
+        try {
+            const uczestnicy = Array.isArray(req.body?.uczestnicy) ? req.body.uczestnicy.map(String).slice(0, 12) : [];
+            res.json({ success: true, ...(await fn(req.params.id, { uczestnicy, kto: dostep.urzadzenie || 'Katedra' })) });
+        } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+    });
+}
+
 /** POST /api/stado/model { agent, model } — silnik TeOgochi (pusty = domyślny). Tylko z maszyny. */
 app.post('/api/stado/model', async (req, res) => {
     try { res.json({ success: true, modele: await ModeleAgentow.ustaw(req.body?.agent, req.body?.model), domyslnyModel: DEFAULT_LLM }); }

@@ -8,7 +8,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Mic, Play, RotateCcw, Download } from 'lucide-react';
+import { Mic, Play, RotateCcw, Download, Send, FileUp } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { NotebookPodcastService, SOVEREIGN_WELCOME, rozmowaDoTekstu, czyBlad, type PodcastTurn, type TwinAnimation } from '../../src/services/NotebookPodcastService';
 import KsiegaOdbioru from './KsiegaOdbioru';
 import KwantowyTunel from './KwantowyTunel';
@@ -125,6 +126,29 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
     };
     const turWRozmowie = turns.filter(t => !czyBlad(t)).length;
 
+    // 🪑 Na Stół ratyfikacji (services/Stol.js): karta czeka na decyzję Suwerena — w Katedrze albo w StoL.
+    const plikRef = useRef<HTMLInputElement>(null);
+    const [naStol, setNaStol] = useState(false);
+    const polozNaStol = async (tytul: string, tresc: string, zrodlo: 'podcast-twin' | 'plik') => {
+        setNaStol(true);
+        try {
+            const r = await fetch('http://127.0.0.1:3001/api/stol', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tytul, tresc, zrodlo }) });
+            const d = await r.json().catch(() => ({ success: false, message: `most odpowiedział ${r.status}` }));
+            if (d.success) toast.success(`„${d.karta.tytul}" leży na Stole — decyzja w Katedrze albo w StoL`);
+            else toast.error(`Stół nie przyjął karty: ${d.message}`);
+        } catch (e) { toast.error(`Most nie odpowiada: ${(e as Error).message}`); }
+        finally { setNaStol(false); }
+    };
+    const plikNaStol = async (plik: File | undefined) => {
+        if (!plik) return;
+        const tresc = await plik.text();
+        // Tytuł: pierwsza linia pliku (bez dopisku po „—"), a gdy jej brak — nazwa pliku.
+        const pierwsza = tresc.split('\n').map(l => l.trim()).find(Boolean) ?? '';
+        const tytul = (pierwsza.split(' — ')[0] || plik.name.replace(/\.txt$/i, '')).slice(0, 80);
+        await polozNaStol(tytul, tresc, 'plik');
+        if (plikRef.current) plikRef.current.value = '';
+    };
+
     const reset = () => {
         setTurns([]); setAnim('IDLE');
         try { localStorage.removeItem(STORE_KEY); } catch { /* noop */ }
@@ -195,13 +219,13 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
             </div>
 
             {/* Sterowanie */}
-            <div className="px-6 py-4 flex gap-2">
+            <div className="px-6 py-4 flex flex-wrap gap-2">
                 <input
                     value={topic}
                     onChange={e => setTopic(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && generate()}
                     placeholder="Temat odcinka..."
-                    className="flex-1 bg-black/60 border border-fuchsia-700/30 focus:border-fuchsia-500/60 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
+                    className="flex-1 min-w-[220px] bg-black/60 border border-fuchsia-700/30 focus:border-fuchsia-500/60 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
                 />
                 <button onClick={generate} disabled={busy || !topic.trim()}
                     className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-fuchsia-700/70 hover:bg-fuchsia-600 text-white border border-fuchsia-400/40 disabled:opacity-40 transition-all">
@@ -211,6 +235,17 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
                     className="px-3 py-2 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 disabled:opacity-40 flex items-center gap-1">
                     <Download size={14} /> .txt
                 </button>
+                <button onClick={() => polozNaStol(topic.trim().slice(0, 80), rozmowaDoTekstu(topic, turns), 'podcast-twin')} disabled={turWRozmowie === 0 || naStol}
+                    title="Połóż tę rozmowę na Stół ratyfikacji (decyzja w Katedrze albo w StoL)"
+                    className="px-3 py-2 rounded-xl text-xs bg-amber-900/40 hover:bg-amber-800/50 border border-amber-600/40 text-amber-200 disabled:opacity-40 flex items-center gap-1">
+                    <Send size={14} /> Na Stół
+                </button>
+                <button onClick={() => plikRef.current?.click()} disabled={naStol}
+                    title="Połóż gotowy plik .txt na Stół (np. rozmowę przepisaną na GRV)"
+                    className="px-3 py-2 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 disabled:opacity-40 flex items-center gap-1">
+                    <FileUp size={14} /> Plik
+                </button>
+                <input ref={plikRef} type="file" accept=".txt,text/plain" className="hidden" onChange={e => plikNaStol(e.target.files?.[0])} />
                 <button onClick={reset} disabled={busy} title="Nowy odcinek (wyczyść pamięć rozmowy)"
                     className="px-3 py-2 rounded-xl text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 disabled:opacity-40">
                     <RotateCcw size={14} />
