@@ -39,6 +39,8 @@ let cfg = {
     domyslnyModel: 'gemma4:e2b',
     /** id gatunku → { tresc, imie, dziedzina } | null */
     karta: async () => null,
+    /** ({ id, xp, klucz, powod }) → nagroda XP za pracę (Stado.nagrodz); bez niej praca nie daje XP. */
+    nagroda: null,
     /** (ścieżka, body?) → JSON z trasy mostu; bez niego wkłady niczego nie zlecają. */
     most: null,
     odstepMs: 10_000,
@@ -180,6 +182,7 @@ ${k.zadanie}`;
             k.wklad = tekst.slice(0, MAX_WKLADU);
             k.stan = 'gotowe';
             nadaj(k.imie, `oddał${k.synteza ? ' Biblię projektu' : ' wkład do'} „${p.nazwa}"`, { projekt: p.id });
+            await nagrodz(k.agent, k.imie, k.synteza ? 'biblia' : 'wklad', `projekt:${p.id}:${k.agent}${k.synteza ? ':biblia' : ''}`, `${k.synteza ? 'Biblię' : 'wkład'} „${p.nazwa}"`, p.id);
         } catch (e) {
             k.stan = 'blad'; k.blad = String(e.message || e).slice(0, 300);
             nadaj(k.imie, `nie dał rady w „${p.nazwa}": ${k.blad}`, { projekt: p.id });
@@ -199,6 +202,16 @@ ${k.zadanie}`;
  * Wkłady → zlecenia modułów. Gotowe zlecenia zostają; reszta (nowe, błędne, przerwane) idzie do kolejki.
  * Zwraca, ile weszło do kolejki; na wyniki czekaj szyną albo `projekt(id)`.
  */
+/** XP za oddaną pracę — przez most (Stado.nagrodz), raz na klucz; błąd nagrody nie psuje projektu. */
+const XP = { wklad: 25, biblia: 40, zlecenie: 15 };
+async function nagrodz(agent, imie, rodzaj, klucz, powod, projektId) {
+    if (!cfg.nagroda) return;
+    try {
+        const w = await cfg.nagroda({ id: agent, xp: XP[rodzaj], klucz, powod });
+        if (w?.przyznane) nadaj(imie, `+${XP[rodzaj]} XP za ${powod} (razem ${w.xp})`, { projekt: projektId });
+    } catch { /* bez XP, praca i tak zapisana */ }
+}
+
 async function zlecWszystko(p) {
     const stare = new Map((p.zlecenia ?? []).map((z) => [`${z.modul}:${z.opis.toLowerCase()}`, z]));
     p.zlecenia = ZleceniaStada.wyciagnij(p.kroki).map((z) => {
@@ -227,6 +240,7 @@ async function wykonajZlecenie(p, z) {
         z.wynik = await ZleceniaStada.wykonaj(z, { most: cfg.most, projekt: p, odstepMs: cfg.odstepMs, limityMs: cfg.limityMs });
         z.stan = 'gotowe';
         nadaj(z.imie, `${m.ikona} ${m.nazwa} oddał „${z.opis.slice(0, 80)}" (${p.nazwa})`, { projekt: p.id });
+        await nagrodz(z.agent, z.imie, 'zlecenie', `zlecenie:${p.id}:${z.id}`, `${m.nazwa}: „${z.opis.slice(0, 60)}"`, p.id);
     } catch (e) {
         z.stan = 'blad'; z.blad = String(e.message || e).slice(0, 300);
         nadaj(z.imie, `${m.ikona} ${m.nazwa} nie zrobił „${z.opis.slice(0, 60)}": ${z.blad}`, { projekt: p.id });

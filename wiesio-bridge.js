@@ -7590,6 +7590,7 @@ ProjektStada.skonfiguruj({
     modelDla: (id) => ModeleAgentow.modelDla(id),
     karta: (id) => Persony.karta(id),
     chat: async (model, [system, user]) => (await AppStudio.pisz({ system: system.content, prompt: user.content, model, timeoutMs: 15 * 60_000 })).tekst,
+    nagroda: (o) => nagrodaZaPrace(o),   // XP za wkład i oddane zlecenie — raz na pracę
     // Wkłady same zlecają moduły (services/ZleceniaStada.js) — tymi samymi trasami, co panele Suwerena.
     most: async (sciezka, body) => {
         const r = await fetch(`http://127.0.0.1:${PORT}${sciezka}`, {
@@ -10035,7 +10036,29 @@ app.post('/api/stado/odlacz', async (req, res) => {
 });
 
 /** Stan dla telefonu — ten sam w GET /api/stado/stan (z tokenem) i w strumieniu. */
-const stanDlaTelefonu = async () => MostStada.stanDlaApki(Szyna.ostatnie({ ile: 300 }));
+/** XP za pracę stada (projekt, zlecenie, powitanie) — od wyższej z wartości: stado.json albo migawka Domu. */
+const nagrodaZaPrace = async (o) => {
+    const g = (await MostStada.stanDlaApki([]).catch(() => ({}))).gatunki?.find((x) => x.id === o.id);
+    return Stado.nagrodz({ ...o, baza: Number(g?.xp) || 0 });
+};
+
+/**
+ * Stan stada dla telefonu i Świata. Migawkę publikuje Dom TeOgochi (przeglądarka), a XP za pracę
+ * stada nalicza most (Stado.nagrodz) — bierzemy WYŻSZE, żeby nagroda była widać od razu, a nie
+ * dopiero po otwarciu Domu. Etap liczymy wtedy z XP (progi: Stado.ETAPY).
+ */
+const stanDlaTelefonu = async () => {
+    const s = await MostStada.stanDlaApki(Szyna.ostatnie({ ile: 300 }));
+    if (!Array.isArray(s.gatunki)) return s;
+    const stany = (await Stado.stan().catch(() => ({ stany: {} }))).stany ?? {};
+    return {
+        ...s,
+        gatunki: s.gatunki.map((g) => {
+            const xp = Number(stany[g.id]?.xp) || 0;
+            return xp > (Number(g.xp) || 0) ? { ...g, xp, etap: Stado.etapZXp(xp) } : g;
+        }),
+    };
+};
 // Każde zdarzenie szyny → do telefonów na strumieniu (bez pola `dane`).
 Szyna.subskrybuj((z) => StrumienStada.rozeslijZdarzenie(z));
 
@@ -10112,6 +10135,7 @@ PowitanieDnia.skonfiguruj({
     karta: (id) => Persony.karta(id),
     chat: async (model, [system, user]) => (await AppStudio.pisz({ system: system.content, prompt: user.content, model, timeoutMs: 5 * 60_000 })).tekst,
     gatunki: async () => (await stanDlaTelefonu()).gatunki ?? [],
+    nagroda: (o) => nagrodaZaPrace(o),
     zdarzenia: () => Szyna.ostatnie({ ile: 2000 }),
     dziela: async (id) => {
         const d = await KlockiStada.zbierzKlocki({

@@ -31,7 +31,9 @@ body[data-tryb="3d"] #scena3d { display: block; }
 
 .pusto { position: fixed; left: 16px; right: 16px; top: 42%; text-align: center; color: var(--cichy); margin: 0; }
 
-.katalog { position: fixed; left: 0; right: 0; bottom: 0; max-height: 78%; overflow-y: auto;
+/* Szuflada przewija się sama (pan-y) i nie przekazuje przewijania dalej (contain) — w WebView StoL-a
+   przeciągnięcie ma zostać w szufladzie, nie iść do gospodarza. */
+.katalog { position: fixed; left: 0; right: 0; bottom: 0; max-height: 78%; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain;
   background: var(--noc-2); border-top: 1px solid var(--linia); border-radius: 18px 18px 0 0;
   padding: 18px 16px calc(env(safe-area-inset-bottom, 0px) + 20px); box-shadow: 0 -12px 40px #0008; }
 .zamknij { position: sticky; top: 0; float: right; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--linia);

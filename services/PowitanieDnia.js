@@ -64,6 +64,8 @@ let cfg = {
     pobierz: null,
     /** (ścieżka, body?) → JSON z trasy mostu — do ujęć z ComfyUI; bez niego sceny są z dzieł. */
     most: null,
+    /** ({ id, xp, klucz, powod }) → nagroda XP (Stado.nagrodz); sentencja do filmu to praca. */
+    nagroda: null,
     /** → ścieżka utworu albo null */
     muzyka: async () => null,
     ffmpeg: 'ffmpeg',
@@ -304,6 +306,7 @@ export async function zrob({ data = dzien(), teraz = Date.now() } = {}) {
                 const { sentencja, obraz } = odczytaj(await cfg.chat(model, wiadomosci({ g: u.g, slady: u.slady, karta, data, reszta })));
                 if (!sentencja) throw new Error('model oddał pustą odpowiedź');
                 sentencje.push({ u, s: { agent: u.g.id, imie: u.g.imie, kolor: u.g.kolor ?? null, model, sentencja, obraz } });
+                await cfg.nagroda?.({ id: u.g.id, xp: 5, klucz: `powitanie:${data}:${u.g.id}`, powod: `sentencja powitania ${data}` })?.catch?.(() => {});
             } catch (e) {
                 meta.sceny.push({ agent: u.g.id, imie: u.g.imie, model, blad: String(e.message || e).slice(0, 200) });
             }
