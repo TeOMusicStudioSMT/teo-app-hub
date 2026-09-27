@@ -21,6 +21,45 @@ export interface PodcastTurn {
     hostA: string;
     hostB: string;
     triggerAnimation: TwinAnimation;
+    /** Tura zastępcza, gdy most/Ollama milczy — nie jest częścią rozmowy (pamięć, eksport). */
+    blad?: boolean;
+}
+
+/**
+ * Co Katedra NAPRAWDĘ ma — gospodarze opierają pomysły na tym, a nie na ogólnikach z Web3.
+ * Suweren (2026-09-27): „Podcast Twin nie wie, że mamy własne GRV i te rzeczy, o których mówią".
+ * Fakty z mostu: wiesio-bridge.js (/api/grv/*, /api/market/*), services/Rangi.js, Questy.js,
+ * ProjektStada.js, ZleceniaStada.js. Zmieniasz ekonomię — zmień i tu.
+ */
+export const WIEDZA_KATEDRY = [
+    'WIEDZA O KATEDRZE (opieraj się na tym, nie wymyślaj):',
+    '• Katedra OtakOS działa lokalnie, na sprzęcie Suwerena. Bez chmury, bez blockchaina, bez kryptowalut i giełd.',
+    '• GRV — własna waluta Katedry: księga z pieczęcią (łańcuch hashy), zarządca TeO, nowy węzeł dostaje 1000 GRV.',
+    '• Marketplace w GRV: twórca wystawia produkt i sam ustala cenę; zakup = przelew 100% ceny do twórcy + wpis w rejestrze posiadanych aktywów z pieczęcią. To jest nasz „royalty" — bez pośredników.',
+    '• Kuracja społeczności: głosy w Marketplace; co 30 dni zostaje top 10 na moduł, reszta jest spalana, a jej cena bazowa w GRV wraca do twórców.',
+    '• Prestiż i głos: rangi Katedry (Herold za osiągnięcia — nie da się kupić; Filar; Founder z puli 26 kluczy), questy płacą GRV za realną pracę, Rejestr Zasobów Trwałych.',
+    '• Stado TeOgochi pracuje nad projektami (Projekt Stada) i samo zleca moduły: produkty do Marketplace, muzykę, bryły 3D (Assety3D), wideo (ComfyUI). Za pracę dostaje XP.',
+    '• Świat klocków (2D/3D) i apka StoL na telefon; Stół = propozycje, które Suweren ratyfikuje.',
+    'Nie proponuj DAO, tokenów zarządczych, NFT ani „mintowania" — to, czego szukacie, GRV już robi (nazwij właściwy mechanizm).',
+    'Jeśli pomysł wymaga czegoś, czego Katedra nie ma (np. AR, osobna apka gry), powiedz to wprost jako kierunek na później.',
+].join('\n');
+
+/** Tura zastępcza z błędem mostu — też ze starej pamięci, zapisanej zanim tury dostały pole `blad`. */
+export const czyBlad = (t: PodcastTurn): boolean =>
+    !!t.blad || (/rdzeń milczy \(/.test(t.hostA) && /Most Wiesława śpi/.test(t.hostB));
+
+/**
+ * Rozmowa → tekst do pliku (i na Stół): temat Suwerena + tury Iskry i Echa, bez tur z błędem mostu.
+ * Ten sam układ, w którym Suweren zapisywał rozmowy ręcznie.
+ */
+export function rozmowaDoTekstu(temat: string, tury: PodcastTurn[]): string {
+    const linie = [`Suweren: "${temat.trim()}"`, ''];
+    for (const t of tury) {
+        if (czyBlad(t)) continue;
+        if (t.hostA?.trim()) linie.push(`🔥 ISKRA: ${t.hostA.trim()}`);
+        if (t.hostB?.trim()) linie.push(`🌊 ECHO: ${t.hostB.trim()}`);
+    }
+    return `${linie.join('\n')}\n`;
 }
 
 export class NotebookPodcastService {
@@ -33,6 +72,8 @@ export class NotebookPodcastService {
             '• HOST A ("Iskra") — energiczna, ciekawska, zadaje pytania, wprowadza tematy.',
             '• HOST B ("Echo") — analityczny, spokojny, pogłębia, podsumowuje, dorzuca fakt.',
             'Rozmawiacie naturalnie, krótko (1-3 zdania na osobę), z humorem i konkretem.',
+            '',
+            WIEDZA_KATEDRY,
             '',
             'Odpowiadaj WYŁĄCZNIE w formacie JSON (bez markdown, bez tekstu poza JSON):',
             '{"hostA":"...","hostB":"...","triggerAnimation":"A_SPEAKING|B_SPEAKING|BOTH|IDLE"}',
@@ -55,6 +96,7 @@ export class NotebookPodcastService {
         const model = NotebookPodcastService.getModel();
         const system = NotebookPodcastService.buildSystemPrompt();
         // Pamięć: ostatnie 6 tur jako kontekst, żeby gospodarze NIE kręcili się w kółko.
+        history = history.filter(t => !czyBlad(t));   // tura „rdzeń milczy" to nie wątek rozmowy
         const prior = history.slice(-6).map((t, i) => `[tura ${history.length - Math.min(6, history.length) + i + 1}] A: ${t.hostA}\nB: ${t.hostB}`).join('\n');
         const userPrompt =
             `TEMAT ODCINKA: "${context}"\n` +
@@ -98,6 +140,7 @@ export class NotebookPodcastService {
                 hostA: `Hmm, rdzeń milczy (${error?.message || 'offline'}). Spróbujmy za chwilę?`,
                 hostB: 'Most Wiesława śpi. Suweren wie co robić — odpalić wiesio-bridge.js. :)',
                 triggerAnimation: 'BOTH',
+                blad: true,
             };
         }
     }
