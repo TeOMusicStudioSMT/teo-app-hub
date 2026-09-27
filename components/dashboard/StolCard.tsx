@@ -6,7 +6,10 @@
  * (services/MostStada.js: kod 6 cyfr, 5 minut, jednorazowy → token urządzenia), ale żaden
  * ekran nie generował kodu — telefonu nie było jak sparować. Ta karta to domyka.
  *
- * Link w QR: otakos-stol://paruj?adres=<tunel>&k=<klucz Straży>&kod=<kod>
+ * Link parowania: otakos-stol://paruj?adres=<tunel>&k=<klucz Straży>&kod=<kod>
+ * QR prowadzi jednak na stronę mostu <tunel>/stol/paruj.html#k=…&kod=… (public/stol/paruj.html):
+ * aparaty z QR otwierają tylko https — własnego schematu otakos-stol:// nie przekazują do apki
+ * (Suweren, 2026-09-27). Strona ma przycisk „Otwórz w StoL” (intencja Androida).
  *  · adres — telefon nie widzi 127.0.0.1 komputera, więc idzie Kwantowym Tunelem,
  *  · k     — Straż Mostu bez klucza odrzuca wszystko spoza maszyny,
  *  · kod   — wymieniany RAZ na token; zdjęcie ekranu po sparowaniu kodu już nie daje.
@@ -31,9 +34,18 @@ export function linkParowaniaStol(adres: string, klucz: string, kod: string): st
 }
 
 /**
+ * Adres do QR: strona parowania na moście. Klucz i kod we fragmencie (#), którego przeglądarka
+ * nie wysyła do serwera; `do` = koniec ważności kodu (strona odlicza).
+ */
+export function linkStronyParowaniaStol(adres: string, klucz: string, kod: string, wazneDo?: number): string {
+    const q = (s: string) => encodeURIComponent(s);
+    return `${adres.replace(/\/+$/, '')}/stol/paruj.html#k=${q(klucz)}&kod=${q(kod)}${wazneDo ? `&do=${wazneDo}` : ''}`;
+}
+
+/**
  * Apka StoL do pobrania: GitHub buduje ją po każdej zmianie w OtakOS-StoL (workflow „StoL APK”)
  * i podmienia plik w wydaniu „najnowszy”, więc ten adres zawsze daje aktualną wersję.
- * Repo jest prywatne — na telefonie trzeba być zalogowanym do GitHuba.
+ * Repo jest publiczne — plik pobiera się bez logowania.
  */
 export const ADRES_APKI_STOL = 'https://github.com/TeOMusicStudioSMT/OtakOS-StoL/releases/download/najnowszy/StoL.apk';
 
@@ -72,11 +84,12 @@ export const StolCard: React.FC = () => {
     const zostalo = kod ? Math.max(0, Math.round((kod.wazneDo - teraz) / 1000)) : 0;
     const link = kod && zostalo > 0 && tunel?.stan === 'dziala' && tunel.adres && tunel.klucz
         ? linkParowaniaStol(tunel.adres, tunel.klucz, kod.kod) : null;
+    const linkQr = link && tunel?.adres && tunel.klucz && kod ? linkStronyParowaniaStol(tunel.adres, tunel.klucz, kod.kod, kod.wazneDo) : null;
 
     useEffect(() => {
-        if (!link) { setQr(null); return; }
-        QRCode.toDataURL(link, { margin: 1, width: 220, color: { dark: '#0b1220', light: '#f8fafc' } }).then(setQr).catch(() => setQr(null));
-    }, [link]);
+        if (!linkQr) { setQr(null); return; }
+        QRCode.toDataURL(linkQr, { margin: 1, width: 220, color: { dark: '#0b1220', light: '#f8fafc' } }).then(setQr).catch(() => setQr(null));
+    }, [linkQr]);
     // Po wygaśnięciu kodu sprawdź, czy telefon zdążył się sparować.
     useEffect(() => { if (kod && zostalo === 0) void odswiez(); }, [kod, zostalo, odswiez]);
 
@@ -136,7 +149,7 @@ export const StolCard: React.FC = () => {
                 <div className="flex flex-col gap-3 text-sm text-slate-300">
                     <p className="text-slate-400 text-xs leading-relaxed">
                         <b className="text-slate-300">1.</b> Zainstaluj StoL: zeskanuj mały QR pod spodem (pobiera się StoL.apk; na telefonie zaloguj się do GitHuba i pozwól na instalację z przeglądarki).{' '}
-                        <b className="text-slate-300">2.</b> „Paruj telefon” i zeskanuj duży QR aparatem — otworzy się StoL (albo skopiuj link i wklej w apce, zakładka „Katedra”; w przeglądarce nie zadziała).
+                        <b className="text-slate-300">2.</b> „Paruj telefon” i zeskanuj duży QR aparatem — otworzy się strona Katedry z przyciskiem „Otwórz w StoL” (albo skopiuj link i wklej w apce, zakładka „Katedra”).
                         Telefon obserwuje stado na żywo i może zlecić mu nowy wspólny projekt — nic więcej w Katedrze nie zmienia.
                         Kod działa 5 minut i tylko raz.
                     </p>

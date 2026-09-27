@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>StoL — parowanie z Katedrą</title>
+<!--
+  📱 Parowanie StoL-a z QR — strona pośrednia.
+  Suweren (2026-09-27): „jak zeskanuję QR aparatem, otwiera się w aplikacji Aparat, a nie w StoL".
+  Aparaty (Samsung, Xiaomi, część Pixeli) z QR otwierają tylko http(s) — własnego schematu
+  otakos-stol:// nie przekażą. Dlatego QR prowadzi tutaj (https przez tunel), a przycisk
+  otwiera StoL-a intencją Androida; bez StoL-a — pobranie APK.
+  Klucz Straży i kod są we fragmencie (#k=…&kod=…): przeglądarka NIE wysyła go do serwera.
+  Adres mostu = adres tej strony (location.origin).
+-->
+<style>
+  :root { color-scheme: dark; --noc: #0d1320; --karta: #151d2e; --linia: #26324a; --tekst: #eef1f6; --cichy: #93a0b8; --zloto: #f4c84a; --blad: #ff7a6b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--noc); color: var(--tekst);
+         font: 16px/1.5 ui-rounded, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+  main { width: 100%; max-width: 420px; background: var(--karta); border: 1px solid var(--linia); border-radius: 20px; padding: 24px; text-align: center; }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  p { margin: 8px 0; color: var(--cichy); }
+  .ikona { font-size: 48px; }
+  a.guzik { display: block; margin: 20px 0 8px; padding: 16px; border-radius: 14px; background: var(--zloto); color: #0d1320; font-weight: 700; font-size: 18px; text-decoration: none; }
+  a.drugi { color: var(--zloto); }
+  .blad { color: var(--blad); }
+  code { font-size: 12px; word-break: break-all; color: var(--cichy); }
+</style>
+</head>
+<body>
+<main>
+  <div class="ikona">📱</div>
+  <h1>Połącz StoL z Katedrą</h1>
+  <p id="opis">Stuknij przycisk — StoL otworzy się i sparuje sam.</p>
+  <a class="guzik" id="otworz" href="#">Otwórz w StoL</a>
+  <p id="czas"></p>
+  <p>Nie masz jeszcze StoL-a? <a class="drugi" id="apka" href="#">Pobierz i zainstaluj</a>, potem wróć tu i stuknij przycisk.</p>
+  <p id="blad" class="blad" hidden></p>
+</main>
+<script>
+  (function () {
+    'use strict';
+    var APKA = 'https://github.com/TeOMusicStudioSMT/OtakOS-StoL/releases/download/najnowszy/StoL.apk';
+    var PAKIET = 'com.aistudio.stol.otakos';
+    var f = new URLSearchParams(location.hash.slice(1));
+    var k = f.get('k') || '', kod = f.get('kod') || '', do_ = Number(f.get('do')) || 0;
+    var q = encodeURIComponent;
+    var zapytanie = 'adres=' + q(location.origin) + '&k=' + q(k) + '&kod=' + q(kod);
+    // Ten sam format czyta LinkParowania.kt w StoL (i linkParowaniaStol w Katedrze).
+    var linkApki = 'otakos-stol://paruj?' + zapytanie;
+    // Intencja Androida: Chrome otwiera nią StoL-a pewniej niż gołym schematem; bez StoL-a — pobranie APK.
+    var intencja = 'intent://paruj?' + zapytanie + '#Intent;scheme=otakos-stol;package=' + PAKIET + ';S.browser_fallback_url=' + q(APKA) + ';end';
+    var android = /android/i.test(navigator.userAgent);
+    var otworz = document.getElementById('otworz');
+    document.getElementById('apka').href = APKA;
+    if (!k || !kod) {
+      otworz.hidden = true;
+      var b = document.getElementById('blad');
+      b.hidden = false;
+      b.textContent = 'W tym linku brakuje kodu parowania. Wygeneruj nowy QR w Katedrze: Dashboard → karta StoL → Paruj telefon.';
+      document.getElementById('opis').hidden = true;
+      return;
+    }
+    otworz.href = android ? intencja : linkApki;
+    if (do_) {
+      var czas = document.getElementById('czas');
+      var tik = function () {
+        var s = Math.round((do_ - Date.now()) / 1000);
+        czas.textContent = s > 0 ? 'Kod ważny jeszcze ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + ' min.' : 'Kod wygasł — wygeneruj nowy QR w Katedrze.';
+        if (s <= 0) { otworz.hidden = true; clearInterval(t); }
+      };
+      var t = setInterval(tik, 1000); tik();
+    }
+    window.StolParowanie = { linkApki: linkApki, intencja: intencja };   // dla testów
+  })();
+</script>
+</body>
+</html>
