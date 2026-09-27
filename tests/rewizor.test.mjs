@@ -63,6 +63,11 @@ describe('trasy', () => {
     test('wykrywa duplikat metody + ścieżki', () => {
         assert.deepEqual(duplikaty(trasy), [{ klucz: 'GET /api/a', linie: [1, 6] }]);
     });
+    test('trasa z pętli: pełny segment ${…} to parametr, szablon w środku segmentu pominięty', () => {
+        const z = wyciagnijTrasy("for (const [akcja] of l) app.post(`/api/stol/:id/${akcja}`, h);\napp.get(`/api/x-${n}`, h);\napp.get(`${B}/api/y`, h);");
+        assert.deepEqual(z.map((t) => `${t.metoda} ${t.sciezka} ${t.zPetli ?? false}`), ['post /api/stol/:id/:akcja true']);
+        assert.ok(wzorTrasy(z[0]).test('/api/stol/k-1/doskonal'));
+    });
     test('wzorTrasy: parametry i prefiksy', () => {
         assert.ok(wzorTrasy({ sciezka: '/api/b/:id' }).test('/api/b/X'));
         assert.ok(!wzorTrasy({ sciezka: '/api/b/:id' }).test('/api/b/X/y'));

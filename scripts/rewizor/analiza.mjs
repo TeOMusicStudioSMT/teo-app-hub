@@ -100,8 +100,12 @@ export function wyciagnijTrasy(zrodlo) {
     for (const m of maskuj(zrodlo).matchAll(re)) {
         const [, metoda, , sciezka] = m;
         if (metoda === 'use' && !sciezka.startsWith('/api')) continue;   // statyki nas nie interesują
-        if (sciezka.includes('${')) continue;                            // trasa z pętli — nie da się ustalić statycznie
-        trasy.push({ metoda: metoda === 'use' ? 'use' : metoda, sciezka, linia: linia(zrodlo, m.index), prefiks: metoda === 'use' });
+        // Trasa z pętli (`/api/stol/:id/${akcja}`): pełny segment `${…}` to parametr — wiadomo, że pod nim JEST trasa.
+        // Szablon w środku segmentu albo na początku ścieżki nie da się ustalić statycznie — pomijamy jak dawniej.
+        const segmenty = sciezka.split('/');
+        if (segmenty.some((x) => x.includes('${') && !/^\$\{[^}]+\}$/.test(x)) || !sciezka.startsWith('/')) continue;
+        const wzor = segmenty.map((x) => (/^\$\{[^}]+\}$/.test(x) ? `:${x.slice(2, -1).replace(/\W/g, '') || 'x'}` : x)).join('/');
+        trasy.push({ metoda: metoda === 'use' ? 'use' : metoda, sciezka: wzor, linia: linia(zrodlo, m.index), prefiks: metoda === 'use', ...(wzor !== sciezka ? { zPetli: true } : {}) });
     }
     return trasy;
 }

@@ -20,6 +20,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
+import { rund } from './ProjektStada.js';
 
 let cfg = {
     plik: path.join(process.cwd(), '_OtakOs_Wymiar', 'stol.json'),
@@ -30,8 +31,12 @@ let cfg = {
     zaloz: async () => { throw new Error('Most nie podpiął Projektu Stada.'); },
     /** id projektu → { ile, zlecenia } */
     zlec: async () => { throw new Error('Most nie podpiął zleceń modułów.'); },
-    /** (id projektu, { rundy, petla }) → kolejne rundy doskonalenia (ProjektStada.kontynuuj) */
+    /** (id projektu, { rundy, petla, uwagi, zrodloUwag }) → kolejne rundy doskonalenia (ProjektStada.kontynuuj) */
     doskonal: async () => { throw new Error('Most nie podpiął rund doskonalenia.'); },
+    /** ({ projektStada, rundy, petla, powtorzenia }) → zadanie Nocnej Zmiany (NocnaZmiana.dodaj) */
+    nocna: async () => { throw new Error('Most nie podpiął Nocnej Zmiany.'); },
+    /** → { wlaczona, zadania } — stan Nocnej Zmiany, żeby karta pokazała, co czeka na noc */
+    nocnaStan: async () => ({ wlaczona: false, zadania: [] }),
     /** (imiona albo id) → [{ id, imie, dziedzina }] spośród wyklutych; pusta lista = wszyscy wykluci */
     uczestnicy: async () => [],
 };
@@ -108,6 +113,7 @@ export function dodaj({ tytul, tresc, zrodlo = 'hub', zalozyl = null }) {
 export async function lista({ pelne = false } = {}) {
     const d = await czytaj();
     const out = [];
+    const nocna = await cfg.nocnaStan().catch(() => ({ wlaczona: false, zadania: [] }));
     for (const k of d.karty) {
         const p = k.projekt ? await cfg.projekt(k.projekt).catch(() => null) : null;
         out.push({
@@ -121,6 +127,12 @@ export async function lista({ pelne = false } = {}) {
                 runda: p.runda ?? 1, rundy: p.rundy ?? 1, petla: p.petla ?? 0,
                 oceny: (p.oceny ?? []).map(({ runda, ocena }) => ({ runda, ocena })),
                 braki: (p.oceny ?? []).at(-1)?.braki ?? [],
+            } : null,
+            // Rundy tego projektu zaplanowane na Nocną Zmianę (robota projekt-stada-rundy) — i czy Zmiana w ogóle jest włączona.
+            nocna: k.projekt ? {
+                wlaczona: !!nocna.wlaczona,
+                zadania: (nocna.zadania ?? []).filter((z) => z.rodzaj === 'projekt-stada-rundy' && z.parametry?.projektStada === k.projekt && z.stan !== 'gotowe')
+                    .map((z) => ({ id: z.id, stan: z.stan, wykonane: z.wykonane ?? 0, powtorzenia: z.powtorzenia ?? 1, rundy: Number(z.parametry?.rundy) || 1, blad: z.blad ?? null })),
             } : null,
         });
     }
@@ -153,7 +165,7 @@ export function przyjmij(id, { uczestnicy = [], kto = null, rundy = 1, petla = 0
         const p = await cfg.zaloz({ nazwa: k.tytul, wizja: k.wizja, uczestnicy: osoby, samoZlecanie: false, zalozyl: kto, rundy, petla });
         k.stan = 'przyjeta'; k.projekt = p.id;
         zapiszDecyzje(k, 'przyjeta', kto);
-        nadaj(`Suweren przyjął „${k.tytul}" — stado zaczyna pracę (${osoby.map((o) => o.imie).join(', ')})${p.rundy > 1 ? `, ${p.rundy} rund doskonalenia` : ''}${p.petla ? `, pętla kreatywna ×${p.petla}` : ''}`);
+        nadaj(`Suweren przyjął „${k.tytul}" — stado zaczyna pracę (${osoby.map((o) => o.imie).join(', ')})${p.rundy > 1 ? `, ${rund(p.rundy)} doskonalenia` : ''}${p.petla ? `, pętla kreatywna ×${p.petla}` : ''}`);
         return { karta: k, projekt: p };
     });
 }
@@ -179,18 +191,40 @@ export function ratyfikuj(id, { kto = null } = {}) {
     });
 }
 
+/** Etapy, na których projekt karty jest skończony i można go dalej doskonalić. */
+const GOTOWY = ['do_akceptacji', 'zratyfikowane'];
+
 /**
- * Doskonal zamiast ratyfikować: Biblia jeszcze nie spełnia wizji → stado robi kolejne rundy
- * (na brakach Sędziego), karta wraca do „opracowuje", a potem znów do akceptacji.
+ * Doskonal: Biblia jeszcze nie spełnia wizji → stado robi kolejne rundy (na brakach Sędziego i uwagach
+ * Suwerena), karta wraca do „opracowuje", a potem znów do akceptacji. Także po ratyfikacji — wtedy
+ * karta czeka na NOWĄ ratyfikację (zlecenia już oddane zostają, nowe linie zlecą się po niej).
  */
-export function doskonal(id, { rundy = 1, petla, kto = null } = {}) {
+export function doskonal(id, { rundy = 1, petla, uwagi, zrodloUwag, kto = null } = {}) {
     return zmien(id, async (k, e) => {
-        if (e !== 'do_akceptacji') throw new Error(`Doskonalić można gotowy projekt — ta karta jest na etapie „${e}".`);
-        const p = await cfg.doskonal(k.projekt, { rundy, petla });
+        if (!GOTOWY.includes(e)) throw new Error(`Doskonalić można gotowy projekt — ta karta jest na etapie „${e}".`);
+        const p = await cfg.doskonal(k.projekt, { rundy, petla, uwagi, zrodloUwag: zrodloUwag ?? (kto && kto !== 'Katedra' ? `z telefonu „${kto}"` : 'Suweren') });
+        if (k.stan === 'zratyfikowana') k.stan = 'przyjeta';
         zapiszDecyzje(k, 'doskonalona', kto);
-        nadaj(`Suweren odesłał „${k.tytul}" do doskonalenia — ${p.rundy - p.runda} rund${p.petla ? `, pętla kreatywna ×${p.petla}` : ''}`);
+        nadaj(`Suweren odesłał „${k.tytul}" do doskonalenia — ${rund(p.rundy - p.runda)}${p.petla ? `, pętla kreatywna ×${p.petla}` : ''}`);
         return { karta: k, projekt: p };
     });
 }
 
-export default { skonfiguruj, dodaj, lista, karta, przyjmij, odrzuc, ratyfikuj, doskonal, etap, czytajKarte, ZRODLA };
+/**
+ * Na Nocną Zmianę: rundy doskonalenia tego projektu ×N, gdy Suweren śpi (bramy: bezczynność, karta, RAM).
+ * Z telefonu można zaplanować — włączyć samą Zmianę można tylko przy Katedrze.
+ */
+export function naNoc(id, { rundy = 1, petla, powtorzenia = 1, kto = null } = {}) {
+    return zmien(id, async (k, e) => {
+        if (!k.projekt || ![...GOTOWY, 'opracowuje'].includes(e)) throw new Error(`Na noc można dać projekt, nad którym stado już pracowało — ta karta jest na etapie „${e}".`);
+        const parametry = { projektStada: k.projekt, rundy };
+        if (petla !== undefined && petla !== null && petla !== '') parametry.petla = petla;
+        const zadanie = await cfg.nocna({ parametry, powtorzenia, notatka: `Stół: „${k.tytul}"${kto ? ` (${kto})` : ''}` });
+        const { wlaczona } = await cfg.nocnaStan().catch(() => ({ wlaczona: false }));
+        zapiszDecyzje(k, 'na_noc', kto);
+        nadaj(`„${k.tytul}" idzie na Nocną Zmianę: ${zadanie.powtorzenia} × ${rund(Number(rundy) || 1)}${wlaczona ? '' : ' (Zmiana jest WYŁĄCZONA — ruszy po włączeniu w Katedrze)'}`);
+        return { karta: k, zadanie, wlaczona };
+    });
+}
+
+export default { skonfiguruj, dodaj, lista, karta, przyjmij, odrzuc, ratyfikuj, doskonal, naNoc, etap, czytajKarte, ZRODLA };

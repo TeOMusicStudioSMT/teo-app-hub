@@ -83,6 +83,10 @@ const MAX_WKLADU = 4000;
 export const MAX_RUND = 5;
 export const MAX_PETLI = 3;
 export const CEL_OCENY = 9;
+const MAX_UWAG = 4000;
+/** 1 runda, 3 rundy, 5 rund — liczebnik po polsku do komunikatów szyny. */
+export const rund = (n) => `${n} ${n === 1 ? 'runda' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'rundy' : 'rund'}`;
+
 const wLimicie = (v, min, max, dom) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dom; };
 const ID = /^[a-z0-9-]{2,40}$/;
 const trwajace = new Set();
@@ -176,7 +180,7 @@ export async function zaloz({ nazwa, wizja, uczestnicy, samoZlecanie = true, zal
     };
     trwajace.add(id);   // przed zapisem — inaczej czytelnik zobaczyłby „trwa" bez pracy i uznał za przerwany
     try { await zapisz(p); } catch (e) { trwajace.delete(id); throw e; }
-    nadaj('Stado', `nowy wspólny projekt „${n}" — ${lista2.map((u) => u.imie).join(', ')}${p.rundy > 1 ? ` · ${p.rundy} rund doskonalenia` : ''}${p.petla ? ` · pętla kreatywna ×${p.petla}` : ''}${p.zalozyl ? ` (zlecony z urządzenia „${p.zalozyl}")` : ''}`, { projekt: id });
+    nadaj('Stado', `nowy wspólny projekt „${n}" — ${lista2.map((u) => u.imie).join(', ')}${p.rundy > 1 ? ` · ${rund(p.rundy)} doskonalenia` : ''}${p.petla ? ` · pętla kreatywna ×${p.petla}` : ''}${p.zalozyl ? ` (zlecony z urządzenia „${p.zalozyl}")` : ''}`, { projekt: id });
     pracuj(p).catch(() => {}).finally(() => trwajace.delete(id));
     return skrot(p);
 }
@@ -205,10 +209,11 @@ function zadanieDla(p, k) {
     const ocena = (p.oceny ?? []).find((o) => o.runda === p.runda - 1);
     const braki = ocena?.braki?.length ? ocena.braki.map((b) => `- ${b}`).join('\n') : '- (Sędzia nie wskazał braków — pogłębiaj i konkretyzuj)';
     const poprzedniaBiblia = (p.bibliaPoprzednia ?? '').slice(0, 1500);
+    const uw = uwagiDla(p);
     return `${naglowek}
 
 RUNDA ${p.runda} z ${p.rundy} — DOSKONALENIE. Nie zaczynaj od zera: projekt już ma kształt, Ty go rozbudowujesz.
-${poprzedniaBiblia ? `BIBLIA Z RUNDY ${p.runda - 1}:\n${poprzedniaBiblia}\n` : ''}
+${poprzedniaBiblia ? `BIBLIA Z RUNDY ${p.runda - 1}:\n${poprzedniaBiblia}\n` : ''}${uw ? `\nUWAGI SUWERENA (${uw.zrodlo}) — weź je pod uwagę w swojej dziedzinie:\n${uw.tresc.slice(0, 1500)}\n` : ''}
 BRAKI WSKAZANE PRZEZ SĘDZIEGO${ocena?.ocena != null ? ` (zgodność z wizją ${ocena.ocena}/10)` : ''}:
 ${braki}
 
@@ -221,6 +226,14 @@ TWOJE ZADANIE (${k.imie}):
 ${k.zadanie}
 Dołóż kolejne cegiełki: domknij braki ze swojej dziedziny, usuń sprzeczności z zespołem, zamień ogólniki na konkrety.
 Oddaj PEŁNĄ nową wersję (nie listę zmian). Linie dla maszyny (PRODUKT:, MUZYKA:, REFREN:, OBIEKT:, UJĘCIE:) zachowaj albo popraw.`;
+}
+
+/**
+ * Uwagi Suwerena do rund (np. rozmowa Iskry i Echo z Podcast Twin o tym, co stado już ma).
+ * Obowiązują od rundy, przed którą je dano, aż do nowych uwag.
+ */
+function uwagiDla(p) {
+    return [...(p.uwagi ?? [])].reverse().find((u) => u.odRundy <= (p.runda ?? 1)) ?? null;
 }
 
 /** Pętla kreatywna jednego punktu planu: autor krytycznie czyta swój szkic i oddaje lepszą wersję. */
@@ -309,7 +322,7 @@ ${p.wizja}
 
 BIBLIA PROJEKTU (runda ${p.runda}):
 ${tekstBiblii.slice(0, 3000)}
-
+${uwagiDla(p) ? `\nUWAGI SUWERENA do tej pracy (sprawdź, czy zespół je uwzględnił):\n${uwagiDla(p).tresc.slice(0, 1200)}\n` : ''}
 Oceń, na ile Biblia spełnia WSZYSTKIE założenia wizji. Odpowiedz dokładnie w tym formacie:
 ZGODNOŚĆ: <liczba 0–10>/10
 BRAKI:
@@ -368,7 +381,7 @@ async function pracuj(p, { kontynuacja = false } = {}) {
  * Kolejne rundy doskonalenia już skończonego projektu (Nocna Zmiana „×N", Stół „Doskonal").
  * Dokłada `rundy` rund do tych, które były; `petla` zmienia pętlę kreatywną (bez podania — zostaje).
  */
-export async function kontynuuj(id, { rundy = 1, petla } = {}) {
+export async function kontynuuj(id, { rundy = 1, petla, uwagi, zrodloUwag = 'Suweren' } = {}) {
     const p = await projekt(id);
     if (!p) throw new Error('Nie ma takiego projektu.');
     if (trwajace.has(p.id)) throw new Error('Stado właśnie pracuje nad tym projektem.');
@@ -379,10 +392,12 @@ export async function kontynuuj(id, { rundy = 1, petla } = {}) {
     p.rundy = p.runda + wLimicie(rundy, 1, MAX_RUND, 1);
     if (petla !== undefined && petla !== null && petla !== '') p.petla = wLimicie(petla, 0, MAX_PETLI, 0);
     p.petla = p.petla ?? 0;
+    const tresc = String(uwagi ?? '').trim().slice(0, MAX_UWAG);
+    if (tresc) p.uwagi = [...(p.uwagi ?? []), { odRundy: p.runda + 1, tresc, zrodlo: String(zrodloUwag).slice(0, 60), kiedy: new Date().toISOString() }].slice(-10);
     p.stan = 'trwa'; p.do = null;
     trwajace.add(p.id);
     try { await zapisz(p); } catch (e) { trwajace.delete(p.id); throw e; }
-    nadaj('Stado', `„${p.nazwa}" wraca na warsztat: ${p.rundy - p.runda} rund doskonalenia${p.petla ? `, pętla kreatywna ×${p.petla}` : ''}`, { projekt: p.id });
+    nadaj('Stado', `„${p.nazwa}" wraca na warsztat: ${rund(p.rundy - p.runda)} doskonalenia${p.petla ? `, pętla kreatywna ×${p.petla}` : ''}${tresc ? ` — z uwagami (${p.uwagi.at(-1).zrodlo})` : ''}`, { projekt: p.id });
     pracuj(p, { kontynuacja: true }).catch(() => {}).finally(() => trwajace.delete(p.id));
     return skrot(p);
 }

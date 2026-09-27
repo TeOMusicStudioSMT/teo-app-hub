@@ -150,3 +150,16 @@ test('kontynuuj: skończony projekt dostaje kolejne rundy (Nocna Zmiana, Stół)
     assert.match((await ProjektStada.sondaz(s.id)).podsumowanie, /runda 3\/3, 4\/4 wkładów, zgodność 7\/10/);
     await assert.rejects(ProjektStada.kontynuuj('nie-ma-go'), /Nie ma takiego/);
 });
+
+test('uwagi Suwerena (np. rozmowa Podcast Twin) trafiają do rund i do Sędziego', async () => {
+    const { wywolania, zdarzenia } = stadoNaNiby([5, 7]);
+    const s = await ProjektStada.zaloz({ nazwa: 'Z uwagami', wizja: 'Projekt, który wróci do rozmowy.', uczestnicy: zespol.slice(0, 2) });
+    await skonczony(s.id);
+    await ProjektStada.kontynuuj(s.id, { rundy: 1, uwagi: '🔥 ISKRA: brakuje pętli „stwórz i udowodnij"', zrodloUwag: 'rozmowa Podcast Twin' });
+    const p = await skonczony(s.id);
+    assert.deepEqual(p.uwagi.map((u) => [u.odRundy, u.zrodlo]), [[2, 'rozmowa Podcast Twin']]);
+    const r2 = wywolania.filter((w) => w.user.includes('RUNDA 2') && !w.sys.includes('SĘDZIĄ'));
+    assert.ok(r2.length >= 3 && r2.every((w) => /UWAGI SUWERENA \(rozmowa Podcast Twin\)[^]*brakuje pętli/.test(w.user)));
+    assert.match(wywolania.filter((w) => w.sys.includes('SĘDZIĄ')).at(-1).user, /UWAGI SUWERENA do tej pracy[^]*brakuje pętli/);
+    assert.ok(zdarzenia.some((z) => /wraca na warsztat: 1 runda doskonalenia — z uwagami \(rozmowa Podcast Twin\)/.test(z.tresc)));
+});

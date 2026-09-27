@@ -62,6 +62,37 @@ export function rozmowaDoTekstu(temat: string, tury: PodcastTurn[]): string {
     return `${linie.join('\n')}\n`;
 }
 
+/** Projekt stada tak, jak oddaje go most (`GET /api/stado/projekty/:id`) — tylko to, czego Twin potrzebuje. */
+export interface ProjektDoRozmowy {
+    id: string;
+    nazwa: string;
+    wizja: string;
+    stan: string;
+    runda?: number;
+    rundy?: number;
+    oceny?: { runda: number; ocena: number | null; braki?: string[] }[];
+    kroki: { imie: string; stan: string; synteza?: boolean; wklad?: string | null }[];
+}
+
+/**
+ * 🔁 Projekt wraca do gospodarzy: materiał do rozmowy o tym, co stado już ma — wizja, Biblia,
+ * oceny Sędziego i braki, skrót wkładów. Z tej rozmowy Suweren odsyła projekt na kolejne rundy.
+ */
+export function materialProjektu(p: ProjektDoRozmowy): string {
+    const biblia = p.kroki.find((k) => k.synteza && k.stan === 'gotowe')?.wklad ?? '';
+    const oceny = p.oceny ?? [];
+    const ostatnia = oceny.at(-1);
+    const wklady = p.kroki.filter((k) => !k.synteza && k.wklad).map((k) => `— ${k.imie}: ${String(k.wklad).replace(/\s+/g, ' ').slice(0, 220)}`);
+    return [
+        `PROJEKT STADA „${p.nazwa}" — ${p.stan}${(p.rundy ?? 1) > 1 || (p.runda ?? 1) > 1 ? `, po rundzie ${p.runda ?? 1} z ${p.rundy ?? 1}` : ''}`,
+        `WIZJA SUWERENA: ${p.wizja}`,
+        oceny.length ? `SĘDZIA (zgodność z wizją): ${oceny.map((o) => `R${o.runda}: ${o.ocena ?? '—'}/10`).join(', ')}` : '',
+        ostatnia?.braki?.length ? `BRAKI WSKAZANE PRZEZ SĘDZIEGO:\n${ostatnia.braki.map((b) => `- ${b}`).join('\n')}` : '',
+        biblia ? `BIBLIA PROJEKTU:\n${biblia.slice(0, 2500)}` : 'BIBLIA: jeszcze nie powstała.',
+        wklady.length ? `WKŁADY ZESPOŁU (skrót):\n${wklady.join('\n')}` : '',
+    ].filter(Boolean).join('\n\n');
+}
+
 export class NotebookPodcastService {
     /** Buduje dwuosobowy prompt systemowy z powitaniem Suwerena na starcie. */
     static buildSystemPrompt(): string {
@@ -92,7 +123,7 @@ export class NotebookPodcastService {
      * @param context  temat odcinka lub treść do omówienia.
      * @param history  poprzednie tury (dla ciągłości rozmowy).
      */
-    async generateTurn(context: string, history: PodcastTurn[] = []): Promise<PodcastTurn> {
+    async generateTurn(context: string, history: PodcastTurn[] = [], material?: string): Promise<PodcastTurn> {
         const model = NotebookPodcastService.getModel();
         const system = NotebookPodcastService.buildSystemPrompt();
         // Pamięć: ostatnie 6 tur jako kontekst, żeby gospodarze NIE kręcili się w kółko.
@@ -100,6 +131,10 @@ export class NotebookPodcastService {
         const prior = history.slice(-6).map((t, i) => `[tura ${history.length - Math.min(6, history.length) + i + 1}] A: ${t.hostA}\nB: ${t.hostB}`).join('\n');
         const userPrompt =
             `TEMAT ODCINKA: "${context}"\n` +
+            (material
+                ? `\nMATERIAŁ: projekt stada wrócił do Was z warsztatu. Omówcie go szczerze: co już jest mocne, czego brakuje względem wizji, ` +
+                  `co zespół ma dołożyć w NASTĘPNEJ rundzie — konkretnie, jako wskazówki dla TeOgochi (kto co ma zrobić).\n${material}\n`
+                : '') +
             (prior
                 ? `\nDOTYCHCZASOWA ROZMOWA (NIE powtarzaj tych wątków):\n${prior}\n` +
                   `\nWygeneruj KOLEJNĄ turę — POSUŃ rozmowę DO PRZODU, wprowadź NOWY aspekt tematu, nawiąż do poprzedniej wypowiedzi. (JSON)`

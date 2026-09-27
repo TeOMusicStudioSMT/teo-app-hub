@@ -10241,7 +10241,7 @@ app.post('/api/stado/projekt/nowy', async (req, res) => {
  */
 app.post('/api/stado/projekt/:id/runda', async (req, res) => {
     try {
-        const projekt = await ProjektStada.kontynuuj(req.params.id, { rundy: req.body?.rundy ?? 1, petla: req.body?.petla });
+        const projekt = await ProjektStada.kontynuuj(req.params.id, { rundy: req.body?.rundy ?? 1, petla: req.body?.petla, uwagi: req.body?.uwagi, zrodloUwag: req.body?.zrodloUwag });
         res.json({ success: true, projekt, sondaz: `/api/stado/projekt/${encodeURIComponent(projekt.id)}/sondaz` });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
@@ -10264,6 +10264,8 @@ Stol.skonfiguruj({
     zaloz: (o) => ProjektStada.zaloz(o),
     zlec: (id) => ProjektStada.zlec(id),
     doskonal: (id, o) => ProjektStada.kontynuuj(id, o),
+    nocna: ({ parametry, powtorzenia, notatka }) => NocnaZmiana.dodaj({ rodzaj: 'projekt-stada-rundy', parametry, powtorzenia, notatka }),
+    nocnaStan: async () => { const s = await NocnaZmiana.stanZmiany(); return { wlaczona: s.wlaczona, zadania: s.zadania }; },
     // Imiona albo id → wyklute TeOgochi; pusta lista = całe wyklute stado (Projekt Stada bierze do 12).
     uczestnicy: async (kogo = []) => {
         const wyklute = ((await stanDlaTelefonu()).gatunki ?? []).filter((g) => g.wyklute);
@@ -10291,14 +10293,17 @@ app.post('/api/stol', async (req, res) => {
         res.json({ success: true, karta: await Stol.dodaj({ tytul, tresc, zrodlo: dostep.urzadzenie ? 'telefon' : zrodlo, zalozyl: dostep.urzadzenie }) });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
-for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc], ['ratyfikuj', Stol.ratyfikuj], ['doskonal', Stol.doskonal]]) {
+for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc], ['ratyfikuj', Stol.ratyfikuj], ['doskonal', Stol.doskonal], ['nocna', Stol.naNoc]]) {
     app.post(`/api/stol/:id/${akcja}`, async (req, res) => {
         const dostep = await dostepStada(req, res);
         if (!dostep) return;
         try {
             const uczestnicy = Array.isArray(req.body?.uczestnicy) ? req.body.uczestnicy.map(String).slice(0, 12) : [];
-            const { rundy, petla } = req.body ?? {};   // przyjmij / doskonal: rundy doskonalenia i pętla kreatywna
-            res.json({ success: true, ...(await fn(req.params.id, { uczestnicy, rundy, petla, kto: dostep.urzadzenie || 'Katedra' })) });
+            // przyjmij / doskonal / nocna: rundy doskonalenia, pętla kreatywna, uwagi Suwerena, powtórzenia na noc
+            const { rundy, petla, uwagi, powtorzenia } = req.body ?? {};
+            // Skąd uwagi (np. „rozmowa Podcast Twin") — telefon zawsze podpisuje się swoją nazwą.
+            const zrodloUwag = dostep.urzadzenie ? undefined : req.body?.zrodloUwag;
+            res.json({ success: true, ...(await fn(req.params.id, { uczestnicy, rundy, petla, uwagi, zrodloUwag, powtorzenia, kto: dostep.urzadzenie || 'Katedra' })) });
         } catch (e) { res.status(400).json({ success: false, message: e.message }); }
     });
 }
