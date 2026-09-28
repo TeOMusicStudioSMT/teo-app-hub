@@ -29,7 +29,7 @@
   const mozeZakladac = () => lokalne() || !!S.dane?.urzadzenie;
   const json = (body) => ({ method: 'POST', headers: { ...S.naglowki, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const STAN = { czeka: '○', trwa: '◐', gotowe: '●', blad: '✕', przerwane: '◌', przerwany: '◌' };
-  const MODUL = { merch: '🛒 Marketplace', muzyka: '🎵 Muzyka', model3d: '🧊 Assety3D', wideo: '🎬 Wideo' };
+  const MODUL = { merch: '🛒 Marketplace', muzyka: '🎵 Muzyka', model3d: '🧊 Assety3D', wideo: '🎬 Wideo', gra: '🎮 Studio' };
 
   // ── Rozmowa + silnik + rzeźba: sekcje w katalogu agenta ────────────────────
   const rozmowy = new Map();   // id gatunku → { rozmowaId, tury: [{kto, tresc}] }
@@ -167,7 +167,8 @@
           <label title="Po każdej rundzie Sędzia ocenia Biblię względem wizji; stado dokłada cegiełki na jego brakach. Ocena ≥ 9/10 kończy wcześniej.">Rundy doskonalenia <input type="number" id="p-rundy" min="1" max="5" value="1"></label>
           <label title="Każdy punkt planu: autor czyta swój szkic krytycznie i oddaje lepszą wersję — tyle razy, zanim pójdzie dalej.">Pętla kreatywna na punkt <input type="number" id="p-petla" min="0" max="3" value="0"></label>
         </div>
-        <label class="meta"><input type="checkbox" id="p-zlecaj" checked> Wkłady same zlecają moduły Katedry (merch, muzyka, 3D, wideo)</label>
+        <label class="meta"><input type="checkbox" id="p-zlecaj" checked> Wkłady same zlecają moduły Katedry (merch, muzyka, 3D, wideo, 🎮 Studio Gier)</label>
+        <label class="meta" title="Dyrygent przydzieli każdemu TeOgochi model z Katedry do TEGO projektu (stałe silniki zostają)"><input type="checkbox" id="p-dyrygent"> 🎼 Dyrygent dobierze modele do zadania</label>
         <button class="guzik" id="p-start" type="button" ${wyklute.length < 2 ? 'disabled' : ''}>Zacznijcie razem</button>
         <p class="meta" id="p-stan"></p>
       </div>` : '<p class="meta">Nowy projekt zakłada się przy Katedrze albo ze sparowanego telefonu — tu widać postęp.</p>'}
@@ -177,7 +178,7 @@
     k.querySelector('#p-start')?.addEventListener('click', async () => {
       const uczestnicy = [...k.querySelectorAll('.uczestnicy input:checked')].map((i) => i.value);
       const st = k.querySelector('#p-stan');
-      const w = await fetch('/api/stado/projekt/nowy', json({ nazwa: k.querySelector('#p-nazwa').value, wizja: k.querySelector('#p-wizja').value, uczestnicy, samoZlecanie: k.querySelector('#p-zlecaj').checked, rundy: Number(k.querySelector('#p-rundy').value) || 1, petla: Number(k.querySelector('#p-petla').value) || 0 }))
+      const w = await fetch('/api/stado/projekt/nowy', json({ nazwa: k.querySelector('#p-nazwa').value, wizja: k.querySelector('#p-wizja').value, uczestnicy, samoZlecanie: k.querySelector('#p-zlecaj').checked, rundy: Number(k.querySelector('#p-rundy').value) || 1, petla: Number(k.querySelector('#p-petla').value) || 0, dyrygent: k.querySelector('#p-dyrygent').checked }))
         .then((r) => r.json()).catch((e) => ({ message: e.message }));
       if (!w.success) { st.textContent = `⚠️ ${w.message}`; return; }
       pokazProjekt(w.projekt.id);
@@ -195,6 +196,7 @@
       <p class="teraz">${esc(p.wizja)}</p>
       ${krokiHtml(p)}
       ${ocenyHtml(p)}
+      ${p.przydzial ? `<div class="sekcja"><h3>🎼 Dyrygent</h3>${p.przydzial.blad ? `<p class="meta" style="color:var(--blad)">${esc(p.przydzial.blad)} — każdy grał na swoim.</p>` : `<p class="meta">${(p.przydzial.przydzial ?? []).map((x) => `${esc(x.agent)} → ${esc(x.model)}${x.powod ? ` (${esc(x.powod)})` : ''}`).join('<br>') || 'bez zmian'}</p>`}</div>` : ''}
       ${p.kroki.map((kr) => `<div class="sekcja"><h3>${STAN[kr.stan] || ''} ${esc(kr.imie)} · ${esc(kr.zadanie.split(':')[0])} <span class="meta">· ${esc(kr.model)}</span></h3>
         ${kr.petle ? `<p class="meta">🔁 po ${kr.petle} ${kr.petle === 1 ? 'pętli' : 'pętlach'} kreatywnych${kr.runda > 1 ? ` · runda ${kr.runda}` : ''}</p>` : kr.runda > 1 ? `<p class="meta">runda ${kr.runda}</p>` : ''}
         ${kr.wklad ? `<div class="wklad">${bogaty(kr.wklad)}</div>` : kr.stan === 'blad' ? `<p class="meta" style="color:var(--blad)">${esc(kr.blad || 'błąd')}</p>` : `<p class="cisza">${kr.stan === 'trwa' ? 'Pracuje…' : 'Czeka na swoją kolej.'}</p>`}</div>`).join('')}
@@ -269,6 +271,7 @@
       const w = x.wynik;
       if (w.asset) return `<div class="meta">bryła: ${esc(w.asset)} <button class="guzik maly" data-glb="${esc(w.asset)}" type="button">Obejrzyj</button></div>`;
       if (w.produkt) return `<div class="meta">w Marketplace: ${esc(w.produkt)} · ${esc(w.cenaGrv)} GRV</div>`;
+      if (w.studio) return `<div class="meta">${w.typ === 'gra' ? 'TeO Games Studio' : 'TeO App Studio'}: „${esc(w.studio)}" · ${esc(w.kamieni)} kamieni milowych · produkcja ${esc(w.produkcja)}</div>`;
       return w.plik ? `<div class="meta">plik: ${esc(String(w.plik).split(/[\\/]/).pop())}</div>` : '';
     };
     return `<div class="sekcja"><h3>🏭 Zlecenia dla modułów Katedry</h3>

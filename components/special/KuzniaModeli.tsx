@@ -15,6 +15,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Hammer, HardDrive, AlertTriangle, Check, Cpu, RefreshCw, Flame } from 'lucide-react';
+import DyrygentIKuznia from './DyrygentIKuznia';
 
 const MOST = 'http://127.0.0.1:3001';
 
@@ -320,6 +321,9 @@ export const KuzniaModeli: React.FC = () => {
                     Katalog jest pusty — nie ma czego kuć.
                 </p>
             )}
+
+            {/* 🎼 Dyrygent (dobór modeli do zadań) i ⚒️ Kuźnia Soup (własny model TeOgochi z jego pracy) */}
+            <DyrygentIKuznia />
 
             <p className="text-[10px] text-slate-600 leading-relaxed">
                 Skan i kucie robi most: przeglądarka nie ma dostępu do dysku, więc lista, którą tu widzisz,

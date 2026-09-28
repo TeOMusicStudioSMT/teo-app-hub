@@ -10,7 +10,11 @@
  *   MUZYKA: prompt po angielsku       → generator muzyki (ComfyUI × ACE) → odbiór do _OtakOs_Muzyka,
  *   REFREN: wers / wers / wers         → tekst do tego samego utworu,
  *   OBIEKT: opis bryły                 → Assety3D (FLUX.2 → TRELLIS.2 → GLB),
- *   UJĘCIE: opis ujęcia po angielsku   → wideo (ComfyUI) → kopia do katalogu projektu.
+ *   UJĘCIE: opis ujęcia po angielsku   → wideo (ComfyUI) → kopia do katalogu projektu,
+ *   GRA: nazwa | o czym to jest        → TeO Games Studio: projekt gry → GDD z Biblii → plan → produkcja Kodeksa,
+ *   APKA: nazwa | o czym to jest       → TeO App Studio: to samo dla aplikacji.
+ * (Suweren 2026-09-28: „chyba ani razu nikt nic nie robił w game studio czy app studio" — tak, bo żaden
+ *  wkład nie miał drogi do Studia. Teraz Kodeks ją ma; produkcja trwa godzinami i idzie dalej sama.)
  *
  * Nic tu nie udaje wyniku: gdy ComfyUI śpi albo brakuje wag, zlecenie kończy się błędem z komunikatem
  * modułu i tak zostaje zapisane. Limity (MAX) są po to, żeby jeden projekt nie zajął karty graficznej
@@ -23,6 +27,8 @@ export const MODULY = {
     muzyka: { nazwa: 'Generator muzyki', ikona: '🎵', max: 1, gpu: true },
     model3d: { nazwa: 'Assety3D', ikona: '🧊', max: 3, gpu: true },
     wideo: { nazwa: 'Wideo', ikona: '🎬', max: 2, gpu: true },
+    // Ostatnie: produkcja gry to godziny pracy Kodeksa — reszta modułów nie czeka za nią w kolejce.
+    gra: { nazwa: 'Studio Gier i Apek', ikona: '🎮', max: 1, gpu: true },
 };
 
 const linie = (tekst, znacznik) => [...String(tekst ?? '').matchAll(new RegExp(`^[\\s>*•-]*(?:${znacznik})\\s*\\**\\s*:\\s*(.+)$`, 'gim'))]
@@ -56,6 +62,12 @@ export function wyciagnij(kroki = []) {
         }
         for (const l of linie(k.wklad, 'OBIEKT')) dodaj(k, 'model3d', l, { tekst: l.slice(0, 500) });
         for (const l of linie(k.wklad, 'UJ[EĘ]CIE')) dodaj(k, 'wideo', l, { prompt: l.slice(0, 600) });
+        for (const [znacznik, typ] of [['GRA', 'gra'], ['APKA', 'apka']]) {
+            for (const l of linie(k.wklad, znacznik)) {
+                const [nazwa, ...opis] = l.split('|').map((x) => x.trim());
+                if (nazwa) dodaj(k, 'gra', nazwa, { nazwa: nazwa.slice(0, 60), opis: opis.join(' | ').slice(0, 400), typ });
+            }
+        }
     }
     const kolej = Object.keys(MODULY);
     return out.sort((a, b) => kolej.indexOf(a.modul) - kolej.indexOf(b.modul));
@@ -122,6 +134,21 @@ export async function wykonaj(z, { most, projekt, odstepMs = 10_000, limityMs = 
         // Kopia do katalogu projektu w Katedrze (jak kolejka kadrów) — wyjście ComfyUI zostaje nietknięte.
         const kopia = zrodlo ? await most('/api/wideo/do-projektu', { projekt: projekt.nazwa, plik: zrodlo.sciezka, tytul: z.id }).catch(() => null) : null;
         return { zlecenie: d.zlecenie, plik: kopia?.sciezka ?? zrodlo?.sciezka ?? null, silnik: d.silnik ?? null };
+    }
+    if (z.modul === 'gra') {
+        // 1) projekt w Studiu (szablon three.js dla gry, React dla apki), 2) GDD z Biblii + wizji + wkładu autora
+        // (import sam układa plan: kamienie milowe → zadania), 3) produkcja: zadanie po zadaniu do pętli Kodeksa.
+        const s = (await most('/api/appstudio/projekty', { nazwa: a.nazwa, opis: a.opis || `Z projektu stada „${projekt.nazwa}".`, typ: a.typ })).projekt;
+        const biblia = projekt.kroki?.find((k) => k.synteza && k.stan === 'gotowe')?.wklad ?? '';
+        const autor = projekt.kroki?.find((k) => k.agent === z.agent && !k.synteza && k.wklad)?.wklad ?? '';
+        const tekst = [`${a.typ === 'gra' ? 'GRA' : 'APLIKACJA'}: ${a.nazwa}${a.opis ? ` — ${a.opis}` : ''}`, `WIZJA SUWERENA:\n${projekt.wizja ?? ''}`,
+            biblia && `BIBLIA PROJEKTU „${projekt.nazwa}":\n${biblia}`, autor && `WKŁAD ${z.imie.toUpperCase()}:\n${autor}`].filter(Boolean).join('\n\n');
+        const g = (await most(`/api/gdd/${encodeURIComponent(s.id)}/import`, { tekst, silnik: 'three' }, { timeoutMs: limit('gdd', 40 * 60_000) })).gdd;
+        const kamieni = g?.kamienie?.length ?? 0;
+        if (!kamieni) return { studio: s.id, typ: a.typ, kamieni: 0, produkcja: 'bez planu — dokończ w Studiu (Plan z GDD)' };
+        const r = await most(`/api/gdd/${encodeURIComponent(s.id)}/realizuj`, {});
+        // Nie czekamy na koniec produkcji (godziny): Reżyser i Kodeks meldują ją na szynie, stan jest w Studiu.
+        return { studio: s.id, typ: a.typ, kamieni, zadan: r.zadan ?? null, produkcja: 'ruszyła' };
     }
     throw new Error(`Nieznany moduł „${z.modul}".`);
 }
