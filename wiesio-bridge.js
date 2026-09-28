@@ -72,6 +72,8 @@ import * as ModeleAgentow  from './services/ModeleAgentow.js';
 import * as ProjektStada   from './services/ProjektStada.js';
 import * as PowitanieDnia  from './services/PowitanieDnia.js';
 import * as Stol           from './services/Stol.js';
+import * as Dyrygent       from './services/Dyrygent.js';
+import * as KuzniaSoup     from './services/KuzniaSoup.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
@@ -7595,10 +7597,12 @@ ProjektStada.skonfiguruj({
     karta: (id) => Persony.karta(id),
     chat: async (model, [system, user]) => (await AppStudio.pisz({ system: system.content, prompt: user.content, model, timeoutMs: 15 * 60_000 })).tekst,
     nagroda: (o) => nagrodaZaPrace(o),   // XP za wkład i oddane zlecenie — raz na pracę
+    dyrygent: (o) => Dyrygent.dobierz(o),   // 🎼 projekt z `dyrygent: true` dostaje modele dobrane do zadania (tylko dla siebie)
     // Wkłady same zlecają moduły (services/ZleceniaStada.js) — tymi samymi trasami, co panele Suwerena.
-    most: async (sciezka, body) => {
+    // `timeoutMs`: import GDD do Studia Gier (model pisze dokument i plan) trwa kilkanaście minut, nie 90 s.
+    most: async (sciezka, body, { timeoutMs = 90_000 } = {}) => {
         const r = await fetch(`http://127.0.0.1:${PORT}${sciezka}`, {
-            method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(90_000),
+            method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(timeoutMs),
             headers: body ? { 'Content-Type': 'application/json' } : undefined,
             body: body ? JSON.stringify(body) : undefined,
         });
@@ -7606,6 +7610,25 @@ ProjektStada.skonfiguruj({
         if (!r.ok) throw new Error(d?.message || `HTTP ${r.status}`);
         return d;
     },
+});
+
+// ── 🎼 DYRYGENT (services/Dyrygent.js) — katalog modeli Katedry i dobór modelu do zadania, jak Jadziunia do skilli ──
+Dyrygent.skonfiguruj({
+    katalogWymiar: ANTIGRAVITY_DIR,
+    tagi: async () => (await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(8000) })).json(),
+    projekty: () => ProjektStada.lista(),
+    modeleAgentow: () => ModeleAgentow.wszystkie(),
+    ustawModel: (agent, model) => ModeleAgentow.ustaw(agent, model),
+    wykute: () => KuzniaSoup.wykute(),
+    pisz: async ({ system, prompt, model }) => (await AppStudio.pisz({ system, prompt, model, timeoutMs: 10 * 60_000 })).tekst,
+    model: () => process.env.OTAKOS_DYRYGENT_MODEL || DEFAULT_LLM,
+});
+// ── ⚒️ KUŹNIA SOUP (services/KuzniaSoup.js) — własny model TeOgochi z jego ocenionej pracy (soup-cli, lokalnie) ──
+KuzniaSoup.skonfiguruj({
+    katalog: path.join(ANTIGRAVITY_DIR, 'kuznia-soup'),
+    projekty: () => ProjektStada.lista(),
+    karta: (id) => Persony.karta(id),
+    szyna: Szyna,
 });
 
 app.get('/api/delegat/profile', (req, res) => res.json({ success: true, profile: Delegat.profile(), lokalne: !!req.lokalny, pelnyTunel: PELNY_TUNEL }));
@@ -7764,8 +7787,14 @@ app.post('/api/gdd/:id/plan', async (req, res) => {
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.post('/api/gdd/:id/realizuj', async (req, res) => {
-    try { res.json({ success: true, ...(await Gdd.realizuj(req.params.id, { model: req.body?.model, tylkoKamien: req.body?.kamien || null })) }); }
+    try { res.json({ success: true, ...(await Gdd.realizuj(req.params.id, { model: req.body?.model, tylkoKamien: req.body?.kamien || null })), sondaz: `/api/gdd/${encodeURIComponent(req.params.id)}/sondaz` }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** Sondaż produkcji gry dla Nocnej Zmiany: „trwa" do końca, potem gotowe / błąd z krokiem, na którym stanęła. */
+app.get('/api/gdd/:id/sondaz', (req, res) => {
+    const p = Gdd.produkcja(req.params.id);
+    if (!p) return res.json({ stan: 'blad', blad: 'produkcja nie biegnie (most zrestartowany?)' });
+    res.json({ stan: p.stan === 'trwa' ? 'trwa' : p.stan === 'blad' ? 'blad' : 'gotowe', podsumowanie: `${p.zrobione}/${p.razem} zadań planu gotowych`, blad: p.stan === 'blad' ? (p.kroki.at(-1)?.tekst ?? 'zadanie padło') : null });
 });
 app.get('/api/gdd/:id/produkcja', (req, res) => res.json({ success: true, produkcja: Gdd.produkcja(req.params.id) }));
 app.post('/api/gdd/:id/przerwij', (req, res) => res.json({ success: true, przerwano: Gdd.przerwij(req.params.id) }));
@@ -10223,7 +10252,7 @@ app.post('/api/stado/projekt/nowy', async (req, res) => {
     const dostep = await dostepStada(req, res);
     if (!dostep) return;
     try {
-        const { nazwa, wizja, uczestnicy = [], samoZlecanie = true, rundy = 1, petla = 0 } = req.body ?? {};
+        const { nazwa, wizja, uczestnicy = [], samoZlecanie = true, rundy = 1, petla = 0, dyrygent = false } = req.body ?? {};
         const migawka = (await stanDlaTelefonu()).gatunki ?? [];
         const osoby = [];
         for (const id of [...new Set(uczestnicy.map(String))]) {
@@ -10231,7 +10260,7 @@ app.post('/api/stado/projekt/nowy', async (req, res) => {
             const k = g ? null : await Persony.karta(id).catch(() => null);
             if (g || k) osoby.push({ id, imie: g?.imie || k.imie || id, dziedzina: g?.dziedzina || k?.dziedzina || '' });
         }
-        res.json({ success: true, projekt: await ProjektStada.zaloz({ nazwa, wizja, uczestnicy: osoby, samoZlecanie: samoZlecanie !== false, zalozyl: dostep.urzadzenie, rundy, petla }) });
+        res.json({ success: true, projekt: await ProjektStada.zaloz({ nazwa, wizja, uczestnicy: osoby, samoZlecanie: samoZlecanie !== false, zalozyl: dostep.urzadzenie, rundy, petla, dyrygent: !!dyrygent }) });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 /**
@@ -10255,6 +10284,51 @@ app.post('/api/stado/projekt/:id/zlec', async (req, res) => {
     try { res.json({ success: true, ...(await ProjektStada.zlec(req.params.id)) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
+// ── 🎼 Dyrygent i ⚒️ Kuźnia Soup — trasy ──────────────────────────────────────────────────────────────
+/** GET /api/modele/katalog — modele Katedry z kartami, własnymi modelami TeOgochi i pracą w stadzie. */
+app.get('/api/modele/katalog', async (_req, res) => {
+    try { res.json({ success: true, modele: await Dyrygent.katalog(), dyrygent: process.env.OTAKOS_DYRYGENT_MODEL || DEFAULT_LLM }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+/** PUT /api/modele/karta { nazwa, opis, mocne } — co Suweren wie o modelu. Tylko przy maszynie. */
+app.put('/api/modele/karta', async (req, res) => {
+    try { res.json({ success: true, karta: await Dyrygent.ustawKarte(req.body?.nazwa, req.body ?? {}) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** POST /api/dyrygent/dobierz { zadanie, agenci?: [id] } — propozycja; bez `agenci` = całe wyklute stado. Nic nie zapisuje. */
+app.post('/api/dyrygent/dobierz', async (req, res) => {
+    try {
+        const wyklute = ((await stanDlaTelefonu()).gatunki ?? []).filter((g) => g.wyklute);
+        const ids = Array.isArray(req.body?.agenci) ? req.body.agenci.map(String) : [];
+        const agenci = (ids.length ? wyklute.filter((g) => ids.includes(g.id)) : wyklute).map((g) => ({ id: g.id, imie: g.imie, dziedzina: g.dziedzina || '', zadanie: ProjektStada.ROLE[g.id]?.zadanie }));
+        res.json({ success: true, ...(await Dyrygent.dobierz({ zadanie: req.body?.zadanie, agenci })) });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** POST /api/dyrygent/zastosuj { przydzial:[{agent, model}] } — na stałe (silniki agentów). Tylko przy maszynie. */
+app.post('/api/dyrygent/zastosuj', async (req, res) => {
+    try { res.json({ success: true, wynik: await Dyrygent.zastosuj(Array.isArray(req.body?.przydzial) ? req.body.przydzial.slice(0, 40) : []) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/kuznia-soup', async (_req, res) => {
+    res.json({ success: true, wykute: await KuzniaSoup.wykute(), biezace: KuzniaSoup.biezace(), minimum: KuzniaSoup.MIN_PROBEK, prog: KuzniaSoup.PROG_OCENY, baza: process.env.OTAKOS_KUZNIA_BAZA || null });
+});
+/** GET /api/kuznia-soup/doktor — czy Soup jest w Katedrze i co mówi o karcie graficznej (`soup doctor`). */
+app.get('/api/kuznia-soup/doktor', async (_req, res) => res.json({ success: true, ...(await KuzniaSoup.doktor()) }));
+app.get('/api/kuznia-soup/zadanie/:id/sondaz', (req, res) => res.json(KuzniaSoup.sondaz(req.params.id)));
+app.get('/api/kuznia-soup/:agent/podglad', async (req, res) => {
+    try { res.json({ success: true, ...(await KuzniaSoup.podglad(req.params.agent, { prog: Number(req.query.prog) || undefined })) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+for (const [akcja, fn] of [['przygotuj', KuzniaSoup.przygotuj], ['wykuj', KuzniaSoup.wykuj]]) {
+    app.post(`/api/kuznia-soup/:agent/${akcja}`, async (req, res) => {
+        const { baza, prog, epoki } = req.body ?? {};
+        const o = { prog: Number(prog) || undefined, epoki: Number(epoki) || undefined };
+        if (baza) o.baza = String(baza);
+        try { res.json({ success: true, ...(await fn(req.params.agent, o)) }); }
+        catch (e) { res.status(400).json({ success: false, message: e.message }); }
+    });
+}
+
 // ── 🪑 STÓŁ RATYFIKACJI (services/Stol.js) — propozycje → Projekt Stada → Biblia → ratyfikacja → moduły ──
 // Maszyna albo sparowany telefon (dostepStada). Projekt ze Stołu nie zleca modułów sam — dopiero ratyfikacja.
 Stol.skonfiguruj({
@@ -10300,10 +10374,10 @@ for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc],
         try {
             const uczestnicy = Array.isArray(req.body?.uczestnicy) ? req.body.uczestnicy.map(String).slice(0, 12) : [];
             // przyjmij / doskonal / nocna: rundy doskonalenia, pętla kreatywna, uwagi Suwerena, powtórzenia na noc
-            const { rundy, petla, uwagi, powtorzenia } = req.body ?? {};
+            const { rundy, petla, uwagi, powtorzenia, dyrygent } = req.body ?? {};
             // Skąd uwagi (np. „rozmowa Podcast Twin") — telefon zawsze podpisuje się swoją nazwą.
             const zrodloUwag = dostep.urzadzenie ? undefined : req.body?.zrodloUwag;
-            res.json({ success: true, ...(await fn(req.params.id, { uczestnicy, rundy, petla, uwagi, zrodloUwag, powtorzenia, kto: dostep.urzadzenie || 'Katedra' })) });
+            res.json({ success: true, ...(await fn(req.params.id, { uczestnicy, rundy, petla, uwagi, zrodloUwag, powtorzenia, dyrygent: !!dyrygent, kto: dostep.urzadzenie || 'Katedra' })) });
         } catch (e) { res.status(400).json({ success: false, message: e.message }); }
     });
 }

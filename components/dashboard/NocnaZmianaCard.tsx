@@ -248,6 +248,9 @@ const ZRODLA: Record<string, (zalezne: Record<string, string>) => Promise<{ id: 
     // 🛠️ projekty Kodeksa (App/Games Studio 2.0) — gry i apki z _OtakOs_Apki
     'kodeks-projekt': async () => (await zMostu<{ projekty: { id: string; nazwa: string; typ?: string; iteracji: number }[] }>('/api/appstudio/projekty')).projekty.map((p) => ({ id: p.id, nazwa: `${p.typ === 'gra' ? '🎮' : '🛠️'} ${p.nazwa} · ${p.iteracji} iter.` })),
     'biznes': async () => (await zMostu<{ biznesy: { id: string; nazwa: string }[] }>('/api/latarnik/biznesy')).biznesy,
+    // ⚒️ Kuźnia Soup: wykluci TeOgochi (id → imię)
+    'teogochi': async () => (await zMostu<{ gatunki: { id: string; imie: string; forma?: string; wyklute: boolean }[] }>('/api/stado/stan')).gatunki
+        .filter((g) => g.wyklute).map((g) => ({ id: g.id, nazwa: `${g.forma ?? ''} ${g.imie}`.trim() })),
     // 🧩 wspólne projekty TeOgochi — z rundą i ostatnią oceną Sędziego, żeby było widać, który jeszcze nie spełnia wizji
     'projekt-stada': async () => (await zMostu<{ projekty: { id: string; nazwa: string; stan: string; runda?: number; oceny?: { ocena: number | null }[] }[] }>('/api/stado/projekty')).projekty
         .map((p) => { const o = p.oceny?.at(-1)?.ocena; return { id: p.id, nazwa: `${p.nazwa} · ${p.stan} · runda ${p.runda ?? 1}${o != null ? ` · ${o}/10` : ''}` }; }),

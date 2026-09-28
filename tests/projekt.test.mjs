@@ -163,3 +163,29 @@ test('uwagi Suwerena (np. rozmowa Podcast Twin) trafiają do rund i do Sędziego
     assert.match(wywolania.filter((w) => w.sys.includes('SĘDZIĄ')).at(-1).user, /UWAGI SUWERENA do tej pracy[^]*brakuje pętli/);
     assert.ok(zdarzenia.some((z) => /wraca na warsztat: 1 runda doskonalenia — z uwagami \(rozmowa Podcast Twin\)/.test(z.tresc)));
 });
+
+test('dyrygent: projekt dostaje modele dobrane do zadania (tylko dla siebie); porażka Dyrygenta nie zatrzymuje stada', async () => {
+    const { wywolania, zdarzenia } = stadoNaNiby([]);
+    const modele = [];
+    ProjektStada.skonfiguruj({
+        chat: async (model, [sys]) => { modele.push([sys.content.match(/KARTA (\w+)/)?.[1], model]); return 'wkład'; },
+        dyrygent: async ({ zadanie, agenci }) => {
+            assert.match(zadanie, /^Orkiestra: /);
+            assert.deepEqual(agenci.map((a) => a.id), ['rezyser', 'kodeks']);
+            return { model: 'gemma4', przydzial: [{ agent: 'kodeks', model: 'qwen3.5:9b', powod: 'kod' }], odrzucone: [] };
+        },
+    });
+    const s = await ProjektStada.zaloz({ nazwa: 'Orkiestra', wizja: 'Projekt z dyrygentem przy pulpicie.', uczestnicy: zespol.slice(0, 2), dyrygent: true });
+    const p = await skonczony(s.id);
+    assert.deepEqual(modele, [['rezyser', 'gemma4:e2b'], ['kodeks', 'qwen3.5:9b'], ['rezyser', 'gemma4:e2b']]);
+    assert.deepEqual(p.przydzial.przydzial, [{ agent: 'kodeks', model: 'qwen3.5:9b', powod: 'kod' }]);
+    assert.ok(zdarzenia.some((z) => z.agent === 'Dyrygent' && /kodeks → qwen3.5:9b/.test(z.tresc)));
+    void wywolania;
+
+    ProjektStada.skonfiguruj({ dyrygent: async () => { throw new Error('Dyrygent nie oddał JSON-a'); } });
+    const s2 = await ProjektStada.zaloz({ nazwa: 'Bez batuty', wizja: 'Dyrygent zawiedzie, stado gra dalej.', uczestnicy: zespol.slice(0, 2), dyrygent: true });
+    const p2 = await skonczony(s2.id);
+    assert.equal(p2.stan, 'gotowe');
+    assert.match(p2.przydzial.blad, /nie oddał JSON-a/);
+    ProjektStada.skonfiguruj({ dyrygent: null });
+});

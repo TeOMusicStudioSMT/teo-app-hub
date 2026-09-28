@@ -60,6 +60,7 @@ export const CO_ILE_MS = 60_000;
  *   lab-chip        /api/lab/chipy                 projekt chipu
  *   biznes          /api/latarnik/biznesy          pilnowany biznes
  *   projekt-stada   /api/stado/projekty            wspólny projekt TeOgochi (rundy doskonalenia)
+ *   teogochi        /api/stado/stan                wykluty TeOgochi (Kuźnia Soup)
  *   opcje           lista wpisana tu, na miejscu
  */
 export const POLA = {
@@ -94,6 +95,9 @@ export const POLA = {
     uczestnicy:    { etykieta: 'uczestnicy (id, po przecinku)', typ: 'lista' },
     projektStada:  { etykieta: 'projekt stada',   wybor: 'projekt-stada' },
     petla:         { etykieta: 'pętla kreatywna na punkt planu (0–3)', typ: 'liczba' },
+    agent:         { etykieta: 'TeOgochi',        wybor: 'teogochi' },
+    baza:          { etykieta: 'model bazowy HF (id albo ścieżka wag)', typ: 'tekst' },
+    prog:          { etykieta: 'próg oceny Sędziego (domyślnie 7)', typ: 'liczba' },
 };
 
 /** Ile razy zadanie może się powtórzyć (każde powtórzenie po pełnym przejściu przez bramy). */
@@ -122,6 +126,10 @@ export const ROBOTY = {
     'tablica-rezysera': { opis: 'Zrealizuj Tablicę Reżysera (Reżyser): odcinki po kolei, z osobna',        metoda: 'POST', sciezka: '/api/rezyser/tablica/zrealizuj', pola: ['serial', 'sekundy', 'silnikObrazu', 'rezyser', 'kroki', 'model'], wymagane: ['serial'], czekajNa: 'sondaz' },
     // 🧩 Projekt Stada (2026-09-27): kolejne rundy doskonalenia — stado dokłada cegiełki do Biblii na brakach Sędziego,
     // aż wizja będzie spełniona (Sędzia ≥ 9/10 kończy wcześniej). Małe lokalne modele potrzebują wielu przejść — to robota na noc.
+    // ⚒️ Kuźnia Soup (2026-09-28): własny model TeOgochi z jego ocenionej pracy — trening LoRA → GGUF → Ollama. Godziny GPU.
+    'kuznia-soup':     { opis: 'Kuźnia Soup: wykuj własny model TeOgochi z jego pracy (trening → GGUF → Ollama)', metoda: 'POST', sciezka: '/api/kuznia-soup/:agent/wykuj', pola: ['agent', 'baza', 'prog'], wymagane: ['agent'], czekajNa: 'sondaz' },
+    // 🎮 Studio Gier: produkcja z planu GDD (zadanie po zadaniu do Kodeksa) — np. dokończenie tego, co stanęło w dzień.
+    'gra-produkcja':   { opis: 'Studio Gier: realizuj plan GDD gry (Kodeks, zadanie po zadaniu)', metoda: 'POST', sciezka: '/api/gdd/:projektKodeksa/realizuj', pola: ['projektKodeksa', 'model'], wymagane: ['projektKodeksa'], czekajNa: 'sondaz' },
     'projekt-stada-rundy': { opis: 'Projekt Stada: rundy doskonalenia (stado dokłada cegiełki, Sędzia ocenia)', metoda: 'POST', sciezka: '/api/stado/projekt/:projektStada/runda', pola: ['projektStada', 'rundy', 'petla'], wymagane: ['projektStada'], polaInaczej: { rundy: { etykieta: 'rund doskonalenia (1–5)', typ: 'liczba' } }, czekajNa: 'sondaz' },
 };
 

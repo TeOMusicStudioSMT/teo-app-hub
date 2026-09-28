@@ -128,3 +128,30 @@ test('samoZlecanie:false → nic nie rusza samo; zlecenie przerwane restartem mo
     assert.equal(po.stan, 'przerwany');
     assert.equal(po.zlecenia[0].stan, 'przerwane');
 });
+
+test('gra: linia GRA:/APKA: z wkładu → projekt w Studiu, GDD z Biblii i wkładu autora, produkcja Kodeksa rusza', async () => {
+    const z = wyciagnij([
+        { agent: 'kodeks', imie: 'Kodeks', stan: 'gotowe', wklad: 'Pętla gry.\nGRA: Forge Fashion | RPG-fashion „stwórz i udowodnij"\nGRA: Druga gra | limit 1' },
+        { agent: 'rezyser', imie: 'Reżyser', stan: 'gotowe', synteza: true, wklad: 'BIBLIA\nAPKA: z Biblii się nie liczy' },
+    ]);
+    assert.deepEqual(z.map((x) => [x.modul, x.argumenty]), [['gra', { nazwa: 'Forge Fashion', opis: 'RPG-fashion „stwórz i udowodnij"', typ: 'gra' }]]);
+    const wolania = [];
+    const most = async (sciezka, body, opcje) => {
+        wolania.push({ sciezka, body, opcje });
+        if (sciezka === '/api/appstudio/projekty') return { projekt: { id: 'forge-fashion' } };
+        if (sciezka.endsWith('/import')) return { gdd: { kamienie: [{}, {}, {}, {}, {}] } };
+        if (sciezka.endsWith('/realizuj')) return { start: true, zadan: 10 };
+        throw new Error(`nieznana trasa ${sciezka}`);
+    };
+    const projekt = { id: 'p', nazwa: 'Forge', wizja: 'Gra RPG-fashion.', kroki: [
+        { agent: 'kodeks', imie: 'Kodeks', stan: 'gotowe', wklad: 'Pętla „stwórz i udowodnij".' },
+        { agent: 'rezyser', imie: 'Reżyser', stan: 'gotowe', synteza: true, wklad: 'BIBLIA Forge' },
+    ] };
+    const w = await wykonaj({ ...z[0], id: 'gra-1' }, { most, projekt, odstepMs: 1 });
+    assert.deepEqual(w, { studio: 'forge-fashion', typ: 'gra', kamieni: 5, zadan: 10, produkcja: 'ruszyła' });
+    assert.deepEqual(wolania[0].body, { nazwa: 'Forge Fashion', opis: 'RPG-fashion „stwórz i udowodnij"', typ: 'gra' });
+    assert.equal(wolania[1].sciezka, '/api/gdd/forge-fashion/import');
+    assert.match(wolania[1].body.tekst, /^GRA: Forge Fashion[^]*WIZJA SUWERENA:\nGra RPG-fashion\.[^]*BIBLIA PROJEKTU „Forge":\nBIBLIA Forge[^]*WKŁAD KODEKS:\nPętla/);
+    assert.equal(wolania[1].opcje.timeoutMs, 40 * 60_000, 'GDD pisze się kilkanaście minut — nie 90 s');
+    assert.equal(wolania[2].sciezka, '/api/gdd/forge-fashion/realizuj');
+});

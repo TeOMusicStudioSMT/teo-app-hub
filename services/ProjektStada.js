@@ -41,6 +41,8 @@ let cfg = {
     karta: async () => null,
     /** ({ id, xp, klucz, powod }) → nagroda XP za pracę (Stado.nagrodz); bez niej praca nie daje XP. */
     nagroda: null,
+    /** ({ zadanie, agenci }) → { przydzial:[{agent, model, powod}], odrzucone, model } — Dyrygent (services/Dyrygent.js) */
+    dyrygent: null,
     /** (ścieżka, body?) → JSON z trasy mostu; bez niego wkłady niczego nie zlecają. */
     most: null,
     odstepMs: 10_000,
@@ -57,7 +59,7 @@ export const ROLE = {
     kronikarz: { fala: 1, zadanie: 'Kronika założycielska: mit powstania tego świata, ton opowieści, 5 kluczowych nazw własnych z krótkim wyjaśnieniem.' },
     klatka: { fala: 2, zadanie: 'Scenopis zwiastunu 60 s: 6–8 ujęć (plan, ruch kamery, co widać, dźwięk), zbudowany na bohaterach i konflikcie. Dwa najważniejsze ujęcia napisz dodatkowo każde w osobnej linii zaczynającej się od „UJĘCIE:" — jedno zdanie po angielsku dla generatora wideo (kto, co robi, gdzie, światło, ruch kamery).' },
     joanna: { fala: 2, zadanie: 'Muzyka: motyw przewodni (nastrój, BPM, tonacja, instrumenty) i tekst refrenu. Na końcu dwie linie dla generatora muzyki: „MUZYKA:" + prompt po angielsku (gatunek, nastrój, instrumenty, BPM) oraz „REFREN:" + wersy refrenu rozdzielone „/".' },
-    kodeks: { fala: 2, zadanie: 'Gra: gatunek, pętla rozgrywki, 3 mechaniki wynikające ze świata, pierwszy poziom — skrót dokumentu gry.' },
+    kodeks: { fala: 2, zadanie: 'Gra: gatunek, pętla rozgrywki, 3 mechaniki wynikające ze świata, pierwszy poziom — skrót dokumentu gry. Na końcu jedna linia dla Studia Gier: „GRA: nazwa gry | jedno zdanie, co to za gra" (gdy projekt to raczej aplikacja niż gra: „APKA: nazwa | jedno zdanie").' },
     krawcowa: { fala: 2, zadanie: 'Moda: kolekcja 4 strojów bohaterów (krój, materiał, kolory, detal), spójna ze światem.' },
     paleta: { fala: 2, zadanie: 'Styl wizualny: paleta 5 barw (hex) z uzasadnieniem i 3 obiekty do wyrzeźbienia w 3D — każdy w osobnej linii zaczynającej się od „OBIEKT:" i jednym zdaniem opisu dla generatora brył.' },
     glosek: { fala: 2, zadanie: 'Głosy: obsada głosowa postaci (barwa, tempo, maniera) i 3 kwestie próbne.' },
@@ -133,6 +135,7 @@ export function skrot(p) {
     return {
         id: p.id, nazwa: p.nazwa, wizja: p.wizja.slice(0, 300), stan: p.stan, od: p.od, do: p.do ?? null, zalozyl: p.zalozyl ?? null,
         kroki: p.kroki.map(({ agent, imie, zadanie, model, stan, fala, petle }) => ({ agent, imie, zadanie, model, stan, fala, petle: petle ?? 0 })),
+        dyrygent: !!p.dyrygent, przydzial: p.przydzial ?? null,
         gotowe: p.kroki.filter((k) => k.stan === 'gotowe').length, razem: p.kroki.length,
         runda: p.runda ?? 1, rundy: p.rundy ?? 1, petla: p.petla ?? 0,
         oceny: (p.oceny ?? []).map(({ runda, ocena, braki, kto }) => ({ runda, ocena, braki, kto })),
@@ -160,7 +163,7 @@ export function zaplanuj(uczestnicy) {
  * Załóż projekt i uruchom pracę w tle. Zwraca od razu (id); postęp idzie szyną i plikiem.
  * @param {{ nazwa:string, wizja:string, uczestnicy:{id:string, imie:string, dziedzina?:string}[] }} o
  */
-export async function zaloz({ nazwa, wizja, uczestnicy, samoZlecanie = true, zalozyl = null, rundy = 1, petla = 0 }) {
+export async function zaloz({ nazwa, wizja, uczestnicy, samoZlecanie = true, zalozyl = null, rundy = 1, petla = 0, dyrygent = false }) {
     const n = String(nazwa ?? '').trim().slice(0, 80);
     const w = String(wizja ?? '').trim().slice(0, 3000);
     if (!n) throw new Error('Nadaj projektowi nazwę.');
@@ -174,6 +177,7 @@ export async function zaloz({ nazwa, wizja, uczestnicy, samoZlecanie = true, zal
         id, nazwa: n, wizja: w, stan: 'trwa', od: new Date().toISOString(), samoZlecanie: samoZlecanie !== false,
         zalozyl: zalozyl ? String(zalozyl).slice(0, 60) : null,   // null = przy Katedrze; inaczej nazwa sparowanego urządzenia
         runda: 1, rundy: wLimicie(rundy, 1, MAX_RUND, 1), petla: wLimicie(petla, 0, MAX_PETLI, 0), oceny: [],
+        dyrygent: !!dyrygent && !!cfg.dyrygent,
         kroki: await Promise.all(zaplanuj(lista2).map(async (k) => ({
             ...k, model: (await cfg.modelDla(k.agent).catch(() => null)) || cfg.domyslnyModel, stan: 'czeka', wklad: null,
         }))),
@@ -240,6 +244,7 @@ function uwagiDla(p) {
 async function szlifuj(p, k, system, szkic) {
     let tekst = szkic;
     k.petle = 0;
+    const przed = szkic;
     for (let i = 1; i <= (p.petla ?? 0); i++) {
         nadaj(k.imie, `szlifuje ${k.synteza ? 'Biblię' : 'wkład do'} „${p.nazwa}" — pętla ${i}/${p.petla}`, { projekt: p.id });
         try {
@@ -257,6 +262,8 @@ PĘTLA KREATYWNA ${i}/${p.petla}: przeczytaj szkic krytycznie względem wizji Su
             if (!lepszy) break;          // pusta odpowiedź — zostaje poprzednia wersja
             tekst = lepszy;
             k.petle = i;
+            // Para „szkic → po pętli" — Kuźnia Modeli uczy z niej TeOgochi, co znaczy „lepiej" (DPO).
+            k.szkice = [...(k.szkice ?? []), { runda: p.runda ?? 1, przed: przed.slice(0, MAX_WKLADU), po: lepszy.slice(0, MAX_WKLADU) }].slice(-4);
         } catch (e) {
             k.bladPetli = String(e.message || e).slice(0, 200);   // szkic przed pętlą zostaje — to nie jest błąd kroku
             break;
@@ -277,7 +284,10 @@ async function runda(p) {
             const system = await systemDla(k);
             const szkic = String(await cfg.chat(k.model, [{ role: 'system', content: system }, { role: 'user', content: zadanieDla(p, k) }]) ?? '').trim();
             if (!szkic) throw new Error('model oddał pustą odpowiedź');
-            k.wklad = (await szlifuj(p, k, system, szkic)).slice(0, MAX_WKLADU);
+            const nowy = (await szlifuj(p, k, system, szkic)).slice(0, MAX_WKLADU);
+            // Wersja z poprzedniej rundy zostaje — z oceną Sędziego tworzy parę „gorzej → lepiej" dla Kuźni.
+            if (k.wklad && p.runda > 1) k.wersje = [...(k.wersje ?? []), { runda: k.runda ?? p.runda - 1, wklad: k.wklad }].slice(-4);
+            k.wklad = nowy;
             k.stan = 'gotowe'; k.blad = null; k.runda = p.runda;
             nadaj(k.imie, `oddał${k.synteza ? ' Biblię projektu' : ' wkład do'} „${p.nazwa}"${p.rundy > 1 ? ` (runda ${p.runda}/${p.rundy})` : ''}${k.petle ? ` po ${k.petle} ${k.petle === 1 ? 'pętli' : 'pętlach'}` : ''}`, { projekt: p.id });
             // Każda runda to nowa praca — płaci osobno (runda 1 zostaje przy starym kluczu).
@@ -348,7 +358,27 @@ function nastepnaRunda(p) {
     nadaj('Stado', `„${p.nazwa}" — runda ${p.runda}/${p.rundy}: stado dokłada kolejne cegiełki`, { projekt: p.id });
 }
 
+/**
+ * 🎼 Dyrygent dobiera modele do TEGO projektu (kroki planu), zanim stado ruszy. Stałe silniki TeOgochi
+ * (ModeleAgentow) zostają nietknięte. Gdy Dyrygent zawiedzie — każdy gra na swoim, a powód jest w projekcie.
+ */
+async function dyryguj(p) {
+    const agenci = [...new Map(p.kroki.map((k) => [k.agent, { id: k.agent, imie: k.imie, zadanie: k.zadanie }])).values()];
+    nadaj('Dyrygent', `dobiera modele do „${p.nazwa}" (${agenci.length} TeOgochi)`, { projekt: p.id });
+    try {
+        const w = await cfg.dyrygent({ zadanie: `${p.nazwa}: ${p.wizja}`, agenci });
+        for (const k of p.kroki) { const m = w.przydzial.find((x) => x.agent === k.agent); if (m) k.model = m.model; }
+        p.przydzial = { model: w.model, przydzial: w.przydzial, odrzucone: w.odrzucone ?? [], kiedy: new Date().toISOString() };
+        nadaj('Dyrygent', `„${p.nazwa}": ${w.przydzial.map((x) => `${x.agent} → ${x.model}`).join(', ') || 'bez zmian'}${w.odrzucone?.length ? ` (odrzucone: ${w.odrzucone.length})` : ''}`, { projekt: p.id });
+    } catch (e) {
+        p.przydzial = { blad: String(e.message || e).slice(0, 300), kiedy: new Date().toISOString() };
+        nadaj('Dyrygent', `nie dobrał modeli do „${p.nazwa}" — każdy gra na swoim: ${p.przydzial.blad}`, { projekt: p.id });
+    }
+    await zapisz(p);
+}
+
 async function pracuj(p, { kontynuacja = false } = {}) {
+    if (p.dyrygent && !p.przydzial && cfg.dyrygent) await dyryguj(p);
     if (kontynuacja) {
         if (!(p.oceny ?? []).some((o) => o.runda === p.runda)) await ocen(p);   // braki poprzedniej rundy dla zespołu
         nastepnaRunda(p);

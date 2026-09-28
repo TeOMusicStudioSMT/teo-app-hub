@@ -157,12 +157,12 @@ const zapiszDecyzje = (k, co, kto) => { (k.decyzje ||= []).push({ co, kto: kto |
  * Przyjmij → Projekt Stada (bez samoZlecania). Uczestnicy: podani (id) → sugerowani z karty → całe wyklute stado.
  * `rundy` (1–5) i `petla` (0–3): rundy doskonalenia i pętla kreatywna na każdym punkcie planu (ProjektStada).
  */
-export function przyjmij(id, { uczestnicy = [], kto = null, rundy = 1, petla = 0 } = {}) {
+export function przyjmij(id, { uczestnicy = [], kto = null, rundy = 1, petla = 0, dyrygent = false } = {}) {
     return zmien(id, async (k, e) => {
         if (!['na_stole', 'utknela'].includes(e)) throw new Error(`Karta jest na etapie „${e}" — nie ma czego przyjmować.`);
         let osoby = await cfg.uczestnicy(uczestnicy.length ? uczestnicy : k.sugerowani ?? []);
         if (osoby.length < 2) osoby = await cfg.uczestnicy([]);
-        const p = await cfg.zaloz({ nazwa: k.tytul, wizja: k.wizja, uczestnicy: osoby, samoZlecanie: false, zalozyl: kto, rundy, petla });
+        const p = await cfg.zaloz({ nazwa: k.tytul, wizja: k.wizja, uczestnicy: osoby, samoZlecanie: false, zalozyl: kto, rundy, petla, dyrygent });
         k.stan = 'przyjeta'; k.projekt = p.id;
         zapiszDecyzje(k, 'przyjeta', kto);
         nadaj(`Suweren przyjął „${k.tytul}" — stado zaczyna pracę (${osoby.map((o) => o.imie).join(', ')})${p.rundy > 1 ? `, ${rund(p.rundy)} doskonalenia` : ''}${p.petla ? `, pętla kreatywna ×${p.petla}` : ''}`);
