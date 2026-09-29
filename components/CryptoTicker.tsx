@@ -4,6 +4,8 @@ import { FiActivity, FiCpu, FiChevronDown, FiTrendingUp, FiLayers, FiGlobe, FiZa
 import { FuzzyText } from './react_bits/FuzzyText';
 import { GradientText } from './react_bits/GradientText';
 
+const BRIDGE = 'http://127.0.0.1:3001';
+
 // --- KONFIGURACJA ZEWNĘTRZNA (CoinGecko IDs) ---
 const MARKET_LISTS = {
     titans: {
@@ -40,33 +42,60 @@ export const CryptoTicker: React.FC = () => {
     // Stan dla Ekosystemu TeO
     const [teoExpanded, setTeoExpanded] = useState(false);
 
-    // 1. Pobieranie danych z API (zależne od kategorii)
+    // Ostatnie prawdziwe ceny i ich wiek — przy odmowie źródła zostają widoczne z datą, zamiast pustego „$".
+    const [kiedy, setKiedy] = useState<string | null>(null);
+    const [nieaktualne, setNieaktualne] = useState(false);
+
+    // 1. Pobieranie danych (zależne od kategorii): najpierw most — jedno pytanie do CoinGecko na minutę
+    //    dla całej Katedry; bez mostu bezpośrednio. Darmowe CoinGecko ma limit na IP, a każda karta
+    //    i każda kopia Hubu (5173, 5174…) pytająca sama z siebie szybko go wyczerpuje (429 → pusta karta).
     useEffect(() => {
+        let zywy = true;
         const fetchPrices = async () => {
-            setLoading(true);
+            const currentList = MARKET_LISTS[activeCategory];
+            const ids = currentList.ids.join(',');
+            let data: Record<string, number> | null = null;
+            let czas: string | null = null;
+            let stare = false;
             try {
-                const currentList = MARKET_LISTS[activeCategory];
-                const ids = currentList.ids.join(',');
-                const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
-                const data = await response.json();
-
-                const newPrices: Record<string, number> = {};
-                currentList.ids.forEach(id => {
-                    if (data[id]) newPrices[id] = data[id].usd;
-                });
-
-                setPrices(newPrices);
-                setLoading(false);
-            } catch (error) {
-                console.error("Crypto fetch error:", error);
-                setLoading(false);
+                const r = await fetch(`${BRIDGE}/api/rynek/ceny?ids=${ids}&vs=usd`, { signal: AbortSignal.timeout(15000) });
+                const d = await r.json();
+                if (d?.ceny && Object.keys(d.ceny).length) { data = d.ceny; czas = d.kiedy ?? null; stare = Boolean(d.nieaktualne); }
+            } catch { /* most nie stoi — spróbujemy wprost */ }
+            if (!data) {
+                try {
+                    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
+                    if (response.ok) {
+                        const raw = await response.json();
+                        const nowe: Record<string, number> = {};
+                        currentList.ids.forEach(id => { if (typeof raw?.[id]?.usd === 'number') nowe[id] = raw[id].usd; });
+                        if (Object.keys(nowe).length) { data = nowe; czas = new Date().toISOString(); }
+                    }
+                } catch (error) {
+                    console.error("Crypto fetch error:", error);
+                }
             }
+            if (!zywy) return;
+            if (data) {
+                // Łączymy, nie zastępujemy: ceny innych kategorii zostają na powrót.
+                setPrices(p => ({ ...p, ...data }));
+                setKiedy(czas);
+                setNieaktualne(stare);
+            } else {
+                setNieaktualne(true);
+            }
+            setLoading(false);
         };
 
+        setLoading(true);
         fetchPrices();
         const interval = setInterval(fetchPrices, 60000);
-        return () => clearInterval(interval);
+        return () => { zywy = false; clearInterval(interval); };
     }, [activeCategory]); // Odśwież, gdy zmieni się kategoria
+
+    const cena = (id: string) => (typeof prices[id] === 'number' ? `$${prices[id].toLocaleString()}` : '---');
+    const lider = MARKET_LISTS[activeCategory].ids[0];
+    const wiek = kiedy ? Math.max(0, Math.round((Date.now() - new Date(kiedy).getTime()) / 60000)) : null;
 
     return (
         <div className="flex flex-col md:flex-row gap-4 w-full relative z-10">
@@ -108,10 +137,17 @@ export const CryptoTicker: React.FC = () => {
                             baseIntensity={0.03}
                             hoverIntensity={0.06}
                         >
-                            ${prices[MARKET_LISTS[activeCategory].ids[0]]?.toLocaleString()}
+                            {cena(lider)}
                         </FuzzyText>
                     )}
                 </div>
+                {!loading && nieaktualne && (
+                    <div className="mt-1 text-[10px] text-amber-400/80" title="CoinGecko chwilowo odmawia (limit zapytań) — pokazuję ostatnie prawdziwe ceny">
+                        {typeof prices[lider] === 'number'
+                            ? `ceny sprzed ${wiek ?? '?'} min — CoinGecko chwilowo odmawia`
+                            : 'brak cen — CoinGecko nie odpowiada (limit zapytań?)'}
+                    </div>
+                )}
 
                 {/* Sekcja Rozwijana: Wybór Kategorii + Lista */}
                 <AnimatePresence>
@@ -147,7 +183,7 @@ export const CryptoTicker: React.FC = () => {
                                             {MARKET_LISTS[activeCategory].names[id]}
                                         </span>
                                         <span className="font-mono text-orange-300/80">
-                                            ${prices[id]?.toLocaleString() || '---'}
+                                            {cena(id)}
                                         </span>
                                     </div>
                                 ))}

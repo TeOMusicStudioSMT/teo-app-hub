@@ -123,6 +123,7 @@ import {
     domknij as dziennikDomknij, podsumowanie as dziennikPodsumowanie,
 } from './services/DziennikDecyzjiService.js';
 import { zbudujMape } from './services/MapaSektorowService.js';
+import CenyRynku from './services/CenyRynku.js';
 import {
     ETAPY as PRODUKCJA_ETAPY,
     lista as produkcjaLista, projekty as produkcjaProjekty, biblia as produkcjaBiblia,
@@ -13374,6 +13375,21 @@ app.post('/api/rynek/nastroj', async (req, res) => {
     } catch (err) {
         console.error('[Rynek] ❌ nastroj:', err.message);
         return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * GET /api/rynek/ceny?ids=bitcoin,ethereum&vs=usd
+ * Ceny z CoinGecko przez most: raz na minutę dla całej Katedry (limit darmowego API liczy się na adres IP),
+ * a gdy CoinGecko odmówi — ostatnie prawdziwe ceny z datą i `nieaktualne: true`.
+ */
+app.get('/api/rynek/ceny', async (req, res) => {
+    try {
+        const w = await CenyRynku.ceny({ ids: req.query.ids, vs: req.query.vs || 'usd' });
+        if (!Object.keys(w.ceny).length) return res.status(502).json({ success: false, message: w.blad || 'Brak cen.' , ...w });
+        return res.json({ success: true, ...w });
+    } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
     }
 });
 
