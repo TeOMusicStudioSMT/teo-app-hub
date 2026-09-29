@@ -128,6 +128,13 @@ test('Kuźnia Soup: szuka Soup po kolei — OTAKOS_SOUP → Katedra → pipx (~/
     KuzniaSoup.skonfiguruj({ istnieje: () => false });
 });
 
+test('Kuźnia Soup: cache HuggingFace i pip w Katedrze, telemetria off; własne HF_HOME Suwerena wygrywa', () => {
+    KuzniaSoup.skonfiguruj({ srodowisko: '/k/kuznia-soup' });
+    const e = KuzniaSoup.envKuzni({ PATH: '/bin' });
+    assert.deepEqual([e.PATH, e.SOUP_TELEMETRY, e.HF_HOME, e.PIP_CACHE_DIR], ['/bin', '0', path.join('/k/kuznia-soup', 'hf'), path.join('/k/kuznia-soup', 'pip-cache')]);
+    assert.equal(KuzniaSoup.envKuzni({ HF_HOME: '/moje/hf' }).HF_HOME, '/moje/hf');
+});
+
 test('Kuźnia Soup: koło PyTorch ze sterownika i karta graficzna z soup doctor', () => {
     assert.equal(KuzniaSoup.koloTorch('| NVIDIA-SMI 576.02   Driver Version: 576.02   CUDA Version: 12.9 |'), 'cu128');
     assert.equal(KuzniaSoup.koloTorch('CUDA Version: 13.1'), 'cu130');
@@ -148,10 +155,12 @@ const czekajNaKuznie = async (id) => {
 test('Kuźnia Soup: instalacja w Katedrze — Python 3.12 (py), nvidia-smi → cu128, venv → pip → torch CUDA → soup-cli[train] → sprawdzenie', async () => {
     const srodowisko = tmp();
     const wolania = [];
+    let srodowiskoPip = null;
     KuzniaSoup.skonfiguruj({
         srodowisko, platforma: 'win32', istnieje: () => false,
-        uruchom: async (pol, argi, { naLinie }) => {
+        uruchom: async (pol, argi, { naLinie, env }) => {
             wolania.push([pol, ...argi]);
+            if (argi.includes('soup-cli[train]')) srodowiskoPip = env;
             if (pol === 'py') { if (argi[0] === '-3.12') naLinie('3 12'); else return 1; }
             else if (pol === 'nvidia-smi') naLinie('Driver Version: 576.02   CUDA Version: 12.9');
             else if (argi.includes('import torch;print(torch.__version__, torch.cuda.is_available())')) naLinie('2.8.0+cu128 True');
@@ -179,7 +188,22 @@ test('Kuźnia Soup: instalacja w Katedrze — Python 3.12 (py), nvidia-smi → c
         [py, '-c', 'import torch;print(torch.__version__, torch.cuda.is_available())'],
         [path.join(venv, 'Scripts', 'soup.exe'), '--no-telemetry', 'version'],
     ]);
+    assert.equal(srodowiskoPip.PIP_CACHE_DIR, process.env.PIP_CACHE_DIR || path.join(srodowisko, 'pip-cache'), 'cache pip w Katedrze');
     assert.equal(KuzniaSoup.biezace(), null);
+});
+
+test('Kuźnia Soup: Python położony w Katedrze (_OtakOs_AI/python312) idzie przed `py` — Live-USB bez rejestru', async () => {
+    const wolania = [];
+    const wKatedrze = path.join(process.cwd(), '_OtakOs_AI', 'python312', 'python.exe');
+    KuzniaSoup.skonfiguruj({
+        srodowisko: tmp(), platforma: 'win32', istnieje: (p) => p === wKatedrze,
+        uruchom: async (pol, argi, { naLinie }) => { wolania.push([pol, ...argi]); naLinie(pol === wKatedrze ? '3 12' : 'ok'); return pol === wKatedrze || !argi.includes('-c') ? 0 : 1; },
+    });
+    const s = await czekajNaKuznie((await KuzniaSoup.instaluj({ cuda: 'cpu' })).id);
+    assert.equal(wolania[0][0], wKatedrze);
+    assert.deepEqual(wolania[1].slice(0, 3), [wKatedrze, '-m', 'venv']);
+    assert.ok(!wolania.some((w) => w[0] === 'py'), 'py nie był potrzebny');
+    assert.equal(s.stan, 'gotowe', s.blad ?? '');
 });
 
 test('Kuźnia Soup: instalacja bez Pythona 3.10–3.12 odmawia wprost (3.13 się nie liczy), niczego nie instaluje', async () => {

@@ -204,17 +204,34 @@ export function gpuZDoktora(linie) {
     return null;
 }
 
+/**
+ * Środowisko procesów Kuźni: telemetria off, a wielkie cache — modele bazowe HuggingFace (po kilka GB) i paczki pip —
+ * w Katedrze (`<srodowisko>/hf`, `<srodowisko>/pip-cache`), nie w C:\Users\…\.cache. Suweren (2026-09-29): „na F: do Katedry".
+ * Własne HF_HOME / PIP_CACHE_DIR Suwerena mają pierwszeństwo.
+ */
+export function envKuzni(baza = process.env) {
+    return {
+        ...baza,
+        SOUP_TELEMETRY: '0',
+        HF_HOME: baza.HF_HOME || path.join(cfg.srodowisko, 'hf'),
+        PIP_CACHE_DIR: baza.PIP_CACHE_DIR || path.join(cfg.srodowisko, 'pip-cache'),
+    };
+}
+
 const zbierzZ = async (polecenie, argumenty, opcje = {}) => {
     const linie = [];
-    const kod = await (cfg.uruchom ?? domyslneUruchom)(polecenie, argumenty, { cwd: opcje.cwd ?? process.cwd(), env: { ...process.env, SOUP_TELEMETRY: '0' }, naLinie: (l) => linie.push(l) });
+    const kod = await (cfg.uruchom ?? domyslneUruchom)(polecenie, argumenty, { cwd: opcje.cwd ?? process.cwd(), env: envKuzni(), naLinie: (l) => linie.push(l) });
     return { kod, linie };
 };
 
 /** Python 3.10–3.12 na maszynie (soup-cli nie wspiera 3.13): py -3.12/-3.11/-3.10 na Windows, python3.x gdzie indziej. */
 async function znajdzPythona() {
     const win = cfg.platforma === 'win32';
+    // Python położony W KATEDRZE (Live-USB: na obcym Windowsie rejestr nie zna go przez `py`).
+    const wKatedrze = win ? path.join(process.cwd(), '_OtakOs_AI', 'python312', 'python.exe') : path.join(process.cwd(), '_OtakOs_AI', 'python312', 'bin', 'python3');
     const proby = [
         process.env.OTAKOS_PYTHON && [process.env.OTAKOS_PYTHON, []],
+        cfg.istnieje(wKatedrze) && [wKatedrze, []],
         ...(win ? [['py', ['-3.12']], ['py', ['-3.11']], ['py', ['-3.10']]] : [['python3.12', []], ['python3.11', []], ['python3.10', []]]),
     ].filter(Boolean);
     for (const [pol, argi] of proby) {
@@ -242,7 +259,7 @@ export async function instaluj({ cuda = 'auto' } = {}) {
     const loguj = (l) => { z.log.push(String(l).slice(0, 300)); if (z.log.length > 300) z.log.splice(0, z.log.length - 300); };
     const krokPolecenie = async (opis, polecenie, argumenty) => {
         z.etap = opis; loguj(`▶ ${opis}: ${path.basename(polecenie)} ${argumenty.join(' ')}`);
-        const kod = await (cfg.uruchom ?? domyslneUruchom)(polecenie, argumenty, { cwd: cfg.srodowisko, env: { ...process.env, SOUP_TELEMETRY: '0', PIP_DISABLE_PIP_VERSION_CHECK: '1' }, naLinie: loguj });
+        const kod = await (cfg.uruchom ?? domyslneUruchom)(polecenie, argumenty, { cwd: cfg.srodowisko, env: { ...envKuzni(), PIP_DISABLE_PIP_VERSION_CHECK: '1' }, naLinie: loguj });
         if (kod !== 0) throw new Error(`${opis}: zakończone kodem ${kod} — szczegóły w dzienniku.`);
     };
     nadaj(`instaluje środowisko Kuźni w Katedrze (${cfg.srodowisko})`, { zadanie: z.id });
@@ -298,7 +315,7 @@ function domyslneUruchom(polecenie, argumenty, { cwd, env, naLinie }) {
 async function krok(z, opis, argumenty, cwd) {
     z.etap = opis;
     z.log.push(`▶ ${opis}: soup ${argumenty.join(' ')}`);
-    const env = { ...process.env, SOUP_TELEMETRY: '0' };
+    const env = envKuzni();
     const kod = await (cfg.uruchom ?? domyslneUruchom)(znajdzSoup().polecenie, ['--no-telemetry', ...argumenty], {
         cwd, env, naLinie: (l) => { z.log.push(l.slice(0, 300)); if (z.log.length > 300) z.log.splice(0, z.log.length - 300); },
     });
@@ -375,4 +392,4 @@ export async function doktor() {
     }
 }
 
-export default { skonfiguruj, zbierz, konfiguracja, przygotuj, podglad, wykuj, instaluj, zadanie, sondaz, biezace, wykute, doktor, kandydaciSoup, znajdzSoup, koloTorch, gpuZDoktora, LINKI, MIN_PROBEK, PROG_OCENY };
+export default { skonfiguruj, zbierz, konfiguracja, przygotuj, podglad, wykuj, instaluj, zadanie, sondaz, biezace, wykute, doktor, kandydaciSoup, znajdzSoup, koloTorch, gpuZDoktora, envKuzni, LINKI, MIN_PROBEK, PROG_OCENY };
