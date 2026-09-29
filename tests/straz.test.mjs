@@ -60,7 +60,10 @@ describe('strazMostu (middleware)', () => {
         const tunel = { 'cf-connecting-ip': '1.2.3.4', 'x-teo-klucz': KLUCZ };
         assert.equal(przepusc(zadanie({ naglowki: tunel })), 'dalej');
         assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/bridge/execute', body: { action: 'EXEC_SYSTEM_CMD' } })), 403);
-        assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/system/free', body: {} })), 403);
+        // Zwalnianie pamięci: Straż przepuszcza tunel z kluczem, trasa żąda tokenu sparowania i PID-ów.
+        assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/system/free', body: { pidy: [1] } })), 'dalej');
+        assert.equal(przepusc(zadanie({ naglowki: { 'cf-connecting-ip': '1.2.3.4' }, method: 'POST', path: '/api/system/free' })), 401);
+        assert.equal(przepusc(zadanie({ naglowki: { origin: 'https://teo.center' }, method: 'POST', path: '/api/system/free' })), 403);
     });
     test('telefon: nowy projekt stada przez tunel z kluczem (token sprawdza trasa); reszta projektu i silniki lokalnie', () => {
         const tunel = { 'cf-connecting-ip': '1.2.3.4', 'x-teo-klucz': KLUCZ };
