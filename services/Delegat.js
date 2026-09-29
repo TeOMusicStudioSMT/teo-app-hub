@@ -45,6 +45,8 @@ let cfg = {
     pelnyTunel: false,
     /** Model przypisany agentowi (services/ModeleAgentow.js) — null = domyślny. */
     modelAgenta: async () => null,
+    /** Fakty o projektach, Stole i pamięci (services/StanKatedry.js przez most): { raport({szukaj}), pamiec(), zwolnij(pidy) } */
+    stan: null,
 };
 
 export function skonfiguruj(opcje) { cfg = { ...cfg, ...opcje }; }
@@ -61,19 +63,19 @@ export const PROFILE = {
         id: 'joanna', gatunek: 'joanna', imie: 'Joanna', emoji: '🕊️', kolor: '#a855f7',
         dziedzina: 'Muzyka i nastrój Katedry', glos: 'pl_PL-gosia-medium',
         persona: 'Jesteś Joanna — TeOgochi od muzyki, radia i nastroju Katedry OtakOS. Reprezentujesz Suwerena, gdy jest poza domem. Mówisz po polsku, ciepło i konkretnie, zdaniami do wypowiedzenia na głos (bez list, bez markdownu). Znasz się na brzmieniu, BPM, tonacjach i tekstach piosenek.',
-        narzedzia: ['katedra.stan', 'szyna.pytanie', 'szyna.notatka', 'music.generate', 'music.status', 'nocna.dodaj', 'telefon.zadanie'],
+        narzedzia: ['katedra.stan', 'projekty.stan', 'system.pamiec', 'szyna.pytanie', 'szyna.notatka', 'music.generate', 'music.status', 'nocna.dodaj', 'telefon.zadanie'],
     },
     kodeks: {
         id: 'kodeks', gatunek: 'kodeks', imie: 'Kodeks', emoji: '🐙', kolor: '#10b981',
         dziedzina: 'Kod Katedry', glos: null,
         persona: 'Jesteś Kodeks — TeOgochi od kodu Katedry OtakOS. Reprezentujesz Suwerena poza domem. Mówisz po polsku, rzeczowo, krótkimi zdaniami do wypowiedzenia na głos. Nie commitujesz nic sam — proponujesz i uruchamiasz harness, a decyzja należy do Suwerena.',
-        narzedzia: ['katedra.stan', 'szyna.pytanie', 'szyna.notatka', 'harness.run', 'nocna.dodaj'],
+        narzedzia: ['katedra.stan', 'projekty.stan', 'system.pamiec', 'system.zwolnij', 'szyna.pytanie', 'szyna.notatka', 'harness.run', 'nocna.dodaj'],
     },
     spawacz: {
         id: 'spawacz', gatunek: 'spawacz', imie: 'Spawacz', emoji: '⚡', kolor: '#f97316',
         dziedzina: 'Warsztat workflow i klocki wydania', glos: null,
         persona: 'Jesteś Spawacz — TeOgochi od warsztatu: grafy ComfyUI, klocki wydania, montaż. Reprezentujesz Suwerena poza domem. Mówisz po polsku, konkretnie, jak majster — krótkie zdania na głos.',
-        narzedzia: ['katedra.stan', 'szyna.pytanie', 'szyna.notatka', 'nocna.dodaj', 'telefon.zadanie'],
+        narzedzia: ['katedra.stan', 'projekty.stan', 'system.pamiec', 'szyna.pytanie', 'szyna.notatka', 'nocna.dodaj', 'telefon.zadanie'],
     },
 };
 
@@ -213,8 +215,39 @@ export const NARZEDZIA = {
             return { id: z.id, rodzaj: z.rodzaj, stan: z.stan };
         },
     },
+    'projekty.stan': {
+        opis: 'Co jest zrobione w projektach stada i na Stole: stan, runda, ocena Sędziego i braki, zlecenia modułów, Nocna Zmiana, ostatnie działania. Użyj ZAWSZE, gdy Suweren pyta o projekt, Stół, „co zrobione", „jak idzie", „ostatnie działania" albo chce coś zrobić Z PROJEKTEM (np. „stwórz model z planu …") — najpierw sprawdź, co projekt ma.',
+        argumenty: { szukaj: 'opcjonalnie: fragment nazwy projektu' },
+        ciezkie: false,
+        async wykonaj(a) {
+            if (!cfg.stan) throw new Error('Stan projektów niepodpięty.');
+            const r = await cfg.stan.raport({ szukaj: String(a.szukaj || '') });
+            return { opis: r.tekst.slice(0, 1400), projekty: r.projekty.map((p) => p.nazwa) };
+        },
+    },
+    'system.pamiec': {
+        opis: 'Ile wolnego RAM-u i które procesy go zjadają (z PID i opisem, np. „python — ComfyUI", „Kuźnia Soup"). Użyj, gdy Suweren pyta o pamięć, co trzyma RAM, co działa, co zamulia.',
+        argumenty: {},
+        ciezkie: false,
+        async wykonaj() {
+            if (!cfg.stan) throw new Error('Pamięć niepodpięta.');
+            const m = await cfg.stan.pamiec();
+            return { wolneGB: m.freeGB, razemGB: m.totalGB, procesy: (m.procesy ?? []).slice(0, 8).map((p) => `PID ${p.pid} ${p.name} ${p.mb} MB${p.opis ? ` — ${p.opis}` : ''}${p.chroniony ? ' [chroniony]' : ''}${p.uwaga ? ` (${p.uwaga})` : ''}`), blad: m.blad };
+        },
+    },
+    'system.zwolnij': {
+        opis: 'Zamknij proces po PID, żeby zwolnić pamięć — TYLKO gdy Suweren wprost o to prosi i wskazał, który (najpierw system.pamiec, żeby znać PID). Systemowe i sam most są chronione.',
+        argumenty: { pidy: 'lista numerów PID, np. [1234]' },
+        ciezkie: true,
+        async wykonaj(a) {
+            if (!cfg.stan) throw new Error('Pamięć niepodpięta.');
+            const pidy = (Array.isArray(a.pidy) ? a.pidy : [a.pidy ?? a.pid]).map(Number).filter(Number.isInteger);
+            if (!pidy.length) throw new Error('Podaj PID procesu (najpierw system.pamiec).');
+            return cfg.stan.zwolnij(pidy);
+        },
+    },
     'harness.run': {
-        opis: 'Uruchom harness kodu (Smart-Ralph) z celem. Wraca od razu z runId; przebieg leci w tle.',
+        opis: 'Uruchom harness kodu (Smart-Ralph) z celem — TYLKO do zmian w KODZIE Katedry. Nie do projektów stada (od tego projekty.stan) ani do trenowania modeli. Wraca od razu z runId; przebieg leci w tle.',
         argumenty: { goal: 'cel zmiany w kodzie' },
         ciezkie: true,
         async wykonaj(a) {
@@ -391,7 +424,7 @@ export async function profilDla(id) {
     return {
         id, gatunek: id, imie, emoji: k.emoji || '🥚', kolor: '#94a3b8', dziedzina: k.dziedzina || '', glos: null,
         persona: `Jesteś ${imie} — TeOgochi Katedry OtakOS. Mówisz po polsku, krótko i konkretnie.`,
-        narzedzia: ['katedra.stan', 'szyna.pytanie', 'szyna.notatka'],
+        narzedzia: ['katedra.stan', 'projekty.stan', 'system.pamiec', 'szyna.pytanie', 'szyna.notatka'],
     };
 }
 
@@ -499,8 +532,22 @@ export async function podsumuj(rozmowaId, { model } = {}) {
     return { rozmowaId: id, ...r.podsumowanie };
 }
 
+/**
+ * Wszyscy, z kim można rozmawiać: trzy pełne profile + każdy gatunek z kartą roli (profil rozmowny).
+ * Dla wyboru na telefonie (StoL) i w stronie Delegata. `narzedzia` = co zadziała z tunelu.
+ */
+export async function wszyscy() {
+    const out = profile().map((p) => ({ id: p.id, imie: p.imie, emoji: p.emoji, dziedzina: p.dziedzina, pelny: true, narzedzia: p.narzedziaZdalne }));
+    for (const k of await Persony.lista().catch(() => [])) {
+        if (PROFILE[k.gatunek]) continue;
+        const p = await profilDla(k.gatunek);
+        if (p) out.push({ id: p.id, imie: p.imie, emoji: p.emoji, dziedzina: p.dziedzina, pelny: false, narzedzia: p.narzedzia.filter((n) => NARZEDZIA[n] && (cfg.pelnyTunel || !NARZEDZIA[n].ciezkie)) });
+    }
+    return out;
+}
+
 export function profile() {
     return Object.values(PROFILE).map(({ persona, ...p }) => ({ ...p, narzedziaZdalne: p.narzedzia.filter((n) => NARZEDZIA[n] && (cfg.pelnyTunel || !NARZEDZIA[n].ciezkie)) }));
 }
 
-export default { skonfiguruj, PROFILE, NARZEDZIA, profilDla, rozmawiaj, podsumuj, profile, rozmowy, rozmowa, fakty };
+export default { skonfiguruj, PROFILE, NARZEDZIA, profilDla, rozmawiaj, podsumuj, profile, wszyscy, rozmowy, rozmowa, fakty };

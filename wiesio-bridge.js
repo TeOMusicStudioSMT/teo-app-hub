@@ -124,6 +124,7 @@ import {
 } from './services/DziennikDecyzjiService.js';
 import { zbudujMape } from './services/MapaSektorowService.js';
 import CenyRynku from './services/CenyRynku.js';
+import StanKatedry from './services/StanKatedry.js';
 import {
     ETAPY as PRODUKCJA_ETAPY,
     lista as produkcjaLista, projekty as produkcjaProjekty, biblia as produkcjaBiblia,
@@ -5885,24 +5886,28 @@ app.post('/api/skille/pick', async (req, res) => {
 });
 
 // ── 🧹 PAMIĘĆ — raport RAM + bezpieczne zwolnienie (przygotowanie na UE) ──────
-app.get('/api/system/memory', (req, res) => {
-    const total = os.totalmem(), free = os.freemem();
-    const base = { success: true, totalGB: +(total / 1e9).toFixed(1), freeGB: +(free / 1e9).toFixed(1), usedGB: +((total - free) / 1e9).toFixed(1) };
-    exec(`powershell -NoProfile -Command "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 14 Name,@{N='MB';E={[int]($_.WorkingSet64/1MB)}} | ConvertTo-Json -Compress"`,
-        { timeout: 9000, windowsHide: true }, (err, stdout) => {
-            let procs = [];
-            try { const p = JSON.parse(stdout || '[]'); procs = Array.isArray(p) ? p : [p]; } catch { /* brak listy */ }
-            res.json({ ...base, processes: procs });
-        });
+app.get('/api/system/memory', async (req, res) => {
+    // services/StanKatedry.js: PID, opis (czym jest dany python/node) i „chroniony"; linii poleceń nie oddajemy.
+    const m = await StanKatedry.pamiec({ ile: 14 });
+    res.json({ success: true, ...m, processes: m.procesy.map((p) => ({ Name: p.name, MB: p.mb })) });
 });
 // Bezpieczne zamknięcie WSKAZANYCH procesów (krytyczne systemowe są blokowane).
 // ⚠️ NAPRAWIONE 2026-09-24: nazwa procesu szła do powłoki (`exec(\`taskkill /IM "${img}"\`)`), więc
 // `x" & del … & "` przechodziło przez BLOCK i wykonywało dowolną komendę. Teraz: nazwa tylko z liter,
 // cyfr, kropki, myślnika i podkreślnika; taskkill przez execFile (bez powłoki); trasa tylko lokalna
 // (SCIEZKI_TYLKO_LOKALNE w services/StrazMostu.js) — z tunelu nie zamknie się niczego.
+// 2026-09-29: `pidy` — zamykanie po PID (tylko z świeżej listy, niechronione): „python" to bywa ComfyUI,
+// Kuźnia albo pip, więc zamykanie po nazwie ubijało wszystkie naraz.
 app.post('/api/system/free', async (req, res) => {
     if (!req.lokalny) return res.status(403).json({ success: false, message: 'Zamykanie procesów działa tylko z maszyny Suwerena.' });
-    const BLOCK = /node|wiesio|powershell|cmd|explorer|system|svchost|csrss|winlogon|dwm|services|lsass|conhost/i;
+    if (Array.isArray(req.body?.pidy)) {
+        try {
+            const w = await StanKatedry.zwolnij(req.body.pidy);
+            console.log(`[System] 🧹 Zwolniono pamięć (PID) — zamknięto: ${w.zamkniete.map((p) => `${p.name}#${p.pid}`).join(', ') || '(nic)'}.`);
+            return res.json({ success: true, ...w, closed: w.zamkniete.map((p) => p.name) });
+        } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+    }
+    const BLOCK = /node|wiesio|powershell|cmd|explorer|system|svchost|csrss|winlogon|dwm|services|lsass|conhost|memory/i;
     const names = (req.body?.names || []).filter(n => typeof n === 'string' && /^[A-Za-z0-9._-]{1,64}$/.test(n) && !BLOCK.test(n));
     if (!names.length) return res.json({ success: false, message: 'Brak bezpiecznych procesów do zamknięcia.' });
     const closed = [];
@@ -5912,6 +5917,18 @@ app.post('/api/system/free', async (req, res) => {
     })));
     console.log(`[System] 🧹 Zwolniono pamięć — zamknięto: ${closed.join(', ') || '(nic)'}.`);
     res.json({ success: true, closed });
+});
+
+/**
+ * GET /api/katedra/raport?szukaj=&pamiec=1 — fakty dla agentów i czatu: projekty stada, Stół, Nocna Zmiana,
+ * ostatnie działania na szynie (+ pamięć z pamiec=1). `tekst` gotowy do wstrzyknięcia w kontekst modelu.
+ */
+app.get('/api/katedra/raport', async (req, res) => {
+    try {
+        const r = await raportKatedry({ szukaj: String(req.query.szukaj || '') });
+        const m = req.query.pamiec === '1' ? await StanKatedry.pamiec() : null;
+        res.json({ success: true, ...r, tekst: m ? `${r.tekst}\n${StanKatedry.tekstPamieci(m)}` : r.tekst, pamiec: m });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 // ── 🧠 MODELE LOKALNE — status + realny pull (Gemma 4 / Gemma diffusion) ──────
@@ -7586,7 +7603,19 @@ NocnaZmiana.uruchomPetle();
 // Androida podpiętego do tej maszyny). Strona telefonu: public/delegat (statyczna,
 // przez tunel + klucz Straży). Powody i granice — w nagłówkach tych plików.
 // ═════════════════════════════════════════════════════════════════════════════
-Delegat.skonfiguruj({ ollamaBase: OLLAMA_BASE, portMostu: PORT, szyna: Szyna, nocna: NocnaZmiana, artemis: Artemis, katalog: path.join(ANTIGRAVITY_DIR, 'delegat'), model: DEFAULT_LLM, pelnyTunel: PELNY_TUNEL, modelAgenta: (id) => ModeleAgentow.modelDla(id) });
+// 🧭 Fakty dla agentów: projekty stada, Stół, Nocna Zmiana, szyna (services/StanKatedry.js).
+async function raportKatedry({ szukaj = '' } = {}) {
+    const [projekty, karty, nocna] = await Promise.all([
+        ProjektStada.lista().catch(() => []),
+        Stol.lista().catch(() => []),
+        NocnaZmiana.stanZmiany().catch(() => null),
+    ]);
+    return StanKatedry.raport({ projekty, karty, nocna, szyna: Szyna.ostatnie({ ile: 12 }).slice().reverse(), szukaj });
+}
+Delegat.skonfiguruj({
+    ollamaBase: OLLAMA_BASE, portMostu: PORT, szyna: Szyna, nocna: NocnaZmiana, artemis: Artemis, katalog: path.join(ANTIGRAVITY_DIR, 'delegat'), model: DEFAULT_LLM, pelnyTunel: PELNY_TUNEL, modelAgenta: (id) => ModeleAgentow.modelDla(id),
+    stan: { raport: raportKatedry, pamiec: () => StanKatedry.pamiec(), zwolnij: (pidy) => StanKatedry.zwolnij(pidy) },
+});
 // 🧩 Projekt Stada: każdy TeOgochi pracuje na SWOIM modelu (ModeleAgentow) z SWOJĄ kartą roli.
 // Czat przez AppStudio.pisz — ten sam tor co Kodeks: Ollama lokalnie, `claude:`/`gemini:` tylko z jawnego wyboru.
 ModeleAgentow.skonfiguruj({ katalogWymiar: ANTIGRAVITY_DIR });
@@ -7653,6 +7682,7 @@ app.post('/api/delegat/rozmowa', async (req, res) => {
     res.end();
 });
 
+app.get('/api/delegat/wszyscy', async (_req, res) => res.json({ success: true, delegaci: await Delegat.wszyscy() }));
 app.get('/api/delegat/rozmowy', async (_req, res) => res.json({ success: true, rozmowy: await Delegat.rozmowy() }));
 app.get('/api/delegat/rozmowa/:id', async (req, res) => {
     const r = await Delegat.rozmowa(req.params.id);
