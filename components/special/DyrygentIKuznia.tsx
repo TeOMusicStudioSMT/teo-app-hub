@@ -9,6 +9,8 @@
  * KUŹNIA SOUP (services/KuzniaSoup.js): własny model TeOgochi z jego ocenionej pracy (soup-cli, LoRA →
  * GGUF → Ollama). Najpierw podgląd (ile dobrej pracy), potem dane + soup.yaml, na końcu wykucie — godziny
  * na karcie graficznej, najlepiej przez Nocną Zmianę. Bez Soup w Katedrze panel mówi to wprost.
+ *
+ * ZWIADOWCA HF (services/ZwiadowcaHF.js): kandydaci z HuggingFace dla Dyrygenta — pobranie po akceptacji.
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
@@ -248,6 +250,101 @@ const SrodowiskoKuzni: React.FC<{ doktor: Doktor | null; onZadanie: (id: string)
     );
 };
 
+interface Kandydat {
+    id: string; repo: string; kwant: string; gb: number; pobrania: number | null; polubienia: number | null;
+    opinia: string | null; stan: 'nowy' | 'pobiera' | 'pobrany' | 'odrzucony' | 'blad'; blad?: string | null; postep?: string | null; ollama: string;
+}
+
+/**
+ * 🔭 Zwiadowca HF (services/ZwiadowcaHF.js): nowi kandydaci z HuggingFace dla Dyrygenta. Pobranie (ollama pull hf.co/…)
+ * rusza DOPIERO po „Przyjmij"; odrzucone nie wracają w kolejnych zwiadach. Zwiad można też dać Nocnej Zmianie (zwiadowca-hf).
+ */
+export const ZwiadowcaPanel: React.FC = () => {
+    const [lista, setLista] = useState<Kandydat[]>([]);
+    const [ostatni, setOstatni] = useState<{ kiedy: string; nowych: number } | null>(null);
+    const [vram, setVram] = useState<number | null>(null);
+    const [trwa, setTrwa] = useState(false);
+    const [etap, setEtap] = useState<string | null>(null);
+    const [zapytania, setZapytania] = useState('');
+    const [pracuje, setPracuje] = useState<string | null>(null);
+
+    const wczytaj = useCallback(async () => {
+        try {
+            const d = await zMostu<{ kandydaci: Kandydat[]; ostatniZwiad: { kiedy: string; nowych: number } | null; trwa: boolean; vramGB: number }>('/api/zwiadowca/kandydaci');
+            setLista(d.kandydaci); setOstatni(d.ostatniZwiad); setTrwa(d.trwa); setVram(d.vramGB);
+            if (d.trwa) { const s = await zMostu<{ etap: string | null }>('/api/zwiadowca/sondaz'); setEtap(s.etap); } else setEtap(null);
+        } catch { /* most offline — panel pokaże pustą listę */ }
+    }, []);
+    useEffect(() => { wczytaj(); }, [wczytaj]);
+    // Odśwież, gdy zwiad trwa albo coś się pobiera (postęp w %).
+    const zyje = trwa || lista.some((k) => k.stan === 'pobiera');
+    useEffect(() => {
+        if (!zyje) return;
+        const t = window.setInterval(wczytaj, 4000);
+        return () => window.clearInterval(t);
+    }, [zyje, wczytaj]);
+
+    const szukaj = async () => {
+        try {
+            await zMostu('/api/zwiadowca/szukaj', { method: 'POST', body: JSON.stringify(zapytania.trim() ? { zapytania } : {}) });
+            setTrwa(true); toast('🔭 Zwiadowca ruszył na HuggingFace…'); wczytaj();
+        } catch (e) { toast.error(blad(e)); }
+    };
+    const decyzja = async (k: Kandydat, co: 'akceptuj' | 'odrzuc') => {
+        setPracuje(k.id);
+        try {
+            await zMostu(co === 'akceptuj' ? `/api/zwiadowca/kandydat/${k.id}/akceptuj` : `/api/zwiadowca/kandydat/${k.id}/odrzuc`, { method: 'POST', body: '{}' });
+            toast.success(co === 'akceptuj' ? `⬇️ Pobieram ${k.repo} (${k.gb} GB) do Ollamy` : `Odrzucony: ${k.repo}`);
+            wczytaj();
+        } catch (e) { toast.error(blad(e)); }
+        finally { setPracuje(null); }
+    };
+
+    const widoczne = lista.filter((k) => k.stan !== 'pobrany');
+    return (
+        <div className="space-y-3 rounded-2xl border border-teal-500/25 bg-teal-950/10 p-4">
+            <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-teal-200">🔭 Zwiadowca HF — nowe modele dla Dyrygenta</h3>
+                <button onClick={wczytaj} className="text-[10px] text-teal-300/70 hover:text-teal-200" title="Odśwież">↻</button>
+            </div>
+            <p className="text-[11px] text-slate-400">
+                Szuka na HuggingFace modeli GGUF, które zmieszczą się w karcie ({vram ?? '?'} GB VRAM, zmień: OTAKOS_VRAM_GB), czyta ich karty i melduje Dyrygentowi.
+                Z Katedry nic nie wychodzi poza słowami wyszukiwania. <b>Nic nie pobiera się samo</b> — dopiero „Przyjmij" (ollama pull hf.co/…); po pobraniu opinia Zwiadowcy trafia do karty modelu.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+                <input value={zapytania} onChange={(e) => setZapytania(e.target.value)} placeholder="słowa (domyślnie: polish, bielik, qwen3, gemma, coder, llama)"
+                    className="min-w-[16rem] flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />
+                <button onClick={szukaj} disabled={trwa} className="rounded bg-teal-700/70 px-3 py-1.5 text-xs font-bold text-teal-50 hover:bg-teal-600 disabled:opacity-50">
+                    {trwa ? `⟳ ${etap ?? 'zwiad…'}` : '🔭 Szukaj teraz'}
+                </button>
+            </div>
+            {ostatni && <div className="text-[10px] text-slate-500">Ostatni zwiad: {new Date(ostatni.kiedy).toLocaleString('pl-PL')} · nowych: {ostatni.nowych}</div>}
+            {!widoczne.length && !trwa && <div className="text-[11px] text-slate-500">Brak kandydatów — uruchom zwiad (albo daj go Nocnej Zmianie: robota „zwiadowca-hf").</div>}
+            <div className="space-y-1.5">
+                {widoczne.map((k) => (
+                    <div key={k.id} className="rounded-lg border border-slate-700/60 bg-black/30 p-2 text-[11px]">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <a href={`https://huggingface.co/${k.repo}`} target="_blank" rel="noreferrer" className="font-bold text-teal-200 hover:underline">{k.repo}</a>
+                            <span className="text-slate-400">{k.kwant} · {k.gb} GB{k.pobrania != null ? ` · ⬇ ${k.pobrania.toLocaleString('pl-PL')}` : ''}{k.polubienia != null ? ` · ♥ ${k.polubienia}` : ''}</span>
+                        </div>
+                        {k.opinia && <div className="mt-0.5 text-slate-300">🔭 {k.opinia}</div>}
+                        {k.stan === 'blad' && <div className="mt-0.5 text-rose-300">✕ {k.blad}</div>}
+                        <div className="mt-1 flex items-center gap-2">
+                            {k.stan === 'pobiera'
+                                ? <span className="text-amber-300">⬇️ {k.postep ?? 'pobieram…'}</span>
+                                : <>
+                                    <button onClick={() => decyzja(k, 'akceptuj')} disabled={pracuje === k.id} className="rounded bg-emerald-700/70 px-2 py-0.5 font-bold text-emerald-50 hover:bg-emerald-600 disabled:opacity-50">{k.stan === 'blad' ? '↻ Ponów' : '✓ Przyjmij'}</button>
+                                    <button onClick={() => decyzja(k, 'odrzuc')} disabled={pracuje === k.id} className="rounded border border-slate-600 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:opacity-50">✕ Odrzuć</button>
+                                  </>}
+                            <span className="ml-auto font-mono text-[10px] text-slate-500">{k.ollama}</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 export default function DyrygentIKuznia() {
-    return <div className="space-y-4"><DyrygentPanel /><KuzniaSoupPanel /></div>;
+    return <div className="space-y-4"><DyrygentPanel /><ZwiadowcaPanel /><KuzniaSoupPanel /></div>;
 }

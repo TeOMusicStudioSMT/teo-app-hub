@@ -60,6 +60,9 @@ export const ROLE = {
     klatka: { fala: 2, zadanie: 'Scenopis zwiastunu 60 s: 6–8 ujęć (plan, ruch kamery, co widać, dźwięk), zbudowany na bohaterach i konflikcie. Dwa najważniejsze ujęcia napisz dodatkowo każde w osobnej linii zaczynającej się od „UJĘCIE:" — jedno zdanie po angielsku dla generatora wideo (kto, co robi, gdzie, światło, ruch kamery).' },
     joanna: { fala: 2, zadanie: 'Muzyka: motyw przewodni (nastrój, BPM, tonacja, instrumenty) i tekst refrenu. Na końcu dwie linie dla generatora muzyki: „MUZYKA:" + prompt po angielsku (gatunek, nastrój, instrumenty, BPM) oraz „REFREN:" + wersy refrenu rozdzielone „/".' },
     kodeks: { fala: 2, zadanie: 'Gra: gatunek, pętla rozgrywki, 3 mechaniki wynikające ze świata, pierwszy poziom — skrót dokumentu gry. Na końcu jedna linia dla Studia Gier: „GRA: nazwa gry | jedno zdanie, co to za gra" (gdy projekt to raczej aplikacja niż gra: „APKA: nazwa | jedno zdanie").' },
+    // 🎲 Pionek (2026-09-29, Suweren: „dodał bym NOWE TeOgochi… od Gier/budowania ich"): dokument gry i linia GRA: —
+    // gdy jest w zespole, Kodeks dostaje technikę (KODEKS_Z_PIONKIEM), a gra ma jednego autora.
+    pionek: { fala: 2, zadanie: 'Gra: gatunek, pętla rozgrywki (co gracz robi co 30 s, co 5 min, co godzinę), 3 mechaniki wynikające ze świata, progresja i pierwszy poziom krok po kroku — skrót dokumentu gry (GDD), który Studio Gier zamieni w plan produkcji. Na końcu jedna linia dla Studia Gier: „GRA: nazwa gry | jedno zdanie, co to za gra" (gdy projekt to raczej aplikacja niż gra: „APKA: nazwa | jedno zdanie").' },
     krawcowa: { fala: 2, zadanie: 'Moda: kolekcja 4 strojów bohaterów (krój, materiał, kolory, detal), spójna ze światem.' },
     paleta: { fala: 2, zadanie: 'Styl wizualny: paleta 5 barw (hex) z uzasadnieniem i 3 obiekty do wyrzeźbienia w 3D — każdy w osobnej linii zaczynającej się od „OBIEKT:" i jednym zdaniem opisu dla generatora brył.' },
     glosek: { fala: 2, zadanie: 'Głosy: obsada głosowa postaci (barwa, tempo, maniera) i 3 kwestie próbne.' },
@@ -146,10 +149,14 @@ export function skrot(p) {
 const nadaj = (agent, tresc, dane) => cfg.szyna?.nadaj?.({ agent, rodzaj: 'projekt', tresc, dane })?.catch?.(() => {});
 
 /** Plan: kto, w jakiej fali, z jakim zadaniem — plus scalenie na końcu. */
+export const KODEKS_Z_PIONKIEM = 'Technika gry/apki: architektura (ekrany, stan, dane, zapis gry), stos w Studiu Gier (three.js albo Vite + React), co zbudować najpierw i jak sprawdzić, że działa. Dokument gry pisze Pionek — Ty mówisz, jak go zbudować; linii „GRA:" nie piszesz.';
+
 export function zaplanuj(uczestnicy) {
+    const zPionkiem = uczestnicy.some((u) => u.id === 'pionek');
     const kroki = uczestnicy.map((u) => {
         const r = ROLE[u.id] ?? { fala: 2, zadanie: `Wkład z Twojej dziedziny (${u.dziedzina || 'Twoja specjalność'}) do tego projektu — konkretny i spójny z resztą.` };
-        return { agent: u.id, imie: u.imie, fala: r.fala, zadanie: r.zadanie };
+        const zadanie = u.id === 'kodeks' && zPionkiem ? KODEKS_Z_PIONKIEM : r.zadanie;
+        return { agent: u.id, imie: u.imie, fala: r.fala, zadanie };
     }).sort((a, b) => a.fala - b.fala);
     const scalacz = uczestnicy.find((u) => u.id === 'rezyser') ?? uczestnicy.find((u) => u.id === 'kronikarz') ?? uczestnicy[0];
     kroki.push({
@@ -513,4 +520,4 @@ export function obiekty3d(wklad) {
     return [...String(wklad ?? '').matchAll(/^\s*[-*•]?\s*OBIEKT\s*:\s*(.+)$/gim)].map((m) => m[1].trim()).filter(Boolean).slice(0, 6);
 }
 
-export default { skonfiguruj, ROLE, zaplanuj, zaloz, zlec, kontynuuj, sondaz, czytajOcene, projekt, lista, skrot, obiekty3d, MAX_RUND, MAX_PETLI, CEL_OCENY };
+export default { skonfiguruj, ROLE, KODEKS_Z_PIONKIEM, zaplanuj, zaloz, zlec, kontynuuj, sondaz, czytajOcene, projekt, lista, skrot, obiekty3d, MAX_RUND, MAX_PETLI, CEL_OCENY };

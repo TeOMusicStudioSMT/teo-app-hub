@@ -1,5 +1,5 @@
 /**
- * 🥚 Gatunki TeOgochi — 14 szablonów, z których wykluwają się agenci zadaniowi.
+ * 🥚 Gatunki TeOgochi — 16 szablonów, z których wykluwają się agenci zadaniowi.
  *
  * Joanna była pierwsza i jedyna. Teraz jest JEDNYM z gatunków — muzycznym.
  * Każdy gatunek to osobny agent z własną dziedziną, własnym jajem, własną
@@ -180,6 +180,26 @@ export const GATUNKI: Gatunek[] = [
             'Latarniku, co się rozjechało?',
             'Latarniku, podaj godziny do wpisania w wizytówce Google',
         ],
+    },
+    {
+        // 🎲 Suweren (2026-09-29): „dodał bym NOWE TeOgochi… od Gier/budowania ich". W Projekcie Stada pisze GDD
+        // i linię „GRA:", z której Studio Gier robi plan i produkcję Kodeksa.
+        id: 'pionek', imie: 'Pionek', dziedzina: 'Gry',
+        opis: 'Projektuje gry: pętlę rozgrywki, mechaniki i pierwszy poziom — Studio Gier robi z tego plan, a Kodeks buduje.',
+        formy: { 'jajko': '🥚', 'pisklę': '🎲', 'młodzik': '♟️', 'kompan': '🕹️', 'legenda': '🏆' },
+        kolor: '#f43f5e',
+        narzedzia: ['/api/appstudio/projekty', '/api/gdd/:id/import', '/api/gdd/:id/realizuj', '/api/gdd/:id/sondaz'],
+        zadania: ['Pionku, zaprojektuj grę z tego świata', 'Pionku, rozpisz pierwszy poziom', 'Pionku, co gracz robi co 30 sekund?'],
+    },
+    {
+        // 🔭 Suweren (2026-09-29): „Teogochi którym zadanie jest wyszukiwanie na Hugging Face nowych modeli… raportować
+        // Dyrygentowi… nowe modele idą do kucia po akceptacji". services/ZwiadowcaHF.js — nic nie pobiera bez zgody.
+        id: 'zwiadowca', imie: 'Zwiadowca', dziedzina: 'Modele (HuggingFace)',
+        opis: 'Szuka na HuggingFace nowych modeli, które zmieszczą się w karcie, i melduje je Dyrygentowi; pobiera dopiero po akceptacji.',
+        formy: { 'jajko': '🥚', 'pisklę': '🐦', 'młodzik': '🦉', 'kompan': '🔭', 'legenda': '🛰️' },
+        kolor: '#14b8a6',
+        narzedzia: ['/api/zwiadowca/kandydaci', '/api/zwiadowca/szukaj', '/api/zwiadowca/kandydat/:id/akceptuj', '/api/modele/katalog'],
+        zadania: ['Zwiadowco, poszukaj nowych modeli po polsku', 'Zwiadowco, co znalazłeś dla Kodeksa?', 'Zwiadowco, który model zmieści się w karcie?'],
     },
 ];
 
