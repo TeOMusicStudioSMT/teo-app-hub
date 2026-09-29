@@ -10315,6 +10315,11 @@ app.get('/api/kuznia-soup', async (_req, res) => {
 /** GET /api/kuznia-soup/doktor — czy Soup jest w Katedrze i co mówi o karcie graficznej (`soup doctor`). */
 app.get('/api/kuznia-soup/doktor', async (_req, res) => res.json({ success: true, ...(await KuzniaSoup.doktor()) }));
 app.get('/api/kuznia-soup/zadanie/:id/sondaz', (req, res) => res.json(KuzniaSoup.sondaz(req.params.id)));
+/** POST /api/kuznia-soup/srodowisko/instaluj { cuda?: 'auto'|'cu128'|…|'cpu' } — Python 3.12 venv + PyTorch CUDA + soup-cli[train] W KATEDRZE. */
+app.post('/api/kuznia-soup/srodowisko/instaluj', async (req, res) => {
+    try { res.json({ success: true, ...(await KuzniaSoup.instaluj({ cuda: String(req.body?.cuda || 'auto') })) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 app.get('/api/kuznia-soup/:agent/podglad', async (req, res) => {
     try { res.json({ success: true, ...(await KuzniaSoup.podglad(req.params.agent, { prog: Number(req.query.prog) || undefined })) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }

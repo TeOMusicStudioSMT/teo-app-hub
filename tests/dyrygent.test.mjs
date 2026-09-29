@@ -75,7 +75,7 @@ test('Kuźnia Soup: odmawia bez bazy i przy za małej liczbie próbek; przy doś
     const duzo = Array.from({ length: 9 }, (_, i) => ({ ...PROJEKTY[0], id: `p${i}`, nazwa: `P${i}` }));
     const wolania = [];
     KuzniaSoup.skonfiguruj({
-        katalog, projekty: async () => PROJEKTY, karta: async () => ({ imie: 'Kodeks', tresc: 'KARTA Kodeksa' }), baza: '',
+        katalog, projekty: async () => PROJEKTY, karta: async () => ({ imie: 'Kodeks', tresc: 'KARTA Kodeksa' }), baza: '', istnieje: () => false,
         uruchom: async (pol, argi, { naLinie }) => { wolania.push([pol, ...argi]); naLinie('ok'); return 0; },
     });
     await assert.rejects(KuzniaSoup.przygotuj('kodeks'), /model bazowy/);
@@ -106,4 +106,90 @@ test('Kuźnia Soup: błąd Soup (np. brak karty graficznej) zostaje w zadaniu z 
     assert.equal(s.stan, 'blad');
     assert.match(s.blad, /trening \(LoRA\): Soup zakończył się kodem 1/);
     assert.equal(KuzniaSoup.biezace(), null, 'po błędzie Kuźnia jest wolna');
+});
+
+test('Kuźnia Soup: szuka Soup po kolei — OTAKOS_SOUP → Katedra → pipx (~/.local/bin) → PATH', () => {
+    const win = KuzniaSoup.kandydaciSoup({ platforma: 'win32', dom: 'C:\\Users\\arkad', srodowisko: 'D:\\Katedra\\_OtakOs_AI\\kuznia-soup', zEnv: '' });
+    assert.deepEqual(win.map((k) => [k.zrodlo, k.sciezka]), [
+        ['Katedra', 'D:\\Katedra\\_OtakOs_AI\\kuznia-soup\\venv\\Scripts\\soup.exe'],
+        ['pipx (~/.local/bin)', 'C:\\Users\\arkad\\.local\\bin\\soup.exe'],
+    ]);
+    const lin = KuzniaSoup.kandydaciSoup({ platforma: 'linux', dom: '/home/a', srodowisko: '/k/kuznia-soup', zEnv: '/opt/soup' });
+    assert.deepEqual(lin.map((k) => k.sciezka), ['/opt/soup', '/k/kuznia-soup/venv/bin/soup', '/home/a/.local/bin/soup']);
+
+    KuzniaSoup.skonfiguruj({ soup: null, platforma: 'linux', srodowisko: '/k/kuznia-soup', istnieje: () => false });
+    assert.equal(KuzniaSoup.znajdzSoup().zrodlo, process.env.OTAKOS_SOUP ? 'OTAKOS_SOUP' : 'PATH');
+    if (!process.env.OTAKOS_SOUP) {
+        KuzniaSoup.skonfiguruj({ istnieje: (p) => p.endsWith(path.join('.local', 'bin', 'soup')) });
+        assert.equal(KuzniaSoup.znajdzSoup().zrodlo, 'pipx (~/.local/bin)');
+        KuzniaSoup.skonfiguruj({ istnieje: () => true });
+        assert.deepEqual(KuzniaSoup.znajdzSoup(), { polecenie: '/k/kuznia-soup/venv/bin/soup', zrodlo: 'Katedra' }, 'Katedra przed pipx');
+    }
+    KuzniaSoup.skonfiguruj({ istnieje: () => false });
+});
+
+test('Kuźnia Soup: koło PyTorch ze sterownika i karta graficzna z soup doctor', () => {
+    assert.equal(KuzniaSoup.koloTorch('| NVIDIA-SMI 576.02   Driver Version: 576.02   CUDA Version: 12.9 |'), 'cu128');
+    assert.equal(KuzniaSoup.koloTorch('CUDA Version: 13.1'), 'cu130');
+    assert.equal(KuzniaSoup.koloTorch('CUDA Version: 12.4'), 'cu124');
+    assert.equal(KuzniaSoup.koloTorch('CUDA Version: 11.2'), 'cu118');
+    assert.equal(KuzniaSoup.koloTorch('bez karty'), null);
+    assert.equal(KuzniaSoup.gpuZDoktora(['Python:   3.12.9', 'CUDA:     available (v12.8)']), 'cuda');
+    assert.equal(KuzniaSoup.gpuZDoktora(['Backend:  CPU only']), 'cpu');
+    assert.equal(KuzniaSoup.gpuZDoktora(['torch not installed']), 'cpu');
+    assert.equal(KuzniaSoup.gpuZDoktora(['coś innego']), null);
+});
+
+const czekajNaKuznie = async (id) => {
+    for (let i = 0; i < 200 && KuzniaSoup.sondaz(id).stan === 'trwa'; i++) await new Promise((r) => setTimeout(r, 10));
+    return KuzniaSoup.sondaz(id);
+};
+
+test('Kuźnia Soup: instalacja w Katedrze — Python 3.12 (py), nvidia-smi → cu128, venv → pip → torch CUDA → soup-cli[train] → sprawdzenie', async () => {
+    const srodowisko = tmp();
+    const wolania = [];
+    KuzniaSoup.skonfiguruj({
+        srodowisko, platforma: 'win32', istnieje: () => false,
+        uruchom: async (pol, argi, { naLinie }) => {
+            wolania.push([pol, ...argi]);
+            if (pol === 'py') { if (argi[0] === '-3.12') naLinie('3 12'); else return 1; }
+            else if (pol === 'nvidia-smi') naLinie('Driver Version: 576.02   CUDA Version: 12.9');
+            else if (argi.includes('import torch;print(torch.__version__, torch.cuda.is_available())')) naLinie('2.8.0+cu128 True');
+            else if (argi.includes('version')) naLinie('soup 0.75.1');
+            else naLinie('ok');
+            return 0;
+        },
+    });
+    await assert.rejects(KuzniaSoup.instaluj({ cuda: 'cu999' }), /Nie znam koła PyTorch/);
+    const z = await KuzniaSoup.instaluj();
+    assert.match(z.sondaz, /^\/api\/kuznia-soup\/zadanie\/kz-.+\/sondaz$/);
+    await assert.rejects(KuzniaSoup.instaluj(), /zajęta/);
+    const s = await czekajNaKuznie(z.id);
+    assert.equal(s.stan, 'gotowe', s.blad ?? '');
+    assert.match(s.podsumowanie, /CUDA/);
+    const venv = path.join(srodowisko, 'venv');
+    const py = path.join(venv, 'Scripts', 'python.exe');
+    const bezSprawdzenia = wolania.filter((w) => !(w[0] === 'py' && w.includes('-c')));
+    assert.deepEqual(bezSprawdzenia, [
+        ['nvidia-smi'],
+        ['py', '-3.12', '-m', 'venv', venv],
+        [py, '-m', 'pip', 'install', '--upgrade', 'pip'],
+        [py, '-m', 'pip', 'install', 'torch', '--index-url', 'https://download.pytorch.org/whl/cu128'],
+        [py, '-m', 'pip', 'install', 'soup-cli[train]'],
+        [py, '-c', 'import torch;print(torch.__version__, torch.cuda.is_available())'],
+        [path.join(venv, 'Scripts', 'soup.exe'), '--no-telemetry', 'version'],
+    ]);
+    assert.equal(KuzniaSoup.biezace(), null);
+});
+
+test('Kuźnia Soup: instalacja bez Pythona 3.10–3.12 odmawia wprost (3.13 się nie liczy), niczego nie instaluje', async () => {
+    const wolania = [];
+    KuzniaSoup.skonfiguruj({
+        srodowisko: tmp(), platforma: 'win32', istnieje: () => false,
+        uruchom: async (pol, argi, { naLinie }) => { wolania.push([pol, ...argi]); naLinie('3 13'); return 0; },
+    });
+    const s = await czekajNaKuznie((await KuzniaSoup.instaluj({ cuda: 'cpu' })).id);
+    assert.equal(s.stan, 'blad');
+    assert.match(s.blad, /Nie ma Pythona 3\.10–3\.12/);
+    assert.ok(wolania.every((w) => w.includes('-c')), 'tylko pytania o wersję, żadnego pip');
 });
