@@ -8,32 +8,37 @@ import { toast } from 'react-hot-toast';
 const BRIDGE = 'http://127.0.0.1:3001';
 const BROWSERS = /brave|chrome|msedge|firefox|opera/i;
 
-interface Proc { Name: string; MB: number; }
+/** Proces z mostu (services/StanKatedry.js): PID, opis — czym jest (python bywa ComfyUI, Kuźnią, pip) — i czy chroniony. */
+interface Proc { pid: number; name: string; mb: number; opis?: string; skrypt?: string | null; chroniony?: boolean; uwaga?: string; }
 
 export const PamiecHelper: React.FC = () => {
   const [mem, setMem] = useState<{ totalGB: number; freeGB: number; usedGB: number } | null>(null);
   const [procs, setProcs] = useState<Proc[]>([]);
-  const [sel, setSel] = useState<Record<string, boolean>>({});
+  const [sel, setSel] = useState<Record<number, boolean>>({});
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const d = await (await fetch(`${BRIDGE}/api/system/memory`)).json();
-      if (d.success) { setMem({ totalGB: d.totalGB, freeGB: d.freeGB, usedGB: d.usedGB }); setProcs(d.processes || []); }
+      if (d.success) { setMem({ totalGB: d.totalGB, freeGB: d.freeGB, usedGB: d.usedGB }); setProcs(d.procesy || []); }
     } catch { /* most offline */ }
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const toggle = (n: string) => setSel(s => ({ ...s, [n]: !s[n] }));
-  const pickBrowsers = () => { const s: Record<string, boolean> = {}; procs.forEach(p => { if (BROWSERS.test(p.Name)) s[p.Name] = true; }); setSel(s); };
+  const toggle = (pid: number) => setSel(s => ({ ...s, [pid]: !s[pid] }));
+  const pickBrowsers = () => { const s: Record<number, boolean> = {}; procs.forEach(p => { if (BROWSERS.test(p.name) && !p.chroniony) s[p.pid] = true; }); setSel(s); };
 
   const free = async () => {
-    const names = Object.keys(sel).filter(n => sel[n]);
-    if (!names.length) { toast('Zaznacz, co zamknąć.', { icon: '✋' }); return; }
+    const pidy = Object.keys(sel).map(Number).filter(n => sel[n]);
+    if (!pidy.length) { toast('Zaznacz, co zamknąć.', { icon: '✋' }); return; }
     setBusy(true);
     try {
-      const d = await (await fetch(`${BRIDGE}/api/system/free`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names }) })).json();
-      if (d.success) { toast.success(`🧹 Zamknięto: ${d.closed.join(', ') || '(nic)'}.`); setSel({}); setTimeout(load, 800); }
+      const d = await (await fetch(`${BRIDGE}/api/system/free`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pidy }) })).json();
+      if (d.success) {
+        toast.success(`🧹 Zamknięto: ${d.zamkniete.map((p: Proc) => `${p.name} #${p.pid}`).join(', ') || '(nic)'}.`);
+        for (const o of d.odmowy ?? []) toast(`✋ #${o.pid}: ${o.powod}`, { duration: 7000 });
+        setSel({}); setTimeout(load, 800);
+      }
       else toast.error(`⚠ ${d.message}`);
     } catch { toast.error('⚠ Most offline (:3001).'); }
     finally { setBusy(false); }
@@ -60,13 +65,16 @@ export const PamiecHelper: React.FC = () => {
           </div>
 
           <div className="max-h-36 overflow-y-auto space-y-0.5 mb-2">
-            {procs.map((p, i) => (
-              <label key={p.Name + i} className="flex items-center justify-between gap-2 text-[10px] text-zinc-300 cursor-pointer hover:bg-white/5 rounded px-1 py-0.5">
+            {procs.map((p) => (
+              <label key={p.pid} title={p.uwaga || (p.chroniony ? 'Chroniony — tego Katedra nie zamyka.' : '')}
+                className={`flex items-center justify-between gap-2 text-[10px] rounded px-1 py-0.5 ${p.chroniony ? 'text-zinc-500 cursor-not-allowed' : 'text-zinc-300 cursor-pointer hover:bg-white/5'}`}>
                 <span className="flex items-center gap-1.5 truncate">
-                  <input type="checkbox" checked={!!sel[p.Name]} onChange={() => toggle(p.Name)} className="accent-orange-500 w-3 h-3" />
-                  {BROWSERS.test(p.Name) ? '🌐' : '▪'} {p.Name}
+                  <input type="checkbox" disabled={p.chroniony} checked={!!sel[p.pid]} onChange={() => toggle(p.pid)} className="accent-orange-500 w-3 h-3" />
+                  {BROWSERS.test(p.name) ? '🌐' : p.chroniony ? '🔒' : '▪'} {p.name}
+                  <span className="text-zinc-600">#{p.pid}</span>
+                  {p.opis && <span className="text-orange-300/70 truncate">— {p.opis}{p.skrypt ? ` (${p.skrypt})` : ''}</span>}
                 </span>
-                <span className="text-zinc-500 shrink-0">{p.MB} MB</span>
+                <span className="text-zinc-500 shrink-0">{p.mb} MB</span>
               </label>
             ))}
           </div>
@@ -77,7 +85,7 @@ export const PamiecHelper: React.FC = () => {
               {busy ? '⟳ …' : '🧹 Zwolnij zaznaczone'}
             </button>
           </div>
-          <div className="text-[9px] text-zinc-600 mt-1.5 italic">⚠ Zapisz pracę w zamykanych appach! Krytyczne procesy systemowe są blokowane.</div>
+          <div className="text-[9px] text-zinc-600 mt-1.5 italic">⚠ Zapisz pracę w zamykanych appach! Zamyka się po PID (jeden proces z drzewem), 🔒 = systemowe i most — chronione. „Memory Compression" to RAM ściśnięty przez Windows: zmaleje sam, gdy zamkniesz to, co pamięć zjada.</div>
         </>
       ) : (
         <div className="text-[10px] text-amber-400/80">⚠ Most offline (:3001) — uruchom wiesio-bridge.js, by zobaczyć pamięć.</div>

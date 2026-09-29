@@ -73,7 +73,7 @@ test('Delegat: pełny profil dla trzech, rozmowny z karty roli dla reszty', asyn
     assert.ok((await Delegat.profilDla('joanna')).narzedzia.includes('music.generate'));
     const paleta = await Delegat.profilDla('paleta');
     assert.equal(paleta.imie, 'Paleta');
-    assert.deepEqual(paleta.narzedzia, ['katedra.stan', 'szyna.pytanie', 'szyna.notatka']);
+    assert.deepEqual(paleta.narzedzia, ['katedra.stan', 'projekty.stan', 'system.pamiec', 'szyna.pytanie', 'szyna.notatka'], 'rozmowny: fakty i odczyt pamięci, bez skutków ubocznych');
     assert.equal(await Delegat.profilDla('nie-ma-takiego'), null);
 });
 

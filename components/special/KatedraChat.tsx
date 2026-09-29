@@ -1041,6 +1041,42 @@ ${String(d.tresc || '').slice(0, 4000)}
     }, [scrollToBottom]);
 
 
+    // ── 🧭 STAN KATEDRY — /stan, /zwolnij i fakty dla pytań o projekty/pamięć ──────────
+    /**
+     * Suweren (2026-09-29): „nasz główny Agent… po zapytaniu co jest zrobione w projektach lub ostatnie działania…
+     * python coś trzyma… by można było to zrobić z poziomu Katedry". Model nie zna plików projektów ani listy
+     * procesów — więc dostaje FAKTY z mostu (/api/katedra/raport), a nie zgaduje.
+     *   /stan [fragment nazwy]  → raport od razu (projekty, Stół, Nocna, szyna, pamięć z PID)
+     *   /zwolnij 1234 5678      → zamknięcie procesów po PID (tylko z tej maszyny; systemowe i most chronione)
+     */
+    const dispatchStan = useCallback(async (szukaj: string) => {
+        const widgetId = addMessage({ sender: 'mechanik', content: '🧭 STAN KATEDRY\n\n▸ Czytam projekty, Stół i pamięć...' });
+        try {
+            const d = await (await fetch(`http://127.0.0.1:3001/api/katedra/raport?pamiec=1&szukaj=${encodeURIComponent(szukaj)}`)).json();
+            if (!d.success) throw new Error(d.message || 'błąd');
+            updateMessage(widgetId, { content: `🧭 STAN KATEDRY (fakty z mostu)\n\n${d.tekst}\n\n_Zamknięcie procesu: /zwolnij <PID>_` });
+        } catch (err: any) {
+            updateMessage(widgetId, { content: `🧭 STAN KATEDRY\n\n❌ Most niedostępny: ${err.message}` });
+        }
+        scrollToBottom(true);
+    }, [scrollToBottom]);
+
+    const dispatchZwolnij = useCallback(async (pidy: number[]) => {
+        const widgetId = addMessage({ sender: 'mechanik', content: `🧹 ZWALNIAM PAMIĘĆ\n\n▸ PID: ${pidy.join(', ')}...` });
+        try {
+            const d = await (await fetch('http://127.0.0.1:3001/api/system/free', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pidy }),
+            })).json();
+            if (!d.success) throw new Error(d.message || 'błąd');
+            const zam = (d.zamkniete ?? []).map((p: any) => `✅ ${p.name} #${p.pid}${p.opis ? ` — ${p.opis}` : ''}`);
+            const odm = (d.odmowy ?? []).map((o: any) => `✋ #${o.pid}: ${o.powod}`);
+            updateMessage(widgetId, { content: `🧹 ZWALNIAM PAMIĘĆ\n\n${[...zam, ...odm].join('\n') || '(nic)'}` });
+        } catch (err: any) {
+            updateMessage(widgetId, { content: `🧹 ZWALNIAM PAMIĘĆ\n\n❌ ${err.message}` });
+        }
+        scrollToBottom(true);
+    }, [scrollToBottom]);
+
     // ── 🧰 INSTALATOR SKILLI — „Klaudi, zainstaluj to repro" ──────────────────────
     /**
      * Suweren mówi do konsoli po ludzku, a nie slashem. Przechwyt łapie zdania typu
@@ -1148,6 +1184,20 @@ ${String(d.tresc || '').slice(0, 4000)}
             return;
         }
 
+        // ── /stan i /zwolnij → fakty z mostu i zamykanie procesów po PID ──
+        if (/^\/stan\b/i.test(text)) {
+            setCurrentInput('');
+            await dispatchStan(text.replace(/^\/stan\b/i, '').trim());
+            return;
+        }
+        if (/^\/zwolnij\b/i.test(text)) {
+            setCurrentInput('');
+            const pidy = (text.match(/\d+/g) ?? []).map(Number);
+            if (!pidy.length) { addMessage({ sender: 'mechanik', content: '🧹 Podaj PID: /zwolnij 1234 (PID-y pokazuje /stan).' }); return; }
+            await dispatchZwolnij(pidy);
+            return;
+        }
+
         // ── Przechwyt komendy /git → Git Assistant ──
         if (/^\/git\b/i.test(text)) {
             setCurrentInput('');
@@ -1178,8 +1228,18 @@ ${String(d.tresc || '').slice(0, 4000)}
         const fileBlock = filesToSend.length
             ? filesToSend.map(f => `[ZAWARTOŚĆ PLIKU: ${f.name}]\n${f.content}\n[/KONIEC PLIKU]`).join('\n\n') + '\n\n'
             : '';
-        // Tekst wysyłany do modelu = treść plików + wiadomość Suwerena (model nie musi prosić o wklejanie)
-        const modelText = fileBlock + text;
+        // 🧭 Pytanie o projekty, Stół, ostatnie działania albo pamięć → model dostaje FAKTY z mostu, nie zgaduje.
+        let stanBlock = '';
+        if (/projekt|st[oó]ł|stole|zrobione|zrobion|ostatni[ea]? dzia[lł]a|co si[eę] dzieje|nocn[aej]|pami[eę][cć]|ram\b|proces|python|trzyma/i.test(text)) {
+            try {
+                const pam = /pami[eę][cć]|ram\b|proces|python|trzyma|zamul/i.test(text) ? '&pamiec=1' : '';
+                const d = await (await fetch(`http://127.0.0.1:3001/api/katedra/raport?x=1${pam}`, { signal: AbortSignal.timeout(15000) })).json();
+                if (d.success && d.tekst) stanBlock = `[STAN KATEDRY — fakty z mostu, odpowiadaj NA ICH PODSTAWIE; nie wymyślaj, czego tu nie ma]\n${d.tekst}\n[/STAN KATEDRY]\n` +
+                    (pam ? '[Zamknięcie procesu: Suweren wpisuje /zwolnij <PID> — podaj mu właściwy PID z listy, sam niczego nie zamykasz.]\n\n' : '\n');
+            } catch { /* most offline — model odpowie bez faktów */ }
+        }
+        // Tekst wysyłany do modelu = treść plików + fakty Katedry + wiadomość Suwerena (model nie musi prosić o wklejanie)
+        const modelText = fileBlock + stanBlock + text;
 
         const totalTokens = attachmentsToSend.reduce((s, a) => s + a.estimatedTokens, 0);
         const humanContent = (filesToSend.length
@@ -1299,7 +1359,7 @@ ${String(d.tresc || '').slice(0, 4000)}
         }
     }, [currentInput, isLoading, sourceMode, cloudFastModel, fastModel,
         buildHistory, getDispatch, handleOllamaResponse, runModerator, scrollToBottom,
-        dispatchToMechanik, dispatchGitAssist, pendingAttachments, fileContexts]);
+        dispatchToMechanik, dispatchGitAssist, dispatchStan, dispatchZwolnij, pendingAttachments, fileContexts]);
 
     // ── Konsultacja z Radą (Adamus) ────────────────────────────────
     /**
