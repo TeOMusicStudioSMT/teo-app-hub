@@ -74,6 +74,7 @@ import * as PowitanieDnia  from './services/PowitanieDnia.js';
 import * as Stol           from './services/Stol.js';
 import * as Dyrygent       from './services/Dyrygent.js';
 import * as KuzniaSoup     from './services/KuzniaSoup.js';
+import * as ZwiadowcaHF    from './services/ZwiadowcaHF.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
@@ -10324,7 +10325,11 @@ app.post('/api/stado/projekt/:id/zlec', async (req, res) => {
 // ── 🎼 Dyrygent i ⚒️ Kuźnia Soup — trasy ──────────────────────────────────────────────────────────────
 /** GET /api/modele/katalog — modele Katedry z kartami, własnymi modelami TeOgochi i pracą w stadzie. */
 app.get('/api/modele/katalog', async (_req, res) => {
-    try { res.json({ success: true, modele: await Dyrygent.katalog(), dyrygent: process.env.OTAKOS_DYRYGENT_MODEL || DEFAULT_LLM }); }
+    try {
+        // 🔭 Kandydaci Zwiadowcy HF — widoczni dla Dyrygenta i Suwerena, ale NIE do przydziału, dopóki nie są w Ollamie.
+        const kandydaci = (await ZwiadowcaHF.kandydaci().catch(() => ({ kandydaci: [] }))).kandydaci.filter((k) => k.stan === 'nowy' || k.stan === 'pobiera');
+        res.json({ success: true, modele: await Dyrygent.katalog(), dyrygent: process.env.OTAKOS_DYRYGENT_MODEL || DEFAULT_LLM, kandydaci });
+    }
     catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 /** PUT /api/modele/karta { nazwa, opis, mocne } — co Suweren wie o modelu. Tylko przy maszynie. */
@@ -10352,6 +10357,35 @@ app.get('/api/kuznia-soup', async (_req, res) => {
 /** GET /api/kuznia-soup/doktor — czy Soup jest w Katedrze i co mówi o karcie graficznej (`soup doctor`). */
 app.get('/api/kuznia-soup/doktor', async (_req, res) => res.json({ success: true, ...(await KuzniaSoup.doktor()) }));
 app.get('/api/kuznia-soup/zadanie/:id/sondaz', (req, res) => res.json(KuzniaSoup.sondaz(req.params.id)));
+
+// ── 🔭 ZWIADOWCA HF (services/ZwiadowcaHF.js) — nowe modele z HuggingFace dla Katedry; pobranie dopiero po akceptacji ──
+ZwiadowcaHF.skonfiguruj({
+    katalog: path.join(ANTIGRAVITY_DIR, 'zwiadowca'),
+    ollama: OLLAMA_BASE,
+    szyna: Szyna,
+    ustawKarte: (nazwa, karta) => Dyrygent.ustawKarte(nazwa, karta),
+    pisz: async ({ system, prompt }) => (await AppStudio.pisz({ system, prompt, model: (await ModeleAgentow.modelDla('zwiadowca').catch(() => null)) || DEFAULT_LLM, timeoutMs: 5 * 60_000 })).tekst,
+});
+app.get('/api/zwiadowca/kandydaci', async (req, res) => {
+    try { res.json({ success: true, ...(await ZwiadowcaHF.kandydaci({ wszystkie: req.query.wszystkie === '1' })) }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+/** POST /api/zwiadowca/szukaj { zapytania? } — zwiad w tle (maszyna; też Nocna Zmiana: robota zwiadowca-hf). */
+app.post('/api/zwiadowca/szukaj', async (req, res) => {
+    try {
+        const z = Array.isArray(req.body?.zapytania) ? req.body.zapytania : (typeof req.body?.zapytania === 'string' && req.body.zapytania.trim() ? req.body.zapytania.split(',') : undefined);
+        res.json({ success: true, ...(await ZwiadowcaHF.zwiad({ zapytania: z })) });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/zwiadowca/sondaz', (_req, res) => res.json(ZwiadowcaHF.sondaz()));
+app.post('/api/zwiadowca/kandydat/:id/akceptuj', async (req, res) => {
+    try { res.json({ success: true, ...(await ZwiadowcaHF.akceptuj(req.params.id)) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/zwiadowca/kandydat/:id/odrzuc', async (req, res) => {
+    try { res.json({ success: true, kandydat: await ZwiadowcaHF.odrzuc(req.params.id) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 /** POST /api/kuznia-soup/srodowisko/instaluj { cuda?: 'auto'|'cu128'|…|'cpu' } — Python 3.12 venv + PyTorch CUDA + soup-cli[train] W KATEDRZE. */
 app.post('/api/kuznia-soup/srodowisko/instaluj', async (req, res) => {
     try { res.json({ success: true, ...(await KuzniaSoup.instaluj({ cuda: String(req.body?.cuda || 'auto') })) }); }

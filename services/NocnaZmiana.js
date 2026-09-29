@@ -64,6 +64,7 @@ export const CO_ILE_MS = 60_000;
  *   opcje           lista wpisana tu, na miejscu
  */
 export const POLA = {
+    zapytania:     { etykieta: 'słowa zwiadu HF (po przecinku, np. polish,coder)', typ: 'tekst' },
     projekt:       { etykieta: 'projekt Story',   wybor: 'projekt-story' },
     serial:        { etykieta: 'serial Story',    wybor: 'projekt-story' },
     odcinekId:     { etykieta: 'odcinek',         wybor: 'odcinek', zalezyOd: ['projekt', 'serial'] },
@@ -130,6 +131,8 @@ export const ROBOTY = {
     'kuznia-soup':     { opis: 'Kuźnia Soup: wykuj własny model TeOgochi z jego pracy (trening → GGUF → Ollama)', metoda: 'POST', sciezka: '/api/kuznia-soup/:agent/wykuj', pola: ['agent', 'baza', 'prog'], wymagane: ['agent'], czekajNa: 'sondaz' },
     // 🎮 Studio Gier: produkcja z planu GDD (zadanie po zadaniu do Kodeksa) — np. dokończenie tego, co stanęło w dzień.
     'gra-produkcja':   { opis: 'Studio Gier: realizuj plan GDD gry (Kodeks, zadanie po zadaniu)', metoda: 'POST', sciezka: '/api/gdd/:projektKodeksa/realizuj', pola: ['projektKodeksa', 'model'], wymagane: ['projektKodeksa'], czekajNa: 'sondaz' },
+    // 🔭 Zwiadowca HF (2026-09-29): zwiad nowych modeli na HuggingFace — rano kandydaci czekają na akceptację Suwerena.
+    'zwiadowca-hf':    { opis: 'Zwiadowca: poszukaj nowych modeli na HuggingFace (raport dla Dyrygenta, bez pobierania)', metoda: 'POST', sciezka: '/api/zwiadowca/szukaj', pola: ['zapytania'], czekajNa: 'sondaz' },
     'projekt-stada-rundy': { opis: 'Projekt Stada: rundy doskonalenia (stado dokłada cegiełki, Sędzia ocenia)', metoda: 'POST', sciezka: '/api/stado/projekt/:projektStada/runda', pola: ['projektStada', 'rundy', 'petla'], wymagane: ['projektStada'], polaInaczej: { rundy: { etykieta: 'rund doskonalenia (1–5)', typ: 'liczba' } }, czekajNa: 'sondaz' },
 };
 
