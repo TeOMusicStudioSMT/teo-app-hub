@@ -5898,8 +5898,14 @@ app.get('/api/system/memory', async (req, res) => {
 // (SCIEZKI_TYLKO_LOKALNE w services/StrazMostu.js) — z tunelu nie zamknie się niczego.
 // 2026-09-29: `pidy` — zamykanie po PID (tylko z świeżej listy, niechronione): „python" to bywa ComfyUI,
 // Kuźnia albo pip, więc zamykanie po nazwie ubijało wszystkie naraz.
+// 2026-09-29: sparowany telefon (StoL) też — ale TYLKO po PID i z tokenem parowania (Straż: SCIEZKI_DLA_SPAROWANYCH).
 app.post('/api/system/free', async (req, res) => {
-    if (!req.lokalny) return res.status(403).json({ success: false, message: 'Zamykanie procesów działa tylko z maszyny Suwerena.' });
+    if (!req.lokalny) {
+        if (!Array.isArray(req.body?.pidy)) return res.status(403).json({ success: false, message: 'Z telefonu zamyka się tylko po PID (pidy) — po nazwie tylko przy maszynie.' });
+        const dostep = await dostepStada(req, res);
+        if (!dostep) return;
+        console.log(`[System] 📱 Zamykanie procesów z telefonu (${dostep.urzadzenie}): ${req.body.pidy.join(', ')}`);
+    }
     if (Array.isArray(req.body?.pidy)) {
         try {
             const w = await StanKatedry.zwolnij(req.body.pidy);

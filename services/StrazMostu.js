@@ -70,8 +70,10 @@ export const SCIEZKI_TYLKO_LOKALNE = [
  * Wyjątki od SCIEZKI_TYLKO_LOKALNE (dokładna ścieżka): zdalnie z kluczem sesji wolno, ale sama
  * trasa i tak żąda tokenu SPAROWANEGO telefonu (dostepStada) — sam klucz tunelu nie wystarczy.
  * Suweren (2026-09-24): „tak, pozwól zakładać projekty z telefonu".
+ * Suweren (2026-09-29): zwalnianie pamięci „z poziomu Katedry i Stołu" — /api/system/free z telefonu tylko
+ * po PID i z tokenem parowania (sprawdza trasa); zamykanie po nazwie zostaje przy maszynie.
  */
-export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy']);
+export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy', '/api/system/free']);
 
 /**
  * Publiczne strony Suwerena, które w JEGO przeglądarce czytają żywe dane z mostu
