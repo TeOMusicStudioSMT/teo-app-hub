@@ -27,6 +27,7 @@ import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
+import os from 'os';
 
 let cfg = {
     katalog: path.join(process.cwd(), '_OtakOs_Wymiar', 'kuznia-soup'),
@@ -34,7 +35,13 @@ let cfg = {
     projekty: async () => [],
     /** id → { tresc, imie } karta roli */
     karta: async () => null,
-    soup: process.env.OTAKOS_SOUP || 'soup',
+    /** Program Soup; null = szukaj (znajdzSoup): OTAKOS_SOUP → środowisko Katedry → pipx (~/.local/bin) → PATH. */
+    soup: null,
+    /** Środowisko Kuźni W KATEDRZE (Python 3.12 venv + PyTorch CUDA + soup-cli) — nie na dysku systemowym. */
+    srodowisko: process.env.OTAKOS_KUZNIA_SRODOWISKO || path.join(process.cwd(), '_OtakOs_AI', 'kuznia-soup'),
+    platforma: process.platform,
+    /** czy plik istnieje — podmienialne w testach */
+    istnieje: (p) => fsSync.existsSync(p),
     /** Model bazowy HF (id albo ścieżka), gdy Suweren nie poda innego. */
     baza: process.env.OTAKOS_KUZNIA_BAZA || '',
     szyna: null,
@@ -146,13 +153,144 @@ export async function podglad(agent, { prog = PROG_OCENY } = {}) {
 const zadania = new Map();
 let trwa = null;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ŚRODOWISKO — gdzie jest Soup i czy ma kartę graficzną; instalacja W KATEDRZE
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Suweren (2026-09-29): „zainstalowałem… ma tam taki bin podany… na razie mam na C:, lecz docelowo niech
+ * moduł szkolenia własnego modelu będzie w Katedrze… choćby same linki do instalacji". pipx położył soup.exe
+ * w C:\Users\<ja>\.local\bin, którego nie ma w PATH — więc szukamy też tam, a docelowo w Katedrze.
+ */
+export const LINKI = [
+    { nazwa: 'Soup (GitHub)', url: 'https://github.com/MakazhanAlpamys/Soup' },
+    { nazwa: 'soup-cli na PyPI (wymaga Pythona 3.10–3.12)', url: 'https://pypi.org/project/soup-cli/' },
+    { nazwa: 'Python 3.12 dla Windows', url: 'https://www.python.org/downloads/windows/' },
+    { nazwa: 'PyTorch z CUDA (wybór koła do sterownika)', url: 'https://pytorch.org/get-started/locally/' },
+    { nazwa: 'Sterownik NVIDIA', url: 'https://www.nvidia.com/Download/index.aspx' },
+];
+const bin = (dir, nazwa, win) => (win ? path.join(dir, 'Scripts', `${nazwa}.exe`) : path.join(dir, 'bin', nazwa));
+export const venvKuzni = () => path.join(cfg.srodowisko, 'venv');
+
+/** Gdzie szukać Soup, po kolei (czysta funkcja). */
+export function kandydaciSoup({ platforma = cfg.platforma, dom = os.homedir(), srodowisko = cfg.srodowisko, zEnv = process.env.OTAKOS_SOUP } = {}) {
+    const win = platforma === 'win32';
+    const p = win ? path.win32 : path.posix;
+    return [
+        zEnv && { zrodlo: 'OTAKOS_SOUP', sciezka: zEnv },
+        { zrodlo: 'Katedra', sciezka: win ? p.join(srodowisko, 'venv', 'Scripts', 'soup.exe') : p.join(srodowisko, 'venv', 'bin', 'soup') },
+        { zrodlo: 'pipx (~/.local/bin)', sciezka: p.join(dom, '.local', 'bin', win ? 'soup.exe' : 'soup') },
+    ].filter(Boolean);
+}
+/** Pierwszy istniejący Soup; bez żadnego — „soup" z PATH (jeśli nie ma, uruchomienie powie to wprost). */
+export function znajdzSoup() {
+    if (cfg.soup) return { polecenie: cfg.soup, zrodlo: 'ustawione' };
+    const k = kandydaciSoup().find((x) => x.zrodlo === 'OTAKOS_SOUP' || cfg.istnieje(x.sciezka));
+    return k ? { polecenie: k.sciezka, zrodlo: k.zrodlo } : { polecenie: 'soup', zrodlo: 'PATH' };
+}
+
+/** Koło PyTorch do sterownika (ta sama tabela co `soup doctor`): najnowsze, które sterownik uciągnie. */
+const KOLA = [[13, 2, 'cu132'], [13, 0, 'cu130'], [12, 8, 'cu128'], [12, 6, 'cu126'], [12, 4, 'cu124'], [12, 1, 'cu121'], [11, 8, 'cu118']];
+export function koloTorch(tekstNvidiaSmi) {
+    const m = String(tekstNvidiaSmi ?? '').match(/CUDA Version:\s*(\d+)\.(\d+)/);
+    if (!m) return null;
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    return (KOLA.find(([x, y]) => a > x || (a === x && b >= y)) ?? [0, 0, 'cu118'])[2];
+}
+/** Karta graficzna wg `soup doctor`: 'cuda' | 'cpu' | null (nie wiadomo). */
+export function gpuZDoktora(linie) {
+    const t = (linie ?? []).join('\n');
+    if (/CUDA:\s*available/i.test(t)) return 'cuda';
+    if (/CPU only|torch not installed/i.test(t)) return 'cpu';
+    return null;
+}
+
+const zbierzZ = async (polecenie, argumenty, opcje = {}) => {
+    const linie = [];
+    const kod = await (cfg.uruchom ?? domyslneUruchom)(polecenie, argumenty, { cwd: opcje.cwd ?? process.cwd(), env: { ...process.env, SOUP_TELEMETRY: '0' }, naLinie: (l) => linie.push(l) });
+    return { kod, linie };
+};
+
+/** Python 3.10–3.12 na maszynie (soup-cli nie wspiera 3.13): py -3.12/-3.11/-3.10 na Windows, python3.x gdzie indziej. */
+async function znajdzPythona() {
+    const win = cfg.platforma === 'win32';
+    const proby = [
+        process.env.OTAKOS_PYTHON && [process.env.OTAKOS_PYTHON, []],
+        ...(win ? [['py', ['-3.12']], ['py', ['-3.11']], ['py', ['-3.10']]] : [['python3.12', []], ['python3.11', []], ['python3.10', []]]),
+    ].filter(Boolean);
+    for (const [pol, argi] of proby) {
+        try {
+            const w = await zbierzZ(pol, [...argi, '-c', 'import sys;print(sys.version_info[0], sys.version_info[1])']);
+            const [a, b] = String(w.linie.at(-1) ?? '').trim().split(/\s+/).map(Number);
+            if (w.kod === 0 && a === 3 && b >= 10 && b <= 12) return { polecenie: pol, argi, wersja: `${a}.${b}` };
+        } catch { /* nie ma tej wersji — następna */ }
+    }
+    return null;
+}
+
+/**
+ * Instalacja środowiska Kuźni W KATEDRZE: venv (Python 3.10–3.12) → PyTorch z CUDA pod sterownik → soup-cli[train]
+ * → sprawdzenie (torch.cuda + soup version). W tle, z dziennikiem; `cuda`: 'auto' (z nvidia-smi) | 'cu128'… | 'cpu'.
+ */
+export async function instaluj({ cuda = 'auto' } = {}) {
+    if (trwa) throw new Error(`Kuźnia jest zajęta (${trwa.agent}) — najpierw niech skończy.`);
+    if (cuda !== 'auto' && cuda !== 'cpu' && !KOLA.some((k) => k[2] === cuda)) throw new Error(`Nie znam koła PyTorch „${cuda}". Znane: auto, cpu, ${KOLA.map((k) => k[2]).join(', ')}.`);
+    const z = { id: `kz-${Date.now().toString(36)}-${crypto.randomBytes(2).toString('hex')}`, agent: 'środowisko', imie: 'środowisko Kuźni', stan: 'trwa', etap: 'start', od: new Date().toISOString(), log: [], model: null, blad: null, info: { sft: 0 } };
+    zadania.set(z.id, z);
+    trwa = z;
+    const venv = venvKuzni(), win = cfg.platforma === 'win32';
+    const py = bin(venv, 'python', win), soupWKatedrze = bin(venv, 'soup', win);
+    const loguj = (l) => { z.log.push(String(l).slice(0, 300)); if (z.log.length > 300) z.log.splice(0, z.log.length - 300); };
+    const krokPolecenie = async (opis, polecenie, argumenty) => {
+        z.etap = opis; loguj(`▶ ${opis}: ${path.basename(polecenie)} ${argumenty.join(' ')}`);
+        const kod = await (cfg.uruchom ?? domyslneUruchom)(polecenie, argumenty, { cwd: cfg.srodowisko, env: { ...process.env, SOUP_TELEMETRY: '0', PIP_DISABLE_PIP_VERSION_CHECK: '1' }, naLinie: loguj });
+        if (kod !== 0) throw new Error(`${opis}: zakończone kodem ${kod} — szczegóły w dzienniku.`);
+    };
+    nadaj(`instaluje środowisko Kuźni w Katedrze (${cfg.srodowisko})`, { zadanie: z.id });
+    (async () => {
+        try {
+            await fs.mkdir(cfg.srodowisko, { recursive: true });
+            z.etap = 'szukam Pythona 3.10–3.12';
+            const p = await znajdzPythona();
+            if (!p) throw new Error('Nie ma Pythona 3.10–3.12 (soup-cli nie wspiera 3.13). Zainstaluj Python 3.12 z python.org — Katedra znajdzie go przez „py -3.12".');
+            loguj(`Python ${p.wersja}: ${p.polecenie} ${p.argi.join(' ')}`);
+            let kolo = cuda;
+            if (cuda === 'auto') {
+                const smi = await zbierzZ('nvidia-smi', []).catch(() => ({ kod: 1, linie: [] }));
+                kolo = koloTorch(smi.linie.join('\n')) ?? 'cpu';
+                loguj(kolo === 'cpu' ? 'nvidia-smi nie odpowiada — PyTorch bez CUDA (trening na procesorze będzie BARDZO wolny).' : `sterownik NVIDIA → koło PyTorch ${kolo}`);
+            }
+            z.info.kolo = kolo;
+            if (!cfg.istnieje(py)) await krokPolecenie('tworzę środowisko (venv)', p.polecenie, [...p.argi, '-m', 'venv', venv]);
+            await krokPolecenie('aktualizuję pip', py, ['-m', 'pip', 'install', '--upgrade', 'pip']);
+            if (kolo !== 'cpu') await krokPolecenie(`PyTorch z CUDA (${kolo})`, py, ['-m', 'pip', 'install', 'torch', '--index-url', `https://download.pytorch.org/whl/${kolo}`]);
+            await krokPolecenie('soup-cli[train]', py, ['-m', 'pip', 'install', 'soup-cli[train]']);
+            z.etap = 'sprawdzam';
+            const t = await zbierzZ(py, ['-c', 'import torch;print(torch.__version__, torch.cuda.is_available())']);
+            loguj(`torch: ${t.linie.at(-1) ?? '?'}`);
+            z.info.cuda = /\bTrue\s*$/.test(t.linie.at(-1) ?? '');
+            const v = await zbierzZ(soupWKatedrze, ['--no-telemetry', 'version']);
+            loguj(`soup: ${v.linie.join(' ').trim()}`);
+            if (v.kod !== 0) throw new Error('Soup zainstalowany, ale się nie uruchamia — szczegóły w dzienniku.');
+            z.stan = 'gotowe';
+            nadaj(`środowisko Kuźni gotowe w Katedrze: ${v.linie.join(' ').trim().slice(0, 60)}, karta graficzna ${z.info.cuda ? 'TAK (CUDA)' : 'NIE — trening pójdzie na procesorze'}`, { zadanie: z.id });
+        } catch (e) {
+            z.stan = 'blad'; z.blad = String(e.message || e).slice(0, 400);
+            nadaj(`nie zainstalowała środowiska (${z.etap}): ${z.blad}`, { zadanie: z.id });
+        } finally {
+            z.koniec = new Date().toISOString();
+            trwa = null;
+        }
+    })();
+    return { id: z.id, srodowisko: cfg.srodowisko, sondaz: `/api/kuznia-soup/zadanie/${z.id}/sondaz` };
+}
+
 function domyslneUruchom(polecenie, argumenty, { cwd, env, naLinie }) {
     return new Promise((resolve, reject) => {
         const d = spawn(polecenie, argumenty, { cwd, env, windowsHide: true });   // bez powłoki — argumenty idą wprost
         let reszta = '';
         const czytaj = (b) => { reszta += b.toString('utf8'); const l = reszta.split(/\r?\n/); reszta = l.pop() ?? ''; l.filter(Boolean).forEach(naLinie); };
         d.stdout.on('data', czytaj); d.stderr.on('data', czytaj);
-        d.on('error', (e) => reject(e.code === 'ENOENT' ? new Error(`Nie ma Soup w Katedrze („${polecenie}"). Zainstaluj: pipx install "soup-cli[train]" (albo ustaw OTAKOS_SOUP).`) : e));
+        d.on('error', (e) => reject(e.code === 'ENOENT' ? new Error(`Nie znalazłem programu „${polecenie}". Soup: panel Kuźni → „Zainstaluj w Katedrze" (albo ustaw OTAKOS_SOUP na pełną ścieżkę soup.exe).`) : e));
         d.on('close', (kod) => { if (reszta) naLinie(reszta); resolve(kod); });
     });
 }
@@ -161,7 +299,7 @@ async function krok(z, opis, argumenty, cwd) {
     z.etap = opis;
     z.log.push(`▶ ${opis}: soup ${argumenty.join(' ')}`);
     const env = { ...process.env, SOUP_TELEMETRY: '0' };
-    const kod = await (cfg.uruchom ?? domyslneUruchom)(cfg.soup, ['--no-telemetry', ...argumenty], {
+    const kod = await (cfg.uruchom ?? domyslneUruchom)(znajdzSoup().polecenie, ['--no-telemetry', ...argumenty], {
         cwd, env, naLinie: (l) => { z.log.push(l.slice(0, 300)); if (z.log.length > 300) z.log.splice(0, z.log.length - 300); },
     });
     if (kod !== 0) throw new Error(`${opis}: Soup zakończył się kodem ${kod} — ostatnie linie w dzienniku Kuźni.`);
@@ -208,7 +346,8 @@ export function zadanie(id) { return zadania.get(id) ?? null; }
 export function sondaz(id) {
     const z = zadania.get(id);
     if (!z) return { stan: 'blad', blad: 'nie ma takiego zadania Kuźni (most zrestartowany?)' };
-    return { stan: z.stan, etap: z.etap, blad: z.blad, podsumowanie: z.stan === 'gotowe' ? `wykuty „${z.model}" z ${z.info.sft} wkładów` : null, log: z.log.slice(-15) };
+    const gotowe = z.agent === 'środowisko' ? `środowisko Kuźni gotowe (karta graficzna: ${z.info.cuda ? 'CUDA' : 'NIE'})` : `wykuty „${z.model}" z ${z.info.sft} wkładów`;
+    return { stan: z.stan, etap: z.etap, blad: z.blad, podsumowanie: z.stan === 'gotowe' ? gotowe : null, log: z.log.slice(-15) };
 }
 export function biezace() { return trwa ? { id: trwa.id, agent: trwa.agent, etap: trwa.etap, od: trwa.od } : null; }
 
@@ -220,21 +359,20 @@ async function zapiszWykute(w) {
     await fs.rename(`${PLIK_WYKUTYCH()}.tmp`, PLIK_WYKUTYCH());
 }
 
-/** Czy Soup jest w Katedrze i co mówi o sprzęcie (`soup version` + `soup doctor`). */
+/**
+ * Czy Soup jest i gdzie (Katedra / pipx / PATH), co mówi o karcie graficznej (`soup doctor`: CUDA czy sam
+ * procesor) i gdzie Katedra trzyma własne środowisko. Plus linki do instalacji.
+ */
 export async function doktor() {
-    const z = { log: [] };
-    const zbierzLinie = async (argumenty) => {
-        const linie = [];
-        const kod = await (cfg.uruchom ?? domyslneUruchom)(cfg.soup, ['--no-telemetry', ...argumenty], { cwd: process.cwd(), env: { ...process.env, SOUP_TELEMETRY: '0' }, naLinie: (l) => linie.push(l) });
-        return { kod, linie };
-    };
+    const { polecenie, zrodlo } = znajdzSoup();
+    const wspolne = { polecenie, zrodlo, baza: cfg.baza || null, srodowisko: cfg.srodowisko, wKatedrze: zrodlo === 'Katedra', linki: LINKI };
     try {
-        const v = await zbierzLinie(['version']);
-        const d = await zbierzLinie(['doctor']);
-        return { jest: v.kod === 0, wersja: v.linie.join(' ').trim().slice(0, 200), doktor: d.linie.slice(0, 80), polecenie: cfg.soup, baza: cfg.baza || null };
+        const v = await zbierzZ(polecenie, ['--no-telemetry', 'version']);
+        const d = await zbierzZ(polecenie, ['--no-telemetry', 'doctor']);
+        return { ...wspolne, jest: v.kod === 0, wersja: v.linie.join(' ').trim().slice(0, 200), gpu: gpuZDoktora(d.linie), doktor: d.linie.slice(0, 80) };
     } catch (e) {
-        return { jest: false, blad: e.message, polecenie: cfg.soup, baza: cfg.baza || null, log: z.log };
+        return { ...wspolne, jest: false, gpu: null, blad: e.message };
     }
 }
 
-export default { skonfiguruj, zbierz, konfiguracja, przygotuj, podglad, wykuj, zadanie, sondaz, biezace, wykute, doktor, MIN_PROBEK, PROG_OCENY };
+export default { skonfiguruj, zbierz, konfiguracja, przygotuj, podglad, wykuj, instaluj, zadanie, sondaz, biezace, wykute, doktor, kandydaciSoup, znajdzSoup, koloTorch, gpuZDoktora, LINKI, MIN_PROBEK, PROG_OCENY };

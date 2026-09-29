@@ -23,7 +23,10 @@ interface ModelKatalogu {
 interface Przydzial { agent: string; model: string; powod?: string }
 interface Gatunek { id: string; imie: string; forma?: string; wyklute: boolean }
 interface Podglad { sft: number; pary: number; pominiete: { bezOceny: number; slabe: number }; wystarczy: boolean; minimum: number; prog: number }
-interface Doktor { jest: boolean; wersja?: string; doktor?: string[]; blad?: string; polecenie: string; baza: string | null }
+interface Doktor {
+    jest: boolean; wersja?: string; doktor?: string[]; blad?: string; polecenie: string; baza: string | null;
+    zrodlo?: string; gpu?: 'cuda' | 'cpu' | null; srodowisko?: string; wKatedrze?: boolean; linki?: { nazwa: string; url: string }[];
+}
 interface Sondaz { stan: string; etap?: string; blad?: string | null; podsumowanie?: string | null; log?: string[] }
 
 async function zMostu<T>(sciezka: string, init?: RequestInit): Promise<T> {
@@ -165,10 +168,7 @@ export const KuzniaSoupPanel: React.FC = () => {
                 Uczy model na pracy TeOgochi, którą Sędzia ocenił co najmniej {podglad?.prog ?? 7}/10 (SFT), plus pary „szkic → po pętli” i „runda niżej → runda wyżej”.
                 Lokalnie, bez telemetrii (Soup, LoRA → GGUF → Ollama). Model bazowy to wagi HuggingFace (id albo ścieżka), nie model z Ollamy.
             </p>
-            <div className={`rounded-lg p-2 text-[11px] ${doktor?.jest ? 'bg-emerald-950/30 text-emerald-200' : 'bg-amber-950/30 text-amber-200'}`}>
-                {doktor === null ? 'Pytam o Soup…' : doktor.jest ? `Soup jest: ${doktor.wersja}` : `Soup nie ma w Katedrze (${doktor.blad ?? 'brak'}). Zainstaluj: pipx install "soup-cli[train]" — albo ustaw OTAKOS_SOUP na ścieżkę programu.`}
-                {doktor?.jest && doktor.doktor?.length ? <details className="mt-1 text-slate-400"><summary className="cursor-pointer">soup doctor</summary><pre className="whitespace-pre-wrap text-[10px]">{doktor.doktor.join('\n')}</pre></details> : null}
-            </div>
+            <SrodowiskoKuzni doktor={doktor} onZadanie={(id) => setZadanie({ id, s: { stan: 'trwa', etap: 'instalacja' } })} zajete={zadanie?.s.stan === 'trwa'} />
             <div className="flex flex-wrap gap-1.5">
                 <select value={agent} onChange={(e) => setAgent(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
                     <option value="">— TeOgochi —</option>
@@ -200,6 +200,50 @@ export const KuzniaSoupPanel: React.FC = () => {
             {wykute.length > 0 && (
                 <div className="text-[11px] text-slate-400">Wykute: {wykute.map((w) => `${w.model} (${w.agent}, ${w.sft} wkładów)`).join(' · ')} — przydziel w Dyrygencie albo przy TeOgochi.</div>
             )}
+        </div>
+    );
+};
+
+/**
+ * Środowisko Kuźni: gdzie jest Soup (Katedra / pipx na C: / PATH), czy PyTorch widzi kartę graficzną,
+ * instalacja W KATEDRZE (Python 3.12 venv → PyTorch CUDA pod sterownik → soup-cli[train]) i linki.
+ * Suweren 2026-09-29: pipx dał soup.exe w C:\Users\…\.local\bin (poza PATH), na Pythonie 3.13 — a soup-cli
+ * wymaga 3.10–3.12, więc pip cofnął się do starszej wersji; torch z PyPI na Windows bywa bez CUDA.
+ */
+const SrodowiskoKuzni: React.FC<{ doktor: Doktor | null; onZadanie: (id: string) => void; zajete: boolean }> = ({ doktor, onZadanie, zajete }) => {
+    const [cuda, setCuda] = useState('auto');
+    const [instaluje, setInstaluje] = useState(false);
+    const instaluj = async () => {
+        setInstaluje(true);
+        try {
+            const d = await zMostu<{ id: string; srodowisko: string }>('/api/kuznia-soup/srodowisko/instaluj', { method: 'POST', body: JSON.stringify({ cuda }) });
+            onZadanie(d.id);
+            toast.success(`Instaluję środowisko Kuźni w ${d.srodowisko} — to kilka GB (PyTorch), potrwa.`, { duration: 8000 });
+        } catch (e) { toast.error(blad(e), { duration: 10000 }); }
+        finally { setInstaluje(false); }
+    };
+    if (doktor === null) return <div className="rounded-lg bg-black/30 p-2 text-[11px] text-slate-400">Pytam o Soup…</div>;
+    const ostrzezenia: string[] = [];
+    if (!doktor.jest) ostrzezenia.push(`Nie znalazłem Soup (${doktor.blad ?? doktor.polecenie}).`);
+    if (doktor.jest && !doktor.wKatedrze) ostrzezenia.push(`Soup działa z „${doktor.zrodlo}" (${doktor.polecenie}) — docelowo zainstaluj go w Katedrze.`);
+    if (doktor.gpu === 'cpu') ostrzezenia.push('PyTorch NIE widzi karty graficznej (CPU only) — trening trwałby dniami. Instalacja w Katedrze dobierze koło PyTorch z CUDA do sterownika.');
+    return (
+        <div className={`space-y-1.5 rounded-lg p-2 text-[11px] ${doktor.jest && doktor.gpu === 'cuda' ? 'bg-emerald-950/30 text-emerald-200' : 'bg-amber-950/30 text-amber-200'}`}>
+            <div>{doktor.jest ? `Soup: ${doktor.wersja} · ${doktor.zrodlo}${doktor.gpu === 'cuda' ? ' · karta graficzna: CUDA ✓' : doktor.gpu === 'cpu' ? ' · karta graficzna: NIE' : ''}` : 'Soup: brak'}</div>
+            {ostrzezenia.map((o) => <div key={o}>⚠️ {o}</div>)}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <select value={cuda} onChange={(e) => setCuda(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-1.5 py-1 text-slate-200" title="Koło PyTorch: auto = z nvidia-smi (jak soup doctor)">
+                    {['auto', 'cu128', 'cu126', 'cu124', 'cu121', 'cu130', 'cpu'].map((k) => <option key={k} value={k}>{k === 'auto' ? 'CUDA: auto (ze sterownika)' : k === 'cpu' ? 'bez CUDA (procesor)' : k}</option>)}
+                </select>
+                <button onClick={instaluj} disabled={instaluje || zajete} className="rounded bg-orange-600/70 px-3 py-1 font-bold text-white disabled:opacity-40">
+                    {doktor.wKatedrze ? 'Aktualizuj środowisko w Katedrze' : 'Zainstaluj w Katedrze'}
+                </button>
+                <span className="text-slate-500">→ {doktor.srodowisko} (Python 3.12 + PyTorch + soup-cli[train])</span>
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1">
+                {(doktor.linki ?? []).map((l) => <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="text-sky-300 underline decoration-dotted hover:text-sky-200">{l.nazwa}</a>)}
+            </div>
+            {doktor.doktor?.length ? <details className="text-slate-400"><summary className="cursor-pointer">soup doctor</summary><pre className="whitespace-pre-wrap text-[10px]">{doktor.doktor.join('\n')}</pre></details> : null}
         </div>
     );
 };
