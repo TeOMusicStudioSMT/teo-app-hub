@@ -64,6 +64,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/stado/powitanie/zrob',   // film powitania liczy się na karcie graficznej maszyny
     '/api/kuznia-soup/',   // trening modeli trwa godziny na karcie graficznej i pisze po dysku — tylko przy maszynie
     '/api/zwiadowca/szukaj', '/api/zwiadowca/kandydat/',   // zwiad i pobieranie modeli (GB na dysk) — decyzja przy maszynie
+    '/api/porzadki/usun',   // kasowanie plików i modeli — tylko przy maszynie
     '/api/dyrygent/zastosuj', '/api/modele/karta',   // stałe silniki TeOgochi i karty modeli zmienia Suweren przy Katedrze
 ];
 

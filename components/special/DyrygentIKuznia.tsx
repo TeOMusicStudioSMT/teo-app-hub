@@ -11,6 +11,7 @@
  * na karcie graficznej, najlepiej przez Nocną Zmianę. Bez Soup w Katedrze panel mówi to wprost.
  *
  * ZWIADOWCA HF (services/ZwiadowcaHF.js): kandydaci z HuggingFace dla Dyrygenta — pobranie po akceptacji.
+ * PORZĄDKI (services/Porzadki.js): co zbędne na dysku, z rozmiarem i powodem — usuwa tylko zaznaczone.
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
@@ -345,6 +346,78 @@ export const ZwiadowcaPanel: React.FC = () => {
     );
 };
 
+interface PozycjaPorzadkow { id: string; rodzaj: string; nazwa: string; gb: number; powod: string; uwaga: string | null }
+const RODZAJ_POZYCJI: Record<string, string> = { 'gguf-w-ollamie': '📦 GGUF już w Ollamie', 'model-ollamy': '🧠 nieużywany model', 'kuznia-wynik': '⚒️ resztki Kuźni', 'pip-cache': '🗃️ cache pip' };
+
+/**
+ * 🧹 Porządki na dysku (services/Porzadki.js): propozycje z rozmiarem i powodem. Usuwa TYLKO zaznaczone, po potwierdzeniu;
+ * most sprawdza każdą pozycję jeszcze raz. Dzieł Suwerena (muzyka, rendery, projekty) i baz HF Kuźni nie proponuje nigdy.
+ */
+export const PorzadkiPanel: React.FC = () => {
+    const [pozycje, setPozycje] = useState<PozycjaPorzadkow[] | null>(null);
+    const [dysk, setDysk] = useState<{ wolneGB: number; razemGB: number } | null>(null);
+    const [zazn, setZazn] = useState<Record<string, boolean>>({});
+    const [pracuje, setPracuje] = useState(false);
+
+    const wczytaj = useCallback(async () => {
+        setPracuje(true);
+        try {
+            const d = await zMostu<{ pozycje: PozycjaPorzadkow[]; dysk: { wolneGB: number; razemGB: number } | null }>('/api/porzadki/przeglad');
+            setPozycje(d.pozycje); setDysk(d.dysk); setZazn({});
+        } catch (e) { toast.error(blad(e)); }
+        finally { setPracuje(false); }
+    }, []);
+
+    const wybrane = (pozycje ?? []).filter((p) => zazn[p.id]);
+    const ileGB = Math.round(wybrane.reduce((s, p) => s + p.gb, 0) * 10) / 10;
+    const usun = async () => {
+        if (!wybrane.length) return;
+        if (!window.confirm(`Usunąć ${wybrane.length} pozycji (${ileGB} GB)?\n\n${wybrane.map((p) => `• ${p.nazwa} (${p.gb} GB)`).join('\n')}\n\nTego nie da się cofnąć.`)) return;
+        setPracuje(true);
+        try {
+            const d = await zMostu<{ usuniete: { nazwa: string }[]; odmowy: { powod: string }[]; zwolnionoGB: number }>('/api/porzadki/usun', { method: 'POST', body: JSON.stringify({ ids: wybrane.map((p) => p.id) }) });
+            if (d.usuniete.length) toast.success(`🧹 Zwolniono ${d.zwolnionoGB} GB (${d.usuniete.length} pozycji).`);
+            for (const o of d.odmowy) toast(`✋ ${o.powod}`, { duration: 8000 });
+        } catch (e) { toast.error(blad(e)); }
+        finally { setPracuje(false); wczytaj(); }
+    };
+
+    return (
+        <div className="space-y-3 rounded-2xl border border-rose-500/25 bg-rose-950/10 p-4">
+            <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-rose-200">🧹 Porządki na dysku</h3>
+                {dysk && <span className="text-[11px] text-slate-400">wolne: <b className="text-slate-200">{dysk.wolneGB} GB</b> z {dysk.razemGB} GB</span>}
+            </div>
+            <p className="text-[11px] text-slate-400">
+                Katedra proponuje tylko to, o czym wie, skąd się wzięło: GGUF, które Ollama już skopiowała do siebie, modele, których nikt w stadzie nie używa,
+                resztki treningu Kuźni i cache pip. <b>Twoich dzieł (muzyka, rendery, projekty) i baz HF Kuźni nie rusza nigdy.</b> Usuwa tylko zaznaczone.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+                <button onClick={wczytaj} disabled={pracuje} className="rounded bg-slate-700/70 px-3 py-1.5 text-xs font-bold text-slate-100 hover:bg-slate-600 disabled:opacity-50">{pracuje ? '⟳ …' : '🔍 Przejrzyj dysk'}</button>
+                {!!wybrane.length && (
+                    <button onClick={usun} disabled={pracuje} className="rounded bg-rose-700/70 px-3 py-1.5 text-xs font-bold text-rose-50 hover:bg-rose-600 disabled:opacity-50">🗑️ Usuń zaznaczone ({ileGB} GB)</button>
+                )}
+            </div>
+            {pozycje && !pozycje.length && <div className="text-[11px] text-emerald-300/80">✅ Nic zbędnego, o czym Katedra wie.</div>}
+            <div className="space-y-1.5">
+                {(pozycje ?? []).map((p) => (
+                    <label key={p.id} className="flex cursor-pointer gap-2 rounded-lg border border-slate-700/60 bg-black/30 p-2 text-[11px] hover:bg-white/5">
+                        <input type="checkbox" checked={!!zazn[p.id]} onChange={() => setZazn((z) => ({ ...z, [p.id]: !z[p.id] }))} className="mt-0.5 accent-rose-500" />
+                        <span className="min-w-0 flex-1">
+                            <span className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="truncate font-bold text-slate-200">{p.nazwa}</span>
+                                <span className="shrink-0 text-slate-400">{RODZAJ_POZYCJI[p.rodzaj] ?? p.rodzaj} · <b className="text-slate-200">{p.gb} GB</b></span>
+                            </span>
+                            <span className="block text-slate-400">{p.powod}</span>
+                            {p.uwaga && <span className="block text-amber-300/80">⚠ {p.uwaga}</span>}
+                        </span>
+                    </label>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 export default function DyrygentIKuznia() {
-    return <div className="space-y-4"><DyrygentPanel /><ZwiadowcaPanel /><KuzniaSoupPanel /></div>;
+    return <div className="space-y-4"><DyrygentPanel /><ZwiadowcaPanel /><KuzniaSoupPanel /><PorzadkiPanel /></div>;
 }
