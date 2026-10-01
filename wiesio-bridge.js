@@ -10365,6 +10365,10 @@ ZwiadowcaHF.skonfiguruj({
     ollama: OLLAMA_BASE,
     szyna: Szyna,
     ustawKarte: (nazwa, karta) => Dyrygent.ustawKarte(nazwa, karta),
+    // Spoza HuggingFace (pirateface): plik GGUF do katalogu Kuźni Modeli i `ollama create` przez Kuźnię Modeli.
+    katalogModeli: KuzniaModeli.wszystkieKatalogi()[0],
+    wykuj: ({ plik, nazwa }) => KuzniaModeli.wykuj({ plik, nazwa, ollamaBase: OLLAMA_BASE }),
+    stanKucia: (id) => KuzniaModeli.stanKucia(id),
     pisz: async ({ system, prompt }) => (await AppStudio.pisz({ system, prompt, model: (await ModeleAgentow.modelDla('zwiadowca').catch(() => null)) || DEFAULT_LLM, timeoutMs: 5 * 60_000 })).tekst,
 });
 app.get('/api/zwiadowca/kandydaci', async (req, res) => {
@@ -10377,6 +10381,11 @@ app.post('/api/zwiadowca/szukaj', async (req, res) => {
         const z = Array.isArray(req.body?.zapytania) ? req.body.zapytania : (typeof req.body?.zapytania === 'string' && req.body.zapytania.trim() ? req.body.zapytania.split(',') : undefined);
         res.json({ success: true, ...(await ZwiadowcaHF.zwiad({ zapytania: z })) });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** POST /api/zwiadowca/link { link } — kandydat z bezpośredniego linku (huggingface.co, hf.co, pirateface.co). Tylko maszyna. */
+app.post('/api/zwiadowca/link', async (req, res) => {
+    try { res.json({ success: true, kandydat: await ZwiadowcaHF.zLinku(req.body?.link) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.get('/api/zwiadowca/sondaz', (_req, res) => res.json(ZwiadowcaHF.sondaz()));
 

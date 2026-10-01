@@ -58,7 +58,7 @@ test('Zwiadowca: zwiad → nowy kandydat z opinią i meldunek na szynie; już po
     const s = siec();
     const szyna = [];
     Zwiadowca.skonfiguruj({
-        katalog: tmp(), fetch: s.fetch, vramGB: 12, wlaczony: true,
+        katalog: tmp(), zrodla: ['hf'], fetch: s.fetch, vramGB: 12, wlaczony: true,
         pisz: async ({ prompt }) => { assert.match(prompt, /Dobry w kodzie/); return 'Nada się Kodeksowi do kodu po polsku.\ndruga linia'; },
         szyna: { nadaj: async (z) => { szyna.push(z); } },
     });
@@ -71,7 +71,7 @@ test('Zwiadowca: zwiad → nowy kandydat z opinią i meldunek na szynie; już po
     const { kandydaci } = await Zwiadowca.kandydaci();
     assert.deepEqual(kandydaci.map((k) => [k.repo, k.kwant, k.gb, k.stan, k.ollama]), [['nowy/Model-8B-GGUF', 'Q4_K_M', 5, 'nowy', 'hf.co/nowy/Model-8B-GGUF:Q4_K_M']]);
     assert.equal(kandydaci[0].opinia, 'Nada się Kodeksowi do kodu po polsku.');
-    assert.match(szyna.at(-1).tresc, /1 nowych modeli z HuggingFace czeka na akceptację \(np\. nowy\/Model-8B-GGUF Q4_K_M 5 GB\)/);
+    assert.match(szyna.at(-1).tresc, /1 nowych modeli czeka na akceptację \(np\. nowy\/Model-8B-GGUF Q4_K_M 5 GB\) — Dyrygent/);
     assert.ok(!s.wolania.some(([, u]) => u.endsWith('/api/pull')), 'zwiad niczego nie pobiera');
 
     // Drugi zwiad nie melduje tego samego jeszcze raz.
@@ -84,7 +84,7 @@ test('Zwiadowca: zwiad → nowy kandydat z opinią i meldunek na szynie; już po
 test('Zwiadowca: akceptacja → ollama pull hf.co/…, karta modelu dla Dyrygenta; odrzucony znika z listy', async () => {
     const s = siec({ pull: [{ status: 'pulling manifest' }, { status: 'pulling abc', total: 100, completed: 50 }, { status: 'success' }] });
     const karty = [];
-    Zwiadowca.skonfiguruj({ katalog: tmp(), fetch: s.fetch, pisz: async () => 'Dla Kodeksa.', szyna: null, ustawKarte: async (n, k) => { karty.push([n, k.opis]); } });
+    Zwiadowca.skonfiguruj({ katalog: tmp(), zrodla: ['hf'], fetch: s.fetch, pisz: async () => 'Dla Kodeksa.', szyna: null, ustawKarte: async (n, k) => { karty.push([n, k.opis]); } });
     await Zwiadowca.zwiad({ zapytania: ['coder'] });
     await czekaj(() => Zwiadowca.sondaz().stan !== 'trwa');
     const [k] = (await Zwiadowca.kandydaci()).kandydaci;
@@ -99,7 +99,7 @@ test('Zwiadowca: akceptacja → ollama pull hf.co/…, karta modelu dla Dyrygent
 
     // Pobieranie urwane → stan „blad" z powodem; odrzucenie chowa kandydata.
     const s2 = siec({ pull: [{ status: 'pulling manifest' }, { error: 'pull model manifest: file does not exist' }] });
-    Zwiadowca.skonfiguruj({ katalog: tmp(), fetch: s2.fetch, pisz: null, ustawKarte: null });
+    Zwiadowca.skonfiguruj({ katalog: tmp(), zrodla: ['hf'], fetch: s2.fetch, pisz: null, ustawKarte: null });
     await Zwiadowca.zwiad({ zapytania: ['coder'] });
     await czekaj(() => Zwiadowca.sondaz().stan !== 'trwa');
     const [k2] = (await Zwiadowca.kandydaci()).kandydaci;
@@ -119,6 +119,76 @@ test('Zwiadowca: HuggingFace nieosiągalny → błąd wprost, a nie „bez nowyc
     assert.equal(Zwiadowca.sondaz().stan, 'blad');
     assert.match(Zwiadowca.sondaz().blad, /HuggingFace nieosiągalny \(HuggingFace: HTTP 403/);
     assert.match(szyna.at(-1).tresc, /zwiad przerwany/);
+});
+
+test('Zwiadowca: linki — huggingface.co, hf.co z kwantem, plik w blob/resolve, pirateface.co, samo „a/b"; obce adresy odrzucone', () => {
+    assert.deepEqual(Zwiadowca.czytajLink('https://huggingface.co/speakleash/Bielik-11B-v2.3-Instruct-GGUF'), { zrodlo: 'hf', repo: 'speakleash/Bielik-11B-v2.3-Instruct-GGUF' });
+    assert.deepEqual(Zwiadowca.czytajLink('hf.co/a/b:q4_k_m'), { zrodlo: 'hf', repo: 'a/b', kwant: 'Q4_K_M' });
+    assert.deepEqual(Zwiadowca.czytajLink('https://huggingface.co/a/b/blob/main/sub/m-Q5_K_M.gguf'), { zrodlo: 'hf', repo: 'a/b', plik: 'sub/m-Q5_K_M.gguf' });
+    assert.deepEqual(Zwiadowca.czytajLink('https://pirateface.co/akhilaaa3/Jev-Omni'), { zrodlo: 'pirateface', repo: 'akhilaaa3/Jev-Omni' });
+    assert.deepEqual(Zwiadowca.czytajLink('pirateface.co/x/y/resolve/main/y-Q4_0.gguf'), { zrodlo: 'pirateface', repo: 'x/y', plik: 'y-Q4_0.gguf' });
+    assert.deepEqual(Zwiadowca.czytajLink('a/b'), { zrodlo: 'hf', repo: 'a/b' });
+    for (const zly of ['https://evil.example/a/b', 'https://huggingface.co/a', 'javascript:alert(1)', '']) assert.equal(Zwiadowca.czytajLink(zly), null, zly);
+    assert.equal(Zwiadowca.nazwaWykutego('akhilaaa3/Jev-Omni', 'Q4_K_M'), 'pf-jev-omni-q4_k_m');
+});
+
+/** pirateface w atrapie: API jak HF; jeden model z plikiem pojedynczym i drugi tylko dzielony. */
+function siecPF({ pfPada = false } = {}) {
+    const wolania = [];
+    return {
+        wolania,
+        fetch: async (url, init = {}) => {
+            wolania.push([init.method ?? 'GET', url]);
+            if (url.endsWith('/api/tags')) return json({ models: [] });
+            if (url.startsWith('https://pirateface.co') && pfPada) return json('<html>nie API</html>');
+            if (url === 'https://pirateface.co/api/models/akhilaaa3/Jev-Omni/tree/main') return json([{ path: 'Jev-Omni-Q4_K_M.gguf', size: 6e9 }, { path: 'Jev-Omni-Q8_0-00001-of-00002.gguf', size: 5e9 }, { path: 'Jev-Omni-Q8_0-00002-of-00002.gguf', size: 4e9 }]);
+            if (url === 'https://pirateface.co/api/models/x/dzielony/tree/main') return json([{ path: 'd-Q4_K_M-00001-of-00002.gguf', size: 3e9 }, { path: 'd-Q4_K_M-00002-of-00002.gguf', size: 3e9 }]);
+            if (url.startsWith('https://pirateface.co/api/models?search=')) return json([{ id: 'akhilaaa3/Jev-Omni', downloads: 10 }, { id: 'x/dzielony', downloads: 5 }]);
+            if (url.startsWith('https://huggingface.co/api/models?search=')) return json([], 403);
+            return json({}, 404);
+        },
+    };
+}
+
+test('Zwiadowca: pirateface — zwiad oznacza NIEZWERYFIKOWANE, bierze tylko pojedynczy plik; HF padł → meldunek mówi to wprost', async () => {
+    const s = siecPF();
+    const szyna = [];
+    Zwiadowca.skonfiguruj({ katalog: tmp(), zrodla: ['hf', 'pirateface'], fetch: s.fetch, pisz: null, szyna: { nadaj: async (z) => { szyna.push(z); } } });
+    await Zwiadowca.zwiad({ zapytania: ['omni'] });
+    await czekaj(() => Zwiadowca.sondaz().stan !== 'trwa');
+    assert.equal(Zwiadowca.sondaz().stan, 'gotowe', Zwiadowca.sondaz().blad ?? '');
+    const { kandydaci } = await Zwiadowca.kandydaci();
+    assert.deepEqual(kandydaci.map((k) => [k.repo, k.zrodlo, k.zweryfikowane, k.kwant, k.ollama]), [['akhilaaa3/Jev-Omni', 'pirateface', false, 'Q4_K_M', 'pf-jev-omni-q4_k_m']], 'dzielony pominięty');
+    assert.match(szyna.at(-1).tresc, /w tym 1 z NIEZWERYFIKOWANEGO źródła/);
+    assert.match(szyna.at(-1).tresc, /Nie odpowiedziało: HuggingFace nieosiągalny/);
+
+    // pirateface z innym API niż HF → błąd wprost
+    Zwiadowca.skonfiguruj({ katalog: tmp(), zrodla: ['pirateface'], fetch: siecPF({ pfPada: true }).fetch });
+    await Zwiadowca.zwiad({ zapytania: ['omni'] });
+    await czekaj(() => Zwiadowca.sondaz().stan !== 'trwa');
+    assert.match(Zwiadowca.sondaz().blad, /pirateface\.co nieosiągalny \(pirateface\.co: odpowiedź nie jest/);
+});
+
+test('Zwiadowca: link z pirateface → kandydat; akceptacja pobiera plik do katalogu Kuźni Modeli i kuje go do Ollamy', async () => {
+    const s = siecPF();
+    const katalogModeli = tmp(), pobrane = [], kute = [];
+    Zwiadowca.skonfiguruj({
+        katalog: tmp(), zrodla: ['pirateface'], fetch: s.fetch, pisz: async () => 'Model ogólny.', szyna: null, katalogModeli,
+        pobierzPlik: async (url, cel, naPostep) => { pobrane.push([url, cel]); naPostep('pobieram 50%'); fs.writeFileSync(cel, 'gguf'); },
+        wykuj: async (o) => { kute.push(o); return { ok: true, id: 'kucie_1' }; },
+        stanKucia: () => ({ stan: 'gotowe' }),
+        ustawKarte: async () => {},
+    });
+    await assert.rejects(Zwiadowca.zLinku('https://evil.example/a/b'), /Nie rozumiem tego linku/);
+    await assert.rejects(Zwiadowca.zLinku('https://pirateface.co/x/dzielony'), /jako jeden plik/);
+    const k = await Zwiadowca.zLinku('https://pirateface.co/akhilaaa3/Jev-Omni');
+    assert.deepEqual([k.zrodlo, k.zweryfikowane, k.kwant, k.gb, k.opinia], ['pirateface', false, 'Q4_K_M', 6, 'Model ogólny.']);
+    await Zwiadowca.akceptuj(k.id);
+    await czekaj(async () => (await Zwiadowca.kandydaci()).kandydaci[0].stan !== 'pobiera');
+    assert.equal((await Zwiadowca.kandydaci()).kandydaci[0].stan, 'pobrany', (await Zwiadowca.kandydaci()).kandydaci[0].blad ?? '');
+    assert.deepEqual(pobrane, [['https://pirateface.co/akhilaaa3/Jev-Omni/resolve/main/Jev-Omni-Q4_K_M.gguf', path.join(katalogModeli, 'akhilaaa3__Jev-Omni-Q4_K_M.gguf')]]);
+    assert.deepEqual(kute, [{ plik: 'akhilaaa3__Jev-Omni-Q4_K_M.gguf', nazwa: 'pf-jev-omni-q4_k_m' }]);
+    assert.ok(!s.wolania.some(([, u]) => u.endsWith('/api/pull')), 'spoza HF — bez ollama pull');
 });
 
 test('Pionek: w zespole pisze GDD i linię GRA:, Kodeks dostaje technikę; bez Pionka Kodeks jak dotąd; obaj mają karty roli', async () => {
