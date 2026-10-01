@@ -173,7 +173,7 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                                 <div className="font-bold">✋ Główny prosi o zgodę · ryzyko {p.ryzykoSlownie}</div>
                                 <div className="mt-0.5">🗣️ <b>O co mu chodzi:</b> {p.coRobi}</div>
                                 {p.dlaczego && <div className="mt-0.5 text-slate-300">💭 <b>Po co (jego słowami):</b> {p.dlaczego}</div>}
-                                <div className="mt-1 break-all rounded bg-black/50 px-1.5 py-1 font-mono text-[10px] text-slate-300">{p.narzedzie}: {p.polecenie}</div>
+                                <div className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-all rounded bg-black/50 px-1.5 py-1 font-mono text-[10px] text-slate-300">{p.narzedzie}: {p.polecenie}</div>
                                 {p.stan === 'czeka'
                                     ? <div className="mt-1.5 flex gap-1.5">
                                         <button onClick={() => decyduj(p, true)} className="rounded bg-emerald-700/80 px-2 py-0.5 font-bold text-emerald-50 hover:bg-emerald-600">✓ Zgoda</button>

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import * as Glowny from '../services/Glowny.js';
 import { POLECENIA } from '../scripts/glowny/katedra.mjs';
+import { ocen, tylkoOdczyt } from '../scripts/glowny/straz.mjs';
 
 test('Tłumacz: po ludzku, z ryzykiem; polecenie złożone oceniane po najgorszej części', () => {
     const t = (c, d) => Glowny.tlumacz('Bash', { command: c, description: d });
@@ -63,14 +64,15 @@ function claudeAtrapa(scenariusze) {
     const wolania = [];
     return {
         wolania,
-        uruchom: (program, args) => {
+        uruchom: function (program, args) {
             const p = new EventEmitter();
-            p.stdout = new EventEmitter(); p.stderr = new EventEmitter(); p.kill = () => p.emit('close', null);
+            let zabity = false;
+            p.stdout = new EventEmitter(); p.stderr = new EventEmitter(); p.kill = () => { zabity = true; };
             const n = wolania.length;
-            wolania.push({ program, args });
+            wolania.push({ program, args, opcje: arguments[2] });
             setImmediate(() => {
-                for (const z of scenariusze[n] ?? []) p.stdout.emit('data', Buffer.from(JSON.stringify(z) + '\n'));
-                p.emit('close', 0);
+                for (const z of scenariusze[n] ?? []) { if (zabity) break; p.stdout.emit('data', Buffer.from(JSON.stringify(z) + '\n')); }
+                p.emit('close', zabity ? null : 0);
             });
             return p;
         },
@@ -200,4 +202,70 @@ test('Polecenia stada: wideo przytnij/potnij → trasy mostu (ścieżka względe
         await assert.rejects(POLECENIA.wideo(['przytnij', 'x.mp4', 'pół']), /liczbę sekund/);
         assert.match(await POLECENIA.moce(), /wideo przytnij[\s\S]*zapytaj/);
     } finally { globalThis.fetch = stary; }
+});
+
+test('Straż: odczyt i tworzenie nowego bez pytania; istniejący rdzeń, sekrety, zapis poza Katedrą i reszta poleceń za zgodą', () => {
+    const o = (narzedzie, wejscie, { istnieje = false, zgody = [] } = {}) => ocen({ tool_name: narzedzie, tool_input: wejscie }, { katedra: '/k', wolne: ['/k/TeO_Skille', '/z'], zgody, istnieje: () => istnieje }).decyzja;
+    // To, o co Ling pytał w kółko — teraz bez pytania:
+    for (const c of ['ls -la', 'ls /dev/zero', 'ffprobe -v quiet -print_format json -show_format "F:\\5 stars\\a.mp4" 2>&1', 'ffmpeg -version 2>&1 | head -1',
+        'git status && git diff', 'curl -s http://127.0.0.1:3001/api/katedra/raport', 'mkdir -p raport', 'touch raport/a.txt', 'find . -name "*.mp4"',
+        'node scripts/glowny/katedra.mjs wideo przytnij "F:/K/_OtakOs_Klocki/a.mp4" 0.5', 'ollama list']) assert.equal(o('Bash', { command: c }), 'allow', c);
+    for (const c of ['head -c 450000 x.mp4 > /tmp/h.bin', 'cp a b', 'ffmpeg -i a.mp4 -ss 0.5 b.mp4', 'python -c "print(1)"', 'find . -delete', 'find -delete .',
+        'curl -X POST http://127.0.0.1:3001/x', 'curl -s -d a=1 http://localhost:3001/x', 'curl https://example.com', 'echo $(rm x)', 'ls; rm -rf x',
+        'node scripts/glowny/katedra.mjs moce; rm -rf x', 'git push']) assert.equal(o('Bash', { command: c }), 'ask', c);
+    assert.match(ocen({ tool_name: 'Bash', tool_input: { command: 'ffmpeg -i a.mp4 b.mp4' } }, { katedra: '/k' }).powod, /NIE ponawiaj[\s\S]*katedra\.mjs wideo przytnij/);
+    assert.equal(o('Bash', { command: 'cp a b' }, { zgody: ['cp a b'] }), 'allow', 'zgoda Suwerena na DOKŁADNIE to polecenie');
+    // Pliki:
+    assert.equal(o('Write', { file_path: '/k/components/Nowy.tsx' }), 'allow', 'nowy plik — swoboda tworzenia');
+    assert.equal(o('Edit', { file_path: '/k/wiesio-bridge.js' }, { istnieje: true }), 'ask', 'istniejący rdzeń');
+    assert.equal(o('Write', { file_path: 'services/Stado.js' }, { istnieje: true }), 'ask', 'ścieżka względna też');
+    assert.equal(o('Edit', { file_path: '/k/services/X.js' }, { istnieje: true, zgody: ['plik:/k/services/X.js'] }), 'allow');
+    assert.equal(o('Edit', { file_path: '/k/_OtakOs_Wymiar/stol.json' }, { istnieje: true }), 'allow', 'katalog roboczy');
+    assert.equal(o('Edit', { file_path: '/k/TeO_Skille/a/SKILL.md' }, { istnieje: true }), 'allow', 'dodatkowe katalogi (skille, załączniki)');
+    assert.equal(o('Write', { file_path: '/k/.env' }), 'ask', 'sekrety zawsze za zgodą');
+    assert.equal(o('Write', { file_path: '/k/_OtakOs_Wymiar/media_secrets.json' }), 'ask');
+    assert.equal(o('Write', { file_path: '/etc/hosts' }), 'ask', 'poza Katedrą');
+    assert.equal(o('Read', { file_path: '/k/.env' }), 'allow');
+    assert.ok(tylkoOdczyt('ls 2>/dev/null') && !tylkoOdczyt('ls > lista.txt') && !tylkoOdczyt(''));
+});
+
+test('Główny: Straż wpięta jako hook, zgody w środowisku; Tłumacz zmiany rdzenia z podglądem; limit odmów kończy turę, prośby bez powtórek', async () => {
+    const katalog = fs.mkdtempSync(path.join(os.tmpdir(), 'glowny-'));
+    const edycja = { file_path: '/k/wiesio-bridge.js', old_string: 'most = 1', new_string: 'most = 2', description: 'Podbijam most' };
+    const t = (() => { Glowny.skonfiguruj({ cwd: '/k' }); return Glowny.tlumacz('Edit', edycja); })();
+    assert.deepEqual([t.ryzyko, t.klucz], ['srednie', 'plik:/k/wiesio-bridge.js']);
+    assert.match(t.coRobi, /istniejący plik rdzenia Katedry: wiesio-bridge\.js/);
+    assert.equal(t.polecenie, 'wiesio-bridge.js\n- most = 1\n+ most = 2');
+    assert.equal(Glowny.tlumacz('Write', { file_path: '/k/.env', content: 'A=1' }).ryzyko, 'wysokie');
+
+    const uzyj = (id, name, input) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } });
+    const odmowa = (id, tool_name) => ({ type: 'system', subtype: 'permission_denied', tool_name, tool_use_id: id, message: 'Czeka na zgodę Suwerena' });
+    const a = claudeAtrapa([
+        [   // mały model: ta sama rzecz dwa razy, potem dwie inne → po 3 RÓŻNYCH odmowach koniec tury
+            uzyj('t1', 'Bash', { command: 'cp a b', description: 'kopia' }), odmowa('t1', 'Bash'),
+            uzyj('t2', 'Bash', { command: 'cp a b' }), odmowa('t2', 'Bash'),
+            uzyj('t3', 'Edit', edycja), odmowa('t3', 'Edit'),
+            uzyj('t4', 'Bash', { command: 'python -c "1"' }), odmowa('t4', 'Bash'),
+            uzyj('t5', 'Bash', { command: 'rm -rf x' }), odmowa('t5', 'Bash'),
+        ],
+        [{ type: 'result', subtype: 'success', is_error: false, permission_denials: [] }],
+    ]);
+    Glowny.skonfiguruj({ katalog, cwd: '/k', uruchom: a.uruchom, katalogi: [], istnieje: () => false, model: () => 'gemma4', straz: '/k/scripts/glowny/straz.mjs', limitOdmow: 3, szyna: null });
+    const { sesja } = await Glowny.wiadomosc({ tekst: 'zrób' });
+    await czekaj(async () => !(await Glowny.sesja(sesja)).trwa);
+    let s = await Glowny.sesja(sesja);
+    assert.equal(s.blad, null, 'zatrzymanie po odmowach to nie błąd');
+    assert.deepEqual(s.prosby.map((p) => p.klucz), ['cp a b', 'plik:/k/wiesio-bridge.js', 'python -c "1"'], 'bez powtórek, bez rm (tura zatrzymana wcześniej)');
+    assert.match(s.wpisy.find((w) => w.kto === 'decyzja').tresc, /Zatrzymałem turę po 3 odmowach/);
+    const args = a.wolania[0].args;
+    const hook = JSON.parse(args[args.indexOf('--settings') + 1]).hooks.PreToolUse[0];
+    assert.equal(hook.matcher, 'Bash|Edit|MultiEdit|Write|NotebookEdit');
+    assert.match(hook.hooks[0].command, /^".+" "\/k\/scripts\/glowny\/straz\.mjs"$/);
+
+    for (const p of s.prosby) await Glowny.decyzja(sesja, p.id, p.klucz !== 'python -c "1"');
+    await czekaj(() => a.wolania.length === 2);
+    const env = a.wolania[1].opcje.env;
+    assert.deepEqual(JSON.parse(env.OTAKOS_GLOWNY_ZGODY), ['cp a b', 'plik:/k/wiesio-bridge.js'], 'Straż przepuści dokładnie to, na co jest zgoda');
+    assert.equal(env.OTAKOS_GLOWNY_KATEDRA, '/k');
+    assert.ok(!a.wolania[1].args.includes('plik:/k/wiesio-bridge.js'), 'klucz pliku nie trafia do --allowedTools');
 });
