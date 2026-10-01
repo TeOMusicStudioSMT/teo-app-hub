@@ -254,6 +254,7 @@ const SrodowiskoKuzni: React.FC<{ doktor: Doktor | null; onZadanie: (id: string)
 interface Kandydat {
     id: string; repo: string; kwant: string; gb: number; pobrania: number | null; polubienia: number | null;
     opinia: string | null; stan: 'nowy' | 'pobiera' | 'pobrany' | 'odrzucony' | 'blad'; blad?: string | null; postep?: string | null; ollama: string;
+    zrodlo?: string; zweryfikowane?: boolean; url?: string;
 }
 
 /**
@@ -267,6 +268,7 @@ export const ZwiadowcaPanel: React.FC = () => {
     const [trwa, setTrwa] = useState(false);
     const [etap, setEtap] = useState<string | null>(null);
     const [zapytania, setZapytania] = useState('');
+    const [link, setLink] = useState('');
     const [pracuje, setPracuje] = useState<string | null>(null);
 
     const wczytaj = useCallback(async () => {
@@ -291,6 +293,16 @@ export const ZwiadowcaPanel: React.FC = () => {
             setTrwa(true); toast('🔭 Zwiadowca ruszył na HuggingFace…'); wczytaj();
         } catch (e) { toast.error(blad(e)); }
     };
+    const zLinku = async () => {
+        if (!link.trim()) return;
+        setPracuje('link');
+        try {
+            const d = await zMostu<{ kandydat: Kandydat }>('/api/zwiadowca/link', { method: 'POST', body: JSON.stringify({ link: link.trim() }) });
+            toast.success(`🔭 ${d.kandydat.repo}: ${d.kandydat.kwant}, ${d.kandydat.gb} GB — czeka na „Przyjmij"`);
+            setLink(''); wczytaj();
+        } catch (e) { toast.error(blad(e)); }
+        finally { setPracuje(null); }
+    };
     const decyzja = async (k: Kandydat, co: 'akceptuj' | 'odrzuc') => {
         setPracuje(k.id);
         try {
@@ -309,7 +321,7 @@ export const ZwiadowcaPanel: React.FC = () => {
                 <button onClick={wczytaj} className="text-[10px] text-teal-300/70 hover:text-teal-200" title="Odśwież">↻</button>
             </div>
             <p className="text-[11px] text-slate-400">
-                Szuka na HuggingFace modeli GGUF, które zmieszczą się w karcie ({vram ?? '?'} GB VRAM, zmień: OTAKOS_VRAM_GB), czyta ich karty i melduje Dyrygentowi.
+                Szuka na HuggingFace (i pirateface.co — 🏴‍☠️ niezweryfikowane, wyłącz: OTAKOS_ZWIADOWCA_ZRODLA=hf) modeli GGUF, które zmieszczą się w karcie ({vram ?? '?'} GB VRAM, zmień: OTAKOS_VRAM_GB), czyta ich karty i melduje Dyrygentowi.
                 Z Katedry nic nie wychodzi poza słowami wyszukiwania. <b>Nic nie pobiera się samo</b> — dopiero „Przyjmij" (ollama pull hf.co/…); po pobraniu opinia Zwiadowcy trafia do karty modelu.
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -319,13 +331,27 @@ export const ZwiadowcaPanel: React.FC = () => {
                     {trwa ? `⟳ ${etap ?? 'zwiad…'}` : '🔭 Szukaj teraz'}
                 </button>
             </div>
+            <div className="flex flex-wrap gap-1.5">
+                <input value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') zLinku(); }}
+                    placeholder="albo wklej link: huggingface.co/… · hf.co/… · pirateface.co/…"
+                    className="min-w-[16rem] flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />
+                <button onClick={zLinku} disabled={!link.trim() || pracuje === 'link'} className="rounded border border-teal-600/60 px-3 py-1.5 text-xs font-bold text-teal-200 hover:bg-teal-900/40 disabled:opacity-50">
+                    {pracuje === 'link' ? '⟳ sprawdzam…' : '🔗 Sprawdź link'}
+                </button>
+            </div>
             {ostatni && <div className="text-[10px] text-slate-500">Ostatni zwiad: {new Date(ostatni.kiedy).toLocaleString('pl-PL')} · nowych: {ostatni.nowych}</div>}
             {!widoczne.length && !trwa && <div className="text-[11px] text-slate-500">Brak kandydatów — uruchom zwiad (albo daj go Nocnej Zmianie: robota „zwiadowca-hf").</div>}
             <div className="space-y-1.5">
                 {widoczne.map((k) => (
                     <div key={k.id} className="rounded-lg border border-slate-700/60 bg-black/30 p-2 text-[11px]">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                            <a href={`https://huggingface.co/${k.repo}`} target="_blank" rel="noreferrer" className="font-bold text-teal-200 hover:underline">{k.repo}</a>
+                            <span className="flex items-center gap-1.5">
+                                <a href={k.url ?? `https://huggingface.co/${k.repo}`} target="_blank" rel="noreferrer" className="font-bold text-teal-200 hover:underline">{k.repo}</a>
+                                {k.zweryfikowane === false && (
+                                    <span title="Źródło spoza HuggingFace, którego Katedra nie zna — sprawdź kartę modelu i licencję przed przyjęciem. Pobierany jest tylko plik GGUF."
+                                        className="rounded border border-amber-500/50 bg-amber-950/40 px-1.5 text-[9px] font-bold text-amber-300">🏴‍☠️ {k.zrodlo} · niezweryfikowane</span>
+                                )}
+                            </span>
                             <span className="text-slate-400">{k.kwant} · {k.gb} GB{k.pobrania != null ? ` · ⬇ ${k.pobrania.toLocaleString('pl-PL')}` : ''}{k.polubienia != null ? ` · ♥ ${k.polubienia}` : ''}</span>
                         </div>
                         {k.opinia && <div className="mt-0.5 text-slate-300">🔭 {k.opinia}</div>}
