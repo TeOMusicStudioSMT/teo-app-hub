@@ -39,6 +39,10 @@ let cfg = {
     istnieje: (p) => fsSync.existsSync(p),
     szyna: null,
     maxTur: 40,
+    /** Straż (hook PreToolUse): odczyt i nowe pliki bez pytania, rdzeń Katedry za zgodą — scripts/glowny/straz.mjs */
+    straz: path.join(process.cwd(), 'scripts', 'glowny', 'straz.mjs'),
+    /** Po tylu odmowach w jednej turze kończymy turę — mały model potrafi ponawiać to samo do limitu tur. */
+    limitOdmow: 3,
 };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
 
@@ -70,6 +74,8 @@ const REGULY = [
     [/^(shutdown|format|diskpart|reg\s|bcdedit|sc\s)/i, 'Zmienić coś w systemie Windows (wyłączenie, dysk, rejestr, usługi).', 'wysokie'],
     [/^ollama\s+(rm|delete)\b/, 'Usunąć model z Ollamy.', 'wysokie'],
     [/^ollama\s+(pull|create)\b/, 'Pobrać albo wykuć model w Ollamie (gigabajty na dysku).', 'srednie'],
+    [/^ffmpeg\b/i, 'Przerobić wideo/dźwięk ffmpegiem — tworzy nowy plik (nadpisze, jeśli nazwa ta sama). Katedra ma na to własne „wideo przytnij/potnij".', 'srednie'],
+    [/^(python\S*|py)\s+-c\b/, 'Uruchomić kawałek kodu Pythona napisany przez Głównego — przeczytaj go przed zgodą.', 'srednie'],
     [/^(node|python\S*|py)\s+\S+/, 'Uruchomić skrypt — zrobi to, co jest w tym pliku.', 'srednie'],
 ];
 const RYZYKO_SLOWNIE = { niskie: '🟢 niskie', srednie: '🟡 średnie', wysokie: '🔴 wysokie', nieznane: '⚪ nieznane' };
@@ -80,6 +86,23 @@ const RYZYKO_SLOWNIE = { niskie: '🟢 niskie', srednie: '🟡 średnie', wysoki
  */
 export function tlumacz(narzedzie, wejscie = {}) {
     const dlaczego = wejscie?.description ? String(wejscie.description).slice(0, 300) : null;
+    if (['Edit', 'MultiEdit', 'Write', 'NotebookEdit'].includes(narzedzie) && (wejscie?.file_path || wejscie?.notebook_path)) {
+        const abs = path.resolve(cfg.cwd, String(wejscie.file_path ?? wejscie.notebook_path));
+        const rel = path.relative(cfg.cwd, abs);
+        const wKatedrze = !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+        const sekret = /(^|[\\/])(\.env(\.[\w-]+)?|media_secrets\.json|identity\.json|[^\\/]*\.(key|pem|pfx|p12|keystore|jks))$/i.test(abs);
+        const ryzyko = sekret ? 'wysokie' : 'srednie';
+        const co = narzedzie === 'Write' ? 'Nadpisać w całości' : 'Zmienić';
+        const coRobi = sekret ? `${co} plik z SEKRETAMI: ${rel || abs}.`
+            : wKatedrze ? `${co} istniejący plik rdzenia Katedry: ${rel}. Da się cofnąć gitem, ale to kod, na którym Katedra stoi.`
+                : `${co} plik POZA katalogiem Katedry: ${abs}.`;
+        const zmiany = narzedzie === 'Edit' ? [[wejscie.old_string, wejscie.new_string]]
+            : narzedzie === 'MultiEdit' ? (wejscie.edits ?? []).map((e) => [e.old_string, e.new_string]) : [];
+        const podglad = zmiany.length
+            ? zmiany.slice(0, 3).map(([a, b]) => `- ${String(a ?? '').slice(0, 160)}\n+ ${String(b ?? '').slice(0, 160)}`).join('\n')
+            : `(${String(wejscie.content ?? '').split('\n').length} linii nowej treści)`;
+        return { coRobi, ryzyko, ryzykoSlownie: RYZYKO_SLOWNIE[ryzyko], dlaczego, polecenie: `${rel || abs}\n${podglad}`, klucz: `plik:${abs}` };
+    }
     if (narzedzie !== 'Bash') {
         const cel = wejscie?.file_path ?? wejscie?.url ?? wejscie?.path ?? null;
         const opis = { Write: 'Zapisać plik', Edit: 'Zmienić plik', WebFetch: 'Pobrać stronę z internetu', WebSearch: 'Szukać w internecie' }[narzedzie] ?? `Użyć narzędzia ${narzedzie}`;
@@ -98,7 +121,7 @@ export function tlumacz(narzedzie, wejscie = {}) {
         if (!najgorsze || POZIOM[ryzyko] > POZIOM[najgorsze]) najgorsze = ryzyko;
     }
     const ryzyko = najgorsze ?? 'nieznane';
-    return { coRobi: opisy.join(' Potem: ') || 'Puste polecenie.', ryzyko, ryzykoSlownie: RYZYKO_SLOWNIE[ryzyko], dlaczego, polecenie };
+    return { coRobi: opisy.join(' Potem: ') || 'Puste polecenie.', ryzyko, ryzykoSlownie: RYZYKO_SLOWNIE[ryzyko], dlaczego, polecenie, klucz: polecenie };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,9 +148,15 @@ export function znajdzClaude({ platforma = cfg.platforma, dom = os.homedir(), en
     return { program: 'claude', przed: [], zrodlo: 'PATH' };
 }
 
-/** Środowisko procesu: model przez Ollamę (jak `ollama launch claude`), bez dziedziczenia sesji zewnętrznego Claude Code. */
-export function srodowisko(baza = process.env) {
+/** Zgody Suwerena w tej sesji — dla Straży: polecenia Bash dosłownie i `plik:<ścieżka>`. */
+export const zgodySesji = (s) => (s?.pozwolenia ?? []).map((x) => (/^Bash\(([\s\S]*)\)$/.exec(x)?.[1] ?? x));
+
+/** Środowisko procesu: model przez Ollamę (jak `ollama launch claude`), bez dziedziczenia sesji zewnętrznego Claude Code; dane dla Straży. */
+export function srodowisko(baza = process.env, s = null) {
     const env = { ...baza };
+    env.OTAKOS_GLOWNY_KATEDRA = cfg.cwd;
+    env.OTAKOS_GLOWNY_WOLNE = JSON.stringify([...cfg.katalogi, katalogZalacznikow()]);
+    env.OTAKOS_GLOWNY_ZGODY = JSON.stringify(zgodySesji(s));
     for (const k of ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_PID', 'CLAUDECODE']) delete env[k];
     if (!cfg.chmura) {
         env.ANTHROPIC_BASE_URL = cfg.ollama;
@@ -139,7 +168,7 @@ export function srodowisko(baza = process.env) {
 
 const DOPISEK = () => `Jesteś GŁÓWNY — Ultra Główny agent Katedry OtakOS, prowadzisz Imperium Kreatywne Suwerena (Mistrz Arkadiusz).
 Piszesz po polsku. Najpierw CLAUDE.md w katalogu Katedry — tam są zasady i mapa modułów.
-UPRAWNIENIA: pliki Katedry czytasz i zmieniasz sam. Każde inne polecenie powłoki czeka na zgodę Suwerena — opisz w polu description jednym zdaniem PO CO, a jeśli da się to zrobić narzędziami do plików, zrób to nimi.
+UPRAWNIENIA (pilnuje ich Straż): czytasz wszystko, polecenia tylko-do-odczytu (ls, cat, git status, ffprobe, curl GET do mostu) i polecenia stada idą od razu. NOWE pliki tworzysz swobodnie. Zmiana ISTNIEJĄCYCH plików rdzenia Katedry (kod, konfiguracja) i polecenia, które coś zmieniają, czekają na zgodę Suwerena — w polu description napisz jednym zdaniem PO CO. Po odmowie NIE ponawiaj tego samego w innej formie (inne polecenie, Python) — zrób, co się da bez tego, albo zakończ turę: Suweren dostanie prośbę.
 STADO (bez pytania): node scripts/glowny/katedra.mjs <polecenie>:
   stan [fragment nazwy]        — projekty stada, Stół, Nocna Zmiana, ostatnie działania (fakty)
   stado                        — z kim można rozmawiać (TeOgochi)
@@ -160,6 +189,9 @@ export function argumenty({ tekst, sesjaId, wznow, pozwolenia = [], model }) {
     // Tekst zaczynający się od „-" parser argumentów wziąłby za flagę — dokładamy spację.
     const a = ['-p', String(tekst).replace(/^-/, ' -'), '--output-format', 'stream-json', '--verbose', '--permission-mode', 'dontAsk', '--setting-sources', 'project',
         '--max-turns', String(cfg.maxTur), '--model', model, '--allowedTools', ...BEZ_PYTANIA, ...pozwolenia];
+    // Straż jako hook PreToolUse: ścieżki z „/" i w cudzysłowach (Windows: spacje w „F:\5 stars\…").
+    const cmd = `"${process.execPath.replace(/\\/g, '/')}" "${String(cfg.straz).replace(/\\/g, '/')}"`;
+    a.push('--settings', JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|Edit|MultiEdit|Write|NotebookEdit', hooks: [{ type: 'command', command: cmd, timeout: 15 }] }] } }));
     for (const k of [...cfg.katalogi, katalogZalacznikow()]) if (cfg.istnieje(k)) a.push('--add-dir', k);
     a.push('--append-system-prompt', DOPISEK());
     a.push(wznow ? '--resume' : '--session-id', sesjaId);
@@ -198,21 +230,31 @@ export function sluchaj(id, fn) {
 function tura(s, tekst, { wznow }) {
     const model = s.model;
     const { program, przed } = znajdzClaude();
-    const args = [...przed, ...argumenty({ tekst, sesjaId: s.id, wznow, pozwolenia: s.pozwolenia, model })];
+    const args = [...przed, ...argumenty({ tekst, sesjaId: s.id, wznow, pozwolenia: s.pozwolenia.filter((x) => !x.startsWith('plik:')), model })];
     s.trwa = true; s.blad = null;
     nadaj(s, { typ: 'stan', trwa: true });
     let p;
-    try { p = cfg.uruchom(program, args, { cwd: cfg.cwd, env: srodowisko() }); }
+    try { p = cfg.uruchom(program, args, { cwd: cfg.cwd, env: srodowisko(process.env, s) }); }
     catch (e) { s.trwa = false; s.blad = `Nie uruchomiłem Claude Code: ${e.message}`; dopisz(s, { kto: 'blad', tresc: s.blad }); return Promise.resolve(); }
     procesy.set(s.id, p);
-    let bufor = '', bledy = '', wynik = null;
+    let bufor = '', bledy = '', wynik = null, zatrzymana = false;
+    const uzycia = new Map();   // tool_use_id → { name, input }
+    const odmowy = [];          // odmowy z bieżącej tury (strumień), zanim przyjdzie wynik
     const linia = (l) => {
         let j; try { j = JSON.parse(l); } catch { return; }
         if (j.type === 'system' && j.subtype === 'init') { s.modelSesji = j.model ?? model; return; }
+        if (j.type === 'system' && j.subtype === 'permission_denied') {
+            const u = uzycia.get(j.tool_use_id);
+            odmowy.push({ tool_name: j.tool_name ?? u?.name, tool_use_id: j.tool_use_id, tool_input: u?.input ?? {} });
+            // Mały model ponawia odmówione w kółko (do error_max_turns) — po limicie kończymy turę; decyduje Suweren.
+            const rozne = new Set(odmowy.map((d) => tlumacz(d.tool_name, d.tool_input).klucz));
+            if (!zatrzymana && rozne.size >= cfg.limitOdmow) { zatrzymana = true; try { p.kill(); } catch { /* już nie żyje */ } }
+            return;
+        }
         if (j.type === 'assistant') {
             for (const c of j.message?.content ?? []) {
                 if (c.type === 'text' && c.text?.trim()) dopisz(s, { kto: 'glowny', tresc: c.text.trim() });
-                else if (c.type === 'tool_use') dopisz(s, { kto: 'narzedzie', narzedzie: c.name, opis: c.input?.description ?? null, wejscie: skrot(c.input) });
+                else if (c.type === 'tool_use') { uzycia.set(c.id, { name: c.name, input: c.input }); dopisz(s, { kto: 'narzedzie', narzedzie: c.name, opis: c.input?.description ?? null, wejscie: skrot(c.input) }); }
             }
         } else if (j.type === 'result') wynik = j;
     };
@@ -227,14 +269,20 @@ function tura(s, tekst, { wznow }) {
                 s.blad = bladUruchomienia.code === 'ENOENT'
                     ? `Nie znalazłem Claude Code („${program}"). Zainstaluj go (npm i -g @anthropic-ai/claude-code albo instalator z claude.ai/code) albo ustaw OTAKOS_CLAUDE na pełną ścieżkę.`
                     : `Claude Code nie wystartował: ${bladUruchomienia.message}`;
+            } else if (!wynik && zatrzymana) {
+                dopisz(s, { kto: 'decyzja', tresc: `⏸ Zatrzymałem turę po ${cfg.limitOdmow} odmowach — Główny czeka na Twoje decyzje.` });
             } else if (!wynik) {
                 s.blad = `Claude Code zakończył się kodem ${kod} bez wyniku${bledy.trim() ? `: ${bledy.trim().split('\n').slice(-3).join(' | ')}` : ''}${!cfg.chmura ? ` (model ${model} przez Ollamę — czy Ollama działa i ma ten model?)` : ''}`;
             } else if (wynik.is_error) {
                 s.blad = String(wynik.result ?? wynik.subtype ?? 'błąd').slice(0, 500);
             }
             if (s.blad) dopisz(s, { kto: 'blad', tresc: s.blad });
-            for (const d of wynik?.permission_denials ?? []) {
+            // Odmowy ze strumienia + z wyniku; ta sama rzecz (polecenie / plik) — jedna prośba, także względem już czekających.
+            const znane = new Set(s.prosby.filter((x) => x.stan === 'czeka').map((x) => x.klucz ?? x.polecenie));
+            for (const d of [...odmowy, ...(wynik?.permission_denials ?? [])]) {
                 const t = tlumacz(d.tool_name, d.tool_input);
+                if (znane.has(t.klucz)) continue;
+                znane.add(t.klucz);
                 const prosba = { id: crypto.randomBytes(4).toString('hex'), narzedzie: d.tool_name, wejscie: skrot(d.tool_input), ...t, stan: 'czeka' };
                 s.prosby.push(prosba);
                 dopisz(s, { kto: 'prosba', prosba });
@@ -335,6 +383,7 @@ export async function decyzja(sesjaId, prosbaId, zgoda) {
     p.stan = zgoda ? 'zgoda' : 'odmowa';
     p.decyzja = new Date().toISOString();
     if (zgoda && p.narzedzie === 'Bash' && p.polecenie) s.pozwolenia.push(`Bash(${p.polecenie})`);
+    else if (zgoda && p.klucz?.startsWith('plik:')) s.pozwolenia.push(p.klucz);   // Straż przepuści DOKŁADNIE ten plik
     else if (zgoda) s.pozwolenia.push(p.narzedzie);
     dopisz(s, { kto: 'decyzja', prosba: p.id, zgoda: !!zgoda, tresc: `${zgoda ? '✓ Zgoda' : '✕ Odmowa'}: ${p.coRobi}` });
     if (s.prosby.some((x) => x.stan === 'czeka')) { await zapiszSesje(s); return { sesja: s.id, wznowiona: false }; }
