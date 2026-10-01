@@ -147,6 +147,11 @@ STADO (bez pytania): node scripts/glowny/katedra.mjs <polecenie>:
   stol                         — karty Stołu ratyfikacji
   nocna <robota> [JSON]        — dodaj zadanie do Nocnej Zmiany (np. zwiadowca-hf, projekt-stada-rundy)
   pamiec                       — RAM i procesy
+MOCE KATEDRY (też bez pytania, przez ten sam skrypt) — ZANIM powiesz „nie mam narzędzia", sprawdź: node scripts/glowny/katedra.mjs moce
+  wideo pliki [klocki|move]                       — filmy w _OtakOs_Klocki / _OtakOs_Move (ścieżki względne, sekundy)
+  wideo przytnij <plik> <od_s> [do_s]             — przycięcie ffmpeg (nowy plik obok, oryginał zostaje); plik: względny albo pełna ścieżka
+  wideo potnij <plik> <sekundy>                   — Nożyce: pocięcie na równe klocki po N s
+OBRAZY: gdy wiadomość ma „Załączone obrazy", otwórz każdy narzędziem Read (to zrzuty ekranu od Suwerena).
 SKILLE: ${cfg.katalogi.filter((k) => cfg.istnieje(k)).map((k) => path.basename(k)).join(', ') || '(brak)'} — katalogi z SKILL.md; czytaj właściwy, gdy zadanie pasuje.
 Nie udawaj: mów, co zrobiłeś, a czego nie. Na końcu krótko: co zrobione, co czeka na Suwerena.`;
 
@@ -155,7 +160,7 @@ export function argumenty({ tekst, sesjaId, wznow, pozwolenia = [], model }) {
     // Tekst zaczynający się od „-" parser argumentów wziąłby za flagę — dokładamy spację.
     const a = ['-p', String(tekst).replace(/^-/, ' -'), '--output-format', 'stream-json', '--verbose', '--permission-mode', 'dontAsk', '--setting-sources', 'project',
         '--max-turns', String(cfg.maxTur), '--model', model, '--allowedTools', ...BEZ_PYTANIA, ...pozwolenia];
-    for (const k of cfg.katalogi) if (cfg.istnieje(k)) a.push('--add-dir', k);
+    for (const k of [...cfg.katalogi, katalogZalacznikow()]) if (cfg.istnieje(k)) a.push('--add-dir', k);
     a.push('--append-system-prompt', DOPISEK());
     a.push(wznow ? '--resume' : '--session-id', sesjaId);
     return a;
@@ -254,9 +259,47 @@ export function stan() {
     return { program: c.program, zrodlo: c.zrodlo, model: cfg.model(), chmura: cfg.chmura, ollama: cfg.chmura ? null : cfg.ollama, katalogi: cfg.katalogi.filter((k) => cfg.istnieje(k)), bezPytania: BEZ_PYTANIA };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🖼️ Załączniki — zrzuty ekranu wklejone w czat (Suweren: „tak buduję — zdjęciem")
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OBRAZY = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+const MAX_ZALACZNIK = 15 * 1024 * 1024;
+export const katalogZalacznikow = () => path.join(cfg.katalog, 'zalaczniki');
+
+/** dataURL obrazu → plik w `<katalog>/zalaczniki`. Claude Code otwiera go narzędziem Read (obrazy czyta jako obrazy). */
+export async function zapiszZalacznik({ dane, nazwa = '' } = {}) {
+    const m = /^data:(image\/[a-z+.-]+);base64,([A-Za-z0-9+/=\s]+)$/i.exec(String(dane ?? ''));
+    if (!m) throw new Error('Załącznik musi być obrazem (data:image/…;base64).');
+    const ext = OBRAZY[m[1].toLowerCase()];
+    if (!ext) throw new Error(`Nieobsługiwany obraz ${m[1]} (png, jpg, webp, gif).`);
+    const bufor = Buffer.from(m[2], 'base64');
+    if (!bufor.length) throw new Error('Pusty obraz.');
+    if (bufor.length > MAX_ZALACZNIK) throw new Error('Obraz za duży (maks. 15 MB).');
+    const baza = String(nazwa).replace(/\.[^.]+$/, '').normalize('NFKD').replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'zrzut';
+    const plik = `${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}_${crypto.randomUUID().slice(0, 8)}_${baza}.${ext}`;
+    await fs.mkdir(katalogZalacznikow(), { recursive: true });
+    const sciezka = path.join(katalogZalacznikow(), plik);
+    await fs.writeFile(sciezka, bufor);
+    return { plik, sciezka, bajtow: bufor.length };
+}
+
+/** Nazwa pliku z katalogu załączników → pełna ścieżka (albo null, gdy to nie nasz plik). */
+export function sciezkaZalacznika(plik) {
+    const n = path.basename(String(plik ?? ''));
+    if (!n || n !== String(plik) || !/\.(png|jpg|webp|gif)$/i.test(n)) return null;
+    const p = path.join(katalogZalacznikow(), n);
+    return cfg.istnieje(p) ? p : null;
+}
+
 /** Wiadomość Suwerena: nowa sesja albo dalsza rozmowa. Tura leci w tle; postęp — wpisy (sluchaj / sesja). */
-export async function wiadomosc({ tekst, sesja = null, model = null, zrodlo = 'czat' }) {
-    const t = String(tekst ?? '').trim();
+export async function wiadomosc({ tekst, sesja = null, model = null, zrodlo = 'czat', zalaczniki = [] }) {
+    const pliki = (Array.isArray(zalaczniki) ? zalaczniki : []).slice(0, 10).map((z) => {
+        const p = sciezkaZalacznika(z);
+        if (!p) throw new Error(`Nie ma załącznika „${z}" — wklej obraz jeszcze raz.`);
+        return path.basename(p);
+    });
+    const t = String(tekst ?? '').trim() || (pliki.length ? 'Zobacz załączone obrazy.' : '');
     if (!t) throw new Error('Pusta wiadomość.');
     if (t.length > 20_000) throw new Error('Za długa wiadomość (maks. 20 000 znaków).');
     let s = sesja ? await wczytajSesje(sesja) : null;
@@ -268,9 +311,14 @@ export async function wiadomosc({ tekst, sesja = null, model = null, zrodlo = 'c
         s = { id: crypto.randomUUID(), tytul: t.slice(0, 80), zrodlo, od: new Date().toISOString(), model: model || cfg.model(), wpisy: [], prosby: [], pozwolenia: [], trwa: false, blad: null, tury: 0 };
         sesje.set(s.id, s);
     }
-    dopisz(s, { kto: 'suweren', tresc: t });
+    // Model można zmienić w trakcie rozmowy (Suweren: mały model „po prostu nie wie") — --resume niesie historię.
+    if (model && !nowa) s.model = String(model);
+    dopisz(s, pliki.length ? { kto: 'suweren', tresc: t, zalaczniki: pliki } : { kto: 'suweren', tresc: t });
     s.tury++;
-    tura(s, t, { wznow: !nowa });
+    const doModelu = pliki.length
+        ? `${t}\n\nZałączone obrazy (otwórz każdy narzędziem Read):\n${pliki.map((f) => `- ${path.join(katalogZalacznikow(), f)}`).join('\n')}`
+        : t;
+    tura(s, doModelu, { wznow: !nowa });
     return { sesja: s.id, model: s.model };
 }
 

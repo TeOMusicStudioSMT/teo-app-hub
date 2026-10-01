@@ -9,6 +9,7 @@ import { useAtomValue } from 'jotai';
 import { electricBorderAtom } from '../../store/electricBorder';
 import toast from 'react-hot-toast';
 import { GlownyCzat } from '../special/GlownyCzat';
+import { obrazyZ, nazwaZrzutu } from '../../lib/schowekObrazy';
 
 // Ikona Mikrofonu (Inline dla pewności)
 const MicIcon = ({ active }: { active: boolean }) => (
@@ -33,6 +34,16 @@ export const CreativeZoneCard: React.FC<CreativeZoneCardProps> = ({ onVisualAssi
     // w Katedrze (services/Glowny.js) z dostępem do plików, skilli i stada.
     const [tryb, setTryb] = useState<'manifest' | 'glowny'>(() => { try { return localStorage.getItem('otakos_cz_tryb') === 'glowny' ? 'glowny' : 'manifest'; } catch { return 'manifest'; } });
     const [doGlownego, setDoGlownego] = useState<string | undefined>(undefined);
+    const [obrazyDoGlownego, setObrazyDoGlownego] = useState<File[] | undefined>(undefined);
+    /** Manifest widzi tylko tekst — zrzut ekranu (Ctrl+V, upuszczenie, 📎) idzie do Głównego, który obrazy otwiera. */
+    const obrazyDoGlownegoZ = (pliki: File[]) => {
+        const o = pliki.filter((f) => f.type.startsWith('image/')).map((f) => new File([f], nazwaZrzutu(f), { type: f.type }));
+        if (!o.length) { if (pliki.length) toast('Tu przyjmuję zrzuty ekranu (obrazy).', { icon: '🖼️' }); return; }
+        setDoGlownego(prompt.trim() || undefined);
+        setObrazyDoGlownego(o);
+        ustawTryb('glowny');
+        toast(`${o.length} obraz(y) → 👑 Główny (Manifest widzi tylko tekst)`, { icon: '🖼️' });
+    };
     const ustawTryb = (t: 'manifest' | 'glowny') => { setTryb(t); try { localStorage.setItem('otakos_cz_tryb', t); } catch { /* bez pamięci trybu */ } };
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { globalMode } = useAtomValue(electricBorderAtom);
@@ -119,7 +130,7 @@ export const CreativeZoneCard: React.FC<CreativeZoneCardProps> = ({ onVisualAssi
 
                 {tryb === 'glowny' ? (
                     <div className="mt-10 flex-grow">
-                        <GlownyCzat zrodlo="creative-zone" zadanie={doGlownego} className="h-full" />
+                        <GlownyCzat zrodlo="creative-zone" zadanie={doGlownego} obrazy={obrazyDoGlownego} className="h-full" />
                     </div>
                 ) : (<>
 
@@ -154,11 +165,13 @@ export const CreativeZoneCard: React.FC<CreativeZoneCardProps> = ({ onVisualAssi
                 </div>
 
                 {/* INPUT BAR (Większy + Ikony naprawione) */}
-                <div className="bg-slate-900/90 border border-slate-700 p-4 rounded-3xl flex flex-col md:flex-row items-stretch md:items-center gap-4 shadow-xl z-20">
+                <div className="bg-slate-900/90 border border-slate-700 p-4 rounded-3xl flex flex-col md:flex-row items-stretch md:items-center gap-4 shadow-xl z-20"
+                    onDragOver={(e) => { if (Array.from(e.dataTransfer?.types ?? []).includes('Files')) e.preventDefault(); }}
+                    onDrop={(e) => { const f = Array.from(e.dataTransfer?.files ?? []); if (f.length) { e.preventDefault(); obrazyDoGlownegoZ(f); } }}>
 
                     {/* IKONY (Zmniejszone i wyśrodkowane) */}
                     <div className="flex flex-row md:flex-col gap-4 justify-center items-center opacity-70 flex-shrink-0">
-                        <div className="cursor-pointer hover:text-cyan-400 p-1 w-8 h-8 flex items-center justify-center" onClick={() => fileInputRef.current?.click()}>
+                        <div className="cursor-pointer hover:text-cyan-400 p-1 w-8 h-8 flex items-center justify-center" onClick={() => fileInputRef.current?.click()} title="Zrzut ekranu → Główny (albo wklej Ctrl+V / upuść)">
                             <div className="w-5 h-5">
                                 <PaperClipIcon />
                             </div>
@@ -170,12 +183,14 @@ export const CreativeZoneCard: React.FC<CreativeZoneCardProps> = ({ onVisualAssi
                         </div>
                     </div>
 
-                    <input type="file" ref={fileInputRef} className="hidden" />
+                    <input type="file" ref={fileInputRef} accept="image/*" multiple className="hidden"
+                        onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ''; obrazyDoGlownegoZ(f); }} />
 
                     {/* TEXTAREA (Większa) */}
                     <textarea
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
+                        onPaste={(e) => { const o = obrazyZ(e.clipboardData); if (o.length) { e.preventDefault(); obrazyDoGlownegoZ(o); } }}
                         placeholder={isListening ? "Słucham..." : `Zasiej myśl w trybie ${globalMode}...`}
                         className="flex-grow bg-transparent border-none focus:ring-0 text-white placeholder-slate-600 resize-none text-lg md:text-xl font-light py-2 min-h-[80px]"
                     />

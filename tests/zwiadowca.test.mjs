@@ -121,6 +121,33 @@ test('Zwiadowca: HuggingFace nieosiągalny → błąd wprost, a nie „bez nowyc
     assert.match(szyna.at(-1).tresc, /zwiad przerwany/);
 });
 
+test('Zwiadowca: repo bez GGUF (MLX, safetensors) → prawda o formacie i gotowe wersje GGUF, nie „brak pliku"', async () => {
+    assert.equal(Zwiadowca.formatRepo('Ruiruiz30/Jev-Omni-MLX-4bit', [{ path: 'model.safetensors', lfs: { size: 6.84e9 } }]).format, 'mlx');
+    assert.equal(Zwiadowca.formatRepo('mlx-community/Qwen3-4B-4bit', [{ path: 'model.safetensors', size: 2e9 }]).format, 'mlx');
+    assert.deepEqual(Object.values(Zwiadowca.formatRepo('a/Model', [{ path: 'model-00001-of-00002.safetensors', lfs: { size: 5e9 } }, { path: 'model-00002-of-00002.safetensors', lfs: { size: 3e9 } }])).slice(0, 2), ['safetensors', 8]);
+    assert.equal(Zwiadowca.formatRepo('a/b', [{ path: 'm-Q4_K_M.gguf', size: 1 }]).format, 'gguf');
+    assert.equal(Zwiadowca.rdzenNazwy('Ruiruiz30/Jev-Omni-MLX-4bit'), 'Jev-Omni');
+    assert.equal(Zwiadowca.rdzenNazwy('a/Bielik-11B-v2.3-Instruct-AWQ'), 'Bielik-11B-v2.3-Instruct');
+    const szukane = [];
+    Zwiadowca.skonfiguruj({
+        katalog: tmp(), zrodla: ['hf'], szyna: null, pisz: null,
+        fetch: async (u) => {
+            if (u.includes('/api/models/Ruiruiz30/Jev-Omni-MLX-4bit/tree/main')) return json([{ type: 'file', path: 'model.safetensors', lfs: { size: 6.84e9 } }, { type: 'directory', path: 'decision_head' }]);
+            if (u.includes('/api/models/a/Nowy-7B/tree/main')) return json([{ type: 'file', path: 'model.safetensors', lfs: { size: 14e9 } }]);
+            if (u.includes('/api/models?search=')) { szukane.push(decodeURIComponent(u.split('search=')[1].split('&')[0])); return json(u.includes('Jev-Omni') ? [{ id: 'ktos/Jev-Omni-GGUF' }] : []); }
+            return json({}, 404);
+        },
+    });
+    await assert.rejects(Zwiadowca.zLinku('https://huggingface.co/Ruiruiz30/Jev-Omni-MLX-4bit'), (e) => {
+        assert.equal(e.format, 'mlx');
+        assert.match(e.message, /MLX — wagi dla Apple Silicon.*\(6\.8 GB\).*Wersje GGUF „Jev-Omni" na HuggingFace: ktos\/Jev-Omni-GGUF/);
+        return true;
+    });
+    await assert.rejects(Zwiadowca.zLinku('a/Nowy-7B'), /safetensors.*Kuźni Soup.*nie ma jeszcze wersji GGUF „Nowy-7B"/);
+    assert.deepEqual(szukane, ['Jev-Omni', 'Nowy-7B']);
+    assert.deepEqual((await Zwiadowca.kandydaci()).kandydaci, [], 'nic nie trafia do kandydatów do kucia');
+});
+
 test('Zwiadowca: linki — huggingface.co, hf.co z kwantem, plik w blob/resolve, pirateface.co, samo „a/b"; obce adresy odrzucone', () => {
     assert.deepEqual(Zwiadowca.czytajLink('https://huggingface.co/speakleash/Bielik-11B-v2.3-Instruct-GGUF'), { zrodlo: 'hf', repo: 'speakleash/Bielik-11B-v2.3-Instruct-GGUF' });
     assert.deepEqual(Zwiadowca.czytajLink('hf.co/a/b:q4_k_m'), { zrodlo: 'hf', repo: 'a/b', kwant: 'Q4_K_M' });

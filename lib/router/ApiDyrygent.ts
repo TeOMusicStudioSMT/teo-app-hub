@@ -240,12 +240,16 @@ export const ApiDyrygent = {
         signal?:  AbortSignal,
         history?: Array<{ role: 'user' | 'assistant'; content: string }>,
         system?:  string,
+        /** dataURL-e obrazów → Ollama /api/chat `images` (czysty base64) — dla modeli multimodalnych */
+        images?:  string[],
     ): Promise<string> {
         // Tarcza: przytnij historię do MAX_CLOUD_HISTORY ostatnich wiadomości
         const prunedHistory = (history ?? []).slice(-MAX_CLOUD_HISTORY);
         const messages = [
             ...prunedHistory,
-            { role: 'user' as const, content: message },
+            images?.length
+                ? { role: 'user' as const, content: message, images: images.map((i) => i.replace(/^data:[^,]*,/, '')) }
+                : { role: 'user' as const, content: message },
         ];
 
         const res = await fetch(`${WIESLAW_URL}/api/ollama`, {
@@ -274,16 +278,16 @@ export const ApiDyrygent = {
             const chunk = decoder.decode(value, { stream: true });
             for (const line of chunk.split('\n')) {
                 if (!line.startsWith('data: ')) continue;
-                try {
-                    const parsed = JSON.parse(line.slice(6).trim());
-                    if (parsed.type === 'text' && parsed.text) {
-                        full += parsed.text;
-                        onToken?.(parsed.text);
-                    } else if (parsed.type === 'done') {
-                        return full;
-                    }
-                } catch {
-                    // pomiń złe linie SSE
+                let parsed: any;
+                try { parsed = JSON.parse(line.slice(6).trim()); } catch { continue; } // pomiń złe linie SSE
+                if (parsed.type === 'text' && parsed.text) {
+                    full += parsed.text;
+                    onToken?.(parsed.text);
+                } else if (parsed.type === 'done') {
+                    return full;
+                } else if (parsed.type === 'error') {
+                    // Błąd Ollamy (np. model bez wzroku dostał obraz) — wprost, nie cisza.
+                    throw new Error(parsed.error || 'Ollama zwróciła błąd.');
                 }
             }
         }

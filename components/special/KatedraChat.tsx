@@ -26,6 +26,7 @@ import { ThinkingOrb } from 'thinking-orbs';
 import toast from 'react-hot-toast';
 import { ApiDyrygent, CLOUD_MODELS, ImageAttachment } from '../../lib/router/ApiDyrygent';
 import * as Historia from '../../lib/historiaCzatu';
+import { obrazyZ, nazwaZrzutu } from '../../lib/schowekObrazy';
 
 // ══════════════════════════════════════════════════════════════════
 // BLOK KODU z przyciskiem "⚡ Wdróż do Katedry"
@@ -1282,7 +1283,7 @@ ${String(d.tresc || '').slice(0, 4000)}
             // AACL Inference Router prompt routing
             const finalPrompt = InferenceRouter.determineFinalPrompt(modelText, false);
 
-            // Dla chmury przekazujemy obrazy; dla Ollamy tylko tekst (brak vision API w /api/ollama)
+            // Obrazy: chmura → dispatchCloud; Ollama → /api/ollama z `images` (modele multimodalne)
             if (sourceMode === 'cloud' && attachmentsToSend.length > 0) {
                 await ApiDyrygent.dispatchCloud(
                     finalPrompt || '(opisz ten obraz)',
@@ -1293,12 +1294,21 @@ ${String(d.tresc || '').slice(0, 4000)}
                     attachmentsToSend as any,
                     history,   // ← historia przy obrazach
                 );
+            } else if (attachmentsToSend.length > 0) {
+                // Ollama też widzi obrazy (/api/chat `images`) — o ile model jest multimodalny (gemma4, llava, qwen-vl…).
+                // Model bez wzroku: Ollama zwraca błąd i pokazujemy go wprost, zamiast udawać, że coś zobaczył.
+                await ApiDyrygent.dispatchViaWieslaw(
+                    finalPrompt || 'Opisz ten obraz.',
+                    fastModel,
+                    (tok: string) => { fullText += tok; updateMessage(replyId, { content: fullText }); },
+                    ctrl.signal,
+                    history,
+                    SYSTEM_PROMPTS.klaudiusz,
+                    attachmentsToSend.map(a => a.base64),
+                );
             } else {
                 await dispatch(
-                    finalPrompt + (attachmentsToSend.length > 0
-                        ? `\n\n[Suweren dołączył ${attachmentsToSend.length} obraz(y), ` +
-                          `ale tryb Ollama nie obsługuje vision — opisz co widzisz na podstawie tekstu]`
-                        : ''),
+                    finalPrompt,
                     (tok: string) => { fullText += tok; updateMessage(replyId, { content: fullText }); },
                     ctrl.signal,
                     history,   // ← historia multi-turn
@@ -1576,6 +1586,26 @@ ${String(d.tresc || '').slice(0, 4000)}
 
         // Resetuj input, by ten sam plik można wybrać ponownie
         e.target.value = '';
+        await przyjmijPliki(files);
+    }, []);
+
+    /** 🖼️ Ctrl+V zrzutu ekranu w polu wiadomości — ta sama droga co 📎. */
+    const handlePaste = useCallback((e: React.ClipboardEvent) => {
+        const obrazy = obrazyZ(e.clipboardData);
+        if (!obrazy.length) return;           // zwykły tekst wkleja się normalnie
+        e.preventDefault();
+        przyjmijPliki(obrazy.map((f) => new File([f], nazwaZrzutu(f), { type: f.type })));
+    }, []);
+    const [przeciaga, setPrzeciaga] = useState(false);
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        setPrzeciaga(false);
+        const pliki = Array.from(e.dataTransfer?.files ?? []);
+        if (!pliki.length) return;
+        e.preventDefault();
+        przyjmijPliki(pliki);
+    }, []);
+
+    const przyjmijPliki = async (files: File[]) => {
         setAttachProcessing(true);
 
         for (const file of files) {
@@ -1620,7 +1650,7 @@ ${String(d.tresc || '').slice(0, 4000)}
             }
         }
         setAttachProcessing(false);
-    }, []);
+    };
 
     const stopGeneration = () => {
         abortRef.current?.abort();
@@ -1644,7 +1674,10 @@ ${String(d.tresc || '').slice(0, 4000)}
     // RENDER
     // ══════════════════════════════════════════════════════════════
     return (
-        <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+        <div className={`flex flex-col h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 ${przeciaga ? 'ring-2 ring-inset ring-cyan-400/70' : ''}`}
+            onDragOver={(e) => { if (Array.from(e.dataTransfer?.types ?? []).includes('Files')) { e.preventDefault(); setPrzeciaga(true); } }}
+            onDragLeave={(e) => { if (e.currentTarget === e.target) setPrzeciaga(false); }}
+            onDrop={handleDrop}>
 
             {/* ── HEADER ─────────────────────────────────────────── */}
             <div className="bg-slate-800/50 border-b border-purple-500/30 p-3">
@@ -2025,6 +2058,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                         type="text"
                         value={currentInput}
                         onChange={e => setCurrentInput(e.target.value)}
+                        onPaste={handlePaste}
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) sendMessage(); }}
                         placeholder={
                             sourceMode === 'cloud'

@@ -154,3 +154,50 @@ test('Polecenia stada dla Głównego: zapytanie TeOgochi idzie jako zGlownego (b
         await assert.rejects(POLECENIA.nocna(['zwiadowca-hf', '{zly']), /JSON/);
     } finally { globalThis.fetch = stary; }
 });
+
+test('Główny: wklejony zrzut → plik w zalaczniki, ścieżka w wiadomości do Read; obcy plik odrzucony; zmiana modelu w trakcie rozmowy', async () => {
+    const katalog = fs.mkdtempSync(path.join(os.tmpdir(), 'glowny-'));
+    const a = claudeAtrapa([
+        [{ type: 'result', subtype: 'success', is_error: false, permission_denials: [] }],
+        [{ type: 'result', subtype: 'success', is_error: false, permission_denials: [] }],
+    ]);
+    Glowny.skonfiguruj({ katalog, uruchom: a.uruchom, katalogi: [], istnieje: (p) => fs.existsSync(p), model: () => 'gemma4:e2b' });
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const z = await Glowny.zapiszZalacznik({ dane: png, nazwa: 'Zrzut ekranu (1).png' });
+    assert.match(z.plik, /_Zrzut_ekranu_1\.png$/);
+    assert.ok(fs.existsSync(path.join(katalog, 'zalaczniki', z.plik)));
+    await assert.rejects(Glowny.zapiszZalacznik({ dane: 'data:text/html;base64,PGI+' }), /obrazem/);
+    assert.equal(Glowny.sciezkaZalacznika('../stado.json'), null, 'tylko nazwa pliku z katalogu załączników');
+    await assert.rejects(Glowny.wiadomosc({ tekst: 'x', zalaczniki: ['nie-ma.png'] }), /Nie ma załącznika/);
+
+    const { sesja } = await Glowny.wiadomosc({ tekst: '', zalaczniki: [z.plik] });
+    await czekaj(async () => !(await Glowny.sesja(sesja)).trwa);
+    const args = a.wolania[0].args;
+    assert.match(args[args.indexOf('-p') + 1], new RegExp(`Zobacz załączone obrazy\\.[\\s\\S]*otwórz każdy narzędziem Read[\\s\\S]*${z.plik.replace(/[.()]/g, '\\$&')}`));
+    assert.equal(args[args.indexOf('--add-dir') + 1], path.join(katalog, 'zalaczniki'), 'katalog załączników dostępny dla Read');
+    assert.match(args[args.indexOf('--append-system-prompt') + 1], /wideo przytnij/, 'Główny wie o mocach Katedry');
+    assert.deepEqual((await Glowny.sesja(sesja)).wpisy[0].zalaczniki, [z.plik]);
+
+    await Glowny.wiadomosc({ tekst: 'dalej', sesja, model: 'qwen3-coder:30b' });
+    await czekaj(() => a.wolania.length === 2);
+    const drugie = a.wolania[1].args;
+    assert.equal(drugie[drugie.indexOf('--model') + 1], 'qwen3-coder:30b', 'mocniejszy model od następnej wiadomości');
+});
+
+test('Polecenia stada: wideo przytnij/potnij → trasy mostu (ścieżka względem Katedry, pełna, move:), moce', async () => {
+    const stary = globalThis.fetch;
+    const wolania = [];
+    globalThis.fetch = async (url, init) => { wolania.push([url.replace('http://127.0.0.1:3001', ''), init?.body ? JSON.parse(init.body) : null]); return { ok: true, status: 200, json: async () => ({ success: true, wynik: '/k/x_od0_5s.mp4', sekundy: 9.5, byloSekund: 10, kawalki: [], katalog: '/k' }) }; };
+    try {
+        assert.match(await POLECENIA.wideo(['przytnij', '_OtakOs_Klocki/A/x.mp4', '0,5']), /Przycięte: \/k\/x_od0_5s\.mp4 \(9\.5 s, było 10 s\)/);
+        await POLECENIA.wideo(['przytnij', 'F:\\K\\_OtakOs_Klocki\\A\\x.mp4', '0.5', '3']);
+        await POLECENIA.wideo(['potnij', 'move:film.mp4', '10']);
+        assert.deepEqual(wolania, [
+            ['/api/wideo/przytnij', { zrodlo: 'klocki', plik: 'A/x.mp4', od: 0.5 }],
+            ['/api/wideo/przytnij', { plik: 'F:\\K\\_OtakOs_Klocki\\A\\x.mp4', od: 0.5, do: 3 }],
+            ['/api/wideo/potnij', { zrodlo: 'move', plik: 'film.mp4', sekundy: 10 }],
+        ]);
+        await assert.rejects(POLECENIA.wideo(['przytnij', 'x.mp4', 'pół']), /liczbę sekund/);
+        assert.match(await POLECENIA.moce(), /wideo przytnij[\s\S]*zapytaj/);
+    } finally { globalThis.fetch = stary; }
+});

@@ -984,9 +984,12 @@ app.post('/api/ollama', async (req, res) => {
         });
 
         if (!resp.ok) {
+            // Treść błędu Ollamy (np. „model does not support images") — inaczej Suweren zgaduje.
+            const tresc = await resp.text().catch(() => '');
+            const powod = (() => { try { return JSON.parse(tresc).error; } catch { return tresc.slice(0, 200); } })();
             sendEvent({
                 type:  'error',
-                error: `Ollama HTTP ${resp.status} — model "${model}" istnieje? Sprawdź: ollama list`,
+                error: powod ? `Ollama (${model}): ${powod}` : `Ollama HTTP ${resp.status} — model "${model}" istnieje? Sprawdź: ollama list`,
                 code:  `HTTP_${resp.status}`,
             });
             return res.end();
@@ -5276,12 +5279,22 @@ app.get('/api/glowny/sesja/:id/strumien', async (req, res) => {
     req.on('close', () => { clearInterval(puls); odpnij(); });
 });
 app.post('/api/glowny/wiadomosc', async (req, res) => {
-    try { res.json({ success: true, ...(await Glowny.wiadomosc({ tekst: req.body?.tekst, sesja: req.body?.sesja || null, model: req.body?.model || null, zrodlo: String(req.body?.zrodlo || 'czat').slice(0, 30) })) }); }
+    try { res.json({ success: true, ...(await Glowny.wiadomosc({ tekst: req.body?.tekst, sesja: req.body?.sesja || null, model: req.body?.model || null, zrodlo: String(req.body?.zrodlo || 'czat').slice(0, 30), zalaczniki: req.body?.zalaczniki ?? [] })) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.post('/api/glowny/sesja/:id/prosba/:pid', async (req, res) => {
     try { res.json({ success: true, ...(await Glowny.decyzja(req.params.id, req.params.pid, req.body?.zgoda === true)) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** POST /api/glowny/zalacznik { dane: dataURL obrazu, nazwa? } — wklejony/upuszczony zrzut ekranu → plik dla Read Głównego. */
+app.post('/api/glowny/zalacznik', async (req, res) => {
+    try { res.json({ success: true, ...(await Glowny.zapiszZalacznik(req.body ?? {})) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** Podgląd załącznika w czacie — tylko nazwa pliku z katalogu załączników (nigdy ścieżka z URL-a). */
+app.get('/api/glowny/zalacznik/:plik', (req, res) => {
+    const p = Glowny.sciezkaZalacznika(req.params.plik);
+    return p ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Nie ma takiego załącznika.' });
 });
 app.post('/api/glowny/sesja/:id/przerwij', async (req, res) => res.json({ success: true, ...(await Glowny.przerwij(req.params.id)) }));
 
@@ -8028,6 +8041,14 @@ function sciezkaWKorzeniu(zrodlo, rel, { musiIstniec = true } = {}) {
     if (musiIstniec && !fsSync.existsSync(abs)) throw new Error(`Nie ma pliku: ${rel}`);
     return abs;
 }
+/** Korzeń dla pełnej ścieżki (Główny podaje „F:\\…\\_OtakOs_Klocki\\…"); względna = klocki. */
+function zrodloWideo(plik) {
+    if (!path.isAbsolute(String(plik))) return 'klocki';
+    const abs = path.resolve(String(plik)).toLowerCase();
+    const z = Object.entries(KORZENIE_WIDEO()).find(([, k]) => abs.startsWith(path.resolve(k).toLowerCase() + path.sep))?.[0];
+    if (!z) throw new Error(`Plik spoza katalogów wideo Katedry (${Object.values(KORZENIE_WIDEO()).join(' | ')}).`);
+    return z;
+}
 async function sekundyWideo(p) {
     try { const { stdout } = await execFileAsync(ffprobePath, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', p]); const d = Number(stdout); return Number.isFinite(d) ? Math.round(d * 10) / 10 : null; } catch { return null; }
 }
@@ -8052,8 +8073,9 @@ app.get('/api/wideo/pliki', async (req, res) => {
     } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
 });
 app.post('/api/wideo/potnij', async (req, res) => {
-    const { zrodlo = 'klocki', plik = '', sekundy = 10, doKatalogu = '' } = req.body ?? {};
+    const { plik = '', sekundy = 10, doKatalogu = '' } = req.body ?? {};
     try {
+        const zrodlo = req.body?.zrodlo || zrodloWideo(plik);
         const abs = sciezkaWKorzeniu(zrodlo, plik);
         const n = Math.max(1, Math.min(600, Number(sekundy) || 10));
         const baza = path.basename(abs).replace(/\.[^.]+$/, '');
@@ -8070,6 +8092,33 @@ app.post('/api/wideo/potnij', async (req, res) => {
         }
         console.log(`[Wiesio-Nożyce] ✂️ ${path.basename(abs)} → ${kawalki.length} kawałków po ${n} s w ${cel}`);
         return res.json({ success: true, plik: abs, katalog: cel, sekundy: n, kawalki, czas: Math.round((Date.now() - t0) / 1000) });
+    } catch (e) { return res.status(400).json({ success: false, message: e.stderr ? String(e.stderr).slice(-400) : e.message }); }
+});
+
+/**
+ * POST /api/wideo/przytnij { plik, od?, do?, zrodlo? } — wycina fragment [od, do) sekund (np. „utnij pierwsze 0,5 s":
+ * od=0.5). Nowy plik `<nazwa>_od<od>s[_do<do>s].mp4` obok oryginału — oryginał zostaje. `plik` względny w korzeniu
+ * `zrodlo` albo pełna ścieżka wewnątrz _OtakOs_Klocki / _OtakOs_Move (wtedy korzeń dobieramy sami).
+ * Przekodowanie (libx264 CRF 18) — cięcie co do klatki, nie do najbliższej klatki kluczowej.
+ */
+app.post('/api/wideo/przytnij', async (req, res) => {
+    const { plik = '', od = 0, do: doS = null } = req.body ?? {};
+    try {
+        const zrodlo = req.body?.zrodlo || zrodloWideo(plik);
+        const abs = sciezkaWKorzeniu(zrodlo, plik);
+        const a = Number(od) || 0, b = doS === null || doS === '' ? null : Number(doS);
+        if (a < 0 || (b !== null && (!Number.isFinite(b) || b <= a))) throw new Error('Zły zakres: od ≥ 0, do > od (sekundy).');
+        const dl = await sekundyWideo(abs);
+        if (dl !== null && a >= dl) throw new Error(`Film ma ${dl} s — nie ma czego zostawić od ${a} s.`);
+        const fmt = (x) => String(x).replace('.', '_');
+        const cel = path.join(path.dirname(abs), `${path.basename(abs).replace(/\.[^.]+$/, '')}_od${fmt(a)}s${b !== null ? `_do${fmt(b)}s` : ''}.mp4`);
+        // -ss po -i = dokładne cięcie (dekoduje od początku — dla klocków kilkudziesięciosekundowych to chwila).
+        await execFileAsync(ffmpegPath, ['-y', '-i', abs, '-ss', String(a), ...(b !== null ? ['-to', String(b)] : []),
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', cel],
+            { windowsHide: true, timeout: 20 * 60_000, maxBuffer: 16 * 1024 * 1024 });
+        const sekundy = await sekundyWideo(cel);
+        console.log(`[Wiesio-Nożyce] ✂️ przycięto ${path.basename(abs)} [${a}s–${b ?? 'koniec'}] → ${path.basename(cel)} (${sekundy} s)`);
+        return res.json({ success: true, plik: abs, wynik: cel, rel: path.relative(KORZENIE_WIDEO()[zrodlo], cel).split(path.sep).join('/'), byloSekund: dl, sekundy });
     } catch (e) { return res.status(400).json({ success: false, message: e.stderr ? String(e.stderr).slice(-400) : e.message }); }
 });
 
