@@ -75,6 +75,7 @@ import * as Stol           from './services/Stol.js';
 import * as Dyrygent       from './services/Dyrygent.js';
 import * as KuzniaSoup     from './services/KuzniaSoup.js';
 import * as ZwiadowcaHF    from './services/ZwiadowcaHF.js';
+import * as Porzadki       from './services/Porzadki.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
@@ -10378,6 +10379,30 @@ app.post('/api/zwiadowca/szukaj', async (req, res) => {
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.get('/api/zwiadowca/sondaz', (_req, res) => res.json(ZwiadowcaHF.sondaz()));
+
+// ── 🧹 PORZĄDKI NA DYSKU (services/Porzadki.js) — propozycje z rozmiarem i powodem; usuwa tylko zaznaczone ──
+Porzadki.skonfiguruj({
+    skanGguf: () => KuzniaModeli.skanujModele(OLLAMA_BASE),
+    katalogModeli: () => Dyrygent.katalog(),
+    wykuteKuzni: () => KuzniaSoup.wykute(),
+    katalogKuzni: path.join(ANTIGRAVITY_DIR, 'kuznia-soup'),
+    srodowiskoKuzni: process.env.OTAKOS_KUZNIA_SRODOWISKO || path.join(process.cwd(), '_OtakOs_AI', 'kuznia-soup'),
+    chronioneModele: () => [DEFAULT_LLM, process.env.OTAKOS_MODEL, process.env.OTAKOS_DYRYGENT_MODEL, 'gemma4'],
+    usunModel: async (model) => {
+        const r = await fetch(`${OLLAMA_BASE}/api/delete`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, name: model }), signal: AbortSignal.timeout(30_000) });
+        if (!r.ok) throw new Error(`Ollama: HTTP ${r.status} ${(await r.text().catch(() => '')).slice(0, 120)}`);
+    },
+    szyna: Szyna,
+});
+app.get('/api/porzadki/przeglad', async (_req, res) => {
+    try { res.json({ success: true, ...(await Porzadki.przeglad()), dysk: await Porzadki.wolneMiejsce() }); }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+/** POST /api/porzadki/usun { ids } — tylko maszyna (Straż); każda pozycja sprawdzana na świeżym przeglądzie. */
+app.post('/api/porzadki/usun', async (req, res) => {
+    try { res.json({ success: true, ...(await Porzadki.usun(req.body?.ids)) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 app.post('/api/zwiadowca/kandydat/:id/akceptuj', async (req, res) => {
     try { res.json({ success: true, ...(await ZwiadowcaHF.akceptuj(req.params.id)) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
