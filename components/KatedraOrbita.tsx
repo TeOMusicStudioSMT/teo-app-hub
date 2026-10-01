@@ -28,6 +28,7 @@ import {
     domenaSfery, ustawDomeneSfery, pamiec, zapomnij, chmuraGotowaDokladnie, type SilnikOrbity,
 } from '../lib/mozgOrbity';
 import MatrixRainSkin from './special/MatrixRainSkin';
+import { orbZGlownym, ustawOrbZGlownym } from '../lib/glownyOrb';
 
 interface KatedraOrbitaProps {
     showParticles?: boolean;
@@ -110,6 +111,7 @@ export function KatedraOrbita({
     const [domena, setDomena] = useState(() => domenaSfery());
     const [sladow, setSladow] = useState(0);
     const [chmura, setChmura] = useState(() => chmuraGotowa());
+    const [zGlownym, setZGlownym] = useState(() => orbZGlownym());
 
     // Szybkie sprawdzenie rysuje listę od razu; dokładne (IndexedDB) poprawia
     // ją chwilę później, gdy klucz siedzi w zaszyfrowanym Kiblu.
@@ -1021,6 +1023,14 @@ export function KatedraOrbita({
                             {!chmura.gotowa && (
                                 <span className="text-[10px] text-amber-500/80 leading-relaxed">{chmura.powod}</span>
                             )}
+                        </label>
+
+                        <label className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-950/20 p-2">
+                            <input type="checkbox" checked={zGlownym} onChange={(e) => { setZGlownym(e.target.checked); ustawOrbZGlownym(e.target.checked); }} className="mt-0.5 accent-amber-500" />
+                            <span className="text-[10px] leading-relaxed text-amber-200/90">
+                                👑 Rozmawiaj z Głównym — to, co powiesz do Orba, trafia do Claude Code w Katedrze (pliki, skille, stado).
+                                O zgody prosi w Creative Zone → „👑 Główny”.
+                            </span>
                         </label>
 
                         <label className="block">

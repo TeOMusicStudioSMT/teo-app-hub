@@ -18,6 +18,7 @@ import { aktywnyGatunek, stanGatunku } from './teogochiStado';
 import { gatunekPo, GATUNKI, type Gatunek } from './teogochiGatunki';
 import { zapytajAgenta, ZAKAZ_FORMULEK } from './szyna';
 import { speak } from '../services/voiceService';
+import { orbZGlownym, zapytajGlownego } from './glownyOrb';
 
 const MOST = 'http://127.0.0.1:3001';
 
@@ -180,7 +181,10 @@ export function useRozmowaKompana() {
                 setFaza('mysli');
                 // Odpowiada GATUNEK, swoim rdzeniem i swoją personą — przez szynę,
                 // więc rozmowa zostawia ślad w faktach Katedry.
-                const odpowiedz = bezFormulek(await zapytajAgenta('Suweren', gatunek.id, d.transcript));
+                // 👑 Orb z Głównym (ustawienia Orbity): wypowiedź idzie do Claude Code w Katedrze, głosem odpowiada kompan.
+                const odpowiedz = orbZGlownym()
+                    ? await zapytajGlownego(d.transcript)
+                    : bezFormulek(await zapytajAgenta('Suweren', gatunek.id, d.transcript));
                 setTekst(odpowiedz);
                 setFaza('mowi');
                 try {

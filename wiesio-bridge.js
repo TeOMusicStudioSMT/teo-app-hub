@@ -76,6 +76,7 @@ import * as Dyrygent       from './services/Dyrygent.js';
 import * as KuzniaSoup     from './services/KuzniaSoup.js';
 import * as ZwiadowcaHF    from './services/ZwiadowcaHF.js';
 import * as Porzadki       from './services/Porzadki.js';
+import * as Glowny         from './services/Glowny.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
@@ -5248,6 +5249,42 @@ app.post('/api/claude/launch', async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 👑 GŁÓWNY (services/Glowny.js) — Claude Code w tle, podłączony do czatów (zamiast odłączonego terminala) ──
+// Pliki Katedry zmienia sam; polecenia powłoki czekają na „✓" Suwerena (prośby z Tłumaczem). Tylko maszyna (Straż).
+Glowny.skonfiguruj({
+    katalog: path.join(ANTIGRAVITY_DIR, 'glowny'),
+    katalogi: [path.join(process.cwd(), 'TeO_Skille')],   // = SKILLE_DIR (zdefiniowany niżej w pliku)
+    ollama: OLLAMA_BASE,
+    model: () => process.env.OTAKOS_GLOWNY_MODEL || DEFAULT_LLM,
+    szyna: Szyna,
+});
+app.get('/api/glowny/stan', (_req, res) => res.json({ success: true, ...Glowny.stan() }));
+app.get('/api/glowny/sesje', async (_req, res) => res.json({ success: true, sesje: await Glowny.lista() }));
+app.get('/api/glowny/sesja/:id', async (req, res) => {
+    const s = await Glowny.sesja(req.params.id);
+    return s ? res.json({ success: true, sesja: s }) : res.status(404).json({ success: false, message: 'Nie ma takiej sesji Głównego.' });
+});
+/** SSE: najpierw pełna sesja, potem każdy nowy wpis i zmiana stanu. */
+app.get('/api/glowny/sesja/:id/strumien', async (req, res) => {
+    const s = await Glowny.sesja(req.params.id);
+    if (!s) return res.status(404).json({ success: false, message: 'Nie ma takiej sesji Głównego.' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    const wyslij = (z) => { try { res.write(`data: ${JSON.stringify(z)}\n\n`); } catch { /* klient odszedł */ } };
+    wyslij({ typ: 'sesja', sesja: s });
+    const odpnij = Glowny.sluchaj(s.id, wyslij);
+    const puls = setInterval(() => { try { res.write(': puls\n\n'); } catch { /* klient odszedł */ } }, 25_000);
+    req.on('close', () => { clearInterval(puls); odpnij(); });
+});
+app.post('/api/glowny/wiadomosc', async (req, res) => {
+    try { res.json({ success: true, ...(await Glowny.wiadomosc({ tekst: req.body?.tekst, sesja: req.body?.sesja || null, model: req.body?.model || null, zrodlo: String(req.body?.zrodlo || 'czat').slice(0, 30) })) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/glowny/sesja/:id/prosba/:pid', async (req, res) => {
+    try { res.json({ success: true, ...(await Glowny.decyzja(req.params.id, req.params.pid, req.body?.zgoda === true)) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/glowny/sesja/:id/przerwij', async (req, res) => res.json({ success: true, ...(await Glowny.przerwij(req.params.id)) }));
+
 /** POST /api/uneng/launch — odpala Unreal Engine (Game Forge). Ścieżka z env OTAKOS_UE_PATH. */
 app.post('/api/uneng/launch', async (req, res) => {
     const candidates = [
@@ -7677,8 +7714,10 @@ app.get('/api/delegat/profile', (req, res) => res.json({ success: true, profile:
  * Bez strumienia → jeden JSON z odpowiedzią.
  */
 app.post('/api/delegat/rozmowa', async (req, res) => {
-    const { delegat = 'joanna', tekst, rozmowaId, model, strumien } = req.body ?? {};
-    const p = { delegat, tekst, rozmowaId, model, lokalne: !!req.lokalny };
+    const { delegat = 'joanna', tekst, rozmowaId, model, strumien, zGlownego } = req.body ?? {};
+    // zGlownego: zlecenie od Głównego (scripts/glowny/katedra.mjs) — bez ciężkich narzędzi, żeby stado nie było
+    // furtką obok zgody Suwerena na polecenia Głównego.
+    const p = { delegat, tekst, rozmowaId, model, lokalne: !!req.lokalny && !zGlownego };
     if (!strumien) {
         try { return res.json({ success: true, ...(await Delegat.rozmawiaj(p)) }); }
         catch (e) { return res.status(400).json({ success: false, message: e.message }); }

@@ -65,6 +65,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/kuznia-soup/',   // trening modeli trwa godziny na karcie graficznej i pisze po dysku — tylko przy maszynie
     '/api/zwiadowca/szukaj', '/api/zwiadowca/kandydat/', '/api/zwiadowca/link',   // zwiad i pobieranie modeli (GB na dysk) — decyzja przy maszynie
     '/api/porzadki/usun',   // kasowanie plików i modeli — tylko przy maszynie
+    '/api/glowny/',   // Główny (Claude Code) zmienia pliki Katedry — rozmowa i zgody tylko przy maszynie
     '/api/dyrygent/zastosuj', '/api/modele/karta',   // stałe silniki TeOgochi i karty modeli zmienia Suweren przy Katedrze
 ];
 

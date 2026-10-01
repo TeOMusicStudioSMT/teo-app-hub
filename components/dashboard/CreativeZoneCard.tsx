@@ -8,6 +8,7 @@ import { saveManifestation } from '../../services/manifestHistoryService';
 import { useAtomValue } from 'jotai';
 import { electricBorderAtom } from '../../store/electricBorder';
 import toast from 'react-hot-toast';
+import { GlownyCzat } from '../special/GlownyCzat';
 
 // Ikona Mikrofonu (Inline dla pewności)
 const MicIcon = ({ active }: { active: boolean }) => (
@@ -27,6 +28,12 @@ export const CreativeZoneCard: React.FC<CreativeZoneCardProps> = ({ onVisualAssi
     const [isLoading, setIsLoading] = useState(false);
     const [isIgnited, setIsIgnited] = useState(false);
     const [isListening, setIsListening] = useState(false);
+    // 👑 Creative Zone = centrum dowodzenia (Suweren 2026-10-01: „każdy TeOnauta zacznie od czatu w Creative Zone…
+    // to miejsce powinno być głównym zarządzającym"). „Manifest" = dotychczasowy szybki model; „Główny" = Claude Code
+    // w Katedrze (services/Glowny.js) z dostępem do plików, skilli i stada.
+    const [tryb, setTryb] = useState<'manifest' | 'glowny'>(() => { try { return localStorage.getItem('otakos_cz_tryb') === 'glowny' ? 'glowny' : 'manifest'; } catch { return 'manifest'; } });
+    const [doGlownego, setDoGlownego] = useState<string | undefined>(undefined);
+    const ustawTryb = (t: 'manifest' | 'glowny') => { setTryb(t); try { localStorage.setItem('otakos_cz_tryb', t); } catch { /* bez pamięci trybu */ } };
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { globalMode } = useAtomValue(electricBorderAtom);
 
@@ -100,10 +107,21 @@ export const CreativeZoneCard: React.FC<CreativeZoneCardProps> = ({ onVisualAssi
     return (
         <DashboardCard title="Creative Portal" icon={<StarIcon filled />} className="h-full border-cyan-500/20 shadow-2xl">
             <div className="flex flex-col h-full min-h-[500px] p-4 lg:p-8 relative overflow-hidden">
+                {/* Przełącznik: szybki Manifest albo Główny (centrum dowodzenia Imperium) */}
+                <div className="absolute top-3 left-4 z-30 flex gap-1 rounded-full border border-slate-700 bg-slate-900/80 p-0.5 text-[10px] font-bold uppercase tracking-widest">
+                    <button onClick={() => ustawTryb('manifest')} className={`rounded-full px-3 py-1 ${tryb === 'manifest' ? 'bg-cyan-600 text-black' : 'text-slate-400 hover:text-white'}`}>✨ Manifest</button>
+                    <button onClick={() => ustawTryb('glowny')} className={`rounded-full px-3 py-1 ${tryb === 'glowny' ? 'bg-amber-500 text-black' : 'text-slate-400 hover:text-white'}`}>👑 Główny</button>
+                </div>
                 {/* Wskaźnik trybu */}
                 <div className="absolute top-4 right-4 text-[10px] uppercase tracking-widest opacity-40 font-bold text-cyan-500">
-                    Active Brain: {globalMode === 'just' ? 'ON-DEVICE (NPU)' : 'CLOUD (API)'}
+                    {tryb === 'glowny' ? 'Centrum dowodzenia: Claude Code w Katedrze' : `Active Brain: ${globalMode === 'just' ? 'ON-DEVICE (NPU)' : 'CLOUD (API)'}`}
                 </div>
+
+                {tryb === 'glowny' ? (
+                    <div className="mt-10 flex-grow">
+                        <GlownyCzat zrodlo="creative-zone" zadanie={doGlownego} className="h-full" />
+                    </div>
+                ) : (<>
 
                 {/* SŁOWO DNIA (Responsywne + Break Words) */}
                 <div className="flex-grow flex flex-col items-center justify-center space-y-6 my-6">
@@ -170,8 +188,14 @@ export const CreativeZoneCard: React.FC<CreativeZoneCardProps> = ({ onVisualAssi
                         <button onClick={igniteWord} className="bg-cyan-600 hover:bg-cyan-500 text-black px-6 py-3 rounded-full font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-cyan-500/20 whitespace-nowrap">
                             {isLoading ? "..." : "MANIFEST"}
                         </button>
+                        <button onClick={() => { setDoGlownego(prompt.trim() || undefined); ustawTryb('glowny'); }}
+                            title="Przekaż tę myśl Głównemu — zrobi z niej zadanie w Katedrze"
+                            className="rounded-full border border-amber-500/60 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-amber-300 hover:bg-amber-500/10 whitespace-nowrap">
+                            👑 Do Głównego
+                        </button>
                     </div>
                 </div>
+                </>)}
             </div>
         </DashboardCard>
     );
