@@ -11,6 +11,10 @@
  *   node scripts/glowny/katedra.mjs stol
  *   node scripts/glowny/katedra.mjs nocna <robota> [JSON parametrów]
  *   node scripts/glowny/katedra.mjs pamiec
+ *   node scripts/glowny/katedra.mjs moce
+ *   node scripts/glowny/katedra.mjs wideo pliki [klocki|move]
+ *   node scripts/glowny/katedra.mjs wideo przytnij <plik> <od_s> [do_s]   (nowy plik obok — oryginał zostaje)
+ *   node scripts/glowny/katedra.mjs wideo potnij <plik> <sekundy>         (klocki po N s w podkatalogu)
  */
 const MOST = process.env.OTAKOS_MOST || 'http://127.0.0.1:3001';
 
@@ -25,7 +29,50 @@ async function most(sciezka, body, ms = 60_000) {
     return d;
 }
 
+/** „klocki:Folder/plik.mp4" | „move:plik.mp4" | „_OtakOs_Klocki/…" | pełna ścieżka | „Folder/plik.mp4" (= klocki). */
+function plikWideo(arg) {
+    const m = /^(klocki|move):(.+)$/.exec(String(arg ?? ''));
+    if (m) return { zrodlo: m[1], plik: m[2] };
+    // Ścieżka względem Katedry („_OtakOs_Klocki/…") — modele tak ją widzą z katalogu roboczego.
+    const k = /^(?:\.[\\/])?_OtakOs_(Klocki|Move)[\\/](.+)$/i.exec(String(arg ?? ''));
+    if (k) return { zrodlo: k[1].toLowerCase(), plik: k[2] };
+    if (/^([a-zA-Z]:[\\/]|\/)/.test(String(arg ?? ''))) return { plik: arg };   // pełna ścieżka — korzeń dobierze most
+    return { zrodlo: 'klocki', plik: arg };
+}
+const liczba = (x, co) => { const n = Number(String(x ?? '').replace(',', '.')); if (!Number.isFinite(n)) throw new Error(`${co}: podaj liczbę sekund (np. 0.5).`); return n; };
+
+/** Co Katedra potrafi, a Główny może zlecić — żeby nie mówił „nie mam narzędzia", gdy most je ma. */
+const MOCE = `MOCE KATEDRY (most :3001) — przez ten skrypt, bez pytania:
+  wideo pliki [klocki|move]            filmy w _OtakOs_Klocki / _OtakOs_Move
+  wideo przytnij <plik> <od_s> [do_s]  ffmpeg: wytnij fragment (np. „utnij pierwsze 0,5 s" = przytnij <plik> 0.5)
+  wideo potnij <plik> <sekundy>        Nożyce: równe klocki po N s
+  zapytaj <TeOgochi> <zadanie>         stado: muzyka, kod (kodeks), gry (pionek), modele (zwiadowca)…
+  nocna <robota> [JSON]                Nocna Zmiana (długie roboty w nocy)
+  stan / stol / pamiec                 fakty o projektach, Stole, RAM
+<plik> = ścieżka względna w _OtakOs_Klocki, „move:<plik>" albo pełna ścieżka wewnątrz tych katalogów.
+Inne moduły (ComfyUI, Assety3D, Marketplace, muzyka) — przez TeOgochi (zapytaj) albo trasy z CLAUDE.md (curl = prośba do Suwerena).`;
+
 export const POLECENIA = {
+    async moce() { return MOCE; },
+    async wideo([co, ...argi]) {
+        if (co === 'pliki') {
+            const d = await most(`/api/wideo/pliki?zrodlo=${encodeURIComponent(argi[0] || 'klocki')}`);
+            return [`${d.korzen}:`, ...d.pliki.map((p) => `- ${p.rel} (${p.sekundy ?? '?'} s, ${Math.round(p.bajtow / 1e5) / 10} MB)`)].join('\n') || 'Brak filmów.';
+        }
+        if (co === 'przytnij') {
+            const [plik, od, doS] = argi;
+            if (!plik || od === undefined) throw new Error('Użycie: wideo przytnij <plik> <od_s> [do_s]');
+            const d = await most('/api/wideo/przytnij', { ...plikWideo(plik), od: liczba(od, 'od'), ...(doS !== undefined ? { do: liczba(doS, 'do') } : {}) }, 20 * 60_000);
+            return `✂️ Przycięte: ${d.wynik} (${d.sekundy ?? '?'} s, było ${d.byloSekund ?? '?'} s). Oryginał bez zmian.`;
+        }
+        if (co === 'potnij') {
+            const [plik, sek] = argi;
+            if (!plik || sek === undefined) throw new Error('Użycie: wideo potnij <plik> <sekundy>');
+            const d = await most('/api/wideo/potnij', { ...plikWideo(plik), sekundy: liczba(sek, 'sekundy') }, 20 * 60_000);
+            return [`✂️ ${d.kawalki.length} kawałków w ${d.katalog}:`, ...d.kawalki.map((k) => `- ${k.rel} (${k.sekundy} s)`)].join('\n');
+        }
+        throw new Error('Użycie: wideo pliki | przytnij <plik> <od_s> [do_s] | potnij <plik> <sekundy>');
+    },
     async stan(argi) {
         const d = await most(`/api/katedra/raport?szukaj=${encodeURIComponent(argi.join(' '))}`);
         return d.tekst;
@@ -57,6 +104,8 @@ export const POLECENIA = {
         return [`Wolne ${d.freeGB} GB z ${d.totalGB} GB.`, ...(d.procesy ?? []).slice(0, 10).map((p) => `PID ${p.pid} ${p.name} ${p.mb} MB${p.opis ? ` — ${p.opis}` : ''}${p.chroniony ? ' [chroniony]' : ''}`)].join('\n');
     },
 };
+
+export { plikWideo };
 
 async function main() {
     const [, , co, ...argi] = process.argv;

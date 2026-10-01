@@ -117,6 +117,27 @@ export function wybierzPlik(pliki, vramGB, { jedenPlik = false } = {}) {
     return w ? { kwant: w.kwant, gb: Math.round(w.bajty / 1e8) / 10, plik: w.plik } : null;
 }
 
+/**
+ * Format wag w repo — Ollama (i Kuźnia Modeli) bierze tylko GGUF. Reszta to wagi „pod innych operatorów":
+ * MLX = Apple Silicon (Mac M1–M4), safetensors/PyTorch = transformers/vLLM — da się je zamienić w GGUF
+ * (llama.cpp convert_hf_to_gguf), ale tylko dla architektur, które llama.cpp zna.
+ * @returns {{ format:'gguf'|'mlx'|'safetensors'|'pytorch'|'nieznany', gb:number|null, co:string }}
+ */
+export function formatRepo(repo, pliki) {
+    const nazwy = (pliki ?? []).map((p) => String(p.path ?? p.nazwa ?? ''));
+    const gb = (re) => { const b = (pliki ?? []).filter((p) => re.test(String(p.path ?? ''))).reduce((a, p) => a + Number(p.lfs?.size ?? p.size ?? 0), 0); return b ? Math.round(b / 1e8) / 10 : null; };
+    if (nazwy.some((n) => /\.gguf$/i.test(n))) return { format: 'gguf', gb: gb(/\.gguf$/i), co: 'GGUF — Ollama to uruchomi.' };
+    const mlx = /(^|[-_/])mlx([-_/]|$)/i.test(String(repo)) || nazwy.some((n) => /\.npz$/i.test(n));
+    if (mlx) return { format: 'mlx', gb: gb(/\.(safetensors|npz)$/i), co: 'MLX — wagi dla Apple Silicon (Mac M1–M4, biblioteka mlx). Na Windows z kartą NVIDIA ich nie uruchomisz; MLX-owej kwantyzacji nie zamienisz też w GGUF — potrzebny oryginał (safetensors) albo gotowy GGUF.' };
+    if (nazwy.some((n) => /\.safetensors$/i.test(n))) return { format: 'safetensors', gb: gb(/\.safetensors$/i), co: 'safetensors (transformers) — do Ollamy trzeba je zamienić w GGUF (llama.cpp convert_hf_to_gguf, gdy zna architekturę) albo użyć jako bazy w Kuźni Soup (Kuźnia sama eksportuje GGUF).' };
+    if (nazwy.some((n) => /(pytorch_model.*\.bin|\.pt|\.pth)$/i.test(n))) return { format: 'pytorch', gb: gb(/\.(bin|pt|pth)$/i), co: 'PyTorch (.bin) — jak safetensors: konwersja do GGUF albo baza Kuźni Soup.' };
+    return { format: 'nieznany', gb: null, co: 'Nie widzę tu wag w znanym formacie.' };
+}
+
+/** Nazwa bazowa modelu bez dopisków formatu („Jev-Omni-MLX-4bit" → „Jev-Omni") — do szukania jego wersji GGUF. */
+export const rdzenNazwy = (repo) => String(repo).split('/').pop()
+    .replace(/[-_.](mlx|gguf|awq|gptq|exl2|bnb|onnx|fp16|bf16|fp8|int[48]|\d+[-_]?bits?|q\d\w*)(?=$|[-_.])/gi, '').replace(/[-_.]+$/, '');
+
 /** Nazwa, pod którą Ollama pobiera model prosto z HuggingFace. */
 export const nazwaOllamy = (repo, k) => `hf.co/${repo}:${k}`;
 
@@ -284,6 +305,19 @@ export async function zLinku(link) {
         w = wybierzPlik([p], cfg.vramGB, { jedenPlik });
         if (!w) throw new Error(`${l.plik} nie mieści się w karcie (${cfg.vramGB} GB VRAM) albo to nie jest GGUF.`);
     } else {
+        const f = formatRepo(l.repo, pliki);
+        if (f.format !== 'gguf') {
+            // Nie „brak pliku", tylko PRAWDA o formacie + czy ktoś już zrobił GGUF tego modelu (wtedy wystarczy jego link).
+            const rdzen = rdzenNazwy(l.repo);
+            const gguf = rdzen.length >= 3 ? await hfJson(`/api/models?search=${encodeURIComponent(rdzen)}&filter=gguf&sort=downloads&direction=-1&limit=5`, 'hf')
+                .then((x) => (Array.isArray(x) ? x.map((m) => String(m.id ?? m.modelId ?? '')).filter((id) => REPO.test(id)) : [])).catch(() => null) : [];
+            const e = new Error(`${l.repo}: ${f.co}${f.gb ? ` (${f.gb} GB)` : ''} ` +
+                (gguf === null ? 'Nie sprawdziłem, czy jest wersja GGUF (HuggingFace nie odpowiedział).'
+                    : gguf.length ? `Wersje GGUF „${rdzen}" na HuggingFace: ${gguf.join(', ')} — podaj link do którejś.`
+                        : `Na HuggingFace nie ma jeszcze wersji GGUF „${rdzen}".`));
+            e.format = f.format; e.gguf = gguf ?? [];
+            throw e;
+        }
         const wszystkie = l.kwant ? pliki.filter((p) => kwant(path.basename(String(p.path ?? ''))) === l.kwant) : pliki;
         w = wybierzPlik(wszystkie, cfg.vramGB, { jedenPlik });
         if (!w) throw new Error(`W ${l.repo} nie ma pliku GGUF, który zmieści się w karcie (${cfg.vramGB} GB VRAM)${jedenPlik ? ' jako jeden plik' : ''}.`);
@@ -425,4 +459,4 @@ export async function akceptuj(id) {
     return { id, repo: k.repo, ollama: k.ollama };
 }
 
-export default { skonfiguruj, zwiad, zLinku, sondaz, kandydaci, akceptuj, odrzuc, kwant, wybierzPlik, nazwaOllamy, nazwaWykutego, wOllamie, czytajLink, ZRODLA };
+export default { skonfiguruj, zwiad, zLinku, formatRepo, rdzenNazwy, sondaz, kandydaci, akceptuj, odrzuc, kwant, wybierzPlik, nazwaOllamy, nazwaWykutego, wOllamie, czytajLink, ZRODLA };
