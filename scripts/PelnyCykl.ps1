@@ -87,7 +87,7 @@ Write-Host "`n[3/3] Deploy strony otakos.wtf..." -ForegroundColor Magenta
 if ($Deploy) {
     Push-Location $Web
     try {
-        git add public/V_ZERO_archive.zip
+        git add public/V_ZERO_archive.zip public/wersja.json   # wersja.json = Aktualizator węzłów sprawdza nową Katedrę
         git commit -m "chore: pelny cykl - aktualizacja V_ZERO_archive.zip ($Version)"
         if ($?) { git push origin main }
     } finally { Pop-Location }

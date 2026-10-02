@@ -39,6 +39,7 @@ import { IdentityCard, CoreStatusPanel } from './IdentityCard';
 import { logLoungeActivity, registerConsciousnessActivity, initializeSphereIdentity } from '../lib/memory/CityMemory';
 import { Mic, MicOff } from 'lucide-react';
 import { SwiatKlockowView, TelefonView } from './SwiatITelefon';
+import { AktualizacjaView, AktualizacjaBaner } from './AktualizacjaKatedry';
 
 type BehavioralDataProps = {
     isAnalyzing: boolean;
@@ -58,7 +59,7 @@ interface TeonautLoungeProps {
     onOpenCrewClub?: () => void;
 }
 
-type View = 'kuznia' | 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'mcp-skillboard' | 'twoje-biznesy' | 'swiat' | 'telefon';
+type View = 'kuznia' | 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'mcp-skillboard' | 'twoje-biznesy' | 'swiat' | 'telefon' | 'aktualizacja';
 
 export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionToggle, onFavoriteToggle, onLogout, onTriggerAnomaly, behavioralData, onVisualAssistantOpen, onOpenCrewClub }) => {
     const [activeView, setActiveView] = useState<View>('dashboard');
@@ -225,6 +226,9 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                     )}
                 </AnimatePresence>
 
+                {/* 🔄 Nowsza Katedra (Aktualizator) — pasek tylko, gdy jest co aktualizować */}
+                {isHudVisible && activeView !== 'aktualizacja' && <AktualizacjaBaner onOtworz={() => setActiveView('aktualizacja')} />}
+
                 <AnimatePresence mode="wait">
                     {isHudVisible && (
                         <motion.div
@@ -265,6 +269,7 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                             {activeView === 'twoje-biznesy' && <YourBusinessPanel embedded />}
                             {activeView === 'swiat' && <SwiatKlockowView />}
                             {activeView === 'telefon' && <TelefonView />}
+                            {activeView === 'aktualizacja' && <AktualizacjaView />}
                             {activeView === 'profile' && <ProfileView onLogout={onLogout} />}
                         </motion.div>
                     )}

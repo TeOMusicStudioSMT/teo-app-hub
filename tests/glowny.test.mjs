@@ -78,7 +78,8 @@ function claudeAtrapa(scenariusze) {
         },
     };
 }
-const czekaj = async (w) => { for (let i = 0; i < 500 && !(await w()); i++) await new Promise((r) => setTimeout(r, 10)); };
+// Limit 15 s: w pełnym zestawie testy idą równolegle (także z prawdziwym gitem) i tura w tle bywa wolniejsza.
+const czekaj = async (w) => { for (let i = 0; i < 1500 && !(await w()); i++) await new Promise((r) => setTimeout(r, 10)); };
 
 test('Główny: tura → wpisy; polecenie spoza listy → prośba z Tłumaczem; ✓ → wznowienie z pozwoleniem na DOKŁADNIE to polecenie', async () => {
     const katalog = fs.mkdtempSync(path.join(os.tmpdir(), 'glowny-'));
