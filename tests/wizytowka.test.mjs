@@ -97,5 +97,9 @@ describe('Straż: tunel widzi tylko wizytówkę', () => {
         ['GET', '/api/wystawa', 401],
         ['GET', '/wystawa/plik/film-b', 401],
         ['GET', '/api/katedra/raport', 401],
+        ['POST', '/api/tost/skrzynka', 'dalej'],
+        ['GET', '/api/tost/skrzynka', 401],
+        ['GET', '/api/tost/siec/kontakty', 401],
+        ['POST', '/api/tost/siec/wyslij', 401],
     ]) test(`${m} ${p} → ${oczek}`, () => assert.equal(zdalne(m, p), oczek));
 });

@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import TostKatedry from './TostKatedry';
 
 // ─── Stałe ────────────────────────────────────────────────────────────────────
 const BRIDGE_URL = 'http://127.0.0.1:3001';
@@ -86,7 +87,7 @@ function mergeLiveStreams(localHistory: TostMessage[], remoteStream: TostMessage
 }
 
 // ─── TostMessenger ────────────────────────────────────────────────────────────
-const TostMessenger: React.FC = () => {
+const TostTeO: React.FC = () => {
 
     // ── Podstawowy state ──────────────────────────────────────────────────────
     const [messages,     setMessages]     = useState<TostMessage[]>([]);
@@ -896,6 +897,21 @@ const TostMessenger: React.FC = () => {
                     {p2pConnected && <span className="ml-2" style={{ color: '#3b0764' }}>· P2P TUNEL AKTYWNY</span>}
                 </p>
             </div>
+        </div>
+    );
+};
+
+/** TOST: rozmowa z TeO (lokalny model) albo z innymi Katedrami (services/TostSiec.js). */
+const TostMessenger: React.FC = () => {
+    const [tryb, setTryb] = useState<'teo' | 'katedry'>('teo');
+    return (
+        <div className="w-full">
+            <div className="flex gap-1 px-3 pt-2 font-mono text-[10px] uppercase tracking-widest" style={{ background: 'rgba(0, 10, 4, 0.95)' }}>
+                {([['teo', '🤖 TeO'], ['katedry', '🏛️ Katedry']] as const).map(([id, nazwa]) => (
+                    <button key={id} onClick={() => setTryb(id)} className={`rounded-t px-3 py-1 ${tryb === id ? 'bg-green-900/40 text-green-300' : 'text-green-900 hover:text-green-600'}`}>{nazwa}</button>
+                ))}
+            </div>
+            {tryb === 'teo' ? <TostTeO /> : <TostKatedry />}
         </div>
     );
 };
