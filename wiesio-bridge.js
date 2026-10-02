@@ -77,6 +77,7 @@ import * as KuzniaSoup     from './services/KuzniaSoup.js';
 import * as ZwiadowcaHF    from './services/ZwiadowcaHF.js';
 import * as Porzadki       from './services/Porzadki.js';
 import * as Aktualizator   from './services/Aktualizator.js';
+import * as Tlumacz        from './services/Tlumacz.js';
 import * as Glowny         from './services/Glowny.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
@@ -10477,6 +10478,22 @@ app.post('/api/zwiadowca/link', async (req, res) => {
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.get('/api/zwiadowca/sondaz', (_req, res) => res.json(ZwiadowcaHF.sondaz()));
+
+// ── 🌍 TŁUMACZ (services/Tlumacz.js) — teksty Hubu na dowolny język lokalnym modelem, pamięć w _OtakOs_Wymiar/tlumaczenia ──
+Tlumacz.skonfiguruj({
+    katalog: path.join(ANTIGRAVITY_DIR, 'tlumaczenia'),
+    pisz: async (system, prompt) => (await piszModelem(process.env.OTAKOS_TLUMACZ_MODEL || null, system, prompt)).tekst,
+});
+app.get('/api/tlumacz/jezyki', (_req, res) => res.json({ success: true, jezyki: Tlumacz.JEZYKI }));
+app.get('/api/tlumacz/:jezyk', async (req, res) => {
+    try { res.json({ success: true, jezyk: req.params.jezyk, slownik: await Tlumacz.slownik(req.params.jezyk) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** POST /api/tlumacz { jezyk, teksty[] } → { mapa } — brakujące tłumaczy model (paczkami, jedna naraz) i zapamiętuje. */
+app.post('/api/tlumacz', async (req, res) => {
+    try { res.json({ success: true, ...(await Tlumacz.tlumacz(req.body?.jezyk, req.body?.teksty)) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 
 // ── 🔄 AKTUALIZATOR (services/Aktualizator.js) — węzeł sam pyta otakos.wtf / origin, czy jest nowsza Katedra ──
 // Sprawdzenie — każdy przy maszynie; zastosuj/cofnij — tylko maszyna (Straż). Zmiany działają po restarcie Katedry.

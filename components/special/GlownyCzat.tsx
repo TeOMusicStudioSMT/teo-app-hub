@@ -151,7 +151,8 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                 <div className="text-[10px] text-amber-300/90">⚠ {modelTeraz} to mały model — Claude Code potrzebuje mocnego w narzędziach (np. qwen3-coder, gpt-oss:20b, gemma4 26B/31B). Mały często mówi „nie mam narzędzia”, choć Katedra je ma.</div>
             )}
 
-            <div className={`space-y-1.5 overflow-y-auto pr-1 ${kompaktowy ? 'max-h-64' : 'max-h-[28rem]'}`}>
+            {/* Rozmowa to treść (Suweren ↔ Główny), nie interfejs — Tłumacz ekranu jej nie rusza. */}
+            <div data-bez-tlumaczenia className={`space-y-1.5 overflow-y-auto pr-1 ${kompaktowy ? 'max-h-64' : 'max-h-[28rem]'}`}>
                 {!sesja && <div className="text-[11px] text-slate-400">Napisz zadanie — Główny czyta i zmienia pliki Katedry sam, zleca pracę TeOgochi, a o polecenia (instalacje, git, usuwanie…) prosi Cię z wyjaśnieniem.</div>}
                 {sesja?.wpisy.map((w, i) => {
                     if (w.kto === 'suweren') return (
