@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Quiz, QuizQuestion } from '../../types';
 import { TrophyIcon, FaCheckCircle, FaExclamationCircle } from '../icons';
 import { cn } from '../../lib/helpers';
+import { PROG_ODZNAKI } from '../../constants/education';
 
 interface QuizChallengeProps {
     quiz: Quiz;
@@ -49,10 +50,10 @@ export const QuizChallenge: React.FC<QuizChallengeProps> = ({ quiz, onComplete, 
                 <div className="w-16 h-16 mx-auto text-amber-300 mb-4">
                     <TrophyIcon />
                 </div>
-                <h2 className="text-2xl font-bold text-white">Challenge Complete!</h2>
-                <p className="text-slate-400 mb-6">You have completed the "{quiz.title}" quiz.</p>
+                <h2 className="text-2xl font-bold text-white">Quiz ukończony!</h2>
+                <p className="text-slate-400 mb-6">Ukończyłeś quiz „{quiz.title}”.</p>
                 <p className="text-6xl font-bold text-cyan-300 drop-shadow-[0_0_8px_rgba(0,255,255,0.7)]">{score}%</p>
-                <p className="text-slate-300">Your Score</p>
+                <p className="text-slate-300">Twój wynik</p>
                 
                 <div className="my-6 space-y-2 text-left max-w-lg mx-auto">
                     {quiz.questions.map((q, i) => (
@@ -62,7 +63,7 @@ export const QuizChallenge: React.FC<QuizChallengeProps> = ({ quiz, onComplete, 
                            ) : (
                                <FaExclamationCircle className="inline w-4 h-4 mr-2 text-rose-400" />
                            )}
-                            {i+1}. {q.question} - Correct: <strong>{q.correctAnswer}</strong>
+                            {i+1}. {q.question} — poprawnie: <strong>{q.correctAnswer}</strong>
                         </div>
                     ))}
                 </div>
@@ -71,7 +72,7 @@ export const QuizChallenge: React.FC<QuizChallengeProps> = ({ quiz, onComplete, 
                     onClick={() => onComplete(quiz.id, score, quiz.reward.value)}
                     className="capsule-button capsule-green py-3 px-8 text-lg"
                 >
-                    Claim Reward & Exit
+                    {score >= PROG_ODZNAKI ? 'Odbierz odznakę i wróć' : `Wróć (odznaka od ${PROG_ODZNAKI}%)`}
                 </button>
             </div>
         );
@@ -83,9 +84,9 @@ export const QuizChallenge: React.FC<QuizChallengeProps> = ({ quiz, onComplete, 
             <div className="flex justify-between items-center mb-4">
                 <div>
                     <h3 className="text-xl font-bold text-cyan-300">{quiz.title}</h3>
-                    <p className="text-slate-400">Question {currentQuestionIndex + 1} of {totalQuestions}</p>
+                    <p className="text-slate-400">Pytanie {currentQuestionIndex + 1} z {totalQuestions}</p>
                 </div>
-                <button onClick={onBack} className="text-slate-400 hover:text-white">&times; Close</button>
+                <button onClick={onBack} className="text-slate-400 hover:text-white">&times; Zamknij</button>
             </div>
 
             {/* Progress Bar */}
@@ -126,7 +127,7 @@ export const QuizChallenge: React.FC<QuizChallengeProps> = ({ quiz, onComplete, 
                     disabled={!selectedAnswers[currentQuestionIndex]}
                     className="capsule-button capsule-cyan py-2 px-8"
                 >
-                    {currentQuestionIndex < totalQuestions - 1 ? 'Next' : 'Submit Answers'}
+                    {currentQuestionIndex < totalQuestions - 1 ? 'Dalej' : 'Sprawdź odpowiedzi'}
                 </button>
             </div>
         </div>

@@ -78,12 +78,14 @@ export interface PendingIncident {
 
 // --- Education Module Types ---
 
+/** Przewodnik Akademii — kroki po prawdziwych ekranach Katedry (bez atrap filmów). */
 export interface Tutorial {
   id: string;
   title: string;
   description: string;
-  videoId: string; // YouTube video ID
-  duration: number; // in minutes
+  steps: string[];
+  /** Widok Hubu, który przewodnik otwiera przyciskiem (id z LoungeNavigation). */
+  widok?: string;
 }
 
 export interface QuizQuestion {

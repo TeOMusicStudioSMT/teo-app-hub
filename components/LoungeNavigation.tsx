@@ -109,7 +109,7 @@ const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string; 
     { id: 'trust',         label: 'TeO Trust',      icon: <span className="text-base">🏛️</span>, desc: 'Certyfikat Beneficjenta — punkt startowy', grupa: 'sciezka' },
     { id: 'kompas',        label: 'Kompas Suwerena', icon: <span className="text-base">🧭</span>, desc: 'Mapa gry Odkrywania — od Karmy do Miłości 2.0', grupa: 'sciezka' },
     { id: 'pralka',        label: 'Pralka Kompasji', icon: <span className="text-base">🤍</span>, desc: 'Sumienie energetyczne — uzdrawia, nie karze (Filar I)', grupa: 'sciezka' },
-    { id: 'academy',       label: 'Academy',        icon: <MortarBoardIcon />, desc: 'Quantum Compass & nauka', grupa: 'sciezka' },
+    { id: 'academy',       label: '🎓 Akademia',     icon: <MortarBoardIcon />, desc: 'Quizy, przewodniki, Fundament i recenzje Katedry', grupa: 'sciezka' },
     { id: 'crew-club',     label: '🏆 Klub',        icon: <TrophyIcon />,      desc: 'Załoga, rankingi i wspólne wyprawy', grupa: 'sciezka' },
     // ── Ekonomia ──
     { id: 'graviton-wallet', label: 'GRAVITON',     icon: <WalletIcon />,      desc: 'Portfel GRV — saldo, księga, oddech', grupa: 'ekonomia' },
