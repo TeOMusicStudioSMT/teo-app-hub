@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import DashboardCard from '../DashboardCard';
 import { Image as ImageIcon, Upload, Loader2, Trash2, EyeOff, Eye, Youtube } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { WizytowkaPanel } from './WizytowkaPanel';
 
 const MOST = 'http://127.0.0.1:3001';
 
@@ -133,6 +134,7 @@ export const WystawaCard: React.FC = () => {
                         {wynik && <div className="font-mono text-[10px] text-slate-500">zapisano {wynik.plik.split(/[\\/]/).slice(-3).join('/')} · {wynik.filmy} filmów ({wynik.bezYouTube} bez YouTube) · {wynik.suno} Suno · {wynik.produkty} produktów · {wynik.sekundy} s. Dalej: `npm run build` w teo-center i wgranie.</div>}
                     </>
                 )}
+                {most === 'zyje' && <WizytowkaPanel />}
             </div>
         </DashboardCard>
     );

@@ -67,6 +67,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/porzadki/usun',   // kasowanie plików i modeli — tylko przy maszynie
     '/api/glowny/',   // Główny (Claude Code) zmienia pliki Katedry — rozmowa i zgody tylko przy maszynie
     '/api/aktualizacja/zastosuj', '/api/aktualizacja/cofnij',   // podmiana kodu Katedry — tylko przy maszynie
+    '/api/wizytowka/',   // profil i meldunek wizytówki zmienia Suweren przy Katedrze (sama /api/wizytowka jest publiczna)
     '/api/dyrygent/zastosuj', '/api/modele/karta',   // stałe silniki TeOgochi i karty modeli zmienia Suweren przy Katedrze
 ];
 
@@ -77,6 +78,19 @@ export const SCIEZKI_TYLKO_LOKALNE = [
  * Suweren (2026-09-29): zwalnianie pamięci „z poziomu Katedry i Stołu" — /api/system/free z telefonu tylko
  * po PID i z tokenem parowania (sprawdza trasa); zamykanie po nazwie zostaje przy maszynie.
  */
+/**
+ * 🪪 Wizytówka Katedry (services/Wizytowka.js) — JEDYNE, co most pokazuje każdemu bez klucza:
+ * GET/HEAD wizytówki i jej plików. Suweren (2026-10-02): wizytówki Katedr przewijane na otakos.wtf.
+ * Adres tunelu trafia wtedy do rejestru, więc wszystko poza tą listą dalej żąda klucza sesji.
+ * Trasy same oddają 404, gdy Katedra nie ma nicka (wizytówka wyłączona).
+ */
+export const SCIEZKI_WIZYTOWKI = { dokladne: new Set(['/api/wizytowka']), prefiksy: ['/wizytowka/plik/', '/wizytowka/plakat/'] };
+export function czyWizytowka(req) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+    const p = String(req.path || '');
+    return SCIEZKI_WIZYTOWKI.dokladne.has(p) || SCIEZKI_WIZYTOWKI.prefiksy.some((x) => p.startsWith(x) && !p.slice(x.length).includes('/'));
+}
+
 export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy', '/api/system/free']);
 
 /**
@@ -190,6 +204,7 @@ export function strazMostu({ klucz, pelnyTunel = false, zaufane = null }) {
         req.zrodlo = zrodloZadania(req, { zaufane: lista });
         req.lokalny = req.zrodlo === 'maszyna';
         if (req.lokalny) return next();          // własna maszyna — bez zmian
+        if (czyWizytowka(req)) return next();     // 🪪 publiczna wizytówka — tylko odczyt, każdy
 
         // ── Żądanie spoza maszyny (albo od obcej strony): najpierw klucz ──
         // Zaufana publiczna strona Suwerena klucza nie niesie — przechodzi dalej, ale tylko
@@ -245,4 +260,4 @@ export function strazMostu({ klucz, pelnyTunel = false, zaufane = null }) {
     };
 }
 
-export default { strazMostu, czyLokalny, zrodloZadania, ZAUFANE_PUBLICZNE, AKCJE_STRON_PUBLICZNYCH, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA, PARAM_KLUCZA };
+export default { strazMostu, czyLokalny, czyWizytowka, SCIEZKI_WIZYTOWKI, zrodloZadania, ZAUFANE_PUBLICZNE, AKCJE_STRON_PUBLICZNYCH, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA, PARAM_KLUCZA };

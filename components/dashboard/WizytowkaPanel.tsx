@@ -1,0 +1,90 @@
+/**
+ * 🪪 Wizytówka w sieci otakos.wtf — profil (nick, motto, opis) i meldunek tej Katedry.
+ *
+ * Treść wizytówki to Wystawa bez ukrytych pozycji (services/Wizytowka.js). Tu Suweren ustala,
+ * jak się nazywa w sieci i czy Katedra ma się meldować w rejestrze otakos.wtf (tylko przy
+ * działającym Kwantowym Tunelu). Na stronie pojawia się dopiero po zatwierdzeniu nicka
+ * z kluczem publicznym — klucz pokazujemy tu do skopiowania.
+ */
+import React, { useCallback, useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
+
+const MOST = 'http://127.0.0.1:3001';
+
+interface Profil {
+    nick: string; motto: string; opis: string; meldunek: boolean; klucz: string; rejestr: string;
+    ostatniMeldunek: { kiedy: string; ok: boolean; status: number; wiadomosc: string; adres: string | null } | null;
+}
+
+async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
+    const r = await fetch(`${MOST}${s}`, { headers: { 'Content-Type': 'application/json' }, ...init });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.success === false) throw new Error(d.message || `HTTP ${r.status}`);
+    return d as T;
+}
+
+export const WizytowkaPanel: React.FC = () => {
+    const [p, setP] = useState<Profil | null>(null);
+    const [blad, setBlad] = useState<string | null>(null);
+    const [form, setForm] = useState({ nick: '', motto: '', opis: '' });
+
+    const odswiez = useCallback(async () => {
+        try { const d = await zMostu<Profil>('/api/wizytowka/profil'); setP(d); setForm({ nick: d.nick, motto: d.motto, opis: d.opis }); setBlad(null); }
+        catch (e) { setBlad(/HTTP 404/.test(String(e)) ? 'Most sprzed restartu — nie zna jeszcze wizytówki. Zrestartuj Katedrę.' : String(e instanceof Error ? e.message : e)); }
+    }, []);
+    useEffect(() => { void odswiez(); }, [odswiez]);
+
+    const zapisz = async (zmiana: Partial<Profil>) => {
+        try { const d = await zMostu<Profil>('/api/wizytowka/profil', { method: 'PUT', body: JSON.stringify(zmiana) }); setP(d); toast.success('Wizytówka zapisana.'); }
+        catch (e) { toast.error(e instanceof Error ? e.message : String(e), { duration: 8000 }); }
+    };
+    const zamelduj = async () => {
+        try { await zMostu('/api/wizytowka/meldunek', { method: 'POST', body: '{}' }); await odswiez(); }
+        catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
+    };
+
+    if (blad) return <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-3 text-[11px] text-amber-200">🪪 {blad}</div>;
+    if (!p) return null;
+    const m = p.ostatniMeldunek;
+    return (
+        <details className="rounded-lg border border-cyan-500/25 p-2" open={!p.nick}>
+            <summary className="cursor-pointer text-[10px] uppercase tracking-widest text-cyan-300">🪪 Wizytówka w sieci otakos.wtf {p.nick ? `· ${p.nick}` : '· bez nicka'}</summary>
+            <div className="mt-2 flex flex-col gap-2 text-[11px]">
+                <p className="text-[10px] leading-relaxed text-slate-500">Wizytówka = ta wystawa (bez ukrytych) + nick i motto. Na otakos.wtf widać tylko nick — nie imię. Pokazuje się, gdy Katedra jest online (Kwantowy Tunel) i nick jest zatwierdzony.</p>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_1fr]">
+                    <label className="text-slate-400">Nick</label>
+                    <input value={form.nick} onChange={(e) => setForm((f) => ({ ...f, nick: e.target.value.toLowerCase() }))} placeholder="np. teo-center (a–z, 0–9, -)" className="rounded border border-slate-700 bg-black/40 px-2 py-1 font-mono text-slate-200" />
+                    <label className="text-slate-400">Motto</label>
+                    <input value={form.motto} maxLength={140} onChange={(e) => setForm((f) => ({ ...f, motto: e.target.value }))} placeholder="jedno zdanie pod nickiem" className="rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
+                    <label className="text-slate-400">Opis</label>
+                    <textarea value={form.opis} maxLength={600} rows={2} onChange={(e) => setForm((f) => ({ ...f, opis: e.target.value }))} placeholder="kilka słów o tej Katedrze" className="rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <button onClick={() => void zapisz(form)} className="rounded bg-cyan-500/30 px-3 py-1 font-bold text-cyan-100">Zapisz wizytówkę</button>
+                    {p.nick && <a href={`${MOST}/api/wizytowka`} target="_blank" rel="noreferrer" className="text-cyan-400 underline">podgląd JSON</a>}
+                    <label className={`ml-auto flex items-center gap-1.5 ${p.nick ? 'text-slate-300' : 'text-slate-600'}`}>
+                        <input type="checkbox" disabled={!p.nick} checked={p.meldunek} onChange={(e) => void zapisz({ meldunek: e.target.checked })} />
+                        Melduj w sieci otakos.wtf (co minutę, gdy tunel działa)
+                    </label>
+                </div>
+                {p.meldunek && (
+                    <div className={`rounded border px-2 py-1.5 text-[10px] ${m?.ok ? 'border-emerald-500/30 text-emerald-300' : 'border-amber-500/30 text-amber-200'}`}>
+                        {m ? <>{m.ok ? '✓' : '⚠'} {m.wiadomosc} <span className="text-slate-500">· {new Date(m.kiedy).toLocaleTimeString('pl-PL')}{m.adres ? ` · ${m.adres}` : ''}</span></> : 'Pierwszy meldunek za chwilę…'}
+                        <button onClick={() => void zamelduj()} className="ml-2 underline">zamelduj teraz</button>
+                    </div>
+                )}
+                {p.nick && (
+                    <div className="text-[10px] text-slate-500">
+                        Do zatwierdzenia na otakos.wtf wyślij Suwerenowi strony nick i klucz publiczny (prywatny nie opuszcza maszyny):
+                        <div className="mt-1 flex items-center gap-1.5">
+                            <code className="flex-1 truncate rounded bg-black/40 px-1.5 py-0.5 font-mono text-slate-300" title={p.klucz}>{p.nick} · {p.klucz}</code>
+                            <button onClick={() => { void navigator.clipboard.writeText(JSON.stringify({ nick: p.nick, klucz: p.klucz })); toast.success('Skopiowano nick i klucz.'); }} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-200">kopiuj</button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </details>
+    );
+};
+
+export default WizytowkaPanel;

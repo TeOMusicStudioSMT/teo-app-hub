@@ -184,6 +184,7 @@ import * as TeledyskNowy from './services/TeledyskNowy.js';
 import * as WarsztatUtworow from './services/WarsztatUtworow.js';
 import * as Teterhia3D from './services/Teterhia3D.js';
 import * as Wystawa from './services/Wystawa.js';
+import * as Wizytowka from './services/Wizytowka.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -8148,6 +8149,31 @@ app.get('/wystawa/plik/:id', cors({ origin: '*' }), async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     return res.sendFile(p);
 });
+
+// ── 🪪 WIZYTÓWKA — publiczna strona Katedry w sieci otakos.wtf (services/Wizytowka.js) ──
+// Straż przepuszcza bez klucza TYLKO GET /api/wizytowka i /wizytowka/plik|plakat/:id (czyWizytowka).
+Wizytowka.skonfiguruj({ katalog: ANTIGRAVITY_DIR, wystawa: Wystawa, tunel: () => Tunel.stanTunelu(), szyna: Szyna });
+Wizytowka.startPetli();
+app.get('/api/wizytowka', cors({ origin: '*' }), async (_req, res) => {
+    try {
+        const w = await Wizytowka.publiczna();
+        if (!w) return res.status(404).json({ success: false, message: 'Ta Katedra nie ma jeszcze wizytówki (brak nicka).' });
+        res.setHeader('Cache-Control', 'no-cache');
+        return res.json(w);
+    } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+const plikWizytowki = (szukaj) => async (req, res) => {
+    const p = await szukaj(req.params.id).catch(() => null);
+    if (!p) return res.status(404).json({ success: false, message: 'Nie ma takiej pozycji w wizytówce.' });
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    return res.sendFile(p);
+};
+app.get('/wizytowka/plik/:id', cors({ origin: '*' }), plikWizytowki((id) => Wizytowka.plik(id)));
+app.get('/wizytowka/plakat/:id', cors({ origin: '*' }), plikWizytowki((id) => Wizytowka.plakat(id)));
+app.get('/api/wizytowka/profil', async (_req, res) => { try { res.json({ success: true, ...(await Wizytowka.profil()) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+app.put('/api/wizytowka/profil', async (req, res) => { try { res.json({ success: true, ...(await Wizytowka.ustawProfil(req.body ?? {})) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
+app.post('/api/wizytowka/meldunek', async (_req, res) => { try { res.json({ success: true, meldunek: await Wizytowka.meldunek() }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
 
 // ── 🧊🎮 TGS 3D: teren świata z planszy → Blender → .glb w public/assets/swiaty ──
 Teterhia3D.skonfiguruj({ szyna: Szyna });
