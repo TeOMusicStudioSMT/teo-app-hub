@@ -179,10 +179,15 @@ $numer  = $teraz.ToString('yyyy.MM.dd.HHmm')
 $commit = ''
 try { $commit = (& git -C $Source rev-parse --short HEAD 2>$null) } catch { }
 $zmiany = @()
+# git pisze UTF-8, a PowerShell 5.1 czyta wyjście programów stroną kodową konsoli (CP852/437) —
+# bez tego „łączy" przychodzi jako „┼é─àczy" (tak wyszła pierwsza paczka 2026.10.02.2312).
+$kodowanieKonsoli = [Console]::OutputEncoding
 try {
-    $log = & git -C $Source log -25 --no-merges "--format=%cs%x09%h%x09%s" 2>$null
+    [Console]::OutputEncoding = $Utf8
+    $log = & git -C $Source -c i18n.logOutputEncoding=UTF-8 log -25 --no-merges "--format=%cs%x09%h%x09%s" 2>$null
     foreach ($l in $log) { $p = $l -split "`t", 3; if ($p.Count -eq 3) { $zmiany += [ordered]@{ data = $p[0]; ref = $p[1]; tytul = $p[2] } } }
 } catch { Warn "Brak gita w źródle — wersja.json bez listy zmian." }
+finally { [Console]::OutputEncoding = $kodowanieKonsoli }
 $wersja = [ordered]@{
     wersja = $Version; numer = $numer; data = $teraz.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); commit = "$commit"
     katalogWPaczce = $DistName; zmiany = $zmiany
