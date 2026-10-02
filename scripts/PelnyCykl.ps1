@@ -87,9 +87,18 @@ Write-Host "`n[3/3] Deploy strony otakos.wtf..." -ForegroundColor Magenta
 if ($Deploy) {
     Push-Location $Web
     try {
-        git add public/V_ZERO_archive.zip public/wersja.json   # wersja.json = Aktualizator węzłów sprawdza nową Katedrę
+        # Najpierw dociagamy strone (Kronika i inne zmiany z GitHuba) - inaczej push odbija sie jako „fetch first".
+        git pull --rebase --autostash origin main
+        if ($LASTEXITCODE -ne 0) { throw "git pull --rebase w $Web nie przeszedl - rozwiaz recznie i odpal ponownie." }
+        git add public/V_ZERO_archive.zip public/wersja.json   # wersja.json = Aktualizator wezlow sprawdza nowa Katedre
         git commit -m "chore: pelny cykl - aktualizacja V_ZERO_archive.zip ($Version)"
-        if ($?) { git push origin main }
+        if ($LASTEXITCODE -ne 0) { throw "git commit nie przeszedl (nic do zapisania?) - nie pushuje." }
+        git push origin main
+        # 2026-10-02: tu stalo `if ($?)` i ZAWSZE „OK - strona wypchnieta", takze gdy GitHub odrzucil 322 MB zip.
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  BLAD - GitHub odrzucil push. Lokalny commit zostal: cofnij go w $Web (git reset --hard origin/main) po poprawce." -ForegroundColor Red
+            throw "Push strony nie przeszedl."
+        }
     } finally { Pop-Location }
     Write-Host "  OK - strona wypchnieta (hosting przebuduje)." -ForegroundColor Green
 } else {

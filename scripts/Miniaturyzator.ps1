@@ -49,11 +49,11 @@ Info "Staging: $Stage"
 $xdStatic = @(
     'node_modules','.git','.vite','dist','.cache','.claude','.husky',
     '_temp','TestProxy','models','memory','.agent',
-    # _OtakOs_AI: wykluczamy tylko CIĘŻKIE/prywatne podfoldery. bin/ (whisper-cli
-    # + DLL, ~20MB) ZOSTAJE w distro — lekki, potrzebny do karaoke/STT. Model ggml
-    # (~487MB) wykluczony — dociąga się przy pierwszym starcie (START_KATEDRA.bat).
-    # voice_server.py/requirements ZOSTAJĄ (Głos Suwerena auto-instaluje się sam).
-    '_OtakOs_AI\models','_OtakOs_AI\voices','_OtakOs_AI\temp','_OtakOs_AI\voice_env',
+    # _OtakOs_AI: CAŁY poza distro, a do paczki wraca tylko BIAŁA LISTA (krok 1a niżej).
+    # 2026-10-02: czarna lista przepuściła kuznia-soup (venv z PyTorch CUDA + cache HF),
+    # python312 i assety3d (dzieła 3D Suwerena) — distro 6,2 GB, ZIP 322 MB > limit GitHub.
+    # Każde nowe środowisko w _OtakOs_AI wpadałoby tak samo; biała lista tego nie przepuści.
+    '_OtakOs_AI',
     '_OtakOs_Aula','_OtakOs_Build','_OtakOs_Components',
     '_OtakOs_Klocki','_OtakOs_Kroniki','_OtakOs_Move','_OtakOs_Muzyka',
     '_OtakOs_Sonic','_OtakOs_Wymiar',
@@ -67,12 +67,8 @@ $xdStatic = @(
     # projekt Unreal Suwerena (258 MB) i cache analizy kodu graphify (39 MB) — nie są Katedrą.
     'TeO_Arcade_Forge\MojProjekt','graphify-out'
 )
-# Dołap dynamicznie wszelkie inne _OtakOs_* (na wypadek nowych).
-# _OtakOs_AI pomijamy tu celowo — ma własne, częściowe wykluczenia wyżej
-# (całościowy wpis by je nadpisał i znów wyciął cały folder, razem z
-# voice_server.py / requirements-voice.txt).
+# Dołap dynamicznie wszelkie inne _OtakOs_* (na wypadek nowych) — dane i dzieła Suwerena.
 $xdDynamic = Get-ChildItem $Source -Directory -Filter '_OtakOs_*' -ErrorAction SilentlyContinue |
-             Where-Object { $_.Name -ne '_OtakOs_AI' } |
              ForEach-Object { $_.Name }
 $XD = ($xdStatic + $xdDynamic) | Select-Object -Unique
 
@@ -97,6 +93,37 @@ foreach($f in $XF){ $rcArgs += '/XF'; $rcArgs += $f }
 if ($LASTEXITCODE -ge 8) { throw "robocopy staging nie powiódł się (kod $LASTEXITCODE)" }
 $global:LASTEXITCODE = 0
 Ok "Staging zbudowany."
+
+# ── 1a. _OtakOs_AI — BIAŁA LISTA ──────────────────────────────────────────────
+# bin/ (whisper-cli + DLL, ~20 MB — karaoke/STT), workflows/ (grafy ComfyUI) i małe pliki
+# z korzenia (voice_server.py, requirements-voice.txt — Głos Suwerena instaluje się sam).
+# Modele, głosy, środowiska (kuznia-soup, python312, voice_env) i dzieła (assety3d) — NIE.
+$AiSrc = Join-Path $Source '_OtakOs_AI'
+$AiDst = Join-Path $Stage '_OtakOs_AI'
+if (Test-Path $AiSrc) {
+    foreach ($sub in @('bin', 'workflows')) {
+        $z = Join-Path $AiSrc $sub
+        if (-not (Test-Path $z)) { continue }
+        $rcAi = @($z, (Join-Path $AiDst $sub), '/E', '/NFL','/NDL','/NJH','/NJS','/NP','/R:1','/W:1', '/MAX:104857600')
+        foreach($f in $XF){ $rcAi += '/XF'; $rcAi += $f }
+        & robocopy @rcAi | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "robocopy _OtakOs_AI\$sub nie powiódł się (kod $LASTEXITCODE)" }
+    }
+    $rcRoot = @($AiSrc, $AiDst, '/LEV:1', '/NFL','/NDL','/NJH','/NJS','/NP','/R:1','/W:1', '/MAX:5242880')
+    foreach($f in $XF){ $rcRoot += '/XF'; $rcRoot += $f }
+    & robocopy @rcRoot | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "robocopy _OtakOs_AI (pliki) nie powiódł się (kod $LASTEXITCODE)" }
+    $global:LASTEXITCODE = 0
+    Ok "_OtakOs_AI: tylko bin, workflows i małe pliki z korzenia (modele, środowiska i dzieła zostają u Suwerena)."
+}
+
+# Najcięższe katalogi distro (2 poziomy) — gdy paczka puchnie, widać od razu, co ją puchnie.
+function NajciezszeKatalogi([string]$Dir, [int]$Ile = 15) {
+    Get-ChildItem $Dir -Directory -Recurse -Depth 1 -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        $b = (Get-ChildItem $_.FullName -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+        [pscustomobject]@{ MB = [math]::Round($b / 1MB, 1); Katalog = $_.FullName.Substring($Dir.Length).TrimStart('\') }
+    } | Sort-Object MB -Descending | Select-Object -First $Ile
+}
 
 # ── 1b. OVERLAY launcherów (kanon, wersjonowane) → staging ───────────────────
 # Launchery (START_KATEDRA.bat z ANSI-art Flash BoBa, autostart, instalator) żyją
@@ -137,6 +164,10 @@ if ($tokenHits) {
 $fileCount = (Get-ChildItem $Stage -Recurse -File).Count
 $sizeMB    = [math]::Round((Get-ChildItem $Stage -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 2)
 Ok "Distro: $fileCount plików · $sizeMB MB"
+if ($sizeMB -gt 1500) {
+    Warn "Distro waży $sizeMB MB — podejrzanie dużo (21.09 było ~640 MB). Najcięższe katalogi:"
+    NajciezszeKatalogi $Stage | ForEach-Object { Write-Host ("      {0,8} MB  {1}" -f $_.MB, $_.Katalog) -ForegroundColor Yellow }
+}
 
 # ── 2b. wersja.json → do paczki (Aktualizator w Katedrze wie, co ma) ──────────
 # Numer z daty i godziny miniaturyzacji: „2026.10.02.1430" — rośnie z każdą paczką,
@@ -178,6 +209,12 @@ if (-not $NoZip) {
         }
     } finally { $archiwum.Dispose(); $zipStream.Dispose() }
     $zipMB  = [math]::Round((Get-Item $zipTmp).Length / 1MB, 2)
+    # GitHub odrzuca pliki > 100 MB (push pada na pre-receive hook). Stop ZANIM paczka trafi na stronę.
+    if ($zipMB -gt 95) {
+        Warn "ZIP ma $zipMB MB — GitHub przyjmie najwyżej 100 MB. Nie kopiuję go na stronę. Najcięższe katalogi distro:"
+        NajciezszeKatalogi $Stage | ForEach-Object { Write-Host ("      {0,8} MB  {1}" -f $_.MB, $_.Katalog) -ForegroundColor Yellow }
+        throw "ZIP $zipMB MB > 95 MB — dopisz winne katalogi do wykluczeń (xdStatic) i odpal ponownie."
+    }
     $sha256 = (Get-FileHash $zipTmp -Algorithm SHA256).Hash.ToLower()
     # wersja.json STRONY = to samo + paczka, suma i rozmiar (Aktualizator węzła sprawdza sumę przed podmianą kodu).
     $wersjaWeb = [ordered]@{}
