@@ -259,7 +259,7 @@ function katalogTeoCenter() {
 }
 
 /** Plakat z filmu (klatka z 2 s) albo kopia obrazu — do public/media/wystawa. */
-async function plakat(zrodlo, cel, wideo) {
+export async function plakat(zrodlo, cel, wideo) {
     if (fsSync.existsSync(cel) && (await fs.stat(cel)).mtimeMs >= (await fs.stat(zrodlo)).mtimeMs) return true;
     try {
         if (wideo) await cfg.execFile(cfg.ffmpeg, ['-y', '-ss', '2', '-i', zrodlo, '-frames:v', '1', '-vf', 'scale=960:-2', '-q:v', '4', cel], { windowsHide: true, timeout: 60_000 });
@@ -295,4 +295,4 @@ export async function opublikuj({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     return { plik: path.join(tc, 'public', 'wystawa.json'), media, filmy: filmyPub.length, bezYouTube: filmyPub.filter((f) => !f.youtube).length, utwory: utworyPub.length, suno: zywy.suno.length, produkty: produktyPub.length, sekundy: Math.round((Date.now() - t0) / 1000), opublikowano: katalog.opublikowano };
 }
 
-export default { skonfiguruj, kuracja, idSuno, idPlaylistySuno, idYouTube, dodajSuno, usunSuno, ustawYouTube, ukryj, ustawOpis, zbierz, sciezkaZBialej, opublikuj };
+export default { skonfiguruj, kuracja, idSuno, idPlaylistySuno, idYouTube, dodajSuno, usunSuno, ustawYouTube, ukryj, ustawOpis, zbierz, sciezkaZBialej, opublikuj, plakat };
