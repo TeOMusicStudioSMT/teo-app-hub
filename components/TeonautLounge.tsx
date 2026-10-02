@@ -256,7 +256,7 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                             {activeView === 'cobots' && <DomTeogochi />}
                             {activeView === 'kuznia' && <KuzniaModeli />}
                             {activeView === 'crew-club' && <div className="text-center py-20 text-slate-500 italic">Ładowanie Kokpitu Mistrzów...</div>}
-                            {activeView === 'academy' && <QuantumCompass />}
+                            {activeView === 'academy' && <QuantumCompass onOtworz={(v) => handleViewChange(v as View)} />}
                             {activeView === 'field-control' && <FieldControlView />}
                             {activeView === 'teolab' && <TeoLab />}
                             {activeView === 'robotics' && <OtakosRobotics />}

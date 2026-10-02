@@ -1,35 +1,35 @@
 import React from 'react';
 import { Tutorial } from '../../types';
-import { ClockIcon } from '../icons';
+import { canAccess, requiredPillar } from '../../lib/tiers';
 
 interface TutorialCardProps {
     tutorial: Tutorial;
+    /** Otwiera widok Hubu, o którym mówi przewodnik (gdy ma `widok`). */
+    onOtworz?: (widok: string) => void;
 }
 
-export const TutorialCard: React.FC<TutorialCardProps> = ({ tutorial }) => {
-    return (
-        <div className="p-4 bg-slate-800/60 rounded-xl border border-slate-700 flex flex-col md:flex-row gap-4">
-            <div className="w-full md:w-1/3 flex-shrink-0">
-                <div className="aspect-video bg-black rounded-md overflow-hidden">
-                    <iframe
-                        width="100%"
-                        height="100%"
-                        src={`https://www.youtube.com/embed/${tutorial.videoId}`}
-                        title={tutorial.title}
-                        frameBorder="0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                    ></iframe>
-                </div>
-            </div>
-            <div className="flex-grow">
+/** Przewodnik po prawdziwym ekranie Katedry: kroki + przycisk do tego ekranu. */
+export const TutorialCard: React.FC<TutorialCardProps> = ({ tutorial, onOtworz }) => (
+    <div className="p-4 bg-slate-800/60 rounded-xl border border-slate-700">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div>
                 <h4 className="text-lg font-bold text-white">{tutorial.title}</h4>
-                <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 mb-2">
-                    <div className="w-4 h-4"><ClockIcon /></div>
-                    <span>{tutorial.duration} min watch</span>
-                </div>
-                <p className="text-sm text-slate-300">{tutorial.description}</p>
+                <p className="text-sm text-slate-400 mt-1">{tutorial.description}</p>
             </div>
+            {/* Ten sam filar co w menu „•••” — przewodnik nie omija bramki */}
+            {tutorial.widok && onOtworz && (canAccess(tutorial.widok) ? (
+                <button
+                    onClick={() => onOtworz(tutorial.widok!)}
+                    className="capsule-button capsule-cyan py-2 px-5 flex-shrink-0"
+                >
+                    Otwórz →
+                </button>
+            ) : (
+                <span className="text-xs text-slate-500 flex-shrink-0">🔒 Odblokujesz na Filarze {requiredPillar(tutorial.widok)}</span>
+            ))}
         </div>
-    );
-};
+        <ol className="mt-3 pt-3 border-t border-slate-700/50 space-y-2 text-sm text-slate-300 list-decimal list-inside">
+            {tutorial.steps.map((krok, i) => <li key={i}>{krok}</li>)}
+        </ol>
+    </div>
+);
