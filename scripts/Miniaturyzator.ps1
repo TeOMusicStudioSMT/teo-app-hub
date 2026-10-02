@@ -138,18 +138,60 @@ $fileCount = (Get-ChildItem $Stage -Recurse -File).Count
 $sizeMB    = [math]::Round((Get-ChildItem $Stage -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 2)
 Ok "Distro: $fileCount plików · $sizeMB MB"
 
+# ── 2b. wersja.json → do paczki (Aktualizator w Katedrze wie, co ma) ──────────
+# Numer z daty i godziny miniaturyzacji: „2026.10.02.1430" — rośnie z każdą paczką,
+# Aktualizator porównuje go po cyfrach. Zmiany = ostatnie commity głównej Katedry.
+Step "2b/5 wersja.json (numer, commit, zmiany)"
+$Utf8 = New-Object System.Text.UTF8Encoding($false)   # BEZ BOM — JSON z BOM-em psuje JSON.parse
+$teraz  = Get-Date
+$numer  = $teraz.ToString('yyyy.MM.dd.HHmm')
+$commit = ''
+try { $commit = (& git -C $Source rev-parse --short HEAD 2>$null) } catch { }
+$zmiany = @()
+try {
+    $log = & git -C $Source log -25 --no-merges "--format=%cs%x09%h%x09%s" 2>$null
+    foreach ($l in $log) { $p = $l -split "`t", 3; if ($p.Count -eq 3) { $zmiany += [ordered]@{ data = $p[0]; ref = $p[1]; tytul = $p[2] } } }
+} catch { Warn "Brak gita w źródle — wersja.json bez listy zmian." }
+$wersja = [ordered]@{
+    wersja = $Version; numer = $numer; data = $teraz.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); commit = "$commit"
+    katalogWPaczce = $DistName; zmiany = $zmiany
+}
+[System.IO.File]::WriteAllText((Join-Path $Stage 'wersja.json'), ($wersja | ConvertTo-Json -Depth 5), $Utf8)
+Ok "wersja.json: $Version $numer ($commit)"
+
 # ── 3. ZIP → strona otakos.wtf ───────────────────────────────────────────────
+# ⚠️ NIE Compress-Archive: w PowerShell 5.1 zapisuje ścieżki z „\" — Windows to zniesie,
+# ale Termux/Linux/Mac rozpakują płaskie pliki „TeO_Genesis_V_ZERO\wiesio-bridge.js".
+# Budujemy zip sami, każdą ścieżkę z „/" (standard ZIP).
 if (-not $NoZip) {
     Step "3/5 Pakowanie ZIP → otakos.wtf"
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zipTmp = Join-Path $env:TEMP "$DistName.zip"
     if (Test-Path $zipTmp) { Remove-Item $zipTmp -Force }
-    Compress-Archive -Path $Stage -DestinationPath $zipTmp -CompressionLevel Optimal -Force
-    $zipMB = [math]::Round((Get-Item $zipTmp).Length / 1MB, 2)
+    $zipStream = [System.IO.File]::Open($zipTmp, [System.IO.FileMode]::CreateNew)
+    $archiwum  = New-Object System.IO.Compression.ZipArchive($zipStream, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        Get-ChildItem $Stage -Recurse -File -Force | ForEach-Object {
+            $rel = $_.FullName.Substring($Stage.Length).TrimStart('\','/').Replace('\','/')
+            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archiwum, $_.FullName, "$DistName/$rel", [System.IO.Compression.CompressionLevel]::Optimal)
+        }
+    } finally { $archiwum.Dispose(); $zipStream.Dispose() }
+    $zipMB  = [math]::Round((Get-Item $zipTmp).Length / 1MB, 2)
+    $sha256 = (Get-FileHash $zipTmp -Algorithm SHA256).Hash.ToLower()
+    # wersja.json STRONY = to samo + paczka, suma i rozmiar (Aktualizator węzła sprawdza sumę przed podmianą kodu).
+    $wersjaWeb = [ordered]@{}
+    foreach ($k in $wersja.Keys) { $wersjaWeb[$k] = $wersja[$k] }
+    $wersjaWeb.paczka = 'V_ZERO_archive.zip'
+    $wersjaWeb.sha256 = $sha256
+    $wersjaWeb.bajtow = (Get-Item $zipTmp).Length
+    $jsonWeb = $wersjaWeb | ConvertTo-Json -Depth 5
     foreach($sub in @('public','dist')){
         $dstDir = Join-Path $WebDir $sub
         if (Test-Path $dstDir) {
             Copy-Item $zipTmp (Join-Path $dstDir 'V_ZERO_archive.zip') -Force
-            Ok "$sub\V_ZERO_archive.zip ($zipMB MB)"
+            [System.IO.File]::WriteAllText((Join-Path $dstDir 'wersja.json'), $jsonWeb, $Utf8)
+            Ok "$sub\V_ZERO_archive.zip ($zipMB MB) + wersja.json ($numer, sha256 $($sha256.Substring(0,12))…)"
         } else { Warn "Brak $dstDir — pomijam." }
     }
 } else { Warn "Pominięto ZIP (-NoZip)." }
@@ -208,7 +250,7 @@ foreach ($s in $studiaZrodlowe) {
 
 Write-Host "`n🏛️ MINIATURYZACJA $Version ZAKOŃCZONA." -ForegroundColor Green
 Info "Distro:   $fileCount plików / $sizeMB MB"
-Info "ZIP:      $WebDir\public\V_ZERO_archive.zip"
+Info "ZIP:      $WebDir\public\V_ZERO_archive.zip (+ wersja.json $numer)"
 Info "Mirror:   $UsbLocal"
 if (-not $SkipUsb) { Info "Pendrive: $DriveDst" }
 Write-Host "  ➜ Pamiętaj: stronę otakos.wtf trzeba zdeployować osobno (push repo / rebuild)." -ForegroundColor DarkGray

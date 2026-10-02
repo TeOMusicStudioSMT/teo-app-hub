@@ -76,6 +76,7 @@ import * as Dyrygent       from './services/Dyrygent.js';
 import * as KuzniaSoup     from './services/KuzniaSoup.js';
 import * as ZwiadowcaHF    from './services/ZwiadowcaHF.js';
 import * as Porzadki       from './services/Porzadki.js';
+import * as Aktualizator   from './services/Aktualizator.js';
 import * as Glowny         from './services/Glowny.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
@@ -10476,6 +10477,23 @@ app.post('/api/zwiadowca/link', async (req, res) => {
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.get('/api/zwiadowca/sondaz', (_req, res) => res.json(ZwiadowcaHF.sondaz()));
+
+// ── 🔄 AKTUALIZATOR (services/Aktualizator.js) — węzeł sam pyta otakos.wtf / origin, czy jest nowsza Katedra ──
+// Sprawdzenie — każdy przy maszynie; zastosuj/cofnij — tylko maszyna (Straż). Zmiany działają po restarcie Katedry.
+Aktualizator.skonfiguruj({ katalog: process.cwd(), robocze: path.join(ANTIGRAVITY_DIR, 'aktualizacje'), szyna: Szyna });
+app.get('/api/aktualizacja/sprawdz', async (_req, res) => {
+    try { res.json({ success: true, ...(await Aktualizator.sprawdz()) }); }
+    catch (e) { res.status(502).json({ success: false, message: e.message, tryb: Aktualizator.tryb() }); }
+});
+app.post('/api/aktualizacja/zastosuj', async (_req, res) => {
+    try { res.json({ success: true, ...(await Aktualizator.zastosuj()) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/aktualizacja/stan', (_req, res) => res.json({ success: true, ...Aktualizator.stan() }));
+app.post('/api/aktualizacja/cofnij', async (_req, res) => {
+    try { res.json({ success: true, ...(await Aktualizator.cofnij()) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 
 // ── 🧹 PORZĄDKI NA DYSKU (services/Porzadki.js) — propozycje z rozmiarem i powodem; usuwa tylko zaznaczone ──
 Porzadki.skonfiguruj({
