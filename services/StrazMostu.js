@@ -86,6 +86,9 @@ export const SCIEZKI_TYLKO_LOKALNE = [
  */
 export const SCIEZKI_WIZYTOWKI = { dokladne: new Set(['/api/wizytowka']), prefiksy: ['/wizytowka/plik/', '/wizytowka/plakat/'] };
 export function czyWizytowka(req) {
+    // 💬 Skrzynka TOST (services/TostSiec.js): inne Katedry wrzucają tu koperty — szyfrowane, podpisane,
+    // nadawca sprawdzany w rejestrze otakos.wtf. Tylko POST tej jednej ścieżki.
+    if (req.method === 'POST' && req.path === '/api/tost/skrzynka') return true;
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
     const p = String(req.path || '');
     return SCIEZKI_WIZYTOWKI.dokladne.has(p) || SCIEZKI_WIZYTOWKI.prefiksy.some((x) => p.startsWith(x) && !p.slice(x.length).includes('/'));

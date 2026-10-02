@@ -185,6 +185,7 @@ import * as WarsztatUtworow from './services/WarsztatUtworow.js';
 import * as Teterhia3D from './services/Teterhia3D.js';
 import * as Wystawa from './services/Wystawa.js';
 import * as Wizytowka from './services/Wizytowka.js';
+import { utworzTost } from './services/TostSiec.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -8152,7 +8153,17 @@ app.get('/wystawa/plik/:id', cors({ origin: '*' }), async (req, res) => {
 
 // ── 🪪 WIZYTÓWKA — publiczna strona Katedry w sieci otakos.wtf (services/Wizytowka.js) ──
 // Straż przepuszcza bez klucza TYLKO GET /api/wizytowka i /wizytowka/plik|plakat/:id (czyWizytowka).
-Wizytowka.skonfiguruj({ katalog: ANTIGRAVITY_DIR, wystawa: Wystawa, tunel: () => Tunel.stanTunelu(), szyna: Szyna });
+// 💬 TOST między Katedrami (services/TostSiec.js) — kontakty z rejestru otakos.wtf, koperty E2E, kolejka gdy odbiorca offline
+const TostSiec = utworzTost({
+    katalog: ANTIGRAVITY_DIR,
+    nick: async () => (await Wizytowka.profil()).nick,
+    kluczEd: async () => (await Wizytowka.klucz()).publiczny,
+    podpisz: (t) => Wizytowka.podpiszTekst(t),
+    rejestr: process.env.OTAKOS_REJESTR_URL || 'https://otakos.wtf/api/katedry',
+    szyna: Szyna,
+});
+TostSiec.startPetli();
+Wizytowka.skonfiguruj({ katalog: ANTIGRAVITY_DIR, wystawa: Wystawa, tunel: () => Tunel.stanTunelu(), szyna: Szyna, tostKlucz: async () => (await TostSiec.kluczTost()).publiczny });
 Wizytowka.startPetli();
 app.get('/api/wizytowka', cors({ origin: '*' }), async (_req, res) => {
     try {
@@ -8174,6 +8185,16 @@ app.get('/wizytowka/plakat/:id', cors({ origin: '*' }), plikWizytowki((id) => Wi
 app.get('/api/wizytowka/profil', async (_req, res) => { try { res.json({ success: true, ...(await Wizytowka.profil()) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
 app.put('/api/wizytowka/profil', async (req, res) => { try { res.json({ success: true, ...(await Wizytowka.ustawProfil(req.body ?? {})) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 app.post('/api/wizytowka/meldunek', async (_req, res) => { try { res.json({ success: true, meldunek: await Wizytowka.meldunek() }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+// Skrzynka TOST — publiczna (Straż: tylko ten POST), reszta /api/tost/siec/* jak inne trasy (maszyna albo tunel z kluczem — StoL)
+app.post('/api/tost/skrzynka', cors({ origin: '*' }), async (req, res) => {
+    try { const w = await TostSiec.odbierz(req.body); return res.status(w.status).json({ wiadomosc: w.wiadomosc }); }
+    catch (e) { return res.status(500).json({ wiadomosc: e.message }); }
+});
+const tostOdp = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(400).json({ success: false, message: e.message }));
+app.get('/api/tost/siec/kontakty', (_req, res) => tostOdp(res, TostSiec.kontakty()));
+app.get('/api/tost/siec/rozmowy', (_req, res) => tostOdp(res, TostSiec.rozmowy().then((rozmowy) => ({ rozmowy }))));
+app.get('/api/tost/siec/rozmowa/:nick', (req, res) => tostOdp(res, TostSiec.rozmowa(req.params.nick).then((wiadomosci) => ({ wiadomosci }))));
+app.post('/api/tost/siec/wyslij', (req, res) => tostOdp(res, TostSiec.wyslij(req.body ?? {}).then((wiadomosc) => ({ wiadomosc }))));
 
 // ── 🧊🎮 TGS 3D: teren świata z planszy → Blender → .glb w public/assets/swiaty ──
 Teterhia3D.skonfiguruj({ szyna: Szyna });

@@ -31,6 +31,7 @@ let cfg = {
     rejestr: process.env.OTAKOS_REJESTR_URL || 'https://otakos.wtf/api/katedry',
     fetch: (...a) => fetch(...a),
     szyna: null,
+    tostKlucz: null,               // () => klucz publiczny X25519 TOST-a (services/TostSiec.js) — w wizytówce
 };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
 
@@ -63,9 +64,11 @@ export async function klucz() {
 /** Treść podpisu meldunku — ta sama funkcja musi być po stronie rejestru (otakos.wtf/server). */
 export const trescMeldunku = ({ nick, adres, czas }) => `otakos-meldunek\n${nick}\n${adres}\n${czas}`;
 
-export async function podpisz(dane) {
+export async function podpisz(dane) { return podpiszTekst(trescMeldunku(dane)); }
+/** Podpis dowolnej treści kluczem wizytówki (meldunek, koperty TOST). */
+export async function podpiszTekst(tekst) {
     const { prywatny } = await klucz();
-    return crypto.sign(null, Buffer.from(trescMeldunku(dane), 'utf8'), prywatny).toString('base64');
+    return crypto.sign(null, Buffer.from(tekst, 'utf8'), prywatny).toString('base64');
 }
 
 // ── Profil ───────────────────────────────────────────────────────────────────
@@ -122,7 +125,8 @@ export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     });
     const suno = (w.suno ?? []).map((s) => ({ typ: s.typ, id: s.id, url: s.url, tytul: s.tytul, opis: s.opis, embed: s.embed, okladka: s.okladka ?? null, sekundy: s.sekundy ?? null, utwory: (s.utwory ?? []).map((u) => ({ id: u.id, tytul: u.tytul, sekundy: u.sekundy ?? null, okladka: u.okladka ?? null, embed: u.embed, url: u.url })) }));
     publiczneId = ids;
-    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
+    const tost = cfg.tostKlucz ? await cfg.tostKlucz().catch(() => null) : null;
+    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
 }
 
 /** Ścieżka pliku wizytówki — tylko id z ostatnio zbudowanej wizytówki (nigdy ścieżka z URL-a). */
@@ -179,4 +183,4 @@ export function startPetli(ms = 60_000) {
     setTimeout(() => { void meldunek_().catch(() => {}); }, 5_000).unref?.();
 }
 
-export default { skonfiguruj, klucz, podpisz, trescMeldunku, profil, ustawProfil, publiczna, plik, plakat, meldunek, startPetli, NICK };
+export default { skonfiguruj, klucz, podpisz, podpiszTekst, trescMeldunku, profil, ustawProfil, publiczna, plik, plakat, meldunek, startPetli, NICK };
