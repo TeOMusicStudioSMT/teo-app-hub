@@ -121,7 +121,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onVisualAssistantO
             {/* 7. SIEĆ KATEDR — żywa mapa AGI (LIVE z mostu, same-origin) */}
             <div className="w-full">
                 <h2 className="text-lg font-bold text-emerald-300 mb-3 font-mono">🧠 {t('dash.network')}</h2>
-                <KatedraNeuralMap lang={lang} />
+                <KatedraNeuralMap lang={(['pl', 'en', 'it'] as const).find((l) => l === lang) ?? 'pl'} />
             </div>
         </div>
     );

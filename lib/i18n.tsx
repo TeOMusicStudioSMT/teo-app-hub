@@ -11,8 +11,9 @@
  *   <h1>{t('dash.network', 'Sieć Katedr')}</h1>
  */
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { detectLang, setLang as persistLang, Lang } from './locale';
+import { ustawJezyk } from './tlumaczDom';
 
 type Entry = { pl: string; en: string; it?: string };
 type Dict = Record<string, Entry>;
@@ -77,9 +78,14 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const t = useCallback((key: string, fallback?: string) => {
     const e = TR[key];
     if (!e) return fallback ?? key;
-    // it? → fallback en → pl → podany fallback → klucz (żaden język nie zostaje pusty)
-    return e[lang] ?? e.en ?? e.pl ?? fallback ?? key;
+    // Ręczny słownik (pl/en/it) wygrywa. Inny język → POLSKI oryginał, który przekłada Tłumacz (lib/tlumaczDom.ts):
+    // gdyby tu szedł angielski, Tłumacz dostawałby mieszankę języków źródłowych.
+    if (lang === 'it') return e.it ?? e.en ?? e.pl ?? fallback ?? key;
+    if (lang === 'en') return e.en ?? e.pl ?? fallback ?? key;
+    return e.pl ?? fallback ?? key;
   }, [lang]);
+  // 🌍 Tłumacz ekranu: pl/en/it z ręcznego słownika plus model dla reszty tekstów (cała Katedra jest pisana po polsku).
+  useEffect(() => { void ustawJezyk(lang); }, [lang]);
   return <Ctx.Provider value={{ lang, setLang, t }}>{children}</Ctx.Provider>;
 };
 

@@ -1951,7 +1951,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                 )}
 
                 {messages.map(msg => (
-                    <div key={msg.id}
+                    <div key={msg.id} data-bez-tlumaczenia
                         className={`flex ${msg.sender === 'human' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[85%] rounded-lg p-3 ${SENDER_STYLES[msg.sender]}`}>
 

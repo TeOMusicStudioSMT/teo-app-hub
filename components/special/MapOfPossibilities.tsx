@@ -435,7 +435,7 @@ const MapOfPossibilities: React.FC<MapOfPossibilitiesProps> = ({
       </div>
     </motion.div>
     <div style={{ marginTop: 16 }}>
-      <KatedraNeuralMap lang={detectLang()} />
+      <KatedraNeuralMap lang={(['pl', 'en', 'it'] as const).find((l) => l === detectLang()) ?? 'pl'} />
     </div>
     </>
   );
