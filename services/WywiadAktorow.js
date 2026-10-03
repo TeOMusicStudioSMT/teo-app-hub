@@ -44,11 +44,45 @@ export function prowadzacyZObsady(obsada = []) {
     return { ...PROWADZACY, imie: k.imie || PROWADZACY.imie, rola: k.rola || PROWADZACY.rola, kolor: k.kolor || PROWADZACY.kolor, zdjecie: k.zdjecie ?? null, glos: k.glos ?? null };
 }
 
+/**
+ * Język wywiadu (Suweren 2026-10-03: „możliwość zmiany wygenerowanego dialogu na angielski… bym mógł też globalnie
+ * tworzyć”): scenariusz od razu w języku, tłumaczenie gotowych kwestii, głos i plansza w tym samym języku.
+ */
+export const JEZYKI = {
+    pl: { nazwa: 'polski', piszesz: 'Piszesz po polsku', tytul: 'WYWIAD', udzial: 'z udziałem', bezGlosu: '(nagranie bez głosu — same napisy)' },
+    en: { nazwa: 'angielski', piszesz: 'Całą rozmowę piszesz PO ANGIELSKU (English) — kwestie po angielsku, imiona mówców i format bez zmian', tytul: 'INTERVIEW', udzial: 'featuring', bezGlosu: '(no voice — subtitles only)' },
+};
+export const jezykWywiadu = (j) => (JEZYKI[j] ? j : 'pl');
+
+/** Prośba do modelu o tłumaczenie kwestii — numerowane linie, żeby mówcy zostali na swoich miejscach. */
+export function promptTlumaczenia(kwestie, jezyk, film) {
+    const cel = JEZYKI[jezykWywiadu(jezyk)].nazwa;
+    const system = [
+        `Tłumaczysz dialog krótkiego wywiadu wideo na język: ${cel}. Zachowujesz ton i charakter każdej postaci, piszesz naturalnie, do wypowiedzenia na głos.`,
+        'Imiona własne, tytuły i nazwy (postaci, filmów, Katedry OtakOS, TeO) zostają bez zmian.',
+        'Odpowiadasz WYŁĄCZNIE liniami w formacie „N. przetłumaczona kwestia” — tyle linii, ile dostałeś, w tej samej kolejności, nic poza tym.',
+    ].join('\n');
+    const user = [film?.tytul ? `FILM: ${film.tytul}` : null, kwestie.map((k, i) => `${i + 1}. ${k.tekst}`).join('\n')].filter(Boolean).join('\n\n');
+    return { system, user };
+}
+
+/** Odpowiedź tłumacza → nowe kwestie (te same mówcy, ta sama kolejność). Brak którejś linii = błąd wprost. */
+export function odczytajTlumaczenie(surowe, kwestie) {
+    const mapa = new Map();
+    for (const linia of String(surowe ?? '').replace(/\r/g, '').split('\n')) {
+        const m = linia.match(/^\s*\**\s*(\d{1,2})\s*[.)\]:-]\s*(.+)$/);
+        if (m) mapa.set(Number(m[1]), m[2].replace(/\*\*|__|`/g, '').replace(/^["„“”'«»\s]+|["„“”'«»\s]+$/g, '').replace(/\s+/g, ' ').trim().slice(0, 400));
+    }
+    const brak = kwestie.map((_, i) => i + 1).filter((n) => !mapa.get(n));
+    if (brak.length) throw new Error(`Tłumacz pominął kwestie nr ${brak.slice(0, 6).join(', ')} — spróbuj ponownie albo innym modelem.`);
+    return kwestie.map((k, i) => ({ kto: k.kto, tekst: mapa.get(i + 1) }));
+}
+
 /** Prośba do modelu o scenariusz wywiadu. */
-export function promptWywiadu({ goscie, prowadzacy = PROWADZACY, film, kontekst = '', temat = '' }) {
+export function promptWywiadu({ goscie, prowadzacy = PROWADZACY, film, kontekst = '', temat = '', jezyk = 'pl' }) {
     const obsada = goscie.map((a) => `- ${a.imie.toUpperCase()}: ${a.rola || 'postać z filmu'}`).join('\n');
     const system = [
-        'Jesteś scenarzystą krótkiego wywiadu wideo Katedry OtakOS. Piszesz po polsku, żywo i konkretnie.',
+        `Jesteś scenarzystą krótkiego wywiadu wideo Katedry OtakOS. ${JEZYKI[jezykWywiadu(jezyk)].piszesz}, żywo i konkretnie.`,
         `Prowadzi ${prowadzacy.imie.toUpperCase()} (${prowadzacy.rola}). Goście to aktorzy, którzy mówią W SWOICH ROLACH — jako postaci z filmu — o filmie, w którym zagrali.`,
         'Fakty o filmie bierzesz WYŁĄCZNIE z materiału poniżej. Nie wymyślasz scen, nagród ani liczb, których tam nie ma. Uczucia, wspomnienia z planu w roli i interpretacje — tak.',
         'Format — każda kwestia w osobnej linii, nic poza tym:',
@@ -185,7 +219,8 @@ export function utworzWywiady(o) {
     }
 
     /** Krok 1: scenariusz od lokalnego modelu (gatunek `aktor`, potem Kronikarz, potem domyślny). */
-    async function przygotuj({ projekt = '', goscie: ids = [], temat = '', film: filmPodany = null } = {}) {
+    async function przygotuj({ projekt = '', goscie: ids = [], temat = '', film: filmPodany = null, jezyk: jezykZadany = 'pl' } = {}) {
+        const jezyk = jezykWywiadu(jezykZadany);
         if (!String(projekt).trim()) throw new Error('Wywiad dotyczy filmu z projektu — podaj projekt.');
         const obsada = await aktorzy();
         const prowadzacy = prowadzacyZObsady(obsada);
@@ -193,12 +228,12 @@ export function utworzWywiady(o) {
         if (!goscie.length) throw new Error('Wybierz co najmniej jednego aktora (najwyżej trzech).');
         const k = await cfg.kontekst(projekt).catch(() => ({}));
         const film = filmPodany?.tytul ? filmPodany : k?.film ?? { tytul: projekt };
-        const { system, user } = promptWywiadu({ goscie, prowadzacy, film, kontekst: k?.opis ?? '', temat });
+        const { system, user } = promptWywiadu({ goscie, prowadzacy, film, kontekst: k?.opis ?? '', temat, jezyk });
         const model = (await cfg.modelDla('aktor').catch(() => null)) ?? (await cfg.modelDla('kronikarz').catch(() => null));
         const { tekst, silnik } = await cfg.chat(model, system, user);
         const kwestie = odczytajScenariusz(tekst, { goscie, prowadzacy });
         const id = `w_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-        const w = { id, projekt, film, temat: String(temat).slice(0, 400), goscie: goscie.map((g) => g.id), kwestie, model: silnik ?? model ?? null, etap: 'scenariusz', utworzono: czas() };
+        const w = { id, projekt, film, temat: String(temat).slice(0, 400), goscie: goscie.map((g) => g.id), kwestie, jezyk, model: silnik ?? model ?? null, etap: 'scenariusz', utworzono: czas() };
         await pisz(plikWywiadu(id), w);
         nadaj(`napisał scenariusz wywiadu o „${film.tytul}” z ${goscie.map((g) => g.imie).join(', ')}`);
         return w;
@@ -214,6 +249,33 @@ export function utworzWywiady(o) {
         const { postep, ...zapis } = w;
         Object.assign(zapis, { kwestie: nowe.slice(0, 30), etap: 'scenariusz', plik: undefined, blad: undefined });
         await pisz(plikWywiadu(id), zapis);
+        return zapis;
+    }
+
+    /**
+     * Tłumaczenie gotowego dialogu (np. na angielski — wywiad dla świata). Mówcy i kolejność zostają; pierwsza
+     * wersja zostaje w `oryginal`, więc powrót do niej to `przetlumacz(id, {jezyk: oryginal.jezyk})` bez modelu.
+     */
+    async function przetlumacz(id, { jezyk: jezykZadany = 'en' } = {}) {
+        const w = await wczytajWywiad(id);
+        if (w.etap === 'nagrywa') throw new Error('Wywiad właśnie się nagrywa.');
+        const jezyk = jezykWywiadu(jezykZadany);
+        const obecny = jezykWywiadu(w.jezyk);
+        if (jezyk === obecny) throw new Error(`Wywiad już jest w języku: ${JEZYKI[jezyk].nazwa}.`);
+        const { postep, ...zapis } = w;
+        const oryginal = w.oryginal ?? { jezyk: obecny, kwestie: w.kwestie };
+        let kwestie, silnik = null;
+        if (oryginal.jezyk === jezyk) kwestie = oryginal.kwestie;   // powrót do pierwszej wersji — bez modelu
+        else {
+            const { system, user } = promptTlumaczenia(w.kwestie, jezyk, w.film);
+            const model = (await cfg.modelDla('aktor').catch(() => null)) ?? (await cfg.modelDla('kronikarz').catch(() => null));
+            const odp = await cfg.chat(model, system, user);
+            kwestie = odczytajTlumaczenie(odp.tekst, w.kwestie);
+            silnik = odp.silnik ?? model ?? null;
+        }
+        Object.assign(zapis, { kwestie, jezyk, oryginal, etap: 'scenariusz', plik: undefined, blad: undefined, ...(silnik ? { tlumacz: silnik } : {}) });
+        await pisz(plikWywiadu(id), zapis);
+        nadaj(`przetłumaczył wywiad o „${w.film?.tytul ?? w.projekt}” na ${JEZYKI[jezyk].nazwa}`);
         return zapis;
     }
 
@@ -257,8 +319,9 @@ export function utworzWywiady(o) {
                 const segmenty = [];
                 // Plansza tytułowa — mówi, kto gra i czy to nagranie bez głosu.
                 const goscieImiona = w.goscie.map((g) => mowca(g).imie).join(', ');
-                await fs.writeFile(path.join(praca, 't-imie.txt'), 'WYWIAD', 'utf8');
-                const linieTytulu = [...zawin(w.film?.tytul ?? w.projekt, 52, 2), `z udziałem: ${goscieImiona}`, ...(bezGlosu ? ['(nagranie bez głosu — same napisy)'] : [])];
+                const J = JEZYKI[jezykWywiadu(w.jezyk)];
+                await fs.writeFile(path.join(praca, 't-imie.txt'), J.tytul, 'utf8');
+                const linieTytulu = [...zawin(w.film?.tytul ?? w.projekt, 52, 2), `${J.udzial}: ${goscieImiona}`, ...(bezGlosu ? [J.bezGlosu] : [])];
                 const plikiTytulu = [];
                 for (const [i, l] of linieTytulu.entries()) { const n = `t-${i}.txt`; await fs.writeFile(path.join(praca, n), l, 'utf8'); plikiTytulu.push(n); }
                 await ffmpeg(argumentyKwestii({ obraz: null, kolor: prowadzacy.kolor, imiePlik: 't-imie.txt', liniePliki: plikiTytulu, czcionka: 'czcionka.ttf', czas: 3.5, audio: null, wyjscie: 'seg-000.mp4' }), praca);
@@ -269,7 +332,7 @@ export function utworzWywiady(o) {
                     wRobocie.set(id, { etap: `${m.imie}: ${bezGlosu ? 'kadr' : 'głos'}`, zrobione: i + 1, wszystkich: w.kwestie.length + 1 });
                     let audio = null, dl = czasBezGlosu(kw.tekst);
                     if (!bezGlosu) {
-                        const g = await cfg.mow({ tekst: kw.tekst, glos: m.glos ?? null }).catch((e) => { throw new Error(`Głos „${m.imie}”: ${e.message}`); });
+                        const g = await cfg.mow({ tekst: kw.tekst, glos: m.glos ?? null, jezyk: jezykWywiadu(w.jezyk) }).catch((e) => { throw new Error(`Głos „${m.imie}”: ${e.message}`); });
                         audio = `a-${String(i + 1).padStart(3, '0')}.${g.ext || 'wav'}`;
                         await fs.writeFile(path.join(praca, audio), g.audio);
                         const s = (await cfg.opisz(path.join(praca, audio)).catch(() => null))?.sekundy;
@@ -298,7 +361,7 @@ export function utworzWywiady(o) {
                     gotowy = 'wywiad-p.mp4';
                 }
                 const katMontazy = await cfg.katalogMontazy(w.projekt);
-                const cel = path.join(katMontazy, `wywiad_${slug(w.film?.tytul || w.projekt) || 'film'}_${id.slice(2)}.mp4`);
+                const cel = path.join(katMontazy, `wywiad_${slug(w.film?.tytul || w.projekt) || 'film'}${jezykWywiadu(w.jezyk) === 'pl' ? '' : `_${jezykWywiadu(w.jezyk)}`}_${id.slice(2)}.mp4`);
                 await fs.copyFile(path.join(praca, gotowy), cel);
                 const o2 = await cfg.opisz(cel).catch(() => null);
                 Object.assign(zapis, { etap: 'gotowy', plik: cel, sekundy: o2?.sekundy ?? null, nagrano: czas() });
@@ -313,7 +376,7 @@ export function utworzWywiady(o) {
         return { ...zapis, postep: wRobocie.get(id) };
     }
 
-    return { aktorzy, zapiszAktora, usunAktora, wywiady, wywiad: wczytajWywiad, przygotuj, zmien, nagraj };
+    return { aktorzy, zapiszAktora, usunAktora, wywiady, wywiad: wczytajWywiad, przygotuj, zmien, przetlumacz, nagraj };
 }
 
-export default { utworzWywiady, normalizujGlos, prowadzacyZObsady, promptWywiadu, odczytajScenariusz, argumentyKwestii, czasBezGlosu, PROWADZACY, slug };
+export default { utworzWywiady, normalizujGlos, prowadzacyZObsady, promptTlumaczenia, odczytajTlumaczenie, JEZYKI, promptWywiadu, odczytajScenariusz, argumentyKwestii, czasBezGlosu, PROWADZACY, slug };
