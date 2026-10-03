@@ -65,7 +65,8 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/kuznia-soup/',
     // 📺 Konto YouTube (klient OAuth, łączenie, rozłączanie) i skarbiec kluczy — tylko przy maszynie.
     // Publikacje (/api/youtube/publikacje*) telefon może zatwierdzać z kluczem (Izba Akceptacji).
-    '/api/impresario/youtube/', '/api/impresario/secrets/',   // trening modeli trwa godziny na karcie graficznej i pisze po dysku — tylko przy maszynie
+    '/api/impresario/youtube/', '/api/impresario/secrets/',
+    '/api/pliki/upusc',   // zapis upuszczonego pliku do katalogu projektu — tylko przy maszynie   // trening modeli trwa godziny na karcie graficznej i pisze po dysku — tylko przy maszynie
     '/api/zwiadowca/szukaj', '/api/zwiadowca/kandydat/', '/api/zwiadowca/link',   // zwiad i pobieranie modeli (GB na dysk) — decyzja przy maszynie
     '/api/porzadki/usun',   // kasowanie plików i modeli — tylko przy maszynie
     '/api/glowny/',   // Główny (Claude Code) zmienia pliki Katedry — rozmowa i zgody tylko przy maszynie
