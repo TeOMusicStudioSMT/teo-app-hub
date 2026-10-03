@@ -181,3 +181,22 @@ test('publikacja: kanał domyślny, zmiana przed ✓, projekt zapamiętuje kana�
     kanaly.kanaly = kanaly.kanaly.filter((k) => k.id !== 'UCb');
     await assert.rejects(pub.zatwierdz(p2.id), /nie jest już połączony/);
 });
+
+test('publikacja po angielsku: Kronikarz dostaje prośbę PO ANGIELSKU, etykiety formatu bez zmian; domyślnie po polsku', async () => {
+    const { systemKronikarza, SYSTEM_KRONIKARZA } = await import('../services/PublikacjeYouTube.js');
+    assert.match(systemKronikarza('en'), /PO ANGIELSKU/);
+    assert.match(systemKronikarza('en'), /TYTUŁ:[\s\S]*OPIS:[\s\S]*TAGI:/);
+    assert.equal(SYSTEM_KRONIKARZA, systemKronikarza('pl'));
+    const katalog = fs.mkdtempSync(path.join(os.tmpdir(), 'pub-en-'));
+    const plik = path.join(katalog, 'wywiad_elara_en_abc123.mp4');
+    fs.writeFileSync(plik, 'wideo');
+    const systemy = [];
+    const pub = utworzPublikacje({
+        katalog, impresariat: { enqueuePublication: async () => ({}), getQueue: async () => [] },
+        pisz: async (sys) => { systemy.push(sys); return { tekst: 'TYTUŁ: The Architecture of Whispers — Interview\nOPIS:\nKael and Elara talk.\nTAGI: interview, otakos' }; },
+    });
+    const p = await pub.przygotuj({ plik, nazwa: 'Elara — interview', jezyk: 'en' });
+    assert.equal(p.jezyk, 'en');
+    assert.equal(p.tytul, 'The Architecture of Whispers — Interview');
+    assert.match(systemy[0], /PO ANGIELSKU/);
+});
