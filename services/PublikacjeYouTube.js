@@ -25,15 +25,22 @@ import path from 'path';
 export const ETAPY = ['przygotowuje', 'do_akceptacji', 'wysylanie', 'prywatna', 'opublikowana', 'odrzucona', 'blad'];
 const WIDEO = /\.(mp4|mov|webm)$/i;
 
-export const SYSTEM_KRONIKARZA = [
+/**
+ * Prośba do Kronikarza w języku filmu (Suweren 2026-10-03: wywiady po angielsku „bym mógł też globalnie tworzyć”).
+ * Etykiety TYTUŁ / OPIS / TAGI zostają po polsku — to format dla parsera, nie treść.
+ */
+export const systemKronikarza = (jezyk = 'pl') => [
     'Jesteś Kronikarz — pisarz Katedry OtakOS. Przygotowujesz film do wysłania na YouTube.',
-    'Piszesz po polsku, konkretnie, bez korporacyjnych formułek i bez wymyślania faktów spoza materiału.',
+    jezyk === 'en'
+        ? 'Tytuł, opis i tagi piszesz PO ANGIELSKU (English) — dla widzów z całego świata; konkretnie, bez korporacyjnych formułek i bez wymyślania faktów spoza materiału. Etykiety formatu zostają bez zmian.'
+        : 'Piszesz po polsku, konkretnie, bez korporacyjnych formułek i bez wymyślania faktów spoza materiału.',
     'Odpowiedz DOKŁADNIE w tym formacie (bez niczego przed i po):',
     'TYTUŁ: <do 90 znaków, chwytliwy, bez cudzysłowów>',
     'OPIS:',
     '<2–4 krótkie akapity: o czym jest film, nastrój, kontekst projektu; na końcu jedna linia o Katedrze OtakOS>',
     'TAGI: <8–15 tagów po przecinku, małymi literami>',
 ].join('\n');
+export const SYSTEM_KRONIKARZA = systemKronikarza('pl');
 
 /** Odpowiedź Kronikarza → { tytul, opis, tagi }; rzuca, gdy model nie trzymał formatu. */
 export function odczytajMetadane(tekst) {
@@ -92,7 +99,7 @@ export function utworzPublikacje(o) {
 
     /**
      * Nowa publikacja: Kronikarz pisze metadane od razu (lokalny model — sekundy, nie godziny).
-     * @param {{ plik:string, nazwa:string, kontekst?:string, wystawaId?:string|null, zrodlo?:object }} z
+     * @param {{ plik:string, nazwa:string, kontekst?:string, wystawaId?:string|null, zrodlo?:object, jezyk?:'pl'|'en' }} z
      */
     async function przygotuj(z) {
         if (!z?.plik || !WIDEO.test(z.plik)) throw new Error('YouTube przyjmie tylko plik wideo (.mp4 / .mov / .webm).');
@@ -100,12 +107,12 @@ export function utworzPublikacje(o) {
         const l = await wczytaj();
         const otwarta = l.find((x) => x.plik === z.plik && ['przygotowuje', 'do_akceptacji', 'wysylanie', 'prywatna'].includes(x.etap));
         if (otwarta) return otwarta;   // drugi klik nie robi drugiego filmu na kanale
-        const p = { id: `yt_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`, etap: 'przygotowuje', plik: z.plik, nazwa: String(z.nazwa ?? path.basename(z.plik)).slice(0, 160), wystawaId: z.wystawaId ?? null, zrodlo: z.zrodlo ?? null, ...(await kanalDla(z.zrodlo?.projekt)), utworzono: czas(), autor: 'Kronikarz' };
+        const p = { id: `yt_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`, etap: 'przygotowuje', plik: z.plik, nazwa: String(z.nazwa ?? path.basename(z.plik)).slice(0, 160), wystawaId: z.wystawaId ?? null, zrodlo: z.zrodlo ?? null, ...(await kanalDla(z.zrodlo?.projekt)), utworzono: czas(), autor: 'Kronikarz', jezyk: z.jezyk === 'en' ? 'en' : 'pl' };
         l.unshift(p);
         await zapisz();
         try {
             const prompt = `Film: ${p.nazwa}\nPlik: ${path.basename(p.plik)}\n${z.kontekst ? `\nMateriał o filmie (jedyne źródło faktów):\n${String(z.kontekst).slice(0, 6000)}` : '\nBrak dodatkowego materiału — opieraj się na nazwie, nie zmyślaj szczegółów fabuły.'}`;
-            const { tekst, silnik } = await cfg.pisz(SYSTEM_KRONIKARZA, prompt);
+            const { tekst, silnik } = await cfg.pisz(systemKronikarza(p.jezyk), prompt);
             Object.assign(p, odczytajMetadane(tekst), { model: silnik ?? null, etap: 'do_akceptacji', blad: null });
             nadaj(`przygotował publikację „${p.tytul}” — czeka na ✓ Suwerena w Izbie`);
         } catch (e) {

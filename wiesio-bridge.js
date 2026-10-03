@@ -14128,7 +14128,7 @@ app.get('/api/youtube/publikacje', (_req, res) => ytOdp(res, PublikacjeYT.sprawd
 /** { wystawaId } — film z Wystawy, albo { projekt, odcinekId } — odcinek z Biblioteki. Kronikarz pisze od razu. */
 app.post('/api/youtube/publikacje/przygotuj', async (req, res) => {
     try {
-        const { wystawaId = '', projekt = '', odcinekId = '', plik = '' } = req.body ?? {};
+        const { wystawaId = '', projekt = '', odcinekId = '', plik = '', jezyk: jezykZadany = '' } = req.body ?? {};
         let z;
         if (plik) {
             // 🎬 Gotowy produkt z Montażowni (TeO Story Studio) — tylko z katalogu montaży projektu.
@@ -14136,7 +14136,9 @@ app.post('/api/youtube/publikacje/przygotuj', async (req, res) => {
             const katalog = await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt);
             const abs = path.resolve(String(plik));
             if (!abs.toLowerCase().startsWith(path.resolve(katalog).toLowerCase() + path.sep)) throw new Error('Do publikacji idzie gotowy film z katalogu montaży tego projektu.');
-            z = { plik: abs, nazwa: `${projekt} — ${path.basename(abs).replace(/\.[^.]+$/, '').replace(/_[a-z0-9]{6,}$/i, '').replace(/[_-]+/g, ' ')}`, zrodlo: { projekt }, kontekst: `Projekt: ${projekt}\nFilm z montażu: ${path.basename(abs)}` };
+            // Wywiad po angielsku (`wywiad_…_en_<id>.mp4`) → Kronikarz pisze tytuł i opis po angielsku; jawne `jezyk` wygrywa.
+            const jezyk = jezykZadany === 'en' || (!jezykZadany && /_en_[a-z0-9]{6,}\.[^.]+$/i.test(path.basename(abs))) ? 'en' : 'pl';
+            z = { plik: abs, jezyk, nazwa: `${projekt} — ${path.basename(abs).replace(/\.[^.]+$/, '').replace(/_[a-z0-9]{6,}$/i, '').replace(/[_-]+/g, ' ')}`, zrodlo: { projekt }, kontekst: `Projekt: ${projekt}\nFilm z montażu: ${path.basename(abs)}` };
         } else if (wystawaId) {
             const w = await Wystawa.zbierz();
             const f = w.filmy.find((x) => x.id === wystawaId);
