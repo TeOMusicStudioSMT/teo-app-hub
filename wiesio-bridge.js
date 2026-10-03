@@ -13953,14 +13953,15 @@ app.post('/api/impresario/secrets/youtube', async (req, res) => {
 // Zastępuje dawne /api/auth/google (sam JSON z TODO) i /api/auth/google/simulate (atrapa „połączono” bez tokenu).
 const KontoYouTube = utworzKontoYouTube({
     sekrety: () => ImpresarioService.getInstance().youtubeSekrety(),
-    zapiszToken: (t) => ImpresarioService.getInstance().zapiszTokenYouTube(t),
+    zapiszToken: (t, kanal) => ImpresarioService.getInstance().zapiszKontoYouTube(t, kanal),
     adresMostu: `http://127.0.0.1:${PORT}`,
 });
 const PublikacjeYT = utworzPublikacje({
     katalog: ANTIGRAVITY_DIR,
     pisz: async (system, prompt) => piszModelem(await ModeleAgentow.modelDla('kronikarz').catch(() => null), system, prompt),
     impresariat: ImpresarioService.getInstance(),
-    statusFilmu: (id) => KontoYouTube.statusFilmu(id),
+    statusFilmu: (id, kanalId) => KontoYouTube.statusFilmu(id, kanalId),
+    kanaly: () => KontoYouTube.kanaly(),
     naWystawe: (filmId, url) => Wystawa.ustawYouTube({ filmId, url }),
     gotowyYouTube: async () => (await ImpresarioService.getInstance().getYouTubeSecretsStatus()).allPresent,
     szyna: Szyna,
@@ -13989,7 +13990,11 @@ app.get(ZWROT_YOUTUBE, async (req, res) => {
         return strona('#86efac', `✓ YouTube połączony${w.kanal ? ` z kanałem <b>${String(w.kanal.nazwa).replace(/</g, '&lt;')}</b>` : ''}.`);
     } catch (e) { return strona('#fca5a5', `⚠ ${String(e.message).replace(/</g, '&lt;')}`); }
 });
-app.post('/api/impresario/youtube/rozlacz', (_req, res) => ytOdp(res, ImpresarioService.getInstance().rozlaczYouTube()));
+// { kanalId } = jeden kanał; bez — wszystkie
+app.post('/api/impresario/youtube/rozlacz', (req, res) => ytOdp(res, ImpresarioService.getInstance().rozlaczYouTube(typeof req.body?.kanalId === 'string' ? req.body.kanalId : null)));
+app.post('/api/impresario/youtube/domyslny', (req, res) => ytOdp(res, ImpresarioService.getInstance().ustawDomyslnyYouTube(String(req.body?.kanalId ?? ''))));
+// Lista kanałów bez tokenów — także dla telefonu (wybór kanału przy ✓ w Izbie)
+app.get('/api/youtube/kanaly', (_req, res) => ytOdp(res, KontoYouTube.kanaly(), 500));
 
 app.get('/api/youtube/publikacje', (_req, res) => ytOdp(res, PublikacjeYT.sprawdz().then((lista) => ({ publikacje: lista })), 500));
 /** { wystawaId } — film z Wystawy, albo { projekt, odcinekId } — odcinek z Biblioteki. Kronikarz pisze od razu. */
