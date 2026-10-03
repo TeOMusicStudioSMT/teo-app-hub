@@ -15,7 +15,7 @@ test('Połącz z YouTube: adres zgody z PKCE i state; zwrot sprawdza state, wymi
     const wymiany = [];
     const konto = utworzKontoYouTube({
         sekrety: async () => skarbiec,
-        zapiszToken: async (t) => { skarbiec.REFRESH_TOKEN = t; },
+        zapiszToken: async (t, k) => { skarbiec.KONTA = [...(skarbiec.KONTA ?? []).filter((x) => x.id !== k.id), { ...k, token: t }]; skarbiec.DOMYSLNY ??= k.id; },
         fetch: async (url, init = {}) => {
             if (url === 'https://oauth2.googleapis.com/token') { const b = new URLSearchParams(init.body); wymiany.push(b); return odp(200, { access_token: 'AT', refresh_token: 'RT-1' }); }
             if (url.includes('/channels?')) return odp(200, { items: [{ id: 'UCabc', snippet: { title: 'Art Of Soul TV', customUrl: '@artofsoultv' } }] });
@@ -26,12 +26,13 @@ test('Połącz z YouTube: adres zgody z PKCE i state; zwrot sprawdza state, wymi
     assert.equal(u.searchParams.get('redirect_uri'), 'http://127.0.0.1:3001/api/impresario/youtube/zwrot');
     assert.equal(u.searchParams.get('code_challenge_method'), 'S256');
     assert.equal(u.searchParams.get('access_type'), 'offline');
+    assert.match(u.searchParams.get('prompt'), /select_account/, 'drugi kanał = wybór innego konta Google');
     assert.match(u.searchParams.get('scope'), /youtube\.upload/);
     const state = u.searchParams.get('state');
 
     await assert.rejects(konto.przyjmijZwrot({ code: 'k', state: 'podrzucony' }), /nieważny/);
     const w = await konto.przyjmijZwrot({ code: 'KOD', state });
-    assert.equal(skarbiec.REFRESH_TOKEN, 'RT-1');
+    assert.deepEqual(skarbiec.KONTA.map((k) => [k.id, k.token]), [['UCabc', 'RT-1']]);
     assert.equal(w.kanal.nazwa, 'Art Of Soul TV');
     // weryfikator PKCE pasuje do wyzwania z adresu zgody
     const ver = wymiany[0].get('code_verifier');
@@ -43,7 +44,7 @@ test('Połącz z YouTube: adres zgody z PKCE i state; zwrot sprawdza state, wymi
 test('bez klienta OAuth nie ma adresu zgody; wygasły token mówi, co zrobić', async () => {
     await assert.rejects(utworzKontoYouTube({ sekrety: async () => ({}), zapiszToken: async () => {} }).adresZgody(), /CLIENT_ID i CLIENT_SECRET/);
     const k = utworzKontoYouTube({ sekrety: async () => ({ CLIENT_ID: 'a', CLIENT_SECRET: 'b', REFRESH_TOKEN: 'r' }), zapiszToken: async () => {}, fetch: async () => odp(400, { error: 'invalid_grant' }) });
-    await assert.rejects(k.statusFilmu('abcdefghijk'), /Połącz z YouTube/);
+    await assert.rejects(k.statusFilmu('abcdefghijk'), /połącz ten kanał ponownie/);
     const s = await k.stan();
     assert.equal(s.polaczony, true);
     assert.match(s.blad, /wygasł/);
@@ -132,4 +133,51 @@ test('bez połączenia YouTube nie ma ✓; nieudana wysyłka i odrzucenie mówi�
     const b = (await s2.pub.wszystkie())[0];
     assert.equal(b.etap, 'blad');
     assert.match(b.blad, /wygasł/);
+});
+
+test('wiele kanałów: każdy z własnym tokenem; status filmu pyta tokenem jego kanału; stary pojedynczy token przechodzi na listę', async () => {
+    const skarbiec = { CLIENT_ID: 'id.apps.googleusercontent.com', CLIENT_SECRET: 's', REFRESH_TOKEN: 'STARY' };
+    const uzyte = [];
+    const konto = utworzKontoYouTube({
+        sekrety: async () => skarbiec,
+        zapiszToken: async (t, k) => { skarbiec.KONTA = [...(skarbiec.KONTA ?? []).filter((x) => x.id !== k.id), { ...k, token: t }]; skarbiec.DOMYSLNY ??= k.id; },
+        fetch: async (url, init = {}) => {
+            if (url === 'https://oauth2.googleapis.com/token') { const rt = new URLSearchParams(init.body).get('refresh_token'); uzyte.push(rt); return odp(200, { access_token: `AT-${rt}` }); }
+            const at = init.headers?.Authorization;
+            if (url.includes('/channels?')) return odp(200, { items: [{ id: at === 'Bearer AT-STARY' ? 'UCstary' : 'UCinny', snippet: { title: at === 'Bearer AT-STARY' ? 'TeO Univers Studio' : 'Drugi' } }] });
+            if (url.includes('/videos?')) return odp(200, { items: [{ status: { privacyStatus: at === 'Bearer AT-RT-2' ? 'unlisted' : 'private', uploadStatus: 'processed' } }] });
+            return odp(404, {});
+        },
+    });
+    const s = await konto.stan();
+    assert.deepEqual(s.kanaly.map((k) => k.nazwa), ['TeO Univers Studio'], 'stary token przeniesiony na listę z nazwą kanału');
+    assert.equal(s.domyslny, 'UCstary');
+    skarbiec.KONTA.push({ id: 'UCdrugi', nazwa: 'Drugi', token: 'RT-2' });
+    assert.equal((await konto.statusFilmu('abcdefghijk', 'UCdrugi')).widocznosc, 'unlisted');
+    assert.equal(uzyte.at(-1), 'RT-2', 'token kanału, na który poszedł film');
+    assert.equal((await konto.statusFilmu('abcdefghijk')).widocznosc, 'private', 'bez kanału = domyślny');
+    await assert.rejects(konto.statusFilmu('abcdefghijk', 'UCnieznany'), /nie jest połączony/);
+});
+
+test('publikacja: kanał domyślny, zmiana przed ✓, projekt zapamiętuje kanał; rozłączony kanał blokuje ✓', async () => {
+    const s = swiat();
+    const kanaly = { domyslny: 'UCa', kanaly: [{ id: 'UCa', nazwa: 'Główny' }, { id: 'UCb', nazwa: 'Projekt X' }] };
+    const katalog = s.katalog;
+    const pub = utworzPublikacje({
+        katalog, pisz: async () => ({ tekst: 'TYTUŁ: T\nOPIS:\nO.\nTAGI: a' }),
+        impresariat: { enqueuePublication: async (t, a, pl, f, o) => { const j = { id: `j${s.kolejka.length}`, status: 'PENDING', ...o }; s.kolejka.push(j); return j; }, getQueue: async () => s.kolejka },
+        statusFilmu: async () => ({ istnieje: true, widocznosc: 'unlisted' }), naWystawe: async () => {}, gotowyYouTube: async () => true,
+        kanaly: async () => kanaly,
+    });
+    const p = await pub.przygotuj({ plik: s.plik, nazwa: 'odc 1', zrodlo: { projekt: 'Serial' } });
+    assert.equal(p.kanalId, 'UCa');
+    await assert.rejects(pub.zmien(p.id, { kanalId: 'UCobcy' }), /nie jest połączony/);
+    await pub.zmien(p.id, { kanalId: 'UCb' });
+    await pub.zatwierdz(p.id);
+    assert.equal(s.kolejka[0].kanalId, 'UCb');
+    const plik2 = path.join(katalog, 'odc2.mp4'); fs.writeFileSync(plik2, 'w');
+    const p2 = await pub.przygotuj({ plik: plik2, nazwa: 'odc 2', zrodlo: { projekt: 'Serial' } });
+    assert.deepEqual([p2.kanalId, p2.kanalNazwa], ['UCb', 'Projekt X'], 'następny odcinek projektu idzie na jego kanał');
+    kanaly.kanaly = kanaly.kanaly.filter((k) => k.id !== 'UCb');
+    await assert.rejects(pub.zatwierdz(p2.id), /nie jest już połączony/);
 });

@@ -137,6 +137,7 @@ class ImpresarioService {
             tagi:             Array.isArray(opcje.tagi) ? opcje.tagi.map(String).filter(Boolean).slice(0, 30) : null,
             widocznosc:       WIDOCZNOSCI.includes(opcje.widocznosc) ? opcje.widocznosc : 'unlisted',
             publikacjaId:     opcje.publikacjaId ?? null,
+            kanalId:          typeof opcje.kanalId === 'string' ? opcje.kanalId : null,
             createdAt:        new Date().toISOString(),
             last_updated:     new Date().toISOString(),
         };
@@ -271,7 +272,16 @@ class ImpresarioService {
 
         // ── 1. Walidacja skarbca ──────────────────────────────────────────────
         const secrets  = await this._readSecrets();
-        const yt       = secrets?.youtube ?? {};
+        const yt       = { ...(secrets?.youtube ?? {}) };
+        // Wiele kanałów (2026-10-03): token kanału z zadania, inaczej domyślny.
+        const konta    = Array.isArray(yt.KONTA) ? yt.KONTA : [];
+        const konto    = task.kanalId ? konta.find(k => k.id === task.kanalId) : (konta.find(k => k.id === yt.DOMYSLNY) ?? konta[0]);
+        if (task.kanalId && !konto) {
+            const msg = `[YouTube] Kanał ${task.kanalId} nie jest już połączony z Katedrą — połącz go ponownie albo wybierz inny kanał.`;
+            await this._failTask(task.id, msg);
+            return { success: false, reason: 'NO_CHANNEL', message: msg };
+        }
+        if (konto?.token) yt.REFRESH_TOKEN = konto.token;
         const missing  = ['CLIENT_ID', 'CLIENT_SECRET', 'REFRESH_TOKEN']
             .filter(k => !yt[k]?.trim());
 
@@ -669,6 +679,8 @@ class ImpresarioService {
             _INSTRUKCJA: 'Uzupełnij pola kluczami API. Ten plik NIE MOŻE trafić do repozytorium (jest w .gitignore).',
             ...current,
             youtube: {
+                // kanały (KONTA, DOMYSLNY) zostają — chyba że zmienił się klient OAuth (ich tokeny przestają działać)
+                ...(nowyKlient ? {} : current.youtube ?? {}),
                 CLIENT_ID:     clientId?.trim()     || current.youtube?.CLIENT_ID     || '',
                 CLIENT_SECRET: clientSecret?.trim() || current.youtube?.CLIENT_SECRET || '',
                 // Token odświeżania należy do klienta OAuth — nowy klient = stary token nieważny.
@@ -693,7 +705,8 @@ class ImpresarioService {
     // Sprawdza czy klucze YouTube są uzupełnione (bez rzucania wyjątku)
     async getYouTubeSecretsStatus() {
         const secrets = await this._readSecrets();
-        const yt = secrets?.youtube ?? {};
+        const yt = { ...(secrets?.youtube ?? {}) };
+        if (!yt.REFRESH_TOKEN?.trim() && Array.isArray(yt.KONTA) && yt.KONTA.some(k => k?.token)) yt.REFRESH_TOKEN = 'konta';
         const fields = ['CLIENT_ID', 'CLIENT_SECRET', 'REFRESH_TOKEN'];
         const filled = fields.filter(k => yt[k]?.trim());
         return {
@@ -708,22 +721,47 @@ class ImpresarioService {
         return (await this._readSecrets())?.youtube ?? {};
     }
 
-    // Token odświeżania z „Połącz z YouTube” → skarbiec + vault „połączono”
-    async zapiszTokenYouTube(refreshToken) {
-        const w = await this.saveYouTubeSecrets(undefined, undefined, refreshToken);
-        await this.updateVaultMetadata('youtube', w.missingFields.length === 0, { auth_method: 'oauth_loopback', auth_timestamp: new Date().toISOString() });
-        return w;
-    }
+    // ── Kanały YouTube (2026-10-03, Suweren: „a co jak mam wiele kanałów…”) ──
+    // Każde „Połącz” = jeden kanał (Google pyta o konto i kanał marki) z własnym tokenem w KONTA;
+    // DOMYSLNY = kanał bez wyboru; REFRESH_TOKEN zostaje tokenem domyślnego (zgodność wstecz).
 
-    // Rozłącz: kasuje token odświeżania (klient OAuth zostaje)
-    async rozlaczYouTube() {
+    async _zapiszYouTube(zmiana) {
         await this._ensureDir();
         const current = await this._readSecrets();
-        const updated = { ...current, youtube: { ...(current.youtube ?? {}), REFRESH_TOKEN: '' } };
-        await fs.writeFile(SECRETS_TEMP, JSON.stringify(updated, null, 2), 'utf8');
+        const yt = { ...(current.youtube ?? {}) };
+        let konta = Array.isArray(yt.KONTA) ? [...yt.KONTA] : [];
+        konta = zmiana(konta, yt) ?? konta;
+        if (!konta.some(k => k.id === yt.DOMYSLNY)) yt.DOMYSLNY = konta[0]?.id ?? null;
+        yt.KONTA = konta;
+        yt.REFRESH_TOKEN = konta.find(k => k.id === yt.DOMYSLNY)?.token ?? '';
+        await fs.writeFile(SECRETS_TEMP, JSON.stringify({ ...current, youtube: yt }, null, 2), 'utf8');
         await fs.rename(SECRETS_TEMP, SECRETS_FILE);
-        await this.updateVaultMetadata('youtube', false, { auth_method: null });
-        return { ok: true };
+        await this.updateVaultMetadata('youtube', konta.length > 0, { auth_method: konta.length ? 'oauth_loopback' : null, kanalow: konta.length });
+        return { kanaly: konta.map(({ id, nazwa, adres, polaczono }) => ({ id, nazwa, adres, polaczono })), domyslny: yt.DOMYSLNY };
+    }
+
+    // Token z „Połącz z YouTube” dla kanału (ten sam kanał drugi raz = nowy token, bez duplikatu)
+    async zapiszKontoYouTube(refreshToken, kanal) {
+        if (!refreshToken?.trim() || !kanal?.id) throw new Error('Brak tokenu albo kanału.');
+        return this._zapiszYouTube((konta) => [
+            ...konta.filter(k => k.id !== kanal.id),
+            { id: kanal.id, nazwa: kanal.nazwa ?? '', adres: kanal.adres ?? '', token: refreshToken.trim(), polaczono: new Date().toISOString() },
+        ]);
+    }
+
+    async ustawDomyslnyYouTube(kanalId) {
+        return this._zapiszYouTube((konta, yt) => {
+            if (!konta.some(k => k.id === kanalId)) throw new Error('Nie ma takiego połączonego kanału.');
+            yt.DOMYSLNY = kanalId;
+        });
+    }
+
+    // Rozłącz jeden kanał (albo wszystkie, gdy bez id) — token znika z Katedry
+    async rozlaczYouTube(kanalId = null) {
+        return this._zapiszYouTube((konta, yt) => {
+            if (!kanalId) { yt.DOMYSLNY = null; return []; }
+            return konta.filter(k => k.id !== kanalId);
+        });
     }
 
     // Skarbiec sekretów — nigdy nie rzuca wyjątku (graceful degradation)

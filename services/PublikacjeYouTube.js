@@ -15,6 +15,9 @@
  *        Wystawę, bo by nie zagrał; Suweren zmienia widoczność w YouTube Studio, a następne
  *        sprawdzenie samo dokończy.
  * Plik: `_OtakOs_Wymiar/media/publikacje-youtube.json`.
+ *
+ * Kanał (wiele kanałów, 2026-10-03): publikacja dostaje kanał projektu (ten, który Suweren wybrał przy
+ * ostatnim ✓ tego projektu — `kanaly-projektow.json`), a bez niego — domyślny. Suweren zmienia go przed ✓.
  */
 import fs from 'fs/promises';
 import path from 'path';
@@ -45,14 +48,25 @@ export function odczytajMetadane(tekst) {
 /**
  * @param {{ katalog:string, pisz:(system:string, prompt:string)=>Promise<{tekst:string, silnik?:string}>,
  *   impresariat:{ enqueuePublication:Function, getQueue:()=>Promise<any[]> },
- *   statusFilmu:(id:string)=>Promise<{istnieje:boolean, widocznosc?:string}>,
+ *   statusFilmu:(id:string, kanalId?:string|null)=>Promise<{istnieje:boolean, widocznosc?:string}>,
+ *   kanaly?:()=>Promise<{ domyslny:string|null, kanaly:{id:string,nazwa:string}[] }>,
  *   naWystawe:(filmId:string, url:string)=>Promise<any>, gotowyYouTube:()=>Promise<boolean>,
  *   szyna?:any, teraz?:()=>number }} o
  */
 export function utworzPublikacje(o) {
     const cfg = { teraz: () => Date.now(), ...o };
     const PLIK = path.join(cfg.katalog, 'media', 'publikacje-youtube.json');
+    const PLIK_KANALOW = path.join(cfg.katalog, 'media', 'kanaly-projektow.json');
     let lista = null, zapis = Promise.resolve();
+    const kanalyKatedry = async () => (cfg.kanaly ? await cfg.kanaly().catch(() => null) : null) ?? { domyslny: null, kanaly: [] };
+    async function kanalyProjektow() { try { return JSON.parse(await fs.readFile(PLIK_KANALOW, 'utf8')) ?? {}; } catch { return {}; } }
+    /** Kanał dla projektu: zapamiętany (jeśli dalej połączony) → domyślny. */
+    async function kanalDla(projekt) {
+        const { domyslny, kanaly } = await kanalyKatedry();
+        const zap = projekt ? (await kanalyProjektow())[projekt] : null;
+        const k = kanaly.find((x) => x.id === zap) ?? kanaly.find((x) => x.id === domyslny) ?? kanaly[0] ?? null;
+        return k ? { kanalId: k.id, kanalNazwa: k.nazwa } : { kanalId: null, kanalNazwa: null };
+    }
     const czas = () => new Date(cfg.teraz()).toISOString();
     const nadaj = (tresc) => cfg.szyna?.nadaj?.({ agent: 'Kronikarz', rodzaj: 'praca', tresc })?.catch?.(() => {});
 
@@ -86,7 +100,7 @@ export function utworzPublikacje(o) {
         const l = await wczytaj();
         const otwarta = l.find((x) => x.plik === z.plik && ['przygotowuje', 'do_akceptacji', 'wysylanie', 'prywatna'].includes(x.etap));
         if (otwarta) return otwarta;   // drugi klik nie robi drugiego filmu na kanale
-        const p = { id: `yt_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`, etap: 'przygotowuje', plik: z.plik, nazwa: String(z.nazwa ?? path.basename(z.plik)).slice(0, 160), wystawaId: z.wystawaId ?? null, zrodlo: z.zrodlo ?? null, utworzono: czas(), autor: 'Kronikarz' };
+        const p = { id: `yt_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`, etap: 'przygotowuje', plik: z.plik, nazwa: String(z.nazwa ?? path.basename(z.plik)).slice(0, 160), wystawaId: z.wystawaId ?? null, zrodlo: z.zrodlo ?? null, ...(await kanalDla(z.zrodlo?.projekt)), utworzono: czas(), autor: 'Kronikarz' };
         l.unshift(p);
         await zapisz();
         try {
@@ -101,10 +115,15 @@ export function utworzPublikacje(o) {
         return p;
     }
 
-    /** Suweren poprawia tytuł / opis / tagi przed ✓. */
-    async function zmien(id, { tytul, opis, tagi } = {}) {
+    /** Suweren poprawia tytuł / opis / tagi / kanał przed ✓. */
+    async function zmien(id, { tytul, opis, tagi, kanalId } = {}) {
         const p = await znajdz(id);
         if (!['do_akceptacji', 'blad'].includes(p.etap)) throw new Error('Tę publikację już wysłano albo odrzucono.');
+        if (typeof kanalId === 'string' && kanalId) {
+            const k = (await kanalyKatedry()).kanaly.find((x) => x.id === kanalId);
+            if (!k) throw new Error('Ten kanał nie jest połączony z Katedrą.');
+            Object.assign(p, { kanalId: k.id, kanalNazwa: k.nazwa });
+        }
         if (typeof tytul === 'string' && tytul.trim()) p.tytul = tytul.trim().slice(0, 100);
         if (typeof opis === 'string') p.opis = opis.slice(0, 4800);
         if (Array.isArray(tagi)) p.tagi = tagi.map((x) => String(x).trim().toLowerCase()).filter(Boolean).slice(0, 20);
@@ -118,10 +137,20 @@ export function utworzPublikacje(o) {
         const p = await znajdz(id);
         if (p.etap !== 'do_akceptacji') throw new Error(p.etap === 'blad' ? 'Kronikarz nie przygotował opisu — popraw ręcznie albo przygotuj ponownie.' : 'Ta publikacja nie czeka na akceptację.');
         if (!(await cfg.gotowyYouTube())) throw new Error('YouTube niepołączony — w Impresariacie kliknij „Połącz z YouTube”.');
-        const job = await cfg.impresariat.enqueuePublication(p.tytul, p.zrodlo?.projekt ?? null, ['youtube'], p.plik, { opis: p.opis, tagi: p.tagi, widocznosc: 'unlisted', publikacjaId: p.id });
+        // Kanał musi dalej być połączony; bez wybranego — domyślny w chwili ✓.
+        const { kanaly } = await kanalyKatedry();
+        if (p.kanalId && kanaly.length && !kanaly.some((x) => x.id === p.kanalId)) throw new Error(`Kanał „${p.kanalNazwa ?? p.kanalId}” nie jest już połączony — wybierz inny kanał.`);
+        if (!p.kanalId) Object.assign(p, await kanalDla(p.zrodlo?.projekt));
+        const job = await cfg.impresariat.enqueuePublication(p.tytul, p.zrodlo?.projekt ?? null, ['youtube'], p.plik, { opis: p.opis, tagi: p.tagi, widocznosc: 'unlisted', publikacjaId: p.id, kanalId: p.kanalId });
+        if (p.zrodlo?.projekt && p.kanalId) {   // projekt zapamiętuje kanał — następny odcinek pójdzie tam sam
+            const mapa = await kanalyProjektow();
+            mapa[p.zrodlo.projekt] = p.kanalId;
+            await fs.mkdir(path.dirname(PLIK_KANALOW), { recursive: true });
+            await fs.writeFile(PLIK_KANALOW, JSON.stringify(mapa, null, 1), 'utf8');
+        }
         Object.assign(p, { etap: 'wysylanie', jobId: job.id, zatwierdzono: czas() });
         await zapisz();
-        nadaj(`„${p.tytul}” zatwierdzona — Impresariat wysyła na YouTube`);
+        nadaj(`„${p.tytul}” zatwierdzona — Impresariat wysyła na YouTube${p.kanalNazwa ? ` (kanał „${p.kanalNazwa}”)` : ''}`);
         return p;
     }
 
@@ -151,7 +180,7 @@ export function utworzPublikacje(o) {
                 zmiana = true;
             }
             let s;
-            try { s = await cfg.statusFilmu(p.videoId); } catch (e) { p.uwaga = `Nie sprawdziłem statusu: ${e.message}`; continue; }
+            try { s = await cfg.statusFilmu(p.videoId, p.kanalId ?? null); } catch (e) { p.uwaga = `Nie sprawdziłem statusu: ${e.message}`; continue; }
             if (!s.istnieje) { Object.assign(p, { etap: 'blad', blad: 'Filmu nie ma już na YouTube.' }); zmiana = true; continue; }
             if (s.widocznosc === 'private') {
                 if (p.etap !== 'prywatna') { Object.assign(p, { etap: 'prywatna', uwaga: 'YouTube trzyma film jako PRYWATNY (projekt API bez audytu). Zmień widoczność na „Niepubliczny” w YouTube Studio — Katedra sama wstawi link na Wystawę.' }); zmiana = true; }
