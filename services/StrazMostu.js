@@ -62,7 +62,10 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/stado/publikuj', '/api/stado/parowanie', '/api/stado/odlacz',
     '/api/stado/projekt/', '/api/stado/model',   // ponawianie zleceń i zmiana silników — decyzje Suwerena przy maszynie
     '/api/stado/powitanie/zrob',   // film powitania liczy się na karcie graficznej maszyny
-    '/api/kuznia-soup/',   // trening modeli trwa godziny na karcie graficznej i pisze po dysku — tylko przy maszynie
+    '/api/kuznia-soup/',
+    // 📺 Konto YouTube (klient OAuth, łączenie, rozłączanie) i skarbiec kluczy — tylko przy maszynie.
+    // Publikacje (/api/youtube/publikacje*) telefon może zatwierdzać z kluczem (Izba Akceptacji).
+    '/api/impresario/youtube/', '/api/impresario/secrets/',   // trening modeli trwa godziny na karcie graficznej i pisze po dysku — tylko przy maszynie
     '/api/zwiadowca/szukaj', '/api/zwiadowca/kandydat/', '/api/zwiadowca/link',   // zwiad i pobieranie modeli (GB na dysk) — decyzja przy maszynie
     '/api/porzadki/usun',   // kasowanie plików i modeli — tylko przy maszynie
     '/api/glowny/',   // Główny (Claude Code) zmienia pliki Katedry — rozmowa i zgody tylko przy maszynie
@@ -92,6 +95,20 @@ export function czyWizytowka(req) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
     const p = String(req.path || '');
     return SCIEZKI_WIZYTOWKI.dokladne.has(p) || SCIEZKI_WIZYTOWKI.prefiksy.some((x) => p.startsWith(x) && !p.slice(x.length).includes('/'));
+}
+
+/**
+ * 📺 Powrót z ekranu zgody Google (services/YouTubeKonto.js): przeglądarka Suwerena przechodzi
+ * z accounts.google.com na http://127.0.0.1:3001/api/impresario/youtube/zwrot — z Refererem Google,
+ * więc zrodloZadania mówi „obce”. Wpuszczamy TYLKO: GET tej jednej ścieżki, z gniazda pętli zwrotnej,
+ * bez nagłówków tunelu, z Host = ta maszyna (żadnego DNS rebinding). Podrzucony kod odpada na `state`.
+ */
+export const SCIEZKA_ZWROTU_YOUTUBE = '/api/impresario/youtube/zwrot';
+export function czyZwrotYouTube(req) {
+    if (req.method !== 'GET' || req.path !== SCIEZKA_ZWROTU_YOUTUBE) return false;
+    if (req.get?.('cf-connecting-ip') || req.get?.('x-forwarded-for') || req.get?.('cf-ray')) return false;
+    if (!IP_PETLI.has(String(req.ip || req.socket?.remoteAddress || ''))) return false;
+    return HOST_MASZYNY.test(String(req.get?.('host') || ''));
 }
 
 export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy', '/api/system/free']);
@@ -208,6 +225,7 @@ export function strazMostu({ klucz, pelnyTunel = false, zaufane = null }) {
         req.lokalny = req.zrodlo === 'maszyna';
         if (req.lokalny) return next();          // własna maszyna — bez zmian
         if (czyWizytowka(req)) return next();     // 🪪 publiczna wizytówka — tylko odczyt, każdy
+        if (czyZwrotYouTube(req)) return next();  // 📺 powrót z ekranu zgody Google — patrz niżej
 
         // ── Żądanie spoza maszyny (albo od obcej strony): najpierw klucz ──
         // Zaufana publiczna strona Suwerena klucza nie niesie — przechodzi dalej, ale tylko
@@ -263,4 +281,4 @@ export function strazMostu({ klucz, pelnyTunel = false, zaufane = null }) {
     };
 }
 
-export default { strazMostu, czyLokalny, czyWizytowka, SCIEZKI_WIZYTOWKI, zrodloZadania, ZAUFANE_PUBLICZNE, AKCJE_STRON_PUBLICZNYCH, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA, PARAM_KLUCZA };
+export default { strazMostu, czyLokalny, czyWizytowka, czyZwrotYouTube, SCIEZKI_WIZYTOWKI, zrodloZadania, ZAUFANE_PUBLICZNE, AKCJE_STRON_PUBLICZNYCH, wczytajLubUtworzKlucz, przekujKlucz, NAGLOWEK_KLUCZA, PARAM_KLUCZA };

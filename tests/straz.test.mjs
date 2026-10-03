@@ -75,3 +75,22 @@ describe('strazMostu (middleware)', () => {
         assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/stado/model' })), 403);
     });
 });
+
+describe('📺 powrót z ekranu zgody Google', () => {
+    const zwrot = '/api/impresario/youtube/zwrot';
+    test('przeglądarka na tej maszynie wraca z accounts.google.com → przepuszczone (chroni state)', () => {
+        assert.equal(przepusc(zadanie({ path: zwrot, naglowki: { referer: 'https://accounts.google.com/', 'sec-fetch-site': 'cross-site' } })), 'dalej');
+    });
+    test('z tunelu, z sieci, z obcym Host albo POST — nie', () => {
+        assert.equal(przepusc(zadanie({ path: zwrot, naglowki: { 'cf-connecting-ip': '1.2.3.4' } })), 401);
+        assert.equal(przepusc(zadanie({ path: zwrot, ip: '192.168.1.20' })), 401);
+        assert.equal(przepusc(zadanie({ path: zwrot, naglowki: { host: 'zla-strona.example:3001', referer: 'https://accounts.google.com/' } })), 401);
+        assert.equal(przepusc(zadanie({ path: zwrot, method: 'POST', naglowki: { referer: 'https://accounts.google.com/' } })), 401);
+    });
+    test('łączenie konta i skarbiec — nie z tunelu, nawet z kluczem; publikacje (Izba) — tak', () => {
+        const tunel = { 'cf-connecting-ip': '1.2.3.4', 'x-teo-klucz': KLUCZ };
+        assert.equal(przepusc(zadanie({ naglowki: tunel, path: '/api/impresario/youtube/polacz' })), 403);
+        assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/impresario/secrets/youtube' })), 403);
+        assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/youtube/publikacje/yt_1/zatwierdz' })), 'dalej');
+    });
+});

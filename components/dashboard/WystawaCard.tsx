@@ -15,6 +15,7 @@ import DashboardCard from '../DashboardCard';
 import { Image as ImageIcon, Upload, Loader2, Trash2, EyeOff, Eye, Youtube } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { WizytowkaPanel } from './WizytowkaPanel';
+import { przygotujZWystawy } from '../special/YouTubeStudio';
 
 const MOST = 'http://127.0.0.1:3001';
 
@@ -102,10 +103,11 @@ export const WystawaCard: React.FC = () => {
                                     <span className={`font-mono ${f.youtube ? 'text-red-300' : 'text-amber-300'}`}>{f.youtube ? 'YouTube' : 'tylko u gospodarza'}</span>
                                     <input value={yt[f.id] ?? f.youtube?.url ?? ''} onChange={(e) => setYt((y) => ({ ...y, [f.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') void ustawYt(f.id); }} placeholder="link YouTube po wgraniu" className="min-w-40 flex-1 rounded border border-slate-800 bg-black/40 px-1.5 py-0.5 font-mono text-[10px] text-slate-300" />
                                     <button onClick={() => void ustawYt(f.id)} className="text-red-300 hover:text-red-200" title="zapisz link YouTube"><Youtube size={12} /></button>
+                                    {!f.youtube && <button onClick={async () => { const t = toast.loading('Kronikarz pisze tytuł i opis…'); try { toast.success(await przygotujZWystawy(f.id), { id: t, duration: 8000 }); } catch (e) { toast.error(e instanceof Error ? e.message : String(e), { id: t, duration: 8000 }); } }} className="rounded bg-red-600/30 px-1.5 py-0.5 text-[9px] text-red-100 hover:bg-red-600/50" title="Kronikarz przygotuje publikację — wyślesz po ✓ (Impresariat albo Izba w StoL)">📺 na YouTube</button>}
                                 </div>
                             ))}
                         </div>
-                        <p className="text-[10px] leading-relaxed text-slate-600">Film bez linku YouTube gra tylko na tej maszynie (strona pyta Most). Wgraj go na kanał, wklej link — i gra u każdego. Suno gra z ramki Suno wszędzie. <b>Oko = ukryj</b> — pozycja znika ze strony po następnym „Publikuj".</p>
+                        <p className="text-[10px] leading-relaxed text-slate-600">Film bez linku YouTube gra tylko na tej maszynie (strona pyta Most). Wklej link z kanału albo „📺 na YouTube” — Kronikarz napisze opis, Ty dajesz ✓ (Impresariat / Izba w StoL), a link wpisze się tu sam. Suno gra z ramki Suno wszędzie. <b>Oko = ukryj</b> — pozycja znika ze strony po następnym „Publikuj".</p>
 
                         {/* ── Produkty i utwory z dysku: to samo oko ── */}
                         <details className="rounded-lg border border-slate-800 p-2">

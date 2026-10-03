@@ -13,6 +13,7 @@ const MOST = 'http://127.0.0.1:3001';
 
 interface Profil {
     nick: string; motto: string; opis: string; meldunek: boolean; klucz: string; rejestr: string;
+    kanal: string; linki: { nazwa: string; url: string }[];
     ostatniMeldunek: { kiedy: string; ok: boolean; status: number; wiadomosc: string; adres: string | null } | null;
 }
 
@@ -26,16 +27,18 @@ async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
 export const WizytowkaPanel: React.FC = () => {
     const [p, setP] = useState<Profil | null>(null);
     const [blad, setBlad] = useState<string | null>(null);
-    const [form, setForm] = useState({ nick: '', motto: '', opis: '' });
+    const [form, setForm] = useState({ nick: '', motto: '', opis: '', kanal: '', linki: '' });
+    const [kanal, setKanal] = useState<{ id?: string; nazwa?: string; filmy?: unknown[]; blad?: string } | null>(null);
+    const sprawdzKanal = useCallback(async () => { try { setKanal((await zMostu<{ kanal: typeof kanal }>('/api/wizytowka/kanal')).kanal); } catch { setKanal(null); } }, []);
 
     const odswiez = useCallback(async () => {
-        try { const d = await zMostu<Profil>('/api/wizytowka/profil'); setP(d); setForm({ nick: d.nick, motto: d.motto, opis: d.opis }); setBlad(null); }
+        try { const d = await zMostu<Profil>('/api/wizytowka/profil'); setP(d); setForm({ nick: d.nick, motto: d.motto, opis: d.opis, kanal: d.kanal ?? '', linki: (d.linki ?? []).map((l) => l.url).join('\n') }); setBlad(null); if (d.kanal) void sprawdzKanal(); }
         catch (e) { setBlad(/HTTP 404/.test(String(e)) ? 'Most sprzed restartu — nie zna jeszcze wizytówki. Zrestartuj Katedrę.' : String(e instanceof Error ? e.message : e)); }
-    }, []);
+    }, [sprawdzKanal]);
     useEffect(() => { void odswiez(); }, [odswiez]);
 
-    const zapisz = async (zmiana: Partial<Profil>) => {
-        try { const d = await zMostu<Profil>('/api/wizytowka/profil', { method: 'PUT', body: JSON.stringify(zmiana) }); setP(d); toast.success('Wizytówka zapisana.'); }
+    const zapisz = async (zmiana: Partial<Omit<Profil, 'linki'>> & { linki?: string }) => {
+        try { const d = await zMostu<Profil>('/api/wizytowka/profil', { method: 'PUT', body: JSON.stringify(zmiana) }); setP(d); setForm((f) => ({ ...f, kanal: d.kanal ?? f.kanal, linki: (d.linki ?? []).map((l) => l.url).join('\n') })); toast.success('Wizytówka zapisana.'); if (d.kanal) void sprawdzKanal(); else setKanal(null); }
         catch (e) { toast.error(e instanceof Error ? e.message : String(e), { duration: 8000 }); }
     };
     const zamelduj = async () => {
@@ -50,7 +53,7 @@ export const WizytowkaPanel: React.FC = () => {
         <details className="rounded-lg border border-cyan-500/25 p-2" open={!p.nick}>
             <summary className="cursor-pointer text-[10px] uppercase tracking-widest text-cyan-300">🪪 Wizytówka w sieci otakos.wtf {p.nick ? `· ${p.nick}` : '· bez nicka'}</summary>
             <div className="mt-2 flex flex-col gap-2 text-[11px]">
-                <p className="text-[10px] leading-relaxed text-slate-500">Wizytówka = ta wystawa (bez ukrytych) + nick i motto. Na otakos.wtf widać tylko nick — nie imię. Pokazuje się, gdy Katedra jest online (Kwantowy Tunel) i nick jest zatwierdzony.</p>
+                <p className="text-[10px] leading-relaxed text-slate-500">Wizytówka = ta wystawa (bez ukrytych) + nick, motto, kanał YouTube i linki. Na otakos.wtf widać tylko nick — nie imię. Pokazuje się, gdy Katedra jest online (Kwantowy Tunel) i nick jest zatwierdzony.</p>
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_1fr]">
                     <label className="text-slate-400">Nick</label>
                     <input value={form.nick} onChange={(e) => setForm((f) => ({ ...f, nick: e.target.value.toLowerCase() }))} placeholder="np. teo-center (a–z, 0–9, -)" className="rounded border border-slate-700 bg-black/40 px-2 py-1 font-mono text-slate-200" />
@@ -58,6 +61,13 @@ export const WizytowkaPanel: React.FC = () => {
                     <input value={form.motto} maxLength={140} onChange={(e) => setForm((f) => ({ ...f, motto: e.target.value }))} placeholder="jedno zdanie pod nickiem" className="rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
                     <label className="text-slate-400">Opis</label>
                     <textarea value={form.opis} maxLength={600} rows={2} onChange={(e) => setForm((f) => ({ ...f, opis: e.target.value }))} placeholder="kilka słów o tej Katedrze" className="rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
+                    <label className="text-slate-400">📺 Kanał YouTube</label>
+                    <div className="flex flex-col gap-0.5">
+                        <input value={form.kanal} onChange={(e) => setForm((f) => ({ ...f, kanal: e.target.value }))} placeholder="https://www.youtube.com/@ArtOfSoulTV" className="rounded border border-slate-700 bg-black/40 px-2 py-1 font-mono text-slate-200" />
+                        {kanal && <span className={`text-[10px] ${kanal.id ? 'text-emerald-300' : 'text-amber-300'}`}>{kanal.id ? `✓ ${kanal.nazwa || 'kanał'} · ${kanal.filmy?.length ?? 0} najnowszych filmów — cała ramka kanału pójdzie na wizytówkę` : `⚠ ${kanal.blad}`}</span>}
+                    </div>
+                    <label className="text-slate-400">🌐 Linki</label>
+                    <textarea value={form.linki} rows={2} onChange={(e) => setForm((f) => ({ ...f, linki: e.target.value }))} placeholder={'Instagram, TikTok, Spotify… — jeden link na linię'} className="rounded border border-slate-700 bg-black/40 px-2 py-1 font-mono text-[10px] text-slate-200" />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <button onClick={() => void zapisz(form)} className="rounded bg-cyan-500/30 px-3 py-1 font-bold text-cyan-100">Zapisz wizytówkę</button>
