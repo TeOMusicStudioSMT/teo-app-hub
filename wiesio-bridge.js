@@ -14178,12 +14178,26 @@ const Wywiady = utworzWywiady({
         return { film: pub ? { tytul: pub.tytul, opis: pub.opis ?? '', url: pub.url ?? null } : null, opis };
     },
     mow: async ({ tekst, glos }) => {
+        // 🗣️ Profil VoiceStudio (osobny program, :3900) — to on klonuje i projektuje głosy w swoim oknie.
+        if (glos?.voicestudio) {
+            const r = await GlosStudio.mow({ tekst, glos: glos.voicestudio, katalogDocelowy: path.join(TEMP_DIR, 'wywiad-glos'), nazwa: 'kwestia' });
+            try {
+                if (r.podejrzane) throw new Error(`VoiceStudio: ${r.uwagi.join('; ')} — sprawdź profil w jego oknie albo wybierz inny.`);
+                return { audio: await fs.readFile(r.sciezka), ext: 'wav' };
+            } finally { await fs.rm(r.sciezka, { force: true }).catch(() => {}); }
+        }
         const tor = await ustalTorGlosu(glos ?? {});
-        const { audio, ext } = await glosSyntezuj({
-            przewod: tor.przewod, tekst, glos: tor.glos, jezyk: tor.jezyk,
-            probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE }, klucz: tor.klucz,
-        });
-        return { audio, ext };
+        try {
+            const { audio, ext } = await glosSyntezuj({
+                przewod: tor.przewod, tekst, glos: tor.glos, jezyk: tor.jezyk,
+                probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE }, klucz: tor.klucz,
+            });
+            return { audio, ext };
+        } catch (e) {
+            // Głos bez wybranego profilu idzie domyślnym torem (klon-lokalny = XTTS/OpenVoice na :5002).
+            if (!glos) throw new Error(`${e.message} Postać nie ma wybranego głosu — wybierz jej profil (np. z VoiceStudio).`);
+            throw e;
+        }
     },
     opisz: (p) => Montazownia.opisz(p),
     katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
@@ -14200,10 +14214,21 @@ app.post('/api/wywiady/przygotuj', (req, res) => ytOdp(res, Wywiady.przygotuj(re
 app.post('/api/wywiady/:id/zmien', (req, res) => ytOdp(res, Wywiady.zmien(req.params.id, req.body ?? {}).then((wywiad) => ({ wywiad }))));
 app.post('/api/wywiady/:id/nagraj', (req, res) => ytOdp(res, Wywiady.nagraj(req.params.id, {
     bezGlosu: req.body?.bezGlosu === true, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
+    glosProwadzacego: req.body?.glosProwadzacego,
 }).then((wywiad) => ({ wywiad }))));
 
 // ── 🎙️ Głos ze stemu (services/GlosZeStemu.js): `_OtakOs_Muzyka/_Stemy` (paczki z Suno, wyniki Demucsa) ──
 // Wokal → próbka klonu `_OtakOs_AI/voices/<id>.wav` + profil głosu (tor klon-lokalny) → opcjonalnie od razu dla Aktora.
+// Wszystkie głosy, którymi może mówić postać: profile Katedry (tory mostu) + profile VoiceStudio (:3900).
+app.get('/api/glos/glosy', async (_req, res) => {
+    try {
+        const katedra = (await glosProfile(VOICE_OUT_DIR)).map((p) => ({ id: p.id, nazwa: p.nazwa, przewod: p.przewod, probkaIstnieje: fsSync.existsSync(path.join(VOICES_DIR, `${p.voiceId}.wav`)) }));
+        const st = await GlosStudio.stan().catch((e) => ({ zywe: false, glosy: [], braki: [e.message] }));
+        let profile = st.zywe ? await GlosStudio.profile() : [];
+        if (st.zywe && !profile.length) profile = (st.glosy ?? []).map((g) => ({ id: g.id, nazwa: g.nazwa, opis: '' }));
+        return res.json({ success: true, katedra, voicestudio: { zywe: !!st.zywe, baza: GlosStudio.BAZA, profile, braki: st.braki ?? [] } });
+    } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
 app.get('/api/glos/stemy', (_req, res) => ytOdp(res, listaStemow(STEMY_DIR).then((stemy) => ({ stemy, katalog: STEMY_DIR })), 500));
 app.post('/api/glos/ze-stemu', async (req, res) => {
     try {

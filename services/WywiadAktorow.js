@@ -82,6 +82,18 @@ export function odczytajScenariusz(surowe, { goscie, prowadzacy = PROWADZACY }) 
     return kwestie.slice(0, 20);
 }
 
+/**
+ * Głos postaci: profil Katedry (`profil` → tor z `/api/voice/profiles`: klon-lokalny, Kokoro, ElevenLabs…),
+ * goły przewód/voiceId albo profil VoiceStudio (`voicestudio` — osobny program na :3900, `services/GlosStudio.js`).
+ */
+export function normalizujGlos(g) {
+    if (!g || typeof g !== 'object') return null;
+    const pole = (v) => (v ? String(v).slice(0, 80) : undefined);
+    const glos = { profil: pole(g.profil), przewod: pole(g.przewod), voiceId: pole(g.voiceId), voicestudio: pole(g.voicestudio) };
+    for (const k of Object.keys(glos)) if (glos[k] === undefined) delete glos[k];
+    return Object.keys(glos).length ? glos : null;
+}
+
 /** Szacowany czas kwestii bez głosu (~14 znaków/s, min. 3 s). */
 export const czasBezGlosu = (tekst) => Math.max(3, Math.round((String(tekst).length / 14) * 10) / 10);
 
@@ -135,7 +147,7 @@ export function utworzWywiady(o) {
         const zdjecie = dane.zdjecie ? String(dane.zdjecie).trim() : null;
         if (zdjecie && (!OBRAZ.test(zdjecie) || !fsSync.existsSync(zdjecie))) throw new Error(`Zdjęcie aktora musi być istniejącym obrazem (png/jpg/webp): ${zdjecie}`);
         const g = dane.glos && typeof dane.glos === 'object' ? dane.glos : null;
-        const glos = g && (g.profil || g.przewod || g.voiceId) ? { profil: g.profil ? String(g.profil) : undefined, przewod: g.przewod ? String(g.przewod) : undefined, voiceId: g.voiceId ? String(g.voiceId) : undefined } : null;
+        const glos = normalizujGlos(dane.glos);
         const aktor = {
             id, imie, rola: String(dane.rola ?? '').trim().slice(0, 600), projekt: dane.projekt ? String(dane.projekt).slice(0, 80) : null,
             zdjecie, glos, kolor: /^#[0-9a-f]{6}$/i.test(dane.kolor ?? '') ? dane.kolor : '#f4c84a', zmieniono: czas(),
@@ -203,7 +215,7 @@ export function utworzWywiady(o) {
      * Krok 2 + 3: głos, kadry, film w katalogu montaży projektu. Startuje w tle; stan w `postep`.
      * `podklad` = utwór (najlepiej instrumental ze `_Stemy`) cicho pod rozmową; `glosnosc` 0.02–0.6.
      */
-    async function nagraj(id, { bezGlosu = false, podklad = null, glosnosc = 0.12 } = {}) {
+    async function nagraj(id, { bezGlosu = false, podklad = null, glosnosc = 0.12, glosProwadzacego = undefined } = {}) {
         const w = await wczytajWywiad(id);
         if (wRobocie.has(id)) throw new Error('Ten wywiad już się nagrywa.');
         if (!bezGlosu && !cfg.mow) throw new Error('Katedra nie ma silnika głosu — nagraj „bez głosu” (same napisy).');
@@ -214,8 +226,10 @@ export function utworzWywiady(o) {
             if (!fsSync.existsSync(plikPodkladu)) throw new Error(`Nie ma podkładu: ${path.basename(plikPodkladu)}`);
         }
         const obsada = await aktorzy();
-        const mowca = (kto) => (kto === PROWADZACY.id ? PROWADZACY : obsada.find((a) => a.id === kto)) ?? { ...PROWADZACY, id: kto, imie: kto };
         const { postep, ...zapis } = w;
+        if (glosProwadzacego !== undefined) zapis.glosProwadzacego = normalizujGlos(glosProwadzacego);
+        const prowadzacy = { ...PROWADZACY, glos: zapis.glosProwadzacego ?? null };
+        const mowca = (kto) => (kto === PROWADZACY.id ? prowadzacy : obsada.find((a) => a.id === kto)) ?? { ...PROWADZACY, id: kto, imie: kto };
         Object.assign(zapis, { etap: 'nagrywa', bezGlosu: !!bezGlosu, podklad: plikPodkladu ? path.basename(plikPodkladu) : null, blad: undefined, nagrywanoOd: czas() });
         await pisz(plikWywiadu(id), zapis);
         wRobocie.set(id, { etap: 'start', zrobione: 0, wszystkich: w.kwestie.length + 1 });
@@ -289,4 +303,4 @@ export function utworzWywiady(o) {
     return { aktorzy, zapiszAktora, usunAktora, wywiady, wywiad: wczytajWywiad, przygotuj, zmien, nagraj };
 }
 
-export default { utworzWywiady, promptWywiadu, odczytajScenariusz, argumentyKwestii, czasBezGlosu, PROWADZACY, slug };
+export default { utworzWywiady, normalizujGlos, promptWywiadu, odczytajScenariusz, argumentyKwestii, czasBezGlosu, PROWADZACY, slug };
