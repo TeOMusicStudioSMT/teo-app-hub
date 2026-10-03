@@ -63,6 +63,9 @@ export const ROLE = {
     // 🎲 Pionek (2026-09-29, Suweren: „dodał bym NOWE TeOgochi… od Gier/budowania ich"): dokument gry i linia GRA: —
     // gdy jest w zespole, Kodeks dostaje technikę (KODEKS_Z_PIONKIEM), a gra ma jednego autora.
     pionek: { fala: 2, zadanie: 'Gra: gatunek, pętla rozgrywki (co gracz robi co 30 s, co 5 min, co godzinę), 3 mechaniki wynikające ze świata, progresja i pierwszy poziom krok po kroku — skrót dokumentu gry (GDD), który Studio Gier zamieni w plan produkcji. Na końcu jedna linia dla Studia Gier: „GRA: nazwa gry | jedno zdanie, co to za gra" (gdy projekt to raczej aplikacja niż gra: „APKA: nazwa | jedno zdanie").' },
+    // 🎭 Aktor (2026-10-03, Suweren: „można powołać TeOgochi… Aktora"): gra postaci zespołu — wywiad o filmie nagrywa
+    // potem services/WywiadAktorow.js (TeO Story Studio → Post-produkcja → 🎭 Aktorzy), nie ten wkład.
+    aktor: { fala: 3, zadanie: 'Obsada: dla każdej postaci, którą zespół już wymyślił (najwyżej 4), jak ją zagrasz — głos (barwa, tempo), sposób mówienia, jedno charakterystyczne zdanie. Potem 3 pytania z wywiadu o tym filmie i odpowiedzi postaci W ROLI — tylko z faktów zespołu, bez zmyślonych scen.' },
     krawcowa: { fala: 2, zadanie: 'Moda: kolekcja 4 strojów bohaterów (krój, materiał, kolory, detal), spójna ze światem.' },
     paleta: { fala: 2, zadanie: 'Styl wizualny: paleta 5 barw (hex) z uzasadnieniem i 3 obiekty do wyrzeźbienia w 3D — każdy w osobnej linii zaczynającej się od „OBIEKT:" i jednym zdaniem opisu dla generatora brył.' },
     glosek: { fala: 2, zadanie: 'Głosy: obsada głosowa postaci (barwa, tempo, maniera) i 3 kwestie próbne.' },
