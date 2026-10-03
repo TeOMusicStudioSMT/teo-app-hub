@@ -192,6 +192,7 @@ import { utworzPublikacje } from './services/PublikacjeYouTube.js';
 import { utworzKanalYouTube } from './services/KanalYouTube.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
+import * as Spawacz from './services/Spawacz.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
 import * as Arkusz from './services/ArkuszWielokat.js';
 import * as Brief from './services/BriefOpowiesci.js';
@@ -6712,6 +6713,38 @@ app.post('/api/blender/uruchom', async (req, res) => {
 //  ⚠️ Sklejanie robi sprawdzony `CiagDalszy.sklej`, nie druga implementacja obok.
 // ════════════════════════════════════════
 
+/**
+ * 🧱 Klocki w Montażowni (2026-10-03): pliki z `_OtakOs_Klocki` (Start / Add / End zestawów, kawałki z Nożyc)
+ * jako materiał osi. `zestaw` = ścieżka katalogu względem korzenia klocków — UI grupuje po niej.
+ */
+async function klockiMontazowni() {
+    const korzen = KORZENIE_WIDEO().klocki;
+    const lista = [];
+    const wejdz = async (dir, glebokosc) => {
+        for (const w of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+            const abs = path.join(dir, w.name);
+            if (w.isDirectory()) { if (glebokosc < 3) await wejdz(abs, glebokosc + 1); continue; }
+            if (!Spawacz.WIDEO.test(w.name) || lista.length >= 400) continue;
+            try {
+                const o = await Montazownia.opisz(abs);
+                lista.push({ ...o, zestaw: path.relative(korzen, dir).split(path.sep).join('/') || '.', rel: path.relative(korzen, abs).split(path.sep).join('/'), gdzie: 'klocki' });
+            } catch { /* nieczytelny klocek pomijamy */ }
+        }
+    };
+    await wejdz(korzen, 0);
+    return lista.sort((a, b) => a.rel.localeCompare(b.rel));
+}
+const wKlockach = (p) => {
+    const k = path.resolve(KORZENIE_WIDEO().klocki).toLowerCase();
+    const a = path.resolve(String(p)).toLowerCase();
+    return a.startsWith(k + path.sep);
+};
+/** Sklejacz o kształcie CiagDalszy.sklej, ale z wyrównaniem — gdy na osi są klocki (inny rozmiar, dźwięk). */
+const spawaczMontazu = ({ pliki, wyjscie }) => Spawacz.spawaj({
+    klipy: pliki, wyjscie, opisz: Montazownia.opisz, uruchom: execFileAsync, ffmpeg: ffmpegPath,
+    celWedlug: Math.max(0, pliki.findIndex((p) => !wKlockach(p))),   // rozmiar materiału projektu, nie klocka
+});
+
 /** Co w projekcie da się zmontować + czym podłożyć dźwięk. */
 app.get('/api/montazownia/materialy', async (req, res) => {
     try {
@@ -6719,12 +6752,13 @@ app.get('/api/montazownia/materialy', async (req, res) => {
         if (!projekt) throw new Error('Podaj projekt.');
         const minSekund = Number(req.query.minSekund) || 3;
 
-        const [filmy, muzyka] = await Promise.all([
+        const [filmy, muzyka, klocki] = await Promise.all([
             Montazownia.materialy(ANTIGRAVITY_DIR, projekt, { minSekund }),
             Montazownia.utwory(MUSIC_DIR),
+            req.query.klocki === '1' ? klockiMontazowni() : Promise.resolve(undefined),
         ]);
         return res.json({
-            success: true, projekt, filmy, muzyka,
+            success: true, projekt, filmy, muzyka, ...(klocki ? { klocki, katalogKlockow: KORZENIE_WIDEO().klocki } : {}),
             katalog: await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
         });
     } catch (e) {
@@ -6748,11 +6782,14 @@ app.post('/api/montazownia/zloz', async (req, res) => {
         if (!Array.isArray(pliki) || !pliki.length) throw new Error('Nie wskaza\u0142e\u015b \u017cadnego filmu.');
 
         const dozwolone = new Set((await Montazownia.materialy(ANTIGRAVITY_DIR, projekt, { minSekund: 0 })).map((m) => path.resolve(m.sciezka).toLowerCase()));
+        // 🧱 Klocki z _OtakOs_Klocki też wolno (tylko pliki wideo, które tam naprawdę są).
         for (const f of pliki) {
-            if (!dozwolone.has(path.resolve(f).toLowerCase())) {
-                throw new Error(`Plik spoza projektu „${projekt}": ${path.basename(f)}`);
+            const zKlockow = wKlockach(f) && Spawacz.WIDEO.test(f) && fsSync.existsSync(f);
+            if (!dozwolone.has(path.resolve(f).toLowerCase()) && !zKlockow) {
+                throw new Error(`Plik spoza projektu „${projekt}" i spoza _OtakOs_Klocki: ${path.basename(f)}`);
             }
         }
+        const zKlockami = pliki.some((f) => wKlockach(f));
         const katalog = await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt);
 
         /**
@@ -6784,7 +6821,8 @@ app.post('/api/montazownia/zloz', async (req, res) => {
         }
         const r = await Montazownia.zloz({
             pliki, muzyka, glosnosc, zanikanie, katalog, nazwa,
-            sklejaczem: CiagDalszy.sklej, comfyDir: COMFY_DIR,
+            // Klocki mają inny rozmiar i dźwięk — wtedy spawanie z wyrównaniem zamiast concat demuxera.
+            sklejaczem: zKlockami ? spawaczMontazu : CiagDalszy.sklej, comfyDir: COMFY_DIR,
         });
 
         // \u26a0\ufe0f OSTATNIE OGNIWO POTOKU. Suweren: \u201ete kafelki wideo na monta\u017c, gdzie
@@ -6817,6 +6855,47 @@ app.post('/api/montazownia/zloz', async (req, res) => {
     } catch (e) {
         return res.status(400).json({ success: false, message: e.message });
     }
+});
+
+/**
+ * POST /api/montazownia/oprawa { projekt, film, format } — etap POD montażem: klocki formatu
+ * (Start → Add → film → End z `_OtakOs_Klocki/Klocki do <format>`) spawane z wyrównaniem do rozmiaru filmu.
+ * `film` tylko z katalogu montaży projektu. Wynik `<film>_<format>.mp4` obok — to jest produkt finalny,
+ * który dalej idzie do publikacji (Impresariat). Dźwięk klocków zostaje (montaż ma już swój).
+ */
+app.post('/api/montazownia/oprawa', async (req, res) => {
+    const { projekt = '', film = '', format = 'YT' } = req.body ?? {};
+    try {
+        if (!String(projekt).trim()) throw new Error('Podaj projekt.');
+        const katalog = await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt);
+        const abs = path.resolve(String(film));
+        if (!abs.toLowerCase().startsWith(path.resolve(katalog).toLowerCase() + path.sep) || !Spawacz.WIDEO.test(abs) || !fsSync.existsSync(abs)) {
+            throw new Error('Oprawa działa na gotowym montażu z katalogu montaży tego projektu.');
+        }
+        const z = await Spawacz.zestawKlockow(KORZENIE_WIDEO().klocki, String(format));
+        if (!z.start.length && !z.add.length && !z.end.length) throw new Error(`W ${z.katalog} nie ma klocków (Start / Add / End).`);
+        const klipy = [...z.start, ...z.add, abs, ...z.end];
+        const wyjscie = path.join(katalog, `${path.basename(abs).replace(/\.[^.]+$/, '')}_${String(format).replace(/[^A-Za-z]/g, '')}.mp4`);
+        const t0 = Date.now();
+        const r = await Spawacz.spawaj({ klipy, wyjscie, opisz: Montazownia.opisz, uruchom: execFileAsync, ffmpeg: ffmpegPath, celWedlug: z.start.length + z.add.length });
+        const o = await Montazownia.opisz(r.plik);
+        console.log(`[Montaż] 🧱 oprawa ${format}: ${z.start.length}+${z.add.length} → ${path.basename(abs)} → ${z.end.length} = ${path.basename(r.plik)} (${Math.round((Date.now() - t0) / 1000)} s)`);
+        return res.json({ success: true, plik: r.plik, sekundy: o.sekundy, bajtow: o.bajtow, metoda: r.metoda, klocki: { start: z.start.map((p) => path.basename(p)), add: z.add.map((p) => path.basename(p)), end: z.end.map((p) => path.basename(p)) } });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.stderr ? String(e.stderr).slice(-400) : e.message });
+    }
+});
+
+/** GET /api/montazownia/oprawa/zestawy — ile klocków ma każdy format (UI pokazuje, zanim się spawa). */
+app.get('/api/montazownia/oprawa/zestawy', async (_req, res) => {
+    try {
+        const zestawy = {};
+        for (const f of ['YT', 'Podcat', 'Kronika', 'Muzyka', 'Movie']) {
+            const z = await Spawacz.zestawKlockow(KORZENIE_WIDEO().klocki, f);
+            zestawy[f] = { start: z.start.map((p) => path.basename(p)), add: z.add.map((p) => path.basename(p)), end: z.end.map((p) => path.basename(p)) };
+        }
+        return res.json({ success: true, zestawy });
+    } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
 });
 
 // ── JOANNA KOMPONUJE POD DŁUGOŚĆ FILMU ──────────────────────────────────────
@@ -14000,9 +14079,16 @@ app.get('/api/youtube/publikacje', (_req, res) => ytOdp(res, PublikacjeYT.sprawd
 /** { wystawaId } — film z Wystawy, albo { projekt, odcinekId } — odcinek z Biblioteki. Kronikarz pisze od razu. */
 app.post('/api/youtube/publikacje/przygotuj', async (req, res) => {
     try {
-        const { wystawaId = '', projekt = '', odcinekId = '' } = req.body ?? {};
+        const { wystawaId = '', projekt = '', odcinekId = '', plik = '' } = req.body ?? {};
         let z;
-        if (wystawaId) {
+        if (plik) {
+            // 🎬 Gotowy produkt z Montażowni (TeO Story Studio) — tylko z katalogu montaży projektu.
+            if (!String(projekt).trim()) throw new Error('Podaj projekt.');
+            const katalog = await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt);
+            const abs = path.resolve(String(plik));
+            if (!abs.toLowerCase().startsWith(path.resolve(katalog).toLowerCase() + path.sep)) throw new Error('Do publikacji idzie gotowy film z katalogu montaży tego projektu.');
+            z = { plik: abs, nazwa: `${projekt} — ${path.basename(abs).replace(/\.[^.]+$/, '').replace(/_[a-z0-9]{6,}$/i, '').replace(/[_-]+/g, ' ')}`, zrodlo: { projekt }, kontekst: `Projekt: ${projekt}\nFilm z montażu: ${path.basename(abs)}` };
+        } else if (wystawaId) {
             const w = await Wystawa.zbierz();
             const f = w.filmy.find((x) => x.id === wystawaId);
             const plik = Wystawa.sciezkaZBialej(wystawaId);

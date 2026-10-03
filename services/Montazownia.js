@@ -59,7 +59,9 @@ export async function opisz(plik) {
         const sek = m ? (+m[1] * 3600 + +m[2] * 60 + parseFloat(m[3])) : null;
         const maAudio = /Stream #\d+:\d+.*Audio:/.test(String(stderr));
         const wym = String(stderr).match(/,\s*(\d{2,5})x(\d{2,5})/);
-        return { stdout: JSON.stringify({ _zFfmpega: true, sek, maAudio, wym: wym ? [+wym[1], +wym[2]] : null }) };
+        // fps z linii strumienia wideo („… 24 fps, 24 tbr …”) — Spawacz wyrównuje klocki do klatkażu filmu
+        const kl = String(stderr).match(/Video:.*?,\s*(\d+(?:\.\d+)?)\s*fps/);
+        return { stdout: JSON.stringify({ _zFfmpega: true, sek, maAudio, wym: wym ? [+wym[1], +wym[2]] : null, fps: kl ? Number(kl[1]) : null }) };
     });
 
     const st = await fs.stat(plik);
@@ -70,7 +72,7 @@ export async function opisz(plik) {
         return {
             sciezka: plik, nazwa: path.basename(plik), bajtow: st.size,
             sekundy: d.sek ?? null, maAudio: Boolean(d.maAudio),
-            szerokosc: d.wym?.[0] ?? null, wysokosc: d.wym?.[1] ?? null, fps: null,
+            szerokosc: d.wym?.[0] ?? null, wysokosc: d.wym?.[1] ?? null, fps: d.fps ?? null,
         };
     }
 
