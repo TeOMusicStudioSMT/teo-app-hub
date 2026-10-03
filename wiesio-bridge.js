@@ -193,6 +193,7 @@ import { utworzKanalYouTube } from './services/KanalYouTube.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as Spawacz from './services/Spawacz.js';
+import { czyscSciezkiMiddleware } from './services/Sciezki.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
 import * as Arkusz from './services/ArkuszWielokat.js';
 import * as Brief from './services/BriefOpowiesci.js';
@@ -373,6 +374,8 @@ app.use(cors({
 // Zwiększamy limit dla dużych plików video (Base64)
 app.use(express.json({ limit: '2000mb' }));
 app.use(express.urlencoded({ limit: '2000mb', extended: true }));
+// 🧭 Ścieżki od człowieka: "C:\…" (Ctrl+Shift+C w Windows) i file:///… → zwykła ścieżka, w każdym polu żądania (services/Sciezki.js)
+app.use(czyscSciezkiMiddleware);
 
 // ── STATYCZNY SERWER MUZYKI ──────────────────────────────────────────
 // GET http://127.0.0.1:3001/music/nazwa.mp3  →  stream pliku
@@ -6884,6 +6887,50 @@ app.post('/api/montazownia/oprawa', async (req, res) => {
     } catch (e) {
         return res.status(400).json({ success: false, message: e.stderr ? String(e.stderr).slice(-400) : e.message });
     }
+});
+
+/**
+ * POST /api/pliki/upusc { projekt, nazwa, bajtow, dataURL? } — przeciągnięty plik (TeO Story Studio, pole kadrów).
+ * Suweren: „jak chcę przeciągnąć zdjęcie, to się otwiera w nowym oknie”. Przeglądarka nie zdradza ścieżki
+ * upuszczonego pliku (bezpieczeństwo), więc: 1) szukamy go po NAZWIE i ROZMIARZE w katalogu projektu i w wyjściu
+ * ComfyUI — zwykle tam leży i dostajemy prawdziwą ścieżkę bez kopii; 2) gdy nie ma, a przyszła zawartość —
+ * zapis do `produkcje/<projekt>/upuszczone/`. Tylko obrazy i wideo, do 60 MB, tylko przy maszynie (Straż).
+ */
+const UPUSZCZALNE = /\.(png|jpe?g|webp|gif|bmp|mp4|mov|webm)$/i;
+app.post('/api/pliki/upusc', async (req, res) => {
+    const { projekt = '', nazwa = '', bajtow = 0, dataURL = null } = req.body ?? {};
+    try {
+        const n = path.basename(String(nazwa));
+        if (!String(projekt).trim() || !n || !UPUSZCZALNE.test(n)) throw new Error('Podaj projekt i plik obrazu albo wideo.');
+        const katProjektu = path.dirname(await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt));
+        const rozmiar = Number(bajtow) || 0;
+        let licznik = 0, znaleziony = null;
+        const szukaj = async (dir, glebokosc) => {
+            if (znaleziony || licznik > 20000) return;
+            for (const w of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+                if (znaleziony || ++licznik > 20000) return;
+                const abs = path.join(dir, w.name);
+                if (w.isDirectory()) { if (glebokosc < 4) await szukaj(abs, glebokosc + 1); continue; }
+                if (w.name.toLowerCase() !== n.toLowerCase()) continue;
+                const st = await fs.stat(abs).catch(() => null);
+                if (st && (!rozmiar || st.size === rozmiar)) znaleziony = abs;
+            }
+        };
+        await szukaj(katProjektu, 0);
+        if (!znaleziony) await szukaj(path.join(COMFY_DIR, 'ComfyUI', 'output'), 0);
+        if (znaleziony) return res.json({ success: true, sciezka: znaleziony, znaleziony: true });
+        if (!dataURL) return res.status(404).json({ success: false, brak: true, message: 'Nie znalazłem tego pliku w projekcie ani w wyjściu ComfyUI — prześlij zawartość.' });
+        const m = String(dataURL).match(/^data:[\w/+.-]+;base64,(.+)$/s);
+        if (!m) throw new Error('Zawartość pliku w złym formacie.');
+        const bufor = Buffer.from(m[1], 'base64');
+        if (bufor.length > 60 * 1024 * 1024) throw new Error('Plik większy niż 60 MB — wskaż go ścieżką.');
+        const kat = path.join(katProjektu, 'upuszczone');
+        await fs.mkdir(kat, { recursive: true });
+        let cel = path.join(kat, n);
+        if (fsSync.existsSync(cel) && fsSync.statSync(cel).size !== bufor.length) cel = path.join(kat, `${Date.now().toString(36)}_${n}`);
+        await fs.writeFile(cel, bufor);
+        return res.json({ success: true, sciezka: cel, zapisany: true });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
 });
 
 /** GET /api/montazownia/oprawa/zestawy — ile klocków ma każdy format (UI pokazuje, zanim się spawa). */
