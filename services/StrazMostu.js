@@ -73,6 +73,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/aktualizacja/zastosuj', '/api/aktualizacja/cofnij',   // podmiana kodu Katedry — tylko przy maszynie
     '/api/wizytowka/',   // profil i meldunek wizytówki zmienia Suweren przy Katedrze (sama /api/wizytowka jest publiczna)
     '/api/dyrygent/zastosuj', '/api/modele/karta',   // stałe silniki TeOgochi i karty modeli zmienia Suweren przy Katedrze
+    '/api/aktorzy', '/api/wywiady',   // 🎭 obsada wskazuje zdjęcia z dysku, nagranie liczy ffmpeg na maszynie — tylko przy Katedrze
 ];
 
 /**

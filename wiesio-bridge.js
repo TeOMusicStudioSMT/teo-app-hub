@@ -189,6 +189,7 @@ import { utworzTost } from './services/TostSiec.js';
 import { utworzZarzadce } from './services/ZarzadcaRejestru.js';
 import { utworzKontoYouTube, SCIEZKA_ZWROTU as ZWROT_YOUTUBE } from './services/YouTubeKonto.js';
 import { utworzPublikacje } from './services/PublikacjeYouTube.js';
+import { utworzWywiady } from './services/WywiadAktorow.js';
 import { utworzKanalYouTube } from './services/KanalYouTube.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
@@ -14155,6 +14156,47 @@ app.post('/api/youtube/publikacje/przygotuj', async (req, res) => {
 app.post('/api/youtube/publikacje/:id/zmien', (req, res) => ytOdp(res, PublikacjeYT.zmien(req.params.id, req.body ?? {}).then((publikacja) => ({ publikacja }))));
 app.post('/api/youtube/publikacje/:id/zatwierdz', (req, res) => ytOdp(res, PublikacjeYT.zatwierdz(req.params.id).then((publikacja) => ({ publikacja }))));
 app.post('/api/youtube/publikacje/:id/odrzuc', (req, res) => ytOdp(res, PublikacjeYT.odrzuc(req.params.id).then((publikacja) => ({ publikacja }))));
+
+// ── 🎭 Aktorzy i wywiad o filmie (services/WywiadAktorow.js) ──
+// Obsada (postać, zdjęcie, głos) → scenariusz od modelu gatunku `aktor` z faktów projektu → głos + kadry → film
+// w katalogu montaży projektu (stamtąd Montażownia i „📺 do publikacji”).
+const Wywiady = utworzWywiady({
+    katalog: path.join(ANTIGRAVITY_DIR, 'aktorzy'),
+    chat: (model, system, user) => piszModelem(model, system, user),
+    modelDla: (id) => ModeleAgentow.modelDla(id),
+    kontekst: async (projekt) => {
+        // Najnowsza publikacja YouTube tego projektu (tytuł, opis, link) + streszczenia odcinków i kanon.
+        const pub = (await PublikacjeYT.wszystkie().catch(() => []))
+            .filter((p) => p.zrodlo?.projekt === projekt && p.tytul)
+            .sort((a, b) => String(b.utworzono).localeCompare(String(a.utworzono)))[0];
+        const p = await rezyserPamiec(ANTIGRAVITY_DIR, projekt).catch(() => null);
+        const opis = [
+            ...(p?.fakty ?? []).slice(-12).map((f) => `- ${f.tresc}`),
+            ...(p?.odcinki ?? []).slice(-6).map((o) => `Odcinek #${o.numer} „${o.tytul}”: ${String(o.streszczenie ?? '').slice(0, 500)}`),
+        ].join('\n');
+        return { film: pub ? { tytul: pub.tytul, opis: pub.opis ?? '', url: pub.url ?? null } : null, opis };
+    },
+    mow: async ({ tekst, glos }) => {
+        const tor = await ustalTorGlosu(glos ?? {});
+        const { audio, ext } = await glosSyntezuj({
+            przewod: tor.przewod, tekst, glos: tor.glos, jezyk: tor.jezyk,
+            probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE }, klucz: tor.klucz,
+        });
+        return { audio, ext };
+    },
+    opisz: (p) => Montazownia.opisz(p),
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    ffmpeg: ffmpegPath,
+    szyna: Szyna,
+});
+app.get('/api/aktorzy', (_req, res) => ytOdp(res, Wywiady.aktorzy().then((aktorzy) => ({ aktorzy })), 500));
+app.post('/api/aktorzy', (req, res) => ytOdp(res, Wywiady.zapiszAktora(req.body ?? {}).then((aktor) => ({ aktor }))));
+app.delete('/api/aktorzy/:id', (req, res) => ytOdp(res, Wywiady.usunAktora(req.params.id)));
+app.get('/api/wywiady', (_req, res) => ytOdp(res, Wywiady.wywiady().then((wywiady) => ({ wywiady })), 500));
+app.get('/api/wywiady/:id', (req, res) => ytOdp(res, Wywiady.wywiad(req.params.id).then((wywiad) => ({ wywiad })), 404));
+app.post('/api/wywiady/przygotuj', (req, res) => ytOdp(res, Wywiady.przygotuj(req.body ?? {}).then((wywiad) => ({ wywiad }))));
+app.post('/api/wywiady/:id/zmien', (req, res) => ytOdp(res, Wywiady.zmien(req.params.id, req.body ?? {}).then((wywiad) => ({ wywiad }))));
+app.post('/api/wywiady/:id/nagraj', (req, res) => ytOdp(res, Wywiady.nagraj(req.params.id, { bezGlosu: req.body?.bezGlosu === true }).then((wywiad) => ({ wywiad }))));
 
 // ════════════════════════════════════════════════════════════════════════════
 //  TOST MESSENGER — Szyfrowany Komunikator Katedry

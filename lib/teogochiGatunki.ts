@@ -1,5 +1,5 @@
 /**
- * 🥚 Gatunki TeOgochi — 16 szablonów, z których wykluwają się agenci zadaniowi.
+ * 🥚 Gatunki TeOgochi — 18 szablonów, z których wykluwają się agenci zadaniowi.
  *
  * Joanna była pierwsza i jedyna. Teraz jest JEDNYM z gatunków — muzycznym.
  * Każdy gatunek to osobny agent z własną dziedziną, własnym jajem, własną
@@ -200,6 +200,17 @@ export const GATUNKI: Gatunek[] = [
         kolor: '#14b8a6',
         narzedzia: ['/api/zwiadowca/kandydaci', '/api/zwiadowca/szukaj', '/api/zwiadowca/kandydat/:id/akceptuj', '/api/modele/katalog'],
         zadania: ['Zwiadowco, poszukaj nowych modeli po polsku', 'Zwiadowco, co znalazłeś dla Kodeksa?', 'Zwiadowco, który model zmieści się w karcie?'],
+    },
+    {
+        // 🎭 Suweren (2026-10-03): „moi aktorzy i scenografia… interaktywni aktorzy, którzy opowiadają o swym najnowszym
+        // dziele, filmie, który właśnie złożyliśmy na YT… można powołać TeOgochi Aktora". services/WywiadAktorow.js —
+        // obsada (zdjęcie, rola, głos) → scenariusz wywiadu z faktów projektu → nagranie → katalog montaży projektu.
+        id: 'aktor', imie: 'Aktor', dziedzina: 'Aktorstwo i wywiady',
+        opis: 'Gra postaci z Twoich filmów: w wywiadzie o filmie mówi w roli, ich głosem i z ich twarzą — nagranie trafia do Montażowni i do publikacji.',
+        formy: { 'jajko': '🥚', 'pisklę': '🎭', 'młodzik': '🎬', 'kompan': '🎙️', 'legenda': '🌟' },
+        kolor: '#eab308',
+        narzedzia: ['/api/aktorzy', '/api/wywiady/przygotuj', '/api/wywiady/:id/nagraj', '/api/voice/profiles'],
+        zadania: ['Aktorze, zagraj Kaela w wywiadzie o filmie', 'Aktorze, napisz wywiad o naszym nowym filmie', 'Aktorze, kogo mamy w obsadzie?'],
     },
 ];
 
