@@ -158,3 +158,28 @@ test('PRAWDZIWY podkład: instrumental z biblioteki cicho pod wywiadem (bez gło
     const srednia = Number(String(stderr).match(/mean_volume:\s*(-?[\d.]+)/)?.[1]);
     assert.ok(srednia > -40, `średnia głośność ${srednia} dB`);
 });
+
+test('głosy: profil VoiceStudio dla postaci i głos prowadzącego trafiają do syntezy; normalizacja odrzuca śmieci', { skip: !czcionka && 'brak czcionki z polskimi znakami' }, async () => {
+    const { normalizujGlos } = await import('../services/WywiadAktorow.js');
+    assert.deepEqual(normalizujGlos({ voicestudio: 'b468a820', smiec: 'x' }), { voicestudio: 'b468a820' });
+    assert.equal(normalizujGlos({}), null);
+    assert.equal(normalizujGlos('kael'), null);
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wywiad-vs-'));
+    const wav = path.join(tmp, 'g.wav');
+    execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=300:duration=1', wav]);
+    const glosy = [];
+    const W = utworzWywiady({
+        katalog: path.join(tmp, 'aktorzy'), ffmpeg: ffmpegPath, opisz, katalogMontazy: async () => tmp,
+        chat: async () => ({ tekst: 'KRONIKARZ: Witajcie.\nKAEL: Dzień dobry.\nKRONIKARZ: Do zobaczenia.' }),
+        mow: async ({ glos }) => { glosy.push(glos); return { audio: fs.readFileSync(wav), ext: 'wav' }; },
+    });
+    const a = await W.zapiszAktora({ imie: 'Kael', glos: { voicestudio: 'kael-vs' } });
+    assert.deepEqual(a.glos, { voicestudio: 'kael-vs' });
+    const w = await W.przygotuj({ projekt: 'elara', goscie: ['kael'] });
+    const start = await W.nagraj(w.id, { glosProwadzacego: { voicestudio: 'narrator' } });
+    assert.deepEqual(start.glosProwadzacego, { voicestudio: 'narrator' });
+    const g = await czekaj(async () => { const x = await W.wywiad(w.id); return x.etap !== 'nagrywa' && x; });
+    assert.equal(g.etap, 'gotowy', g.blad);
+    assert.deepEqual(glosy, [{ voicestudio: 'narrator' }, { voicestudio: 'kael-vs' }, { voicestudio: 'narrator' }]);
+    assert.deepEqual(g.glosProwadzacego, { voicestudio: 'narrator' }, 'głos prowadzącego zapamiętany przy wywiadzie');
+});
