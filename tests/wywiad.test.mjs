@@ -208,3 +208,39 @@ test('Kronikarz z obsady: karta „kronikarz” daje prowadzącemu głos, imię 
     assert.equal(g.etap, 'gotowy', g.blad);
     assert.deepEqual(glosy, [{ voicestudio: 'narr' }, { voicestudio: 'kael-vs' }, { voicestudio: 'narr' }]);
 });
+
+test('język: scenariusz po angielsku, tłumaczenie gotowego dialogu (mówcy na miejscach), powrót do oryginału bez modelu, głos i plik w języku', { skip: !czcionka && 'brak czcionki z polskimi znakami' }, async () => {
+    const { odczytajTlumaczenie, promptTlumaczenia } = await import('../services/WywiadAktorow.js');
+    assert.match(promptWywiadu({ goscie: [KAEL], film: { tytul: 'X' }, jezyk: 'en' }).system, /PO ANGIELSKU/);
+    assert.match(promptWywiadu({ goscie: [KAEL], film: { tytul: 'X' } }).system, /Piszesz po polsku/);
+    const kw = [{ kto: 'kronikarz', tekst: 'Witajcie.' }, { kto: 'kael', tekst: 'Dzień dobry.' }];
+    assert.match(promptTlumaczenia(kw, 'en').user, /^1\. Witajcie\.\n2\. Dzień dobry\.$/);
+    assert.deepEqual(odczytajTlumaczenie('Oto:\n1. Welcome.\n**2.** "Good morning."', kw), [{ kto: 'kronikarz', tekst: 'Welcome.' }, { kto: 'kael', tekst: 'Good morning.' }]);
+    assert.throws(() => odczytajTlumaczenie('1. Welcome.', kw), /pominął kwestie nr 2/);
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wywiad-en-'));
+    const wav = path.join(tmp, 'g.wav');
+    execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=300:duration=1', wav]);
+    const jezyki = []; let chatow = 0;
+    const W = utworzWywiady({
+        katalog: path.join(tmp, 'aktorzy'), ffmpeg: ffmpegPath, opisz, katalogMontazy: async () => tmp,
+        chat: async (_m, system) => { chatow += 1; return /Tłumaczysz/.test(system) ? { tekst: '1. Welcome.\n2. Good morning.\n3. See you.' } : { tekst: 'KRONIKARZ: Witajcie.\nKAEL: Dzień dobry.\nKRONIKARZ: Do zobaczenia.' }; },
+        mow: async ({ jezyk }) => { jezyki.push(jezyk); return { audio: fs.readFileSync(wav), ext: 'wav' }; },
+    });
+    await W.zapiszAktora({ imie: 'Kael' });
+    const w = await W.przygotuj({ projekt: 'elara', goscie: ['kael'] });
+    assert.equal(w.jezyk, 'pl');
+    await assert.rejects(W.przetlumacz(w.id, { jezyk: 'pl' }), /już jest/);
+    const en = await W.przetlumacz(w.id, { jezyk: 'en' });
+    assert.deepEqual(en.kwestie.map((k) => [k.kto, k.tekst]), [['kronikarz', 'Welcome.'], ['kael', 'Good morning.'], ['kronikarz', 'See you.']]);
+    assert.equal(en.oryginal.jezyk, 'pl');
+    await W.nagraj(w.id, { bezGlosu: false });
+    const g = await czekaj(async () => { const x = await W.wywiad(w.id); return x.etap !== 'nagrywa' && x; });
+    assert.equal(g.etap, 'gotowy', g.blad);
+    assert.deepEqual(jezyki, ['en', 'en', 'en']);
+    assert.match(path.basename(g.plik), /^wywiad_elara_en_/);
+    const przed = chatow;
+    const pl = await W.przetlumacz(w.id, { jezyk: 'pl' });
+    assert.equal(chatow, przed, 'powrót do oryginału bez modelu');
+    assert.equal(pl.kwestie[0].tekst, 'Witajcie.');
+});

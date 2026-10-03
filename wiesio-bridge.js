@@ -14177,10 +14177,10 @@ const Wywiady = utworzWywiady({
         ].join('\n');
         return { film: pub ? { tytul: pub.tytul, opis: pub.opis ?? '', url: pub.url ?? null } : null, opis };
     },
-    mow: async ({ tekst, glos }) => {
+    mow: async ({ tekst, glos, jezyk }) => {
         // 🗣️ Profil VoiceStudio (osobny program, :3900) — to on klonuje i projektuje głosy w swoim oknie.
         if (glos?.voicestudio) {
-            const r = await GlosStudio.mow({ tekst, glos: glos.voicestudio, katalogDocelowy: path.join(TEMP_DIR, 'wywiad-glos'), nazwa: 'kwestia' });
+            const r = await GlosStudio.mow({ tekst, glos: glos.voicestudio, katalogDocelowy: path.join(TEMP_DIR, 'wywiad-glos'), nazwa: 'kwestia', jezyk: jezyk || 'pl' });
             try {
                 if (r.podejrzane) throw new Error(`VoiceStudio: ${r.uwagi.join('; ')} — sprawdź profil w jego oknie albo wybierz inny.`);
                 return { audio: await fs.readFile(r.sciezka), ext: 'wav' };
@@ -14189,7 +14189,8 @@ const Wywiady = utworzWywiady({
         const tor = await ustalTorGlosu(glos ?? {});
         try {
             const { audio, ext } = await glosSyntezuj({
-                przewod: tor.przewod, tekst, glos: tor.glos, jezyk: tor.jezyk,
+                // Język wywiadu wygrywa z językiem profilu — angielski wywiad mówi po angielsku tym samym głosem.
+                przewod: tor.przewod, tekst, glos: tor.glos, jezyk: jezyk || tor.jezyk,
                 probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE }, klucz: tor.klucz,
             });
             return { audio, ext };
@@ -14212,6 +14213,7 @@ app.get('/api/wywiady', (_req, res) => ytOdp(res, Wywiady.wywiady().then((wywiad
 app.get('/api/wywiady/:id', (req, res) => ytOdp(res, Wywiady.wywiad(req.params.id).then((wywiad) => ({ wywiad })), 404));
 app.post('/api/wywiady/przygotuj', (req, res) => ytOdp(res, Wywiady.przygotuj(req.body ?? {}).then((wywiad) => ({ wywiad }))));
 app.post('/api/wywiady/:id/zmien', (req, res) => ytOdp(res, Wywiady.zmien(req.params.id, req.body ?? {}).then((wywiad) => ({ wywiad }))));
+app.post('/api/wywiady/:id/przetlumacz', (req, res) => ytOdp(res, Wywiady.przetlumacz(req.params.id, { jezyk: req.body?.jezyk }).then((wywiad) => ({ wywiad }))));
 app.post('/api/wywiady/:id/nagraj', (req, res) => ytOdp(res, Wywiady.nagraj(req.params.id, {
     bezGlosu: req.body?.bezGlosu === true, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
     glosProwadzacego: req.body?.glosProwadzacego,
