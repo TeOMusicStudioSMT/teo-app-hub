@@ -14,6 +14,10 @@ import fs from 'fs/promises';
 import path from 'path';
 
 export const NICK = /^[a-z0-9][a-z0-9-]{2,31}$/;
+/** Stała domena nazwanego tunelu (host, bez portu i ścieżki) — rejestr odpyta ją dopiero po zatwierdzeniu przy nicku. */
+export const DOMENA = /^([a-z0-9-]+\.)+[a-z]{2,}$/;
+const domenaZ = (d) => (typeof d === 'string' && DOMENA.test(d.toLowerCase()) && d.length <= 253 ? d.toLowerCase() : null);
+const kluczWpisu = (z) => `${z.nick}|${z.klucz}|${z.domena ?? ''}`;
 export const trescListyZarzadcy = ({ czas, zatwierdzone }) => `otakos-zarzadca\n${czas}\n${JSON.stringify(zatwierdzone)}`;
 
 /**
@@ -58,7 +62,7 @@ export function utworzZarzadce(o) {
     async function wyslij() {
         const s = await wczytaj();
         const czas = new Date(cfg.teraz()).toISOString();
-        const zatwierdzone = s.zatwierdzone.map(({ nick, klucz }) => ({ nick, klucz })).sort((a, b) => a.nick.localeCompare(b.nick));
+        const zatwierdzone = s.zatwierdzone.map(({ nick, klucz, domena }) => ({ nick, klucz, ...(domena ? { domena } : {}) })).sort((a, b) => a.nick.localeCompare(b.nick));
         try {
             const d = await zRejestru('/zarzadca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ czas, zatwierdzone, podpis: await cfg.podpisz(trescListyZarzadcy({ czas, zatwierdzone })) }) });
             ostatniaWysylka = { kiedy: czas, ok: true, wiadomosc: d.wiadomosc ?? 'Wysłana.' };
@@ -73,9 +77,13 @@ export function utworzZarzadce(o) {
             k = await kto();
             if (k.jestZarzadca) {
                 const d = await zRejestru('/oczekujace');
-                const juz = new Set(s.zatwierdzone.map((z) => `${z.nick}|${z.klucz}`));
-                const nie = new Set(s.odrzucone.map((z) => `${z.nick}|${z.klucz}`));
-                oczekujace = (Array.isArray(d.oczekujace) ? d.oczekujace : []).filter((o) => NICK.test(o?.nick ?? '') && typeof o.klucz === 'string' && !juz.has(`${o.nick}|${o.klucz}`) && !nie.has(`${o.nick}|${o.klucz}`));
+                // Ta sama Katedra z NOWYM stałym adresem wraca do oczekujących — zatwierdza się nick, klucz i domenę.
+                const juz = new Set(s.zatwierdzone.map(kluczWpisu));
+                const nie = new Set(s.odrzucone.map(kluczWpisu));
+                oczekujace = (Array.isArray(d.oczekujace) ? d.oczekujace : [])
+                    .filter((o) => NICK.test(o?.nick ?? '') && typeof o.klucz === 'string')
+                    .map((o) => ({ ...o, domena: domenaZ(o.domena) }))
+                    .filter((o) => !juz.has(kluczWpisu(o)) && !nie.has(kluczWpisu(o)));
             }
         } catch (e) { blad = e.message; }
         return { ...(k ?? { ja: null, zarzadca: null, jestZarzadca: false }), oczekujace, zatwierdzone: s.zatwierdzone, odrzuconych: s.odrzucone.length, ostatniaWysylka, ...(blad ? { blad } : {}) };
@@ -85,28 +93,39 @@ export function utworzZarzadce(o) {
         const k = await kto();
         if (!k.jestZarzadca) throw new Error(k.zarzadca ? `Zatwierdza tylko zarządca rejestru („${k.zarzadca}”), a ta Katedra to „${k.ja ?? 'bez nicka'}”.` : 'Rejestr otakos.wtf nie ma jeszcze zarządcy.');
     }
-    const sprawdzWpis = ({ nick, klucz } = {}) => {
+    const sprawdzWpis = ({ nick, klucz, domena } = {}) => {
         if (!NICK.test(String(nick ?? ''))) throw new Error('Zły nick.');
         if (typeof klucz !== 'string' || klucz.length < 40 || klucz.length > 200) throw new Error('Zły klucz.');
-        return { nick, klucz };
+        if (domena != null && domena !== '' && !domenaZ(domena)) throw new Error('Zła domena.');
+        return { nick, klucz, domena: domenaZ(domena) };
     };
+    /** Domena z kolejki rejestru, gdy przycisk (Hub / StoL) wysłał tylko nick i klucz. */
+    async function domenaZKolejki(nick, klucz) {
+        try {
+            const d = await zRejestru('/oczekujace');
+            return domenaZ((Array.isArray(d.oczekujace) ? d.oczekujace : []).find((o) => o?.nick === nick && o?.klucz === klucz)?.domena);
+        } catch { return null; }
+    }
 
     async function zatwierdz(w) {
-        const { nick, klucz } = sprawdzWpis(w);
+        const { nick, klucz, domena: podana } = sprawdzWpis(w);
         await musiBycZarzadca();
+        const domena = podana ?? (await domenaZKolejki(nick, klucz));
         const s = await wczytaj();
         s.zatwierdzone = s.zatwierdzone.filter((z) => z.nick !== nick);
-        s.zatwierdzone.push({ nick, klucz, kiedy: new Date(cfg.teraz()).toISOString() });
+        s.zatwierdzone.push({ nick, klucz, ...(domena ? { domena } : {}), kiedy: new Date(cfg.teraz()).toISOString() });
         s.odrzucone = s.odrzucone.filter((z) => !(z.nick === nick && z.klucz === klucz));
         await zapisz();
-        cfg.szyna?.nadaj?.({ agent: 'Rejestr', rodzaj: 'praca', tresc: `🏛️ Katedra „${nick}” zatwierdzona na otakos.wtf` })?.catch?.(() => {});
+        cfg.szyna?.nadaj?.({ agent: 'Rejestr', rodzaj: 'praca', tresc: `🏛️ Katedra „${nick}”${domena ? ` (${domena})` : ''} zatwierdzona na otakos.wtf` })?.catch?.(() => {});
         return { ...(await wyslij()), nick };
     }
     async function odrzuc(w) {
-        const { nick, klucz } = sprawdzWpis(w);
+        const { nick, klucz, domena: podana } = sprawdzWpis(w);
         await musiBycZarzadca();
+        const domena = podana ?? (await domenaZKolejki(nick, klucz));
         const s = await wczytaj();
-        if (!s.odrzucone.some((z) => z.nick === nick && z.klucz === klucz)) s.odrzucone.push({ nick, klucz, kiedy: new Date(cfg.teraz()).toISOString() });
+        const wpis = { nick, klucz, ...(domena ? { domena } : {}) };
+        if (!s.odrzucone.some((z) => kluczWpisu(z) === kluczWpisu(wpis))) s.odrzucone.push({ ...wpis, kiedy: new Date(cfg.teraz()).toISOString() });
         await zapisz();
         return { nick, odrzucona: true };
     }

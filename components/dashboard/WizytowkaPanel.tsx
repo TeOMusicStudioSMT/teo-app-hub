@@ -92,8 +92,8 @@ export const WizytowkaPanel: React.FC = () => {
  * 🏛️ Zatwierdzanie Katedr — tylko w Katedrze zarządcy rejestru otakos.wtf (services/ZarzadcaRejestru.js).
  * Ta sama kolejka jest w StoL (Izba Akceptacji). Inne Katedry widzą tu tylko, kto jest zarządcą.
  */
-interface Oczekujaca { nick: string; klucz: string; kiedy: string; powod?: string }
-interface Przeglad { ja: string | null; zarzadca: string | null; jestZarzadca: boolean; oczekujace: Oczekujaca[]; zatwierdzone: { nick: string; klucz: string; kiedy: string }[]; ostatniaWysylka: { kiedy: string; ok: boolean; wiadomosc: string } | null; blad?: string }
+interface Oczekujaca { nick: string; klucz: string; kiedy: string; powod?: string; domena?: string | null }
+interface Przeglad { ja: string | null; zarzadca: string | null; jestZarzadca: boolean; oczekujace: Oczekujaca[]; zatwierdzone: { nick: string; klucz: string; kiedy: string; domena?: string }[]; ostatniaWysylka: { kiedy: string; ok: boolean; wiadomosc: string } | null; blad?: string }
 
 export const ZatwierdzanieKatedr: React.FC = () => {
     const [p, setP] = useState<Przeglad | null>(null);
@@ -114,19 +114,19 @@ export const ZatwierdzanieKatedr: React.FC = () => {
             {p.blad && <div className="text-[10px] text-amber-300">⚠ {p.blad}</div>}
             {!p.oczekujace.length && <div className="text-[10px] text-slate-500">Nikt nie czeka. Nowa Katedra pojawi się tu, gdy włączy tunel i meldunek.</div>}
             {p.oczekujace.map((o) => (
-                <div key={o.nick + o.klucz} className="flex flex-wrap items-center gap-2 py-1">
+                <div key={o.nick + o.klucz + (o.domena ?? '')} className="flex flex-wrap items-center gap-2 py-1">
                     <b className="font-mono text-slate-100">{o.nick}</b>
                     <span className="text-[10px] text-slate-500">{o.powod ?? 'nowa Katedra'} · {new Date(o.kiedy).toLocaleString('pl-PL')}</span>
                     <span className="max-w-[10rem] truncate font-mono text-[9px] text-slate-600" title={o.klucz}>{o.klucz}</span>
-                    <button disabled={pracuje} onClick={() => void akcja('/api/rejestr/zatwierdz', { nick: o.nick, klucz: o.klucz }, `„${o.nick}” zatwierdzona — pojawi się na otakos.wtf.`)} className="ml-auto rounded bg-emerald-600/40 px-2 py-0.5 text-emerald-100">✓ Zatwierdź</button>
-                    <button disabled={pracuje} onClick={() => void akcja('/api/rejestr/odrzuc', { nick: o.nick, klucz: o.klucz }, `„${o.nick}” odrzucona.`)} className="rounded bg-rose-600/30 px-2 py-0.5 text-rose-100">✕</button>
+                    <button disabled={pracuje} onClick={() => void akcja('/api/rejestr/zatwierdz', { nick: o.nick, klucz: o.klucz, domena: o.domena ?? null }, `„${o.nick}”${o.domena ? ` (${o.domena})` : ''} zatwierdzona — pojawi się na otakos.wtf.`)} className="ml-auto rounded bg-emerald-600/40 px-2 py-0.5 text-emerald-100">✓ Zatwierdź</button>
+                    <button disabled={pracuje} onClick={() => void akcja('/api/rejestr/odrzuc', { nick: o.nick, klucz: o.klucz, domena: o.domena ?? null }, `„${o.nick}” odrzucona.`)} className="rounded bg-rose-600/30 px-2 py-0.5 text-rose-100">✕</button>
                 </div>
             ))}
             {p.zatwierdzone.length > 0 && (
                 <details className="mt-1"><summary className="cursor-pointer text-[10px] text-slate-400">Zatwierdzone ({p.zatwierdzone.length})</summary>
                     {p.zatwierdzone.map((z) => (
                         <div key={z.nick} className="flex items-center gap-2 py-0.5 text-[10px]">
-                            <span className="font-mono text-slate-300">{z.nick}</span>
+                            <span className="font-mono text-slate-300">{z.nick}</span>{z.domena && <span className="font-mono text-slate-500">{z.domena}</span>}
                             <button disabled={pracuje} onClick={() => { if (confirm(`Zdjąć „${z.nick}” z otakos.wtf?`)) void akcja('/api/rejestr/cofnij', { nick: z.nick }, `„${z.nick}” zdjęta ze strony.`); }} className="ml-auto text-rose-300 underline">cofnij</button>
                         </div>
                     ))}

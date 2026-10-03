@@ -67,3 +67,18 @@ test('Katedra, która nie jest zarządcą, nie zatwierdza i nie widzi oczekując
     assert.equal(rej.odebrane, 0);
     await assert.rejects(zarzadca('teo-center', rejestr()).zatwierdz({ nick: 'ZŁY', klucz: 'x' }), /Zły nick/);
 });
+
+test('stały adres (nazwany tunel): oczekująca niesie domenę, zatwierdzenie bez domeny bierze ją z kolejki rejestru i wysyła w liście', async () => {
+    const rej = rejestr();
+    rej.oczekujace = [{ ...NOWA, domena: 'katedra.przyklad.pl', kiedy: 'x', powod: 'stały adres' }];
+    const z = zarzadca('teo-center', rej);
+    assert.equal((await z.przeglad()).oczekujace[0].domena, 'katedra.przyklad.pl');
+    const w = await z.zatwierdz({ nick: NOWA.nick, klucz: NOWA.klucz });   // przycisk w StoL wysyła tylko nick i klucz
+    assert.equal(w.ok, true, w.wiadomosc);
+    assert.deepEqual(rej.lista, [{ nick: 'kael-elara', klucz: NOWA.klucz, domena: 'katedra.przyklad.pl' }]);
+    assert.deepEqual((await z.przeglad()).oczekujace, [], 'ta sama domena nie wraca');
+    // ta sama Katedra z NOWYM stałym adresem wraca do zatwierdzenia
+    rej.oczekujace = [{ ...NOWA, domena: 'nowa.przyklad.pl', kiedy: 'y' }];
+    assert.equal((await z.przeglad()).oczekujace.length, 1);
+    await assert.rejects(z.zatwierdz({ ...NOWA, domena: 'http://zla/' }), /Zła domena/);
+});
