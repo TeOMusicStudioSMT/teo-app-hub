@@ -73,9 +73,10 @@ export const WizytowkaPanel: React.FC = () => {
                         <button onClick={() => void zamelduj()} className="ml-2 underline">zamelduj teraz</button>
                     </div>
                 )}
+                <ZatwierdzanieKatedr />
                 {p.nick && (
                     <div className="text-[10px] text-slate-500">
-                        Do zatwierdzenia na otakos.wtf wyślij Suwerenowi strony nick i klucz publiczny (prywatny nie opuszcza maszyny):
+                        Nowa Katedra po włączeniu tunelu i meldunku sama czeka na zatwierdzenie u zarządcy rejestru (Stół). Twój klucz publiczny — gdyby zarządca chciał go porównać (prywatny nie opuszcza maszyny):
                         <div className="mt-1 flex items-center gap-1.5">
                             <code className="flex-1 truncate rounded bg-black/40 px-1.5 py-0.5 font-mono text-slate-300" title={p.klucz}>{p.nick} · {p.klucz}</code>
                             <button onClick={() => { void navigator.clipboard.writeText(JSON.stringify({ nick: p.nick, klucz: p.klucz })); toast.success('Skopiowano nick i klucz.'); }} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-200">kopiuj</button>
@@ -84,6 +85,55 @@ export const WizytowkaPanel: React.FC = () => {
                 )}
             </div>
         </details>
+    );
+};
+
+/**
+ * 🏛️ Zatwierdzanie Katedr — tylko w Katedrze zarządcy rejestru otakos.wtf (services/ZarzadcaRejestru.js).
+ * Ta sama kolejka jest w StoL (Izba Akceptacji). Inne Katedry widzą tu tylko, kto jest zarządcą.
+ */
+interface Oczekujaca { nick: string; klucz: string; kiedy: string; powod?: string }
+interface Przeglad { ja: string | null; zarzadca: string | null; jestZarzadca: boolean; oczekujace: Oczekujaca[]; zatwierdzone: { nick: string; klucz: string; kiedy: string }[]; ostatniaWysylka: { kiedy: string; ok: boolean; wiadomosc: string } | null; blad?: string }
+
+export const ZatwierdzanieKatedr: React.FC = () => {
+    const [p, setP] = useState<Przeglad | null>(null);
+    const [pracuje, setPracuje] = useState(false);
+    const odswiez = useCallback(async () => { try { setP(await zMostu<Przeglad>('/api/rejestr/stan')); } catch { setP(null); } }, []);
+    useEffect(() => { void odswiez(); const t = setInterval(odswiez, 30_000); return () => clearInterval(t); }, [odswiez]);
+    const akcja = async (sciezka: string, cialo: object, ok: string) => {
+        setPracuje(true);
+        try { await zMostu(sciezka, { method: 'POST', body: JSON.stringify(cialo) }); toast.success(ok); await odswiez(); }
+        catch (e) { toast.error(e instanceof Error ? e.message : String(e), { duration: 8000 }); }
+        finally { setPracuje(false); }
+    };
+    if (!p) return null;
+    if (!p.jestZarzadca) return p.zarzadca ? <p className="text-[10px] text-slate-600">Zarządca rejestru otakos.wtf: <b className="text-slate-400">{p.zarzadca}</b> — zatwierdza nowe Katedry na swoim Stole.</p> : null;
+    return (
+        <div className="rounded border border-amber-500/30 bg-amber-950/10 p-2 text-[11px]">
+            <div className="mb-1 font-bold text-amber-200">🏛️ Zatwierdzanie Katedr — jesteś zarządcą rejestru</div>
+            {p.blad && <div className="text-[10px] text-amber-300">⚠ {p.blad}</div>}
+            {!p.oczekujace.length && <div className="text-[10px] text-slate-500">Nikt nie czeka. Nowa Katedra pojawi się tu, gdy włączy tunel i meldunek.</div>}
+            {p.oczekujace.map((o) => (
+                <div key={o.nick + o.klucz} className="flex flex-wrap items-center gap-2 py-1">
+                    <b className="font-mono text-slate-100">{o.nick}</b>
+                    <span className="text-[10px] text-slate-500">{o.powod ?? 'nowa Katedra'} · {new Date(o.kiedy).toLocaleString('pl-PL')}</span>
+                    <span className="max-w-[10rem] truncate font-mono text-[9px] text-slate-600" title={o.klucz}>{o.klucz}</span>
+                    <button disabled={pracuje} onClick={() => void akcja('/api/rejestr/zatwierdz', { nick: o.nick, klucz: o.klucz }, `„${o.nick}” zatwierdzona — pojawi się na otakos.wtf.`)} className="ml-auto rounded bg-emerald-600/40 px-2 py-0.5 text-emerald-100">✓ Zatwierdź</button>
+                    <button disabled={pracuje} onClick={() => void akcja('/api/rejestr/odrzuc', { nick: o.nick, klucz: o.klucz }, `„${o.nick}” odrzucona.`)} className="rounded bg-rose-600/30 px-2 py-0.5 text-rose-100">✕</button>
+                </div>
+            ))}
+            {p.zatwierdzone.length > 0 && (
+                <details className="mt-1"><summary className="cursor-pointer text-[10px] text-slate-400">Zatwierdzone ({p.zatwierdzone.length})</summary>
+                    {p.zatwierdzone.map((z) => (
+                        <div key={z.nick} className="flex items-center gap-2 py-0.5 text-[10px]">
+                            <span className="font-mono text-slate-300">{z.nick}</span>
+                            <button disabled={pracuje} onClick={() => { if (confirm(`Zdjąć „${z.nick}” z otakos.wtf?`)) void akcja('/api/rejestr/cofnij', { nick: z.nick }, `„${z.nick}” zdjęta ze strony.`); }} className="ml-auto text-rose-300 underline">cofnij</button>
+                        </div>
+                    ))}
+                </details>
+            )}
+            {p.ostatniaWysylka && <div className={`mt-1 text-[9px] ${p.ostatniaWysylka.ok ? 'text-slate-600' : 'text-amber-300'}`}>lista → otakos.wtf: {p.ostatniaWysylka.wiadomosc} · {new Date(p.ostatniaWysylka.kiedy).toLocaleTimeString('pl-PL')}</div>}
+        </div>
     );
 };
 
