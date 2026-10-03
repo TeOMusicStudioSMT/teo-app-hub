@@ -187,6 +187,9 @@ import * as Wystawa from './services/Wystawa.js';
 import * as Wizytowka from './services/Wizytowka.js';
 import { utworzTost } from './services/TostSiec.js';
 import { utworzZarzadce } from './services/ZarzadcaRejestru.js';
+import { utworzKontoYouTube, SCIEZKA_ZWROTU as ZWROT_YOUTUBE } from './services/YouTubeKonto.js';
+import { utworzPublikacje } from './services/PublikacjeYouTube.js';
+import { utworzKanalYouTube } from './services/KanalYouTube.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -8173,7 +8176,10 @@ const ZarzadcaRejestru = utworzZarzadce({
     szyna: Szyna,
 });
 ZarzadcaRejestru.startPetli();
-Wizytowka.skonfiguruj({ katalog: ANTIGRAVITY_DIR, wystawa: Wystawa, tunel: () => Tunel.stanTunelu(), szyna: Szyna, tostKlucz: async () => (await TostSiec.kluczTost()).publiczny });
+const KanalYT = utworzKanalYouTube();
+Wizytowka.skonfiguruj({ katalog: ANTIGRAVITY_DIR, wystawa: Wystawa, tunel: () => Tunel.stanTunelu(), szyna: Szyna, tostKlucz: async () => (await TostSiec.kluczTost()).publiczny, kanalYouTube: KanalYT });
+// Podgląd kanału w panelu 🪪 (czy adres się rozpoznaje, ile filmów widać) — tylko maszyna (/api/wizytowka/ w trasach lokalnych).
+app.get('/api/wizytowka/kanal', async (_req, res) => { try { const p = await Wizytowka.profil(); return res.json({ success: true, kanal: p.kanal ? await KanalYT.pobierz(p.kanal) : null }); } catch (e) { return res.status(500).json({ success: false, message: e.message }); } });
 Wizytowka.startPetli();
 app.get('/api/wizytowka', cors({ origin: '*' }), async (_req, res) => {
     try {
@@ -10083,17 +10089,14 @@ app.post('/api/biblioteka/wyslij', async (req, res) => {
         const materialy = await materialyOdcinka(ANTIGRAVITY_DIR, projekt, odcinek);
         const z = await Biblioteka.zlecenieDlaImpresariatu(ANTIGRAVITY_DIR, projekt, odcinek, materialy);
 
-        // Przy YouTubie sprawdzamy klucze ZANIM cokolwiek trafi do kolejki —
-        // zadanie, które i tak padnie na braku tokenu, tylko zaśmieca listę.
+        // YouTube idzie przez Izbę Akceptacji (Suweren 2026-10-03): Kronikarz pisze opis, Suweren daje ✓,
+        // dopiero wtedy Impresariat wysyła. Tu tylko przygotowanie publikacji.
         if (z.plan.kanal === 'youtube') {
-            const yt = await ImpresarioService.getInstance().getYouTubeSecretsStatus();
-            if (!yt.allPresent) {
-                return res.status(424).json({
-                    success: false,
-                    message: `Impresariat nie ma kompletu kluczy YouTube (brakuje: ${yt.missing.join(', ')}). Wpisz je raz: POST /api/impresario/secrets/youtube.`,
-                    braki: yt.missing,
-                });
-            }
+            const publikacja = await PublikacjeYT.przygotuj({
+                plik: z.plik, nazwa: z.tytul, zrodlo: { projekt, odcinekId },
+                kontekst: [`Projekt: ${projekt}`, `Odcinek #${odcinek.numer}: ${odcinek.tytul}`, z.opis && `Streszczenie / plan: ${z.opis}`, z.tagi?.length && `Tagi z planu: ${z.tagi.join(', ')}`].filter(Boolean).join('\n'),
+            });
+            return res.json({ success: true, publikacja, doAkceptacji: true, plik: z.plik, tytul: z.tytul });
         }
 
         const job = await ImpresarioService.getInstance()
@@ -13795,7 +13798,7 @@ app.get('/api/impresario/queue', async (req, res) => {
  *
  * Dodaje nowe zlecenie publikacji do kolejki.
  * Opcjonalne pole `filePath` wskazuje plik .mp4/.wav na dysku lokalnym
- * (używane przez uploadVideoToYouTube przy realnym deploymencie).
+ * (używane przez uploadToYouTube przy realnym deploymencie).
  */
 app.post('/api/impresario/enqueue', async (req, res) => {
     const { title, album, platforms, filePath = null } = req.body ?? {};
@@ -13842,7 +13845,7 @@ app.post('/api/impresario/upload/:id', async (req, res) => {
             return res.status(400).json({ success: false, message: `Zadanie ${id} nie jest przeznaczone na YouTube.` });
         }
 
-        const result = await ImpresarioService.getInstance().uploadVideoToYouTube(task);
+        const result = await ImpresarioService.getInstance().uploadToYouTube(task);
         const status = result.success ? 200 : 422;
         return res.status(status).json(result);
 
@@ -13906,45 +13909,6 @@ app.post('/api/impresario/export/spotify/:id', async (req, res) => {
     }
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-//  AUTH GOOGLE — Przyszłościowy OAuth2 + Ekosystem Gemini Agent
-// ════════════════════════════════════════════════════════════════════════════
-
-/**
- * GET /api/auth/google
- * Punkt wejścia OAuth2. Na tym etapie zwraca JSON z informacjami i planowanym URL.
- * TODO: Po uzupełnieniu CLIENT_ID w media_secrets.json — przekieruj na ekran zgody Google.
- */
-app.get('/api/auth/google', async (req, res) => {
-    try {
-        const secretsStatus = await ImpresarioService.getInstance().getYouTubeSecretsStatus();
-        const clientId = secretsStatus.filled.includes('CLIENT_ID')
-            ? '(skonfigurowany)'
-            : '(brak — uzupełnij media_secrets.json)';
-
-        const authUrl = secretsStatus.filled.includes('CLIENT_ID')
-            ? `https://accounts.google.com/o/oauth2/auth?` +
-              `response_type=code&` +
-              `scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fyoutube.upload&` +
-              `access_type=offline&prompt=consent`
-            : null;
-
-        return res.json({
-            success:       true,
-            status:        secretsStatus.allPresent ? 'READY' : 'NEEDS_CONFIGURATION',
-            clientId,
-            authUrl,
-            secretsStatus,
-            nextStep:      secretsStatus.allPresent
-                ? 'Klucze gotowe. Użyj POST /api/auth/google/simulate lub zaimplementuj redirect.'
-                : 'Uzupełnij CLIENT_ID, CLIENT_SECRET i REFRESH_TOKEN przez POST /api/impresario/secrets/youtube.',
-            note:          'Pełny redirect OAuth2 zostanie aktywowany po skonfigurowaniu CLIENT_ID w Katedrze.',
-        });
-    } catch (err) {
-        return res.status(500).json({ success: false, message: err.message });
-    }
-});
-
 /**
  * POST /api/impresario/secrets/youtube
  * Body: { clientId?: string, clientSecret?: string, refreshToken?: string }
@@ -13985,21 +13949,74 @@ app.post('/api/impresario/secrets/youtube', async (req, res) => {
     }
 });
 
-/**
- * POST /api/auth/google/simulate
- * Symuluje autoryzację przez Ekosystem Gemini Agent.
- * Flagi vault: { connected: true, gemini_auth: true, auth_method: 'gemini_agent_ecosystem' }
- * TODO: Zastąpić rzeczywistym OAuth2 callback po uzyskaniu Gemini API access.
- */
-app.post('/api/auth/google/simulate', async (req, res) => {
-    try {
-        const result = await ImpresarioService.getInstance().simulateGeminiAgentConnect();
-        return res.json({ success: true, ...result });
-    } catch (err) {
-        console.error('[Impresario-API] ❌ POST auth/google/simulate:', err.message);
-        return res.status(500).json({ success: false, message: err.message });
-    }
+// ── 📺 „Połącz z YouTube” + publikacje stada (services/YouTubeKonto.js, services/PublikacjeYouTube.js) ──
+// Zastępuje dawne /api/auth/google (sam JSON z TODO) i /api/auth/google/simulate (atrapa „połączono” bez tokenu).
+const KontoYouTube = utworzKontoYouTube({
+    sekrety: () => ImpresarioService.getInstance().youtubeSekrety(),
+    zapiszToken: (t) => ImpresarioService.getInstance().zapiszTokenYouTube(t),
+    adresMostu: `http://127.0.0.1:${PORT}`,
 });
+const PublikacjeYT = utworzPublikacje({
+    katalog: ANTIGRAVITY_DIR,
+    pisz: async (system, prompt) => piszModelem(await ModeleAgentow.modelDla('kronikarz').catch(() => null), system, prompt),
+    impresariat: ImpresarioService.getInstance(),
+    statusFilmu: (id) => KontoYouTube.statusFilmu(id),
+    naWystawe: (filmId, url) => Wystawa.ustawYouTube({ filmId, url }),
+    gotowyYouTube: async () => (await ImpresarioService.getInstance().getYouTubeSecretsStatus()).allPresent,
+    szyna: Szyna,
+});
+const ytOdp = (res, p, kod = 400) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(kod).json({ success: false, message: e.message }));
+
+app.get('/api/impresario/youtube/stan', (_req, res) => ytOdp(res, KontoYouTube.stan(), 500));
+app.post('/api/impresario/youtube/klient', (req, res) => {
+    const { clientId = '', clientSecret = '' } = req.body ?? {};
+    if (!String(clientId).trim().endsWith('.apps.googleusercontent.com') || !String(clientSecret).trim()) {
+        return res.status(400).json({ success: false, message: 'CLIENT_ID kończy się na .apps.googleusercontent.com, a CLIENT_SECRET nie może być pusty.' });
+    }
+    return ytOdp(res, ImpresarioService.getInstance().saveYouTubeSecrets(String(clientId), String(clientSecret), undefined).then((w) => ({ zapisano: w.filledFields })));
+});
+// Hub otwiera tę trasę w nowym oknie → przekierowanie na ekran zgody Google.
+app.get('/api/impresario/youtube/polacz', async (_req, res) => {
+    try { return res.redirect(302, await KontoYouTube.adresZgody()); }
+    catch (e) { return res.status(400).type('html').send(`<meta charset="utf-8"><body style="font-family:sans-serif;background:#0b1020;color:#fca5a5;padding:2rem">📺 ${e.message.replace(/</g, '&lt;')}</body>`); }
+});
+// Powrót z Google (Straż wpuszcza go z tej maszyny mimo Referera accounts.google.com — chroni state).
+app.get(ZWROT_YOUTUBE, async (req, res) => {
+    const strona = (kolor, tekst) => res.type('html').send(`<meta charset="utf-8"><title>YouTube · Katedra</title><body style="font-family:sans-serif;background:#0b1020;color:${kolor};padding:2rem;font-size:18px">${tekst}<p style="color:#64748b;font-size:14px">Możesz zamknąć to okno i wrócić do Katedry.</p></body>`);
+    try {
+        const w = await KontoYouTube.przyjmijZwrot(req.query ?? {});
+        await Szyna.nadaj({ agent: 'Impresario', rodzaj: 'praca', tresc: `📺 YouTube połączony${w.kanal ? ` z kanałem „${w.kanal.nazwa}”` : ''}` }).catch(() => {});
+        return strona('#86efac', `✓ YouTube połączony${w.kanal ? ` z kanałem <b>${String(w.kanal.nazwa).replace(/</g, '&lt;')}</b>` : ''}.`);
+    } catch (e) { return strona('#fca5a5', `⚠ ${String(e.message).replace(/</g, '&lt;')}`); }
+});
+app.post('/api/impresario/youtube/rozlacz', (_req, res) => ytOdp(res, ImpresarioService.getInstance().rozlaczYouTube()));
+
+app.get('/api/youtube/publikacje', (_req, res) => ytOdp(res, PublikacjeYT.sprawdz().then((lista) => ({ publikacje: lista })), 500));
+/** { wystawaId } — film z Wystawy, albo { projekt, odcinekId } — odcinek z Biblioteki. Kronikarz pisze od razu. */
+app.post('/api/youtube/publikacje/przygotuj', async (req, res) => {
+    try {
+        const { wystawaId = '', projekt = '', odcinekId = '' } = req.body ?? {};
+        let z;
+        if (wystawaId) {
+            const w = await Wystawa.zbierz();
+            const f = w.filmy.find((x) => x.id === wystawaId);
+            const plik = Wystawa.sciezkaZBialej(wystawaId);
+            if (!f || !plik) return res.status(404).json({ success: false, message: 'Nie ma takiego filmu na Wystawie.' });
+            z = { plik, nazwa: f.tytul, wystawaId, zrodlo: { projekt: f.projekt }, kontekst: [f.projekt && `Projekt: ${f.projekt}`, f.opis && `Opis: ${f.opis}`].filter(Boolean).join('\n') };
+        } else {
+            const p = await rezyserPamiec(ANTIGRAVITY_DIR, projekt);
+            const odcinek = (p.odcinki ?? []).find((o) => o.id === odcinekId);
+            if (!odcinek) return res.status(404).json({ success: false, message: `Odcinek "${odcinekId}" nie istnieje.` });
+            const materialy = await materialyOdcinka(ANTIGRAVITY_DIR, projekt, odcinek);
+            const zl = await Biblioteka.zlecenieDlaImpresariatu(ANTIGRAVITY_DIR, projekt, odcinek, materialy);
+            z = { plik: zl.plik, nazwa: zl.tytul, zrodlo: { projekt, odcinekId }, kontekst: [`Projekt: ${projekt}`, `Odcinek #${odcinek.numer}: ${odcinek.tytul}`, zl.opis && `Streszczenie / plan: ${zl.opis}`, zl.tagi?.length && `Tagi z planu: ${zl.tagi.join(', ')}`].filter(Boolean).join('\n') };
+        }
+        return res.json({ success: true, publikacja: await PublikacjeYT.przygotuj(z) });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/youtube/publikacje/:id/zmien', (req, res) => ytOdp(res, PublikacjeYT.zmien(req.params.id, req.body ?? {}).then((publikacja) => ({ publikacja }))));
+app.post('/api/youtube/publikacje/:id/zatwierdz', (req, res) => ytOdp(res, PublikacjeYT.zatwierdz(req.params.id).then((publikacja) => ({ publikacja }))));
+app.post('/api/youtube/publikacje/:id/odrzuc', (req, res) => ytOdp(res, PublikacjeYT.odrzuc(req.params.id).then((publikacja) => ({ publikacja }))));
 
 // ════════════════════════════════════════════════════════════════════════════
 //  TOST MESSENGER — Szyfrowany Komunikator Katedry
@@ -16750,11 +16767,12 @@ const httpServer = app.listen(PORT, () => {
     console.log(`[Mechanik] ⏰ Harmonogram: processPendingTasks() co ${MECHANIC_INTERVAL_MS / 1000}s.`);
 
     // ── 🎙️ Agent Impresario — procesor zadań co 15 sekund ────────────────
-    // Szybszy interwał bo to symulacja — widoczny postęp na dashboardzie.
     const IMPRESARIO_INTERVAL_MS = 15_000; // 15 sekund
     setInterval(async () => {
         await ImpresarioService.getInstance().processNextJob();
     }, IMPRESARIO_INTERVAL_MS);
+    // 📺 Publikacje YouTube: koniec wysyłki → prawdziwy status filmu → link na Wystawę
+    setInterval(() => { void PublikacjeYT.sprawdz().catch(() => {}); }, 60_000).unref?.();
 
     console.log(`[Impresario] ⏰ Harmonogram: processNextJob() co ${IMPRESARIO_INTERVAL_MS / 1000}s.`);
     console.log(` 🎙️  GET  /api/impresario/status`);
@@ -16771,9 +16789,8 @@ const httpServer = app.listen(PORT, () => {
     console.log(` 🔗  POST /api/tost/p2p/message/:token     (Relay wiadomości P2P)`);
     console.log(` 🧽  POST /api/laundry/sanitize            (Pralka: EXIF/ICC/XMP scrubber)`);
     console.log(` 🏛️  POST /api/agent/rada-decompose        (Rada: dekompozycja → sesja izolowana)`);
-    console.log(` 🤖  GET  /api/auth/google                  (OAuth2 placeholder)`);
     console.log(` 🤖  POST /api/impresario/secrets/youtube   (Zapis kluczy API)`);
-    console.log(` 🤖  POST /api/auth/google/simulate         (Gemini Agent stub)`);
+    console.log(` 📺  GET  /api/impresario/youtube/polacz    (Połącz z YouTube — OAuth)`);
     console.log(` 🎥  WS   /api/rtmp-relay                   (Katedra → ffmpeg → RTMP/YouTube)`);
     console.log(` 🔴  WS   /api/recorder                     (Katedra → plik .webm na dysku)`);
     console.log(` 🎥  GET  /api/studio/status | POST /api/studio/rtmp-key`);

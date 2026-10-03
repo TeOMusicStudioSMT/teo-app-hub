@@ -23,6 +23,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { rozpoznajKanal, linkiSpolecznosciowe } from './KanalYouTube.js';
 
 let cfg = {
     katalog: null,                 // _OtakOs_Wymiar
@@ -32,6 +33,7 @@ let cfg = {
     fetch: (...a) => fetch(...a),
     szyna: null,
     tostKlucz: null,               // () => klucz publiczny X25519 TOST-a (services/TostSiec.js) — w wizytówce
+    kanalYouTube: null,            // services/KanalYouTube.js → { pobierz(url) } — kanał w wizytówce bez klucza API
 };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
 
@@ -81,6 +83,8 @@ export async function profil() {
         nick: NICK.test(p.nick ?? '') ? p.nick : '',
         motto: tekst(p.motto, 140),
         opis: tekst(p.opis, 600),
+        kanal: typeof p.kanal === 'string' ? p.kanal : '',
+        linki: linkiSpolecznosciowe(p.linki ?? []),
         meldunek: p.meldunek === true,
         klucz: publiczny,
         ostatniMeldunek: stanMeldunku,
@@ -88,7 +92,7 @@ export async function profil() {
     };
 }
 
-export async function ustawProfil({ nick, motto, opis, meldunek } = {}) {
+export async function ustawProfil({ nick, motto, opis, meldunek, kanal, linki } = {}) {
     const p = await czytajJson(PLIK_PROFILU(), {});
     if (nick !== undefined) {
         const n = String(nick).trim().toLowerCase();
@@ -98,6 +102,12 @@ export async function ustawProfil({ nick, motto, opis, meldunek } = {}) {
     if (motto !== undefined) p.motto = tekst(motto, 140);
     if (opis !== undefined) p.opis = tekst(opis, 600);
     if (meldunek !== undefined) p.meldunek = meldunek === true;
+    if (kanal !== undefined) {
+        const k = String(kanal ?? '').trim();
+        if (k && !rozpoznajKanal(k)) throw new Error('Kanał YouTube: wklej adres kanału, np. https://www.youtube.com/@ArtOfSoulTV (nie link do pojedynczego filmu).');
+        p.kanal = k ? rozpoznajKanal(k).adres : '';
+    }
+    if (linki !== undefined) p.linki = linkiSpolecznosciowe(linki);
     await zapiszJson(PLIK_PROFILU(), p);
     if (p.meldunek) setTimeout(() => { void meldunek_(); }, 0);
     return profil();
@@ -126,7 +136,9 @@ export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     const suno = (w.suno ?? []).map((s) => ({ typ: s.typ, id: s.id, url: s.url, tytul: s.tytul, opis: s.opis, embed: s.embed, okladka: s.okladka ?? null, sekundy: s.sekundy ?? null, utwory: (s.utwory ?? []).map((u) => ({ id: u.id, tytul: u.tytul, sekundy: u.sekundy ?? null, okladka: u.okladka ?? null, embed: u.embed, url: u.url })) }));
     publiczneId = ids;
     const tost = cfg.tostKlucz ? await cfg.tostKlucz().catch(() => null) : null;
-    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
+    const k = p.kanal && cfg.kanalYouTube ? await cfg.kanalYouTube.pobierz(p.kanal).catch(() => null) : null;
+    const kanal = k?.id ? { id: k.id, nazwa: k.nazwa, adres: k.adres, playlista: k.playlista, filmy: k.filmy } : null;
+    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
 }
 
 /** Ścieżka pliku wizytówki — tylko id z ostatnio zbudowanej wizytówki (nigdy ścieżka z URL-a). */

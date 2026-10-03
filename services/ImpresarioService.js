@@ -12,6 +12,10 @@
  *   ▸ OAuth2 streaming upload YouTube (fs.createReadStream → HTTPS resumable)
  *   ▸ DistroKid Paczka Exportu: metadata.txt + audio + cover_placeholder.png
  *
+ * 2026-10-03: token YouTube zdobywa „Połącz z YouTube” (services/YouTubeKonto.js) — bez ręcznego
+ * REFRESH_TOKEN. Wycięte atrapy: symulowany postęp SoundCloud i „połączenie przez Gemini”
+ * (ustawiało „połączono” bez żadnego tokenu). SoundCloud mówi wprost, że jest niepodłączony.
+ *
  * Standard: ES Modules ("type": "module" w package.json)
  */
 
@@ -37,9 +41,10 @@ const SECRETS_TEMP = path.join(MEDIA_DIR, 'temp_secrets.json');
 // ─── Dostępne platformy ───────────────────────────────────────────────────────
 const SUPPORTED_PLATFORMS = ['youtube', 'spotify', 'soundcloud'];
 
-// ─── Symulacja — krok postępu ─────────────────────────────────────────────────
-const PROGRESS_STEP     = 18;   // % na jeden cykl
-const ERROR_PROBABILITY = 0.04; // 4% szansa na FAILED (tylko symulacja)
+// Widoczność filmu zaraz po wysyłce (Suweren 2026-10-03: niepubliczny). UWAGA: projekt API bez audytu
+// YouTube i tak trzyma jako prywatny — prawdziwy status sprawdza YouTubeKonto.statusFilmu.
+const WIDOCZNOSCI = ['unlisted', 'private', 'public'];
+const NIEPODLACZONE = 'SoundCloud nie jest podłączony — Katedra nie ma dla niego wysyłki (wcześniej był tu tylko symulowany pasek postępu).';
 
 // ─── Minimalny prawidłowy PNG 1×1 px (biały piksel) ──────────────────────────
 // Użyty jako cover_placeholder.png w paczkach DistroKid
@@ -89,7 +94,9 @@ class ImpresarioService {
     // @param platforms {string[]}     Docelowe platformy (min. 1)
     // @param filePath  {string|null}  Ścieżka do pliku .mp4/.wav/... (opcjonalna)
 
-    async enqueuePublication(title, album, platforms, filePath = null) {
+    // @param opcje     {{ opis?:string, tagi?:string[], widocznosc?:'unlisted'|'private'|'public', publikacjaId?:string }}
+
+    async enqueuePublication(title, album, platforms, filePath = null, opcje = {}) {
         if (!title || !title.trim()) {
             throw new Error('Tytuł jest wymagany.');
         }
@@ -126,6 +133,10 @@ class ImpresarioService {
             platforms:        validPlatforms,
             progress_percent: 0,
             filePath:         resolvedFilePath,
+            opis:             typeof opcje.opis === 'string' ? opcje.opis.slice(0, 5000) : null,
+            tagi:             Array.isArray(opcje.tagi) ? opcje.tagi.map(String).filter(Boolean).slice(0, 30) : null,
+            widocznosc:       WIDOCZNOSCI.includes(opcje.widocznosc) ? opcje.widocznosc : 'unlisted',
+            publikacjaId:     opcje.publikacjaId ?? null,
             createdAt:        new Date().toISOString(),
             last_updated:     new Date().toISOString(),
         };
@@ -164,7 +175,7 @@ class ImpresarioService {
     // Routing:
     //   • youtube  + filePath  → uploadToYouTube()     (streaming OAuth2)
     //   • spotify              → exportSpotifyPaczkowy() (DistroKid package)
-    //   • soundcloud / inne   → symulacja postępu
+    //   • soundcloud / inne   → FAILED z prawdą: niepodłączone
 
     async processNextJob() {
         if (this._isRunning) {
@@ -177,12 +188,12 @@ class ImpresarioService {
             await this._ensureDir();
             const queue = await this._readQueue();
 
-            // ── 1. Kontynuacja symulacji dla PROCESSING (bez flagi _realUpload) ──
+            // ── 1. Stare zlecenia z dawnej symulacji (PROCESSING bez prawdziwej wysyłki) — kończymy prawdą ──
             const simIdx = queue.findIndex(
-                j => j.status === 'PROCESSING' && !j._realUpload
+                j => j.status === 'PROCESSING' && !j._realUpload && !j.platforms.includes('spotify')
             );
             if (simIdx !== -1) {
-                await this._advanceSimulation(queue, simIdx);
+                await this._updateJobStatus(queue, queue[simIdx].id, 'FAILED', { failedAt: new Date().toISOString(), error: NIEPODLACZONE });
                 return;
             }
 
@@ -228,15 +239,12 @@ class ImpresarioService {
                 return;
             }
 
-            // SoundCloud / inne → symulacja
-            queue[pendingIdx] = {
-                ...task,
-                status:       'PROCESSING',
-                startedAt:    new Date().toISOString(),
-                last_updated: new Date().toISOString(),
-            };
-            await this._saveQueue(queue);
-            console.log(`[Impresario] ▶️  Symulacja: "${task.title}" (${task.platforms.join(', ')})`);
+            // SoundCloud / inne → nie udajemy wysyłki
+            await this._updateJobStatus(queue, task.id, 'FAILED', {
+                failedAt: new Date().toISOString(),
+                error: task.platforms.includes('youtube') ? 'YouTube wymaga pliku wideo (filePath).' : NIEPODLACZONE,
+            });
+            console.log(`[Impresario] ⛔ „${task.title}” (${task.platforms.join(', ')}) — brak prawdziwej wysyłki dla tej platformy.`);
 
         } catch (err) {
             console.error(`[Impresario] ❌ processNextJob: ${err.message}`);
@@ -256,7 +264,7 @@ class ImpresarioService {
     //   4. PUT upload URL z fs.createReadStream (strumieniuje plik bez ładowania do RAM)
     //   5. Status → COMPLETE z youtubeVideoId i youtubeUrl
     //
-    // Prywatność: zawsze 'private' — Suweren decyduje o publikacji ręcznie.
+    // Widoczność: task.widocznosc (domyślnie 'unlisted'); YouTube może i tak zostawić 'private' (projekt bez audytu).
 
     async uploadToYouTube(task) {
         console.log(`[Impresario-YT] 📺 Upload: "${task.title}" (${task.id})`);
@@ -327,7 +335,7 @@ class ImpresarioService {
                 youtubeVideoId:   videoId,
                 youtubeUrl:       ytUrl,
                 note:             ytUrl
-                    ? `Opublikowano (prywatnie) na YouTube: ${ytUrl}`
+                    ? `Wysłano na YouTube (${task.widocznosc ?? 'unlisted'}): ${ytUrl}`
                     : 'Upload zakończony. Sprawdź kanał YouTube.',
             });
 
@@ -486,8 +494,9 @@ class ImpresarioService {
             body:    body.toString(),
         });
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!data.access_token) {
+            if (data.error === 'invalid_grant') throw new Error('Token YouTube wygasł albo został cofnięty — kliknij „Połącz z YouTube” ponownie.');
             throw new Error(
                 `OAuth2 token error: ${data.error ?? 'unknown'} — ${data.error_description ?? JSON.stringify(data)}`
             );
@@ -499,13 +508,13 @@ class ImpresarioService {
     async _initiateResumableUpload(accessToken, task, fileSize, mimeType) {
         const metadata = {
             snippet: {
-                title:       task.title,
-                description: task.album ? `Album: ${task.album}\n\nKatedra OtakOS` : 'Katedra OtakOS',
+                title:       String(task.title).slice(0, 100),
+                description: task.opis ?? (task.album ? `Album: ${task.album}\n\nKatedra OtakOS` : 'Katedra OtakOS'),
                 categoryId:  '10', // Music
-                tags:        ['katedra', 'otakos', task.title, task.album].filter(Boolean),
+                tags:        task.tagi ?? ['katedra', 'otakos', task.title, task.album].filter(Boolean),
             },
             status: {
-                privacyStatus: 'private', // Suweren decyduje o publikacji
+                privacyStatus: task.widocznosc ?? 'unlisted',
                 selfDeclaredMadeForKids: false,
             },
         };
@@ -577,42 +586,6 @@ class ImpresarioService {
             // Kluczowy moment — fs.createReadStream pipe do żądania HTTPS
             createReadStream(filePath).pipe(req);
         });
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    //  SIMULATION HELPER
-    // ════════════════════════════════════════════════════════════════════════
-
-    async _advanceSimulation(queue, idx) {
-        const job         = queue[idx];
-        const newProgress = Math.min(100, job.progress_percent + PROGRESS_STEP);
-
-        if (newProgress >= 100) {
-            queue[idx] = {
-                ...job,
-                status:           'COMPLETE',
-                progress_percent: 100,
-                completedAt:      new Date().toISOString(),
-                note:             'Symulacja ukończona.',
-            };
-            console.log(`[Impresario] ✅ Symulacja: "${job.title}" COMPLETE`);
-        } else if (Math.random() < ERROR_PROBABILITY && newProgress > PROGRESS_STEP) {
-            queue[idx] = {
-                ...job,
-                status:   'FAILED',
-                failedAt: new Date().toISOString(),
-                error:    'Błąd symulowanego połączenia z platformą. Ponów zlecenie.',
-            };
-            console.warn(`[Impresario] ❌ Symulacja: "${job.title}" FAILED`);
-        } else {
-            queue[idx] = {
-                ...job,
-                progress_percent: newProgress,
-                last_updated:     new Date().toISOString(),
-            };
-        }
-
-        await this._saveQueue(queue);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -691,13 +664,15 @@ class ImpresarioService {
         await this._ensureDir();
         const current = await this._readSecrets();
 
+        const nowyKlient = clientId?.trim() && clientId.trim() !== current.youtube?.CLIENT_ID;
         const updated = {
             _INSTRUKCJA: 'Uzupełnij pola kluczami API. Ten plik NIE MOŻE trafić do repozytorium (jest w .gitignore).',
             ...current,
             youtube: {
-                CLIENT_ID:     clientId?.trim()     ?? current.youtube?.CLIENT_ID     ?? '',
-                CLIENT_SECRET: clientSecret?.trim() ?? current.youtube?.CLIENT_SECRET ?? '',
-                REFRESH_TOKEN: refreshToken?.trim() ?? current.youtube?.REFRESH_TOKEN ?? '',
+                CLIENT_ID:     clientId?.trim()     || current.youtube?.CLIENT_ID     || '',
+                CLIENT_SECRET: clientSecret?.trim() || current.youtube?.CLIENT_SECRET || '',
+                // Token odświeżania należy do klienta OAuth — nowy klient = stary token nieważny.
+                REFRESH_TOKEN: refreshToken?.trim() || (nowyKlient ? '' : current.youtube?.REFRESH_TOKEN) || '',
             },
         };
 
@@ -728,30 +703,27 @@ class ImpresarioService {
         };
     }
 
-    // Symuluje natywne połączenie przez Ekosystem Gemini Agent
-    // (placeholder: w przyszłości zastąpić pełnym OAuth2 redirect flow)
-    async simulateGeminiAgentConnect() {
+    // Sekrety YouTube dla YouTubeKonto (tylko w procesie mostu — nigdy w odpowiedzi HTTP)
+    async youtubeSekrety() {
+        return (await this._readSecrets())?.youtube ?? {};
+    }
+
+    // Token odświeżania z „Połącz z YouTube” → skarbiec + vault „połączono”
+    async zapiszTokenYouTube(refreshToken) {
+        const w = await this.saveYouTubeSecrets(undefined, undefined, refreshToken);
+        await this.updateVaultMetadata('youtube', w.missingFields.length === 0, { auth_method: 'oauth_loopback', auth_timestamp: new Date().toISOString() });
+        return w;
+    }
+
+    // Rozłącz: kasuje token odświeżania (klient OAuth zostaje)
+    async rozlaczYouTube() {
         await this._ensureDir();
-        const vault = await this._readVault();
-
-        vault.youtube = {
-            ...vault.youtube,
-            connected:       true,
-            gemini_auth:     true,
-            auth_method:     'gemini_agent_ecosystem',
-            auth_timestamp:  new Date().toISOString(),
-            last_updated:    new Date().toISOString(),
-        };
-
-        await this._saveVault(vault);
-        console.log('[Impresario] 🤖 Ekosystem Gemini Agent: symulowane połączenie YouTube OK.');
-
-        return {
-            success:     true,
-            method:      'gemini_agent_ecosystem',
-            platform:    'youtube',
-            note:        'Symulacja autoryzacji przez Ekosystem Gemini. Wdróż /api/auth/google dla pełnego OAuth2.',
-        };
+        const current = await this._readSecrets();
+        const updated = { ...current, youtube: { ...(current.youtube ?? {}), REFRESH_TOKEN: '' } };
+        await fs.writeFile(SECRETS_TEMP, JSON.stringify(updated, null, 2), 'utf8');
+        await fs.rename(SECRETS_TEMP, SECRETS_FILE);
+        await this.updateVaultMetadata('youtube', false, { auth_method: null });
+        return { ok: true };
     }
 
     // Skarbiec sekretów — nigdy nie rzuca wyjątku (graceful degradation)

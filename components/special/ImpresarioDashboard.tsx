@@ -12,6 +12,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PolaczYouTube, PublikacjeYouTubePanel } from './YouTubeStudio';
 
 // ─── Stałe ────────────────────────────────────────────────────────────────────
 
@@ -98,13 +99,11 @@ const ImpresarioDashboard: React.FC = () => {
 
     // Instrukcja Konfiguracji YouTube V0 — expandable panel
     const [ytGuideOpen,    setYtGuideOpen]    = useState(false);
-    const [ytKeyForm,      setYtKeyForm]      = useState({ clientId: '', clientSecret: '', refreshToken: '' });
+    const [ytKeyForm,      setYtKeyForm]      = useState({ clientId: '', clientSecret: '' });
     const [ytKeySubmitting, setYtKeySubmitting] = useState(false);
     const [ytKeyMsg,       setYtKeyMsg]       = useState<{ ok: boolean; text: string } | null>(null);
+    const [ytKluczePoz,    setYtKluczePoz]    = useState(0);   // odświeża kartę „Połącz z YouTube” po zapisie klienta
 
-    // Gemini Agent Ecosystem Connect
-    const [geminiConnecting, setGeminiConnecting] = useState(false);
-    const [geminiDone,       setGeminiDone]       = useState(false);
 
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -162,29 +161,24 @@ const ImpresarioDashboard: React.FC = () => {
     // ── Zapis kluczy YouTube API ze skarbca ────────────────────────────────────
     const handleSaveYouTubeKeys = useCallback(async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!ytKeyForm.clientId.trim() && !ytKeyForm.clientSecret.trim() && !ytKeyForm.refreshToken.trim()) {
-            setYtKeyMsg({ ok: false, text: 'Wklej przynajmniej jedno pole.' });
+        if (!ytKeyForm.clientId.trim() || !ytKeyForm.clientSecret.trim()) {
+            setYtKeyMsg({ ok: false, text: 'Wklej CLIENT_ID i CLIENT_SECRET.' });
             return;
         }
         setYtKeySubmitting(true);
         setYtKeyMsg(null);
         try {
-            const res  = await fetch(`${BRIDGE_URL}/api/impresario/secrets/youtube`, {
+            const res  = await fetch(`${BRIDGE_URL}/api/impresario/youtube/klient`, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({
-                    clientId:     ytKeyForm.clientId.trim()     || undefined,
-                    clientSecret: ytKeyForm.clientSecret.trim() || undefined,
-                    refreshToken: ytKeyForm.refreshToken.trim() || undefined,
-                }),
+                body:    JSON.stringify({ clientId: ytKeyForm.clientId.trim(), clientSecret: ytKeyForm.clientSecret.trim() }),
             });
             const data = await res.json();
             if (data.success) {
-                setYtKeyMsg({ ok: true, text: data.message });
-                if (data.missingFields?.length === 0) {
-                    setYtKeyForm({ clientId: '', clientSecret: '', refreshToken: '' });
-                    setTimeout(fetchStatus, 600);
-                }
+                setYtKeyMsg({ ok: true, text: 'Klient OAuth zapisany. Teraz „🔗 Połącz z YouTube” poniżej.' });
+                setYtKeyForm({ clientId: '', clientSecret: '' });
+                setYtKluczePoz((n) => n + 1);
+                setTimeout(fetchStatus, 600);
             } else {
                 setYtKeyMsg({ ok: false, text: data.message ?? 'Nieznany błąd.' });
             }
@@ -195,29 +189,6 @@ const ImpresarioDashboard: React.FC = () => {
         }
     }, [ytKeyForm, fetchStatus]);
 
-    // ── Połączenie przez Ekosystem Gemini Agent ────────────────────────────────
-    const handleGeminiConnect = useCallback(async () => {
-        if (geminiConnecting || geminiDone) return;
-        setGeminiConnecting(true);
-        try {
-            // Najpierw sprawdź status OAuth endpoint
-            await fetch(`${BRIDGE_URL}/api/auth/google`);
-            // Zasymuluj autoryzację przez ekosystem Gemini
-            const res  = await fetch(`${BRIDGE_URL}/api/auth/google/simulate`, { method: 'POST' });
-            const data = await res.json();
-            if (data.success) {
-                setGeminiDone(true);
-                setTimeout(() => {
-                    fetchStatus();
-                    setGeminiDone(false);
-                }, 4000);
-            }
-        } catch (_) { /* bridge offline */ } finally {
-            setGeminiConnecting(false);
-        }
-    }, [geminiConnecting, geminiDone, fetchStatus]);
-
-    // ── Submit nowego zlecenia ─────────────────────────────────────────────────
     const handleEnqueue = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formTitle.trim() || formPlatforms.size === 0) {
@@ -274,7 +245,7 @@ const ImpresarioDashboard: React.FC = () => {
                         🎙️ Impresario — Agent Medialny Katedry
                     </span>
                     <p className="text-[8px] text-slate-600 mt-0.5 font-mono">
-                        Automatyzacja publikacji muzycznej · YouTube · Spotify · SoundCloud
+                        Publikacje · YouTube (prawdziwa wysyłka) · Spotify (paczka DistroKid) · SoundCloud (niepodłączony)
                     </p>
                 </div>
                 {!statusLoaded && (
@@ -415,10 +386,17 @@ const ImpresarioDashboard: React.FC = () => {
                                                     },
                                                     {
                                                         n: '04',
-                                                        title: 'Wygeneruj Refresh Token',
-                                                        desc:  'Otwórz OAuth Playground → Ustawienia (⚙) → wklej CLIENT_ID → Autoryzuj zakres youtube.upload → Wymień kod na tokeny → skopiuj Refresh Token.',
-                                                        link:  'https://developers.google.com/oauthplayground',
-                                                        linkLabel: '↗ OAuth Playground',
+                                                        title: 'Ekran zgody OAuth → „W produkcji”',
+                                                        desc:  'OAuth consent screen: typ Zewnętrzny, dodaj swój e-mail, potem „Opublikuj aplikację” (W produkcji). W „Testowaniu” token YouTube wygasa po 7 dniach. Google pokaże ostrzeżenie „niezweryfikowana aplikacja” — dla własnego kanału kliknij „Zaawansowane → Przejdź”.',
+                                                        link:  'https://console.cloud.google.com/apis/credentials/consent',
+                                                        linkLabel: '↗ Ekran zgody',
+                                                    },
+                                                    {
+                                                        n: '05',
+                                                        title: 'Wklej klienta i kliknij „Połącz z YouTube”',
+                                                        desc:  'CLIENT_ID i CLIENT_SECRET do formularza niżej → „Połącz z YouTube” → zgoda Google w okienku → Katedra sama zapisze token. Bez OAuth Playground i kopiowania tokenów.',
+                                                        link:  'https://myaccount.google.com/permissions',
+                                                        linkLabel: '↗ Twoje zgody Google (tu cofniesz dostęp)',
                                                     },
                                                 ].map(step => (
                                                     <li
@@ -453,13 +431,12 @@ const ImpresarioDashboard: React.FC = () => {
                                                 style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.1)' }}
                                             >
                                                 <p className="text-[9px] font-mono text-cyan-600 uppercase tracking-widest mb-2">
-                                                    ⚡ Wklej klucze bezpośrednio
+                                                    ⚡ Klient OAuth (typ: Aplikacja komputerowa)
                                                 </p>
                                                 <form onSubmit={handleSaveYouTubeKeys} className="space-y-2">
                                                     {[
                                                         { key: 'clientId',     label: 'CLIENT_ID',     placeholder: '123456789-abc.apps.googleusercontent.com' },
                                                         { key: 'clientSecret', label: 'CLIENT_SECRET', placeholder: 'GOCSPX-...' },
-                                                        { key: 'refreshToken', label: 'REFRESH_TOKEN', placeholder: '1//0g...' },
                                                     ].map(field => (
                                                         <div key={field.key}>
                                                             <label className="text-[8px] font-mono text-slate-600 block mb-0.5 uppercase tracking-widest">
@@ -487,7 +464,7 @@ const ImpresarioDashboard: React.FC = () => {
                                                                 : 'bg-cyan-900/40 hover:bg-cyan-800/50 border border-cyan-700/50 text-cyan-400'
                                                             }`}
                                                     >
-                                                        {ytKeySubmitting ? '⏳ Zapisuję...' : '💾 ZAPISZ DO SKARBCA'}
+                                                        {ytKeySubmitting ? '⏳ Zapisuję...' : '💾 ZAPISZ KLIENTA OAUTH'}
                                                     </motion.button>
 
                                                     <AnimatePresence>
@@ -511,91 +488,10 @@ const ImpresarioDashboard: React.FC = () => {
                         </div>
                     )}
 
-                    {/* ══ Gemini Agent Ecosystem Connect ══ */}
-                    <div className="mt-4">
-                        <motion.button
-                            onClick={handleGeminiConnect}
-                            disabled={geminiConnecting}
-                            whileHover={geminiConnecting || geminiDone ? {} : { scale: 1.01 }}
-                            whileTap={geminiConnecting || geminiDone ? {} : { scale: 0.99 }}
-                            className="relative w-full py-3 rounded-lg overflow-hidden transition-all duration-300"
-                            style={{
-                                background: geminiDone
-                                    ? 'rgba(34,197,94,0.08)'
-                                    : 'rgba(88,28,220,0.08)',
-                                border: geminiDone
-                                    ? '1px solid rgba(34,197,94,0.4)'
-                                    : '1px solid rgba(139,92,246,0.4)',
-                                boxShadow: geminiConnecting
-                                    ? '0 0 24px rgba(139,92,246,0.35), inset 0 0 16px rgba(59,130,246,0.08)'
-                                    : geminiDone
-                                    ? '0 0 20px rgba(34,197,94,0.2)'
-                                    : '0 0 14px rgba(139,92,246,0.15)',
-                                cursor: geminiConnecting ? 'wait' : 'pointer',
-                            }}
-                        >
-                            {/* Pulsujące tło — aktywne podczas łączenia */}
-                            {geminiConnecting && (
-                                <motion.div
-                                    className="absolute inset-0 rounded-lg"
-                                    animate={{
-                                        background: [
-                                            'radial-gradient(ellipse at 30% 50%, rgba(139,92,246,0.12) 0%, transparent 70%)',
-                                            'radial-gradient(ellipse at 70% 50%, rgba(59,130,246,0.15) 0%, transparent 70%)',
-                                            'radial-gradient(ellipse at 30% 50%, rgba(139,92,246,0.12) 0%, transparent 70%)',
-                                        ],
-                                    }}
-                                    transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}
-                                />
-                            )}
-
-                            {/* Statyczny neonowy pulse — gdy idle */}
-                            {!geminiConnecting && !geminiDone && (
-                                <motion.div
-                                    className="absolute inset-0 rounded-lg pointer-events-none"
-                                    animate={{ opacity: [0.4, 0.8, 0.4] }}
-                                    transition={{ repeat: Infinity, duration: 2.5 }}
-                                    style={{
-                                        background: 'radial-gradient(ellipse at 50% 100%, rgba(139,92,246,0.1) 0%, transparent 60%)',
-                                    }}
-                                />
-                            )}
-
-                            <div className="relative flex items-center justify-center gap-3">
-                                {geminiConnecting ? (
-                                    <motion.div
-                                        animate={{ rotate: 360 }}
-                                        transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-                                        className="w-4 h-4 rounded-full border-2 border-violet-400 border-t-transparent flex-shrink-0"
-                                    />
-                                ) : geminiDone ? (
-                                    <motion.span
-                                        initial={{ scale: 0 }}
-                                        animate={{ scale: 1 }}
-                                        className="text-lg"
-                                    >✅</motion.span>
-                                ) : (
-                                    <span className="text-base">🤖</span>
-                                )}
-
-                                <div className="text-left">
-                                    <p className={`text-[10px] font-mono font-bold uppercase tracking-[0.2em] ${
-                                        geminiDone ? 'text-green-400' : 'text-violet-300'
-                                    }`}>
-                                        {geminiConnecting
-                                            ? 'INICJUJĘ POŁĄCZENIE EKOSYSTEMOWE...'
-                                            : geminiDone
-                                            ? 'EKOSYSTEM POŁĄCZONY ✓'
-                                            : '🤖 POŁĄCZ PRZEZ EKOSYSTEM GEMINI AGENT'}
-                                    </p>
-                                    <p className="text-[8px] font-mono text-slate-600 mt-0.5">
-                                        {geminiDone
-                                            ? 'Konto YouTube autoryzowane przez natywne usługi Google.'
-                                            : 'Autoryzacja bez ręcznego konfigurowania kluczy API · Wymaga Gemini API'}
-                                    </p>
-                                </div>
-                            </div>
-                        </motion.button>
+                    {/* ══ 📺 Połącz z YouTube (prawdziwy OAuth) + publikacje stada do ✓ ══ */}
+                    <div className="mt-4 flex flex-col gap-3">
+                        <PolaczYouTube key={ytKluczePoz} onZmiana={fetchStatus} />
+                        <PublikacjeYouTubePanel />
                     </div>
                 </section>
 
