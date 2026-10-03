@@ -25,6 +25,7 @@ import fsSync from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { CZCIONKI, zawin, kolorFf, jasniej } from './PowitanieDnia.js';
+import { argumentyPodkladu } from './GlosZeStemu.js';
 
 export const SZER = 1280, WYS = 720, FPS = 25;
 export const PROWADZACY = { id: 'kronikarz', imie: 'Kronikarz', rola: 'Prowadzący wywiad, TeOgochi-pisarz Katedry OtakOS: ciepły, ciekawy, zadaje krótkie pytania.', kolor: '#a855f7', zdjecie: null, glos: null };
@@ -110,7 +111,8 @@ export function argumentyKwestii({ obraz, kolor, imiePlik, liniePliki, czcionka,
  * @param {{ katalog:string, chat:(model:string|null, system:string, user:string)=>Promise<{tekst:string, silnik?:string}>,
  *   modelDla?:(id:string)=>Promise<string|null>, kontekst?:(projekt:string)=>Promise<{film?:object|null, opis?:string}>,
  *   mow?:(o:{tekst:string, glos:object|null})=>Promise<{audio:Buffer, ext:string}>, opisz:(p:string)=>Promise<{sekundy:number|null}>,
- *   katalogMontazy:(projekt:string)=>Promise<string>, ffmpeg?:string, szyna?:any, teraz?:()=>number }} o
+ *   katalogMontazy:(projekt:string)=>Promise<string>, ffmpeg?:string, szyna?:any, teraz?:()=>number,
+ *   sciezkaPodkladu?:(plik:string)=>string }} o   sciezkaPodkladu: plik z biblioteki muzyki → pełna ścieżka (rzuca poza nią)
  */
 export function utworzWywiady(o) {
     const cfg = { ffmpeg: 'ffmpeg', teraz: () => Date.now(), modelDla: async () => null, kontekst: async () => ({}), ...o };
@@ -197,15 +199,24 @@ export function utworzWywiady(o) {
             (e, _o, err) => (e ? zle(new Error(`ffmpeg: ${String(err || e.message).trim().split('\n').slice(-3).join(' | ').slice(0, 400)}`)) : ok())));
     }
 
-    /** Krok 2 + 3: głos, kadry, film w katalogu montaży projektu. Startuje w tle; stan w `postep`. */
-    async function nagraj(id, { bezGlosu = false } = {}) {
+    /**
+     * Krok 2 + 3: głos, kadry, film w katalogu montaży projektu. Startuje w tle; stan w `postep`.
+     * `podklad` = utwór (najlepiej instrumental ze `_Stemy`) cicho pod rozmową; `glosnosc` 0.02–0.6.
+     */
+    async function nagraj(id, { bezGlosu = false, podklad = null, glosnosc = 0.12 } = {}) {
         const w = await wczytajWywiad(id);
         if (wRobocie.has(id)) throw new Error('Ten wywiad już się nagrywa.');
         if (!bezGlosu && !cfg.mow) throw new Error('Katedra nie ma silnika głosu — nagraj „bez głosu” (same napisy).');
+        let plikPodkladu = null;
+        if (podklad) {
+            if (!cfg.sciezkaPodkladu) throw new Error('Ta Katedra nie zna biblioteki muzyki — nagraj bez podkładu.');
+            plikPodkladu = cfg.sciezkaPodkladu(String(podklad));
+            if (!fsSync.existsSync(plikPodkladu)) throw new Error(`Nie ma podkładu: ${path.basename(plikPodkladu)}`);
+        }
         const obsada = await aktorzy();
         const mowca = (kto) => (kto === PROWADZACY.id ? PROWADZACY : obsada.find((a) => a.id === kto)) ?? { ...PROWADZACY, id: kto, imie: kto };
         const { postep, ...zapis } = w;
-        Object.assign(zapis, { etap: 'nagrywa', bezGlosu: !!bezGlosu, blad: undefined, nagrywanoOd: czas() });
+        Object.assign(zapis, { etap: 'nagrywa', bezGlosu: !!bezGlosu, podklad: plikPodkladu ? path.basename(plikPodkladu) : null, blad: undefined, nagrywanoOd: czas() });
         await pisz(plikWywiadu(id), zapis);
         wRobocie.set(id, { etap: 'start', zrobione: 0, wszystkich: w.kwestie.length + 1 });
         void (async () => {
@@ -250,9 +261,18 @@ export function utworzWywiady(o) {
                 wRobocie.set(id, { etap: 'sklejanie', zrobione: w.kwestie.length + 1, wszystkich: w.kwestie.length + 1 });
                 await fs.writeFile(path.join(praca, 'lista.txt'), segmenty.map((s) => `file '${s}'`).join('\n'), 'utf8');
                 await ffmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', 'lista.txt', '-c', 'copy', '-movflags', '+faststart', 'wywiad.mp4'], praca);
+                let gotowy = 'wywiad.mp4';
+                if (plikPodkladu) {
+                    wRobocie.set(id, { etap: 'podkład', zrobione: w.kwestie.length + 1, wszystkich: w.kwestie.length + 1 });
+                    const ext = path.extname(plikPodkladu).toLowerCase();
+                    await fs.copyFile(plikPodkladu, path.join(praca, `podklad${ext}`));
+                    const dl = (await cfg.opisz(path.join(praca, 'wywiad.mp4')).catch(() => null))?.sekundy ?? 0;
+                    await ffmpeg(argumentyPodkladu({ film: 'wywiad.mp4', podklad: `podklad${ext}`, wyjscie: 'wywiad-p.mp4', sekundy: dl, glosnosc }), praca);
+                    gotowy = 'wywiad-p.mp4';
+                }
                 const katMontazy = await cfg.katalogMontazy(w.projekt);
                 const cel = path.join(katMontazy, `wywiad_${slug(w.film?.tytul || w.projekt) || 'film'}_${id.slice(2)}.mp4`);
-                await fs.copyFile(path.join(praca, 'wywiad.mp4'), cel);
+                await fs.copyFile(path.join(praca, gotowy), cel);
                 const o2 = await cfg.opisz(cel).catch(() => null);
                 Object.assign(zapis, { etap: 'gotowy', plik: cel, sekundy: o2?.sekundy ?? null, nagrano: czas() });
                 await pisz(plikWywiadu(id), zapis);

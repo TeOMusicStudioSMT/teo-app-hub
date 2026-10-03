@@ -190,6 +190,7 @@ import { utworzZarzadce } from './services/ZarzadcaRejestru.js';
 import { utworzKontoYouTube, SCIEZKA_ZWROTU as ZWROT_YOUTUBE } from './services/YouTubeKonto.js';
 import { utworzPublikacje } from './services/PublikacjeYouTube.js';
 import { utworzWywiady } from './services/WywiadAktorow.js';
+import { listaStemow, glosZeStemu } from './services/GlosZeStemu.js';
 import { utworzKanalYouTube } from './services/KanalYouTube.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
@@ -14188,6 +14189,7 @@ const Wywiady = utworzWywiady({
     katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
     ffmpeg: ffmpegPath,
     szyna: Szyna,
+    sciezkaPodkladu: (plik) => sciezkaWBibliotece(plik),   // podkład tylko z _OtakOs_Muzyka (stemy, utwory)
 });
 app.get('/api/aktorzy', (_req, res) => ytOdp(res, Wywiady.aktorzy().then((aktorzy) => ({ aktorzy })), 500));
 app.post('/api/aktorzy', (req, res) => ytOdp(res, Wywiady.zapiszAktora(req.body ?? {}).then((aktor) => ({ aktor }))));
@@ -14196,7 +14198,34 @@ app.get('/api/wywiady', (_req, res) => ytOdp(res, Wywiady.wywiady().then((wywiad
 app.get('/api/wywiady/:id', (req, res) => ytOdp(res, Wywiady.wywiad(req.params.id).then((wywiad) => ({ wywiad })), 404));
 app.post('/api/wywiady/przygotuj', (req, res) => ytOdp(res, Wywiady.przygotuj(req.body ?? {}).then((wywiad) => ({ wywiad }))));
 app.post('/api/wywiady/:id/zmien', (req, res) => ytOdp(res, Wywiady.zmien(req.params.id, req.body ?? {}).then((wywiad) => ({ wywiad }))));
-app.post('/api/wywiady/:id/nagraj', (req, res) => ytOdp(res, Wywiady.nagraj(req.params.id, { bezGlosu: req.body?.bezGlosu === true }).then((wywiad) => ({ wywiad }))));
+app.post('/api/wywiady/:id/nagraj', (req, res) => ytOdp(res, Wywiady.nagraj(req.params.id, {
+    bezGlosu: req.body?.bezGlosu === true, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
+}).then((wywiad) => ({ wywiad }))));
+
+// ── 🎙️ Głos ze stemu (services/GlosZeStemu.js): `_OtakOs_Muzyka/_Stemy` (paczki z Suno, wyniki Demucsa) ──
+// Wokal → próbka klonu `_OtakOs_AI/voices/<id>.wav` + profil głosu (tor klon-lokalny) → opcjonalnie od razu dla Aktora.
+app.get('/api/glos/stemy', (_req, res) => ytOdp(res, listaStemow(STEMY_DIR).then((stemy) => ({ stemy, katalog: STEMY_DIR })), 500));
+app.post('/api/glos/ze-stemu', async (req, res) => {
+    try {
+        const { stem = '', od = 0, do: doS = null, nazwa = '', id = '', aktorId = '' } = req.body ?? {};
+        const abs = path.resolve(STEMY_DIR, String(stem));
+        if (!stem || !abs.toLowerCase().startsWith(path.resolve(STEMY_DIR).toLowerCase() + path.sep)) throw new Error('Stem musi leżeć w _OtakOs_Muzyka/_Stemy.');
+        if (!fsSync.existsSync(abs)) throw new Error(`Nie ma pliku: ${path.basename(abs)}`);
+        const w = await glosZeStemu({
+            stem: abs, od, do: doS, id: id || nazwa || aktorId, nazwa: nazwa || id || aktorId, katalogGlosow: VOICES_DIR,
+            ffmpeg: ffmpegPath, uruchom: (bin, args) => execFileAsync(bin, args, { windowsHide: true, timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }),
+            opisz: (p) => Montazownia.opisz(p), zapiszProfil: (dane) => glosZapiszProfil(VOICE_OUT_DIR, dane),
+        });
+        let aktor = null;
+        if (aktorId) {
+            const a = (await Wywiady.aktorzy()).find((x) => x.id === aktorId);
+            if (!a) throw new Error(`Głos zapisany (${w.profil.id}), ale nie ma aktora „${aktorId}”.`);
+            aktor = await Wywiady.zapiszAktora({ ...a, glos: { profil: w.profil.id } });
+        }
+        await Szyna.nadaj({ agent: 'Aktor', rodzaj: 'praca', tresc: `🎙️ nowy głos „${w.profil.nazwa}” ze stemu ${path.basename(abs)} (${w.sekundy.toFixed(1)} s)${aktor ? ` — gra nim ${aktor.imie}` : ''}` }).catch(() => {});
+        return res.json({ success: true, ...w, aktor });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
 
 // ════════════════════════════════════════════════════════════════════════════
 //  TOST MESSENGER — Szyfrowany Komunikator Katedry

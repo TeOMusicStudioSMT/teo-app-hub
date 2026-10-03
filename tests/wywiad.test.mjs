@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execFile } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import { utworzWywiady, promptWywiadu, odczytajScenariusz, argumentyKwestii, czasBezGlosu, PROWADZACY } from '../services/WywiadAktorow.js';
 import { opisz } from '../services/Montazownia.js';
@@ -127,4 +127,34 @@ test('PRAWDZIWE nagranie: plansza + kwestie z głosem (sinus jako „głos”) i
     assert.equal(glosy.length, 3, 'bez głosu nie woła syntezy');
     const o2 = await opisz(g2.plik);
     assert.ok(o2.sekundy > 3.5 + 3 * 3 - 0.5, `długość ${o2.sekundy}`);
+});
+
+test('PRAWDZIWY podkład: instrumental z biblioteki cicho pod wywiadem (bez głosu), długość wywiadu zostaje; podkład spoza biblioteki = błąd', { skip: !czcionka && 'brak czcionki z polskimi znakami' }, async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wywiad-pod-'));
+    const muzyka = path.join(tmp, 'muzyka');
+    fs.mkdirSync(path.join(muzyka, '_Stemy'), { recursive: true });
+    const instrumental = path.join(muzyka, '_Stemy', 'Instrumental.wav');
+    execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=330:duration=4', '-ac', '2', instrumental]);
+    const montaz = path.join(tmp, 'montaz');
+    fs.mkdirSync(montaz);
+    const W = utworzWywiady({
+        katalog: path.join(tmp, 'aktorzy'), ffmpeg: ffmpegPath, opisz, katalogMontazy: async () => montaz,
+        sciezkaPodkladu: (p) => { const abs = path.resolve(muzyka, p); if (!abs.startsWith(muzyka + path.sep)) throw new Error('Ścieżka ucieka poza bibliotekę muzyki.'); return abs; },
+        chat: async () => ({ tekst: 'KRONIKARZ: Witajcie.\nKAEL: Dzień dobry.\nKRONIKARZ: Do zobaczenia na YouTube.' }),
+    });
+    await W.zapiszAktora({ imie: 'Kael', rola: 'Pilot' });
+    const w = await W.przygotuj({ projekt: 'elara', goscie: ['kael'] });
+    await assert.rejects(W.nagraj(w.id, { bezGlosu: true, podklad: '/etc/passwd' }), /poza bibliotekę/);
+    const start = await W.nagraj(w.id, { bezGlosu: true, podklad: '_Stemy/Instrumental.wav', glosnosc: 0.2 });
+    assert.equal(start.podklad, 'Instrumental.wav');
+    const g = await czekaj(async () => { const x = await W.wywiad(w.id); return x.etap !== 'nagrywa' && x; });
+    assert.equal(g.etap, 'gotowy', g.blad);
+    const o = await opisz(g.plik);
+    assert.ok(o.maAudio);
+    // plansza 3,5 s + 3 × 3 s — podkład (4 s, zapętlony) nie wydłuża filmu
+    assert.ok(o.sekundy > 12 && o.sekundy < 13.5, `długość ${o.sekundy}`);
+    // w kwestiach „bez głosu” słychać teraz podkład (nie cyfrowa cisza)
+    const { stderr } = await new Promise((ok) => execFile(ffmpegPath, ['-hide_banner', '-ss', '6', '-t', '2', '-i', g.plik, '-af', 'volumedetect', '-f', 'null', '-'], (e, so, se) => ok({ stderr: se })));
+    const srednia = Number(String(stderr).match(/mean_volume:\s*(-?[\d.]+)/)?.[1]);
+    assert.ok(srednia > -40, `średnia głośność ${srednia} dB`);
 });
