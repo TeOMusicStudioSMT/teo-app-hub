@@ -183,3 +183,28 @@ test('głosy: profil VoiceStudio dla postaci i głos prowadzącego trafiają do 
     assert.deepEqual(glosy, [{ voicestudio: 'narrator' }, { voicestudio: 'kael-vs' }, { voicestudio: 'narrator' }]);
     assert.deepEqual(g.glosProwadzacego, { voicestudio: 'narrator' }, 'głos prowadzącego zapamiętany przy wywiadzie');
 });
+
+test('Kronikarz z obsady: karta „kronikarz” daje prowadzącemu głos, imię i kolor; nie jest gościem; wybór przy nagraniu wygrywa', { skip: !czcionka && 'brak czcionki z polskimi znakami' }, async () => {
+    const { prowadzacyZObsady } = await import('../services/WywiadAktorow.js');
+    assert.equal(prowadzacyZObsady([]).imie, 'Kronikarz');
+    assert.deepEqual(prowadzacyZObsady([{ id: 'kronikarz', imie: 'Kronikarz', glos: { voicestudio: 'narr' }, kolor: '#112233' }]).glos, { voicestudio: 'narr' });
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wywiad-kr-'));
+    const wav = path.join(tmp, 'g.wav');
+    execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=300:duration=1', wav]);
+    const glosy = []; let prompt = '';
+    const W = utworzWywiady({
+        katalog: path.join(tmp, 'aktorzy'), ffmpeg: ffmpegPath, opisz, katalogMontazy: async () => tmp,
+        chat: async (_m, system) => { prompt = system; return { tekst: 'KRONIKARZ: Witajcie.\nKAEL: Dzień dobry.\nKRONIKARZ: Do zobaczenia.' }; },
+        mow: async ({ glos }) => { glosy.push(glos); return { audio: fs.readFileSync(wav), ext: 'wav' }; },
+    });
+    await W.zapiszAktora({ id: 'kronikarz', imie: 'Kronikarz', rola: 'Prowadzący, mówi spokojnie', glos: { voicestudio: 'narr' } });
+    await W.zapiszAktora({ imie: 'Kael', glos: { voicestudio: 'kael-vs' } });
+    await assert.rejects(W.przygotuj({ projekt: 'elara', goscie: ['kronikarz'] }), /co najmniej jednego/, 'Kronikarz nie jest gościem');
+    const w = await W.przygotuj({ projekt: 'elara', goscie: ['kronikarz', 'kael'] });
+    assert.deepEqual(w.goscie, ['kael']);
+    assert.match(prompt, /mówi spokojnie/);
+    await W.nagraj(w.id);
+    const g = await czekaj(async () => { const x = await W.wywiad(w.id); return x.etap !== 'nagrywa' && x; });
+    assert.equal(g.etap, 'gotowy', g.blad);
+    assert.deepEqual(glosy, [{ voicestudio: 'narr' }, { voicestudio: 'kael-vs' }, { voicestudio: 'narr' }]);
+});

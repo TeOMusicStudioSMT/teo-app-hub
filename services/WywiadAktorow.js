@@ -34,6 +34,16 @@ const OBRAZ = /\.(png|jpe?g|webp|bmp)$/i;
 export const slug = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 const bezOgonkow = (s) => slug(s).replace(/-/g, '');
 
+/**
+ * Prowadzący z obsady: karta o id `kronikarz` (Suweren 2026-10-03: „nie ma nigdzie opcji dla Kronikarza”) nadpisuje
+ * domyślnego Kronikarza — imię, rola, zdjęcie, kolor, głos. Brak karty = domyślny (bez głosu → tor domyślny).
+ */
+export function prowadzacyZObsady(obsada = []) {
+    const k = (Array.isArray(obsada) ? obsada : []).find((a) => a?.id === PROWADZACY.id);
+    if (!k) return { ...PROWADZACY };
+    return { ...PROWADZACY, imie: k.imie || PROWADZACY.imie, rola: k.rola || PROWADZACY.rola, kolor: k.kolor || PROWADZACY.kolor, zdjecie: k.zdjecie ?? null, glos: k.glos ?? null };
+}
+
 /** Prośba do modelu o scenariusz wywiadu. */
 export function promptWywiadu({ goscie, prowadzacy = PROWADZACY, film, kontekst = '', temat = '' }) {
     const obsada = goscie.map((a) => `- ${a.imie.toUpperCase()}: ${a.rola || 'postać z filmu'}`).join('\n');
@@ -178,14 +188,15 @@ export function utworzWywiady(o) {
     async function przygotuj({ projekt = '', goscie: ids = [], temat = '', film: filmPodany = null } = {}) {
         if (!String(projekt).trim()) throw new Error('Wywiad dotyczy filmu z projektu — podaj projekt.');
         const obsada = await aktorzy();
-        const goscie = (Array.isArray(ids) ? ids : []).map((id) => obsada.find((a) => a.id === id)).filter(Boolean).slice(0, 3);
+        const prowadzacy = prowadzacyZObsady(obsada);
+        const goscie = (Array.isArray(ids) ? ids : []).filter((id) => id !== PROWADZACY.id).map((id) => obsada.find((a) => a.id === id)).filter(Boolean).slice(0, 3);
         if (!goscie.length) throw new Error('Wybierz co najmniej jednego aktora (najwyżej trzech).');
         const k = await cfg.kontekst(projekt).catch(() => ({}));
         const film = filmPodany?.tytul ? filmPodany : k?.film ?? { tytul: projekt };
-        const { system, user } = promptWywiadu({ goscie, film, kontekst: k?.opis ?? '', temat });
+        const { system, user } = promptWywiadu({ goscie, prowadzacy, film, kontekst: k?.opis ?? '', temat });
         const model = (await cfg.modelDla('aktor').catch(() => null)) ?? (await cfg.modelDla('kronikarz').catch(() => null));
         const { tekst, silnik } = await cfg.chat(model, system, user);
-        const kwestie = odczytajScenariusz(tekst, { goscie });
+        const kwestie = odczytajScenariusz(tekst, { goscie, prowadzacy });
         const id = `w_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
         const w = { id, projekt, film, temat: String(temat).slice(0, 400), goscie: goscie.map((g) => g.id), kwestie, model: silnik ?? model ?? null, etap: 'scenariusz', utworzono: czas() };
         await pisz(plikWywiadu(id), w);
@@ -228,7 +239,9 @@ export function utworzWywiady(o) {
         const obsada = await aktorzy();
         const { postep, ...zapis } = w;
         if (glosProwadzacego !== undefined) zapis.glosProwadzacego = normalizujGlos(glosProwadzacego);
-        const prowadzacy = { ...PROWADZACY, glos: zapis.glosProwadzacego ?? null };
+        // Głos prowadzącego: wybór przy nagraniu (glosProwadzacego) → karta Kronikarza w obsadzie → tor domyślny.
+        const karta = prowadzacyZObsady(obsada);
+        const prowadzacy = { ...karta, glos: zapis.glosProwadzacego ?? karta.glos ?? null };
         const mowca = (kto) => (kto === PROWADZACY.id ? prowadzacy : obsada.find((a) => a.id === kto)) ?? { ...PROWADZACY, id: kto, imie: kto };
         Object.assign(zapis, { etap: 'nagrywa', bezGlosu: !!bezGlosu, podklad: plikPodkladu ? path.basename(plikPodkladu) : null, blad: undefined, nagrywanoOd: czas() });
         await pisz(plikWywiadu(id), zapis);
@@ -248,7 +261,7 @@ export function utworzWywiady(o) {
                 const linieTytulu = [...zawin(w.film?.tytul ?? w.projekt, 52, 2), `z udziałem: ${goscieImiona}`, ...(bezGlosu ? ['(nagranie bez głosu — same napisy)'] : [])];
                 const plikiTytulu = [];
                 for (const [i, l] of linieTytulu.entries()) { const n = `t-${i}.txt`; await fs.writeFile(path.join(praca, n), l, 'utf8'); plikiTytulu.push(n); }
-                await ffmpeg(argumentyKwestii({ obraz: null, kolor: PROWADZACY.kolor, imiePlik: 't-imie.txt', liniePliki: plikiTytulu, czcionka: 'czcionka.ttf', czas: 3.5, audio: null, wyjscie: 'seg-000.mp4' }), praca);
+                await ffmpeg(argumentyKwestii({ obraz: null, kolor: prowadzacy.kolor, imiePlik: 't-imie.txt', liniePliki: plikiTytulu, czcionka: 'czcionka.ttf', czas: 3.5, audio: null, wyjscie: 'seg-000.mp4' }), praca);
                 segmenty.push('seg-000.mp4');
                 wRobocie.set(id, { etap: 'plansza', zrobione: 1, wszystkich: w.kwestie.length + 1 });
                 for (const [i, kw] of w.kwestie.entries()) {
@@ -303,4 +316,4 @@ export function utworzWywiady(o) {
     return { aktorzy, zapiszAktora, usunAktora, wywiady, wywiad: wczytajWywiad, przygotuj, zmien, nagraj };
 }
 
-export default { utworzWywiady, normalizujGlos, promptWywiadu, odczytajScenariusz, argumentyKwestii, czasBezGlosu, PROWADZACY, slug };
+export default { utworzWywiady, normalizujGlos, prowadzacyZObsady, promptWywiadu, odczytajScenariusz, argumentyKwestii, czasBezGlosu, PROWADZACY, slug };
