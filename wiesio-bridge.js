@@ -186,6 +186,7 @@ import * as Teterhia3D from './services/Teterhia3D.js';
 import * as Wystawa from './services/Wystawa.js';
 import * as Wizytowka from './services/Wizytowka.js';
 import { utworzTost } from './services/TostSiec.js';
+import { utworzZarzadce } from './services/ZarzadcaRejestru.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
@@ -8163,6 +8164,15 @@ const TostSiec = utworzTost({
     szyna: Szyna,
 });
 TostSiec.startPetli();
+// 🏛️ Zarządca rejestru otakos.wtf — zatwierdzanie Katedr przez Stół (services/ZarzadcaRejestru.js); działa tylko w Katedrze zarządcy
+const ZarzadcaRejestru = utworzZarzadce({
+    katalog: ANTIGRAVITY_DIR,
+    nick: async () => (await Wizytowka.profil()).nick,
+    podpisz: (t) => Wizytowka.podpiszTekst(t),
+    rejestr: process.env.OTAKOS_REJESTR_URL || 'https://otakos.wtf/api/katedry',
+    szyna: Szyna,
+});
+ZarzadcaRejestru.startPetli();
 Wizytowka.skonfiguruj({ katalog: ANTIGRAVITY_DIR, wystawa: Wystawa, tunel: () => Tunel.stanTunelu(), szyna: Szyna, tostKlucz: async () => (await TostSiec.kluczTost()).publiczny });
 Wizytowka.startPetli();
 app.get('/api/wizytowka', cors({ origin: '*' }), async (_req, res) => {
@@ -8195,6 +8205,11 @@ app.get('/api/tost/siec/kontakty', (_req, res) => tostOdp(res, TostSiec.kontakty
 app.get('/api/tost/siec/rozmowy', (_req, res) => tostOdp(res, TostSiec.rozmowy().then((rozmowy) => ({ rozmowy }))));
 app.get('/api/tost/siec/rozmowa/:nick', (req, res) => tostOdp(res, TostSiec.rozmowa(req.params.nick).then((wiadomosci) => ({ wiadomosci }))));
 app.post('/api/tost/siec/wyslij', (req, res) => tostOdp(res, TostSiec.wyslij(req.body ?? {}).then((wiadomosc) => ({ wiadomosc }))));
+// Zatwierdzanie Katedr (maszyna albo tunel z kluczem — StoL, Izba Akceptacji)
+app.get('/api/rejestr/stan', (_req, res) => tostOdp(res, ZarzadcaRejestru.przeglad()));
+app.post('/api/rejestr/zatwierdz', (req, res) => tostOdp(res, ZarzadcaRejestru.zatwierdz(req.body ?? {})));
+app.post('/api/rejestr/odrzuc', (req, res) => tostOdp(res, ZarzadcaRejestru.odrzuc(req.body ?? {})));
+app.post('/api/rejestr/cofnij', (req, res) => tostOdp(res, ZarzadcaRejestru.cofnij(req.body ?? {})));
 
 // ── 🧊🎮 TGS 3D: teren świata z planszy → Blender → .glb w public/assets/swiaty ──
 Teterhia3D.skonfiguruj({ szyna: Szyna });
