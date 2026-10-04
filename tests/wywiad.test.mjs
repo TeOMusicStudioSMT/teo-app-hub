@@ -50,6 +50,9 @@ test('argumenty kwestii: zdjęcie z najazdem albo barwa, głos albo cisza, tekst
     assert.match(f, /zoompan/);
     assert.match(f, /textfile=l1\.txt:expansion=none/);
     assert.match(f, /color=0xff0000/);
+    const k = argumentyKwestii({ obraz: 'o.png', klip: 'k-kael.mp4', kolor: '#ff0000', imiePlik: 'i.txt', liniePliki: ['l0.txt'], czcionka: 'c.ttf', czas: 4, audio: 'a.wav', wyjscie: 's.mp4' });
+    assert.ok(k.join(' ').includes('-stream_loop -1 -t 4.00 -i k-kael.mp4'), 'klip gra w pętli i wygrywa ze zdjęciem');
+    assert.ok(!k.includes('o.png') && !k.some((x) => /zoompan/.test(x)));
     const b = argumentyKwestii({ obraz: null, kolor: '#00ff00', imiePlik: 'i.txt', liniePliki: ['l0.txt'], czcionka: 'c.ttf', czas: 3, audio: null, wyjscie: 's.mp4' });
     assert.ok(b.some((x) => /^color=c=0x00ff00/.test(x)) && b.some((x) => /anullsrc/.test(x)));
 });

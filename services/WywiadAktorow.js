@@ -6,7 +6,7 @@
  * można powołać TeOgochi Aktora”. Zaczynamy od Aktora i wywiadu o filmie.
  *
  * OBSADA (`aktorzy.json`): postać, w którą wciela się TeOgochi Aktor — imię (Kael, Elara…), rola (kim jest,
- * jak mówi), zdjęcie (kadr z projektu), głos (profil / przewód głosu Katedry), kolor. Projekt opcjonalnie.
+ * jak mówi), zdjęcie (kadr z projektu) i opcjonalny klip wideo, głos (profil / przewód głosu Katedry), kolor. Projekt opcjonalnie.
  *
  * WYWIAD, trzy kroki — każdy prawdziwy i widoczny:
  *   1. SCENARIUSZ: lokalny model (model gatunku `aktor`) pisze rozmowę: prowadzi Kronikarz, goście mówią
@@ -145,15 +145,18 @@ export function normalizujGlos(g) {
 export const czasBezGlosu = (tekst) => Math.max(3, Math.round((String(tekst).length / 14) * 10) / 10);
 
 /**
- * Argumenty ffmpeg dla jednej kwestii: kadr mówiącego (zdjęcie z najazdem albo jego barwa), pas z imieniem
- * i napis; dźwięk = jego kwestia (albo cisza). Nazwy plików WZGLĘDNE do cwd.
+ * Argumenty ffmpeg dla jednej kwestii: kadr mówiącego (klip aktora w pętli, inaczej zdjęcie z najazdem, inaczej jego
+ * barwa), pas z imieniem i napis; dźwięk = jego kwestia (albo cisza; dźwięk klipu nie jest mapowany).
+ * Nazwy plików WZGLĘDNE do cwd.
  */
-export function argumentyKwestii({ obraz, kolor, imiePlik, liniePliki, czcionka, czas, audio, wyjscie }) {
+export function argumentyKwestii({ obraz, klip = null, kolor, imiePlik, liniePliki, czcionka, czas, audio, wyjscie }) {
     const d = Number(czas).toFixed(2), klatek = Math.max(1, Math.round(czas * FPS));
-    const wejscieObrazu = obraz ? ['-loop', '1', '-framerate', String(FPS), '-t', d, '-i', obraz]
+    const wejscieObrazu = klip ? ['-stream_loop', '-1', '-t', d, '-i', klip] : obraz ? ['-loop', '1', '-framerate', String(FPS), '-t', d, '-i', obraz]
         : ['-f', 'lavfi', '-i', `color=c=${kolorFf(kolor)}:s=${SZER}x${WYS}:r=${FPS}:d=${d}`];
     const wejscieDzwieku = audio ? ['-i', audio] : ['-f', 'lavfi', '-t', d, '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000'];
-    const baza = obraz
+    const baza = klip
+        ? `fps=${FPS},scale=${SZER}:${WYS}:force_original_aspect_ratio=increase,crop=${SZER}:${WYS},setsar=1`
+        : obraz
         ? `scale=${SZER * 1.3}:${WYS * 1.3}:force_original_aspect_ratio=increase,crop=${SZER * 1.3}:${WYS * 1.3},zoompan=z='1+0.08*on/${klatek}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${SZER}x${WYS}:fps=${FPS}`
         : `vignette=PI/4`;
     const gora = WYS - 60 - 46 - liniePliki.length * 42;
@@ -343,14 +346,15 @@ export function utworzWywiady(o) {
                         const s = (await cfg.opisz(path.join(praca, audio)).catch(() => null))?.sekundy;
                         if (s) dl = Math.round((s + 0.45) * 100) / 100;
                     }
-                    let obraz = null;
-                    if (m.zdjecie && fsSync.existsSync(m.zdjecie)) { obraz = `o-${m.id}${path.extname(m.zdjecie).toLowerCase()}`; if (!fsSync.existsSync(path.join(praca, obraz))) await fs.copyFile(m.zdjecie, path.join(praca, obraz)); }
+                    let obraz = null, klip = null;
+                    if (m.wideo && fsSync.existsSync(m.wideo)) { klip = `k-${m.id}${path.extname(m.wideo).toLowerCase()}`; if (!fsSync.existsSync(path.join(praca, klip))) await fs.copyFile(m.wideo, path.join(praca, klip)); }
+                    else if (m.zdjecie && fsSync.existsSync(m.zdjecie)) { obraz = `o-${m.id}${path.extname(m.zdjecie).toLowerCase()}`; if (!fsSync.existsSync(path.join(praca, obraz))) await fs.copyFile(m.zdjecie, path.join(praca, obraz)); }
                     const nr = String(i + 1).padStart(3, '0');
                     await fs.writeFile(path.join(praca, `i-${nr}.txt`), m.imie, 'utf8');
                     const linie = zawin(kw.tekst, 62, 4);
                     const pliki = [];
                     for (const [j, l] of linie.entries()) { const n = `l-${nr}-${j}.txt`; await fs.writeFile(path.join(praca, n), l, 'utf8'); pliki.push(n); }
-                    await ffmpeg(argumentyKwestii({ obraz, kolor: m.kolor, imiePlik: `i-${nr}.txt`, liniePliki: pliki, czcionka: 'czcionka.ttf', czas: dl, audio, wyjscie: `seg-${nr}.mp4` }), praca);
+                    await ffmpeg(argumentyKwestii({ obraz, klip, kolor: m.kolor, imiePlik: `i-${nr}.txt`, liniePliki: pliki, czcionka: 'czcionka.ttf', czas: dl, audio, wyjscie: `seg-${nr}.mp4` }), praca);
                     segmenty.push(`seg-${nr}.mp4`);
                 }
                 wRobocie.set(id, { etap: 'sklejanie', zrobione: w.kwestie.length + 1, wszystkich: w.kwestie.length + 1 });

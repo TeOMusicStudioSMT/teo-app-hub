@@ -38,6 +38,7 @@ Odkrywaniem prawdziwego Suwerena (tierowe roszczenia nie są równe — energia 
 - **Straż Mostu** (`services/StrazMostu.js`) — „maszyna Suwerena" to Hub/substrony z localhost
   i narzędzia bez przeglądarki; obca strona w przeglądarce = zdalny gość (klucz). Publiczne strony
   Suwerena (otakos.wtf, teo.center, `OTAKOS_ZAUFANE_ORIGINY`) — tylko odczyt. CORS to nie ochrona.
+- **Silnik klonu głosu** (XTTS, `:5002`, `_OtakOs_AI/voice_server.py` + `voice_env`) — instaluje i odpala go `START_KATEDRA.bat`; most (`services/SilnikKlonu.js`) sam go odpala, gdy nie odpowiada, a jest zainstalowany (nic nie instaluje; powód w `GET /api/voice/status` → `silnik.powod`; wyłącz `OTAKOS_GLOS_AUTOSTART=0`).
 - **Tarcza Prawdy** (`services/AlignmentShield.js`) skanuje patche przed zapisem —
   blokuje sekrety, `rm -rf`, eval, sabotaż.
 
