@@ -31,7 +31,7 @@ async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
     if (!r.ok || d.success === false) throw new Error(d.message || `HTTP ${r.status}`);
     return d as T;
 }
-const blad = (e: unknown) => toast.error(e instanceof Error ? e.message : String(e), { duration: 8000 });
+const blad = (e: unknown) => { const m = e instanceof Error ? e.message : String(e); toast.error(m, { id: `studio-${m.slice(0, 60)}`, duration: 8000 }); };   // ten sam błąd zastępuje poprzednie okienko, nie piętrzy się
 const tekstKwestii = (k: Kwestia[]) => k.map((x) => `${x.kto}: ${x.tekst}`).join('\n');
 const zTekstu = (t: string): Kwestia[] => t.split('\n').map((l) => l.match(/^\s*([a-z0-9-]+)\s*:\s*(.+)$/i)).filter((m): m is RegExpMatchArray => !!m).map((m) => ({ kto: m[1], tekst: m[2].trim() }));
 
