@@ -733,7 +733,8 @@ export function utworzStudia({ katalog, paczka = null, ...wspolne }) {
     async function skrot(id) {
         const st = await get(id).studio();
         const odc = await get(id).odcinki().catch(() => []);
-        return { id, nazwa: st.nazwa, prowadzacy: st.prowadzacy?.imie ?? '', kolor: st.prowadzacy?.kolor ?? '#22d3ee', ujec: st.ujecia?.length ?? 0, odcinkow: odc.length, domyslne: id === STUDIO_DOMYSLNE };
+        // `projekt` = katalog produkcji studia (montaże odcinków) — po nim Montażownia TeO Story Studio widzi podcast.
+        return { id, nazwa: st.nazwa, prowadzacy: st.prowadzacy?.imie ?? '', kolor: st.prowadzacy?.kolor ?? '#22d3ee', ujec: st.ujecia?.length ?? 0, odcinkow: odc.length, domyslne: id === STUDIO_DOMYSLNE, projekt: id === STUDIO_DOMYSLNE ? PROJEKT_STUDIA : `${PROJEKT_STUDIA}-${id}` };
     }
     async function lista() {
         const ids = (await fs.readdir(KAT, { withFileTypes: true }).catch(() => [])).filter((d) => d.isDirectory() && fsSync.existsSync(path.join(KAT, d.name, 'studio.json'))).map((d) => d.name).sort();

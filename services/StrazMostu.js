@@ -53,7 +53,7 @@ export const AKCJE_TYLKO_LOKALNE = new Set([
 export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/mechanic/apply', '/api/mechanic/enqueue', '/api/mechanic/reject',
     '/api/forge/', '/api/gameforge/', '/api/voice/clone',
-    '/api/teledysk/render', '/api/video/edit', '/api/chaos/inject',
+    '/api/teledysk/render', '/api/video/edit',
     '/api/straz/',
     '/api/tunel/',   // tunelu nie odpala się (ani nie gasi) z tunelu
     '/api/system/free',   // zamyka procesy na maszynie

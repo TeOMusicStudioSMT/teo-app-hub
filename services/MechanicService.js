@@ -225,7 +225,7 @@ class MechanicService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PUBLIC: ręczne dodanie zadania do kolejki (dla /api/chaos/inject etc.)
+    // PUBLIC: ręczne dodanie zadania do kolejki (POST /api/mechanic/enqueue)
     // ─────────────────────────────────────────────────────────────────────────
 
     async enqueueTask(task) {
