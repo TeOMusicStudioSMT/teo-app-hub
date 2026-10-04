@@ -26,6 +26,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
+import { createHash } from 'crypto';
 import { CZCIONKI, zawin, kolorFf, jasniej } from './PowitanieDnia.js';
 import { argumentyPodkladu } from './GlosZeStemu.js';
 import { WIDEO, slug, normalizujGlos, odczytajScenariusz, czasBezGlosu, JEZYKI, jezykWywiadu, SZER, WYS, FPS } from './WywiadAktorow.js';
@@ -601,6 +602,8 @@ export function utworzStudioPodcastu(o) {
             try {
                 await fs.rm(praca, { recursive: true, force: true });
                 await fs.mkdir(praca, { recursive: true });
+                const schowekGlosu = path.join(KAT_ODC, id, 'glos');
+                await fs.mkdir(schowekGlosu, { recursive: true });
                 const zrodlo = czcionka();
                 if (!zrodlo) throw new Error('Nie znalazłem czcionki z polskimi znakami (OTAKOS_POWITANIE_CZCIONKA).');
                 await fs.copyFile(zrodlo, path.join(praca, 'czcionka.ttf'));
@@ -625,9 +628,20 @@ export function utworzStudioPodcastu(o) {
                     wRobocie.set(id, { etap: `${m.imie}: ${bezGlosu ? 'kadr' : 'głos'}`, zrobione: i, wszystkich: x.kwestie.length });
                     let audio = null, dl = czasBezGlosu(kw.tekst);
                     if (!bezGlosu) {
-                        const g = await cfg.mow({ tekst: kw.tekst, glos: m.glos ?? null, jezyk: jezykWywiadu(x.jezyk) }).catch((e) => { throw new Error(`Głos „${m.imie}”: ${e.message}`); });
-                        audio = `a-${String(i + 1).padStart(3, '0')}.${g.ext || 'wav'}`;
-                        await fs.writeFile(path.join(praca, audio), g.audio);
+                        // Schowek głosu: ta sama kwestia tym samym głosem nie liczy się drugi raz (ponowne nagranie po błędzie,
+                        // po dogrywce czy poprawce jednej linii) — silnik głosu bywa najwolniejszym ogniwem.
+                        const jez = jezykWywiadu(x.jezyk);
+                        const klucz = createHash('sha1').update(JSON.stringify([kw.tekst, m.glos ?? null, jez])).digest('hex').slice(0, 20);
+                        const zSchowka = ['wav', 'mp3'].map((e) => path.join(schowekGlosu, `${klucz}.${e}`)).find((f) => fsSync.existsSync(f));
+                        if (zSchowka) {
+                            audio = `a-${String(i + 1).padStart(3, '0')}${path.extname(zSchowka)}`;
+                            await fs.copyFile(zSchowka, path.join(praca, audio));
+                        } else {
+                            const g = await cfg.mow({ tekst: kw.tekst, glos: m.glos ?? null, jezyk: jez }).catch((e) => { throw new Error(`Głos „${m.imie}” (kwestia ${i + 1}/${x.kwestie.length}): ${e.message}`); });
+                            audio = `a-${String(i + 1).padStart(3, '0')}.${g.ext || 'wav'}`;
+                            await fs.writeFile(path.join(praca, audio), g.audio);
+                            await fs.writeFile(path.join(schowekGlosu, `${klucz}.${g.ext || 'wav'}`), g.audio).catch(() => {});
+                        }
                         const sek = (await cfg.opisz(path.join(praca, audio)).catch(() => null))?.sekundy;
                         if (sek) dl = Math.round((sek + 0.45) * 100) / 100;
                     }

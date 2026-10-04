@@ -11471,7 +11471,7 @@ app.get('/api/voice/status', async (req, res) => {
     let available = false;
     try { const c = new AbortController(); const t = setTimeout(() => c.abort(), 1500); const r = await fetch(`${VOICE_BASE}/`, { signal: c.signal }); clearTimeout(t); available = !!r; } catch {}
     let voices = []; try { voices = (await fs.readdir(VOICES_DIR)).filter(f => f.endsWith('.wav')).map(f => f.replace('.wav', '')); } catch {}
-    res.json({ success: true, available, base: VOICE_BASE, voices, silnik: SilnikKlonu.stanSilnika(), note: available ? 'Lokalny silnik klonu głosu gotowy.' : 'Brak lokalnego silnika — fallback przeglądarki (speechSynthesis). Zainstaluj XTTS/OpenVoice na :5002 dla suwerennego klonu Twojego głosu.' });
+    res.json({ success: true, available, base: VOICE_BASE, voices, silnik: SilnikKlonu.stanSilnika(), note: available ? 'Lokalny silnik klonu głosu gotowy.' : 'Brak lokalnego silnika — fallback przeglądarki (speechSynthesis). Zainstaluj silnik klonu w Katedrze (🎙️ → 🎛️ Studio Podcastu; Chatterbox, MIT) dla suwerennego klonu Twojego głosu.' });
 });
 /**
  * 🎙️ Dekoder próbki audio z przeglądarki.
@@ -14296,15 +14296,18 @@ app.post('/api/studio-podcast/odcinki/:id/nagraj', (req, res) => wStudiu(req, re
 
 // ── 🎙️ Głos ze stemu (services/GlosZeStemu.js): `_OtakOs_Muzyka/_Stemy` (paczki z Suno, wyniki Demucsa) ──
 // Wokal → próbka klonu `_OtakOs_AI/voices/<id>.wav` + profil głosu (tor klon-lokalny) → opcjonalnie od razu dla Aktora.
-// 🎙️ Silnik klonu (services/SilnikKlonu.js + services/glos/voice_server.py): stan, instalacja w Katedrze (zgoda CPML).
+// 🎙️ Silnik klonu (services/SilnikKlonu.js + services/glos/voice_server.py): stan, instalacja w Katedrze.
+// Chatterbox (MIT, wolno komercyjnie) domyślnie; XTTS-v2 tylko z jawną zgodą na CPML (niekomercyjnie).
 app.get('/api/glos/silnik', async (_req, res) => {
     const silnik = await SilnikKlonu.zapewnij({ aiDir: AI_DIR, base: VOICE_BASE }).catch((e) => ({ powod: e.message }));
-    return res.json({ success: true, silnik, instalacja: SilnikKlonu.stanInstalacji(), zgoda: SilnikKlonu.maZgode(AI_DIR), serwer: SilnikKlonu.serwerGlosu(AI_DIR), licencja: 'Coqui Public Model License (XTTS-v2) — użycie niekomercyjne' });
+    const silniki = Object.entries(SilnikKlonu.SILNIKI).map(([id, s]) => ({ id, nazwa: s.nazwa, licencja: s.licencja, wymagaZgody: s.zgoda, model: s.model }));
+    return res.json({ success: true, silnik, instalacja: SilnikKlonu.stanInstalacji(), aktywny: SilnikKlonu.aktywnySilnik(AI_DIR), zainstalowane: SilnikKlonu.zainstalowane(AI_DIR), silniki, zgoda: SilnikKlonu.maZgode(AI_DIR), serwer: SilnikKlonu.serwerGlosu(AI_DIR) });
 });
 app.post('/api/glos/silnik/instaluj', (req, res) => {
     try {
-        const instalacja = SilnikKlonu.instaluj({ aiDir: AI_DIR, base: VOICE_BASE, zgodaLicencji: req.body?.zgodaLicencji === true, cuda: String(req.body?.cuda ?? 'auto') });
-        Szyna.nadaj({ agent: 'Głosek', rodzaj: 'praca', tresc: '🎙️ instaluje silnik klonu głosu (XTTS-v2) w Katedrze' }).catch(() => {});
+        const silnik = String(req.body?.silnik ?? SilnikKlonu.SILNIK_DOMYSLNY);
+        const instalacja = SilnikKlonu.instaluj({ aiDir: AI_DIR, base: VOICE_BASE, silnik, zgodaLicencji: req.body?.zgodaLicencji === true, cuda: String(req.body?.cuda ?? 'auto') });
+        Szyna.nadaj({ agent: 'Głosek', rodzaj: 'praca', tresc: `🎙️ instaluje silnik klonu głosu (${SilnikKlonu.SILNIKI[silnik].nazwa}) w Katedrze` }).catch(() => {});
         return res.json({ success: true, instalacja });
     } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
 });
