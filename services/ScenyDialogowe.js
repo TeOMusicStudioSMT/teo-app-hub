@@ -65,6 +65,64 @@ export function promptDalszegoCiagu({ postacie, opis, kwestie, imie = (id) => id
     return { system, user };
 }
 
+const bezOgonkow = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/gi, 'l').toLowerCase().trim();
+const html = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+export const MAX_PROPOZYCJI = 8;
+
+/** Opis odcinka w kanonie sceny: numer, tytuł, streszczenie (Reżyser). */
+export const opisOdcinka = (o) => (o ? `ODCINEK #${o.numer ?? '?'} „${o.tytul}”: ${String(o.streszczenie ?? '').slice(0, 1200)}` : '');
+
+/**
+ * 🎬 Plan scen dialogowych dla odcinka (Suweren 2026-10-04: „jak były te plany robione, możliwe że nie ma dialogów…
+ * Rękopis tego nie zna”). Model dostaje streszczenie odcinka, kanon, fragment Rękopisu i obsadę — i proponuje sceny,
+ * w których postacie ROZMAWIAJĄ. Tylko propozycje: scena powstaje dopiero, gdy Suweren ją przyjmie (przygotuj).
+ */
+export function promptPlanuScen({ odcinek, kanon = '', rekopis = '', obsada = [], juz = [], ile = 4, jezyk = 'pl' }) {
+    const system = [
+        `Jesteś scenarzystą serialu. Rozpisujesz odcinek na SCENY DIALOGOWE — momenty, w których postacie ze sobą rozmawiają. ${JEZYKI[jezykWywiadu(jezyk)].piszesz}.`,
+        'Sceny budujesz z tego, co jest w streszczeniu odcinka, kanonie i rękopisie — nie wymyślasz wydarzeń sprzecznych z nimi. Kolejność = kolejność zdarzeń w odcinku.',
+        'Każda scena: 2–4 postacie WYŁĄCZNIE z listy OBSADA (imiona dokładnie jak na liście), jedno-dwa zdania opisu: gdzie są, co się dzieje, o co toczy się rozmowa.',
+        'Format — każda scena w osobnej linii, nic poza tym:',
+        'SCENA: opis sceny | POSTACIE: Imię, Imię',
+        `Scen ma być ${ile}.`,
+    ].join('\n');
+    const user = [
+        opisOdcinka(odcinek),
+        kanon ? `KANON PROJEKTU:\n${String(kanon).slice(0, 3000)}` : null,
+        rekopis ? `RĘKOPIS (fragment):\n${String(rekopis).slice(0, 3000)}` : null,
+        juz.length ? `TE SCENY JUŻ SĄ (nie powtarzaj):\n${juz.slice(0, 12).map((o) => `- ${String(o).slice(0, 160)}`).join('\n')}` : null,
+        `OBSADA:\n${obsada.map((a) => `- ${a.imie}: ${a.rola || 'postać'}`).join('\n')}`,
+    ].filter(Boolean).join('\n\n');
+    return { system, user };
+}
+
+/** Odpowiedź modelu → propozycje {opis, postacie: [id]}; postacie spoza obsady odpadają, scena z < 2 postaciami też. */
+export function odczytajPlanScen(tekst, obsada = [], ile = MAX_PROPOZYCJI) {
+    const ktoTo = (nazwa) => {
+        const n = bezOgonkow(nazwa).replace(/[^a-z0-9 -]/g, '').trim();
+        if (n.length < 2) return null;
+        return obsada.find((a) => bezOgonkow(a.imie) === n)?.id
+            ?? obsada.find((a) => bezOgonkow(a.imie).split(/\s+/)[0] === n.split(/\s+/)[0])?.id ?? null;
+    };
+    const wynik = [];
+    for (const linia of String(tekst ?? '').replace(/\r/g, '').split('\n')) {
+        const m = linia.match(/scena\s*\d*\s*:\s*(.+?)\s*\|\s*postacie\s*:\s*(.+)$/i);
+        if (!m) continue;
+        const opis = m[1].replace(/\*\*|__|`/g, '').replace(/\s+/g, ' ').trim().slice(0, 600);
+        const postacie = [...new Set(m[2].split(/[,;/&]|\s+i\s+|\s+and\s+/).map(ktoTo).filter(Boolean))].slice(0, MAX_POSTACI);
+        if (opis.length >= 5 && postacie.length >= 2) wynik.push({ opis, postacie });
+        if (wynik.length >= ile) break;
+    }
+    return wynik;
+}
+
+/** Dialog sceny jako fragment rękopisu (HTML) — z markerem, żeby ponowny eksport podmienił, a nie dublował. */
+export function blokRekopisu(s, imie = (id) => id) {
+    const kw = (s.kwestie ?? []).map((k) => `<p><b>${html(String(imie(k.kto)).toUpperCase())}:</b> ${html(k.tekst)}</p>`).join('');
+    return `<!--scena:${s.id}--><h3>${html(s.opis)}</h3>${kw}<p><i>— dialog: ${html(s.model ?? 'model')} · Sceny dialogowe [szkic AI]</i></p><!--/scena:${s.id}-->`;
+}
+export const tytulRozdzialuSceny = (s) => (s.odcinek ? `Odcinek ${s.odcinek.numer ?? '?'} — ${s.odcinek.tytul} · dialogi [szkic AI]` : 'Sceny dialogowe [szkic AI]');
+
 /** Kadr pod kwestią: wskazany (`tlo` = indeks) albo — przy kilku tłach — „swój” kadr mówiącego (ujęcie–przeciwujęcie). */
 export function tloKwestii(kw, tla, postacie) {
     if (!tla.length) return null;
@@ -173,8 +231,76 @@ export function utworzSceny(o) {
     }
     const kwestieZ = (tekst, postacie) => odczytajScenariusz(tekst, { goscie: postacie.slice(1), prowadzacy: postacie[0] });
 
+    /** Odcinki projektu (Reżyser: serial = projekt) — tylko z tytułem. */
+    async function odcinkiProjektu(projekt) {
+        return ((await cfg.odcinki?.(projekt).catch(() => [])) ?? []).filter((o) => o?.id && o?.tytul);
+    }
+    async function odcinekProjektu(projekt, id) {
+        const o = (await odcinkiProjektu(projekt)).find((x) => x.id === id);
+        if (!o) throw new Error('Nie ma takiego odcinka w tym projekcie (Reżyser).');
+        return o;
+    }
+
+    /** Odcinki z liczbą scen dialogowych — do wyboru „Sceny z odcinka”. */
+    async function odcinkiZeScenami(projekt) {
+        const p = String(projekt ?? '').trim();
+        if (!p) throw new Error('Wybierz projekt.');
+        const wszystkie = await sceny(p);
+        return (await odcinkiProjektu(p)).map((o) => ({
+            id: o.id, numer: o.numer ?? null, tytul: o.tytul, streszczenie: String(o.streszczenie ?? ''), status: o.status ?? null,
+            scen: wszystkie.filter((s) => s.odcinek?.id === o.id).length,
+        })).sort((a, b) => (a.numer ?? 0) - (b.numer ?? 0));
+    }
+
+    /** Propozycje scen dialogowych dla odcinka (nic nie zapisuje — Suweren wybiera, co napisać). */
+    async function planZOdcinka({ projekt, odcinekId, ile = 4, jezyk = 'pl' } = {}) {
+        const p = String(projekt ?? '').trim();
+        if (!p) throw new Error('Wybierz projekt.');
+        const odcinek = await odcinekProjektu(p, odcinekId);
+        const obsada = (await cfg.aktorzy()).filter((a) => a.id !== 'kronikarz');
+        if (obsada.length < 2) throw new Error('Obsada ma mniej niż dwie postacie — dodaj aktorów w zakładce 🎭 Aktorzy.');
+        const n = Math.max(1, Math.min(MAX_PROPOZYCJI, Number(ile) || 4));
+        const kanon = (await cfg.kontekst(p).catch(() => ({})))?.opis ?? '';
+        const rekopis = (await cfg.rekopis?.tekst?.(p).catch(() => '')) ?? '';
+        const juz = (await sceny(p)).filter((s) => s.odcinek?.id === odcinek.id).map((s) => s.opis);
+        const { system, user } = promptPlanuScen({ odcinek, kanon, rekopis, obsada, juz, ile: n, jezyk: jezykWywiadu(jezyk) });
+        const model = (await cfg.modelDla('aktor').catch(() => null)) ?? (await cfg.modelDla('kronikarz').catch(() => null));
+        const { tekst, silnik } = await cfg.chat(model, system, user, {});
+        const propozycje = odczytajPlanScen(tekst, obsada, n);
+        if (!propozycje.length) throw new Error('Model nie rozpisał scen w formacie „SCENA: … | POSTACIE: …” z imionami z obsady — spróbuj ponownie albo innym modelem.');
+        return { odcinek: { id: odcinek.id, numer: odcinek.numer ?? null, tytul: odcinek.tytul }, propozycje, model: silnik ?? model ?? null, rekopis: rekopis.length > 0 };
+    }
+
+    /** Dialog sceny do Rękopisu projektu: rozdział odcinka (albo „Sceny dialogowe”), ponowny eksport podmienia blok. */
+    async function doRekopisu(id) {
+        const s = await wczytaj(id);
+        if (!cfg.rekopis?.wczytaj) throw new Error('Rękopis nie jest podłączony w tym moście.');
+        const obsada = await cfg.aktorzy();
+        const imie = (kid) => obsada.find((a) => a.id === kid)?.imie ?? kid;
+        const blok = blokRekopisu(s, imie);
+        const tytul = tytulRozdzialuSceny(s);
+        const r = await cfg.rekopis.wczytaj(s.projekt);
+        const roz = (r.rozdzialy ?? []).find((x) => x.tytul === tytul);
+        let rozdzial, nowy = false, podmieniony = false;
+        if (roz) {
+            const wzor = new RegExp(`<!--scena:${s.id}-->[\\s\\S]*?<!--/scena:${s.id}-->`);
+            podmieniony = wzor.test(roz.tresc);
+            const tresc = podmieniony ? roz.tresc.replace(wzor, () => blok) : `${roz.tresc}${blok}`;
+            await cfg.rekopis.zapisz(s.projekt, roz.id, tresc);
+            rozdzial = roz.id;
+        } else {
+            rozdzial = (await cfg.rekopis.dodaj(s.projekt, { tytul, tresc: blok })).id;
+            nowy = true;
+        }
+        const zap = { ...s };
+        delete zap.postep;
+        zap.rekopis = { rozdzial, tytul, kiedy: czas() };
+        await pisz(plikSceny(id), zap);
+        return { scena: zap, rozdzial, tytul, nowy, podmieniony };
+    }
+
     /** Nowa scena: postacie (2–4 z obsady), opis sytuacji, tła (opcjonalnie), styl, Pralka, język → dialog modelu. */
-    async function przygotuj({ projekt, postacie: ids = [], opis = '', uwagi = '', tla = [], jezyk = 'pl', styl = 'domyslny', pralka = 0, karty = false, imiona = false } = {}) {
+    async function przygotuj({ projekt, postacie: ids = [], opis = '', uwagi = '', tla = [], jezyk = 'pl', styl = 'domyslny', pralka = 0, karty = false, imiona = false, odcinekId = null } = {}) {
         const p = String(projekt ?? '').trim();
         if (!p) throw new Error('Scena należy do projektu — wybierz projekt w Reżyserze.');
         const o = String(opis).trim();
@@ -182,7 +308,8 @@ export function utworzSceny(o) {
         const postacie = await obsadaSceny(ids);
         const tl = normTla(tla);
         const J = jezykWywiadu(jezyk), S = stylWywiadu(styl);
-        const kanon = (await cfg.kontekst(p).catch(() => ({})))?.opis ?? '';
+        const odc = odcinekId ? await odcinekProjektu(p, odcinekId) : null;
+        const kanon = [(await cfg.kontekst(p).catch(() => ({})))?.opis ?? '', opisOdcinka(odc)].filter(Boolean).join('\n\n');
         const { system, user } = promptSceny({ postacie, opis: o, kanon, uwagi, jezyk: J, styl: S });
         const model = (await cfg.modelDla('aktor').catch(() => null)) ?? (await cfg.modelDla('kronikarz').catch(() => null));
         const temperatura = temperaturaZPralki(pralka);
@@ -192,6 +319,7 @@ export function utworzSceny(o) {
         const s = {
             id, projekt: p, opis: o.slice(0, 800), uwagi: String(uwagi).slice(0, 600), postacie: postacie.map((a) => a.id), tla: tl, kwestie,
             jezyk: J, styl: S, pralka: Number(pralka) || 0, rundy: 1, karty: !!karty, imiona: !!imiona, model: silnik ?? model ?? null, etap: 'scenariusz', utworzono: czas(),
+            ...(odc ? { odcinek: { id: odc.id, numer: odc.numer ?? null, tytul: odc.tytul } } : {}),
         };
         await pisz(plikSceny(id), s);
         nadaj(`scena dialogowa w projekcie ${p}: ${postacie.map((a) => a.imie).join(', ')} — ${kwestie.length} kwestii`);
@@ -347,7 +475,7 @@ export function utworzSceny(o) {
         return p;
     }
 
-    return { sceny, scena: wczytaj, tlaProjektu, przygotuj, zmien, dalej, nagraj, usun, plik, zajete: () => wRobocie.size > 0 };
+    return { sceny, scena: wczytaj, tlaProjektu, przygotuj, zmien, dalej, nagraj, usun, plik, odcinki: odcinkiZeScenami, planZOdcinka, doRekopisu, zajete: () => wRobocie.size > 0 };
 }
 
-export default { utworzSceny, promptSceny, promptDalszegoCiagu, argumentyUjecia, tloKwestii, MAX_POSTACI, MAX_KWESTII, MAX_RUND };
+export default { utworzSceny, promptSceny, promptDalszegoCiagu, promptPlanuScen, odczytajPlanScen, blokRekopisu, argumentyUjecia, tloKwestii, MAX_POSTACI, MAX_KWESTII, MAX_RUND };
