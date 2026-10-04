@@ -11610,7 +11610,7 @@ app.post('/api/voice/speak', async (req, res) => {
         const tor = await ustalTorGlosu({ profil, voiceId, przewod });
         const { audio, mime } = await glosSyntezuj({
             przewod: tor.przewod, tekst: text, glos: tor.glos, jezyk: tor.jezyk,
-            probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE }, klucz: tor.klucz,
+            probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE, powodSilnika: () => SilnikKlonu.stanSilnika().powod }, klucz: tor.klucz,
         });
         res.setHeader('Content-Type', mime);
         res.setHeader('X-Przewod', tor.przewod);
@@ -11969,7 +11969,7 @@ app.post('/api/voice/render', async (req, res) => {
         const tor = await ustalTorGlosu({ profil, voiceId, przewod: req.body?.przewod });
         const { audio, ext } = await glosSyntezuj({
             przewod: tor.przewod, tekst: text, glos: tor.glos, jezyk: tor.jezyk,
-            probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE }, klucz: tor.klucz,
+            probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE, powodSilnika: () => SilnikKlonu.stanSilnika().powod }, klucz: tor.klucz,
         });
 
         await fs.mkdir(VOICE_OUT_DIR, { recursive: true });
@@ -12210,7 +12210,7 @@ async function mowaUlaw({ tekst, biznes }) {
     const tor = await ustalTorGlosu({ profil: biznes?.voiceProfile ?? null });
     const { audio, ext } = await glosSyntezuj({
         przewod: tor.przewod, tekst, glos: tor.glos, jezyk: tor.jezyk,
-        probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE }, klucz: tor.klucz,
+        probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE, powodSilnika: () => SilnikKlonu.stanSilnika().powod }, klucz: tor.klucz,
     });
 
     const stempel = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -14195,7 +14195,7 @@ const Wywiady = utworzWywiady({
             const { audio, ext } = await glosSyntezuj({
                 // Język wywiadu wygrywa z językiem profilu — angielski wywiad mówi po angielsku tym samym głosem.
                 przewod: tor.przewod, tekst, glos: tor.glos, jezyk: jezyk || tor.jezyk,
-                probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE }, klucz: tor.klucz,
+                probka: tor.probka, adresy: { VOICE_BASE, KOKORO_BASE, powodSilnika: () => SilnikKlonu.stanSilnika().powod }, klucz: tor.klucz,
             });
             return { audio, ext };
         } catch (e) {

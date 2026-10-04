@@ -89,7 +89,7 @@ async function pobierzZLimitem(url, init, ms) {
 
 // ── TOR 1: lokalny klon (XTTS / OpenVoice) ────────────────────────────────────
 
-async function torKlonLokalny({ tekst, jezyk, probka, base }) {
+async function torKlonLokalny({ tekst, jezyk, probka, base, powodSilnika = null }) {
     let r;
     try {
         r = await pobierzZLimitem(`${base}/api/tts`, {
@@ -104,7 +104,7 @@ async function torKlonLokalny({ tekst, jezyk, probka, base }) {
     } catch (e) {
         throw new BladPrzewodu(
             `Lokalny silnik klonu (${base}) nie odpowiedział (${e.name === 'AbortError' ? 'przekroczony czas' : e.message}). ` +
-            'Nic nie zabrzmiało — odpal XTTS/OpenVoice (START_KATEDRA.bat) albo wybierz inny głos, np. profil z VoiceStudio.',
+            `Nic nie zabrzmiało — odpal XTTS/OpenVoice (START_KATEDRA.bat) albo wybierz inny głos, np. profil z VoiceStudio.${powodSilnika?.() ? ` Silnik: ${powodSilnika()}.` : ''}`,
             424, 'klon-lokalny');
     }
     if (!r.ok) {
@@ -344,7 +344,7 @@ export async function syntezuj({ przewod, tekst, glos, jezyk = 'pl', probka = nu
     } else if (przewod === 'supervoice-en') {
         audio = await torSuperVoice({ tekst: tresc, glos });
     } else if (przewod === 'klon-lokalny') {
-        audio = await torKlonLokalny({ tekst: tresc, jezyk, probka, base: adresy.VOICE_BASE });
+        audio = await torKlonLokalny({ tekst: tresc, jezyk, probka, base: adresy.VOICE_BASE, powodSilnika: adresy.powodSilnika });
     } else if (przewod === 'kokoro-tts') {
         audio = await torKokoro({ tekst: tresc, glos, base: adresy.KOKORO_BASE ?? KOKORO_BASE_DOMYSLNY });
     } else {
