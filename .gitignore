@@ -107,3 +107,7 @@ _OtakOs_Wymiar/tunel.json
 
 # Mapa Katedry — generowana (`npm run mapa`), nie trzymamy starej migawki w repo
 docs/mapa-katedry.json
+
+# Python (silnik klonu głosu — services/glos)
+__pycache__/
+*.pyc
