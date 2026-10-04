@@ -192,6 +192,7 @@ import { utworzKontoYouTube, SCIEZKA_ZWROTU as ZWROT_YOUTUBE } from './services/
 import { utworzPublikacje } from './services/PublikacjeYouTube.js';
 import { utworzWywiady } from './services/WywiadAktorow.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
+import { utworzSceny } from './services/ScenyDialogowe.js';
 import { listaStemow, glosZeStemu } from './services/GlosZeStemu.js';
 import { utworzKanalYouTube } from './services/KanalYouTube.js';
 import * as GlosStudio from './services/GlosStudio.js';
@@ -14084,22 +14085,24 @@ app.post('/api/youtube/publikacje/:id/odrzuc', (req, res) => ytOdp(res, Publikac
 // ── 🎭 Aktorzy i wywiad o filmie (services/WywiadAktorow.js) ──
 // Obsada (postać, zdjęcie, głos) → scenariusz od modelu gatunku `aktor` z faktów projektu → głos + kadry → film
 // w katalogu montaży projektu (stamtąd Montażownia i „📺 do publikacji”).
+// Kanon projektu dla scenarzystów (wywiady, sceny dialogowe): najnowsza publikacja YouTube + fakty i odcinki Reżysera.
+const kontekstProjektu = async (projekt) => {
+    // Najnowsza publikacja YouTube tego projektu (tytuł, opis, link) + streszczenia odcinków i kanon.
+    const pub = (await PublikacjeYT.wszystkie().catch(() => []))
+        .filter((p) => p.zrodlo?.projekt === projekt && p.tytul)
+        .sort((a, b) => String(b.utworzono).localeCompare(String(a.utworzono)))[0];
+    const p = await rezyserPamiec(ANTIGRAVITY_DIR, projekt).catch(() => null);
+    const opis = [
+        ...(p?.fakty ?? []).slice(-12).map((f) => `- ${f.tresc}`),
+        ...(p?.odcinki ?? []).slice(-6).map((o) => `Odcinek #${o.numer} „${o.tytul}”: ${String(o.streszczenie ?? '').slice(0, 500)}`),
+    ].join('\n');
+    return { film: pub ? { tytul: pub.tytul, opis: pub.opis ?? '', url: pub.url ?? null } : null, opis };
+};
 const Wywiady = utworzWywiady({
     katalog: path.join(ANTIGRAVITY_DIR, 'aktorzy'),
     chat: (model, system, user) => piszModelem(model, system, user),
     modelDla: (id) => ModeleAgentow.modelDla(id),
-    kontekst: async (projekt) => {
-        // Najnowsza publikacja YouTube tego projektu (tytuł, opis, link) + streszczenia odcinków i kanon.
-        const pub = (await PublikacjeYT.wszystkie().catch(() => []))
-            .filter((p) => p.zrodlo?.projekt === projekt && p.tytul)
-            .sort((a, b) => String(b.utworzono).localeCompare(String(a.utworzono)))[0];
-        const p = await rezyserPamiec(ANTIGRAVITY_DIR, projekt).catch(() => null);
-        const opis = [
-            ...(p?.fakty ?? []).slice(-12).map((f) => `- ${f.tresc}`),
-            ...(p?.odcinki ?? []).slice(-6).map((o) => `Odcinek #${o.numer} „${o.tytul}”: ${String(o.streszczenie ?? '').slice(0, 500)}`),
-        ].join('\n');
-        return { film: pub ? { tytul: pub.tytul, opis: pub.opis ?? '', url: pub.url ?? null } : null, opis };
-    },
+    kontekst: kontekstProjektu,
     mow: async ({ tekst, glos, jezyk }) => {
         // 🗣️ Profil VoiceStudio (osobny program, :3900) — to on klonuje i projektuje głosy w swoim oknie.
         if (glos?.voicestudio) {
@@ -14141,6 +14144,38 @@ app.post('/api/wywiady/:id/nagraj', (req, res) => ytOdp(res, Wywiady.nagraj(req.
     bezGlosu: req.body?.bezGlosu === true, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
     glosProwadzacego: req.body?.glosProwadzacego,
 }).then((wywiad) => ({ wywiad }))));
+
+// ── 💬 Sceny dialogowe filmu (services/ScenyDialogowe.js) ──
+// Silnik Studia Podcastu bez studia: postacie z obsady rozmawiają na tle kadrów projektu → montaże projektu (Montażownia).
+const Sceny = utworzSceny({
+    katalog: path.join(ANTIGRAVITY_DIR, 'sceny-dialogowe'),
+    aktorzy: () => Wywiady.aktorzy(),
+    katalogProjektu: async (projekt) => (await utworzProjekt(ANTIGRAVITY_DIR, projekt)).sciezka,
+    kontekst: kontekstProjektu,
+    chat: (model, system, user, opcje) => piszModelem(model, system, user, opcje),
+    modelDla: (id) => ModeleAgentow.modelDla(id),
+    mow: (o) => Wywiady.mowa(o),
+    opisz: (p) => Montazownia.opisz(p),
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    ffmpeg: ffmpegPath,
+    szyna: Szyna,
+    sciezkaPodkladu: (plik) => sciezkaWBibliotece(plik),
+});
+app.get('/api/sceny', (req, res) => ytOdp(res, Sceny.sceny(req.query.projekt ? String(req.query.projekt) : null).then(async (sceny) => ({ sceny, aktorzy: await Wywiady.aktorzy(), style: Object.entries(STYLE_WYWIADU).map(([id, v]) => ({ id, nazwa: v.nazwa })) })), 500));
+app.get('/api/sceny/tla', (req, res) => ytOdp(res, Sceny.tlaProjektu(String(req.query.projekt ?? '')).then((tla) => ({ tla }))));
+app.post('/api/sceny/przygotuj', (req, res) => ytOdp(res, Sceny.przygotuj(req.body ?? {}).then((scena) => ({ scena }))));
+app.get('/api/sceny/:id', (req, res) => ytOdp(res, Sceny.scena(req.params.id).then((scena) => ({ scena })), 404));
+app.post('/api/sceny/:id/zmien', (req, res) => ytOdp(res, Sceny.zmien(req.params.id, req.body ?? {}).then((scena) => ({ scena }))));
+app.post('/api/sceny/:id/dalej', (req, res) => ytOdp(res, Sceny.dalej(req.params.id, req.body ?? {}).then((scena) => ({ scena }))));
+app.post('/api/sceny/:id/nagraj', (req, res) => ytOdp(res, Sceny.nagraj(req.params.id, {
+    bezGlosu: req.body?.bezGlosu === true, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
+}).then((scena) => ({ scena }))));
+app.delete('/api/sceny/:id', (req, res) => ytOdp(res, Sceny.usun(req.params.id)));
+// Podgląd: gotowa scena albo tło z listy sceny (?rodzaj=tlo&nr=0) — nic spoza zapisu sceny.
+app.get('/api/sceny/:id/plik', async (req, res) => {
+    try { return res.sendFile(path.resolve(await Sceny.plik(req.params.id, String(req.query.rodzaj ?? 'scena'), Number(req.query.nr ?? 0)))); }
+    catch (e) { return res.status(404).json({ success: false, message: e.message }); }
+});
 
 // ── 🎙️ Studio Podcastu (services/StudioPodcastu.js) ──
 // Zdjęcia studia (zasiew z public/studio-podcast) + prowadzący z własnym głosem → film wstępowy z jego nagraniem →
