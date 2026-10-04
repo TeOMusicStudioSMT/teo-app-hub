@@ -20,7 +20,7 @@ interface Studio {
     ujecia: Ujecie[];
     wstep: { nagranie: string | null; tekst: string; plik: string | null; sekundy: number | null; zrobiono: string | null; napisy?: boolean; blad?: string };
 }
-interface Aktor { id: string; imie: string; rola: string; kolor: string; wideo?: string | null }
+interface Aktor { id: string; imie: string; rola: string; kolor: string; projekt?: string | null; zdjecie?: string | null; wideo?: string | null; glos?: { profil?: string; voicestudio?: string } | null }
 interface Kwestia { kto: string; tekst: string }
 interface Odcinek { id: string; tytul: string; temat: string; goscie: string[]; goscieFilm?: string; kwestie: Kwestia[]; etap: string; blad?: string; plik?: string; sekundy?: number | null; postep?: { etap: string; zrobione: number; wszystkich: number }; bezGlosu?: boolean }
 interface Stan { studio: Studio; postepWstepu: { etap: string } | null; aktorzy: Aktor[] }
@@ -48,6 +48,7 @@ export const StudioPodcastuCard: React.FC = () => {
     const [zGoscmi, setZGoscmi] = useState(true);
     const [praca, setPraca] = useState<string | null>(null);
     const [edycja, setEdycja] = useState<Record<string, string>>({});
+    const [klipy, setKlipy] = useState<Record<string, string>>({});
     const napisyWpisane = useRef(false);
 
     const odswiez = useCallback(async () => {
@@ -78,6 +79,13 @@ export const StudioPodcastuCard: React.FC = () => {
         await zMostu(`/api/studio-podcast/odcinki/${o.id}/nagraj`, { method: 'POST', body: JSON.stringify({ bezGlosu, zWstepem: wstepem, zGoscmi }) });
     }, 'Nagrywam odcinek w tle.');
 
+    // Klip wideo aktora: zapis idzie z pozostałymi polami aktora (POST /api/aktorzy podmienia cały wpis); pusty = zdejmij.
+    const zapiszKlip = (a: Aktor) => akcja(`klip-${a.id}`, async () => {
+        const sciezka = (klipy[a.id] ?? a.wideo ?? '').trim();
+        await zMostu('/api/aktorzy', { method: 'POST', body: JSON.stringify({ id: a.id, imie: a.imie, rola: a.rola, projekt: a.projekt ?? undefined, zdjecie: a.zdjecie ?? undefined, glos: a.glos ?? undefined, kolor: a.kolor, wideo: sciezka || null }) });
+        setKlipy((k) => { const { [a.id]: _, ...reszta } = k; return reszta; });
+    }, 'Klip aktora zapisany.');
+
     const w = stan?.studio.wstep;
     const glosNazwa = stan?.studio.prowadzacy.glos?.profil ?? stan?.studio.prowadzacy.glos?.voicestudio ?? null;
     const imie = (id: string) => (id === 'prowadzacy' ? stan?.studio.prowadzacy.imie : stan?.aktorzy.find((a) => a.id === id)?.imie) ?? id;
@@ -104,6 +112,21 @@ export const StudioPodcastuCard: React.FC = () => {
                             </div>
                             {w?.blad && <p className="text-amber-300">⚠ {w.blad}</p>}
                             {w?.plik && <video controls src={`${MOST}/api/studio-podcast/plik/wstep?v=${encodeURIComponent(w.zrobiono ?? '')}`} className="w-full rounded border border-slate-700" />}
+                        </div>
+                    </details>
+
+                    <details className="rounded-lg border border-amber-500/25 p-2">
+                        <summary className="cursor-pointer text-[10px] uppercase tracking-widest text-amber-300">🎞️ Klipy aktorów ({stan.aktorzy.filter((a) => a.wideo).length}/{stan.aktorzy.length})</summary>
+                        <div className="mt-2 flex flex-col gap-1.5">
+                            <p className="text-slate-500">Krótki klip (mp4/mov/webm/mkv, pełna ścieżka na dysku Katedry) gra na karcie gościa i w wywiadach o filmie zamiast zdjęcia; krótszy się zapętla. Pusty = zdejmij klip.</p>
+                            {stan.aktorzy.filter((a) => a.id !== 'kronikarz').map((a) => (
+                                <div key={a.id} className="flex items-center gap-2">
+                                    <span className="w-24 shrink-0 truncate text-slate-300" title={a.rola}>{a.imie}</span>
+                                    <input value={klipy[a.id] ?? a.wideo ?? ''} onChange={(e) => setKlipy((k) => ({ ...k, [a.id]: e.target.value }))} placeholder="ścieżka do klipu wideo" className="min-w-0 flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
+                                    <button disabled={!!praca || (klipy[a.id] ?? a.wideo ?? '') === (a.wideo ?? '')} onClick={() => zapiszKlip(a)} className="rounded border border-amber-500/40 px-2 py-1 text-amber-200 hover:bg-amber-500/10 disabled:opacity-40">{praca === `klip-${a.id}` ? '…' : 'Zapisz'}</button>
+                                </div>
+                            ))}
+                            {stan.aktorzy.length === 0 && <span className="text-slate-500">Baza aktorów jest pusta.</span>}
                         </div>
                     </details>
 
