@@ -2,7 +2,7 @@
  * 👁️ AgentDashboard — Oczy Suwerena
  *
  * Panel dowodzenia Katedry: kolejka zadań + obszar obserwacyjny grafu wiedzy.
- * Zawiera zapalnik Inżynierii Chaosu (☢️ INICJUJ CHAOS).
+ * (Zapalnik „Inżynierii Chaosu” z wczesnych testów Mechanika usunięty 2026-10-04 na życzenie Suwerena.)
  *
  * Estetyka: Neon / Sci-Fi / Cyberpunk (Tailwind + inline glow)
  */
@@ -46,17 +46,6 @@ interface ApplyResult {
     manualHint?:   string;
     targetFile?:   string;
     backupCreated?: boolean;
-}
-
-interface ChaosEntry {
-    id:        string;
-    timestamp: string;
-    scenario:  string;
-    caught:    boolean;
-    survived:  boolean;
-    errorName: string | null;
-    errorMsg:  string | null;
-    taskId:    string | null;
 }
 
 interface KgNode {
@@ -386,12 +375,6 @@ TaskCard.displayName = 'TaskCard';
 
 // ─── Etykieta scenariusza ─────────────────────────────────────────────────────
 
-const SCENARIO_LABELS: Record<string, string> = {
-    NULL_POINTER:    'TypeError — Null Ptr',
-    UNDEFINED_SCOPE: 'ReferenceError — Undefined',
-    ZERO_DIVISION:   'ZeroDivision — Network Abort',
-};
-
 // ─── AgentDashboard ───────────────────────────────────────────────────────────
 
 const AgentDashboard: React.FC = () => {
@@ -426,9 +409,6 @@ const AgentDashboard: React.FC = () => {
             if (queuePollRef.current) clearInterval(queuePollRef.current);
         };
     }, [fetchQueueTasks]);
-    const [chaosLog,      setChaosLog]       = useState<ChaosEntry[]>([]);
-    const [isChaosActive, setIsChaosActive] = useState(false);
-    const [showChaosLog,  setShowChaosLog]  = useState(false);
 
     // ── Stan grafu wiedzy (live polling) ─────────────────────────────────────
     const [kgNodes,     setKgNodes]     = useState<KgNode[]>([]);
@@ -463,14 +443,6 @@ const AgentDashboard: React.FC = () => {
         };
     }, [fetchKgNodes]);
 
-    const chaosLogRef = useRef<HTMLDivElement>(null);
-
-    // Auto-scroll logu
-    useEffect(() => {
-        if (chaosLogRef.current) {
-            chaosLogRef.current.scrollTop = chaosLogRef.current.scrollHeight;
-        }
-    }, [chaosLog]);
 
     // ── Auto-Deploy: POST /api/mechanic/apply ────────────────────────────────
     const applyPatch = useCallback(async (id: string): Promise<ApplyResult> => {
@@ -511,78 +483,6 @@ const AgentDashboard: React.FC = () => {
         finally { setClearingQueue(false); }
     }, [clearingQueue, fetchQueueTasks]);
 
-    // ── Wyzwalacz Chaosu ──────────────────────────────────────────────────────
-    const triggerChaos = useCallback(async () => {
-        if (isChaosActive) return;
-
-        setIsChaosActive(true);
-        setShowChaosLog(true);
-
-        try {
-            const res = await fetch(`${BRIDGE_URL}/api/chaos/inject`, {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-            });
-
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-            const data = await res.json();
-
-            // Dodaj wpis do logu
-            const entry: ChaosEntry = {
-                id:        `chaos-${Date.now()}`,
-                timestamp: new Date(data.timestamp).toLocaleTimeString('pl-PL'),
-                scenario:  SCENARIO_LABELS[data.scenario] ?? data.scenario,
-                caught:    data.caught,
-                survived:  data.survived,
-                errorName: data.errorName,
-                errorMsg:  data.errorMessage,
-                taskId:    data.taskId,
-            };
-
-            setChaosLog(prev => [...prev.slice(-49), entry]);
-
-            // Jeśli błąd wychwycony — enqueue do Mechanika (trwała kolejka)
-            if (data.caught && data.taskId) {
-                const faultTask = {
-                    id:          data.taskId,
-                    title:       `[FAULT] ${data.errorName ?? 'Error'} — Chaos Injection`,
-                    description: data.errorMessage ?? 'Automatyczna detekcja błędu środowiskowego.',
-                    priority:    data.errorName === 'TypeError' ? 'CRITICAL' : 'HIGH',
-                    targetFiles: ['TestProxy/wiesio-bridge.ts', 'wiesio-bridge.js'],
-                };
-
-                // Wstrzyknij do trwałej kolejki Mechanika
-                await fetch(`${BRIDGE_URL}/api/mechanic/enqueue`, {
-                    method:  'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body:    JSON.stringify(faultTask),
-                }).catch(() => {/* non-critical */});
-
-                setNewTaskIds(prev => new Set([...prev, data.taskId!]));
-                // Odśwież widok kolejki
-                setTimeout(fetchQueueTasks, 500);
-            }
-
-        } catch (err: any) {
-            // Backend niedostępny — dodaj wpis o błędzie połączenia
-            setChaosLog(prev => [...prev.slice(-49), {
-                id:        `chaos-err-${Date.now()}`,
-                timestamp: new Date().toLocaleTimeString('pl-PL'),
-                scenario:  'CONNECTION_ERROR',
-                caught:    true,
-                survived:  false,
-                errorName: 'NetworkError',
-                errorMsg:  `Wiesław Bridge niedostępny: ${err.message}`,
-                taskId:    null,
-            }]);
-        } finally {
-            setIsChaosActive(false);
-            // Odśwież graf po ~3s (czas potrzebny Gemma4 na analizę)
-            setTimeout(fetchKgNodes, 3000);
-            setTimeout(fetchKgNodes, 8000);
-        }
-    }, [isChaosActive, fetchKgNodes]);
 
     // ─────────────────────────────────────────────────────────────────────────
     return (
@@ -598,93 +498,8 @@ const AgentDashboard: React.FC = () => {
                     👁️ Oczy Suwerena — Panel Dowodzenia
                 </span>
 
-                <div className="flex items-center gap-3">
-                    {/* Przełącznik logu */}
-                    <button
-                        onClick={() => setShowChaosLog(v => !v)}
-                        className={`text-[9px] font-mono px-2 py-1 rounded border transition-all
-                            ${chaosLog.length > 0
-                                ? 'border-orange-500/50 text-orange-400 hover:bg-orange-900/20'
-                                : 'border-slate-700 text-slate-600 hover:text-slate-400'
-                            }`}
-                    >
-                        {showChaosLog ? '▲ UKRYJ LOG' : `▼ LOG CHAOSU${chaosLog.length > 0 ? ` (${chaosLog.length})` : ''}`}
-                    </button>
-
-                    {/* ☢️ ZAPALNIK */}
-                    <motion.button
-                        onClick={triggerChaos}
-                        disabled={isChaosActive}
-                        whileHover={{ scale: isChaosActive ? 1 : 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        animate={isChaosActive ? { boxShadow: ['0 0 8px rgba(255,50,0,0.4)', '0 0 20px rgba(255,50,0,0.8)', '0 0 8px rgba(255,50,0,0.4)'] } : {}}
-                        transition={isChaosActive ? { repeat: Infinity, duration: 0.8 } : {}}
-                        className={`
-                            flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-[10px] tracking-widest uppercase
-                            border transition-all duration-200
-                            ${isChaosActive
-                                ? 'bg-red-900/60 border-red-500 text-red-300 cursor-not-allowed'
-                                : 'bg-red-950/80 border-red-600/70 text-red-400 hover:bg-red-900/60 hover:border-red-500 hover:text-red-300'
-                            }
-                        `}
-                        style={{
-                            boxShadow: isChaosActive
-                                ? '0 0 20px rgba(255,50,0,0.6)'
-                                : '0 0 8px rgba(255,50,0,0.25)',
-                        }}
-                    >
-                        {isChaosActive ? (
-                            <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
-                                ⚙️
-                            </motion.span>
-                        ) : (
-                            <span>☢️</span>
-                        )}
-                        {isChaosActive ? 'INICJOWANIE...' : 'INICJUJ CHAOS'}
-                    </motion.button>
-                </div>
             </div>
 
-            {/* ── Chaos Log (zwijany) ── */}
-            <AnimatePresence>
-                {showChaosLog && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.22 }}
-                        className="overflow-hidden"
-                        style={{ borderBottom: '1px solid rgba(255,100,0,0.2)' }}
-                    >
-                        <div
-                            ref={chaosLogRef}
-                            className="bg-black/70 px-5 py-3 max-h-[130px] overflow-y-auto font-mono text-[10px] leading-relaxed"
-                        >
-                            {chaosLog.length === 0 ? (
-                                <span className="text-slate-600 italic">Brak wpisów — zainicjuj chaos, aby rozpocząć testy zderzeniowe.</span>
-                            ) : (
-                                chaosLog.map(entry => (
-                                    <div key={entry.id} className="mb-1">
-                                        <span className="text-slate-600">[{entry.timestamp}]</span>
-                                        {' '}
-                                        <span className={entry.caught ? 'text-red-400' : 'text-green-400'}>
-                                            {entry.caught ? '🔴 FAULT' : '🟢 SURVIVED'}
-                                        </span>
-                                        {' '}
-                                        <span className="text-orange-300">{entry.scenario}</span>
-                                        {entry.caught && (
-                                            <span className="text-slate-400"> — {entry.errorMsg}</span>
-                                        )}
-                                        {entry.taskId && (
-                                            <span className="text-cyan-600"> → task:{entry.taskId}</span>
-                                        )}
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
 
             {/* ── Główny układ: Kolejka + Graf ── */}
             <div className="flex flex-1" style={{ minHeight: '380px' }}>
@@ -790,15 +605,6 @@ const AgentDashboard: React.FC = () => {
                                         sync: {new Date(kgUpdatedAt).toLocaleTimeString('pl-PL')}
                                     </span>
                                 )}
-                                {isChaosActive && (
-                                    <motion.span
-                                        animate={{ opacity: [1, 0.3, 1] }}
-                                        transition={{ repeat: Infinity, duration: 0.8 }}
-                                        className="text-[9px] text-red-400 font-mono"
-                                    >
-                                        ⚡ CHAOS AKTYWNY
-                                    </motion.span>
-                                )}
                                 <span className="text-[9px] font-mono text-slate-600">
                                     {kgNodes.length} węzłów
                                 </span>
@@ -828,7 +634,7 @@ const AgentDashboard: React.FC = () => {
                                     </svg>
                                     <p className="text-xs font-mono text-slate-600 text-center">
                                         Graf wiedzy pusty.<br />
-                                        <span className="text-slate-700">Uruchom ☢️ INICJUJ CHAOS, aby zasilić Archiwistę.</span>
+                                        <span className="text-slate-700">Archiwista zapisuje tu wnioski z ukończonych zadań Mechanika.</span>
                                     </p>
                                 </div>
                             ) : (
@@ -895,13 +701,13 @@ const AgentDashboard: React.FC = () => {
                         >
                             <div className="flex-1 h-0.5 rounded-full overflow-hidden bg-slate-900">
                                 <motion.div
-                                    className={`h-full rounded-full ${isChaosActive ? 'bg-red-500' : 'bg-cyan-700'}`}
-                                    animate={{ width: isChaosActive ? '100%' : kgNodes.length > 0 ? '75%' : '20%' }}
+                                    className="h-full rounded-full bg-cyan-700"
+                                    animate={{ width: kgNodes.length > 0 ? '75%' : '20%' }}
                                     transition={{ duration: 0.8 }}
                                 />
                             </div>
                             <span className="text-[8px] font-mono text-slate-700 uppercase tracking-widest">
-                                {isChaosActive ? 'CHAOS IN PROGRESS' : kgNodes.length > 0 ? 'GRAF AKTYWNY' : 'OCZEKIWANIE'}
+                                {kgNodes.length > 0 ? 'GRAF AKTYWNY' : 'OCZEKIWANIE'}
                             </span>
                         </div>
                     </div>

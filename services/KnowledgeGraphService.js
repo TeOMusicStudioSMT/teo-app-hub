@@ -76,6 +76,23 @@ class KnowledgeGraphService extends EventEmitter {
         this.emit(EVENT_ERROR, error);
     }
 
+    /**
+     * Usuwa z grafu ślady testów Chaosu (zapalnik usunięty 2026-10-04): węzły błędów `ERR-…` (ERROR_EVENT emitował
+     * tylko Chaos) i zadania „… — Chaos Injection” / `FAULT-…`. Idempotentne — zwraca, ile węzłów zdjęto.
+     */
+    async wyczyscSladyChaosu() {
+        const graph = await this._loadGraph();
+        const zChaosu = (n) => /^(ERR|FAULT)-/.test(String(n?.id ?? '')) || /Chaos Injection/i.test(String(n?.title ?? ''));
+        const zostaja = graph.nodes.filter((n) => !zChaosu(n));
+        const usunieto = graph.nodes.length - zostaja.length;
+        if (!usunieto) return 0;
+        graph.nodes = zostaja;
+        graph.updatedAt = new Date().toISOString();
+        await this._ensureDir();
+        await this._atomicWrite(graph);
+        return usunieto;
+    }
+
     /** Invalidacja cache — wymuś ponowny odczyt z dysku. */
     invalidateCache() {
         this._graphCache = null;

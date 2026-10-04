@@ -293,10 +293,12 @@ test('wiele studiów: pierwsze z paczki, nowe bez ujęć z własnym prowadzącym
     assert.equal(STUDIO_DOMYSLNE, 'teo');
     const [teo] = await R.lista();
     assert.equal(teo.id, 'teo'); assert.equal(teo.ujec, 3); assert.equal(teo.domyslne, true);
+    assert.equal(teo.projekt, 'studio-podcast', 'projekt = katalog montaży, który widzi Montażownia');
     await assert.rejects(R.stworz({ nazwa: '' }), /nazwy/);
     await assert.rejects(R.stworz({ nazwa: 'Nocne Radio' }), /prowadzącego/);
     const n = await R.stworz({ nazwa: 'Nocne Radio Miry', opis: 'Dach w deszczu', prowadzacy: { imie: 'Mira', rola: 'DJ-ka', kolor: '#ff00aa' } });
     assert.equal(n.id, 'nocne-radio-miry'); assert.equal(n.ujec, 0); assert.equal(n.prowadzacy, 'Mira');
+    assert.equal(n.projekt, 'studio-podcast-nocne-radio-miry');
     const st = await R.get(n.id).studio();
     assert.equal(st.prowadzacy.kolor, '#ff00aa'); assert.equal(st.opis, 'Dach w deszczu'); assert.equal(st.wstep.nagranie, null);
     const odc = await R.get(n.id).przygotuj({ temat: 'Noc', goscie: ['kael'] });
