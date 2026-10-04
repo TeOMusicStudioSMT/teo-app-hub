@@ -17,7 +17,7 @@
  *   1. SCENARIUSZ: model gatunku `aktor` pisze rozmowę prowadzącego z gośćmi (aktorzy z bazy — rola, głos, zdjęcie).
  *   2. NAGRANIE: każda kwestia → głos mówcy → kadr: ujęcie studia z najazdem, karta mówiącego, pas z imieniem i napis.
  *      Ujęcia zmieniają się co kilka kwestii; prowadzący stoi w ognisku środkowym, goście po bokach.
- *   2b. WIDEO Z GOŚĆMI „Dziś w studiu”: karty gości z bazy aktorów w ujęciu studia + zapowiedź głosem prowadzącego.
+ *   2b. WIDEO Z GOŚĆMI „Dziś w studiu”: karty gości z bazy aktorów (klip `wideo` aktora, inaczej zdjęcie, inaczej inicjał) w ujęciu studia + zapowiedź głosem prowadzącego.
  *   3. SKLEJENIE: film wstępowy + wideo z gośćmi + rozmowa (+ cichy podkład) → katalog montaży projektu `studio-podcast`
  *      (Montażownia, „📺 do publikacji”).
  * ffmpeg jak w Powitaniu: cwd = katalog roboczy, względne nazwy, tekst przez `textfile` + `expansion=none`.
@@ -28,7 +28,7 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { CZCIONKI, zawin, kolorFf, jasniej } from './PowitanieDnia.js';
 import { argumentyPodkladu } from './GlosZeStemu.js';
-import { slug, normalizujGlos, odczytajScenariusz, czasBezGlosu, JEZYKI, jezykWywiadu, SZER, WYS, FPS } from './WywiadAktorow.js';
+import { WIDEO, slug, normalizujGlos, odczytajScenariusz, czasBezGlosu, JEZYKI, jezykWywiadu, SZER, WYS, FPS } from './WywiadAktorow.js';
 
 export const PROJEKT_STUDIA = 'studio-podcast';
 export const PROWADZACY_ID = 'prowadzacy';
@@ -60,7 +60,9 @@ export function filtrTla(i, { ox = 0.5, oy = 0.62, z0 = 1.12, z1 = 1.28, klatek 
         + `scale=${SZER}:${WYS}:flags=lanczos,unsharp=5:5:0.8:5:5:0.0`;
 }
 
-const kartaFiltr = (i, kolor) => `[${i}:v]scale=360:420:force_original_aspect_ratio=decrease,pad=iw+10:ih+10:5:5:color=${kolorFf(kolor)}`;
+/** Wejście karty: obraz zapętlony w czasie albo klip wideo (zapętlony, ucięty do `d`; jego dźwięk i tak nie jest mapowany). */
+const wejscieKarty = (plik, d) => (WIDEO.test(plik) ? ['-stream_loop', '-1', '-t', d, '-i', plik] : ['-loop', '1', '-framerate', String(FPS), '-t', d, '-i', plik]);
+const kartaFiltr = (i, kolor) => `[${i}:v]fps=${FPS},scale=360:420:force_original_aspect_ratio=decrease,pad=iw+10:ih+10:5:5:color=${kolorFf(kolor)}`;
 
 /**
  * Argumenty ffmpeg dla jednej kwestii odcinka. `tlo` = { plik, ox, oy }, `karta` = zdjęcie mówiącego (albo null).
@@ -69,7 +71,7 @@ const kartaFiltr = (i, kolor) => `[${i}:v]scale=360:420:force_original_aspect_ra
 export function argumentyKadru({ tlo, karta = null, kolor, imiePlik, liniePliki, czcionka, czas, audio, wyjscie }) {
     const d = Number(czas).toFixed(2), klatek = Math.max(1, Math.round(czas * FPS));
     const wejscia = ['-loop', '1', '-framerate', String(FPS), '-t', d, '-i', tlo.plik];
-    if (karta) wejscia.push('-loop', '1', '-framerate', String(FPS), '-t', d, '-i', karta);
+    if (karta) wejscia.push(...wejscieKarty(karta, d));
     wejscia.push(...(audio ? ['-i', audio] : ['-f', 'lavfi', '-t', d, '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000']));
     const ia = karta ? 2 : 1;
     const gora = WYS - 60 - 46 - liniePliki.length * 42;
@@ -96,13 +98,13 @@ export function argumentyGosci({ tlo, goscie, naglowekPlik, czcionka, czas, audi
     const KW = 300, KH = 400, ODSTEP = 50;
     const x0 = Math.round((SZER - (n * (KW + 10) + (n - 1) * ODSTEP)) / 2);
     const wejscia = ['-loop', '1', '-framerate', String(FPS), '-t', d, '-i', tlo.plik];
-    for (const g of goscie) wejscia.push(...(g.plik ? ['-loop', '1', '-framerate', String(FPS), '-t', d, '-i', g.plik] : ['-f', 'lavfi', '-i', `color=c=${kolorFf(g.kolor)}:s=${KW}x${KH}:r=${FPS}:d=${d}`]));
+    for (const g of goscie) wejscia.push(...(g.plik ? wejscieKarty(g.plik, d) : ['-f', 'lavfi', '-i', `color=c=${kolorFf(g.kolor)}:s=${KW}x${KH}:r=${FPS}:d=${d}`]));
     wejscia.push(...(audio ? ['-i', audio] : ['-f', 'lavfi', '-t', d, '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000']));
     const f = [`${filtrTla(0, { ox: tlo.ox, oy: tlo.oy, z0: 1.1, z1: 1.22, klatek })},drawbox=x=0:y=0:w=iw:h=${WYS}:color=black@0.2:t=fill[bg]`];
     let kon = 'bg';
     goscie.forEach((g, i) => {
         const x = x0 + i * (KW + 10 + ODSTEP);
-        f.push(`[${i + 1}:v]scale=${KW}:${KH}:force_original_aspect_ratio=increase,crop=${KW}:${KH}:(iw-${KW})/2:0,pad=iw+10:ih+10:5:5:color=${kolorFf(g.kolor)}[k${i}]`);
+        f.push(`[${i + 1}:v]fps=${FPS},scale=${KW}:${KH}:force_original_aspect_ratio=increase,crop=${KW}:${KH}:(iw-${KW})/2:0,pad=iw+10:ih+10:5:5:color=${kolorFf(g.kolor)}[k${i}]`);
         f.push(`[${kon}][k${i}]overlay=x=${x}:y=170[o${i}]`);
         kon = `o${i}`;
     });
@@ -453,7 +455,8 @@ export function utworzStudioPodcastu(o) {
             const karty = [];
             for (const [i, g] of goscie.entries()) {
                 let plik = null;
-                if (g.zdjecie && fsSync.existsSync(g.zdjecie)) { plik = `g${i}${path.extname(g.zdjecie).toLowerCase()}`; await fs.copyFile(g.zdjecie, path.join(praca, plik)); }
+                const zrKarty = [g.wideo, g.zdjecie].find((f) => f && fsSync.existsSync(f));   // klip aktora wygrywa ze zdjęciem
+                if (zrKarty) { plik = `g${i}${path.extname(zrKarty).toLowerCase()}`; await fs.copyFile(zrKarty, path.join(praca, plik)); }
                 await fs.writeFile(path.join(praca, `gi${i}.txt`), g.imie, 'utf8');
                 await fs.writeFile(path.join(praca, `gl${i}.txt`), [...g.imie][0]?.toUpperCase() ?? '?', 'utf8');
                 karty.push({ plik, kolor: g.kolor || '#f4c84a', imiePlik: `gi${i}.txt`, inicjalPlik: `gl${i}.txt` });
@@ -544,7 +547,8 @@ export function utworzStudioPodcastu(o) {
                     const { ujecie, ognisko } = planKadru(i, kw.kto, x.goscie, ujecia);
                     if (!tla.has(ujecie.id)) { const n = `t-${ujecie.id}${path.extname(ujecie.plik).toLowerCase()}`; await fs.copyFile(ujecie.plik, path.join(praca, n)); tla.set(ujecie.id, n); }
                     let karta = null;
-                    if (m.zdjecie && fsSync.existsSync(m.zdjecie)) { karta = `k-${m.id}${path.extname(m.zdjecie).toLowerCase()}`; if (!fsSync.existsSync(path.join(praca, karta))) await fs.copyFile(m.zdjecie, path.join(praca, karta)); }
+                    const zrKarty = [m.wideo, m.zdjecie].find((f) => f && fsSync.existsSync(f));
+                    if (zrKarty) { karta = `k-${m.id}${path.extname(zrKarty).toLowerCase()}`; if (!fsSync.existsSync(path.join(praca, karta))) await fs.copyFile(zrKarty, path.join(praca, karta)); }
                     const nr = String(i + 1).padStart(3, '0');
                     await fs.writeFile(path.join(praca, `i-${nr}.txt`), m.imie, 'utf8');
                     const pliki = [];

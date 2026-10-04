@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import { utworzStudioPodcastu, promptOdcinka, planNapisow, argumentyKadru, argumentyWstepu, argumentyGosci, zapowiedzGosci, filtrTla, OGNISKA_DOMYSLNE } from '../services/StudioPodcastu.js';
 import { opisz } from '../services/Montazownia.js';
+import { utworzWywiady } from '../services/WywiadAktorow.js';
 import { CZCIONKI } from '../services/PowitanieDnia.js';
 
 const PACZKA = path.resolve('public/studio-podcast');
@@ -64,8 +65,8 @@ test('wideo z gośćmi: karty obok siebie, zdjęcie albo barwa, imiona pod karta
     const a = argumentyGosci({ tlo: { plik: 't.jpg', ox: 0.5, oy: 0.6 }, goscie: [{ plik: 'g0.jpg', kolor: '#3b82f6', imiePlik: 'gi0.txt' }, { plik: null, kolor: '#ec4899', imiePlik: 'gi1.txt', inicjalPlik: 'gl1.txt' }], naglowekPlik: 'n.txt', czcionka: 'c.ttf', czas: 5, audio: null, wyjscie: 'g.mp4' });
     const f = a[a.indexOf('-filter_complex') + 1];
     assert.ok(a.includes('g0.jpg') && a.some((x) => /^color=c=0xec4899:s=300x400/.test(x)), 'gość bez zdjęcia = karta z jego barwą');
-    assert.match(f, /\[1:v\]scale=300:400/);
-    assert.match(f, /\[2:v\]scale=300:400/);
+    assert.match(f, /\[1:v\]fps=25,scale=300:400/);
+    assert.match(f, /\[2:v\]fps=25,scale=300:400/);
     assert.match(f, /textfile=gi1\.txt/);
     assert.match(f, /textfile=gl1\.txt/, 'inicjał dla gościa bez zdjęcia');
     assert.ok(!/textfile=gl0\.txt/.test(f));
@@ -187,4 +188,44 @@ test('PRAWDZIWY film wstępowy z nagraniem prowadzącego i PRAWDZIWY odcinek (g�
     assert.equal(glosy.length, 4);
     const o2 = await opisz(g2.plik);
     assert.ok(o2.sekundy < o.sekundy && o2.sekundy > 8, `bez wstępu ${o2.sekundy} s`);
+});
+
+test('wideo aktora: pole w bazie (musi istnieć, tylko wideo), zdjęcie zostaje, puste zdejmuje; karta gościa i mówiącego gra klipem w pętli', async () => {
+    const tmp = tmpDir('wideo');
+    const klip = path.join(tmp, 'kael.mp4');
+    execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=s=320x480:r=25:d=1.5', '-f', 'lavfi', '-i', 'sine=frequency=500:duration=1.5', '-shortest', '-pix_fmt', 'yuv420p', klip]);
+    const W = utworzWywiady({ katalog: path.join(tmp, 'aktorzy'), opisz: async () => null, katalogMontazy: async () => tmp, chat: async () => ({ tekst: '' }) });
+    await assert.rejects(W.zapiszAktora({ imie: 'Kael', wideo: path.join(tmp, 'nie-ma.mp4') }), /Wideo aktora musi być istniejącym plikiem/);
+    await assert.rejects(W.zapiszAktora({ imie: 'Kael', wideo: path.join(PACZKA, 'prowadzacy.jpg') }), /Wideo aktora/);
+    const a = await W.zapiszAktora({ imie: 'Kael', zdjecie: path.join(PACZKA, 'prowadzacy.jpg'), wideo: klip });
+    assert.equal(a.wideo, klip);
+    assert.equal(a.zdjecie, path.join(PACZKA, 'prowadzacy.jpg'));
+    assert.equal((await W.zapiszAktora({ ...a, rola: 'Pilot' })).wideo, klip, 'zapis z istniejącymi polami (np. nowy głos) zachowuje klip');
+    assert.equal((await W.zapiszAktora({ ...a, wideo: null })).wideo, null, 'null zdejmuje klip');
+
+    // argumenty: klip = -stream_loop zamiast -loop, obraz dalej -loop
+    const ga = argumentyGosci({ tlo: { plik: 't.jpg', ox: 0.5, oy: 0.6 }, goscie: [{ plik: 'g0.mp4', kolor: '#3b82f6', imiePlik: 'gi0.txt', inicjalPlik: 'gl0.txt' }, { plik: 'g1.jpg', kolor: '#ec4899', imiePlik: 'gi1.txt', inicjalPlik: 'gl1.txt' }], naglowekPlik: 'n.txt', czcionka: 'c.ttf', czas: 5, audio: null, wyjscie: 'g.mp4' });
+    assert.equal(ga[ga.indexOf('g0.mp4') - 5], '-stream_loop');
+    assert.equal(ga[ga.indexOf('g1.jpg') - 7], '-loop');
+    assert.match(ga[ga.indexOf('-filter_complex') + 1], /\[1:v\]fps=25,scale=300:400/);
+    const ka = argumentyKadru({ tlo: { plik: 't.jpg', ox: 0.5, oy: 0.6 }, karta: 'k.mov', kolor: '#ff0000', imiePlik: 'i.txt', liniePliki: ['l0.txt'], czcionka: 'c.ttf', czas: 4, audio: 'a.wav', wyjscie: 's.mp4' });
+    assert.ok(ka.includes('-stream_loop'));
+});
+
+test('PRAWDZIWE wideo z gośćmi: klip aktora gra na karcie (ruch między klatkami), gość ze zdjęciem i bez nadal działają', { skip: !czcionka && 'brak czcionki z polskimi znakami' }, async () => {
+    const tmp = tmpDir('wideo-ff');
+    const klip = path.join(tmp, 'kael.mp4');
+    execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x480:r=25:d=1.5', '-pix_fmt', 'yuv420p', klip]);   // krótszy niż wideo gości → musi się zapętlić
+    const S = utworzStudioPodcastu({
+        katalog: path.join(tmp, 'studio'), paczka: PACZKA, ffmpeg: ffmpegPath, opisz, katalogMontazy: async () => tmp,
+        aktorzy: async () => [{ ...KAEL, wideo: klip, zdjecie: path.join(PACZKA, 'prowadzacy.jpg') }, { ...ELARA, zdjecie: path.join(PACZKA, 'prowadzacy.jpg') }, { id: 'zed', imie: 'Zed', rola: 'x', kolor: '#10b981', zdjecie: null, glos: null }],
+        chat: async () => ({ tekst: 'TeO: Witajcie.\nKAEL: Hej.\nELARA: Cześć.\nZED: Siema.' }),
+    });
+    const x = await S.przygotuj({ temat: 'Klipy', goscie: ['kael', 'elara', 'zed'] });
+    const r = await S.zrobGosci(x.id, { bezGlosu: true });
+    assert.ok(r.sekundy >= 7.4, `3 gości = min. 7,5 s, jest ${r.sekundy} (klip ma 1,5 s → pętla)`);
+    const ramka = (t, f) => execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-ss', String(t), '-i', r.goscieFilm, '-frames:v', '1', '-vf', 'crop=300:400:300:170,scale=60:80', '-f', 'rawvideo', '-pix_fmt', 'gray', '-']);
+    const a = ramka(1.0), b = ramka(1.7), c = ramka(4.0);
+    assert.notDeepEqual(a, b, 'klip się rusza (testsrc2)');
+    assert.notDeepEqual(b, c, 'po końcu klipu (1,5 s) gra dalej — pętla');
 });

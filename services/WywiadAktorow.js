@@ -32,6 +32,7 @@ export const WYS = 720;
 export const FPS = 25;
 export const PROWADZACY = { id: 'kronikarz', imie: 'Kronikarz', rola: 'Prowadzący wywiad, TeOgochi-pisarz Katedry OtakOS: ciepły, ciekawy, zadaje krótkie pytania.', kolor: '#a855f7', zdjecie: null, glos: null };
 const OBRAZ = /\.(png|jpe?g|webp|bmp)$/i;
+export const WIDEO = /\.(mp4|mov|webm|mkv|m4v)$/i;
 
 export const slug = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 const bezOgonkow = (s) => slug(s).replace(/-/g, '');
@@ -192,11 +193,13 @@ export function utworzWywiady(o) {
         const id = dane.id && /^[a-z0-9-]{1,40}$/.test(dane.id) ? dane.id : slug(imie) || `aktor-${cfg.teraz().toString(36)}`;
         const zdjecie = dane.zdjecie ? String(dane.zdjecie).trim() : null;
         if (zdjecie && (!OBRAZ.test(zdjecie) || !fsSync.existsSync(zdjecie))) throw new Error(`Zdjęcie aktora musi być istniejącym obrazem (png/jpg/webp): ${zdjecie}`);
-        const g = dane.glos && typeof dane.glos === 'object' ? dane.glos : null;
+        // Wideo aktora (krótki klip w jego roli): w Studiu Podcastu gra na karcie gościa zamiast zdjęcia. Pusty/null = zdejmij.
+        const wideo = dane.wideo ? String(dane.wideo).trim() : null;
+        if (wideo && (!WIDEO.test(wideo) || !fsSync.existsSync(wideo))) throw new Error(`Wideo aktora musi być istniejącym plikiem (mp4/mov/webm/mkv): ${wideo}`);
         const glos = normalizujGlos(dane.glos);
         const aktor = {
             id, imie, rola: String(dane.rola ?? '').trim().slice(0, 600), projekt: dane.projekt ? String(dane.projekt).slice(0, 80) : null,
-            zdjecie, glos, kolor: /^#[0-9a-f]{6}$/i.test(dane.kolor ?? '') ? dane.kolor : '#f4c84a', zmieniono: czas(),
+            zdjecie, wideo, glos, kolor: /^#[0-9a-f]{6}$/i.test(dane.kolor ?? '') ? dane.kolor : '#f4c84a', zmieniono: czas(),
         };
         const l = await aktorzy();
         await pisz(PLIK_AKTOROW, [...l.filter((a) => a.id !== id), aktor]);
