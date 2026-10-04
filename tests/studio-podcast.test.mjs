@@ -229,3 +229,76 @@ test('PRAWDZIWE wideo z gośćmi: klip aktora gra na karcie (ruch między klatka
     assert.notDeepEqual(a, b, 'klip się rusza (testsrc2)');
     assert.notDeepEqual(b, c, 'po końcu klipu (1,5 s) gra dalej — pętla');
 });
+
+test('styl i Pralka: styl trafia do promptu (domyślny bez dopisku), Pralka 1–9 → temperatura modelu, 0/brak = domyślna', async () => {
+    const { STYLE_WYWIADU, temperaturaZPralki, promptDogrywki } = await import('../services/StudioPodcastu.js');
+    assert.deepEqual(Object.keys(STYLE_WYWIADU), ['domyslny', 'komediowy', 'luzny', 'deep', 'mistyczny']);
+    const p = (styl) => promptOdcinka({ prowadzacy: { imie: 'TeO', rola: 'x' }, goscie: [KAEL], temat: 't', styl }).system;
+    assert.match(p('komediowy'), /STYL: komediowy/);
+    assert.match(p('mistyczny'), /STYL: mistyczny/);
+    assert.doesNotMatch(p('domyslny'), /STYL:/);
+    assert.doesNotMatch(p('nieznany'), /STYL:/);
+    assert.deepEqual([1, 5, 9, 12].map(temperaturaZPralki), [0.3, 0.8, 1.3, 1.3]);
+    assert.equal(temperaturaZPralki(0), null);
+    assert.equal(temperaturaZPralki(undefined), null);
+    const d = promptDogrywki({ prowadzacy: { imie: 'TeO', rola: 'x' }, goscie: [KAEL], temat: 'Kosmos', kwestie: [{ kto: 'prowadzacy', tekst: 'Witajcie.' }, { kto: 'kael', tekst: 'Leciałem.' }], imie: (k) => (k === 'prowadzacy' ? 'TeO' : 'Kael'), styl: 'deep', runda: 1, jezyk: 'en' });
+    assert.match(d.system, /DALSZY CIĄG.*runda 2/);
+    assert.match(d.system, /PO ANGIELSKU/);
+    assert.match(d.system, /STYL: deep/);
+    assert.match(d.user, /TEO: Witajcie\.\nKAEL: Leciałem\./);
+});
+
+test('scenariusz ze stylem i Pralką → temperatura do modelu; dogrywka: pożegnanie wypada i wraca na końcu, rundy liczone, limit', async () => {
+    const katalog = tmpDir('dogr');
+    const wolania = [];
+    const S = utworzStudioPodcastu({
+        katalog, paczka: PACZKA, aktorzy: async () => [KAEL], opisz, katalogMontazy: async () => katalog,
+        chat: async (_m, system, _u, opcje) => {
+            wolania.push({ system, opcje });
+            return /DALSZY CIĄG/.test(system)
+                ? { tekst: `TEO: Nowy wątek ${wolania.length}?\nKAEL: Odpowiadam ${wolania.length}.\nTEO: Dziękuję, do zobaczenia!` }
+                : { tekst: 'TEO: Witajcie.\nKAEL: Dzień dobry.\nTEO: Pa, do następnego!' };
+        },
+    });
+    const x = await S.przygotuj({ temat: 'Kosmos', goscie: ['kael'], styl: 'komediowy', pralka: 9 });
+    assert.equal(x.styl, 'komediowy');
+    assert.equal(x.pralka, 9);
+    assert.equal(x.rundy, 1);
+    assert.deepEqual(wolania[0].opcje, { temperatura: 1.3 });
+    assert.match(wolania[0].system, /STYL: komediowy/);
+    const d = await S.dogrywka(x.id, { rundy: 2 });
+    assert.equal(d.rundy, 3);
+    assert.deepEqual(d.kwestie.map((k) => k.tekst), ['Witajcie.', 'Dzień dobry.', 'Nowy wątek 2?', 'Odpowiadam 2.', 'Nowy wątek 3?', 'Odpowiadam 3.', 'Dziękuję, do zobaczenia!']);
+    assert.match(wolania[1].system, /STYL: komediowy/, 'styl odcinka przechodzi na dogrywkę');
+    assert.deepEqual(wolania[1].opcje, { temperatura: 1.3 });
+    const e = await S.dogrywka(x.id, { rundy: 3, styl: 'deep', pralka: 1 });
+    assert.equal(e.rundy, 6);
+    assert.equal(e.styl, 'deep');
+    assert.deepEqual(wolania.at(-1).opcje, { temperatura: 0.3 });
+    await assert.rejects(S.dogrywka(x.id), /limit 6/);
+});
+
+test('wiele studiów: pierwsze z paczki, nowe bez ujęć z własnym prowadzącym i katalogiem montaży; lista, osobne odcinki, usuwanie', async () => {
+    const { utworzStudia, STUDIO_DOMYSLNE } = await import('../services/StudioPodcastu.js');
+    const katalog = tmpDir('studia');
+    const montaze = [];
+    const R = utworzStudia({ katalog, paczka: PACZKA, aktorzy: async () => [KAEL], opisz, katalogMontazy: async (p) => { montaze.push(p); return katalog; }, chat: async () => ({ tekst: 'MIRA: Hej.\nKAEL: Hej.\nMIRA: Pa.' }) });
+    assert.equal(STUDIO_DOMYSLNE, 'teo');
+    const [teo] = await R.lista();
+    assert.equal(teo.id, 'teo'); assert.equal(teo.ujec, 3); assert.equal(teo.domyslne, true);
+    await assert.rejects(R.stworz({ nazwa: '' }), /nazwy/);
+    await assert.rejects(R.stworz({ nazwa: 'Nocne Radio' }), /prowadzącego/);
+    const n = await R.stworz({ nazwa: 'Nocne Radio Miry', opis: 'Dach w deszczu', prowadzacy: { imie: 'Mira', rola: 'DJ-ka', kolor: '#ff00aa' } });
+    assert.equal(n.id, 'nocne-radio-miry'); assert.equal(n.ujec, 0); assert.equal(n.prowadzacy, 'Mira');
+    const st = await R.get(n.id).studio();
+    assert.equal(st.prowadzacy.kolor, '#ff00aa'); assert.equal(st.opis, 'Dach w deszczu'); assert.equal(st.wstep.nagranie, null);
+    const odc = await R.get(n.id).przygotuj({ temat: 'Noc', goscie: ['kael'] });
+    assert.equal(odc.kwestie[0].kto, 'prowadzacy', 'Mira rozpoznana jako prowadząca swojego studia');
+    assert.equal((await R.get('teo').odcinki()).length, 0, 'odcinki studiów osobno');
+    await assert.rejects(R.get(n.id).nagraj(odc.id, { zWstepem: false, zGoscmi: false, bezGlosu: true }), /ujęcia/);
+    assert.deepEqual((await R.lista()).map((x) => x.id), ['teo', 'nocne-radio-miry']);
+    assert.throws(() => R.get('../etc'), /Nie ma studia/);
+    await assert.rejects(R.usun('teo'), /Pierwszego studia/);
+    await R.usun(n.id);
+    assert.deepEqual((await R.lista()).map((x) => x.id), ['teo']);
+});
