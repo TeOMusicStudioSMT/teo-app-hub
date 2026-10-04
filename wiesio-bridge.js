@@ -14273,8 +14273,9 @@ app.get('/api/studio-podcast/odcinki', (_req, res) => ytOdp(res, StudioPodcastu.
 app.get('/api/studio-podcast/odcinki/:id', (req, res) => ytOdp(res, StudioPodcastu.odcinek(req.params.id).then((odcinek) => ({ odcinek })), 404));
 app.post('/api/studio-podcast/odcinki/przygotuj', (req, res) => ytOdp(res, StudioPodcastu.przygotuj(req.body ?? {}).then((odcinek) => ({ odcinek }))));
 app.post('/api/studio-podcast/odcinki/:id/zmien', (req, res) => ytOdp(res, StudioPodcastu.zmien(req.params.id, req.body ?? {}).then((odcinek) => ({ odcinek }))));
+app.post('/api/studio-podcast/odcinki/:id/goscie', (req, res) => ytOdp(res, StudioPodcastu.zrobGosci(req.params.id, { bezGlosu: req.body?.bezGlosu === true }).then((odcinek) => ({ odcinek }))));
 app.post('/api/studio-podcast/odcinki/:id/nagraj', (req, res) => ytOdp(res, StudioPodcastu.nagraj(req.params.id, {
-    bezGlosu: req.body?.bezGlosu === true, zWstepem: req.body?.zWstepem !== false, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
+    bezGlosu: req.body?.bezGlosu === true, zWstepem: req.body?.zWstepem !== false, zGoscmi: req.body?.zGoscmi !== false, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
 }).then((odcinek) => ({ odcinek }))));
 
 // ── 🎙️ Głos ze stemu (services/GlosZeStemu.js): `_OtakOs_Muzyka/_Stemy` (paczki z Suno, wyniki Demucsa) ──

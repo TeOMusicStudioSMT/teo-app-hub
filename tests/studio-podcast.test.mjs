@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
-import { utworzStudioPodcastu, promptOdcinka, planNapisow, argumentyKadru, argumentyWstepu, filtrTla, OGNISKA_DOMYSLNE } from '../services/StudioPodcastu.js';
+import { utworzStudioPodcastu, promptOdcinka, planNapisow, argumentyKadru, argumentyWstepu, argumentyGosci, zapowiedzGosci, filtrTla, OGNISKA_DOMYSLNE } from '../services/StudioPodcastu.js';
 import { opisz } from '../services/Montazownia.js';
 import { CZCIONKI } from '../services/PowitanieDnia.js';
 
@@ -43,7 +43,10 @@ test('napisy wstępu: proporcjonalnie do długości, po dwie linie, w oknie nagr
 });
 
 test('argumenty: tło z najazdem na ognisko, karta mówiącego, wstęp z napisami w oknach czasu', () => {
-    assert.match(filtrTla(0, { ox: 0.3, oy: 0.6, klatek: 50 }), /zoompan=z='1\.12\+\(1\.28-1\.12\)\*on\/50':x='max\(0,min\(iw-iw\/zoom,0\.3\*iw/);
+    const ft = filtrTla(0, { ox: 0.3, oy: 0.6, klatek: 50 });
+    assert.match(ft, /scale=3840:2160:flags=lanczos/, 'ostrość: lanczos do 4K przed najazdem');
+    assert.match(ft, /unsharp=/);
+    assert.match(ft, /zoompan=z='1\.12\+\(1\.28-1\.12\)\*on\/50':x='max\(0,min\(iw-iw\/zoom,0\.3\*iw/);
     const a = argumentyKadru({ tlo: { plik: 't.jpg', ox: 0.5, oy: 0.6 }, karta: 'k.jpg', kolor: '#ff0000', imiePlik: 'i.txt', liniePliki: ['l0.txt'], czcionka: 'c.ttf', czas: 4, audio: 'a.wav', wyjscie: 's.mp4' });
     const f = a[a.indexOf('-filter_complex') + 1];
     assert.match(f, /overlay=x=W-w-56/);
@@ -55,6 +58,21 @@ test('argumenty: tło z najazdem na ognisko, karta mówiącego, wstęp z napisam
     assert.match(fw, /concat=n=2:v=1:a=0/);
     assert.match(fw, /textfile=n-0-0\.txt.*enable='between\(t,1,3\)'/);
     assert.match(fw, /\[3:a\]aresample/);
+});
+
+test('wideo z gośćmi: karty obok siebie, zdjęcie albo barwa, imiona pod kartami, zapowiedź po polsku i angielsku', () => {
+    const a = argumentyGosci({ tlo: { plik: 't.jpg', ox: 0.5, oy: 0.6 }, goscie: [{ plik: 'g0.jpg', kolor: '#3b82f6', imiePlik: 'gi0.txt' }, { plik: null, kolor: '#ec4899', imiePlik: 'gi1.txt', inicjalPlik: 'gl1.txt' }], naglowekPlik: 'n.txt', czcionka: 'c.ttf', czas: 5, audio: null, wyjscie: 'g.mp4' });
+    const f = a[a.indexOf('-filter_complex') + 1];
+    assert.ok(a.includes('g0.jpg') && a.some((x) => /^color=c=0xec4899:s=300x400/.test(x)), 'gość bez zdjęcia = karta z jego barwą');
+    assert.match(f, /\[1:v\]scale=300:400/);
+    assert.match(f, /\[2:v\]scale=300:400/);
+    assert.match(f, /textfile=gi1\.txt/);
+    assert.match(f, /textfile=gl1\.txt/, 'inicjał dla gościa bez zdjęcia');
+    assert.ok(!/textfile=gl0\.txt/.test(f));
+    assert.match(f, /\[3:a\]aresample/);
+    assert.equal(zapowiedzGosci(['Kael']), 'Dziś w studiu: Kael.');
+    assert.equal(zapowiedzGosci(['Kael', 'Elara', 'Zed']), 'Dziś w studiu: Kael, Elara i Zed.');
+    assert.equal(zapowiedzGosci(['Kael', 'Elara'], 'en'), 'Today in the studio: Kael and Elara.');
 });
 
 test('planKadru: ujęcie zmienia się co 3 kwestie, prowadzący w ognisku 0, goście po bokach', async () => {
@@ -144,21 +162,29 @@ test('PRAWDZIWY film wstępowy z nagraniem prowadzącego i PRAWDZIWY odcinek (g�
     assert.equal(g.etap, 'gotowy', g.blad);
     assert.equal(path.dirname(g.plik), montaz);
     assert.match(path.basename(g.plik), /^podcast_kosmos_[a-z0-9]+\.mp4$/);
-    assert.deepEqual(glosy.map((v) => v.glos?.profil ?? null), [null, 'kael-glos', null], 'prowadzący bez profilu, Kael swoim głosem');
+    assert.deepEqual(glosy.map((v) => v.glos?.profil ?? null), [null, null, 'kael-glos', null], 'zapowiedź gości i kwestie prowadzącego bez profilu, Kael swoim głosem');
+    assert.match(glosy[0].tekst, /^Dziś w studiu: Kael\.$/);
+    assert.ok(fs.existsSync(await S.plik('goscie', x.id)), 'wideo z gośćmi zostaje osobno');
+    const og = await opisz(await S.plik('goscie', x.id));
+    assert.ok(og.szerokosc === 1280 && og.maAudio && og.sekundy >= 4.5, `goście ${og.sekundy} s`);
     const o = await opisz(g.plik);
     assert.equal(o.szerokosc, 1280); assert.ok(o.maAudio);
-    // wstęp ~6,4 s + 3 kwestie po ~1,65 s
-    assert.ok(o.sekundy > 10.5 && o.sekundy < 13, `odcinek ${o.sekundy} s`);
+    // wstęp ~6,4 s + wideo z gośćmi (min. 4,5 s; zapowiedź 1,2 s głosu + 1,2) + 3 kwestie po ~1,65 s
+    assert.ok(o.sekundy > 15 && o.sekundy < 18, `odcinek ${o.sekundy} s`);
     assert.ok(!fs.existsSync(path.join(tmp, 'studio', 'odcinki', x.id, 'praca')), 'katalog roboczy sprzątnięty');
     assert.ok(fs.existsSync(await S.plik('odcinek', x.id)) && fs.existsSync(await S.plik('wstep')) && fs.existsSync(await S.plik('ujecie', 'plaza')));
     await assert.rejects(S.plik('ujecie', 'nie-ma'), /Nie ma takiego pliku/);
 
     // bez głosu i bez wstępu: same napisy, krótszy film
     const y = await S.przygotuj({ temat: 'Cisza', goscie: ['kael'] });
-    await S.nagraj(y.id, { bezGlosu: true, zWstepem: false });
+    await S.nagraj(y.id, { bezGlosu: true, zWstepem: false, zGoscmi: false });
     const g2 = await czekaj(async () => { const z = await S.odcinek(y.id); return z.etap !== 'nagrywa' && z; });
     assert.equal(g2.etap, 'gotowy', g2.blad);
-    assert.equal(glosy.length, 3, 'bez głosu nie woła syntezy');
+    assert.equal(glosy.length, 4, 'bez głosu nie woła syntezy');
+    // samo wideo z gośćmi, bez głosu: osobna trasa podglądu
+    const zg = await S.zrobGosci(y.id, { bezGlosu: true });
+    assert.ok(zg.goscieFilm && zg.sekundy >= 4.5);
+    assert.equal(glosy.length, 4);
     const o2 = await opisz(g2.plik);
     assert.ok(o2.sekundy < o.sekundy && o2.sekundy > 8, `bez wstępu ${o2.sekundy} s`);
 });

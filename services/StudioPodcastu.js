@@ -17,7 +17,8 @@
  *   1. SCENARIUSZ: model gatunku `aktor` pisze rozmowę prowadzącego z gośćmi (aktorzy z bazy — rola, głos, zdjęcie).
  *   2. NAGRANIE: każda kwestia → głos mówcy → kadr: ujęcie studia z najazdem, karta mówiącego, pas z imieniem i napis.
  *      Ujęcia zmieniają się co kilka kwestii; prowadzący stoi w ognisku środkowym, goście po bokach.
- *   3. SKLEJENIE: film wstępowy + rozmowa (+ cichy podkład) → katalog montaży projektu `studio-podcast`
+ *   2b. WIDEO Z GOŚĆMI „Dziś w studiu”: karty gości z bazy aktorów w ujęciu studia + zapowiedź głosem prowadzącego.
+ *   3. SKLEJENIE: film wstępowy + wideo z gośćmi + rozmowa (+ cichy podkład) → katalog montaży projektu `studio-podcast`
  *      (Montażownia, „📺 do publikacji”).
  * ffmpeg jak w Powitaniu: cwd = katalog roboczy, względne nazwy, tekst przez `textfile` + `expansion=none`.
  */
@@ -52,8 +53,11 @@ const minmax = (v, a, b) => Math.max(a, Math.min(b, v));
 /** Fragment filtra: ujęcie studia (panorama) przycięte do 16:9 i powolny najazd na ognisko. Wejście `[i:v]`, wyjście bez etykiety. */
 export function filtrTla(i, { ox = 0.5, oy = 0.62, z0 = 1.12, z1 = 1.28, klatek = 100 } = {}) {
     const x = minmax(Number(ox), 0, 1), y = minmax(Number(oy), 0, 1);
-    return `[${i}:v]crop='min(iw,ih*16/9)':'min(ih,iw*9/16)',scale=${SZER * 2}:${WYS * 2},`
-        + `zoompan=z='${z0}+(${z1}-${z0})*on/${Math.max(1, klatek)}':x='max(0,min(iw-iw/zoom,${x}*iw-iw/zoom/2))':y='max(0,min(ih-ih/zoom,${y}*ih-ih/zoom/2))':d=1:s=${SZER}x${WYS}:fps=${FPS}`;
+    // Ostrość: panorama ma ~2000 px, więc najpierw lanczos do 4K (najazd nie kwantyzuje pikseli), zoompan w 1080p,
+    // potem lanczos w dół do 720p i delikatne wyostrzenie. To nie dorabia szczegółów — tylko nie gubi tych, które zdjęcie ma.
+    return `[${i}:v]crop='min(iw,ih*16/9)':'min(ih,iw*9/16)',scale=${SZER * 3}:${WYS * 3}:flags=lanczos,`
+        + `zoompan=z='${z0}+(${z1}-${z0})*on/${Math.max(1, klatek)}':x='max(0,min(iw-iw/zoom,${x}*iw-iw/zoom/2))':y='max(0,min(ih-ih/zoom,${y}*ih-ih/zoom/2))':d=1:s=${SZER * 1.5}x${WYS * 1.5}:fps=${FPS},`
+        + `scale=${SZER}:${WYS}:flags=lanczos,unsharp=5:5:0.8:5:5:0.0`;
 }
 
 const kartaFiltr = (i, kolor) => `[${i}:v]scale=360:420:force_original_aspect_ratio=decrease,pad=iw+10:ih+10:5:5:color=${kolorFf(kolor)}`;
@@ -80,6 +84,46 @@ export function argumentyKadru({ tlo, karta = null, kolor, imiePlik, liniePliki,
     const filtr = `${wizja};[${ia}:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${d}[a]`;
     return ['-y', ...wejscia, '-filter_complex', filtr, '-map', '[v]', '-map', '[a]', '-t', d, '-r', String(FPS),
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', wyjscie];
+}
+
+/**
+ * Wideo z gośćmi („Dziś w studiu”): ujęcie studia pod spodem, nagłówek, karty gości obok siebie (zdjęcie w kolorze
+ * aktora albo sama barwa, gdy nie ma zdjęcia) i imiona pod nimi. Dźwięk = zapowiedź prowadzącego albo cisza.
+ * `goscie` = [{ plik|null, kolor, imiePlik, inicjalPlik }]; `naglowekPlik`. Nazwy plików WZGLĘDNE do cwd.
+ */
+export function argumentyGosci({ tlo, goscie, naglowekPlik, czcionka, czas, audio, wyjscie }) {
+    const n = goscie.length, d = Number(czas).toFixed(2), klatek = Math.max(1, Math.round(czas * FPS));
+    const KW = 300, KH = 400, ODSTEP = 50;
+    const x0 = Math.round((SZER - (n * (KW + 10) + (n - 1) * ODSTEP)) / 2);
+    const wejscia = ['-loop', '1', '-framerate', String(FPS), '-t', d, '-i', tlo.plik];
+    for (const g of goscie) wejscia.push(...(g.plik ? ['-loop', '1', '-framerate', String(FPS), '-t', d, '-i', g.plik] : ['-f', 'lavfi', '-i', `color=c=${kolorFf(g.kolor)}:s=${KW}x${KH}:r=${FPS}:d=${d}`]));
+    wejscia.push(...(audio ? ['-i', audio] : ['-f', 'lavfi', '-t', d, '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000']));
+    const f = [`${filtrTla(0, { ox: tlo.ox, oy: tlo.oy, z0: 1.1, z1: 1.22, klatek })},drawbox=x=0:y=0:w=iw:h=${WYS}:color=black@0.2:t=fill[bg]`];
+    let kon = 'bg';
+    goscie.forEach((g, i) => {
+        const x = x0 + i * (KW + 10 + ODSTEP);
+        f.push(`[${i + 1}:v]scale=${KW}:${KH}:force_original_aspect_ratio=increase,crop=${KW}:${KH}:(iw-${KW})/2:0,pad=iw+10:ih+10:5:5:color=${kolorFf(g.kolor)}[k${i}]`);
+        f.push(`[${kon}][k${i}]overlay=x=${x}:y=170[o${i}]`);
+        kon = `o${i}`;
+    });
+    const rys = [
+        `drawbox=x=0:y=36:w=iw:h=84:color=black@0.55:t=fill`,
+        `drawtext=fontfile=${czcionka}:textfile=${naglowekPlik}:expansion=none:fontsize=54:fontcolor=white:x=(w-text_w)/2:y=50:shadowcolor=black@0.8:shadowx=3:shadowy=3`,
+        // Gość bez zdjęcia: jego inicjał na barwie karty, zamiast gołego prostokąta.
+        ...goscie.map((g, i) => (g.plik ? null : `drawtext=fontfile=${czcionka}:textfile=${g.inicjalPlik}:expansion=none:fontsize=190:fontcolor=white@0.85:x=${x0 + i * (KW + 10 + ODSTEP) + 5 + KW / 2}-text_w/2:y=${170 + 5 + KH / 2}-text_h/2`)).filter(Boolean),
+        ...goscie.map((g, i) => `drawtext=fontfile=${czcionka}:textfile=${g.imiePlik}:expansion=none:fontsize=38:fontcolor=${jasniej(g.kolor)}:x=${x0 + i * (KW + 10 + ODSTEP) + (KW + 10) / 2}-text_w/2:y=${170 + KH + 28}:shadowcolor=black@0.8:shadowx=2:shadowy=2`),
+    ];
+    f.push(`[${kon}]${rys.join(',')},fade=t=in:st=0:d=0.4,fade=t=out:st=${Math.max(0, czas - 0.4).toFixed(2)}:d=0.4,format=yuv420p[v]`);
+    f.push(`[${n + 1}:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${d}[a]`);
+    return ['-y', ...wejscia, '-filter_complex', f.join(';'), '-map', '[v]', '-map', '[a]', '-t', d, '-r', String(FPS),
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', wyjscie];
+}
+
+/** Zapowiedź prowadzącego: „Dziś w studiu: A, B i C.” */
+export function zapowiedzGosci(imiona, jezyk = 'pl') {
+    const en = jezykWywiadu(jezyk) === 'en';
+    const lista = imiona.length > 1 ? `${imiona.slice(0, -1).join(', ')} ${en ? 'and' : 'i'} ${imiona.at(-1)}` : imiona[0];
+    return en ? `Today in the studio: ${lista}.` : `Dziś w studiu: ${lista}.`;
 }
 
 /** Tekst nagrania → napisy: linie ≤ `szer` znaków po dwie na napis; czas proporcjonalny do liczby znaków w [start, start+sekundy]. */
@@ -385,8 +429,65 @@ export function utworzStudioPodcastu(o) {
         return { ujecie: u, ognisko: o[poz % o.length] };
     }
 
+    /**
+     * Wideo z gośćmi („Dziś w studiu”) → `odcinki/<id>/goscie.mp4`. Zapowiedź mówi prowadzący (jego głosem), chyba że `bezGlosu`.
+     * Używane przez nagranie odcinka i osobno (podgląd przed nagraniem).
+     */
+    async function renderGosci(x, s, baza, { bezGlosu = false } = {}) {
+        const ujecia = s.ujecia.filter((u) => fsSync.existsSync(u.plik));
+        if (!ujecia.length) throw new Error('Studio nie ma żadnego ujęcia na dysku.');
+        const zrodlo = czcionka();
+        if (!zrodlo) throw new Error('Nie znalazłem czcionki z polskimi znakami (OTAKOS_POWITANIE_CZCIONKA).');
+        const goscie = x.goscie.map((id) => baza.find((a) => a.id === id)).filter(Boolean);
+        if (!goscie.length) throw new Error('Żaden z gości tego odcinka nie jest już w bazie aktorów.');
+        const praca = path.join(KAT_ODC, x.id, 'goscie-praca');
+        try {
+            await fs.rm(praca, { recursive: true, force: true });
+            await fs.mkdir(praca, { recursive: true });
+            await fs.copyFile(zrodlo, path.join(praca, 'czcionka.ttf'));
+            const ujecie = ujecia.find((u) => u.id === 'salon') ?? ujecia[Math.min(1, ujecia.length - 1)];
+            const tlo = `tlo${path.extname(ujecie.plik).toLowerCase()}`;
+            await fs.copyFile(ujecie.plik, path.join(praca, tlo));
+            const J = jezykWywiadu(x.jezyk);
+            await fs.writeFile(path.join(praca, 'naglowek.txt'), J === 'en' ? 'TODAY IN THE STUDIO' : 'DZIŚ W STUDIO', 'utf8');
+            const karty = [];
+            for (const [i, g] of goscie.entries()) {
+                let plik = null;
+                if (g.zdjecie && fsSync.existsSync(g.zdjecie)) { plik = `g${i}${path.extname(g.zdjecie).toLowerCase()}`; await fs.copyFile(g.zdjecie, path.join(praca, plik)); }
+                await fs.writeFile(path.join(praca, `gi${i}.txt`), g.imie, 'utf8');
+                await fs.writeFile(path.join(praca, `gl${i}.txt`), [...g.imie][0]?.toUpperCase() ?? '?', 'utf8');
+                karty.push({ plik, kolor: g.kolor || '#f4c84a', imiePlik: `gi${i}.txt`, inicjalPlik: `gl${i}.txt` });
+            }
+            let audio = null, dl = Math.max(4.5, 2 * goscie.length + 1.5);
+            if (!bezGlosu) {
+                if (!cfg.mow) throw new Error('Katedra nie ma silnika głosu — zrób wideo „bez głosu”.');
+                const g = await cfg.mow({ tekst: zapowiedzGosci(goscie.map((a) => a.imie), J), glos: s.prowadzacy.glos ?? null, jezyk: J }).catch((e) => { throw new Error(`Głos „${s.prowadzacy.imie}”: ${e.message}`); });
+                audio = `zapowiedz.${g.ext || 'wav'}`;
+                await fs.writeFile(path.join(praca, audio), g.audio);
+                const sek = (await cfg.opisz(path.join(praca, audio)).catch(() => null))?.sekundy;
+                if (sek) dl = Math.max(dl, Math.round((sek + 1.2) * 100) / 100);
+            }
+            const o = ogniska(ujecie)[0];
+            await ff(argumentyGosci({ tlo: { plik: tlo, ox: o.x, oy: o.y }, goscie: karty, naglowekPlik: 'naglowek.txt', czcionka: 'czcionka.ttf', czas: dl, audio, wyjscie: 'goscie.mp4' }), praca);
+            const cel = path.join(KAT_ODC, x.id, 'goscie.mp4');
+            await fs.copyFile(path.join(praca, 'goscie.mp4'), cel);
+            return cel;
+        } finally { await fs.rm(praca, { recursive: true, force: true }).catch(() => {}); }
+    }
+
+    /** Samo wideo z gośćmi (podgląd przed nagraniem odcinka); zapisuje ścieżkę w odcinku. */
+    async function zrobGosci(id, { bezGlosu = false } = {}) {
+        const x = await odcinek(id);
+        if (x.etap === 'nagrywa') throw new Error('Odcinek właśnie się nagrywa.');
+        const plik = await renderGosci(x, await zasiej(), await cfg.aktorzy(), { bezGlosu });
+        const { postep, ...zapis } = x;
+        zapis.goscieFilm = plik;
+        await pisz(plikOdcinka(id), zapis);
+        return { ...zapis, sekundy: (await cfg.opisz(plik).catch(() => null))?.sekundy ?? null };
+    }
+
     /** Krok 2 + 3: wstęp, głosy, kadry, sklejenie → katalog montaży projektu `studio-podcast`. Startuje w tle. */
-    async function nagraj(id, { bezGlosu = false, zWstepem = true, podklad = null, glosnosc = 0.12, projekt = PROJEKT_STUDIA } = {}) {
+    async function nagraj(id, { bezGlosu = false, zWstepem = true, zGoscmi = true, podklad = null, glosnosc = 0.12, projekt = PROJEKT_STUDIA } = {}) {
         const x = await odcinek(id);
         const s = await zasiej();
         if (wRobocie.has(id)) throw new Error('Ten odcinek już się nagrywa.');
@@ -402,7 +503,7 @@ export function utworzStudioPodcastu(o) {
         const baza = await cfg.aktorzy();
         const mowca = (kto) => (kto === PROWADZACY_ID ? s.prowadzacy : baza.find((a) => a.id === kto)) ?? { id: kto, imie: kto, kolor: '#f4c84a', zdjecie: null, glos: null };
         const { postep, ...zapis } = x;
-        Object.assign(zapis, { etap: 'nagrywa', bezGlosu: !!bezGlosu, zWstepem: !!zWstepem, podklad: plikPodkladu ? path.basename(plikPodkladu) : null, blad: undefined, nagrywanoOd: czas() });
+        Object.assign(zapis, { etap: 'nagrywa', bezGlosu: !!bezGlosu, zWstepem: !!zWstepem, zGoscmi: !!zGoscmi, podklad: plikPodkladu ? path.basename(plikPodkladu) : null, blad: undefined, nagrywanoOd: czas() });
         await pisz(plikOdcinka(id), zapis);
         wRobocie.set(id, { etap: 'start', zrobione: 0, wszystkich: x.kwestie.length });
         void (async () => {
@@ -421,6 +522,12 @@ export function utworzStudioPodcastu(o) {
                     if (!wstep) wstep = (await zrobWstep()).plik;
                     await fs.copyFile(wstep, path.join(praca, 'wstep.mp4'));
                     segmenty.push('wstep.mp4');
+                }
+                if (zGoscmi) {
+                    wRobocie.set(id, { etap: 'goście', zrobione: 0, wszystkich: x.kwestie.length });
+                    zapis.goscieFilm = await renderGosci(x, s, baza, { bezGlosu });
+                    await fs.copyFile(zapis.goscieFilm, path.join(praca, 'goscie.mp4'));
+                    segmenty.push('goscie.mp4');
                 }
                 const tla = new Map();
                 for (const [i, kw] of x.kwestie.entries()) {
@@ -483,14 +590,15 @@ export function utworzStudioPodcastu(o) {
         else if (rodzaj === 'wstep') p = s.wstep?.plik;
         else if (rodzaj === 'nagranie') p = s.wstep?.nagranie;
         else if (rodzaj === 'odcinek') p = (await odcinek(id)).plik;
+        else if (rodzaj === 'goscie') p = (await odcinek(id)).goscieFilm;
         if (!p || !fsSync.existsSync(p)) throw new Error('Nie ma takiego pliku.');
         return p;
     }
 
     return {
-        studio, zapiszStudio, dodajUjecie, usunUjecie, zrobWstep, zrobWstepWTle, odcinki, odcinek, przygotuj, zmien, nagraj, plik, planKadru,
+        studio, zapiszStudio, dodajUjecie, usunUjecie, zrobWstep, zrobWstepWTle, zrobGosci, odcinki, odcinek, przygotuj, zmien, nagraj, plik, planKadru,
         postepWstepu: () => wRobocie.get('wstep') ?? null,
     };
 }
 
-export default { utworzStudioPodcastu, filtrTla, argumentyKadru, argumentyWstepu, planNapisow, promptOdcinka, PROJEKT_STUDIA, PROWADZACY_ID, UJECIA_PACZKI, OGNISKA_DOMYSLNE };
+export default { utworzStudioPodcastu, filtrTla, argumentyGosci, zapowiedzGosci, argumentyKadru, argumentyWstepu, planNapisow, promptOdcinka, PROJEKT_STUDIA, PROWADZACY_ID, UJECIA_PACZKI, OGNISKA_DOMYSLNE };

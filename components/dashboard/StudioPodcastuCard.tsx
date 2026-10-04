@@ -22,7 +22,7 @@ interface Studio {
 }
 interface Aktor { id: string; imie: string; rola: string; kolor: string }
 interface Kwestia { kto: string; tekst: string }
-interface Odcinek { id: string; tytul: string; temat: string; goscie: string[]; kwestie: Kwestia[]; etap: string; blad?: string; plik?: string; sekundy?: number | null; postep?: { etap: string; zrobione: number; wszystkich: number }; bezGlosu?: boolean }
+interface Odcinek { id: string; tytul: string; temat: string; goscie: string[]; goscieFilm?: string; kwestie: Kwestia[]; etap: string; blad?: string; plik?: string; sekundy?: number | null; postep?: { etap: string; zrobione: number; wszystkich: number }; bezGlosu?: boolean }
 interface Stan { studio: Studio; postepWstepu: { etap: string } | null; aktorzy: Aktor[] }
 
 async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
@@ -45,6 +45,7 @@ export const StudioPodcastuCard: React.FC = () => {
     const [uwagi, setUwagi] = useState('');
     const [bezGlosu, setBezGlosu] = useState(false);
     const [wstepem, setWstepem] = useState(true);
+    const [zGoscmi, setZGoscmi] = useState(true);
     const [praca, setPraca] = useState<string | null>(null);
     const [edycja, setEdycja] = useState<Record<string, string>>({});
     const napisyWpisane = useRef(false);
@@ -74,7 +75,7 @@ export const StudioPodcastuCard: React.FC = () => {
     const nagraj = (o: Odcinek) => akcja(o.id, async () => {
         const t = edycja[o.id];
         if (t !== undefined && t !== tekstKwestii(o.kwestie)) await zMostu(`/api/studio-podcast/odcinki/${o.id}/zmien`, { method: 'POST', body: JSON.stringify({ kwestie: zTekstu(t) }) });
-        await zMostu(`/api/studio-podcast/odcinki/${o.id}/nagraj`, { method: 'POST', body: JSON.stringify({ bezGlosu, zWstepem: wstepem }) });
+        await zMostu(`/api/studio-podcast/odcinki/${o.id}/nagraj`, { method: 'POST', body: JSON.stringify({ bezGlosu, zWstepem: wstepem, zGoscmi }) });
     }, 'Nagrywam odcinek w tle.');
 
     const w = stan?.studio.wstep;
@@ -120,6 +121,7 @@ export const StudioPodcastuCard: React.FC = () => {
                             <input value={uwagi} onChange={(e) => setUwagi(e.target.value)} placeholder="Uwagi dla scenarzysty (opcjonalnie)" className="rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
                             <div className="flex flex-wrap items-center gap-3">
                                 <button disabled={!!praca || !temat.trim() || !goscie.length} onClick={przygotuj} className="rounded border border-emerald-500/40 px-2 py-1 text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-40">{praca === 'scenariusz' ? 'piszę…' : '✍️ Napisz scenariusz'}</button>
+                                <label className="text-slate-400"><input type="checkbox" checked={zGoscmi} onChange={(e) => setZGoscmi(e.target.checked)} /> wideo z gośćmi</label>
                                 <label className="text-slate-400"><input type="checkbox" checked={wstepem} onChange={(e) => setWstepem(e.target.checked)} /> ze wstępem</label>
                                 <label className="text-slate-400"><input type="checkbox" checked={bezGlosu} onChange={(e) => setBezGlosu(e.target.checked)} /> bez głosu (same napisy)</label>
                             </div>
@@ -137,6 +139,8 @@ export const StudioPodcastuCard: React.FC = () => {
                                 <>
                                     <textarea value={edycja[o.id] ?? tekstKwestii(o.kwestie)} rows={Math.min(12, o.kwestie.length + 1)} onChange={(e) => setEdycja((x) => ({ ...x, [o.id]: e.target.value }))} className="mt-1 w-full rounded border border-slate-700 bg-black/40 px-2 py-1 font-mono text-[10px] text-slate-200" />
                                     <p className="text-[10px] text-slate-500">Format „id: kwestia” (id: prowadzacy albo id aktora). Poprawki zapiszą się przy nagrywaniu.</p>
+                                    {o.goscieFilm && <video controls src={`${MOST}/api/studio-podcast/plik/goscie/${o.id}?v=${encodeURIComponent(o.goscieFilm)}`} className="mt-1 w-full rounded border border-slate-700" />}
+                                    <button disabled={!!praca} onClick={() => akcja(`g-${o.id}`, () => zMostu(`/api/studio-podcast/odcinki/${o.id}/goscie`, { method: 'POST', body: JSON.stringify({ bezGlosu }) }), 'Wideo z gośćmi gotowe.')} className="mr-2 mt-1 rounded border border-fuchsia-500/40 px-2 py-1 text-fuchsia-200 hover:bg-fuchsia-500/10 disabled:opacity-40">{praca === `g-${o.id}` ? 'robię…' : '👥 Wideo z gośćmi'}</button>
                                     <button disabled={!!praca} onClick={() => nagraj(o)} className="mt-1 rounded border border-cyan-500/40 px-2 py-1 text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-40">🎥 Nagraj odcinek</button>
                                 </>
                             )}
