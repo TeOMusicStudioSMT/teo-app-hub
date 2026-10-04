@@ -193,6 +193,7 @@ import { utworzPublikacje } from './services/PublikacjeYouTube.js';
 import { utworzWywiady } from './services/WywiadAktorow.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzSceny } from './services/ScenyDialogowe.js';
+import { kodDoUzycia } from './services/KodZaproszenia.js';
 import { listaStemow, glosZeStemu } from './services/GlosZeStemu.js';
 import { utworzKanalYouTube } from './services/KanalYouTube.js';
 import * as GlosStudio from './services/GlosStudio.js';
@@ -4734,18 +4735,27 @@ app.get('/api/grv/:id', async (req, res) => {
     res.json({ success: true, id: req.params.id, ...n });
 });
 app.post('/api/grv/register', async (req, res) => {
-    const { id, tier } = req.body ?? {};
+    const { id, tier, kod } = req.body ?? {};
     if (!id) return res.status(400).json({ success: false, message: 'Brak id węzła.' });
     const L = await loadGrvLedger();
     if (L.nodes[id]) return res.json({ success: true, id, ...L.nodes[id], existed: true });
     let grv = GRV_NEW_NODE, role = 'node', assignedTier = null;
-    if (tier && GRV_TIERS[tier]) {
+    // 🗝️ Kod zaproszenia (services/KodZaproszenia.js): raz na księgę, tylko przy nowym węźle. Zły kod = nic nie zakładamy,
+    // żeby Suweren mógł poprawić literówkę, zamiast dostać 1000 GRV i stracić kod.
+    let uzytyKod = null;
+    if (String(kod ?? '').trim()) {
+        const k = kodDoUzycia(kod, L.kody);
+        if (!k.ok) return res.status(403).json({ success: false, code: 'KOD_ODRZUCONY', message: k.powod });
+        uzytyKod = k.kod; grv = k.kod.grv;
+    }
+    if (!uzytyKod && tier && GRV_TIERS[tier]) {
         const used = L.pools[tier] || 0;
         if (used >= GRV_TIERS[tier].count) return res.status(409).json({ success: false, message: `Pula ${tier} wyczerpana (${GRV_TIERS[tier].count}).` });
         grv = GRV_TIERS[tier].grv; role = tier; assignedTier = tier; L.pools[tier] = used + 1;
     }
-    L.nodes[id] = { grv, role, tier: assignedTier, registeredAt: Date.now() };
-    await sealGrv('register', { id, grv, tier: assignedTier });
+    L.nodes[id] = { grv, role, tier: assignedTier, registeredAt: Date.now(), ...(uzytyKod ? { kod: uzytyKod.id } : {}) };
+    if (uzytyKod) L.kody = { ...(L.kody ?? {}), [uzytyKod.id]: id };
+    await sealGrv('register', { id, grv, tier: assignedTier, ...(uzytyKod ? { kod: uzytyKod.id } : {}) });
     await saveGrvLedger();
     console.log(`[GRV] ➕ Węzeł ${id}: ${grv} GRV${assignedTier ? ` (${assignedTier})` : ''}.`);
     res.json({ success: true, id, ...L.nodes[id] });
