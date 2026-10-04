@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   TaskSkin, loadSkins, saveCustomSkin, deleteCustomSkin, setSkinForSale,
 } from '../../lib/taskSkins';
+import { mojWezel } from '../../lib/mojWezel';
 
 interface Props {
   selectedId?: string;
@@ -64,7 +65,7 @@ export const TaskSkinPicker: React.FC<Props> = ({
             name: `${skin.icon} ${skin.name}`,
             desc: skin.desc || 'Skórka zadania (system-prompt)',
             priceGrv: price,
-            creator: skin.author || 'Mistrz Arkadiusz',
+            creator: skin.author || mojWezel(),
           }),
         });
       } catch { /* most offline — skórka zostaje lokalnie oznaczona na sprzedaż */ }

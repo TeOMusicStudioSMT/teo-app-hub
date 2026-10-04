@@ -11,6 +11,7 @@ import { walletAtom } from '../../store/wallet';
 import { negotiateAccess } from '../../lib/jwProtocol';
 // Upewnij się, że ten plik istnieje (krok z poprzedniej wiadomości)
 import { useHermesCourier } from '../../lib/hooks/useHermesCourier';
+import { mojWezel } from '../../lib/mojWezel';
 
 // ... (StabilitySelector zostaje bez zmian) ...
 const StabilitySelector = ({ selected, onSelect }: { selected: StabilityLevel, onSelect: (s: StabilityLevel) => void }) => {
@@ -181,7 +182,7 @@ export const QuantumForgeView: React.FC<{
                         body: JSON.stringify({
                             module: 'forge', type: assetType.toLowerCase(),
                             name: `${name}`, desc: `Wykuty asset ${assetType} (${stability}) z Quantum Forge`,
-                            priceGrv: price, creator: 'Mistrz Arkadiusz',
+                            priceGrv: price, creator: mojWezel(),
                         }),
                     });
                     const md = await r.json().catch(() => ({}));

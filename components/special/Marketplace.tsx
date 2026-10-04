@@ -5,9 +5,9 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { mojWezel } from '../../lib/mojWezel';
 
 const BRIDGE = 'http://127.0.0.1:3001';
-const BUYER = 'Mistrz Arkadiusz'; // suwerenny węzeł-nabywca (genesis GRV)
 
 interface Product { id: string; module: string; type: string; name: string; desc: string; priceGrv: number; priceGrvDyn?: number; creator: string; votes: number; payload?: { action?: string; modId?: string; code?: string } | null; }
 const effPrice = (p: Product) => p.priceGrvDyn ?? p.priceGrv; // cena dynamiczna (popyt)
@@ -16,7 +16,7 @@ export const Marketplace: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [tab, setTab] = useState<'shop' | 'vote' | 'create'>('shop');
   const [status, setStatus] = useState('');
-  const [form, setForm] = useState({ module: 'katedra-chat', name: '', desc: '', priceGrv: '100', creator: 'Mistrz Arkadiusz' });
+  const [form, setForm] = useState({ module: 'katedra-chat', name: '', desc: '', priceGrv: '100', creator: mojWezel() });
   const [balance, setBalance] = useState<number | 'INFINITE' | null>(null);
   const [owned, setOwned] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('otakos_owned_products') || '[]'); } catch { return []; } });
   const [nextBurn, setNextBurn] = useState<number | null>(null);
@@ -35,7 +35,7 @@ export const Marketplace: React.FC = () => {
   };
 
   const fetchBalance = useCallback(async () => {
-    try { const d = await (await fetch(`${BRIDGE}/api/grv/${encodeURIComponent(BUYER)}`)).json(); if (d.success) setBalance(d.grv); }
+    try { const d = await (await fetch(`${BRIDGE}/api/grv/${encodeURIComponent(mojWezel())}`)).json(); if (d.success) setBalance(d.grv); }
     catch { /* most offline */ }
   }, []);
 
@@ -65,10 +65,10 @@ export const Marketplace: React.FC = () => {
     if (owned.includes(p.id)) return;
     const price = effPrice(p); // dynamiczna (popyt)
     if (price <= 0) { markOwned(p.id); setStatus(`✅ Pobrano za darmo: ${p.name}.${await installIfMod(p)}`); return; }
-    if (p.creator === BUYER) { markOwned(p.id); setStatus(`⚠ To Twój produkt — już go masz.${await installIfMod(p)}`); return; }
+    if (p.creator === mojWezel()) { markOwned(p.id); setStatus(`⚠ To Twój produkt — już go masz.${await installIfMod(p)}`); return; }
     try {
       const d = await (await fetch(`${BRIDGE}/api/grv/grant`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: BUYER, to: p.creator, amount: price }) })).json();
+        body: JSON.stringify({ from: mojWezel(), to: p.creator, amount: price }) })).json();
       if (!d.success) throw new Error(d.message || 'Zakup nieudany');
       markOwned(p.id);
       setBalance(d.fromBalance);

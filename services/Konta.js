@@ -25,10 +25,13 @@ const PLIK_KONT = () => path.join(process.cwd(), '_OtakOs_Wymiar', 'konta.json')
 const PLIK_KLUCZY = () => path.join(process.cwd(), '_OtakOs_Wymiar', 'klucze.json');
 
 /**
- * Konta fabryczne. `TeO` to BANK ekosystemu (saldo nieskończone, dzieli pulę
+ * Konta GŁÓWNEGO węzła (TeO). Dawniej zasiewały się w KAŻDEJ Katedrze — z mailami Suwerena i jego węzłami;
+ * Suweren 2026-10-04: „JA to tylko Jeden Jestem”. Dziś służą tylko do uzupełniania aliasów w istniejącym
+ * pliku głównego węzła; nowa Katedra zasiewa swoje konto skarbca (`kontaNowejKatedry`).
+ * `TeO` to BANK ekosystemu (saldo nieskończone, dzieli pulę
  * obdarowań), a nie portfel osobisty — dlatego ma osobny mail i osobny węzeł.
  */
-const KONTA_DOMYSLNE = {
+const KONTA_GLOWNEGO_WEZLA = {
     wersja: 1,
     konta: [
         {
@@ -58,17 +61,28 @@ async function zapisz(sciezka, dane) {
     await fs.writeFile(sciezka, JSON.stringify(dane, null, 2), 'utf8');
 }
 
-export async function wczytajKonta() {
+/** Konta nowej Katedry: tylko jej własny skarbiec (bez maili — tożsamość lokalna, nie Google). */
+export const kontaNowejKatedry = (zarzadca) => ({
+    wersja: 1,
+    konta: zarzadca ? [{
+        id: 'skarbiec', mail: '', wezel: zarzadca, rola: 'zarzadca', aliasy: ['admin', 'genesis'],
+        opis: 'Skarbiec tej Katedry — saldo nieskończone, dzieli pulę obdarowań. NIE portfel osobisty.',
+    }] : [],
+});
+
+/** `zarzadca` = skarbiec z księgi tej Katedry — potrzebny tylko przy pierwszym zasiewie pliku. */
+export async function wczytajKonta({ zarzadca = null } = {}) {
     const d = await czytaj(PLIK_KONT(), null);
     if (!d) {
-        await zapisz(PLIK_KONT(), KONTA_DOMYSLNE);   // pierwszy raz — zasiew
-        return KONTA_DOMYSLNE;
+        const zasiew = kontaNowejKatedry(zarzadca);
+        if (zarzadca) await zapisz(PLIK_KONT(), zasiew);   // pierwszy raz — zasiew (bez skarbca nie utrwalamy pustki)
+        return zasiew;
     }
     // Uzupełnienie starszych zapisów: aliasy doszły po pierwszym zasiewie, a bez
     // nich login `admin` przestałby trafiać do banku. Dopisujemy tylko brakujące
     // pola kont fabrycznych — niczego z pliku Suwerena nie nadpisujemy.
     for (const k of d.konta ?? []) {
-        const wzor = KONTA_DOMYSLNE.konta.find(x => x.id === k.id);
+        const wzor = KONTA_GLOWNEGO_WEZLA.konta.find(x => x.id === k.id);
         if (wzor && !k.aliasy) k.aliasy = wzor.aliasy;
     }
     return d;
@@ -79,11 +93,11 @@ export async function wczytajKonta() {
  * Nieznane konto → `null`, a wołający decyduje, co z tym zrobić. Zgadywanie
  * („pewnie chodzi o Suwerena") przypisałoby komuś cudzy milion GRV.
  */
-export async function wezelDlaKonta(identyfikator) {
+export async function wezelDlaKonta(identyfikator, opcje = {}) {
     const u = String(identyfikator || '').trim().toLowerCase();
     if (!u) return null;
-    const { konta } = await wczytajKonta();
-    const k = konta.find(x => x.mail.toLowerCase() === u
+    const { konta } = await wczytajKonta(opcje);
+    const k = konta.find(x => (x.mail && x.mail.toLowerCase() === u)
         || x.id.toLowerCase() === u
         || x.wezel.toLowerCase() === u
         || (x.aliasy ?? []).some(a => String(a).toLowerCase() === u));

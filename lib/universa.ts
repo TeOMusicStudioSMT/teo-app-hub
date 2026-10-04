@@ -8,6 +8,7 @@
  * wypraw są SUMOWANE po stronie mostu z realnych wpłat — front ich nie ustawia
  * i nie potrafiłby, nawet gdyby chciał.
  */
+import { mojWezel } from './mojWezel';
 
 const MOST = 'http://127.0.0.1:3001';
 
@@ -148,17 +149,17 @@ export const zglosPrace = (
     rodzaj: RodzajPracy,
     klucz: string,
     trwaly?: { nazwa: string; sciezka?: string },
-    wezel: string = MOJ_WEZEL,
+    wezel: string = mojWezel(),
 ) => zawolaj<WynikWdechu>('/api/grv/mint-respiration', {
     method: 'POST', body: JSON.stringify({ wezel, rodzaj, klucz, trwaly }),
 });
 
-export const stanOddechu = (wezel: string = MOJ_WEZEL) =>
+export const stanOddechu = (wezel: string = mojWezel()) =>
     zawolaj<StanOddechu>(`/api/grv/oddech/${encodeURIComponent(wezel)}`);
 
-export const zasobyTrwale = (wezel: string = MOJ_WEZEL) =>
+export const zasobyTrwale = (wezel: string = mojWezel()) =>
     zawolaj<{ trwale: { id: string; nazwa: string; rodzaj: string; grv: number; kiedy: string }[] }>(
         `/api/grv/trwale?wezel=${encodeURIComponent(wezel)}`).then(d => d.trwale);
 
 /** Węzeł Suwerena. Księga zna go pod tym imieniem — nie po adresie portfela. */
-export const MOJ_WEZEL = 'Mistrz Arkadiusz';
+export { mojWezel };   // węzeł właściciela TEJ Katedry (lib/mojWezel.ts) — dawniej stały 'Mistrz Arkadiusz'

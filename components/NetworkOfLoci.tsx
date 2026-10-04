@@ -24,7 +24,7 @@ import { useEssenceIdentity } from '../hooks/useEssenceIdentity';
 import { DigitalSelfAvatar } from './identity/DigitalSelfAvatar';
 import { cn } from '../lib/helpers';
 import {
-    pobierzModuly, saldoWezla, integralnoscKsiegi, stanOddechu, MOJ_WEZEL,
+    pobierzModuly, saldoWezla, integralnoscKsiegi, stanOddechu, mojWezel,
     type Modul, type StanRejestru, type StanOddechu,
 } from '../lib/universa';
 
@@ -60,10 +60,10 @@ export const NetworkOfLoci: React.FC = () => {
         (async () => {
             try {
                 const [m, w, k, o] = await Promise.all([
-                    pobierzModuly(MOJ_WEZEL),
-                    saldoWezla(MOJ_WEZEL).catch(() => null),
+                    pobierzModuly(mojWezel()),
+                    saldoWezla(mojWezel()).catch(() => null),
                     integralnoscKsiegi().catch(() => null),
-                    stanOddechu(MOJ_WEZEL).catch(() => null),
+                    stanOddechu(mojWezel()).catch(() => null),
                 ]);
                 if (!zywy) return;
                 setStan({

@@ -24,7 +24,7 @@ import { STUDIA, otworzNaMoscie, type IdStudia } from '../lib/wrota';
 import { getBridgeBase } from '../lib/bridgeService';
 import {
     pobierzModuly, dodajModul, usunModul, subskrybuj, anuluj,
-    pobierzWyprawy, dodajWyprawe, wplac, saldoWezla, MOJ_WEZEL,
+    pobierzWyprawy, dodajWyprawe, wplac, saldoWezla, mojWezel,
     type Modul, type Wyprawa,
 } from '../lib/universa';
 
@@ -47,9 +47,9 @@ export const ProjectsView: React.FC = () => {
         try {
             setBlad('');
             const [m, w, s] = await Promise.all([
-                pobierzModuly(MOJ_WEZEL),
+                pobierzModuly(mojWezel()),
                 pobierzWyprawy(),
-                saldoWezla(MOJ_WEZEL).catch(() => null),
+                saldoWezla(mojWezel()).catch(() => null),
             ]);
             setModuly(m.moduly); setWyprawy(w); setGrv(s?.grv ?? null);
         } catch (e) { setBlad(e instanceof Error ? e.message : String(e)); }
@@ -93,10 +93,10 @@ export const ProjectsView: React.FC = () => {
         setZajety(true);
         try {
             if (m.subskrybowany) {
-                const r = await anuluj(m.id, MOJ_WEZEL);
+                const r = await anuluj(m.id, mojWezel());
                 toast(r.uwaga, { icon: 'ℹ️', duration: 6000 });
             } else {
-                const r = await subskrybuj(m.id, MOJ_WEZEL);
+                const r = await subskrybuj(m.id, mojWezel());
                 toast.success(r.zaplacono > 0 ? `Zapłacono ${r.zaplacono} GRV za „${m.nazwa}".` : `„${m.nazwa}" włączony (bez opłat).`);
             }
             await odswiez();
@@ -107,7 +107,7 @@ export const ProjectsView: React.FC = () => {
     const wyslijModul = async () => {
         setZajety(true);
         try {
-            await dodajModul({ ...nowyModul, autor: MOJ_WEZEL });
+            await dodajModul({ ...nowyModul, autor: mojWezel() });
             setNowyModul({ nazwa: '', opis: '', url: '', ikona: '🧩', cenaGRV: 0, kategoria: 'narzedzie' });
             setPokazFormModulu(false);
             toast.success('Moduł w rejestrze.');
@@ -119,7 +119,7 @@ export const ProjectsView: React.FC = () => {
     const wyslijWyprawe = async () => {
         setZajety(true);
         try {
-            await dodajWyprawe({ ...nowaWyprawa, autor: MOJ_WEZEL });
+            await dodajWyprawe({ ...nowaWyprawa, autor: mojWezel() });
             setNowaWyprawa({ nazwa: '', opis: '', ikona: '🚀', celGRV: 10000 });
             setPokazFormWyprawy(false);
             toast.success('Wyprawa otwarta. Licznik startuje od zera.');
@@ -135,7 +135,7 @@ export const ProjectsView: React.FC = () => {
         if (!(kwota > 0)) { toast.error('Kwota musi być większa od zera.'); return; }
         setZajety(true);
         try {
-            const r = await wplac(w.id, MOJ_WEZEL, kwota);
+            const r = await wplac(w.id, mojWezel(), kwota);
             toast.success(`Wpłacono ${kwota} GRV. Zebrane: ${r.wyprawa.zebraneGRV.toLocaleString('pl-PL')} / ${w.celGRV.toLocaleString('pl-PL')}.`);
             await odswiez();
         } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }

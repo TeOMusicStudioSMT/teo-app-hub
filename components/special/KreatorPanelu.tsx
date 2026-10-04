@@ -15,6 +15,7 @@ import {
     type Domena, type Jajo, type Narzedzie, type PanelDef,
 } from '../../lib/paneleTeogochi';
 import type { Gatunek } from '../../lib/teogochiGatunki';
+import { mojWezel } from '../../lib/mojWezel';
 
 const ETAPY = ['jajko', 'pisklę', 'młodzik', 'kompan', 'legenda'];
 
@@ -80,7 +81,7 @@ export const KreatorPanelu: React.FC<Props> = ({ gat, onGotowe, onAnuluj }) => {
     const doMarketu = async () => {
         setZajety(true); setBlad('');
         try {
-            const r = await wystawPanel(gat.id, Number(cena) || 0, 'Mistrz Arkadiusz');
+            const r = await wystawPanel(gat.id, Number(cena) || 0, mojWezel());
             setInfo(`🏪 Wystawione w Marketplace jako „${r.oferta.name}".`);
         } catch (e) { setBlad((e as Error).message); }
         finally { setZajety(false); }

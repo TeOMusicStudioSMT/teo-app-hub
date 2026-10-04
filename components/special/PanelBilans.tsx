@@ -11,9 +11,10 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { Scale, RefreshCw, AlertTriangle, Trophy, KeyRound, Check, Users, Copy } from 'lucide-react';
+import { mojWezel } from '../../lib/mojWezel';
+import WezelWlasciciela from '../WezelWlasciciela';
 
 const MOST = 'http://127.0.0.1:3001';
-const WEZEL = 'Mistrz Arkadiusz';
 
 interface Szczebel { ranga: string; grv: number; wejscie: string; wolne: number | string | null; }
 interface Osiagniecie { id: string; nazwa: string; ikona: string; opis: string; zdobyte: boolean; }
@@ -57,9 +58,9 @@ export const PanelBilans: React.FC = () => {
         try {
             const [d, o, q, w, kt, kl] = await Promise.all([
                 fetch(`${MOST}/api/grv/drabina`).then(r => r.json()),
-                fetch(`${MOST}/api/grv/osiagniecia?wezel=${encodeURIComponent(WEZEL)}`).then(r => r.json()),
-                fetch(`${MOST}/api/grv/questy?wezel=${encodeURIComponent(WEZEL)}`).then(r => r.json()),
-                fetch(`${MOST}/api/grv/${encodeURIComponent(WEZEL)}`).then(r => r.json()),
+                fetch(`${MOST}/api/grv/osiagniecia?wezel=${encodeURIComponent(mojWezel())}`).then(r => r.json()),
+                fetch(`${MOST}/api/grv/questy?wezel=${encodeURIComponent(mojWezel())}`).then(r => r.json()),
+                fetch(`${MOST}/api/grv/${encodeURIComponent(mojWezel())}`).then(r => r.json()),
                 fetch(`${MOST}/api/konta`).then(r => r.json()),
                 fetch(`${MOST}/api/grv/klucze`).then(r => r.json()),
             ]);
@@ -85,7 +86,7 @@ export const PanelBilans: React.FC = () => {
         try {
             const r = await fetch(`${MOST}/api/grv/quest/odbierz`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ wezel: WEZEL, quest: quest.id }),
+                body: JSON.stringify({ wezel: mojWezel(), quest: quest.id }),
             });
             const d = await r.json();
             if (!d.success) throw new Error(d.message || 'Most odmówił wypłaty.');
@@ -115,7 +116,7 @@ export const PanelBilans: React.FC = () => {
         try {
             const r = await fetch(`${MOST}/api/grv/klucze/uzyj`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ klucz: kluczDoUzycia.trim(), wezel: WEZEL }),
+                body: JSON.stringify({ klucz: kluczDoUzycia.trim(), wezel: mojWezel() }),
             });
             const d = await r.json();
             if (!d.success) throw new Error(d.message || 'Klucz odrzucony.');
@@ -131,7 +132,7 @@ export const PanelBilans: React.FC = () => {
         try {
             const r = await fetch(`${MOST}/api/grv/awans`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ wezel: WEZEL, ranga: 'pillar', haslo }),
+                body: JSON.stringify({ wezel: mojWezel(), ranga: 'pillar', haslo }),
             });
             const d = await r.json();
             if (!d.success) throw new Error(d.message || 'Awans odrzucony.');
@@ -161,6 +162,10 @@ export const PanelBilans: React.FC = () => {
                     </button>
                 </div>
             </header>
+            <details className="rounded-lg border border-amber-500/20 bg-black/20 p-3" open={!mojWezel()}>
+                <summary className="cursor-pointer text-[11px] uppercase tracking-widest text-amber-300">🪪 Twoje imię w tej Katedrze</summary>
+                <div className="mt-2"><WezelWlasciciela onGotowe={odswiez} /></div>
+            </details>
 
             {blad && <p className="flex items-start gap-2 text-sm text-amber-400">
                 <AlertTriangle size={15} className="mt-0.5 shrink-0" /><span>{blad}</span></p>}

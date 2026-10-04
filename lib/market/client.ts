@@ -2,6 +2,7 @@
 import { mockFetch } from '../identity/client';
 import { MarketListing, CreateListingRequest } from './types';
 import { v4 as uuidv4 } from 'uuid';
+import { mojWezel } from '../mojWezel';
 
 const mockMarketItems: MarketListing[] = [
     { id: 'item1', sellerDid: 'did:teo:seller1', itemName: 'Genesis Music Key', price: 250, imageUrl: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=400&q=80', description: 'Unlocks exclusive soundscapes in teomusic.studio.' },
@@ -11,7 +12,6 @@ const mockMarketItems: MarketListing[] = [
 ];
 
 const BRIDGE = 'http://127.0.0.1:3001';
-const BUYER = 'Mistrz Arkadiusz'; // suwerenny węzeł-nabywca (księga GRV = portfel prawdy)
 const FALLBACK_IMAGES = mockMarketItems.map(m => m.imageUrl);
 
 // Realne produkty z naszego sklepu (Marketplace 0.00G) — ładne karty, prawdziwe dane.
@@ -66,7 +66,7 @@ export const createOrder = async (listingId: string): Promise<{ success: boolean
     const r = await fetch(`${BRIDGE}/api/market/kup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: listingId, wezel: BUYER }),
+        body: JSON.stringify({ id: listingId, wezel: mojWezel() }),
     });
     const d = await r.json().catch(() => ({}));
     if (!d?.success) throw new Error(d?.message || 'Most odrzucił zakup.');
@@ -81,7 +81,7 @@ export interface PosiadaneAktywo {
 
 /** Co węzeł faktycznie posiada — źródło dla Dashboard, GRAVITON i Universa. */
 export const pobierzPosiadane = async (
-    wezel: string = BUYER,
+    wezel: string = mojWezel(),
 ): Promise<{ aktywa: PosiadaneAktywo[]; wartoscGrv: number }> => {
     try {
         const r = await fetch(`${BRIDGE}/api/market/posiadane?wezel=${encodeURIComponent(wezel)}`);
