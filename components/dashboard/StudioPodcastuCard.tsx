@@ -20,7 +20,7 @@ interface Studio {
     ujecia: Ujecie[];
     wstep: { nagranie: string | null; tekst: string; plik: string | null; sekundy: number | null; zrobiono: string | null; napisy?: boolean; blad?: string };
 }
-interface Aktor { id: string; imie: string; rola: string; kolor: string }
+interface Aktor { id: string; imie: string; rola: string; kolor: string; wideo?: string | null }
 interface Kwestia { kto: string; tekst: string }
 interface Odcinek { id: string; tytul: string; temat: string; goscie: string[]; goscieFilm?: string; kwestie: Kwestia[]; etap: string; blad?: string; plik?: string; sekundy?: number | null; postep?: { etap: string; zrobione: number; wszystkich: number }; bezGlosu?: boolean }
 interface Stan { studio: Studio; postepWstepu: { etap: string } | null; aktorzy: Aktor[] }
@@ -114,8 +114,8 @@ export const StudioPodcastuCard: React.FC = () => {
                             <div className="flex flex-wrap gap-1.5">
                                 {stan.aktorzy.length === 0 && <span className="text-slate-500">Baza aktorów jest pusta — dodaj aktorów (POST /api/aktorzy), potem wybierzesz gości tutaj.</span>}
                                 {stan.aktorzy.filter((a) => a.id !== 'kronikarz').map((a) => (
-                                    <button key={a.id} onClick={() => setGoscie((g) => (g.includes(a.id) ? g.filter((x) => x !== a.id) : g.length < 3 ? [...g, a.id] : g))} title={a.rola}
-                                        className={`rounded-full border px-2 py-0.5 ${goscie.includes(a.id) ? 'border-emerald-400 bg-emerald-500/20 text-emerald-100' : 'border-slate-700 text-slate-400'}`}>{a.imie}</button>
+                                    <button key={a.id} onClick={() => setGoscie((g) => (g.includes(a.id) ? g.filter((x) => x !== a.id) : g.length < 3 ? [...g, a.id] : g))} title={`${a.rola}${a.wideo ? ' · klip wideo' : ''}`}
+                                        className={`rounded-full border px-2 py-0.5 ${goscie.includes(a.id) ? 'border-emerald-400 bg-emerald-500/20 text-emerald-100' : 'border-slate-700 text-slate-400'}`}>{a.wideo ? '🎞️ ' : ''}{a.imie}</button>
                                 ))}
                             </div>
                             <input value={uwagi} onChange={(e) => setUwagi(e.target.value)} placeholder="Uwagi dla scenarzysty (opcjonalnie)" className="rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
