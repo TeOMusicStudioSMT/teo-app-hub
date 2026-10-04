@@ -92,7 +92,7 @@ export const StudioPodcastuCard: React.FC = () => {
                         {stan.studio.ujecia.slice(0, 6).map((u) => <img key={u.id} src={`${MOST}/api/studio-podcast/plik/ujecie/${u.id}`} alt={u.nazwa} title={u.nazwa} className="aspect-video w-full rounded border border-slate-700 object-cover" />)}
                     </div>
 
-                    <details className="rounded-lg border border-cyan-500/25 p-2" open={!w?.plik}>
+                    <details className="rounded-lg border border-cyan-500/25 p-2" open>
                         <summary className="cursor-pointer text-[10px] uppercase tracking-widest text-cyan-300">🎬 Film wstępowy {w?.plik ? `· gotowy (${w.sekundy?.toFixed(1)} s${w.napisy ? ', z napisami' : ''})` : '· jeszcze nie zrobiony'}</summary>
                         <div className="mt-2 flex flex-col gap-2">
                             {w?.nagranie && <audio controls src={`${MOST}/api/studio-podcast/plik/nagranie`} className="h-8 w-full" />}
