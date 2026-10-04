@@ -27,7 +27,9 @@ import { execFile } from 'child_process';
 import { CZCIONKI, zawin, kolorFf, jasniej } from './PowitanieDnia.js';
 import { argumentyPodkladu } from './GlosZeStemu.js';
 
-export const SZER = 1280, WYS = 720, FPS = 25;
+export const SZER = 1280;
+export const WYS = 720;
+export const FPS = 25;
 export const PROWADZACY = { id: 'kronikarz', imie: 'Kronikarz', rola: 'Prowadzący wywiad, TeOgochi-pisarz Katedry OtakOS: ciepły, ciekawy, zadaje krótkie pytania.', kolor: '#a855f7', zdjecie: null, glos: null };
 const OBRAZ = /\.(png|jpe?g|webp|bmp)$/i;
 
@@ -376,7 +378,7 @@ export function utworzWywiady(o) {
         return { ...zapis, postep: wRobocie.get(id) };
     }
 
-    return { aktorzy, zapiszAktora, usunAktora, wywiady, wywiad: wczytajWywiad, przygotuj, zmien, przetlumacz, nagraj };
+    return { aktorzy, zapiszAktora, usunAktora, wywiady, wywiad: wczytajWywiad, przygotuj, zmien, przetlumacz, nagraj, mowa: (o) => cfg.mow(o) };
 }
 
 export default { utworzWywiady, normalizujGlos, prowadzacyZObsady, promptTlumaczenia, odczytajTlumaczenie, JEZYKI, promptWywiadu, odczytajScenariusz, argumentyKwestii, czasBezGlosu, PROWADZACY, slug };

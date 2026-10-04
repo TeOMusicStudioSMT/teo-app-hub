@@ -190,6 +190,7 @@ import { utworzZarzadce } from './services/ZarzadcaRejestru.js';
 import { utworzKontoYouTube, SCIEZKA_ZWROTU as ZWROT_YOUTUBE } from './services/YouTubeKonto.js';
 import { utworzPublikacje } from './services/PublikacjeYouTube.js';
 import { utworzWywiady } from './services/WywiadAktorow.js';
+import { utworzStudioPodcastu } from './services/StudioPodcastu.js';
 import { listaStemow, glosZeStemu } from './services/GlosZeStemu.js';
 import { utworzKanalYouTube } from './services/KanalYouTube.js';
 import * as GlosStudio from './services/GlosStudio.js';
@@ -14220,6 +14221,61 @@ app.post('/api/wywiady/:id/nagraj', (req, res) => ytOdp(res, Wywiady.nagraj(req.
     bezGlosu: req.body?.bezGlosu === true, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
     glosProwadzacego: req.body?.glosProwadzacego,
 }).then((wywiad) => ({ wywiad }))));
+
+// ── 🎙️ Studio Podcastu (services/StudioPodcastu.js) ──
+// Zdjęcia studia (zasiew z public/studio-podcast) + prowadzący z własnym głosem → film wstępowy z jego nagraniem →
+// odcinki: scenariusz z gośćmi z bazy aktorów, głosy, kadry w studiu → katalog montaży projektu `studio-podcast`.
+const StudioPodcastu = utworzStudioPodcastu({
+    katalog: path.join(ANTIGRAVITY_DIR, 'studio-podcast'),
+    paczka: path.join(__dirname, 'public', 'studio-podcast'),
+    aktorzy: () => Wywiady.aktorzy(),
+    chat: (model, system, user) => piszModelem(model, system, user),
+    modelDla: (id) => ModeleAgentow.modelDla(id),
+    mow: (o) => Wywiady.mowa(o),
+    opisz: (p) => Montazownia.opisz(p),
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    ffmpeg: ffmpegPath,
+    szyna: Szyna,
+    sciezkaPodkladu: (plik) => sciezkaWBibliotece(plik),
+});
+app.get('/api/studio-podcast', (_req, res) => ytOdp(res, StudioPodcastu.studio().then(async (studio) => ({ studio, postepWstepu: StudioPodcastu.postepWstepu(), aktorzy: await Wywiady.aktorzy() })), 500));
+app.post('/api/studio-podcast', (req, res) => ytOdp(res, StudioPodcastu.zapiszStudio(req.body ?? {}).then((studio) => ({ studio }))));
+app.post('/api/studio-podcast/ujecie', (req, res) => ytOdp(res, StudioPodcastu.dodajUjecie(req.body ?? {}).then((ujecie) => ({ ujecie }))));
+app.delete('/api/studio-podcast/ujecie/:id', (req, res) => ytOdp(res, StudioPodcastu.usunUjecie(req.params.id)));
+const studioPlik = async (req, res) => {
+    try { return res.sendFile(path.resolve(await StudioPodcastu.plik(req.params.rodzaj, req.params.id ?? ''))); }
+    catch (e) { return res.status(404).json({ success: false, message: e.message }); }
+};
+app.get('/api/studio-podcast/plik/:rodzaj', studioPlik);
+app.get('/api/studio-podcast/plik/:rodzaj/:id', studioPlik);
+// Film wstępowy z nagraniem prowadzącego (kilkanaście sekund pracy ffmpeg) — działa w tle, stan w `postepWstepu`.
+app.post('/api/studio-podcast/wstep', (req, res) => {
+    try { void StudioPodcastu.zrobWstepWTle({ tekst: req.body?.tekst }); return res.json({ success: true, postepWstepu: StudioPodcastu.postepWstepu() }); }
+    catch (e) { return res.status(409).json({ success: false, message: e.message }); }
+});
+// Głos prowadzącego = klon z jego nagrania wstępu (próbka ≤ 30 s, ≥ 6 s mowy) → profil klon-lokalny → od razu jego głos w odcinkach.
+app.post('/api/studio-podcast/glos-prowadzacego', async (req, res) => {
+    try {
+        const s = await StudioPodcastu.studio();
+        if (!s.wstep?.nagranie || !fsSync.existsSync(s.wstep.nagranie)) throw new Error('Studio nie ma nagrania prowadzącego.');
+        const { od = 0, do: doS = null } = req.body ?? {};
+        const w = await glosZeStemu({
+            stem: s.wstep.nagranie, od, do: doS, id: 'prowadzacy-studio', nazwa: `Głos: ${s.prowadzacy.imie}`, katalogGlosow: VOICES_DIR,
+            ffmpeg: ffmpegPath, uruchom: (bin, args) => execFileAsync(bin, args, { windowsHide: true, timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }),
+            opisz: (p) => Montazownia.opisz(p), zapiszProfil: (dane) => glosZapiszProfil(VOICE_OUT_DIR, dane),
+        });
+        const studio = await StudioPodcastu.zapiszStudio({ prowadzacy: { glos: { profil: w.profil.id } } });
+        await Szyna.nadaj({ agent: 'Aktor', rodzaj: 'praca', tresc: `🎙️ głos prowadzącego „${s.prowadzacy.imie}” sklonowany z nagrania wstępu (${w.sekundy.toFixed(1)} s)` }).catch(() => {});
+        return res.json({ success: true, studio, ...w });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/studio-podcast/odcinki', (_req, res) => ytOdp(res, StudioPodcastu.odcinki().then((odcinki) => ({ odcinki })), 500));
+app.get('/api/studio-podcast/odcinki/:id', (req, res) => ytOdp(res, StudioPodcastu.odcinek(req.params.id).then((odcinek) => ({ odcinek })), 404));
+app.post('/api/studio-podcast/odcinki/przygotuj', (req, res) => ytOdp(res, StudioPodcastu.przygotuj(req.body ?? {}).then((odcinek) => ({ odcinek }))));
+app.post('/api/studio-podcast/odcinki/:id/zmien', (req, res) => ytOdp(res, StudioPodcastu.zmien(req.params.id, req.body ?? {}).then((odcinek) => ({ odcinek }))));
+app.post('/api/studio-podcast/odcinki/:id/nagraj', (req, res) => ytOdp(res, StudioPodcastu.nagraj(req.params.id, {
+    bezGlosu: req.body?.bezGlosu === true, zWstepem: req.body?.zWstepem !== false, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
+}).then((odcinek) => ({ odcinek }))));
 
 // ── 🎙️ Głos ze stemu (services/GlosZeStemu.js): `_OtakOs_Muzyka/_Stemy` (paczki z Suno, wyniki Demucsa) ──
 // Wokal → próbka klonu `_OtakOs_AI/voices/<id>.wav` + profil głosu (tor klon-lokalny) → opcjonalnie od razu dla Aktora.
