@@ -35,6 +35,7 @@ export const PROWADZACY_ID = 'prowadzacy';
 const OBRAZ = /\.(png|jpe?g|webp|bmp)$/i;
 const AUDIO = /\.(mp3|wav|m4a|aac|ogg|opus|flac)$/i;
 const NAJAZD_MIN = 1.1, NAJAZD_MAX = 1.3, PLANSZA_Y = 150;
+export const MAX_KWESTII = 90, MAX_RUND = 6;
 
 /** Gdzie na ujęciu „stoi” prowadzący (ognisko 0) i goście (1, 2, 3) — ułamki szerokości/wysokości kadru. */
 export const OGNISKA_DOMYSLNE = [{ x: 0.5, y: 0.62 }, { x: 0.28, y: 0.66 }, { x: 0.72, y: 0.66 }, { x: 0.5, y: 0.8 }];
@@ -49,6 +50,29 @@ const OPIS_STUDIA = 'Przytulne studio nagraniowe na plaży, pod gotycką Katedr�
     + 'światłowodowe kable na piasku, kanapy z bambusa, regały z winylami, witraże i szum oceanu za łukiem. Wieczór, gwiazdy.';
 
 const minmax = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/**
+ * Style rozmowy (Suweren 2026-10-04: „opcje stylu wywiadu… dodatkowo do default: komediowy, luźny, deep, mistyczny”).
+ * Styl zmienia TON i rytm — nie fakty (te dalej tylko z materiału).
+ */
+export const STYLE_WYWIADU = {
+    domyslny: { nazwa: 'domyślny', opis: '' },
+    komediowy: { nazwa: 'komediowy', opis: 'STYL: komediowy — dowcip, riposty, autoironia i puenty; prowadzący podkręca humor, goście grają swoje role z przymrużeniem oka. Śmiech z sytuacji, nigdy z ludzi.' },
+    luzny: { nazwa: 'luźny', opis: 'STYL: luźny — swobodna pogawędka przyjaciół przy kanapie, potoczny język, krótkie wtrącenia, dygresje i spontaniczne reakcje.' },
+    deep: { nazwa: 'deep', opis: 'STYL: deep — głęboka, refleksyjna rozmowa; pytania o sens, motywacje i emocje; mniej żartów, więcej szczerości, pauz i dopytywania „dlaczego”.' },
+    mistyczny: { nazwa: 'mistyczny', opis: 'STYL: mistyczny — poetycki, symboliczny język; metafory światła, kosmosu, oceanu i Katedry; rozmowa jak rytuał przy ogniu, z nutą tajemnicy.' },
+};
+export const stylWywiadu = (s) => (STYLE_WYWIADU[s] ? s : 'domyslny');
+
+/**
+ * Pralka (suwak 1–9 jak „Stopień Roastowania” w PralkaStation) → temperatura modelu: 1 = spokojnie i przewidywalnie
+ * (0,3), 5 = zwykle (0,8), 9 = szalona wena (1,3). Brak / 0 = domyślna temperatura modelu.
+ */
+export function temperaturaZPralki(poziom) {
+    const n = Math.round(Number(poziom));
+    if (!Number.isFinite(n) || n < 1) return null;
+    return Math.round((0.3 + (Math.min(9, n) - 1) * 0.125) * 100) / 100;
+}
 
 /** Fragment filtra: ujęcie studia (panorama) przycięte do 16:9 i powolny najazd na ognisko. Wejście `[i:v]`, wyjście bez etykiety. */
 export function filtrTla(i, { ox = 0.5, oy = 0.62, z0 = 1.12, z1 = 1.28, klatek = 100 } = {}) {
@@ -180,7 +204,7 @@ export function argumentyWstepu({ ujecia, czas, portret = null, kolor, nazwaPlik
 }
 
 /** Prośba do modelu o scenariusz odcinka (temat, nie film). */
-export function promptOdcinka({ prowadzacy, goscie, temat, tytul = '', material = '', studio = OPIS_STUDIA, uwagi = '', jezyk = 'pl' }) {
+export function promptOdcinka({ prowadzacy, goscie, temat, tytul = '', material = '', studio = OPIS_STUDIA, uwagi = '', jezyk = 'pl', styl = 'domyslny' }) {
     const obsada = goscie.map((a) => `- ${a.imie.toUpperCase()}: ${a.rola || 'gość podcastu'}`).join('\n');
     const system = [
         `Jesteś scenarzystą odcinka podcastu nagrywanego w studiu Katedry OtakOS. ${JEZYKI[jezykWywiadu(jezyk)].piszesz}, żywo, ciepło i konkretnie — jak rozmowa przy kanapie, nie wykład.`,
@@ -189,7 +213,8 @@ export function promptOdcinka({ prowadzacy, goscie, temat, tytul = '', material 
         'Format — każda kwestia w osobnej linii, nic poza tym:',
         'IMIĘ: tekst kwestii',
         'Zasady: 10–18 kwestii; każda najwyżej 2 zdania (do 220 znaków); bez didaskaliów w nawiasach; zaczyna prowadzący (powitanie w studiu i zapowiedź tematu, przedstawia gości); każdy gość mówi co najmniej dwa razy; prowadzący zadaje pytania i reaguje; kończy prowadzący podziękowaniem i zaproszeniem na kolejny odcinek.',
-    ].join('\n');
+        STYLE_WYWIADU[stylWywiadu(styl)].opis || null,
+    ].filter(Boolean).join('\n');
     const user = [
         `TEMAT ODCINKA: ${String(temat).slice(0, 500)}`,
         tytul ? `TYTUŁ ODCINKA: ${tytul}` : null,
@@ -203,6 +228,28 @@ export function promptOdcinka({ prowadzacy, goscie, temat, tytul = '', material 
 }
 
 /**
+ * Dogrywka (Suweren: „dodatkowe rundy wywiadu… by wydłużyć materiał”): dotychczasowa rozmowa BEZ końcowego pożegnania
+ * → model dopisuje dalszy ciąg (nowe wątki, bez powtórek) i sam kończy pożegnaniem prowadzącego.
+ */
+export function promptDogrywki({ prowadzacy, goscie, temat, kwestie, imie = (id) => id, jezyk = 'pl', styl = 'domyslny', runda = 1 }) {
+    const system = [
+        `Jesteś scenarzystą odcinka podcastu Katedry OtakOS. Dopisujesz DALSZY CIĄG trwającej rozmowy (runda ${runda + 1}). ${JEZYKI[jezykWywiadu(jezyk)].piszesz}.`,
+        `Prowadzi ${prowadzacy.imie.toUpperCase()} (${prowadzacy.rola || 'prowadzący'}). Goście mówią W SWOICH ROLACH; fakty tylko z tego, co już padło i z opisu ról — nic nie zmyślasz.`,
+        'Nie witasz się ponownie i nie powtarzasz tego, co już padło: prowadzący otwiera NOWY wątek tematu (głębiej, z innej strony, pytanie od widzów, anegdota z roli), goście odpowiadają i reagują na siebie.',
+        'Format — każda kwestia w osobnej linii: IMIĘ: tekst kwestii. 8–12 kwestii, każda najwyżej 2 zdania, bez didaskaliów. Kończy prowadzący podziękowaniem i pożegnaniem.',
+        STYLE_WYWIADU[stylWywiadu(styl)].opis || null,
+    ].filter(Boolean).join('\n');
+    const user = [
+        `TEMAT ODCINKA: ${String(temat).slice(0, 500)}`,
+        `PROWADZĄCY: ${prowadzacy.imie.toUpperCase()}`,
+        `GOŚCIE:\n${goscie.map((a) => `- ${a.imie.toUpperCase()}: ${a.rola || 'gość podcastu'}`).join('\n')}`,
+        `DOTYCHCZASOWA ROZMOWA:\n${kwestie.slice(-40).map((k) => `${imie(k.kto).toUpperCase()}: ${k.tekst}`).join('\n')}`,
+        'DALSZY CIĄG:',
+    ].join('\n\n');
+    return { system, user };
+}
+
+/**
  * @param {{ katalog:string, paczka?:string, aktorzy:()=>Promise<object[]>,
  *   chat:(model:string|null, system:string, user:string)=>Promise<{tekst:string, silnik?:string}>,
  *   modelDla?:(id:string)=>Promise<string|null>, mow?:(o:{tekst:string, glos:object|null, jezyk:string})=>Promise<{audio:Buffer, ext:string}>,
@@ -211,7 +258,8 @@ export function promptOdcinka({ prowadzacy, goscie, temat, tytul = '', material 
  *   `paczka`: katalog z zasiewem (zdjęcia studia, prowadzący, nagranie wstępu); `aktorzy`: baza aktorów Katedry.
  */
 export function utworzStudioPodcastu(o) {
-    const cfg = { ffmpeg: 'ffmpeg', teraz: () => Date.now(), modelDla: async () => null, ...o };
+    // `start` = nazwa, opis i prowadzący nowego studia bez paczki (własne studia Suwerena i innych); `projekt` = katalog montaży.
+    const cfg = { ffmpeg: 'ffmpeg', teraz: () => Date.now(), modelDla: async () => null, projekt: PROJEKT_STUDIA, start: null, ...o };
     const PLIK = path.join(cfg.katalog, 'studio.json');
     const KAT_UJEC = path.join(cfg.katalog, 'ujecia');
     const KAT_ODC = path.join(cfg.katalog, 'odcinki');
@@ -246,9 +294,10 @@ export function utworzStudioPodcastu(o) {
         let zdjecie = null, nagranie = null;
         if (z('prowadzacy.jpg')) { zdjecie = path.join(cfg.katalog, 'prowadzacy.jpg'); await fs.mkdir(cfg.katalog, { recursive: true }); await fs.copyFile(z('prowadzacy.jpg'), zdjecie); }
         if (z('wstep-nagranie.mp3')) { nagranie = path.join(cfg.katalog, 'wstep-nagranie.mp3'); await fs.mkdir(cfg.katalog, { recursive: true }); await fs.copyFile(z('wstep-nagranie.mp3'), nagranie); }
+        const st = cfg.start ?? {};
         const nowe = {
-            nazwa: 'TeO Podcast — Studio pod Katedrą', opis: OPIS_STUDIA,
-            prowadzacy: { id: PROWADZACY_ID, imie: 'TeO', rola: 'Stylowy prowadzący podcastu, Suweren Katedry OtakOS: luz, ciepło, ciekawość gości.', kolor: '#22d3ee', zdjecie, glos: null },
+            nazwa: st.nazwa || 'TeO Podcast — Studio pod Katedrą', opis: st.opis || OPIS_STUDIA,
+            prowadzacy: { id: PROWADZACY_ID, imie: st.prowadzacy?.imie || 'TeO', rola: st.prowadzacy?.rola || 'Stylowy prowadzący podcastu, Suweren Katedry OtakOS: luz, ciepło, ciekawość gości.', kolor: st.prowadzacy?.kolor || '#22d3ee', zdjecie, glos: null },
             ujecia, wstep: { nagranie, tekst: '', plik: null, sekundy: null, zrobiono: null }, zmieniono: czas(),
         };
         await pisz(PLIK, nowe);
@@ -385,19 +434,21 @@ export function utworzStudioPodcastu(o) {
     }
 
     /** Krok 1: scenariusz od lokalnego modelu — goście z bazy aktorów Katedry. */
-    async function przygotuj({ temat = '', tytul = '', goscie: ids = [], material = '', uwagi = '', jezyk: jezykZadany = 'pl' } = {}) {
+    async function przygotuj({ temat = '', tytul = '', goscie: ids = [], material = '', uwagi = '', jezyk: jezykZadany = 'pl', styl: stylZadany = 'domyslny', pralka = null } = {}) {
         const s = await zasiej();
         if (!String(temat).trim()) throw new Error('Odcinek potrzebuje tematu.');
         const baza = await cfg.aktorzy();
         const goscie = [...new Set(Array.isArray(ids) ? ids : [])].map((id) => baza.find((a) => a.id === id)).filter(Boolean).slice(0, 3);
         if (!goscie.length) throw new Error('Wybierz co najmniej jednego gościa z bazy aktorów (najwyżej trzech).');
         const jezyk = jezykWywiadu(jezykZadany);
-        const { system, user } = promptOdcinka({ prowadzacy: s.prowadzacy, goscie, temat, tytul, material, studio: s.opis, uwagi, jezyk });
+        const styl = stylWywiadu(stylZadany);
+        const temperatura = temperaturaZPralki(pralka);
+        const { system, user } = promptOdcinka({ prowadzacy: s.prowadzacy, goscie, temat, tytul, material, studio: s.opis, uwagi, jezyk, styl });
         const model = (await cfg.modelDla('aktor').catch(() => null)) ?? (await cfg.modelDla('kronikarz').catch(() => null));
-        const { tekst, silnik } = await cfg.chat(model, system, user);
+        const { tekst, silnik } = await cfg.chat(model, system, user, temperatura === null ? {} : { temperatura });
         const kwestie = odczytajScenariusz(tekst, { goscie, prowadzacy: s.prowadzacy });
         const id = `p_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-        const x = { id, temat: String(temat).slice(0, 500), tytul: String(tytul).trim().slice(0, 120) || String(temat).trim().slice(0, 80), goscie: goscie.map((g) => g.id), kwestie, jezyk, model: silnik ?? model ?? null, etap: 'scenariusz', utworzono: czas() };
+        const x = { id, temat: String(temat).slice(0, 500), tytul: String(tytul).trim().slice(0, 120) || String(temat).trim().slice(0, 80), goscie: goscie.map((g) => g.id), kwestie, jezyk, styl, pralka: temperatura === null ? null : Math.round(Number(pralka)), rundy: 1, model: silnik ?? model ?? null, etap: 'scenariusz', utworzono: czas() };
         await pisz(plikOdcinka(id), x);
         nadaj(`napisał scenariusz odcinka „${x.tytul}” z ${goscie.map((g) => g.imie).join(', ')}`);
         return x;
@@ -412,11 +463,47 @@ export function utworzStudioPodcastu(o) {
         if (kwestie !== undefined) {
             const nowe = (Array.isArray(kwestie) ? kwestie : []).map((k) => ({ kto: String(k?.kto ?? ''), tekst: String(k?.tekst ?? '').replace(/\s+/g, ' ').trim().slice(0, 400) })).filter((k) => mowcy.has(k.kto) && k.tekst);
             if (nowe.length < 2) throw new Error('Odcinek potrzebuje co najmniej dwóch kwestii.');
-            zapis.kwestie = nowe.slice(0, 40);
+            zapis.kwestie = nowe.slice(0, MAX_KWESTII);
         }
         if (tytul !== undefined && String(tytul).trim()) zapis.tytul = String(tytul).trim().slice(0, 120);
         Object.assign(zapis, { etap: 'scenariusz', plik: undefined, blad: undefined });
         await pisz(plikOdcinka(id), zapis);
+        return zapis;
+    }
+
+    /**
+     * Dogrywka: `rundy` (1–3 naraz) kolejnych rund rozmowy. Końcowe pożegnanie prowadzącego wypada i wraca na końcu
+     * nowej rundy (pisze je model). Styl / Pralka / język z odcinka, chyba że Suweren poda nowe. Do MAX_RUND rund.
+     */
+    async function dogrywka(id, { rundy = 1, styl: stylZadany, pralka: pralkaZadana } = {}) {
+        const x = await odcinek(id);
+        if (x.etap === 'nagrywa') throw new Error('Odcinek właśnie się nagrywa.');
+        const s = await zasiej();
+        const baza = await cfg.aktorzy();
+        const goscie = x.goscie.map((g) => baza.find((a) => a.id === g)).filter(Boolean);
+        if (!goscie.length) throw new Error('Goście tego odcinka zniknęli z bazy aktorów.');
+        const styl = stylWywiadu(stylZadany ?? x.styl);
+        const pralka = pralkaZadana ?? x.pralka ?? null;
+        const temperatura = temperaturaZPralki(pralka);
+        const ile = Math.min(3, Math.max(1, Math.round(Number(rundy) || 1)));
+        const juz = Number(x.rundy) || 1;
+        if (juz >= MAX_RUND) throw new Error(`Odcinek ma już ${juz} rund — więcej nie dokładam (limit ${MAX_RUND}).`);
+        const imie = (kto) => (kto === PROWADZACY_ID ? s.prowadzacy.imie : baza.find((a) => a.id === kto)?.imie ?? kto);
+        const model = (await cfg.modelDla('aktor').catch(() => null)) ?? (await cfg.modelDla('kronikarz').catch(() => null));
+        let kwestie = [...x.kwestie], zrobione = 0, silnik = null;
+        for (let r = 0; r < ile && juz + r < MAX_RUND; r++) {
+            const bezPozegnania = kwestie.length > 2 && kwestie.at(-1).kto === PROWADZACY_ID ? kwestie.slice(0, -1) : kwestie;
+            const { system, user } = promptDogrywki({ prowadzacy: s.prowadzacy, goscie, temat: x.temat, kwestie: bezPozegnania, imie, jezyk: x.jezyk, styl, runda: juz + r });
+            const odp = await cfg.chat(model, system, user, temperatura === null ? {} : { temperatura });
+            const nowe = odczytajScenariusz(odp.tekst, { goscie, prowadzacy: s.prowadzacy });
+            kwestie = [...bezPozegnania, ...nowe].slice(0, MAX_KWESTII);
+            silnik = odp.silnik ?? model ?? null; zrobione += 1;
+            if (kwestie.length >= MAX_KWESTII) break;
+        }
+        const { postep, ...zapis } = x;
+        Object.assign(zapis, { kwestie, styl, pralka: temperatura === null ? null : Math.round(Number(pralka)), rundy: juz + zrobione, etap: 'scenariusz', plik: undefined, blad: undefined, ...(silnik ? { model: silnik } : {}) });
+        await pisz(plikOdcinka(id), zapis);
+        nadaj(`dopisał ${zrobione} ${zrobione === 1 ? 'rundę' : 'rundy'} odcinka „${x.tytul}” (${kwestie.length} kwestii)`);
         return zapis;
     }
 
@@ -490,7 +577,7 @@ export function utworzStudioPodcastu(o) {
     }
 
     /** Krok 2 + 3: wstęp, głosy, kadry, sklejenie → katalog montaży projektu `studio-podcast`. Startuje w tle. */
-    async function nagraj(id, { bezGlosu = false, zWstepem = true, zGoscmi = true, podklad = null, glosnosc = 0.12, projekt = PROJEKT_STUDIA } = {}) {
+    async function nagraj(id, { bezGlosu = false, zWstepem = true, zGoscmi = true, podklad = null, glosnosc = 0.12, projekt = cfg.projekt } = {}) {
         const x = await odcinek(id);
         const s = await zasiej();
         if (wRobocie.has(id)) throw new Error('Ten odcinek już się nagrywa.');
@@ -600,9 +687,66 @@ export function utworzStudioPodcastu(o) {
     }
 
     return {
-        studio, zapiszStudio, dodajUjecie, usunUjecie, zrobWstep, zrobWstepWTle, zrobGosci, odcinki, odcinek, przygotuj, zmien, nagraj, plik, planKadru,
+        studio, zapiszStudio, dodajUjecie, usunUjecie, zrobWstep, zrobWstepWTle, zrobGosci, odcinki, odcinek, przygotuj, zmien, dogrywka, nagraj, plik, planKadru,
+        zajete: () => wRobocie.size > 0,
         postepWstepu: () => wRobocie.get('wstep') ?? null,
     };
 }
 
-export default { utworzStudioPodcastu, filtrTla, argumentyGosci, zapowiedzGosci, argumentyKadru, argumentyWstepu, planNapisow, promptOdcinka, PROJEKT_STUDIA, PROWADZACY_ID, UJECIA_PACZKI, OGNISKA_DOMYSLNE };
+/**
+ * 🎛️ Wiele studiów (Suweren 2026-10-04: „opcje dodawania nowych studiów z hostami, tak by inni mogli własne tworzyć”).
+ * `teo` = pierwsze studio (dotychczasowy katalog i paczka — nic się nie przenosi); kolejne w `<katalog>/studia/<id>/`,
+ * każde z własnymi ujęciami, prowadzącym (zdjęcie, głos, nagranie wstępu), odcinkami i katalogiem montaży
+ * `studio-podcast-<id>`. Nowe studio startuje bez ujęć — Suweren dodaje własne zdjęcia sceny.
+ */
+export const STUDIO_DOMYSLNE = 'teo';
+export function utworzStudia({ katalog, paczka = null, ...wspolne }) {
+    const KAT = path.join(katalog, 'studia');
+    const instancje = new Map();
+    const katalogStudia = (id) => (id === STUDIO_DOMYSLNE ? katalog : path.join(KAT, id));
+    const zKatalogu = (id, start = null) => utworzStudioPodcastu({
+        ...wspolne, katalog: katalogStudia(id), paczka: id === STUDIO_DOMYSLNE ? paczka : null,
+        projekt: id === STUDIO_DOMYSLNE ? PROJEKT_STUDIA : `${PROJEKT_STUDIA}-${id}`, start,
+    });
+    function get(id = STUDIO_DOMYSLNE) {
+        const i = String(id || STUDIO_DOMYSLNE);
+        if (instancje.has(i)) return instancje.get(i);
+        if (i !== STUDIO_DOMYSLNE && (!/^[a-z0-9-]{1,40}$/.test(i) || !fsSync.existsSync(path.join(KAT, i, 'studio.json')))) throw new Error(`Nie ma studia „${i}”.`);
+        const inst = zKatalogu(i);
+        instancje.set(i, inst);
+        return inst;
+    }
+    async function skrot(id) {
+        const st = await get(id).studio();
+        const odc = await get(id).odcinki().catch(() => []);
+        return { id, nazwa: st.nazwa, prowadzacy: st.prowadzacy?.imie ?? '', kolor: st.prowadzacy?.kolor ?? '#22d3ee', ujec: st.ujecia?.length ?? 0, odcinkow: odc.length, domyslne: id === STUDIO_DOMYSLNE };
+    }
+    async function lista() {
+        const ids = (await fs.readdir(KAT, { withFileTypes: true }).catch(() => [])).filter((d) => d.isDirectory() && fsSync.existsSync(path.join(KAT, d.name, 'studio.json'))).map((d) => d.name).sort();
+        return Promise.all([STUDIO_DOMYSLNE, ...ids].map(skrot));
+    }
+    async function stworz({ nazwa = '', opis = '', prowadzacy = {} } = {}) {
+        const n = String(nazwa).replace(/\s+/g, ' ').trim().slice(0, 80);
+        if (!n) throw new Error('Nowe studio potrzebuje nazwy.');
+        const imie = String(prowadzacy?.imie ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+        if (!imie) throw new Error('Nowe studio potrzebuje prowadzącego (imię).');
+        let id = slug(n) || `studio-${Date.now().toString(36)}`;
+        if (id === STUDIO_DOMYSLNE || fsSync.existsSync(path.join(KAT, id))) id = `${id}-${Date.now().toString(36).slice(-4)}`;
+        const inst = zKatalogu(id, { nazwa: n, opis: String(opis).trim().slice(0, 800), prowadzacy: { imie, rola: String(prowadzacy?.rola ?? '').trim().slice(0, 600), kolor: /^#[0-9a-f]{6}$/i.test(prowadzacy?.kolor ?? '') ? prowadzacy.kolor : '#a855f7' } });
+        await inst.studio();   // zapisuje studio.json
+        instancje.set(id, inst);
+        return skrot(id);
+    }
+    /** Usuwa studio z Katedry (ujęcia, odcinki robocze). Gotowe filmy zostają w montażach projektu. Pierwsze studio zostaje. */
+    async function usun(id) {
+        if (id === STUDIO_DOMYSLNE) throw new Error('Pierwszego studia nie usuwam — możesz je przemianować i zmienić prowadzącego.');
+        const inst = get(id);
+        if (inst.zajete()) throw new Error('W tym studiu coś się właśnie nagrywa.');
+        await fs.rm(path.join(KAT, id), { recursive: true, force: true });
+        instancje.delete(id);
+        return { id };
+    }
+    return { get, lista, stworz, usun };
+}
+
+export default { utworzStudioPodcastu, utworzStudia, STUDIO_DOMYSLNE, STYLE_WYWIADU, temperaturaZPralki, promptDogrywki, filtrTla, argumentyGosci, zapowiedzGosci, argumentyKadru, argumentyWstepu, planNapisow, promptOdcinka, PROJEKT_STUDIA, PROWADZACY_ID, UJECIA_PACZKI, OGNISKA_DOMYSLNE };

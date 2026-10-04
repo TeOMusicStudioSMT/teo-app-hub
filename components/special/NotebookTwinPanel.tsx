@@ -14,6 +14,7 @@ import { NotebookPodcastService, SOVEREIGN_WELCOME, rozmowaDoTekstu, czyBlad, ma
 import KsiegaOdbioru from './KsiegaOdbioru';
 import KwantowyTunel from './KwantowyTunel';
 import { PodcastCore } from '../PodcastCore';
+import StudioPodcastuPanel from './StudioPodcastuPanel';
 
 const service = new NotebookPodcastService();
 const STORE_KEY = 'teo_podcast_twin_log';   // pamięć trwała rozmowy (Rozczytelnia agentów)
@@ -67,7 +68,7 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
     const [turns, setTurns] = useState<PodcastTurn[]>(mem0.turns);
     const [anim, setAnim]   = useState<TwinAnimation>('IDLE');
     const [busy, setBusy]   = useState(false);
-    const [view, setView]   = useState<'rozmowa' | 'video_podcast' | 'koom'>('rozmowa');
+    const [view, setView]   = useState<'rozmowa' | 'video_podcast' | 'studio' | 'koom'>('rozmowa');
     const [warsztat, setWarsztat] = useState<Warsztat | null>(mem0.warsztat ?? null);
     const [projekty, setProjekty] = useState<ProjektNaLiscie[] | null>(null);   // lista do wyboru (null = zamknięta)
     const [rundyDalej, setRundyDalej] = useState(1);
@@ -208,10 +209,10 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
     const aActive = busy || anim === 'A_SPEAKING' || anim === 'BOTH';
     const bActive = busy || anim === 'B_SPEAKING' || anim === 'BOTH';
 
-    // Zakładki: 🎙️ Rozmowa (Rozczytelnia) | 📺 Wideopodcast 1/1 | 📖 Księga KOOM
+    // Zakładki: 🎙️ Rozmowa (Rozczytelnia) | 📺 Wideopodcast 1/1 | 🎛️ Studio Podcastu (studia z hostami, odcinki z gośćmi) | 📖 Księga KOOM
     const tabBar = (
         <div className="flex items-center gap-2 mb-2">
-            {([['rozmowa', '🎙️ Rozmowa'], ['video_podcast', '📺 Wideopodcast 1/1'], ['koom', '📖 Księga KOOM']] as const).map(([k, label]) => (
+            {([['rozmowa', '🎙️ Rozmowa'], ['video_podcast', '📺 Wideopodcast 1/1'], ['studio', '🎛️ Studio Podcastu'], ['koom', '📖 Księga KOOM']] as const).map(([k, label]) => (
                 <button key={k} onClick={() => setView(k)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-colors border
                         ${view === k ? 'bg-fuchsia-700/50 text-white border-fuchsia-400/50' : 'bg-slate-900/60 text-slate-400 border-slate-700 hover:text-slate-200'}`}>
@@ -226,6 +227,10 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
 
     if (view === 'koom') {
         return <div className="w-full max-w-3xl mx-auto">{tabBar}<KsiegaOdbioru /></div>;
+    }
+
+    if (view === 'studio') {
+        return <div className="w-full max-w-4xl mx-auto">{tabBar}<StudioPodcastuPanel /></div>;
     }
 
     if (view === 'video_podcast') {

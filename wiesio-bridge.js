@@ -191,7 +191,7 @@ import { utworzZarzadce } from './services/ZarzadcaRejestru.js';
 import { utworzKontoYouTube, SCIEZKA_ZWROTU as ZWROT_YOUTUBE } from './services/YouTubeKonto.js';
 import { utworzPublikacje } from './services/PublikacjeYouTube.js';
 import { utworzWywiady } from './services/WywiadAktorow.js';
-import { utworzStudioPodcastu } from './services/StudioPodcastu.js';
+import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { listaStemow, glosZeStemu } from './services/GlosZeStemu.js';
 import { utworzKanalYouTube } from './services/KanalYouTube.js';
 import * as GlosStudio from './services/GlosStudio.js';
@@ -9981,12 +9981,14 @@ app.post('/api/post/muzyka', async (req, res) => {
 // ── 💭 POKÓJ OPOWIEŚCI: rozmowa, z której rodzi się serial ──────────────────
 
 /** Wspólne wołanie modelu — jedna implementacja zamiast trzech kopii. */
-async function piszModelem(model, system, prompt) {
+async function piszModelem(model, system, prompt, opcje = {}) {
     const silnik = model || process.env.OTAKOS_MODEL || DEFAULT_LLM;
+    // `opcje.temperatura` (np. z Pralki w Studiu Podcastu) → options.temperature Ollamy; bez niej domyślna modelu.
+    const options = Number.isFinite(Number(opcje?.temperatura)) ? { temperature: Math.min(2, Math.max(0, Number(opcje.temperatura))) } : undefined;
     const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         // think:false — qwen3.x bez tego oddaje pustą treść (zmierzone przy /api/ollama/pisz).
-        body: JSON.stringify({ model: silnik, system, prompt, stream: false, think: false }),
+        body: JSON.stringify({ model: silnik, system, prompt, stream: false, think: false, ...(options ? { options } : {}) }),
     });
     if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
     return { tekst: String((await r.json()).response || '').trim(), silnik };
@@ -14226,11 +14228,11 @@ app.post('/api/wywiady/:id/nagraj', (req, res) => ytOdp(res, Wywiady.nagraj(req.
 // ── 🎙️ Studio Podcastu (services/StudioPodcastu.js) ──
 // Zdjęcia studia (zasiew z public/studio-podcast) + prowadzący z własnym głosem → film wstępowy z jego nagraniem →
 // odcinki: scenariusz z gośćmi z bazy aktorów, głosy, kadry w studiu → katalog montaży projektu `studio-podcast`.
-const StudioPodcastu = utworzStudioPodcastu({
+const Studia = utworzStudia({
     katalog: path.join(ANTIGRAVITY_DIR, 'studio-podcast'),
     paczka: path.join(__dirname, 'public', 'studio-podcast'),
     aktorzy: () => Wywiady.aktorzy(),
-    chat: (model, system, user) => piszModelem(model, system, user),
+    chat: (model, system, user, opcje) => piszModelem(model, system, user, opcje),
     modelDla: (id) => ModeleAgentow.modelDla(id),
     mow: (o) => Wywiady.mowa(o),
     opisz: (p) => Montazownia.opisz(p),
@@ -14239,48 +14241,73 @@ const StudioPodcastu = utworzStudioPodcastu({
     szyna: Szyna,
     sciezkaPodkladu: (plik) => sciezkaWBibliotece(plik),
 });
-app.get('/api/studio-podcast', (_req, res) => ytOdp(res, StudioPodcastu.studio().then(async (studio) => ({ studio, postepWstepu: StudioPodcastu.postepWstepu(), aktorzy: await Wywiady.aktorzy() })), 500));
-app.post('/api/studio-podcast', (req, res) => ytOdp(res, StudioPodcastu.zapiszStudio(req.body ?? {}).then((studio) => ({ studio }))));
-app.post('/api/studio-podcast/ujecie', (req, res) => ytOdp(res, StudioPodcastu.dodajUjecie(req.body ?? {}).then((ujecie) => ({ ujecie }))));
-app.delete('/api/studio-podcast/ujecie/:id', (req, res) => ytOdp(res, StudioPodcastu.usunUjecie(req.params.id)));
+/** Studio z żądania: `?studio=` albo `body.studio` (domyślnie pierwsze, „teo”). Nieznane = błąd wprost. */
+const studioZ = (req) => Studia.get(String(req.query?.studio ?? req.body?.studio ?? 'teo'));
+const wStudiu = (req, res, f, kod = 400) => { let st; try { st = studioZ(req); } catch (e) { return res.status(404).json({ success: false, message: e.message }); } return ytOdp(res, Promise.resolve().then(() => f(st)), kod); };
+
+// 🎛️ Studia: lista, nowe (nazwa + prowadzący), usunięcie (bez pierwszego); style rozmowy dla UI.
+app.get('/api/studio-podcast/studia', (_req, res) => ytOdp(res, Studia.lista().then((studia) => ({ studia, style: Object.entries(STYLE_WYWIADU).map(([id, v]) => ({ id, nazwa: v.nazwa })) })), 500));
+app.post('/api/studio-podcast/studia', (req, res) => ytOdp(res, Studia.stworz(req.body ?? {}).then((studio) => ({ studio }))));
+app.delete('/api/studio-podcast/studia/:id', (req, res) => ytOdp(res, Studia.usun(req.params.id)));
+
+app.get('/api/studio-podcast', (req, res) => wStudiu(req, res, async (st) => ({ studio: await st.studio(), postepWstepu: st.postepWstepu(), aktorzy: await Wywiady.aktorzy() }), 500));
+app.post('/api/studio-podcast', (req, res) => wStudiu(req, res, async (st) => ({ studio: await st.zapiszStudio(req.body ?? {}) })));
+app.post('/api/studio-podcast/ujecie', (req, res) => wStudiu(req, res, async (st) => ({ ujecie: await st.dodajUjecie(req.body ?? {}) })));
+app.delete('/api/studio-podcast/ujecie/:id', (req, res) => wStudiu(req, res, (st) => st.usunUjecie(req.params.id)));
 const studioPlik = async (req, res) => {
-    try { return res.sendFile(path.resolve(await StudioPodcastu.plik(req.params.rodzaj, req.params.id ?? ''))); }
+    try { return res.sendFile(path.resolve(await studioZ(req).plik(req.params.rodzaj, req.params.id ?? ''))); }
     catch (e) { return res.status(404).json({ success: false, message: e.message }); }
 };
 app.get('/api/studio-podcast/plik/:rodzaj', studioPlik);
 app.get('/api/studio-podcast/plik/:rodzaj/:id', studioPlik);
 // Film wstępowy z nagraniem prowadzącego (kilkanaście sekund pracy ffmpeg) — działa w tle, stan w `postepWstepu`.
 app.post('/api/studio-podcast/wstep', (req, res) => {
-    try { void StudioPodcastu.zrobWstepWTle({ tekst: req.body?.tekst }); return res.json({ success: true, postepWstepu: StudioPodcastu.postepWstepu() }); }
+    try { const st = studioZ(req); void st.zrobWstepWTle({ tekst: req.body?.tekst }); return res.json({ success: true, postepWstepu: st.postepWstepu() }); }
     catch (e) { return res.status(409).json({ success: false, message: e.message }); }
 });
 // Głos prowadzącego = klon z jego nagrania wstępu (próbka ≤ 30 s, ≥ 6 s mowy) → profil klon-lokalny → od razu jego głos w odcinkach.
 app.post('/api/studio-podcast/glos-prowadzacego', async (req, res) => {
     try {
-        const s = await StudioPodcastu.studio();
+        const st = studioZ(req);
+        const idStudia = String(req.query?.studio ?? req.body?.studio ?? 'teo');
+        const s = await st.studio();
         if (!s.wstep?.nagranie || !fsSync.existsSync(s.wstep.nagranie)) throw new Error('Studio nie ma nagrania prowadzącego.');
         const { od = 0, do: doS = null } = req.body ?? {};
         const w = await glosZeStemu({
-            stem: s.wstep.nagranie, od, do: doS, id: 'prowadzacy-studio', nazwa: `Głos: ${s.prowadzacy.imie}`, katalogGlosow: VOICES_DIR,
+            stem: s.wstep.nagranie, od, do: doS, id: idStudia === 'teo' ? 'prowadzacy-studio' : `prowadzacy-${idStudia}`, nazwa: `Głos: ${s.prowadzacy.imie}`, katalogGlosow: VOICES_DIR,
             ffmpeg: ffmpegPath, uruchom: (bin, args) => execFileAsync(bin, args, { windowsHide: true, timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }),
             opisz: (p) => Montazownia.opisz(p), zapiszProfil: (dane) => glosZapiszProfil(VOICE_OUT_DIR, dane),
         });
-        const studio = await StudioPodcastu.zapiszStudio({ prowadzacy: { glos: { profil: w.profil.id } } });
+        const studio = await st.zapiszStudio({ prowadzacy: { glos: { profil: w.profil.id } } });
         await Szyna.nadaj({ agent: 'Aktor', rodzaj: 'praca', tresc: `🎙️ głos prowadzącego „${s.prowadzacy.imie}” sklonowany z nagrania wstępu (${w.sekundy.toFixed(1)} s)` }).catch(() => {});
         return res.json({ success: true, studio, ...w });
     } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
 });
-app.get('/api/studio-podcast/odcinki', (_req, res) => ytOdp(res, StudioPodcastu.odcinki().then((odcinki) => ({ odcinki })), 500));
-app.get('/api/studio-podcast/odcinki/:id', (req, res) => ytOdp(res, StudioPodcastu.odcinek(req.params.id).then((odcinek) => ({ odcinek })), 404));
-app.post('/api/studio-podcast/odcinki/przygotuj', (req, res) => ytOdp(res, StudioPodcastu.przygotuj(req.body ?? {}).then((odcinek) => ({ odcinek }))));
-app.post('/api/studio-podcast/odcinki/:id/zmien', (req, res) => ytOdp(res, StudioPodcastu.zmien(req.params.id, req.body ?? {}).then((odcinek) => ({ odcinek }))));
-app.post('/api/studio-podcast/odcinki/:id/goscie', (req, res) => ytOdp(res, StudioPodcastu.zrobGosci(req.params.id, { bezGlosu: req.body?.bezGlosu === true }).then((odcinek) => ({ odcinek }))));
-app.post('/api/studio-podcast/odcinki/:id/nagraj', (req, res) => ytOdp(res, StudioPodcastu.nagraj(req.params.id, {
+app.get('/api/studio-podcast/odcinki', (req, res) => wStudiu(req, res, async (st) => ({ odcinki: await st.odcinki() }), 500));
+app.get('/api/studio-podcast/odcinki/:id', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.odcinek(req.params.id) }), 404));
+app.post('/api/studio-podcast/odcinki/przygotuj', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.przygotuj(req.body ?? {}) })));
+app.post('/api/studio-podcast/odcinki/:id/zmien', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.zmien(req.params.id, req.body ?? {}) })));
+// Dogrywka: kolejne rundy rozmowy (wydłużenie materiału), styl/Pralka/język z odcinka albo nowe.
+app.post('/api/studio-podcast/odcinki/:id/dogrywka', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.dogrywka(req.params.id, { rundy: req.body?.rundy, styl: req.body?.styl, pralka: req.body?.pralka }) })));
+app.post('/api/studio-podcast/odcinki/:id/goscie', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.zrobGosci(req.params.id, { bezGlosu: req.body?.bezGlosu === true }) })));
+app.post('/api/studio-podcast/odcinki/:id/nagraj', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.nagraj(req.params.id, {
     bezGlosu: req.body?.bezGlosu === true, zWstepem: req.body?.zWstepem !== false, zGoscmi: req.body?.zGoscmi !== false, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
-}).then((odcinek) => ({ odcinek }))));
+}) })));
 
 // ── 🎙️ Głos ze stemu (services/GlosZeStemu.js): `_OtakOs_Muzyka/_Stemy` (paczki z Suno, wyniki Demucsa) ──
 // Wokal → próbka klonu `_OtakOs_AI/voices/<id>.wav` + profil głosu (tor klon-lokalny) → opcjonalnie od razu dla Aktora.
+// 🎙️ Silnik klonu (services/SilnikKlonu.js + services/glos/voice_server.py): stan, instalacja w Katedrze (zgoda CPML).
+app.get('/api/glos/silnik', async (_req, res) => {
+    const silnik = await SilnikKlonu.zapewnij({ aiDir: AI_DIR, base: VOICE_BASE }).catch((e) => ({ powod: e.message }));
+    return res.json({ success: true, silnik, instalacja: SilnikKlonu.stanInstalacji(), zgoda: SilnikKlonu.maZgode(AI_DIR), serwer: SilnikKlonu.serwerGlosu(AI_DIR), licencja: 'Coqui Public Model License (XTTS-v2) — użycie niekomercyjne' });
+});
+app.post('/api/glos/silnik/instaluj', (req, res) => {
+    try {
+        const instalacja = SilnikKlonu.instaluj({ aiDir: AI_DIR, base: VOICE_BASE, zgodaLicencji: req.body?.zgodaLicencji === true, cuda: String(req.body?.cuda ?? 'auto') });
+        Szyna.nadaj({ agent: 'Głosek', rodzaj: 'praca', tresc: '🎙️ instaluje silnik klonu głosu (XTTS-v2) w Katedrze' }).catch(() => {});
+        return res.json({ success: true, instalacja });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
 // Wszystkie głosy, którymi może mówić postać: profile Katedry (tory mostu) + profile VoiceStudio (:3900).
 app.get('/api/glos/glosy', async (_req, res) => {
     try {

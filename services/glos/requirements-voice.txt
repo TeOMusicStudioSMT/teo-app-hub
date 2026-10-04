@@ -1,0 +1,4 @@
+# Silnik klonu głosu Katedry (services/glos/voice_server.py) — instaluje most: POST /api/glos/silnik/instaluj.
+# PyTorch z CUDA dobiera instalator pod sterownik (nvidia-smi); tu reszta.
+# coqui-tts = utrzymywany fork Coqui TTS (idiap); model XTTS-v2 na licencji CPML (użycie niekomercyjne).
+coqui-tts>=0.24,<1
