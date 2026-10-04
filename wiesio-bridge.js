@@ -14220,12 +14220,23 @@ const Sceny = utworzSceny({
     ffmpeg: ffmpegPath,
     szyna: Szyna,
     sciezkaPodkladu: (plik) => sciezkaWBibliotece(plik),
+    // 🎬 Odcinki projektu z Reżysera (serial = projekt) i Rękopis projektu — sceny z odcinka, dialogi do książki.
+    odcinki: async (projekt) => (await rezyserPamiec(ANTIGRAVITY_DIR, projekt))?.odcinki ?? [],
+    rekopis: {
+        tekst: async (projekt) => (await Rekopis.jakoTekst(ANTIGRAVITY_DIR, projekt)).tekst,
+        wczytaj: (projekt) => Rekopis.wczytaj(ANTIGRAVITY_DIR, projekt),
+        dodaj: (projekt, r) => Rekopis.dodajRozdzial(ANTIGRAVITY_DIR, projekt, r),
+        zapisz: (projekt, id, tresc) => Rekopis.zapiszTresc(ANTIGRAVITY_DIR, projekt, id, tresc),
+    },
 });
 app.get('/api/sceny', (req, res) => ytOdp(res, Sceny.sceny(req.query.projekt ? String(req.query.projekt) : null).then(async (sceny) => ({ sceny, aktorzy: await Wywiady.aktorzy(), style: Object.entries(STYLE_WYWIADU).map(([id, v]) => ({ id, nazwa: v.nazwa })) })), 500));
+app.get('/api/sceny/odcinki', (req, res) => ytOdp(res, Sceny.odcinki(String(req.query.projekt ?? '')).then((odcinki) => ({ odcinki }))));
+app.post('/api/sceny/z-odcinka', (req, res) => ytOdp(res, Sceny.planZOdcinka(req.body ?? {})));
 app.get('/api/sceny/tla', (req, res) => ytOdp(res, Sceny.tlaProjektu(String(req.query.projekt ?? '')).then((tla) => ({ tla }))));
 app.post('/api/sceny/przygotuj', (req, res) => ytOdp(res, Sceny.przygotuj(req.body ?? {}).then((scena) => ({ scena }))));
 app.get('/api/sceny/:id', (req, res) => ytOdp(res, Sceny.scena(req.params.id).then((scena) => ({ scena })), 404));
 app.post('/api/sceny/:id/zmien', (req, res) => ytOdp(res, Sceny.zmien(req.params.id, req.body ?? {}).then((scena) => ({ scena }))));
+app.post('/api/sceny/:id/do-rekopisu', (req, res) => ytOdp(res, Sceny.doRekopisu(req.params.id)));
 app.post('/api/sceny/:id/dalej', (req, res) => ytOdp(res, Sceny.dalej(req.params.id, req.body ?? {}).then((scena) => ({ scena }))));
 app.post('/api/sceny/:id/nagraj', (req, res) => ytOdp(res, Sceny.nagraj(req.params.id, {
     bezGlosu: req.body?.bezGlosu === true, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,

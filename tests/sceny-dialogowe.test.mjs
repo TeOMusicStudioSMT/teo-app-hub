@@ -7,7 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
-import { utworzSceny, promptSceny, promptDalszegoCiagu, tloKwestii, argumentyUjecia, MAX_RUND } from '../services/ScenyDialogowe.js';
+import { utworzSceny, promptSceny, promptDalszegoCiagu, tloKwestii, argumentyUjecia, MAX_RUND, promptPlanuScen, odczytajPlanScen, blokRekopisu } from '../services/ScenyDialogowe.js';
+import * as Rekopis from '../services/Rekopis.js';
 import { opisz } from '../services/Montazownia.js';
 import { CZCIONKI } from '../services/PowitanieDnia.js';
 
@@ -150,4 +151,75 @@ test('PRAWDZIWA scena: tło-obraz i tło-klip (ujęcie–przeciwujęcie), głos 
     const g3 = await czekaj(async () => { const x = await S.scena(b.id); return x.etap !== 'nagrywa' && x; });
     assert.equal(g3.etap, 'gotowa', g3.blad);
     assert.equal(glosy.length, 4);
+});
+
+test('plan scen z odcinka: prompt ze streszczeniem, kanonem i rękopisem; parser bierze tylko obsadę i ≥ 2 postacie', () => {
+    const odc = { id: 'odc_1', numer: 8, tytul: 'Burza nad Kopułą', streszczenie: 'Kael wraca, Elara ostrzega przed burzą.' };
+    const { system, user } = promptPlanuScen({ odcinek: odc, kanon: '- Kopuła stoi na Marsie', rekopis: 'Rozdział o burzy', obsada: [KAEL, ELARA], juz: ['Dach'], ile: 3 });
+    assert.match(system, /SCENA: opis sceny \| POSTACIE: Imię, Imię/);
+    assert.match(system, /Scen ma być 3/);
+    assert.match(user, /ODCINEK #8 „Burza nad Kopułą”: Kael wraca/);
+    assert.match(user, /RĘKOPIS \(fragment\):\nRozdział o burzy/);
+    assert.match(user, /nie powtarzaj\):\n- Dach/);
+    const odp = [
+        'Oto plan:',
+        '1. SCENA: Hangar, Kael ląduje w deszczu | POSTACIE: Kael, Elara',
+        '**SCENA 2:** Obserwatorium nocą | POSTACIE: ELARA i Mira',
+        'SCENA: Samotny monolog | POSTACIE: Kael',
+        'SCENA: Kantyna | POSTACIE: Kael, Nikt, Zed',
+    ].join('\n');
+    const plan = odczytajPlanScen(odp, [KAEL, ELARA, MIRA]);
+    assert.deepEqual(plan.map((p) => p.postacie), [['kael', 'elara'], ['elara', 'mira']], 'scena z jedną postacią i z imieniem spoza obsady (po odpadnięciu < 2) odpada');
+    assert.match(plan[0].opis, /^Hangar/);
+    assert.equal(odczytajPlanScen(odp, [KAEL, ELARA, MIRA], 1).length, 1, 'limit propozycji');
+});
+
+test('scena z odcinka: plan bez zapisu, scena niesie odcinek i jego streszczenie w kanonie; dialog do Rękopisu bez dublowania', async () => {
+    const tmp = tmpDir('odcinek');
+    const projekt = path.join(tmp, 'produkcje', 'film');
+    fs.mkdirSync(projekt, { recursive: true });
+    const proby = [];
+    const ODC = [{ id: 'odc_a', numer: 1, tytul: 'Start', streszczenie: 'Kael startuje.', status: 'zrealizowany' }, { id: 'odc_b', numer: 2, tytul: 'Burza', streszczenie: 'Elara widzi burzę w gwiazdach.', status: 'plan' }];
+    const S = utworzSceny({
+        katalog: path.join(tmp, 'sceny'), aktorzy: async () => [KAEL, ELARA, { id: 'kronikarz', imie: 'Kronikarz' }], katalogProjektu: async () => projekt,
+        kontekst: async () => ({ opis: '- Kopuła na Marsie' }), opisz, katalogMontazy: async () => path.join(projekt, 'montaz'),
+        odcinki: async (p) => (p === 'film' ? ODC : []),
+        rekopis: {
+            tekst: async (p) => (await Rekopis.jakoTekst(tmp, p)).tekst,
+            wczytaj: (p) => Rekopis.wczytaj(tmp, p), dodaj: (p, r) => Rekopis.dodajRozdzial(tmp, p, r), zapisz: (p, id, t) => Rekopis.zapiszTresc(tmp, p, id, t),
+        },
+        chat: async (_m, system, user) => { proby.push({ system, user }); return { tekst: /SCENY DIALOGOWE/.test(system) ? 'SCENA: Dach przed burzą | POSTACIE: Kael, Elara\nSCENA: Hangar | POSTACIE: Elara, Kael' : DIALOG, silnik: 'gemma4' }; },
+    });
+    const lista = await S.odcinki('film');
+    assert.deepEqual(lista.map((o) => [o.numer, o.scen]), [[1, 0], [2, 0]]);
+    await assert.rejects(S.planZOdcinka({ projekt: 'film', odcinekId: 'odc_x' }), /Nie ma takiego odcinka/);
+    const plan = await S.planZOdcinka({ projekt: 'film', odcinekId: 'odc_b', ile: 2 });
+    assert.equal(plan.propozycje.length, 2);
+    assert.match(proby.at(-1).user, /ODCINEK #2 „Burza”/);
+    assert.ok(!/Kronikarz/.test(proby.at(-1).user), 'prowadzący wywiadów nie gra w scenach');
+    assert.equal((await S.sceny('film')).length, 0, 'plan niczego nie zapisuje');
+
+    const s = await S.przygotuj({ projekt: 'film', postacie: plan.propozycje[0].postacie, opis: plan.propozycje[0].opis, odcinekId: 'odc_b' });
+    assert.deepEqual(s.odcinek, { id: 'odc_b', numer: 2, tytul: 'Burza' });
+    assert.match(proby.at(-1).user, /KANON PROJEKTU:[\s\S]*ODCINEK #2 „Burza”: Elara widzi burzę/);
+    assert.equal((await S.odcinki('film')).find((o) => o.id === 'odc_b').scen, 1);
+
+    const r1 = await S.doRekopisu(s.id);
+    assert.equal(r1.nowy, true);
+    assert.equal(r1.tytul, 'Odcinek 2 — Burza · dialogi [szkic AI]');
+    let rek = await Rekopis.wczytaj(tmp, 'film');
+    assert.equal(rek.rozdzialy.length, 1);
+    assert.match(rek.rozdzialy[0].tresc, /<b>KAEL:<\/b> Burza idzie od zachodu\./);
+    await S.zmien(s.id, { kwestie: [{ kto: 'kael', tekst: 'Nowa kwestia <b>bez</b> html.' }, { kto: 'elara', tekst: 'Druga.' }] });
+    const r2 = await S.doRekopisu(s.id);
+    assert.equal(r2.podmieniony, true);
+    rek = await Rekopis.wczytaj(tmp, 'film');
+    assert.equal(rek.rozdzialy.length, 1, 'ten sam rozdział odcinka');
+    assert.ok(!/Burza idzie od zachodu/.test(rek.rozdzialy[0].tresc), 'stary dialog podmieniony, nie zdublowany');
+    assert.match(rek.rozdzialy[0].tresc, /Nowa kwestia &lt;b&gt;bez&lt;\/b&gt; html\./, 'tekst kwestii escapowany');
+    const s2 = await S.przygotuj({ projekt: 'film', postacie: ['kael', 'elara'], opis: 'Hangar nocą', odcinekId: 'odc_b' });
+    assert.equal((await S.doRekopisu(s2.id)).nowy, false);
+    rek = await Rekopis.wczytaj(tmp, 'film');
+    assert.equal((rek.rozdzialy[0].tresc.match(/<!--scena:/g) ?? []).length, 2, 'druga scena dopisana do rozdziału odcinka');
+    assert.match(blokRekopisu({ id: 's_x', opis: 'A', kwestie: [], model: null }), /^<!--scena:s_x--><h3>A<\/h3>/);
 });
