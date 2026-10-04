@@ -74,6 +74,7 @@ if not exist "%VOICE_ENV%\Scripts\python.exe" (
 if exist "%VOICE_ENV%\Scripts\python.exe" (
     echo %CYAN%[GLOS]%RESET% Silnik klonu glosu (:5002)...
     start "Glos Suwerena" "%VOICE_ENV%\Scripts\python.exe" "%VOICE_SRV%"
+    set "OTAKOS_GLOS_AUTOSTART=0"
 )
 
 :node_start

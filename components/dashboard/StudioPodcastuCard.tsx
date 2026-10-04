@@ -49,12 +49,14 @@ export const StudioPodcastuCard: React.FC = () => {
     const [praca, setPraca] = useState<string | null>(null);
     const [edycja, setEdycja] = useState<Record<string, string>>({});
     const [klipy, setKlipy] = useState<Record<string, string>>({});
+    const [silnik, setSilnik] = useState<{ available: boolean; silnik?: { powod?: string } } | null>(null);
     const napisyWpisane = useRef(false);
 
     const odswiez = useCallback(async () => {
         try {
             const s = await zMostu<Stan>('/api/studio-podcast');
             setStan(s); setMost('zyje');
+            zMostu<{ available: boolean; silnik?: { powod?: string } }>('/api/voice/status').then(setSilnik).catch(() => setSilnik(null));
             if (!napisyWpisane.current) { setNapisy(s.studio.wstep.tekst ?? ''); napisyWpisane.current = true; }
             setOdcinki((await zMostu<{ odcinki: Odcinek[] }>('/api/studio-podcast/odcinki')).odcinki);
         } catch (e) { setMost(/HTTP 404/.test(String(e)) ? 'stary' : 'milczy'); }
@@ -96,6 +98,7 @@ export const StudioPodcastuCard: React.FC = () => {
             {stan && (
                 <div className="flex flex-col gap-3 text-[11px]">
                     <p className="leading-relaxed text-slate-400">{stan.studio.nazwa} · prowadzi <b className="text-slate-200">{stan.studio.prowadzacy.imie}</b> · {stan.studio.ujecia.length} ujęć studia ze zdjęć. Goście z bazy aktorów ({stan.aktorzy.length}).</p>
+                    {silnik && !silnik.available && <p className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-amber-200">⚠ Lokalny silnik klonu głosu (:5002) nie działa{silnik.silnik?.powod ? ` — ${silnik.silnik.powod}` : ''}. Głosy z klonu-lokalnego nie zabrzmią: wybierz profil z VoiceStudio albo nagraj „bez głosu”.</p>}
                     <div className="grid grid-cols-3 gap-1.5">
                         {stan.studio.ujecia.slice(0, 6).map((u) => <img key={u.id} src={`${MOST}/api/studio-podcast/plik/ujecie/${u.id}`} alt={u.nazwa} title={u.nazwa} className="aspect-video w-full rounded border border-slate-700 object-cover" />)}
                     </div>

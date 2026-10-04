@@ -81,6 +81,7 @@ import * as Tlumacz        from './services/Tlumacz.js';
 import * as Glowny         from './services/Glowny.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
+import * as SilnikKlonu    from './services/SilnikKlonu.js';
 import { wczytajKorpus, dopasuj, brief, SCIEZKA_KORPUSU } from './services/WiedzaDesign.js';
 import { stanAnimacji, renderuj, KATALOG_PROJEKTOW } from './services/Animacje.js';
 import { zProjektuAppV2 }   from './services/KompozytorUI.js';
@@ -11468,7 +11469,7 @@ app.get('/api/voice/status', async (req, res) => {
     let available = false;
     try { const c = new AbortController(); const t = setTimeout(() => c.abort(), 1500); const r = await fetch(`${VOICE_BASE}/`, { signal: c.signal }); clearTimeout(t); available = !!r; } catch {}
     let voices = []; try { voices = (await fs.readdir(VOICES_DIR)).filter(f => f.endsWith('.wav')).map(f => f.replace('.wav', '')); } catch {}
-    res.json({ success: true, available, base: VOICE_BASE, voices, note: available ? 'Lokalny silnik klonu głosu gotowy.' : 'Brak lokalnego silnika — fallback przeglądarki (speechSynthesis). Zainstaluj XTTS/OpenVoice na :5002 dla suwerennego klonu Twojego głosu.' });
+    res.json({ success: true, available, base: VOICE_BASE, voices, silnik: SilnikKlonu.stanSilnika(), note: available ? 'Lokalny silnik klonu głosu gotowy.' : 'Brak lokalnego silnika — fallback przeglądarki (speechSynthesis). Zainstaluj XTTS/OpenVoice na :5002 dla suwerennego klonu Twojego głosu.' });
 });
 /**
  * 🎙️ Dekoder próbki audio z przeglądarki.
@@ -17026,6 +17027,7 @@ function handleTaskCompletion(completedTask) {
 }
 
 const httpServer = app.listen(PORT, () => {
+    SilnikKlonu.zapewnij({ aiDir: AI_DIR, base: VOICE_BASE }).catch(() => {});
     console.log(`================================================`);
     console.log(` 🔌 Wiesław nasłuchuje na porcie ${PORT}`);
     console.log(`================================================`);

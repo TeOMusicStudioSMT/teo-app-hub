@@ -104,7 +104,7 @@ async function torKlonLokalny({ tekst, jezyk, probka, base }) {
     } catch (e) {
         throw new BladPrzewodu(
             `Lokalny silnik klonu (${base}) nie odpowiedział (${e.name === 'AbortError' ? 'przekroczony czas' : e.message}). ` +
-            'Nic nie zabrzmiało — odpal XTTS/OpenVoice albo wybierz inny przewód.',
+            'Nic nie zabrzmiało — odpal XTTS/OpenVoice (START_KATEDRA.bat) albo wybierz inny głos, np. profil z VoiceStudio.',
             424, 'klon-lokalny');
     }
     if (!r.ok) {
