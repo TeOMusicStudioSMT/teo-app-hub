@@ -38,24 +38,34 @@ export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
  *   cloudflared tunnel login
  *   cloudflared tunnel create katedra
  *   cloudflared tunnel route dns katedra katedra.twojadomena.pl
- * i zapisuje w `_OtakOs_Wymiar/tunel.json`:
+ * i zapisuje w `_OtakOs_Wymiar/tunel-nazwany.json`:
  *   { "nazwa": "katedra", "host": "katedra.twojadomena.pl", "poswiadczenia": "C:/Users/…/.cloudflared/<id>.json" }
  * Poświadczenia zostają tam, gdzie są — most tylko wskazuje na nie cloudflared, nigdy ich nie czyta
  * ani nie kopiuje.
+ *
+ * ⚠️ OSOBNY PLIK (2026-10-04): `tunel.json` w tym samym katalogu należy do Kwantowego Tunelu telefonii
+ * (`services/TunelService.js`, POST /api/tunel nadpisuje go własnym kształtem {adres, wss…}). Wspólna nazwa
+ * znaczyła, że zapis adresu w telefonii po cichu kasował stały adres Katedry. Stary `tunel.json` z polem
+ * `nazwa` nadal jest czytany (zgodność), ale nowe miejsce to `tunel-nazwany.json`.
  */
-function konfiguracjaNazwanego() {
-    try {
-        const plik = path.join(cfg.katalogWymiaru ?? path.join(process.cwd(), '_OtakOs_Wymiar'), 'tunel.json');
-        if (!fsSync.existsSync(plik)) return null;
-        const j = JSON.parse(fsSync.readFileSync(plik, 'utf8'));
-        if (!j?.nazwa || !j?.host) return null;
-        if (j.poswiadczenia && !fsSync.existsSync(j.poswiadczenia)) {
-            return { blad: `tunel.json wskazuje na plik poświadczeń, którego nie ma: ${j.poswiadczenia}` };
+export const PLIKI_NAZWANEGO = ['tunel-nazwany.json', 'tunel.json'];
+
+export function konfiguracjaNazwanego(katalog = cfg.katalogWymiaru ?? path.join(process.cwd(), '_OtakOs_Wymiar')) {
+    for (const nazwa of PLIKI_NAZWANEGO) {
+        const plik = path.join(katalog, nazwa);
+        if (!fsSync.existsSync(plik)) continue;
+        try {
+            const j = JSON.parse(fsSync.readFileSync(plik, 'utf8'));
+            if (!j?.nazwa || !j?.host) continue;   // np. tunel.json telefonii — nie nasz kształt
+            if (j.poswiadczenia && !fsSync.existsSync(j.poswiadczenia)) {
+                return { blad: `${nazwa} wskazuje na plik poświadczeń, którego nie ma: ${j.poswiadczenia}` };
+            }
+            return { nazwa: String(j.nazwa), host: String(j.host).replace(/^https?:\/\//, '').replace(/\/+$/, ''), poswiadczenia: j.poswiadczenia ? String(j.poswiadczenia) : null, plik: nazwa };
+        } catch (e) {
+            return { blad: `${nazwa} nie do odczytu: ${e.message}` };
         }
-        return { nazwa: String(j.nazwa), host: String(j.host), poswiadczenia: j.poswiadczenia ? String(j.poswiadczenia) : null };
-    } catch (e) {
-        return { blad: `tunel.json nie do odczytu: ${e.message}` };
     }
+    return null;
 }
 
 const stan = {
@@ -94,7 +104,10 @@ async function znajdzBinarke({ pobierz = false } = {}) {
 
 export async function stanTunelu() {
     const binarka = stan.binarka || (await znajdzBinarke().catch(() => null));
-    return { ...stan, binarka, zainstalowany: !!binarka, port: cfg.portMostu };
+    const n = konfiguracjaNazwanego();
+    // Czy most widzi stały adres jeszcze PRZED startem (ścieżka poświadczeń nie wychodzi).
+    const nazwany = n ? (n.blad ? { blad: n.blad } : { nazwa: n.nazwa, host: n.host, plik: n.plik, poswiadczenia: !!n.poswiadczenia }) : null;
+    return { ...stan, binarka, zainstalowany: !!binarka, port: cfg.portMostu, nazwany };
 }
 
 /**
@@ -178,4 +191,4 @@ for (const s of ['SIGINT', 'SIGTERM']) {
     });
 }
 
-export default { skonfiguruj, stanTunelu, start, stop };
+export default { skonfiguruj, stanTunelu, start, stop, konfiguracjaNazwanego };
