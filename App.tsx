@@ -56,6 +56,7 @@ import SimulationDashboard from './components/special/SimulationDashboard';
 import TeoLab from './components/special/TeoLab';
 import McpSkillboardPanel from './components/McpSkillboardPanel';
 import { sluchajTelefonu } from './lib/teogochiDelegate';
+import { zsynchronizujWezel } from './lib/mojWezel';
 
 
 
@@ -122,6 +123,9 @@ const App: React.FC = () => {
     const [activeStory, setActiveStory] = useState<string | null>(() =>
         localStorage.getItem('teo_active_story')
     );
+
+    // 🪪 Węzeł właściciela z księgi GRV tej Katedry (lib/mojWezel.ts) — zamiast stałego „Mistrz Arkadiusz”.
+    useEffect(() => { void zsynchronizujWezel(); }, []);
 
     // --- PIONEER BYPASS - NATYCHMIAST do Lounge ---
     useEffect(() => {

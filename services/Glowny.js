@@ -43,6 +43,8 @@ let cfg = {
     straz: path.join(process.cwd(), 'scripts', 'glowny', 'straz.mjs'),
     /** Po tylu odmowach w jednej turze kończymy turę — mały model potrafi ponawiać to samo do limitu tur. */
     limitOdmow: 3,
+    /** Imię Suwerena TEJ Katedry (właściciel z księgi GRV) — null, dopóki go nie wpisał. */
+    suweren: () => null,
 };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
 
@@ -166,7 +168,7 @@ export function srodowisko(baza = process.env, s = null) {
     return env;
 }
 
-const DOPISEK = () => `Jesteś GŁÓWNY — Ultra Główny agent Katedry OtakOS, prowadzisz Imperium Kreatywne Suwerena (Mistrz Arkadiusz).
+const DOPISEK = () => `Jesteś GŁÓWNY — Ultra Główny agent Katedry OtakOS, prowadzisz Imperium Kreatywne Suwerena${cfg.suweren?.() ? ` (${cfg.suweren()})` : ''}.
 Piszesz po polsku. Najpierw CLAUDE.md w katalogu Katedry — tam są zasady i mapa modułów.
 UPRAWNIENIA (pilnuje ich Straż): czytasz wszystko, polecenia tylko-do-odczytu (ls, cat, git status, ffprobe, curl GET do mostu) i polecenia stada idą od razu. NOWE pliki tworzysz swobodnie. Zmiana ISTNIEJĄCYCH plików rdzenia Katedry (kod, konfiguracja) i polecenia, które coś zmieniają, czekają na zgodę Suwerena — w polu description napisz jednym zdaniem PO CO. Po odmowie NIE ponawiaj tego samego w innej formie (inne polecenie, Python) — zrób, co się da bez tego, albo zakończ turę: Suweren dostanie prośbę.
 STADO (bez pytania): node scripts/glowny/katedra.mjs <polecenie>:

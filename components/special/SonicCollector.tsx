@@ -8,6 +8,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
+import { mojaNazwa } from '../../lib/mojWezel';
 
 interface SonicVector {
   name: string; durationSec: number; energy: number; peak: number; brightness: number; envelope: number[]; at: number;
@@ -64,7 +65,7 @@ export const SonicCollector: React.FC = () => {
 
   // 🏷️ Etap 2: zatwierdź prawa do wektora — suwerenna pieczęć własności.
   const tagVector = async (i: number) => {
-    const owner = (() => { try { return localStorage.getItem('otakos_sovereign_name') || 'Mistrz Arkadiusz'; } catch { return 'Mistrz Arkadiusz'; } })();
+    const owner = mojaNazwa() || 'Suweren';
     const v = vectors[i];
     const sig = await sealSig(v.name + v.envelope.join(',') + owner + Date.now());
     save(vectors.map((x, j) => j === i ? { ...x, tagged: { owner, sig, at: Date.now() } } : x));

@@ -194,6 +194,7 @@ import { utworzWywiady } from './services/WywiadAktorow.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzSceny } from './services/ScenyDialogowe.js';
 import { kodDoUzycia } from './services/KodZaproszenia.js';
+import { genezaKsiegi, migrujKsiege, nowyKluczWezla, kimJestem, oczyscNazwe, nazwaWezla } from './services/KsiegaTozsamosc.js';
 import { utworzGielde, gpuZNvidiaSmi } from './services/GieldaMocy.js';
 import { listaStemow, glosZeStemu } from './services/GlosZeStemu.js';
 import { utworzKanalYouTube } from './services/KanalYouTube.js';
@@ -228,7 +229,6 @@ import {
     ZNANE_TOKENY, PLATFORMA_CG, saldaTokenow, cenyTokenow, cenyPoId,
 } from './services/TokenyErc20Service.js';
 import {
-    SKARBIEC as SKARBIEC_GRV,
     listaModulow, dodajModul, usunModul, zapiszSubskrypcje, anulujSubskrypcje,
     listaWypraw, dodajWyprawe, usunWyprawe, zapiszWplate, stan as stanRejestru,
 } from './services/ModulyService.js';
@@ -4211,8 +4211,9 @@ app.post('/api/launch', async (req, res) => {
 });
 
 // ── ⚖️ GENEZA GRV — Grawitacyjna Ekonomia Suwerennych Węzłów ─────────────────
-// TeO = węzeł zarządzający z NIESKOŃCZONYM GRV (dzieli jako system). Arek = 1M
-// founder. Pule do obdarowywania: 13×1M, 26×100k, 61×10k. Nowy węzeł = 1000.
+// Skarbiec = węzeł zarządzający z NIESKOŃCZONYM GRV (dzieli jako system). Każda Katedra ma WŁASNY skarbiec
+// i własnego właściciela (services/KsiegaTozsamosc.js) — na głównym węźle to „TeO” i „Mistrz Arkadiusz”,
+// w nowej Katedrze unikalne klucze. Pule do obdarowywania: 26×1M, 57×100k, 61×10k. Nowy węzeł = 1000.
 // (Haszowanie wsteczne rejestru — świadomie NA POTEM, decyzja Suwerena.)
 const GRV_NEW_NODE = 1000;
 const GRV_TIERS = { founder: { grv: 1_000_000, count: 26 }, pillar: { grv: 100_000, count: 57 }, herald: { grv: 10_000, count: 61 } };
@@ -4232,25 +4233,26 @@ async function loadGrvLedger() {
             console.log('[GRV] 🔁 Migracja: Arek → Mistrz Arkadiusz.');
         }
         if (!Array.isArray(grvLedger.chain)) grvLedger.chain = []; // ⛓️ kontabilność wsteczna
+        // 🪪 Starsza księga: skarbiec i właściciel z tego, co w niej jest (na głównym węźle: TeO i Mistrz Arkadiusz).
+        if (migrujKsiege(grvLedger)) await saveGrvLedger();
     }
     catch {
-        // Zasiew genezy (pierwsze uruchomienie)
-        grvLedger = {
-            nodes: {
-                TeO: { grv: 'INFINITE', role: 'sovereign-manager', tier: null, registeredAt: Date.now() },
-                'Mistrz Arkadiusz': { grv: 1_000_000, role: 'founder', tier: 'founder', registeredAt: Date.now() },
-            },
-            pools: { founder: 1, pillar: 0, herald: 0 }, // Mistrz Arkadiusz zajął 1 slot founder
-            chain: [],
-        };
-        const _gb = { seq: 0, ts: Date.now(), op: 'genesis', data: { TeO: 'INFINITE', 'Mistrz Arkadiusz': 1000000 }, prevHash: 'GENESIS' };
+        // Zasiew genezy (pierwsze uruchomienie): WŁASNY skarbiec tej Katedry, bez cudzych kont — właściciela
+        // zakłada Suweren tej Katedry przy pierwszym wejściu (Onboarding → /api/grv/register {wlasciciel: true}).
+        const { genesis, ...ksiega } = genezaKsiegi();
+        grvLedger = ksiega;
+        const _gb = { seq: 0, ts: Date.now(), op: 'genesis', data: genesis, prevHash: 'GENESIS' };
         _gb.hash = grvBlockHash(_gb);
         grvLedger.chain.push(_gb); // ⛓️ pierwszy blok pieczęci
         await saveGrvLedger();
-        console.log('[GRV] 🌱 Geneza zasiana: TeO=∞, Mistrz Arkadiusz=1M founder.');
+        console.log(`[GRV] 🌱 Geneza zasiana: ${grvLedger.zarzadca}=∞ (skarbiec tej Katedry), właściciel — przy pierwszym wejściu.`);
     }
     return grvLedger;
 }
+/** Skarbiec (∞) tej Katedry — źródło emisji i odbiorca opłat systemowych. */
+async function zarzadcaKsiegi() { return (await loadGrvLedger()).zarzadca; }
+/** Właściciel tej Katedry w księdze (null, dopóki nie wpisał imienia przy pierwszym wejściu). */
+async function wlascicielKsiegi() { return (await loadGrvLedger()).wlasciciel ?? null; }
 
 // ── ⛓️ KONTABILNOŚĆ WSTECZNA — hash-chain pieczętujący każdą zmianę księgi GRV ──
 // Każdy blok wiąże poprzedni (prevHash). Zmiana czegokolwiek wstecz łamie łańcuch.
@@ -4283,7 +4285,7 @@ function verifyGrvChain(L) {
 app.get('/api/grv/genesis', async (req, res) => {
     const L = await loadGrvLedger();
     res.json({
-        success: true, manager: 'TeO', newNodeGrv: GRV_NEW_NODE, giftPool: GRV_GIFT_POOL,
+        success: true, manager: L.zarzadca, newNodeGrv: GRV_NEW_NODE, giftPool: GRV_GIFT_POOL,
         tiers: Object.entries(GRV_TIERS).map(([tier, c]) => ({ tier, grv: c.grv, count: c.count, used: L.pools[tier] || 0, left: c.count - (L.pools[tier] || 0) })),
         nodeCount: Object.keys(L.nodes).length,
     });
@@ -4330,7 +4332,7 @@ app.post('/api/grv/mint-respiration', async (req, res) => {
             return res.json({ success: true, przyznane: false, ...werdykt });
         }
 
-        const przelew = await przelejGrv(SKARBIEC_GRV, wezel, werdykt.stawka);
+        const przelew = await przelejGrv(await zarzadcaKsiegi(), wezel, werdykt.stawka);
         const wpis = await zapiszWdech(ANTIGRAVITY_DIR, {
             wezel, rodzaj, klucz, grv: werdykt.stawka, klasa: werdykt.klasa, trwaly,
         });
@@ -4357,11 +4359,13 @@ app.post('/api/grv/mint-respiration', async (req, res) => {
  * NIGDY nie wywraca żądania: jeśli oddech padnie, praca i tak została wykonana
  * i odpowiedź ma dojść. Zwraca `null` zamiast rzucać.
  */
-async function oddechZaPrace(rodzaj, klucz, trwaly = null, wezel = ODDECH_WEZEL) {
+async function oddechZaPrace(rodzaj, klucz, trwaly = null, wezel = null) {
     try {
+        wezel = wezel || await oddechWezel();
+        if (!wezel) return { przyznane: false, powod: 'Katedra nie ma jeszcze właściciela w księdze GRV (pierwsze wejście).' };
         const werdykt = await ocenPrace(ANTIGRAVITY_DIR, { wezel, rodzaj, klucz });
         if (!werdykt.przyznane) return { przyznane: false, powod: werdykt.powod, klasa: werdykt.klasa };
-        await przelejGrv(SKARBIEC_GRV, wezel, werdykt.stawka);
+        await przelejGrv(await zarzadcaKsiegi(), wezel, werdykt.stawka);
         await zapiszWdech(ANTIGRAVITY_DIR, { wezel, rodzaj, klucz, grv: werdykt.stawka, klasa: werdykt.klasa, trwaly });
         // RUCH loguje się cicho (debug), WYNIK zostawia ślad w konsoli — tak jak
         // w UI: mały ruch bez hałasu, pełny wynik z błyskiem.
@@ -4374,7 +4378,7 @@ async function oddechZaPrace(rodzaj, klucz, trwaly = null, wezel = ODDECH_WEZEL)
 }
 
 /** Węzeł, któremu przypisujemy pracę wykonaną na tej maszynie. */
-const ODDECH_WEZEL = process.env.OTAKOS_WEZEL || 'Mistrz Arkadiusz';
+const oddechWezel = async () => process.env.OTAKOS_WEZEL || await wlascicielKsiegi();
 
 /** Stan oddechu — licznik dobowy, bilans, ostatnie wdechy. */
 app.get('/api/grv/oddech/:wezel', async (req, res) => {
@@ -4394,7 +4398,8 @@ app.get('/api/grv/trwale', async (req, res) => {
 // ── 🏅 RANGI — awans po drabinie Katedry ────────────────────────────────────
 /** GET /api/grv/osiagniecia?wezel= — co węzeł zdobył i czego mu brakuje. */
 app.get('/api/grv/osiagniecia', async (req, res) => {
-    const wezel = req.query.wezel || 'Mistrz Arkadiusz';
+    const wezel = req.query.wezel || await wlascicielKsiegi();
+    if (!wezel) return res.status(409).json({ success: false, code: 'BEZ_WLASCICIELA', message: 'Katedra nie ma jeszcze właściciela w księdze GRV — wpisz imię przy pierwszym wejściu (albo podaj węzeł).' });
     const s = await Rangi.stanOsiagniec(wezel);
     const L = await loadGrvLedger();
     res.json({
@@ -4479,7 +4484,8 @@ app.get('/api/grv/drabina', async (req, res) => {
 // ── 🗺️ QUESTY — droga od Herolda wzwyż ──────────────────────────────────────
 /** GET /api/grv/questy?wezel= — postęp, nagrody, co czeka na odbiór. */
 app.get('/api/grv/questy', async (req, res) => {
-    const wezel = req.query.wezel || 'Mistrz Arkadiusz';
+    const wezel = req.query.wezel || await wlascicielKsiegi();
+    if (!wezel) return res.status(409).json({ success: false, code: 'BEZ_WLASCICIELA', message: 'Katedra nie ma jeszcze właściciela w księdze GRV — wpisz imię przy pierwszym wejściu (albo podaj węzeł).' });
     const s = await Questy.stanQuestow(wezel);
     const L = await loadGrvLedger();
     res.json({ success: true, wezel, ranga: L.nodes[wezel]?.tier ?? null, ...s });
@@ -4494,7 +4500,8 @@ app.get('/api/grv/questy', async (req, res) => {
  */
 app.post('/api/grv/quest/odbierz', async (req, res) => {
     const { quest } = req.body ?? {};
-    const wezel = (req.body ?? {}).wezel || 'Mistrz Arkadiusz';
+    const wezel = (req.body ?? {}).wezel || await wlascicielKsiegi();
+    if (!wezel) return res.status(409).json({ success: false, code: 'BEZ_WLASCICIELA', message: 'Katedra nie ma jeszcze właściciela w księdze GRV — wpisz imię przy pierwszym wejściu (albo podaj węzeł).' });
     if (!quest) return res.status(400).json({ success: false, message: 'Brak id questu.' });
 
     const L = await loadGrvLedger();
@@ -4505,7 +4512,7 @@ app.post('/api/grv/quest/odbierz', async (req, res) => {
 
     let przelew;
     try {
-        przelew = await przelejGrv('TeO', wezel, werdykt.quest.nagroda);
+        przelew = await przelejGrv(await zarzadcaKsiegi(), wezel, werdykt.quest.nagroda);
     } catch (e) {
         return res.status(e instanceof BladGrv ? e.status : 500).json({
             success: false, code: 'WYPLATA_ODRZUCONA', message: e.message,
@@ -4528,7 +4535,7 @@ app.post('/api/grv/quest/odbierz', async (req, res) => {
 // ── 🗝️ KONTA I KLUCZE ZAŁOŻYCIELSKIE ────────────────────────────────────────
 /** GET /api/konta — kto jest kim w księdze. Most jest właścicielem tego mapowania. */
 app.get('/api/konta', async (req, res) => {
-    const d = await Konta.wczytajKonta();
+    const d = await Konta.wczytajKonta({ zarzadca: await zarzadcaKsiegi() });
     const L = await loadGrvLedger();
     res.json({
         success: true,
@@ -4543,7 +4550,7 @@ app.get('/api/konta', async (req, res) => {
 
 /** GET /api/konta/wezel?kto= — na który węzeł mapuje się mail/login. */
 app.get('/api/konta/wezel', async (req, res) => {
-    const k = await Konta.wezelDlaKonta(req.query.kto);
+    const k = await Konta.wezelDlaKonta(req.query.kto, { zarzadca: await zarzadcaKsiegi() });
     if (!k) {
         // Świadomie NIE zgadujemy. Przypisanie nieznanego maila do węzła
         // Suwerena oddałoby komuś obcemu jego milion GRV.
@@ -4711,7 +4718,7 @@ app.post('/api/teogochi/panel/wystaw', async (req, res) => {
         name: `Panel TeOgochi — ${p.nazwa}`,
         desc: p.opis || `Warsztat gatunku ${p.nazwa}: ${p.narzedzia.length} narzędzi mostu z domeny ${p.domena ?? '—'}.`,
         priceGrv: Number(priceGrv) || 0,
-        creator: creator || 'Mistrz Arkadiusz',
+        creator: creator || await wlascicielKsiegi() || await zarzadcaKsiegi(),
         votes: 0, createdAt: Date.now(),
         // Payload niesie PRZEPIS, nie obietnicę: kto to zaimportuje, dostanie
         // te same trasy — a jeśli jego most ich nie ma, zapis się nie uda.
@@ -4730,15 +4737,41 @@ app.post('/api/teogochi/panel/usun', async (req, res) => {
 });
 
 
+// 🪪 Kim jestem w tej Katedrze: skarbiec (∞) i właściciel (services/KsiegaTozsamosc.js).
+app.get('/api/grv/ja', async (_req, res) => {
+    res.json({ success: true, ...kimJestem(await loadGrvLedger()) });
+});
+/** PUT /api/grv/nazwa {id, nazwa} — nazwa wyświetlana węzła (klucz w księdze zostaje, salda i łańcuch nietknięte). */
+app.put('/api/grv/nazwa', async (req, res) => {
+    const { id, nazwa } = req.body ?? {};
+    const L = await loadGrvLedger();
+    if (!id || !L.nodes[id]) return res.status(404).json({ success: false, message: 'Węzeł nieznany.' });
+    const n = oczyscNazwe(nazwa);
+    if (!n) return res.status(400).json({ success: false, message: 'Nazwa: 2–40 znaków.' });
+    L.nodes[id].nazwa = n;
+    await sealGrv('nazwa', { id, nazwa: n });
+    await saveGrvLedger();
+    res.json({ success: true, ...kimJestem(L), id, nazwa: n });
+});
 app.get('/api/grv/:id', async (req, res) => {
     const L = await loadGrvLedger(); const n = L.nodes[req.params.id];
     if (!n) return res.status(404).json({ success: false, message: 'Węzeł nieznany.' });
     res.json({ success: true, id: req.params.id, ...n });
 });
 app.post('/api/grv/register', async (req, res) => {
-    const { id, tier, kod } = req.body ?? {};
-    if (!id) return res.status(400).json({ success: false, message: 'Brak id węzła.' });
+    const { tier, kod } = req.body ?? {};
+    let { id } = req.body ?? {};
     const L = await loadGrvLedger();
+    // 🪪 Właściciel tej Katedry (Onboarding): jeden na księgę, unikalny klucz `wezel-…`, nazwa = to, co wpisał.
+    const jakoWlasciciel = req.body?.wlasciciel === true;
+    let nazwa = null;
+    if (jakoWlasciciel) {
+        if (L.wlasciciel && L.nodes[L.wlasciciel]) return res.json({ success: true, id: L.wlasciciel, ...L.nodes[L.wlasciciel], existed: true, wlasciciel: true });
+        nazwa = oczyscNazwe(req.body?.nazwa);
+        if (!nazwa) return res.status(400).json({ success: false, message: 'Wpisz imię (2–40 znaków) — tak Katedra będzie Cię nazywać. Zmienisz je w każdej chwili.' });
+        id = nowyKluczWezla(L);
+    }
+    if (!id) return res.status(400).json({ success: false, message: 'Brak id węzła.' });
     if (L.nodes[id]) return res.json({ success: true, id, ...L.nodes[id], existed: true });
     let grv = GRV_NEW_NODE, role = 'node', assignedTier = null;
     // 🗝️ Kod zaproszenia (services/KodZaproszenia.js): raz na księgę, tylko przy nowym węźle. Zły kod = nic nie zakładamy,
@@ -4754,12 +4787,13 @@ app.post('/api/grv/register', async (req, res) => {
         if (used >= GRV_TIERS[tier].count) return res.status(409).json({ success: false, message: `Pula ${tier} wyczerpana (${GRV_TIERS[tier].count}).` });
         grv = GRV_TIERS[tier].grv; role = tier; assignedTier = tier; L.pools[tier] = used + 1;
     }
-    L.nodes[id] = { grv, role, tier: assignedTier, registeredAt: Date.now(), ...(uzytyKod ? { kod: uzytyKod.id } : {}) };
+    L.nodes[id] = { grv, role, tier: assignedTier, registeredAt: Date.now(), ...(nazwa ? { nazwa } : {}), ...(uzytyKod ? { kod: uzytyKod.id } : {}) };
     if (uzytyKod) L.kody = { ...(L.kody ?? {}), [uzytyKod.id]: id };
-    await sealGrv('register', { id, grv, tier: assignedTier, ...(uzytyKod ? { kod: uzytyKod.id } : {}) });
+    if (jakoWlasciciel) L.wlasciciel = id;
+    await sealGrv('register', { id, grv, tier: assignedTier, ...(nazwa ? { nazwa } : {}), ...(jakoWlasciciel ? { wlasciciel: true } : {}), ...(uzytyKod ? { kod: uzytyKod.id } : {}) });
     await saveGrvLedger();
-    console.log(`[GRV] ➕ Węzeł ${id}: ${grv} GRV${assignedTier ? ` (${assignedTier})` : ''}.`);
-    res.json({ success: true, id, ...L.nodes[id] });
+    console.log(`[GRV] ➕ Węzeł ${id}${nazwa ? ` („${nazwa}”, właściciel)` : ''}: ${grv} GRV${assignedTier ? ` (${assignedTier})` : ''}.`);
+    res.json({ success: true, id, ...L.nodes[id], ...(jakoWlasciciel ? { wlasciciel: true } : {}) });
 });
 /**
  * Przelew GRV — JEDYNA droga ruchu w księdze.
@@ -5012,7 +5046,8 @@ GRV (Grawitacja) to suwerenna, lokalna jednostka wartości/energii Katedry OtakO
 miara wkładu w ruch ekosystemu (Proof-of-Compute, kreacja, koherencja). Nie waluta fiat.
 
 ## Geneza GRV
-- TeO = zarządca, GRV ∞ (dzieli jako system). Mistrz Arkadiusz = founder #1, 1M.
+- Skarbiec Katedry = zarządca, GRV ∞ (dzieli jako system). Każda Katedra ma własny skarbiec i właściciela
+  (imię wpisane przy pierwszym wejściu). Na głównym węźle: TeO i Mistrz Arkadiusz (founder #1, 1M).
 - Pule: 26×1M (founderzy), 57×100k (filary), 61×10k (heroldowie) = 32 310 000 GRV.
 - Nowy węzeł = 1000 GRV na start.
 
@@ -5205,6 +5240,7 @@ Glowny.skonfiguruj({
     ollama: OLLAMA_BASE,
     model: () => process.env.OTAKOS_GLOWNY_MODEL || DEFAULT_LLM,
     szyna: Szyna,
+    suweren: () => (grvLedger ? nazwaWezla(grvLedger, grvLedger.wlasciciel) : null),
 });
 app.get('/api/glowny/stan', (_req, res) => res.json({ success: true, ...Glowny.stan() }));
 app.get('/api/glowny/sesje', async (_req, res) => res.json({ success: true, sesje: await Glowny.lista() }));
@@ -5503,7 +5539,7 @@ app.post('/api/forge/mod/publish', async (req, res) => {
         const product = {
             id: pid, module: 'forge-mod', type: 'mod',
             name: name || `🔌 ${safe}`, desc: desc || autoDesc,
-            priceGrv: Math.max(0, Number(priceGrv) || 0), creator: creator || 'Mistrz Arkadiusz',
+            priceGrv: Math.max(0, Number(priceGrv) || 0), creator: creator || await wlascicielKsiegi() || await zarzadcaKsiegi(),
             votes: existing?.votes || 0, createdAt: existing?.createdAt || Date.now(),
             payload: { action: 'install-mod', modId: safe, code },
         };
@@ -5586,7 +5622,7 @@ app.get('/api/islands/random', async (req, res) => {
     const fmtOf = (s) => FORMATS[Math.abs([...String(s)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)) % FORMATS.length];
     try {
         const L = await loadGrvLedger();
-        const CORE = new Set(['TeO', 'OtakOS']);
+        const CORE = new Set(['TeO', 'OtakOS', L.zarzadca]);
         const others = Object.keys(L.nodes || {}).filter(id => !CORE.has(id));
         for (let i = others.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[others[i], others[j]] = [others[j], others[i]]; }
         const pick = others.slice(0, 3);
@@ -10265,7 +10301,7 @@ app.post('/api/teo-sim/petla', async (req, res) => {
         ollamaBase: OLLAMA_BASE,
         wezelAgenta: wezel,
         // Rozliczenie idzie TĄ SAMĄ drogą co każdy ruch GRV — z pieczęcią w łańcuchu.
-        przelej: (from, to, ile) => przelejGrv(from, to, ile),
+        przelej: async (from, to, ile) => przelejGrv(from === 'TeO' ? await zarzadcaKsiegi() : from, to, ile),   // TeoSim płaci ze skarbca
     });
     if (!r.ok) return res.status(400).json({ success: false, message: r.powod });
     await Szyna.nadaj({
@@ -11674,7 +11710,7 @@ app.post('/api/business/sluzba', async (req, res) => {
         if (!biznes) return res.status(404).json({ success: false, message: `Działalność „${biznesId}" nieznana.` });
 
         const kluczPelny = `biznes:${biznes.id}:${akcja}:${String(klucz).trim()}`;
-        const oddech = await oddechZaPrace(def.oddech, kluczPelny, null, wezel || ODDECH_WEZEL);
+        const oddech = await oddechZaPrace(def.oddech, kluczPelny, null, wezel || null);
 
         // `oddechZaPrace` zwraca null, gdy sam oddech padł. Służba i tak się wydarzyła,
         // więc zapisujemy ją bez GRV i mówimy wprost, że nagroda nie doszła.
@@ -15657,7 +15693,7 @@ app.get('/api/moduly', async (req, res) => {
             success: true,
             moduly: await listaModulow(ANTIGRAVITY_DIR, wezel),
             stan: await stanRejestru(ANTIGRAVITY_DIR),
-            skarbiec: SKARBIEC_GRV,
+            skarbiec: await zarzadcaKsiegi(),
         });
     } catch (err) { return res.status(500).json({ success: false, message: err.message }); }
 });
@@ -15690,7 +15726,8 @@ app.post('/api/moduly/:id/subskrybuj', async (req, res) => {
         // dałby subskrypcję nawet przy pustym koncie.
         let przelew = null;
         if (m.cenaGRV > 0) {
-            const odbiorca = m.wbudowany ? SKARBIEC_GRV : (m.autor || SKARBIEC_GRV);
+            const skarbiec = await zarzadcaKsiegi();
+            const odbiorca = m.wbudowany ? skarbiec : (m.autor || skarbiec);
             przelew = await przelejGrv(wezel, odbiorca, m.cenaGRV);
         }
         const wynik = await zapiszSubskrypcje(ANTIGRAVITY_DIR, { modul: m.id, wezel, grv: m.cenaGRV });
@@ -15742,7 +15779,7 @@ app.post('/api/wyprawy/:id/wplac', async (req, res) => {
         const w = wyprawy.find(x => x.id === req.params.id);
         if (!w) return res.status(404).json({ success: false, message: `Wyprawa „${req.params.id}" nie istnieje.` });
 
-        const przelew = await przelejGrv(wezel, SKARBIEC_GRV, kwota);
+        const przelew = await przelejGrv(wezel, await zarzadcaKsiegi(), kwota);
         const wpis = await zapiszWplate(ANTIGRAVITY_DIR, { wyprawa: w.id, wezel, grv: kwota });
         const po = (await listaWypraw(ANTIGRAVITY_DIR)).find(x => x.id === w.id);
         console.log(`[Universa] 💫 ${wezel} wpłacił ${kwota} GRV na „${w.nazwa}" (${po.zebraneGRV}/${w.celGRV}).`);
@@ -16364,7 +16401,8 @@ app.get('/api/market/posiadane', async (req, res) => {
  */
 app.post('/api/market/kup', async (req, res) => {
     const { id } = req.body ?? {};
-    const wezel = (req.body ?? {}).wezel || 'Mistrz Arkadiusz';
+    const wezel = (req.body ?? {}).wezel || await wlascicielKsiegi();
+    if (!wezel) return res.status(409).json({ success: false, code: 'BEZ_WLASCICIELA', message: 'Katedra nie ma jeszcze właściciela w księdze GRV — wpisz imię przy pierwszym wejściu (albo podaj węzeł).' });
     if (!id) return res.status(400).json({ success: false, message: 'Brak id produktu.' });
 
     const m = await loadMarket();

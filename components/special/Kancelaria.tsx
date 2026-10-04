@@ -10,6 +10,7 @@
 import React, { useState } from 'react';
 import { toast } from 'react-hot-toast';
 import StraznikLicencji from './StraznikLicencji';
+import { mojaNazwa } from '../../lib/mojWezel';
 
 const WORK_TYPES = ['Muzyka', 'Wideo / Teledysk', 'Aplikacja / Kod', 'Tekst / Kronika', 'Grafika'];
 
@@ -31,7 +32,7 @@ const CHECKLIST = [
 export const Kancelaria: React.FC = () => {
   const [work, setWork] = useState('');
   const [type, setType] = useState(WORK_TYPES[0]);
-  const [author, setAuthor] = useState(() => { try { return localStorage.getItem('otakos_sovereign_name') || 'Mistrz Arkadiusz'; } catch { return 'Mistrz Arkadiusz'; } });
+  const [author, setAuthor] = useState(() => mojaNazwa());
   const [license, setLicense] = useState('');
   const [checked, setChecked] = useState<boolean[]>(() => CHECKLIST.map(() => false));
 

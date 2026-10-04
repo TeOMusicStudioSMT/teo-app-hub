@@ -7,6 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { currentTier, TIERS } from '../../lib/tiers';
 import { currentRole } from '../../lib/roles';
+import { mojWezel } from '../../lib/mojWezel';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
@@ -24,7 +25,7 @@ export const KompasSuwerena: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const b = await (await fetch(`${BRIDGE}/api/grv/${encodeURIComponent(role?.sovereignName || 'Mistrz Arkadiusz')}`)).json();
+        const b = await (await fetch(`${BRIDGE}/api/grv/${encodeURIComponent(role?.sovereignName || mojWezel())}`)).json();
         const v = await (await fetch(`${BRIDGE}/api/grv/verify`)).json();
         setGrv({ balance: b?.success ? b.grv : null, ok: v?.success ? v.ok : null });
       } catch { /* most offline */ }

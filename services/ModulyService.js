@@ -25,8 +25,8 @@ import path from 'path';
 
 const PLIK = 'moduly.json';
 
-/** Węzeł-skarbiec, na który idą opłaty za moduły. */
-export const SKARBIEC = 'TeO';
+// Skarbiec, na który idą opłaty za moduły, bierze most z księgi tej Katedry (KsiegaTozsamosc: `zarzadca`) —
+// dawny stały 'TeO' zakładał, że każda Katedra ma bank głównego węzła.
 
 function sciezka(katalog) { return path.join(katalog, PLIK); }
 
@@ -241,7 +241,7 @@ export async function stan(katalog) {
 }
 
 export default {
-    WBUDOWANE, SKARBIEC,
+    WBUDOWANE,
     listaModulow, dodajModul, usunModul, zapiszSubskrypcje, anulujSubskrypcje,
     listaWypraw, dodajWyprawe, usunWyprawe, zapiszWplate, stan,
 };
