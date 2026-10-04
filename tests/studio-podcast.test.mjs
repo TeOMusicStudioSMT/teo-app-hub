@@ -176,6 +176,13 @@ test('PRAWDZIWY film wstępowy z nagraniem prowadzącego i PRAWDZIWY odcinek (g�
     assert.ok(fs.existsSync(await S.plik('odcinek', x.id)) && fs.existsSync(await S.plik('wstep')) && fs.existsSync(await S.plik('ujecie', 'plaza')));
     await assert.rejects(S.plik('ujecie', 'nie-ma'), /Nie ma takiego pliku/);
 
+    // ponowne nagranie: kwestie z głosem idą ze schowka odcinka — silnik głosu nie jest wołany drugi raz
+    await S.nagraj(x.id, { zWstepem: false, zGoscmi: false });
+    const g3 = await czekaj(async () => { const z = await S.odcinek(x.id); return z.etap !== 'nagrywa' && z; });
+    assert.equal(g3.etap, 'gotowy', g3.blad);
+    assert.equal(glosy.length, 4, 'trzy kwestie ze schowka, zero nowych syntez');
+    assert.ok((await opisz(g3.plik)).maAudio);
+
     // bez głosu i bez wstępu: same napisy, krótszy film
     const y = await S.przygotuj({ temat: 'Cisza', goscie: ['kael'] });
     await S.nagraj(y.id, { bezGlosu: true, zWstepem: false, zGoscmi: false });

@@ -44,6 +44,17 @@ const ZNANE = {
     transkrypcja: '/v1/audio/transcriptions',
 };
 
+/**
+ * Ile czekać na jedno nagranie (s). Zmierzone (2026-10-04): stałe 180 s nie starczyło na kwestię prowadzącego
+ * (~350 znaków) — VoiceStudio przyjął zadanie i liczył dalej. Limit rośnie z długością tekstu; OTAKOS_VOICESTUDIO_LIMIT_S
+ * ustawia go na sztywno.
+ */
+export function limitMowy(znakow, env = process.env) {
+    const sztywny = Number(env.OTAKOS_VOICESTUDIO_LIMIT_S);
+    if (Number.isFinite(sztywny) && sztywny > 0) return Math.round(sztywny);
+    return Math.min(1200, Math.max(300, Math.round(120 + 1.5 * Number(znakow || 0))));
+}
+
 async function pobierz(sciezka, opcje = {}, limitMs = 8000) {
     const stoper = AbortSignal.timeout(limitMs);
     return fetch(`${BAZA}${sciezka}`, { ...opcje, signal: stoper });
@@ -201,8 +212,11 @@ export async function mow({
                 // Na OmniVoice jest po prostu ignorowane — nie szkodzi.
                 ...(opisGlosu ? { description: String(opisGlosu).slice(0, 400) } : {}),
             }),
-        }, 180000);
+        }, limitMowy(t.length) * 1000);
     } catch (e) {
+        if (e.name === 'TimeoutError') {
+            throw new Error(`VoiceStudio przyjął tekst (${t.length} znaków), ale nie oddał nagrania w ${limitMowy(t.length)} s — przy pierwszym użyciu ładuje model, a na procesorze liczy wolno. Zajrzyj do okna VoiceStudio i ponów (gotowe kwestie Katedra pamięta); dłuższy limit: OTAKOS_VOICESTUDIO_LIMIT_S.`);
+        }
         throw new Error(`VoiceStudio nie odpowiedział: ${e.message}`);
     }
 
@@ -275,4 +289,4 @@ export async function profile() {
     }
 }
 
-export default { BAZA, stan, mow, przepisz, profile, sprawdzNagranie };
+export default { BAZA, stan, mow, przepisz, profile, sprawdzNagranie, limitMowy };

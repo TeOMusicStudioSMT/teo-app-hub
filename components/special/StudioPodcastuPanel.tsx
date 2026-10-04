@@ -4,7 +4,7 @@
  *
  * Wszystko prawdziwe (services/StudioPodcastu.js):
  *   · STUDIA — pierwsze („teo”) z paczki zdjęć Suwerena + własne studia z własnym prowadzącym (inni tworzą swoje),
- *   · film wstępowy z nagraniem prowadzącego, klon jego głosu (silnik klonu instalowany tu, za zgodą na licencję),
+ *   · film wstępowy z nagraniem prowadzącego, klon jego głosu (silnik klonu instalowany tu: Chatterbox — MIT, albo XTTS za zgodą na CPML),
  *   · odcinek: temat + goście z bazy aktorów, STYL rozmowy, PRALKA (temperatura 1–9), PL/EN,
  *     DOGRYWKA (kolejne rundy wydłużające materiał), nagranie → montaże projektu studia (Montażownia, publikacja).
  */
@@ -27,7 +27,8 @@ interface Kwestia { kto: string; tekst: string }
 interface Odcinek { id: string; tytul: string; temat: string; goscie: string[]; goscieFilm?: string; kwestie: Kwestia[]; etap: string; blad?: string; plik?: string; sekundy?: number | null; postep?: { etap: string; zrobione: number; wszystkich: number }; bezGlosu?: boolean; jezyk?: 'pl' | 'en'; styl?: string; pralka?: number | null; rundy?: number }
 interface Stan { studio: Studio; postepWstepu: { etap: string } | null; aktorzy: Aktor[] }
 interface SkrotStudia { id: string; nazwa: string; prowadzacy: string; kolor: string; ujec: number; odcinkow: number; domyslne: boolean }
-interface Silnik { silnik: { uruchomiony?: boolean; powod?: string; model?: string | null }; instalacja: { stan: string; etap: string | null; log: string[]; blad: string | null; cuda: boolean | null }; zgoda: boolean; licencja: string }
+interface OpisSilnika { id: string; nazwa: string; licencja: string; wymagaZgody: boolean; model: string }
+interface Silnik { silnik: { uruchomiony?: boolean; powod?: string; model?: string | null; silnik?: string | null }; instalacja: { stan: string; etap: string | null; log: string[]; blad: string | null; cuda: boolean | null; silnik: string | null }; zgoda: boolean; aktywny: string | null; zainstalowane: string[]; silniki: OpisSilnika[] }
 interface Glosy { katedra: { id: string; nazwa: string; przewod: string }[]; voicestudio: { zywe: boolean; profile: { id: string; nazwa: string }[] } }
 
 async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
@@ -69,6 +70,7 @@ export const StudioPodcastuPanel: React.FC = () => {
     const [edycja, setEdycja] = useState<Record<string, string>>({});
     const [rundy, setRundy] = useState<Record<string, number>>({});
     const [zgoda, setZgoda] = useState(false);
+    const [wybranySilnik, setWybranySilnik] = useState('chatterbox');
     const [nowe, setNowe] = useState<{ nazwa: string; opis: string; imie: string; rola: string; kolor: string } | null>(null);
     const [ustawienia, setUstawienia] = useState(false);
     const [host, setHost] = useState({ imie: '', rola: '', kolor: '#22d3ee', zdjecie: '', glos: '', nagranie: '', ujecie: '' });
@@ -124,7 +126,8 @@ export const StudioPodcastuPanel: React.FC = () => {
         const d = await post(`/api/studio-podcast/odcinki/${o.id}/dogrywka`, { rundy: rundy[o.id] ?? 1, styl, pralka: pralka || null }) as { odcinek: Odcinek };
         setEdycja((e) => ({ ...e, [o.id]: tekstKwestii(d.odcinek.kwestie) }));
     }, 'Dogrywka dopisana — rozmowa dłuższa.');
-    const instalujSilnik = () => akcja('silnik', () => zMostu('/api/glos/silnik/instaluj', { method: 'POST', body: JSON.stringify({ zgodaLicencji: zgoda }) }), 'Instalacja silnika klonu ruszyła w tle (kilka–kilkanaście minut).');
+    const instalujSilnik = () => akcja('silnik', () => zMostu('/api/glos/silnik/instaluj', { method: 'POST', body: JSON.stringify({ silnik: wybranySilnik, zgodaLicencji: zgoda }) }), 'Instalacja silnika klonu ruszyła w tle (kilka–kilkanaście minut).');
+    const opisWybranego = silnik?.silniki?.find((x) => x.id === wybranySilnik);
     const stworzStudio = () => nowe && akcja('nowe', async () => {
         const d = await zMostu<{ studio: SkrotStudia }>('/api/studio-podcast/studia', { method: 'POST', body: JSON.stringify({ nazwa: nowe.nazwa, opis: nowe.opis, prowadzacy: { imie: nowe.imie, rola: nowe.rola, kolor: nowe.kolor } }) });
         setNowe(null); setUstawienia(true); napisyWpisane.current = null; setIdStudia(d.studio.id);
@@ -176,19 +179,28 @@ export const StudioPodcastuPanel: React.FC = () => {
                 <div className="flex flex-col gap-3">
                     <p className="leading-relaxed text-slate-400">{stan.studio.nazwa} · prowadzi <b style={{ color: stan.studio.prowadzacy.kolor }}>{stan.studio.prowadzacy.imie}</b> · głos: {glosOpis(stan.studio.prowadzacy.glos)} · {stan.studio.ujecia.length} ujęć · goście z bazy aktorów ({stan.aktorzy.length}).</p>
 
+                    {silnik && klonDziala && (
+                        <p className="text-[10px] text-emerald-300">🗣️ Silnik klonu Katedry: {silnik.silnik.powod}</p>
+                    )}
                     {silnik && !klonDziala && (
                         <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-amber-100">
                             <p>⚠ Silnik klonu Katedry (:5002) nie mówi{silnik.silnik.powod ? ` — ${silnik.silnik.powod}` : ''}. Głosy „tor domyślny / Katedra” nie zabrzmią — wybierz profil VoiceStudio albo zainstaluj silnik.</p>
                             {silnik.instalacja.stan === 'trwa' ? (
-                                <p className="mt-1 text-cyan-200"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />Instaluję: {silnik.instalacja.etap} <span className="text-slate-400">· {silnik.instalacja.log.at(-1)}</span></p>
+                                <p className="mt-1 text-cyan-200"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />Instaluję {silnik.instalacja.silnik}: {silnik.instalacja.etap} <span className="text-slate-400">· {silnik.instalacja.log.at(-1)}</span></p>
                             ) : (
-                                <div className="mt-1 flex flex-wrap items-center gap-2">
-                                    <label className="text-[10px] text-amber-200"><input type="checkbox" checked={zgoda} onChange={(e) => setZgoda(e.target.checked)} /> Akceptuję {silnik.licencja} (XTTS-v2 — tylko użycie niekomercyjne)</label>
-                                    <button disabled={!zgoda || !!praca} onClick={instalujSilnik} className={`${guzik} border-amber-400/60 text-amber-100`}>{praca === 'silnik' ? '…' : '🛠️ Zainstaluj silnik klonu'}</button>
+                                <div className="mt-1 flex flex-col gap-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <select value={wybranySilnik} onChange={(e) => { setWybranySilnik(e.target.value); setZgoda(false); }} className={`${pole} w-auto text-[11px]`}>
+                                            {(silnik.silniki ?? []).map((x) => <option key={x.id} value={x.id}>{x.nazwa}{x.wymagaZgody ? ' — niekomercyjnie' : ' — polecany, komercyjnie OK'}{silnik.zainstalowane?.includes(x.id) ? ' ✓' : ''}</option>)}
+                                        </select>
+                                        <button disabled={(!!opisWybranego?.wymagaZgody && !zgoda) || !!praca} onClick={instalujSilnik} className={`${guzik} border-amber-400/60 text-amber-100`}>{praca === 'silnik' ? '…' : '🛠️ Zainstaluj silnik klonu'}</button>
+                                    </div>
+                                    {opisWybranego && <p className="text-[10px] text-amber-200/80">Licencja: {opisWybranego.licencja}. Model przy pierwszym starcie: {opisWybranego.model}. Potrzebny Python 3.10–3.12.</p>}
+                                    {opisWybranego?.wymagaZgody && <label className="text-[10px] text-amber-200"><input type="checkbox" checked={zgoda} onChange={(e) => setZgoda(e.target.checked)} /> Akceptuję {opisWybranego.licencja}</label>}
                                 </div>
                             )}
                             {silnik.instalacja.stan === 'blad' && <p className="mt-1 text-red-300">✕ {silnik.instalacja.blad}</p>}
-                            {silnik.instalacja.stan === 'gotowe' && <p className="mt-1 text-emerald-300">✓ Zainstalowany ({silnik.instalacja.cuda ? 'karta graficzna' : 'procesor'}) — pierwszy start pobiera model (~1,8 GB), potem mówi.</p>}
+                            {silnik.instalacja.stan === 'gotowe' && <p className="mt-1 text-emerald-300">✓ Zainstalowany {silnik.instalacja.silnik} ({silnik.instalacja.cuda ? 'karta graficzna' : 'procesor'}) — pierwszy start pobiera model, potem mówi.</p>}
                         </div>
                     )}
 

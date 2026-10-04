@@ -1,0 +1,18 @@
+# Silnik klonu Chatterbox Multilingual (Resemble AI, licencja MIT — wolno komercyjnie) — domyślny silnik Katedry.
+# Instaluje most: POST /api/glos/silnik/instaluj {silnik:'chatterbox'}:
+#   1) torch + torchaudio z koła pod sterownik (nvidia-smi → cu118…cu128, inaczej cpu),
+#   2) ten plik (zależności chatterbox-tts 0.1.7 BEZ torch i bez gradio — gradio to tylko ich okno demo),
+#   3) chatterbox-tts==0.1.7 --no-deps (jego przypięty torch==2.6.0 nie ma koła cu128 dla RTX 50xx — torch bierzemy sami).
+numpy>=1.24.0,<2.0.0; python_version < "3.13"
+librosa==0.11.0
+s3tokenizer
+transformers==5.2.0
+diffusers==0.29.0
+resemble-perth>=1.0.0
+conformer==0.3.2
+safetensors==0.5.3
+spacy-pkuseg
+pykakasi==2.3.0
+pyloudnorm
+omegaconf
+huggingface_hub
