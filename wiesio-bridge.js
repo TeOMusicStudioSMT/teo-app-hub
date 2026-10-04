@@ -194,6 +194,7 @@ import { utworzWywiady } from './services/WywiadAktorow.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzSceny } from './services/ScenyDialogowe.js';
 import { kodDoUzycia } from './services/KodZaproszenia.js';
+import { utworzGielde, gpuZNvidiaSmi } from './services/GieldaMocy.js';
 import { listaStemow, glosZeStemu } from './services/GlosZeStemu.js';
 import { utworzKanalYouTube } from './services/KanalYouTube.js';
 import * as GlosStudio from './services/GlosStudio.js';
@@ -8235,7 +8236,20 @@ const ZarzadcaRejestru = utworzZarzadce({
 });
 ZarzadcaRejestru.startPetli();
 const KanalYT = utworzKanalYouTube();
-Wizytowka.skonfiguruj({ katalog: ANTIGRAVITY_DIR, wystawa: Wystawa, tunel: () => Tunel.stanTunelu(), szyna: Szyna, tostKlucz: async () => (await TostSiec.kluczTost()).publiczny, kanalYouTube: KanalYT });
+// ⚡ Giełda mocy (services/GieldaMocy.js) — etap 1: oferta Katedry w wizytówce, oferty innych z rejestru otakos.wtf.
+const GieldaMocy = utworzGielde({
+    katalog: ANTIGRAVITY_DIR,
+    modeleOllamy: async () => ((await (await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(5000) })).json())?.models ?? []).map((m) => m.name).filter(Boolean),
+    gpu: async () => gpuZNvidiaSmi((await execFileAsync('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], { windowsHide: true, timeout: 5000 })).stdout),
+    rejestr: (process.env.OTAKOS_REJESTR_URL || 'https://otakos.wtf/api/katedry').replace(/\/meldunek$/, ''),
+});
+Wizytowka.skonfiguruj({ katalog: ANTIGRAVITY_DIR, wystawa: Wystawa, tunel: () => Tunel.stanTunelu(), szyna: Szyna, tostKlucz: async () => (await TostSiec.kluczTost()).publiczny, kanalYouTube: KanalYT, gieldaMocy: GieldaMocy });
+app.get('/api/gielda-mocy', (_req, res) => ytOdp(res, GieldaMocy.stan(), 500));
+app.put('/api/gielda-mocy', (req, res) => ytOdp(res, GieldaMocy.ustawOferte(req.body ?? {}).then((oferta) => ({ oferta }))));
+app.get('/api/gielda-mocy/oferty', async (_req, res) => {
+    const pomin = (await Wizytowka.profil().catch(() => null))?.nick ?? null;
+    return ytOdp(res, GieldaMocy.oferty({ pomin }), 502);
+});
 // Podgląd kanału w panelu 🪪 (czy adres się rozpoznaje, ile filmów widać) — tylko maszyna (/api/wizytowka/ w trasach lokalnych).
 app.get('/api/wizytowka/kanal', async (_req, res) => { try { const p = await Wizytowka.profil(); return res.json({ success: true, kanal: p.kanal ? await KanalYT.pobierz(p.kanal) : null }); } catch (e) { return res.status(500).json({ success: false, message: e.message }); } });
 Wizytowka.startPetli();
