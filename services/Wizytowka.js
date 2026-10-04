@@ -138,7 +138,9 @@ export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     const tost = cfg.tostKlucz ? await cfg.tostKlucz().catch(() => null) : null;
     const k = p.kanal && cfg.kanalYouTube ? await cfg.kanalYouTube.pobierz(p.kanal).catch(() => null) : null;
     const kanal = k?.id ? { id: k.id, nazwa: k.nazwa, adres: k.adres, playlista: k.playlista, filmy: k.filmy } : null;
-    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
+    // ⚡ Giełda mocy (services/GieldaMocy.js): oferta tylko gdy Suweren udostępnia — rejestr otakos.wtf czyta ją z wizytówki.
+    const moc = cfg.gieldaMocy ? await cfg.gieldaMocy.publiczna().catch(() => null) : null;
+    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
 }
 
 /** Ścieżka pliku wizytówki — tylko id z ostatnio zbudowanej wizytówki (nigdy ścieżka z URL-a). */

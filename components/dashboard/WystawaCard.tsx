@@ -15,6 +15,7 @@ import DashboardCard from '../DashboardCard';
 import { Image as ImageIcon, Upload, Loader2, Trash2, EyeOff, Eye, Youtube } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { WizytowkaPanel } from './WizytowkaPanel';
+import { GieldaMocyPanel } from './GieldaMocyPanel';
 import { przygotujZWystawy } from '../special/YouTubeStudio';
 
 const MOST = 'http://127.0.0.1:3001';
@@ -137,6 +138,7 @@ export const WystawaCard: React.FC = () => {
                     </>
                 )}
                 {most === 'zyje' && <WizytowkaPanel />}
+                {most === 'zyje' && <GieldaMocyPanel />}
             </div>
         </DashboardCard>
     );
