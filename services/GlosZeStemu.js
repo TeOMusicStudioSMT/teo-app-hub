@@ -20,6 +20,51 @@ import path from 'path';
 export const AUDIO = /\.(wav|mp3|flac|ogg|m4a|aac|opus)$/i;
 export const MIN_SEKUND = 6, MAX_SEKUND = 30;
 
+/**
+ * 🎚️ Sampler głosu (2026-10-05) — Suweren: „mam taki filmik zrzut ekranu… opcja nagrywania samego wave na głos
+ * aktora… nie widzę takiej opcji samplowania”. Do `_Stemy` trafiały tylko paczki stemów; teraz próbką może być
+ * DOWOLNY plik z dźwiękiem (nagranie ekranu mp4, wideo, mp3, dyktafon) albo nagranie z mikrofonu w przeglądarce.
+ * Każdy zamieniamy na WAV 44,1 kHz stereo (wspólny język: odsłuch w przeglądarce, Demucs, wycinek klonu)
+ * w `_Stemy/_Probki` — tam stoi jak każdy stem, więc Demucs może z niego wyjąć sam wokal.
+ */
+export const KATALOG_PROBEK = '_Probki';
+export const WGRYWALNE = /\.(wav|mp3|flac|ogg|oga|m4a|aac|opus|wma|mp4|m4v|mov|webm|mkv|avi|3gp)$/i;
+export const MAX_BAJTOW_PROBKI = 300 * 1024 * 1024;
+
+/** Nazwa próbki: z pliku albo podana, bezpieczna dla Windows, zawsze `.wav`. */
+export function nazwaProbki(nazwa) {
+    const baza = String(nazwa ?? '').split(/[\\/]/).pop().replace(/\.[a-z0-9]{1,5}$/i, '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/Ł/g, 'L')
+        .replace(/[^A-Za-z0-9 _.-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '').slice(0, 60).trim();
+    return `${baza || 'probka'}.wav`;
+}
+
+/** Argumenty ffmpeg: cokolwiek z dźwiękiem → WAV 44,1 kHz stereo (pierwsza ścieżka dźwięku, obraz pominięty). */
+export function argumentyWgrania({ wejscie, wyjscie }) {
+    return ['-y', '-i', wejscie, '-vn', '-map', '0:a:0', '-ac', '2', '-ar', '44100', '-c:a', 'pcm_s16le', wyjscie];
+}
+
+/** Argumenty ffmpeg: dźwięk → surowe próbki do rysowania fali (mono 4 kHz, 16 bit, max `maxSekund`). */
+export const HZ_FALI = 4000;
+export function argumentyFali({ wejscie, maxSekund = 900 }) {
+    return ['-v', 'error', '-t', String(maxSekund), '-i', wejscie, '-vn', '-ac', '1', '-ar', String(HZ_FALI), '-f', 's16le', '-'];
+}
+
+/** Surowe s16le → `n` szczytów 0–1 (maks. |próbka| w każdym przedziale). Czysta — do testów. */
+export function szczytyFali(bufor, n = 600) {
+    const probek = Math.floor((bufor?.length ?? 0) / 2);
+    const ile = Math.max(1, Math.min(Number(n) || 600, 4000));
+    if (!probek) return { szczyty: [], sekundy: 0 };
+    const szczyty = new Array(ile).fill(0);
+    for (let k = 0; k < ile; k++) {
+        const a = Math.floor((k * probek) / ile), b = Math.max(a + 1, Math.floor(((k + 1) * probek) / ile));
+        let m = 0;
+        for (let i = a; i < b && i < probek; i++) { const v = Math.abs(bufor.readInt16LE(i * 2)); if (v > m) m = v; }
+        szczyty[k] = Math.round((m / 32768) * 1000) / 1000;
+    }
+    return { szczyty, sekundy: Math.round((probek / HZ_FALI) * 100) / 100 };
+}
+
 /** Czy stem to wokal — nazwy z Suno („Lead Vocal”, „Backing Vocals”) i Demucsa („vocals”, „wokal”). */
 export const czyWokal = (nazwa) => /vocal|wokal|voice|glos|głos|acapella|a cappella/i.test(String(nazwa)) && !/instrumental|no[ _-]?vocal|bez[ _-]?wokalu/i.test(String(nazwa));
 /** Czy stem nadaje się na podkład — instrumental albo „bez wokalu”. */
@@ -40,6 +85,7 @@ export async function listaStemow(katalog, { maxGlebokosc = 3 } = {}) {
                     sciezka: p, nazwa: w.name, paczka: path.relative(katalog, kat).replace(/\\/g, '/') || '',
                     rel: path.relative(katalog, p).replace(/\\/g, '/'), bajtow: st?.size ?? 0,
                     wokal: czyWokal(w.name), instrumental: czyInstrumental(w.name),
+                    probka: path.relative(katalog, kat).replace(/\\/g, '/').split('/')[0] === KATALOG_PROBEK,
                 });
             }
         }
@@ -104,4 +150,4 @@ export function argumentyPodkladu({ film, podklad, wyjscie, sekundy, glosnosc = 
     ];
 }
 
-export default { listaStemow, glosZeStemu, argumentyProbki, argumentyPodkladu, czyWokal, czyInstrumental, AUDIO, MIN_SEKUND, MAX_SEKUND };
+export default { nazwaProbki, argumentyWgrania, argumentyFali, szczytyFali, KATALOG_PROBEK, WGRYWALNE, listaStemow, glosZeStemu, argumentyProbki, argumentyPodkladu, czyWokal, czyInstrumental, AUDIO, MIN_SEKUND, MAX_SEKUND };
