@@ -17,6 +17,7 @@ import fsSync from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
+import net from 'net';
 import { fileURLToPath } from 'url';
 import { koloTorch } from './KuzniaSoup.js';
 
@@ -41,7 +42,34 @@ export const SILNIKI = {
     },
 };
 
-const stan = { uruchomiony: false, powod: 'jeszcze nie sprawdzano', pid: null, silnik: null };
+const stan = { uruchomiony: false, powod: 'jeszcze nie sprawdzano', pid: null, silnik: null, porazki: 0, nastepnaProba: 0 };
+
+/**
+ * Szybkie padnięcia (Suweren 2026-10-05: dziesiątki „odpalony przez most (pid …)” i okno konsoli migające nad
+ * wszystkim co kilka sekund). Panel pyta o stan co 2,5 s, a most po każdym padnięciu odpalał silnik od nowa.
+ * Teraz: padł przed `SZYBKIE_PADNIECIE_MS` → przerwa 1 min, 5 min, 15 min; po `MAX_PADNIEC` autostart staje do
+ * restartu mostu albo instalacji. Powód (ogon dziennika silnika) widać w stanie.
+ */
+export const SZYBKIE_PADNIECIE_MS = 120_000;
+export const PRZERWY_MS = [60_000, 5 * 60_000, 15 * 60_000];
+export const MAX_PADNIEC = 3;
+export const plikDziennika = (aiDir) => path.join(aiDir, 'glos_silnik.log');
+/** Ostatnie linie dziennika silnika (do powodu w stanie). */
+function ogonDziennika(aiDir, linii = 3) {
+    try {
+        const t = fsSync.readFileSync(plikDziennika(aiDir), 'utf8');
+        return t.trim().split(/\r?\n/).filter(Boolean).slice(-linii).join(' | ').slice(-400);
+    } catch { return ''; }
+}
+/** Czy ktoś słucha na porcie (inny serwer, który nie odpowiada na GET / — wtedy odpalanie nic nie da). */
+const portZajety = (base) => new Promise((ok) => {
+    let u; try { u = new URL(base); } catch { return ok(false); }
+    const g = net.connect({ host: u.hostname, port: Number(u.port) || 80 });
+    const koniec = (w) => { g.destroy(); ok(w); };
+    g.setTimeout(800, () => koniec(false));
+    g.once('connect', () => koniec(true));
+    g.once('error', () => koniec(false));
+});
 const instalacja = { stan: 'brak', etap: null, log: [], blad: null, od: null, koniec: null, kolo: null, cuda: null, silnik: null };
 let proces = null;   // silnik odpalony przez most (da się go zrestartować po zmianie silnika)
 
@@ -68,28 +96,55 @@ async function odpowiada(base) {
 /** Środowisko procesu silnika: cache modeli HuggingFace w Katedrze (własne HF_HOME Suwerena wygrywa), zgoda CPML dla XTTS. */
 const envSilnika = (aiDir, silnik) => ({
     ...process.env,
+    // Windows bez konsoli: stdout w cp1252 — „ł” w pierwszym print() wywracało serwer od razu.
+    PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1',
     OTAKOS_GLOS_SILNIK: silnik,
     HF_HOME: process.env.HF_HOME || path.join(aiDir, 'glos_modele'),
     ...(silnik === 'xtts' && maZgode(aiDir) ? { COQUI_TOS_AGREED: '1' } : {}),
 });
 
 /** Odpala silnik, jeśli nie odpowiada i da się go uruchomić. Zwraca stan (też z powodem, gdy się nie da). */
-export async function zapewnij({ aiDir, base, log = console.log, spawnFn = spawn } = {}) {
+export async function zapewnij({ aiDir, base, log = console.log, spawnFn = spawn, teraz = Date.now, platforma = process.platform } = {}) {
     const zywy = await odpowiada(base);
     if (zywy) {
         const model = zywy.model ? ` (model: ${zywy.model}${zywy.blad ? ` — ${zywy.blad}` : ''})` : '';
-        return Object.assign(stan, { uruchomiony: true, powod: `działa: ${zywy.silnik ?? '?'}${model}`, model: zywy.model ?? null, silnik: zywy.silnik ?? null });
+        return Object.assign(stan, { uruchomiony: true, porazki: 0, nastepnaProba: 0, powod: `działa: ${zywy.silnik ?? '?'}${model}`, model: zywy.model ?? null, silnik: zywy.silnik ?? null });
     }
     if (process.env.OTAKOS_GLOS_AUTOSTART === '0') return Object.assign(stan, { powod: 'wyłączony (OTAKOS_GLOS_AUTOSTART=0)' });
     if (stan.pid) return stan;   // już go odpaliliśmy, ładuje model
+    if (stan.porazki >= MAX_PADNIEC) return stan;   // powód już opisany — autostart stoi do restartu mostu / instalacji
+    if (teraz() < stan.nastepnaProba) return stan;
     const serwer = serwerGlosu(aiDir);
     const silnik = aktywnySilnik(aiDir);
     if (!serwer) return Object.assign(stan, { powod: 'brak services/glos/voice_server.py — zaktualizuj Katedrę' });
     if (!silnik) return Object.assign(stan, { powod: 'silnik nie jest zainstalowany — 🎙️ → 🎛️ Studio Podcastu → „Zainstaluj silnik klonu” (Chatterbox, MIT)' });
+    if (await portZajety(base)) return Object.assign(stan, { powod: `port ${new URL(base).port} zajęty przez program, który nie odpowiada jak silnik głosu — zamknij go (np. stare okno START_KATEDRA z voice_server), most nie odpala drugiego` });
     try {
-        const p = spawnFn(pythonSrodowiska(aiDir, silnik), [serwer], { cwd: aiDir, env: envSilnika(aiDir, silnik), detached: true, stdio: 'ignore', windowsHide: true });
-        p.on?.('error', (e) => { stan.pid = null; proces = null; stan.powod = `nie wystartował: ${e.message}`; });
-        p.on?.('exit', (kod) => { stan.pid = null; proces = null; stan.uruchomiony = false; stan.powod = `zakończył się (kod ${kod})`; });
+        // Windows: pythonw.exe (bez konsoli) i BEZ `detached` — odłączony proces dostawał własne okno konsoli
+        // (windowsHide go nie chowa), które migało nad wszystkimi ekranami przy każdym odpaleniu.
+        const win = platforma === 'win32';
+        const py = pythonSrodowiska(aiDir, silnik);
+        const pyw = win && py ? py.replace(/python\.exe$/i, 'pythonw.exe') : null;
+        let fd = 'ignore';
+        try { fd = fsSync.openSync(plikDziennika(aiDir), 'a'); fsSync.writeSync(fd, `\n=== ${new Date(teraz()).toISOString()} start ${silnik}\n`); } catch { fd = 'ignore'; }
+        const p = spawnFn(pyw && fsSync.existsSync(pyw) ? pyw : py, [serwer], { cwd: aiDir, env: envSilnika(aiDir, silnik), detached: !win, stdio: ['ignore', fd, fd], windowsHide: true });
+        if (typeof fd === 'number') { try { fsSync.closeSync(fd); } catch { /* dziecko ma swoją kopię */ } }
+        const start = teraz();
+        const padl = (opis) => {
+            stan.pid = null; proces = null; stan.uruchomiony = false;
+            const szybko = teraz() - start < SZYBKIE_PADNIECIE_MS;
+            stan.porazki = szybko ? stan.porazki + 1 : 0;
+            const ogon = ogonDziennika(aiDir);
+            if (stan.porazki >= MAX_PADNIEC) {
+                stan.powod = `${opis} — padł ${stan.porazki}× zaraz po starcie, autostart wstrzymany (restart mostu albo ponowna instalacja go wznowi). ${ogon ? `Dziennik: ${ogon}` : ''} Pełny dziennik: ${plikDziennika(aiDir)}`.trim();
+                log(`🎙️ Silnik klonu padł ${stan.porazki}× po starcie — autostart wstrzymany. ${ogon}`);
+            } else {
+                stan.nastepnaProba = szybko ? teraz() + PRZERWY_MS[Math.min(stan.porazki - 1, PRZERWY_MS.length - 1)] : 0;
+                stan.powod = `${opis}${szybko ? ` — kolejna próba za ${Math.round((stan.nastepnaProba - teraz()) / 60_000)} min` : ''}. ${ogon ? `Dziennik: ${ogon}` : ''}`.trim();
+            }
+        };
+        p.on?.('error', (e) => padl(`nie wystartował: ${e.message}`));
+        p.on?.('exit', (kod) => padl(`zakończył się (kod ${kod})`));
         p.unref?.();
         proces = p;
         stan.pid = p.pid ?? null; stan.silnik = silnik;
@@ -99,8 +154,12 @@ export async function zapewnij({ aiDir, base, log = console.log, spawnFn = spawn
     return stan;
 }
 
+/** Wznowienie autostartu (po instalacji, zmianie silnika — i w testach). */
+export function wyzerujPadniecia() { stan.porazki = 0; stan.nastepnaProba = 0; }
+
 /** Po zmianie silnika: zatrzymaj ten, który odpalił most, i odpal aktywny. Obcego procesu nie ruszamy — mówimy wprost. */
 async function przelacz({ aiDir, base, log }) {
+    wyzerujPadniecia();
     if (proces) { try { proces.kill(); } catch { /* już nie żyje */ } proces = null; stan.pid = null; await new Promise((r) => setTimeout(r, 1500)); }
     const zywy = await odpowiada(base);
     const chce = aktywnySilnik(aiDir);
@@ -201,4 +260,4 @@ export function instaluj({ aiDir, base, silnik = SILNIK_DOMYSLNY, zgodaLicencji 
 
 export const stanSilnika = () => ({ ...stan });
 export const stanInstalacji = () => ({ ...instalacja, log: instalacja.log.slice(-40) });
-export default { zapewnij, instaluj, stanSilnika, stanInstalacji, serwerGlosu, maZgode, aktywnySilnik, zainstalowane, SILNIKI, SERWER_KATEDRY };
+export default { zapewnij, wyzerujPadniecia, instaluj, stanSilnika, stanInstalacji, serwerGlosu, maZgode, aktywnySilnik, zainstalowane, SILNIKI, SERWER_KATEDRY };
