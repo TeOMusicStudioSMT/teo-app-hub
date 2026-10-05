@@ -199,7 +199,7 @@ import { kodDoUzycia } from './services/KodZaproszenia.js';
 import { utworzGlosyStada, tekstDoMowy } from './services/GlosyStada.js';
 import { genezaKsiegi, migrujKsiege, nowyKluczWezla, kimJestem, oczyscNazwe, nazwaWezla } from './services/KsiegaTozsamosc.js';
 import { utworzGielde, gpuZNvidiaSmi } from './services/GieldaMocy.js';
-import { listaStemow, glosZeStemu } from './services/GlosZeStemu.js';
+import { listaStemow, glosZeStemu, nazwaProbki, argumentyWgrania, argumentyFali, szczytyFali, KATALOG_PROBEK, WGRYWALNE, MAX_BAJTOW_PROBKI } from './services/GlosZeStemu.js';
 import { utworzKanalYouTube } from './services/KanalYouTube.js';
 import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
@@ -14405,13 +14405,66 @@ app.get('/api/glos/glosy', async (_req, res) => {
 /** Głosy Stada: mapa TeOgochi → barwa (profil Katedry albo VoiceStudio). */
 app.get('/api/glos/stado', (_req, res) => ytOdp(res, GlosyStada.wszystkie().then((glosy) => ({ glosy })), 500));
 app.put('/api/glos/stado', (req, res) => ytOdp(res, GlosyStada.ustaw(req.body?.id, req.body?.glos ?? null).then((glosy) => ({ glosy }))));
-app.get('/api/glos/stemy', (_req, res) => ytOdp(res, listaStemow(STEMY_DIR).then((stemy) => ({ stemy, katalog: STEMY_DIR })), 500));
+app.get('/api/glos/stemy', (_req, res) => ytOdp(res, listaStemow(STEMY_DIR).then((stemy) => ({ stemy: stemy.map((x) => ({ ...x, url: urlBity(x.sciezka) })), katalog: STEMY_DIR })), 500));
+/** Stem/próbka po ścieżce względnej w `_Stemy` — nic spoza katalogu. */
+function stemWKatalogu(rel) {
+    const abs = path.resolve(STEMY_DIR, String(rel ?? ''));
+    if (!rel || !abs.toLowerCase().startsWith(path.resolve(STEMY_DIR).toLowerCase() + path.sep)) throw new Error('Plik musi leżeć w _OtakOs_Muzyka/_Stemy.');
+    if (!fsSync.existsSync(abs)) throw new Error(`Nie ma pliku: ${path.basename(abs)}`);
+    return abs;
+}
+// 🎚️ Sampler głosu: dowolny plik z dźwiękiem (nagranie ekranu, wideo, mp3) albo nagranie z mikrofonu → WAV w _Stemy/_Probki.
+app.post('/api/glos/probka', async (req, res) => {
+    const { nazwa = '', dataURL = '' } = req.body ?? {};
+    const tymczasowy = path.join(os.tmpdir(), `otakos_probka_${process.pid}_${Date.now().toString(36)}`);
+    try {
+        const n = path.basename(String(nazwa));
+        if (!WGRYWALNE.test(n)) throw new Error('Ten plik nie wygląda na dźwięk ani wideo (wav, mp3, m4a, ogg, mp4, mov, webm…).');
+        const m = String(dataURL).match(/^data:[^;,]*(?:;[^;,]*)*;base64,(.+)$/s);
+        if (!m) throw new Error('Zawartość pliku w złym formacie.');
+        const bufor = Buffer.from(m[1], 'base64');
+        if (!bufor.length) throw new Error('Plik jest pusty.');
+        if (bufor.length > MAX_BAJTOW_PROBKI) throw new Error(`Plik większy niż ${Math.round(MAX_BAJTOW_PROBKI / 1048576)} MB — wytnij krótszy fragment.`);
+        await fs.writeFile(tymczasowy, bufor);
+        const kat = path.join(STEMY_DIR, KATALOG_PROBEK);
+        await fs.mkdir(kat, { recursive: true });
+        const nazwaWav = nazwaProbki(n);
+        let cel = path.join(kat, nazwaWav);
+        if (fsSync.existsSync(cel)) cel = path.join(kat, nazwaWav.replace(/\.wav$/, ` ${Date.now().toString(36)}.wav`));
+        try {
+            await execFileAsync(ffmpegPath, argumentyWgrania({ wejscie: tymczasowy, wyjscie: cel }), { windowsHide: true, timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
+        } catch (e) {
+            await fs.rm(cel, { force: true }).catch(() => {});
+            const err = String(e.stderr ?? e.message ?? '');
+            if (/matches no streams|does not contain any stream|Output file .* does not contain/i.test(err)) throw new Error('W tym pliku nie ma ścieżki dźwięku — nagranie ekranu bez dźwięku systemowego/mikrofonu nic nie da.');
+            throw new Error(`ffmpeg nie odczytał pliku: ${err.split(/\r?\n/).filter(Boolean).pop()?.slice(0, 300) ?? 'nieznany błąd'}`);
+        }
+        const opis = await Montazownia.opisz(cel).catch(() => null);
+        const rel = path.relative(STEMY_DIR, cel).replace(/\\/g, '/');
+        return res.json({ success: true, rel, nazwa: path.basename(cel), sekundy: opis?.sekundy ?? null, url: urlBity(cel) });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+    finally { await fs.rm(tymczasowy, { force: true }).catch(() => {}); }
+});
+// Fala stemu/próbki do wyboru fragmentu (szczyty 0–1).
+app.get('/api/glos/fala', async (req, res) => {
+    try {
+        const abs = stemWKatalogu(req.query.stem);
+        const { stdout } = await execFileAsync(ffmpegPath, argumentyFali({ wejscie: abs }), { windowsHide: true, timeout: 120_000, maxBuffer: 64 * 1024 * 1024, encoding: 'buffer' });
+        return res.json({ success: true, ...szczytyFali(stdout, Number(req.query.n) || 600), url: urlBity(abs) });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
+app.delete('/api/glos/probka', async (req, res) => {
+    try {
+        const abs = stemWKatalogu(req.query.stem);
+        if (path.basename(path.dirname(abs)) !== KATALOG_PROBEK) throw new Error('Usuwam tylko własne próbki (_Stemy/_Probki), nie paczki stemów.');
+        await fs.rm(abs);
+        return res.json({ success: true });
+    } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+});
 app.post('/api/glos/ze-stemu', async (req, res) => {
     try {
         const { stem = '', od = 0, do: doS = null, nazwa = '', id = '', aktorId = '' } = req.body ?? {};
-        const abs = path.resolve(STEMY_DIR, String(stem));
-        if (!stem || !abs.toLowerCase().startsWith(path.resolve(STEMY_DIR).toLowerCase() + path.sep)) throw new Error('Stem musi leżeć w _OtakOs_Muzyka/_Stemy.');
-        if (!fsSync.existsSync(abs)) throw new Error(`Nie ma pliku: ${path.basename(abs)}`);
+        const abs = stemWKatalogu(stem);
         const w = await glosZeStemu({
             stem: abs, od, do: doS, id: id || nazwa || aktorId, nazwa: nazwa || id || aktorId, katalogGlosow: VOICES_DIR,
             ffmpeg: ffmpegPath, uruchom: (bin, args) => execFileAsync(bin, args, { windowsHide: true, timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }),
