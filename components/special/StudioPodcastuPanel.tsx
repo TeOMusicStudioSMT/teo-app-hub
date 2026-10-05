@@ -21,6 +21,9 @@ interface Studio {
     prowadzacy: { imie: string; rola: string; kolor: string; zdjecie: string | null; glos: Glos | null };
     ujecia: Ujecie[];
     wstep: { nagranie: string | null; tekst: string; plik: string | null; sekundy: number | null; zrobiono: string | null; napisy?: boolean; blad?: string };
+    /** Wstęp do odcinków EN: plansza „hosted by”, napisy EN (przetłumaczone albo własne), opcjonalnie własne nagranie EN. */
+    wstepEn?: { nagranie?: string | null; tekst?: string; plik?: string | null; sekundy?: number | null; zrobiono?: string | null; napisy?: boolean; blad?: string; przetlumaczono?: boolean };
+    nazwaEn?: string;
 }
 interface Aktor { id: string; imie: string; rola: string; kolor: string; projekt?: string | null; zdjecie?: string | null; wideo?: string | null; glos?: Glos | null }
 interface Kwestia { kto: string; tekst: string }
@@ -57,6 +60,9 @@ export const StudioPodcastuPanel: React.FC = () => {
     const [silnik, setSilnik] = useState<Silnik | null>(null);
     const [glosy, setGlosy] = useState<Glosy | null>(null);
     const [napisy, setNapisy] = useState('');
+    const [napisyEn, setNapisyEn] = useState('');
+    const [nazwaEn, setNazwaEn] = useState('');
+    const [nagranieEn, setNagranieEn] = useState('');
     const [temat, setTemat] = useState('');
     const [goscie, setGoscie] = useState<string[]>([]);
     const [uwagi, setUwagi] = useState('');
@@ -85,8 +91,13 @@ export const StudioPodcastuPanel: React.FC = () => {
             if (id !== idStudia) { setIdStudia(id); return; }
             const s = await zMostu<Stan>(`/api/studio-podcast?studio=${encodeURIComponent(id)}`);
             setStan(s); setMost('zyje');
+            // Tłumaczenie napisów EN przyszło z modelu — pokaż je w polu, jeśli Suweren nic tam nie wpisał.
+            if (s.studio.wstepEn?.przetlumaczono && s.studio.wstepEn.tekst) setNapisyEn((v) => v || s.studio.wstepEn?.tekst || '');
             if (napisyWpisane.current !== id) {
                 setNapisy(s.studio.wstep.tekst ?? '');
+                setNapisyEn(s.studio.wstepEn?.tekst ?? '');
+                setNazwaEn(s.studio.nazwaEn ?? '');
+                setNagranieEn(s.studio.wstepEn?.nagranie ?? '');
                 setHost({ imie: s.studio.prowadzacy.imie, rola: s.studio.prowadzacy.rola, kolor: s.studio.prowadzacy.kolor, zdjecie: '', glos: glosNaWartosc(s.studio.prowadzacy.glos), nagranie: '', ujecie: '' });
                 if (!s.studio.wstep.nagranie) setWstepem(false);
                 napisyWpisane.current = id;
@@ -108,6 +119,11 @@ export const StudioPodcastuPanel: React.FC = () => {
     const post = (sciezka: string, body: unknown) => zMostu(`${sciezka}${sciezka.includes('?') ? '&' : '?'}${q}`, { method: 'POST', body: JSON.stringify(body) });
 
     const zrobWstep = () => akcja('wstep', () => post('/api/studio-podcast/wstep', { tekst: napisy }), 'Film wstępowy rusza w tle.');
+    /** Wstęp EN: najpierw zapis pól EN w studiu, potem film w tle (pusty tekst = model tłumaczy polski tekst nagrania). */
+    const zrobWstepEn = () => akcja('wstep-en', async () => {
+        await post('/api/studio-podcast', { wstepTekstEn: napisyEn, nazwaEn, ...(nagranieEn.trim() ? { nagranieWstepuEn: nagranieEn.trim() } : {}) });
+        await post('/api/studio-podcast/wstep', { jezyk: 'en', ...(napisyEn.trim() ? { tekst: napisyEn } : {}) });
+    }, napisyEn.trim() ? 'Wstęp EN rusza w tle.' : 'Wstęp EN rusza w tle — napisy przetłumaczy model (potem możesz je poprawić).');
     const klonujGlos = () => akcja('glos', () => post('/api/studio-podcast/glos-prowadzacego', {}), 'Głos prowadzącego sklonowany z nagrania.');
     const przygotuj = () => akcja('scenariusz', async () => {
         const d = await post('/api/studio-podcast/odcinki/przygotuj', { temat, goscie, uwagi, jezyk, styl, pralka: pralka || null }) as { odcinek: Odcinek };
@@ -140,6 +156,7 @@ export const StudioPodcastuPanel: React.FC = () => {
     const dodajUjecie = () => akcja('ujecie', async () => { await post('/api/studio-podcast/ujecie', { plik: host.ujecie.trim() }); setHost((h) => ({ ...h, ujecie: '' })); }, 'Ujęcie dodane.');
 
     const w = stan?.studio.wstep;
+    const wEn = stan?.studio.wstepEn;
     const glosOpis = (g: Glos | null | undefined) => (g?.voicestudio ? `VoiceStudio: ${glosy?.voicestudio.profile.find((p) => p.id === g.voicestudio)?.nazwa ?? g.voicestudio}` : g?.profil ? `Katedra: ${g.profil}` : 'tor domyślny (klon-lokalny)');
     const imie = (id: string) => (id === 'prowadzacy' ? stan?.studio.prowadzacy.imie : stan?.aktorzy.find((a) => a.id === id)?.imie) ?? id;
     const klonDziala = !!silnik?.silnik.uruchomiony && silnik.silnik.model !== 'blad';
@@ -241,6 +258,18 @@ export const StudioPodcastuPanel: React.FC = () => {
                             </div>
                             {w?.blad && <p className="text-amber-300">⚠ {w.blad}</p>}
                             {w?.plik && <video controls src={`${MOST}/api/studio-podcast/plik/wstep?${q}&v=${encodeURIComponent(w.zrobiono ?? '')}`} className="w-full rounded border border-slate-700" />}
+
+                            <div className="mt-1 flex flex-col gap-2 border-t border-slate-800 pt-2">
+                                <span className="text-[10px] uppercase tracking-widest text-cyan-300">🇬🇧 Wstęp EN — do odcinków po angielsku {wEn?.plik ? `· gotowy (${wEn.sekundy?.toFixed?.(1)} s)` : '· jeszcze nie zrobiony'}</span>
+                                <p className="text-[10px] text-slate-500">Plansza „hosted by”, napisy po angielsku. Głos: Twoje nagranie EN (jeśli podasz), inaczej polskie nagranie z angielskimi napisami. Odcinek EN bierze ten wstęp sam.</p>
+                                <input value={nazwaEn} onChange={(e) => setNazwaEn(e.target.value)} placeholder={`Nazwa podcastu po angielsku (puste = „${stan.studio.nazwa}”)`} className={pole} />
+                                <textarea value={napisyEn} rows={3} onChange={(e) => setNapisyEn(e.target.value)} placeholder="Napisy EN — puste = model przetłumaczy polski tekst nagrania (potem popraw i zrób jeszcze raz)." className={pole} />
+                                {wEn?.przetlumaczono && <p className="text-[10px] text-amber-300">✎ Napisy EN przetłumaczył model — przejrzyj je; po poprawce kliknij jeszcze raz.</p>}
+                                <input value={nagranieEn} onChange={(e) => setNagranieEn(e.target.value)} placeholder="Nagranie wstępu EN (opcjonalnie) — ścieżka mp3/wav" className={pole} />
+                                <button disabled={!!praca || !!stan.postepWstepu || !w?.nagranie} onClick={zrobWstepEn} className={`${guzik} self-start border-cyan-500/40 text-cyan-200`}>{praca === 'wstep-en' ? 'zapisuję…' : '🇬🇧 Zrób wstęp EN'}</button>
+                                {wEn?.blad && <p className="text-amber-300">⚠ {wEn.blad}</p>}
+                                {wEn?.plik && <video controls src={`${MOST}/api/studio-podcast/plik/wstep/en?${q}&v=${encodeURIComponent(wEn.zrobiono ?? '')}`} className="w-full rounded border border-slate-700" />}
+                            </div>
                         </div>
                     </details>
 

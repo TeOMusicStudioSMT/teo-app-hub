@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
-import { utworzStudioPodcastu, promptOdcinka, planNapisow, argumentyKadru, argumentyWstepu, argumentyGosci, zapowiedzGosci, filtrTla, OGNISKA_DOMYSLNE } from '../services/StudioPodcastu.js';
+import { utworzStudioPodcastu, promptOdcinka, planNapisow, argumentyKadru, argumentyWstepu, argumentyGosci, zapowiedzGosci, filtrTla, OGNISKA_DOMYSLNE, liniaProwadzacego, promptTlumaczeniaWstepu, wygladaNaPolski } from '../services/StudioPodcastu.js';
 import { opisz } from '../services/Montazownia.js';
 import { utworzWywiady } from '../services/WywiadAktorow.js';
 import { CZCIONKI } from '../services/PowitanieDnia.js';
@@ -310,4 +310,59 @@ test('wiele studiów: pierwsze z paczki, nowe bez ujęć z własnym prowadzącym
     await assert.rejects(R.usun('teo'), /Pierwszego studia/);
     await R.usun(n.id);
     assert.deepEqual((await R.lista()).map((x) => x.id), ['teo']);
+});
+
+test('PRAWDZIWY wstęp EN: plansza „hosted by”, napisy przetłumaczone z polskiego (do poprawki), odcinek EN bierze wstęp EN', { skip: !czcionka && 'brak czcionki z polskimi znakami' }, async () => {
+    assert.equal(liniaProwadzacego('TeO', 'en'), 'hosted by: TeO');
+    assert.equal(liniaProwadzacego('TeO', 'pl'), 'prowadzi: TeO');
+    assert.match(promptTlumaczeniaWstepu('Witajcie').system, /Polish into natural spoken English/);
+    assert.equal(wygladaNaPolski('Witajcie w moim przytulnym studiu pod Katedrą.'), true);
+    assert.equal(wygladaNaPolski('Dziś rozmawiamy o tym, co się dzieje.'), true);
+    assert.equal(wygladaNaPolski('Welcome to my cosy studio under the OtakOS Cathedral, hosted by TeO in Kraków.'), false);
+    assert.equal(wygladaNaPolski('Hi, I am Paweł and this is Katedra.'), false);
+    const tmp = tmpDir('en');
+    const nagranie = path.join(tmp, 'teo.mp3');
+    execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=300:duration=3', '-ac', '2', '-ar', '48000', nagranie]);
+    const montaz = path.join(tmp, 'montaz');
+    fs.mkdirSync(montaz);
+    const czaty = [];
+    const S = utworzStudioPodcastu({
+        katalog: path.join(tmp, 'studio'), paczka: PACZKA, ffmpeg: ffmpegPath, opisz, katalogMontazy: async () => montaz,
+        aktorzy: async () => [KAEL],
+        chat: async (_m, system, user) => {
+            czaty.push({ system, user });
+            if (/translate a podcast host/.test(system)) return { tekst: '„Welcome to my cosy studio under the OtakOS Cathedral.”' };
+            return { tekst: 'TeO: Welcome to the studio.\nKAEL: Hi, I am Kael.\nTeO: See you.' };
+        },
+    });
+    await S.zapiszStudio({ nagranieWstepu: nagranie, wstepTekst: 'Witajcie w moim przytulnym studiu pod Katedrą OtakOS.', nazwaEn: 'TeO Podcast — Studio under the Cathedral' });
+    const en = await S.zrobWstep({ jezyk: 'en' });
+    assert.equal(path.basename(en.plik), 'wstep_en.mp4');
+    assert.equal(en.tekst, 'Welcome to my cosy studio under the OtakOS Cathedral.', 'tłumaczenie bez cudzysłowów');
+    assert.equal(en.przetlumaczono, true);
+    assert.equal(en.napisy, true);
+    assert.match(czaty[0].user, /Witajcie w moim przytulnym studiu/);
+    const st = await S.studio();
+    assert.equal(st.wstep.plik, null, 'polski wstęp nietknięty');
+    assert.equal(st.nazwaEn, 'TeO Podcast — Studio under the Cathedral');
+    assert.ok((await opisz(await S.plik('wstep', 'en'))).maAudio);
+    // poprawka Suwerena: własny tekst EN kasuje znacznik tłumaczenia
+    await S.zapiszStudio({ wstepTekstEn: 'Welcome, friends, to my studio.' });
+    assert.equal((await S.studio()).wstepEn.przetlumaczono, false);
+
+    // model oddał polszczyznę zamiast tłumaczenia → błąd wprost, stary wstęp EN zostaje
+    const S2 = utworzStudioPodcastu({ katalog: path.join(tmp, 'studio2'), paczka: PACZKA, ffmpeg: ffmpegPath, opisz, katalogMontazy: async () => montaz, aktorzy: async () => [],
+        chat: async () => ({ tekst: 'Witajcie w moim przytulnym studiu pod Katedrą.' }) });
+    await S2.zapiszStudio({ nagranieWstepu: nagranie, wstepTekst: 'Witajcie w moim przytulnym studiu pod Katedrą.' });
+    await assert.rejects(S2.zrobWstep({ jezyk: 'en' }), /nie przetłumaczył/);
+    assert.equal((await S2.studio()).wstepEn?.plik ?? null, null);
+
+    const x = await S.przygotuj({ temat: 'Space', goscie: ['kael'], jezyk: 'en' });
+    await S.nagraj(x.id, { bezGlosu: true, zGoscmi: false });
+    const g = await czekaj(async () => { const y = await S.odcinek(x.id); return y.etap !== 'nagrywa' && y; });
+    assert.equal(g.etap, 'gotowy', g.blad);
+    assert.equal((await S.studio()).wstep.plik, null, 'odcinek EN nie robił polskiego wstępu');
+    assert.match(path.basename(g.plik), /_en_/);
+    const o = await opisz(g.plik);
+    assert.ok(o.sekundy > 4.4 + 3 && o.sekundy < 4.4 + 3 * 6, `odcinek EN ze wstępem EN: ${o.sekundy} s`);
 });
