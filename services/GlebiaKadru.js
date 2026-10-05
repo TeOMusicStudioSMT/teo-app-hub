@@ -30,6 +30,36 @@ import os from 'os';
 import { fileURLToPath } from 'url';
 
 const SKRYPT_SZACOWANIA = path.join(path.dirname(fileURLToPath(import.meta.url)), 'glebia', 'szacuj.mjs');
+export const SKRYPT_PYTHONA = path.join(path.dirname(fileURLToPath(import.meta.url)), 'glebia', 'glebia.py');
+/** Z stderr procesu: linie z komunikatem błędu (…Error: …), nie ślad stosu; bez nich — ostatnie linie. */
+export function sednoBledu(stderr) {
+    const linie = String(stderr || '').trim().split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const bledy = linie.filter((l) => /^[\w.]*(Error|Exception)\b.*:|^error:/i.test(l) && !/^at /.test(l));
+    return (bledy.length ? bledy.slice(-2) : linie.filter((l) => !/^at |^Node\.js v/.test(l)).slice(-2)).join(' | ').slice(0, 400);
+}
+
+/** Ten sam model (Depth Anything V2 Small, Apache-2.0) w wersji dla transformers (Python). */
+export const MODEL_GLEBI_PY = 'depth-anything/Depth-Anything-V2-Small-hf';
+
+/**
+ * Kod wyjścia procesu → po ludzku. Na Windows to NTSTATUS (np. 3228369023 = 0xC06D007F).
+ * ⚠️ 2026-10-05 komunikat mówił „zwykle brak pamięci”, a u Suwerena było 22 GB wolnego — kod znaczył co innego.
+ */
+export function opisKoduWyjscia(kod) {
+    const n = Number(kod);
+    if (!Number.isFinite(n)) return `kod ${kod}`;
+    const hex = `0x${(n >>> 0).toString(16).toUpperCase().padStart(8, '0')}`;
+    const znane = {
+        '0xC06D007E': 'nie znaleziono biblioteki DLL (opóźnione ładowanie)',
+        '0xC06D007F': 'w bibliotece DLL brak wymaganej funkcji — zwykle Windows podsunął inną wersję onnxruntime.dll (np. C:\\Windows\\System32\\onnxruntime.dll z Windows 11) zamiast tej z paczki',
+        '0xC0000135': 'nie znaleziono biblioteki DLL',
+        '0xC0000005': 'naruszenie dostępu do pamięci (błąd w kodzie natywnym)',
+        '0xC0000409': 'przepełnienie bufora (błąd w kodzie natywnym)',
+        '0xC00000FD': 'przepełnienie stosu',
+        '0xC0000017': 'brak pamięci',
+    };
+    return znane[hex] ? `${hex}: ${znane[hex]}` : (n > 255 ? `kod ${hex}` : `kod ${n}`);
+}
 
 export const MODEL_GLEBI = 'onnx-community/depth-anything-v2-small';
 export const OBRAZ = /\.(png|jpe?g|webp|bmp)$/i;
@@ -143,7 +173,20 @@ export function pngSzary(dane, szer, wys) {
  *   `szacuj` = własny estymator głębi (testy) zamiast modelu; `plikModelu` = gotowy .onnx (bez pobierania).
  */
 export function utworzGlebie(o) {
-    const cfg = { model: process.env.OTAKOS_GLEBIA_MODEL || MODEL_GLEBI, plikModelu: process.env.OTAKOS_GLEBIA_ONNX || null, ...o };
+    const cfg = { model: process.env.OTAKOS_GLEBIA_MODEL || MODEL_GLEBI, modelPy: process.env.OTAKOS_GLEBIA_MODEL_PY || MODEL_GLEBI_PY, plikModelu: process.env.OTAKOS_GLEBIA_ONNX || null, ...o };
+    const aiDir = cfg.aiDir ?? path.dirname(cfg.cacheModeli);
+    /**
+     * Python Katedry z torch + transformers: wskazany (`OTAKOS_GLEBIA_PYTHON`) albo środowisko silnika głosu
+     * (Chatterbox, potem XTTS) — oba mają transformers, a Chatterbox i kartę graficzną. Brak = tor ONNX.
+     */
+    const pythonGlebi = cfg.python ?? (() => {
+        const wsk = process.env.OTAKOS_GLEBIA_PYTHON;
+        if (wsk) return fsSync.existsSync(wsk) ? wsk : null;
+        for (const kat of ['glos_chatterbox', 'voice_env']) {
+            for (const p of [path.join(aiDir, kat, 'Scripts', 'python.exe'), path.join(aiDir, kat, 'bin', 'python')]) if (fsSync.existsSync(p)) return p;
+        }
+        return null;
+    });
     const KAT_GLEBI = path.join(cfg.katalog, 'glebia');
     const KAT_ZADAN = path.join(cfg.katalog, 'studia3d');
     const zadania = new Map();
@@ -200,9 +243,9 @@ export function utworzGlebie(o) {
             const arg = JSON.stringify({ model: plikModelu, rgb: plikRgb, szer: w.szer, wys: w.wys, wyjscie });
             const wynik = await new Promise((ok, zle) => execFile(process.execPath, [SKRYPT_SZACOWANIA, arg], { windowsHide: true, timeout: 10 * 60_000, maxBuffer: 4 * 1024 * 1024 }, (e, out, err) => {
                 if (!e) { try { return ok(JSON.parse(String(out))); } catch { return zle(new Error(`Liczenie głębi oddało nieczytelny wynik: ${String(out).slice(0, 200)}`)); } }
-                const ogon = String(err || '').trim().split(/\r?\n/).filter(Boolean).slice(-3).join(' | ').slice(0, 400);
-                const jak = e.killed ? 'przekroczyło 10 min' : e.signal ? `sygnał ${e.signal}` : `kod ${e.code}`;
-                return zle(new Error(`Liczenie głębi (model „${cfg.model}”) padło — ${jak}${ogon ? `: ${ogon}` : ' (bez komunikatu — zwykle brak pamięci albo błąd natywny ONNX Runtime)'}. Most działa dalej.`));
+                const ogon = sednoBledu(err);
+                const jak = e.killed ? 'przekroczyło 10 min' : e.signal ? `sygnał ${e.signal}` : opisKoduWyjscia(e.code);
+                return zle(new Error(`Liczenie głębi ONNX (model „${cfg.model}”) padło — ${jak}${ogon ? `: ${ogon}` : ''}. Most działa dalej.`));
             }));
             const dane = await fs.readFile(wyjscie);
             if (dane.length < wynik.szer * wynik.wys) throw new Error('Liczenie głębi zapisało za mało danych.');
@@ -210,18 +253,51 @@ export function utworzGlebie(o) {
         } finally { await fs.rm(robocze, { recursive: true, force: true }).catch(() => {}); }
     }
 
+    /** Depth Anything w Pythonie Katedry (`services/glebia/glebia.py`), na karcie graficznej, gdy torch ją widzi. */
+    async function szacujPythonem(plik, py) {
+        const robocze = await fs.mkdtemp(path.join(os.tmpdir(), 'glebia-py-'));
+        try {
+            const wyjscie = path.join(robocze, 'glebia.raw');
+            const arg = JSON.stringify({ obraz: path.resolve(plik), model: cfg.modelPy, wyjscie });
+            // Bez pasków postępu HF (setki linii w stderr zasłaniały prawdziwy błąd).
+            const env = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', HF_HOME: process.env.HF_HOME || path.join(cfg.cacheModeli, 'hf'), HF_HUB_DISABLE_PROGRESS_BARS: '1', TRANSFORMERS_VERBOSITY: 'error', TQDM_DISABLE: '1' };
+            const wynik = await new Promise((ok, zle) => execFile(py, [SKRYPT_PYTHONA, arg], { env, windowsHide: true, timeout: 15 * 60_000, maxBuffer: 8 * 1024 * 1024 }, (e, out, err) => {
+                if (!e) { try { return ok(JSON.parse(String(out).trim().split(/\r?\n/).pop())); } catch { return zle(new Error(`Python głębi oddał nieczytelny wynik: ${String(out).slice(-200)}`)); } }
+                const ogon = sednoBledu(err);
+                const jak = e.killed ? 'przekroczył 15 min' : e.signal ? `sygnał ${e.signal}` : opisKoduWyjscia(e.code);
+                return zle(new Error(`Głębia w Pythonie Katedry (${path.basename(path.dirname(path.dirname(py)))}) padła — ${jak}${ogon ? `: ${ogon}` : ''}`));
+            }));
+            const dane = await fs.readFile(wyjscie);
+            if (dane.length < wynik.szer * wynik.wys) throw new Error('Python głębi zapisał za mało danych.');
+            return { dane: new Uint8Array(dane.buffer, dane.byteOffset, wynik.szer * wynik.wys), szer: wynik.szer, wys: wynik.wys, urzadzenie: wynik.urzadzenie };
+        } finally { await fs.rm(robocze, { recursive: true, force: true }).catch(() => {}); }
+    }
+
+    /** Najpierw Python Katedry (pewny na Windows, GPU), a gdy go nie ma albo padnie — ONNX w osobnym procesie. */
+    async function szacuj(plik) {
+        const py = pythonGlebi();
+        let bladPy = null;
+        if (py) {
+            try { return { ...(await szacujPythonem(plik, py)), silnik: 'python' }; } catch (e) { bladPy = e; }
+        }
+        try { return { ...(await szacujModelem(plik)), silnik: 'onnx' }; } catch (e) {
+            throw bladPy ? new Error(`${bladPy.message}. Zapas ONNX też padł: ${e.message}`) : e;
+        }
+    }
+
     /** Mapa głębi kadru → PNG w schowku (po sumie pliku i nazwie modelu). Zwraca ścieżkę i rozmiar. */
     async function mapaGlebi(kadr) {
         const plik = String(kadr ?? '').trim();
         if (!OBRAZ.test(plik) || !fsSync.existsSync(plik)) throw new Error(`Głębia liczy się z obrazu (png/jpg/webp): ${plik || '(brak)'}`);
-        const suma = createHash('sha1').update(await fs.readFile(plik)).update(cfg.szacuj ? 'test' : cfg.model).digest('hex').slice(0, 20);
+        const nazwaModelu = cfg.szacuj ? 'test' : (pythonGlebi() ? cfg.modelPy : cfg.model);
+        const suma = createHash('sha1').update(await fs.readFile(plik)).update(nazwaModelu).digest('hex').slice(0, 20);
         const cel = path.join(KAT_GLEBI, `${suma}.png`);
         const surowe = `${cel}.raw.json`;
         if (fsSync.existsSync(cel) && fsSync.existsSync(surowe)) return { plik: cel, ...JSON.parse(await fs.readFile(surowe, 'utf8')), zSchowka: true };
-        const g = await (cfg.szacuj ?? szacujModelem)(plik);
+        const g = await (cfg.szacuj ?? szacuj)(plik);
         await fs.mkdir(KAT_GLEBI, { recursive: true });
         await fs.writeFile(cel, pngSzary(g.dane, g.szer, g.wys));
-        const opis = { szer: g.szer, wys: g.wys, model: cfg.szacuj ? 'test' : cfg.model };
+        const opis = { szer: g.szer, wys: g.wys, model: g.silnik === 'python' ? cfg.modelPy : nazwaModelu, silnik: g.silnik ?? null, urzadzenie: g.urzadzenie ?? null };
         await fs.writeFile(surowe, JSON.stringify(opis), 'utf8');
         return { plik: cel, ...opis, zSchowka: false };
     }
@@ -295,7 +371,7 @@ export function utworzGlebie(o) {
     const lista = () => [...zadania.values()].map(opis).reverse();
     async function stan() {
         const p = sciezkaModelu();
-        return { model: cfg.model, licencja: cfg.model === MODEL_GLEBI ? 'Apache-2.0 (Depth Anything V2 Small)' : 'sprawdź kartę modelu', plikModelu: p, modelNaDysku: fsSync.existsSync(p), blender: await cfg.blender.stanBlendera(), zadania: lista().slice(0, 10) };
+        return { model: cfg.model, modelPy: cfg.modelPy, python: pythonGlebi(), licencja: cfg.model === MODEL_GLEBI ? 'Apache-2.0 (Depth Anything V2 Small)' : 'sprawdź kartę modelu', plikModelu: p, modelNaDysku: fsSync.existsSync(p), blender: await cfg.blender.stanBlendera(), zadania: lista().slice(0, 10) };
     }
     /** Do testów: poczekaj na koniec zadania. */
     const czekaj = (id) => zadania.get(id)?.obietnica ?? Promise.resolve();
@@ -303,4 +379,4 @@ export function utworzGlebie(o) {
     return { mapaGlebi, czytajGlebie, ozyw, zadanie, lista, stan, czekaj, pingPong };
 }
 
-export default { siatkaZGlebi, utworzGlebie, wymiaryWejscia, tensorObrazu, bajtyGlebi, pngSzary, MODEL_GLEBI };
+export default { siatkaZGlebi, utworzGlebie, opisKoduWyjscia, MODEL_GLEBI_PY, wymiaryWejscia, tensorObrazu, bajtyGlebi, pngSzary, MODEL_GLEBI };

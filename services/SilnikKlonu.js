@@ -10,7 +10,7 @@
  *     „zależy mi na twórczości, pokazywaniu jej i zarabianiu”). `_OtakOs_AI/glos_chatterbox`. Znak wodny Perth w nagraniu.
  *   • xtts — XTTS-v2 (coqui-tts), ⚖️ CPML = tylko niekomercyjnie; wymaga `zgodaLicencji`. `_OtakOs_AI/voice_env` (stary launcher).
  * Aktywny silnik: `_OtakOs_AI/glos_silnik.txt` (pisze instalator po sukcesie), inaczej pierwszy zainstalowany.
- * Kto chce własny serwer zgodny z kontraktem, kładzie go jako `_OtakOs_AI/voice_server.py` — ma pierwszeństwo.
+ * Kto chce własny serwer zgodny z kontraktem, wskazuje go zmienną OTAKOS_GLOS_SERWER (sam plik w _OtakOs_AI już nie wystarcza).
  * Wyłącz autostart: OTAKOS_GLOS_AUTOSTART=0 (launcher ustawia to sam, gdy odpalił silnik).
  */
 import fsSync from 'fs';
@@ -84,8 +84,13 @@ export function aktywnySilnik(aiDir) {
     const jest = zainstalowane(aiDir);
     return jest.includes(zapisany) ? zapisany : (jest[0] ?? null);
 }
-/** Serwer: własny Suwerena (`_OtakOs_AI/voice_server.py`) albo ten z kodu Katedry. */
-export const serwerGlosu = (aiDir) => [path.join(aiDir, 'voice_server.py'), SERWER_KATEDRY].find((p) => fsSync.existsSync(p)) ?? null;
+/**
+ * Serwer: wskazany wprost (`OTAKOS_GLOS_SERWER`) albo ten z kodu Katedry.
+ * ⚠️ 2026-10-05: dawniej `_OtakOs_AI/voice_server.py` miał pierwszeństwo SAM z siebie — u Suwerena leżał tam stary
+ * serwer startera (Flask + XTTS), a most odpalał go Pythonem Chatterboxa, który Flaska nie ma → „ModuleNotFoundError:
+ * No module named 'flask'” przy każdym starcie. Własny serwer działa teraz tylko wskazany zmienną.
+ */
+export const serwerGlosu = (_aiDir) => [process.env.OTAKOS_GLOS_SERWER, SERWER_KATEDRY].find((p) => p && fsSync.existsSync(p)) ?? null;
 export const maZgode = (aiDir) => fsSync.existsSync(path.join(katalogSrodowiska(aiDir, 'xtts'), PLIK_ZGODY));
 
 async function odpowiada(base) {
