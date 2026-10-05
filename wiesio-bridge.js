@@ -14320,8 +14320,18 @@ app.get('/api/skladnica/plik/:rodzaj/:id/:plik', (req, res) => {
 });
 app.get('/api/skladnica/:rodzaj/:id', (req, res) => ytOdp(res, Skladnica.wczytaj(req.params.rodzaj, req.params.id).then((a) => ({ asset: zAssetem(a) })), 404));
 app.post('/api/skladnica', (req, res) => ytOdp(res, Skladnica.zapisz(req.body ?? {}).then((a) => ({ asset: zAssetem(a) }))));
-app.post('/api/skladnica/:rodzaj/:id/plik', (req, res) => ytOdp(res, Skladnica.dodajPlik(req.params.rodzaj, req.params.id, req.body ?? {})
-    .then(async (plik) => ({ plik, asset: zAssetem(await Skladnica.wczytaj(req.params.rodzaj, req.params.id)) }))));
+// Plik do assetu: dataURL, ścieżka z dysku albo `muzyka` = utwór z biblioteki `_OtakOs_Muzyka` (Music Studio: motyw postaci, klimat sceny).
+app.post('/api/skladnica/:rodzaj/:id/plik', (req, res) => ytOdp(res, (async () => {
+    const dane = { ...(req.body ?? {}) };
+    if (dane.muzyka) {
+        const p = path.resolve(MUSIC_DIR, String(dane.muzyka));
+        if (!p.startsWith(path.resolve(MUSIC_DIR) + path.sep)) throw new Error('Utwór musi leżeć w bibliotece _OtakOs_Muzyka.');
+        dane.sciezka = p;
+        delete dane.muzyka;
+    }
+    const plik = await Skladnica.dodajPlik(req.params.rodzaj, req.params.id, dane);
+    return { plik, asset: zAssetem(await Skladnica.wczytaj(req.params.rodzaj, req.params.id)) };
+})()));
 app.delete('/api/skladnica/:rodzaj/:id/plik', (req, res) => ytOdp(res, Skladnica.usunPlik(req.params.rodzaj, req.params.id, String(req.query.plik ?? ''))));
 app.delete('/api/skladnica/:rodzaj/:id', (req, res) => ytOdp(res, Skladnica.usun(req.params.rodzaj, req.params.id)));
 app.post('/api/skladnica/import/obsada', (_req, res) => ytOdp(res, Wywiady.aktorzy().then((a) => Skladnica.importujObsade(a))));
