@@ -14327,6 +14327,71 @@ app.delete('/api/skladnica/:rodzaj/:id', (req, res) => ytOdp(res, Skladnica.usun
 app.post('/api/skladnica/import/obsada', (_req, res) => ytOdp(res, Wywiady.aktorzy().then((a) => Skladnica.importujObsade(a))));
 app.post('/api/skladnica/import/katalog', (req, res) => ytOdp(res, Skladnica.importujKatalog(req.body ?? {})));
 
+// ── Podłączenia Składnicy: Gry (Assety3D, Studio Gier), Fashion, Reżyser ──
+// 🗿 Bryła z Assety3D → Składnica (bryly). Ten sam asset drugi raz dokłada tylko brakujące pliki.
+async function bryla3DDoSkladnicy(m) {
+    const pliki = ['model.glb', 'obraz.png', 'obraz-zrodlo.png', 'obraz-zrodlo.jpg', 'obraz-zrodlo.jpeg', 'obraz-zrodlo.webp']
+        .map((n) => Assety3D.sciezkaPliku(m.id, n)).filter(Boolean);
+    if (!pliki.some((p) => p.endsWith('model.glb'))) throw new Error(`„${m.nazwa}” nie ma jeszcze modelu (generowanie trwa albo padło).`);
+    return Skladnica.przyjmij({ rodzaj: 'bryly', nazwa: m.nazwa, opis: m.opis, tagi: ['assety3d'], pliki, glowny: pliki.find((p) => p.endsWith('obraz.png')) ?? null, zrodlo: `assety3d:${m.id}` });
+}
+app.post('/api/assety3d/:id/do-skladnicy', (req, res) => ytOdp(res, (async () => {
+    const m = await Assety3D.meta(req.params.id);
+    if (!m) throw new Error('Nie ma takiego assetu 3D.');
+    const w = await bryla3DDoSkladnicy(m);
+    return { ...w, asset: zAssetem(w.asset) };
+})()));
+app.post('/api/skladnica/import/assety3d', (_req, res) => ytOdp(res, (async () => {
+    const wynik = { dodane: [], uzupelnione: [], pominiete: [] };
+    for (const m of await Assety3D.lista()) {
+        try { const w = await bryla3DDoSkladnicy(m); (w.nowy ? wynik.dodane : w.dodano ? wynik.uzupelnione : wynik.pominiete).push(w.asset.id); }
+        catch (e) { wynik.pominiete.push(`${m.id}: ${e.message}`); }
+    }
+    return wynik;
+})()));
+// 👗 Kreacje z TeO Fashion Studio (wizualizacje.json obok Katedry; obrazy w wyjściu ComfyUI, jak czyta je Wystawa).
+app.post('/api/skladnica/import/fashion', (_req, res) => ytOdp(res, (async () => {
+    let lista = null, skad = null;
+    for (const d of ['TeO_Fashion_Studio', 'OtakOs_Fashion']) {
+        const p = path.resolve(process.cwd(), '..', d, 'OtakOs_Fashion', 'wizualizacje.json');
+        try { const w = JSON.parse(await fs.readFile(p, 'utf8')); lista = Array.isArray(w) ? w : w.wizualizacje ?? []; skad = p; break; } catch { /* następny */ }
+    }
+    if (!lista) throw new Error('Nie znalazłem wizualizacji Fashion (../TeO_Fashion_Studio/OtakOs_Fashion/wizualizacje.json) — czy TeO Fashion Studio leży obok Katedry?');
+    const wynik = { dodane: [], pominiete: [], zrodlo: skad };
+    for (const x of lista) {
+        const m = String(x.plik || '').match(/nazwa=([^&]+)(?:&pod=([^&]+))?/);
+        const abs = m ? path.join(COMFY_DIR, 'ComfyUI', 'output', decodeURIComponent(m[2] || ''), decodeURIComponent(m[1])) : null;
+        const nazwa = String(x.tytul || x.nazwa || x.id || '').trim() || (abs ? path.basename(abs) : 'kreacja');
+        if (!abs || !fsSync.existsSync(abs)) { wynik.pominiete.push(`${nazwa}: brak obrazu w wyjściu ComfyUI`); continue; }
+        try {
+            const w = await Skladnica.przyjmij({ rodzaj: 'kreacje', nazwa, opis: String(x.prompt || '').slice(0, 2000), tagi: ['fashion'], pliki: [abs], glowny: abs, zrodlo: `fashion:${x.id || path.basename(abs)}` });
+            (w.nowy ? wynik.dodane : wynik.pominiete).push(w.nowy ? w.asset.id : `${nazwa}: już jest`);
+        } catch (e) { wynik.pominiete.push(`${nazwa}: ${e.message}`); }
+    }
+    return wynik;
+})()));
+// 🎮 Asset Składnicy → gra ze Studia Gier (public/assety + assety.json, które Kodeks czyta w prompcie).
+app.post('/api/skladnica/:rodzaj/:id/do-gry', (req, res) => ytOdp(res, (async () => {
+    const w = await Skladnica.doGry(req.params.rodzaj, req.params.id, { katalogApek: APKI_DIR, projekt: String(req.body?.projekt ?? '') });
+    await Szyna.nadaj({ agent: 'Składnica', rodzaj: 'praca', tresc: `📦 ${req.params.rodzaj}/${req.params.id} → gra „${req.body?.projekt}” (${w.pliki.length} plików)` }).catch(() => {});
+    return w;
+})()));
+// 🎬 Asset Składnicy → biblioteka projektu Reżysera (kopia głównego obrazu jako referencja; karta zostaje w Składnicy).
+const TYP_REZYSERA = { postacie: 'aktor', sceny: 'scena', rekwizyty: 'rekwizyt', kreacje: 'rekwizyt', bryly: 'rekwizyt' };
+app.post('/api/assety/ze-skladnicy', (req, res) => ytOdp(res, (async () => {
+    const { projekt = '', rodzaj = '', id = '' } = req.body ?? {};
+    if (!String(projekt).trim()) throw new Error('Podaj projekt Reżysera.');
+    const a = await Skladnica.wczytaj(String(rodzaj), String(id));
+    const notatki = [a.opis, a.rola && `Rola: ${a.rola}`, `📦 Składnica: ${a.rodzaj}/${a.id}`].filter(Boolean).join('\n');
+    let asset = await Assety.zapisz(ANTIGRAVITY_DIR, projekt, { typ: TYP_REZYSERA[a.rodzaj], nazwa: a.nazwa, notatki });
+    const obraz = a.pliki.find((p) => p.nazwa === a.glowny && p.rodzaj === 'obraz') ?? a.pliki.find((p) => p.rodzaj === 'obraz');
+    if (obraz && obraz.bajtow <= 24 * 1024 * 1024) {
+        const r = await Assety.zapiszReferencje(ANTIGRAVITY_DIR, projekt, { id: asset.id, pole: 'skladnica', nazwaPliku: obraz.nazwa, base64: (await fs.readFile(obraz.sciezka)).toString('base64') });
+        asset = r.asset;
+    }
+    return { asset, zObrazem: !!obraz };
+})()));
+
 // ── 🎙️ Studio Podcastu (services/StudioPodcastu.js) ──
 // Zdjęcia studia (zasiew z public/studio-podcast) + prowadzący z własnym głosem → film wstępowy z jego nagraniem →
 // odcinki: scenariusz z gośćmi z bazy aktorów, głosy, kadry w studiu → katalog montaży projektu `studio-podcast`.

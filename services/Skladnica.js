@@ -264,6 +264,56 @@ export function utworzSkladnice({ katalog, kopiuj = (z, d) => fs.copyFile(z, d) 
         return { dodane };
     }
 
+    /**
+     * Przyjęcie z innego modułu (Assety3D, Fashion…): asset z kopiami plików. Ten sam `zrodlo` drugi raz = ten sam
+     * asset, dokładane są tylko brakujące pliki (po nazwie) — ponowny import nie dubluje.
+     */
+    async function przyjmij({ rodzaj, nazwa, opis = '', tagi: t = [], pliki = [], glowny = null, zrodlo }) {
+        sprawdzRodzaj(rodzaj);
+        if (!zrodlo) throw new Error('Przyjęcie potrzebuje źródła (np. assety3d:<id>).');
+        const istniejace = pliki.filter((p) => p && fsSync.existsSync(p));
+        if (!istniejace.length) throw new Error(`Brak plików do przyjęcia (${zrodlo}).`);
+        let a = (await lista({ rodzaj })).find((x) => x.zrodlo === zrodlo) ?? null;
+        const nowy = !a;
+        if (!a) a = await zapisz({ rodzaj, nazwa, opis, tagi: t, zrodlo });
+        const juz = new Set(a.pliki.map((p) => p.nazwa));
+        let dodano = 0;
+        for (const p of istniejace) {
+            if (juz.has(bezpiecznaNazwaPliku(path.basename(p)))) continue;
+            await dodajPlik(rodzaj, a.id, { sciezka: p });
+            dodano++;
+        }
+        if (glowny && nowy) await zapisz({ rodzaj, id: a.id, glowny: bezpiecznaNazwaPliku(path.basename(glowny)) }).catch(() => {});
+        return { asset: await wczytaj(rodzaj, a.id), nowy, dodano };
+    }
+
+    /**
+     * Asset → gra ze Studia Gier (`_OtakOs_Apki/<projekt>/public/assety` + `assety.json`, ten sam zapis co
+     * Assety3D „Do gry” — Kodeks czyta go w prompcie). Idą obrazy, bryły i dźwięki; klipy wideo nie.
+     */
+    async function doGry(rodzaj, id, { katalogApek, projekt }) {
+        const a = await wczytaj(rodzaj, id);
+        if (!/^[a-z0-9-]{2,48}$/.test(String(projekt || '')) || !fsSync.existsSync(path.join(katalogApek, projekt))) throw new Error('Nie ma takiego projektu gry.');
+        const pliki = a.pliki.filter((p) => ['obraz', 'bryla', 'audio'].includes(p.rodzaj));
+        if (!pliki.length) throw new Error(`„${a.nazwa}” nie ma obrazów, brył ani dźwięków do gry.`);
+        const dir = path.join(katalogApek, projekt, 'public', 'assety');
+        await fs.mkdir(dir, { recursive: true });
+        const plikKat = path.join(dir, 'assety.json');
+        let kat = [];
+        try { kat = JSON.parse(await fs.readFile(plikKat, 'utf8')); } catch { kat = []; }
+        if (!Array.isArray(kat)) kat = [];
+        const skopiowane = [];
+        for (const p of pliki) {
+            const nazwaPliku = `${a.id}-${p.nazwa}`.replace(/\s+/g, '-');
+            await kopiuj(p.sciezka, path.join(dir, nazwaPliku));
+            kat = kat.filter((x) => x.plik !== nazwaPliku);
+            kat.push({ plik: nazwaPliku, nazwa: a.nazwa, rodzaj: p.rodzaj, opis: a.opis || a.rola || '', tagi: a.tagi, zrodlo: `skladnica:${rodzaj}/${a.id}`, dodano: new Date().toISOString() });
+            skopiowane.push(`assety/${nazwaPliku}`);
+        }
+        await fs.writeFile(plikKat, JSON.stringify(kat, null, 2), 'utf8');
+        return { pliki: skopiowane, katalog: kat };
+    }
+
     /** Obrazy i klipy scen — dla modułów, które biorą tła (Sceny dialogowe, Studio Podcastu). */
     async function tla() {
         const out = [];
@@ -273,7 +323,7 @@ export function utworzSkladnice({ katalog, kopiuj = (z, d) => fs.copyFile(z, d) 
         return out;
     }
 
-    return { katalog: korzen, RODZAJE, lista, wczytaj, zapisz, dodajPlik, usunPlik, usun, importujObsade, importujKatalog, tla, sciezkaPliku };
+    return { katalog: korzen, RODZAJE, lista, wczytaj, zapisz, dodajPlik, usunPlik, usun, importujObsade, importujKatalog, przyjmij, doGry, tla, sciezkaPliku };
 }
 
 export default { utworzSkladnice, RODZAJE, idZNazwy, bezpiecznaNazwaPliku, rodzajPliku };
