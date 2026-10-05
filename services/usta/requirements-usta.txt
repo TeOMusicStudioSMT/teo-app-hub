@@ -1,0 +1,14 @@
+# 👄 Usta aktorów (MuseTalk 1.5, MIT — kod i wagi wolno komercyjnie). Instaluje most: POST /api/usta/instaluj.
+# PyTorch dobiera instalator pod sterownik (nvidia-smi); tu reszta. BEZ mmcv/mmpose/mmdet (DWPose) i BEZ face-parsing:
+# twarz znajduje YuNet z OpenCV (MIT), a mieszanie robi własna maska Katedry — parser twarzy MuseTalk jest wyuczony na
+# CelebAMask-HQ, którego umowa zabrania użycia komercyjnego „danych pochodnych”.
+numpy>=1.24.0,<2.0.0
+opencv-python>=4.8.0
+librosa==0.11.0
+soundfile
+einops
+diffusers==0.32.2
+transformers==4.46.3
+accelerate>=0.28.0
+huggingface_hub>=0.26.0,<1.0
+safetensors
