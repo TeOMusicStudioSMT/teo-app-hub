@@ -114,6 +114,14 @@ export const StudioPodcastuPanel: React.FC = () => {
         } catch (e) { setMost(/HTTP 404/.test(String(e)) ? 'stary' : 'milczy'); }
     }, [idStudia]);
     useEffect(() => { void odswiez(); }, [odswiez]);
+    // 📦 Składnica Katedry: obrazy scen (ujęcia) i postaci (zdjęcie prowadzącego) — wspólne dla wszystkich modułów.
+    const [skladnica, setSkladnica] = useState<{ rodzaj: string; nazwa: string; plik: string; sciezka: string }[]>([]);
+    useEffect(() => {
+        zMostu<{ assety: { rodzaj: string; nazwa: string; pliki: { nazwa: string; rodzaj: string; sciezka: string }[] }[] }>('/api/skladnica')
+            .then((d) => setSkladnica(d.assety.flatMap((a) => (a.rodzaj === 'sceny' || a.rodzaj === 'postacie')
+                ? a.pliki.filter((p) => p.rodzaj === 'obraz').map((p) => ({ rodzaj: a.rodzaj, nazwa: a.nazwa, plik: p.nazwa, sciezka: p.sciezka })) : [])))
+            .catch(() => setSkladnica([]));
+    }, []);
     useEffect(() => { try { localStorage.setItem('teo_studio_podcast', idStudia); } catch { /* bez pamięci */ } }, [idStudia]);
     const trwa = !!stan?.postepWstepu || odcinki.some((o) => o.etap === 'nagrywa') || silnik?.instalacja.stan === 'trwa' || !!stan?.studio.ujecia.some((u) => u.ruch?.etap === 'robi') || stanUst?.instalacja.stan === 'trwa';
     useEffect(() => { if (!trwa) return undefined; const t = setInterval(() => void odswiez(), 2500); return () => clearInterval(t); }, [trwa, odswiez]);
@@ -236,10 +244,22 @@ export const StudioPodcastuPanel: React.FC = () => {
                             <input value={host.imie} onChange={(e) => setHost({ ...host, imie: e.target.value })} placeholder="Imię prowadzącego" className={pole} />
                             <div className="flex gap-2"><input value={host.rola} onChange={(e) => setHost({ ...host, rola: e.target.value })} placeholder="Jak prowadzi" className={`${pole} flex-1`} /><input type="color" value={host.kolor} onChange={(e) => setHost({ ...host, kolor: e.target.value })} className="h-7 w-10" /></div>
                             <input value={host.zdjecie} onChange={(e) => setHost({ ...host, zdjecie: e.target.value })} placeholder="Zdjęcie prowadzącego — ścieżka (png/jpg)" className={pole} />
+                            {skladnica.some((x) => x.rodzaj === 'postacie') && (
+                                <select value="" onChange={(e) => e.target.value && setHost({ ...host, zdjecie: e.target.value })} className={pole} title="Zdjęcie prowadzącego z postaci Składnicy Katedry">
+                                    <option value="">📦 zdjęcie ze Składnicy (postacie)…</option>
+                                    {skladnica.filter((x) => x.rodzaj === 'postacie').map((x) => <option key={x.sciezka} value={x.sciezka}>{x.nazwa} — {x.plik}</option>)}
+                                </select>
+                            )}
                             <input value={host.nagranie} onChange={(e) => setHost({ ...host, nagranie: e.target.value })} placeholder={w?.nagranie ? 'Nagranie wstępu — nowa ścieżka (mp3/wav)' : 'Nagranie wstępu — ścieżka (mp3/wav)'} className={pole} />
                             <select value={host.glos} onChange={(e) => setHost({ ...host, glos: e.target.value })} className={pole}>{opcjeGlosow}</select>
                             <button disabled={!!praca || !host.imie.trim()} onClick={zapiszHosta} className={`${guzik} border-cyan-500/40 text-cyan-200`}>{praca === 'host' ? '…' : '💾 Zapisz prowadzącego'}</button>
                             <input value={host.ujecie} onChange={(e) => setHost({ ...host, ujecie: e.target.value })} placeholder="Nowe ujęcie sceny — ścieżka do zdjęcia (najlepiej panorama)" className={pole} />
+                            {skladnica.some((x) => x.rodzaj === 'sceny') && (
+                                <select value="" onChange={(e) => e.target.value && setHost({ ...host, ujecie: e.target.value })} className={pole} title="Ujęcie ze scen Składnicy Katedry">
+                                    <option value="">📦 ujęcie ze Składnicy (sceny)…</option>
+                                    {skladnica.filter((x) => x.rodzaj === 'sceny').map((x) => <option key={x.sciezka} value={x.sciezka}>{x.nazwa} — {x.plik}</option>)}
+                                </select>
+                            )}
                             <button disabled={!!praca || !host.ujecie.trim()} onClick={dodajUjecie} className={`${guzik} border-cyan-500/40 text-cyan-200`}>{praca === 'ujecie' ? '…' : '🖼️ Dodaj ujęcie'}</button>
                             {stan.studio.ujecia.length > 0 && (
                                 <div className="flex flex-wrap gap-1.5 md:col-span-2">

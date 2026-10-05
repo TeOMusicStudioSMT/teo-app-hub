@@ -121,3 +121,42 @@ test('import katalogu: podkatalogi = assety, pliki luzem osobno, tylko obraz/wid
     assert.equal((await S2.wczytaj('sceny', w2.dodane[0])).pliki.length, 3);
     await assert.rejects(S.importujKatalog({ sciezka: kat, rodzaj: 'sceny' }), /już jest w Składnicy/);
 });
+
+test('przyjmij (Assety3D, Fashion): kopie plików, drugi raz ten sam asset i tylko brakujące pliki', async () => {
+    const kat = tmp(), dysk = tmp();
+    const glb = path.join(dysk, 'model.glb'), png = path.join(dysk, 'obraz.png');
+    fs.writeFileSync(glb, 'glb'); fs.writeFileSync(png, 'png');
+    const S = utworzSkladnice({ katalog: kat });
+    const w1 = await S.przyjmij({ rodzaj: 'bryly', nazwa: 'Miecz', opis: 'stal', pliki: [glb], glowny: null, zrodlo: 'assety3d:miecz-ab12' });
+    assert.equal(w1.nowy, true);
+    const w2 = await S.przyjmij({ rodzaj: 'bryly', nazwa: 'Miecz', pliki: [glb, png, path.join(dysk, 'nie-ma.png')], glowny: png, zrodlo: 'assety3d:miecz-ab12' });
+    assert.equal(w2.nowy, false);
+    assert.equal(w2.dodano, 1, 'tylko brakujący obraz');
+    assert.equal(w2.asset.id, w1.asset.id);
+    assert.deepEqual(w2.asset.pliki.map((p) => p.nazwa).sort(), ['model.glb', 'obraz.png']);
+    assert.equal((await S.lista({ rodzaj: 'bryly' })).length, 1);
+    await assert.rejects(S.przyjmij({ rodzaj: 'bryly', nazwa: 'X', pliki: [path.join(dysk, 'brak.glb')], zrodlo: 'assety3d:x' }), /Brak plików/);
+    await assert.rejects(S.przyjmij({ rodzaj: 'bryly', nazwa: 'X', pliki: [glb] }), /źródła/);
+});
+
+test('do gry: obrazy, bryły i dźwięki do public/assety + assety.json (bez klipów), powtórka nie dubluje wpisów', async () => {
+    const kat = tmp(), apki = tmp();
+    fs.mkdirSync(path.join(apki, 'kosmiczna-gra'));
+    const S = utworzSkladnice({ katalog: kat });
+    const a = await S.zapisz({ rodzaj: 'postacie', nazwa: 'Kael', opis: 'pilot' });
+    await S.dodajPlik('postacie', a.id, { nazwa: 'sprite.png', dataURL: png });
+    await S.dodajPlik('postacie', a.id, { nazwa: 'krok.wav', dataURL: png });
+    await S.dodajPlik('postacie', a.id, { nazwa: 'klip.mp4', dataURL: png });
+    const w = await S.doGry('postacie', a.id, { katalogApek: apki, projekt: 'kosmiczna-gra' });
+    assert.deepEqual(w.pliki.sort(), ['assety/kael-krok.wav', 'assety/kael-sprite.png']);
+    await S.doGry('postacie', a.id, { katalogApek: apki, projekt: 'kosmiczna-gra' });
+    const katalogGry = JSON.parse(fs.readFileSync(path.join(apki, 'kosmiczna-gra', 'public', 'assety', 'assety.json'), 'utf8'));
+    assert.equal(katalogGry.length, 2);
+    assert.equal(katalogGry[0].zrodlo, 'skladnica:postacie/kael');
+    assert.equal(katalogGry[0].opis, 'pilot');
+    await assert.rejects(S.doGry('postacie', a.id, { katalogApek: apki, projekt: 'nie-ma' }), /Nie ma takiego projektu gry/);
+    await assert.rejects(S.doGry('postacie', a.id, { katalogApek: apki, projekt: '../x' }), /Nie ma takiego projektu gry/);
+    const pusta = await S.zapisz({ rodzaj: 'sceny', nazwa: 'Tylko klip' });
+    await S.dodajPlik('sceny', pusta.id, { nazwa: 'a.mp4', dataURL: png });
+    await assert.rejects(S.doGry('sceny', pusta.id, { katalogApek: apki, projekt: 'kosmiczna-gra' }), /nie ma obrazów/);
+});

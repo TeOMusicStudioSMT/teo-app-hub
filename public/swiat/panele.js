@@ -229,6 +229,12 @@
       b.replaceWith(miejsce); S.podglad3d(miejsce, url);
     }));
     k.querySelectorAll('[data-o]').forEach((b) => b.addEventListener('click', () => rzezbij(d.obiekty3d[Number(b.dataset.o)], k.querySelector('#o-stan'))));
+    // 📦 Bryła → Składnica Katedry (_OtakOs_Assety/bryly) — tylko przy Katedrze (Straż: /api/skladnica).
+    k.querySelectorAll('[data-do-skladnicy]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true; b.textContent = '📦 …';
+      const w = await fetch(`/api/assety3d/${encodeURIComponent(b.dataset.doSkladnicy)}/do-skladnicy`, json({})).then((r) => r.json()).catch((e) => ({ message: e.message }));
+      b.textContent = w.success ? (w.nowy ? '📦 w Składnicy ✓' : '📦 już była ✓') : `⚠️ ${w.message}`;
+    }));
   }
 
   /** „· runda 2/3 · 7/10" — gdzie projekt jest w rundach doskonalenia i co ostatnio powiedział Sędzia. */
@@ -269,7 +275,7 @@
       if (x.stan === 'blad' || x.stan === 'przerwane') return `<div class="meta" style="color:var(--blad)">${esc(x.blad || 'przerwane (restart mostu) — można ponowić')}</div>`;
       if (x.stan !== 'gotowe' || !x.wynik) return '';
       const w = x.wynik;
-      if (w.asset) return `<div class="meta">bryła: ${esc(w.asset)} <button class="guzik maly" data-glb="${esc(w.asset)}" type="button">Obejrzyj</button></div>`;
+      if (w.asset) return `<div class="meta">bryła: ${esc(w.asset)} <button class="guzik maly" data-glb="${esc(w.asset)}" type="button">Obejrzyj</button>${lokalne() ? ` <button class="guzik maly" data-do-skladnicy="${esc(w.asset)}" type="button" title="Wspólna Składnica Katedry — bryła dla gier, Story i innych modułów">📦 do Składnicy</button>` : ''}</div>`;
       if (w.produkt) return `<div class="meta">w Marketplace: ${esc(w.produkt)} · ${esc(w.cenaGrv)} GRV</div>`;
       if (w.studio) return `<div class="meta">${w.typ === 'gra' ? 'TeO Games Studio' : 'TeO App Studio'}: „${esc(w.studio)}" · ${esc(w.kamieni)} kamieni milowych · produkcja ${esc(w.produkcja)}</div>`;
       return w.plik ? `<div class="meta">plik: ${esc(String(w.plik).split(/[\\/]/).pop())}</div>` : '';

@@ -58,6 +58,10 @@ export const SkladnicaView: React.FC = () => {
     const [imp, setImp] = useState({ sciezka: '', rodzaj: 'sceny' as Rodzaj, tryb: 'podkatalogi' });
     const [zDysku, setZDysku] = useState('');
     const [glosy, setGlosy] = useState<Glosy | null>(null);
+    const [gry, setGry] = useState<{ id: string; nazwa: string; typ: string }[]>([]);
+    const [seriale, setSeriale] = useState<{ slug: string; nazwa: string }[]>([]);
+    const [gra, setGra] = useState('');
+    const [serial, setSerial] = useState('');
     const [praca, setPraca] = useState('');
     const [info, setInfo] = useState<{ ok: boolean; tekst: string } | null>(null);
     const [nadPolem, setNadPolem] = useState(false);
@@ -70,7 +74,12 @@ export const SkladnicaView: React.FC = () => {
             setWybrany((w) => (w ? d.assety.find((a) => a.rodzaj === w.rodzaj && a.id === w.id) ?? null : null));
         } catch (e) { setInfo({ ok: false, tekst: blad(e) }); }
     }, []);
-    useEffect(() => { void odswiez(); zMostu<Glosy>('/api/glos/glosy').then(setGlosy).catch(() => setGlosy(null)); }, [odswiez]);
+    useEffect(() => {
+        void odswiez();
+        zMostu<Glosy>('/api/glos/glosy').then(setGlosy).catch(() => setGlosy(null));
+        zMostu<{ projekty: { id: string; nazwa: string; typ: string }[] }>('/api/appstudio/projekty').then((d) => setGry(d.projekty)).catch(() => setGry([]));
+        zMostu<{ projekty: { slug: string; nazwa: string }[] }>('/api/rezyser/projekty').then((d) => setSeriale(d.projekty)).catch(() => setSeriale([]));
+    }, [odswiez]);
 
     useEffect(() => {
         if (!wybrany) return;
@@ -135,6 +144,22 @@ export const SkladnicaView: React.FC = () => {
     const importObsady = () => akcja('obsada', async () => {
         const d = await zMostu<{ dodane: string[]; pominiete: { id: string; powod: string }[] }>('/api/skladnica/import/obsada', { method: 'POST', body: '{}' });
         return `Obsada → Składnica: ${d.dodane.length} nowych postaci${d.pominiete.length ? `, ${d.pominiete.length} już było` : ''}.`;
+    });
+    const importAssety3D = () => akcja('assety3d', async () => {
+        const d = await zMostu<{ dodane: string[]; uzupelnione: string[]; pominiete: string[] }>('/api/skladnica/import/assety3d', { method: 'POST', body: '{}' });
+        return `Assety3D → Bryły: ${d.dodane.length} nowych${d.uzupelnione.length ? `, ${d.uzupelnione.length} uzupełnionych` : ''}${d.pominiete.length ? `, ${d.pominiete.length} bez zmian/pominiętych` : ''}.`;
+    });
+    const importFashion = () => akcja('fashion', async () => {
+        const d = await zMostu<{ dodane: string[]; pominiete: string[] }>('/api/skladnica/import/fashion', { method: 'POST', body: '{}' });
+        return `Fashion → Kreacje: ${d.dodane.length} nowych${d.pominiete.length ? `, ${d.pominiete.length} pominiętych (już są albo brak obrazu)` : ''}.`;
+    });
+    const doGry = () => wybrany && gra && akcja('gra', async () => {
+        const d = await zMostu<{ pliki: string[] }>(`/api/skladnica/${wybrany.rodzaj}/${encodeURIComponent(wybrany.id)}/do-gry`, { method: 'POST', body: JSON.stringify({ projekt: gra }) });
+        return `🎮 W grze „${gry.find((g) => g.id === gra)?.nazwa ?? gra}”: ${d.pliki.join(', ')} — Kodeks widzi je w assety.json.`;
+    });
+    const doSerialu = () => wybrany && serial && akcja('serial', async () => {
+        const d = await zMostu<{ zObrazem: boolean }>('/api/assety/ze-skladnicy', { method: 'POST', body: JSON.stringify({ projekt: serial, rodzaj: wybrany.rodzaj, id: wybrany.id }) });
+        return `🎬 „${wybrany.nazwa}” w bibliotece projektu „${seriale.find((x) => x.slug === serial)?.nazwa ?? serial}”${d.zObrazem ? ' (z obrazem)' : ' (bez obrazu — asset go nie ma)'}.`;
     });
     const importKatalogu = () => imp.sciezka.trim() && akcja('katalog', async () => {
         const d = await zMostu<{ dodane: string[] }>('/api/skladnica/import/katalog', { method: 'POST', body: JSON.stringify({ ...imp, sciezka: imp.sciezka.trim() }) });
@@ -234,6 +259,24 @@ export const SkladnicaView: React.FC = () => {
                                 <textarea className={`${pole} h-12`} value={zDysku} onChange={(e) => setZDysku(e.target.value)} placeholder={'"F:\\…\\Teogachi2.png"'} />
                                 <button onClick={() => void kopiujZDysku()} disabled={!!praca || !zDysku.trim()} className={`${btn} border-slate-600 text-slate-200`}>⤵</button>
                             </div>
+                            <div className="space-y-1.5 rounded-lg border border-slate-800 bg-black/30 p-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Użyj w module</span>
+                                <div className="flex gap-2">
+                                    <select className={pole} value={gra} onChange={(e) => setGra(e.target.value)} title="Projekt ze Studia Gier/Apek">
+                                        <option value="">🎮 gra / apka…</option>
+                                        {gry.map((g) => <option key={g.id} value={g.id}>{g.typ === 'gra' ? '🎮' : '📱'} {g.nazwa}</option>)}
+                                    </select>
+                                    <button onClick={() => void doGry()} disabled={!!praca || !gra} className={`${btn} shrink-0 border-emerald-500/50 text-emerald-200`}>{praca === 'gra' ? '…' : 'Do gry'}</button>
+                                </div>
+                                <div className="flex gap-2">
+                                    <select className={pole} value={serial} onChange={(e) => setSerial(e.target.value)} title="Projekt Reżysera (biblioteka assetów projektu)">
+                                        <option value="">🎬 projekt Reżysera…</option>
+                                        {seriale.map((x) => <option key={x.slug} value={x.slug}>{x.nazwa}</option>)}
+                                    </select>
+                                    <button onClick={() => void doSerialu()} disabled={!!praca || !serial} className={`${btn} shrink-0 border-violet-500/50 text-violet-200`}>{praca === 'serial' ? '…' : 'Do projektu'}</button>
+                                </div>
+                                <p className="text-[9px] text-slate-600">Story → Aktorzy i Sceny dialogowe, Studio Podcastu (ujęcia) czytają Składnicę same.</p>
+                            </div>
                             <div className="flex items-center justify-between pt-1">
                                 <span className="truncate font-mono text-[9px] text-slate-600" title={wybrany.katalog} data-bez-tlumaczenia>{wybrany.katalog}</span>
                                 <button onClick={() => void usunAsset()} disabled={!!praca} className="text-[11px] text-slate-500 hover:text-rose-300">🗑 do kosza</button>
@@ -257,6 +300,10 @@ export const SkladnicaView: React.FC = () => {
                         <button onClick={() => void importObsady()} disabled={!!praca} className={`${btn} w-full border-fuchsia-500/50 text-fuchsia-200 hover:bg-fuchsia-900/30`}>
                             {praca === 'obsada' ? '…' : '🎭 Obsada aktorów → Postacie'}
                         </button>
+                        <div className="flex gap-2">
+                            <button onClick={() => void importAssety3D()} disabled={!!praca} className={`${btn} flex-1 border-emerald-500/50 text-emerald-200 hover:bg-emerald-900/30`}>{praca === 'assety3d' ? '…' : '🗿 Assety3D → Bryły'}</button>
+                            <button onClick={() => void importFashion()} disabled={!!praca} className={`${btn} flex-1 border-pink-500/50 text-pink-200 hover:bg-pink-900/30`}>{praca === 'fashion' ? '…' : '👗 Fashion → Kreacje'}</button>
+                        </div>
                         <input className={pole} value={imp.sciezka} onChange={(e) => setImp({ ...imp, sciezka: e.target.value })} placeholder={'Katalog z dysku, np. "F:\\TeO_Genesis\\_OtakOs_Wymiar\\aktorzy\\wywiady\\studio"'} />
                         <div className="flex gap-2">
                             <select className={pole} value={imp.rodzaj} onChange={(e) => setImp({ ...imp, rodzaj: e.target.value as Rodzaj })}>
