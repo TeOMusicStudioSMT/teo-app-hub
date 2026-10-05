@@ -194,6 +194,7 @@ import { utworzWywiady } from './services/WywiadAktorow.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzGlebie } from './services/GlebiaKadru.js';
 import { utworzUsta } from './services/UstaAktorow.js';
+import { utworzSkladnice, RODZAJE as RODZAJE_SKLADNICY } from './services/Skladnica.js';
 import { utworzSceny } from './services/ScenyDialogowe.js';
 import { kodDoUzycia } from './services/KodZaproszenia.js';
 import { utworzGlosyStada, tekstDoMowy } from './services/GlosyStada.js';
@@ -14254,7 +14255,10 @@ const Sceny = utworzSceny({
 app.get('/api/sceny', (req, res) => ytOdp(res, Sceny.sceny(req.query.projekt ? String(req.query.projekt) : null).then(async (sceny) => ({ sceny, aktorzy: await Wywiady.aktorzy(), style: Object.entries(STYLE_WYWIADU).map(([id, v]) => ({ id, nazwa: v.nazwa })) })), 500));
 app.get('/api/sceny/odcinki', (req, res) => ytOdp(res, Sceny.odcinki(String(req.query.projekt ?? '')).then((odcinki) => ({ odcinki }))));
 app.post('/api/sceny/z-odcinka', (req, res) => ytOdp(res, Sceny.planZOdcinka(req.body ?? {})));
-app.get('/api/sceny/tla', (req, res) => ytOdp(res, Sceny.tlaProjektu(String(req.query.projekt ?? '')).then((tla) => ({ tla }))));
+// Tła = kadry projektu + sceny ze Składnicy (wspólne lokacje).
+app.get('/api/sceny/tla', (req, res) => ytOdp(res, Promise.all([
+    Sceny.tlaProjektu(String(req.query.projekt ?? '')), Skladnica.tla().catch(() => []),
+]).then(([projekt, skladnica]) => ({ tla: [...projekt, ...skladnica] }))));
 app.post('/api/sceny/przygotuj', (req, res) => ytOdp(res, Sceny.przygotuj(req.body ?? {}).then((scena) => ({ scena }))));
 app.get('/api/sceny/:id', (req, res) => ytOdp(res, Sceny.scena(req.params.id).then((scena) => ({ scena })), 404));
 app.post('/api/sceny/:id/zmien', (req, res) => ytOdp(res, Sceny.zmien(req.params.id, req.body ?? {}).then((scena) => ({ scena }))));
@@ -14298,6 +14302,30 @@ app.post('/api/usta/instaluj', (req, res) => {
     try { return res.json({ success: true, instalacja: Usta.instaluj({ cuda: String(req.body?.cuda ?? 'auto') }) }); }
     catch (e) { return res.status(409).json({ success: false, message: e.message }); }
 });
+
+// ── 📦 Składnica Katedry (services/Skladnica.js) — wspólne assety dla wszystkich modułów w `_OtakOs_Assety` ──
+// Postacie, sceny, rekwizyty, kreacje, bryły 3D. Jeden asset = katalog z plikami + karta.json; katalog wrzucony
+// ręcznie przez Eksplorator też się liczy. Usunięte idzie do `_OtakOs_Assety/_kosz`, nigdy w nicość.
+const SKLADNICA_DIR = process.env.OTAKOS_SKLADNICA || path.join(process.cwd(), '_OtakOs_Assety');
+const Skladnica = utworzSkladnice({ katalog: SKLADNICA_DIR });
+const zAssetem = (a) => ({ ...a, pliki: a.pliki.map((p) => ({ ...p, url: `/api/skladnica/plik/${a.rodzaj}/${encodeURIComponent(a.id)}/${encodeURIComponent(p.nazwa)}` })) });
+app.get('/api/skladnica', (req, res) => ytOdp(res, Skladnica.lista({ rodzaj: String(req.query.rodzaj ?? ''), szukaj: String(req.query.szukaj ?? '') })
+    .then((assety) => ({ assety: assety.map(zAssetem), rodzaje: RODZAJE_SKLADNICY, katalog: SKLADNICA_DIR }))));
+app.get('/api/skladnica/plik/:rodzaj/:id/:plik', (req, res) => {
+    try {
+        const p = Skladnica.sciezkaPliku(req.params.rodzaj, req.params.id, req.params.plik);
+        if (!fsSync.existsSync(p)) return res.status(404).send('Nie ma pliku.');
+        return res.sendFile(p);
+    } catch (e) { return res.status(400).send(e.message); }
+});
+app.get('/api/skladnica/:rodzaj/:id', (req, res) => ytOdp(res, Skladnica.wczytaj(req.params.rodzaj, req.params.id).then((a) => ({ asset: zAssetem(a) })), 404));
+app.post('/api/skladnica', (req, res) => ytOdp(res, Skladnica.zapisz(req.body ?? {}).then((a) => ({ asset: zAssetem(a) }))));
+app.post('/api/skladnica/:rodzaj/:id/plik', (req, res) => ytOdp(res, Skladnica.dodajPlik(req.params.rodzaj, req.params.id, req.body ?? {})
+    .then(async (plik) => ({ plik, asset: zAssetem(await Skladnica.wczytaj(req.params.rodzaj, req.params.id)) }))));
+app.delete('/api/skladnica/:rodzaj/:id/plik', (req, res) => ytOdp(res, Skladnica.usunPlik(req.params.rodzaj, req.params.id, String(req.query.plik ?? ''))));
+app.delete('/api/skladnica/:rodzaj/:id', (req, res) => ytOdp(res, Skladnica.usun(req.params.rodzaj, req.params.id)));
+app.post('/api/skladnica/import/obsada', (_req, res) => ytOdp(res, Wywiady.aktorzy().then((a) => Skladnica.importujObsade(a))));
+app.post('/api/skladnica/import/katalog', (req, res) => ytOdp(res, Skladnica.importujKatalog(req.body ?? {})));
 
 // ── 🎙️ Studio Podcastu (services/StudioPodcastu.js) ──
 // Zdjęcia studia (zasiew z public/studio-podcast) + prowadzący z własnym głosem → film wstępowy z jego nagraniem →

@@ -196,15 +196,16 @@ export function utworzWywiady(o) {
         const id = dane.id && /^[a-z0-9-]{1,40}$/.test(dane.id) ? dane.id : slug(imie) || `aktor-${cfg.teraz().toString(36)}`;
         const zdjecie = dane.zdjecie ? String(dane.zdjecie).trim() : null;
         if (zdjecie && (!OBRAZ.test(zdjecie) || !fsSync.existsSync(zdjecie))) throw new Error(`Zdjęcie aktora musi być istniejącym obrazem (png/jpg/webp): ${zdjecie}`);
-        // Wideo aktora (krótki klip w jego roli): w Studiu Podcastu gra na karcie gościa zamiast zdjęcia. Pusty/null = zdejmij.
-        const wideo = dane.wideo ? String(dane.wideo).trim() : null;
+        // Wideo aktora (krótki klip w jego roli): w Studiu Podcastu gra na karcie gościa zamiast zdjęcia. Pusty/null = zdejmij;
+        // brak pola = zostaw (formularz Story nie zna klipu ustawionego w Studiu Podcastu — zapis go nie kasuje).
+        const l = await aktorzy();
+        const wideo = Object.hasOwn(dane, 'wideo') ? (dane.wideo ? String(dane.wideo).trim() : null) : (l.find((a) => a.id === id)?.wideo ?? null);
         if (wideo && (!WIDEO.test(wideo) || !fsSync.existsSync(wideo))) throw new Error(`Wideo aktora musi być istniejącym plikiem (mp4/mov/webm/mkv): ${wideo}`);
         const glos = normalizujGlos(dane.glos);
         const aktor = {
             id, imie, rola: String(dane.rola ?? '').trim().slice(0, 600), projekt: dane.projekt ? String(dane.projekt).slice(0, 80) : null,
             zdjecie, wideo, glos, kolor: /^#[0-9a-f]{6}$/i.test(dane.kolor ?? '') ? dane.kolor : '#f4c84a', zmieniono: czas(),
         };
-        const l = await aktorzy();
         await pisz(PLIK_AKTOROW, [...l.filter((a) => a.id !== id), aktor]);
         return aktor;
     }

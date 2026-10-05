@@ -50,6 +50,7 @@ type View =
     | 'twoje-biznesy'
     | 'swiat'
     | 'telefon'
+    | 'skladnica'
     | 'aktualizacja';
 
 interface LoungeNavigationProps {
@@ -99,6 +100,7 @@ const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string; 
     // ── Świat i telefon — stado TeOgochi poza Dashboardem (2026-09-25: „nie mogę znaleźć Stołu") ──
     { id: 'swiat',         label: '🧱 Świat klocków', icon: <span className="text-base">🧱</span>, desc: 'Płytki TeOgochi z prawdziwych dzieł, projekty stada, film klockowy', grupa: 'swiat' },
     { id: 'telefon',       label: '📱 StoL i Delegat', icon: <span className="text-base">📱</span>, desc: 'Parowanie telefonu (StoL) i Delegat Mobilny przez tunel', grupa: 'swiat' },
+    { id: 'skladnica',     label: '📦 Składnica',    icon: <span className="text-base">📦</span>, desc: 'Wspólne postacie, sceny, rekwizyty, kreacje i bryły dla wszystkich modułów', grupa: 'swiat' },
     // ── Działy w budowie — kandydaci do własnych kafelków ──
     { id: 'twoje-biznesy', label: '🏢 TWOJE BIZNESY', icon: <span className="text-base">🏢</span>, desc: 'Rejestr działalności, głos agentów, Służba w GRV → Freedom Studio', grupa: 'departamenty' },
     { id: 'sonic',         label: 'Kolektor Soniczny', icon: <span className="text-base">🎼</span>, desc: 'Zbiór wektorów z własnej muzyki (Filar I)', grupa: 'departamenty' },

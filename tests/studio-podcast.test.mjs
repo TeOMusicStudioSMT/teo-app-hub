@@ -208,6 +208,7 @@ test('wideo aktora: pole w bazie (musi istnieć, tylko wideo), zdjęcie zostaje,
     assert.equal(a.wideo, klip);
     assert.equal(a.zdjecie, path.join(PACZKA, 'prowadzacy.jpg'));
     assert.equal((await W.zapiszAktora({ ...a, rola: 'Pilot' })).wideo, klip, 'zapis z istniejącymi polami (np. nowy głos) zachowuje klip');
+    assert.equal((await W.zapiszAktora({ id: a.id, imie: 'Kael', rola: 'Pilot z Story' })).wideo, klip, 'formularz bez pola wideo (Story) nie kasuje klipu');
     assert.equal((await W.zapiszAktora({ ...a, wideo: null })).wideo, null, 'null zdejmuje klip');
 
     // argumenty: klip = -stream_loop zamiast -loop, obraz dalej -loop
