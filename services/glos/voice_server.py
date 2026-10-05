@@ -227,11 +227,26 @@ class Obsluga(BaseHTTPRequestHandler):
         pass
 
 
+def melduj(tekst):
+    """Wypis, który nie wywróci serwera: Windows bez konsoli ma stdout w cp1252 (bez „ł”) albo wcale (pythonw)."""
+    try:
+        strumien = sys.stdout
+        if strumien is None:
+            return
+        try:
+            strumien.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+        print(tekst, file=strumien, flush=True)
+    except Exception:  # noqa: BLE001 — meldunek nigdy nie jest powodem, żeby silnik padł
+        pass
+
+
 def main():
     serwer = ThreadingHTTPServer(("127.0.0.1", PORT), Obsluga)
     if os.environ.get("OTAKOS_GLOS_BEZ_MODELU") != "1":   # testy kontraktu HTTP ładują własny silnik
         threading.Thread(target=zaladuj, daemon=True).start()
-    print(f"[Głos] silnik klonu {NAZWY[SILNIK]} na http://127.0.0.1:{PORT}", flush=True)
+    melduj(f"[Głos] silnik klonu {NAZWY[SILNIK]} na http://127.0.0.1:{PORT}")
     serwer.serve_forever()
 
 

@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { instaluj, stanInstalacji, serwerGlosu, maZgode, aktywnySilnik, zainstalowane, SERWER_KATEDRY } from '../services/SilnikKlonu.js';
+import * as SilnikKlonu from '../services/SilnikKlonu.js';
 
 const python = (() => { try { execFileSync('python3', ['--version']); return 'python3'; } catch { return null; } })();
 const czekaj = async (f, ms = 15000) => { const t0 = Date.now(); for (;;) { const w = await f().catch(() => null); if (w) return w; if (Date.now() - t0 > ms) throw new Error('Za długo.'); await new Promise((r) => setTimeout(r, 150)); } };
@@ -142,4 +143,77 @@ test('instalator XTTS: bez zgody na CPML odmawia; z nią — voice_env, torch na
     assert.equal(aktywnySilnik(ai), 'xtts', 'wybór z instalacji wygrywa z kolejnością');
     fs.rmSync(path.join(ai, 'glos_silnik.txt'));
     assert.equal(aktywnySilnik(ai), 'chatterbox', 'bez wyboru — Chatterbox pierwszy');
+});
+
+test('autostart: szybkie padnięcia → przerwy 1/5 min, po 3 stop (bez pętli odpaleń); Windows: pythonw bez detached, UTF-8, dziennik w powodzie', async () => {
+    const { EventEmitter } = await import('node:events');
+    const ai = fs.mkdtempSync(path.join(os.tmpdir(), 'glos-auto-'));
+    // „zainstalowany” Chatterbox: python w środowisku (Windows: Scripts/python.exe + pythonw.exe)
+    fs.mkdirSync(path.join(ai, 'glos_chatterbox', 'Scripts'), { recursive: true });
+    fs.writeFileSync(path.join(ai, 'glos_chatterbox', 'Scripts', 'python.exe'), '');
+    fs.writeFileSync(path.join(ai, 'glos_chatterbox', 'Scripts', 'pythonw.exe'), '');
+    const base = 'http://127.0.0.1:9';   // nikt nie słucha: silnik „nie odpowiada”, port wolny
+    let czas = 1_000_000;
+    const odpalenia = [];
+    const spawnFn = (bin, args, opcje) => {
+        const p = new EventEmitter();
+        p.pid = 4000 + odpalenia.length; p.unref = () => {};
+        odpalenia.push({ bin, opcje });
+        fs.appendFileSync(SilnikKlonu.plikDziennika(ai), "UnicodeEncodeError: 'charmap' codec can't encode character\n");
+        setImmediate(() => p.emit('exit', 1));   // pada od razu, jak u Suwerena
+        return p;
+    };
+    const z = (dt = 0) => { czas += dt; return SilnikKlonu.zapewnij({ aiDir: ai, base, log: () => {}, spawnFn, teraz: () => czas, platforma: 'win32' }); };
+    const tick = () => new Promise((r) => setImmediate(r));
+    SilnikKlonu.wyzerujPadniecia();
+
+    await z(); await tick();
+    assert.equal(odpalenia.length, 1);
+    const o = odpalenia[0];
+    assert.match(o.bin, /pythonw\.exe$/, 'Windows: pythonw — bez okna konsoli');
+    assert.equal(o.opcje.detached, false, 'Windows: bez detached (odłączony proces dostawał własne okno)');
+    assert.equal(o.opcje.env.PYTHONIOENCODING, 'utf-8');
+    assert.equal(typeof o.opcje.stdio[1], 'number', 'wyjście silnika do dziennika');
+    let s = SilnikKlonu.stanSilnika();
+    assert.equal(s.porazki, 1);
+    assert.match(s.powod, /kolejna próba za 1 min/);
+    assert.match(s.powod, /UnicodeEncodeError/, 'powód niesie ogon dziennika');
+
+    for (let i = 0; i < 20; i++) await z(2500);   // panel pyta co 2,5 s przez 50 s
+    assert.equal(odpalenia.length, 1, 'w przerwie żadnego odpalenia');
+    await z(15_000); await tick();                 // po minucie — druga próba
+    assert.equal(odpalenia.length, 2);
+    assert.match(SilnikKlonu.stanSilnika().powod, /za 5 min/);
+    await z(60_000);
+    assert.equal(odpalenia.length, 2);
+    await z(5 * 60_000); await tick();             // trzecia próba → stop
+    assert.equal(odpalenia.length, 3);
+    s = SilnikKlonu.stanSilnika();
+    assert.match(s.powod, /padł 3× zaraz po starcie, autostart wstrzymany/);
+    await z(24 * 3600_000);
+    assert.equal(odpalenia.length, 3, 'po 3 padnięciach most nie odpala już sam');
+
+    SilnikKlonu.wyzerujPadniecia();                // instalacja / zmiana silnika wznawia
+    await z(); await tick();
+    assert.equal(odpalenia.length, 4);
+    // inna platforma: detached jak dawniej, zwykły python
+    SilnikKlonu.wyzerujPadniecia();
+    fs.mkdirSync(path.join(ai, 'linux', 'glos_chatterbox', 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(ai, 'linux', 'glos_chatterbox', 'bin', 'python'), '');
+    await SilnikKlonu.zapewnij({ aiDir: path.join(ai, 'linux'), base, log: () => {}, spawnFn, teraz: () => czas, platforma: 'linux' }); await tick();
+    assert.equal(odpalenia.at(-1).opcje.detached, true);
+    assert.match(odpalenia.at(-1).bin, /bin[\\/]python$/);
+    SilnikKlonu.wyzerujPadniecia();
+});
+
+test('voice_server.py nie pada od meldunku startowego bez UTF-8 (Windows w tle: stdout cp1252, „ł” w „[Głos]”)', { skip: !python && 'brak python3' }, async () => {
+    const port = 5000 + Math.floor(Math.random() * 400) + 100;
+    const p = spawn(python, [SERWER_KATEDRY], { env: { ...process.env, PYTHONIOENCODING: 'cp1252', PYTHONUTF8: '0', OTAKOS_GLOS_BEZ_MODELU: '1', OTAKOS_GLOS_PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let err = '';
+    p.stderr.on('data', (b) => { err += b; });
+    try {
+        const r = await czekaj(async () => { const x = await fetch(`http://127.0.0.1:${port}/`); return x.ok && x.json(); }, 10000);
+        assert.ok(r.ok !== false, 'odpowiada na GET /');
+        assert.equal(p.exitCode, null, `serwer żyje (stderr: ${err.slice(-300)})`);
+    } finally { p.kill(); }
 });
