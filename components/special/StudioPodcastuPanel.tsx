@@ -266,12 +266,12 @@ export const StudioPodcastuPanel: React.FC = () => {
                                                 {r?.plik && r.etap !== 'robi' && <button disabled={!!praca} onClick={() => void doZdjecia(u)} title="Wróć do zdjęcia" className="rounded border border-slate-700 px-1 py-0.5 text-slate-400">↩</button>}
                                             </div>
                                             {etap && <span className="text-[10px] text-cyan-300">🧊 {etap}…</span>}
-                                            {r?.blad && <span className="text-[10px] text-amber-300" title={r.blad}>⚠ {r.blad.slice(0, 140)}</span>}
+                                            {r?.blad && <span className="text-[10px] text-amber-300" title={r.blad}>⚠ {r.blad.slice(0, 420)}</span>}
                                         </div>
                                     );
                                 })}
                             </div>
-                            <p className="text-[10px] leading-relaxed text-slate-500">🧊 Ożyw = mapa głębi ze zdjęcia (Depth Anything V2 Small, lokalnie; pierwszy raz pobiera model, kilkadziesiąt MB) → bryła w Blenderze → klip z łagodnym ruchem kamery. Gotowy klip gra zamiast zdjęcia we wstępie, wideo z gośćmi i odcinku. To 2.5D: za meblami nie ma tego, czego aparat nie widział — dlatego ruchy są małe.</p>
+                            <p className="text-[10px] leading-relaxed text-slate-500">🧊 Ożyw = mapa głębi ze zdjęcia (Depth Anything V2 Small, lokalnie — w Pythonie silnika głosu, na karcie graficznej, gdy jest; pierwszy raz pobiera model ~100 MB) → bryła w Blenderze → klip z łagodnym ruchem kamery. Gotowy klip gra zamiast zdjęcia we wstępie, wideo z gośćmi i odcinku. To 2.5D: za meblami nie ma tego, czego aparat nie widział — dlatego ruchy są małe.</p>
                         </div>
                     )}
 

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
-import { siatkaZGlebi, utworzGlebie, pngSzary, wymiaryWejscia, tensorObrazu, bajtyGlebi } from '../services/GlebiaKadru.js';
+import { siatkaZGlebi, utworzGlebie, pngSzary, wymiaryWejscia, tensorObrazu, bajtyGlebi, opisKoduWyjscia, MODEL_GLEBI_PY } from '../services/GlebiaKadru.js';
 import * as Blender from '../services/Blender.js';
 import { utworzStudioPodcastu, argumentyKadru, argumentyWstepu, filtrTla } from '../services/StudioPodcastu.js';
 import { opisz } from '../services/Montazownia.js';
@@ -157,7 +157,7 @@ test('PRAWDZIWY tor ONNX (atrapa z kontraktem Depth Anything): ffmpeg skaluje, O
     const zepsuty = path.join(tmp, 'zepsuty.onnx');
     fs.writeFileSync(zepsuty, 'to nie jest model ONNX');
     const Z = utworzGlebie({ katalog: path.join(tmp, 'z'), cacheModeli: tmp, ffmpeg: ffmpegPath, blender: Blender, plikModelu: zepsuty });
-    await assert.rejects(Z.mapaGlebi(kadr), /Liczenie głębi \(model .*\) padło — kod 1: .*Most działa dalej\./);
+    await assert.rejects(Z.mapaGlebi(kadr), /Liczenie głębi ONNX \(model .*\) padło — kod 1: .*Error.*Most działa dalej\./);
 
     const B = utworzGlebie({ katalog: tmp, cacheModeli: tmp, ffmpeg: ffmpegPath, blender: Blender, plikModelu: path.join(tmp, 'nie-ma.onnx') });
     await assert.rejects(B.mapaGlebi(path.join(PACZKA, 'ujecie-plaza.jpg')), /OTAKOS_GLEBIA_ONNX/);
@@ -168,6 +168,57 @@ test('PRAWDZIWY tor ONNX (atrapa z kontraktem Depth Anything): ffmpeg skaluje, O
         await assert.rejects(C.mapaGlebi(path.join(PACZKA, 'ujecie-plaza.jpg')), /Nie mogę pobrać modelu głębi.*OTAKOS_GLEBIA_ONNX/);
         assert.ok(!fs.existsSync(path.join(tmp, 'pusty', 'onnx-community_depth-anything-v2-small', 'model.onnx')));
     } finally { if (stary === undefined) delete process.env.HF_ENDPOINT; else process.env.HF_ENDPOINT = stary; }
+});
+
+const python3 = (() => { try { execFileSync('python3', ['-c', 'import numpy']); return 'python3'; } catch { return null; } })();
+
+test('głębia w Pythonie Katedry (atrapy torch/transformers): pierwsza w kolejce, model HF, kształt (1,H,W); padnie → zapas ONNX; kody Windows po ludzku', { skip: !python3 && 'brak python3 z numpy' }, async () => {
+    const tmp = tmpDir('py');
+    const atrapy = path.join(tmp, 'atrapy');
+    fs.mkdirSync(atrapy);
+    fs.writeFileSync(path.join(atrapy, 'torch.py'), 'class cuda:\n    @staticmethod\n    def is_available():\n        return False\n');
+    fs.writeFileSync(path.join(atrapy, 'transformers.py'), [
+        'import json, os, numpy as np',
+        'def pipeline(task, model=None, device=None):',
+        '    assert task == "depth-estimation"',
+        '    if os.environ.get("ATRAPA_PADA"): raise RuntimeError("CUDA out of memory (atrapa)")',
+        '    def f(obraz):',
+        '        open(os.environ["ATRAPA_SLAD"], "w").write(json.dumps({"model": model, "device": device, "obraz": obraz}))',
+        '        d = np.tile(np.linspace(0, 5, 30, dtype="float32"), (20, 1))[None, :, :]',
+        '        return {"predicted_depth": d}',
+        '    return f',
+    ].join('\n'));
+    const slad = path.join(tmp, 'slad.json');
+    const env0 = { PYTHONPATH: process.env.PYTHONPATH, ATRAPA_SLAD: process.env.ATRAPA_SLAD, ATRAPA_PADA: process.env.ATRAPA_PADA };
+    process.env.PYTHONPATH = atrapy; process.env.ATRAPA_SLAD = slad;
+    try {
+        const kadr = path.join(PACZKA, 'ujecie-plaza.jpg');
+        const G = utworzGlebie({ katalog: path.join(tmp, 'a'), cacheModeli: path.join(tmp, 'cache'), ffmpeg: ffmpegPath, blender: Blender, python: () => python3, plikModelu: path.resolve('tests/fixtures/glebia-atrapa.onnx') });
+        const m = await G.mapaGlebi(kadr);
+        assert.equal(m.silnik, 'python');
+        assert.equal(m.model, MODEL_GLEBI_PY);
+        assert.equal(m.urzadzenie, 'cpu');
+        assert.deepEqual([m.szer, m.wys], [30, 20], 'kształt (1,H,W) spłaszczony do (H,W)');
+        const s1 = JSON.parse(fs.readFileSync(slad, 'utf8'));
+        assert.equal(s1.model, MODEL_GLEBI_PY); assert.equal(s1.device, 'cpu'); assert.equal(s1.obraz, kadr);
+        const g = await G.czytajGlebie(m.plik);
+        assert.ok(g.dane[0] === 0 && g.dane[29] === 255, 'normalizacja 0–255');
+
+        // Python padnie → ten sam kadr liczy zapas ONNX (atrapa), powód Pythona nie ginie, gdy padną oba
+        process.env.ATRAPA_PADA = '1';
+        const H = utworzGlebie({ katalog: path.join(tmp, 'b'), cacheModeli: path.join(tmp, 'cache'), ffmpeg: ffmpegPath, blender: Blender, python: () => python3, plikModelu: path.resolve('tests/fixtures/glebia-atrapa.onnx') });
+        const m2 = await H.mapaGlebi(kadr);
+        assert.equal(m2.silnik, 'onnx');
+        const zepsuty = path.join(tmp, 'zepsuty.onnx');
+        fs.writeFileSync(zepsuty, 'nie model');
+        const Z = utworzGlebie({ katalog: path.join(tmp, 'c'), cacheModeli: path.join(tmp, 'cache'), ffmpeg: ffmpegPath, blender: Blender, python: () => python3, plikModelu: zepsuty });
+        await assert.rejects(Z.mapaGlebi(kadr), /Głębia w Pythonie Katedry .* padła — kod 1: .*CUDA out of memory \(atrapa\)\. Zapas ONNX też padł: Liczenie głębi ONNX/);
+    } finally {
+        for (const [k, v] of Object.entries(env0)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+    assert.match(opisKoduWyjscia(3228369023), /^0xC06D007F: .*System32\\onnxruntime\.dll/);
+    assert.match(opisKoduWyjscia(-1073741819), /^0xC0000005: naruszenie dostępu/);
+    assert.equal(opisKoduWyjscia(1), 'kod 1');
 });
 
 test('PRAWDZIWA pętla ping-pong: klip w przód i wstecz, dwa razy dłuższy, ostatnia klatka = pierwsza', async () => {

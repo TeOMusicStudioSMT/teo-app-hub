@@ -11,12 +11,16 @@ import * as SilnikKlonu from '../services/SilnikKlonu.js';
 const python = (() => { try { execFileSync('python3', ['--version']); return 'python3'; } catch { return null; } })();
 const czekaj = async (f, ms = 15000) => { const t0 = Date.now(); for (;;) { const w = await f().catch(() => null); if (w) return w; if (Date.now() - t0 > ms) throw new Error('Za długo.'); await new Promise((r) => setTimeout(r, 150)); } };
 
-test('serwer z kodu Katedry istnieje; własny _OtakOs_AI/voice_server.py ma pierwszeństwo', () => {
+test('serwer z kodu Katedry jest domyślny; stary _OtakOs_AI/voice_server.py (Flask startera) NIE przejmuje; własny tylko przez OTAKOS_GLOS_SERWER', () => {
     assert.ok(fs.existsSync(SERWER_KATEDRY), 'services/glos/voice_server.py');
     const ai = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-'));
     assert.equal(serwerGlosu(ai), SERWER_KATEDRY);
-    fs.writeFileSync(path.join(ai, 'voice_server.py'), '#');
-    assert.equal(serwerGlosu(ai), path.join(ai, 'voice_server.py'));
+    fs.writeFileSync(path.join(ai, 'voice_server.py'), 'from flask import Flask');
+    assert.equal(serwerGlosu(ai), SERWER_KATEDRY, 'plik w _OtakOs_AI sam z siebie nie wygrywa');
+    const stary = process.env.OTAKOS_GLOS_SERWER;
+    process.env.OTAKOS_GLOS_SERWER = path.join(ai, 'voice_server.py');
+    try { assert.equal(serwerGlosu(ai), path.join(ai, 'voice_server.py')); }
+    finally { if (stary === undefined) delete process.env.OTAKOS_GLOS_SERWER; else process.env.OTAKOS_GLOS_SERWER = stary; }
 });
 
 test('voice_server.py: kontrakt HTTP mostu — GET / mówi silnik i stan modelu, POST /api/tts bez modelu = 503 z powodem', { skip: !python && 'brak python3' }, async () => {
