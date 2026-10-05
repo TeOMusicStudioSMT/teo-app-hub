@@ -26,6 +26,10 @@ import path from 'path';
 import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { PNG } from 'pngjs';
+import os from 'os';
+import { fileURLToPath } from 'url';
+
+const SKRYPT_SZACOWANIA = path.join(path.dirname(fileURLToPath(import.meta.url)), 'glebia', 'szacuj.mjs');
 
 export const MODEL_GLEBI = 'onnx-community/depth-anything-v2-small';
 export const OBRAZ = /\.(png|jpe?g|webp|bmp)$/i;
@@ -143,7 +147,6 @@ export function utworzGlebie(o) {
     const KAT_GLEBI = path.join(cfg.katalog, 'glebia');
     const KAT_ZADAN = path.join(cfg.katalog, 'studia3d');
     const zadania = new Map();
-    let sesja = null;
 
     const ff = (args, cwd) => new Promise((ok, zle) => execFile(cfg.ffmpeg, ['-hide_banner', '-loglevel', 'error', ...args], { cwd, windowsHide: true, timeout: 10 * 60_000, maxBuffer: 16 * 1024 * 1024 },
         (e, _o, err) => (e ? zle(new Error(`ffmpeg: ${String(err || e.message).trim().split('\n').slice(-3).join(' | ').slice(0, 400)}`)) : ok())));
@@ -179,21 +182,32 @@ export function utworzGlebie(o) {
     const rgbObrazu = (plik, szer, wys) => new Promise((ok, zle) => execFile(cfg.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-i', plik, '-vf', `scale=${szer}:${wys}:flags=bicubic`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
         { windowsHide: true, timeout: 120_000, maxBuffer: szer * wys * 3 + 1024, encoding: 'buffer' }, (e, out, err) => (e ? zle(new Error(`ffmpeg: ${String(err || e.message).slice(0, 300)}`)) : ok(out))));
 
-    /** Depth Anything (ONNX Runtime, CPU): obraz → dysparycja w rozdzielczości wejścia modelu. */
+    /**
+     * Depth Anything (ONNX Runtime, CPU): obraz → dysparycja w rozdzielczości wejścia modelu.
+     * Model liczy się w OSOBNYM procesie (`services/glebia/szacuj.mjs`): ONNX Runtime jest natywny — jego twardy błąd
+     * albo brak pamięci zabijał cały most („padła, jak ruszyło ożywianie”, Suweren 2026-10-05). Teraz pada tylko
+     * ten proces, a powód (kod wyjścia, ogon stderr) wraca jako zwykły błąd zadania.
+     */
     async function szacujModelem(plik) {
-        if (!sesja) {
-            sesja = (async () => {
-                const ort = (await import('onnxruntime-node')).default ?? (await import('onnxruntime-node'));
-                return ort.InferenceSession.create(await model()).then((s) => ({ s, ort }));
-            })().catch((e) => { sesja = null; throw new Error(`Model głębi „${cfg.model}” się nie wczytał: ${e.message}`); });
-        }
-        const { s, ort } = await sesja;
+        const plikModelu = await model();
         const w = wymiaryWejscia(...Object.values(await wymiaryObrazu(plik)));
         const rgb = await rgbObrazu(plik, w.szer, w.wys);
         if (rgb.length < w.szer * w.wys * 3) throw new Error('ffmpeg oddał za mało pikseli obrazu.');
-        const wyj = (await s.run({ [s.inputNames[0]]: new ort.Tensor('float32', tensorObrazu(rgb, w.szer, w.wys), [1, 3, w.wys, w.szer]) }))[s.outputNames[0]];
-        const [wys, szer] = wyj.dims.slice(-2);
-        return { dane: bajtyGlebi(wyj.data), szer, wys };
+        const robocze = await fs.mkdtemp(path.join(os.tmpdir(), 'glebia-'));
+        try {
+            const plikRgb = path.join(robocze, 'rgb.raw'), wyjscie = path.join(robocze, 'glebia.raw');
+            await fs.writeFile(plikRgb, rgb);
+            const arg = JSON.stringify({ model: plikModelu, rgb: plikRgb, szer: w.szer, wys: w.wys, wyjscie });
+            const wynik = await new Promise((ok, zle) => execFile(process.execPath, [SKRYPT_SZACOWANIA, arg], { windowsHide: true, timeout: 10 * 60_000, maxBuffer: 4 * 1024 * 1024 }, (e, out, err) => {
+                if (!e) { try { return ok(JSON.parse(String(out))); } catch { return zle(new Error(`Liczenie głębi oddało nieczytelny wynik: ${String(out).slice(0, 200)}`)); } }
+                const ogon = String(err || '').trim().split(/\r?\n/).filter(Boolean).slice(-3).join(' | ').slice(0, 400);
+                const jak = e.killed ? 'przekroczyło 10 min' : e.signal ? `sygnał ${e.signal}` : `kod ${e.code}`;
+                return zle(new Error(`Liczenie głębi (model „${cfg.model}”) padło — ${jak}${ogon ? `: ${ogon}` : ' (bez komunikatu — zwykle brak pamięci albo błąd natywny ONNX Runtime)'}. Most działa dalej.`));
+            }));
+            const dane = await fs.readFile(wyjscie);
+            if (dane.length < wynik.szer * wynik.wys) throw new Error('Liczenie głębi zapisało za mało danych.');
+            return { dane: new Uint8Array(dane.buffer, dane.byteOffset, wynik.szer * wynik.wys), szer: wynik.szer, wys: wynik.wys };
+        } finally { await fs.rm(robocze, { recursive: true, force: true }).catch(() => {}); }
     }
 
     /** Mapa głębi kadru → PNG w schowku (po sumie pliku i nazwie modelu). Zwraca ścieżkę i rozmiar. */

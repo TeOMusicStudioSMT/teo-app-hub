@@ -17130,6 +17130,18 @@ function handleTaskCompletion(completedTask) {
     }
 }
 
+// 🛟 Most nie umiera po cichu (Suweren 2026-10-05: „padła”, gdy ruszyło ożywianie — okno mostu zniknęło bez śladu,
+// panel pokazał tylko „Failed to fetch”). Do dziś JEDEN nieobsłużony błąd gdziekolwiek kończył cały proces. Teraz
+// trafia do konsoli i do `_OtakOs_Wymiar/most-bledy.log` z pełnym śladem, a most pracuje dalej. To siatka
+// bezpieczeństwa, nie naprawa — każdy wpis w tym pliku to błąd do znalezienia i poprawienia u źródła.
+const zapiszBladMostu = (rodzaj, e) => {
+    const tekst = `${new Date().toISOString()} [${rodzaj}] ${e?.stack || e}\n`;
+    console.error(`🛟 [Most] ${rodzaj}: ${e?.stack || e}`);
+    try { fsSync.mkdirSync(ANTIGRAVITY_DIR, { recursive: true }); fsSync.appendFileSync(path.join(ANTIGRAVITY_DIR, 'most-bledy.log'), tekst); } catch { /* sam log nie może wywrócić mostu */ }
+};
+process.on('unhandledRejection', (e) => zapiszBladMostu('nieobsłużona obietnica', e));
+process.on('uncaughtException', (e) => zapiszBladMostu('nieobsłużony wyjątek', e));
+
 const httpServer = app.listen(PORT, () => {
     SilnikKlonu.zapewnij({ aiDir: AI_DIR, base: VOICE_BASE }).catch(() => {});
     console.log(`================================================`);

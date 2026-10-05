@@ -153,6 +153,12 @@ test('PRAWDZIWY tor ONNX (atrapa z kontraktem Depth Anything): ffmpeg skaluje, O
     assert.ok(px(10, 100) > 200 && px(g.szer - 10, 100) < 50, `lewa ${px(10, 100)}, prawa ${px(g.szer - 10, 100)}`);
     assert.equal((await G.stan()).modelNaDysku, true);
 
+    // uszkodzony model: pada PROCES liczenia głębi, nie wołający (most) — błąd mówi kod i stderr
+    const zepsuty = path.join(tmp, 'zepsuty.onnx');
+    fs.writeFileSync(zepsuty, 'to nie jest model ONNX');
+    const Z = utworzGlebie({ katalog: path.join(tmp, 'z'), cacheModeli: tmp, ffmpeg: ffmpegPath, blender: Blender, plikModelu: zepsuty });
+    await assert.rejects(Z.mapaGlebi(kadr), /Liczenie głębi \(model .*\) padło — kod 1: .*Most działa dalej\./);
+
     const B = utworzGlebie({ katalog: tmp, cacheModeli: tmp, ffmpeg: ffmpegPath, blender: Blender, plikModelu: path.join(tmp, 'nie-ma.onnx') });
     await assert.rejects(B.mapaGlebi(path.join(PACZKA, 'ujecie-plaza.jpg')), /OTAKOS_GLEBIA_ONNX/);
     const stary = process.env.HF_ENDPOINT;
