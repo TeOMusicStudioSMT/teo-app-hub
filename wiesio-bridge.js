@@ -192,6 +192,7 @@ import { utworzKontoYouTube, SCIEZKA_ZWROTU as ZWROT_YOUTUBE } from './services/
 import { utworzPublikacje } from './services/PublikacjeYouTube.js';
 import { utworzWywiady } from './services/WywiadAktorow.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
+import { utworzGlebie } from './services/GlebiaKadru.js';
 import { utworzSceny } from './services/ScenyDialogowe.js';
 import { kodDoUzycia } from './services/KodZaproszenia.js';
 import { utworzGlosyStada, tekstDoMowy } from './services/GlosyStada.js';
@@ -14268,6 +14269,26 @@ app.get('/api/sceny/:id/plik', async (req, res) => {
     catch (e) { return res.status(404).json({ success: false, message: e.message }); }
 });
 
+// ── 🧊 Studio 3D z kadru (services/GlebiaKadru.js) ──
+// Zdjęcie → mapa głębi (Depth Anything V2 Small, ONNX Runtime na CPU, lokalnie) → siatka → scena Blendera → klip z ruchem
+// kamery (pętla). Studio Podcastu ożywia nim swoje ujęcia; z `projekt` klip ląduje w produkcjach (tło Scen dialogowych).
+const Glebia = utworzGlebie({
+    katalog: ANTIGRAVITY_DIR,
+    cacheModeli: path.join(AI_DIR, 'glebia'),
+    ffmpeg: ffmpegPath,
+    blender: Blender,
+    szyna: Szyna,
+});
+app.get('/api/studio3d', (_req, res) => ytOdp(res, Glebia.stan(), 500));
+app.get('/api/studio3d/ruchy', (_req, res) => res.json({ success: true, ruchy: Blender.RUCHY }));
+app.post('/api/studio3d/glebia', (req, res) => ytOdp(res, Glebia.mapaGlebi(String(req.body?.kadr ?? '')).then((glebia) => ({ glebia }))));
+app.post('/api/studio3d/ozyw', (req, res) => ytOdp(res, (async () => {
+    const { kadr, ruch, sekundy, fov, nazwa, projekt } = req.body ?? {};
+    const cel = projekt ? path.join((await utworzProjekt(ANTIGRAVITY_DIR, String(projekt))).sciezka, 'studia3d') : null;
+    return { zadanie: Glebia.ozyw({ kadr: String(kadr ?? ''), ruch, sekundy, fov, nazwa, cel }) };
+})()));
+app.get('/api/studio3d/zadanie/:id', (req, res) => { const z = Glebia.zadanie(req.params.id); return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania (most mógł wystartować od nowa).' }); });
+
 // ── 🎙️ Studio Podcastu (services/StudioPodcastu.js) ──
 // Zdjęcia studia (zasiew z public/studio-podcast) + prowadzący z własnym głosem → film wstępowy z jego nagraniem →
 // odcinki: scenariusz z gośćmi z bazy aktorów, głosy, kadry w studiu → katalog montaży projektu `studio-podcast`.
@@ -14283,6 +14304,8 @@ const Studia = utworzStudia({
     ffmpeg: ffmpegPath,
     szyna: Szyna,
     sciezkaPodkladu: (plik) => sciezkaWBibliotece(plik),
+    ozyw: (o) => Glebia.ozyw(o),
+    zadanieOzywienia: (id) => Glebia.zadanie(id),
 });
 /** Studio z żądania: `?studio=` albo `body.studio` (domyślnie pierwsze, „teo”). Nieznane = błąd wprost. */
 const studioZ = (req) => Studia.get(String(req.query?.studio ?? req.body?.studio ?? 'teo'));
@@ -14293,10 +14316,13 @@ app.get('/api/studio-podcast/studia', (_req, res) => ytOdp(res, Studia.lista().t
 app.post('/api/studio-podcast/studia', (req, res) => ytOdp(res, Studia.stworz(req.body ?? {}).then((studio) => ({ studio }))));
 app.delete('/api/studio-podcast/studia/:id', (req, res) => ytOdp(res, Studia.usun(req.params.id)));
 
-app.get('/api/studio-podcast', (req, res) => wStudiu(req, res, async (st) => ({ studio: await st.studio(), postepWstepu: st.postepWstepu(), aktorzy: await Wywiady.aktorzy() }), 500));
+app.get('/api/studio-podcast', (req, res) => wStudiu(req, res, async (st) => ({ studio: await st.studio(), postepWstepu: st.postepWstepu(), aktorzy: await Wywiady.aktorzy(), ozywianie: Glebia.lista().filter((z) => !z.koniec), ruchy: Blender.RUCHY }), 500));
 app.post('/api/studio-podcast', (req, res) => wStudiu(req, res, async (st) => ({ studio: await st.zapiszStudio(req.body ?? {}) })));
 app.post('/api/studio-podcast/ujecie', (req, res) => wStudiu(req, res, async (st) => ({ ujecie: await st.dodajUjecie(req.body ?? {}) })));
 app.delete('/api/studio-podcast/ujecie/:id', (req, res) => wStudiu(req, res, (st) => st.usunUjecie(req.params.id)));
+// 🧊 Ożyw ujęcie w 3D (głębia + Blender, w tle) / wróć do zdjęcia.
+app.post('/api/studio-podcast/ujecie/:id/ozyw', (req, res) => wStudiu(req, res, async (st) => ({ zadanie: await st.ozywUjecie(req.params.id, { ruch: req.body?.ruch, sekundy: req.body?.sekundy, fov: req.body?.fov }) })));
+app.delete('/api/studio-podcast/ujecie/:id/ozyw', (req, res) => wStudiu(req, res, (st) => st.zdejmijRuch(req.params.id)));
 const studioPlik = async (req, res) => {
     try { return res.sendFile(path.resolve(await studioZ(req).plik(req.params.rodzaj, req.params.id ?? ''))); }
     catch (e) { return res.status(404).json({ success: false, message: e.message }); }
