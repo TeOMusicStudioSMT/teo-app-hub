@@ -15,7 +15,9 @@ import toast from 'react-hot-toast';
 const MOST = 'http://127.0.0.1:3001';
 
 interface Glos { profil?: string; voicestudio?: string }
-interface Ujecie { id: string; nazwa: string }
+interface Ruch { etap: 'robi' | 'gotowy' | 'blad'; ruch: string; plik?: string; sekundy?: number; glebia?: string; zadanie?: string; blad?: string }
+interface Ujecie { id: string; nazwa: string; ruch?: Ruch | null }
+interface Ozywianie { id: string; etap: string; blad: string | null }
 interface Studio {
     nazwa: string; opis: string;
     prowadzacy: { imie: string; rola: string; kolor: string; zdjecie: string | null; glos: Glos | null };
@@ -28,7 +30,7 @@ interface Studio {
 interface Aktor { id: string; imie: string; rola: string; kolor: string; projekt?: string | null; zdjecie?: string | null; wideo?: string | null; glos?: Glos | null }
 interface Kwestia { kto: string; tekst: string }
 interface Odcinek { id: string; tytul: string; temat: string; goscie: string[]; goscieFilm?: string; kwestie: Kwestia[]; etap: string; blad?: string; plik?: string; sekundy?: number | null; postep?: { etap: string; zrobione: number; wszystkich: number }; bezGlosu?: boolean; jezyk?: 'pl' | 'en'; styl?: string; pralka?: number | null; rundy?: number }
-interface Stan { studio: Studio; postepWstepu: { etap: string } | null; aktorzy: Aktor[] }
+interface Stan { studio: Studio; postepWstepu: { etap: string } | null; aktorzy: Aktor[]; ozywianie?: Ozywianie[]; ruchy?: { id: string; nazwa: string; opis: string }[] }
 interface SkrotStudia { id: string; nazwa: string; prowadzacy: string; kolor: string; ujec: number; odcinkow: number; domyslne: boolean }
 interface OpisSilnika { id: string; nazwa: string; licencja: string; wymagaZgody: boolean; model: string }
 interface Silnik { silnik: { uruchomiony?: boolean; powod?: string; model?: string | null; silnik?: string | null }; instalacja: { stan: string; etap: string | null; log: string[]; blad: string | null; cuda: boolean | null; silnik: string | null }; zgoda: boolean; aktywny: string | null; zainstalowane: string[]; silniki: OpisSilnika[] }
@@ -109,7 +111,7 @@ export const StudioPodcastuPanel: React.FC = () => {
     }, [idStudia]);
     useEffect(() => { void odswiez(); }, [odswiez]);
     useEffect(() => { try { localStorage.setItem('teo_studio_podcast', idStudia); } catch { /* bez pamięci */ } }, [idStudia]);
-    const trwa = !!stan?.postepWstepu || odcinki.some((o) => o.etap === 'nagrywa') || silnik?.instalacja.stan === 'trwa';
+    const trwa = !!stan?.postepWstepu || odcinki.some((o) => o.etap === 'nagrywa') || silnik?.instalacja.stan === 'trwa' || !!stan?.studio.ujecia.some((u) => u.ruch?.etap === 'robi');
     useEffect(() => { if (!trwa) return undefined; const t = setInterval(() => void odswiez(), 2500); return () => clearInterval(t); }, [trwa, odswiez]);
 
     const akcja = async (nazwa: string, f: () => Promise<unknown>, ok?: string) => {
@@ -153,6 +155,10 @@ export const StudioPodcastuPanel: React.FC = () => {
         await post('/api/studio-podcast', { prowadzacy: { imie: host.imie, rola: host.rola, kolor: host.kolor, ...(host.zdjecie.trim() ? { zdjecie: host.zdjecie.trim() } : {}), glos: wartoscNaGlos(host.glos) }, ...(host.nagranie.trim() ? { nagranieWstepu: host.nagranie.trim() } : {}) });
         setHost((h) => ({ ...h, zdjecie: '', nagranie: '' }));
     }, 'Prowadzący zapisany.');
+    const [ruchUjecia, setRuchUjecia] = useState<Record<string, string>>({});
+    /** 🧊 Ożyw ujęcie: głębia + Blender w tle (pierwszy raz pobiera model głębi). */
+    const ozyw = (u: Ujecie) => akcja(`ozyw-${u.id}`, () => post(`/api/studio-podcast/ujecie/${u.id}/ozyw`, { ruch: ruchUjecia[u.id] ?? 'najazd', sekundy: 6 }), 'Ożywianie rusza w tle: głębia → Blender → klip.');
+    const doZdjecia = (u: Ujecie) => akcja(`ozyw-${u.id}`, () => zMostu(`/api/studio-podcast/ujecie/${u.id}/ozyw?${q}`, { method: 'DELETE' }), 'Ujęcie wraca do zdjęcia.');
     const dodajUjecie = () => akcja('ujecie', async () => { await post('/api/studio-podcast/ujecie', { plik: host.ujecie.trim() }); setHost((h) => ({ ...h, ujecie: '' })); }, 'Ujęcie dodane.');
 
     const w = stan?.studio.wstep;
@@ -242,8 +248,30 @@ export const StudioPodcastuPanel: React.FC = () => {
                     {stan.studio.ujecia.length === 0 ? (
                         <p className="rounded border border-slate-700 p-2 text-slate-400">To studio nie ma jeszcze zdjęć sceny — dodaj ujęcia w „Prowadzący i scena”. Bez nich odcinek się nie nagra.</p>
                     ) : (
-                        <div className="grid grid-cols-3 gap-1.5">
-                            {stan.studio.ujecia.slice(0, 6).map((u) => <img key={u.id} src={`${MOST}/api/studio-podcast/plik/ujecie/${u.id}?${q}`} alt={u.nazwa} title={u.nazwa} className="aspect-video w-full rounded border border-slate-700 object-cover" />)}
+                        <div className="flex flex-col gap-1">
+                            <div className="grid grid-cols-3 gap-1.5">
+                                {stan.studio.ujecia.slice(0, 8).map((u) => {
+                                    const r = u.ruch;
+                                    const etap = r?.etap === 'robi' ? stan.ozywianie?.find((z) => z.id === r.zadanie)?.etap ?? 'w toku' : null;
+                                    return (
+                                        <div key={u.id} className="flex flex-col gap-0.5">
+                                            {r?.plik
+                                                ? <video src={`${MOST}/api/studio-podcast/plik/ruch/${u.id}?${q}&v=${encodeURIComponent(r.plik)}`} autoPlay loop muted playsInline title={`${u.nazwa} · 🧊 ${r.ruch}`} className="aspect-video w-full rounded border border-cyan-500/50 object-cover" />
+                                                : <img src={`${MOST}/api/studio-podcast/plik/ujecie/${u.id}?${q}`} alt={u.nazwa} title={u.nazwa} className="aspect-video w-full rounded border border-slate-700 object-cover" />}
+                                            <div className="flex items-center gap-1 text-[10px]">
+                                                <select value={ruchUjecia[u.id] ?? r?.ruch ?? 'najazd'} disabled={r?.etap === 'robi'} onChange={(e) => setRuchUjecia({ ...ruchUjecia, [u.id]: e.target.value })} className="min-w-0 flex-1 rounded border border-slate-700 bg-black/40 px-1 py-0.5 text-slate-300">
+                                                    {(stan.ruchy ?? [{ id: 'najazd', nazwa: 'Najazd', opis: '' }]).map((m) => <option key={m.id} value={m.id}>{m.nazwa}</option>)}
+                                                </select>
+                                                <button disabled={!!praca || r?.etap === 'robi'} onClick={() => void ozyw(u)} title="Mapa głębi ze zdjęcia → scena Blendera → klip z ruchem kamery" className="rounded border border-cyan-500/40 px-1.5 py-0.5 text-cyan-200 disabled:opacity-40">{r?.etap === 'robi' ? '⏳' : '🧊'}</button>
+                                                {r?.plik && r.etap !== 'robi' && <button disabled={!!praca} onClick={() => void doZdjecia(u)} title="Wróć do zdjęcia" className="rounded border border-slate-700 px-1 py-0.5 text-slate-400">↩</button>}
+                                            </div>
+                                            {etap && <span className="text-[10px] text-cyan-300">🧊 {etap}…</span>}
+                                            {r?.blad && <span className="text-[10px] text-amber-300" title={r.blad}>⚠ {r.blad.slice(0, 140)}</span>}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-[10px] leading-relaxed text-slate-500">🧊 Ożyw = mapa głębi ze zdjęcia (Depth Anything V2 Small, lokalnie; pierwszy raz pobiera model, kilkadziesiąt MB) → bryła w Blenderze → klip z łagodnym ruchem kamery. Gotowy klip gra zamiast zdjęcia we wstępie, wideo z gośćmi i odcinku. To 2.5D: za meblami nie ma tego, czego aparat nie widział — dlatego ruchy są małe.</p>
                         </div>
                     )}
 

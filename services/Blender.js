@@ -401,6 +401,128 @@ print("STUDIO:", SZEROKOSC, "x", round(WYSOKOSC, 2), "AKTOROW:", AKTOROW)
 }
 
 /**
+ * Zbuduj STUDIO Z GŁĘBIĄ: siatka z `GlebiaKadru.siatkaZGlebi` (JSON: v, uv, f, kamera) obłożona kadrem.
+ *
+ * Różnica wobec `zbudujStudio`: tło NIE jest płaskie. Każdy wierzchołek leży na promieniu kamery w odległości z mapy
+ * głębi, więc z miejsca kamery scena wygląda jak zdjęcie, a ruch kamery daje paralaksę. Materiał to samo światło
+ * zdjęcia (Emission, widok „Standard” — bez tonowania AgX/Filmic, które zmieniałoby barwy kadru); lamp nie ma, bo
+ * światło jest już w zdjęciu. Scena niesie znacznik `katedra_glebia`, po którym `skryptUjecia` łagodzi ruchy.
+ * Siatka powstaje z danych (`from_pydata`) — bez importerów OBJ/glTF, które zmieniają się między wersjami Blendera.
+ */
+export async function zbudujStudioGlebi({ kadr, siatka, nazwa = '' }) {
+    if (!kadr || !/\.(png|jpg|jpeg|webp|bmp)$/i.test(kadr)) throw new Error('Studio z głębią buduje się z KADRU (.png/.jpg/.webp).');
+    try { await fs.access(kadr); } catch { throw new Error(`Nie widzę kadru: ${kadr}`); }
+    try { await fs.access(siatka); } catch { throw new Error(`Nie widzę siatki głębi: ${siatka}`); }
+    const kat = KATALOG();
+    await fs.mkdir(kat, { recursive: true });
+    const baza = bezpiecznaNazwa(`${nazwa || 'kadr'}_glebia`);
+    const plikPy = path.join(kat, `${baza}_${Date.now().toString(36)}.py`);
+    const plikBlend = plikPy.replace(/\.py$/, '.blend');
+    const ukosnik = (p) => p.replace(/\\/g, '/');
+
+    const skrypt = `# -*- coding: utf-8 -*-
+# STUDIO Z GLEBIA — kadr obłożony na siatce z mapy glebi (Depth Anything). Uruchom:
+#   blender --background --python "${ukosnik(plikPy)}"
+import bpy, json, math, os
+
+KADR = r"${ukosnik(kadr)}"
+SIATKA = r"${ukosnik(siatka)}"
+
+bpy.ops.wm.read_factory_settings(use_empty=True)
+scena = bpy.context.scene
+# OTAKOS_BLENDER_SILNIK=CYCLES — maszyna bez GPU/OpenGL (EEVEE wtedy nie wystartuje).
+# Probujemy przypisac zamiast czytac liste silnikow: bywa pusta przed pierwszym renderem.
+for kandydat in (os.environ.get('OTAKOS_BLENDER_SILNIK', ''), 'BLENDER_EEVEE_NEXT', 'BLENDER_EEVEE', 'CYCLES'):
+    if not kandydat:
+        continue
+    try:
+        scena.render.engine = kandydat
+        break
+    except Exception:
+        pass
+print("SILNIK:", scena.render.engine)
+# Barwy zdjecia 1:1 — bez tonowania AgX/Filmic.
+try:
+    scena.view_settings.view_transform = 'Standard'
+except Exception:
+    pass
+if scena.render.engine == 'CYCLES':
+    scena.cycles.samples = 16
+
+with open(SIATKA, 'r', encoding='utf-8') as plik:
+    S = json.load(plik)
+V, UV, F = S["v"], S["uv"], S["f"]
+wierzcholki = [(V[i], V[i + 1], V[i + 2]) for i in range(0, len(V), 3)]
+sciany = [tuple(F[i:i + 4]) for i in range(0, len(F), 4)]
+mesh = bpy.data.meshes.new("plan_glebi")
+mesh.from_pydata(wierzcholki, [], sciany)
+mesh.update()
+uv = mesh.uv_layers.new(name="UV")
+indeksy = [0] * len(mesh.loops)
+mesh.loops.foreach_get("vertex_index", indeksy)
+plaskie = []
+for vi in indeksy:
+    plaskie.extend((UV[vi * 2], UV[vi * 2 + 1]))
+uv.data.foreach_set("uv", plaskie)
+plan = bpy.data.objects.new("plan_glebi", mesh)
+scena.collection.objects.link(plan)
+
+obraz = bpy.data.images.load(KADR)
+mat = bpy.data.materials.new(name="mat_kadr")
+mat.use_nodes = True
+n = mat.node_tree.nodes
+l = mat.node_tree.links
+for wezel in list(n):
+    n.remove(wezel)
+wyjscie = n.new("ShaderNodeOutputMaterial")
+emisja = n.new("ShaderNodeEmission")
+tex = n.new("ShaderNodeTexImage")
+tex.image = obraz
+tex.extension = 'EXTEND'
+l.new(tex.outputs["Color"], emisja.inputs["Color"])
+emisja.inputs["Strength"].default_value = 1.0
+l.new(emisja.outputs["Emission"], wyjscie.inputs["Surface"])
+mesh.materials.append(mat)
+
+# Czarne tlo swiata — to, czego aparat nie widzial, nie udaje niczego.
+swiat = bpy.data.worlds.new("swiat")
+swiat.use_nodes = True
+tlo = swiat.node_tree.nodes.get("Background")
+if tlo is not None:
+    tlo.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
+scena.world = swiat
+
+K = S["kamera"]
+bpy.ops.object.empty_add(type='PLAIN_AXES', location=tuple(K["cel"]))
+cel = bpy.context.active_object
+cel.name = "CEL"
+bpy.ops.object.camera_add(location=tuple(K["poz"]))
+kamera = bpy.context.active_object
+kamera.name = "KAMERA"
+kamera.data.sensor_fit = 'HORIZONTAL'
+kamera.data.angle = math.radians(K["fov"])
+kamera.data.clip_start = 0.05
+kamera.data.clip_end = 1000.0
+scena.camera = kamera
+sledz = kamera.constraints.new(type='TRACK_TO')
+sledz.target = cel
+sledz.track_axis = 'TRACK_NEGATIVE_Z'
+sledz.up_axis = 'UP_Y'
+
+scena["katedra_glebia"] = 1
+scena.render.resolution_x = 1280
+scena.render.resolution_y = 720
+
+wynik = r"${ukosnik(plikBlend)}"
+bpy.ops.wm.save_as_mainfile(filepath=wynik)
+print("ZAPISANO:", wynik)
+print("SIATKA:", len(wierzcholki), "wierzcholkow,", len(sciany), "scian")
+`;
+    await fs.writeFile(plikPy, skrypt, 'utf8');
+    return { skrypt: plikPy, scena: plikBlend, kadr, nazwa: baza };
+}
+
+/**
  * Nakręć ujęcie w gotowym studiu — TeOgochi w roli kamerzysty.
  *
  * ⚠️ TO JEST RENDER, NIE GENERACJA. Blender liczy klatki z tej sceny; nic tu
@@ -461,24 +583,30 @@ def klucz(nr, poz):
     kamera.location = poz
     kamera.keyframe_insert(data_path="location", frame=nr)
 
+# Studio z glebia (2.5D) znosi tylko lagodne ruchy: duzy obrot odslania rozciagniete krawedzie za przedmiotami.
+# MOC skaluje kazdy ruch, a orbita w takim studiu jest symetryczna wokol ujecia ze zdjecia.
+GLEBIA = bool(scena.get("katedra_glebia", 0))
+MOC = 0.22 if GLEBIA else 1.0
+print("GLEBIA:", GLEBIA, "MOC:", MOC)
+
 RUCH = "${ruch}"
 if RUCH == "orbita":
     for i in range(0, KLATEK + 1, max(1, KLATEK // 12)):
-        t = i / KLATEK
-        kat = kat_start + math.radians(70) * t
+        t = i / KLATEK - (0.5 if GLEBIA else 0.0)
+        kat = kat_start + math.radians(9 if GLEBIA else 70) * t
         klucz(i + 1, (math.cos(kat) * promien, math.sin(kat) * promien, start.z))
 elif RUCH == "najazd":
     klucz(1, start)
-    klucz(KLATEK, (start.x * 0.45, start.y * 0.45, start.z * 0.9))
+    klucz(KLATEK, (start.x * (1 - 0.55 * MOC), start.y * (1 - 0.55 * MOC), start.z * (1 - 0.1 * MOC)))
 elif RUCH == "odjazd":
-    klucz(1, (start.x * 0.5, start.y * 0.5, start.z * 0.95))
+    klucz(1, (start.x * (1 - 0.5 * MOC), start.y * (1 - 0.5 * MOC), start.z * (1 - 0.05 * MOC)))
     klucz(KLATEK, start)
 elif RUCH == "dzwig":
     klucz(1, start)
-    klucz(KLATEK, (start.x, start.y * 0.8, start.z * 2.6))
+    klucz(KLATEK, (start.x, start.y * (1 - 0.2 * MOC), start.z * (1 + 1.6 * MOC)))
 elif RUCH == "trawelling":
-    klucz(1, (start.x - promien * 0.35, start.y, start.z))
-    klucz(KLATEK, (start.x + promien * 0.35, start.y, start.z))
+    klucz(1, (start.x - promien * 0.35 * MOC, start.y, start.z))
+    klucz(KLATEK, (start.x + promien * 0.35 * MOC, start.y, start.z))
 
 # Plynny ruch: bez tego kamera szarpie na kazdym kluczu.
 # ⚠️ Blender 4.4+/5.x przeniosl fcurves z Action do warstw i slotow
@@ -568,16 +696,27 @@ export async function skryptGlb({ blend, nazwa = '' }) {
     return { skrypt: plikPy, glb: plikGlb };
 }
 
-/** Odpal Blendera na gotowym scenariuszu. Bez binarki — odmowa z instrukcją. */
-export async function uruchom(skrypt) {
+/**
+ * Odpal Blendera na gotowym scenariuszu. Bez binarki — odmowa z instrukcją.
+ * `limitMs` — render długiego ujęcia na samym CPU (Cycles) trwa dłużej niż domyślne 10 min; przekroczony limit
+ * mówi to wprost, zamiast gołego „Command failed”.
+ */
+export async function uruchom(skrypt, { limitMs = 10 * 60 * 1000 } = {}) {
     const stan = await stanBlendera();
     if (!stan.jest) throw new Error(`${stan.powod} ${stan.cozrobic}`);
     try { await fs.access(skrypt); } catch { throw new Error(`Nie widzę scenariusza: ${skrypt}`); }
 
     const bin = stan.sciezka === 'blender (PATH)' ? 'blender' : stan.sciezka;
-    const { stdout, stderr } = await uruchomProces(bin, ['--background', '--python', skrypt], {
-        timeout: 10 * 60 * 1000, maxBuffer: 16 * 1024 * 1024,
-    });
+    let stdout, stderr;
+    try {
+        ({ stdout, stderr } = await uruchomProces(bin, ['--background', '--python', skrypt], { timeout: limitMs, maxBuffer: 64 * 1024 * 1024 }));
+    } catch (e) {
+        const log = `${e.stdout ?? ''}\n${e.stderr ?? ''}`;
+        if (e.killed) throw new Error(`Blender nie skończył w ${Math.round(limitMs / 60000)} min (limit) — przerwany. Krótsze ujęcie albo szybszy silnik (EEVEE na GPU; Cycles na CPU liczy kilka sekund na klatkę).`);
+        const tbE = log.match(/Traceback \(most recent call last\):[\s\S]*/);
+        if (tbE) { const linie = tbE[0].trim().split('\n'); throw new Error(`Skrypt Blendera padł: ${linie[linie.length - 1].trim()}`); }
+        throw new Error(`Blender padł (kod ${e.code ?? '?'}): ${log.trim().split('\n').slice(-3).join(' | ').slice(0, 400)}`);
+    }
     const log = `${stdout}\n${stderr}`;
     // ⚠️ NAJPIERW SZUKAMY TRACEBACKU. Pierwsza wersja meldowała „Blender nie
     // zapisał sceny" i doklejała ogon logu — a prawdziwa przyczyna (wyjątek
@@ -595,6 +734,6 @@ export async function uruchom(skrypt) {
 }
 
 export default {
-    KATALOG, RUCHY, stanBlendera, zbudujScenariusz, zbudujStudio,
+    KATALOG, RUCHY, stanBlendera, zbudujScenariusz, zbudujStudio, zbudujStudioGlebi,
     skryptUjecia, zlozKlatki, skryptGlb, uruchom,
 };
