@@ -12,6 +12,10 @@
  * FILM WSTĘPOWY: nagranie prowadzącego (mp3/wav) na tle powolnych najazdów po ujęciach studia, plansza z nazwą
  * podcastu, karta prowadzącego i — gdy Suweren poda tekst nagrania — napisy rozłożone proporcjonalnie do długości.
  * Katedra nie zgaduje treści nagrania sama (to robi Whisper po stronie mostu), więc bez tekstu film jest bez napisów.
+ * WSTĘP EN (2026-10-05, Suweren: „robię odcinek w EN, a wstęp ma polskie napisy”): osobny `wstepEn` — plansza z nazwą
+ * EN (`nazwaEn`, inaczej polska) i „hosted by”, napisy z `wstepEn.tekst` (pusty = model tłumaczy polski tekst nagrania,
+ * wynik zapisany do poprawki, oznaczony `przetlumaczono`), dźwięk z `wstepEn.nagranie` (własne nagranie EN) albo
+ * polskie nagranie z angielskimi napisami. Odcinek EN bierze wstęp EN (`wstep_en.mp4`), PL — polski.
  *
  * ODCINEK, jak wywiad (services/WywiadAktorow.js), ale o TEMACIE, nie o filmie:
  *   1. SCENARIUSZ: model gatunku `aktor` pisze rozmowę prowadzącego z gośćmi (aktorzy z bazy — rola, głos, zdjęcie).
@@ -151,6 +155,25 @@ export function zapowiedzGosci(imiona, jezyk = 'pl') {
     const en = jezykWywiadu(jezyk) === 'en';
     const lista = imiona.length > 1 ? `${imiona.slice(0, -1).join(', ')} ${en ? 'and' : 'i'} ${imiona.at(-1)}` : imiona[0];
     return en ? `Today in the studio: ${lista}.` : `Dziś w studiu: ${lista}.`;
+}
+
+/** Druga linia planszy wstępu: kto prowadzi, w języku odcinka. */
+export const liniaProwadzacego = (imie, jezyk = 'pl') => (jezykWywiadu(jezyk) === 'en' ? `hosted by: ${imie}` : `prowadzi: ${imie}`);
+
+/** Czy „tłumaczenie” nadal jest po polsku: polskie znaki albo kilka typowo polskich słówek. */
+export function wygladaNaPolski(tekst) {
+    const t = ` ${String(tekst ?? '').toLowerCase()} `;
+    const znaki = (t.match(/[ąćęłńśźż]/g) ?? []).length;
+    const slowa = (t.match(/[\s,.;:!?„"](i|w|z|na|się|jest|nie|to|że|do|od|pod|moim|witajcie|dziś|tym|jak)(?=[\s,.;:!?”"])/g) ?? []).length;
+    return znaki >= 2 || slowa >= 3;
+}
+
+/** Prośba o tłumaczenie tekstu nagrania wstępu (napisy EN) — tylko tłumaczenie, bez dopisków. */
+export function promptTlumaczeniaWstepu(tekst) {
+    return {
+        system: 'You translate a podcast host\'s spoken intro from Polish into natural spoken English for subtitles. Keep the meaning, tone and names (TeO, OtakOS, Katedra → Cathedral). Output ONLY the translation, no quotes, no notes.',
+        user: String(tekst ?? '').slice(0, 4000),
+    };
 }
 
 /** Tekst nagrania → napisy: linie ≤ `szer` znaków po dwie na napis; czas proporcjonalny do liczby znaków w [start, start+sekundy]. */
@@ -327,8 +350,16 @@ export function utworzStudioPodcastu(o) {
             if (!AUDIO.test(n) || !fsSync.existsSync(n)) throw new Error(`Nagranie wstępu musi być istniejącym plikiem audio: ${n}`);
             wstep.nagranie = n; wstep.plik = null; wstep.sekundy = null;
         }
+        const wstepEn = { ...(s.wstepEn ?? {}) };
+        if (dane.wstepTekstEn !== undefined) { wstepEn.tekst = String(dane.wstepTekstEn).trim().slice(0, 4000); wstepEn.przetlumaczono = false; }
+        if (dane.nagranieWstepuEn !== undefined) {
+            const n = String(dane.nagranieWstepuEn ?? '').trim();
+            if (n && (!AUDIO.test(n) || !fsSync.existsSync(n))) throw new Error(`Nagranie wstępu EN musi być istniejącym plikiem audio: ${n}`);
+            wstepEn.nagranie = n || null; wstepEn.plik = null; wstepEn.sekundy = null;
+        }
         const nowe = {
-            ...s, prowadzacy: p, wstep,
+            ...s, prowadzacy: p, wstep, wstepEn,
+            nazwaEn: dane.nazwaEn !== undefined ? String(dane.nazwaEn).trim().slice(0, 80) : (s.nazwaEn ?? ''),
             nazwa: dane.nazwa !== undefined ? String(dane.nazwa).trim().slice(0, 80) || s.nazwa : s.nazwa,
             opis: dane.opis !== undefined ? String(dane.opis).trim().slice(0, 800) || OPIS_STUDIA : s.opis,
             zmieniono: czas(),
@@ -366,31 +397,46 @@ export function utworzStudioPodcastu(o) {
 
     // ── Film wstępowy ─────────────────────────────────────────────────────
     /** Nagranie prowadzącego → film wstępowy w katalogu Studia. Rzuca na brak nagrania, ujęć albo czcionki. */
-    async function zrobWstep({ tekst = undefined } = {}) {
+    async function zrobWstep({ tekst = undefined, jezyk = 'pl' } = {}) {
+        const en = jezykWywiadu(jezyk) === 'en';
         if (wRobocie.has('wstep')) throw new Error('Film wstępowy już się robi.');
         wRobocie.set('wstep', { etap: 'start', zrobione: 0, wszystkich: 1 });
         const praca = path.join(cfg.katalog, 'praca-wstepu');
         try {
             const s = await zasiej();
-            if (!s.wstep?.nagranie || !fsSync.existsSync(s.wstep.nagranie)) throw new Error('Brak nagrania prowadzącego — wskaż plik audio (nagranieWstepu).');
+            const W = en ? (s.wstepEn ?? {}) : s.wstep;
+            // EN: własne nagranie EN, jeśli jest; inaczej polskie nagranie prowadzącego z angielskimi napisami.
+            const nagranie = en && W.nagranie && fsSync.existsSync(W.nagranie) ? W.nagranie : s.wstep?.nagranie;
+            if (!nagranie || !fsSync.existsSync(nagranie)) throw new Error('Brak nagrania prowadzącego — wskaż plik audio (nagranieWstepu).');
             const ujecia = s.ujecia.filter((u) => fsSync.existsSync(u.plik));
             if (!ujecia.length) throw new Error('Studio nie ma żadnego ujęcia na dysku.');
             const zrodlo = czcionka();
             if (!zrodlo) throw new Error('Nie znalazłem czcionki z polskimi znakami (OTAKOS_POWITANIE_CZCIONKA).');
-            const dlugosc = (await cfg.opisz(s.wstep.nagranie).catch(() => null))?.sekundy;
+            const dlugosc = (await cfg.opisz(nagranie).catch(() => null))?.sekundy;
             if (!dlugosc) throw new Error('Nie umiem odczytać długości nagrania prowadzącego (czy to na pewno audio?).');
-            const napisTekst = tekst !== undefined ? String(tekst).trim().slice(0, 4000) : s.wstep.tekst;
+            let napisTekst = tekst !== undefined ? String(tekst).trim().slice(0, 4000) : (W.tekst ?? '');
+            let przetlumaczono = en ? !!W.przetlumaczono && tekst === undefined : false;
+            // EN bez własnego tekstu, a polski jest: tłumaczy model (wynik ląduje w studiu do poprawki) — tylko gdy dźwięk jest polski.
+            if (en && !napisTekst && s.wstep?.tekst && !(W.nagranie && fsSync.existsSync(W.nagranie)) && cfg.chat) {
+                wRobocie.set('wstep', { etap: 'tłumaczę napisy', zrobione: 0, wszystkich: 1 });
+                const { system, user } = promptTlumaczeniaWstepu(s.wstep.tekst);
+                const model = (await cfg.modelDla?.('kronikarz').catch(() => null)) ?? null;
+                napisTekst = String((await cfg.chat(model, system, user, {}))?.tekst ?? '').replace(/^["„“”']+|["„“”']+$/g, '').trim().slice(0, 4000);
+                // Mały model potrafi oddać polszczyznę zamiast tłumaczenia — polskie znaki w „angielskich” napisach = błąd wprost.
+                if (wygladaNaPolski(napisTekst)) throw new Error('Model nie przetłumaczył napisów na angielski (w tekście są polskie znaki) — wpisz napisy EN sam albo wybierz inny model Kronikarza.');
+                przetlumaczono = !!napisTekst;
+            }
             await fs.rm(praca, { recursive: true, force: true });
             await fs.mkdir(praca, { recursive: true });
             await fs.copyFile(zrodlo, path.join(praca, 'czcionka.ttf'));
             const pliki = [];
             for (const [i, u] of ujecia.entries()) { const n = `u${i}${path.extname(u.plik).toLowerCase()}`; await fs.copyFile(u.plik, path.join(praca, n)); pliki.push({ plik: n, ox: ogniska(u)[0].x, oy: ogniska(u)[0].y }); }
-            const ext = path.extname(s.wstep.nagranie).toLowerCase();
-            await fs.copyFile(s.wstep.nagranie, path.join(praca, `nagranie${ext}`));
+            const ext = path.extname(nagranie).toLowerCase();
+            await fs.copyFile(nagranie, path.join(praca, `nagranie${ext}`));
             let portret = null;
             if (s.prowadzacy.zdjecie && fsSync.existsSync(s.prowadzacy.zdjecie)) { portret = `portret${path.extname(s.prowadzacy.zdjecie).toLowerCase()}`; await fs.copyFile(s.prowadzacy.zdjecie, path.join(praca, portret)); }
             await fs.writeFile(path.join(praca, 'imie.txt'), s.prowadzacy.imie, 'utf8');
-            const nazwaLinie = [...zawin(s.nazwa, 30, 2).map((t) => ({ t, duze: true })), { t: `prowadzi: ${s.prowadzacy.imie}`, duze: false }];
+            const nazwaLinie = [...zawin((en && s.nazwaEn) || s.nazwa, 30, 2).map((t) => ({ t, duze: true })), { t: liniaProwadzacego(s.prowadzacy.imie, en ? 'en' : 'pl'), duze: false }];
             const nazwaPliki = [];
             for (const [i, l] of nazwaLinie.entries()) { const n = `nazwa-${i}.txt`; await fs.writeFile(path.join(praca, n), l.t, 'utf8'); nazwaPliki.push({ plik: n, duze: l.duze }); }
             const napisy = [];
@@ -401,21 +447,24 @@ export function utworzStudioPodcastu(o) {
             }
             const calosc = Math.round((dlugosc + 1.4) * 100) / 100;
             await ff(argumentyWstepu({ ujecia: pliki, czas: calosc, portret, kolor: s.prowadzacy.kolor, nazwaPliki, imiePlik: 'imie.txt', napisy, czcionka: 'czcionka.ttf', audio: `nagranie${ext}`, wyjscie: 'wstep.mp4' }), praca);
-            const cel = path.join(cfg.katalog, 'wstep.mp4');
+            const cel = path.join(cfg.katalog, en ? 'wstep_en.mp4' : 'wstep.mp4');
             await fs.copyFile(path.join(praca, 'wstep.mp4'), cel);
             const o2 = await cfg.opisz(cel).catch(() => null);
             const nowe = { ...(await zasiej()) };
-            nowe.wstep = { ...nowe.wstep, tekst: napisTekst, plik: cel, sekundy: o2?.sekundy ?? calosc, zrobiono: czas(), napisy: napisy.length > 0, blad: undefined };
+            const gotowy = { tekst: napisTekst, plik: cel, sekundy: o2?.sekundy ?? calosc, zrobiono: czas(), napisy: napisy.length > 0, blad: undefined };
+            if (en) nowe.wstepEn = { ...(nowe.wstepEn ?? {}), ...gotowy, przetlumaczono };
+            else nowe.wstep = { ...nowe.wstep, ...gotowy };
             await pisz(PLIK, nowe);
-            nadaj(`zrobił film wstępowy podcastu „${s.nazwa}” (${(o2?.sekundy ?? calosc).toFixed?.(1) ?? calosc} s, ${ujecia.length} ujęć${napisy.length ? ', z napisami' : ''})`);
-            return nowe.wstep;
+            nadaj(`zrobił film wstępowy${en ? ' EN' : ''} podcastu „${s.nazwa}” (${(o2?.sekundy ?? calosc).toFixed?.(1) ?? calosc} s, ${ujecia.length} ujęć${napisy.length ? ', z napisami' : ''})`);
+            return en ? nowe.wstepEn : nowe.wstep;
         } finally { wRobocie.delete('wstep'); await fs.rm(praca, { recursive: true, force: true }).catch(() => {}); }
     }
 
     /** To samo w tle: zwraca od razu, a błąd zostaje w `studio.wstep.blad` (panel go pokaże). */
     function zrobWstepWTle(o2 = {}) {
         if (wRobocie.has('wstep')) throw new Error('Film wstępowy już się robi.');
-        const p = zrobWstep(o2).catch(async (e) => { const st = await czytaj(PLIK, null); if (st) await pisz(PLIK, { ...st, wstep: { ...st.wstep, blad: String(e.message || e).slice(0, 400) } }).catch(() => {}); });
+        const pole = jezykWywiadu(o2.jezyk ?? 'pl') === 'en' ? 'wstepEn' : 'wstep';
+        const p = zrobWstep(o2).catch(async (e) => { const st = await czytaj(PLIK, null); if (st) await pisz(PLIK, { ...st, [pole]: { ...(st[pole] ?? {}), blad: String(e.message || e).slice(0, 400) } }).catch(() => {}); });
         return p;
     }
 
@@ -611,8 +660,11 @@ export function utworzStudioPodcastu(o) {
                 // Film wstępowy: gotowy z Studia albo robiony teraz (nagranie prowadzącego jest w Studiu).
                 if (zWstepem) {
                     wRobocie.set(id, { etap: 'wstęp', zrobione: 0, wszystkich: x.kwestie.length });
-                    let wstep = s.wstep?.plik && fsSync.existsSync(s.wstep.plik) ? s.wstep.plik : null;
-                    if (!wstep) wstep = (await zrobWstep()).plik;
+                    // Wstęp w języku odcinka: EN ma własną planszę i napisy (wstep_en.mp4), PL — polski.
+                    const J = jezykWywiadu(x.jezyk);
+                    const W = J === 'en' ? s.wstepEn : s.wstep;
+                    let wstep = W?.plik && fsSync.existsSync(W.plik) ? W.plik : null;
+                    if (!wstep) wstep = (await zrobWstep({ jezyk: J })).plik;
                     await fs.copyFile(wstep, path.join(praca, 'wstep.mp4'));
                     segmenty.push('wstep.mp4');
                 }
@@ -692,7 +744,7 @@ export function utworzStudioPodcastu(o) {
         let p = null;
         if (rodzaj === 'ujecie') p = s.ujecia.find((u) => u.id === id)?.plik;
         else if (rodzaj === 'prowadzacy') p = s.prowadzacy.zdjecie;
-        else if (rodzaj === 'wstep') p = s.wstep?.plik;
+        else if (rodzaj === 'wstep') p = id === 'en' ? s.wstepEn?.plik : s.wstep?.plik;
         else if (rodzaj === 'nagranie') p = s.wstep?.nagranie;
         else if (rodzaj === 'odcinek') p = (await odcinek(id)).plik;
         else if (rodzaj === 'goscie') p = (await odcinek(id)).goscieFilm;

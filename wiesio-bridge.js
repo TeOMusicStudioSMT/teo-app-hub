@@ -14285,7 +14285,7 @@ app.get('/api/studio-podcast/plik/:rodzaj', studioPlik);
 app.get('/api/studio-podcast/plik/:rodzaj/:id', studioPlik);
 // Film wstępowy z nagraniem prowadzącego (kilkanaście sekund pracy ffmpeg) — działa w tle, stan w `postepWstepu`.
 app.post('/api/studio-podcast/wstep', (req, res) => {
-    try { const st = studioZ(req); void st.zrobWstepWTle({ tekst: req.body?.tekst }); return res.json({ success: true, postepWstepu: st.postepWstepu() }); }
+    try { const st = studioZ(req); void st.zrobWstepWTle({ tekst: req.body?.tekst, jezyk: req.body?.jezyk === 'en' ? 'en' : 'pl' }); return res.json({ success: true, postepWstepu: st.postepWstepu() }); }
     catch (e) { return res.status(409).json({ success: false, message: e.message }); }
 });
 // Głos prowadzącego = klon z jego nagrania wstępu (próbka ≤ 30 s, ≥ 6 s mowy) → profil klon-lokalny → od razu jego głos w odcinkach.
