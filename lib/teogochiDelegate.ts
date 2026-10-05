@@ -133,8 +133,9 @@ export class Delegat {
     }
 
     /** Głos Delegata torem Katedry; null = tor padł, użyj speechSynthesis. */
-    async powiedz(tekst: string, glos?: string | null): Promise<HTMLAudioElement | null> {
-        const r = await fetch(`${getBridgeBase()}/api/voice/speak`, { method: 'POST', headers: naglowki(), body: JSON.stringify({ text: tekst, voiceId: glos || undefined, przewod: glos ? 'piper-pl' : undefined }) });
+    /** `teogochi` = id gatunku Delegata — most da mu barwę z Głosów Stada, jeśli ją ma. */
+    async powiedz(tekst: string, glos?: string | null, teogochi?: string | null): Promise<HTMLAudioElement | null> {
+        const r = await fetch(`${getBridgeBase()}/api/voice/speak`, { method: 'POST', headers: naglowki(), body: JSON.stringify({ text: tekst, voiceId: glos || undefined, przewod: glos ? 'piper-pl' : undefined, teogochi: teogochi || undefined }) });
         if (!r.ok) return null;
         const a = new Audio(URL.createObjectURL(await r.blob()));
         await a.play();

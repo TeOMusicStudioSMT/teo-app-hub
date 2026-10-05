@@ -103,7 +103,7 @@
                     else if (z.typ === 'obciazenie') { stan(`⏳ ${z.tekst}`); if (!calosc) odp.textContent = `⏳ ${z.tekst}`; }
                     else if (z.typ === 'narzedzie') { odp.before(Object.assign(document.createElement('div'), { className: 'dymek narzedzie', textContent: `⚙️ ${z.narzedzie} ${JSON.stringify(z.argumenty)}` })); }
                     else if (z.typ === 'wynik') { const el = $('log').querySelector('.dymek.narzedzie:last-of-type'); if (el) { el.classList.add(z.ok ? 'ok' : 'blad'); el.textContent += z.ok ? ' ✓' : ` ✗ ${z.wynik?.blad || ''}`; } }
-                    else if (z.typ === 'koniec') { rozmowaId = z.rozmowaId; calosc = z.odpowiedz; odp.textContent = calosc; await powiedz(calosc, z.glos); }
+                    else if (z.typ === 'koniec') { rozmowaId = z.rozmowaId; calosc = z.odpowiedz; odp.textContent = calosc; await powiedz(calosc, z.glos, z.delegat); }
                     else if (z.typ === 'blad') { odp.textContent = `⚠️ ${z.message}`; odp.classList.add('narzedzie', 'blad'); }
                 }
             }
@@ -127,13 +127,13 @@
         try { speechSynthesis.cancel(); } catch {}
         mowi = false;
     }
-    async function powiedz(tekst, glos) {
+    async function powiedz(tekst, glos, teogochi) {
         if (wyciszony || !tekst) return;
         zatrzymajGlos(); mowi = true;
         try {
             // Profil z głosem Pipera → przewód piper-pl wprost; bez niego most bierze domyślny
             // (klon-lokalny), który bez XTTS na :5002 oddaje 424 → głos przeglądarki.
-            const r = await fetch(`${BAZA}/api/voice/speak`, { method: 'POST', headers: naglowki(), body: JSON.stringify({ text: tekst, voiceId: glos || undefined, przewod: glos ? 'piper-pl' : undefined }) });
+            const r = await fetch(`${BAZA}/api/voice/speak`, { method: 'POST', headers: naglowki(), body: JSON.stringify({ text: tekst, voiceId: glos || undefined, przewod: glos ? 'piper-pl' : undefined, teogochi: teogochi || undefined }) });
             if (r.ok) {
                 const blob = await r.blob();
                 audio = new Audio(URL.createObjectURL(blob));

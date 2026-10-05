@@ -33,6 +33,7 @@ import PanelWlasny from './special/PanelWlasny';
 import RezyserView from './special/RezyserView';
 import KsiegarniaSkili from './special/KsiegarniaSkili';
 import { TeOgochiDom } from './TeOgochiDom';
+import GlosTeogochi from './GlosTeogochi';
 
 interface TeogochiPanelProps {
     gatunekId: string;
@@ -481,6 +482,9 @@ export const TeogochiPanel: React.FC<TeogochiPanelProps> = ({
                                     </span>
                                 </div>
                             </div>
+
+                            {/* 🗣️ Głos — barwa z Głosów Stada (jak aktorzy w wywiadach) */}
+                            <GlosTeogochi id={gatunek.id} imie={gatunek.imie} onTest={(t) => void powiedz(t)} />
 
                             {/* Szybkie Polecenia */}
                             <div>

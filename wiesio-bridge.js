@@ -194,6 +194,7 @@ import { utworzWywiady } from './services/WywiadAktorow.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzSceny } from './services/ScenyDialogowe.js';
 import { kodDoUzycia } from './services/KodZaproszenia.js';
+import { utworzGlosyStada, tekstDoMowy } from './services/GlosyStada.js';
 import { genezaKsiegi, migrujKsiege, nowyKluczWezla, kimJestem, oczyscNazwe, nazwaWezla } from './services/KsiegaTozsamosc.js';
 import { utworzGielde, gpuZNvidiaSmi } from './services/GieldaMocy.js';
 import { listaStemow, glosZeStemu } from './services/GlosZeStemu.js';
@@ -373,7 +374,7 @@ app.use(cors({
     // nagłówkiem padało na preflighcie w 0,0 s — „Failed to fetch" przy moście, który
     // odpowiadał — a Auto-Panic robił z tego 32 zadania dla Mechanika.
     allowedHeaders:  ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cache-Control', 'x-teo-klucz'],
-    exposedHeaders:  ['Content-Type', 'X-Error-Code', 'X-Przewod'],
+    exposedHeaders:  ['Content-Type', 'X-Error-Code', 'X-Przewod', 'X-Glos-Stada-Blad'],
     credentials:     true,
     maxAge:          86400,  // preflight cache 24h
 }));
@@ -11583,9 +11584,28 @@ app.post('/api/voice/transcribe', async (req, res) => {
  * z `fallback: 'browser'` — front ma na tym oparty tor zapasowy i nie wolno
  * mu tego kształtu odpowiedzi zabrać.
  */
+// 🗣️ Głosy Stada (services/GlosyStada.js): TeOgochi z przypisaną barwą (profil Katedry / VoiceStudio — jak aktorzy)
+// mówi nią zamiast domyślnego Pipera; wołający podaje `teogochi` albo `voiceId` = id gatunku.
+const GlosyStada = utworzGlosyStada({ katalog: ANTIGRAVITY_DIR });
+const mimeAudio = (ext) => (ext === 'mp3' ? 'audio/mpeg' : ext === 'ogg' ? 'audio/ogg' : 'audio/wav');
 app.post('/api/voice/speak', async (req, res) => {
-    const { text, voiceId, profil, przewod } = req.body ?? {};
+    const { voiceId, profil, przewod, teogochi } = req.body ?? {};
+    // Tekst do mowy bez markdownu, emoji, linków i niewidocznych znaków — Piper czytał je jak litery.
+    const text = tekstDoMowy(req.body?.text);
     if (!text) return res.status(400).json({ success: false, message: 'Brak "text".' });
+    const przypisany = !profil ? await GlosyStada.glos(teogochi || voiceId).catch(() => null) : null;
+    if (przypisany) {
+        try {
+            const { audio, ext } = await Wywiady.mowa({ tekst: text, glos: przypisany, jezyk: 'pl' });
+            res.setHeader('Content-Type', mimeAudio(ext));
+            res.setHeader('X-Przewod', przypisany.voicestudio ? 'voicestudio' : `profil:${przypisany.profil}`);
+            return res.send(audio);
+        } catch (e) {
+            // Barwa Stada padła (np. VoiceStudio śpi) — mówimy dawnym torem, a nagłówek mówi, czemu.
+            console.warn(`[Głosy Stada] ${teogochi || voiceId}: ${e.message} — dawny tor.`);
+            res.setHeader('X-Glos-Stada-Blad', encodeURIComponent(String(e.message).slice(0, 200)));
+        }
+    }
     try {
         const tor = await ustalTorGlosu({ profil, voiceId, przewod });
         const { audio, mime } = await glosSyntezuj({
@@ -14344,6 +14364,9 @@ app.get('/api/glos/glosy', async (_req, res) => {
         return res.json({ success: true, katedra, voicestudio: { zywe: !!st.zywe, baza: GlosStudio.BAZA, profile, braki: st.braki ?? [] } });
     } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
 });
+/** Głosy Stada: mapa TeOgochi → barwa (profil Katedry albo VoiceStudio). */
+app.get('/api/glos/stado', (_req, res) => ytOdp(res, GlosyStada.wszystkie().then((glosy) => ({ glosy })), 500));
+app.put('/api/glos/stado', (req, res) => ytOdp(res, GlosyStada.ustaw(req.body?.id, req.body?.glos ?? null).then((glosy) => ({ glosy }))));
 app.get('/api/glos/stemy', (_req, res) => ytOdp(res, listaStemow(STEMY_DIR).then((stemy) => ({ stemy, katalog: STEMY_DIR })), 500));
 app.post('/api/glos/ze-stemu', async (req, res) => {
     try {
