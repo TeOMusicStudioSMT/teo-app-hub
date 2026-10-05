@@ -29,7 +29,8 @@ interface Studio {
 }
 interface Aktor { id: string; imie: string; rola: string; kolor: string; projekt?: string | null; zdjecie?: string | null; wideo?: string | null; glos?: Glos | null }
 interface Kwestia { kto: string; tekst: string }
-interface Odcinek { id: string; tytul: string; temat: string; goscie: string[]; goscieFilm?: string; kwestie: Kwestia[]; etap: string; blad?: string; plik?: string; sekundy?: number | null; postep?: { etap: string; zrobione: number; wszystkich: number }; bezGlosu?: boolean; jezyk?: 'pl' | 'en'; styl?: string; pralka?: number | null; rundy?: number }
+interface Odcinek { id: string; tytul: string; temat: string; goscie: string[]; goscieFilm?: string; kwestie: Kwestia[]; etap: string; blad?: string; plik?: string; sekundy?: number | null; postep?: { etap: string; zrobione: number; wszystkich: number }; bezGlosu?: boolean; jezyk?: 'pl' | 'en'; styl?: string; pralka?: number | null; rundy?: number; usta?: { ok: number; bledy: string[] } | null }
+interface StanUst { gotowy: boolean; srodowisko: boolean; brakuje: string[]; powod: string; licencja: string; instalacja: { stan: string; etap: string | null; log: string[]; blad: string | null; cuda: boolean | null } }
 interface Stan { studio: Studio; postepWstepu: { etap: string } | null; aktorzy: Aktor[]; ozywianie?: Ozywianie[]; ruchy?: { id: string; nazwa: string; opis: string }[] }
 interface SkrotStudia { id: string; nazwa: string; prowadzacy: string; kolor: string; ujec: number; odcinkow: number; domyslne: boolean }
 interface OpisSilnika { id: string; nazwa: string; licencja: string; wymagaZgody: boolean; model: string }
@@ -72,6 +73,8 @@ export const StudioPodcastuPanel: React.FC = () => {
     const [styl, setStyl] = useState('domyslny');
     const [pralka, setPralka] = useState(0);
     const [bezGlosu, setBezGlosu] = useState(false);
+    const [usta, setUsta] = useState(false);
+    const [stanUst, setStanUst] = useState<StanUst | null>(null);
     const [wstepem, setWstepem] = useState(true);
     const [zGoscmi, setZGoscmi] = useState(true);
     const [praca, setPraca] = useState<string | null>(null);
@@ -107,11 +110,12 @@ export const StudioPodcastuPanel: React.FC = () => {
             setOdcinki((await zMostu<{ odcinki: Odcinek[] }>(`/api/studio-podcast/odcinki?studio=${encodeURIComponent(id)}`)).odcinki);
             zMostu<Silnik>('/api/glos/silnik').then(setSilnik).catch(() => setSilnik(null));
             zMostu<Glosy>('/api/glos/glosy').then(setGlosy).catch(() => setGlosy(null));
+            zMostu<StanUst>('/api/usta').then(setStanUst).catch(() => setStanUst(null));
         } catch (e) { setMost(/HTTP 404/.test(String(e)) ? 'stary' : 'milczy'); }
     }, [idStudia]);
     useEffect(() => { void odswiez(); }, [odswiez]);
     useEffect(() => { try { localStorage.setItem('teo_studio_podcast', idStudia); } catch { /* bez pamięci */ } }, [idStudia]);
-    const trwa = !!stan?.postepWstepu || odcinki.some((o) => o.etap === 'nagrywa') || silnik?.instalacja.stan === 'trwa' || !!stan?.studio.ujecia.some((u) => u.ruch?.etap === 'robi');
+    const trwa = !!stan?.postepWstepu || odcinki.some((o) => o.etap === 'nagrywa') || silnik?.instalacja.stan === 'trwa' || !!stan?.studio.ujecia.some((u) => u.ruch?.etap === 'robi') || stanUst?.instalacja.stan === 'trwa';
     useEffect(() => { if (!trwa) return undefined; const t = setInterval(() => void odswiez(), 2500); return () => clearInterval(t); }, [trwa, odswiez]);
 
     const akcja = async (nazwa: string, f: () => Promise<unknown>, ok?: string) => {
@@ -137,7 +141,7 @@ export const StudioPodcastuPanel: React.FC = () => {
     };
     const nagraj = (o: Odcinek) => akcja(o.id, async () => {
         await zapiszPoprawki(o);
-        await post(`/api/studio-podcast/odcinki/${o.id}/nagraj`, { bezGlosu, zWstepem: wstepem, zGoscmi });
+        await post(`/api/studio-podcast/odcinki/${o.id}/nagraj`, { bezGlosu, zWstepem: wstepem, zGoscmi, usta: usta && !bezGlosu });
     }, 'Nagrywam odcinek w tle.');
     const dogrywka = (o: Odcinek) => akcja(`d-${o.id}`, async () => {
         await zapiszPoprawki(o);
@@ -330,7 +334,20 @@ export const StudioPodcastuPanel: React.FC = () => {
                                 <label className="text-slate-400"><input type="checkbox" checked={zGoscmi} onChange={(e) => setZGoscmi(e.target.checked)} /> wideo z gośćmi</label>
                                 <label className="text-slate-400"><input type="checkbox" checked={wstepem} disabled={!w?.nagranie} onChange={(e) => setWstepem(e.target.checked)} /> ze wstępem</label>
                                 <label className="text-slate-400"><input type="checkbox" checked={bezGlosu} onChange={(e) => setBezGlosu(e.target.checked)} /> bez głosu (same napisy)</label>
+                                <label className={stanUst?.gotowy ? 'text-pink-200' : 'text-slate-500'} title={stanUst?.gotowy ? 'Karta mówiącego rusza ustami pod jego kwestię (MuseTalk). Wolne: kilka minut na kwestię na słabszej karcie.' : stanUst?.powod ?? 'most nie zna ust aktorów'}>
+                                    <input type="checkbox" checked={usta && !bezGlosu} disabled={!stanUst?.gotowy || bezGlosu} onChange={(e) => setUsta(e.target.checked)} /> 👄 usta aktorów
+                                </label>
                             </div>
+                            {stanUst && !stanUst.gotowy && (
+                                <div className="rounded border border-pink-500/30 bg-pink-950/20 p-2 text-[10px] leading-relaxed text-pink-100/90">
+                                    <p>👄 Usta aktorów: karta mówiącego rusza ustami pod jego głos — MuseTalk 1.5 (MIT, wolno komercyjnie), lokalnie, ~4 GB VRAM. {stanUst.powod}.</p>
+                                    {stanUst.instalacja.stan === 'trwa'
+                                        ? <p className="mt-1 text-cyan-200"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />{stanUst.instalacja.etap} <span className="text-slate-400">· {stanUst.instalacja.log.at(-1)}</span></p>
+                                        : <button disabled={!!praca} onClick={() => akcja('usta', () => zMostu('/api/usta/instaluj', { method: 'POST', body: '{}' }), 'Instalacja ust rusza w tle (~3,5 GB).')} className={`${guzik} mt-1 border-pink-400/60 text-pink-100`}>{praca === 'usta' ? '…' : '👄 Zainstaluj usta aktorów'}</button>}
+                                    {stanUst.instalacja.stan === 'blad' && <p className="mt-1 text-red-300">✕ {stanUst.instalacja.blad}</p>}
+                                    <p className="mt-1 text-slate-400">{stanUst.licencja}</p>
+                                </div>
+                            )}
                         </div>
                     </details>
 
@@ -340,7 +357,9 @@ export const StudioPodcastuPanel: React.FC = () => {
                             {o.etap === 'nagrywa' && <p className="mt-1 text-cyan-300"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />{o.postep ? `${o.postep.etap} (${o.postep.zrobione}/${o.postep.wszystkich})` : 'nagrywam…'}</p>}
                             {o.etap === 'blad' && <p className="mt-1 text-amber-300">⚠ {o.blad}</p>}
                             {o.etap === 'gotowy' && o.plik && <video controls src={`${MOST}/api/studio-podcast/plik/odcinek/${o.id}?${q}`} className="mt-1 w-full rounded border border-slate-700" />}
-                            {o.etap === 'gotowy' && <p className="mt-1 text-[10px] text-emerald-300">✓ {o.sekundy?.toFixed(1)} s · w montażach projektu studia — stamtąd „📺 do publikacji”.</p>}
+                            {o.etap === 'gotowy' && <p className="mt-1 text-[10px] text-emerald-300">✓ {o.sekundy?.toFixed(1)} s · w montażach projektu studia — stamtąd „📺 do publikacji”.{o.usta ? ` · 👄 usta: ${o.usta.ok} kwestii` : ''}</p>}
+                            {o.usta && o.usta.bledy.length > 0 && <p className="mt-1 text-[10px] text-amber-300" title={o.usta.bledy.join('\n')}>⚠ Usta nie wyszły w {o.usta.bledy.length} kwestii (tam karta bez ruchu): {o.usta.bledy[0]}</p>}
+                            {o.etap === 'gotowy' && <button disabled={!!praca} onClick={() => nagraj(o)} className={`${guzik} mt-1 border-cyan-500/40 text-cyan-200`} title="Nagraj jeszcze raz z obecnymi opcjami (np. z ustami) — gotowe głosy idą ze schowka">🎥 Nagraj ponownie</button>}
                             {o.etap !== 'nagrywa' && o.etap !== 'gotowy' && (
                                 <>
                                     <textarea value={edycja[o.id] ?? tekstKwestii(o.kwestie)} rows={Math.min(14, o.kwestie.length + 1)} onChange={(e) => setEdycja((x) => ({ ...x, [o.id]: e.target.value }))} className={`mt-1 w-full font-mono text-[10px] ${pole}`} />

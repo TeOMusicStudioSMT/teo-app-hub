@@ -104,16 +104,37 @@ export function filtrTla(i, { ox = 0.5, oy = 0.62, z0 = 1.12, z1 = 1.28, klatek 
 
 /** Wejście karty: obraz zapętlony w czasie albo klip wideo (zapętlony, ucięty do `d`; jego dźwięk i tak nie jest mapowany). */
 const wejscieKarty = (plik, d) => (WIDEO.test(plik) ? ['-stream_loop', '-1', '-t', d, '-i', plik] : ['-loop', '1', '-framerate', String(FPS), '-t', d, '-i', plik]);
-const kartaFiltr = (i, kolor) => `[${i}:v]fps=${FPS},scale=360:420:force_original_aspect_ratio=decrease,pad=iw+10:ih+10:5:5:color=${kolorFf(kolor)}`;
+/**
+ * Filtr karty mówiącego. `raz` = klip ust 👄 (gra raz od początku, po końcu trzyma ostatnią klatkę — bez pętli, która
+ * zaczęłaby usta od nowa pod pauzą); `kadr` = { x, y, w, h } — wycięcie głowy i ramion (na zdjęciu całej postaci
+ * usta byłyby niewidoczne na karcie 360×420).
+ */
+const kartaFiltr = (i, kolor, { raz = 0, kadr = null } = {}) => `[${i}:v]${raz ? `tpad=stop_mode=clone:stop_duration=${Number(raz).toFixed(2)},` : ''}${kadr ? `crop=${kadr.w}:${kadr.h}:${kadr.x}:${kadr.y},` : ''}fps=${FPS},scale=360:420:force_original_aspect_ratio=decrease,pad=iw+10:ih+10:5:5:color=${kolorFf(kolor)}`;
+
+/**
+ * Wycięcie karty wokół twarzy (proporcja karty 360:420): ~3,2 wysokości twarzy, twarz w górnej części kadru.
+ * `twarz` = [x1, y1, x2, y2] w pikselach klatki `szer`×`wys`. Wymiary parzyste (x264). Czysta funkcja — testowana.
+ */
+export function kadrTwarzy(twarz, szer, wys, proporcja = 360 / 420) {
+    const [x1, y1, x2, y2] = twarz;
+    const fh = Math.max(1, y2 - y1);
+    let h = Math.min(wys, 3.2 * fh), w = h * proporcja;
+    if (w > szer) { w = szer; h = w / proporcja; }
+    w = Math.max(2, Math.floor(w / 2) * 2); h = Math.max(2, Math.floor(h / 2) * 2);
+    const cx = (x1 + x2) / 2, cy = y1 + fh * 0.75;
+    const x = Math.max(0, Math.min(szer - w, Math.round(cx - w / 2)));
+    const y = Math.max(0, Math.min(wys - h, Math.round(cy - h * 0.4)));
+    return { x: Math.floor(x / 2) * 2, y: Math.floor(y / 2) * 2, w, h };
+}
 
 /**
  * Argumenty ffmpeg dla jednej kwestii odcinka. `tlo` = { plik, ox, oy }, `karta` = zdjęcie mówiącego (albo null).
  * Nazwy plików WZGLĘDNE do cwd.
  */
-export function argumentyKadru({ tlo, karta = null, kolor, imiePlik, liniePliki, czcionka, czas, audio, wyjscie }) {
+export function argumentyKadru({ tlo, karta = null, kartaUsta = false, kadrKarty = null, kolor, imiePlik, liniePliki, czcionka, czas, audio, wyjscie }) {
     const d = Number(czas).toFixed(2), klatek = Math.max(1, Math.round(czas * FPS));
     const wejscia = wejscieTla(tlo, d);
-    if (karta) wejscia.push(...wejscieKarty(karta, d));
+    if (karta) wejscia.push(...(kartaUsta ? ['-i', karta] : wejscieKarty(karta, d)));
     wejscia.push(...(audio ? ['-i', audio] : ['-f', 'lavfi', '-t', d, '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000']));
     const ia = karta ? 2 : 1;
     const gora = WYS - 60 - 46 - liniePliki.length * 42;
@@ -123,7 +144,7 @@ export function argumentyKadru({ tlo, karta = null, kolor, imiePlik, liniePliki,
     const koniec = [pas, imie, ...napisy, `fade=t=in:st=0:d=0.25`, `fade=t=out:st=${Math.max(0, czas - 0.25).toFixed(2)}:d=0.25`, 'format=yuv420p'].join(',');
     const tloF = `${filtrTla(0, { ox: tlo.ox, oy: tlo.oy, klatek, wideo: WIDEO.test(tlo.plik) })}[bg]`;
     const wizja = karta
-        ? `${tloF};${kartaFiltr(1, kolor)}[k];[bg][k]overlay=x=W-w-56:y=48:shortest=0[bk];[bk]${koniec}[v]`
+        ? `${tloF};${kartaFiltr(1, kolor, { raz: kartaUsta ? czas : 0, kadr: kadrKarty })}[k];[bg][k]overlay=x=W-w-56:y=48:shortest=0[bk];[bk]${koniec}[v]`
         : `${tloF};[bg]${koniec}[v]`;
     const filtr = `${wizja};[${ia}:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration=${d}[a]`;
     return ['-y', ...wejscia, '-filter_complex', filtr, '-map', '[v]', '-map', '[a]', '-t', d, '-r', String(FPS),
@@ -692,11 +713,13 @@ export function utworzStudioPodcastu(o) {
     }
 
     /** Krok 2 + 3: wstęp, głosy, kadry, sklejenie → katalog montaży projektu `studio-podcast`. Startuje w tle. */
-    async function nagraj(id, { bezGlosu = false, zWstepem = true, zGoscmi = true, podklad = null, glosnosc = 0.12, projekt = cfg.projekt } = {}) {
+    async function nagraj(id, { bezGlosu = false, zWstepem = true, zGoscmi = true, podklad = null, glosnosc = 0.12, projekt = cfg.projekt, usta = false } = {}) {
         const x = await odcinek(id);
         const s = await zasiej();
         if (wRobocie.has(id)) throw new Error('Ten odcinek już się nagrywa.');
         if (!bezGlosu && !cfg.mow) throw new Error('Katedra nie ma silnika głosu — nagraj „bez głosu” (same napisy).');
+        if (usta && bezGlosu) throw new Error('Usta aktorów ruszają się pod głos — „bez głosu” ich nie ma (odznacz jedno z dwóch).');
+        if (usta && !cfg.usta) throw new Error('Ta Katedra nie ma silnika ust aktorów (services/UstaAktorow.js).');
         const ujecia = s.ujecia.filter((u) => fsSync.existsSync(u.plik));
         if (!ujecia.length) throw new Error('Studio nie ma żadnego ujęcia na dysku.');
         let plikPodkladu = null;
@@ -708,7 +731,7 @@ export function utworzStudioPodcastu(o) {
         const baza = await cfg.aktorzy();
         const mowca = (kto) => (kto === PROWADZACY_ID ? s.prowadzacy : baza.find((a) => a.id === kto)) ?? { id: kto, imie: kto, kolor: '#f4c84a', zdjecie: null, glos: null };
         const { postep, ...zapis } = x;
-        Object.assign(zapis, { etap: 'nagrywa', bezGlosu: !!bezGlosu, zWstepem: !!zWstepem, zGoscmi: !!zGoscmi, podklad: plikPodkladu ? path.basename(plikPodkladu) : null, blad: undefined, nagrywanoOd: czas() });
+        Object.assign(zapis, { etap: 'nagrywa', bezGlosu: !!bezGlosu, zWstepem: !!zWstepem, zGoscmi: !!zGoscmi, podklad: plikPodkladu ? path.basename(plikPodkladu) : null, blad: undefined, nagrywanoOd: czas(), usta: usta ? { ok: 0, bledy: [] } : null });
         await pisz(plikOdcinka(id), zapis);
         wRobocie.set(id, { etap: 'start', zrobione: 0, wszystkich: x.kwestie.length });
         void (async () => {
@@ -772,10 +795,25 @@ export function utworzStudioPodcastu(o) {
                     const zrKarty = [m.wideo, m.zdjecie].find((f) => f && fsSync.existsSync(f));
                     if (zrKarty) { karta = `k-${m.id}${path.extname(zrKarty).toLowerCase()}`; if (!fsSync.existsSync(path.join(praca, karta))) await fs.copyFile(zrKarty, path.join(praca, karta)); }
                     const nr = String(i + 1).padStart(3, '0');
+                    // 👄 Usta: karta mówiącego rusza ustami pod tę kwestię. Porażka = karta jak dawniej + uwaga w odcinku.
+                    let kartaUsta = false, kadrKarty = null;
+                    if (usta && audio && zrKarty) {
+                        wRobocie.set(id, { etap: `${m.imie}: usta`, zrobione: i, wszystkich: x.kwestie.length });
+                        try {
+                            const u = await cfg.usta({ zrodlo: zrKarty, audio: path.join(praca, audio) });
+                            karta = `u-${nr}.mp4`;
+                            await fs.copyFile(u.plik, path.join(praca, karta));
+                            kartaUsta = true;
+                            if (Array.isArray(u.twarz) && u.szer && u.wys) kadrKarty = kadrTwarzy(u.twarz, u.szer, u.wys);
+                            zapis.usta.ok += 1;
+                        } catch (e) {
+                            if (zapis.usta.bledy.length < 20) zapis.usta.bledy.push(`${m.imie} (kwestia ${i + 1}): ${String(e.message || e).slice(0, 300)}`);
+                        }
+                    }
                     await fs.writeFile(path.join(praca, `i-${nr}.txt`), m.imie, 'utf8');
                     const pliki = [];
                     for (const [j, l] of zawin(kw.tekst, 62, 4).entries()) { const n = `l-${nr}-${j}.txt`; await fs.writeFile(path.join(praca, n), l, 'utf8'); pliki.push(n); }
-                    await ff(argumentyKadru({ tlo: { plik: tla.get(ujecie.id), ox: ognisko.x, oy: ognisko.y, od }, karta, kolor: m.kolor || '#f4c84a', imiePlik: `i-${nr}.txt`, liniePliki: pliki, czcionka: 'czcionka.ttf', czas: dl, audio, wyjscie: `seg-${nr}.mp4` }), praca);
+                    await ff(argumentyKadru({ tlo: { plik: tla.get(ujecie.id), ox: ognisko.x, oy: ognisko.y, od }, karta, kartaUsta, kadrKarty, kolor: m.kolor || '#f4c84a', imiePlik: `i-${nr}.txt`, liniePliki: pliki, czcionka: 'czcionka.ttf', czas: dl, audio, wyjscie: `seg-${nr}.mp4` }), praca);
                     segmenty.push(`seg-${nr}.mp4`);
                 }
                 wRobocie.set(id, { etap: 'sklejanie', zrobione: x.kwestie.length, wszystkich: x.kwestie.length });

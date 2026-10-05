@@ -77,6 +77,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/studio-podcast',   // 🎙️ Studio Podcastu: zdjęcia z dysku, ffmpeg i klon głosu — tylko przy Katedrze
     '/api/sceny',   // 💬 Sceny dialogowe: kadry z dysku i ffmpeg — tylko przy Katedrze
     '/api/studio3d',   // 🧊 Studio 3D z kadru: zdjęcia z dysku, model głębi i Blender — tylko przy Katedrze
+    '/api/usta',   // 👄 Usta aktorów: instalacja środowiska i wag — tylko przy Katedrze
     '/api/gielda-mocy',   // ⚡ Giełda mocy: oferta tej Katedry ustawia się tylko przy niej
     '/api/glos/',   // 🎙️ głos ze stemu: zapisuje próbki klonu i profile głosu — tylko przy Katedrze
 ];

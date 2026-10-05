@@ -193,6 +193,7 @@ import { utworzPublikacje } from './services/PublikacjeYouTube.js';
 import { utworzWywiady } from './services/WywiadAktorow.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzGlebie } from './services/GlebiaKadru.js';
+import { utworzUsta } from './services/UstaAktorow.js';
 import { utworzSceny } from './services/ScenyDialogowe.js';
 import { kodDoUzycia } from './services/KodZaproszenia.js';
 import { utworzGlosyStada, tekstDoMowy } from './services/GlosyStada.js';
@@ -14289,6 +14290,15 @@ app.post('/api/studio3d/ozyw', (req, res) => ytOdp(res, (async () => {
 })()));
 app.get('/api/studio3d/zadanie/:id', (req, res) => { const z = Glebia.zadanie(req.params.id); return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania (most mógł wystartować od nowa).' }); });
 
+// ── 👄 Usta aktorów (services/UstaAktorow.js, MuseTalk 1.5 — MIT) ──
+// Karta mówiącego rusza ustami pod jego kwestię. Środowisko i wagi w `_OtakOs_AI/usta` (instaluje Katedra).
+const Usta = utworzUsta({ aiDir: AI_DIR, ffmpeg: ffmpegPath });
+app.get('/api/usta', (_req, res) => res.json({ success: true, ...Usta.stan() }));
+app.post('/api/usta/instaluj', (req, res) => {
+    try { return res.json({ success: true, instalacja: Usta.instaluj({ cuda: String(req.body?.cuda ?? 'auto') }) }); }
+    catch (e) { return res.status(409).json({ success: false, message: e.message }); }
+});
+
 // ── 🎙️ Studio Podcastu (services/StudioPodcastu.js) ──
 // Zdjęcia studia (zasiew z public/studio-podcast) + prowadzący z własnym głosem → film wstępowy z jego nagraniem →
 // odcinki: scenariusz z gośćmi z bazy aktorów, głosy, kadry w studiu → katalog montaży projektu `studio-podcast`.
@@ -14306,6 +14316,7 @@ const Studia = utworzStudia({
     sciezkaPodkladu: (plik) => sciezkaWBibliotece(plik),
     ozyw: (o) => Glebia.ozyw(o),
     zadanieOzywienia: (id) => Glebia.zadanie(id),
+    usta: (o) => Usta.mow(o),
 });
 /** Studio z żądania: `?studio=` albo `body.studio` (domyślnie pierwsze, „teo”). Nieznane = błąd wprost. */
 const studioZ = (req) => Studia.get(String(req.query?.studio ?? req.body?.studio ?? 'teo'));
@@ -14361,6 +14372,7 @@ app.post('/api/studio-podcast/odcinki/:id/dogrywka', (req, res) => wStudiu(req, 
 app.post('/api/studio-podcast/odcinki/:id/goscie', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.zrobGosci(req.params.id, { bezGlosu: req.body?.bezGlosu === true }) })));
 app.post('/api/studio-podcast/odcinki/:id/nagraj', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.nagraj(req.params.id, {
     bezGlosu: req.body?.bezGlosu === true, zWstepem: req.body?.zWstepem !== false, zGoscmi: req.body?.zGoscmi !== false, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
+    usta: req.body?.usta === true,
 }) })));
 
 // ── 🎙️ Głos ze stemu (services/GlosZeStemu.js): `_OtakOs_Muzyka/_Stemy` (paczki z Suno, wyniki Demucsa) ──

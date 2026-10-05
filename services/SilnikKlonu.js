@@ -175,7 +175,7 @@ async function przelacz({ aiDir, base, log }) {
 }
 
 /** Python 3.10–3.12 (coqui-tts i torch): OTAKOS_PYTHON → `_OtakOs_AI/python312` → py -3.12/-3.11/-3.10 → python3.x. */
-async function znajdzPythona(aiDir, zbierz) {
+export async function znajdzPythona(aiDir, zbierz) {
     const win = process.platform === 'win32';
     const wKatedrze = win ? path.join(aiDir, 'python312', 'python.exe') : path.join(aiDir, 'python312', 'bin', 'python3');
     const proby = [
@@ -193,7 +193,7 @@ async function znajdzPythona(aiDir, zbierz) {
     return null;
 }
 
-function domyslneUruchom(polecenie, argumenty, { cwd, env, naLinie = () => {} } = {}) {
+export function domyslneUruchom(polecenie, argumenty, { cwd, env, naLinie = () => {} } = {}) {
     return new Promise((resolve, reject) => {
         const d = spawn(polecenie, argumenty, { cwd, env, windowsHide: true });
         let reszta = '';
@@ -203,7 +203,7 @@ function domyslneUruchom(polecenie, argumenty, { cwd, env, naLinie = () => {} } 
         d.on('close', (kod) => { if (reszta) naLinie(reszta); resolve(kod); });
     });
 }
-const zbierzDomyslnie = (uruchom) => async (pol, argi) => { const linie = []; const kod = await uruchom(pol, argi, { naLinie: (l) => linie.push(l) }); return { kod, linie }; };
+export const zbierzDomyslnie = (uruchom) => async (pol, argi) => { const linie = []; const kod = await uruchom(pol, argi, { naLinie: (l) => linie.push(l) }); return { kod, linie }; };
 
 /**
  * Instalacja silnika W KATEDRZE (w tle, z dziennikiem). `silnik`: 'chatterbox' (domyślny, MIT) | 'xtts' (wymaga
