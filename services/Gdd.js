@@ -239,7 +239,21 @@ const produkcje = new Map();   // projektId → { stan, biezace, od, kroki[], zr
 export function produkcja(projektId) { return produkcje.get(projektId) ?? null; }
 export function przerwij(projektId) { const p = produkcje.get(projektId); if (p && p.stan === 'trwa') { p.przerwij = true; return true; } return false; }
 
-export async function realizuj(projektId, { model, tylkoKamien = null } = {}) {
+/**
+ * Lista zapasowych modeli produkcji (Suweren 2026-10-06: „nie umie innych spróbować… może Dyrygent do tego nie dobiera”):
+ * bez dubli i bez głównego, najwyżej 3. Zadanie, które padło na modelu, próbuje następny z listy; model, który
+ * zadanie zrobił, prowadzi dalej (nie męczymy martwego modelu przy każdym zadaniu).
+ */
+export function listaZapasowych(glowny, zapasowe) {
+    const out = [];
+    for (const m of Array.isArray(zapasowe) ? zapasowe : []) {
+        const n = String(m ?? '').trim();
+        if (n && n !== glowny && !out.includes(n)) out.push(n);
+    }
+    return out.slice(0, 3);
+}
+
+export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = null } = {}) {
     const g = await wczytaj(projektId);
     if (!g) throw new Error('Ten projekt nie ma GDD.');
     if (!g.kamienie?.length) throw new Error('GDD nie ma planu — najpierw „Plan z GDD".');
@@ -247,7 +261,8 @@ export async function realizuj(projektId, { model, tylkoKamien = null } = {}) {
     if (!cfg.appStudio) throw new Error('AppStudio niepodpięte.');
     const kolejka = g.kamienie.filter((k) => !tylkoKamien || k.id === tylkoKamien).flatMap((k) => k.zadania.filter((z) => z.stan === 'czeka' || z.stan === 'blad').map((z) => ({ kamien: k, zadanie: z })));
     if (!kolejka.length) throw new Error('Nic nie czeka — wszystkie zadania planu są gotowe albo pominięte.');
-    const prod = { stan: 'trwa', od: new Date().toISOString(), biezace: null, kroki: [], zrobione: 0, padlo: 0, razem: kolejka.length, przerwij: false, model: model || cfg.model() };
+    const prod = { stan: 'trwa', od: new Date().toISOString(), biezace: null, kroki: [], zrobione: 0, padlo: 0, razem: kolejka.length, przerwij: false, model: model || cfg.model(), zapasowe: [] };
+    prod.zapasowe = listaZapasowych(prod.model, zapasowe);
     produkcje.set(projektId, prod);
     const krok = (t) => { prod.kroki.push({ kiedy: new Date().toISOString(), tekst: String(t).slice(0, 400) }); if (prod.kroki.length > 200) prod.kroki.shift(); };
     await cfg.szyna?.nadaj?.({ agent: 'Reżyser', rodzaj: 'praca', tresc: `produkcja „${projektId}": ${kolejka.length} zadań z planu GDD → Kodeks`, dane: { projekt: projektId } }).catch(() => {});
@@ -262,31 +277,44 @@ export async function realizuj(projektId, { model, tylkoKamien = null } = {}) {
             krok(`▶ ${km.tytul}: ${zd.tresc.slice(0, 120)}`);
             zd.stan = 'trwa'; zd.kiedy = new Date().toISOString();
             await fs.writeFile(plik(projektId), JSON.stringify(gAkt, null, 2), 'utf8');
-            let wynik = null;
-            try {
-                const kontekst = `KONTEKST Z GDD (trzymaj się go): ${gAkt.tytul} — ${gAkt.gatunek}. Kamień milowy: ${km.tytul} — ${km.opis}.\nZADANIE: ${zd.tresc}`;
-                const z = await cfg.appStudio.buduj(projektId, { zadanie: kontekst, model: prod.model });
-                zd.zadanieId = z.id;
-                for (;;) {
-                    await new Promise((r) => setTimeout(r, 10_000));
-                    const s = cfg.appStudio.zadanie(z.id);
-                    if (!s) { wynik = { ok: false, powod: 'zadanie zniknęło (restart mostu?)' }; break; }
-                    if (s.stan !== 'trwa') { wynik = s.wynik ?? { ok: s.stan === 'gotowe' }; break; }
+            const kontekst = `KONTEKST Z GDD (trzymaj się go): ${gAkt.tytul} — ${gAkt.gatunek}. Kamień milowy: ${km.tytul} — ${km.opis}.\nZADANIE: ${zd.tresc}`;
+            const sprobuj = async (m) => {
+                try {
+                    const z = await cfg.appStudio.buduj(projektId, { zadanie: kontekst, model: m });
+                    zd.zadanieId = z.id;
+                    for (;;) {
+                        await new Promise((r) => setTimeout(r, cfg.odstepSondazuMs ?? 10_000));
+                        const s = cfg.appStudio.zadanie(z.id);
+                        if (!s) return { ok: false, powod: 'zadanie zniknęło (restart mostu?)' };
+                        if (s.stan !== 'trwa') return s.wynik ?? { ok: s.stan === 'gotowe' };
+                    }
+                } catch (e) { return { ok: false, powod: e.message }; }
+            };
+            const lancuch = [prod.model, ...prod.zapasowe.filter((m) => m !== prod.model)];
+            let wynik = null; let modelZadania = prod.model;
+            for (let i = 0; i < lancuch.length; i++) {
+                modelZadania = lancuch[i];
+                if (i > 0) {
+                    if (prod.przerwij) break;
+                    krok(`↻ ${lancuch[i - 1]} nie dał rady (${String(wynik?.powod || '').slice(0, 120)}) — próbuję zapasowym: ${modelZadania}`);
                 }
-            } catch (e) { wynik = { ok: false, powod: e.message }; }
+                wynik = await sprobuj(modelZadania);
+                if (wynik?.ok) break;
+            }
+            if (wynik?.ok && modelZadania !== prod.model) { krok(`⇢ dalej prowadzi ${modelZadania} (zrobił zadanie, na którym ${prod.model} padł)`); prod.model = modelZadania; }
             const g2 = await wczytaj(projektId);
             const zd2 = g2.kamienie.find((k) => k.id === kamien.id)?.zadania.find((z) => z.id === zadanie.id);
             if (zd2) { zd2.stan = wynik?.ok ? 'gotowe' : 'blad'; zd2.uwaga = wynik?.ok ? `${wynik.rundy ?? '?'} rund, ${wynik.sekundy ?? '?'} s${wynik.commit ? ', ' + wynik.commit : ''}` : String(wynik?.powod || 'padło').slice(0, 300); zd2.kiedy = new Date().toISOString(); }
             await fs.writeFile(plik(projektId), JSON.stringify(g2, null, 2), 'utf8');
             if (wynik?.ok) { prod.zrobione++; krok(`✓ gotowe (${wynik.rundy} rund, ${wynik.sekundy} s)`); }
-            else { prod.padlo++; const rada = radaDlaKodeksa(wynik?.powod, prod.model); krok(`✗ padło: ${String(wynik?.powod || '').slice(0, 200)} — zatrzymuję produkcję, reszta czeka`); if (rada) krok(`💡 ${rada}`); break; }
+            else { prod.padlo++; const rada = radaDlaKodeksa(wynik?.powod, modelZadania); krok(`✗ padło${lancuch.length > 1 ? ` na wszystkich ${lancuch.length} modelach` : ''}: ${String(wynik?.powod || '').slice(0, 200)} — zatrzymuję produkcję, reszta czeka`); if (rada) krok(`💡 ${rada}`); break; }
         }
         prod.stan = prod.padlo ? 'blad' : prod.przerwij ? 'przerwana' : 'gotowe';
         prod.biezace = null; prod.koniec = new Date().toISOString();
         await cfg.szyna?.nadaj?.({ agent: 'Reżyser', rodzaj: prod.padlo ? 'blad' : 'praca', tresc: `produkcja „${projektId}" ${prod.stan}: ${prod.zrobione}/${prod.razem} zadań gotowych${prod.padlo ? ', 1 padło' : ''}`, dane: { projekt: projektId } }).catch(() => {});
     })();
 
-    return { start: true, zadan: kolejka.length, model: prod.model };
+    return { start: true, zadan: kolejka.length, model: prod.model, zapasowe: prod.zapasowe };
 }
 
-export default { skonfiguruj, SILNIKI, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, produkcja, przerwij, jakoTekst, scalKamienie };
+export default { skonfiguruj, SILNIKI, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, produkcja, przerwij, jakoTekst, scalKamienie };

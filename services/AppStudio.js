@@ -33,6 +33,9 @@ import * as Persony from './Persony.js';
 import * as WikiProjektu from './WikiProjektu.js';
 import * as SedziaGry from './SedziaGry.js';
 import * as Recenzent from './RecenzentKodeksa.js';
+import { utworzListyModeli } from './ModeleChmury.js';
+import { zgniecionyKwant, POWOD_ZGNIECIONY } from './ZwiadowcaHF.js';
+import { malyModel } from './BledyModeli.js';
 
 const run = promisify(execFile);
 
@@ -377,7 +380,7 @@ function wylowPliki(tekst) {
 /** Anthropic Messages API — bez strumienia (odpowiedź w sekundach), klucz z Kibla. */
 async function piszAnthropic({ system, prompt, model, timeoutMs }) {
     const klucz = await cfg.klucze.anthropic();
-    if (!klucz) throw new Error('Brak klucza Anthropic w TeO Kibel — wybierz silnik lokalny albo dodaj klucz (sk-ant-…).');
+    if (!klucz) throw new Error('Most nie ma klucza Anthropic — w Hubie TeO Kibel → „🔗 Udostępnij mostowi” (klucz z przeglądarki most nie widzi) albo wybierz silnik lokalny.');
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
         const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -395,7 +398,7 @@ async function piszAnthropic({ system, prompt, model, timeoutMs }) {
 /** Gemini generateContent — bez strumienia, klucz z Kibla. */
 async function piszGemini({ system, prompt, model, timeoutMs }) {
     const klucz = await cfg.klucze.gemini();
-    if (!klucz) throw new Error('Brak klucza Gemini w TeO Kibel — wybierz silnik lokalny albo dodaj klucz (AIza…).');
+    if (!klucz) throw new Error('Most nie ma klucza Gemini — w Hubie TeO Kibel → „🔗 Udostępnij mostowi” (klucz z przeglądarki most nie widzi) albo wybierz silnik lokalny.');
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
@@ -411,9 +414,11 @@ async function piszGemini({ system, prompt, model, timeoutMs }) {
 }
 
 /** Silniki do wyboru w App Studio — lokalne zawsze pierwsze i domyślne; chmura tylko z kluczem. */
+const listyChmury = utworzListyModeli();
+
 export async function silniki() {
     const lokalny = cfg.model();
-    const lista = [{ id: 'lokalny', model: lokalny, etykieta: `Lokalnie — ${lokalny}`, domyslny: true, dostepny: true, uwaga: 'Domyślny. Na tej maszynie runda ≈ 4–5 min.' }];
+    const lista = [{ id: 'lokalny', model: lokalny, etykieta: `Lokalnie — ${lokalny}`, domyslny: true, dostepny: true, uwaga: malyModel(lokalny) ? 'Domyślny (przydział Kodeksa) — ⚠ mały (≤ 4B), zgubi format plików w większym projekcie; daj Kodeksowi większy albo dodaj zapasowe.' : 'Domyślny (przydział Kodeksa).' }];
     try {
         const t = await fetch(`${cfg.ollamaBase}/api/tags`).then((r) => r.json());
         const nazwy = (t.models || []).map((m) => m.name);
@@ -422,11 +427,27 @@ export async function silniki() {
         const szybki = nazwy.find((n) => /^qwen3\.5:4b$/i.test(n));
         if (szybki && szybki !== lokalny) lista.push({ id: 'lokalny-szybki', model: szybki, etykieta: `Lokalnie — ${szybki} (szybki)`, domyslny: false, dostepny: true, uwaga: 'Cały w VRAM, 2–3× szybszy od 9B, słabszy w typach. Do dużych plików i wielu modułów.' });
         const duzy = nazwy.find((n) => /27b/i.test(n));
-        if (duzy && duzy !== lokalny) lista.push({ id: 'lokalny-duzy', model: duzy, etykieta: `Lokalnie — ${duzy}`, domyslny: false, dostepny: true, uwaga: 'Dokładniejszy, ~2 tok/s — runda kilkanaście minut. Raczej do Nocnej Zmiany.' });
+        if (duzy && duzy !== lokalny) lista.push({ id: 'lokalny-duzy', model: duzy, etykieta: `Lokalnie — ${duzy}`, domyslny: false, dostepny: true, uwaga: zgniecionyKwant(duzy.match(/:([A-Za-z0-9_]+)$/)?.[1]) ? `⚠ ${duzy.match(/:([A-Za-z0-9_]+)$/)[1]}: ${POWOD_ZGNIECIONY}.` : 'Dokładniejszy, ~2 tok/s — runda kilkanaście minut. Raczej do Nocnej Zmiany.' });
+        // Reszta modeli Ollamy też do wyboru (Suweren 2026-10-06: „nie umie innych spróbować”) — z uczciwą uwagą.
+        for (const n of nazwy) {
+            if (lista.some((x) => x.model === n) || /embed|bge-|nomic|minilm/i.test(n)) continue;
+            const k = n.match(/:([A-Za-z0-9_]+)$/)?.[1] ?? '';
+            const uwaga = zgniecionyKwant(k) ? `⚠ ${k}: ${POWOD_ZGNIECIONY}.` : malyModel(n) ? '⚠ Mały (≤ 4B) — zgubi format plików w większym projekcie.' : 'Model z Ollamy tej Katedry.';
+            lista.push({ id: `lokalny:${n}`, model: n, etykieta: `Lokalnie — ${n}`, domyslny: false, dostepny: true, uwaga });
+        }
     } catch { /* Ollama śpi — zostaje wpis domyślny */ }
     const [a, g] = await Promise.all([cfg.klucze.anthropic().catch(() => null), cfg.klucze.gemini().catch(() => null)]);
-    lista.push({ id: 'claude', model: 'claude:claude-sonnet-5', etykieta: 'Chmura — Claude Sonnet 5', domyslny: false, dostepny: !!a, uwaga: a ? 'Klucz z Kibla. Kod wychodzi z Katedry.' : 'Brak klucza Anthropic w TeO Kibel.' });
-    lista.push({ id: 'gemini', model: 'gemini:gemini-2.5-flash', etykieta: 'Chmura — Gemini 2.5 Flash', domyslny: false, dostepny: !!g, uwaga: g ? 'Klucz z Kibla. Kod wychodzi z Katedry.' : 'Brak klucza Gemini w TeO Kibel.' });
+    // Nazwy modeli z API dostawcy (schowek 10 min) — nie na sztywno; bez klucza/sieci zapas z ModeleChmury.
+    const [ma, mg] = await Promise.all([listyChmury('anthropic', a), listyChmury('gemini', g)]);
+    const brak = 'Brak klucza dla mostu — TeO Kibel w Hubie → „🔗 Udostępnij mostowi” (klucz w przeglądarce most nie widzi).';
+    for (const [prefiks, k, wynik] of [['claude', a, ma], ['gemini', g, mg]]) {
+        const odrzucony = !!k && /HTTP 40[13]/.test(wynik.blad || '');   // dostawca odrzucił klucz — nie udajemy, że działa
+        for (const m of wynik.modele) {
+            lista.push({ id: `${prefiks}:${m.model}`, model: `${prefiks}:${m.model}`, etykieta: `Chmura — ${m.nazwa}`, domyslny: false, dostepny: !!k && !odrzucony,
+                uwaga: !k ? brak : odrzucony ? `Dostawca odrzucił klucz mostu (${String(wynik.blad).replace(/\.+$/, '')}) — wklej aktualny w Kiblu i udostępnij ponownie.`
+                    : `Klucz API (płatny za tokeny, osobno od abonamentu). Kod wychodzi z Katedry.${wynik.zApi ? '' : ` Lista zapasowa${wynik.blad ? ` — API: ${String(wynik.blad).replace(/\.+$/, '')}` : ''}.`}` });
+        }
+    }
     return lista;
 }
 

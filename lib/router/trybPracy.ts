@@ -68,7 +68,7 @@ export const setModelLokalny = (m: string): string => { zapisz(KLUCZ_MODELU_LOKA
 export const getModelChmuryLekki = (): string => czytaj(KLUCZ_MODELU_CHMURY_SZYBKI, 'claude-haiku-4-5');
 export const setModelChmuryLekki = (m: string): string => { zapisz(KLUCZ_MODELU_CHMURY_SZYBKI, m); return m; };
 
-export const getModelChmuryCiezki = (): string => czytaj(KLUCZ_MODELU_CHMURY_CIEZKI, 'claude-opus-5');
+export const getModelChmuryCiezki = (): string => czytaj(KLUCZ_MODELU_CHMURY_CIEZKI, 'claude-opus-5-5');
 export const setModelChmuryCiezki = (m: string): string => { zapisz(KLUCZ_MODELU_CHMURY_CIEZKI, m); return m; };
 
 /** Subskrypcja zmian — także tych z INNEJ karty (zdarzenie `storage`). */

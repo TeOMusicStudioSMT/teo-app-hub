@@ -178,6 +178,7 @@ import * as Artemis from './services/Artemis.js';
 import * as Tunel from './services/Tunel.js';
 import * as Stado from './services/Stado.js';
 import * as AppStudio from './services/AppStudio.js';
+import { utworzKluczeMostu, utworzListyModeli } from './services/ModeleChmury.js';
 import * as Persony from './services/Persony.js';
 import * as Gdd from './services/Gdd.js';
 import * as Assety3D from './services/Assety3D.js';
@@ -1358,7 +1359,7 @@ app.post('/api/gemini', async (req, res) => {
     // 🛡️ Samoczyszczenie VRAM przed alokacją kontekstu modelu
     executeTacosGuard();
 
-    const { messages, system, model = 'gemini-1.5-flash', apiKey: reqApiKey, agent } = req.body;
+    const { messages, system, model = 'gemini-2.5-flash', apiKey: reqApiKey, agent } = req.body;
     if (!messages?.length) return res.status(400).json({ error: 'Brak messages' });
 
     const apiKey = await getGeminiKey(reqApiKey);
@@ -1403,7 +1404,7 @@ app.post('/api/gemini', async (req, res) => {
             generationConfig: { maxOutputTokens: 8192, temperature: 0.7 },
         };
 
-        const geminiModel = model || 'gemini-1.5-flash';
+        const geminiModel = model || 'gemini-2.5-flash';
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:streamGenerateContent?key=${apiKey}&alt=sse`;
 
         console.log(`[Wiesio-Gemini] 🔵 ${geminiModel} → streaming...`);
@@ -3785,6 +3786,25 @@ app.post('/api/kibel/flush', async (req, res) => {
         return res.status(500).json({ success: false, error: `Flush Protocol Failure: ${e.message}` });
     }
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🔗 KLUCZE KIBLA DLA MOSTU (Suweren 2026-10-06: „w Hubie cloud, a w games nie widzi kluczy”)
+//  Kibel Huba trzyma klucze w przeglądarce — most ich nie widzi. Suweren świadomie udostępnia klucz mostowi
+//  (plik _OtakOs_Wymiar/kibel_<dostawca>.txt, czytany przez getAnthropicKey/getGeminiKey), cofnięcie kasuje plik.
+//  Odpowiedzi nigdy nie niosą klucza — tylko końcówkę. Tylko przy maszynie (Straż).
+// ══════════════════════════════════════════════════════════════════════════════
+const KluczeMostu = utworzKluczeMostu({ katalog: ANTIGRAVITY_DIR, efektywny: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey() } });
+const listyModeliChmury = utworzListyModeli();
+const odpKluczy = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(400).json({ success: false, message: e.message }));
+app.get('/api/kibel/most', (_req, res) => odpKluczy(res, KluczeMostu.stan().then((klucze) => ({ klucze }))));
+app.post('/api/kibel/most', (req, res) => odpKluczy(res, KluczeMostu.ustaw(req.body?.dostawca, req.body?.klucz).then(async (w) => ({ ...w, klucze: await KluczeMostu.stan() }))));
+app.delete('/api/kibel/most/:dostawca', (req, res) => odpKluczy(res, KluczeMostu.usun(req.params.dostawca).then(async (w) => ({ ...w, klucze: await KluczeMostu.stan() }))));
+/** GET /api/modele/chmura — modele z konta dostawcy (klucz mostu), bez klucza: lista zapasowa. */
+app.get('/api/modele/chmura', (_req, res) => odpKluczy(res, (async () => {
+    const [a, g] = await Promise.all([getAnthropicKey().catch(() => null), getGeminiKey().catch(() => null)]);
+    const [anthropic, gemini] = await Promise.all([listyModeliChmury('anthropic', a), listyModeliChmury('gemini', g)]);
+    return { anthropic: { ...anthropic, klucz: !!a }, gemini: { ...gemini, klucz: !!g } };
+})()));
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  🌐 APILAYER GATEWAY — Free-Only Network Client
@@ -8000,7 +8020,7 @@ app.post('/api/gdd/:id/plan', async (req, res) => {
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.post('/api/gdd/:id/realizuj', async (req, res) => {
-    try { res.json({ success: true, ...(await Gdd.realizuj(req.params.id, { model: req.body?.model, tylkoKamien: req.body?.kamien || null })), sondaz: `/api/gdd/${encodeURIComponent(req.params.id)}/sondaz` }); }
+    try { res.json({ success: true, ...(await Gdd.realizuj(req.params.id, { model: req.body?.model, zapasowe: req.body?.zapasowe, tylkoKamien: req.body?.kamien || null })), sondaz: `/api/gdd/${encodeURIComponent(req.params.id)}/sondaz` }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 /** Sondaż produkcji gry dla Nocnej Zmiany: „trwa" do końca, potem gotowe / błąd z krokiem, na którym stanęła. */

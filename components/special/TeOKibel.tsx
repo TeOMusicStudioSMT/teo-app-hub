@@ -20,6 +20,7 @@ import { registerZator } from '../../lib/wir26heartbeat';
 import { useResonance } from '../../hooks/useResonance';
 import { clearHistory, useCityMemory } from '../../lib/memory/CityMemory';
 import { PipesPanel } from './PipesPanel';
+import { KluczeDlaMostu } from './KluczeDlaMostu';
 
 // Aromaty - "Zapachy" - mapowanie na providerów z kibel.ts
 const AROMATS = [
@@ -574,6 +575,9 @@ export const TeOKibel: React.FC<TeOKibelProps> = ({ onFlush }) => {
           })}
         </div>
       </div>
+
+      {/* 🔗 Klucze dla mostu (Game Studio widzi chmurę tylko po udostępnieniu) */}
+      <KluczeDlaMostu />
 
       {/* Przycisk FLUSH */}
       <motion.button

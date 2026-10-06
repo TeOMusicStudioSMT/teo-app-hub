@@ -28,7 +28,7 @@ export type DirectorMode = 'AUTO' | 'MANUAL';
 const BRAIN_KEY = 'teo_podcast_brain';
 const VOICE_KEY = 'teo_podcast_voice';
 const LOCAL_MODEL_KEY = 'otakos_active_model';   // wspólny z resztą Katedry
-const CLOUD_MODEL = 'gemini-1.5-flash';
+const CLOUD_MODEL = 'gemini-2.5-flash';   // 1.5 wycofane przez Google
 
 /** Domyślny profil głosu — gdy nie ma klonu, Orb mówi „Sonikiem", nie ciszą. */
 const SONIC_VOICE_ID = 'SONIC';

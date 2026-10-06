@@ -372,7 +372,7 @@ export const generateContent = async (
         if (!apiKey) return "Resonance Failed: Brak klucza Gemini w Kiblu.";
         try {
             const genAI = new GoogleGenerativeAI(apiKey);
-            for (const modelName of ['gemini-1.5-flash', 'gemini-1.5-pro']) {
+            for (const modelName of ['gemini-2.5-flash', 'gemini-2.5-pro']) {
                 try {
                     const model = genAI.getGenerativeModel({ model: modelName });
                     const result = await model.generateContent(prompt);
