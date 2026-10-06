@@ -23,6 +23,7 @@ import { CZCIONKI, zawin, kolorFf, jasniej } from './PowitanieDnia.js';
 import { argumentyPodkladu } from './GlosZeStemu.js';
 import { WIDEO, slug, odczytajScenariusz, czasBezGlosu, JEZYKI, jezykWywiadu, SZER, WYS, FPS } from './WywiadAktorow.js';
 import { filtrTla, STYLE_WYWIADU, stylWywiadu, temperaturaZPralki } from './StudioPodcastu.js';
+import { bezDucha } from './Przerwane.js';
 
 const OBRAZ = /\.(png|jpe?g|webp|bmp)$/i;
 export const MAX_POSTACI = 4, MAX_KWESTII = 60, MAX_RUND = 5;
@@ -185,14 +186,14 @@ export function utworzSceny(o) {
 
     async function wczytaj(id) {
         sprawdzId(id);
-        const s = await czytaj(plikSceny(id), null);
+        const s = await bezDucha(await czytaj(plikSceny(id), null), { wRobocie, pisz, plik: plikSceny(id), dopisek: 'Gotowe kwestie głosu są w schowku i nie liczą się drugi raz.' });
         if (!s) throw new Error('Nie ma takiej sceny.');
         return { ...s, ...(wRobocie.has(id) ? { postep: wRobocie.get(id) } : {}) };
     }
     async function sceny(projekt = null) {
         const kat = await fs.readdir(cfg.katalog).catch(() => []);
         const l = [];
-        for (const k of kat) if (/^s_[a-z0-9]+$/.test(k)) { const s = await czytaj(plikSceny(k), null); if (s && (!projekt || s.projekt === projekt)) l.push({ ...s, ...(wRobocie.has(k) ? { postep: wRobocie.get(k) } : {}) }); }
+        for (const k of kat) if (/^s_[a-z0-9]+$/.test(k)) { const s = await bezDucha(await czytaj(plikSceny(k), null), { wRobocie, pisz, plik: plikSceny(k), dopisek: 'Gotowe kwestie głosu są w schowku i nie liczą się drugi raz.' }); if (s && (!projekt || s.projekt === projekt)) l.push({ ...s, ...(wRobocie.has(k) ? { postep: wRobocie.get(k) } : {}) }); }
         return l.sort((a, b) => String(b.utworzono).localeCompare(String(a.utworzono)));
     }
 
@@ -385,8 +386,8 @@ export function utworzSceny(o) {
         const mowca = (kid) => postacie.find((a) => a.id === kid) ?? { id: kid, imie: kid, kolor: '#f4c84a', glos: null };
         const zapis = { ...s, etap: 'nagrywa', blad: null };
         delete zapis.postep;
+        wRobocie.set(id, { etap: 'start', zrobione: 0, wszystkich: s.kwestie.length });   // przed zapisem „nagrywa” (services/Przerwane.js)
         await pisz(plikSceny(id), zapis);
-        wRobocie.set(id, { etap: 'start', zrobione: 0, wszystkich: s.kwestie.length });
         (async () => {
             const praca = path.join(cfg.katalog, id, 'praca');
             const schowek = path.join(cfg.katalog, id, 'glos');

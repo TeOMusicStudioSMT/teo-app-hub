@@ -23,6 +23,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { radaDlaKodeksa } from './BledyModeli.js';
 
 let cfg = { katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: null, appStudio: null, pisz: null, model: () => 'qwen3.5:9b' };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
@@ -278,7 +279,7 @@ export async function realizuj(projektId, { model, tylkoKamien = null } = {}) {
             if (zd2) { zd2.stan = wynik?.ok ? 'gotowe' : 'blad'; zd2.uwaga = wynik?.ok ? `${wynik.rundy ?? '?'} rund, ${wynik.sekundy ?? '?'} s${wynik.commit ? ', ' + wynik.commit : ''}` : String(wynik?.powod || 'padło').slice(0, 300); zd2.kiedy = new Date().toISOString(); }
             await fs.writeFile(plik(projektId), JSON.stringify(g2, null, 2), 'utf8');
             if (wynik?.ok) { prod.zrobione++; krok(`✓ gotowe (${wynik.rundy} rund, ${wynik.sekundy} s)`); }
-            else { prod.padlo++; krok(`✗ padło: ${String(wynik?.powod || '').slice(0, 200)} — zatrzymuję produkcję, reszta czeka`); break; }
+            else { prod.padlo++; const rada = radaDlaKodeksa(wynik?.powod, prod.model); krok(`✗ padło: ${String(wynik?.powod || '').slice(0, 200)} — zatrzymuję produkcję, reszta czeka`); if (rada) krok(`💡 ${rada}`); break; }
         }
         prod.stan = prod.padlo ? 'blad' : prod.przerwij ? 'przerwana' : 'gotowe';
         prod.biezace = null; prod.koniec = new Date().toISOString();

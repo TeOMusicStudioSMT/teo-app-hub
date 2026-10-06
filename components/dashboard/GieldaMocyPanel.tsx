@@ -1,5 +1,5 @@
 /**
- * ⚡ Giełda mocy (TeOkoP GRV) — etap 1: OGŁOSZENIA.
+ * ⚡ Giełda Master Flow (TeOkoP GRV, dawniej „Giełda mocy”) — etap 1: OGŁOSZENIA ofert i zleceń.
  *
  * Moja oferta (VRAM, modele z Ollamy, cena w GRV za 1000 tokenów) idzie w publicznej wizytówce do rejestru
  * otakos.wtf; niżej — oferty innych Katedr online z rejestru. Prawdziwe dane, bez licznika z sufitu.
@@ -12,8 +12,9 @@ const MOST = 'http://127.0.0.1:3001';
 
 interface Oferta { udostepniam: boolean; vramGB: number; gpu: string; modele: string[]; cenaGRV: number; godziny: string; opis: string; zmieniono: string | null }
 interface Moc { vramGB: number; gpu: string; modele: string[]; cenaGRV: number; jednostka: string; godziny: string; opis: string; od?: string }
-interface Stan { oferta: Oferta; publiczna: Moc | null; wykryte: { nazwa: string; vramGB: number } | null; modele: string[]; jednostka: string }
-interface Siec { online: number; oferty: { nick: string; adres: string; motto: string; moc: Moc }[]; vramGB: number }
+interface Zlecenie { id: string; rodzaj: 'zadanie' | 'projekt'; tytul: string; opis: string; modele: string[]; budzetGRV: number; od: string | null; stan?: 'ogloszone' | 'wycofane'; nick?: string }
+interface Stan { oferta: Oferta; publiczna: Moc | null; wykryte: { nazwa: string; vramGB: number } | null; modele: string[]; jednostka: string; zlecenia?: Zlecenie[] }
+interface Siec { online: number; oferty: { nick: string; adres: string; motto: string; moc: Moc }[]; vramGB: number; zlecenia?: Zlecenie[] }
 
 async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
     const r = await fetch(`${MOST}${s}`, { headers: { 'Content-Type': 'application/json' }, ...init });
@@ -31,7 +32,7 @@ export const GieldaMocyPanel: React.FC = () => {
 
     const odswiez = useCallback(async () => {
         try { const d = await zMostu<Stan>('/api/gielda-mocy'); setStan(d); setForm(d.oferta); setBlad(null); }
-        catch (e) { setBlad(/HTTP 404/.test(String(e)) ? 'Most sprzed restartu — nie zna jeszcze Giełdy mocy. Zrestartuj Katedrę.' : String(e instanceof Error ? e.message : e)); }
+        catch (e) { setBlad(/HTTP 404/.test(String(e)) ? 'Most sprzed restartu — nie zna jeszcze Giełdy Master Flow. Zrestartuj Katedrę.' : String(e instanceof Error ? e.message : e)); }
     }, []);
     const sieci = useCallback(async () => {
         try { setSiec(await zMostu<Siec>('/api/gielda-mocy/oferty')); setBladSieci(null); }
@@ -45,16 +46,29 @@ export const GieldaMocyPanel: React.FC = () => {
         catch (e) { toast.error(e instanceof Error ? e.message : String(e), { duration: 8000 }); }
     };
 
+    const wycofaj = async (id: string) => { try { await zMostu(`/api/gielda-mocy/zlecenia/${encodeURIComponent(id)}`, { method: 'DELETE' }); void odswiez(); } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } };
+    // 🔭 Model z cudzej oferty/zlecenia, którego ta Katedra nie ma → kandydat Zwiadowcy (pobranie dopiero po „Przyjmij” w Kuźni Modeli).
+    const doZwiadowcy = async (model: string, od: string) => {
+        try { const d = await zMostu<{ kandydat: { ollama: string } }>('/api/gielda-mocy/model', { method: 'POST', body: JSON.stringify({ model, od }) }); toast.success(`🔭 ${d.kandydat.ollama} czeka u Zwiadowcy — Kuźnia Modeli → „Przyjmij”, żeby pobrać.`, { duration: 7000 }); }
+        catch (e) { toast.error(e instanceof Error ? e.message : String(e), { duration: 8000 }); }
+    };
+    const Model: React.FC<{ m: string; od: string }> = ({ m, od }) => {
+        const mam = stan?.modele.some((x) => x === m || x === `${m}:latest` || x.replace(/:latest$/, '') === m);
+        return mam
+            ? <span title="Ta Katedra ma ten model" className="rounded border border-emerald-500/40 px-1 font-mono text-[10px] text-emerald-300">✓ {m}</span>
+            : <button onClick={() => void doZwiadowcy(m, od)} title="Nie masz go — dodaj do kandydatów Zwiadowcy" className="rounded border border-slate-600 px-1 font-mono text-[10px] text-slate-300 hover:border-sky-400 hover:text-sky-200">🔭 {m}</button>;
+    };
+
     if (blad) return <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-3 text-[11px] text-amber-200">⚡ {blad}</div>;
     if (!stan || !form) return null;
     const przelacz = (m: string) => setForm((f) => f && ({ ...f, modele: f.modele.includes(m) ? f.modele.filter((x) => x !== m) : [...f.modele, m].slice(0, 12) }));
 
     return (
         <details className="rounded-lg border border-yellow-500/25 p-2" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open && !siec) void sieci(); }}>
-            <summary className="cursor-pointer text-[10px] uppercase tracking-widest text-yellow-300">⚡ Giełda mocy (TeOkoP GRV) {stan.publiczna ? `· udostępniam ${stan.publiczna.vramGB} GB` : '· nie udostępniam'}</summary>
+            <summary className="cursor-pointer text-[10px] uppercase tracking-widest text-yellow-300">⚡ Giełda Master Flow (TeOkoP GRV) {stan.publiczna ? `· udostępniam ${stan.publiczna.vramGB} GB` : '· nie udostępniam'}</summary>
             <div className="mt-2 flex flex-col gap-2 text-[11px]">
                 <p className="rounded border border-yellow-500/20 bg-yellow-950/20 p-2 text-[10px] leading-relaxed text-yellow-100/80">
-                    Etap 1 = <b>ogłoszenia</b>. Oferta jedzie w Twojej wizytówce do rejestru otakos.wtf (widać ją, gdy Katedra jest online i nick zatwierdzony). Katedra <b>nie wykonuje jeszcze cudzych zadań i nie przelewa GRV</b> — to etap 2.
+                    Etap 1 = <b>ogłoszenia</b>: oferty mocy i zlecenia (zadanie albo cały projekt z Game Studio). Oferta i zlecenia jadą w Twojej wizytówce do rejestru otakos.wtf (widać ją, gdy Katedra jest online i nick zatwierdzony). Katedra <b>nie wykonuje jeszcze cudzych zadań i nie przelewa GRV</b> — to etap 2.
                 </p>
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_1fr]">
                     <label className="text-slate-400">Karta</label>
@@ -107,13 +121,44 @@ export const GieldaMocyPanel: React.FC = () => {
                                             <span className="text-slate-400">{k.moc.gpu || 'GPU'} · {k.moc.vramGB} GB</span>
                                             <span className="ml-auto text-yellow-300">{k.moc.cenaGRV} GRV / {k.moc.jednostka}</span>
                                         </div>
-                                        <div className="font-mono text-[10px] text-slate-400">{k.moc.modele.join(' · ')}</div>
+                                        <div className="mt-0.5 flex flex-wrap gap-1">{k.moc.modele.map((m) => <Model key={m} m={m} od={k.nick} />)}</div>
                                         {(k.moc.opis || k.moc.godziny) && <div className="text-[10px] text-slate-500">{k.moc.opis}{k.moc.opis && k.moc.godziny ? ' — ' : ''}{k.moc.godziny}</div>}
+                                    </li>
+                                ))}
+                            </ul>
+                            <div className="mt-2 text-[10px] uppercase tracking-widest text-slate-400">Zlecenia Katedr (czego szukają)</div>
+                            {!siec.zlecenia?.length && <div className="mt-1 text-[10px] text-slate-500">Nikt nie ogłosił zlecenia.</div>}
+                            <ul className="mt-1 flex flex-col gap-1">
+                                {(siec.zlecenia ?? []).map((z) => (
+                                    <li key={`${z.nick}-${z.id}`} className="rounded border border-slate-800 bg-black/30 p-1.5">
+                                        <div className="flex flex-wrap items-baseline gap-2">
+                                            <b className="font-mono text-sky-200">{z.nick}</b>
+                                            <span className="text-slate-300">{z.rodzaj === 'projekt' ? '📦 projekt' : '🧩 zadanie'}: {z.tytul}</span>
+                                            {z.budzetGRV > 0 && <span className="ml-auto text-yellow-300">{z.budzetGRV} GRV</span>}
+                                        </div>
+                                        {z.opis && <div className="text-[10px] text-slate-500">{z.opis}</div>}
+                                        {z.modele.length > 0 && <div className="mt-0.5 flex flex-wrap gap-1">{z.modele.map((m) => <Model key={m} m={m} od={z.nick ?? ''} />)}</div>}
                                     </li>
                                 ))}
                             </ul>
                         </>
                     )}
+                </div>
+
+                <div className="mt-1 border-t border-slate-800 pt-2">
+                    <div className="text-[10px] uppercase tracking-widest text-slate-400">Moje zlecenia</div>
+                    <div className="text-[10px] text-slate-500">Ogłaszasz je w Game Studio → Reżyser i GDD („⚡ na Giełdę” przy zadaniu albo całym projekcie).</div>
+                    {!stan.zlecenia?.filter((z) => z.stan === 'ogloszone').length && <div className="mt-1 text-[10px] text-slate-500">Brak ogłoszonych zleceń.</div>}
+                    <ul className="mt-1 flex flex-col gap-1">
+                        {(stan.zlecenia ?? []).filter((z) => z.stan === 'ogloszone').map((z) => (
+                            <li key={z.id} className="flex flex-wrap items-baseline gap-2 rounded border border-slate-800 bg-black/30 p-1.5">
+                                <span className="text-slate-300">{z.rodzaj === 'projekt' ? '📦' : '🧩'} {z.tytul}</span>
+                                {z.modele.length > 0 && <span className="font-mono text-[10px] text-slate-500">{z.modele.join(' · ')}</span>}
+                                {z.budzetGRV > 0 && <span className="text-yellow-300">{z.budzetGRV} GRV</span>}
+                                <button onClick={() => void wycofaj(z.id)} className="ml-auto text-[10px] text-rose-300 underline">wycofaj</button>
+                            </li>
+                        ))}
+                    </ul>
                 </div>
             </div>
         </details>

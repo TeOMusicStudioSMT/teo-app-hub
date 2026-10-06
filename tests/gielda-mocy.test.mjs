@@ -56,3 +56,34 @@ test('Giełda: bez odpowiedzi Ollamy nie ogłasza mocy (nie da się sprawdzić m
     assert.equal((await G.ustawOferte({ udostepniam: false, modele: ['gemma4'] })).udostepniam, false, 'zapis bez udostępniania wolno');
     assert.equal(await G.publiczna(), null);
 });
+
+test('Zlecenia Giełdy Master Flow: walidacja, dubel, limit, wycofanie, publiczny wycinek bez projektu; cudze z rejestru', async () => {
+    const { normalizujZlecenie, zleceniaPubliczne, zleceniaZSieci } = await import('../services/GieldaMocy.js');
+    assert.throws(() => normalizujZlecenie({ rodzaj: 'cokolwiek', tytul: 'Teren 3D' }), /zadanie.*projekt/);
+    assert.throws(() => normalizujZlecenie({ rodzaj: 'zadanie', tytul: 'x' }), /tytułu/);
+    const z = normalizujZlecenie({ rodzaj: 'zadanie', tytul: '  Teren 3D   z ziarna ', projekt: 'teterhia-wieczna-saga', modele: ['qwen3-coder:30b', 'zły model!', 'qwen3-coder:30b'], budzetGRV: -5 });
+    assert.deepEqual([z.tytul, z.modele, z.budzetGRV, z.projekt], ['Teren 3D z ziarna', ['qwen3-coder:30b'], 0, 'teterhia-wieczna-saga']);
+    const kat = fs.mkdtempSync(path.join(os.tmpdir(), 'zlecenia-'));
+    const G = utworzGielde({ katalog: kat, teraz: (() => { let t = 1_800_000_000_000; return () => (t += 1000); })() });
+    const a = await G.dodajZlecenie({ rodzaj: 'projekt', tytul: 'Teterhia — Wieczna Saga', projekt: 'teterhia-wieczna-saga', opis: 'RPG', budzetGRV: 500 });
+    assert.equal((await G.dodajZlecenie({ rodzaj: 'projekt', tytul: 'Teterhia — Wieczna Saga', projekt: 'teterhia-wieczna-saga' })).id, a.id, 'dubel = to samo');
+    const pub = await G.publiczneZlecenia();
+    assert.equal(pub.length, 1);
+    assert.ok(!('projekt' in pub[0]), 'id projektu z dysku nie wychodzi');
+    for (let i = 0; i < 9; i++) await G.dodajZlecenie({ rodzaj: 'zadanie', tytul: `Zadanie ${i}` });
+    await assert.rejects(G.dodajZlecenie({ rodzaj: 'zadanie', tytul: 'Jedenaste' }), /10/);
+    await G.wycofajZlecenie(a.id);
+    assert.equal((await G.publiczneZlecenia()).length, 9);
+    assert.equal((await G.stan()).zlecenia.length, 10);
+    assert.deepEqual(zleceniaPubliczne([{ ...a, stan: 'wycofane' }]), []);
+    assert.equal(zleceniaZSieci([{ id: 'zl-abc1', rodzaj: 'zadanie', tytul: 'Teren 3D', projekt: 'tajny' }, { id: 'x', rodzaj: 'zadanie', tytul: 'krótkie id' }, { id: 'zl-zzz9', rodzaj: 'hack', tytul: 'zły' }, 'śmieć']).length, 1);
+    // Rejestr: cudze zlecenia przychodzą z nickiem; moje (pomin) nie.
+    const fetch = async () => ({ ok: true, json: async () => ({ katedry: [
+        { nick: 'iskra', adres: 'https://iskra.example', zlecenia: [{ id: 'zl-aaa1', rodzaj: 'projekt', tytul: 'Gra o Iskrze', modele: ['gemma4:26b'] }] },
+        { nick: 'teo-mas', adres: 'https://teo.example', zlecenia: [{ id: 'zl-bbb2', rodzaj: 'zadanie', tytul: 'Moje' }] },
+    ] }) });
+    const G2 = utworzGielde({ katalog: kat, fetch, rejestr: 'https://rejestr' });
+    const o = await G2.oferty({ pomin: 'teo-mas' });
+    assert.deepEqual(o.zlecenia.map((x) => [x.nick, x.tytul, x.modele]), [['iskra', 'Gra o Iskrze', ['gemma4:26b']]]);
+    assert.equal(o.oferty.length, 0);
+});
