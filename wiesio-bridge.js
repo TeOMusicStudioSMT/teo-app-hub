@@ -7883,7 +7883,8 @@ app.post('/api/tunel/stop', async (_req, res) => res.json({ success: true, ...(a
 // zbudowany dist jest serwowany pod /apki/<id>/ — to tam patrzy puppeteer i podgląd.
 // ═════════════════════════════════════════════════════════════════════════════
 AppStudio.skonfiguruj({
-    ollamaBase: OLLAMA_BASE, model: () => modelMechanika(), portMostu: PORT, szyna: Szyna,
+    // 🎼 Studio Gier buduje na modelu Kodeksa z przydziału TeOgochi (Dyrygent → „zastosuj”), inaczej na modelu Mechanika.
+    ollamaBase: OLLAMA_BASE, model: () => ModeleAgentow.modelZPamieci('kodeks') || modelMechanika(), portMostu: PORT, szyna: Szyna,
     katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'),
     nodeModules: path.join(process.cwd(), '..', 'TeO_App_Studio', 'node_modules'),
     puppeteer: null,
@@ -7959,7 +7960,8 @@ app.get('/api/appstudio/zadania/:id/sondaz', (req, res) => {
 // 📜 GDD + REŻYSER GRY + PRODUKCJA Z PLANU (services/Gdd.js). GDD leży w projekcie gry
 // (_OtakOs_Apki/<id>/gdd.json); produkcja karmi pętlę Kodeksa zadanie po zadaniu.
 // ═════════════════════════════════════════════════════════════════════════════
-Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, model: () => modelMechanika() });
+Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, model: () => ModeleAgentow.modelZPamieci('kodeks') || modelMechanika() });
+ModeleAgentow.wszystkie().catch(() => {});   // pamięć przydziału dla Studia Gier od startu
 const gddUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 app.get('/api/gdd/silniki', (_req, res) => res.json({ success: true, silniki: Gdd.SILNIKI }));
 app.get('/api/gdd/:id', async (req, res) => {
@@ -14421,6 +14423,17 @@ app.post('/api/assety3d/:id/do-skladnicy', (req, res) => ytOdp(res, (async () =>
     if (!m) throw new Error('Nie ma takiego assetu 3D.');
     const w = await bryla3DDoSkladnicy(m);
     return { ...w, asset: zAssetem(w.asset) };
+})()));
+/**
+ * 🏛️ POST /api/assety3d/:id/na-stol { uwagi?, trojkaty? } — bryła na Stół do ulepszenia przez stado. Karta niesie fakty
+ * o bryle; po przyjęciu stado pisze lepszy opis (linia OBIEKT:), a po ratyfikacji Zlecenia Stada liczą NOWĄ wersję.
+ */
+app.post('/api/assety3d/:id/na-stol', (req, res) => ytOdp(res, (async () => {
+    const m = await Assety3D.meta(req.params.id);
+    if (!m) throw new Error('Nie ma takiego assetu 3D.');
+    const trojkaty = Number(req.body?.trojkaty) > 0 ? Math.round(Number(req.body.trojkaty)) : null;
+    const karta = await Stol.dodaj({ tytul: `🗿 Ulepsz bryłę „${m.nazwa}”`, tresc: Stol.kartaUlepszeniaBryly(m, { uwagi: req.body?.uwagi ?? '', trojkaty }), zrodlo: 'assety3d' });
+    return { karta };
 })()));
 app.post('/api/skladnica/import/assety3d', (_req, res) => ytOdp(res, (async () => {
     const wynik = { dodane: [], uzupelnione: [], pominiete: [] };

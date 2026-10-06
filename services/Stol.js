@@ -42,7 +42,7 @@ let cfg = {
 };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
 
-export const ZRODLA = { 'podcast-twin': '🎙️ Podcast Twin', koom: '📖 Księga KOOM', plik: '📄 Plik', telefon: '📱 Telefon', hub: '🏛️ Katedra' };
+export const ZRODLA = { 'podcast-twin': '🎙️ Podcast Twin', koom: '📖 Księga KOOM', plik: '📄 Plik', telefon: '📱 Telefon', hub: '🏛️ Katedra', assety3d: '🗿 Assety 3D' };
 const MAX_TRESCI = 20_000;
 const MAX_KART = 200;
 
@@ -75,6 +75,33 @@ export function czytajKarte(tresc) {
     const uczestnicy = sekcja('Uczestnicy')
         .split(/,\s*(?![^()]*\))/).map((x) => x.replace(/\(.*?\)/g, '').replace(/[.;\s]+$/, '').trim()).filter((x) => /^[\p{L}][\p{L}\s-]{1,30}$/u.test(x));
     return { wizja: (wizja || t.replace(/\s+/g, ' ').trim()).slice(0, 3000), uczestnicy };
+}
+
+/**
+ * 🗿 Karta „ulepsz bryłę” (Suweren 2026-10-06: „przycisk na stół do ulepszania assetów modeli… by dany asset mógł być
+ * udoskonalany przez stado”). Fakty o bryle + uwagi Suwerena → zespół od wyglądu i gry. Wkład kończy linia `OBIEKT:`,
+ * a po ratyfikacji Zlecenia Stada same zlecają NOWĄ wersję w Assety3D (stara zostaje do porównania).
+ */
+export function kartaUlepszeniaBryly(m, { uwagi = '', trojkaty = null } = {}) {
+    const zrodlo = m.zrodlo === 'zdjecie' ? 'ze zdjęcia' : 'z opisu';
+    const fakty = [
+        `Bryła: „${m.nazwa}” (id ${m.id}), zrobiona ${zrodlo}, silnik ${m.silnik || 'TRELLIS.2'}.`,
+        m.tekst ? `Opis, z którego powstała: ${String(m.tekst).slice(0, 600)}` : m.opis ? `Opis: ${String(m.opis).slice(0, 600)}` : '',
+        m.promptObrazu ? `Prompt obrazu koncepcyjnego (FLUX.2): ${String(m.promptObrazu).slice(0, 600)}` : '',
+        `Ściany: ${m.sciany ?? '?'}, rozdzielczość: ${m.rozdzielczosc ?? '?'}${trojkaty ? `, trójkątów w GLB: ${trojkaty}` : ''}${m.czasy?.razem ? `, liczona ${m.czasy.razem} s` : ''}.`,
+        m.wGrach?.length ? `Jest już w grach: ${m.wGrach.join(', ')}.` : '',
+    ].filter(Boolean).join('\n');
+    return [
+        `Wizja: Ulepszyć bryłę 3D „${m.nazwa}” tak, by nadawała się do gry — czytelna sylwetka, jeden obiekt, spójne kolory.`,
+        '',
+        `Fakty:\n${fakty}`,
+        '',
+        uwagi ? `Uwagi Suwerena: ${String(uwagi).slice(0, 2000)}` : 'Uwagi Suwerena: (brak — oceńcie sami, co poprawić)',
+        '',
+        'Zadanie: nazwijcie, co w tej bryle nie działa (TRELLIS.2 z całej sceny — tłum, scena, kilka osób — robi bryłę-kolaż; dobra bryła to JEDEN obiekt na neutralnym tle), i napiszcie lepszy opis do wygenerowania od nowa. Kto ma gotowy opis, kończy wkład JEDNĄ linią „OBIEKT: <opis jednego obiektu po polsku: kształt, materiał, kolory, poza; bez tła i bez innych postaci>”.',
+        '',
+        'Uczestnicy: Pionek, Paleta, Kodeks',
+    ].join('\n');
 }
 
 /** Etap karty z jej stanu i z projektu stada (fakty, nie pamięć karty). */
@@ -229,4 +256,4 @@ export function naNoc(id, { rundy = 1, petla, powtorzenia = 1, kto = null } = {}
     });
 }
 
-export default { skonfiguruj, dodaj, lista, karta, przyjmij, odrzuc, ratyfikuj, doskonal, naNoc, etap, czytajKarte, ZRODLA };
+export default { skonfiguruj, kartaUlepszeniaBryly, dodaj, lista, karta, przyjmij, odrzuc, ratyfikuj, doskonal, naNoc, etap, czytajKarte, ZRODLA };
