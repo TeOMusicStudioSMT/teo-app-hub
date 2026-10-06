@@ -34,6 +34,7 @@ import { createHash } from 'crypto';
 import { CZCIONKI, zawin, kolorFf, jasniej } from './PowitanieDnia.js';
 import { argumentyPodkladu } from './GlosZeStemu.js';
 import { WIDEO, slug, normalizujGlos, odczytajScenariusz, czasBezGlosu, JEZYKI, jezykWywiadu, SZER, WYS, FPS } from './WywiadAktorow.js';
+import { bezDucha } from './Przerwane.js';
 
 export const PROJEKT_STUDIA = 'studio-podcast';
 export const PROWADZACY_ID = 'prowadzacy';
@@ -557,14 +558,14 @@ export function utworzStudioPodcastu(o) {
     const plikOdcinka = (id) => path.join(KAT_ODC, id, 'odcinek.json');
     async function odcinek(id) {
         if (!/^p_[a-z0-9]+$/.test(String(id))) throw new Error('Złe id odcinka.');
-        const o2 = await czytaj(plikOdcinka(id), null);
+        const o2 = await bezDucha(await czytaj(plikOdcinka(id), null), { wRobocie, pisz, plik: plikOdcinka(id), dopisek: 'Gotowe kwestie głosu są w schowku i nie liczą się drugi raz.' });
         if (!o2) throw new Error('Nie ma takiego odcinka.');
         return { ...o2, ...(wRobocie.has(id) ? { postep: wRobocie.get(id) } : {}) };
     }
     async function odcinki() {
         const katalogi = await fs.readdir(KAT_ODC).catch(() => []);
         const l = [];
-        for (const k of katalogi) { const x = await czytaj(plikOdcinka(k), null); if (x) l.push({ ...x, ...(wRobocie.has(k) ? { postep: wRobocie.get(k) } : {}) }); }
+        for (const k of katalogi) { const x = await bezDucha(await czytaj(plikOdcinka(k), null), { wRobocie, pisz, plik: plikOdcinka(k), dopisek: 'Gotowe kwestie głosu są w schowku i nie liczą się drugi raz.' }); if (x) l.push({ ...x, ...(wRobocie.has(k) ? { postep: wRobocie.get(k) } : {}) }); }
         return l.sort((a, b) => String(b.utworzono).localeCompare(String(a.utworzono)));
     }
 
@@ -732,8 +733,8 @@ export function utworzStudioPodcastu(o) {
         const mowca = (kto) => (kto === PROWADZACY_ID ? s.prowadzacy : baza.find((a) => a.id === kto)) ?? { id: kto, imie: kto, kolor: '#f4c84a', zdjecie: null, glos: null };
         const { postep, ...zapis } = x;
         Object.assign(zapis, { etap: 'nagrywa', bezGlosu: !!bezGlosu, zWstepem: !!zWstepem, zGoscmi: !!zGoscmi, podklad: plikPodkladu ? path.basename(plikPodkladu) : null, blad: undefined, nagrywanoOd: czas(), usta: usta ? { ok: 0, bledy: [] } : null });
+        wRobocie.set(id, { etap: 'start', zrobione: 0, wszystkich: x.kwestie.length });   // przed zapisem „nagrywa” (services/Przerwane.js)
         await pisz(plikOdcinka(id), zapis);
-        wRobocie.set(id, { etap: 'start', zrobione: 0, wszystkich: x.kwestie.length });
         void (async () => {
             const praca = path.join(KAT_ODC, id, 'praca');
             try {

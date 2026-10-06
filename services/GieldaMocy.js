@@ -1,5 +1,5 @@
 /**
- * ⚡ Giełda mocy (TeOkoP GRV) — etap 1: OGŁOSZENIA. Katedra mówi sieci, jaką moc udostępnia i za ile GRV.
+ * ⚡ Giełda Master Flow (dawniej „Giełda mocy”, TeOkoP GRV) — etap 1: OGŁOSZENIA. Katedra mówi sieci, jaką moc udostępnia i za ile GRV.
  *
  * Suweren (2026-10-04): „jak się i tak tam siedzi i eksponuje Katedrę, to można wybrać… udostępnić moce… a w Katedrze
  * wyświetla się lista z dostępnymi… i jest wymiana określonej kwoty za działanie”. Na otakos.wtf stał dotąd wymyślony
@@ -59,6 +59,39 @@ export function ofertaZSieci(moc) {
 }
 
 /**
+ * 📋 ZLECENIA (Suweren 2026-10-06: „dodać możliwość dodania do TeOKoP (Giełda Master Flow) danego zadania… lub całego
+ * projektu”). Druga strona Giełdy: Katedra ogłasza, czego POTRZEBUJE — zadanie (np. kamień milowy GDD) albo cały projekt,
+ * z modelami, których to wymaga, i budżetem GRV. Ogłoszenie idzie tą samą drogą co oferta (pole `zlecenia` wizytówki →
+ * rejestr → /api/katedry). Nikt go jeszcze nie WYKONUJE i GRV nie płynie — to etap 2 (tunel, limity, pokwitowania).
+ */
+export const RODZAJE_ZLECEN = ['zadanie', 'projekt'];
+export function normalizujZlecenie(d = {}) {
+    const rodzaj = RODZAJE_ZLECEN.includes(d.rodzaj) ? d.rodzaj : null;
+    if (!rodzaj) throw new Error('Zlecenie to „zadanie” albo „projekt”.');
+    const tytul = String(d.tytul ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (tytul.length < 3) throw new Error('Zlecenie potrzebuje tytułu.');
+    const budzet = Number(d.budzetGRV);
+    return {
+        rodzaj, tytul,
+        opis: String(d.opis ?? '').replace(/\s+/g, ' ').trim().slice(0, 600),
+        projekt: /^[a-z0-9-]{2,48}$/.test(String(d.projekt ?? '')) ? d.projekt : null,
+        modele: [...new Set((Array.isArray(d.modele) ? d.modele : []).map((m) => String(m).trim()).filter((m) => MODEL.test(m)))].slice(0, 6),
+        budzetGRV: Number.isFinite(budzet) ? Math.round(Math.min(1_000_000, Math.max(0, budzet)) * 100) / 100 : 0,
+    };
+}
+/** Publiczny wycinek ogłoszonych zleceń (bez id projektu z dysku). */
+export function zleceniaPubliczne(lista = []) {
+    return lista.filter((z) => z.stan === 'ogloszone').slice(0, 10)
+        .map(({ id, rodzaj, tytul, opis, modele, budzetGRV, od }) => ({ id, rodzaj, tytul, opis, modele, budzetGRV, od }));
+}
+/** Zlecenia z sieci (cudze) → bezpieczna postać; śmieci odpadają. */
+export function zleceniaZSieci(lista) {
+    if (!Array.isArray(lista)) return [];
+    return lista.slice(0, 10).map((z) => { try { return { id: String(z?.id ?? '').slice(0, 24), ...normalizujZlecenie(z), projekt: undefined, od: typeof z?.od === 'string' ? z.od.slice(0, 40) : null }; } catch { return null; } })
+        .filter((z) => z && /^[a-z0-9-]{4,24}$/.test(z.id));
+}
+
+/**
  * @param {{ katalog:string, modeleOllamy?:()=>Promise<string[]>, gpu?:()=>Promise<{nazwa:string, vramGB:number}|null>,
  *   rejestr?:string, fetch?:typeof fetch, teraz?:()=>number }} o
  */
@@ -89,10 +122,35 @@ export function utworzGielde(o) {
     /** Dla wizytówki: wycinek albo null (nie udostępniam). */
     async function publiczna() { return wycinekPubliczny(await oferta()); }
 
-    /** Stan panelu: moja oferta, wykryta karta, modele Ollamy. */
+    // ── 📋 Zlecenia tej Katedry ──
+    const PLIK_ZLECEN = path.join(cfg.katalog, 'gielda-zlecenia.json');
+    const czytajZlecenia = async () => { try { const l = JSON.parse(await fs.readFile(PLIK_ZLECEN, 'utf8')); return Array.isArray(l) ? l : []; } catch { return []; } };
+    const piszZlecenia = async (l) => { await fs.mkdir(path.dirname(PLIK_ZLECEN), { recursive: true }); await fs.writeFile(`${PLIK_ZLECEN}.tmp`, JSON.stringify(l, null, 1), 'utf8'); await fs.rename(`${PLIK_ZLECEN}.tmp`, PLIK_ZLECEN); };
+    async function zlecenia() { return czytajZlecenia(); }
+    async function dodajZlecenie(dane = {}) {
+        const z = normalizujZlecenie(dane);
+        const l = await czytajZlecenia();
+        if (l.filter((x) => x.stan === 'ogloszone').length >= 10) throw new Error('Ogłoszonych zleceń jest już 10 — wycofaj któreś.');
+        const dubel = l.find((x) => x.stan === 'ogloszone' && x.rodzaj === z.rodzaj && x.projekt === z.projekt && x.tytul === z.tytul);
+        if (dubel) return dubel;
+        const nowe = { id: `zl-${cfg.teraz().toString(36)}`, ...z, stan: 'ogloszone', od: new Date(cfg.teraz()).toISOString() };
+        await piszZlecenia([nowe, ...l].slice(0, 100));
+        return nowe;
+    }
+    async function wycofajZlecenie(id) {
+        const l = await czytajZlecenia();
+        const z = l.find((x) => x.id === id);
+        if (!z) throw new Error('Nie ma takiego zlecenia.');
+        z.stan = 'wycofane'; z.wycofano = new Date(cfg.teraz()).toISOString();
+        await piszZlecenia(l);
+        return z;
+    }
+    async function publiczneZlecenia() { return zleceniaPubliczne(await czytajZlecenia()); }
+
+    /** Stan panelu: moja oferta, wykryta karta, modele Ollamy, moje zlecenia. */
     async function stan() {
-        const [o, g, modele] = await Promise.all([oferta(), cfg.gpu().catch(() => null), cfg.modeleOllamy().catch(() => [])]);
-        return { oferta: o, publiczna: wycinekPubliczny(o), wykryte: g, modele, jednostka: JEDNOSTKA };
+        const [o, g, modele, zl] = await Promise.all([oferta(), cfg.gpu().catch(() => null), cfg.modeleOllamy().catch(() => []), czytajZlecenia()]);
+        return { oferta: o, publiczna: wycinekPubliczny(o), wykryte: g, modele, jednostka: JEDNOSTKA, zlecenia: zl };
     }
 
     /** Oferty Katedr online z rejestru otakos.wtf (bez mojej, gdy podam nick). */
@@ -101,12 +159,14 @@ export function utworzGielde(o) {
         if (!r.ok) throw new Error(`Rejestr otakos.wtf odpowiedział HTTP ${r.status}.`);
         const d = await r.json().catch(() => ({}));
         const katedry = Array.isArray(d?.katedry) ? d.katedry : [];
-        const zOferta = katedry.map((k) => ({ nick: String(k?.nick ?? ''), adres: String(k?.adres ?? ''), motto: String(k?.motto ?? '').slice(0, 140), moc: ofertaZSieci(k?.moc) }))
-            .filter((k) => /^[a-z0-9-]{3,32}$/.test(k.nick) && k.moc && k.nick !== pomin);
-        return { online: katedry.length, oferty: zOferta, vramGB: zOferta.reduce((s, k) => s + k.moc.vramGB, 0) };
+        const wszystkie = katedry.map((k) => ({ nick: String(k?.nick ?? ''), adres: String(k?.adres ?? ''), motto: String(k?.motto ?? '').slice(0, 140), moc: ofertaZSieci(k?.moc), zlecenia: zleceniaZSieci(k?.zlecenia) }))
+            .filter((k) => /^[a-z0-9-]{3,32}$/.test(k.nick) && k.nick !== pomin);
+        const zOferta = wszystkie.filter((k) => k.moc).map(({ zlecenia: _z, ...k }) => k);
+        const zlecenia = wszystkie.flatMap((k) => k.zlecenia.map((z) => ({ ...z, nick: k.nick })));
+        return { online: katedry.length, oferty: zOferta, vramGB: zOferta.reduce((s, k) => s + k.moc.vramGB, 0), zlecenia };
     }
 
-    return { oferta, ustawOferte, publiczna, stan, oferty };
+    return { oferta, ustawOferte, publiczna, stan, oferty, zlecenia, dodajZlecenie, wycofajZlecenie, publiczneZlecenia };
 }
 
-export default { utworzGielde, normalizujOferte, wycinekPubliczny, ofertaZSieci, gpuZNvidiaSmi, JEDNOSTKA };
+export default { utworzGielde, normalizujOferte, wycinekPubliczny, ofertaZSieci, gpuZNvidiaSmi, JEDNOSTKA, normalizujZlecenie, zleceniaPubliczne, zleceniaZSieci, RODZAJE_ZLECEN };

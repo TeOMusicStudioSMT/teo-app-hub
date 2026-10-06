@@ -26,6 +26,7 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { CZCIONKI, zawin, kolorFf, jasniej } from './PowitanieDnia.js';
 import { argumentyPodkladu } from './GlosZeStemu.js';
+import { bezDucha } from './Przerwane.js';
 
 export const SZER = 1280;
 export const WYS = 720;
@@ -216,14 +217,14 @@ export function utworzWywiady(o) {
     const plikWywiadu = (id) => path.join(KAT_WYWIADOW, id, 'wywiad.json');
     async function wczytajWywiad(id) {
         if (!/^w_[a-z0-9]+$/.test(String(id))) throw new Error('Złe id wywiadu.');
-        const w = await czytaj(plikWywiadu(id), null);
+        const w = await bezDucha(await czytaj(plikWywiadu(id), null), { wRobocie, pisz, plik: plikWywiadu(id) });
         if (!w) throw new Error('Nie ma takiego wywiadu.');
         return { ...w, ...(wRobocie.has(id) ? { postep: wRobocie.get(id) } : {}) };
     }
     async function wywiady() {
         const katalogi = await fs.readdir(KAT_WYWIADOW).catch(() => []);
         const l = [];
-        for (const k of katalogi) { const w = await czytaj(plikWywiadu(k), null); if (w) l.push({ ...w, ...(wRobocie.has(k) ? { postep: wRobocie.get(k) } : {}) }); }
+        for (const k of katalogi) { const w = await bezDucha(await czytaj(plikWywiadu(k), null), { wRobocie, pisz, plik: plikWywiadu(k) }); if (w) l.push({ ...w, ...(wRobocie.has(k) ? { postep: wRobocie.get(k) } : {}) }); }
         return l.sort((a, b) => String(b.utworzono).localeCompare(String(a.utworzono)));
     }
 
@@ -315,8 +316,8 @@ export function utworzWywiady(o) {
         const prowadzacy = { ...karta, glos: zapis.glosProwadzacego ?? karta.glos ?? null };
         const mowca = (kto) => (kto === PROWADZACY.id ? prowadzacy : obsada.find((a) => a.id === kto)) ?? { ...PROWADZACY, id: kto, imie: kto };
         Object.assign(zapis, { etap: 'nagrywa', bezGlosu: !!bezGlosu, podklad: plikPodkladu ? path.basename(plikPodkladu) : null, blad: undefined, nagrywanoOd: czas() });
+        wRobocie.set(id, { etap: 'start', zrobione: 0, wszystkich: w.kwestie.length + 1 });   // przed zapisem „nagrywa” (services/Przerwane.js)
         await pisz(plikWywiadu(id), zapis);
-        wRobocie.set(id, { etap: 'start', zrobione: 0, wszystkich: w.kwestie.length + 1 });
         void (async () => {
             const praca = path.join(KAT_WYWIADOW, id, 'praca');
             try {

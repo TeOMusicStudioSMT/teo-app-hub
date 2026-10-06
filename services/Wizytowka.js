@@ -140,7 +140,9 @@ export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     const kanal = k?.id ? { id: k.id, nazwa: k.nazwa, adres: k.adres, playlista: k.playlista, filmy: k.filmy } : null;
     // ⚡ Giełda mocy (services/GieldaMocy.js): oferta tylko gdy Suweren udostępnia — rejestr otakos.wtf czyta ją z wizytówki.
     const moc = cfg.gieldaMocy ? await cfg.gieldaMocy.publiczna().catch(() => null) : null;
-    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
+    // 📋 Zlecenia Giełdy Master Flow — czego ta Katedra szuka (zadanie / projekt); pusta lista = brak pola.
+    const zlecenia = cfg.gieldaMocy?.publiczneZlecenia ? await cfg.gieldaMocy.publiczneZlecenia().catch(() => []) : [];
+    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(zlecenia.length ? { zlecenia } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
 }
 
 /** Ścieżka pliku wizytówki — tylko id z ostatnio zbudowanej wizytówki (nigdy ścieżka z URL-a). */

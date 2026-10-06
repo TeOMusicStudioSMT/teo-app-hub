@@ -24,6 +24,7 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
+import { wyjasnijBladModelu } from './BledyModeli.js';
 
 let cfg = {
     katalog: path.join(process.cwd(), '_OtakOs_Wymiar', 'glowny'),
@@ -278,6 +279,8 @@ function tura(s, tekst, { wznow }) {
             } else if (wynik.is_error) {
                 s.blad = String(wynik.result ?? wynik.subtype ?? 'błąd').slice(0, 500);
             }
+            // Surowy błąd Ollamy („usually temporary”) → przyczyna i droga (services/BledyModeli.js).
+            if (s.blad) { const w = wyjasnijBladModelu(`${s.blad}\n${bledy}`, cfg.chmura ? '' : model); if (w) s.blad = `${w}\n\nSurowo: ${s.blad.slice(0, 300)}`; }
             if (s.blad) dopisz(s, { kto: 'blad', tresc: s.blad });
             // Odmowy ze strumienia + z wyniku; ta sama rzecz (polecenie / plik) — jedna prośba, także względem już czekających.
             const znane = new Set(s.prosby.filter((x) => x.stan === 'czeka').map((x) => x.klucz ?? x.polecenie));

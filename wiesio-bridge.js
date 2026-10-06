@@ -8315,6 +8315,12 @@ const GieldaMocy = utworzGielde({
 Wizytowka.skonfiguruj({ katalog: ANTIGRAVITY_DIR, wystawa: Wystawa, tunel: () => Tunel.stanTunelu(), szyna: Szyna, tostKlucz: async () => (await TostSiec.kluczTost()).publiczny, kanalYouTube: KanalYT, gieldaMocy: GieldaMocy });
 app.get('/api/gielda-mocy', (_req, res) => ytOdp(res, GieldaMocy.stan(), 500));
 app.put('/api/gielda-mocy', (req, res) => ytOdp(res, GieldaMocy.ustawOferte(req.body ?? {}).then((oferta) => ({ oferta }))));
+// 📋 Zlecenia (zadanie GDD albo cały projekt) — ogłoszenia, czego ta Katedra szuka; trasy pod /api/gielda-mocy = tylko maszyna.
+app.get('/api/gielda-mocy/zlecenia', (_req, res) => ytOdp(res, GieldaMocy.zlecenia().then((zlecenia) => ({ zlecenia })), 500));
+app.post('/api/gielda-mocy/zlecenia', (req, res) => ytOdp(res, GieldaMocy.dodajZlecenie(req.body ?? {}).then((zlecenie) => ({ zlecenie }))));
+app.delete('/api/gielda-mocy/zlecenia/:id', (req, res) => ytOdp(res, GieldaMocy.wycofajZlecenie(req.params.id).then((zlecenie) => ({ zlecenie }))));
+// 🔭 Model z cudzej oferty → kandydat Zwiadowcy tej Katedry (nic się nie pobiera bez „Przyjmij”).
+app.post('/api/gielda-mocy/model', (req, res) => ytOdp(res, ZwiadowcaHF.zModeluSieci(String(req.body?.model ?? ''), { od: req.body?.od ? String(req.body.od) : null }).then((kandydat) => ({ kandydat }))));
 app.get('/api/gielda-mocy/oferty', async (_req, res) => {
     const pomin = (await Wizytowka.profil().catch(() => null))?.nick ?? null;
     return ytOdp(res, GieldaMocy.oferty({ pomin }), 502);
@@ -12546,7 +12552,17 @@ app.post('/api/rzezba/pasma', async (req, res) => {
 //  - torch jest CPU-only, żeby separacja nie walczyła o 6 GB VRAM z generacją muzyki,
 //  - venv stoi na KRÓTKIEJ ścieżce, bo drzewo licencji torcha przekracza limit
 //    260 znaków Windows przy dłuższym prefiksie (ten sam WinError 206).
-const DEMUCS_PYTHON = process.env.OTAKOS_DEMUCS_PYTHON || 'F:/OtakOsDemucs/Scripts/python.exe';
+// Gdzie szukamy (Suweren 2026-10-06: „znalazłem taki katalog F:/OtakOsDemucs… nie powinien być razem z innymi
+// Otakosami?”): OTAKOS_DEMUCS_PYTHON → `_OtakOs_AI/demucs` w Katedrze (obok innych środowisk) → stary F:/OtakOsDemucs.
+// Przeniesienie do Katedry działa samo, ALE dłuższa ścieżka wymaga włączonych długich ścieżek Windows (LongPathsEnabled),
+// inaczej instalacja torcha pada na WinError 206 — dlatego stary krótki katalog nadal jest rozpoznawany.
+const DEMUCS_KANDYDACI = [
+    process.env.OTAKOS_DEMUCS_PYTHON,
+    path.join(process.cwd(), '_OtakOs_AI', 'demucs', 'Scripts', 'python.exe'),
+    path.join(process.cwd(), '_OtakOs_AI', 'demucs', 'bin', 'python'),
+    'F:/OtakOsDemucs/Scripts/python.exe',
+].filter(Boolean);
+const DEMUCS_PYTHON = DEMUCS_KANDYDACI.find((p) => fsSync.existsSync(p)) ?? DEMUCS_KANDYDACI[0];
 const DEMUCS_SKRYPT = path.join(__dirname, 'services', 'demucs_stemy.py');
 const STEMY_DIR = path.join(MUSIC_DIR, '_Stemy');
 
@@ -12558,6 +12574,7 @@ app.get('/api/stemy/status', (req, res) => {
         success: true,
         dostepne: maPythona && maSkrypt,
         python: DEMUCS_PYTHON,
+        szukano: DEMUCS_KANDYDACI,
         skrypt: DEMUCS_SKRYPT,
         zrodla: ['drums', 'bass', 'other', 'vocals'],
         urzadzenie: 'cpu',

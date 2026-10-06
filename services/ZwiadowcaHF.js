@@ -63,6 +63,8 @@ const REPO = /^[\w.-]{1,96}\/[\w.-]{1,96}$/;
 export const ZRODLA = {
     hf: { nazwa: 'HuggingFace', baza: () => cfg.hf, zweryfikowane: true },
     pirateface: { nazwa: 'pirateface.co', baza: () => cfg.pirateface, zweryfikowane: false },
+    // Biblioteka Ollamy (`ollama pull qwen3:8b`) — tylko kandydaci z Giełdy Master Flow, zwiad jej nie przeszukuje.
+    ollama: { nazwa: 'biblioteka Ollamy', baza: () => 'https://ollama.com/library', zweryfikowane: true, szukaj: false },
 };
 /**
  * 🎼 Dziedziny zwiadu (Suweren 2026-10-06: „Zwiadowca niech szuka też modeli do appek, music do dźwięku i story do wideo
@@ -259,7 +261,7 @@ export async function zwiad({ zapytania = cfg.zapytania, naZapytanie = 8, opinii
     if (biezacy?.stan === 'trwa') throw new Error('Zwiadowca już jest w terenie — poczekaj na meldunek.');
     const lista = [...new Set((zapytania ?? []).map((z) => String(z).trim().toLowerCase()).filter((z) => /^[\p{L}\d .+_-]{2,40}$/u.test(z)))].slice(0, 10);
     if (!lista.length) throw new Error('Podaj słowa do szukania (np. polish, coder).');
-    const zr = (zrodla ?? []).filter((x) => ZRODLA[x]);
+    const zr = (zrodla ?? []).filter((x) => ZRODLA[x] && ZRODLA[x].szukaj !== false);
     if (!zr.length) throw new Error('Brak znanych źródeł (hf, pirateface).');
     const z = biezacy = { id: `zw-${Date.now().toString(36)}-${crypto.randomBytes(2).toString('hex')}`, stan: 'trwa', etap: 'start', blad: null, znaleziono: 0, bledyZrodel: [], od: new Date().toISOString(), koniec: null };
     (async () => {
@@ -527,6 +529,35 @@ async function pobierzIWykuj(k, p) {
  * Akceptacja: HF → `ollama pull hf.co/<repo>:<kwant>`; inne źródła → pobranie pliku + Kuźnia Modeli. W tle;
  * po pobraniu karta modelu dla Dyrygenta z opinii Zwiadowcy (z dopiskiem o źródle, gdy niezweryfikowane).
  */
+/**
+ * ⚡ Model z oferty innej Katedry (Giełda Master Flow — Suweren 2026-10-06: „można kliknąć na potrzebny model i Zwiadowca
+ * własnej Katedry go doda”). Link HF (`hf.co/…`) → zwykła ścieżka linku; nazwa z biblioteki Ollamy (`qwen3:8b`) →
+ * kandydat `ollama`. NIC się nie pobiera — kandydat czeka na „Przyjmij” (wtedy `ollama pull`).
+ */
+export async function zModeluSieci(model, { od = null } = {}) {
+    if (!cfg.wlaczony) throw new Error('Zwiadowca wyłączony (OTAKOS_ZWIADOWCA=0).');
+    const m = String(model ?? '').trim();
+    if (/^(https?:\/\/)?(hf\.co|huggingface\.co)\//i.test(m)) return zLinku(m);
+    if (!/^[a-z0-9][a-z0-9._-]{0,60}(\/[a-z0-9._-]{1,60})?(:[a-z0-9._-]{1,40})?$/i.test(m)) throw new Error(`„${m.slice(0, 80)}” nie wygląda na nazwę modelu Ollamy ani link HuggingFace.`);
+    const nazwa = m.includes(':') ? m : `${m}:latest`;
+    const tagi = await tagiOllamy();
+    if (tagi.includes(nazwa) || tagi.includes(m)) throw new Error(`${m} już jest w Ollamie tej Katedry.`);
+    const k = {
+        id: idKandydata('ollama', nazwa), zrodlo: 'ollama', zweryfikowane: true, repo: nazwa, ollama: nazwa, kwant: null, gb: null, plik: null,
+        url: `${ZRODLA.ollama.baza()}/${nazwa.split(':')[0]}`, pobrania: null, polubienia: null, zmieniony: null, zapytanie: 'gielda',
+        opinia: `Z Giełdy Master Flow${od ? ` — ten model ogłasza Katedra „${String(od).slice(0, 32)}”` : ''}. Rozmiar znany dopiero przy pobieraniu — sprawdź, czy zmieści się w karcie.`,
+        stan: 'nowy', znaleziony: new Date().toISOString(),
+    };
+    const d = await czytaj();
+    const byl = d.kandydaci.find((x) => x.id === k.id);
+    if (byl?.stan === 'pobiera') throw new Error(`${nazwa} właśnie się pobiera.`);
+    if (byl?.stan === 'pobrany') throw new Error(`${nazwa} już jest w Katedrze.`);
+    d.kandydaci = [k, ...d.kandydaci.filter((x) => x.id !== k.id)].slice(0, 200);
+    await zapisz(d);
+    await nadaj(`Z Giełdy Master Flow: ${nazwa}${od ? ` (od Katedry „${od}”)` : ''} — czeka na akceptację`, { kandydat: k.id });
+    return k;
+}
+
 export async function akceptuj(id) {
     // 🎼 Silnik (wideo, muzyka, głos…) to nie GGUF — nie pobieramy go sam. Przyjęty = kandydat do instalacji dla Dyrygenta.
     const dane = await czytaj();
@@ -544,16 +575,17 @@ export async function akceptuj(id) {
     const zrodlo = zrodloKandydata(k);
     const p = { repo: k.repo, stan: 'trwa', postep: 'start' };
     pobierania.set(id, p);
-    await nadaj(`Suweren przyjął ${k.repo} (${k.kwant}, ${k.gb} GB${zrodlo === 'hf' ? '' : `, ${ZRODLA[zrodlo].nazwa} — niezweryfikowane`}) — pobieram do Ollamy`, { kandydat: id });
+    const rozmiar = [k.kwant, k.gb ? `${k.gb} GB` : null].filter(Boolean).join(', ');
+    await nadaj(`Suweren przyjął ${k.repo}${rozmiar ? ` (${rozmiar})` : ''}${zrodlo === 'hf' || zrodlo === 'ollama' ? '' : `, ${ZRODLA[zrodlo].nazwa} — niezweryfikowane`} — pobieram do Ollamy`, { kandydat: id });
     (async () => {
         try {
-            if (zrodlo === 'hf') await pobierzZHf(k, p);
+            if (zrodlo === 'hf' || zrodlo === 'ollama') await pobierzZHf(k, p);   // oba = `ollama pull <nazwa>`
             else await pobierzIWykuj(k, p);
             p.stan = 'gotowe';
             await zmien(id, (x) => { x.stan = 'pobrany'; x.pobrany = new Date().toISOString(); });
-            const skad = zrodlo === 'hf' ? `Z HuggingFace (${k.repo})` : `Z ${ZRODLA[zrodlo].nazwa} (${k.repo}) — źródło NIEZWERYFIKOWANE`;
-            if (cfg.ustawKarte) await cfg.ustawKarte(k.ollama, { opis: k.opinia ? `${k.opinia}${zrodlo === 'hf' ? '' : ` (${skad})`}` : `${skad}, ${k.kwant}, ${k.gb} GB — znalazł Zwiadowca.`, mocne: [] }).catch(() => {});
-            await nadaj(`${k.repo} jest w Ollamie jako ${k.ollama} — Dyrygent może go przydzielać`, { kandydat: id, glos: `Zwiadowca: nowy model ${k.repo.split('/')[1]} jest w Katedrze.` });
+            const skad = zrodlo === 'hf' ? `Z HuggingFace (${k.repo})` : zrodlo === 'ollama' ? `Z biblioteki Ollamy (${k.repo})` : `Z ${ZRODLA[zrodlo].nazwa} (${k.repo}) — źródło NIEZWERYFIKOWANE`;
+            if (cfg.ustawKarte) await cfg.ustawKarte(k.ollama, { opis: k.opinia ? `${k.opinia}${zrodlo === 'hf' || zrodlo === 'ollama' ? '' : ` (${skad})`}` : `${skad}${rozmiar ? `, ${rozmiar}` : ''} — znalazł Zwiadowca.`, mocne: [] }).catch(() => {});
+            await nadaj(`${k.repo} jest w Ollamie jako ${k.ollama} — Dyrygent może go przydzielać`, { kandydat: id, glos: `Zwiadowca: nowy model ${k.repo.split('/').at(-1)} jest w Katedrze.` });
         } catch (e) {
             p.stan = 'blad';
             const blad = String(e.message || e).slice(0, 300);
@@ -564,4 +596,4 @@ export async function akceptuj(id) {
     return { id, repo: k.repo, ollama: k.ollama };
 }
 
-export default { skonfiguruj, zwiad, zwiadDziedziny, DZIEDZINY, licencjaZTagow, czyKomercyjna, zLinku, formatRepo, rdzenNazwy, sondaz, kandydaci, akceptuj, odrzuc, kwant, wybierzPlik, nazwaOllamy, nazwaWykutego, wOllamie, czytajLink, ZRODLA };
+export default { skonfiguruj, zwiad, zwiadDziedziny, DZIEDZINY, licencjaZTagow, czyKomercyjna, zLinku, zModeluSieci, formatRepo, rdzenNazwy, sondaz, kandydaci, akceptuj, odrzuc, kwant, wybierzPlik, nazwaOllamy, nazwaWykutego, wOllamie, czytajLink, ZRODLA };

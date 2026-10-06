@@ -231,3 +231,33 @@ test('Pionek: w zespole pisze GDD i linię GRA:, Kodeks dostaje technikę; bez P
         assert.ok(k && k.tresc.includes('## Żelazne zasady'), `karta ${id}`);
     }
 });
+
+test('Giełda Master Flow → Zwiadowca: model z cudzej oferty jako kandydat (biblioteka Ollamy), pull dopiero po akceptacji', async () => {
+    const wolania = [];
+    const strumien = (linie) => ({ ok: true, status: 200, body: (async function* () { for (const l of linie) yield Buffer.from(`${JSON.stringify(l)}\n`); })() });
+    const fetch = async (u, o = {}) => {
+        wolania.push([o.method ?? 'GET', u, o.body ?? null]);
+        if (u.endsWith('/api/tags')) return json({ models: [{ name: 'gemma4:latest' }] });
+        if (u.endsWith('/api/pull')) return strumien([{ status: 'pulling manifest' }, { status: 'success' }]);
+        return json({}, 404);
+    };
+    const karty = [];
+    Zwiadowca.skonfiguruj({ katalog: tmp(), fetch, pisz: null, szyna: null, ustawKarte: async (n, k) => { karty.push([n, k.opis]); } });
+    await assert.rejects(Zwiadowca.zModeluSieci('gemma4', { od: 'teo-mas' }), /już jest w Ollamie/);
+    await assert.rejects(Zwiadowca.zModeluSieci('rm -rf /'), /nie wygląda na nazwę modelu/);
+    const k = await Zwiadowca.zModeluSieci('qwen3:8b', { od: 'teo-mas' });
+    assert.equal(k.zrodlo, 'ollama');
+    assert.equal(k.ollama, 'qwen3:8b');
+    assert.match(k.opinia, /Giełdy Master Flow.*teo-mas/);
+    assert.ok(!wolania.some(([m, u]) => m === 'POST' && u.endsWith('/api/pull')), 'nic się nie pobiera samo');
+    assert.equal((await Zwiadowca.zModeluSieci('qwen3:8b')).id, k.id, 'ten sam model = ten sam kandydat, bez dubli');
+    assert.equal((await Zwiadowca.kandydaci()).kandydaci.length, 1);
+    await Zwiadowca.akceptuj(k.id);
+    await czekaj(async () => (await Zwiadowca.kandydaci()).kandydaci[0].stan !== 'pobiera');
+    assert.equal((await Zwiadowca.kandydaci()).kandydaci[0].stan, 'pobrany');
+    const pull = wolania.find(([m, u]) => m === 'POST' && u.endsWith('/api/pull'));
+    assert.equal(JSON.parse(pull[2]).model, 'qwen3:8b');
+    assert.equal(karty[0][0], 'qwen3:8b');
+    // Zwiad automatyczny nie przeszukuje biblioteki Ollamy, nawet gdy ktoś ją poda w źródłach.
+    await assert.rejects(Zwiadowca.zwiad({ zapytania: ['coder'], zrodla: ['ollama'] }), /Brak znanych źródeł/);
+});
