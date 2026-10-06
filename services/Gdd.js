@@ -41,7 +41,28 @@ const plik = (id) => path.join(cfg.katalog, id, 'gdd.json');
 const noweId = (p) => `${p}-${crypto.randomBytes(3).toString('hex')}`;
 
 function puste(tytul = '') {
-    return { wersja: 1, tytul, gatunek: '', silnik: 'three', perspektywa: '', platformy: ['przeglądarka'], sekcje: Object.fromEntries(SEKCJE.map((s) => [s, ''])), kamienie: [], historia: [], zrodlo: null, zmieniono: null };
+    return { wersja: 1, tytul, gatunek: '', silnik: 'three', perspektywa: '', platformy: ['przeglądarka'], sekcje: Object.fromEntries(SEKCJE.map((s) => [s, ''])), kamienie: [], galezie: [], historia: [], zrodlo: null, zmieniono: null };
+}
+
+/**
+ * 🌳 GAŁĘZIE ŚWIATA (Suweren 2026-10-06: „propozycje przypisane do gałęzi kategorii świata gry”) — kategorie, z których
+ * Pracownia obrazów i Assety 3D biorą propozycje: postacie, stwory, ekwipunek, krainy… Każda propozycja = opis + styl obrazu.
+ */
+const STYLE_GALEZI = ['pojedynczy', 'zestaw', 'postac', 'krajobraz'];
+export function oczyscGalezie(lista) {
+    if (!Array.isArray(lista)) return [];
+    const widziane = new Set();
+    return lista.slice(0, 16).map((g) => {
+        const nazwa = String(g?.nazwa || '').trim().slice(0, 60);
+        let id = String(g?.id || nazwa).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+        if (!id || widziane.has(id)) return null;
+        widziane.add(id);
+        return {
+            id, nazwa: nazwa || id, opis: String(g?.opis || '').slice(0, 400),
+            propozycje: (Array.isArray(g?.propozycje) ? g.propozycje : []).slice(0, 12).map((p) => (typeof p === 'string' ? { opis: p, styl: 'pojedynczy' } : p))
+                .map((p) => ({ opis: String(p?.opis || '').trim().slice(0, 600), styl: STYLE_GALEZI.includes(p?.styl) ? p.styl : 'pojedynczy' })).filter((p) => p.opis),
+        };
+    }).filter(Boolean);
 }
 function oczysc(g, stare = puste()) {
     const out = { ...stare };
@@ -53,6 +74,7 @@ function oczysc(g, stare = puste()) {
         id: idOk(String(k.id || '')) ? k.id : noweId('km'), tytul: String(k.tytul || `Kamień ${i + 1}`).slice(0, 120), opis: String(k.opis || '').slice(0, 600),
         zadania: (Array.isArray(k.zadania) ? k.zadania : []).slice(0, 6).map((z) => typeof z === 'string' ? { id: noweId('zd'), tresc: z.slice(0, 700), stan: 'czeka' } : { id: idOk(String(z.id || '')) ? z.id : noweId('zd'), tresc: String(z.tresc || '').slice(0, 700), stan: ['czeka', 'trwa', 'gotowe', 'blad', 'pominiete'].includes(z.stan) ? z.stan : 'czeka', zadanieId: z.zadanieId ?? null, kiedy: z.kiedy ?? null, uwaga: z.uwaga ? String(z.uwaga).slice(0, 300) : null }),
     }));
+    if (Array.isArray(g.galezie)) out.galezie = oczyscGalezie(g.galezie);
     if (typeof g.zrodlo === 'string') out.zrodlo = g.zrodlo.slice(0, 200);
     out.zmieniono = new Date().toISOString();
     return out;
@@ -78,6 +100,7 @@ export async function zapewnij(projektId, tytul) {
 export function jakoTekst(g, { zKamieniami = true, zId = false } = {}) {
     const linie = [`TYTUŁ: ${g.tytul || '—'} · GATUNEK: ${g.gatunek || '—'} · SILNIK DOKUMENTU: ${g.silnik} · PERSPEKTYWA: ${g.perspektywa || '—'} · PLATFORMY: ${(g.platformy || []).join(', ') || '—'}`];
     for (const s of SEKCJE) if (g.sekcje?.[s]) linie.push(`## ${ETYKIETY[s]}\n${g.sekcje[s]}`);
+    if (g.galezie?.length) linie.push('## Gałęzie świata (kategorie assetów)\n' + g.galezie.map((x) => `- ${x.nazwa}: ${x.opis}`).join('\n'));
     if (zKamieniami && g.kamienie?.length) linie.push('## Kamienie milowe\n' + g.kamienie.map((k, i) => `${i + 1}. ${zId ? `(id: ${k.id}) ` : ''}${k.tytul} — ${k.opis}\n${k.zadania.map((z) => `   - [${z.stan}] ${z.tresc}`).join('\n')}`).join('\n'));
     return linie.join('\n\n').slice(0, 14_000);
 }
@@ -265,4 +288,4 @@ export async function realizuj(projektId, { model, tylkoKamien = null } = {}) {
     return { start: true, zadan: kolejka.length, model: prod.model };
 }
 
-export default { skonfiguruj, SILNIKI, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, produkcja, przerwij, jakoTekst, scalKamienie };
+export default { skonfiguruj, SILNIKI, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, produkcja, przerwij, jakoTekst, scalKamienie };
