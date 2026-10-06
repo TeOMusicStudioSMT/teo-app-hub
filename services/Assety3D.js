@@ -23,13 +23,19 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import ffmpegPath from 'ffmpeg-static';
 import * as Siatka3D from './Siatka3D.js';
+
+const uruchomProces = promisify(execFile);
 
 const cfg = {
     comfyBase: 'http://127.0.0.1:8188',
     comfyDir: null,                 // …/ComfyUI_windows_portable (output = <dir>/ComfyUI/output)
     katalogWorkflow: null,          // _OtakOs_AI/workflows
     katalogBiblioteki: null,        // _OtakOs_AI/assety3d
+    katalogObrazow: null,           // _OtakOs_AI/obrazy-gry (domyślnie obok biblioteki)
     katalogApek: null,              // _OtakOs_Apki
     szyna: null,
     pisz: null,                     // AppStudio.pisz — tłumaczenie opisu na prompt obrazu
@@ -86,8 +92,10 @@ export async function meta(id) {
     if (!idOk(id)) return null;
     try { return JSON.parse(await fs.readFile(path.join(dirAssetu(id), 'meta.json'), 'utf8')); } catch { return null; }
 }
+/** Katalog assetu (dla ruchu brył — services/RuchBryl.js). */
+export const katalogAssetu = (id) => dirAssetu(id);
 export function sciezkaPliku(id, plik) {
-    if (!idOk(id) || !/^(model\.glb|master\.glb|obraz\.png|obraz-zrodlo\.(png|jpg|jpeg|webp))$/.test(plik)) return null;
+    if (!idOk(id) || !/^(model\.glb|master\.glb|obraz\.png|obraz-zrodlo\.(png|jpg|jpeg|webp)|ruch-[a-z]+\.(glb|mp4))$/.test(plik)) return null;
     const p = path.join(dirAssetu(id), plik);
     return fsSync.existsSync(p) ? p : null;
 }
@@ -111,21 +119,24 @@ export async function uprosc(id, sciany) {
 }
 
 /** „Do gry": kopia GLB do public/assety projektu + wpis w assety.json (Kodeks czyta to w prompcie). */
-export async function doGry(id, projektId) {
+export async function doGry(id, projektId, { ruch = null } = {}) {
     const m = await meta(id);
     if (!m) throw new Error('Nie ma takiego assetu.');
     if (!/^[a-z0-9-]{2,48}$/.test(String(projektId || '')) || !fsSync.existsSync(path.join(cfg.katalogApek, projektId))) throw new Error('Nie ma takiego projektu gry.');
-    const glb = path.join(dirAssetu(id), 'model.glb');
+    // Z ruchem: animowany GLB z RuchBryl (ruch-<id>.glb) jako osobny plik gry, z nazwą animacji dla Kodeksa.
+    const wpisRuchu = ruch ? (m.ruchy ?? []).find((r) => r.ruch === ruch) : null;
+    if (ruch && !wpisRuchu) throw new Error(`Bryła nie ma ruchu „${ruch}” — najpierw go policz.`);
+    const glb = path.join(dirAssetu(id), wpisRuchu ? wpisRuchu.glb : 'model.glb');
     if (!fsSync.existsSync(glb)) throw new Error('Asset nie ma jeszcze modelu (generowanie trwa albo padło).');
     const dir = path.join(cfg.katalogApek, projektId, 'public', 'assety');
     await fs.mkdir(dir, { recursive: true });
-    const nazwaPliku = `${m.nazwa}.glb`;
+    const nazwaPliku = wpisRuchu ? `${m.nazwa}-${ruch}.glb` : `${m.nazwa}.glb`;
     await fs.copyFile(glb, path.join(dir, nazwaPliku));
     const plikKat = path.join(dir, 'assety.json');
     let kat = [];
     try { kat = JSON.parse(await fs.readFile(plikKat, 'utf8')); } catch { kat = []; }
     kat = kat.filter((a) => a.plik !== nazwaPliku);
-    kat.push({ plik: nazwaPliku, nazwa: m.nazwa, opis: m.opis, sciany: m.sciany ?? null, zrodlo: id, dodano: new Date().toISOString() });
+    kat.push({ plik: nazwaPliku, nazwa: m.nazwa, opis: m.opis, sciany: m.sciany ?? null, zrodlo: id, ...(wpisRuchu ? { animacja: `ruch_${ruch}` } : {}), dodano: new Date().toISOString() });
     await fs.writeFile(plikKat, JSON.stringify(kat, null, 2), 'utf8');
     m.wGrach = [...new Set([...(m.wGrach ?? []), projektId])];
     await fs.writeFile(path.join(dirAssetu(id), 'meta.json'), JSON.stringify(m, null, 2), 'utf8');
@@ -143,11 +154,22 @@ export async function assetyProjektu(projektId) {
 // ─────────────────────────────────────────────────────────────────────────────
 const zadania = new Map();
 export function zadanie(id) { return zadania.get(id) ?? null; }
-export function zadaniaLista() { return [...zadania.values()].map((z) => ({ id: z.id, asset: z.asset, stan: z.stan, etap: z.etap, od: z.od, koniec: z.koniec ?? null, blad: z.blad ?? null })); }
+export function zadaniaLista() { return [...zadania.values()].map((z) => ({ id: z.id, asset: z.asset ?? null, obraz: z.obraz ?? null, stan: z.stan, etap: z.etap, od: z.od, koniec: z.koniec ?? null, blad: z.blad ?? null })); }
+
+/**
+ * 🖼️ Style Pracowni obrazów (Suweren 2026-10-06: „generator, co generuje takie zdjęcia, a potem z nich modele 3D”).
+ * Tylko `pojedynczy` idzie do TRELLIS.2 w całości. Zestaw modelarski, karta postaci i krajobraz to KONCEPT — z nich do
+ * 3D idzie WYCINEK (jeden obiekt), bo cały arkusz daje bryłę-kolaż (zmierzone u Suwerena: kit DRIFT.01 → trzy bryły naraz).
+ */
+export const STYLE_OBRAZU = {
+    pojedynczy: { nazwa: 'Jeden obiekt (prosto do 3D)', do3d: true, szer: 1024, wys: 1024, baza: 'game asset concept art, single object, full body, front three-quarter view, centered, isolated on plain white background, no ground shadow, no text, clean silhouette, studio lighting' },
+    zestaw: { nazwa: 'Zestaw modelarski (części + złożony)', do3d: false, szer: 1344, wys: 768, baza: 'scale model kit product shot, left: exploded view of every separate part laid out on grey sprue frames, right: the fully assembled figure standing in a white display box, clean white studio background, orthographic, high detail 3D render' },
+    postac: { nazwa: 'Karta postaci (przód, bok, tył)', do3d: false, szer: 1344, wys: 768, baza: 'character turnaround sheet, the same character shown front view, side view and back view, full body, relaxed stance, plain light grey background, orthographic, consistent design, game character concept art, no text' },
+    krajobraz: { nazwa: 'Kraina / krajobraz', do3d: false, szer: 1344, wys: 768, baza: 'wide establishing shot of a fantasy game world landscape, epic scale, painterly concept art, atmospheric perspective, rich color, no characters, no text' },
+};
 
 /** Opis po polsku → prompt obrazu po angielsku pod asset (białe tło, cały obiekt, bez tekstu). */
-async function promptObrazu(opis) {
-    const baza = 'game asset concept art, single object, full body, front three-quarter view, centered, isolated on plain white background, no ground shadow, no text, clean silhouette, studio lighting';
+async function promptObrazu(opis, baza = STYLE_OBRAZU.pojedynczy.baza) {
     if (!cfg.pisz) return `${opis}. ${baza}`;
     try {
         const odp = await cfg.pisz({
@@ -210,12 +232,113 @@ function plikZOutputs(outputs, klucze) {
     return null;
 }
 
+/** FLUX.2 klein: prompt → plik PNG w wyjściu ComfyUI (ścieżka). */
+async function rysuj({ prompt, szer = 1024, wys = 1024, ziarno = null, prefiks, z }) {
+    const g = JSON.parse(await fs.readFile(path.join(cfg.katalogWorkflow, GRAF_OBRAZ), 'utf8')); delete g._opis;
+    g['5'].inputs.text = prompt;
+    g['7'].inputs.width = szer; g['7'].inputs.height = wys; g['8'].inputs.width = szer; g['8'].inputs.height = wys;
+    g['11'].inputs.noise_seed = Number.isFinite(Number(ziarno)) && ziarno !== null && ziarno !== '' ? Number(ziarno) : Math.floor(Math.random() * 1e9);
+    g['14'].inputs.filename_prefix = prefiks;
+    const w = await czekajNaComfy(await zlecGraf(g), { limitMs: 15 * 60_000, naPostep: (s) => { if (z) z.sekundyEtapu = s; } });
+    const plik = plikZOutputs(w.outputs, ['images']);
+    if (!plik) throw new Error('FLUX nie oddał obrazu.');
+    return plik;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🖼️ PRACOWNIA OBRAZÓW — obraz bez 3D (koncept), potem wycinek → bryła
+// ─────────────────────────────────────────────────────────────────────────────
+const katalogObrazow = () => cfg.katalogObrazow || path.join(cfg.katalogBiblioteki, '..', 'obrazy-gry');
+const dirObrazu = (id) => path.join(katalogObrazow(), id);
+
+/** Wycinek {x, y, w, h} w ułamkach 0–1 → filtr ffmpeg: wytnij i dołóż białe pole do kwadratu (TRELLIS lubi kwadrat). */
+export function filtrWycinka(w) {
+    const n = (v) => Number(v);
+    const x = n(w?.x), y = n(w?.y), sz = n(w?.w), wy = n(w?.h);
+    if (![x, y, sz, wy].every(Number.isFinite) || x < 0 || y < 0 || sz <= 0.02 || wy <= 0.02 || x + sz > 1.0001 || y + wy > 1.0001) {
+        throw new Error('Wycinek ma być {x, y, w, h} w ułamkach 0–1 i mieścić się w obrazie.');
+    }
+    const f = (v) => v.toFixed(4);
+    return `crop=trunc(iw*${f(sz)}):trunc(ih*${f(wy)}):trunc(iw*${f(x)}):trunc(ih*${f(y)}),pad=max(iw\\,ih):max(iw\\,ih):(ow-iw)/2:(oh-ih)/2:white`;
+}
+
+export async function listaObrazow() {
+    try { await fs.mkdir(katalogObrazow(), { recursive: true }); } catch { return []; }
+    const out = [];
+    for (const d of await fs.readdir(katalogObrazow(), { withFileTypes: true })) {
+        if (!d.isDirectory()) continue;
+        try { out.push(JSON.parse(await fs.readFile(path.join(dirObrazu(d.name), 'meta.json'), 'utf8'))); } catch { /* bez meta */ }
+    }
+    return out.sort((a, b) => String(b.utworzono).localeCompare(String(a.utworzono)));
+}
+export async function metaObrazu(id) {
+    if (!idOk(id)) return null;
+    try { return JSON.parse(await fs.readFile(path.join(dirObrazu(id), 'meta.json'), 'utf8')); } catch { return null; }
+}
+export function plikObrazu(id) {
+    if (!idOk(id)) return null;
+    const p = path.join(dirObrazu(id), 'obraz.png');
+    return fsSync.existsSync(p) ? p : null;
+}
+export async function usunObraz(id) {
+    if (!idOk(id) || !fsSync.existsSync(dirObrazu(id))) return false;
+    await fs.rm(dirObrazu(id), { recursive: true, force: true });
+    return true;
+}
+
+/** Obraz z opisu w stylu Pracowni — w tle (jedno zadanie GPU naraz, wspólna kolejka z bryłami). */
+export async function obraz({ opis, styl = 'pojedynczy', galaz = null, projekt = null, ziarno = null } = {}) {
+    const st = STYLE_OBRAZU[styl];
+    if (!st) throw new Error(`Nieznany styl „${styl}”. Są: ${Object.keys(STYLE_OBRAZU).join(', ')}.`);
+    const tekst = String(opis || '').trim();
+    if (tekst.length < 3) throw new Error('Opisz, co narysować.');
+    try { await comfy('/object_info/EmptyFlux2LatentImage', {}, 6000); }
+    catch { throw new Error('ComfyUI nie odpowiada na :8188 — obudź go (POST /api/comfy/ensure).'); }
+    if (!fsSync.existsSync(path.join(cfg.katalogWorkflow, GRAF_OBRAZ))) throw new Error(`brak grafu ${GRAF_OBRAZ}`);
+    if ([...zadania.values()].some((z) => z.stan === 'trwa')) throw new Error('Jedno zadanie GPU naraz — ComfyUI już liczy.');
+    const baza = slug(tekst);
+    let id = `${baza}-${crypto.randomBytes(2).toString('hex')}`;
+    while (fsSync.existsSync(dirObrazu(id))) id = `${baza}-${crypto.randomBytes(2).toString('hex')}`;
+    await fs.mkdir(dirObrazu(id), { recursive: true });
+    const m = { id, opis: tekst.slice(0, 1000), styl, galaz: galaz ? String(galaz).slice(0, 60) : null, projekt: projekt ? String(projekt).slice(0, 60) : null, szer: st.szer, wys: st.wys, do3d: st.do3d, stan: 'trwa', utworzono: new Date().toISOString(), bryly: [] };
+    const zapisz = () => fs.writeFile(path.join(dirObrazu(id), 'meta.json'), JSON.stringify(m, null, 2), 'utf8');
+    await zapisz();
+    const z = { id: `ob-${Date.now().toString(36)}`, obraz: id, stan: 'trwa', etap: 'prompt', kroki: [], od: m.utworzono };
+    zadania.set(z.id, z);
+    (async () => {
+        const t0 = Date.now();
+        try {
+            m.promptObrazu = await promptObrazu(tekst, st.baza);
+            await zwolnijOllame(cfg.model());
+            z.etap = 'obraz';
+            const plik = await rysuj({ prompt: m.promptObrazu, szer: st.szer, wys: st.wys, ziarno, prefiks: `katedra/obrazy-gry/${id}`, z });
+            await fs.copyFile(plik, path.join(dirObrazu(id), 'obraz.png'));
+            m.stan = 'gotowe'; m.czas = Math.round((Date.now() - t0) / 1000);
+            z.stan = 'gotowe'; z.etap = 'gotowe';
+            await cfg.szyna?.nadaj?.({ agent: 'Assety3D', rodzaj: 'praca', tresc: `obraz „${tekst.slice(0, 60)}” (${st.nazwa}) gotowy w ${m.czas} s`, dane: { obraz: id } }).catch(() => {});
+        } catch (e) {
+            m.stan = 'blad'; m.blad = e.message; z.stan = 'blad'; z.blad = e.message;
+        } finally { z.koniec = new Date().toISOString(); await zapisz().catch(() => {}); }
+    })();
+    return { zadanie: z.id, obraz: id };
+}
+
 /**
- * Zlecenie. `zrodlo`: { tekst } albo { zdjecie: <ścieżka pliku> }. Opcje: sciany (domyślnie 20000),
+ * Zlecenie. `zrodlo`: { tekst } albo { zdjecie: <ścieżka pliku> } albo { zObrazu: <id z Pracowni>, wycinek? }. Opcje: sciany (domyślnie 20000),
  * rozdzielczosc (1024|1152|…|2048 — wokselowa, więcej = dokładniej i wolniej), ziarno.
  */
-export async function generuj({ nazwa, opis, tekst, zdjecie, projekt = null, sciany = 8000, rozdzielczosc = 512, ziarno = null } = {}) {
-    if (!tekst && !zdjecie) throw new Error('Podaj opis albo zdjęcie.');
+export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wycinek = null, projekt = null, sciany = 8000, rozdzielczosc = 512, ziarno = null } = {}) {
+    let mObrazu = null;
+    if (zObrazu) {
+        mObrazu = await metaObrazu(zObrazu);
+        if (!mObrazu || !plikObrazu(zObrazu)) throw new Error('Nie ma takiego obrazu w Pracowni (albo jeszcze się rysuje).');
+        if (!wycinek && !mObrazu.do3d) throw new Error('To koncept (arkusz, karta postaci, kraina) — zaznacz wycinek z JEDNYM obiektem, inaczej TRELLIS.2 zrobi bryłę-kolaż.');
+        if (wycinek) filtrWycinka(wycinek);
+        tekst = null;
+        opis = opis || mObrazu.opis;
+        nazwa = nazwa || mObrazu.opis.slice(0, 40);
+    }
+    if (!tekst && !zdjecie && !zObrazu) throw new Error('Podaj opis albo zdjęcie.');
     const s = await stan();
     if (!s.gotowe) throw new Error(s.braki.join(' | '));
     if ([...zadania.values()].some((z) => z.stan === 'trwa')) throw new Error('Jeden asset naraz — ComfyUI ma 6 GB VRAM.');
@@ -227,7 +350,15 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, projekt = null, sci
     const z = { id: `a3-${Date.now().toString(36)}`, asset: assetId, stan: 'trwa', etap: 'start', kroki: [], od: new Date().toISOString(), czasy: {} };
     zadania.set(z.id, z);
     const krok = (etap, tekst) => { z.etap = etap; z.kroki.push({ kiedy: new Date().toISOString(), etap, tekst: String(tekst).slice(0, 500) }); };
-    const m = { id: assetId, nazwa: baza, opis: String(opis || tekst || nazwa || '').slice(0, 500), zrodlo: tekst ? 'tekst' : 'zdjecie', tekst: tekst ? String(tekst).slice(0, 1000) : null, sciany: Number(sciany) || 8000, rozdzielczosc: Number(rozdzielczosc) || 512, utworzono: z.od, stan: 'trwa', silnik: 'TRELLIS.2', czasy: {}, wGrach: [] };
+    if (zObrazu) {
+        // Wycinek liczymy od razu (szybki ffmpeg) — błąd filtra wraca w odpowiedzi, nie w tle.
+        const wyj = path.join(dir, 'wycinek.png');
+        const filtr = wycinek ? filtrWycinka(wycinek) : 'pad=max(iw\\,ih):max(iw\\,ih):(ow-iw)/2:(oh-ih)/2:white';
+        try { await uruchomProces(ffmpegPath, ['-loglevel', 'error', '-y', '-i', plikObrazu(zObrazu), '-vf', filtr, '-frames:v', '1', wyj]); }
+        catch (e) { await fs.rm(dir, { recursive: true, force: true }); throw new Error(`Nie wyciąłem obrazu: ${String(e.stderr || e.message).slice(0, 200)}`); }
+        zdjecie = wyj;
+    }
+    const m = { id: assetId, nazwa: baza, opis: String(opis || tekst || nazwa || '').slice(0, 500), zrodlo: zObrazu ? 'obraz' : tekst ? 'tekst' : 'zdjecie', ...(zObrazu ? { zObrazu, wycinek: wycinek ?? null, galaz: mObrazu.galaz ?? null } : {}), tekst: tekst ? String(tekst).slice(0, 1000) : null, sciany: Number(sciany) || 8000, rozdzielczosc: Number(rozdzielczosc) || 512, utworzono: z.od, stan: 'trwa', silnik: 'TRELLIS.2', czasy: {}, wGrach: [] };
     await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(m, null, 2), 'utf8');
 
     (async () => {
@@ -245,15 +376,8 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, projekt = null, sci
                 await zwolnijOllame(cfg.model());
                 m.promptObrazu = prompt;
                 krok('obraz', `FLUX.2 klein rysuje: ${prompt.slice(0, 160)}…`);
-                const g = JSON.parse(await fs.readFile(path.join(cfg.katalogWorkflow, GRAF_OBRAZ), 'utf8')); delete g._opis;
-                g['5'].inputs.text = prompt;
-                g['7'].inputs.width = 1024; g['7'].inputs.height = 1024; g['8'].inputs.width = 1024; g['8'].inputs.height = 1024;
-                g['11'].inputs.noise_seed = Number.isFinite(Number(ziarno)) ? Number(ziarno) : Math.floor(Math.random() * 1e9);
-                g['14'].inputs.filename_prefix = `katedra/assety/${assetId}_obraz`;
                 const t1 = Date.now();
-                const w = await czekajNaComfy(await zlecGraf(g), { limitMs: 15 * 60_000, naPostep: (s) => { z.sekundyEtapu = s; } });
-                const zrodlo = plikZOutputs(w.outputs, ['images']);
-                if (!zrodlo) throw new Error('FLUX nie oddał obrazu.');
+                const zrodlo = await rysuj({ prompt, szer: 1024, wys: 1024, ziarno, prefiks: `katedra/assety/${assetId}_obraz`, z });
                 obraz = path.join(dir, 'obraz.png');
                 await fs.copyFile(zrodlo, obraz);
                 m.czasy.obraz = Math.round((Date.now() - t1) / 1000);
@@ -312,6 +436,7 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, projekt = null, sci
             await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(m, null, 2), 'utf8');
             krok('gotowe', `GLB ${(m.rozmiarGlb / 1e6).toFixed(1)} MB w ${m.czasy.razem} s (3D: ${m.czasy['3d']} s)`);
             z.stan = 'gotowe';
+            if (zObrazu) { try { const mo = await metaObrazu(zObrazu); mo.bryly = [...new Set([...(mo.bryly ?? []), assetId])]; await fs.writeFile(path.join(dirObrazu(zObrazu), 'meta.json'), JSON.stringify(mo, null, 2), 'utf8'); } catch { /* obraz mógł zniknąć */ } }
             if (projekt) { try { await doGry(assetId, projekt); krok('gotowe', `dodany do gry „${projekt}"`); } catch (e) { krok('gotowe', `nie dodałem do gry: ${e.message}`); } }
             await cfg.szyna?.nadaj?.({ agent: 'Assety3D', rodzaj: 'praca', tresc: `asset „${m.nazwa}" gotowy w ${m.czasy.razem} s (TRELLIS.2)`, dane: { asset: assetId } }).catch(() => {});
         } catch (e) {
@@ -325,4 +450,4 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, projekt = null, sci
     return { zadanie: z.id, asset: assetId };
 }
 
-export default { skonfiguruj, stan, lista, meta, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista };
+export default { skonfiguruj, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };

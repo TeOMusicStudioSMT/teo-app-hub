@@ -157,6 +157,8 @@ import * as Biblioteka from './services/BibliotekaOdcinkow.js';
 import * as Opowiesc from './services/PokojOpowiesci.js';
 import * as PostProdukcja from './services/PostProdukcja.js';
 import * as Blender from './services/Blender.js';
+import { utworzRuch } from './services/RuchBryl.js';
+import * as SzablonyGier from './services/SzablonyGier.js';
 import * as Uniwersum from './services/Uniwersum.js';
 import * as Scenografie from './services/Scenografie.js';
 import * as Produkty from './services/Produkty.js';
@@ -7964,6 +7966,12 @@ Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna
 ModeleAgentow.wszystkie().catch(() => {});   // pamięć przydziału dla Studia Gier od startu
 const gddUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 app.get('/api/gdd/silniki', (_req, res) => res.json({ success: true, silniki: Gdd.SILNIKI }));
+// 📜 Scenariusze Suwerena jako projekty (services/SzablonyGier.js) — „Teterhia — Wieczna Saga”: projekt gry + GDD + gałęzie świata.
+app.get('/api/gdd/szablony', (_req, res) => res.json({ success: true, szablony: Object.values(SzablonyGier.SZABLONY).map((s) => ({ id: s.id, nazwa: s.nazwa, opis: s.opis, galezie: s.gdd.galezie.length, kamienie: s.gdd.kamienie.length })) }));
+app.post('/api/gdd/szablon/:szablon', async (req, res) => {
+    try { res.json({ success: true, ...(await SzablonyGier.zasiej(req.params.szablon, { appStudio: AppStudio, gdd: Gdd }, { nadpisz: req.body?.nadpisz === true })) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 app.get('/api/gdd/:id', async (req, res) => {
     const g = await Gdd.wczytaj(req.params.id);
     return g ? res.json({ success: true, gdd: g, produkcja: Gdd.produkcja(req.params.id) }) : res.json({ success: true, gdd: null, produkcja: null });
@@ -8031,23 +8039,37 @@ app.get('/api/assety3d/zadania/:id', (req, res) => { const z = Assety3D.zadanie(
 app.post('/api/assety3d/generuj', assetUpload.single('zdjecie'), async (req, res) => {
     try {
         const b = req.body ?? {};
-        const w = await Assety3D.generuj({ nazwa: b.nazwa, opis: b.opis, tekst: b.tekst, zdjecie: req.file?.path ?? null, projekt: b.projekt || null, sciany: b.sciany, rozdzielczosc: b.rozdzielczosc, ziarno: b.ziarno });
+        let wycinek = b.wycinek ?? null;
+        if (typeof wycinek === 'string') { try { wycinek = JSON.parse(wycinek); } catch { throw new Error('Wycinek ma być JSON-em {x, y, w, h}.'); } }
+        const w = await Assety3D.generuj({ nazwa: b.nazwa, opis: b.opis, tekst: b.tekst, zdjecie: req.file?.path ?? null, zObrazu: b.zObrazu || null, wycinek, projekt: b.projekt || null, sciany: b.sciany, rozdzielczosc: b.rozdzielczosc, ziarno: b.ziarno });
         res.json({ success: true, ...w });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
     finally { if (req.file?.path) setTimeout(() => fs.rm(req.file.path, { force: true }).catch(() => {}), 60_000); }
 });
+// 🖼️ Pracownia obrazów (Game Studio): obraz w stylu (jeden obiekt / zestaw / karta postaci / kraina) z gałęzią świata,
+// a z niego bryła przez POST /api/assety3d/generuj { zObrazu, wycinek: {x,y,w,h} }.
+app.get('/api/assety3d/obrazy', async (_req, res) => res.json({ success: true, obrazy: await Assety3D.listaObrazow(), style: Assety3D.STYLE_OBRAZU, zadania: Assety3D.zadaniaLista().filter((z) => z.obraz) }));
+app.post('/api/assety3d/obrazy', (req, res) => ytOdp(res, Assety3D.obraz({ opis: req.body?.opis, styl: req.body?.styl || 'pojedynczy', galaz: req.body?.galaz || null, projekt: req.body?.projekt || null, ziarno: req.body?.ziarno ?? null })));
+app.get('/api/assety3d/obrazy/:id/plik', (req, res) => { const p = Assety3D.plikObrazu(req.params.id); return p ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Nie ma takiego obrazu.' }); });
+app.delete('/api/assety3d/obrazy/:id', async (req, res) => res.json({ success: true, usunieto: await Assety3D.usunObraz(req.params.id) }));
 app.get('/api/assety3d/:id/plik/:plik', (req, res) => {
     const p = Assety3D.sciezkaPliku(req.params.id, req.params.plik);
     if (!p) return res.status(404).json({ success: false, message: 'Nie ma takiego pliku.' });
     if (p.endsWith('.glb')) res.type('model/gltf-binary');
     return res.sendFile(p);
 });
+// 🎞️ Ruch brył (services/RuchBryl.js) — etap 1: ruchy całej bryły w Blenderze → GLB z animacją + podgląd mp4.
+const RuchBryl = utworzRuch({ katalogAssetu: Assety3D.katalogAssetu, blender: Blender, szyna: Szyna });
+app.get('/api/assety3d/ruchy', (_req, res) => res.json({ success: true, ruchy: RuchBryl.RUCHY, zadania: RuchBryl.lista() }));
+app.get('/api/assety3d/ruch/zadanie/:id', (req, res) => { const z = RuchBryl.zadanie(req.params.id); return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania (most mógł wystartować od nowa).' }); });
+app.post('/api/assety3d/:id/ruch', (req, res) => ytOdp(res, RuchBryl.ozyw(req.params.id, { ruch: String(req.body?.ruch ?? ''), sekundy: req.body?.sekundy, podglad: req.body?.podglad !== false })));
+app.delete('/api/assety3d/:id/ruch/:ruch', (req, res) => ytOdp(res, RuchBryl.usun(req.params.id, req.params.ruch).then((ruchy) => ({ ruchy }))));
 app.post('/api/assety3d/:id/uprosc', async (req, res) => {
     try { res.json({ success: true, asset: await Assety3D.uprosc(req.params.id, req.body?.sciany) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.post('/api/assety3d/:id/do-gry', async (req, res) => {
-    try { res.json({ success: true, ...(await Assety3D.doGry(req.params.id, req.body?.projekt)) }); }
+    try { res.json({ success: true, ...(await Assety3D.doGry(req.params.id, req.body?.projekt, { ruch: req.body?.ruch || null })) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.delete('/api/assety3d/:id', async (req, res) => res.json({ success: true, usunieto: await Assety3D.usun(req.params.id) }));
