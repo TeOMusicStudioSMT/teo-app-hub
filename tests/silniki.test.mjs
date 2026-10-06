@@ -122,3 +122,29 @@ test('Stół: przyjęcie karty domyślnie z Dyrygentem (dobiera modele jako pier
     await Stol.przyjmij(b.id, { dyrygent: false });
     assert.deepEqual(zalozone.map((z) => z.dyrygent), [true, false]);
 });
+
+test('Stół: karta „ulepsz bryłę” — fakty o bryle, uwagi Suwerena, zespół i linia OBIEKT: w zadaniu', async () => {
+    const Stol = await import('../services/Stol.js');
+    const m = { id: 'asset-b30e', nazwa: 'asset', zrodlo: 'zdjecie', opis: 'skrzypaczka na koncercie', sciany: 30000, rozdzielczosc: 1024, czasy: { razem: 436 }, wGrach: ['koncert'] };
+    const t = Stol.kartaUlepszeniaBryly(m, { uwagi: 'zostaw tylko skrzypaczkę', trojkaty: 26280 });
+    const k = Stol.czytajKarte(t);
+    assert.match(k.wizja, /Ulepszyć bryłę 3D „asset”/);
+    assert.deepEqual(k.uczestnicy, ['Pionek', 'Paleta', 'Kodeks']);
+    assert.match(t, /zrobiona ze zdjęcia/);
+    assert.match(t, /trójkątów w GLB: 26280/);
+    assert.match(t, /Uwagi Suwerena: zostaw tylko skrzypaczkę/);
+    assert.match(t, /OBIEKT: <opis jednego obiektu/);
+    assert.equal(Stol.ZRODLA.assety3d, '🗿 Assety 3D');
+});
+
+test('ModeleAgentow: pamięć przydziału dla Studia Gier (model Kodeksa bez czytania dysku)', async () => {
+    const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+    const MA = await import('../services/ModeleAgentow.js');
+    MA.skonfiguruj({ katalogWymiar: fs.mkdtempSync(path.join(os.tmpdir(), 'modele-')) });
+    await MA.wszystkie();
+    assert.equal(MA.modelZPamieci('kodeks'), null);
+    await MA.ustaw('kodeks', 'qwen3:14b');
+    assert.equal(MA.modelZPamieci('kodeks'), 'qwen3:14b');
+    await MA.ustaw('kodeks', '');
+    assert.equal(MA.modelZPamieci('kodeks'), null);
+});

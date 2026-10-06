@@ -19,9 +19,14 @@ const ID = /^[a-z0-9-]{2,40}$/;
 /** Nazwa modelu Ollamy (`qwen3.5:9b`, `hf.co/x/y:Q4`) albo chmury z prefiksem. */
 const MODEL = /^[A-Za-z0-9._:\/-]{2,120}$/;
 
+/** Ostatnio odczytany przydział — dla miejsc, które pytają synchronicznie (Studio Gier: model Kodeksa). */
+let pamiec = {};
 export async function wszystkie() {
-    try { return JSON.parse(await fs.readFile(PLIK(), 'utf8')); } catch { return {}; }
+    try { pamiec = JSON.parse(await fs.readFile(PLIK(), 'utf8')); } catch { pamiec = {}; }
+    return pamiec;
 }
+/** Model agenta z ostatniego odczytu/zapisu (bez dysku). Odśwież przez `wszystkie()` przy starcie. */
+export function modelZPamieci(id) { return pamiec[id] ?? null; }
 
 export async function modelDla(id, domyslny = null) {
     return (await wszystkie())[id] ?? domyslny;
@@ -38,7 +43,8 @@ export async function ustaw(id, model) {
     const tmp = `${PLIK()}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(d, null, 2), 'utf8');
     await fs.rename(tmp, PLIK());
+    pamiec = d;
     return d;
 }
 
-export default { skonfiguruj, wszystkie, modelDla, ustaw };
+export default { skonfiguruj, wszystkie, modelDla, modelZPamieci, ustaw };
