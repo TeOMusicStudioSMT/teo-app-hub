@@ -80,19 +80,22 @@ export const CLOUD_MODELS: CloudModelOption[] = [
     // ⚠️ `tier` steruje routerem i portfelem: 'fast' = tani/szybki, 'heavy' = drogi.
     // Fable 5 jest NAJDROŻSZY z rodziny — w tierze 'fast' zjadałby budżet przy
     // każdym „szybkim" zapytaniu. Kolejność: od najtańszego do najmocniejszego.
-    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', tier: 'fast'     },
-    { id: 'claude-sonnet-5',  label: 'Claude Sonnet 5',  tier: 'balanced' },
-    { id: 'claude-opus-4-8',  label: 'Claude Opus 4.8',  tier: 'heavy'    },
-    { id: 'claude-opus-5',    label: 'Claude Opus 5',    tier: 'heavy'    },
-    { id: 'claude-fable-5',   label: 'Claude Fable 5',   tier: 'heavy'    },
+    { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5',  tier: 'fast'     },
+    { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', tier: 'balanced' },
+    { id: 'claude-sonnet-5',   label: 'Claude Sonnet 5',   tier: 'balanced' },
+    { id: 'claude-opus-5-5',   label: 'Claude Opus 5.5',   tier: 'heavy'    },
+    { id: 'claude-opus-5',     label: 'Claude Opus 5',     tier: 'heavy'    },
+    { id: 'claude-fable-5-1',  label: 'Claude Fable 5.1',  tier: 'heavy'    },
     // ── Gemini (Google) ────────────────────────────────────────────
-    // apiId = fizyczny string wysyłany do Google API (label może być marketingowy)
-    { id: 'gemini-3.1-pro',   apiId: 'gemini-1.5-pro',              label: 'Gemini 3.1 Pro',           tier: 'heavy'    },
-    { id: 'gemini-3.5-flash', apiId: 'gemini-1.5-flash',            label: 'Gemini 3.5 Flash',         tier: 'fast'     },
-    { id: 'gemini-3-flash',   apiId: 'gemini-1.5-flash',            label: 'Gemini 3 Flash',           tier: 'fast'     },
-    { id: 'gemini-3.1-flash-lite', apiId: 'gemini-1.5-flash',       label: 'Gemini 3.1 Flash-Lite',    tier: 'fast'     },
-    { id: 'gemini-2.5-pro',   apiId: 'gemini-2.5-pro',              label: 'Gemini 2.5 Pro',           tier: 'heavy'    },
-    { id: 'gemini-2.5-flash', apiId: 'gemini-2.5-flash',            label: 'Gemini 2.5 Flash',         tier: 'fast'     },
+    // Nazwa = to, co idzie do Google API. Dawniej „Gemini 3.x” po cichu wysyłało gemini-1.5-* (wycofane przez
+    // Google) — teraz idzie prawdziwa nazwa; gdy jej nie ma na koncie, Google odpowie błędem wprost.
+    // Aktualna lista z konta: most → GET /api/modele/chmura (klucz udostępniony mostowi w Kiblu).
+    { id: 'gemini-3.1-pro',        label: 'Gemini 3.1 Pro',        tier: 'heavy' },
+    { id: 'gemini-3.5-flash',      label: 'Gemini 3.5 Flash',      tier: 'fast'  },
+    { id: 'gemini-3-flash',        label: 'Gemini 3 Flash',        tier: 'fast'  },
+    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite', tier: 'fast'  },
+    { id: 'gemini-2.5-pro',        label: 'Gemini 2.5 Pro',        tier: 'heavy' },
+    { id: 'gemini-2.5-flash',      label: 'Gemini 2.5 Flash',      tier: 'fast'  },
 ];
 
 export const ApiDyrygent = {
@@ -196,9 +199,9 @@ export const ApiDyrygent = {
         if (typeof window !== 'undefined') {
             return localStorage.getItem('otakos_cloud_heavy_model') ||
                    localStorage.getItem('otakos_cloud_model') || // kompatybilność wsteczna
-                   'claude-opus-5';
+                   'claude-opus-5-5';
         }
-        return 'claude-opus-5';
+        return 'claude-opus-5-5';
     },
 
     /** @deprecated - użyj getCloudFastModel / getCloudHeavyModel */
@@ -413,7 +416,7 @@ export const ApiDyrygent = {
         images?:  ImageAttachment[],
         history?: Array<{ role: 'user' | 'assistant'; content: string }>,
     ): Promise<string> {
-        // Rozwiązanie fizycznego ID modelu (np. gemini-3.1-pro → gemini-1.5-pro)
+        // Rozwiązanie fizycznego ID modelu (gdy wpis ma apiId inne niż id)
         const resolvedModel = resolveModelApiId(model);
         const isGemini      = resolvedModel.startsWith('gemini-');
         const endpoint      = isGemini ? `${WIESLAW_URL}/api/gemini` : `${WIESLAW_URL}/api/claude`;

@@ -26,7 +26,14 @@ test('Zwiadowca: kwantyzacja z nazwy pliku i wybór pliku mieszczącego się w V
         { path: 'mmproj-f16.gguf', size: 1e9 },
     ];
     assert.deepEqual(Zwiadowca.wybierzPlik(pliki, 12), { kwant: 'Q4_K_M', gb: 5.5, plik: 'm-Q4_K_M-00001-of-00002.gguf' });
-    assert.equal(Zwiadowca.wybierzPlik(pliki, 4).kwant, 'Q2_K', 'Q4_K_M (5,5 GB) nie mieści się w 4 GB → mniejszy');
+    assert.equal(Zwiadowca.wybierzPlik(pliki, 4), null, 'w 4 GB mieści się tylko Q2_K — zgnieciony, nie proponujemy');
+    assert.deepEqual(Zwiadowca.wybierzPlikZPowodem(pliki, 4).zgniecione, ['Q2_K'], 'i mówimy dlaczego');
+    assert.equal(Zwiadowca.wybierzPlik([...pliki, { path: 'm-Q3_K_M.gguf', size: 3.4e9 }], 4).kwant, 'Q3_K_M', 'Q3 to dolna granica');
+    for (const k of ['IQ1_M', 'IQ2_XXS', 'Q2_K', 'Q2_0', 'TQ1_0']) assert.ok(Zwiadowca.zgniecionyKwant(k), k);
+    for (const k of ['Q3_K_S', 'IQ3_M', 'Q4_K_M', 'Q8_0', 'F16']) assert.ok(!Zwiadowca.zgniecionyKwant(k), k);
+    // Ekran Suwerena: Qwen3-Coder-30B na 6 GB → tylko IQ1_M się mieścił i produkcja oddała „2 pliki IDENTYCZNE”.
+    const koder = [{ path: 'Qwen3-Coder-30B-A3B-Instruct-UD-IQ1_M.gguf', size: 4.9e9 }, { path: 'Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf', size: 18.6e9 }];
+    assert.equal(Zwiadowca.wybierzPlik(koder, 6), null);
     assert.equal(Zwiadowca.wybierzPlik(pliki, 2), null, 'nic się nie mieści → brak kandydata');
     assert.equal(Zwiadowca.nazwaOllamy('speakleash/Bielik-11B-v2.3-Instruct-GGUF', 'Q4_K_M'), 'hf.co/speakleash/Bielik-11B-v2.3-Instruct-GGUF:Q4_K_M');
     assert.ok(Zwiadowca.wOllamie('a/b', ['hf.co/a/b:Q8_0', 'gemma4']));

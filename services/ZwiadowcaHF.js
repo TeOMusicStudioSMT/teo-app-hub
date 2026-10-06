@@ -119,13 +119,24 @@ export function kwant(nazwaPliku) {
 }
 
 /** Kolejność preferencji: dobra jakość przy rozsądnym rozmiarze; gdy nie mieści się — mniejsze. */
-const PREFEROWANE = ['Q4_K_M', 'Q5_K_M', 'Q4_K_S', 'Q4_0', 'IQ4_XS', 'Q3_K_M', 'Q3_K_L', 'Q6_K', 'Q8_0', 'IQ3_M', 'Q3_K_S', 'Q2_K'];
+const PREFEROWANE = ['Q4_K_M', 'Q5_K_M', 'Q4_K_S', 'Q4_0', 'IQ4_XS', 'Q3_K_M', 'Q3_K_L', 'Q6_K', 'Q8_0', 'IQ3_M', 'Q3_K_S'];
+
+/**
+ * Zgnieciona kwantyzacja (< 3 bity na wagę: IQ1_*, IQ2_*, Q2_*, TQ*, ternarne) — Suweren 2026-10-06: produkcja Teterhii na
+ * Qwen3-Coder-30B IQ1_M oddawała „2 pliki IDENTYCZNE”, Ternary-Bonsai-27B Q2_0 nie ruszał. 30B wciśnięty w 6 GB
+ * przestaje pisać kod; lepszy mniejszy model w Q4 (7–8B). Zwiadowca takich nie proponuje.
+ */
+export const zgniecionyKwant = (k) => /^(IQ1|IQ2|Q1|Q2|TQ)/i.test(String(k ?? ''));
+export const POWOD_ZGNIECIONY = 'poniżej 3 bitów na wagę (IQ1/IQ2/Q2/ternarne) model gubi kod i format — lepszy mniejszy model w Q4_K_M (np. qwen2.5-coder:7b, qwen3:8b)';
 
 /**
  * Z listy plików repo wybierz GGUF, który zmieści się w VRAM (≤ 90%). Pliki dzielone (-00001-of-00003) liczymy razem.
  * @returns {{ kwant:string, gb:number, plik:string } | null}
  */
-export function wybierzPlik(pliki, vramGB, { jedenPlik = false } = {}) {
+export function wybierzPlik(pliki, vramGB, opcje = {}) { return wybierzPlikZPowodem(pliki, vramGB, opcje).wybor; }
+
+/** Jak wybierzPlik, ale mówi też, które mieszczące się kwantyzacje odrzucono jako zgniecione. */
+export function wybierzPlikZPowodem(pliki, vramGB, { jedenPlik = false } = {}) {
     const grupy = new Map();
     for (const p of pliki ?? []) {
         const nazwa = String(p.path ?? p.nazwa ?? '');
@@ -139,13 +150,14 @@ export function wybierzPlik(pliki, vramGB, { jedenPlik = false } = {}) {
     }
     const limit = vramGB * 0.9 * 1e9;
     // Spoza HF kujemy jeden plik przez `ollama create` — modeli dzielonych na części tak nie złożymy.
-    const pasujace = [...grupy.values()].filter((g) => g.bajty > 0 && g.bajty <= limit && (!jedenPlik || g.czesci === 1));
+    const mieszczace = [...grupy.values()].filter((g) => g.bajty > 0 && g.bajty <= limit && (!jedenPlik || g.czesci === 1));
+    const pasujace = mieszczace.filter((g) => !zgniecionyKwant(g.kwant));
     pasujace.sort((a, b) => {
         const ia = PREFEROWANE.indexOf(a.kwant), ib = PREFEROWANE.indexOf(b.kwant);
         return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
     const w = pasujace[0];
-    return w ? { kwant: w.kwant, gb: Math.round(w.bajty / 1e8) / 10, plik: w.plik } : null;
+    return { wybor: w ? { kwant: w.kwant, gb: Math.round(w.bajty / 1e8) / 10, plik: w.plik } : null, zgniecione: mieszczace.filter((g) => zgniecionyKwant(g.kwant)).map((g) => g.kwant) };
 }
 
 /**
@@ -401,7 +413,9 @@ export async function zLinku(link) {
     if (l.plik) {
         const p = pliki.find((x) => String(x.path) === l.plik);
         if (!p) throw new Error(`W ${l.repo} nie ma pliku ${l.plik}.`);
-        w = wybierzPlik([p], cfg.vramGB, { jedenPlik });
+        const r = wybierzPlikZPowodem([p], cfg.vramGB, { jedenPlik });
+        w = r.wybor;
+        if (!w && r.zgniecione.length) throw new Error(`${l.plik}: ${r.zgniecione[0]} — ${POWOD_ZGNIECIONY}.`);
         if (!w) throw new Error(`${l.plik} nie mieści się w karcie (${cfg.vramGB} GB VRAM) albo to nie jest GGUF.`);
     } else {
         const f = formatRepo(l.repo, pliki);
@@ -418,7 +432,9 @@ export async function zLinku(link) {
             throw e;
         }
         const wszystkie = l.kwant ? pliki.filter((p) => kwant(path.basename(String(p.path ?? ''))) === l.kwant) : pliki;
-        w = wybierzPlik(wszystkie, cfg.vramGB, { jedenPlik });
+        const r = wybierzPlikZPowodem(wszystkie, cfg.vramGB, { jedenPlik });
+        w = r.wybor;
+        if (!w && r.zgniecione.length) throw new Error(`W ${l.repo} na kartę ${cfg.vramGB} GB mieszczą się tylko ${r.zgniecione.join(', ')} — ${POWOD_ZGNIECIONY}.`);
         if (!w) throw new Error(`W ${l.repo} nie ma pliku GGUF, który zmieści się w karcie (${cfg.vramGB} GB VRAM)${jedenPlik ? ' jako jeden plik' : ''}.`);
     }
     const k = nowyKandydat({ zrodlo: l.zrodlo, repo: l.repo, meta: { zapytanie: 'link' }, w });
@@ -596,4 +612,4 @@ export async function akceptuj(id) {
     return { id, repo: k.repo, ollama: k.ollama };
 }
 
-export default { skonfiguruj, zwiad, zwiadDziedziny, DZIEDZINY, licencjaZTagow, czyKomercyjna, zLinku, zModeluSieci, formatRepo, rdzenNazwy, sondaz, kandydaci, akceptuj, odrzuc, kwant, wybierzPlik, nazwaOllamy, nazwaWykutego, wOllamie, czytajLink, ZRODLA };
+export default { skonfiguruj, zwiad, zwiadDziedziny, DZIEDZINY, licencjaZTagow, czyKomercyjna, zLinku, zModeluSieci, formatRepo, rdzenNazwy, sondaz, kandydaci, akceptuj, odrzuc, kwant, wybierzPlik, wybierzPlikZPowodem, zgniecionyKwant, nazwaOllamy, nazwaWykutego, wOllamie, czytajLink, ZRODLA };
