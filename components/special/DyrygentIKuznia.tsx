@@ -24,6 +24,20 @@ interface ModelKatalogu {
     praca: { wkladow: number; ocen: number; srednia: number | null };
 }
 interface Przydzial { agent: string; model: string; powod?: string }
+interface Silnik { id: string; nazwa: string; rodzaj: string; gotowy: boolean; nieWiadomo: boolean; powod: string; licencja: string | null; modul: string | null }
+interface KandydatSilnika { id: string; repo: string; rodzaj: string; licencja: string | null; komercyjna: boolean | null; url: string; opinia: string | null; stan: string }
+interface WynikCelu {
+    cel: string; etykieta: string; brakuje: string[]; moznaRuszyc: boolean; modeleUwaga?: string;
+    rodzaje: Record<string, { potrzebny: boolean; gotowe: Silnik[]; niegotowe: Silnik[]; kandydaci: KandydatSilnika[] }>;
+    modele?: { przydzial: Przydzial[]; odrzucone: (Przydzial & { powod: string })[]; model: string };
+}
+const CELE_DYRYGENTA: { id: string; nazwa: string }[] = [
+    { id: 'film', nazwa: '🎬 Film / Story' }, { id: 'podcast', nazwa: '🎙️ Podcast' }, { id: 'gra', nazwa: '🎮 Gra / apka' },
+    { id: 'fashion', nazwa: '👗 Fashion' }, { id: 'muzyka', nazwa: '🎵 Muzyka' }, { id: 'stol', nazwa: '🏛️ Stół (projekt stada)' },
+];
+const NAZWA_RODZAJU: Record<string, string> = { wideo: '🎬 Wideo', muzyka: '🎵 Muzyka', glos: '🗣️ Głos', obraz: '🖼️ Obraz', '3d': '🗿 Bryły 3D', usta: '👄 Usta', glebia: '🧊 Głębia', stemy: '🎚️ Stemy', mowa: '📝 Mowa→tekst' };
+const licencjaZnacznik = (k: { licencja: string | null; komercyjna: boolean | null }) =>
+    k.komercyjna === true ? `✅ ${k.licencja}` : k.komercyjna === false ? `⛔ ${k.licencja} — tylko niekomercyjnie` : `❔ ${k.licencja ?? 'licencja nieznana'} — sprawdź kartę`;
 interface Gatunek { id: string; imie: string; forma?: string; wyklute: boolean }
 interface Podglad { sft: number; pary: number; pominiete: { bezOceny: number; slabe: number }; wystarczy: boolean; minimum: number; prog: number }
 interface Doktor {
@@ -48,6 +62,11 @@ export const DyrygentPanel: React.FC = () => {
     const [zajety, setZajety] = useState(false);
     const [edycja, setEdycja] = useState<string | null>(null);
     const [opis, setOpis] = useState('');
+    const [cel, setCel] = useState('film');
+    const [zadanieCelu, setZadanieCelu] = useState('');
+    const [zModelami, setZModelami] = useState(false);
+    const [wynikCelu, setWynikCelu] = useState<WynikCelu | null>(null);
+    const [zajetyCel, setZajetyCel] = useState(false);
 
     const odswiez = useCallback(async () => {
         try { const d = await zMostu<{ modele: ModelKatalogu[]; dyrygent: string }>('/api/modele/katalog'); setModele(d.modele); setDyrygent(d.dyrygent); }
@@ -68,6 +87,17 @@ export const DyrygentPanel: React.FC = () => {
         catch (e) { toast.error(blad(e)); }
         finally { setZajety(false); }
     };
+    // 🎼 Dyrygent to TeOgochi: gra na modelu z przydziału (POST /api/stado/model {agent:'dyrygent'}). Pusty = domyślny Katedry.
+    const ustawModelDyrygenta = async (model: string) => {
+        try { await zMostu('/api/stado/model', { method: 'POST', body: JSON.stringify({ agent: 'dyrygent', model }) }); toast.success(model ? `🎼 Dyrygent gra teraz na ${model}` : '🎼 Dyrygent wraca do domyślnego modelu Katedry'); await odswiez(); }
+        catch (e) { toast.error(blad(e)); }
+    };
+    const doCelu = async () => {
+        setZajetyCel(true); setWynikCelu(null);
+        try { setWynikCelu(await zMostu<WynikCelu>('/api/dyrygent/cel', { method: 'POST', body: JSON.stringify({ cel, zadanie: zadanieCelu, modele: zModelami }) })); }
+        catch (e) { toast.error(blad(e), { duration: 8000 }); }
+        finally { setZajetyCel(false); }
+    };
     const zapiszKarte = async (nazwa: string) => {
         try { await zMostu('/api/modele/karta', { method: 'PUT', body: JSON.stringify({ nazwa, opis }) }); setEdycja(null); await odswiez(); }
         catch (e) { toast.error(blad(e)); }
@@ -77,7 +107,15 @@ export const DyrygentPanel: React.FC = () => {
         <div className="space-y-3 rounded-2xl border border-sky-500/25 bg-sky-950/10 p-4">
             <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-sky-200">🎼 Dyrygent — modele do zadań</h3>
-                <span className="text-[10px] font-mono text-slate-500">Dyrygent gra na: {dyrygent || '…'}</span>
+                <label className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400" title="Dyrygent to TeOgochi — wybierz mu model z katalogu (większy = lepszy dobór, wolniej)">
+                    Dyrygent gra na:
+                    <select value={dyrygent} onChange={(e) => void ustawModelDyrygenta(e.target.value)} className="rounded border border-slate-700 bg-black/50 px-1.5 py-0.5 text-[10px] text-sky-200">
+                        {dyrygent && !modele?.some((m) => m.nazwa === dyrygent) && <option value={dyrygent}>{dyrygent}</option>}
+                        {[...(modele ?? [])].sort((a, b) => (b.rozmiarGB ?? 0) - (a.rozmiarGB ?? 0)).map((m) => (
+                            <option key={m.nazwa} value={m.nazwa}>{m.nazwa}{m.rozmiarGB ? ` · ${m.rozmiarGB} GB` : ''}{/:cloud$|-cloud$/.test(m.nazwa) ? ' · ☁ chmura' : ''}</option>
+                        ))}
+                    </select>
+                </label>
             </div>
             <p className="text-[11px] text-slate-400">Jak Jadziunia dobiera skille, tak Dyrygent dobiera modele: tylko te, które są w Katedrze, z ocenami Sędziego z pracy stada. Propozycja niczego nie zmienia.</p>
             <div className="space-y-1">
@@ -115,9 +153,50 @@ export const DyrygentPanel: React.FC = () => {
                     {propozycja.przydzial.map((p) => <div key={p.agent}><b className="text-slate-200">{p.agent}</b> → <span className="font-mono text-sky-200">{p.model}</span> <span className="text-slate-500">{p.powod}</span></div>)}
                     {propozycja.odrzucone.map((p, i) => <div key={i} className="text-amber-300/80">✕ {p.agent} → {p.model}: {p.powod}</div>)}
                     <button onClick={zastosuj} disabled={zajety || !propozycja.przydzial.length} className="mt-1 rounded bg-emerald-700/50 px-3 py-1 text-emerald-100 disabled:opacity-40">Zastosuj na stałe (silniki TeOgochi)</button>
-                    <div className="text-slate-500">Albo tylko dla jednego projektu: w Świecie przy nowym projekcie zaznacz „🎼 Dyrygent dobierze modele".</div>
+                    <div className="text-slate-500">Albo tylko dla jednego projektu: w Świecie przy nowym projekcie zaznacz „🎼 Dyrygent dobierze modele". Na Stole Dyrygent dobiera modele sam, zanim stado ruszy.</div>
                 </div>
             )}
+
+            {/* 🎯 Do celu: silniki (wideo, muzyka, głos, 3D…) z bazy Katedry + czego brakuje + kandydaci Zwiadowcy */}
+            <div className="space-y-2 rounded-lg border border-sky-700/30 bg-black/20 p-2">
+                <div className="text-[11px] font-bold text-sky-200">🎯 Do celu — modele i silniki</div>
+                <div className="flex flex-wrap gap-1.5">
+                    <select value={cel} onChange={(e) => setCel(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
+                        {CELE_DYRYGENTA.map((c) => <option key={c.id} value={c.id}>{c.nazwa}</option>)}
+                    </select>
+                    <input value={zadanieCelu} onChange={(e) => setZadanieCelu(e.target.value)} placeholder="co robimy (opcjonalnie — potrzebne do doboru modeli)"
+                        className="min-w-[12rem] flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />
+                    <label className="flex items-center gap-1 text-[10px] text-slate-400"><input type="checkbox" checked={zModelami} onChange={(e) => setZModelami(e.target.checked)} /> dobierz też modele</label>
+                    <button onClick={() => void doCelu()} disabled={zajetyCel || (zModelami && zadanieCelu.trim().length < 5)} className="rounded bg-sky-700/60 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40">{zajetyCel ? '🎼…' : '🎯 Sprawdź'}</button>
+                </div>
+                {wynikCelu && (
+                    <div className="space-y-1.5 text-[11px]">
+                        <div className={wynikCelu.moznaRuszyc ? 'text-emerald-300' : 'text-amber-300'}>
+                            {wynikCelu.moznaRuszyc ? `✓ ${wynikCelu.etykieta}: wszystko, co potrzebne, jest gotowe.` : `⚠ ${wynikCelu.etykieta}: brakuje — ${wynikCelu.brakuje.map((r) => NAZWA_RODZAJU[r] ?? r).join(', ')}.`}
+                        </div>
+                        {Object.entries(wynikCelu.rodzaje).map(([r, v]) => (
+                            <div key={r} className="rounded bg-black/30 px-2 py-1">
+                                <div className="font-bold text-slate-200">{NAZWA_RODZAJU[r] ?? r} <span className="font-normal text-slate-500">{v.potrzebny ? '· potrzebny' : '· pomocny'}</span></div>
+                                {v.gotowe.map((x) => <div key={x.id} className="text-emerald-300">✓ {x.nazwa} <span className="text-slate-500">{x.modul}{x.licencja ? ` · ${x.licencja}` : ''}</span></div>)}
+                                {v.niegotowe.map((x) => <div key={x.id} className={x.nieWiadomo ? 'text-slate-400' : 'text-rose-300/80'}>{x.nieWiadomo ? '❔' : '✕'} {x.nazwa}: <span className="text-slate-500">{x.powod}</span></div>)}
+                                {!v.gotowe.length && !v.niegotowe.length && <div className="text-slate-500">Katedra nie ma tu żadnego silnika.</div>}
+                                {v.kandydaci.map((k) => (
+                                    <div key={k.id} className="text-teal-300/90">🔭 <a href={k.url} target="_blank" rel="noreferrer" className="hover:underline">{k.repo}</a> <span className="text-slate-500">· {k.stan} · {licencjaZnacznik(k)}</span>{k.opinia && <div className="pl-4 text-slate-400">{k.opinia}</div>}</div>
+                                ))}
+                            </div>
+                        ))}
+                        {wynikCelu.modeleUwaga && <div className="text-amber-300/80">{wynikCelu.modeleUwaga}</div>}
+                        {wynikCelu.modele && (
+                            <div className="rounded border border-sky-700/40 p-1.5">
+                                <div className="text-slate-400">Modele ({wynikCelu.modele.model}):</div>
+                                {wynikCelu.modele.przydzial.map((p) => <div key={p.agent}><b className="text-slate-200">{p.agent}</b> → <span className="font-mono text-sky-200">{p.model}</span> <span className="text-slate-500">{p.powod}</span></div>)}
+                                {wynikCelu.modele.odrzucone.map((p, i) => <div key={i} className="text-amber-300/80">✕ {p.agent} → {p.model}: {p.powod}</div>)}
+                            </div>
+                        )}
+                        <div className="text-[10px] text-slate-500">Brakujący silnik? Zwiadowca niżej szuka ich w dziedzinach (muzyka, głos, wideo, obraz, 3D) — przyjęty trafia tu jako „do zainstalowania”. Nic nie instaluje się samo.</div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
@@ -255,6 +334,8 @@ interface Kandydat {
     id: string; repo: string; kwant: string; gb: number; pobrania: number | null; polubienia: number | null;
     opinia: string | null; stan: 'nowy' | 'pobiera' | 'pobrany' | 'odrzucony' | 'blad'; blad?: string | null; postep?: string | null; ollama: string;
     zrodlo?: string; zweryfikowane?: boolean; url?: string;
+    /** 🎼 silnik (wideo, muzyka, głos…) — nie GGUF; „Przyjmij” = do zainstalowania, nic się nie pobiera */
+    rodzaj?: 'silnik'; dziedzina?: string; licencja?: string | null; komercyjna?: boolean | null;
 }
 
 /**
@@ -268,6 +349,7 @@ export const ZwiadowcaPanel: React.FC = () => {
     const [trwa, setTrwa] = useState(false);
     const [etap, setEtap] = useState<string | null>(null);
     const [zapytania, setZapytania] = useState('');
+    const [dziedzina, setDziedzina] = useState('llm');
     const [link, setLink] = useState('');
     const [pracuje, setPracuje] = useState<string | null>(null);
 
@@ -289,7 +371,7 @@ export const ZwiadowcaPanel: React.FC = () => {
 
     const szukaj = async () => {
         try {
-            await zMostu('/api/zwiadowca/szukaj', { method: 'POST', body: JSON.stringify(zapytania.trim() ? { zapytania } : {}) });
+            await zMostu('/api/zwiadowca/szukaj', { method: 'POST', body: JSON.stringify(dziedzina !== 'llm' ? { dziedzina } : zapytania.trim() ? { zapytania } : {}) });
             setTrwa(true); toast('🔭 Zwiadowca ruszył na HuggingFace…'); wczytaj();
         } catch (e) { toast.error(blad(e)); }
     };
@@ -307,7 +389,7 @@ export const ZwiadowcaPanel: React.FC = () => {
         setPracuje(k.id);
         try {
             await zMostu(co === 'akceptuj' ? `/api/zwiadowca/kandydat/${k.id}/akceptuj` : `/api/zwiadowca/kandydat/${k.id}/odrzuc`, { method: 'POST', body: '{}' });
-            toast.success(co === 'akceptuj' ? `⬇️ Pobieram ${k.repo} (${k.gb} GB) do Ollamy` : `Odrzucony: ${k.repo}`);
+            toast.success(co === 'odrzuc' ? `Odrzucony: ${k.repo}` : k.rodzaj === 'silnik' ? `🎼 ${k.repo} — do zainstalowania (Dyrygent widzi go w bazie; nic się nie pobiera)` : `⬇️ Pobieram ${k.repo} (${k.gb} GB) do Ollamy`);
             wczytaj();
         } catch (e) { toast.error(blad(e)); }
         finally { setPracuje(null); }
@@ -323,10 +405,21 @@ export const ZwiadowcaPanel: React.FC = () => {
             <p className="text-[11px] text-slate-400">
                 Szuka na HuggingFace (i pirateface.co — 🏴‍☠️ niezweryfikowane, wyłącz: OTAKOS_ZWIADOWCA_ZRODLA=hf) modeli GGUF, które zmieszczą się w karcie ({vram ?? '?'} GB VRAM, zmień: OTAKOS_VRAM_GB), czyta ich karty i melduje Dyrygentowi.
                 Z Katedry nic nie wychodzi poza słowami wyszukiwania. <b>Nic nie pobiera się samo</b> — dopiero „Przyjmij" (ollama pull hf.co/…); po pobraniu opinia Zwiadowcy trafia do karty modelu.
+                W dziedzinach (muzyka, głos, wideo, obraz, 3D, mowa) szuka <b>silników</b> z licencją wprost (✅ wolno zarabiać / ⛔ tylko niekomercyjnie) — ich „Przyjmij” to tylko „do zainstalowania” w bazie Dyrygenta.
             </p>
             <div className="flex flex-wrap gap-1.5">
-                <input value={zapytania} onChange={(e) => setZapytania(e.target.value)} placeholder="słowa (domyślnie: polish, bielik, qwen3, gemma, coder, llama)"
-                    className="min-w-[16rem] flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />
+                <select value={dziedzina} onChange={(e) => setDziedzina(e.target.value)} title="Modele GGUF dla Ollamy albo silniki z HuggingFace dla Dyrygenta" className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
+                    <option value="llm">🧠 modele językowe (GGUF)</option>
+                    <option value="kod">💻 kod i apki (GGUF)</option>
+                    <option value="muzyka">🎵 muzyka i dźwięk</option>
+                    <option value="glos">🗣️ głos (TTS)</option>
+                    <option value="wideo">🎬 wideo</option>
+                    <option value="obraz">🖼️ obraz</option>
+                    <option value="3d">🗿 bryły 3D</option>
+                    <option value="mowa">📝 mowa → tekst</option>
+                </select>
+                {dziedzina === 'llm' && <input value={zapytania} onChange={(e) => setZapytania(e.target.value)} placeholder="słowa (domyślnie: polish, bielik, qwen3, gemma, coder, llama)"
+                    className="min-w-[16rem] flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />}
                 <button onClick={szukaj} disabled={trwa} className="rounded bg-teal-700/70 px-3 py-1.5 text-xs font-bold text-teal-50 hover:bg-teal-600 disabled:opacity-50">
                     {trwa ? `⟳ ${etap ?? 'zwiad…'}` : '🔭 Szukaj teraz'}
                 </button>
@@ -352,18 +445,20 @@ export const ZwiadowcaPanel: React.FC = () => {
                                         className="rounded border border-amber-500/50 bg-amber-950/40 px-1.5 text-[9px] font-bold text-amber-300">🏴‍☠️ {k.zrodlo} · niezweryfikowane</span>
                                 )}
                             </span>
-                            <span className="text-slate-400">{k.kwant} · {k.gb} GB{k.pobrania != null ? ` · ⬇ ${k.pobrania.toLocaleString('pl-PL')}` : ''}{k.polubienia != null ? ` · ♥ ${k.polubienia}` : ''}</span>
+                            <span className="text-slate-400">{k.rodzaj === 'silnik' ? `${NAZWA_RODZAJU[k.dziedzina ?? ''] ?? k.dziedzina} · ${licencjaZnacznik({ licencja: k.licencja ?? null, komercyjna: k.komercyjna ?? null })}` : `${k.kwant} · ${k.gb} GB`}{k.pobrania != null ? ` · ⬇ ${k.pobrania.toLocaleString('pl-PL')}` : ''}{k.polubienia != null ? ` · ♥ ${k.polubienia}` : ''}</span>
                         </div>
                         {k.opinia && <div className="mt-0.5 text-slate-300">🔭 {k.opinia}</div>}
                         {k.stan === 'blad' && <div className="mt-0.5 text-rose-300">✕ {k.blad}</div>}
                         <div className="mt-1 flex items-center gap-2">
                             {k.stan === 'pobiera'
                                 ? <span className="text-amber-300">⬇️ {k.postep ?? 'pobieram…'}</span>
+                                : (k.stan as string) === 'przyjety'
+                                ? <span className="text-sky-300">🎼 do zainstalowania — w bazie Dyrygenta</span>
                                 : <>
                                     <button onClick={() => decyzja(k, 'akceptuj')} disabled={pracuje === k.id} className="rounded bg-emerald-700/70 px-2 py-0.5 font-bold text-emerald-50 hover:bg-emerald-600 disabled:opacity-50">{k.stan === 'blad' ? '↻ Ponów' : '✓ Przyjmij'}</button>
                                     <button onClick={() => decyzja(k, 'odrzuc')} disabled={pracuje === k.id} className="rounded border border-slate-600 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:opacity-50">✕ Odrzuć</button>
                                   </>}
-                            <span className="ml-auto font-mono text-[10px] text-slate-500">{k.ollama}</span>
+                            <span className="ml-auto font-mono text-[10px] text-slate-500">{k.rodzaj === 'silnik' ? 'silnik — instalacja ręczna' : k.ollama}</span>
                         </div>
                     </div>
                 ))}

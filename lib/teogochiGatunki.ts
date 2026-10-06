@@ -202,6 +202,17 @@ export const GATUNKI: Gatunek[] = [
         zadania: ['Zwiadowco, poszukaj nowych modeli po polsku', 'Zwiadowco, co znalazłeś dla Kodeksa?', 'Zwiadowco, który model zmieści się w karcie?'],
     },
     {
+        // 🎼 Suweren (2026-10-06): „Dyrygent… zrobił bym z niego TeOgochi… niech dobiera jako pierwszy na stole… trzeba mu
+        // dać większy model z listy". services/Dyrygent.js — model z przydziału TeOgochi (jak u innych), na Stole dobiera
+        // modele do kroków projektu zanim stado ruszy; do celu (film, podcast, gra, fashion, muzyka) zbiera też silniki.
+        id: 'dyrygent', imie: 'Dyrygent', dziedzina: 'Modele i silniki',
+        opis: 'Dobiera modele i silniki do zadania: każdy TeOgochi gra na instrumencie, który mu służy — na Stole jako pierwszy, przed stadem.',
+        formy: { 'jajko': '🥚', 'pisklę': '🎵', 'młodzik': '🎼', 'kompan': '🎻', 'legenda': '🎹' },
+        kolor: '#a78bfa',
+        narzedzia: ['/api/modele/katalog', '/api/dyrygent/dobierz', '/api/dyrygent/zastosuj', '/api/dyrygent/cel'],
+        zadania: ['Dyrygencie, dobierz modele do tego projektu', 'Dyrygencie, czym zrobimy film z tej sceny?', 'Dyrygencie, czego brakuje do podcastu?'],
+    },
+    {
         // 🎭 Suweren (2026-10-03): „moi aktorzy i scenografia… interaktywni aktorzy, którzy opowiadają o swym najnowszym
         // dziele, filmie, który właśnie złożyliśmy na YT… można powołać TeOgochi Aktora". services/WywiadAktorow.js —
         // obsada (zdjęcie, rola, głos) → scenariusz wywiadu z faktów projektu → nagranie → katalog montaży projektu.

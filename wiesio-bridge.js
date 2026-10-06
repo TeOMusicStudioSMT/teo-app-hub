@@ -195,6 +195,7 @@ import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzGlebie } from './services/GlebiaKadru.js';
 import { utworzUsta } from './services/UstaAktorow.js';
 import { utworzSkladnice, RODZAJE as RODZAJE_SKLADNICY } from './services/Skladnica.js';
+import { utworzSilniki, CELE as CELE_DYRYGENTA } from './services/Silniki.js';
 import { utworzSceny } from './services/ScenyDialogowe.js';
 import { kodDoUzycia } from './services/KodZaproszenia.js';
 import { utworzGlosyStada, tekstDoMowy } from './services/GlosyStada.js';
@@ -7808,6 +7809,10 @@ ProjektStada.skonfiguruj({
 });
 
 // ── 🎼 DYRYGENT (services/Dyrygent.js) — katalog modeli Katedry i dobór modelu do zadania, jak Jadziunia do skilli ──
+/** 🎼 Dyrygent to TeOgochi: gra na modelu ze swojego przydziału (ModeleAgentow 'dyrygent'), potem OTAKOS_DYRYGENT_MODEL, potem domyślny. */
+async function modelDyrygenta() {
+    return (await ModeleAgentow.modelDla('dyrygent').catch(() => null)) || process.env.OTAKOS_DYRYGENT_MODEL || DEFAULT_LLM;
+}
 Dyrygent.skonfiguruj({
     katalogWymiar: ANTIGRAVITY_DIR,
     tagi: async () => (await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(8000) })).json(),
@@ -7816,7 +7821,7 @@ Dyrygent.skonfiguruj({
     ustawModel: (agent, model) => ModeleAgentow.ustaw(agent, model),
     wykute: () => KuzniaSoup.wykute(),
     pisz: async ({ system, prompt, model }) => (await AppStudio.pisz({ system, prompt, model, timeoutMs: 10 * 60_000 })).tekst,
-    model: () => process.env.OTAKOS_DYRYGENT_MODEL || DEFAULT_LLM,
+    model: () => modelDyrygenta(),
 });
 // ── ⚒️ KUŹNIA SOUP (services/KuzniaSoup.js) — własny model TeOgochi z jego ocenionej pracy (soup-cli, lokalnie) ──
 KuzniaSoup.skonfiguruj({
@@ -10598,7 +10603,7 @@ app.get('/api/modele/katalog', async (_req, res) => {
     try {
         // 🔭 Kandydaci Zwiadowcy HF — widoczni dla Dyrygenta i Suwerena, ale NIE do przydziału, dopóki nie są w Ollamie.
         const kandydaci = (await ZwiadowcaHF.kandydaci().catch(() => ({ kandydaci: [] }))).kandydaci.filter((k) => k.stan === 'nowy' || k.stan === 'pobiera');
-        res.json({ success: true, modele: await Dyrygent.katalog(), dyrygent: process.env.OTAKOS_DYRYGENT_MODEL || DEFAULT_LLM, kandydaci });
+        res.json({ success: true, modele: await Dyrygent.katalog(), dyrygent: await modelDyrygenta(), kandydaci });
     }
     catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -10610,7 +10615,7 @@ app.put('/api/modele/karta', async (req, res) => {
 /** POST /api/dyrygent/dobierz { zadanie, agenci?: [id] } — propozycja; bez `agenci` = całe wyklute stado. Nic nie zapisuje. */
 app.post('/api/dyrygent/dobierz', async (req, res) => {
     try {
-        const wyklute = ((await stanDlaTelefonu()).gatunki ?? []).filter((g) => g.wyklute);
+        const wyklute = ((await stanDlaTelefonu()).gatunki ?? []).filter((g) => g.wyklute && !ProjektStada.POZA_SKLADEM.has(g.id));
         const ids = Array.isArray(req.body?.agenci) ? req.body.agenci.map(String) : [];
         const agenci = (ids.length ? wyklute.filter((g) => ids.includes(g.id)) : wyklute).map((g) => ({ id: g.id, imie: g.imie, dziedzina: g.dziedzina || '', zadanie: ProjektStada.ROLE[g.id]?.zadanie }));
         res.json({ success: true, ...(await Dyrygent.dobierz({ zadanie: req.body?.zadanie, agenci })) });
@@ -10648,9 +10653,12 @@ app.get('/api/zwiadowca/kandydaci', async (req, res) => {
 app.post('/api/zwiadowca/szukaj', async (req, res) => {
     try {
         const z = Array.isArray(req.body?.zapytania) ? req.body.zapytania : (typeof req.body?.zapytania === 'string' && req.body.zapytania.trim() ? req.body.zapytania.split(',') : undefined);
-        res.json({ success: true, ...(await ZwiadowcaHF.zwiad({ zapytania: z })) });
+        // 🎼 `dziedzina` (kod, muzyka, glos, wideo, obraz, 3d, mowa) — zwiad silników dla Dyrygenta; bez niej = modele GGUF jak dotąd.
+        const dziedzina = String(req.body?.dziedzina ?? '').trim();
+        res.json({ success: true, ...(await (dziedzina && dziedzina !== 'llm' ? ZwiadowcaHF.zwiadDziedziny({ dziedzina }) : ZwiadowcaHF.zwiad({ zapytania: z }))) });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
+app.get('/api/zwiadowca/dziedziny', (_req, res) => res.json({ success: true, dziedziny: ZwiadowcaHF.DZIEDZINY }));
 /** POST /api/zwiadowca/link { link } — kandydat z bezpośredniego linku (huggingface.co, hf.co, pirateface.co). Tylko maszyna. */
 app.post('/api/zwiadowca/link', async (req, res) => {
     try { res.json({ success: true, kandydat: await ZwiadowcaHF.zLinku(req.body?.link) }); }
@@ -10789,7 +10797,8 @@ for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc],
             const { rundy, petla, uwagi, powtorzenia, dyrygent } = req.body ?? {};
             // Skąd uwagi (np. „rozmowa Podcast Twin") — telefon zawsze podpisuje się swoją nazwą.
             const zrodloUwag = dostep.urzadzenie ? undefined : req.body?.zrodloUwag;
-            res.json({ success: true, ...(await fn(req.params.id, { uczestnicy, rundy, petla, uwagi, zrodloUwag, powtorzenia, dyrygent: !!dyrygent, kto: dostep.urzadzenie || 'Katedra' })) });
+            // 🎼 Dyrygent dobiera modele jako pierwszy przy każdej przyjętej karcie — chyba że Suweren wprost poda `dyrygent: false`.
+            res.json({ success: true, ...(await fn(req.params.id, { uczestnicy, rundy, petla, uwagi, zrodloUwag, powtorzenia, dyrygent: dyrygent === undefined ? true : !!dyrygent, kto: dostep.urzadzenie || 'Katedra' })) });
         } catch (e) { res.status(400).json({ success: false, message: e.message }); }
     });
 }
@@ -14303,6 +14312,68 @@ app.post('/api/usta/instaluj', (req, res) => {
     catch (e) { return res.status(409).json({ success: false, message: e.message }); }
 });
 
+// ── 🎼 Baza silników Dyrygenta (services/Silniki.js) — wideo, muzyka, głos, obraz, 3D, usta, głębia, stemy, mowa ──
+// Każdy wpis pochodzi z sondy modułu, który ten silnik uruchamia. Sondy NIC nie budzą — ComfyUI śpi = „nie wiadomo”.
+const Silniki = utworzSilniki({
+    sondy: {
+        wideo: async () => {
+            const s = await Wideo.stanWideo(COMFY_BASE);
+            if (!s.comfy) return [{ id: 'comfy-wideo', nazwa: 'Wideo przez ComfyUI (Wan 2.2…)', gotowy: null, powod: 'ComfyUI śpi — stanu silników wideo nie znam (obudzi go pierwsza praca)', modul: 'Wideo (ComfyUI)' }];
+            return s.silniki.map((x) => ({ id: x.id, nazwa: x.nazwa, gotowy: x.gotowy && x.naTenSprzet, powod: x.gotowy ? (x.naTenSprzet ? 'gotowy' : 'wagi są, ale nie na tę kartę') : x.braki.join('; '), modul: 'Wideo (ComfyUI)' }));
+        },
+        muzyka: async () => {
+            const [modele, comfy] = await Promise.all([muzykaModeleStatus(), comfyStatus()]);
+            return Object.entries(RODZINY_MUZYKI).map(([id, r]) => {
+                const wagi = !!modele.rodziny?.[id]?.gotowy;
+                const graf = fsSync.existsSync(path.join(WORKFLOWS_DIR, r.workflow));
+                const nody = id === 'minimax' ? !!comfy.maMinimax : comfy.online;
+                const gotowy = !wagi || !graf ? false : comfy.online ? nody : null;
+                return { id: `muzyka-${id}`, nazwa: r.etykieta, gotowy, powod: !wagi ? 'brak wag (Music Studio → modele)' : !graf ? `brak grafu ${r.workflow}` : !comfy.online ? 'wagi są — ComfyUI śpi' : nody ? 'gotowy' : 'brak nodów w ComfyUI', modul: 'Music Studio (ComfyUI)' };
+            });
+        },
+        glos: async () => {
+            const jest = SilnikKlonu.zainstalowane(AI_DIR);
+            const aktywny = SilnikKlonu.aktywnySilnik(AI_DIR);
+            return Object.entries(SilnikKlonu.SILNIKI).map(([id, x]) => ({ id: `klon-${id}`, nazwa: x.nazwa, gotowy: jest.includes(id), licencja: x.licencja, powod: jest.includes(id) ? (id === aktywny ? 'zainstalowany, aktywny (most sam go odpala)' : 'zainstalowany') : 'nie zainstalowany — 🎙️ → 🎛️ Studio Podcastu', modul: 'Silnik klonu (:5002)' }));
+        },
+        obraz: async () => {
+            const s = await Wideo.stanWideo(COMFY_BASE);
+            const graf = fsSync.existsSync(path.join(WORKFLOWS_DIR, 'flux2_klein_4b.json'));
+            if (!s.comfy) return [{ id: 'flux2-klein', nazwa: 'FLUX.2 klein 4B (ComfyUI)', gotowy: graf ? null : false, powod: graf ? 'ComfyUI śpi — wag nie sprawdzę' : 'brak grafu flux2_klein_4b.json', modul: 'Obraz / Assety3D (ComfyUI)' }];
+            const wagi = (s.wszystkieModele ?? []).some((m) => /flux/i.test(m));
+            return [{ id: 'flux2-klein', nazwa: 'FLUX.2 klein 4B (ComfyUI)', gotowy: graf && wagi, powod: !graf ? 'brak grafu flux2_klein_4b.json' : wagi ? 'gotowy' : 'ComfyUI nie widzi wag FLUX', modul: 'Obraz / Assety3D (ComfyUI)' }];
+        },
+        '3d': async () => { const s = await Assety3D.stan(); return [{ id: 'trellis2', nazwa: 'TRELLIS.2 (obraz → bryła)', gotowy: !!s.gotowe, powod: s.gotowe ? 'gotowy' : (s.braki ?? []).join('; ') || 'niegotowy', modul: 'Assety3D (ComfyUI)' }]; },
+        usta: async () => { const s = Usta.stan(); return [{ id: 'musetalk', nazwa: 'MuseTalk 1.5', gotowy: s.gotowy, powod: s.powod, licencja: s.licencja, modul: 'Usta aktorów' }]; },
+        glebia: async () => { const s = await Glebia.stan(); return [{ id: 'depth-anything', nazwa: 'Depth Anything V2 Small + Blender', gotowy: !!s.blender?.jest && (!!s.python || s.modelNaDysku), powod: !s.blender?.jest ? 'brak Blendera' : s.python ? 'gotowy (Python Katedry, model pobierze się przy pierwszej pracy)' : s.modelNaDysku ? 'gotowy (ONNX)' : 'brak Pythona z transformers i modelu ONNX', licencja: s.licencja, modul: 'Studio 3D z kadru' }]; },
+        stemy: async () => [{ id: 'demucs', nazwa: 'Demucs (CPU)', gotowy: fsSync.existsSync(DEMUCS_PYTHON) && fsSync.existsSync(DEMUCS_SKRYPT), powod: fsSync.existsSync(DEMUCS_PYTHON) ? 'gotowy' : `brak środowiska ${DEMUCS_PYTHON}`, licencja: 'MIT', modul: 'Rzeźba Audio / Sampler' }],
+        mowa: async () => {
+            const modele = (await fs.readdir(MODELS_DIR).catch(() => [])).filter((f) => /^ggml-.*\.bin$/.test(f));
+            const exe = fsSync.existsSync(WHISPER_EXE);
+            return [{ id: 'whisper', nazwa: 'Whisper.cpp', gotowy: exe && modele.length > 0, powod: !exe ? 'brak whisper-cli w _OtakOs_AI/bin' : modele.length ? `gotowy (${modele.join(', ')})` : 'brak wag ggml-*.bin w _OtakOs_AI/models', licencja: 'MIT', modul: 'Dziennik / Podcast (transkrypcja)' }];
+        },
+    },
+    kandydaci: async () => (await ZwiadowcaHF.kandydaci()).kandydaci,
+});
+app.get('/api/dyrygent/silniki', (_req, res) => ytOdp(res, Silniki.baza().then((b) => ({ ...b, cele: CELE_DYRYGENTA }))));
+/**
+ * POST /api/dyrygent/cel { cel, zadanie?, modele? } — Dyrygent do celu (stol, film, podcast, gra, fashion, muzyka):
+ * gotowe silniki, czego brakuje i kandydaci Zwiadowcy; z `modele: true` i zadaniem także przydział modeli językowych
+ * TeOgochi grających w tym celu (tylko wyklutych). Nic nie zapisuje.
+ */
+app.post('/api/dyrygent/cel', (req, res) => ytOdp(res, (async () => {
+    const cel = String(req.body?.cel ?? '');
+    const wynik = await Silniki.doCelu(cel);
+    if (req.body?.modele && String(req.body?.zadanie ?? '').trim()) {
+        const wyklute = ((await stanDlaTelefonu()).gatunki ?? []).filter((g) => g.wyklute && !ProjektStada.POZA_SKLADEM.has(g.id));
+        const agenci = (wynik.agenci ? wyklute.filter((g) => wynik.agenci.includes(g.id)) : wyklute)
+            .map((g) => ({ id: g.id, imie: g.imie, dziedzina: g.dziedzina || '', zadanie: ProjektStada.ROLE[g.id]?.zadanie }));
+        if (!agenci.length) wynik.modeleUwaga = 'Żaden TeOgochi grający w tym celu nie jest jeszcze wykluty — modeli nie ma komu dobierać.';
+        else wynik.modele = await Dyrygent.dobierz({ zadanie: `${wynik.etykieta}: ${req.body.zadanie}`, agenci });
+    }
+    return wynik;
+})()));
+
 // ── 📦 Składnica Katedry (services/Skladnica.js) — wspólne assety dla wszystkich modułów w `_OtakOs_Assety` ──
 // Postacie, sceny, rekwizyty, kreacje, bryły 3D. Jeden asset = katalog z plikami + karta.json; katalog wrzucony
 // ręcznie przez Eksplorator też się liczy. Usunięte idzie do `_OtakOs_Assety/_kosz`, nigdy w nicość.
@@ -14362,11 +14433,13 @@ app.post('/api/skladnica/import/assety3d', (_req, res) => ytOdp(res, (async () =
 // 👗 Kreacje z TeO Fashion Studio (wizualizacje.json obok Katedry; obrazy w wyjściu ComfyUI, jak czyta je Wystawa).
 app.post('/api/skladnica/import/fashion', (_req, res) => ytOdp(res, (async () => {
     let lista = null, skad = null;
-    for (const d of ['TeO_Fashion_Studio', 'OtakOs_Fashion']) {
-        const p = path.resolve(process.cwd(), '..', d, 'OtakOs_Fashion', 'wizualizacje.json');
+    // Fashion zapisuje `<swój katalog>/OtakOs_Fashion/wizualizacje.json`; katalog studia: OTAKOS_FASHION_DIR albo obok Katedry.
+    const miejsca = [process.env.OTAKOS_FASHION_DIR, path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio'), path.resolve(process.cwd(), '..', 'OtakOs_Fashion')]
+        .filter(Boolean).map((d) => path.join(d, 'OtakOs_Fashion', 'wizualizacje.json'));
+    for (const p of miejsca) {
         try { const w = JSON.parse(await fs.readFile(p, 'utf8')); lista = Array.isArray(w) ? w : w.wizualizacje ?? []; skad = p; break; } catch { /* następny */ }
     }
-    if (!lista) throw new Error('Nie znalazłem wizualizacji Fashion (../TeO_Fashion_Studio/OtakOs_Fashion/wizualizacje.json) — czy TeO Fashion Studio leży obok Katedry?');
+    if (!lista) throw new Error(`Nie znalazłem wizualizacji Fashion — szukałem: ${miejsca.join(' | ')}. Jeśli TeO Fashion Studio leży gdzie indziej, ustaw OTAKOS_FASHION_DIR.`);
     const wynik = { dodane: [], pominiete: [], zrodlo: skad };
     for (const x of lista) {
         const m = String(x.plik || '').match(/nazwa=([^&]+)(?:&pod=([^&]+))?/);

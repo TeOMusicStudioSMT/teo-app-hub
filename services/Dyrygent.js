@@ -139,10 +139,10 @@ export async function dobierz({ zadanie, agenci = [] }) {
 Zasady: bierzesz WYŁĄCZNIE modele z KATALOGU (dokładna nazwa). Większy model do rozumowania, scalania i kodu; mniejszy i szybszy do krótkich, prostych wkładów. Jeśli TeOgochi ma WŁASNY model — zwykle to on. Liczą się oceny Sędziego z pracy stada. Pamiętaj, że karta graficzna jest jedna: nie dawaj wszystkim największego.
 Odpowiadasz WYŁĄCZNIE JSON-em: {"przydzial":[{"agent":"<id>","model":"<nazwa z katalogu>","powod":"<jedno zdanie>"}]} — po jednym wpisie na każdego TeOgochi z listy.`;
     const prompt = `KATALOG MODELI KATEDRY:\n${kat.map(linia).join('\n')}\n\nZADANIE SUWERENA:\n${opis.slice(0, 2000)}\n\nSKŁAD (id — kto — co robi):\n${agenci.map((a) => `- ${a.id} — ${a.imie}${a.dziedzina ? ` (${a.dziedzina})` : ''}${a.zadanie ? `: ${String(a.zadanie).split(':')[0]}` : ''}`).join('\n')}`;
-    const model = cfg.model();
+    const model = await cfg.model();
     const odp = await cfg.pisz({ system, prompt, model });
     const j = wylowJson(odp);
-    if (!j) throw new Error('Dyrygent nie oddał JSON-a z przydziałem — spróbuj ponownie albo daj mu większy model (OTAKOS_DYRYGENT_MODEL).');
+    if (!j) throw new Error('Dyrygent nie oddał JSON-a z przydziałem — spróbuj ponownie albo daj mu większy model (panel Dyrygenta → „Dyrygent gra na”).');
     return { ...sprawdzPrzydzial(j, { agenci, modele: kat.map((m) => m.nazwa) }), model, katalog: kat.map((m) => m.nazwa) };
 }
 

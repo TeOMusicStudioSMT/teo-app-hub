@@ -64,6 +64,35 @@ export const ZRODLA = {
     hf: { nazwa: 'HuggingFace', baza: () => cfg.hf, zweryfikowane: true },
     pirateface: { nazwa: 'pirateface.co', baza: () => cfg.pirateface, zweryfikowane: false },
 };
+/**
+ * 🎼 Dziedziny zwiadu (Suweren 2026-10-06: „Zwiadowca niech szuka też modeli do appek, music do dźwięku i story do wideo
+ * i podawał dyrygentowi… może mieć w bazie kilka silników wideo i dźwiękowych”). `llm` i `kod` = modele GGUF dla Ollamy
+ * (dotychczasowy zwiad); reszta = SILNIKI z HuggingFace po `pipeline_tag` — nie GGUF, nie da się ich „ollama pull”.
+ * Takich nic nie pobieramy: „Przyjmij” = kandydat do instalacji dla Dyrygenta (z licencją wprost).
+ */
+export const DZIEDZINY = {
+    llm: { etykieta: 'Modele językowe (GGUF)', gguf: true },
+    kod: { etykieta: 'Kod i apki (GGUF)', gguf: true, zapytania: ['coder', 'code'] },
+    muzyka: { etykieta: 'Muzyka i dźwięk', pipeline: ['text-to-audio'] },
+    glos: { etykieta: 'Głos (TTS)', pipeline: ['text-to-speech'] },
+    wideo: { etykieta: 'Wideo', pipeline: ['text-to-video', 'image-to-video'] },
+    obraz: { etykieta: 'Obraz', pipeline: ['text-to-image'] },
+    '3d': { etykieta: 'Bryły 3D', pipeline: ['image-to-3d', 'text-to-3d'] },
+    mowa: { etykieta: 'Mowa → tekst', pipeline: ['automatic-speech-recognition'] },
+};
+/** Licencja z tagów HF (`license:apache-2.0`) albo z karty. */
+export function licencjaZTagow(tagi = [], cardData = null) {
+    const t = (Array.isArray(tagi) ? tagi : []).find((x) => String(x).startsWith('license:'));
+    return (t ? String(t).slice(8) : String(cardData?.license ?? '')).toLowerCase() || null;
+}
+/** Czy licencja pozwala zarabiać (twórczość Suwerena ma zarabiać): true / false / null = nie wiadomo, sprawdź kartę. */
+export function czyKomercyjna(lic) {
+    const l = String(lic ?? '').toLowerCase();
+    if (!l || l === 'other' || l === 'unknown') return null;
+    if (/(^|-)nc(-|$)|non-?commercial|research|cc-by-nc|cpml|noncommercial/.test(l)) return false;
+    if (/^(mit|apache-2\.0|bsd|bsd-[23]-clause|cc-by-4\.0|cc-by-sa-4\.0|cc0-1\.0|unlicense|openrail|creativeml-openrail-m|openrail\+\+|bigscience-openrail-m|llama3(\.\d)?|gemma|qwen)/.test(l)) return true;
+    return null;
+}
 const zrodloKandydata = (k) => k.zrodlo ?? 'hf';
 const kluczKandydata = (zrodlo, repo) => `${zrodlo}:${String(repo).toLowerCase()}`;
 /** Id kandydata: HF jak dotąd (zgodność z zapisanymi), inne źródła z prefiksem. */
@@ -287,6 +316,74 @@ export async function zwiad({ zapytania = cfg.zapytania, naZapytanie = 8, opinii
     return { id: z.id, sondaz: '/api/zwiadowca/sondaz' };
 }
 
+async function opiniaSilnika(repo, dziedzina) {
+    if (!cfg.pisz) return null;
+    try {
+        const r = await cfg.fetch(`${cfg.hf}/${repo}/raw/main/README.md`, { signal: AbortSignal.timeout(15_000) });
+        const karta = r.ok ? (await r.text()).slice(0, 4000) : '';
+        const tekst = await cfg.pisz({
+            system: `Jesteś Zwiadowca — TeOgochi Katedry OtakOS. Oceniasz SILNIK (${DZIEDZINY[dziedzina]?.etykieta ?? dziedzina}), który miałby działać lokalnie na karcie graficznej ${cfg.vramGB} GB. Odpowiadasz JEDNYM zdaniem po polsku: do czego się nada (film, podcast, gra, fashion, muzyka) i czy karta potwierdza, że zmieści się lokalnie. Bez obietnic, których karta nie potwierdza.`,
+            prompt: `SILNIK: ${repo}\n\nKARTA (początek):\n${karta || '(brak karty)'}`,
+        });
+        return String(tekst || '').trim().split('\n')[0].slice(0, 300) || null;
+    } catch { return null; }
+}
+
+/**
+ * 🎼 Zwiad w dziedzinie. `llm`/`kod` → dotychczasowy zwiad GGUF (dla `kod` słowa coder/code). Reszta → silniki z HF po
+ * `pipeline_tag` (najczęściej pobierane), z licencją i oceną „czy wolno zarabiać”. Nic nie pobiera.
+ */
+export async function zwiadDziedziny({ dziedzina = 'llm', naZapytanie = 8, opinii = 4 } = {}) {
+    const d = DZIEDZINY[dziedzina];
+    if (!d) throw new Error(`Nie znam dziedziny „${dziedzina}” — są: ${Object.keys(DZIEDZINY).join(', ')}.`);
+    if (d.gguf) return zwiad(d.zapytania ? { zapytania: d.zapytania } : {});
+    if (!cfg.wlaczony) throw new Error('Zwiadowca wyłączony (OTAKOS_ZWIADOWCA=0).');
+    if (biezacy?.stan === 'trwa') throw new Error('Zwiadowca już jest w terenie — poczekaj na meldunek.');
+    const z = biezacy = { id: `zw-${Date.now().toString(36)}-${crypto.randomBytes(2).toString('hex')}`, stan: 'trwa', etap: 'start', blad: null, znaleziono: 0, bledyZrodel: [], od: new Date().toISOString(), koniec: null, dziedzina };
+    (async () => {
+        try {
+            const dane = await czytaj();
+            const znane = new Set(dane.kandydaci.map((k) => kluczKandydata(zrodloKandydata(k), k.repo)));
+            const nowi = [];
+            let bledy = 0, ostatni = null;
+            for (const tag of d.pipeline) {
+                z.etap = `HuggingFace: ${tag}`;
+                const wyniki = await hfJson(`/api/models?pipeline_tag=${encodeURIComponent(tag)}&sort=downloads&direction=-1&limit=${naZapytanie}`)
+                    .then((w) => { if (!Array.isArray(w)) throw new Error('HuggingFace: odpowiedź nie jest listą modeli'); return w; })
+                    .catch((e) => { bledy++; ostatni = e.message; return []; });
+                for (const m of wyniki) {
+                    const repo = String(m.id ?? m.modelId ?? '');
+                    const klucz = kluczKandydata('hf', repo);
+                    if (!REPO.test(repo) || znane.has(klucz) || nowi.some((k) => k.repo === repo)) continue;
+                    const licencja = licencjaZTagow(m.tags, m.cardData);
+                    nowi.push({
+                        id: idKandydata('hf', repo), rodzaj: 'silnik', dziedzina, pipeline: tag, zrodlo: 'hf', zweryfikowane: true, repo,
+                        pobrania: m.downloads ?? null, polubienia: m.likes ?? null, zmieniony: m.lastModified ?? m.createdAt ?? null,
+                        licencja, komercyjna: czyKomercyjna(licencja), url: `${cfg.hf}/${repo}`,
+                        opinia: null, stan: 'nowy', znaleziony: new Date().toISOString(),
+                    });
+                }
+            }
+            if (bledy === d.pipeline.length) throw new Error(`HuggingFace nieosiągalny (${ostatni})`);
+            nowi.sort((a, b) => (b.pobrania ?? 0) - (a.pobrania ?? 0));
+            for (const k of nowi.slice(0, opinii)) { z.etap = `czytam kartę: ${k.repo}`; k.opinia = await opiniaSilnika(k.repo, dziedzina); }
+            const swiezy = await czytaj();
+            swiezy.kandydaci = [...nowi, ...swiezy.kandydaci].slice(0, 300);
+            swiezy.ostatniZwiad = { kiedy: new Date().toISOString(), dziedzina, zrodla: ['hf'], nowych: nowi.length, bledyZrodel: [] };
+            await zapisz(swiezy);
+            z.znaleziono = nowi.length; z.stan = 'gotowe';
+            const nc = nowi.filter((k) => k.komercyjna === false).length;
+            await nadaj(nowi.length
+                ? `${DZIEDZINY[dziedzina].etykieta}: ${nowi.length} silników do rozważenia (np. ${nowi.slice(0, 3).map((k) => `${k.repo}${k.licencja ? ` [${k.licencja}]` : ''}`).join(', ')})${nc ? ` — ${nc} tylko niekomercyjnie` : ''} — Dyrygent widzi je jako kandydatów do instalacji`
+                : `${DZIEDZINY[dziedzina].etykieta}: bez nowych silników`, { kandydaci: nowi.map((k) => k.id), dziedzina });
+        } catch (e) {
+            z.stan = 'blad'; z.blad = String(e.message || e).slice(0, 300);
+            await nadaj(`zwiad (${dziedzina}) przerwany: ${z.blad}`);
+        } finally { z.koniec = new Date().toISOString(); }
+    })();
+    return { id: z.id, sondaz: '/api/zwiadowca/sondaz' };
+}
+
 /**
  * Kandydat z bezpośredniego linku (HF albo pirateface). Sprawdza pliki repo i dobiera GGUF (albo bierze wskazany plik,
  * gdy się mieści). Znany kandydat wraca jako „nowy" (chyba że już pobrany). Nic nie pobiera.
@@ -431,6 +528,14 @@ async function pobierzIWykuj(k, p) {
  * po pobraniu karta modelu dla Dyrygenta z opinii Zwiadowcy (z dopiskiem o źródle, gdy niezweryfikowane).
  */
 export async function akceptuj(id) {
+    // 🎼 Silnik (wideo, muzyka, głos…) to nie GGUF — nie pobieramy go sam. Przyjęty = kandydat do instalacji dla Dyrygenta.
+    const dane = await czytaj();
+    const kand = dane.kandydaci.find((x) => x.id === id);
+    if (kand?.rodzaj === 'silnik') {
+        const k = await zmien(id, (x) => { x.stan = 'przyjety'; x.decyzja = new Date().toISOString(); });
+        await nadaj(`Suweren przyjął silnik ${k.repo} (${DZIEDZINY[k.dziedzina]?.etykieta ?? k.dziedzina}${k.licencja ? `, ${k.licencja}` : ''}) — do instalacji; Dyrygent wpisuje go do bazy jako „do zainstalowania”`, { kandydat: id });
+        return { id, repo: k.repo, doInstalacji: true, url: k.url };
+    }
     if ([...pobierania.values()].some((p) => p.stan === 'trwa')) throw new Error('Inny model już się pobiera — jeden naraz.');
     const k = await zmien(id, (x) => {
         if (x.stan === 'pobrany') throw new Error('Ten model już jest w Ollamie.');
@@ -459,4 +564,4 @@ export async function akceptuj(id) {
     return { id, repo: k.repo, ollama: k.ollama };
 }
 
-export default { skonfiguruj, zwiad, zLinku, formatRepo, rdzenNazwy, sondaz, kandydaci, akceptuj, odrzuc, kwant, wybierzPlik, nazwaOllamy, nazwaWykutego, wOllamie, czytajLink, ZRODLA };
+export default { skonfiguruj, zwiad, zwiadDziedziny, DZIEDZINY, licencjaZTagow, czyKomercyjna, zLinku, formatRepo, rdzenNazwy, sondaz, kandydaci, akceptuj, odrzuc, kwant, wybierzPlik, nazwaOllamy, nazwaWykutego, wOllamie, czytajLink, ZRODLA };
