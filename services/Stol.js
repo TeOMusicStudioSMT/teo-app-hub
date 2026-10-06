@@ -156,8 +156,10 @@ const zapiszDecyzje = (k, co, kto) => { (k.decyzje ||= []).push({ co, kto: kto |
 /**
  * Przyjmij → Projekt Stada (bez samoZlecania). Uczestnicy: podani (id) → sugerowani z karty → całe wyklute stado.
  * `rundy` (1–5) i `petla` (0–3): rundy doskonalenia i pętla kreatywna na każdym punkcie planu (ProjektStada).
+ * `dyrygent` (domyślnie tak — Suweren 2026-10-06: „niech dobiera jako pierwszy na stole”): Dyrygent dobiera modele
+ * do kroków projektu, zanim stado ruszy; gdy zawiedzie, każdy gra na swoim.
  */
-export function przyjmij(id, { uczestnicy = [], kto = null, rundy = 1, petla = 0, dyrygent = false } = {}) {
+export function przyjmij(id, { uczestnicy = [], kto = null, rundy = 1, petla = 0, dyrygent = true } = {}) {
     return zmien(id, async (k, e) => {
         if (!['na_stole', 'utknela'].includes(e)) throw new Error(`Karta jest na etapie „${e}" — nie ma czego przyjmować.`);
         let osoby = await cfg.uczestnicy(uczestnicy.length ? uczestnicy : k.sugerowani ?? []);

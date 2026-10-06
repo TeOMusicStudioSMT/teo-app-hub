@@ -154,7 +154,12 @@ const nadaj = (agent, tresc, dane) => cfg.szyna?.nadaj?.({ agent, rodzaj: 'proje
 /** Plan: kto, w jakiej fali, z jakim zadaniem — plus scalenie na końcu. */
 export const KODEKS_Z_PIONKIEM = 'Technika gry/apki: architektura (ekrany, stan, dane, zapis gry), stos w Studiu Gier (three.js albo Vite + React), co zbudować najpierw i jak sprawdzić, że działa. Dokument gry pisze Pionek — Ty mówisz, jak go zbudować; linii „GRA:" nie piszesz.';
 
-export function zaplanuj(uczestnicy) {
+/** TeOgochi, którzy NIE piszą wkładów: Dyrygent dobiera modele przed stadem (dyryguje, nie gra). */
+export const POZA_SKLADEM = new Set(['dyrygent']);
+
+export function zaplanuj(wszyscy) {
+    const uczestnicy = wszyscy.filter((u) => !POZA_SKLADEM.has(u.id));
+    if (!uczestnicy.length) throw new Error('W składzie projektu nie został nikt, kto pisze wkłady (Dyrygent tylko dobiera modele).');
     const zPionkiem = uczestnicy.some((u) => u.id === 'pionek');
     const kroki = uczestnicy.map((u) => {
         const r = ROLE[u.id] ?? { fala: 2, zadanie: `Wkład z Twojej dziedziny (${u.dziedzina || 'Twoja specjalność'}) do tego projektu — konkretny i spójny z resztą.` };
@@ -523,4 +528,4 @@ export function obiekty3d(wklad) {
     return [...String(wklad ?? '').matchAll(/^\s*[-*•]?\s*OBIEKT\s*:\s*(.+)$/gim)].map((m) => m[1].trim()).filter(Boolean).slice(0, 6);
 }
 
-export default { skonfiguruj, ROLE, KODEKS_Z_PIONKIEM, zaplanuj, zaloz, zlec, kontynuuj, sondaz, czytajOcene, projekt, lista, skrot, obiekty3d, MAX_RUND, MAX_PETLI, CEL_OCENY };
+export default { skonfiguruj, ROLE, KODEKS_Z_PIONKIEM, POZA_SKLADEM, zaplanuj, zaloz, zlec, kontynuuj, sondaz, czytajOcene, projekt, lista, skrot, obiekty3d, MAX_RUND, MAX_PETLI, CEL_OCENY };
