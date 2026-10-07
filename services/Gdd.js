@@ -259,7 +259,10 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
     if (!g.kamienie?.length) throw new Error('GDD nie ma planu — najpierw „Plan z GDD".');
     if (produkcje.get(projektId)?.stan === 'trwa') throw new Error('Produkcja tego projektu już trwa.');
     if (!cfg.appStudio) throw new Error('AppStudio niepodpięte.');
-    const kolejka = g.kamienie.filter((k) => !tylkoKamien || k.id === tylkoKamien).flatMap((k) => k.zadania.filter((z) => z.stan === 'czeka' || z.stan === 'blad').map((z) => ({ kamien: k, zadanie: z })));
+    // „trwa” bez żywej produkcji w pamięci = duch po restarcie mostu (2026-10-07: zadanie Teterhii
+    // wisiało „trwa” od wczoraj i żadna produkcja go już nie brała) — wraca do kolejki.
+    const doZrobienia = (z) => z.stan === 'czeka' || z.stan === 'blad' || z.stan === 'trwa';
+    const kolejka = g.kamienie.filter((k) => !tylkoKamien || k.id === tylkoKamien).flatMap((k) => k.zadania.filter(doZrobienia).map((z) => ({ kamien: k, zadanie: z })));
     if (!kolejka.length) throw new Error('Nic nie czeka — wszystkie zadania planu są gotowe albo pominięte.');
     const prod = { stan: 'trwa', od: new Date().toISOString(), biezace: null, kroki: [], zrobione: 0, padlo: 0, razem: kolejka.length, przerwij: false, model: model || cfg.model(), zapasowe: [] };
     prod.zapasowe = listaZapasowych(prod.model, zapasowe);
