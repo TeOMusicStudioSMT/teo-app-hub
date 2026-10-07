@@ -4228,14 +4228,40 @@ app.post('/api/launch', async (req, res) => {
     if (!fsSync.existsSync(dir)) return res.json({ success: true, url, running: false, message: `Katalog ${nazwaKatalogu} nie istnieje — otwórz ręcznie.` });
     try {
         const argumenty = cfg.bezPortu ? ['run', 'dev'] : ['run', 'dev', '--', '--port', String(cfg.port)];
-        const child = spawn('npm', argumenty, { cwd: dir, detached: true, shell: true, stdio: 'ignore' });
+        // Suweren 2026-10-07: „te okienka w terminalach mogą się otwierać w jednym — w tym, co most, tylko obok".
+        // Windows Terminal: zakładka w oknie „katedra” (Start_OtakOS.bat otwiera tam most); bez wt — jak dawniej.
+        const wt = terminalKatedry();
+        const child = wt
+            ? spawn(wt, ['-w', 'katedra', 'new-tab', '--title', nazwaKatalogu, '-d', dir, 'cmd', '/k', `npm ${argumenty.join(' ')}`], { windowsHide: true, stdio: 'ignore' })
+            : spawn('npm', argumenty, { cwd: dir, detached: true, shell: true, stdio: 'ignore' });
+        child.on('error', (e) => console.warn(`[Automat-Studia] ❌ ${nazwaKatalogu}: ${e.message}`));
         child.unref();
-        console.log(`[Automat-Studia] 🚀 Uruchamiam ${nazwaKatalogu} (:${cfg.port})`);
-        return res.json({ success: true, url, started: true, message: `Uruchamiam ${nazwaKatalogu} (:${cfg.port}) — chwilę potrwa.` });
+        console.log(`[Automat-Studia] 🚀 Uruchamiam ${nazwaKatalogu} (:${cfg.port})${wt ? ' — zakładka w oknie Katedry' : ''}`);
+        // Czekamy, aż studio NAPRAWDĘ odpowie — Hub otwierał je po stałych 3,5 s i Fashion (tsx + vite w środku)
+        // pokazywał „localhost odrzucił połączenie” (2026-10-07). Najwyżej 60 s; potem uczciwie „jeszcze wstaje”.
+        const gotowe = await czekajNaStudio(url + (cfg.sprawdz ?? ''), 60_000);
+        return res.json({ success: true, url, started: true, ready: gotowe, message: gotowe ? `${nazwaKatalogu} wstało (:${cfg.port}).` : `${nazwaKatalogu} jeszcze wstaje (:${cfg.port}) — odśwież za chwilę.` });
     } catch (e) {
         return res.json({ success: true, url, started: false, message: `Nie udało się uruchomić: ${e.message}` });
     }
 });
+
+/** wt.exe (Windows Terminal), gdy jest — zakładki zamiast osobnych okien. OTAKOS_TERMINAL=okna = stare okna. */
+function terminalKatedry() {
+    if (process.platform !== 'win32' || process.env.OTAKOS_TERMINAL === 'okna') return null;
+    const kandydat = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WindowsApps', 'wt.exe');
+    return fsSync.existsSync(kandydat) ? kandydat : null;
+}
+
+/** Pytaj adres co sekundę, aż odpowie 2xx/3xx (albo minie limit). */
+async function czekajNaStudio(adres, limitMs) {
+    const koniec = Date.now() + limitMs;
+    while (Date.now() < koniec) {
+        try { const r = await fetch(adres, { signal: AbortSignal.timeout(1500), redirect: 'manual' }); if (r.status < 400) return true; } catch { /* jeszcze nie */ }
+        await new Promise((r) => setTimeout(r, 1000));
+    }
+    return false;
+}
 
 // ── ⚖️ GENEZA GRV — Grawitacyjna Ekonomia Suwerennych Węzłów ─────────────────
 // Skarbiec = węzeł zarządzający z NIESKOŃCZONYM GRV (dzieli jako system). Każda Katedra ma WŁASNY skarbiec
@@ -6124,7 +6150,8 @@ async function zapewnijComfyUI(powod = 'żądanie') {
             const dziennik = path.join(process.cwd(), '_OtakOs_AI', 'comfyui.log');
             let fd = 'ignore';
             try { fd = fsSync.openSync(dziennik, 'a'); fsSync.writeSync(fd, `\n=== ${new Date().toISOString()} start ComfyUI (${powod})\n`); } catch { fd = 'ignore'; }
-            const child = spawn(win && fsSync.existsSync(pythonw) ? pythonw : python, ['-s', main, '--windows-standalone-build'], {
+            // --disable-auto-launch: standalone build sam otwierał przeglądarkę z ComfyUI (Suweren 2026-10-07: „Comfy otworzył się na swym”).
+            const child = spawn(win && fsSync.existsSync(pythonw) ? pythonw : python, ['-s', main, '--windows-standalone-build', '--disable-auto-launch'], {
                 cwd: COMFY_DIR,
                 detached: !win,
                 windowsHide: true,

@@ -56,19 +56,30 @@ function zKluczem(url: string): string {
 }
 
 /**
+ * Tryb Huba (CLOUD / JusT) dla studia, które umie go przyjąć — Fashion: `?tryb=chmura|lokalnie`
+ * (Suweren 2026-10-07: „lokalnie, a z chmury będzie korzystał, jak się przełączy na chmurę").
+ */
+function zTrybem(s: Studio): string {
+    if (s.id !== 'fashion') return '';
+    let tryb = '';
+    try { tryb = localStorage.getItem('teo_ai_mode') || ''; } catch { /* prywatne okno */ }
+    return `?tryb=${/local/.test(tryb) ? 'lokalnie' : /cloud/.test(tryb) ? 'chmura' : 'lokalnie'}`;
+}
+
+/**
  * Tryb DEV: poproś most o odpalenie studia, otwórz w pierścieniu apek.
  * Gdy most milczy — otwieramy port wprost; jeśli studio już chodzi, zadziała.
  */
 export async function odpalStudio(s: Studio): Promise<void> {
-    const fallback = `http://localhost:${s.port}/${s.hash ?? ''}`;
+    const fallback = `http://localhost:${s.port}/${zTrybem(s)}${s.hash ?? ''}`;
     try {
         const r = await fetch('http://127.0.0.1:3001/api/launch', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app: s.apka }),
         });
         const d = await r.json();
-        const url = `${d.url || `http://localhost:${s.port}`}${s.hash ?? ''}`;
-        // Świeżo odpalony serwer potrzebuje chwili; już chodzący — nie.
-        setTimeout(() => otworzApke({ id: s.id, tytul: s.tytul, url }), d.started ? 3500 : 200);
+        const url = `${d.url || `http://localhost:${s.port}`}/${zTrybem(s)}${s.hash ?? ''}`;
+        // Most odpowiada dopiero, gdy świeżo odpalone studio wstało (`ready`) — bez zgadywania sekund.
+        otworzApke({ id: s.id, tytul: s.tytul, url });
     } catch {
         otworzApke({ id: s.id, tytul: s.tytul, url: fallback });
     }

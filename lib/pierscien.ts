@@ -58,6 +58,7 @@ export function wNowymOknie(): boolean {
 
 /** Kolory i znaki studiów (reszta: ✦ i fiolet). */
 const WYGLAD: Record<string, { znak: string; kolor: string }> = {
+    comfy: { znak: '🎛️', kolor: '#f97316' }, voicestudio: { znak: '🎙️', kolor: '#14b8a6' }, swiat: { znak: '🧱', kolor: '#38bdf8' },
     story: { znak: '🎬', kolor: '#a855f7' }, music: { znak: '🎵', kolor: '#ec4899' }, app: { znak: '🛠️', kolor: '#06b6d4' },
     games: { znak: '🎮', kolor: '#22c55e' }, fashion: { znak: '👗', kolor: '#f472b6' }, lab: { znak: '🧪', kolor: '#3b82f6' },
 };
@@ -80,6 +81,11 @@ export function otworzApke(a: { id: string; tytul: string; url: string; znak?: s
 export function pokazApke(id: string): void {
     if (!stan.apki.some((a) => a.id === id)) return;
     ustaw({ apki: stan.apki.map((a) => (a.id === id ? { ...a, wczytana: true } : a)), aktywna: id });
+}
+
+/** Przeładuj warstwę apki (np. studio wstało później niż jego okno). */
+export function przeladujApke(id: string): void {
+    ustaw({ apki: stan.apki.map((a) => (a.id === id ? { ...a, wczytana: true, wersja: (a.wersja ?? 0) + 1 } : a)), aktywna: id });
 }
 
 /** Wróć do Huba — apki żyją dalej w tle. */
