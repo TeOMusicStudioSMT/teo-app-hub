@@ -4229,14 +4229,15 @@ app.post('/api/launch', async (req, res) => {
     try {
         const argumenty = cfg.bezPortu ? ['run', 'dev'] : ['run', 'dev', '--', '--port', String(cfg.port)];
         // Suweren 2026-10-07: „te okienka w terminalach mogą się otwierać w jednym — w tym, co most, tylko obok".
-        // Windows Terminal: zakładka w oknie „katedra” (Start_OtakOS.bat otwiera tam most); bez wt — jak dawniej.
+        // Windows Terminal: wszystkie studia jako zakładki JEDNEGO okna „studia” (most zostaje w swoim — Suweren
+        // 2026-10-07: „most w osobnym, a reszta w swoim, będą wtedy 2”); bez wt — osobne okna jak dawniej.
         const wt = terminalKatedry();
         const child = wt
-            ? spawn(wt, ['-w', 'katedra', 'new-tab', '--title', nazwaKatalogu, '-d', dir, 'cmd', '/k', `npm ${argumenty.join(' ')}`], { windowsHide: true, stdio: 'ignore' })
+            ? spawn(wt, ['-w', 'studia', 'new-tab', '--title', nazwaKatalogu, '-d', dir, 'cmd', '/k', `npm ${argumenty.join(' ')}`], { windowsHide: true, stdio: 'ignore' })
             : spawn('npm', argumenty, { cwd: dir, detached: true, shell: true, stdio: 'ignore' });
         child.on('error', (e) => console.warn(`[Automat-Studia] ❌ ${nazwaKatalogu}: ${e.message}`));
         child.unref();
-        console.log(`[Automat-Studia] 🚀 Uruchamiam ${nazwaKatalogu} (:${cfg.port})${wt ? ' — zakładka w oknie Katedry' : ''}`);
+        console.log(`[Automat-Studia] 🚀 Uruchamiam ${nazwaKatalogu} (:${cfg.port})${wt ? ' — zakładka w oknie „studia”' : ''}`);
         // Czekamy, aż studio NAPRAWDĘ odpowie — Hub otwierał je po stałych 3,5 s i Fashion (tsx + vite w środku)
         // pokazywał „localhost odrzucił połączenie” (2026-10-07). Najwyżej 60 s; potem uczciwie „jeszcze wstaje”.
         const gotowe = await czekajNaStudio(url + (cfg.sprawdz ?? ''), 60_000);
