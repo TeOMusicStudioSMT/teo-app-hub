@@ -115,11 +115,14 @@ export function rozwiaz(klocki, kat) {
     const wynik = { gotowe: [], doGry: [], braki: [], koncepty: [] };
     for (const z of Array.isArray(klocki) ? klocki : []) {
         const [typ, id] = String(z.klucz || '').split(/:(.*)/s);
-        const k = !z.klucz ? null
+        // Klocek „brak” (albo zaginiony klucz): Suweren mógł go już zrobić gdzie indziej — np. bryłę prosto
+        // w Assetach 3D (2026-10-07: Kustosz zrobiony, a zadanie dalej „narysuj →”). Szukamy po NAZWIE.
+        const k = !z.klucz ? poNazwie(z, kat)
             : kat.find((x) => x.klucz === z.klucz)
             ?? (typ === 'o' ? kat.find((x) => x.obraz === id || x.obrazy?.includes(id)) : null)
             ?? (typ === 'a' ? kat.find((x) => x.bryla === id || x.bryly?.includes(id)) : null)
-            ?? (typ === 'b' ? kat.find((x) => x.plik === id) : null);
+            ?? (typ === 'b' ? kat.find((x) => x.plik === id) : null)
+            ?? poNazwie(z, kat);
         if (k?.stan === 'w-grze') wynik.gotowe.push({ rola: z.rola, plik: k.plik, opis: k.opis || z.opis });
         else if (k?.stan === 'bryla') wynik.doGry.push({ rola: z.rola, bryla: k.bryla, opis: k.opis || z.opis });
         else if (k?.stan === 'koncept') wynik.koncepty.push({ rola: z.rola, opis: k.opis || z.opis });
@@ -127,6 +130,19 @@ export function rozwiaz(klocki, kat) {
         else wynik.braki.push({ rola: z.rola, co: 'obraz', opis: z.opis || z.rola });
     }
     return wynik;
+}
+
+const normuj = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+/** Imię klocka: tekst przed „—” / „,” / „(” — „Kustosz Teterhii — stary strażnik…” → „kustosz teterhii”. */
+const imie = (s) => normuj(String(s || '').split(/\s[—–-]\s|,|\(/)[0]).split(' ').slice(0, 3).join(' ');
+
+/** Klocek katalogu o tej samej nazwie co opis brakującego klocka (najdalej posunięty: w grze > bryła > obraz). */
+function poNazwie(z, kat) {
+    const nazwy = [imie(z.opis), imie(z.rola.replace(/^(npc|wróg|wrog|nagroda|towarzysz|strażnik|straznik|klimat)\s+/i, ''))].filter((n) => n.length >= 4);
+    if (!nazwy.length) return null;
+    const ranga = { 'w-grze': 3, bryla: 2, obraz: 1, koncept: 0 };
+    return kat.filter((k) => { const n = normuj(k.opis || k.nazwa); return nazwy.some((x) => n.startsWith(x)); })
+        .sort((a, b) => ranga[b.stan] - ranga[a.stan])[0] ?? null;
 }
 
 /** Jedna linia o brakach — do uwagi zadania i kroku produkcji. */

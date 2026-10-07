@@ -5,7 +5,7 @@ import fsSync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
-import { exec, execFile, spawn } from 'child_process';
+import { exec, execFile, execFileSync, spawn } from 'child_process';
 import { initTacosGuard, executeTacosGuard } from './core/tacos-guard.js';
 import { runCodeReview } from './core/agents/ocr.js';
 import { getAgentsList, getAgentPrompt, getMergedSystemPrompt } from './core/agents/index.js';
@@ -4249,8 +4249,12 @@ app.post('/api/launch', async (req, res) => {
 /** wt.exe (Windows Terminal), gdy jest — zakładki zamiast osobnych okien. OTAKOS_TERMINAL=okna = stare okna. */
 function terminalKatedry() {
     if (process.platform !== 'win32' || process.env.OTAKOS_TERMINAL === 'okna') return null;
-    const kandydat = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WindowsApps', 'wt.exe');
-    return fsSync.existsSync(kandydat) ? kandydat : null;
+    // wt.exe to skrót aplikacji (reparse point) — existsSync go NIE widzi (2026-10-07: most szedł starą drogą
+    // i studia dostawały osobne okna). Pytamy `where` raz i pamiętamy.
+    if (terminalKatedry.wynik !== undefined) return terminalKatedry.wynik;
+    try { terminalKatedry.wynik = String(execFileSync('where', ['wt'], { windowsHide: true, timeout: 3000 })).split(/\r?\n/)[0].trim() || null; }
+    catch { terminalKatedry.wynik = null; }
+    return terminalKatedry.wynik;
 }
 
 /** Pytaj adres co sekundę, aż odpowie 2xx/3xx (albo minie limit). */
