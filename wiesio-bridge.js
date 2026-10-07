@@ -6116,17 +6116,28 @@ async function zapewnijComfyUI(powod = 'żądanie') {
             return { online: false, started: false, message: `Brak ComfyUI w ${COMFY_DIR}` };
         }
         try {
-            const child = spawn(python, ['-s', main, '--windows-standalone-build'], {
+            // Windows: pythonw.exe (bez konsoli) i BEZ `detached` — odłączony proces dostawał własne okno konsoli,
+            // którego windowsHide nie chowa (jak silnik głosu 2026-10-05). Wyjście do dziennika — inaczej padnięcie
+            // ComfyUI nie zostawiałoby śladu. Suweren 2026-10-07: „popraw”.
+            const win = process.platform === 'win32';
+            const pythonw = python.replace(/python\.exe$/i, 'pythonw.exe');
+            const dziennik = path.join(process.cwd(), '_OtakOs_AI', 'comfyui.log');
+            let fd = 'ignore';
+            try { fd = fsSync.openSync(dziennik, 'a'); fsSync.writeSync(fd, `\n=== ${new Date().toISOString()} start ComfyUI (${powod})\n`); } catch { fd = 'ignore'; }
+            const child = spawn(win && fsSync.existsSync(pythonw) ? pythonw : python, ['-s', main, '--windows-standalone-build'], {
                 cwd: COMFY_DIR,
-                detached: true,
-                stdio: 'ignore',
+                detached: !win,
+                windowsHide: true,
+                stdio: ['ignore', fd, fd],
                 // PYTHONUTF8: bez tego polski komunikat systemowy (np. ConnectionResetError
                 // po polsku) wywala proces na UnicodeEncodeError przy wypisywaniu wlasnego
                 // bledu. Wyglada jak losowa awaria, jest kwestia strony kodowej.
                 env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
             });
+            if (typeof fd === 'number') { try { fsSync.closeSync(fd); } catch { /* dziecko ma swoją kopię */ } }
+            child.on('error', (e) => console.warn(`[Automat-ComfyUI] ❌ ${e.message}`));
             child.unref();
-            console.log(`[Automat-ComfyUI] 🎛️ Budzę ComfyUI (${powod}) — PID ${child.pid}, ładowanie potrwa ~30 s.`);
+            console.log(`[Automat-ComfyUI] 🎛️ Budzę ComfyUI (${powod}) — PID ${child.pid}, bez okna, dziennik: ${dziennik}.`);
             return { online: false, started: true, pid: child.pid, message: 'ComfyUI wstaje — pierwszy start trwa ~30 s.' };
         } catch (e) {
             console.warn(`[Automat-ComfyUI] ❌ Nie udało się uruchomić: ${e.message}`);
