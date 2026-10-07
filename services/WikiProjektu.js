@@ -87,7 +87,10 @@ export async function zbierz(katalog) {
     let historia = [];
     try {
         const p = JSON.parse(await fs.readFile(path.join(katalog, 'projekt.json'), 'utf8'));
-        historia = (p.historia ?? []).slice(-6).map((h) => ({ ok: h.ok, tresc: String(h.tresc).slice(0, 120), commit: h.commit }));
+        // Zlecenia z GDD zaczynają się od „KONTEKST Z GDD…" — po ucięciu do 120 znaków każde wyglądało
+        // tak samo i Kodeks nie widział, co już zrobiono (2026-10-07, Teterhia). Bierzemy samo ZADANIE.
+        const sedno = (t) => { const s = String(t || ''); const i = s.lastIndexOf('ZADANIE:'); return (i >= 0 ? s.slice(i + 8) : s).trim(); };
+        historia = (p.historia ?? []).slice(-6).map((h) => ({ ok: h.ok, tresc: sedno(h.tresc).slice(0, 120), commit: h.commit }));
     } catch { /* brak */ }
 
     return { moduly, assety, historia };

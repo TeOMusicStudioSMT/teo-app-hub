@@ -14,7 +14,7 @@ import path from 'path';
 
 export const DOSTAWCY = {
     anthropic: { plik: 'kibel_anthropic.txt', wzor: /^sk-ant-[A-Za-z0-9_-]{20,}$/, nazwa: 'Anthropic (Claude)' },
-    gemini: { plik: 'kibel_gemini.txt', wzor: /^AIza[A-Za-z0-9_-]{30,}$/, nazwa: 'Google (Gemini)' },
+    gemini: { plik: 'kibel_gemini.txt', wzor: /^(AIza[A-Za-z0-9_-]{30,}|AQ\.[A-Za-z0-9_-]{30,})$/, nazwa: 'Google (Gemini)' },
 };
 
 /** Zapas, gdy nie da się zapytać API (brak klucza, brak sieci). Pierwszy = polecany do kodu. */

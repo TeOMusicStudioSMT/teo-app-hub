@@ -79,8 +79,8 @@ export function detectKeyProvider(key: string): DetectedKey {
     return { provider: 'groq', isValid: true, format: 'gsk_*' };
   }
 
-  // Gemini: AIza...
-  if (trimmed.startsWith('AIza')) {
+  // Gemini: AIza... albo nowszy format Google AQ....
+  if (trimmed.startsWith('AIza') || trimmed.startsWith('AQ.')) {
     return { provider: 'gemini', isValid: true, format: 'AIza*' };
   }
 
@@ -214,7 +214,7 @@ export function getKeyDirect(provider: ProviderType): string | null {
   if (!value) return null;
 
   // ✅ STERYLIZACJA: Sprawdź czy to surowy klucz (nie JSON)
-  if (typeof value === 'string' && (value.startsWith('gsk_') || value.startsWith('AIza') || value.startsWith('sk-') || value.startsWith('sk-ant-') || value.startsWith('sk-or-'))) {
+  if (typeof value === 'string' && (value.startsWith('gsk_') || value.startsWith('AIza') || value.startsWith('AQ.') || value.startsWith('sk-') || value.startsWith('sk-ant-') || value.startsWith('sk-or-'))) {
     console.log(`[Kibel] 💎 Wykryto surowy klucz ${provider}: ${sanitizeLog(value)}`);
     return value;
   }
@@ -326,7 +326,7 @@ export async function retrieveKey(provider: string, keyId?: string): Promise<str
           // Guard: jeśli stored.value wygląda jak surowy klucz API (nie Base64),
           // zwróć go bezpośrednio — to dane z przed naprawy storeKey
           const v = stored.value;
-          if (typeof v === 'string' && (v.startsWith('gsk_') || v.startsWith('AIza') || v.startsWith('sk-') || v.startsWith('sk-ant-'))) {
+          if (typeof v === 'string' && (v.startsWith('gsk_') || v.startsWith('AIza') || v.startsWith('AQ.') || v.startsWith('sk-') || v.startsWith('sk-ant-'))) {
             console.log(`[Kibel] 📎 Legacy surowy klucz w JSON: ${provider}`);
             decrypted = v;
           } else {

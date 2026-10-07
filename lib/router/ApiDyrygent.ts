@@ -172,10 +172,10 @@ export const ApiDyrygent = {
                     const v = obj.value;
                     // Tylko jeśli to czytelny klucz (nie zaszyfrowany Base64)
                     if (typeof v === 'string' && (
-                        v.startsWith('sk-ant-') || v.startsWith('AIza') ||
+                        v.startsWith('sk-ant-') || v.startsWith('AIza') || v.startsWith('AQ.') ||
                         v.startsWith('sk-') || v.startsWith('gsk_')
                     )) return v;
-                } else if (raw.startsWith('sk-ant-') || raw.startsWith('AIza') || raw.startsWith('sk-')) {
+                } else if (raw.startsWith('sk-ant-') || raw.startsWith('AIza') || raw.startsWith('AQ.') || raw.startsWith('sk-')) {
                     return raw; // surowy string
                 }
             } catch { /* skip */ }

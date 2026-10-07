@@ -78,7 +78,7 @@ export const getCloudProvider = async (requestedProvider?: CloudProvider): Promi
         activeKey = activeKey.replace(/^["']|["']$/g, '').trim();
         // ⚠️ WAŻNE: sk-ant- PRZED sk- !
         if (activeKey.startsWith('sk-ant-'))  return { provider: 'claude',  apiKey: activeKey };
-        if (activeKey.startsWith('AIza'))      return { provider: 'gemini',  apiKey: activeKey };
+        if (activeKey.startsWith('AIza') || activeKey.startsWith('AQ.')) return { provider: 'gemini',  apiKey: activeKey };
         if (activeKey.startsWith('gsk_'))      return { provider: 'groq',    apiKey: activeKey };
         if (activeKey.startsWith('sk-or-'))    return { provider: 'openai',  apiKey: activeKey }; // OpenRouter
         if (activeKey.startsWith('sk-'))       return { provider: 'openai',  apiKey: activeKey };
@@ -89,7 +89,7 @@ export const getCloudProvider = async (requestedProvider?: CloudProvider): Promi
     if (anthropicKey) return { provider: 'claude', apiKey: anthropicKey };
 
     const geminiKibel = await retrieveKey('gemini');
-    if (geminiKibel?.startsWith('AIza')) return { provider: 'gemini', apiKey: geminiKibel };
+    if (geminiKibel?.startsWith('AIza') || geminiKibel?.startsWith('AQ.')) return { provider: 'gemini', apiKey: geminiKibel };
 
     const groqKibel = await retrieveKey('groq');
     if (groqKibel?.startsWith('gsk_')) return { provider: 'groq', apiKey: groqKibel };

@@ -44,7 +44,9 @@ const KEY_PATTERNS = [
   // ⚠️ KRYTYCZNA KOLEJNOŚĆ: bardziej specyficzne prefiky MUSZĄ być
   // przed ogólnymi! sk-ant- i sk-or- PRZED sk- !
   { pattern: /(gsk_[a-zA-Z0-9_-]{20,})/i,                 provider: 'groq',        name: 'Groq (raw)' },
-  { pattern: /(AIzaSy[a-zA-Z0-9_-]{33})/i,                provider: 'gemini',      name: 'Gemini (raw)' },
+  // Gemini: klasyczne AIza… (39 znaków, ale bez sztywnej długości — dawny {33} ucinał dłuższe)
+  // i nowsze klucze Google „AQ.…” (Suweren 2026-10-07: klucz 53 znaki nie był rozpoznany).
+  { pattern: /(AIza[a-zA-Z0-9_-]{30,}|AQ\.[a-zA-Z0-9_-]{30,})/,  provider: 'gemini',      name: 'Gemini (raw)' },
   { pattern: /(sk-ant-[a-zA-Z0-9_-]{20,})/i,              provider: 'anthropic',   name: 'Anthropic (raw)' }, // ← PRZED sk-or- i sk-
   { pattern: /(sk-or-[a-zA-Z0-9_-]{20,})/i,               provider: 'openrouter',  name: 'OpenRouter (raw)' }, // ← PRZED sk-
   { pattern: /(sk-[a-zA-Z0-9_-]{20,})/i,                  provider: 'openai',      name: 'OpenAI (raw)' },    // ← ostatni sk-*

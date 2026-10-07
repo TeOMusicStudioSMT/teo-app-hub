@@ -762,16 +762,16 @@ async function getAnthropicKey(reqApiKey) {
 // ── KLUCZ GEMINI (Google) ──────────────────────────────────────────────
 // Kolejność priorytetów: req.body.apiKey → env → .gemini_key → kibel_gemini.txt
 async function getGeminiKey(reqApiKey) {
-    if (reqApiKey && reqApiKey.startsWith('AIza')) return reqApiKey;
+    if (reqApiKey && (reqApiKey.startsWith('AIza') || reqApiKey.startsWith('AQ.'))) return reqApiKey;
     if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
     try {
         const key = await fs.readFile(path.join(process.cwd(), '.gemini_key'), 'utf8');
-        const match = key.match(/(AIza[a-zA-Z0-9_-]+)/);
+        const match = key.match(/(AIza[a-zA-Z0-9_-]+|AQ\.[a-zA-Z0-9_-]+)/);
         if (match) return match[1];
     } catch { }
     try {
         const key = await fs.readFile(path.join(ANTIGRAVITY_DIR, 'kibel_gemini.txt'), 'utf8');
-        const match = key.match(/(AIza[a-zA-Z0-9_-]+)/);
+        const match = key.match(/(AIza[a-zA-Z0-9_-]+|AQ\.[a-zA-Z0-9_-]+)/);
         if (match) return match[1];
     } catch { }
     return null;

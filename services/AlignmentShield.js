@@ -27,6 +27,7 @@ const SECRETS = [
     { re: /sk-[A-Za-z0-9]{32,}/,                   what: 'klucz API (sk-) w kodzie' },
     { re: /AKIA[0-9A-Z]{16}/,                      what: 'klucz AWS (AKIA) w kodzie' },
     { re: /AIza[0-9A-Za-z_-]{30,}/,                what: 'klucz Google (AIza) w kodzie' },
+    { re: /\bAQ\.[0-9A-Za-z_-]{40,}/,             what: 'klucz Google (AQ.) w kodzie' },
     { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/,    what: 'klucz prywatny PEM w kodzie' },
 ];
 
