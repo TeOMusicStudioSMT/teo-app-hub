@@ -311,7 +311,8 @@ Zasady: tylko pola, które się zmieniają; treść sekcji w całości; w "kamie
 const produkcje = new Map();   // projektId → { stan, biezace, od, kroki[], zrobione, padlo }
 
 export function produkcja(projektId) { return produkcje.get(projektId) ?? null; }
-export function przerwij(projektId) { const p = produkcje.get(projektId); if (p && p.stan === 'trwa') { p.przerwij = true; return true; } return false; }
+// ⏹ Przerwij = TERAZ: flaga dla kolejki + zerwanie rundy Kodeksa w toku (dawniej czekało do końca zadania, 4 × ~10 min).
+export function przerwij(projektId) { const p = produkcje.get(projektId); if (p && p.stan === 'trwa') { p.przerwij = true; cfg.appStudio?.przerwijProjekt?.(projektId); return true; } return false; }
 
 /**
  * Lista zapasowych modeli produkcji (Suweren 2026-10-06: „nie umie innych spróbować… może Dyrygent do tego nie dobiera”):

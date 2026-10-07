@@ -459,7 +459,7 @@ export async function silniki() {
 const NUM_CTX = 32768;
 const DUZY_PLIK_LINII = 300;   // powyżej — Kodeks ma wydzielać moduły zamiast rosnąć w jednym pliku
 
-export async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naKawalek = null }) {
+export async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naKawalek = null, sygnal = null }) {
     if (/^claude:/.test(model)) return piszAnthropic({ system, prompt, model: model.slice(7), timeoutMs: Math.min(timeoutMs, 10 * 60_000) });
     if (/^gemini:/.test(model)) return piszGemini({ system, prompt, model: model.slice(7), timeoutMs: Math.min(timeoutMs, 10 * 60_000) });
     // Ollama przez node:http, NIE przez fetch. undici w Node urywa połączenie po 300 s bez
@@ -478,6 +478,8 @@ export async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naK
         const koniec = (fn) => (v) => { if (!zakonczone) { zakonczone = true; clearTimeout(zegar); fn(v); } };
         const ok = koniec(resolve), pad = koniec(reject);
         const zegar = setTimeout(() => { req.destroy(); pad(new Error(`Ollama nie zdążyła w ${Math.round(timeoutMs / 1000)} s`)); }, timeoutMs);
+        // ⏹ Przerwanie od Suwerena zrywa rundę od razu (2026-10-07: „przycisk przerwij nie działa” — czekał do końca zadania).
+        sygnal?.addEventListener('abort', () => { req.destroy(); pad(new Error('przerwane przez Suwerena')); }, { once: true });
         const req = http.request({ hostname: url.hostname, port: url.port || 80, path: url.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, (res) => {
             if (res.statusCode !== 200) { let e = ''; res.on('data', (c) => { e += c; }); res.on('end', () => pad(new Error(`Ollama HTTP ${res.statusCode}: ${e.slice(0, 200)}`))); return; }
             res.setEncoding('utf8');
@@ -857,6 +859,13 @@ const zadania = new Map();   // id → { id, projekt, zadanie, stan, kroki[], ru
 const noweId = () => `kx-${Date.now().toString(36)}-${crypto.randomBytes(2).toString('hex')}`;
 
 export function zadanie(id) { return zadania.get(id) ?? null; }
+const przerwania = new Map();   // id zadania → AbortController (⏹ przerwij teraz)
+/** ⏹ Przerwij TERAZ trwające zadania projektu — zrywa rundę w toku (Ollama); nieudana próba wraca do ostatniego dobrego stanu jak zwykle. */
+export function przerwijProjekt(projektId) {
+    let ile = 0;
+    for (const z of zadania.values()) if (z.projekt === projektId && z.stan === 'trwa') { przerwania.get(z.id)?.abort(); ile++; }
+    return ile;
+}
 export function zadaniaProjektu(projektId) { return [...zadania.values()].filter((z) => z.projekt === projektId).map((z) => ({ id: z.id, stan: z.stan, zadanie: z.zadanie, rundy: z.rundy, od: z.od, koniec: z.koniec ?? null })); }
 
 /** Szkic modułu: nagłówek (komentarz na górze) + linie eksportów. Kilkanaście linii zamiast setek. */
@@ -904,6 +913,8 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
     if (!cel) throw new Error('Powiedz Kodeksowi, co ma zbudować.');
     if ([...zadania.values()].some((z) => z.projekt === projektId && z.stan === 'trwa')) throw new Error('Kodeks już pracuje nad tym projektem — poczekaj.');
     const z = { id: noweId(), projekt: projektId, zadanie: cel, stan: 'trwa', kroki: [], rundy: 0, wynik: null, od: new Date().toISOString(), model: model || cfg.model() };
+    const przerwanie = new AbortController();
+    przerwania.set(z.id, przerwanie);
     zadania.set(z.id, z);
     const krok = (typ, tekst, dane) => { const k = { typ, tekst: String(tekst).slice(0, 4000), kiedy: new Date().toISOString(), ...(dane || {}) }; z.kroki.push(k); naKrok(k); return k; };
 
@@ -923,6 +934,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
         let ostatniBuildOk = false;   // build przeszedł, tylko przeglądarka marudziła → warto zachować
         try {
             for (let runda = 1; runda <= rundy; runda++) {
+                if (przerwanie.signal.aborted) { feedback = 'przerwane przez Suwerena'; break; }
                 z.rundy = runda;
                 const obecne = await pliki(projektId);
                 const eskalacja = powtorki >= 1
@@ -949,7 +961,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 const limitRundy = Math.min(60, Math.max(15, Math.ceil(prompt.length / 25 / 60 * 1.6))) * 60_000;
                 const kartaKodeksa = await Persony.karta('kodeks').catch(() => null);
                 const regulyKodeksa = typProjektu === 'gra' ? SYSTEM_KODEKSA_GRY : SYSTEM_KODEKSA;
-                const odp = await pisz({ system: kartaKodeksa ? `${kartaKodeksa.tresc}\n\n${regulyKodeksa}` : regulyKodeksa, prompt, model: z.model, timeoutMs: limitRundy, naKawalek: (n) => {
+                const odp = await pisz({ system: kartaKodeksa ? `${kartaKodeksa.tresc}\n\n${regulyKodeksa}` : regulyKodeksa, prompt, model: z.model, timeoutMs: limitRundy, sygnal: przerwanie.signal, naKawalek: (n) => {
                     // meldunek co ~2000 znaków — żeby front widział, że model żyje, bez zalewania szyny
                     if (n - ostatniMeldunek >= 2000) { ostatniMeldunek = n; kPisze.znakow = n; naKrok({ typ: 'postep', tekst: `Kodeks napisał ${n} znaków…`, znakow: n, kiedy: new Date().toISOString() }); }
                 } });
