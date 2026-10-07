@@ -37,9 +37,11 @@ function eksporty(tresc) {
         .slice(0, 14);
 }
 
-/** Z jakich lokalnych modułów plik korzysta. */
-function importy(tresc) {
-    return [...tresc.matchAll(/from\s+['"]\.\/([\w.-]+)['"]/g)].map((m) => m[1].replace(/\.tsx?$/, ''));
+/** Z jakich lokalnych modułów plik korzysta — nazwy względem src/ („gra/postac”), także z podkatalogu (`../swiat3d`). */
+function importy(tresc, katalogPliku = '') {
+    return [...tresc.matchAll(/from\s+['"](\.{1,2}\/[\w./-]+)['"]/g)]
+        .map((m) => path.posix.normalize(path.posix.join(katalogPliku || '.', m[1])).replace(/\.tsx?$/, ''))
+        .filter((n) => !n.startsWith('..'));
 }
 
 /**
@@ -63,19 +65,27 @@ function kotwice(tresc) {
 export async function zbierz(katalog) {
     const dirSrc = path.join(katalog, 'src');
     let nazwy = [];
-    try { nazwy = (await fs.readdir(dirSrc)).filter((f) => /\.tsx?$/.test(f)); } catch { return null; }
+    // Rekurencyjnie: fundament Teterhii (2026-10-07) trzyma logikę w src/gra/ — bez tego stado jej nie widziało.
+    const chodz = async (rel) => {
+        for (const e of await fs.readdir(path.join(dirSrc, rel), { withFileTypes: true })) {
+            const r = rel ? `${rel}/${e.name}` : e.name;
+            if (e.isDirectory()) await chodz(r); else if (/\.tsx?$/.test(e.name)) nazwy.push(r);
+        }
+    };
+    try { await chodz(''); } catch { return null; }
 
     const moduly = [];
     for (const f of nazwy) {
         const tresc = await fs.readFile(path.join(dirSrc, f), 'utf8');
+        const katalogPliku = path.posix.dirname(f) === '.' ? '' : path.posix.dirname(f);
         moduly.push({
             plik: `src/${f}`,
-            nazwa: f.replace(/\.tsx?$/, ''),
+            nazwa: f.replace(/\.tsx?$/, ''),   // ścieżka względem src/, np. gra/postac
             linii: tresc.split('\n').length,
             typy: /\.d\.ts$/.test(f),
             naglowek: naglowek(tresc),
             eksporty: eksporty(tresc),
-            importy: importy(tresc),
+            importy: importy(tresc, katalogPliku),
             kotwice: /^main\./.test(f) ? kotwice(tresc) : [],
         });
     }
