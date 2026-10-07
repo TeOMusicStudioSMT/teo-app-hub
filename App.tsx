@@ -51,6 +51,7 @@ import { KatedraRadioPlayer } from './components/KatedraRadioPlayer';
 import { TestKoherencji } from './components/special/TestKoherencji';
 import KwantowaCzytelnia from './components/KwantowaCzytelnia';
 import AutoPanicSentinel from './components/special/AutoPanicSentinel';
+import PierscienApek from './components/PierscienApek';
 import NotebookTwinPanel from './components/special/NotebookTwinPanel';
 import SimulationDashboard from './components/special/SimulationDashboard';
 import TeoLab from './components/special/TeoLab';
@@ -1067,6 +1068,9 @@ const App: React.FC = () => {
             {/* 🚨 Pętla Samonaprawy Katedry — globalny chwytacz błędów + szmaragdowa notyfikacja.
                 Zawsze zamontowana (poza bramką auth), by łapać awarie w całej aplikacji. */}
             <AutoPanicSentinel />
+
+            {/* 💍 Pierścień apek — studia Katedry w tym samym oknie, koło przełączania z boku (lib/pierscien.ts). */}
+            <PierscienApek />
 
             </GravitonProvider>
 

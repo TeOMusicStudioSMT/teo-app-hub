@@ -10,7 +10,8 @@
  * Universes nie widziało Fashion. Dwie kopie jednej listy ZAWSZE się rozjeżdżają.
  * Teraz obie strony mapują tę samą tablicę STUDIA.
  *
- * ⚠️ DWA SPOSOBY OTWIERANIA, OBA W NOWEJ KARCIE:
+ * ⚠️ DWA SPOSOBY OTWIERANIA — od 2026-10-07 w PIERŚCIENIU APEK (to samo okno, koło z boku;
+ * lib/pierscien.ts), nowa karta tylko z wyboru (localStorage otakos_apki_okno = 'nowe'):
  *   · `dev`     — most odpala lokalny serwer dev (/api/launch) i otwiera port;
  *                 tak działają studia rozwijane na tej maszynie.
  *   · `most`    — statyczny build serwowany przez most pod /apps/…; działa też
@@ -19,6 +20,7 @@
  */
 
 import { getBridgeBase } from './bridgeService';
+import { otworzApke } from './pierscien';
 
 export type IdStudia = 'story' | 'music' | 'app' | 'games' | 'fashion' | 'lab';
 
@@ -54,7 +56,7 @@ function zKluczem(url: string): string {
 }
 
 /**
- * Tryb DEV: poproś most o odpalenie studia, otwórz w NOWEJ KARCIE.
+ * Tryb DEV: poproś most o odpalenie studia, otwórz w pierścieniu apek.
  * Gdy most milczy — otwieramy port wprost; jeśli studio już chodzi, zadziała.
  */
 export async function odpalStudio(s: Studio): Promise<void> {
@@ -66,15 +68,15 @@ export async function odpalStudio(s: Studio): Promise<void> {
         const d = await r.json();
         const url = `${d.url || `http://localhost:${s.port}`}${s.hash ?? ''}`;
         // Świeżo odpalony serwer potrzebuje chwili; już chodzący — nie.
-        setTimeout(() => window.open(url, '_blank', 'noopener'), d.started ? 3500 : 200);
+        setTimeout(() => otworzApke({ id: s.id, tytul: s.tytul, url }), d.started ? 3500 : 200);
     } catch {
-        window.open(fallback, '_blank', 'noopener');
+        otworzApke({ id: s.id, tytul: s.tytul, url: fallback });
     }
 }
 
-/** Tryb MOST: statyczny build spod /apps/…, w NOWEJ KARCIE. Działa i na pendrivie. */
+/** Tryb MOST: statyczny build spod /apps/…. Działa i na pendrivie. */
 export function otworzNaMoscie(s: Studio): void {
     if (!s.naMoscie) { void odpalStudio(s); return; }
     const baza = getBridgeBase().replace(/\/+$/, '');
-    window.open(zKluczem(`${baza}${s.naMoscie}`) + (s.hash ?? ''), '_blank', 'noopener');
+    otworzApke({ id: s.id, tytul: s.tytul, url: zKluczem(`${baza}${s.naMoscie}`) + (s.hash ?? '') });
 }

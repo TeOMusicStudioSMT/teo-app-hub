@@ -22,6 +22,7 @@ import { Smartphone, RefreshCw, Copy, Loader2, Radio, Unplug } from 'lucide-reac
 import QRCode from 'qrcode';
 import { toast } from 'react-hot-toast';
 import { stanTunelu, uruchomTunel, type StanTunelu } from '../../lib/tunel';
+import { otworzApke, wNowymOknie } from '../../lib/pierscien';
 
 const MOST = 'http://127.0.0.1:3001';
 
@@ -153,8 +154,8 @@ export const StolCard: React.FC = () => {
                         Telefon obserwuje stado na żywo i może zlecić mu nowy wspólny projekt — nic więcej w Katedrze nie zmienia.
                         Kod działa 5 minut i tylko raz.
                     </p>
-                    <a href={`${MOST}/swiat/`} target="_blank" rel="noopener" className="text-xs text-sky-300 hover:text-sky-200 w-fit">
-                        🧱 Otwórz świat klocków na tym komputerze ↗
+                    <a href={`${MOST}/swiat/`} target="_blank" rel="noopener" onClick={(e) => { if (e.ctrlKey || e.metaKey || e.button === 1 || wNowymOknie()) return; e.preventDefault(); otworzApke({ id: 'swiat', tytul: 'Świat klocków', url: `${MOST}/swiat/`, znak: '🧱', kolor: '#38bdf8' }); }} className="text-xs text-sky-300 hover:text-sky-200 w-fit">
+                        🧱 Otwórz świat klocków na tym komputerze
                     </a>
                     {link && <input readOnly value={link} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-mono text-slate-400" onFocus={(e) => e.currentTarget.select()} />}
                     <div>

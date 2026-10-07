@@ -1,3 +1,4 @@
+import { otworzApke } from './pierscien';
 /**
  * 🎵 Teleport API - Komunikacja Hub ↔ Music V2
  * 
@@ -52,8 +53,8 @@ export function teleportToMusic(params: {
   // Serwuje zbudowaną substronę pod /apps/music. (Dev z HMR: otwórz localhost:5173 ręcznie.)
   const targetUrl = `http://127.0.0.1:3001/apps/music/${query}`;
 
-  // Otwórz Music V2 w nowej karcie
-  window.open(targetUrl, '_blank');
+  // Music V2 w pierścieniu apek (to samo okno Huba)
+  otworzApke({ id: 'music', tytul: 'TeO Music Studio', url: targetUrl });
 }
 
 /** 🎬 Teleport do TeO Story V2 — z misją montażu VideO-Use.
@@ -78,7 +79,7 @@ export function teleportToStory(params: {
   // Most serwuje Story V2 pod /apps/story (zawsze żywy, także na USB V_ZERO).
   const targetUrl = `http://127.0.0.1:3001/apps/story/${query}`;
   console.log('[Teleport] 🎬 Transport do Story V2 (VideO-Use):', params);
-  window.open(targetUrl, '_blank');
+  otworzApke({ id: 'story', tytul: 'TeO Story Studio', url: targetUrl });
 }
 
 /** Nasłuchuj na parametry z Huba */
