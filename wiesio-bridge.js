@@ -7982,7 +7982,7 @@ app.get('/api/appstudio/zadania/:id/sondaz', (req, res) => {
 // 📜 GDD + REŻYSER GRY + PRODUKCJA Z PLANU (services/Gdd.js). GDD leży w projekcie gry
 // (_OtakOs_Apki/<id>/gdd.json); produkcja karmi pętlę Kodeksa zadanie po zadaniu.
 // ═════════════════════════════════════════════════════════════════════════════
-Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, model: () => ModeleAgentow.modelZPamieci('kodeks') || modelMechanika() });
+Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, model: () => ModeleAgentow.modelZPamieci('kodeks') || modelMechanika(), assety3d: Assety3D });
 ModeleAgentow.wszystkie().catch(() => {});   // pamięć przydziału dla Studia Gier od startu
 const gddUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 app.get('/api/gdd/silniki', (_req, res) => res.json({ success: true, silniki: Gdd.SILNIKI }));
@@ -8017,6 +8017,20 @@ app.post('/api/gdd/:id/rozmowa', async (req, res) => {
 });
 app.post('/api/gdd/:id/plan', async (req, res) => {
     try { res.json({ success: true, gdd: await Gdd.plan(req.params.id, { model: req.body?.model, odNowa: !!req.body?.odNowa }) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+// 🧱 Klocki gry (services/KlockiGry.js): katalog obrazów/brył projektu i stan klocków każdego zadania;
+// dobór klocków do istniejącego planu (model, bez ruszania stanów); ręczne klocki / zgoda na bryły zastępcze.
+app.get('/api/gdd/:id/klocki', async (req, res) => {
+    try { res.json({ success: true, ...(await Gdd.stanKlockow(req.params.id)) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/gdd/:id/klocki/dobierz', async (req, res) => {
+    try { res.json({ success: true, ...(await Gdd.dobierzKlocki(req.params.id, { model: req.body?.model })) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/gdd/:id/zadanie/:zadanie', async (req, res) => {
+    try { res.json({ success: true, gdd: await Gdd.ustawZadanie(req.params.id, req.params.zadanie, { klocki: req.body?.klocki, zastepcze: req.body?.zastepcze }) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.post('/api/gdd/:id/realizuj', async (req, res) => {

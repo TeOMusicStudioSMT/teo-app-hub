@@ -894,7 +894,11 @@ function kontekstPlikow(lista, cel = '') {
  * Zleć Kodeksowi zadanie w projekcie. Zwraca od razu id zadania; praca w tle.
  * `naKrok` — opcjonalny callback dla SSE (mostu) — dostaje każdy krok.
  */
-export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } = {}, naKrok = () => {}) {
+/**
+ * `blokKlockow` (z produkcji GDD, services/KlockiGry.js) — klocki TEGO zadania z rolami; zastępuje listę
+ * wszystkich assetów projektu (2026-10-07: „UŻYWAJ ich” bez ról = gemma 12B pisała ładowarkę wszystkich brył).
+ */
+export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, blokKlockow } = {}, naKrok = () => {}) {
     if (!idOk(projektId) || !(await czytajProjekt(projektId))) throw new Error('Nie ma takiego projektu.');
     const cel = String(tresc || '').trim();
     if (!cel) throw new Error('Powiedz Kodeksowi, co ma zbudować.');
@@ -925,9 +929,9 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND } =
                     ? `\nUWAGA: to DOKŁADNIE TEN SAM błąd, co w poprzedniej rundzie — Twoja poprawka go nie usunęła. Zanim oddasz pliki, napisz w pierwszej linii odpowiedzi jednym zdaniem, co konkretnie zmieniasz (np. „dodaję 'idle' do typu Phase"), a potem bloki plików. Sprawdź numer linii z błędu i popraw TĘ linię i jej typ.\n`
                     : '';
                 const duze = obecne.filter((p) => /\.(ts|tsx)$/.test(p.sciezka) && p.tresc.split('\n').length > DUZY_PLIK_LINII).map((p) => `${p.sciezka} (${p.tresc.split('\n').length} linii)`);
-                const assety = typProjektu === 'gra' && cfg.assetyProjektu ? await cfg.assetyProjektu(projektId).catch(() => []) : [];
-                const blokAssetow = assety.length
-                    ? `\nASSETY 3D W PROJEKCIE (public/assety/, gotowe pliki GLB z kolorami wierzchołków — UŻYWAJ ich zamiast brył, gdy pasują): ${assety.map((a) => `${a.plik} (${a.opis || a.nazwa}${a.sciany ? ', ~' + a.sciany + ' ścian' : ''}${a.animacja ? ', ZAPĘTLONA ANIMACJA „' + a.animacja + '”' : ''})`).join('; ')}.${assety.some((a) => a.animacja) ? ' Plik z animacją: `const mixer = new THREE.AnimationMixer(g.scene); mixer.clipAction(g.animations[0]).play();` i w pętli `mixer.update(dt)`.' : ''} Ładowanie: \`import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'\`; \`new GLTFLoader().load('./assety/NAZWA.glb', (g) => { const m = g.scene; m.scale.setScalar(S); scena.add(m); })\` — do czasu wczytania trzymaj placeholder (Box), a po wczytaniu podmień; pole na bryłę typuj THREE.Object3D (g.scene to Group, nie Mesh — żadnych rzutowań as THREE.Mesh/as THREE.Group); kolizje nadal po odległości. Model ma ~1 jednostkę wysokości — dobierz scale.\n`
+                const assety = typProjektu === 'gra' && cfg.assetyProjektu && typeof blokKlockow !== 'string' ? await cfg.assetyProjektu(projektId).catch(() => []) : [];
+                const blokAssetow = typeof blokKlockow === 'string' ? blokKlockow : assety.length
+                    ? `\nASSETY 3D W PROJEKCIE (public/assety/, gotowe pliki GLB z kolorami wierzchołków — użyj TYLKO tych, których zadanie naprawdę potrzebuje; NIE wczytuj wszystkich naraz i nie pisz ładowarki wszystkich modeli):${assety.map((a) => `${a.plik} (${a.opis || a.nazwa}${a.sciany ? ', ~' + a.sciany + ' ścian' : ''}${a.animacja ? ', ZAPĘTLONA ANIMACJA „' + a.animacja + '”' : ''})`).join('; ')}.${assety.some((a) => a.animacja) ? ' Plik z animacją: `const mixer = new THREE.AnimationMixer(g.scene); mixer.clipAction(g.animations[0]).play();` i w pętli `mixer.update(dt)`.' : ''} Ładowanie: \`import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'\`; \`new GLTFLoader().load('./assety/NAZWA.glb', (g) => { const m = g.scene; m.scale.setScalar(S); scena.add(m); })\` — do czasu wczytania trzymaj placeholder (Box), a po wczytaniu podmień; pole na bryłę typuj THREE.Object3D (g.scene to Group, nie Mesh — żadnych rzutowań as THREE.Mesh/as THREE.Group); kolizje nadal po odległości. Model ma ~1 jednostkę wysokości — dobierz scale.\n`
                     : '';
                 const podzial = duze.length ? `\nPLIKI ZA DUŻE: ${duze.join(', ')}. Nie dopisuj do nich kolejnych funkcji — WYDZIEL spójne części (np. wrogowie, loot, HUD, poziom, questy) do osobnych plików src/*.ts z eksportami i importuj je w main.ts. Oddaj każdy plik, którego treść zmieniasz, W CAŁOŚCI; plików, których nie ruszasz, nie oddawaj.\n` : '';
                 // Mapa projektu (services/WikiProjektu.js) — Suweren 2026-09-24: „nie mogą się odnaleźć".

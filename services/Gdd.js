@@ -24,8 +24,9 @@ import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { radaDlaKodeksa } from './BledyModeli.js';
+import Klocki from './KlockiGry.js';
 
-let cfg = { katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: null, appStudio: null, pisz: null, model: () => 'qwen3.5:9b' };
+let cfg = { katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: null, appStudio: null, pisz: null, model: () => 'qwen3.5:9b', assety3d: null };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
 
 export const SILNIKI = {
@@ -65,6 +66,16 @@ export function oczyscGalezie(lista) {
         };
     }).filter(Boolean);
 }
+// 'klocki' = czeka na klocek (obraz/bryłę z warsztatu Katedry) — patrz services/KlockiGry.js.
+const STANY_ZADANIA = ['czeka', 'trwa', 'gotowe', 'blad', 'pominiete', 'klocki'];
+/** Klocki i zgoda na zastępcze — tylko gdy są (zadania bez nich zostają jak dawniej). */
+function klockiZadania(z) {
+    const out = {};
+    const k = Klocki.oczyscKlocki(z?.klocki);
+    if (k) out.klocki = k;
+    if (z?.zastepcze === true) out.zastepcze = true;
+    return out;
+}
 function oczysc(g, stare = puste()) {
     const out = { ...stare };
     for (const k of ['tytul', 'gatunek', 'perspektywa']) if (typeof g[k] === 'string') out[k] = g[k].slice(0, 200);
@@ -73,7 +84,7 @@ function oczysc(g, stare = puste()) {
     if (g.sekcje && typeof g.sekcje === 'object') for (const s of SEKCJE) if (typeof g.sekcje[s] === 'string') out.sekcje[s] = g.sekcje[s].slice(0, 6000);
     if (Array.isArray(g.kamienie)) out.kamienie = g.kamienie.slice(0, 12).map((k, i) => ({
         id: idOk(String(k.id || '')) ? k.id : noweId('km'), tytul: String(k.tytul || `Kamień ${i + 1}`).slice(0, 120), opis: String(k.opis || '').slice(0, 600),
-        zadania: (Array.isArray(k.zadania) ? k.zadania : []).slice(0, 6).map((z) => typeof z === 'string' ? { id: noweId('zd'), tresc: z.slice(0, 700), stan: 'czeka' } : { id: idOk(String(z.id || '')) ? z.id : noweId('zd'), tresc: String(z.tresc || '').slice(0, 700), stan: ['czeka', 'trwa', 'gotowe', 'blad', 'pominiete'].includes(z.stan) ? z.stan : 'czeka', zadanieId: z.zadanieId ?? null, kiedy: z.kiedy ?? null, uwaga: z.uwaga ? String(z.uwaga).slice(0, 300) : null }),
+        zadania: (Array.isArray(k.zadania) ? k.zadania : []).slice(0, 6).map((z) => typeof z === 'string' ? { id: noweId('zd'), tresc: z.slice(0, 700), stan: 'czeka' } : { id: idOk(String(z.id || '')) ? z.id : noweId('zd'), tresc: String(z.tresc || '').slice(0, 700), stan: STANY_ZADANIA.includes(z.stan) ? z.stan : 'czeka', zadanieId: z.zadanieId ?? null, kiedy: z.kiedy ?? null, uwaga: z.uwaga ? String(z.uwaga).slice(0, 300) : null, ...klockiZadania(z) }),
     }));
     if (Array.isArray(g.galezie)) out.galezie = oczyscGalezie(g.galezie);
     if (typeof g.zrodlo === 'string') out.zrodlo = g.zrodlo.slice(0, 200);
@@ -175,13 +186,76 @@ export async function plan(projektId, { model, odNowa = false } = {}) {
     const g = await wczytaj(projektId);
     if (!g) throw new Error('Ten projekt nie ma GDD.');
     if (g.kamienie?.length && !odNowa) return g;
+    // Plan zna KLOCKI (Suweren 2026-10-07: „każą budować z lego, a klocków jeszcze nie ma").
+    const kat = await katalogKlockow(projektId);
     const system = `Jesteś Reżyserem Gry. Z GDD układasz PLAN PRODUKCJI dla programisty (Kodeks), który buduje w three.js i dostaje zadania PO KOLEI, każde na osobną rundę. ${RAMKA_SILNIKA}
-Odpowiadasz WYŁĄCZNIE JSON-em, bez komentarzy: {"kamienie":[{"tytul":"…","opis":"…","zadania":["jedno konkretne zlecenie","…"]}]}
+${ZASADA_KLOCKOW}
+Odpowiadasz WYŁĄCZNIE JSON-em, bez komentarzy: {"kamienie":[{"tytul":"…","opis":"…","zadania":[{"tresc":"jedno konkretne zlecenie","klocki":[{"rola":"…","klocek":"K3"},{"rola":"…","brak":"opis obrazu do Pracowni"}]}]}]}
 Kamieni DOKŁADNIE 5, w kolejności budowania (najpierw to, na czym stoi reszta: ruch gracza + kamera + świat; potem wrogowie/walka lub główna pętla; potem statystyki/przedmioty; potem HUD/menu; na końcu poziom/fabuła). Zadań DOKŁADNIE 2 na kamień, każde jako JEDNO zlecenie („dodaj…", „zrób…"), wykonalne w jednej rundzie i sprawdzalne po WSAD/spacji/kliknięciu (co ma pokazać HUD albo window.__gra).`;
-    const odp = await cfg.pisz({ system, prompt: `GDD:\n${jakoTekst(g, { zKamieniami: false })}`, model: model || cfg.model(), timeoutMs: 15 * 60_000 });
+    const odp = await cfg.pisz({ system, prompt: `GDD:\n${jakoTekst(g, { zKamieniami: false })}\n\n${Klocki.katalogJakoTekst(kat)}`, model: model || cfg.model(), timeoutMs: 15 * 60_000 });
     const j = wylowJson(odp.tekst);
     if (!j?.kamienie?.length) { await zapiszNieudane(projektId, 'plan', odp.tekst); throw new Error('Model nie oddał planu (JSON z kamieniami). Surowa odpowiedź w nieudane/.'); }
+    for (const k of j.kamienie) if (Array.isArray(k?.zadania)) k.zadania = k.zadania.map((z) => (z && typeof z === 'object' ? { tresc: z.tresc, klocki: Klocki.klockiZOdpowiedzi(z.klocki, kat) } : z));
     return zapisz(projektId, { kamienie: j.kamienie });
+}
+
+const ZASADA_KLOCKOW = `KLOCKI: do każdego zadania dopisz "klocki" — rzeczy z warsztatu Suwerena, których zadanie potrzebuje, z ROLĄ w grze (np. "wróg Szumak", "NPC Kustosz", "nagroda — Nuta Sosu"). Bierz je z KATALOGU po numerze ("klocek":"K7"). Gdy zadanie potrzebuje postaci, stwora, przedmiotu albo budowli, której w katalogu NIE ma — wpisz {"rola":"…","brak":"krótki opis obrazu do narysowania w Pracowni"}. Zadania czysto kodowe (HUD, zapis, rytm, okno, mechanika) mają "klocki": []. Nie przypisuj klocków „na zapas".`;
+
+/** Katalog klocków projektu (pusty, gdy most nie podał Assetów 3D). */
+export async function katalogKlockow(projektId) {
+    return cfg.assety3d ? Klocki.katalog(projektId, { assety3d: cfg.assety3d }) : [];
+}
+
+/**
+ * DOBÓR KLOCKÓW do istniejącego planu — bez przepisywania zadań i bez ruszania ich stanu.
+ * Planista dostaje zadania (nie gotowe, nie pominięte) i katalog; oddaje klocki per id zadania.
+ */
+export async function dobierzKlocki(projektId, { model } = {}) {
+    const g = await wczytaj(projektId);
+    if (!g?.kamienie?.length) throw new Error('Najpierw plan z GDD — nie ma zadań, do których dobrać klocki.');
+    const kat = await katalogKlockow(projektId);
+    const doDoboru = g.kamienie.flatMap((k) => k.zadania.filter((z) => z.stan !== 'gotowe' && z.stan !== 'pominiete').map((z) => ({ k, z })));
+    if (!doDoboru.length) throw new Error('Wszystkie zadania są gotowe albo pominięte.');
+    const system = `Jesteś Reżyserem Gry. Do zadań planu produkcji dobierasz KLOCKI z warsztatu Suwerena. ${ZASADA_KLOCKOW}
+Odpowiadasz WYŁĄCZNIE JSON-em: {"zadania":[{"id":"zd-…","klocki":[…]}]} — każde zadanie z listy, z jego id.`;
+    const lista = doDoboru.map(({ k, z }) => `- id ${z.id} (kamień „${k.tytul}”): ${z.tresc}`).join('\n');
+    const odp = await cfg.pisz({ system, prompt: `GDD (skrót):\n${jakoTekst(g, { zKamieniami: false }).slice(0, 6000)}\n\n${Klocki.katalogJakoTekst(kat)}\n\nZADANIA:\n${lista}`, model: model || cfg.model(), timeoutMs: 15 * 60_000 });
+    const j = wylowJson(odp.tekst);
+    if (!Array.isArray(j?.zadania)) { await zapiszNieudane(projektId, 'klocki', odp.tekst); throw new Error('Model nie oddał doboru klocków (JSON). Surowa odpowiedź w nieudane/.'); }
+    let dobrane = 0;
+    const g2 = await wczytaj(projektId);
+    for (const w of j.zadania) {
+        const zd = g2.kamienie.flatMap((k) => k.zadania).find((z) => z.id === w?.id);
+        if (!zd || zd.stan === 'gotowe' || zd.stan === 'pominiete') continue;
+        zd.klocki = Klocki.klockiZOdpowiedzi(w.klocki, kat);
+        if (zd.stan === 'klocki') zd.stan = 'czeka';   // nowy dobór — produkcja sprawdzi od nowa
+        dobrane++;
+    }
+    g2.zmieniono = new Date().toISOString();
+    await fs.writeFile(plik(projektId), JSON.stringify(g2, null, 2), 'utf8');
+    return { gdd: g2, dobrane, model: odp.model ?? (model || cfg.model()) };
+}
+
+/** Zmiana jednego zadania z frontu: klocki (ręcznie) albo zgoda na bryły zastępcze. */
+export async function ustawZadanie(projektId, zadanieId, { klocki, zastepcze } = {}) {
+    const g = await wczytaj(projektId);
+    const zd = g?.kamienie?.flatMap((k) => k.zadania).find((z) => z.id === zadanieId);
+    if (!zd) throw new Error('Nie ma takiego zadania w planie.');
+    if (klocki !== undefined) zd.klocki = Klocki.oczyscKlocki(klocki) ?? [];
+    if (zastepcze !== undefined) { if (zastepcze) zd.zastepcze = true; else delete zd.zastepcze; }
+    if (zd.stan === 'klocki') zd.stan = 'czeka';
+    g.zmieniono = new Date().toISOString();
+    await fs.writeFile(plik(projektId), JSON.stringify(g, null, 2), 'utf8');
+    return g;
+}
+
+/** Stan klocków każdego zadania względem świeżego katalogu — dla frontu. */
+export async function stanKlockow(projektId) {
+    const g = await wczytaj(projektId);
+    const kat = await katalogKlockow(projektId);
+    const zadania = {};
+    for (const zd of g?.kamienie?.flatMap((k) => k.zadania) ?? []) if (Array.isArray(zd.klocki)) zadania[zd.id] = Klocki.rozwiaz(zd.klocki, kat);
+    return { katalog: kat, zadania };
 }
 
 /**
@@ -261,10 +335,11 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
     if (!cfg.appStudio) throw new Error('AppStudio niepodpięte.');
     // „trwa” bez żywej produkcji w pamięci = duch po restarcie mostu (2026-10-07: zadanie Teterhii
     // wisiało „trwa” od wczoraj i żadna produkcja go już nie brała) — wraca do kolejki.
-    const doZrobienia = (z) => z.stan === 'czeka' || z.stan === 'blad' || z.stan === 'trwa';
+    // „klocki” = czekało na klocek — sprawdzamy od nowa, może Suweren go już dorobił.
+    const doZrobienia = (z) => z.stan === 'czeka' || z.stan === 'blad' || z.stan === 'trwa' || z.stan === 'klocki';
     const kolejka = g.kamienie.filter((k) => !tylkoKamien || k.id === tylkoKamien).flatMap((k) => k.zadania.filter(doZrobienia).map((z) => ({ kamien: k, zadanie: z })));
     if (!kolejka.length) throw new Error('Nic nie czeka — wszystkie zadania planu są gotowe albo pominięte.');
-    const prod = { stan: 'trwa', od: new Date().toISOString(), biezace: null, kroki: [], zrobione: 0, padlo: 0, razem: kolejka.length, przerwij: false, model: model || cfg.model(), zapasowe: [] };
+    const prod = { stan: 'trwa', od: new Date().toISOString(), biezace: null, kroki: [], zrobione: 0, padlo: 0, naKlocki: 0, razem: kolejka.length, przerwij: false, model: model || cfg.model(), zapasowe: [] };
     prod.zapasowe = listaZapasowych(prod.model, zapasowe);
     produkcje.set(projektId, prod);
     const krok = (t) => { prod.kroki.push({ kiedy: new Date().toISOString(), tekst: String(t).slice(0, 400) }); if (prod.kroki.length > 200) prod.kroki.shift(); };
@@ -278,12 +353,34 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
             if (!zd) continue;
             prod.biezace = { kamien: km.tytul, zadanie: zd.tresc };
             krok(`▶ ${km.tytul}: ${zd.tresc.slice(0, 120)}`);
+            // 🧱 KLOCKI: brakujący klocek = zadanie nie idzie do Kodeksa (chyba że Suweren pozwolił na zastępcze);
+            // bryła gotowa w Assetach 3D sama trafia do gry. Zadanie bez pola klocki = dawne zachowanie.
+            let blokKlockow;
+            if (Array.isArray(zd.klocki)) {
+                const kat = await katalogKlockow(projektId);
+                const r = Klocki.rozwiaz(zd.klocki, kat);
+                for (const d of r.doGry) {
+                    try {
+                        const w = await cfg.assety3d.doGry(d.bryla, projektId);
+                        r.gotowe.push({ rola: d.rola, plik: path.posix.basename(w.plik), opis: d.opis });
+                        krok(`📦 ${d.rola}: bryła z Assetów 3D dołożona do gry (${w.plik})`);
+                    } catch (e) { r.braki.push({ rola: d.rola, co: 'bryla', opis: `${d.opis} (do gry nie weszła: ${e.message})` }); }
+                }
+                if (r.braki.length && !zd.zastepcze) {
+                    zd.stan = 'klocki'; zd.uwaga = `🧱 brakuje: ${Klocki.opisBrakow(r.braki)}`.slice(0, 300); zd.kiedy = new Date().toISOString();
+                    await fs.writeFile(plik(projektId), JSON.stringify(gAkt, null, 2), 'utf8');
+                    prod.naKlocki++;
+                    krok(`🧱 czeka na klocek — ${Klocki.opisBrakow(r.braki)}. Idę do następnego zadania.`);
+                    continue;
+                }
+                blokKlockow = Klocki.blokKodeksa(r.gotowe, zd.zastepcze ? r.braki : [], r.koncepty);
+            }
             zd.stan = 'trwa'; zd.kiedy = new Date().toISOString();
             await fs.writeFile(plik(projektId), JSON.stringify(gAkt, null, 2), 'utf8');
             const kontekst = `KONTEKST Z GDD (trzymaj się go): ${gAkt.tytul} — ${gAkt.gatunek}. Kamień milowy: ${km.tytul} — ${km.opis}.\nZADANIE: ${zd.tresc}`;
             const sprobuj = async (m) => {
                 try {
-                    const z = await cfg.appStudio.buduj(projektId, { zadanie: kontekst, model: m });
+                    const z = await cfg.appStudio.buduj(projektId, { zadanie: kontekst, model: m, blokKlockow });
                     zd.zadanieId = z.id;
                     for (;;) {
                         await new Promise((r) => setTimeout(r, cfg.odstepSondazuMs ?? 10_000));
@@ -314,10 +411,11 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
         }
         prod.stan = prod.padlo ? 'blad' : prod.przerwij ? 'przerwana' : 'gotowe';
         prod.biezace = null; prod.koniec = new Date().toISOString();
-        await cfg.szyna?.nadaj?.({ agent: 'Reżyser', rodzaj: prod.padlo ? 'blad' : 'praca', tresc: `produkcja „${projektId}" ${prod.stan}: ${prod.zrobione}/${prod.razem} zadań gotowych${prod.padlo ? ', 1 padło' : ''}`, dane: { projekt: projektId } }).catch(() => {});
+        if (prod.naKlocki) krok(`🧱 ${prod.naKlocki} zadań czeka na klocki — dorób je w Pracowni obrazów / Assetach 3D (albo pozwól na bryły zastępcze) i puść produkcję jeszcze raz.`);
+        await cfg.szyna?.nadaj?.({ agent: 'Reżyser', rodzaj: prod.padlo ? 'blad' : 'praca', tresc: `produkcja „${projektId}" ${prod.stan}: ${prod.zrobione}/${prod.razem} zadań gotowych${prod.padlo ? ', 1 padło' : ''}${prod.naKlocki ? `, ${prod.naKlocki} czeka na klocki` : ''}`, dane: { projekt: projektId } }).catch(() => {});
     })();
 
     return { start: true, zadan: kolejka.length, model: prod.model, zapasowe: prod.zapasowe };
 }
 
-export default { skonfiguruj, SILNIKI, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, produkcja, przerwij, jakoTekst, scalKamienie };
+export default { skonfiguruj, SILNIKI, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
