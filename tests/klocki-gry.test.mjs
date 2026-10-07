@@ -97,21 +97,27 @@ test('blok Kodeksa: tylko klocki zadania z rolą; bez klocków — zakaz ładowa
     assert.doesNotMatch(b, /ujecie/);
 });
 
-async function projekt(zadania) {
+/** `zadania` = jeden kamień; `kamienie` = pełna lista [{ id, zadania }]. */
+async function projekt(zadania, kamienie = null) {
     const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'gdd-klocki-'));
     await fs.mkdir(path.join(kat, 'gra'), { recursive: true });
-    const g = { wersja: 1, tytul: 'Teterhia', gatunek: 'RPG', silnik: 'three', sekcje: {}, galezie: [], historia: [], kamienie: [{ id: 'k1', tytul: 'Zgrzytowce', opis: 'wrogowie', zadania }] };
+    const g = { wersja: 1, tytul: 'Teterhia', gatunek: 'RPG', silnik: 'three', sekcje: {}, galezie: [], historia: [], kamienie: kamienie ? kamienie.map((k) => ({ tytul: k.id, opis: '', ...k })) : [{ id: 'k1', tytul: 'Zgrzytowce', opis: 'wrogowie', zadania }] };
     await fs.writeFile(path.join(kat, 'gra', 'gdd.json'), JSON.stringify(g));
     return kat;
 }
 async function koniec(id) { for (let i = 0; i < 300; i++) { const p = Gdd.produkcja(id); if (p && p.stan !== 'trwa') return p; await new Promise((r) => setTimeout(r, 5)); } throw new Error('produkcja nie skończyła'); }
 
-test('produkcja: brak klocka = zadanie czeka na klocek i idzie następne; bryła z Assetów sama do gry; Kodeks dostaje tylko swoje klocki', async () => {
-    const kat = await projekt([
-        { id: 'z1', tresc: 'Szumak goni gracza', stan: 'czeka', klocki: [{ rola: 'wróg Szumak', klucz: 'o:o-szumak', opis: 'Szumak' }] },
+test('produkcja: brak klocka = zadanie czeka na klocek, reszta JEGO kamienia stoi, inne kamienie idą; bryła z Assetów sama do gry; Kodeks dostaje tylko swoje klocki', async () => {
+    const kat = await projekt(null, [
+        { id: 'k0', zadania: [
+            { id: 'z1', tresc: 'Szumak goni gracza', stan: 'czeka', klocki: [{ rola: 'wróg Szumak', klucz: 'o:o-szumak', opis: 'Szumak' }] },
+            { id: 'z1b', tresc: 'Rozbrojenie Szumaka wyborem', stan: 'czeka', klocki: [] },
+        ] },
+        { id: 'k1', zadania: [
         { id: 'z2', tresc: 'Hełm w plecaku', stan: 'czeka', klocki: [{ rola: 'ekwipunek — hełm', klucz: 'a:helm-2', opis: 'hełm' }] },
         { id: 'z3', tresc: 'HUD z pulsem', stan: 'czeka', klocki: [] },
         { id: 'z4', tresc: 'stare zadanie bez pola klocki', stan: 'czeka' },
+        ] },
     ]);
     const assety = atrapaAssetow(kat);
     const wywolania = [];
@@ -126,6 +132,7 @@ test('produkcja: brak klocka = zadanie czeka na klocek i idzie następne; bryła
     assert.equal(p.naKlocki, 1);
     assert.equal(p.zrobione, 3);
     assert.ok(p.kroki.some((k) => /🧱 czeka na klocek — wróg Szumak: zrób bryłę z obrazu/.test(k.tekst)));
+    assert.ok(p.kroki.some((k) => /⏸ czeka, aż ruszy wcześniejsze zadanie kamienia/.test(k.tekst)), 'rozbrojenie nie buduje się bez wroga');
     assert.deepEqual(assety.dolozone, ['helm-2'], 'bryła z Assetów trafiła do gry bez pytania');
     assert.equal(wywolania.length, 3, 'Szumak nie poszedł do Kodeksa');
     assert.match(wywolania[0].blokKlockow, /ekwipunek — hełm: '\.\/assety\/helm-2\.glb'/);
@@ -135,13 +142,14 @@ test('produkcja: brak klocka = zadanie czeka na klocek i idzie następne; bryła
     const z1 = g.kamienie[0].zadania[0];
     assert.equal(z1.stan, 'klocki');
     assert.match(z1.uwaga, /🧱 brakuje: wróg Szumak/);
-    assert.deepEqual(g.kamienie[0].zadania.slice(1).map((z) => z.stan), ['gotowe', 'gotowe', 'gotowe']);
+    assert.equal(g.kamienie[0].zadania[1].stan, 'czeka');
+    assert.deepEqual(g.kamienie[1].zadania.map((z) => z.stan), ['gotowe', 'gotowe', 'gotowe']);
 
     // Suweren pozwala na bryłę zastępczą → zadanie idzie, Kodeks wie, że bryły nie ma.
     await Gdd.ustawZadanie('gra', 'z1', { zastepcze: true });
     await Gdd.realizuj('gra', { model: 'm' });
     const p2 = await koniec('gra');
-    assert.equal(p2.zrobione, 1);
+    assert.equal(p2.zrobione, 2, 'Szumak z zastępczą, potem rozbrojenie');
     assert.match(wywolania[3].blokKlockow, /wróg Szumak: BRYŁY JESZCZE NIE MA/);
 });
 

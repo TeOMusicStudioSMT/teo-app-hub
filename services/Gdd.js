@@ -346,6 +346,7 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
     await cfg.szyna?.nadaj?.({ agent: 'Reżyser', rodzaj: 'praca', tresc: `produkcja „${projektId}": ${kolejka.length} zadań z planu GDD → Kodeks`, dane: { projekt: projektId } }).catch(() => {});
 
     (async () => {
+        const kamienieNaKlocki = new Set();
         for (const { kamien, zadanie } of kolejka) {
             if (prod.przerwij) { krok('przerwano na życzenie Suwerena'); break; }
             const gAkt = await wczytaj(projektId);
@@ -355,6 +356,9 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
             krok(`▶ ${km.tytul}: ${zd.tresc.slice(0, 120)}`);
             // 🧱 KLOCKI: brakujący klocek = zadanie nie idzie do Kodeksa (chyba że Suweren pozwolił na zastępcze);
             // bryła gotowa w Assetach 3D sama trafia do gry. Zadanie bez pola klocki = dawne zachowanie.
+            // Kamień idzie po kolei: gdy wcześniejsze zadanie czeka na klocek, dalsze stoją z nim
+            // (bez tego Kodeks budowałby „rozbrojenie wroga”, którego jeszcze nie ma — znów od tyłu).
+            if (kamienieNaKlocki.has(km.id)) { krok(`⏸ czeka, aż ruszy wcześniejsze zadanie kamienia „${km.tytul}” (klocki)`); continue; }
             let blokKlockow;
             if (Array.isArray(zd.klocki)) {
                 const kat = await katalogKlockow(projektId);
@@ -370,6 +374,7 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
                     zd.stan = 'klocki'; zd.uwaga = `🧱 brakuje: ${Klocki.opisBrakow(r.braki)}`.slice(0, 300); zd.kiedy = new Date().toISOString();
                     await fs.writeFile(plik(projektId), JSON.stringify(gAkt, null, 2), 'utf8');
                     prod.naKlocki++;
+                    kamienieNaKlocki.add(km.id);
                     krok(`🧱 czeka na klocek — ${Klocki.opisBrakow(r.braki)}. Idę do następnego zadania.`);
                     continue;
                 }
