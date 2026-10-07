@@ -8055,6 +8055,7 @@ Assety3D.skonfiguruj({
     katalogWorkflow: path.join(process.cwd(), '_OtakOs_AI', 'workflows'),
     katalogBiblioteki: path.join(process.cwd(), '_OtakOs_AI', 'assety3d'),
     katalogApek: path.join(process.cwd(), '..', '_OtakOs_Apki'),
+    obudzComfy: (powod) => zapewnijComfyUI(powod),   // Pracownia / Assety 3D same budzą ComfyUI (2026-10-07)
 });
 AppStudio.skonfiguruj({
     assetyProjektu: (id) => Assety3D.assetyProjektu(id),

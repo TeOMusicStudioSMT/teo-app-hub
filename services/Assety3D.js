@@ -41,8 +41,27 @@ const cfg = {
     pisz: null,                     // AppStudio.pisz — tłumaczenie opisu na prompt obrazu
     ollamaBase: 'http://127.0.0.1:11434',
     model: () => 'gemma4:e2b',
+    obudzComfy: null,               // most: zapewnijComfyUI — start ComfyUI, gdy śpi
+    czekajNaComfyMs: 150_000,       // pierwszy start z FLUX/TRELLIS potrafi trwać ~1–2 min
 };
 export function skonfiguruj(o) { Object.assign(cfg, o); }
+
+/**
+ * ComfyUI żyje — a jak śpi, budzimy go i czekamy (Suweren 2026-10-07: „brakuje tam auto wstania Comfy").
+ * Dawniej Pracownia i Assety 3D kończyły się błędem „obudź go (POST /api/comfy/ensure)".
+ */
+export async function zywyComfy(sciezka = '/object_info/EmptyFlux2LatentImage') {
+    try { await comfy(sciezka, {}, 6000); return { budzony: false }; } catch { /* śpi — budzimy */ }
+    if (!cfg.obudzComfy) throw new Error('ComfyUI nie odpowiada na :8188 — obudź go (POST /api/comfy/ensure).');
+    const w = await cfg.obudzComfy('Pracownia obrazów / Assety 3D').catch((e) => ({ online: false, started: false, message: e.message }));
+    if (!w?.online && !w?.started && !/wstaje|startuje/i.test(String(w?.message || ''))) throw new Error(`ComfyUI śpi i nie dał się obudzić: ${w?.message || 'brak powodu'}`);
+    const koniec = Date.now() + cfg.czekajNaComfyMs;
+    while (Date.now() < koniec) {
+        await new Promise((r) => setTimeout(r, 3000));
+        try { await comfy(sciezka, {}, 6000); return { budzony: true }; } catch { /* jeszcze wstaje */ }
+    }
+    throw new Error(`ComfyUI obudzony, ale nie odpowiedział w ${Math.round(cfg.czekajNaComfyMs / 1000)} s — spróbuj za chwilę (pierwszy start ładuje modele).`);
+}
 
 const GRAF_OBRAZ = 'flux2_klein_4b.json';
 const GRAF_3D = 'trellis2_obraz_do_3d.json';
@@ -292,8 +311,7 @@ export async function obraz({ opis, styl = 'pojedynczy', galaz = null, projekt =
     if (!st) throw new Error(`Nieznany styl „${styl}”. Są: ${Object.keys(STYLE_OBRAZU).join(', ')}.`);
     const tekst = String(opis || '').trim();
     if (tekst.length < 3) throw new Error('Opisz, co narysować.');
-    try { await comfy('/object_info/EmptyFlux2LatentImage', {}, 6000); }
-    catch { throw new Error('ComfyUI nie odpowiada na :8188 — obudź go (POST /api/comfy/ensure).'); }
+    await zywyComfy('/object_info/EmptyFlux2LatentImage');
     if (!fsSync.existsSync(path.join(cfg.katalogWorkflow, GRAF_OBRAZ))) throw new Error(`brak grafu ${GRAF_OBRAZ}`);
     if ([...zadania.values()].some((z) => z.stan === 'trwa')) throw new Error('Jedno zadanie GPU naraz — ComfyUI już liczy.');
     const baza = slug(tekst);
@@ -339,6 +357,7 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wyc
         nazwa = nazwa || mObrazu.opis.slice(0, 40);
     }
     if (!tekst && !zdjecie && !zObrazu) throw new Error('Podaj opis albo zdjęcie.');
+    await zywyComfy('/object_info');
     const s = await stan();
     if (!s.gotowe) throw new Error(s.braki.join(' | '));
     if ([...zadania.values()].some((z) => z.stan === 'trwa')) throw new Error('Jeden asset naraz — ComfyUI ma 6 GB VRAM.');
@@ -450,4 +469,4 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wyc
     return { zadanie: z.id, asset: assetId };
 }
 
-export default { skonfiguruj, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
+export default { skonfiguruj, zywyComfy, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
