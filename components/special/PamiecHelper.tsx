@@ -9,7 +9,14 @@ const BRIDGE = 'http://127.0.0.1:3001';
 const BROWSERS = /brave|chrome|msedge|firefox|opera/i;
 
 /** Proces z mostu (services/StanKatedry.js): PID, opis — czym jest (python bywa ComfyUI, Kuźnią, pip) — i czy chroniony. */
-interface Proc { pid: number; name: string; mb: number; opis?: string; skrypt?: string | null; chroniony?: boolean; uwaga?: string; }
+interface Proc { pid: number; name: string; mb: number; opis?: string; skrypt?: string | null; chroniony?: boolean; uwaga?: string; zamknij?: 'tak' | 'uwaga' | 'nie'; }
+
+/** Czy zamykać — widoczne od razu, nie tylko w dymku (Suweren 2026-10-07: „opis nie jasny”). */
+const ZAMKNIJ: Record<string, { znak: string; tekst: string; klasa: string }> = {
+  tak: { znak: '✓', tekst: 'można zamknąć', klasa: 'text-emerald-400 border-emerald-500/40' },
+  uwaga: { znak: '⚠', tekst: 'przerwie pracę', klasa: 'text-amber-300 border-amber-500/40' },
+  nie: { znak: '✋', tekst: 'lepiej nie', klasa: 'text-rose-300 border-rose-500/40' },
+};
 
 export const PamiecHelper: React.FC = () => {
   const [mem, setMem] = useState<{ totalGB: number; freeGB: number; usedGB: number } | null>(null);
@@ -74,7 +81,10 @@ export const PamiecHelper: React.FC = () => {
                   <span className="text-zinc-600">#{p.pid}</span>
                   {p.opis && <span className="text-orange-300/70 truncate">— {p.opis}{p.skrypt ? ` (${p.skrypt})` : ''}</span>}
                 </span>
-                <span className="text-zinc-500 shrink-0">{p.mb} MB</span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  {p.zamknij && ZAMKNIJ[p.zamknij] && <span title={p.uwaga} className={`rounded border px-1 text-[9px] ${ZAMKNIJ[p.zamknij].klasa}`}>{ZAMKNIJ[p.zamknij].znak} {ZAMKNIJ[p.zamknij].tekst}</span>}
+                  <span className="text-zinc-500">{p.mb} MB</span>
+                </span>
               </label>
             ))}
           </div>

@@ -91,3 +91,14 @@ test('Delegat: projekty.stan i system.pamiec u każdego; zamykanie tylko u Kodek
     const kodeks = (await Delegat.wszyscy()).find((d) => d.id === 'kodeks');
     assert.ok(kodeks.pelny && !kodeks.narzedzia.includes('system.zwolnij') && kodeks.narzedzia.includes('projekty.stan'), 'z tunelu bez zamykania');
 });
+
+test('Stan: pamięć mówi wprost, czy zamykać (Suweren 2026-10-07: „nie jasne, czy potrzebne, czy swobodnie zamknąć”)', async () => {
+    const { rozpoznaj } = await import('../services/StanKatedry.js');
+    const glos = rozpoznaj({ name: 'pythonw.exe', cmd: '"F:\\K\\_OtakOs_AI\\python312\\pythonw.exe" "F:\\K\\services\\glos\\voice_server.py"', pid: 1, wlasnyPid: 2 });
+    assert.equal(glos.opis, 'silnik klonu głosu Katedry (:5002)');
+    assert.equal(glos.zamknij, 'tak');
+    assert.match(glos.uwaga, /most odpali go sam/);
+    assert.equal(rozpoznaj({ name: 'ollama.exe', cmd: 'ollama serve', pid: 1, wlasnyPid: 2 }).zamknij, 'nie');
+    assert.equal(rozpoznaj({ name: 'python.exe', cmd: 'python cos.py', pid: 1, wlasnyPid: 2 }).zamknij, 'uwaga');
+    assert.equal(rozpoznaj({ name: 'pythonw.exe', cmd: 'pythonw.exe -s F:\\C\\ComfyUI\\main.py --windows-standalone-build', pid: 1, wlasnyPid: 2 }).zamknij, 'tak');
+});

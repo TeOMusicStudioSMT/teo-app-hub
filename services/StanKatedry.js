@@ -45,17 +45,24 @@ export function rozpoznaj({ name = '', cmd = '', pid, wlasnyPid = cfg.wlasnyPid 
     if (pid === wlasnyPid || /wiesio-bridge/i.test(c)) return { opis: 'Most Katedry (wiesio-bridge)', chroniony: true };
     if (n === 'memory compression') return { opis: 'skompresowana pamięć Windows', chroniony: true, uwaga: 'Tego nie da się zamknąć — to RAM, który Windows ścisnął. Zmaleje sam, gdy zamkniesz to, co pamięć zjada (np. python, przeglądarki).' };
     if (CHRONIONE.test(n)) return { opis: 'proces systemowy', chroniony: true };
-    if (/comfyui|comfy[\\/]main\.py|main\.py.*--listen/i.test(c)) return { opis: 'ComfyUI (obrazy, wideo, muzyka)', chroniony: false, uwaga: 'Zamknięcie przerwie render w toku.' };
+    // Usługi Katedry, które most sam odpala na żądanie — Suweren 2026-10-07: „opis nie jasny, czy to potrzebne,
+    // czy swobodnie można zamknąć”. `zamknij`: 'tak' = śmiało (wróci sam), 'uwaga' = przerwie pracę w toku, 'nie' = lepiej nie.
+    if (/voice_server\.py/i.test(c)) return { opis: 'silnik klonu głosu Katedry (:5002)', chroniony: false, zamknij: 'tak', uwaga: 'Można zamknąć — most odpali go sam, gdy znów będzie potrzebny głos (pierwsze nagranie potrwa wtedy dłużej). Nie zamykaj w trakcie nagrywania podcastu/wywiadu.' };
+    if (/glebia[\\/]glebia\.py|glebia[\\/]szacuj\.mjs/i.test(c)) return { opis: 'głębia kadru (Studio 3D)', chroniony: false, zamknij: 'uwaga', uwaga: 'Przerwie liczenie głębi kadru w toku.' };
+    if (/usta[\\/](usta|pobierz)\.py/i.test(c)) return { opis: 'usta aktorów (MuseTalk)', chroniony: false, zamknij: 'uwaga', uwaga: 'Przerwie liczenie ust do odcinka w toku.' };
+    if (/-m\s+demucs|demucs/i.test(c)) return { opis: 'Demucs (rozdzielanie stemów)', chroniony: false, zamknij: 'uwaga', uwaga: 'Przerwie rozdzielanie utworu w toku.' };
+    if (/comfyui|comfy[\\/]main\.py|main\.py.*--listen/i.test(c)) return { opis: 'ComfyUI (obrazy, wideo, muzyka)', chroniony: false, zamknij: 'tak', uwaga: 'Można zamknąć, gdy nic nie renderuje — Pracownia obrazów i Assety 3D obudzą go same. Zamknięcie w trakcie przerwie render.' };
     if (/[\\/]soup(\.exe)?\b|soup_cli|\bsoup\s+(train|export|deploy)/i.test(c) || n === 'soup') return { opis: 'Kuźnia Soup (trening modelu)', chroniony: false, uwaga: 'Zamknięcie przerwie kucie modelu.' };
     if (/-m\s+pip\b|[\\/]pip(3)?(\.exe)?\s+install/i.test(c)) return { opis: 'instalacja pip (np. środowisko Kuźni)', chroniony: false, uwaga: 'Zamknięcie przerwie instalację.' };
-    if (/whisper/i.test(c)) return { opis: 'Whisper (rozpoznawanie mowy)', chroniony: false };
-    if (/kokoro|piper|xtts|f5-?tts|chatterbox/i.test(c)) return { opis: 'głos Katedry (TTS)', chroniony: false };
-    if (n.startsWith('ollama')) return { opis: 'Ollama (modele językowe)', chroniony: false, uwaga: 'Zamknięcie wyłączy stado do restartu Ollamy.' };
-    if (/unrealeditor|ue4editor|ue5/i.test(n)) return { opis: 'Unreal Engine', chroniony: false, uwaga: 'Zapisz pracę w UE.' };
-    if (/vite/i.test(c) && n === 'node') return { opis: 'Hub (vite)', chroniony: false };
-    if (/^(chrome|msedge|brave|firefox|opera)$/.test(n)) return { opis: 'przeglądarka', chroniony: false, uwaga: 'Zapisz otwarte karty.' };
-    if (n.startsWith('python')) return { opis: 'python — nierozpoznany skrypt', chroniony: false };
-    if (n === 'node') return { opis: 'node — inny skrypt', chroniony: false };
+    if (/whisper/i.test(c)) return { opis: 'Whisper (rozpoznawanie mowy)', chroniony: false, zamknij: 'uwaga', uwaga: 'Przerwie transkrypcję w toku.' };
+    if (/kokoro|piper|xtts|f5-?tts|chatterbox/i.test(c)) return { opis: 'głos Katedry (TTS)', chroniony: false, zamknij: 'tak', uwaga: 'Można zamknąć, gdy nic nie mówi — wróci przy następnym głosie.' };
+    if (n.startsWith('ollama')) return { opis: 'Ollama (modele językowe)', chroniony: false, zamknij: 'nie', uwaga: 'Lepiej nie — wyłączy stado, czat i produkcję gier do restartu Ollamy. Pamięć modelu zwolni się sama po 5 min bezczynności.' };
+    if (/unrealeditor|ue4editor|ue5/i.test(n)) return { opis: 'Unreal Engine', chroniony: false, zamknij: 'uwaga', uwaga: 'Zapisz pracę w UE.' };
+    if (n === 'claude') return { opis: 'Claude Code (Klaudiusz / Główny)', chroniony: false, zamknij: 'nie', uwaga: 'Lepiej nie — przerwie rozmowę z Klaudiuszem albo pracę Głównego.' };
+    if (/vite/i.test(c) && n === 'node') return { opis: 'Hub (vite)', chroniony: false, zamknij: 'nie', uwaga: 'Lepiej nie — to serwer okna Huba (albo innej apki Katedry); po zamknięciu strona przestanie działać.' };
+    if (/^(chrome|msedge|brave|firefox|opera)$/.test(n)) return { opis: 'przeglądarka', chroniony: false, zamknij: 'uwaga', uwaga: 'Zapisz otwarte karty. Jeśli to okno Huba — zamkniesz Katedrę.' };
+    if (n.startsWith('python')) return { opis: 'python — skrypt spoza Katedry', chroniony: false, zamknij: 'uwaga', uwaga: 'Katedra nie wie, co to jest — zamknij tylko, jeśli wiesz, że to Twoje i niepotrzebne.' };
+    if (n === 'node') return { opis: 'node — inny skrypt', chroniony: false, zamknij: 'uwaga', uwaga: 'Katedra nie wie, co to jest — może to inna apka Katedry (Game Studio, Story, Music).' };
     return { opis: '', chroniony: false };
 }
 
@@ -92,7 +99,7 @@ export async function pamiec({ ile = 14 } = {}) {
     try { lista = await surowe(); } catch (e) { return { ...baza, procesy: [], blad: `Nie odczytałem listy procesów: ${e.message}` }; }
     const procesy = lista.slice(0, ile).map((p) => {
         const r = rozpoznaj(p);
-        return { pid: p.pid, name: p.name, mb: p.mb, opis: r.opis, skrypt: skrypt(p.cmd), chroniony: r.chroniony, ...(r.uwaga ? { uwaga: r.uwaga } : {}) };
+        return { pid: p.pid, name: p.name, mb: p.mb, opis: r.opis, skrypt: skrypt(p.cmd), chroniony: r.chroniony, ...(r.zamknij ? { zamknij: r.zamknij } : {}), ...(r.uwaga ? { uwaga: r.uwaga } : {}) };
     });
     return { ...baza, procesy };
 }
