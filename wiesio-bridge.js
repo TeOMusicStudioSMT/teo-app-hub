@@ -8142,6 +8142,8 @@ app.get('/api/assety3d/ruchy', (_req, res) => res.json({ success: true, ruchy: R
 app.get('/api/assety3d/ruch/zadanie/:id', (req, res) => { const z = RuchBryl.zadanie(req.params.id); return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania (most mógł wystartować od nowa).' }); });
 app.post('/api/assety3d/:id/ruch', (req, res) => ytOdp(res, RuchBryl.ozyw(req.params.id, { ruch: String(req.body?.ruch ?? ''), sekundy: req.body?.sekundy, podglad: req.body?.podglad !== false })));
 app.delete('/api/assety3d/:id/ruch/:ruch', (req, res) => ytOdp(res, RuchBryl.usun(req.params.id, req.params.ruch).then((ruchy) => ({ ruchy }))));
+// ✨ Upiększ lokalnie: ta sama bryła z tego samego źródła, gęściej (1024, więcej ścian); stara zostaje.
+app.post('/api/assety3d/:id/upiekszaj', (req, res) => ytOdp(res, Assety3D.upiekszLokalnie(req.params.id, { rozdzielczosc: req.body?.rozdzielczosc, sciany: req.body?.sciany })));
 app.post('/api/assety3d/:id/uprosc', async (req, res) => {
     try { res.json({ success: true, asset: await Assety3D.uprosc(req.params.id, req.body?.sciany) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }

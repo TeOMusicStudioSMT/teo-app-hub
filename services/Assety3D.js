@@ -305,6 +305,22 @@ export async function usunObraz(id) {
     return true;
 }
 
+/**
+ * ✨ UPIĘKSZ LOKALNIE (Suweren 2026-10-07: „daj do każdego już wygenerowanego i na przyszłość… klikając dane
+ * się nie przenoszą”): ta sama bryła liczona od nowa z TEGO SAMEGO źródła (obraz Pracowni + wycinek albo
+ * zdjęcie/obraz źródłowy z katalogu bryły), z opisem, nazwą i gałęzią — tylko gęściej: 1024 i więcej ścian.
+ * Stara bryła zostaje (nowa ma `ulepsza: <stary id>`); do gry idzie, gdy Suweren ją tam wyśle.
+ */
+export async function upiekszLokalnie(id, { rozdzielczosc = 1024, sciany = 30000 } = {}) {
+    const m = await meta(id);
+    if (!m) throw new Error('Nie ma takiego assetu.');
+    const wspolne = { opis: m.opis, nazwa: m.nazwa, rozdzielczosc: Number(rozdzielczosc) || 1024, sciany: Number(sciany) || 30000, ulepsza: id };
+    if (m.zObrazu && plikObrazu(m.zObrazu)) return generuj({ ...wspolne, zObrazu: m.zObrazu, wycinek: m.wycinek ?? null });
+    const zrodlo = ['obraz-zrodlo.png', 'obraz-zrodlo.jpg', 'obraz-zrodlo.webp', 'obraz.png'].map((p) => path.join(dirAssetu(id), p)).find((p) => fsSync.existsSync(p));
+    if (!zrodlo) throw new Error('Ta bryła nie ma zapisanego obrazu źródłowego — nie ma z czego liczyć jej od nowa.');
+    return generuj({ ...wspolne, zdjecie: zrodlo });
+}
+
 /** Obraz z opisu w stylu Pracowni — w tle (jedno zadanie GPU naraz, wspólna kolejka z bryłami). */
 export async function obraz({ opis, styl = 'pojedynczy', galaz = null, projekt = null, ziarno = null } = {}) {
     const st = STYLE_OBRAZU[styl];
@@ -345,7 +361,7 @@ export async function obraz({ opis, styl = 'pojedynczy', galaz = null, projekt =
  * Zlecenie. `zrodlo`: { tekst } albo { zdjecie: <ścieżka pliku> } albo { zObrazu: <id z Pracowni>, wycinek? }. Opcje: sciany (domyślnie 20000),
  * rozdzielczosc (1024|1152|…|2048 — wokselowa, więcej = dokładniej i wolniej), ziarno.
  */
-export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wycinek = null, projekt = null, sciany = 8000, rozdzielczosc = 512, ziarno = null } = {}) {
+export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wycinek = null, projekt = null, sciany = 8000, rozdzielczosc = 512, ziarno = null, ulepsza = null } = {}) {
     let mObrazu = null;
     if (zObrazu) {
         mObrazu = await metaObrazu(zObrazu);
@@ -377,7 +393,7 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wyc
         catch (e) { await fs.rm(dir, { recursive: true, force: true }); throw new Error(`Nie wyciąłem obrazu: ${String(e.stderr || e.message).slice(0, 200)}`); }
         zdjecie = wyj;
     }
-    const m = { id: assetId, nazwa: baza, opis: String(opis || tekst || nazwa || '').slice(0, 500), zrodlo: zObrazu ? 'obraz' : tekst ? 'tekst' : 'zdjecie', ...(zObrazu ? { zObrazu, wycinek: wycinek ?? null, galaz: mObrazu.galaz ?? null } : {}), tekst: tekst ? String(tekst).slice(0, 1000) : null, sciany: Number(sciany) || 8000, rozdzielczosc: Number(rozdzielczosc) || 512, utworzono: z.od, stan: 'trwa', silnik: 'TRELLIS.2', czasy: {}, wGrach: [] };
+    const m = { id: assetId, nazwa: baza, opis: String(opis || tekst || nazwa || '').slice(0, 500), zrodlo: zObrazu ? 'obraz' : tekst ? 'tekst' : 'zdjecie', ...(zObrazu ? { zObrazu, wycinek: wycinek ?? null, galaz: mObrazu.galaz ?? null } : {}), tekst: tekst ? String(tekst).slice(0, 1000) : null, sciany: Number(sciany) || 8000, rozdzielczosc: Number(rozdzielczosc) || 512, utworzono: z.od, stan: 'trwa', silnik: 'TRELLIS.2', czasy: {}, wGrach: [], ...(ulepsza ? { ulepsza } : {}) };
     await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(m, null, 2), 'utf8');
 
     (async () => {
@@ -469,4 +485,4 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wyc
     return { zadanie: z.id, asset: assetId };
 }
 
-export default { skonfiguruj, zywyComfy, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
+export default { skonfiguruj, zywyComfy, upiekszLokalnie, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
