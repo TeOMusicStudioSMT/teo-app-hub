@@ -376,6 +376,8 @@ BRAKI:
     }
     p.oceny = [...(p.oceny ?? []).filter((o) => o.runda !== p.runda), wpis];
     await zapisz(p);
+    // 🌟 Partytury (services/Partytury.js): Sędzia-Jev ≥ 9/10 → układ tej pracy zapisuje się jako genialne wykonanie.
+    if (cfg.poOcenie) await Promise.resolve(cfg.poOcenie(p, wpis)).catch((e) => console.warn(`[Partytury] ${e.message}`));
     nadaj(sedzia.imie, wpis.ocena != null
         ? `„${p.nazwa}" po rundzie ${p.runda}: zgodność z wizją ${wpis.ocena}/10${wpis.braki.length ? ` — braki: ${wpis.braki.slice(0, 2).join('; ')}` : ''}`
         : `nie umiał ocenić „${p.nazwa}"${wpis.blad ? `: ${wpis.blad}` : ' (odpowiedź bez oceny)'}`, { projekt: p.id });

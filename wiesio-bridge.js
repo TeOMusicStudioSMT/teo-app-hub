@@ -6,6 +6,9 @@ import { utworzTryb, zainstalujFetch } from './services/TrybKatedry.js';
 import { Readable } from 'stream';
 import { probkaZapasowa } from './services/ZapasGlosu.js';
 import { utworzJev, PROG_ZROBIONE as JEV_PROG } from './services/Jev.js';
+import { utworzJevLokalny } from './services/JevLokalny.js';
+import { utworzPartytury } from './services/Partytury.js';
+import { utworzStrazModeli } from './services/StrazModeli.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
@@ -7909,6 +7912,7 @@ Delegat.skonfiguruj({
 // Czat przez AppStudio.pisz — ten sam tor co Kodeks: Ollama lokalnie, `claude:`/`gemini:` tylko z jawnego wyboru.
 ModeleAgentow.skonfiguruj({ katalogWymiar: ANTIGRAVITY_DIR });
 ProjektStada.skonfiguruj({
+    poOcenie: (p, wpis) => PartyturyDyrygenta.poOcenie(p, wpis),   // 🌟 Sędzia-Jev ≥ 9/10 → partytura genialnego wykonania
     jev: Jev,   // ⚖️ Sędzia Jev: ocena zgodności z wizją i założenia (services/SedziaJev.js); bez klucza — lokalny Sędzia
     katalog: path.join(ANTIGRAVITY_DIR, 'projekty-stada'),
     szyna: Szyna,
@@ -7937,8 +7941,22 @@ ProjektStada.skonfiguruj({
 async function modelDyrygenta() {
     return (await ModeleAgentow.modelDla('dyrygent').catch(() => null)) || process.env.OTAKOS_DYRYGENT_MODEL || DEFAULT_LLM;
 }
+// 🧭 Jev lokalny (embeddingi, EG2) — Dyrygent ds. Kreatywnych: wybór i dopasowanie partytur bez chmury (services/JevLokalny.js)
+const JevLokalny = utworzJevLokalny({ ollamaBase: OLLAMA_BASE });
+// 📜 Partytury Dyrygenta (services/Partytury.js): katalogi produkcji + genialne wykonania + dopasowanie do zadania
+const PartyturyDyrygenta = utworzPartytury({
+    plik: path.join(ANTIGRAVITY_DIR, 'partytury.json'),
+    katalogSkilli: path.join(__dirname, 'TeO_Skille'),
+    katalogWorkflow: path.join(__dirname, '_OtakOs_AI', 'workflows'),
+    modele: () => Dyrygent.katalog(),
+    silniki: () => Silniki.baza(),
+    cele: CELE_DYRYGENTA,
+    jevLokalny: JevLokalny, jev: Jev, szyna: Szyna,
+});
 Dyrygent.skonfiguruj({
     jev: Jev,   // ⚖️ Dyrygent na Jev: wybór modelu dla każdego TeOgochi z pewnością (bez klucza — model Dyrygenta)
+    jevLokalny: JevLokalny,   // bez klucza Jev — embeddingi lokalnie (gdy model wstaje)
+    partytury: PartyturyDyrygenta,
     katalogWymiar: ANTIGRAVITY_DIR,
     tagi: async () => (await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(8000) })).json(),
     projekty: () => ProjektStada.lista(),
@@ -7948,6 +7966,32 @@ Dyrygent.skonfiguruj({
     pisz: async ({ system, prompt, model }) => (await AppStudio.pisz({ system, prompt, model, timeoutMs: 10 * 60_000 })).tekst,
     model: () => modelDyrygenta(),
 });
+// 🛡️ Straż modeli („auto 3”, services/StrazModeli.js): model TeOgochi zniknął z Ollamy → zastępca wg reguł roli, wróci sam
+const StrazModeliDyrygenta = utworzStrazModeli({
+    plik: path.join(ANTIGRAVITY_DIR, 'zastepstwa-modeli.json'),
+    modeleAgentow: () => ModeleAgentow.wszystkie(),
+    ustaw: (agent, model) => ModeleAgentow.ustaw(agent, model),
+    tagi: async () => (await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(8000) })).json(),
+    katalog: () => Dyrygent.katalog(),
+    zastepca: (kat, agent, oryginal) => Dyrygent.zastepcaDlaAgenta(kat, agent, oryginal),
+    szyna: Szyna,
+});
+if (process.env.OTAKOS_STRAZ_MODELI !== '0') StrazModeliDyrygenta.start();
+app.get('/api/dyrygent/straz', async (_req, res) => res.json({ success: true, ...(await StrazModeliDyrygenta.stan()) }));
+app.post('/api/dyrygent/straz/sprawdz', async (_req, res) => res.json({ success: true, zmiany: await StrazModeliDyrygenta.sprawdz() }));
+// 📜 Partytury: lista, katalogi do układania, ręczna, usunięcie, dopasowanie zadania (Dyrygent ds. Kreatywnych)
+app.get('/api/dyrygent/partytury', async (_req, res) => res.json({ success: true, partytury: await PartyturyDyrygenta.wszystkie(), jevLokalny: JevLokalny.stan() }));
+app.get('/api/dyrygent/partytury/katalogi', async (_req, res) => res.json({ success: true, ...(await PartyturyDyrygenta.katalogi()) }));
+app.post('/api/dyrygent/partytury', async (req, res) => {
+    try { res.json({ success: true, partytura: await PartyturyDyrygenta.dodaj(req.body ?? {}) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.delete('/api/dyrygent/partytury/:id', async (req, res) => res.json({ success: true, usunieto: await PartyturyDyrygenta.usun(req.params.id) }));
+app.post('/api/dyrygent/partytury/dopasuj', async (req, res) => {
+    try { res.json({ success: true, ...(await PartyturyDyrygenta.dopasuj(req.body?.zadanie, { n: Number(req.body?.n) || 3 })) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.get('/api/jev/lokalny', async (_req, res) => res.json({ success: true, dostepny: await JevLokalny.dostepny(), ...JevLokalny.stan() }));
 // ── ⚒️ KUŹNIA SOUP (services/KuzniaSoup.js) — własny model TeOgochi z jego ocenionej pracy (soup-cli, lokalnie) ──
 KuzniaSoup.skonfiguruj({
     katalog: path.join(ANTIGRAVITY_DIR, 'kuznia-soup'),

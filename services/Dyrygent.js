@@ -188,23 +188,27 @@ export async function dobierz({ zadanie, agenci = [], szybko = false }) {
     const kat = await katalog();
     if (!kat.length) throw new Error('Katedra nie ma żadnego modelu w Ollamie — nie ma z czego dobierać.');
     const linia = liniaKatalogu;
+    // 📜 Partytura: najbliższy gotowy układ (genialne wykonanie, ręczna, wzorcowa) — podpowiedź dla Dyrygenta.
+    const partytura = await najblizszaPartytura(opis);
     const sklad = agenci.map((a) => `- ${a.id} — ${a.imie}${a.dziedzina ? ` (${a.dziedzina})` : ''}${a.zadanie ? `: ${String(a.zadanie).split(':')[0]}` : ''}${wymaganiaRoli(a) ? ` [WYMAGANIE ROLI: ${opisWymagan(wymaganiaRoli(a))}]` : ''}`).join('\n');
     const system = `Jesteś DYRYGENTEM Katedry OtakOS. Przydzielasz TeOgochi modele językowe do zadania — każdy gra na instrumencie, który mu służy.
 Zasady: bierzesz WYŁĄCZNIE modele z KATALOGU (dokładna nazwa). Większy model do rozumowania, scalania i kodu; mniejszy i szybszy do krótkich, prostych wkładów. Jeśli TeOgochi ma WŁASNY model — zwykle to on. WYMAGANIE ROLI jest twarde. Karta graficzna jest jedna (ok. 6 GB) — najwyżej ${MAX_MODELI} różne modele dla całego stada, bo każda podmiana to ładowanie od nowa.
 Odpowiadasz WYŁĄCZNIE JSON-em: {"przydzial":[{"agent":"<id>","model":"<nazwa z katalogu>","powod":"<jedno zdanie>"}]} — po jednym wpisie na każdego TeOgochi z listy.`;
-    const prompt = `KATALOG MODELI KATEDRY:\n${kat.map(linia).join('\n')}\n\nZADANIE SUWERENA:\n${opis.slice(0, 2000)}\n\nSKŁAD (id — kto — co robi):\n${sklad}`;
-    const wynik = (przydzial, reszta) => ({ ...reszta, przydzial: regulyRol(przydzial, agenci, kat), katalog: kat.map((m) => m.nazwa) });
+    const prompt = `KATALOG MODELI KATEDRY:\n${kat.map(linia).join('\n')}\n\nZADANIE SUWERENA:\n${opis.slice(0, 2000)}\n\nSKŁAD (id — kto — co robi):\n${sklad}${partytura ? `\n\n${blokPartytury(partytura)}` : ''}`;
+    const wynik = (przydzial, reszta) => ({ ...reszta, przydzial: regulyRol(przydzial, agenci, kat), katalog: kat.map((m) => m.nazwa), ...(partytura ? { partytura } : {}) });
+    // Jev z chmury, a bez klucza — Jev lokalny (embeddingi, Dyrygent ds. Kreatywnych), jeśli model wstaje.
+    const sedziaJev = cfg.jev?.stan?.().maKlucz ? cfg.jev : (cfg.jevLokalny && await cfg.jevLokalny.dostepny().catch(() => false) ? cfg.jevLokalny : null);
 
     // ⚖️ KROK 3: Jev zawęża (3 kandydatów na TeOgochi, w ramach wymagań roli) → większy model lokalny rozstrzyga
     // z uzasadnieniem i limitem modeli. `szybko` = sam Jev. Jev padnie / bez klucza → cały wybór robi model.
     let jevBlad = null;
-    if (cfg.jev?.stan?.().maKlucz) {
+    if (sedziaJev) {
         try {
-            const j = await dobierzJev(cfg.jev, { opis, agenci, kat, linia });
+            const j = await dobierzJev(sedziaJev, { opis, agenci, kat, linia });
             if (j.przydzial.length) {
                 if (szybko) return wynik(ograniczDoModeli(j.przydzial, j.krotkie, kat), { ...j, silnik: 'jev' });
                 try {
-                    const r = await rozstrzygnij({ opis, agenci, kat, krotkie: j.krotkie, jevPrzydzial: j.przydzial });
+                    const r = await rozstrzygnij({ opis, agenci, kat, krotkie: j.krotkie, jevPrzydzial: j.przydzial, partytura });
                     return wynik(ograniczDoModeli(r.przydzial, j.krotkie, kat), { odrzucone: [...j.odrzucone, ...r.odrzucone], krotkie: j.krotkie, model: `${j.model} → ${r.model}`, silnik: 'jev+model' });
                 } catch (e) {
                     return wynik(ograniczDoModeli(j.przydzial, j.krotkie, kat), { ...j, silnik: 'jev', rozstrzygniecieBlad: String(e.message || e).slice(0, 200) });
@@ -322,7 +326,7 @@ export function modelRozstrzygajacy(kat, modelDyrygenta) {
     return kandydaci[0]?.nazwa ?? modelDyrygenta;
 }
 
-async function rozstrzygnij({ opis, agenci, kat, krotkie, jevPrzydzial }) {
+async function rozstrzygnij({ opis, agenci, kat, krotkie, jevPrzydzial, partytura = null }) {
     const poNazwie = new Map(kat.map((m) => [m.nazwa, m]));
     const model = modelRozstrzygajacy(kat, await cfg.model());
     const system = `Jesteś DYRYGENTEM Katedry OtakOS. Dla każdego TeOgochi masz już 3 kandydatów (z szybkiego wstępnego wyboru, z prawdopodobieństwem). Wybierz JEDNEGO z jego listy — tego, który naprawdę służy jego roli w tym zadaniu. Ważysz: rolę i jej wymaganie, rozmiar (większy = mądrzejszy, ale wolniejszy), fakty z karty modelu, ocenę Sędziego-Jev, a także to, że karta graficzna jest jedna — najwyżej ${MAX_MODELI} różne modele dla całego stada (wspólny model dla podobnych ról to zaleta). Wysokie prawdopodobieństwo wstępne to tylko podpowiedź, nie wyrok.
@@ -331,7 +335,7 @@ Odpowiadasz WYŁĄCZNIE JSON-em: {"przydzial":[{"agent":"<id>","model":"<nazwa z
         const w = wymaganiaRoli(a);
         const lista = (krotkie[a.id] ?? []).map((k) => `    · ${k.model} (wstępnie ${k.p}) — ${poNazwie.get(k.model) ? `${kartaZFaktow(poNazwie.get(k.model))}; ${opisPracy(poNazwie.get(k.model).praca)}` : '?'}`).join('\n');
         return `- ${a.id} — ${a.imie}${a.dziedzina ? ` (${a.dziedzina})` : ''}${w ? ` [wymaganie: ${opisWymagan(w)}]` : ''}\n${lista}`;
-    }).join('\n')}`;
+    }).join('\n')}${partytura ? `\n\n${blokPartytury(partytura)}` : ''}`;
     const odp = await cfg.pisz({ system, prompt, model });
     const j = wylowJson(odp);
     if (!j) throw new Error(`model rozstrzygający (${model}) nie oddał JSON-a`);
@@ -345,6 +349,32 @@ Odpowiadasz WYŁĄCZNIE JSON-em: {"przydzial":[{"agent":"<id>","model":"<nazwa z
         if (jev) przydzial.push({ ...jev, powod: `${jev.powod} · rozstrzygający nie wybrał — zostaje wstępny` });
     }
     return { przydzial, odrzucone, model };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 📜 PARTYTURY (services/Partytury.js) — Dyrygent ds. Kreatywnych dopasowuje zadanie do gotowego układu.
+// Próg zależy od metody: embeddingi (cosinus), Jev (prawdopodobieństwo), słowa (część wspólnych słów).
+// ─────────────────────────────────────────────────────────────────────────────
+const PROG_PARTYTURY = { embeddingi: 0.55, jev: 0.5, slowa: 0.34 };
+async function najblizszaPartytura(opis) {
+    if (!cfg.partytury) return null;
+    try {
+        const d = await cfg.partytury.dopasuj(opis, { n: 1 });
+        const w = d?.wyniki?.[0];
+        if (!w || w.podobienstwo < (PROG_PARTYTURY[d.metoda] ?? 1)) return null;
+        const p = w.partytura;
+        return { id: p.id, nazwa: p.nazwa, zrodlo: p.zrodlo, ocena: p.ocena ?? null, podobienstwo: w.podobienstwo, metoda: d.metoda, role: p.role, narzedzia: p.narzedzia, workflow: p.workflow, skille: p.skille };
+    } catch { return null; }
+}
+const blokPartytury = (p) => `PARTYTURA ${p.zrodlo === 'wykonanie' ? `GENIALNEGO WYKONANIA (Sędzia-Jev ${p.ocena}/10)` : p.zrodlo === 'reczna' ? 'SUWERENA' : 'WZORCOWA KATEDRY'} — podobne zadanie (${p.metoda} ${p.podobienstwo}): „${p.nazwa}”.
+Role w niej: ${p.role.map((r) => `${r.agent}${r.model ? ` → ${r.model}` : ''}`).join(', ') || '—'}. Narzędzia: ${(p.narzedzia ?? []).join(', ') || '—'}. To podpowiedź z udanej pracy, nie nakaz — modele w niej sprawdzone w boju ważą więcej.`;
+
+/** 🛡️ Zastępca dla straży modeli (auto 3): spełnia rolę, lokalny, rozmiarem najbliższy oryginałowi (podobny instrument). */
+export function zastepcaDlaAgenta(kat, agentId, oryginal) {
+    const w = wymaganiaRoli({ id: agentId });
+    const cel = rozmiarModelu(oryginal) || miliardy(kat.find((m) => m.nazwa === oryginal)) || 7;
+    return kat.filter((m) => m.nazwa !== oryginal && !NIE_DO_PISANIA.test(m.nazwa) && !/cloud/.test(m.nazwa) && !zgniety(m) && spelnia(m, w, agentId))
+        .sort((a, b) => Math.abs((miliardy(a) ?? 99) - cel) - Math.abs((miliardy(b) ?? 99) - cel) || (b.praca?.sredniaJev ?? -1) - (a.praca?.sredniaJev ?? -1))[0] ?? null;
 }
 
 /**
@@ -430,4 +460,4 @@ export async function zastosuj(przydzial = []) {
     return wynik;
 }
 
-export default { skonfiguruj, katalog, dobierz, dobierzJev, regulaScalajacych, regulyRol, WYMAGANIA_ROL, wymaganiaRoli, spelnia, SCALAJACY, zastosuj, ustawKarte, statystyki, sprawdzPrzydzial, wylowJson, kartaZFaktow, cechyZNazwy, opisPracy, liniaKatalogu, kandydaciJev, modelRozstrzygajacy, ograniczDoModeli, MAX_MODELI };
+export default { zastepcaDlaAgenta, skonfiguruj, katalog, dobierz, dobierzJev, regulaScalajacych, regulyRol, WYMAGANIA_ROL, wymaganiaRoli, spelnia, SCALAJACY, zastosuj, ustawKarte, statystyki, sprawdzPrzydzial, wylowJson, kartaZFaktow, cechyZNazwy, opisPracy, liniaKatalogu, kandydaciJev, modelRozstrzygajacy, ograniczDoModeli, MAX_MODELI };

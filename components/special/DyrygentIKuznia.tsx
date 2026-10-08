@@ -46,6 +46,8 @@ interface Doktor {
 }
 interface Sondaz { stan: string; etap?: string; blad?: string | null; podsumowanie?: string | null; log?: string[] }
 
+interface Partytura { id: string; nazwa: string; cel: string; zrodlo: 'katedra' | 'reczna' | 'wykonanie'; opis: string; role: { agent: string; model?: string | null; zadanie?: string }[]; narzedzia: string[]; workflow: string[]; skille: string[]; ocena?: number }
+
 async function zMostu<T>(sciezka: string, init?: RequestInit): Promise<T> {
     const r = await fetch(`${MOST}${sciezka}`, { headers: { 'Content-Type': 'application/json' }, ...init });
     const d = await r.json().catch(() => null);
@@ -60,7 +62,11 @@ export const DyrygentPanel: React.FC = () => {
     const [zadanie, setZadanie] = useState('');
     // ⚡ sam Jev (szybko) albo Jev zawęża + większy model lokalny rozstrzyga (domyślnie — mądrzej, kilkadziesiąt sekund)
     const [szybko, setSzybko] = useState(false);
-    const [propozycja, setPropozycja] = useState<{ przydzial: Przydzial[]; odrzucone: (Przydzial & { powod: string })[]; model: string; silnik?: string; rozstrzygniecieBlad?: string } | null>(null);
+    const [propozycja, setPropozycja] = useState<{ przydzial: Przydzial[]; odrzucone: (Przydzial & { powod: string })[]; model: string; silnik?: string; rozstrzygniecieBlad?: string; partytura?: { nazwa: string; zrodlo: string; podobienstwo: number; metoda: string; ocena: number | null } } | null>(null);
+    // 📜 Partytury (gotowe układy produkcji, genialne wykonania) i 🛡️ straż modeli (auto 3)
+    const [partytury, setPartytury] = useState<Partytura[] | null>(null);
+    const [jevLokalny, setJevLokalny] = useState<{ model: string; powod: string | null } | null>(null);
+    const [straz, setStraz] = useState<{ kiedy: string | null; blad: string | null; zastepstwa: Record<string, { oryginal: string; zastepca: string; kiedy: string }> } | null>(null);
     const [zajety, setZajety] = useState(false);
     const [edycja, setEdycja] = useState<string | null>(null);
     const [opis, setOpis] = useState('');
@@ -75,6 +81,19 @@ export const DyrygentPanel: React.FC = () => {
         catch (e) { toast.error(`Katalog modeli: ${blad(e)}`); }
     }, []);
     useEffect(() => { void odswiez(); }, [odswiez]);
+    const odswiezPartytury = useCallback(async () => {
+        try { const d = await zMostu<{ partytury: Partytura[]; jevLokalny: { model: string; powod: string | null } }>('/api/dyrygent/partytury'); setPartytury(d.partytury); setJevLokalny(d.jevLokalny); } catch { setPartytury(null); }
+        try { setStraz(await zMostu('/api/dyrygent/straz')); } catch { setStraz(null); }
+    }, []);
+    useEffect(() => { void odswiezPartytury(); }, [odswiezPartytury]);
+    const sprawdzStraz = async () => {
+        try { const d = await zMostu<{ zmiany: { agent: string; rodzaj: string; z: string; na: string | null }[] }>('/api/dyrygent/straz/sprawdz', { method: 'POST', body: '{}' }); toast.success(d.zmiany.length ? d.zmiany.map((z) => `${z.agent}: ${z.rodzaj} ${z.z} → ${z.na ?? '—'}`).join(' · ') : '🛡️ Wszystkie modele TeOgochi są w Ollamie.', { duration: 7000 }); await odswiezPartytury(); await odswiez(); }
+        catch (e) { toast.error(blad(e)); }
+    };
+    const usunPartyture = async (id: string) => {
+        if (!window.confirm('Usunąć tę partyturę?')) return;
+        try { await zMostu(`/api/dyrygent/partytury/${encodeURIComponent(id)}`, { method: 'DELETE' }); await odswiezPartytury(); } catch (e) { toast.error(blad(e)); }
+    };
 
     const dobierz = async () => {
         setZajety(true); setPropozycja(null);
@@ -154,12 +173,39 @@ export const DyrygentPanel: React.FC = () => {
                 <div className="space-y-1 rounded-lg border border-sky-700/40 p-2 text-[11px]">
                     <div className="text-slate-400">Propozycja Dyrygenta ({propozycja.model}):</div>
                     {propozycja.rozstrzygniecieBlad && <div className="text-amber-300/80">Większy model nie rozstrzygnął ({propozycja.rozstrzygniecieBlad}) — zostaje wybór Jev.</div>}
+                    {propozycja.partytura && <div className="text-violet-200/90">📜 Podpowiedź z partytury: „{propozycja.partytura.nazwa}” ({propozycja.partytura.zrodlo === 'wykonanie' ? `genialne wykonanie ${propozycja.partytura.ocena}/10` : propozycja.partytura.zrodlo === 'reczna' ? 'Twoja' : 'wzorcowa'}, {propozycja.partytura.metoda} {propozycja.partytura.podobienstwo})</div>}
                     {propozycja.przydzial.map((p) => <div key={p.agent}><b className="text-slate-200">{p.agent}</b> → <span className="font-mono text-sky-200">{p.model}</span> <span className="text-slate-500">{p.powod}</span></div>)}
                     {propozycja.odrzucone.map((p, i) => <div key={i} className="text-amber-300/80">✕ {p.agent} → {p.model}: {p.powod}</div>)}
                     <button onClick={zastosuj} disabled={zajety || !propozycja.przydzial.length} className="mt-1 rounded bg-emerald-700/50 px-3 py-1 text-emerald-100 disabled:opacity-40">Zastosuj na stałe (silniki TeOgochi)</button>
                     <div className="text-slate-500">Albo tylko dla jednego projektu: w Świecie przy nowym projekcie zaznacz „🎼 Dyrygent dobierze modele". Na Stole Dyrygent dobiera modele sam, zanim stado ruszy.</div>
                 </div>
             )}
+
+            {/* 📜 Partytury Dyrygenta + 🛡️ straż modeli (auto 3) */}
+            <div className="space-y-1.5 rounded-lg border border-violet-700/30 bg-black/20 p-2 text-[11px]">
+                <div className="flex items-center gap-2">
+                    <span className="font-bold text-violet-200">📜 Partytury — gotowe układy i genialne wykonania</span>
+                    <span className="ml-auto text-[10px] text-slate-500">Dyrygent ds. Kreatywnych: {jevLokalny?.powod ? `Jev z chmury (lokalny ${jevLokalny.model.split('/').pop()} nie wstaje)` : `lokalnie ${jevLokalny?.model.split('/').pop() ?? '—'}`}</span>
+                </div>
+                {!partytury && <div className="text-slate-500">Most nie podał partytur (stary most — restart).</div>}
+                {partytury?.map((p) => (
+                    <div key={p.id} className="flex items-start gap-2 border-t border-slate-800/60 pt-1">
+                        <span>{p.zrodlo === 'wykonanie' ? '🌟' : p.zrodlo === 'reczna' ? '✍️' : '🏛️'}</span>
+                        <div className="min-w-0 flex-1">
+                            <div className="text-slate-200">{p.nazwa} <span className="text-slate-500">· {p.cel}{p.ocena ? ` · Sędzia-Jev ${p.ocena}/10` : ''}</span></div>
+                            <div className="truncate text-slate-500">{p.role.map((r) => `${r.agent}${r.model ? `→${r.model.split('/').pop()}` : ''}`).join(', ')}{p.narzedzia.length ? ` · ${p.narzedzia.join(', ')}` : ''}</div>
+                        </div>
+                        {p.zrodlo !== 'katedra' && <button onClick={() => void usunPartyture(p.id)} className="text-slate-500 hover:text-rose-300" title="Usuń partyturę">✕</button>}
+                    </div>
+                ))}
+                <div className="text-[10px] text-slate-500">🌟 = projekt stada oceniony przez Sędziego-Jev na ≥ 9/10 zapisuje się sam. Dyrygent podpowiada najbliższą partyturę przy doborze.</div>
+                <div className="flex items-center gap-2 border-t border-slate-800/60 pt-1.5">
+                    <span className="font-bold text-sky-200">🛡️ Straż modeli</span>
+                    <span className="text-slate-500">{straz ? (straz.blad ? `⚠ ${straz.blad}` : straz.kiedy ? `ostatnio ${new Date(straz.kiedy).toLocaleTimeString('pl-PL')}` : 'pierwsze sprawdzenie minutę po starcie mostu') : '—'}</span>
+                    <button onClick={() => void sprawdzStraz()} className="ml-auto rounded bg-sky-800/50 px-2 py-0.5 text-sky-100">Sprawdź teraz</button>
+                </div>
+                {straz && Object.entries(straz.zastepstwa).map(([agent, z]) => <div key={agent} className="text-amber-200/90">{agent}: {z.oryginal} zniknął z Ollamy → gra na {z.zastepca} (wróci sam)</div>)}
+            </div>
 
             {/* 🎯 Do celu: silniki (wideo, muzyka, głos, 3D…) z bazy Katedry + czego brakuje + kandydaci Zwiadowcy */}
             <div className="space-y-2 rounded-lg border border-sky-700/30 bg-black/20 p-2">
