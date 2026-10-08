@@ -6591,10 +6591,12 @@ app.post('/api/ciag/rozpisz', async (req, res) => {
  * czekać na trupa.
  */
 async function czekajNaPlikWideo(zlecenie, czyPrzerwane) {
-    const DO_KIEDY = Date.now() + 45 * 60 * 1000;
-    let poMilczeniu = 0;
+    // ⏳ 45 min na start, a dopóki ComfyUI liczy albo trzyma zlecenie w kolejce — termin się przesuwa (Wideo.terminCzekania).
+    const start = Date.now();
+    let doKiedy = start + Wideo.CZEKANIE_WIDEO.pierwszy;
+    let poMilczeniu = 0, zgubione = 0;
 
-    while (Date.now() < DO_KIEDY) {
+    while (Date.now() < doKiedy) {
         if (czyPrzerwane?.()) return null;
         await new Promise((r) => setTimeout(r, 5000));
 
@@ -6619,8 +6621,12 @@ async function czekajNaPlikWideo(zlecenie, czyPrzerwane) {
 
         if (s.ok && s.blad) throw new Error(`ComfyUI: ${JSON.stringify(s.blad).slice(0, 200)}`);
         if (s.ok && s.gotowe && s.materialy?.length) return s.materialy[0].sciezka;
+        doKiedy = Wideo.terminCzekania({ start, termin: doKiedy, wToku: !!s.wToku });
+        // Ani w historii, ani w kolejce — ComfyUI tego zlecenia nie zna (restart, przerwanie). Trzy razy z rzędu = koniec.
+        zgubione = s.stan === 'zgubione' ? zgubione + 1 : 0;
+        if (zgubione >= 3) throw new Error('ComfyUI nie ma już tego zlecenia (ani w kolejce, ani w historii) — przerwane albo silnik był restartowany. Ujęcie trzeba policzyć od nowa.');
     }
-    throw new Error('45 minut bez pliku — silnik nie oddał wyniku.');
+    throw new Error(`${Math.round((Date.now() - start) / 60_000)} min bez pliku — silnik nie oddał wyniku.`);
 }
 
 /** POST /api/ciag/scena — odpal łańcuch ujęć. Zwraca id od razu, praca leci w tle. */

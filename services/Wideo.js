@@ -144,6 +144,29 @@ export const KLATEK_DOMYSLNIE = 49;
  * 14 h przy 704, 29 h przy 960 i 51 h przy 1280. Natywna rozdzielczość
  * zostaje do pojedynczych, ważnych ujęć — ustawia sią ją w profilu Reżysera.
  */
+/**
+ * 🧩 DEKODOWANIE KAFELKOWE (Suweren 2026-10-08: render 121 klatek 960×544 — próbkowanie 12 min 41 s,
+ * a samo zwykłe `VAEDecode` kolejne ~40 min; cały render 54 min 29 s). Całe ujęcie naraz nie mieści się
+ * w 6 GB karty, sterownik przelewa resztę do RAM-u i dekodowanie pełznie. `VAEDecodeTiled` dekoduje po
+ * `temporal_size` klatek i kafelkach `tile_size` px z zakładką — ten sam wynik, mieści się w karcie.
+ * Wyłącz: OTAKOS_WIDEO_KAFELKI=0. Rozmiary: OTAKOS_WIDEO_KAFEL (px), OTAKOS_WIDEO_KAFEL_KLATEK.
+ */
+export function dekodujKafelkami(graf, env = process.env) {
+    if (env.OTAKOS_WIDEO_KAFELKI === '0') return graf;
+    for (const k of Object.keys(graf)) {
+        if (graf[k]?.class_type !== 'VAEDecode') continue;
+        graf[k] = {
+            class_type: 'VAEDecodeTiled',
+            inputs: {
+                ...graf[k].inputs,
+                tile_size: Number(env.OTAKOS_WIDEO_KAFEL) || 512, overlap: 64,
+                temporal_size: Number(env.OTAKOS_WIDEO_KAFEL_KLATEK) || 32, temporal_overlap: 8,
+            },
+        };
+    }
+    return graf;
+}
+
 export const SZEROKOSC_DOMYSLNIE = Number(process.env.OTAKOS_SZEROKOSC) || 960;
 export const WYSOKOSC_DOMYSLNIE = Number(process.env.OTAKOS_WYSOKOSC) || 544;
 
@@ -272,6 +295,7 @@ export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, kla
         graf['90'] = { class_type: 'LoadImage', inputs: { image: obrazStartowy } };
         graf[w.wymiary].inputs.start_image = ['90', 0];
     }
+    dekodujKafelkami(graf);
 
     try {
         const r = await pobierzZLimitem(`${comfyBase}/prompt`, {
@@ -393,6 +417,7 @@ export async function dopiszUjecie({ comfyBase, prompt, klatka, szerokosc, wysok
     graf['8'].inputs.steps = Number(kroki) || 20;
     graf['8'].inputs.seed = Number.isFinite(Number(ziarno)) ? Number(ziarno) : Math.floor(Math.random() * 1e9);
     graf['10'].inputs.fps = Number(fps) || 24;
+    dekodujKafelkami(graf);
 
     try {
         const r = await pobierzZLimitem(`${comfyBase}/prompt`, {
@@ -423,13 +448,31 @@ export async function dopiszUjecie({ comfyBase, prompt, klatka, szerokosc, wysok
  * a „gotowe" bez możliwości znalezienia pliku niczym się nie różni od atrapy.
  * `comfyDir` jest opcjonalny: bez niego oddajemy ścieżkę względną wyjścia.
  */
+/**
+ * ⏳ Do kiedy czekać na plik. Stałe 45 min zrywało render, który LICZYŁ dalej (2026-10-08: 54 min 29 s,
+ * plik powstał, a studio pokazało „padł”). Dopóki ComfyUI ma zlecenie w toku albo w kolejce — termin
+ * przesuwa się o `zapas` od teraz, ale nie dalej niż `sufit` od startu.
+ */
+export const CZEKANIE_WIDEO = { pierwszy: 45 * 60_000, zapas: 20 * 60_000, sufit: 4 * 60 * 60_000 };
+export function terminCzekania({ start, termin, wToku, teraz = Date.now(), c = CZEKANIE_WIDEO }) {
+    if (!wToku) return termin;
+    return Math.min(start + c.sufit, Math.max(termin, teraz + c.zapas));
+}
+
 export async function stanZlecenia(comfyBase, id, comfyDir = null) {
     try {
         const r = await pobierzZLimitem(`${comfyBase}/history/${encodeURIComponent(id)}`, {}, 20000);
         if (!r.ok) return { ok: false, powod: `ComfyUI HTTP ${r.status}` };
         const d = await r.json();
         const wpis = d?.[id];
-        if (!wpis) return { ok: true, gotowe: false, stan: 'w kolejce albo liczy' };
+        if (!wpis) {
+            // Bez wpisu w historii: liczy, czeka w kolejce — czy ComfyUI go w ogóle nie zna (restart, przerwane)?
+            // Studio czeka, dopóki `wToku` — a nie stałe 45 min (render 121 klatek trwał 54 min i „padł” w UI).
+            const q = await pobierzZLimitem(`${comfyBase}/queue`, {}, 10000).then((x) => x.json()).catch(() => null);
+            const ma = (lista) => (lista ?? []).some((z) => z?.[1] === id);
+            const stan = !q ? 'nieznany' : ma(q.queue_running) ? 'liczy' : ma(q.queue_pending) ? 'w-kolejce' : 'zgubione';
+            return { ok: true, gotowe: false, stan, wToku: stan === 'liczy' || stan === 'w-kolejce' };
+        }
 
         const pliki = [];
         const materialy = [];
@@ -457,7 +500,7 @@ export async function stanZlecenia(comfyBase, id, comfyDir = null) {
 }
 
 export default {
-    generujKadrObraz, SZEROKOSC_DOMYSLNIE, WYSOKOSC_DOMYSLNIE, stanWideo, generujScene, dopiszUjecie, stanZlecenia };
+    generujKadrObraz, SZEROKOSC_DOMYSLNIE, WYSOKOSC_DOMYSLNIE, stanWideo, generujScene, dopiszUjecie, stanZlecenia, dekodujKafelkami, terminCzekania, CZEKANIE_WIDEO };
 
 /**
  * Policz OBRAZ dowolnym silnikiem z rejestru (services/SilnikiObrazu.js).
