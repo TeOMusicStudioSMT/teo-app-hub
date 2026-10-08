@@ -131,7 +131,7 @@ export async function uprosc(id, sciany) {
     const master = path.join(dirAssetu(id), 'master.glb');
     if (!fsSync.existsSync(master)) throw new Error('Ten asset nie ma master.glb (starszy zapis) — wygeneruj od nowa.');
     m.sciany = Math.max(300, Number(sciany) || 20000);
-    m.siatka = await Siatka3D.przygotujPodGre(master, path.join(dirAssetu(id), 'model.glb'), m.sciany);
+    m.siatka = await Siatka3D.przygotujPodGre(master, path.join(dirAssetu(id), 'model.glb'), m.sciany, opcjeFragmentu(m));
     m.rozmiarGlb = (await fs.stat(path.join(dirAssetu(id), 'model.glb'))).size;
     await fs.writeFile(path.join(dirAssetu(id), 'meta.json'), JSON.stringify(m, null, 2), 'utf8');
     return m;
@@ -314,11 +314,98 @@ export async function usunObraz(id) {
 export async function upiekszLokalnie(id, { rozdzielczosc = 1024, sciany = 30000 } = {}) {
     const m = await meta(id);
     if (!m) throw new Error('Nie ma takiego assetu.');
-    const wspolne = { opis: m.opis, nazwa: m.nazwa, rozdzielczosc: Number(rozdzielczosc) || 1024, sciany: Number(sciany) || 30000, ulepsza: id };
+    // Poprawki tej bryły (kolor, gęstszy fragment) przechodzą na nową — liczona od nowa nie wraca do ciemnej wersji.
+    const wspolne = { opis: m.opis, nazwa: m.nazwa, rozdzielczosc: Number(rozdzielczosc) || 1024, sciany: Number(sciany) || 30000, ulepsza: id, poprawki: m.poprawki ?? [] };
     if (m.zObrazu && plikObrazu(m.zObrazu)) return generuj({ ...wspolne, zObrazu: m.zObrazu, wycinek: m.wycinek ?? null });
     const zrodlo = ['obraz-zrodlo.png', 'obraz-zrodlo.jpg', 'obraz-zrodlo.webp', 'obraz.png'].map((p) => path.join(dirAssetu(id), p)).find((p) => fsSync.existsSync(p));
     if (!zrodlo) throw new Error('Ta bryła nie ma zapisanego obrazu źródłowego — nie ma z czego liczyć jej od nowa.');
     return generuj({ ...wspolne, zdjecie: zrodlo });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🎨🔍 POPRAWKI BRYŁY (Suweren 2026-10-07/08: „zmiana koloru” i „60 000 na samą twarz”). Bez GPU i bez
+// ComfyUI: kolory wierzchołków i upraszczanie z mastera (services/Siatka3D.js), sekundy. Każda poprawka =
+// NOWA wersja obok starej (`ulepsza`), z listą `poprawki` (kolejne kolory składają się; fragment — ostatni).
+// ─────────────────────────────────────────────────────────────────────────────
+const USTAWIENIA_KOLORU = ['jasnosc', 'kontrast', 'nasycenie', 'odcien', 'czern', 'auto'];
+function oczyscKolor(k = {}) {
+    const o = {};
+    for (const a of ['jasnosc', 'kontrast', 'nasycenie']) o[a] = Math.max(-1, Math.min(1, Number(k[a]) || 0));
+    o.odcien = Math.max(-180, Math.min(180, Number(k.odcien) || 0));
+    o.czern = Math.max(0, Math.min(1, Number(k.czern) || 0));
+    o.auto = !!k.auto;
+    if (USTAWIENIA_KOLORU.every((a) => !o[a])) throw new Error('Kolor bez zmian — przesuń któryś suwak albo włącz auto-poziomy.');
+    return o;
+}
+/** Fragment z poprawek: ostatnia poprawka „fragment” (gęściej w pudełku). */
+function opcjeFragmentu(m) {
+    const f = [...(m.poprawki ?? [])].reverse().find((p) => p.rodzaj === 'fragment');
+    return f ? { fragment: f.pudelko, scianyFragmentu: f.sciany } : {};
+}
+/** Nałóż poprawki koloru (po kolei) na master → zapis do `cel`. Zwraca poziomy jasności po zmianie. */
+async function kolorujMaster(zrodlo, cel, poprawki) {
+    const s = await Siatka3D.wczytajISpawaj(zrodlo);
+    if (!s.kolory) throw new Error('Ta bryła nie ma kolorów wierzchołków — nie ma czego przekolorować.');
+    for (const p of poprawki.filter((x) => x.rodzaj === 'kolor')) s.kolory = Siatka3D.przekoloruj(s.kolory, p);
+    await Siatka3D.zapiszGlb(s, s.indeksy, cel);
+    return Siatka3D.poziomy(s.kolory);
+}
+
+async function nowaWersja(id, poprawka, { sciany } = {}) {
+    const m = await meta(id);
+    if (!m) throw new Error('Nie ma takiego assetu.');
+    if (m.stan !== 'gotowe') throw new Error('Bryła jeszcze się liczy albo padła — poprawki tylko na gotowej.');
+    const master = path.join(dirAssetu(id), 'master.glb');
+    if (!fsSync.existsSync(master)) throw new Error('Ta bryła nie ma master.glb (starszy zapis) — wygeneruj ją od nowa („Upiększ lokalnie”).');
+    let nowy = `${m.nazwa}-${crypto.randomBytes(2).toString('hex')}`;
+    while (fsSync.existsSync(dirAssetu(nowy))) nowy = `${m.nazwa}-${crypto.randomBytes(2).toString('hex')}`;
+    const dir = dirAssetu(nowy);
+    await fs.mkdir(dir, { recursive: true });
+    try {
+        const t0 = Date.now();
+        for (const p of await fs.readdir(dirAssetu(id))) if (/^(obraz\.png|obraz-zrodlo\.(png|jpg|jpeg|webp)|wycinek\.png)$/.test(p)) await fs.copyFile(path.join(dirAssetu(id), p), path.join(dir, p));
+        const { ruchy: _r, blad: _b, siatka: _s, rozmiarGlb: _g, wGrach: _w, jasnoscKolorow: _j, ...reszta } = m;
+        const n = { ...reszta, id: nowy, utworzono: new Date().toISOString(), stan: 'gotowe', wGrach: [], ulepsza: id, sciany: Math.max(300, Number(sciany) || m.sciany || 8000), czasy: {}, poprawki: [...(m.poprawki ?? []), poprawka] };
+        // Kolor: przeliczony master (kolejna poprawka koloru liczy się na już poprawionym). Fragment: master bez zmian.
+        if (poprawka.rodzaj === 'kolor') n.jasnoscKolorow = await kolorujMaster(master, path.join(dir, 'master.glb'), [poprawka]);
+        else await fs.copyFile(master, path.join(dir, 'master.glb'));
+        n.siatka = await Siatka3D.przygotujPodGre(path.join(dir, 'master.glb'), path.join(dir, 'model.glb'), n.sciany, opcjeFragmentu(n));
+        n.rozmiarGlb = (await fs.stat(path.join(dir, 'model.glb'))).size;
+        n.czasy.razem = Math.round((Date.now() - t0) / 1000);
+        await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(n, null, 2), 'utf8');
+        await cfg.szyna?.nadaj?.({ agent: 'Assety3D', rodzaj: 'praca', tresc: `„${m.nazwa}” — nowa wersja (${poprawka.rodzaj === 'kolor' ? 'kolor' : `gęściej we fragmencie: ${n.siatka.fragment?.trojkaty ?? '?'} ścian`})`, dane: { asset: nowy, z: id } }).catch(() => {});
+        return n;
+    } catch (e) { await fs.rm(dir, { recursive: true, force: true }); throw e; }
+}
+
+/** 🎨 Przekoloruj bryłę: jasność, kontrast, nasycenie (−1…1), odcień (°), podnieś czerń (0…1), auto-poziomy → nowa wersja. */
+export async function przekolorujBryle(id, ustawienia = {}) {
+    return nowaWersja(id, { rodzaj: 'kolor', ...oczyscKolor(ustawienia), kiedy: new Date().toISOString() });
+}
+
+/** 🔍 Gęściej we fragmencie: pudełko {x0,x1,y0,y1[,z0,z1]} (ułamki ramki bryły, y w górę) + ściany fragmentu i całości. */
+export async function zageszczFragment(id, { fragment, scianyFragmentu = 40000, sciany } = {}) {
+    const pudelko = Siatka3D.oczyscFragment(fragment);
+    const sf = Math.max(1000, Math.min(200000, Number(scianyFragmentu) || 40000));
+    const m = await meta(id);
+    const razem = Math.max(sf + 1000, Number(sciany) || (m?.sciany ?? 8000) + sf);
+    return nowaWersja(id, { rodzaj: 'fragment', pudelko, sciany: sf, kiedy: new Date().toISOString() }, { sciany: razem });
+}
+
+/** Ramka sylwetki na obrazie źródłowym (ułamki 0–1, y w dół) — Game Studio przelicza zaznaczenie na obrazie na pudełko bryły. */
+export async function sylwetka(id) {
+    const p = sciezkaPliku(id, 'obraz.png');
+    if (!p) throw new Error('Ta bryła nie ma obrazu źródłowego.');
+    const N = 256;
+    const { stdout } = await uruchomProces(ffmpegPath, ['-loglevel', 'error', '-i', p, '-vf', `scale=${N}:${N}:flags=area,format=rgba`, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: N * N * 4 + 1024 });
+    let x0 = N, y0 = N, x1 = -1, y1 = -1;
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        const i = (y * N + x) * 4;
+        const tlo = stdout[i + 3] < 128 || (stdout[i] > 237 && stdout[i + 1] > 237 && stdout[i + 2] > 237);
+        if (!tlo) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (x1 < 0) return { x0: 0, y0: 0, x1: 1, y1: 1, pewna: false };
+    return { x0: x0 / N, y0: y0 / N, x1: (x1 + 1) / N, y1: (y1 + 1) / N, pewna: true };
 }
 
 /** Obraz z opisu w stylu Pracowni — w tle (jedno zadanie GPU naraz, wspólna kolejka z bryłami). */
@@ -361,7 +448,7 @@ export async function obraz({ opis, styl = 'pojedynczy', galaz = null, projekt =
  * Zlecenie. `zrodlo`: { tekst } albo { zdjecie: <ścieżka pliku> } albo { zObrazu: <id z Pracowni>, wycinek? }. Opcje: sciany (domyślnie 20000),
  * rozdzielczosc (1024|1152|…|2048 — wokselowa, więcej = dokładniej i wolniej), ziarno.
  */
-export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wycinek = null, projekt = null, sciany = 8000, rozdzielczosc = 512, ziarno = null, ulepsza = null } = {}) {
+export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wycinek = null, projekt = null, sciany = 8000, rozdzielczosc = 512, ziarno = null, ulepsza = null, poprawki = [] } = {}) {
     let mObrazu = null;
     if (zObrazu) {
         mObrazu = await metaObrazu(zObrazu);
@@ -393,7 +480,7 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wyc
         catch (e) { await fs.rm(dir, { recursive: true, force: true }); throw new Error(`Nie wyciąłem obrazu: ${String(e.stderr || e.message).slice(0, 200)}`); }
         zdjecie = wyj;
     }
-    const m = { id: assetId, nazwa: baza, opis: String(opis || tekst || nazwa || '').slice(0, 500), zrodlo: zObrazu ? 'obraz' : tekst ? 'tekst' : 'zdjecie', ...(zObrazu ? { zObrazu, wycinek: wycinek ?? null, galaz: mObrazu.galaz ?? null } : {}), tekst: tekst ? String(tekst).slice(0, 1000) : null, sciany: Number(sciany) || 8000, rozdzielczosc: Number(rozdzielczosc) || 512, utworzono: z.od, stan: 'trwa', silnik: 'TRELLIS.2', czasy: {}, wGrach: [], ...(ulepsza ? { ulepsza } : {}) };
+    const m = { id: assetId, nazwa: baza, opis: String(opis || tekst || nazwa || '').slice(0, 500), zrodlo: zObrazu ? 'obraz' : tekst ? 'tekst' : 'zdjecie', ...(zObrazu ? { zObrazu, wycinek: wycinek ?? null, galaz: mObrazu.galaz ?? null } : {}), tekst: tekst ? String(tekst).slice(0, 1000) : null, sciany: Number(sciany) || 8000, rozdzielczosc: Number(rozdzielczosc) || 512, utworzono: z.od, stan: 'trwa', silnik: 'TRELLIS.2', czasy: {}, wGrach: [], ...(ulepsza ? { ulepsza } : {}), ...(poprawki?.length ? { poprawki } : {}) };
     await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(m, null, 2), 'utf8');
 
     (async () => {
@@ -462,8 +549,9 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wyc
             }
             if (!glb) throw new Error('TRELLIS.2 skończył, ale nie widzę pliku GLB w output/katedra/assety.');
             await fs.copyFile(glb, path.join(dir, 'master.glb'));
+            if (m.poprawki?.some((p) => p.rodzaj === 'kolor')) { await kolorujMaster(path.join(dir, 'master.glb'), path.join(dir, 'master.glb'), m.poprawki); krok('siatka', 'kolor z poprzedniej wersji nałożony na nową bryłę'); }
             const t3 = Date.now();
-            m.siatka = await Siatka3D.przygotujPodGre(path.join(dir, 'master.glb'), path.join(dir, 'model.glb'), m.sciany);
+            m.siatka = await Siatka3D.przygotujPodGre(path.join(dir, 'master.glb'), path.join(dir, 'model.glb'), m.sciany, opcjeFragmentu(m));
             m.czasy.uproszczenie = Math.round((Date.now() - t3) / 1000);
             m.rozmiarGlb = (await fs.stat(path.join(dir, 'model.glb'))).size;
             krok('siatka', `siatka: ${m.siatka.przed.trojkaty} → ${m.siatka.trojkaty} trójkątów (${(m.rozmiarGlb / 1e6).toFixed(2)} MB)`);
@@ -485,4 +573,4 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wyc
     return { zadanie: z.id, asset: assetId };
 }
 
-export default { skonfiguruj, zywyComfy, upiekszLokalnie, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
+export default { skonfiguruj, zywyComfy, upiekszLokalnie, przekolorujBryle, zageszczFragment, sylwetka, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };

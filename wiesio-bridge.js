@@ -8205,6 +8205,10 @@ app.post('/api/assety3d/:id/ruch', (req, res) => ytOdp(res, RuchBryl.ozyw(req.pa
 app.delete('/api/assety3d/:id/ruch/:ruch', (req, res) => ytOdp(res, RuchBryl.usun(req.params.id, req.params.ruch).then((ruchy) => ({ ruchy }))));
 // ✨ Upiększ lokalnie: ta sama bryła z tego samego źródła, gęściej (1024, więcej ścian); stara zostaje.
 app.post('/api/assety3d/:id/upiekszaj', (req, res) => ytOdp(res, Assety3D.upiekszLokalnie(req.params.id, { rozdzielczosc: req.body?.rozdzielczosc, sciany: req.body?.sciany })));
+// 🎨 Kolor bryły i 🔍 gęściej we fragmencie — nowa wersja obok starej, sekundy, bez GPU (services/Siatka3D.js).
+app.post('/api/assety3d/:id/kolor', (req, res) => ytOdp(res, Assety3D.przekolorujBryle(req.params.id, req.body ?? {}).then((asset) => ({ asset }))));
+app.post('/api/assety3d/:id/fragment', (req, res) => ytOdp(res, Assety3D.zageszczFragment(req.params.id, { fragment: req.body?.fragment, scianyFragmentu: req.body?.scianyFragmentu, sciany: req.body?.sciany }).then((asset) => ({ asset }))));
+app.get('/api/assety3d/:id/sylwetka', (req, res) => ytOdp(res, Assety3D.sylwetka(req.params.id).then((sylwetka) => ({ sylwetka }))));
 app.post('/api/assety3d/:id/uprosc', async (req, res) => {
     try { res.json({ success: true, asset: await Assety3D.uprosc(req.params.id, req.body?.sciany) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
