@@ -28,6 +28,7 @@ import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import * as ZleceniaStada from './ZleceniaStada.js';
+import { ocenJev } from './SedziaJev.js';
 
 let cfg = {
     katalog: path.join(process.cwd(), '_OtakOs_Wymiar', 'projekty-stada'),
@@ -357,6 +358,21 @@ BRAKI:
         wpis = { runda: p.runda, kto: sedzia.imie, ...czytajOcene(odp) };
     } catch (e) {
         wpis = { runda: p.runda, kto: sedzia.imie, ocena: null, braki: [], blad: String(e.message || e).slice(0, 200) };
+    }
+    // ⚖️ Sędzia Jev (services/SedziaJev.js, 2026-10-08): liczba zgodności z rubryki i każde założenie wizji osobno.
+    // Ocena Jev decyduje (wcześniejszy koniec rund), lokalna zostaje obok do porównania; braki = niespełnione
+    // założenia wizji + słowne braki lokalnego Sędziego. Bez klucza / błąd Jev — po staremu.
+    if (cfg.jev) {
+        try {
+            const j = await ocenJev(cfg.jev, { wizja: p.wizja, biblia: tekstBiblii, uwagi: uwagiDla(p)?.tresc ?? '' });
+            if (j && j.ocena != null) {
+                const braki = [...new Set([...j.braki, ...(wpis.braki ?? [])])].slice(0, 8);
+                wpis = { ...wpis, kto: `Jev + ${sedzia.imie}`, ocenaLokalna: wpis.ocena, ocena: j.ocena, braki, jev: { model: j.model, pewnosc: j.pewnosc, zalozenia: j.zalozenia } };
+                delete wpis.blad;
+            }
+        } catch (e) {
+            wpis = { ...wpis, jevBlad: String(e.message || e).slice(0, 200) };
+        }
     }
     p.oceny = [...(p.oceny ?? []).filter((o) => o.runda !== p.runda), wpis];
     await zapisz(p);

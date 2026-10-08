@@ -189,3 +189,41 @@ test('dyrygent: projekt dostaje modele dobrane do zadania (tylko dla siebie); po
     assert.match(p2.przydzial.blad, /nie oddał JSON-a/);
     ProjektStada.skonfiguruj({ dyrygent: null });
 });
+
+test('Sędzia Jev: jego ocena decyduje o końcu rund, braki = niespełnione założenia wizji + słowne lokalnego (2026-10-08)', async () => {
+    stadoNaNiby([9, 9, 9]);   // lokalny Sędzia za każdym razem chwali na 9/10
+    const ocenyJev = [6, 9.2];
+    let i = 0;
+    const pytania = [];
+    ProjektStada.skonfiguruj({
+        jev: {
+            stan: () => ({ maKlucz: true }),
+            zapytaj: async ({ questions }) => {
+                pytania.push(Object.keys(questions));
+                const o = ocenyJev[i++] ?? 9;
+                return { model: 'jev-1.13.0', answers: { ocena: { score: o - 1 }, z1: { noul: 0.9 }, z2: { noul: i === 1 ? 0.2 : 0.8 } } };
+            },
+        },
+    });
+    try {
+        const s = await ProjektStada.zaloz({ nazwa: 'Opalowy kot', wizja: '- świecące oko nocą\n- sierść jak opal w dzień', uczestnicy: zespol, rundy: 4 });
+        const p = await skonczony(s.id);
+        assert.equal(p.runda, 2, 'lokalne 9/10 nie kończy — Jev dał 6, dopiero 9,2 kończy');
+        assert.deepEqual(p.oceny.map((o) => [o.runda, o.ocena, o.ocenaLokalna, o.kto]), [[1, 6, 9, 'Jev + Wektor'], [2, 9.2, 9, 'Jev + Wektor']]);
+        assert.match(p.oceny[0].braki[0], /Niespełnione założenie wizji: „sierść jak opal w dzień” \(Jev p=0\.20\)/);
+        assert.ok(p.oceny[0].braki.includes('dołóż mechanikę Grade'), 'słowne braki lokalnego Sędziego zostają');
+        assert.deepEqual(pytania[0], ['ocena', 'z1', 'z2']);
+        assert.equal(p.oceny[0].jev.zalozenia.length, 2);
+    } finally { ProjektStada.skonfiguruj({ jev: null }); }
+});
+
+test('Sędzia Jev padł — zostaje lokalna ocena, błąd zapisany', async () => {
+    stadoNaNiby([6, 9]);
+    ProjektStada.skonfiguruj({ jev: { stan: () => ({ maKlucz: true }), zapytaj: async () => { throw new Error('Jev HTTP 529'); } } });
+    try {
+        const s = await ProjektStada.zaloz({ nazwa: 'Bez Jev', wizja: 'Wizja z jednym założeniem testowym.', uczestnicy: zespol, rundy: 3 });
+        const p = await skonczony(s.id);
+        assert.deepEqual(p.oceny.map((o) => [o.ocena, o.kto]), [[6, 'Wektor'], [9, 'Wektor']]);
+        assert.match(p.oceny[0].jevBlad, /529/);
+    } finally { ProjektStada.skonfiguruj({ jev: null }); }
+});

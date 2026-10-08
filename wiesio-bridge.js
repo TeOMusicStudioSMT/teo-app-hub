@@ -7900,6 +7900,7 @@ Delegat.skonfiguruj({
 // Czat przez AppStudio.pisz — ten sam tor co Kodeks: Ollama lokalnie, `claude:`/`gemini:` tylko z jawnego wyboru.
 ModeleAgentow.skonfiguruj({ katalogWymiar: ANTIGRAVITY_DIR });
 ProjektStada.skonfiguruj({
+    jev: Jev,   // ⚖️ Sędzia Jev: ocena zgodności z wizją i założenia (services/SedziaJev.js); bez klucza — lokalny Sędzia
     katalog: path.join(ANTIGRAVITY_DIR, 'projekty-stada'),
     szyna: Szyna,
     domyslnyModel: DEFAULT_LLM,
