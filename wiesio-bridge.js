@@ -8208,6 +8208,7 @@ app.post('/api/assety3d/:id/upiekszaj', (req, res) => ytOdp(res, Assety3D.upieks
 // 🎨 Kolor bryły i 🔍 gęściej we fragmencie — nowa wersja obok starej, sekundy, bez GPU (services/Siatka3D.js).
 app.post('/api/assety3d/:id/kolor', (req, res) => ytOdp(res, Assety3D.przekolorujBryle(req.params.id, req.body ?? {}).then((asset) => ({ asset }))));
 app.post('/api/assety3d/:id/fragment', (req, res) => ytOdp(res, Assety3D.zageszczFragment(req.params.id, { fragment: req.body?.fragment, scianyFragmentu: req.body?.scianyFragmentu, sciany: req.body?.sciany }).then((asset) => ({ asset }))));
+app.post('/api/assety3d/:id/swiatlo', (req, res) => ytOdp(res, Assety3D.zaswiec(req.params.id, { fragment: req.body?.fragment, prog: req.body?.prog, kolor: req.body?.kolor || null, moc: req.body?.moc }).then((asset) => ({ asset }))));
 app.get('/api/assety3d/:id/sylwetka', (req, res) => ytOdp(res, Assety3D.sylwetka(req.params.id).then((sylwetka) => ({ sylwetka }))));
 app.post('/api/assety3d/:id/uprosc', async (req, res) => {
     try { res.json({ success: true, asset: await Assety3D.uprosc(req.params.id, req.body?.sciany) }); }

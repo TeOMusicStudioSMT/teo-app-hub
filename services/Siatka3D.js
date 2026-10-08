@@ -12,6 +12,7 @@
  * liczby ścian. (3) zapis GLB z jednym prymitywem: POSITION + COLOR_0 + indeksy. CPU, sekundy.
  */
 import { NodeIO, Document } from '@gltf-transform/core';
+import { KHRMaterialsEmissiveStrength } from '@gltf-transform/extensions';
 import { MeshoptSimplifier } from 'meshoptimizer';
 
 /** Wczytaj GLB → jedna spawana siatka { pozycje: Float32Array, kolory: Float32Array|null, indeksy: Uint32Array }. */
@@ -68,8 +69,9 @@ export async function uprosc(siatka, celScian) {
     return { indeksy: ind, blad };
 }
 
-/** Zapisz spawaną/uproszczoną siatkę jako GLB (POSITION + COLOR_0 + indeksy, materiał z kolorami wierzchołków). */
-export async function zapiszGlb(siatka, indeksy, sciezka) {
+/** Zapisz spawaną/uproszczoną siatkę jako GLB (POSITION + COLOR_0 + indeksy, materiał z kolorami wierzchołków).
+ *  Ze `swiatlo` — trójkąty świecące idą do drugiego prymitywu (te same wierzchołki) z materiałem emisyjnym. */
+export async function zapiszGlb(siatka, indeksy, sciezka, swiatlo = null) {
     // wyrzucamy nieużywane wierzchołki
     const uzyte = new Int32Array(siatka.pozycje.length / 3).fill(-1);
     const P = [], C = [];
@@ -79,27 +81,91 @@ export async function zapiszGlb(siatka, indeksy, sciezka) {
         if (uzyte[v] < 0) { uzyte[v] = P.length / 3; P.push(siatka.pozycje[v * 3], siatka.pozycje[v * 3 + 1], siatka.pozycje[v * 3 + 2]); if (siatka.kolory) C.push(siatka.kolory[v * 3], siatka.kolory[v * 3 + 1], siatka.kolory[v * 3 + 2]); }
         I[i] = uzyte[v];
     }
+    // ✨ świecące trójkąty (oko) — wybór na NOWYCH indeksach (P/C już przenumerowane)
+    const sw = swiatlo ? wybierzSwiecace({ pozycje: Float32Array.from(P), kolory: siatka.kolory ? Float32Array.from(C) : null }, I, swiatlo) : null;
     const doc = new Document();
     const buf = doc.createBuffer();
     const pos = doc.createAccessor('POSITION').setType('VEC3').setArray(Float32Array.from(P)).setBuffer(buf);
-    const idx = doc.createAccessor('indeksy').setType('SCALAR').setArray(P.length / 3 > 65535 ? I : Uint16Array.from(I)).setBuffer(buf);
+    const duze = P.length / 3 > 65535;
+    const czesc = (ind, nazwa) => doc.createAccessor(nazwa).setType('SCALAR').setArray(duze ? ind : Uint16Array.from(ind)).setBuffer(buf);
+    const zwykle = sw ? I.filter((_, k) => !sw.maska[Math.floor(k / 3)]) : I;
     // Dwustronnie: siatki z TRELLIS.2 bywaja otwarte i pod izometria widac przez sciany (2026-09-22).
     const mat = doc.createMaterial('kolory').setMetallicFactor(0).setRoughnessFactor(1).setDoubleSided(true);
-    const prim = doc.createPrimitive().setMode(4).setAttribute('POSITION', pos).setIndices(idx).setMaterial(mat);
-    if (siatka.kolory) prim.setAttribute('COLOR_0', doc.createAccessor('COLOR_0').setType('VEC3').setArray(Float32Array.from(C)).setBuffer(buf));
+    const kol = siatka.kolory ? doc.createAccessor('COLOR_0').setType('VEC3').setArray(Float32Array.from(C)).setBuffer(buf) : null;
+    const prim = doc.createPrimitive().setMode(4).setAttribute('POSITION', pos).setIndices(czesc(zwykle, 'indeksy')).setMaterial(mat);
+    if (kol) prim.setAttribute('COLOR_0', kol);
     const mesh = doc.createMesh('asset').addPrimitive(prim);
     const node = doc.createNode('asset').setMesh(mesh);
+    if (sw) {
+        const ext = doc.createExtension(KHRMaterialsEmissiveStrength);
+        const swiecacy = doc.createMaterial('swiatlo').setMetallicFactor(0).setRoughnessFactor(1).setDoubleSided(true)
+            .setEmissiveFactor(sw.kolor).setExtension('KHR_materials_emissive_strength', ext.createEmissiveStrength().setEmissiveStrength(sw.moc));
+        const p2 = doc.createPrimitive().setMode(4).setAttribute('POSITION', pos).setIndices(czesc(I.filter((_, k) => sw.maska[Math.floor(k / 3)]), 'indeksy-swiatla')).setMaterial(swiecacy);
+        if (kol) p2.setAttribute('COLOR_0', kol);
+        mesh.addPrimitive(p2);
+        // Gra (three.js: g.scene.getObjectByName('asset').userData.swiatlo) stawia tu PointLight — mocniej nocą.
+        node.setExtras({ swiatlo: { kolor: sw.hex, moc: sw.moc, srodek: sw.srodek, promien: sw.promien } });
+    }
     doc.createScene('scena').addChild(node);
-    await new NodeIO().write(sciezka, doc);
-    return { wierzcholki: P.length / 3, trojkaty: I.length / 3 };
+    await new NodeIO().registerExtensions([KHRMaterialsEmissiveStrength]).write(sciezka, doc);
+    return { wierzcholki: P.length / 3, trojkaty: I.length / 3, ...(sw ? { swiatlo: { trojkaty: sw.ile, kolor: sw.hex, moc: sw.moc, srodek: sw.srodek, promien: sw.promien } } : {}) };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✨ ŚWIECĄCE OKO (Suweren 2026-10-07: „świecące środkowe oko… nocą widać tylko oko”). glTF nie ma emisji per
+// wierzchołek, więc świecące trójkąty dostają WŁASNY materiał emisyjny (kolor + siła KHR_materials_emissive_strength,
+// three.js czyta to wprost). Wybór: środek trójkąta w pudełku (jak fragment) I średnia jasność jego wierzchołków
+// ≥ `prog` (0 = wszystko w pudełku) — oko kota jest żółte na czarnym futrze, więc próg odcina futro.
+// ─────────────────────────────────────────────────────────────────────────────
+const hex = (c) => `#${c.map((x) => Math.round(Math.max(0, Math.min(1, doSrgb(x))) * 255).toString(16).padStart(2, '0')).join('')}`;
+export function zHex(h) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(h || ''));
+    if (!m) return null;
+    return [0, 2, 4].map((i) => doLin(parseInt(m[1].slice(i, i + 2), 16) / 255));
+}
+
+/** Które trójkąty świecą + kolor (podany albo średni z wybranych, rozjaśniony do max kanału 1) + środek i promień. */
+export function wybierzSwiecace(siatka, indeksy, { pudelko, prog = 0.5, kolor = null, moc = 4 }) {
+    const f = oczyscFragment(pudelko);
+    const P = siatka.pozycje, K = siatka.kolory, n = P.length / 3;
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (let v = 0; v < n; v++) for (let a = 0; a < 3; a++) { const x = P[v * 3 + a]; if (x < mn[a]) mn[a] = x; if (x > mx[a]) mx[a] = x; }
+    const lim = [['x0', 'x1'], ['y0', 'y1'], ['z0', 'z1']].map(([a, b], o) => [mn[o] + f[a] * (mx[o] - mn[o]), mn[o] + f[b] * (mx[o] - mn[o])]);
+    const pr = Math.max(0, Math.min(1, Number(prog) || 0));
+    const maska = new Uint8Array(indeksy.length / 3);
+    const suma = [0, 0, 0], srodek = [0, 0, 0];
+    let ile = 0;
+    for (let t = 0; t < indeksy.length; t += 3) {
+        let w = true;
+        for (let o = 0; o < 3 && w; o++) { const c = (P[indeksy[t] * 3 + o] + P[indeksy[t + 1] * 3 + o] + P[indeksy[t + 2] * 3 + o]) / 3; if (c < lim[o][0] || c > lim[o][1]) w = false; }
+        if (!w) continue;
+        if (K && pr > 0) {
+            let L = 0;
+            for (let j = 0; j < 3; j++) { const v = indeksy[t + j]; L += lumi(doSrgb(K[v * 3]), doSrgb(K[v * 3 + 1]), doSrgb(K[v * 3 + 2])); }
+            if (L / 3 < pr) continue;
+        }
+        maska[t / 3] = 1; ile++;
+        for (let j = 0; j < 3; j++) { const v = indeksy[t + j]; for (let o = 0; o < 3; o++) { srodek[o] += P[v * 3 + o] / 3; if (K) suma[o] += K[v * 3 + o] / 3; } }
+    }
+    if (!ile) throw new Error(pr > 0 ? `W zaznaczeniu nic nie jest jaśniejsze niż próg ${Math.round(pr * 100)} — obniż próg albo zaznacz samo oko.` : 'W zaznaczeniu nie ma ani jednej ściany bryły.');
+    const s = srodek.map((x) => x / ile);
+    let promien = 0;
+    for (let t = 0; t < indeksy.length; t += 3) if (maska[t / 3]) for (let j = 0; j < 3; j++) { const v = indeksy[t + j]; promien = Math.max(promien, Math.hypot(P[v * 3] - s[0], P[v * 3 + 1] - s[1], P[v * 3 + 2] - s[2])); }
+    let barwa = zHex(kolor);
+    if (!barwa) {
+        const sr = K ? suma.map((x) => x / ile) : [1, 0.85, 0.4];
+        const m = Math.max(...sr, 1e-6);
+        barwa = sr.map((x) => x / m);   // rozjaśnione: najsilniejszy kanał = 1
+    }
+    return { maska, ile, kolor: barwa, hex: hex(barwa), moc: Math.max(0.5, Math.min(50, Number(moc) || 4)), srodek: s.map((x) => +x.toFixed(5)), promien: +promien.toFixed(5) };
 }
 
 /** Cały ciąg: GLB z ComfyUI → spawanie → uproszczenie → GLB pod grę. Z `fragment` — gęściej w jego obrębie. */
-export async function przygotujPodGre(zrodlo, cel, celScian, { fragment = null, scianyFragmentu = 0 } = {}) {
+export async function przygotujPodGre(zrodlo, cel, celScian, { fragment = null, scianyFragmentu = 0, swiatlo = null } = {}) {
     const t0 = Date.now();
     const siatka = await wczytajISpawaj(zrodlo);
     const u = fragment ? await uproscZFragmentem(siatka, { cel: celScian, fragment, scianyFragmentu }) : await uprosc(siatka, celScian);
-    const wynik = await zapiszGlb(siatka, u.indeksy, cel);
+    const wynik = await zapiszGlb(siatka, u.indeksy, cel, swiatlo);
     return { ...wynik, przed: siatka.przed, poSpawaniu: { wierzcholki: siatka.pozycje.length / 3, trojkaty: siatka.indeksy.length / 3 }, bladUproszczenia: u.blad, rozmiar: siatka.rozmiar, ms: Date.now() - t0, ...(u.fragment ? { fragment: u.fragment } : {}) };
 }
 
@@ -213,4 +279,4 @@ export async function uproscZFragmentem(siatka, { cel, fragment, scianyFragmentu
     };
 }
 
-export default { wczytajISpawaj, uprosc, zapiszGlb, przygotujPodGre, poziomy, przekoloruj, oczyscFragment, uproscZFragmentem };
+export default { wczytajISpawaj, uprosc, zapiszGlb, przygotujPodGre, poziomy, przekoloruj, oczyscFragment, uproscZFragmentem, wybierzSwiecace, zHex };

@@ -155,7 +155,8 @@ export async function doGry(id, projektId, { ruch = null } = {}) {
     let kat = [];
     try { kat = JSON.parse(await fs.readFile(plikKat, 'utf8')); } catch { kat = []; }
     kat = kat.filter((a) => a.plik !== nazwaPliku);
-    kat.push({ plik: nazwaPliku, nazwa: m.nazwa, opis: m.opis, sciany: m.sciany ?? null, zrodlo: id, ...(wpisRuchu ? { animacja: `ruch_${ruch}` } : {}), dodano: new Date().toISOString() });
+    const sw = m.siatka?.swiatlo;   // ✨ świecące oko: gra stawia PointLight (userData.swiatlo węzła „asset”)
+    kat.push({ plik: nazwaPliku, nazwa: m.nazwa, opis: m.opis, sciany: m.sciany ?? null, zrodlo: id, ...(wpisRuchu ? { animacja: `ruch_${ruch}` } : {}), ...(sw && !wpisRuchu ? { swiatlo: { kolor: sw.kolor, moc: sw.moc } } : {}), dodano: new Date().toISOString() });
     await fs.writeFile(plikKat, JSON.stringify(kat, null, 2), 'utf8');
     m.wGrach = [...new Set([...(m.wGrach ?? []), projektId])];
     await fs.writeFile(path.join(dirAssetu(id), 'meta.json'), JSON.stringify(m, null, 2), 'utf8');
@@ -337,10 +338,11 @@ function oczyscKolor(k = {}) {
     if (USTAWIENIA_KOLORU.every((a) => !o[a])) throw new Error('Kolor bez zmian — przesuń któryś suwak albo włącz auto-poziomy.');
     return o;
 }
-/** Fragment z poprawek: ostatnia poprawka „fragment” (gęściej w pudełku). */
+/** Opcje siatki z poprawek: ostatni „fragment” (gęściej w pudełku) i ostatnie „swiatlo” (świecące oko). */
 function opcjeFragmentu(m) {
-    const f = [...(m.poprawki ?? [])].reverse().find((p) => p.rodzaj === 'fragment');
-    return f ? { fragment: f.pudelko, scianyFragmentu: f.sciany } : {};
+    const ost = (r) => [...(m.poprawki ?? [])].reverse().find((p) => p.rodzaj === r);
+    const f = ost('fragment'), s = ost('swiatlo');
+    return { ...(f ? { fragment: f.pudelko, scianyFragmentu: f.sciany } : {}), ...(s ? { swiatlo: { pudelko: s.pudelko, prog: s.prog, kolor: s.kolor, moc: s.moc } } : {}) };
 }
 /** Nałóż poprawki koloru (po kolei) na master → zapis do `cel`. Zwraca poziomy jasności po zmianie. */
 async function kolorujMaster(zrodlo, cel, poprawki) {
@@ -373,7 +375,8 @@ async function nowaWersja(id, poprawka, { sciany } = {}) {
         n.rozmiarGlb = (await fs.stat(path.join(dir, 'model.glb'))).size;
         n.czasy.razem = Math.round((Date.now() - t0) / 1000);
         await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(n, null, 2), 'utf8');
-        await cfg.szyna?.nadaj?.({ agent: 'Assety3D', rodzaj: 'praca', tresc: `„${m.nazwa}” — nowa wersja (${poprawka.rodzaj === 'kolor' ? 'kolor' : `gęściej we fragmencie: ${n.siatka.fragment?.trojkaty ?? '?'} ścian`})`, dane: { asset: nowy, z: id } }).catch(() => {});
+        const co = poprawka.rodzaj === 'kolor' ? 'kolor' : poprawka.rodzaj === 'swiatlo' ? `świeci ${n.siatka.swiatlo?.trojkaty ?? '?'} ścian (${n.siatka.swiatlo?.kolor ?? ''})` : `gęściej we fragmencie: ${n.siatka.fragment?.trojkaty ?? '?'} ścian`;
+        await cfg.szyna?.nadaj?.({ agent: 'Assety3D', rodzaj: 'praca', tresc: `„${m.nazwa}” — nowa wersja (${co})`, dane: { asset: nowy, z: id } }).catch(() => {});
         return n;
     } catch (e) { await fs.rm(dir, { recursive: true, force: true }); throw e; }
 }
@@ -390,6 +393,17 @@ export async function zageszczFragment(id, { fragment, scianyFragmentu = 40000, 
     const m = await meta(id);
     const razem = Math.max(sf + 1000, Number(sciany) || (m?.sciany ?? 8000) + sf);
     return nowaWersja(id, { rodzaj: 'fragment', pudelko, sciany: sf, kiedy: new Date().toISOString() }, { sciany: razem });
+}
+
+/**
+ * ✨ Świecące oko: pudełko (ułamki ramki bryły, y w górę) + próg jasności 0–1 (świeci tylko to, co jaśniejsze — oko
+ * na ciemnym futrze), kolor `#rrggbb` albo null (średni z oka, rozjaśniony), moc 0,5–50 → nowa wersja.
+ */
+export async function zaswiec(id, { fragment, prog = 0.5, kolor = null, moc = 4 } = {}) {
+    const pudelko = Siatka3D.oczyscFragment(fragment);
+    const k = kolor ? String(kolor) : null;
+    if (k && !Siatka3D.zHex(k)) throw new Error('Kolor światła: podaj #rrggbb (albo nic — wtedy kolor oka).');
+    return nowaWersja(id, { rodzaj: 'swiatlo', pudelko, prog: Math.max(0, Math.min(1, Number(prog) || 0)), kolor: k, moc: Math.max(0.5, Math.min(50, Number(moc) || 4)), kiedy: new Date().toISOString() });
 }
 
 /** Ramka sylwetki na obrazie źródłowym (ułamki 0–1, y w dół) — Game Studio przelicza zaznaczenie na obrazie na pudełko bryły. */
@@ -573,4 +587,4 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wyc
     return { zadanie: z.id, asset: assetId };
 }
 
-export default { skonfiguruj, zywyComfy, upiekszLokalnie, przekolorujBryle, zageszczFragment, sylwetka, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
+export default { skonfiguruj, zywyComfy, upiekszLokalnie, przekolorujBryle, zageszczFragment, zaswiec, sylwetka, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };

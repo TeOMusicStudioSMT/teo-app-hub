@@ -98,3 +98,43 @@ test('sylwetka z obrazu: ramka ciemnego prostokąta na białym tle (ułamki, y w
     assert.ok(Math.abs(s.x0 - 0.2) < 0.02 && Math.abs(s.x1 - 0.8) < 0.02, JSON.stringify(s));
     assert.ok(Math.abs(s.y0 - 20 / 240) < 0.02 && Math.abs(s.y1 - 220 / 240) < 0.02, JSON.stringify(s));
 });
+
+test('✨ świecące oko: jasna plama w pudełku → osobny prymityw emisyjny + światło w węźle; do gry niesie „swiatlo”', async () => {
+    const { NodeIO } = await import('@gltf-transform/core');
+    const { KHRMaterialsEmissiveStrength } = await import('@gltf-transform/extensions');
+    const dir = path.join(kat, 'oko-cd34');
+    await fs.mkdir(dir);
+    const s = plaszczyzna(40);
+    // ciemna płaszczyzna, jasnożółta plama 0,45–0,55 × 0,7–0,8 („oko”)
+    for (let y = 0; y <= 40; y++) for (let x = 0; x <= 40; x++) {
+        const v = y * 41 + x, oko = x >= 18 && x <= 22 && y >= 28 && y <= 32;
+        s.kolory.set(oko ? [1, 0.8, 0.1] : [0.01, 0.01, 0.012], v * 3);
+    }
+    await zapiszGlb(s, s.indeksy, path.join(dir, 'master.glb'));
+    await zapiszGlb(s, s.indeksy, path.join(dir, 'model.glb'));
+    await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify({ id: 'oko-cd34', nazwa: 'oko', opis: 'stworek', zrodlo: 'zdjecie', sciany: 4000, stan: 'gotowe', wGrach: [], utworzono: '2026-10-08T10:00:00Z' }));
+    await assert.rejects(Assety3D.zaswiec('oko-cd34', { fragment: { x0: 0, x1: 0.3, y0: 0, y1: 0.3 }, prog: 0.5 }), /jaśniejsze niż próg 50/);
+    await assert.rejects(Assety3D.zaswiec('oko-cd34', { fragment: { x0: 0, x1: 1, y0: 0, y1: 1 }, kolor: 'żółty' }), /#rrggbb/);
+    const n = await Assety3D.zaswiec('oko-cd34', { fragment: { x0: 0.3, x1: 0.7, y0: 0.6, y1: 0.9 }, prog: 0.5, moc: 8 });
+    const sw = n.siatka.swiatlo;
+    assert.ok(sw.trojkaty >= 16 && sw.trojkaty <= 50, `oko: ${sw.trojkaty} ścian`);
+    assert.equal(sw.moc, 8);
+    assert.match(sw.kolor, /^#ff[c-f][0-9a-f][0-9a-f]{2}$/, `barwa oka: ${sw.kolor}`);
+    assert.ok(Math.abs(sw.srodek[0] - 0.5) < 0.03 && Math.abs(sw.srodek[1] - 0.75) < 0.03, JSON.stringify(sw.srodek));
+    const doc = await new NodeIO().registerExtensions([KHRMaterialsEmissiveStrength]).read(path.join(kat, n.id, 'model.glb'));
+    const prims = doc.getRoot().listMeshes()[0].listPrimitives();
+    assert.deepEqual(prims.map((p) => p.getMaterial().getName()), ['kolory', 'swiatlo']);
+    assert.equal(prims[1].getMaterial().getExtension('KHR_materials_emissive_strength').getEmissiveStrength(), 8);
+    assert.equal(prims[0].getAttribute('POSITION'), prims[1].getAttribute('POSITION'), 'wspólne wierzchołki — oko nie odstaje od głowy');
+    assert.deepEqual(doc.getRoot().listNodes()[0].getExtras().swiatlo.kolor, sw.kolor);
+    // „Do gry”: assety.json mówi Kodeksowi, że bryła świeci
+    const apki = path.join(kat, '_apki');
+    await fs.mkdir(path.join(apki, 'gra-testowa'), { recursive: true });
+    Assety3D.skonfiguruj({ katalogApek: apki });
+    await Assety3D.doGry(n.id, 'gra-testowa');
+    const wpis = JSON.parse(await fs.readFile(path.join(apki, 'gra-testowa', 'public', 'assety', 'assety.json'), 'utf8'))[0];
+    assert.deepEqual(wpis.swiatlo, { kolor: sw.kolor, moc: 8 });
+    // kolejna poprawka (kolor) na świecącej wersji — oko świeci dalej
+    const k = await Assety3D.przekolorujBryle(n.id, { czern: 0.2 });
+    assert.ok(k.siatka.swiatlo?.trojkaty > 0, 'światło przechodzi na kolejne wersje');
+});
