@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'fs/promises';
 import fsSync from 'fs';
+import { utworzTryb, zainstalujFetch } from './services/TrybKatedry.js';
+import { Readable } from 'stream';
 import path from 'path';
 import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
@@ -317,6 +319,24 @@ const FALLBACK_LLM = 'gemma3:1b';
 
 // Ścieżki do folderów
 const ANTIGRAVITY_DIR = path.join(process.cwd(), '_OtakOs_Wymiar');
+
+// ☁️/🏠 Tryb Katedry (services/TrybKatedry.js): jeden przełącznik CLOUD/JusT dla CAŁEJ Katedry — globalny fetch
+// przechwytuje wywołania Ollamy (/api/generate, /api/chat) i w trybie chmura oddaje je Claude/Gemini z Kibla.
+// Klucze czytane synchronicznie z tych samych miejsc co getAnthropicKey/getGeminiKey (env → plik → Kibel).
+function kluczChmurySync(dostawca) {
+    const wzor = dostawca === 'anthropic' ? /(sk-ant-[a-zA-Z0-9\-_]+)/ : /(AIza[a-zA-Z0-9_-]+|AQ\.[a-zA-Z0-9_-]+)/;
+    const env = dostawca === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.GEMINI_API_KEY;
+    if (env) return env;
+    for (const p of dostawca === 'anthropic'
+        ? [path.join(process.cwd(), '.anthropic_key'), path.join(ANTIGRAVITY_DIR, 'kibel_anthropic.txt')]
+        : [path.join(process.cwd(), '.gemini_key'), path.join(ANTIGRAVITY_DIR, 'kibel_gemini.txt')]) {
+        try { const m = fsSync.readFileSync(p, 'utf8').match(wzor); if (m) return m[1]; } catch { /* brak pliku */ }
+    }
+    return null;
+}
+const TrybKatedry = utworzTryb({ katalog: ANTIGRAVITY_DIR, klucz: kluczChmurySync, ollamaBase: OLLAMA_BASE });
+zainstalujFetch(TrybKatedry);
+
 const MUSIC_DIR = path.join(process.cwd(), '_OtakOs_Muzyka');
 const MOVE_DIR = path.join(process.cwd(), '_OtakOs_Move');
 const SONIC_DIR = path.join(process.cwd(), '_OtakOs_Sonic');
@@ -3796,6 +3816,26 @@ app.post('/api/kibel/flush', async (req, res) => {
 const KluczeMostu = utworzKluczeMostu({ katalog: ANTIGRAVITY_DIR, efektywny: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey() } });
 const listyModeliChmury = utworzListyModeli();
 const odpKluczy = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(400).json({ success: false, message: e.message }));
+// ☁️/🏠 Tryb Katedry: stan (tryb, wybrany model chmury, tokeny dziś, limit, powód) i zmiana — tylko maszyna.
+app.get('/api/tryb', (_req, res) => res.json({ success: true, ...TrybKatedry.stan() }));
+app.put('/api/tryb', (req, res) => {
+    try { res.json({ success: true, ...TrybKatedry.ustaw(req.body ?? {}) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+// Hub woła Ollamę prosto z przeglądarki (czat, Orb, Stół Narad…) — w trybie CLOUD przekierowuje to tutaj, a fetch
+// mostu (Tryb Katedry) oddaje chmurze albo Ollamie. Klucze chmury nie wychodzą z mostu.
+app.post('/api/tryb/ollama/:trasa', async (req, res) => {
+    const trasa = req.params.trasa;
+    if (trasa !== 'generate' && trasa !== 'chat') return res.status(404).json({ error: 'tylko generate i chat' });
+    try {
+        const r = await fetch(`${OLLAMA_BASE}/api/${trasa}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body ?? {}) });
+        res.status(r.status);
+        res.setHeader('content-type', r.headers.get('content-type') || 'application/json');
+        if (r.headers.get('x-tryb-katedry')) res.setHeader('x-tryb-katedry', r.headers.get('x-tryb-katedry'));
+        if (!r.body) return res.end();
+        Readable.fromWeb(r.body).pipe(res);
+    } catch (e) { res.status(502).json({ error: `Ollama/chmura: ${e.message}` }); }
+});
 app.get('/api/kibel/most', (_req, res) => odpKluczy(res, KluczeMostu.stan().then((klucze) => ({ klucze }))));
 app.post('/api/kibel/most', (req, res) => odpKluczy(res, KluczeMostu.ustaw(req.body?.dostawca, req.body?.klucz).then(async (w) => ({ ...w, klucze: await KluczeMostu.stan() }))));
 app.delete('/api/kibel/most/:dostawca', (req, res) => odpKluczy(res, KluczeMostu.usun(req.params.dostawca).then(async (w) => ({ ...w, klucze: await KluczeMostu.stan() }))));
@@ -7949,7 +7989,7 @@ app.post('/api/tunel/stop', async (_req, res) => res.json({ success: true, ...(a
 // ═════════════════════════════════════════════════════════════════════════════
 AppStudio.skonfiguruj({
     // 🎼 Studio Gier buduje na modelu Kodeksa z przydziału TeOgochi (Dyrygent → „zastosuj”), inaczej na modelu Mechanika.
-    ollamaBase: OLLAMA_BASE, model: () => ModeleAgentow.modelZPamieci('kodeks') || modelMechanika(), portMostu: PORT, szyna: Szyna,
+    ollamaBase: OLLAMA_BASE, model: () => TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('kodeks') || modelMechanika()), portMostu: PORT, szyna: Szyna,
     katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'),
     nodeModules: path.join(process.cwd(), '..', 'TeO_App_Studio', 'node_modules'),
     puppeteer: null,
@@ -8025,7 +8065,7 @@ app.get('/api/appstudio/zadania/:id/sondaz', (req, res) => {
 // 📜 GDD + REŻYSER GRY + PRODUKCJA Z PLANU (services/Gdd.js). GDD leży w projekcie gry
 // (_OtakOs_Apki/<id>/gdd.json); produkcja karmi pętlę Kodeksa zadanie po zadaniu.
 // ═════════════════════════════════════════════════════════════════════════════
-Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, model: () => ModeleAgentow.modelZPamieci('kodeks') || modelMechanika(), assety3d: Assety3D });
+Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, model: () => TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('kodeks') || modelMechanika()), assety3d: Assety3D });
 ModeleAgentow.wszystkie().catch(() => {});   // pamięć przydziału dla Studia Gier od startu
 const gddUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 app.get('/api/gdd/silniki', (_req, res) => res.json({ success: true, silniki: Gdd.SILNIKI }));

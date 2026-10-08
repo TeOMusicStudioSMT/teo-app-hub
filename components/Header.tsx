@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FiHome, FiPower, FiSettings } from 'react-icons/fi';
 import { useAtom } from 'jotai';
 import { aiModeAtom } from '../store/settings';
+import { pobierzTryb, ustawTryb, opisTrybu, type StanTrybu } from '../lib/trybKatedry';
 import { motion } from 'framer-motion';
 
 interface HeaderProps {
@@ -19,6 +20,20 @@ const Header: React.FC<HeaderProps> = ({ isVisible, isAuthenticated, isLoungeOpe
     const title = isAuthenticated && isLoungeOpen ? "TEONAUT LOUNGE" : "HUB";
     const [logoError, setLogoError] = useState(false);
     const [aiMode, setAiMode] = useAtom(aiModeAtom);
+    // ☁️/🏠 Tryb Katedry: most jest źródłem prawdy (lib/trybKatedry.ts) — przełącznik zmienia CAŁĄ Katedrę.
+    const [tryb, setTryb] = useState<StanTrybu | null>(null);
+    useEffect(() => {
+        let zywy = true;
+        const sync = () => pobierzTryb().then((s) => { if (!zywy || !s) return; setTryb(s); setAiMode(s.tryb === 'chmura' ? 'cloud' : 'local'); });
+        void sync();
+        const t = setInterval(sync, 60_000);
+        return () => { zywy = false; clearInterval(t); };
+    }, [setAiMode]);
+    const przelacz = async (cel: 'cloud' | 'local') => {
+        setAiMode(cel);
+        try { setTryb(await ustawTryb({ tryb: cel === 'cloud' ? 'chmura' : 'lokalnie' })); }
+        catch { setTryb(await pobierzTryb()); }
+    };
 
     return (
         <header className={`absolute top-0 left-0 right-0 p-4 md:p-12 z-30 flex justify-between items-center transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full'}`}>
@@ -48,19 +63,41 @@ const Header: React.FC<HeaderProps> = ({ isVisible, isAuthenticated, isLoungeOpe
                     <div className="flex items-center gap-2 mt-1">
                         <div className="flex bg-slate-900/60 backdrop-blur-md rounded-full p-0.5 border border-white/10 text-[9px] font-bold">
                             <button
-                                onClick={() => setAiMode('cloud')}
+                                onClick={() => void przelacz('cloud')}
                                 className={`px-2 py-0.5 rounded-full transition-all ${aiMode === 'cloud' ? 'bg-blue-600/40 text-blue-300 shadow-[0_0_10px_rgba(37,99,235,0.3)]' : 'text-slate-500 hover:text-slate-300'}`}
                             >
                                 CLOUD
                             </button>
                             <button
-                                onClick={() => setAiMode('local')}
+                                onClick={() => void przelacz('local')}
                                 className={`px-2 py-0.5 rounded-full transition-all ${aiMode === 'local' ? 'bg-green-600/40 text-green-300 shadow-[0_0_10px_rgba(22,163,74,0.3)]' : 'text-slate-500 hover:text-slate-300'}`}
                             >
                                 JusT
                             </button>
                         </div>
+                        {tryb?.tryb === 'chmura' && (
+                            <select
+                                value={tryb.dostawca}
+                                onChange={(e) => void ustawTryb({ dostawca: e.target.value as StanTrybu['dostawca'], model: null }).then(setTryb).catch(() => {})}
+                                title="Którą chmurą liczy Katedra (klucz z Kibla, „🔗 Udostępnij mostowi”)"
+                                className="bg-slate-900/60 border border-white/10 rounded-full px-1.5 py-0.5 text-[9px] text-slate-300"
+                            >
+                                <option value="auto">auto (Claude → Gemini)</option>
+                                <option value="anthropic">Claude</option>
+                                <option value="gemini">Gemini</option>
+                            </select>
+                        )}
                     </div>
+                    <p
+                        className={`mt-0.5 max-w-[260px] truncate text-[9px] ${tryb?.tryb === 'chmura' && !tryb.chmuraAktywna ? 'text-amber-300' : 'text-slate-500'}`}
+                        title={`${opisTrybu(tryb)}${tryb ? `\nDzienny limit chmury: ${tryb.limitTokenow || 'bez limitu'} tokenów (po nim Katedra sama wraca do lokalnych). Obrazy, narzędzia i embeddingi zawsze lokalnie.` : ''}`}
+                        onDoubleClick={() => {
+                            const v = window.prompt('Dzienny limit tokenów chmury (0 = bez limitu):', String(tryb?.limitTokenow ?? 2000000));
+                            if (v !== null) void ustawTryb({ limitTokenow: Number(v) || 0 }).then(setTryb).catch(() => {});
+                        }}
+                    >
+                        {opisTrybu(tryb)}
+                    </p>
                 </div>
             </div>
             <div>

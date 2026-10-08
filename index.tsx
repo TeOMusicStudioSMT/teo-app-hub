@@ -7,6 +7,7 @@ import { KatedraRadioProvider } from './context/KatedraRadioContext';
 import { I18nProvider } from './lib/i18n';
 import { hydrateTunnelFromLocation, zapewnijKluczLokalnie } from './lib/bridgeService';
 import { hydratujStadoZMostu } from './lib/stadoSync';
+import { zainstalujPrzekierowanie } from './lib/trybKatedry';
 import './index.css';
 
 // 📡 Dispatch: `?tunnel=...` w adresie (kod QR z Katedry) → zapis tunelu przed startem UI.
@@ -17,6 +18,9 @@ hydrateTunnelFromLocation();
 // lokalnym). Świadomie BEZ `await` — brak Mostu nie może blokować startu Katedry,
 // a wywołania i tak dołożą klucz, gdy tylko się pojawi.
 void zapewnijKluczLokalnie();
+
+// ☁️/🏠 Tryb Katedry: wywołania Ollamy z przeglądarki idą w trybie CLOUD przez most (lib/trybKatedry.ts).
+zainstalujPrzekierowanie();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
