@@ -613,6 +613,14 @@ export async function autonaprawLiterowki(dir, log) {
  * zmierzone 2026-09-22: 4B oddał 5 nowych modułów, po nieudanej rundzie diff miał 573 bajty
  * i nic do obejrzenia) idą do nieudane/<id>.diff, projekt wraca do ostatniego dobrego commita.
  */
+/** Zmiany zadania do oceny sędziego: diff względem ostatniego commitu + treść nowych plików (tylko odczyt). */
+async function zmianyZadania(dir) {
+    let tresc = await git(dir, ['diff', '--unified=3', '--', 'src', 'index.html']);
+    const nowe = (await git(dir, ['ls-files', '--others', '--exclude-standard', '--', 'src', 'index.html'])).split('\n').filter(Boolean);
+    for (const f of nowe) { try { tresc += `\n=== NOWY PLIK: ${f} ===\n${await fs.readFile(path.join(dir, f), 'utf8')}\n`; } catch { /* nic */ } }
+    return tresc.slice(0, 24_000);
+}
+
 async function zrzucNieudaneIPrzywroc(dir, id) {
     const diff = await git(dir, ['diff']);
     const nowe = (await git(dir, ['ls-files', '--others', '--exclude-standard', '--', 'src', 'index.html'])).split('\n').filter(Boolean);
@@ -1058,6 +1066,18 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 krok(o.ok ? 'test' : 'blad', o.ok ? `ocena zachowania: zgodne z zadaniem${o.niepewne ? ' (sędzia niepewny — przepuszczam)' : ''}` : `ocena zachowania: ${o.powod}`, { migawki: t.migawki });
                 if (!o.ok) { feedback = `Aplikacja działa bez błędów konsoli, ale ZACHOWUJE SIĘ źle: ${o.powod}
 PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy czas trwania jest w ms (4000), a odliczasz po 1 na sekundę? Trzymaj wszystko w sekundach. (2) useEffect — czy interwał/timeout jest tworzony i czyszczony w tym samym efekcie, z właściwymi zależnościami? (3) czy stan naprawdę się zmienia (setState na nowej wartości, nie mutacja)? (4) czy przycisk woła funkcję, która startuje timer?\nMigawki tekstu strony:\n${(t.migawki || []).map((m) => `[${m.kiedy}] ${m.tekst}`).join('\n')}`; continue; }
+                // ⚖️ SĘDZIA ZADANIA (Jev, services/Jev.js): build, przeglądarka i sędzia zachowania sprawdzają, że kod
+                // DZIAŁA — nie, że robi TO zadanie. Kustosz 2026-10-07 dostał ptaszek za samo wczytanie skrzyni, bez
+                // wywołania mostu. Jev patrzy na cały diff zadania (z nowymi plikami); bez klucza / gdy padnie — pomijamy.
+                if (cfg.jev) {
+                    const zmiany = await zmianyZadania(dir).catch(() => '');
+                    const w = zmiany ? await cfg.jev.czyZrobione({ zadanie: cel, zmiany }).catch((e) => ({ blad: e.message })) : null;
+                    if (w && !w.blad && Number.isFinite(w.p)) {
+                        const prog = cfg.jevProg ?? 0.35;
+                        krok(w.p >= prog ? 'test' : 'blad', `sędzia zadania (${w.model}): ${w.p >= prog ? 'zadanie zrobione' : 'zadanie wygląda na NIEZROBIONE'} — p=${w.p.toFixed(2)} (próg ${prog})`);
+                        if (w.p < prog) { feedback = `Kod się buduje i działa, ale SĘDZIA ZADANIA uznał, że zmiany NIE realizują zadania (p=${w.p.toFixed(2)}). Przeczytaj zadanie jeszcze raz i zrób KAŻDY jego element — np. wywołanie wskazanej trasy mostu, okno, postać, zachowanie — a nie tylko część.`; continue; }
+                    } else if (w?.blad) krok('test', `sędzia zadania niedostępny — pomijam (${String(w.blad).slice(0, 160)})`);
+                }
                 ok = true;
                 break;
             }

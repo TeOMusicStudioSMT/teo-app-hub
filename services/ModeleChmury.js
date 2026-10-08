@@ -15,6 +15,8 @@ import path from 'path';
 export const DOSTAWCY = {
     anthropic: { plik: 'kibel_anthropic.txt', wzor: /^sk-ant-[A-Za-z0-9_-]{20,}$/, nazwa: 'Anthropic (Claude)' },
     gemini: { plik: 'kibel_gemini.txt', wzor: /^(AIza[A-Za-z0-9_-]{30,}|AQ\.[A-Za-z0-9_-]{30,})$/, nazwa: 'Google (Gemini)' },
+    // ⚖️ TypeSafe / Jev (2026-10-08) — nie czat: sędzia semantyczny (noul/choice/score), services/Jev.js.
+    typesafe: { plik: 'kibel_typesafe.txt', wzor: /^apikey_[A-Za-z0-9_]{40,}$/, nazwa: 'TypeSafe (Jev)' },
 };
 
 /** Zapas, gdy nie da się zapytać API (brak klucza, brak sieci). Pierwszy = polecany do kodu. */

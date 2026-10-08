@@ -49,7 +49,7 @@ export interface KibelConfig {
 }
 
 // 🔍 ROZPOZNAWANIE FORMATU KLUCZY
-export type ProviderType = 'gemini' | 'groq' | 'anthropic' | 'openai' | 'suno' | 'unknown';
+export type ProviderType = 'gemini' | 'groq' | 'anthropic' | 'openai' | 'suno' | 'typesafe' | 'unknown';
 
 export interface DetectedKey {
   provider: ProviderType;
@@ -82,6 +82,11 @@ export function detectKeyProvider(key: string): DetectedKey {
   // Gemini: AIza... albo nowszy format Google AQ....
   if (trimmed.startsWith('AIza') || trimmed.startsWith('AQ.')) {
     return { provider: 'gemini', isValid: true, format: 'AIza*' };
+  }
+
+  // TypeSafe / Jev: apikey_... (sędzia semantyczny, nie czat — services/Jev.js)
+  if (trimmed.startsWith('apikey_')) {
+    return { provider: 'typesafe', isValid: true, format: 'apikey_*' };
   }
 
   // Anthropic/Claude: sk-ant-...
@@ -204,6 +209,7 @@ export function getKeyDirect(provider: ProviderType): string | null {
     openai: 'kibel_key_openai',
     anthropic: 'kibel_key_anthropic',
     suno: 'kibel_key_suno',
+    typesafe: 'kibel_key_typesafe',
     unknown: '',
   };
 
@@ -293,6 +299,7 @@ export async function storeKey(key: KibelKey): Promise<void> {
     openai: 'kibel_key_openai',
     anthropic: 'kibel_key_anthropic',
     suno: 'kibel_key_suno',
+    typesafe: 'kibel_key_typesafe',
   };
 
   const legacyKey = legacyKeyMap[key.provider];

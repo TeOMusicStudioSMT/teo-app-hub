@@ -5,6 +5,7 @@ import fsSync from 'fs';
 import { utworzTryb, zainstalujFetch } from './services/TrybKatedry.js';
 import { Readable } from 'stream';
 import { probkaZapasowa } from './services/ZapasGlosu.js';
+import { utworzJev, PROG_ZROBIONE as JEV_PROG } from './services/Jev.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
@@ -325,18 +326,22 @@ const ANTIGRAVITY_DIR = path.join(process.cwd(), '_OtakOs_Wymiar');
 // przechwytuje wywołania Ollamy (/api/generate, /api/chat) i w trybie chmura oddaje je Claude/Gemini z Kibla.
 // Klucze czytane synchronicznie z tych samych miejsc co getAnthropicKey/getGeminiKey (env → plik → Kibel).
 function kluczChmurySync(dostawca) {
-    const wzor = dostawca === 'anthropic' ? /(sk-ant-[a-zA-Z0-9\-_]+)/ : /(AIza[a-zA-Z0-9_-]+|AQ\.[a-zA-Z0-9_-]+)/;
-    const env = dostawca === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.GEMINI_API_KEY;
+    const wzor = dostawca === 'anthropic' ? /(sk-ant-[a-zA-Z0-9\-_]+)/ : dostawca === 'typesafe' ? /(apikey_[A-Za-z0-9_]{40,})/ : /(AIza[a-zA-Z0-9_-]+|AQ\.[a-zA-Z0-9_-]+)/;
+    const env = dostawca === 'anthropic' ? process.env.ANTHROPIC_API_KEY : dostawca === 'typesafe' ? (process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY) : process.env.GEMINI_API_KEY;
     if (env) return env;
     for (const p of dostawca === 'anthropic'
         ? [path.join(process.cwd(), '.anthropic_key'), path.join(ANTIGRAVITY_DIR, 'kibel_anthropic.txt')]
-        : [path.join(process.cwd(), '.gemini_key'), path.join(ANTIGRAVITY_DIR, 'kibel_gemini.txt')]) {
+        : dostawca === 'typesafe'
+            ? [path.join(process.cwd(), '.typesafe_key'), path.join(ANTIGRAVITY_DIR, 'kibel_typesafe.txt')]
+            : [path.join(process.cwd(), '.gemini_key'), path.join(ANTIGRAVITY_DIR, 'kibel_gemini.txt')]) {
         try { const m = fsSync.readFileSync(p, 'utf8').match(wzor); if (m) return m[1]; } catch { /* brak pliku */ }
     }
     return null;
 }
 const TrybKatedry = utworzTryb({ katalog: ANTIGRAVITY_DIR, klucz: kluczChmurySync, ollamaBase: OLLAMA_BASE });
 zainstalujFetch(TrybKatedry);
+// ⚖️ Jev (TypeSafe) — sędzia semantyczny (noul/choice/score), klucz z Kibla jak chmura (services/Jev.js).
+const Jev = utworzJev({ klucz: () => kluczChmurySync('typesafe') });
 
 const MUSIC_DIR = path.join(process.cwd(), '_OtakOs_Muzyka');
 const MOVE_DIR = path.join(process.cwd(), '_OtakOs_Move');
@@ -3814,11 +3819,14 @@ app.post('/api/kibel/flush', async (req, res) => {
 //  (plik _OtakOs_Wymiar/kibel_<dostawca>.txt, czytany przez getAnthropicKey/getGeminiKey), cofnięcie kasuje plik.
 //  Odpowiedzi nigdy nie niosą klucza — tylko końcówkę. Tylko przy maszynie (Straż).
 // ══════════════════════════════════════════════════════════════════════════════
-const KluczeMostu = utworzKluczeMostu({ katalog: ANTIGRAVITY_DIR, efektywny: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey() } });
+const KluczeMostu = utworzKluczeMostu({ katalog: ANTIGRAVITY_DIR, efektywny: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey(), typesafe: async () => kluczChmurySync('typesafe') } });
 const listyModeliChmury = utworzListyModeli();
 const odpKluczy = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(400).json({ success: false, message: e.message }));
 // ☁️/🏠 Tryb Katedry: stan (tryb, wybrany model chmury, tokeny dziś, limit, powód) i zmiana — tylko maszyna.
 app.get('/api/tryb', (_req, res) => res.json({ success: true, ...TrybKatedry.stan() }));
+// ⚖️ Jev (TypeSafe): stan (klucz, tokeny dziś) i zapytanie systemone {state, questions} — tylko maszyna.
+app.get('/api/jev', (_req, res) => res.json({ success: true, ...Jev.stan(), prog: JEV_PROG }));
+app.post('/api/jev/zapytaj', (req, res) => ytOdp(res, Jev.zapytaj({ state: req.body?.state, questions: req.body?.questions, model: req.body?.model })));
 app.put('/api/tryb', (req, res) => {
     try { res.json({ success: true, ...TrybKatedry.ustaw(req.body ?? {}) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
@@ -7992,6 +8000,7 @@ AppStudio.skonfiguruj({
     // 🎼 Studio Gier buduje na modelu Kodeksa z przydziału TeOgochi (Dyrygent → „zastosuj”), inaczej na modelu Mechanika.
     ollamaBase: OLLAMA_BASE, model: () => TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('kodeks') || modelMechanika()), portMostu: PORT, szyna: Szyna,
     katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'),
+    jev: Jev, jevProg: JEV_PROG,   // ⚖️ Sędzia zadania: czy diff naprawdę realizuje zadanie (bez klucza — pomijany)
     nodeModules: path.join(process.cwd(), '..', 'TeO_App_Studio', 'node_modules'),
     puppeteer: null,
     // Chmura tylko na wyraźne życzenie (model `claude:…`/`gemini:…`); klucze z Kibla, domyślnie lokalnie.

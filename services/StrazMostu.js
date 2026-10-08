@@ -81,6 +81,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/skladnica', // 📦 Składnica: wspólne assety (zapis, import z dysku, kosz) — tylko przy Katedrze
     '/api/gielda-mocy',   // ⚡ Giełda mocy: oferta tej Katedry ustawia się tylko przy niej
     '/api/kibel/most', '/api/modele/chmura',   // 🔗 klucze Kibla dla mostu i modele z konta dostawcy — tylko przy Katedrze
+    '/api/jev',   // ⚖️ Jev (TypeSafe) = rachunek za tokeny — tylko przy Katedrze
     '/api/tryb',   // ☁️/🏠 Tryb Katedry (CLOUD/JusT) = rachunek za tokeny — przełącza tylko Suweren przy Katedrze
     '/api/glos/',   // 🎙️ głos ze stemu: zapisuje próbki klonu i profile głosu — tylko przy Katedrze
 ];

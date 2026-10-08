@@ -39,10 +39,13 @@ const KEY_PATTERNS = [
   { pattern: /GROQ_API_KEY|GROQ_KEY/i,                     provider: 'groq',        name: 'Groq API' },
   { pattern: /NVIDIA_API_KEY|NVIDIA_KEY|NIM_KEY/i,         provider: 'nvidia',      name: 'NVIDIA API' },
   { pattern: /OPENROUTER_API_KEY|OPENROUTER_KEY/i,         provider: 'openrouter',  name: 'OpenRouter API' },
+  { pattern: /TYPESAFE_API_KEY|JEV_API_KEY|JEV_KEY|TYPESAFE_KEY/i, provider: 'typesafe', name: 'TypeSafe (Jev)' },
 
   // ── Surowe klucze (format: sam klucz bez nazwy) ───────────────
   // ⚠️ KRYTYCZNA KOLEJNOŚĆ: bardziej specyficzne prefiky MUSZĄ być
   // przed ogólnymi! sk-ant- i sk-or- PRZED sk- !
+  // TypeSafe / Jev (2026-10-08): apikey_ + ~100 znaków — sędzia semantyczny (noul/choice/score).
+  { pattern: /(apikey_[A-Za-z0-9_]{40,})/,                provider: 'typesafe',    name: 'TypeSafe Jev (raw)' },
   { pattern: /(gsk_[a-zA-Z0-9_-]{20,})/i,                 provider: 'groq',        name: 'Groq (raw)' },
   // Gemini: klasyczne AIza… (39 znaków, ale bez sztywnej długości — dawny {33} ucinał dłuższe)
   // i nowsze klucze Google „AQ.…” (Suweren 2026-10-07: klucz 53 znaki nie był rozpoznany).
