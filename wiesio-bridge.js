@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import { utworzTryb, zainstalujFetch } from './services/TrybKatedry.js';
 import { Readable } from 'stream';
+import { probkaZapasowa } from './services/ZapasGlosu.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
@@ -14351,6 +14352,18 @@ const kontekstProjektu = async (projekt) => {
     ].join('\n');
     return { film: pub ? { tytul: pub.tytul, opis: pub.opis ?? '', url: pub.url ?? null } : null, opis };
 };
+/** 🛟 Próbka dla klonu Katedry zamiast padniętego profilu VoiceStudio (services/ZapasGlosu.js). */
+function probkaZapasowaVoiceStudio(id) {
+    return probkaZapasowa(id, {
+        katalogGlosow: VOICES_DIR,
+        katalogVS: process.env.OTAKOS_VOICESTUDIO_GLOSY || path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'OmniVoice', 'voices'),
+        profile: async () => {
+            const r = await fetch(`${GlosStudio.BAZA}/profiles`, { signal: AbortSignal.timeout(5000) });
+            const d = await r.json();
+            return Array.isArray(d) ? d : (d.profiles ?? d.data ?? []);
+        },
+    });
+}
 const Wywiady = utworzWywiady({
     katalog: path.join(ANTIGRAVITY_DIR, 'aktorzy'),
     chat: (model, system, user) => piszModelem(model, system, user),
@@ -14359,11 +14372,26 @@ const Wywiady = utworzWywiady({
     mow: async ({ tekst, glos, jezyk }) => {
         // 🗣️ Profil VoiceStudio (osobny program, :3900) — to on klonuje i projektuje głosy w swoim oknie.
         if (glos?.voicestudio) {
-            const r = await GlosStudio.mow({ tekst, glos: glos.voicestudio, katalogDocelowy: path.join(TEMP_DIR, 'wywiad-glos'), nazwa: 'kwestia', jezyk: jezyk || 'pl' });
             try {
-                if (r.podejrzane) throw new Error(`VoiceStudio: ${r.uwagi.join('; ')} — sprawdź profil w jego oknie albo wybierz inny.`);
-                return { audio: await fs.readFile(r.sciezka), ext: 'wav' };
-            } finally { await fs.rm(r.sciezka, { force: true }).catch(() => {}); }
+                const r = await GlosStudio.mow({ tekst, glos: glos.voicestudio, katalogDocelowy: path.join(TEMP_DIR, 'wywiad-glos'), nazwa: 'kwestia', jezyk: jezyk || 'pl' });
+                try {
+                    if (r.podejrzane) throw new Error(`VoiceStudio: ${r.uwagi.join('; ')} — sprawdź profil w jego oknie albo wybierz inny.`);
+                    return { audio: await fs.readFile(r.sciezka), ext: 'wav' };
+                } finally { await fs.rm(r.sciezka, { force: true }).catch(() => {}); }
+            } catch (bladVS) {
+                // 🛟 ZAPAS (Suweren 2026-10-08: „rób fallback głosu na klon Katedry” — VoiceStudio padało na CUDA przy
+                // gorącej karcie): ten SAM głos klonem Katedry (:5002) z próbki o tej nazwie albo z nagrania
+                // referencyjnego profilu VoiceStudio. Bez próbki — oryginalny błąd VoiceStudio, bez zgadywania.
+                const zapas = await probkaZapasowaVoiceStudio(glos.voicestudio).catch(() => null);
+                if (!zapas) throw bladVS;
+                const { audio, ext } = await glosSyntezuj({
+                    przewod: 'klon-lokalny', tekst, glos: zapas.glos, jezyk: jezyk || 'pl', probka: zapas.probka,
+                    adresy: { VOICE_BASE, KOKORO_BASE, powodSilnika: () => SilnikKlonu.stanSilnika().powod }, klucz: null,
+                });
+                console.warn(`[Głos] 🛟 VoiceStudio padło (${String(bladVS.message).slice(0, 120)}) — kwestia klonem Katedry (${zapas.glos}).`);
+                Szyna.nadaj?.({ agent: 'Głos', rodzaj: 'ostrzezenie', tresc: `🛟 VoiceStudio padło (${String(bladVS.message).slice(0, 140)}) — kwestię nagrał klon Katedry głosem „${zapas.glos}”.` }).catch(() => {});
+                return { audio, ext, zapas: zapas.glos };
+            }
         }
         const tor = await ustalTorGlosu(glos ?? {});
         try {
