@@ -7929,6 +7929,7 @@ async function modelDyrygenta() {
     return (await ModeleAgentow.modelDla('dyrygent').catch(() => null)) || process.env.OTAKOS_DYRYGENT_MODEL || DEFAULT_LLM;
 }
 Dyrygent.skonfiguruj({
+    jev: Jev,   // ⚖️ Dyrygent na Jev: wybór modelu dla każdego TeOgochi z pewnością (bez klucza — model Dyrygenta)
     katalogWymiar: ANTIGRAVITY_DIR,
     tagi: async () => (await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(8000) })).json(),
     projekty: () => ProjektStada.lista(),

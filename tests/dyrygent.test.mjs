@@ -217,3 +217,49 @@ test('Kuźnia Soup: instalacja bez Pythona 3.10–3.12 odmawia wprost (3.13 się
     assert.match(s.blad, /Nie ma Pythona 3\.10–3\.12/);
     assert.ok(wolania.every((w) => w.includes('-c')), 'tylko pytania o wersję, żadnego pip');
 });
+
+test('Dyrygent na Jev: jedno zapytanie, choice na każdego TeOgochi z opcjami = modele katalogu (bez embeddingów); pewność w powodzie', async () => {
+    let zapytanie;
+    Dyrygent.skonfiguruj({
+        katalogWymiar: tmp(), tagi: async () => ({ models: [...TAGI.models, { name: 'nomic-embed-text:latest', size: 2.7e8, details: {} }] }),
+        projekty: async () => [], modeleAgentow: async () => ({}), wykute: async () => [{ agent: 'kodeks', model: 'teogochi-kodeks' }],
+        pisz: async () => { throw new Error('model nie powinien być pytany'); },
+        jev: {
+            stan: () => ({ maKlucz: true }),
+            zapytaj: async (z) => {
+                zapytanie = z;
+                return { model: 'jev-1.13.0', answers: {
+                    a0: { type: 'choice', choice: 'teogochi-kodeks:latest', confidence: 0.62, probabilities: { 'teogochi-kodeks:latest': 0.62, 'qwen3.5:9b': 0.3, 'gemma4:e2b': 0.08 } },
+                    a1: { type: 'choice', choice: 'gemma4:e2b', confidence: 0.8, probabilities: { 'gemma4:e2b': 0.8, 'qwen3.5:9b': 0.2 } },
+                } };
+            },
+        },
+    });
+    try {
+        const w = await Dyrygent.dobierz({ zadanie: 'Zbuduj quest Kustosza w grze', agenci: [{ id: 'kodeks', imie: 'Kodeks', dziedzina: 'kod' }, { id: 'joanna', imie: 'Joanna', dziedzina: 'muzyka' }] });
+        assert.equal(w.silnik, 'jev');
+        assert.equal(w.model, 'jev-1.13.0');
+        assert.deepEqual(w.przydzial.map((p) => [p.agent, p.model]), [['kodeks', 'teogochi-kodeks:latest'], ['joanna', 'gemma4:e2b']]);
+        assert.match(w.przydzial[0].powod, /pewność 0\.62; drugi wybór qwen3\.5:9b \(0\.30\)/);
+        assert.deepEqual(Object.keys(zapytanie.questions), ['a0', 'a1']);
+        assert.equal(zapytanie.questions.a0.type, 'choice');
+        assert.ok(!('nomic-embed-text:latest' in zapytanie.questions.a0.criteria), 'embeddingi nie są instrumentem');
+        assert.match(zapytanie.questions.a0.criteria['teogochi-kodeks:latest'], /WŁASNY model TeOgochi „kodeks"/);
+        assert.match(zapytanie.questions.a1.instructions.teogochi, /joanna — Joanna \(muzyka\)/);
+    } finally { Dyrygent.skonfiguruj({ jev: null }); }
+});
+
+test('Dyrygent na Jev padł — dobiera lokalny model, błąd Jev w odpowiedzi', async () => {
+    Dyrygent.skonfiguruj({
+        katalogWymiar: tmp(), tagi: async () => TAGI, projekty: async () => [], modeleAgentow: async () => ({}), wykute: async () => [],
+        model: () => 'qwen3.5:9b',
+        pisz: async () => '{"przydzial":[{"agent":"kodeks","model":"qwen3.5:9b","powod":"kod"}]}',
+        jev: { stan: () => ({ maKlucz: true }), zapytaj: async () => { throw new Error('Jev HTTP 529'); } },
+    });
+    try {
+        const w = await Dyrygent.dobierz({ zadanie: 'Zbuduj quest', agenci: [{ id: 'kodeks', imie: 'Kodeks' }] });
+        assert.equal(w.silnik, 'model');
+        assert.match(w.jevBlad, /529/);
+        assert.deepEqual(w.przydzial.map((p) => p.model), ['qwen3.5:9b']);
+    } finally { Dyrygent.skonfiguruj({ jev: null }); }
+});

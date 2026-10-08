@@ -16,6 +16,8 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
+import { rozmiarModelu } from './BledyModeli.js';
+import { zgniecionyKwant } from './ZwiadowcaHF.js';
 
 let cfg = {
     katalogWymiar: path.join(process.cwd(), '_OtakOs_Wymiar'),
@@ -139,11 +141,62 @@ export async function dobierz({ zadanie, agenci = [] }) {
 Zasady: bierzesz WYŁĄCZNIE modele z KATALOGU (dokładna nazwa). Większy model do rozumowania, scalania i kodu; mniejszy i szybszy do krótkich, prostych wkładów. Jeśli TeOgochi ma WŁASNY model — zwykle to on. Liczą się oceny Sędziego z pracy stada. Pamiętaj, że karta graficzna jest jedna: nie dawaj wszystkim największego.
 Odpowiadasz WYŁĄCZNIE JSON-em: {"przydzial":[{"agent":"<id>","model":"<nazwa z katalogu>","powod":"<jedno zdanie>"}]} — po jednym wpisie na każdego TeOgochi z listy.`;
     const prompt = `KATALOG MODELI KATEDRY:\n${kat.map(linia).join('\n')}\n\nZADANIE SUWERENA:\n${opis.slice(0, 2000)}\n\nSKŁAD (id — kto — co robi):\n${agenci.map((a) => `- ${a.id} — ${a.imie}${a.dziedzina ? ` (${a.dziedzina})` : ''}${a.zadanie ? `: ${String(a.zadanie).split(':')[0]}` : ''}`).join('\n')}`;
+    // ⚖️ Najpierw Jev (Suweren 2026-10-08: „zrób Dyrygenta na Jev”) — szybki wybór z pewnością; padnie / bez klucza → model.
+    let jevBlad = null;
+    if (cfg.jev?.stan?.().maKlucz) {
+        try {
+            const j = await dobierzJev(cfg.jev, { opis, agenci, kat, linia });
+            if (j.przydzial.length) return { ...j, silnik: 'jev', katalog: kat.map((m) => m.nazwa) };
+        } catch (e) { jevBlad = String(e.message || e).slice(0, 200); }
+    }
     const model = await cfg.model();
     const odp = await cfg.pisz({ system, prompt, model });
     const j = wylowJson(odp);
     if (!j) throw new Error('Dyrygent nie oddał JSON-a z przydziałem — spróbuj ponownie albo daj mu większy model (panel Dyrygenta → „Dyrygent gra na”).');
-    return { ...sprawdzPrzydzial(j, { agenci, modele: kat.map((m) => m.nazwa) }), model, katalog: kat.map((m) => m.nazwa) };
+    return { ...sprawdzPrzydzial(j, { agenci, modele: kat.map((m) => m.nazwa) }), model, silnik: 'model', ...(jevBlad ? { jevBlad } : {}), katalog: kat.map((m) => m.nazwa) };
+}
+
+/** Modele, które nie piszą tekstu (embeddingi) — nie są instrumentami dla TeOgochi. */
+const NIE_DO_PISANIA = /embed|bge-|minilm|rerank/i;
+
+/**
+ * ⚖️ Dobór na Jev: każdy TeOgochi = pytanie `choice` (opcje = modele katalogu z opisem), wszystko w JEDNYM
+ * zapytaniu. Wynik = model z największym prawdopodobieństwem, powód = pewność i drugi wybór. Przydział
+ * przechodzi przez sprawdzPrzydzial jak odpowiedź modelu (Jev wybiera tylko z podanych opcji, ale ufamy faktom).
+ * Zwraca { przydzial, odrzucone, model: 'jev-…' }.
+ */
+export async function dobierzJev(jev, { opis, agenci, kat, linia }) {
+    // Zgniecione kwanty (IQ1/IQ2/Q2…) wypadają — gubią treść plików (Zwiadowca też ich nie proponuje).
+    const opcje = kat.filter((m) => !NIE_DO_PISANIA.test(m.nazwa) && !zgniecionyKwant(m.kwantyzacja) && !zgniecionyKwant(String(m.nazwa).split(':').pop())).slice(0, 255);
+    if (!opcje.length) throw new Error('W katalogu nie ma modeli do pisania.');
+    // Jawna KLASA na początku opisu — zmierzone 2026-10-08: bez niej Jev dał Reżyserowi (scalanie) model 4B
+    // z pewnością 0,84; rozmiar ukryty w nawiasie nie przebijał się przez nazwę.
+    const klasa = (m) => {
+        const b = Number(String(m.parametry ?? '').replace(/[^0-9.]/g, '')) || rozmiarModelu(m.nazwa);
+        const chmura = /:cloud$|-cloud$/.test(m.nazwa) ? 'CHMURA OLLAMY (duży, poza kartą) — ' : '';
+        if (!b) return `${chmura}ROZMIAR NIEZNANY — `;
+        return `${chmura}${b >= 9 ? `DUŻY ${b}B — rozumowanie, scalanie, kod` : b > 4 ? `ŚREDNI ${b}B — zwykłe wkłady` : `MAŁY ${b}B — tylko krótkie, proste wkłady`} — `;
+    };
+    const criteria = Object.fromEntries(opcje.map((m) => [m.nazwa, `${klasa(m)}${linia(m).replace(/^- /, '')}`.slice(0, 320)]));
+    const questions = Object.fromEntries(agenci.map((a, i) => [`a${i}`, {
+        type: 'choice',
+        instructions: {
+            pytanie: 'Który model z katalogu Katedry najlepiej posłuży temu TeOgochi w tym zadaniu? Większy model do rozumowania, scalania i kodu; mniejszy i szybszy do krótkich, prostych wkładów; własny model TeOgochi (wykuty z jego pracy) zwykle jest dla niego; liczą się oceny Sędziego z pracy stada; karta graficzna jest jedna (ok. 6 GB) — nie każdemu największy.',
+            teogochi: `${a.id} — ${a.imie}${a.dziedzina ? ` (${a.dziedzina})` : ''}${a.zadanie ? `: ${String(a.zadanie).slice(0, 300)}` : ''}`,
+        },
+        criteria,
+    }]));
+    const d = await jev.zapytaj({ state: { zadanie: opis.slice(0, 2000), sklad: agenci.map((a) => `${a.id} — ${a.imie}`).join('; ') }, questions });
+    const propozycja = {
+        przydzial: agenci.map((a, i) => {
+            const o = d.answers?.[`a${i}`];
+            const drugi = Object.entries(o?.probabilities ?? {}).sort((x, y) => y[1] - x[1])[1];
+            const pewnosc = Number(o?.confidence ?? 0);
+            // Niska pewność = Jev waha się między modelami — Suweren widzi, gdzie warto wybrać ręcznie.
+            return { agent: a.id, model: o?.choice, powod: `${pewnosc < 0.3 ? '⚠ niepewny — ' : ''}Jev: pewność ${pewnosc.toFixed(2)}${drugi ? `; drugi wybór ${drugi[0]} (${Number(drugi[1]).toFixed(2)})` : ''}` };
+        }),
+    };
+    return { ...sprawdzPrzydzial(propozycja, { agenci, modele: kat.map((m) => m.nazwa) }), model: d.model ?? 'jev' };
 }
 
 /** Przydział → stałe silniki agentów (ModeleAgentow). Tylko przy maszynie. */
@@ -153,4 +206,4 @@ export async function zastosuj(przydzial = []) {
     return wynik;
 }
 
-export default { skonfiguruj, katalog, dobierz, zastosuj, ustawKarte, statystyki, sprawdzPrzydzial, wylowJson };
+export default { skonfiguruj, katalog, dobierz, dobierzJev, zastosuj, ustawKarte, statystyki, sprawdzPrzydzial, wylowJson };
