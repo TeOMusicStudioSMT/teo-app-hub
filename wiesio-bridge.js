@@ -10789,13 +10789,13 @@ app.put('/api/modele/karta', async (req, res) => {
     try { res.json({ success: true, karta: await Dyrygent.ustawKarte(req.body?.nazwa, req.body ?? {}) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
-/** POST /api/dyrygent/dobierz { zadanie, agenci?: [id] } — propozycja; bez `agenci` = całe wyklute stado. Nic nie zapisuje. */
+/** POST /api/dyrygent/dobierz { zadanie, agenci?: [id], szybko? } — propozycja; bez `agenci` = całe wyklute stado; `szybko` = sam Jev (bez rozstrzygnięcia większym modelem). Nic nie zapisuje. */
 app.post('/api/dyrygent/dobierz', async (req, res) => {
     try {
         const wyklute = ((await stanDlaTelefonu()).gatunki ?? []).filter((g) => g.wyklute && !ProjektStada.POZA_SKLADEM.has(g.id));
         const ids = Array.isArray(req.body?.agenci) ? req.body.agenci.map(String) : [];
         const agenci = (ids.length ? wyklute.filter((g) => ids.includes(g.id)) : wyklute).map((g) => ({ id: g.id, imie: g.imie, dziedzina: g.dziedzina || '', zadanie: ProjektStada.ROLE[g.id]?.zadanie }));
-        res.json({ success: true, ...(await Dyrygent.dobierz({ zadanie: req.body?.zadanie, agenci })) });
+        res.json({ success: true, ...(await Dyrygent.dobierz({ zadanie: req.body?.zadanie, agenci, szybko: req.body?.szybko === true })) });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 /** POST /api/dyrygent/zastosuj { przydzial:[{agent, model}] } — na stałe (silniki agentów). Tylko przy maszynie. */

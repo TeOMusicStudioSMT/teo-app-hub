@@ -33,13 +33,16 @@ test('katalog: modele Ollamy + karta Suwerena + własny model z Kuźni + praca w
     await Dyrygent.ustawKarte('qwen3.5:9b', { opis: 'Rozumowanie i kod', mocne: 'kod, scalanie' });
     await assert.rejects(Dyrygent.ustawKarte('x; rm -rf', { opis: 'x' }), /Zła nazwa/);
     const k = await Dyrygent.katalog();
-    assert.deepEqual(k.map((m) => m.nazwa), ['gemma4:e2b', 'qwen3.5:9b', 'teogochi-kodeks:latest']);   // lepiej oceniane pierwsze, przy remisie mniejszy
-    assert.deepEqual(k[1].karta, { opis: 'Rozumowanie i kod', mocne: ['kod', 'scalanie'] });
-    assert.deepEqual(k[1].praca, { wkladow: 2, ocen: 1, srednia: 8 });                                  // projekt bez oceny liczy się do wkładów, nie do średniej
+    // Kolejność idzie za ocenami Sędziego-Jev (krok 1, 2026-10-08) — stare oceny lokalnego Sędziego nie wynoszą modelu; przy remisie mniejszy.
+    assert.deepEqual(k.map((m) => m.nazwa), ['gemma4:e2b', 'teogochi-kodeks:latest', 'qwen3.5:9b']);
+    const qwen = k.find((m) => m.nazwa === 'qwen3.5:9b');
+    assert.deepEqual(qwen.karta, { opis: 'Rozumowanie i kod', mocne: ['kod', 'scalanie'] });
+    assert.deepEqual(qwen.praca, { wkladow: 2, ocen: 1, srednia: 8, ocenJev: 0, sredniaJev: null });   // projekt bez oceny liczy się do wkładów, nie do średniej
     assert.deepEqual(k[0].agenci, ['joanna']);
-    assert.deepEqual(k[2].praca, { wkladow: 0, ocen: 0, srednia: null });                             // jeszcze nie pracował — ostatni
-    assert.equal(k[2].wlasny, 'kodeks');
-    assert.equal(k[2].rozmiarGB, 4.1);
+    const wlasny = k.find((m) => m.nazwa === 'teogochi-kodeks:latest');
+    assert.deepEqual(wlasny.praca, { wkladow: 0, ocen: 0, srednia: null, ocenJev: 0, sredniaJev: null });
+    assert.equal(wlasny.wlasny, 'kodeks');
+    assert.equal(wlasny.rozmiarGB, 4.1);
 });
 
 test('dobierz: tylko modele z katalogu i agenci z zadania — zmyślenia odrzucone z powodem', async () => {
@@ -53,8 +56,8 @@ test('dobierz: tylko modele z katalogu i agenci z zadania — zmyślenia odrzuco
     const w = await Dyrygent.dobierz({ zadanie: 'Forge Fashion: gra RPG-fashion', agenci: [{ id: 'kodeks', imie: 'Kodeks', zadanie: 'Gra: pętla' }, { id: 'joanna', imie: 'Joanna' }] });
     assert.deepEqual(w.przydzial, [{ agent: 'kodeks', model: 'teogochi-kodeks:latest', powod: 'własny model' }, { agent: 'joanna', model: 'gemma4:e2b', powod: 'krótki wkład' }]);
     assert.deepEqual(w.odrzucone.map((o) => o.powod), ['nie ma takiego modelu w Katedrze', 'nie ma takiego TeOgochi w zadaniu']);
-    assert.match(zapytanie.prompt, /teogochi-kodeks:latest \(7B, 4\.1 GB\) — WŁASNY model TeOgochi „kodeks"/);
-    assert.match(zapytanie.prompt, /- kodeks — Kodeks: Gra/);
+    assert.match(zapytanie.prompt, /teogochi-kodeks:latest — WŁASNY model TeOgochi „kodeks" \(wykuty z jego pracy\) — fakty: ŚREDNI 7B, rodzina qwen, 4\.1 GB/);
+    assert.match(zapytanie.prompt, /- kodeks — Kodeks: Gra \[WYMAGANIE ROLI: model do kodu albo co najmniej 7 mld/);
     assert.match(zapytanie.system, /WYŁĄCZNIE modele z KATALOGU/);
 });
 
@@ -236,7 +239,7 @@ test('Dyrygent na Jev: jedno zapytanie, choice na każdego TeOgochi z opcjami = 
         },
     });
     try {
-        const w = await Dyrygent.dobierz({ zadanie: 'Zbuduj quest Kustosza w grze', agenci: [{ id: 'kodeks', imie: 'Kodeks', dziedzina: 'kod' }, { id: 'joanna', imie: 'Joanna', dziedzina: 'muzyka' }] });
+        const w = await Dyrygent.dobierz({ zadanie: 'Zbuduj quest Kustosza w grze', szybko: true, agenci: [{ id: 'kodeks', imie: 'Kodeks', dziedzina: 'kod' }, { id: 'joanna', imie: 'Joanna', dziedzina: 'muzyka' }] });
         assert.equal(w.silnik, 'jev');
         assert.equal(w.model, 'jev-1.13.0');
         assert.deepEqual(w.przydzial.map((p) => [p.agent, p.model]), [['kodeks', 'teogochi-kodeks:latest'], ['joanna', 'gemma4:e2b']]);
@@ -276,7 +279,8 @@ test('reguła scalających: Reżyser/Kronikarz bez modeli ≤ 4B — w opcjach J
         await Dyrygent.dobierz({ zadanie: 'Biblia gry', agenci: [{ id: 'rezyser', imie: 'Reżyser' }, { id: 'kodeks', imie: 'Kodeks' }] });
         assert.ok(!('spark-4b:latest' in zapytanie.questions.a0.criteria) && !('gemma4:e2b' in zapytanie.questions.a0.criteria), 'Reżyser: bez ≤ 4B (spark 4.11B, gemma 2B)');
         assert.ok('qwen3.5:9b' in zapytanie.questions.a0.criteria);
-        assert.ok('spark-4b:latest' in zapytanie.questions.a1.criteria, 'Kodeks widzi wszystkie');
+        // Kodeks (krok 2): model do kodu albo ≥ 7 mld — spark 4B i gemma 2B odpadają z jego opcji
+        assert.ok(!('spark-4b:latest' in zapytanie.questions.a1.criteria) && 'qwen3.5:9b' in zapytanie.questions.a1.criteria, 'Kodeks: bez 4B');
     } finally { Dyrygent.skonfiguruj({ jev: null }); }
 
     // 2) lokalny model dał Kronikarzowi 2B → podmiana na większy z powodem; Kodeks bez zmian
@@ -288,11 +292,88 @@ test('reguła scalających: Reżyser/Kronikarz bez modeli ≤ 4B — w opcjach J
     assert.notEqual(w.przydzial[0].model, 'gemma4:e2b');
     assert.ok(['qwen3.5:9b', 'teogochi-kodeks:latest'].includes(w.przydzial[0].model));
     assert.match(w.przydzial[0].powod, /reguła scalających: gemma4:e2b ma ≤ 4B, a Kronikarz skleja pracę stada/);
-    assert.equal(w.przydzial[1].model, 'spark-4b:latest');
+    assert.notEqual(w.przydzial[1].model, 'spark-4b:latest', 'Kodeks na 4B → reguła roli');
+    assert.match(w.przydzial[1].powod, /reguła roli: spark-4b:latest \(MAŁY 4B\) za mały — Kodeks pisze kod gry/);
 
     // 3) agent oznaczony scala:true też podlega; brak większych modeli → zostaje, z powodem
     const tylkoMale = [{ nazwa: 'gemma4:e2b', parametry: '2B', kwantyzacja: 'Q4_K_M' }];
-    const r = Dyrygent.regulaScalajacych([{ agent: 'wektor', model: 'gemma4:e2b', powod: 'x' }], [{ id: 'wektor', imie: 'Wektor', scala: true }], tylkoMale);
+    const r = Dyrygent.regulaScalajacych([{ agent: 'ogrodnik', model: 'gemma4:e2b', powod: 'x' }], [{ id: 'ogrodnik', imie: 'Ogrodnik', scala: true }], tylkoMale);
     assert.equal(r[0].model, 'gemma4:e2b');
     assert.match(r[0].powod, /nie ma modelu większego niż 4B/);
 });
+
+test('krok 1 — równe szanse: karta z faktów, cechy z nazwy, oceny Sędziego-Jev osobno od starych lokalnych', () => {
+    assert.deepEqual(Dyrygent.cechyZNazwy('hf.co/x/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M'), ['model do kodu', 'dostrojony do poleceń', 'MoE — aktywna tylko część parametrów']);
+    assert.deepEqual(Dyrygent.cechyZNazwy('hf.co/ItsOkayNow/Spark-X2.5-4B-Heretic-GGUF:Q4_K_M'), ['odblokowany (bez cenzury)']);
+    assert.equal(Dyrygent.kartaZFaktow({ nazwa: 'gemma4:12B', parametry: '11.9B', rodzina: 'gemma4', kwantyzacja: 'Q4_K_M', rozmiarGB: 7.6 }), 'DUŻY 11.9B, rodzina gemma4, kwantyzacja Q4_K_M, 7.6 GB');
+    const st = Dyrygent.statystyki([
+        { oceny: [{ ocena: 9.8, kto: 'Wektor' }], kroki: [{ model: 'spark', stan: 'gotowe' }] },
+        { oceny: [{ ocena: 6, kto: 'Wektor' }, { ocena: 7.2, kto: 'Jev + Wektor' }], kroki: [{ model: 'gemma', stan: 'gotowe' }] },
+    ]);
+    assert.deepEqual(st.spark, { wkladow: 1, ocen: 1, srednia: 9.8, ocenJev: 0, sredniaJev: null });
+    assert.deepEqual(st.gemma, { wkladow: 1, ocen: 1, srednia: 7.2, ocenJev: 1, sredniaJev: 7.2 });
+    assert.match(Dyrygent.opisPracy(st.spark), /oceny tylko od dawnego lokalnego Sędziego \(zawyżone — nie porównuj/);
+    assert.doesNotMatch(Dyrygent.opisPracy(st.spark), /9\.8/, 'zawyżona liczba nie idzie do Dyrygenta');
+    assert.match(Dyrygent.opisPracy(st.gemma), /Sędziego-Jev 7\.2\/10 \(1 ocen\)/);
+    assert.match(Dyrygent.liniaKatalogu({ nazwa: 'ornith:latest', parametry: '9.0B', rodzina: 'qwen35', praca: { wkladow: 0 } }), /^- ornith:latest — fakty: DUŻY 9B, rodzina qwen35 — jeszcze nie pracował/);
+});
+
+test('krok 2 — reguły ról: Wektor ≥ 8B, Kodeks koderski albo ≥ 7B, własny model zawsze; zwykła rola bez wymagań', () => {
+    const kat = [
+        { nazwa: 'spark:4b', parametry: '4.11B', praca: {} }, { nazwa: 'mistral:latest', parametry: '7.2B', praca: {} },
+        { nazwa: 'qwen2.5-coder:7b', parametry: '7.6B', praca: {} }, { nazwa: 'gemma4:12B', parametry: '11.9B', praca: {} },
+        { nazwa: 'teogochi-wektor', parametry: '2B', wlasny: 'wektor', praca: {} },
+    ];
+    const agenci = [{ id: 'wektor', imie: 'Wektor' }, { id: 'kodeks', imie: 'Kodeks' }, { id: 'joanna', imie: 'Joanna' }, { id: 'straznik', imie: 'Strażnik' }];
+    const r = Dyrygent.regulyRol([
+        { agent: 'wektor', model: 'mistral:latest', powod: 'x' }, { agent: 'kodeks', model: 'spark:4b', powod: 'x' },
+        { agent: 'joanna', model: 'spark:4b', powod: 'x' }, { agent: 'straznik', model: 'gemma4:12B', powod: 'x' },
+    ], agenci, kat);
+    assert.equal(r[0].model, 'teogochi-wektor', 'Wektor: mistral 7,2B < 8 → jego własny model');
+    assert.equal(r[1].model, 'qwen2.5-coder:7b', 'Kodeks: koderski najpierw');
+    assert.equal(r[2].model, 'spark:4b', 'Joanna bez wymagań');
+    assert.equal(r[3].model, 'gemma4:12B');
+    assert.equal(Dyrygent.spelnia(kat[0], Dyrygent.wymaganiaRoli({ id: 'kodeks' })), false);
+    assert.equal(Dyrygent.spelnia({ nazwa: 'nieznany' }, Dyrygent.wymaganiaRoli({ id: 'wektor' })), true, 'nieznany rozmiar — nie zgadujemy');
+});
+
+test('krok 3 — Jev zawęża do 3, większy model lokalny rozstrzyga z listy; spoza listy = zostaje wstępny; limit modeli', async () => {
+    let doRozstrzygniecia;
+    Dyrygent.skonfiguruj({
+        katalogWymiar: tmp(), tagi: async () => TAGI, projekty: async () => [], modeleAgentow: async () => ({}), wykute: async () => [],
+        model: () => 'gemma4:e2b',
+        pisz: async (o) => { doRozstrzygniecia = o; return '{"przydzial":[{"agent":"joanna","model":"qwen3.5:9b","powod":"muzyka z tekstem potrzebuje rozumu"},{"agent":"kupiec","model":"gpt-9","powod":"x"}]}'; },
+        jev: { stan: () => ({ maKlucz: true }), zapytaj: async () => ({ model: 'jev-1.13.0', answers: {
+            a0: { choice: 'gemma4:e2b', confidence: 0.8, probabilities: { 'gemma4:e2b': 0.8, 'qwen3.5:9b': 0.15, 'teogochi-kodeks:latest': 0.05 } },
+            a1: { choice: 'gemma4:e2b', confidence: 0.7, probabilities: { 'gemma4:e2b': 0.7, 'qwen3.5:9b': 0.3 } },
+        } }) },
+    });
+    try {
+        const w = await Dyrygent.dobierz({ zadanie: 'Koncert na wyspie', agenci: [{ id: 'joanna', imie: 'Joanna' }, { id: 'kupiec', imie: 'Kupiec' }] });
+        assert.equal(w.silnik, 'jev+model');
+        assert.equal(w.model, 'jev-1.13.0 → qwen3.5:9b', 'rozstrzyga największy lokalny ≥ 7B (model Dyrygenta ma 2B)');
+        assert.deepEqual(w.krotkie.joanna.map((k) => k.model), ['gemma4:e2b', 'qwen3.5:9b', 'teogochi-kodeks:latest']);
+        assert.deepEqual(w.przydzial.map((p) => [p.agent, p.model]), [['joanna', 'qwen3.5:9b'], ['kupiec', 'gemma4:e2b']]);
+        assert.match(w.przydzial[0].powod, /muzyka z tekstem potrzebuje rozumu \(wstępnie 0\.15\)/);
+        assert.match(w.przydzial[1].powod, /rozstrzygający nie wybrał — zostaje wstępny/);
+        assert.ok(w.odrzucone.some((o) => o.agent === 'kupiec' && /spoza listy/.test(o.powod)));
+        assert.match(doRozstrzygniecia.prompt, /joanna — Joanna\n    · gemma4:e2b \(wstępnie 0\.8\) — MAŁY 2B/);
+    } finally { Dyrygent.skonfiguruj({ jev: null }); }
+
+    const krotkie = { a: [{ model: 'm1' }], b: [{ model: 'm2' }], c: [{ model: 'm3' }], d: [{ model: 'm4' }, { model: 'm1' }] };
+    const og = Dyrygent.ograniczDoModeli([{ agent: 'a', model: 'm1', powod: '' }, { agent: 'a2', model: 'm1', powod: '' }, { agent: 'b', model: 'm2', powod: '' }, { agent: 'c', model: 'm3', powod: '' }, { agent: 'd', model: 'm4', powod: '' }], krotkie, [], 3);
+    assert.equal(og.find((p) => p.agent === 'd').model, 'm1');
+    assert.match(og.find((p) => p.agent === 'd').powod, /limit 3 modeli na kartę: m4 → m1/);
+    assert.equal(new Set(og.map((p) => p.model)).size, 3);
+});
+
+test('limit modeli chroni model do kodu wybrany Kodeksowi', () => {
+    const og = Dyrygent.ograniczDoModeli([
+        { agent: 'a', model: 'ornith', powod: '' }, { agent: 'b', model: 'ornith', powod: '' }, { agent: 'c', model: 'mistral', powod: '' },
+        { agent: 'd', model: 'mistral', powod: '' }, { agent: 'e', model: 'apus', powod: '' }, { agent: 'f', model: 'apus', powod: '' },
+        { agent: 'kodeks', model: 'qwen2.5-coder:7b', powod: '' },
+    ], { e: [{ model: 'apus' }, { model: 'ornith' }], f: [{ model: 'ornith' }] }, [], 3);
+    assert.equal(og.find((p) => p.agent === 'kodeks').model, 'qwen2.5-coder:7b');
+    assert.equal(new Set(og.map((p) => p.model)).size, 3);
+});
+

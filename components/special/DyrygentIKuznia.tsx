@@ -58,7 +58,9 @@ export const DyrygentPanel: React.FC = () => {
     const [modele, setModele] = useState<ModelKatalogu[] | null>(null);
     const [dyrygent, setDyrygent] = useState('');
     const [zadanie, setZadanie] = useState('');
-    const [propozycja, setPropozycja] = useState<{ przydzial: Przydzial[]; odrzucone: (Przydzial & { powod: string })[]; model: string } | null>(null);
+    // ⚡ sam Jev (szybko) albo Jev zawęża + większy model lokalny rozstrzyga (domyślnie — mądrzej, kilkadziesiąt sekund)
+    const [szybko, setSzybko] = useState(false);
+    const [propozycja, setPropozycja] = useState<{ przydzial: Przydzial[]; odrzucone: (Przydzial & { powod: string })[]; model: string; silnik?: string; rozstrzygniecieBlad?: string } | null>(null);
     const [zajety, setZajety] = useState(false);
     const [edycja, setEdycja] = useState<string | null>(null);
     const [opis, setOpis] = useState('');
@@ -76,7 +78,7 @@ export const DyrygentPanel: React.FC = () => {
 
     const dobierz = async () => {
         setZajety(true); setPropozycja(null);
-        try { setPropozycja(await zMostu('/api/dyrygent/dobierz', { method: 'POST', body: JSON.stringify({ zadanie }) })); }
+        try { setPropozycja(await zMostu('/api/dyrygent/dobierz', { method: 'POST', body: JSON.stringify({ zadanie, szybko }) })); }
         catch (e) { toast.error(blad(e), { duration: 8000 }); }
         finally { setZajety(false); }
     };
@@ -145,11 +147,13 @@ export const DyrygentPanel: React.FC = () => {
                 <input value={zadanie} onChange={(e) => setZadanie(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && dobierz()}
                     placeholder="Zadanie dla stada — Dyrygent przydzieli modele (np. gra RPG-fashion z merchem i muzyką)"
                     className="flex-1 rounded-lg border border-slate-700 bg-black/40 px-3 py-2 text-xs text-slate-200" />
-                <button onClick={dobierz} disabled={zajety || zadanie.trim().length < 5} className="rounded-lg bg-sky-600/60 px-3 text-xs font-bold text-white disabled:opacity-40">{zajety ? '🎼…' : '🎼 Dobierz'}</button>
+                <label className="flex items-center gap-1 text-[10px] text-slate-400" title="Sam Jev: ułamek sekundy, ale idzie za najsilniejszym sygnałem. Bez tego: Jev wybiera 3 kandydatów, a większy model lokalny rozstrzyga z uzasadnieniem."><input type="checkbox" checked={szybko} onChange={(e) => setSzybko(e.target.checked)} /> ⚡ szybko (sam Jev)</label>
+                <button onClick={dobierz} disabled={zajety || zadanie.trim().length < 5} className="rounded-lg bg-sky-600/60 px-3 text-xs font-bold text-white disabled:opacity-40">{zajety ? (szybko ? '🎼…' : '🎼 Jev zawęża, model rozważa…') : '🎼 Dobierz'}</button>
             </div>
             {propozycja && (
                 <div className="space-y-1 rounded-lg border border-sky-700/40 p-2 text-[11px]">
                     <div className="text-slate-400">Propozycja Dyrygenta ({propozycja.model}):</div>
+                    {propozycja.rozstrzygniecieBlad && <div className="text-amber-300/80">Większy model nie rozstrzygnął ({propozycja.rozstrzygniecieBlad}) — zostaje wybór Jev.</div>}
                     {propozycja.przydzial.map((p) => <div key={p.agent}><b className="text-slate-200">{p.agent}</b> → <span className="font-mono text-sky-200">{p.model}</span> <span className="text-slate-500">{p.powod}</span></div>)}
                     {propozycja.odrzucone.map((p, i) => <div key={i} className="text-amber-300/80">✕ {p.agent} → {p.model}: {p.powod}</div>)}
                     <button onClick={zastosuj} disabled={zajety || !propozycja.przydzial.length} className="mt-1 rounded bg-emerald-700/50 px-3 py-1 text-emerald-100 disabled:opacity-40">Zastosuj na stałe (silniki TeOgochi)</button>
