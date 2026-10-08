@@ -280,10 +280,22 @@ function opisNarzedzi(profil, lokalne) {
         .join('\n');
 }
 
-async function systemPrompt(profil, lokalne, kartaStolu = null) {
-    const narzedzia = opisNarzedzi(profil, lokalne);
+/**
+ * 🎭 SCENA (Suweren 2026-10-08: „wcieli się w niego teogochi aktor… stworek z wyspy… przyjaciel”): rozmowa w ROLI —
+ * np. Aktor wcielony w stworka-towarzysza w grze Teterhia. Scena = kim jest i gdzie stoi (opis od gry, ≤ 2000 znaków);
+ * zawsze bez narzędzi — w grze Delegat nie zamyka procesów i nie zleca muzyki, tylko gra rolę.
+ */
+function blokSceny(scena) {
+    return `SCENA — grasz w niej rolę i NIE wychodzisz z niej (nie mów, że jesteś modelem, programem ani Delegatem):
+${String(scena).slice(0, 2000)}
+Rozmawiasz z graczem (to Suweren) wewnątrz tej sceny. Odpowiadasz krótko, 1–3 zdania, mową postaci — bez list, nagłówków i emoji. Nie wymyślasz faktów o Katedrze ani o świecie gry spoza sceny; czego nie wiesz — przyznajesz w roli.`;
+}
+
+async function systemPrompt(profil, lokalne, kartaStolu = null, scena = null) {
     // Karta roli (services/Persony.js) wygrywa z jednozdaniową personą — ta zostaje zapasem.
     const karta = await Persony.karta(profil.gatunek);
+    if (scena) return `${karta ? karta.tresc : profil.persona}\n\n${blokSceny(scena)}`;
+    const narzedzia = opisNarzedzi(profil, lokalne);
     const tozsamosc = karta ? `${karta.tresc}\n\nReprezentujesz Suwerena, gdy jest poza domem.` : profil.persona;
     return `${tozsamosc}
 
@@ -435,7 +447,7 @@ export async function profilDla(id) {
     };
 }
 
-export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = false, karta = null }, naZdarzenie = () => {}) {
+export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = false, karta = null, scena = null }, naZdarzenie = () => {}) {
     const profil = await profilDla(delegat);
     if (!profil) throw new Error(`Nie ma takiego delegata: ${delegat}. Znane: ${Object.keys(PROFILE).join(', ')} i gatunki z kartą roli.`);
     const tresc = String(tekst || '').trim();
@@ -448,10 +460,13 @@ export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = fa
     // 🪑 Rozmowa przy karcie Stołu (StoL): świeże fakty karty przy każdej turze — etap i oceny zmieniają się w trakcie.
     const kartaStolu = (karta || r.karta) && cfg.stol ? await cfg.stol.karta(String(karta || r.karta)).catch(() => null) : null;
     if (kartaStolu) r.karta = kartaStolu.id;
+    // 🎭 Scena (gra): świeża z każdą turą (pora, miejsce się zmieniają); rozmowa ją pamięta, jeśli tura jej nie niesie.
+    const scenaTury = scena ? String(scena).slice(0, 2000) : r.scena ?? null;
+    if (scenaTury) r.scena = scenaTury;
     r.tury.push({ kto: 'suweren', tresc, kiedy: new Date().toISOString() });
     await cfg.szyna?.nadaj({ agent, rodzaj: 'telefon', tresc: `Suweren: ${tresc.slice(0, 300)}`, dane: { rozmowaId: id, kto: 'suweren' } });
 
-    const messages = [{ role: 'system', content: await systemPrompt(profil, lokalne, kartaStolu) }];
+    const messages = [{ role: 'system', content: await systemPrompt(profil, lokalne, kartaStolu, scenaTury) }];
     for (const t of r.tury.slice(-12)) {
         if (t.kto === 'suweren') messages.push({ role: 'user', content: t.tresc });
         else if (t.kto === 'delegat') messages.push({ role: 'assistant', content: t.tresc });
@@ -469,7 +484,8 @@ export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = fa
         if (liczy) naZdarzenie({ typ: 'obciazenie', tekst: `Katedra liczy teraz wideo (${liczy} w ComfyUI) — ${profil.imie} odpowie, ale może to potrwać nawet minutę lub dwie.` });
     } catch { /* ComfyUI nie odpowiada — nie ma obciążenia */ }
 
-    const dozwolone = (nazwa) => profil.narzedzia.includes(nazwa) && NARZEDZIA[nazwa] && (lokalne || cfg.pelnyTunel || !NARZEDZIA[nazwa].ciezkie);
+    // W scenie (gra) żadnych narzędzi — postać tylko mówi.
+    const dozwolone = (nazwa) => !scenaTury && profil.narzedzia.includes(nazwa) && NARZEDZIA[nazwa] && (lokalne || cfg.pelnyTunel || !NARZEDZIA[nazwa].ciezkie);
     const historia = r.tury.slice(0, -1);
     const jevSlad = { intencja: null, straz: [] };
 
@@ -543,7 +559,7 @@ export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = fa
     r.ostatnia = new Date().toISOString();
     await zapiszRozmowe(r);
     await cfg.szyna?.nadaj({ agent, rodzaj: 'telefon', tresc: `${profil.imie}: ${odpowiedz.slice(0, 300)}`, dane: { rozmowaId: id, kto: 'delegat' } });
-    const wynik = { rozmowaId: id, delegat: profil.id, odpowiedz, glos: profil.glos, model: silnik, karta: r.karta ?? null, jev: jevSlad.intencja || jevSlad.straz.length || jevSlad.blad ? jevSlad : null };
+    const wynik = { rozmowaId: id, delegat: profil.id, imie: profil.imie, odpowiedz, glos: profil.glos, model: silnik, karta: r.karta ?? null, scena: !!scenaTury, jev: jevSlad.intencja || jevSlad.straz.length || jevSlad.blad ? jevSlad : null };
     naZdarzenie({ typ: 'koniec', ...wynik });
     return wynik;
 }

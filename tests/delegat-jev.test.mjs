@@ -106,3 +106,22 @@ test('rozmowa przy karcie Stołu: fakty karty w prompcie, karta zapamiętana w r
     assert.match(zapytania[1].messages[0].content, /Kot z wyspy/);
     assert.equal(blokKarty(null), '');
 });
+
+test('🎭 scena (gra): rola w prompcie, bez narzędzi — próba narzędzia odmówiona; scena zapamiętana w rozmowie', async () => {
+    const jev = jevMowi({ intencja: { choice: 'system.pamiec', probabilities: { 'system.pamiec': 0.99 } } });
+    konfig(jev);
+    zapytania = []; skrypt = ['{"narzedzie":"system.pamiec","argumenty":{}}', 'Miau… tu na wyspie nie liczę pamięci, liczę gwiazdy.'];
+    const zd = [];
+    const w = await Delegat.rozmawiaj({ delegat: 'aktor', tekst: 'co zjada pamięć?', lokalne: true, scena: 'Jesteś czarnym kotem-duszkiem z opalową sierścią na wyspie Tetynth. Jest noc.' }, (z) => zd.push(z));
+    assert.equal(w.scena, true);
+    assert.equal(jev.pytania.length, 0, 'w scenie Jev nie szuka narzędzi');
+    const sys = zapytania[0].messages[0].content;
+    assert.match(sys, /SCENA — grasz w niej rolę/);
+    assert.match(sys, /wyspie Tetynth/);
+    assert.doesNotMatch(sys, /Dostępne narzędzia|przez telefon/);
+    assert.ok(zd.some((z) => z.typ === 'wynik' && z.narzedzie === 'system.pamiec' && /tylko z maszyny|Nie ma narzędzia/.test(z.wynik.blad)), 'narzędzie odmówione');
+    assert.equal(w.odpowiedz, 'Miau… tu na wyspie nie liczę pamięci, liczę gwiazdy.');
+    zapytania = []; skrypt = ['Dalej jestem kotem.'];
+    await Delegat.rozmawiaj({ delegat: 'aktor', tekst: 'a teraz?', rozmowaId: w.rozmowaId });
+    assert.match(zapytania[0].messages[0].content, /wyspie Tetynth/, 'kolejna tura bez sceny — rozmowa ją pamięta');
+});

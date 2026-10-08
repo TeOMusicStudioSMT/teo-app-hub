@@ -7959,15 +7959,16 @@ KuzniaSoup.skonfiguruj({
 app.get('/api/delegat/profile', (req, res) => res.json({ success: true, profile: Delegat.profile(), lokalne: !!req.lokalny, pelnyTunel: PELNY_TUNEL }));
 
 /**
- * POST /api/delegat/rozmowa { delegat, tekst, rozmowaId?, model?, strumien?, karta? }  (karta = id karty Stołu — rozmowa przy niej)
+ * POST /api/delegat/rozmowa { delegat, tekst, rozmowaId?, model?, strumien?, karta?, scena? }  (karta = id karty Stołu — rozmowa przy niej;
+ *   scena = rola w grze, np. Aktor wcielony w stworka Teterhii — bez narzędzi)
  * strumien:true → SSE: {typ:'narzedzie'|'wynik'|'token'|'koniec'|'blad'} — telefon czyta od razu.
  * Bez strumienia → jeden JSON z odpowiedzią.
  */
 app.post('/api/delegat/rozmowa', async (req, res) => {
-    const { delegat = 'joanna', tekst, rozmowaId, model, strumien, zGlownego, karta } = req.body ?? {};
+    const { delegat = 'joanna', tekst, rozmowaId, model, strumien, zGlownego, karta, scena } = req.body ?? {};
     // zGlownego: zlecenie od Głównego (scripts/glowny/katedra.mjs) — bez ciężkich narzędzi, żeby stado nie było
     // furtką obok zgody Suwerena na polecenia Głównego.
-    const p = { delegat, tekst, rozmowaId, model, lokalne: !!req.lokalny && !zGlownego, karta: typeof karta === 'string' ? karta.slice(0, 80) : null };
+    const p = { delegat, tekst, rozmowaId, model, lokalne: !!req.lokalny && !zGlownego, karta: typeof karta === 'string' ? karta.slice(0, 80) : null, scena: typeof scena === 'string' && scena.trim() ? scena.slice(0, 2000) : null };
     if (!strumien) {
         try { return res.json({ success: true, ...(await Delegat.rozmawiaj(p)) }); }
         catch (e) { return res.status(400).json({ success: false, message: e.message }); }
