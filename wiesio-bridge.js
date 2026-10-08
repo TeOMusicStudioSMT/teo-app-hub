@@ -342,6 +342,7 @@ const TrybKatedry = utworzTryb({ katalog: ANTIGRAVITY_DIR, klucz: kluczChmurySyn
 zainstalujFetch(TrybKatedry);
 // ⚖️ Jev (TypeSafe) — sędzia semantyczny (noul/choice/score), klucz z Kibla jak chmura (services/Jev.js).
 const Jev = utworzJev({ klucz: () => kluczChmurySync('typesafe') });
+AlignmentShield.getInstance().jev = Jev;   // 🛡️ Tarcza Prawdy: drugi głos Jev (inspectZJev)
 
 const MUSIC_DIR = path.join(process.cwd(), '_OtakOs_Muzyka');
 const MOVE_DIR = path.join(process.cwd(), '_OtakOs_Move');
@@ -4029,7 +4030,7 @@ app.post('/api/mechanic/apply', async (req, res) => {
     // destrukcyjny shell, eval, exfiltracja) blokuje zapis — plik nietknięty.
     let shieldCard = null;
     try {
-        shieldCard = AlignmentShield.getInstance().inspect(code, { existingContent, targetFile });
+        shieldCard = await AlignmentShield.getInstance().inspectZJev(code, { existingContent, targetFile });   // ⚖️ + drugi głos Jev
         if (shieldCard.blocked) {
             console.warn(`[Mechanic-API] 🛡️ apply ${id} ZABLOKOWANE przez Tarczę: ${shieldCard.summary}`);
             return res.status(422).json({
@@ -4137,13 +4138,13 @@ app.post('/api/mechanic/apply', async (req, res) => {
  * Body: { code: string, targetFile?: string, existingContent?: string }
  * Inspekcja Tarczy Prawdy (iFixAi) na żądanie — zwraca scorecard bez zapisu.
  */
-app.post('/api/shield/inspect', (req, res) => {
+app.post('/api/shield/inspect', async (req, res) => {
     const { code, targetFile, existingContent } = req.body ?? {};
     if (typeof code !== 'string') {
         return res.status(400).json({ success: false, message: 'Brak pola "code" (string).' });
     }
     try {
-        const card = AlignmentShield.getInstance().inspect(code, {
+        const card = await AlignmentShield.getInstance().inspectZJev(code, {
             targetFile: targetFile || '(ad-hoc)',
             existingContent: typeof existingContent === 'string' ? existingContent : null,
         });
@@ -5665,7 +5666,7 @@ app.post('/api/forge/mod/install', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Brak id lub poprawnego kodu moda (apply()).' });
     try {
         // 🛡️ Tarcza Prawdy skanuje kod przed zapisem (blokuje sabotaż/eval/exfiltrację).
-        const card = AlignmentShield.getInstance().inspect(String(code), {});
+        const card = await AlignmentShield.getInstance().inspectZJev(String(code), { targetFile: `mod:${safe}.py` });
         if (card.blocked) {
             console.warn(`[Reżyser] 🛡️ Instalacja moda '${safe}' ZABLOKOWANA: ${card.summary}`);
             return res.status(422).json({ success: false, code: 'ALIGNMENT_SHIELD', message: `Tarcza Prawdy wstrzymała mod — ${card.summary}`, shield: card });

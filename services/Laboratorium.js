@@ -387,7 +387,7 @@ export async function eksperyment({ apka, plik, cel, model, zlecenieId = null })
     if (po.length < przed.length * 0.5 || MARKERY_URYWKA.test(po)) return koniec({ stan: 'padl', blad: `wygląda na urywek (${po.length} vs ${przed.length} znaków) — odmowa, żeby nie okaleczyć pliku` });
 
     // 🛡️ Tarcza Prawdy — te same filary, co dla łatek Mechanika.
-    const tarcza = AlignmentShield.getInstance().inspect(po, { existingContent: przed, targetFile: rel });
+    const tarcza = await AlignmentShield.getInstance().inspectZJev(po, { existingContent: przed, targetFile: rel });   // ⚖️ + drugi głos Jev
     rekord.tarcza = { score: tarcza.score, grade: tarcza.grade, blocked: tarcza.blocked, summary: tarcza.summary, findings: (tarcza.findings || []).slice(0, 8) };
     if (tarcza.blocked) return koniec({ stan: 'zablokowany', blad: `Tarcza Prawdy: ${tarcza.summary}` });
 
