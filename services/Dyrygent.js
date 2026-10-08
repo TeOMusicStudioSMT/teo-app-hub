@@ -146,18 +146,48 @@ Odpowiadasz WYŁĄCZNIE JSON-em: {"przydzial":[{"agent":"<id>","model":"<nazwa z
     if (cfg.jev?.stan?.().maKlucz) {
         try {
             const j = await dobierzJev(cfg.jev, { opis, agenci, kat, linia });
-            if (j.przydzial.length) return { ...j, silnik: 'jev', katalog: kat.map((m) => m.nazwa) };
+            if (j.przydzial.length) return { ...j, przydzial: regulaScalajacych(j.przydzial, agenci, kat), silnik: 'jev', katalog: kat.map((m) => m.nazwa) };
         } catch (e) { jevBlad = String(e.message || e).slice(0, 200); }
     }
     const model = await cfg.model();
     const odp = await cfg.pisz({ system, prompt, model });
     const j = wylowJson(odp);
     if (!j) throw new Error('Dyrygent nie oddał JSON-a z przydziałem — spróbuj ponownie albo daj mu większy model (panel Dyrygenta → „Dyrygent gra na”).');
-    return { ...sprawdzPrzydzial(j, { agenci, modele: kat.map((m) => m.nazwa) }), model, silnik: 'model', ...(jevBlad ? { jevBlad } : {}), katalog: kat.map((m) => m.nazwa) };
+    const spr = sprawdzPrzydzial(j, { agenci, modele: kat.map((m) => m.nazwa) });
+    return { ...spr, przydzial: regulaScalajacych(spr.przydzial, agenci, kat), model, silnik: 'model', ...(jevBlad ? { jevBlad } : {}), katalog: kat.map((m) => m.nazwa) };
 }
 
 /** Modele, które nie piszą tekstu (embeddingi) — nie są instrumentami dla TeOgochi. */
 const NIE_DO_PISANIA = /embed|bge-|minilm|rerank/i;
+
+/**
+ * 📏 REGUŁA SCALAJĄCYCH (Suweren 2026-10-08: „daj regułę scalającym, bez modeli ≤4B”): Reżyser i Kronikarz
+ * sklejają Biblię projektu z wkładów całego stada — model ≤ 4B gubi wątki i format. Agent może też przyjść
+ * z `scala: true`. Gdy w katalogu nie ma nic większego niż 4B, reguła odpuszcza (i mówi to w powodzie).
+ */
+export const SCALAJACY = new Set(['rezyser', 'kronikarz']);
+const scalajacy = (a) => SCALAJACY.has(String(a?.id ?? a?.agent ?? '').toLowerCase()) || a?.scala === true;
+// Mniejsza z dwóch: z Ollamy (Spark „4B” = 4,11 mld) i z nazwy (gemma4:e2b = 5,1 mld, ale EFEKTYWNIE 2B).
+const miliardy = (m) => { const z = [Number(String(m?.parametry ?? '').replace(/[^0-9.]/g, '')), rozmiarModelu(m?.nazwa)].filter((x) => x > 0); return z.length ? Math.min(...z) : null; };
+/** Klasa „4B” i mniejsze (do 4,5 mld). */
+const malyDlaScalania = (m) => { const b = miliardy(m); return b !== null && b <= 4.5; };
+/** Kandydaci dla roli scalającej: piszący, niezgnieceni, > 4B (nieznany rozmiar też przechodzi); lokalni przed chmurą. */
+function dlaScalajacych(kat) {
+    return kat.filter((m) => !NIE_DO_PISANIA.test(m.nazwa) && !zgniecionyKwant(m.kwantyzacja) && !malyDlaScalania(m))
+        .sort((a, b) => Number(/cloud/.test(a.nazwa)) - Number(/cloud/.test(b.nazwa)));
+}
+
+/** Przydział po regule: scalający z modelem ≤ 4B → najlepszy większy z katalogu (kat jest już posortowany wg pracy). */
+export function regulaScalajacych(przydzial, agenci, kat) {
+    const poNazwie = new Map(kat.map((m) => [m.nazwa, m]));
+    const zastepca = dlaScalajacych(kat)[0] ?? null;
+    return przydzial.map((p) => {
+        const agent = agenci.find((a) => a.id === p.agent);
+        if (!agent || !scalajacy(agent) || !malyDlaScalania(poNazwie.get(p.model))) return p;
+        if (!zastepca) return { ...p, powod: `${p.powod} · reguła scalających: w katalogu nie ma modelu większego niż 4B` };
+        return { ...p, model: zastepca.nazwa, powod: `reguła scalających: ${p.model} ma ≤ 4B, a ${agent.imie ?? p.agent} skleja pracę stada → ${zastepca.nazwa}` };
+    });
+}
 
 /**
  * ⚖️ Dobór na Jev: każdy TeOgochi = pytanie `choice` (opcje = modele katalogu z opisem), wszystko w JEDNYM
@@ -172,19 +202,21 @@ export async function dobierzJev(jev, { opis, agenci, kat, linia }) {
     // Jawna KLASA na początku opisu — zmierzone 2026-10-08: bez niej Jev dał Reżyserowi (scalanie) model 4B
     // z pewnością 0,84; rozmiar ukryty w nawiasie nie przebijał się przez nazwę.
     const klasa = (m) => {
-        const b = Number(String(m.parametry ?? '').replace(/[^0-9.]/g, '')) || rozmiarModelu(m.nazwa);
+        const b = miliardy(m);
         const chmura = /:cloud$|-cloud$/.test(m.nazwa) ? 'CHMURA OLLAMY (duży, poza kartą) — ' : '';
         if (!b) return `${chmura}ROZMIAR NIEZNANY — `;
-        return `${chmura}${b >= 9 ? `DUŻY ${b}B — rozumowanie, scalanie, kod` : b > 4 ? `ŚREDNI ${b}B — zwykłe wkłady` : `MAŁY ${b}B — tylko krótkie, proste wkłady`} — `;
+        return `${chmura}${b >= 9 ? `DUŻY ${b}B — rozumowanie, scalanie, kod` : b > 4.5 ? `ŚREDNI ${b}B — zwykłe wkłady` : `MAŁY ${b}B — tylko krótkie, proste wkłady`} — `;
     };
     const criteria = Object.fromEntries(opcje.map((m) => [m.nazwa, `${klasa(m)}${linia(m).replace(/^- /, '')}`.slice(0, 320)]));
+    const criteriaScalajacych = Object.fromEntries(Object.entries(criteria).filter(([n]) => !malyDlaScalania(opcje.find((m) => m.nazwa === n))));
     const questions = Object.fromEntries(agenci.map((a, i) => [`a${i}`, {
         type: 'choice',
         instructions: {
             pytanie: 'Który model z katalogu Katedry najlepiej posłuży temu TeOgochi w tym zadaniu? Większy model do rozumowania, scalania i kodu; mniejszy i szybszy do krótkich, prostych wkładów; własny model TeOgochi (wykuty z jego pracy) zwykle jest dla niego; liczą się oceny Sędziego z pracy stada; karta graficzna jest jedna (ok. 6 GB) — nie każdemu największy.',
             teogochi: `${a.id} — ${a.imie}${a.dziedzina ? ` (${a.dziedzina})` : ''}${a.zadanie ? `: ${String(a.zadanie).slice(0, 300)}` : ''}`,
         },
-        criteria,
+        // Rola scalająca widzi tylko modele > 4B (reguła scalających) — chyba że większych w ogóle nie ma.
+        criteria: scalajacy(a) && Object.keys(criteriaScalajacych).length ? criteriaScalajacych : criteria,
     }]));
     const d = await jev.zapytaj({ state: { zadanie: opis.slice(0, 2000), sklad: agenci.map((a) => `${a.id} — ${a.imie}`).join('; ') }, questions });
     const propozycja = {
@@ -206,4 +238,4 @@ export async function zastosuj(przydzial = []) {
     return wynik;
 }
 
-export default { skonfiguruj, katalog, dobierz, dobierzJev, zastosuj, ustawKarte, statystyki, sprawdzPrzydzial, wylowJson };
+export default { skonfiguruj, katalog, dobierz, dobierzJev, regulaScalajacych, SCALAJACY, zastosuj, ustawKarte, statystyki, sprawdzPrzydzial, wylowJson };

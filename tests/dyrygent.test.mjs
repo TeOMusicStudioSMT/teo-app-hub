@@ -263,3 +263,36 @@ test('Dyrygent na Jev padł — dobiera lokalny model, błąd Jev w odpowiedzi',
         assert.deepEqual(w.przydzial.map((p) => p.model), ['qwen3.5:9b']);
     } finally { Dyrygent.skonfiguruj({ jev: null }); }
 });
+
+test('reguła scalających: Reżyser/Kronikarz bez modeli ≤ 4B — w opcjach Jev i po lokalnym modelu (2026-10-08)', async () => {
+    const MALE = { models: [...TAGI.models, { name: 'spark-4b:latest', size: 2.5e9, details: { parameter_size: '4.11B' } }] };
+    // 1) Jev: Reżyser nie widzi modeli ≤ 4B, Kodeks widzi wszystkie
+    let zapytanie;
+    Dyrygent.skonfiguruj({
+        katalogWymiar: tmp(), tagi: async () => MALE, projekty: async () => [], modeleAgentow: async () => ({}), wykute: async () => [],
+        jev: { stan: () => ({ maKlucz: true }), zapytaj: async (z) => { zapytanie = z; return { model: 'jev', answers: { a0: { choice: 'qwen3.5:9b', confidence: 0.7, probabilities: {} }, a1: { choice: 'spark-4b:latest', confidence: 0.6, probabilities: {} } } }; } },
+    });
+    try {
+        await Dyrygent.dobierz({ zadanie: 'Biblia gry', agenci: [{ id: 'rezyser', imie: 'Reżyser' }, { id: 'kodeks', imie: 'Kodeks' }] });
+        assert.ok(!('spark-4b:latest' in zapytanie.questions.a0.criteria) && !('gemma4:e2b' in zapytanie.questions.a0.criteria), 'Reżyser: bez ≤ 4B (spark 4.11B, gemma 2B)');
+        assert.ok('qwen3.5:9b' in zapytanie.questions.a0.criteria);
+        assert.ok('spark-4b:latest' in zapytanie.questions.a1.criteria, 'Kodeks widzi wszystkie');
+    } finally { Dyrygent.skonfiguruj({ jev: null }); }
+
+    // 2) lokalny model dał Kronikarzowi 2B → podmiana na większy z powodem; Kodeks bez zmian
+    Dyrygent.skonfiguruj({
+        katalogWymiar: tmp(), tagi: async () => MALE, projekty: async () => [], modeleAgentow: async () => ({}), wykute: async () => [], jev: null, model: () => 'm',
+        pisz: async () => '{"przydzial":[{"agent":"kronikarz","model":"gemma4:e2b","powod":"szybki"},{"agent":"kodeks","model":"spark-4b:latest","powod":"mały"}]}',
+    });
+    const w = await Dyrygent.dobierz({ zadanie: 'Kronika', agenci: [{ id: 'kronikarz', imie: 'Kronikarz' }, { id: 'kodeks', imie: 'Kodeks' }] });
+    assert.notEqual(w.przydzial[0].model, 'gemma4:e2b');
+    assert.ok(['qwen3.5:9b', 'teogochi-kodeks:latest'].includes(w.przydzial[0].model));
+    assert.match(w.przydzial[0].powod, /reguła scalających: gemma4:e2b ma ≤ 4B, a Kronikarz skleja pracę stada/);
+    assert.equal(w.przydzial[1].model, 'spark-4b:latest');
+
+    // 3) agent oznaczony scala:true też podlega; brak większych modeli → zostaje, z powodem
+    const tylkoMale = [{ nazwa: 'gemma4:e2b', parametry: '2B', kwantyzacja: 'Q4_K_M' }];
+    const r = Dyrygent.regulaScalajacych([{ agent: 'wektor', model: 'gemma4:e2b', powod: 'x' }], [{ id: 'wektor', imie: 'Wektor', scala: true }], tylkoMale);
+    assert.equal(r[0].model, 'gemma4:e2b');
+    assert.match(r[0].powod, /nie ma modelu większego niż 4B/);
+});
