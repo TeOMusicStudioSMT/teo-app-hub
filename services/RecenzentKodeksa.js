@@ -138,4 +138,86 @@ export function recenzuj({ pliki, cel = '' }) {
     return { ok: blokujace.length === 0, blokujace, uwagi, feedback, podsumowanie };
 }
 
-export default { recenzuj, dodaneLinie, eksporty };
+/**
+ * ⚖️ DRUGI GŁOS — Jev (Suweren 2026-10-08: „zrób Recenzenta Kodeksa na Jev”).
+ * Reguły widzą WZORY linii. Nie widzą SENSU: `return [{ nazwa: 'Miecz' }]` zamiast wywołania mostu,
+ * setTimeout udający odpowiedź serwera, teren zastąpiony płaską atrapą (cf86d53, 2026-10-07: 4096 czarnych
+ * płytek w jednym rzędzie — build zielony, wszystkie reguły czyste). Jev dostaje zmiany rundy i odpowiada
+ * na trzy pytania tak/nie. Wysokie p blokuje rundę jak reguła, średnie = uwaga. Bez klucza / błąd = same reguły.
+ */
+export const PROG_BLOKADY_JEV = Number(process.env.OTAKOS_RECENZENT_JEV_BLOK) || 0.85;
+export const PROG_UWAGI_JEV = Number(process.env.OTAKOS_RECENZENT_JEV_UWAGA) || 0.6;
+
+export const PYTANIA_RECENZENTA = {
+    atrapa: {
+        type: 'noul',
+        instructions: 'Czy NOWY kod z tej rundy UDAJE działanie zamiast je wykonywać — np. dane na sztywno albo losowe w miejscu odpowiedzi serwera/mostu, setTimeout udający wywołanie, funkcja zwracająca stały wynik, pusta implementacja z ładną nazwą?',
+        criteria: { true: 'Tak — kluczowa część nowego kodu jest atrapą: wygląda na działającą, ale nie robi tego, co obiecuje.', false: 'Nie — nowy kod naprawdę wykonuje to, co obiecują jego nazwy (stałe konfiguracyjne i dane startowe gry to nie atrapa).' },
+    },
+    regresja: {
+        type: 'noul',
+        instructions: 'Czy zmiany w ISTNIEJĄCYCH plikach usuwają albo psują działanie, które już było (np. zastępują prawdziwą logikę uproszczoną wersją, gubią fragment świata, sterowania albo zapisu), choć zadanie tego nie kazało?',
+        criteria: { true: 'Tak — wcześniejsze działanie zostało usunięte albo zubożone poza zakresem zadania.', false: 'Nie — dawne działanie zostaje; zmiany dokładają albo poprawiają to, o co prosi zadanie.' },
+    },
+    oszustwo: {
+        type: 'noul',
+        instructions: 'Czy kod jest pisany POD TEST, a nie pod gracza — wykrywa automat/headless/webdriver, ustawia wartości odczytywane przez sprawdziany (np. window.__gra) bez prawdziwego stanu, albo ukrywa błędy przed konsolą?',
+        criteria: { true: 'Tak — kod oszukuje sprawdzian zamiast działać naprawdę.', false: 'Nie — kod działa tak samo dla gracza i dla testu.' },
+    },
+};
+const OPIS_JEV = {
+    atrapa: { opis: 'atrapa zamiast działania (Jev)', rada: 'Zrób PRAWDZIWE działanie: wywołaj wskazaną trasę/funkcję i użyj jej wyniku zamiast danych na sztywno lub udawanej odpowiedzi.' },
+    regresja: { opis: 'zepsute albo wycięte dawne działanie (Jev)', rada: 'Zostaw to, co już działało — oddaj pliki z całą dawną logiką i dołóż tylko zmianę z zadania.' },
+    oszustwo: { opis: 'kod pod test, nie pod gracza (Jev)', rada: 'Niech stan widoczny dla sprawdzianu wynika z prawdziwej gry — bez wykrywania automatu i bez wartości na sztywno.' },
+};
+
+/** Zmiany rundy dla Jev: nowe pliki w całości, zmienione jako linie usunięte (−) i dodane (+). Tylko odczyt. */
+export function zmianyRundy(pliki, limit = 24_000) {
+    let t = '';
+    for (const p of pliki) {
+        if (p.stara === null) { t += `=== NOWY PLIK: ${p.sciezka} ===\n${p.nowa}\n`; continue; }
+        const usuniete = dodaneLinie(p.nowa, p.stara), dodane = dodaneLinie(p.stara, p.nowa);
+        t += `=== ZMIENIONY PLIK: ${p.sciezka} (${ile(p.stara)} → ${ile(p.nowa)} linii) ===\n`
+            + usuniete.map((l) => `- ${l.tekst}`).join('\n') + (usuniete.length ? '\n' : '')
+            + dodane.map((l) => `+ ${l.tekst}`).join('\n') + '\n';
+    }
+    return t.slice(0, limit);
+}
+
+/**
+ * Recenzja reguł + głos Jev. Gdy reguły już blokują — Jev nie jest pytany (runda i tak wraca, nie płacimy).
+ * @returns wynik jak `recenzuj` + `jev: { model, glos } | null`, `jevBlad?`
+ */
+export async function recenzujZJev(jev, { pliki, cel = '' }) {
+    const rec = recenzuj({ pliki, cel });
+    if (!rec.ok || !jev?.stan?.().maKlucz) return { ...rec, jev: null };
+    try {
+        const d = await jev.zapytaj({ state: { zadanie: String(cel).slice(0, 4000), zmiany_rundy: zmianyRundy(pliki) }, questions: PYTANIA_RECENZENTA });
+        const glos = {};
+        const blokujace = [...rec.blokujace], uwagi = [...rec.uwagi];
+        for (const id of Object.keys(PYTANIA_RECENZENTA)) {
+            const p = Number(d.answers?.[id]?.noul);
+            if (!Number.isFinite(p)) continue;
+            glos[id] = Math.round(p * 100) / 100;
+            if (p < PROG_UWAGI_JEV) continue;
+            // Wycięte działanie przy zleceniu, które KAZAŁO usuwać/przepisać, to uwaga, nie blokada.
+            const blokuje = p >= PROG_BLOKADY_JEV && !(id === 'regresja' && ZLECENIE_USUWA.test(cel));
+            (blokuje ? blokujace : uwagi).push({ regula: `jev-${id}`, blokuje, plik: pliki.map((x) => x.sciezka).join(', '), linia: null,
+                tekst: `p=${p.toFixed(2)}`, opis: `${OPIS_JEV[id].opis} p=${p.toFixed(2)}`, rada: OPIS_JEV[id].rada });
+        }
+        const fmt = (u) => `- ${u.plik}${u.linia ? `:${u.linia}` : ''} — ${u.opis}${u.linia ? ` („${u.tekst}")` : ''}. ${u.rada}`;
+        const ok = blokujace.length === 0;
+        return {
+            ok, blokujace, uwagi,
+            feedback: ok ? '' : `RECENZENT KODU odrzucił tę rundę (build nawet nie ruszał):\n${blokujace.map(fmt).join('\n')}`,
+            podsumowanie: ok
+                ? `recenzent: czysto (Jev ${Object.entries(glos).map(([k, v]) => `${k} ${v}`).join(', ')})${uwagi.length ? ` · uwagi: ${uwagi.map((u) => u.opis).slice(0, 5).join('; ')}` : ''}`
+                : `recenzent: ${blokujace.length} blokujące — ${[...new Set(blokujace.map((u) => u.regula))].join(', ')}`,
+            jev: { model: d.model, glos },
+        };
+    } catch (e) {
+        return { ...rec, podsumowanie: `${rec.podsumowanie} (Jev niedostępny: ${String(e.message).slice(0, 120)})`, jev: null, jevBlad: e.message };
+    }
+}
+
+export default { recenzuj, recenzujZJev, zmianyRundy, dodaneLinie, eksporty };

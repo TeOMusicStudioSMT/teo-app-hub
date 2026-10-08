@@ -1016,7 +1016,8 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 // pusty catch, atrapy, wycięte funkcje — rzeczy, które przechodzą build i testy.
                 // Odrzucona runda wraca do stanu sprzed niej: model w następnej rundzie musi widzieć
                 // PEŁNY stary plik, inaczej nie ma skąd odtworzyć tego, co wyciął.
-                const rec = Recenzent.recenzuj({ pliki: doRecenzji, cel });
+                // ⚖️ + drugi głos Jev (atrapa / regresja / kod pod test) — bez klucza same reguły.
+                const rec = await Recenzent.recenzujZJev(cfg.jev, { pliki: doRecenzji, cel });
                 if (!rec.ok) {
                     for (const p of doRecenzji) {
                         const pelna = path.join(dir, p.sciezka);
