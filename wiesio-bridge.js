@@ -10,6 +10,7 @@ import { utworzJevLokalny } from './services/JevLokalny.js';
 import { utworzPartytury } from './services/Partytury.js';
 import { utworzStrazModeli } from './services/StrazModeli.js';
 import { utworzChmureBryl } from './services/ChmuraBryl.js';
+import { utworzZwiadowcePromocji, MODEL as ZWIADOWCA_PROMOCJI_MODEL } from './services/ZwiadowcaPromocji.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
@@ -10900,6 +10901,14 @@ app.post('/api/zwiadowca/link', async (req, res) => {
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.get('/api/zwiadowca/sondaz', (_req, res) => res.json(ZwiadowcaHF.sondaz()));
+// 🏷️ Zwiadowca promocji (services/ZwiadowcaPromocji.js) — kody rabatowe i promocje usług (np. Meshy) przez wyszukiwanie
+// w sieci API Claude; tylko znaleziska ze źródłem z wyników wyszukiwania. Nic nie wpisuje i nie płaci. Szukanie = maszyna.
+const ZwiadowcaPromocji = utworzZwiadowcePromocji({ klucz: () => getAnthropicKey(), katalog: path.join(ANTIGRAVITY_DIR, 'zwiadowca'), szyna: Szyna });
+app.get('/api/zwiadowca/promocje', async (_req, res) => res.json({ success: true, zwiady: await ZwiadowcaPromocji.lista(), model: ZWIADOWCA_PROMOCJI_MODEL }));
+app.post('/api/zwiadowca/promocje', async (req, res) => {
+    try { res.json({ success: true, zwiad: await ZwiadowcaPromocji.szukaj(req.body?.usluga, { kontekst: req.body?.kontekst }) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 
 // ── 🌍 TŁUMACZ (services/Tlumacz.js) — teksty Hubu na dowolny język lokalnym modelem, pamięć w _OtakOs_Wymiar/tlumaczenia ──
 Tlumacz.skonfiguruj({
