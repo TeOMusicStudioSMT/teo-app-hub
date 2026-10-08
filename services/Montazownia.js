@@ -26,7 +26,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import fsSync from 'fs';
 import ffmpegPath from 'ffmpeg-static';
+import ffprobeStatic from 'ffprobe-static';
 import { utworzProjekt } from './Produkcje.js';
 
 const uruchom = promisify(execFile);
@@ -43,17 +45,43 @@ export async function katalogMontazy(katalogKatedry, projekt) {
     return kat;
 }
 
-/** Opis materiału: długość, format, czy MA JUŻ dźwięk. */
+/**
+ * ffprobe: z pakietu `ffprobe-static` (jak Ciąg Dalszy). ⚠️ Dawniej szukany OBOK ffmpeg-static — tam go nie ma,
+ * więc KAŻDY opis szedł zapasem `ffmpeg -i plik -f null -`, który DEKODUJE CAŁY FILM: Montażownia Elary
+ * (291 filmów, w tym 21-minutowy) liczyła się 247 s i Story Studio pokazywało „0 filmów” (Suweren 2026-10-08:
+ * „wyszukiwanie materiałów działa takkkk… wolno”). ffprobe czyta nagłówek w ~0,4 s.
+ */
+const FFPROBE = (() => {
+    const zPaczki = ffprobeStatic?.path;
+    if (zPaczki && fsSync.existsSync(zPaczki)) return zPaczki;
+    const obok = ffmpegPath.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1');
+    return fsSync.existsSync(obok) ? obok : null;
+})();
+
+/** Opisy już przeczytanych plików: ścieżka|rozmiar|czas zmiany → opis (ten sam plik nie jest czytany drugi raz). */
+const pamiecOpisow = new Map();
+
+/** Opis materiału: długość, format, czy MA JUŻ dźwięk. Pamiętany, dopóki plik się nie zmieni. */
 export async function opisz(plik) {
-    const { stdout } = await uruchom(ffmpegPath.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1'), [
+    const st0 = await fs.stat(plik);
+    const klucz = `${plik}|${st0.size}|${st0.mtimeMs}`;
+    if (pamiecOpisow.has(klucz)) return pamiecOpisow.get(klucz);
+    const o = await opiszZDysku(plik);
+    if (pamiecOpisow.size > 5000) pamiecOpisow.clear();
+    pamiecOpisow.set(klucz, o);
+    return o;
+}
+
+async function opiszZDysku(plik) {
+    const { stdout } = await (FFPROBE ? uruchom(FFPROBE, [
         '-v', 'error',
         '-show_entries', 'format=duration,size',
         '-show_entries', 'stream=codec_type,codec_name,width,height,r_frame_rate',
         '-of', 'json', plik,
-    ]).catch(async () => {
-        // ⚠️ `ffmpeg-static` nie wiezie ffprobe. Gdy go nie ma, długość
-        // wyciągamy samym ffmpegiem — wolniej, ale bez dokładania zależności.
-        const { stderr } = await uruchom(ffmpegPath, ['-i', plik, '-f', 'null', '-'], { maxBuffer: 8 * 1024 * 1024 })
+    ]) : Promise.reject(new Error('brak ffprobe'))).catch(async () => {
+        // Zapas bez ffprobe: SAM NAGŁÓWEK (`ffmpeg -i plik` bez wyjścia — ffmpeg wypisuje strumienie i kończy
+        // błędem „brak pliku wyjściowego”). Dawne `-f null -` dekodowało cały film — minuty na plik.
+        const { stderr } = await uruchom(ffmpegPath, ['-hide_banner', '-i', plik], { maxBuffer: 8 * 1024 * 1024 })
             .catch((e) => ({ stderr: e.stderr ?? '' }));
         const m = String(stderr).match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
         const sek = m ? (+m[1] * 3600 + +m[2] * 60 + parseFloat(m[3])) : null;
@@ -121,13 +149,19 @@ export async function materialy(katalogKatedry, projekt, { minSekund = 3 } = {})
         }
     }
 
+    // Kilka plików naraz (ffprobe czyta tylko nagłówek — dysk i procesor to udźwigną), w kolejności znalezienia.
     const opisane = [];
-    for (const p of znalezione) {
-        try {
-            const o = await opisz(p);
-            if (o.sekundy === null || o.sekundy >= minSekund) opisane.push({ ...o, gdzie: path.basename(path.dirname(p)) });
-        } catch { /* plik nie do odczytania — pomijamy, zamiast wywracać listę */ }
-    }
+    let nastepny = 0;
+    const robotnik = async () => {
+        while (nastepny < znalezione.length) {
+            const p = znalezione[nastepny++];
+            try {
+                const o = await opisz(p);
+                if (o.sekundy === null || o.sekundy >= minSekund) opisane.push({ ...o, gdzie: path.basename(path.dirname(p)) });
+            } catch { /* plik nie do odczytania — pomijamy, zamiast wywracać listę */ }
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, znalezione.length) }, robotnik));
 
     // Najdłuższe na górze: to zwykle gotowe filmy, a nie pojedyncze ujęcia.
     opisane.sort((a, b) => (b.sekundy ?? 0) - (a.sekundy ?? 0));
