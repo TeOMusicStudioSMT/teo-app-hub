@@ -7,9 +7,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getKeyDirect } from '../../lib/kibel';
 
 const MOST = 'http://127.0.0.1:3001';
-type Dostawca = 'anthropic' | 'gemini' | 'typesafe';
+type Dostawca = 'anthropic' | 'gemini' | 'typesafe' | 'meshy';
 interface StanKlucza { nazwa: string; udostepniony: boolean; koncowka: string | null; zrodlo: 'kibel' | 'inne' | null }
-const DOSTAWCY: Dostawca[] = ['anthropic', 'gemini', 'typesafe'];
+const DOSTAWCY: Dostawca[] = ['anthropic', 'gemini', 'typesafe', 'meshy'];
 
 export const KluczeDlaMostu: React.FC = () => {
     const [stan, setStan] = useState<Record<Dostawca, StanKlucza> | null>(null);

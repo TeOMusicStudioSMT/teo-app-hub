@@ -9,6 +9,7 @@ import { utworzJev, PROG_ZROBIONE as JEV_PROG } from './services/Jev.js';
 import { utworzJevLokalny } from './services/JevLokalny.js';
 import { utworzPartytury } from './services/Partytury.js';
 import { utworzStrazModeli } from './services/StrazModeli.js';
+import { utworzChmureBryl } from './services/ChmuraBryl.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
@@ -329,14 +330,16 @@ const ANTIGRAVITY_DIR = path.join(process.cwd(), '_OtakOs_Wymiar');
 // przechwytuje wywołania Ollamy (/api/generate, /api/chat) i w trybie chmura oddaje je Claude/Gemini z Kibla.
 // Klucze czytane synchronicznie z tych samych miejsc co getAnthropicKey/getGeminiKey (env → plik → Kibel).
 function kluczChmurySync(dostawca) {
-    const wzor = dostawca === 'anthropic' ? /(sk-ant-[a-zA-Z0-9\-_]+)/ : dostawca === 'typesafe' ? /(apikey_[A-Za-z0-9_]{40,})/ : /(AIza[a-zA-Z0-9_-]+|AQ\.[a-zA-Z0-9_-]+)/;
-    const env = dostawca === 'anthropic' ? process.env.ANTHROPIC_API_KEY : dostawca === 'typesafe' ? (process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY) : process.env.GEMINI_API_KEY;
+    const wzor = dostawca === 'anthropic' ? /(sk-ant-[a-zA-Z0-9\-_]+)/ : dostawca === 'typesafe' ? /(apikey_[A-Za-z0-9_]{40,})/ : dostawca === 'meshy' ? /(msy_[A-Za-z0-9_-]{16,})/ : /(AIza[a-zA-Z0-9_-]+|AQ\.[a-zA-Z0-9_-]+)/;
+    const env = dostawca === 'anthropic' ? process.env.ANTHROPIC_API_KEY : dostawca === 'typesafe' ? (process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY) : dostawca === 'meshy' ? process.env.MESHY_API_KEY : process.env.GEMINI_API_KEY;
     if (env) return env;
     for (const p of dostawca === 'anthropic'
         ? [path.join(process.cwd(), '.anthropic_key'), path.join(ANTIGRAVITY_DIR, 'kibel_anthropic.txt')]
         : dostawca === 'typesafe'
             ? [path.join(process.cwd(), '.typesafe_key'), path.join(ANTIGRAVITY_DIR, 'kibel_typesafe.txt')]
-            : [path.join(process.cwd(), '.gemini_key'), path.join(ANTIGRAVITY_DIR, 'kibel_gemini.txt')]) {
+            : dostawca === 'meshy'
+                ? [path.join(ANTIGRAVITY_DIR, 'kibel_meshy.txt')]
+                : [path.join(process.cwd(), '.gemini_key'), path.join(ANTIGRAVITY_DIR, 'kibel_gemini.txt')]) {
         try { const m = fsSync.readFileSync(p, 'utf8').match(wzor); if (m) return m[1]; } catch { /* brak pliku */ }
     }
     return null;
@@ -3823,7 +3826,7 @@ app.post('/api/kibel/flush', async (req, res) => {
 //  (plik _OtakOs_Wymiar/kibel_<dostawca>.txt, czytany przez getAnthropicKey/getGeminiKey), cofnięcie kasuje plik.
 //  Odpowiedzi nigdy nie niosą klucza — tylko końcówkę. Tylko przy maszynie (Straż).
 // ══════════════════════════════════════════════════════════════════════════════
-const KluczeMostu = utworzKluczeMostu({ katalog: ANTIGRAVITY_DIR, efektywny: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey(), typesafe: async () => kluczChmurySync('typesafe') } });
+const KluczeMostu = utworzKluczeMostu({ katalog: ANTIGRAVITY_DIR, efektywny: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey(), typesafe: async () => kluczChmurySync('typesafe'), meshy: async () => kluczChmurySync('meshy') } });
 const listyModeliChmury = utworzListyModeli();
 const odpKluczy = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(400).json({ success: false, message: e.message }));
 // ☁️/🏠 Tryb Katedry: stan (tryb, wybrany model chmury, tokeny dziś, limit, powód) i zmiana — tylko maszyna.
@@ -8254,6 +8257,17 @@ app.post('/api/assety3d/:id/upiekszaj', (req, res) => ytOdp(res, Assety3D.upieks
 app.post('/api/assety3d/:id/kolor', (req, res) => ytOdp(res, Assety3D.przekolorujBryle(req.params.id, req.body ?? {}).then((asset) => ({ asset }))));
 app.post('/api/assety3d/:id/fragment', (req, res) => ytOdp(res, Assety3D.zageszczFragment(req.params.id, { fragment: req.body?.fragment, scianyFragmentu: req.body?.scianyFragmentu, sciany: req.body?.sciany }).then((asset) => ({ asset }))));
 app.post('/api/assety3d/:id/swiatlo', (req, res) => ytOdp(res, Assety3D.zaswiec(req.params.id, { fragment: req.body?.fragment, prog: req.body?.prog, kolor: req.body?.kolor || null, moc: req.body?.moc }).then((asset) => ({ asset }))));
+// ☁️ Dopracowanie w chmurze (Meshy, services/ChmuraBryl.js): wycena → zgoda na kwotę → zlecenie w tle → nowa wersja.
+const ChmuraBryl = utworzChmureBryl({
+    klucz: () => kluczChmurySync('meshy'),
+    plikBryly: (id) => Assety3D.plikDoChmury(id),
+    zapiszWersje: (id, glb, wpis) => Assety3D.wersjaZChmury(id, glb, wpis),
+    szyna: Szyna,
+});
+app.get('/api/assety3d/chmura', (_req, res) => res.json({ success: true, ...ChmuraBryl.stan(), zadania: ChmuraBryl.lista() }));
+app.get('/api/assety3d/chmura/zadanie/:id', (req, res) => { const z = ChmuraBryl.zadanie(req.params.id); return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania (most mógł wystartować od nowa — wynik może czekać w panelu Meshy).' }); });
+app.post('/api/assety3d/chmura/:id/wycena', (req, res) => ytOdp(res, ChmuraBryl.wycen(req.params.id, req.body?.zlecenie ?? {})));
+app.post('/api/assety3d/chmura/:id/zlec', (req, res) => ytOdp(res, ChmuraBryl.zlec(req.params.id, req.body?.zlecenie ?? {}, { zgodaKredyty: req.body?.zgodaKredyty }).then((zadanie) => ({ zadanie }))));
 app.get('/api/assety3d/:id/sylwetka', (req, res) => ytOdp(res, Assety3D.sylwetka(req.params.id).then((sylwetka) => ({ sylwetka }))));
 app.post('/api/assety3d/:id/uprosc', async (req, res) => {
     try { res.json({ success: true, asset: await Assety3D.uprosc(req.params.id, req.body?.sciany) }); }

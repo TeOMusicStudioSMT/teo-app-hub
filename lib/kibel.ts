@@ -49,7 +49,7 @@ export interface KibelConfig {
 }
 
 // 🔍 ROZPOZNAWANIE FORMATU KLUCZY
-export type ProviderType = 'gemini' | 'groq' | 'anthropic' | 'openai' | 'suno' | 'typesafe' | 'unknown';
+export type ProviderType = 'gemini' | 'groq' | 'anthropic' | 'openai' | 'suno' | 'typesafe' | 'meshy' | 'unknown';
 
 export interface DetectedKey {
   provider: ProviderType;
@@ -87,6 +87,11 @@ export function detectKeyProvider(key: string): DetectedKey {
   // TypeSafe / Jev: apikey_... (sędzia semantyczny, nie czat — services/Jev.js)
   if (trimmed.startsWith('apikey_')) {
     return { provider: 'typesafe', isValid: true, format: 'apikey_*' };
+  }
+
+  // Meshy: msy_... (bryły 3D w chmurze — retekstura, remesh; services/ChmuraBryl.js)
+  if (trimmed.startsWith('msy_')) {
+    return { provider: 'meshy', isValid: true, format: 'msy_*' };
   }
 
   // Anthropic/Claude: sk-ant-...
@@ -210,6 +215,7 @@ export function getKeyDirect(provider: ProviderType): string | null {
     anthropic: 'kibel_key_anthropic',
     suno: 'kibel_key_suno',
     typesafe: 'kibel_key_typesafe',
+    meshy: 'kibel_key_meshy',
     unknown: '',
   };
 
@@ -300,6 +306,7 @@ export async function storeKey(key: KibelKey): Promise<void> {
     anthropic: 'kibel_key_anthropic',
     suno: 'kibel_key_suno',
     typesafe: 'kibel_key_typesafe',
+    meshy: 'kibel_key_meshy',
   };
 
   const legacyKey = legacyKeyMap[key.provider];

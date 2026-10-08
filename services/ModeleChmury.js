@@ -17,6 +17,8 @@ export const DOSTAWCY = {
     gemini: { plik: 'kibel_gemini.txt', wzor: /^(AIza[A-Za-z0-9_-]{30,}|AQ\.[A-Za-z0-9_-]{30,})$/, nazwa: 'Google (Gemini)' },
     // ⚖️ TypeSafe / Jev (2026-10-08) — nie czat: sędzia semantyczny (noul/choice/score), services/Jev.js.
     typesafe: { plik: 'kibel_typesafe.txt', wzor: /^apikey_[A-Za-z0-9_]{40,}$/, nazwa: 'TypeSafe (Jev)' },
+    // ☁️🗿 Meshy (2026-10-09) — dopracowanie brył w chmurze (retekstura, remesh), services/ChmuraBryl.js.
+    meshy: { plik: 'kibel_meshy.txt', wzor: /^msy_[A-Za-z0-9_-]{16,}$/, nazwa: 'Meshy (bryły 3D)' },
 };
 
 /** Zapas, gdy nie da się zapytać API (brak klucza, brak sieci). Pierwszy = polecany do kodu. */

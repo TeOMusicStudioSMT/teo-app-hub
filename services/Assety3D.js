@@ -130,6 +130,7 @@ export async function uprosc(id, sciany) {
     if (!m) throw new Error('Nie ma takiego assetu.');
     const master = path.join(dirAssetu(id), 'master.glb');
     if (!fsSync.existsSync(master)) throw new Error('Ten asset nie ma master.glb (starszy zapis) — wygeneruj od nowa.');
+    if (m.tekstury) throw new Error(BEZ_LOKALNYCH);
     m.sciany = Math.max(300, Number(sciany) || 20000);
     m.siatka = await Siatka3D.przygotujPodGre(master, path.join(dirAssetu(id), 'model.glb'), m.sciany, opcjeFragmentu(m));
     m.rozmiarGlb = (await fs.stat(path.join(dirAssetu(id), 'model.glb'))).size;
@@ -357,6 +358,7 @@ async function nowaWersja(id, poprawka, { sciany } = {}) {
     const m = await meta(id);
     if (!m) throw new Error('Nie ma takiego assetu.');
     if (m.stan !== 'gotowe') throw new Error('Bryła jeszcze się liczy albo padła — poprawki tylko na gotowej.');
+    if (m.tekstury) throw new Error(BEZ_LOKALNYCH);
     const master = path.join(dirAssetu(id), 'master.glb');
     if (!fsSync.existsSync(master)) throw new Error('Ta bryła nie ma master.glb (starszy zapis) — wygeneruj ją od nowa („Upiększ lokalnie”).');
     let nowy = `${m.nazwa}-${crypto.randomBytes(2).toString('hex')}`;
@@ -404,6 +406,40 @@ export async function zaswiec(id, { fragment, prog = 0.5, kolor = null, moc = 4 
     const k = kolor ? String(kolor) : null;
     if (k && !Siatka3D.zHex(k)) throw new Error('Kolor światła: podaj #rrggbb (albo nic — wtedy kolor oka).');
     return nowaWersja(id, { rodzaj: 'swiatlo', pudelko, prog: Math.max(0, Math.min(1, Number(prog) || 0)), kolor: k, moc: Math.max(0.5, Math.min(50, Number(moc) || 4)), kiedy: new Date().toISOString() });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ☁️ WERSJA Z CHMURY (services/ChmuraBryl.js — Meshy). GLB z chmury ma TEKSTURY i UV, nie kolory wierzchołków:
+// zapisujemy go bez przeróbek (Siatka3D zdjęłaby tekstury) jako model.glb i master.glb nowej wersji (`tekstury: true`).
+// ─────────────────────────────────────────────────────────────────────────────
+const BEZ_LOKALNYCH = 'To wersja z chmury (Meshy) — ma tekstury, a lokalne poprawki (kolor, gęstszy fragment, oko, uproszczenie) działają na kolorach wierzchołków. Zrób je na wersji sprzed chmury, a potem wyślij ją do chmury jeszcze raz.';
+
+/** Plik bryły do wysłania w chmurę: model.glb (ten, który idzie do gry). */
+export async function plikDoChmury(id) {
+    const m = await meta(id);
+    if (!m) throw new Error('Nie ma takiego assetu.');
+    if (m.stan !== 'gotowe') throw new Error('Bryła jeszcze się liczy albo padła.');
+    const sciezka = path.join(dirAssetu(id), 'model.glb');
+    if (!fsSync.existsSync(sciezka)) throw new Error('Bryła nie ma model.glb.');
+    return { sciezka, bajty: await fs.readFile(sciezka) };
+}
+
+/** Nowa wersja z GLB z chmury — obok starej (`ulepsza`), z wpisem o usłudze, zleceniu i kredytach. */
+export async function wersjaZChmury(id, glb, wpis) {
+    const m = await meta(id);
+    if (!m) throw new Error('Nie ma takiego assetu.');
+    if (!Buffer.isBuffer(glb) || glb.length < 12 || glb.toString('ascii', 0, 4) !== 'glTF') throw new Error('Chmura oddała plik, który nie jest GLB.');
+    let nowy = `${m.nazwa}-${crypto.randomBytes(2).toString('hex')}`;
+    while (fsSync.existsSync(dirAssetu(nowy))) nowy = `${m.nazwa}-${crypto.randomBytes(2).toString('hex')}`;
+    const dir = dirAssetu(nowy);
+    await fs.mkdir(dir, { recursive: true });
+    for (const p of await fs.readdir(dirAssetu(id))) if (/^(obraz\.png|obraz-zrodlo\.(png|jpg|jpeg|webp)|wycinek\.png)$/.test(p)) await fs.copyFile(path.join(dirAssetu(id), p), path.join(dir, p));
+    await fs.writeFile(path.join(dir, 'model.glb'), glb);
+    await fs.writeFile(path.join(dir, 'master.glb'), glb);
+    const { ruchy: _r, blad: _b, siatka: _s, rozmiarGlb: _g, wGrach: _w, jasnoscKolorow: _j, ...reszta } = m;
+    const n = { ...reszta, id: nowy, utworzono: new Date().toISOString(), stan: 'gotowe', wGrach: [], ulepsza: id, tekstury: true, chmura: wpis, rozmiarGlb: glb.length, czasy: {}, poprawki: [...(m.poprawki ?? []), { rodzaj: 'chmura', usluga: wpis.usluga, zlecenie: wpis.rodzaj, kredyty: wpis.kredyty, kiedy: wpis.kiedy }] };
+    await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(n, null, 2), 'utf8');
+    return n;
 }
 
 /** Ramka sylwetki na obrazie źródłowym (ułamki 0–1, y w dół) — Game Studio przelicza zaznaczenie na obrazie na pudełko bryły. */
@@ -587,4 +623,4 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wyc
     return { zadanie: z.id, asset: assetId };
 }
 
-export default { skonfiguruj, zywyComfy, upiekszLokalnie, przekolorujBryle, zageszczFragment, zaswiec, sylwetka, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
+export default { plikDoChmury, wersjaZChmury, skonfiguruj, zywyComfy, upiekszLokalnie, przekolorujBryle, zageszczFragment, zaswiec, sylwetka, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
