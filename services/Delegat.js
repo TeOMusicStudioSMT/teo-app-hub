@@ -33,6 +33,7 @@ import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import * as Persony from './Persony.js';
+import * as DelegatJev from './DelegatJev.js';
 
 let cfg = {
     ollamaBase: 'http://127.0.0.1:11434',
@@ -47,6 +48,10 @@ let cfg = {
     modelAgenta: async () => null,
     /** Fakty o projektach, Stole i pamięci (services/StanKatedry.js przez most): { raport({szukaj}), pamiec(), zwolnij(pidy) } */
     stan: null,
+    /** ⚖️ Jev (services/Jev.js): intencja wypowiedzi i straż ciężkich narzędzi (services/DelegatJev.js); null = bez. */
+    jev: null,
+    /** Stół ratyfikacji (services/Stol.js): { karta(id) } — rozmowa przy karcie w StoL. */
+    stol: null,
 };
 
 export function skonfiguruj(opcje) { cfg = { ...cfg, ...opcje }; }
@@ -275,7 +280,7 @@ function opisNarzedzi(profil, lokalne) {
         .join('\n');
 }
 
-async function systemPrompt(profil, lokalne) {
+async function systemPrompt(profil, lokalne, kartaStolu = null) {
     const narzedzia = opisNarzedzi(profil, lokalne);
     // Karta roli (services/Persony.js) wygrywa z jednozdaniową personą — ta zostaje zapasem.
     const karta = await Persony.karta(profil.gatunek);
@@ -293,7 +298,9 @@ ${narzedzia || '- (żadne — tylko rozmowa)'}
 
 Po wykonaniu narzędzia dostaniesz jego wynik w wiadomości „WYNIK NARZĘDZIA" — wtedy odpowiedz Suwerenowi zwyczajnie, po polsku, jak człowiekowi. Nie wymyślaj wyników, których nie dostałeś. Jeśli narzędzie zawiodło, powiedz to wprost.
 
-ZASADA: prośba o działanie („stwórz", „zrób", „zleć", „sprawdź", „dodaj") = narzędzie, nie obietnica. Nie mów „przygotuję", jeśli nie wywołałeś narzędzia. Gdy wypowiedź Suwerena jest bełkotem albo samymi nawiasami, powiedz krótko, że nie dosłyszałeś, i poproś o powtórzenie.`;
+ZASADA: prośba o działanie („stwórz", „zrób", „zleć", „sprawdź", „dodaj") = narzędzie, nie obietnica. Nie mów „przygotuję", jeśli nie wywołałeś narzędzia. Gdy wypowiedź Suwerena jest bełkotem albo samymi nawiasami, powiedz krótko, że nie dosłyszałeś, i poproś o powtórzenie.${kartaStolu ? `
+
+${DelegatJev.blokKarty(kartaStolu)}` : ''}`;
 }
 
 /** Wyłów JSON z wywołaniem narzędzia — tolerujemy płot ``` i śmieci wokół. */
@@ -428,7 +435,7 @@ export async function profilDla(id) {
     };
 }
 
-export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = false }, naZdarzenie = () => {}) {
+export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = false, karta = null }, naZdarzenie = () => {}) {
     const profil = await profilDla(delegat);
     if (!profil) throw new Error(`Nie ma takiego delegata: ${delegat}. Znane: ${Object.keys(PROFILE).join(', ')} i gatunki z kartą roli.`);
     const tresc = String(tekst || '').trim();
@@ -438,10 +445,13 @@ export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = fa
 
     const id = bezpieczneId(rozmowaId) || `tel-${Date.now().toString(36)}-${crypto.randomBytes(2).toString('hex')}`;
     const r = (await wczytajRozmowe(id)) || { id, delegat: profil.id, od: new Date().toISOString(), ostatnia: null, tury: [], narzedzia: [], podsumowanie: null };
+    // 🪑 Rozmowa przy karcie Stołu (StoL): świeże fakty karty przy każdej turze — etap i oceny zmieniają się w trakcie.
+    const kartaStolu = (karta || r.karta) && cfg.stol ? await cfg.stol.karta(String(karta || r.karta)).catch(() => null) : null;
+    if (kartaStolu) r.karta = kartaStolu.id;
     r.tury.push({ kto: 'suweren', tresc, kiedy: new Date().toISOString() });
     await cfg.szyna?.nadaj({ agent, rodzaj: 'telefon', tresc: `Suweren: ${tresc.slice(0, 300)}`, dane: { rozmowaId: id, kto: 'suweren' } });
 
-    const messages = [{ role: 'system', content: await systemPrompt(profil, lokalne) }];
+    const messages = [{ role: 'system', content: await systemPrompt(profil, lokalne, kartaStolu) }];
     for (const t of r.tury.slice(-12)) {
         if (t.kto === 'suweren') messages.push({ role: 'user', content: t.tresc });
         else if (t.kto === 'delegat') messages.push({ role: 'assistant', content: t.tresc });
@@ -459,6 +469,55 @@ export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = fa
         if (liczy) naZdarzenie({ typ: 'obciazenie', tekst: `Katedra liczy teraz wideo (${liczy} w ComfyUI) — ${profil.imie} odpowie, ale może to potrwać nawet minutę lub dwie.` });
     } catch { /* ComfyUI nie odpowiada — nie ma obciążenia */ }
 
+    const dozwolone = (nazwa) => profil.narzedzia.includes(nazwa) && NARZEDZIA[nazwa] && (lokalne || cfg.pelnyTunel || !NARZEDZIA[nazwa].ciezkie);
+    const historia = r.tury.slice(0, -1);
+    const jevSlad = { intencja: null, straz: [] };
+
+    /** Jedno narzędzie: straż Jev dla ciężkich → wykonanie → zapis w rozmowie i na szynie. */
+    const uzyjNarzedzia = async (nazwa, argumenty, zrodlo = 'model') => {
+        const n = NARZEDZIA[nazwa];
+        naZdarzenie({ typ: 'narzedzie', narzedzie: nazwa, argumenty, zrodlo });
+        let wynik;
+        if (!dozwolone(nazwa)) {
+            wynik = { blad: n ? `Narzędzie ${nazwa} jest dostępne tylko z maszyny Suwerena (nie z tunelu).` : `Nie ma narzędzia ${nazwa}.` };
+        } else {
+            // ⚖️ STRAŻ: ciężkie narzędzie tylko wtedy, gdy Suweren wprost o nie prosi (Jev). Bez klucza / błąd — jak dawniej.
+            const straz = n.ciezkie ? await DelegatJev.czyWprostZlecone(cfg.jev, { tekst: tresc, historia, narzedzie: nazwa, opis: n.opis, argumenty }).catch((e) => ({ blad: e.message })) : null;
+            if (straz) jevSlad.straz.push({ narzedzie: nazwa, ...straz });
+            if (straz && !straz.blad && !straz.ok) {
+                wynik = { blad: `Wstrzymane: Suweren nie zlecił tego wprost (Jev p=${straz.p.toFixed(2)}). Zapytaj go, czy na pewno — i czego dokładnie to ma dotyczyć.` };
+                naZdarzenie({ typ: 'jev', straz: { narzedzie: nazwa, p: straz.p, ok: false } });
+            } else {
+                try { wynik = await n.wykonaj(argumenty, ctx); }
+                catch (e) { wynik = { blad: e.message }; }
+            }
+        }
+        const wynikTekst = JSON.stringify(wynik).slice(0, 1500);
+        r.tury.push({ kto: 'narzedzie', narzedzie: nazwa, argumenty, tresc: wynikTekst, kiedy: new Date().toISOString(), ...(zrodlo !== 'model' ? { zrodlo } : {}) });
+        r.narzedzia.push({ narzedzie: nazwa, ok: !wynik?.blad, kiedy: new Date().toISOString() });
+        await cfg.szyna?.nadaj({ agent, rodzaj: wynik?.blad ? 'blad' : 'narzedzie', tresc: `${nazwa}(${JSON.stringify(argumenty).slice(0, 120)}) → ${wynikTekst.slice(0, 160)}`, dane: { rozmowaId: id, zrodlo } });
+        naZdarzenie({ typ: 'wynik', narzedzie: nazwa, ok: !wynik?.blad, wynik });
+        return wynikTekst;
+    };
+
+    // ⚖️ INTENCJA (Jev): czy ta wypowiedź wymaga narzędzia? Bez argumentów — most wykonuje od razu, model tylko
+    // opowiada wynik; z argumentami — model dostaje twardą wskazówkę. Małe modele same tego nie łapały.
+    const dostepne = profil.narzedzia.filter(dozwolone).map((nazwa) => ({ nazwa, opis: NARZEDZIA[nazwa].opis }));
+    try {
+        const w = await DelegatJev.rozpoznajIntencje(cfg.jev, { tekst: tresc, historia, narzedzia: dostepne, karta: kartaStolu });
+        if (w) {
+            jevSlad.intencja = { wybor: w.wybor, p: w.p, decyzja: w.decyzja };
+            naZdarzenie({ typ: 'jev', intencja: jevSlad.intencja });
+            if (w.decyzja === 'wykonaj') {
+                const wynikTekst = await uzyjNarzedzia(w.wybor, {}, 'jev');
+                messages.push({ role: 'user', content: `WYNIK NARZĘDZIA ${w.wybor} (Katedra sprawdziła to od razu): ${wynikTekst}\n\nTeraz odpowiedz Suwerenowi zwyczajnie, na głos — na podstawie tego wyniku.` });
+            } else if (w.decyzja === 'wskazowka') {
+                // Do wiadomości Suwerena, nie jako drugi „system" — szablony GGUF wywracają się na system w środku.
+                messages.at(-1).content += `\n\n(WSKAZÓWKA KATEDRY: ta prośba wymaga narzędzia ${w.wybor}. Odpowiedz WYŁĄCZNIE jedną linią JSON {"narzedzie":"${w.wybor}","argumenty":{…}} z argumentami wziętymi z mojej wypowiedzi.)`;
+            }
+        }
+    } catch (e) { jevSlad.blad = e.message; }
+
     let odpowiedz = '';
     for (let krok = 0; krok < 4; krok++) {
         const ostatniKrok = krok === 3;
@@ -474,21 +533,7 @@ export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = fa
             break;
         }
         const nazwa = wezwanie.narzedzie;
-        const n = NARZEDZIA[nazwa];
-        const dozwolone = profil.narzedzia.includes(nazwa) && n && (lokalne || cfg.pelnyTunel || !n.ciezkie);
-        naZdarzenie({ typ: 'narzedzie', narzedzie: nazwa, argumenty: wezwanie.argumenty });
-        let wynik;
-        if (!dozwolone) {
-            wynik = { blad: n ? `Narzędzie ${nazwa} jest dostępne tylko z maszyny Suwerena (nie z tunelu).` : `Nie ma narzędzia ${nazwa}.` };
-        } else {
-            try { wynik = await n.wykonaj(wezwanie.argumenty, ctx); }
-            catch (e) { wynik = { blad: e.message }; }
-        }
-        const wynikTekst = JSON.stringify(wynik).slice(0, 1500);
-        r.tury.push({ kto: 'narzedzie', narzedzie: nazwa, argumenty: wezwanie.argumenty, tresc: wynikTekst, kiedy: new Date().toISOString() });
-        r.narzedzia.push({ narzedzie: nazwa, ok: !wynik?.blad, kiedy: new Date().toISOString() });
-        await cfg.szyna?.nadaj({ agent, rodzaj: wynik?.blad ? 'blad' : 'narzedzie', tresc: `${nazwa}(${JSON.stringify(wezwanie.argumenty).slice(0, 120)}) → ${wynikTekst.slice(0, 160)}`, dane: { rozmowaId: id } });
-        naZdarzenie({ typ: 'wynik', narzedzie: nazwa, ok: !wynik?.blad, wynik });
+        const wynikTekst = await uzyjNarzedzia(nazwa, wezwanie.argumenty);
         messages.push({ role: 'assistant', content: surowa });
         messages.push({ role: 'user', content: `WYNIK NARZĘDZIA ${nazwa}: ${wynikTekst}\n\nTeraz odpowiedz Suwerenowi zwyczajnie, na głos.` });
     }
@@ -498,7 +543,7 @@ export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = fa
     r.ostatnia = new Date().toISOString();
     await zapiszRozmowe(r);
     await cfg.szyna?.nadaj({ agent, rodzaj: 'telefon', tresc: `${profil.imie}: ${odpowiedz.slice(0, 300)}`, dane: { rozmowaId: id, kto: 'delegat' } });
-    const wynik = { rozmowaId: id, delegat: profil.id, odpowiedz, glos: profil.glos, model: silnik };
+    const wynik = { rozmowaId: id, delegat: profil.id, odpowiedz, glos: profil.glos, model: silnik, karta: r.karta ?? null, jev: jevSlad.intencja || jevSlad.straz.length || jevSlad.blad ? jevSlad : null };
     naZdarzenie({ typ: 'koniec', ...wynik });
     return wynik;
 }

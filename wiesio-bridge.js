@@ -7896,6 +7896,8 @@ async function raportKatedry({ szukaj = '' } = {}) {
 Delegat.skonfiguruj({
     ollamaBase: OLLAMA_BASE, portMostu: PORT, szyna: Szyna, nocna: NocnaZmiana, artemis: Artemis, katalog: path.join(ANTIGRAVITY_DIR, 'delegat'), model: DEFAULT_LLM, pelnyTunel: PELNY_TUNEL, modelAgenta: (id) => ModeleAgentow.modelDla(id),
     stan: { raport: raportKatedry, pamiec: () => StanKatedry.pamiec(), zwolnij: (pidy) => StanKatedry.zwolnij(pidy) },
+    jev: Jev,   // ⚖️ Delegat na Jev: intencja wypowiedzi + straż ciężkich narzędzi (services/DelegatJev.js); bez klucza — jak dawniej
+    stol: { karta: (id) => Stol.karta(id) },   // 🪑 rozmowa przy karcie Stołu (StoL)
 });
 // 🧩 Projekt Stada: każdy TeOgochi pracuje na SWOIM modelu (ModeleAgentow) z SWOJĄ kartą roli.
 // Czat przez AppStudio.pisz — ten sam tor co Kodeks: Ollama lokalnie, `claude:`/`gemini:` tylko z jawnego wyboru.
@@ -7951,15 +7953,15 @@ KuzniaSoup.skonfiguruj({
 app.get('/api/delegat/profile', (req, res) => res.json({ success: true, profile: Delegat.profile(), lokalne: !!req.lokalny, pelnyTunel: PELNY_TUNEL }));
 
 /**
- * POST /api/delegat/rozmowa { delegat, tekst, rozmowaId?, model?, strumien? }
+ * POST /api/delegat/rozmowa { delegat, tekst, rozmowaId?, model?, strumien?, karta? }  (karta = id karty Stołu — rozmowa przy niej)
  * strumien:true → SSE: {typ:'narzedzie'|'wynik'|'token'|'koniec'|'blad'} — telefon czyta od razu.
  * Bez strumienia → jeden JSON z odpowiedzią.
  */
 app.post('/api/delegat/rozmowa', async (req, res) => {
-    const { delegat = 'joanna', tekst, rozmowaId, model, strumien, zGlownego } = req.body ?? {};
+    const { delegat = 'joanna', tekst, rozmowaId, model, strumien, zGlownego, karta } = req.body ?? {};
     // zGlownego: zlecenie od Głównego (scripts/glowny/katedra.mjs) — bez ciężkich narzędzi, żeby stado nie było
     // furtką obok zgody Suwerena na polecenia Głównego.
-    const p = { delegat, tekst, rozmowaId, model, lokalne: !!req.lokalny && !zGlownego };
+    const p = { delegat, tekst, rozmowaId, model, lokalne: !!req.lokalny && !zGlownego, karta: typeof karta === 'string' ? karta.slice(0, 80) : null };
     if (!strumien) {
         try { return res.json({ success: true, ...(await Delegat.rozmawiaj(p)) }); }
         catch (e) { return res.status(400).json({ success: false, message: e.message }); }
