@@ -100,7 +100,16 @@ const Header: React.FC<HeaderProps> = ({ isVisible, isAuthenticated, isLoungeOpe
                     </p>
                 </div>
             </div>
-            <div>
+            <div className="flex items-center gap-2 md:gap-3">
+                {/* 🚪 Do Bramy — zawsze (także przy wejściu suwerennym, bez konta Google): wyjście to decyzja, nie przypadek */}
+                <button
+                    onClick={() => window.dispatchEvent(new Event('otakos:do-bramy'))}
+                    className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-slate-800/50 backdrop-blur-md border border-amber-500/30 flex items-center justify-center text-amber-200 hover:bg-amber-900/40 hover:border-amber-400 transition-all duration-300 text-lg"
+                    title="🚪 Do Bramy — wyjdź z Katedry do Bramy (Katedra pamięta, że przez nią przeszedłeś, aż tu klikniesz)"
+                    aria-label="Do Bramy"
+                >
+                    🚪
+                </button>
                 {isAuthenticated ? (
                     <div className="flex items-center gap-2 md:gap-3">
                         <button

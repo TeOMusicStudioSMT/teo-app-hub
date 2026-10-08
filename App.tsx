@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Header from './components/Header';
 import TeOGenesis from './components/special/TeOGenesis';
 import QuantumGuardianAlert from './components/AnomalyNotification';
@@ -59,10 +59,23 @@ import McpSkillboardPanel from './components/McpSkillboardPanel';
 import { sluchajTelefonu } from './lib/teogochiDelegate';
 import { zsynchronizujWezel } from './lib/mojWezel';
 
+/** 🚪 Klucz pamięci przejścia przez Bramę (localStorage) — zdejmuje go tylko przycisk „Do Bramy” albo wylogowanie. */
+const BRAMA_PRZEKROCZONA = 'otakos_brama_przekroczona';
+
 
 
 const App: React.FC = () => {
-    const [isInitiated, setIsInitiated] = useState(false);
+    // 🚪 Brama pamięta przejście (Suweren 2026-10-08: „Katedra od czasu do czasu sama się wylogowuje”) — dawniej stan
+    // żył tylko w pamięci strony, więc KAŻDE przeładowanie Huba (restart Katedry, pełne przeładowanie Vite, przeglądarka
+    // zwalniająca kartę) wyrzucało do Bramy. Wyjście jest teraz decyzją: przycisk 🚪 w nagłówku albo wylogowanie.
+    const [isInitiated, setIsInitiated] = useState<boolean>(() => { try { return localStorage.getItem(BRAMA_PRZEKROCZONA) === '1'; } catch { return false; } });
+    const przekroczBrame = useCallback(() => { try { localStorage.setItem(BRAMA_PRZEKROCZONA, '1'); } catch { /* bez pamięci przeglądarki */ } setIsInitiated(true); }, []);
+    const wrocDoBramy = useCallback(() => { try { localStorage.removeItem(BRAMA_PRZEKROCZONA); } catch { /* bez pamięci przeglądarki */ } setIsInitiated(false); toast('🚪 Wróciłeś do Bramy — wejdź, kiedy zechcesz.'); }, []);
+    useEffect(() => {
+        const naZdarzenie = () => wrocDoBramy();
+        window.addEventListener('otakos:do-bramy', naZdarzenie);
+        return () => window.removeEventListener('otakos:do-bramy', naZdarzenie);
+    }, [wrocDoBramy]);
     const [showIntro, setShowIntro] = useState(false);
     const [showGenesis, setShowGenesis] = useState(false); // TeOGenesis - suwerenna brama
     const [isPioneer, setIsPioneer] = useState(true);
@@ -104,6 +117,7 @@ const App: React.FC = () => {
     const [showLab, setShowLab] = useState(false); // 🧪 TeO Lab (Agro + RadioSMT)
     const [showMcpSkillboard, setShowMcpSkillboard] = useState(false); // ⚡ MCP Skillboard
     const [isWiesioOnline, setIsWiesioOnline] = useState<boolean | null>(null);
+    const wiesioOnlineRef = useRef(false);
 
     // --- Real Auth State ---
     const [user, setUser] = useState<User | null>(null);
@@ -349,8 +363,18 @@ const App: React.FC = () => {
                 setIsWiesioOnline(false);
             }
         };
-        checkWiesio();
+        // Dawniej JEDNO sprawdzenie przy otwarciu: start Katedry otwierał Hub w tej samej sekundzie co most
+        // (2026-10-08 21:42) i Hub zostawał na Teście Koherencji na zawsze. Teraz: co 3 s, aż most odpowie.
+        let zywy = true;
+        let t: ReturnType<typeof setTimeout> | null = null;
+        const petla = async () => {
+            await checkWiesio();
+            if (zywy && !wiesioOnlineRef.current) t = setTimeout(() => void petla(), 3000);
+        };
+        void petla();
+        return () => { zywy = false; if (t) clearTimeout(t); };
     }, []);
+    useEffect(() => { wiesioOnlineRef.current = isWiesioOnline === true; }, [isWiesioOnline]);
 
     // 6. Przywróć Kotwicę (Vault Identity) po odświeżeniu
     useEffect(() => {
@@ -432,6 +456,8 @@ const App: React.FC = () => {
 
     const handleLogout = async () => {
         await signOut();
+        try { localStorage.removeItem(BRAMA_PRZEKROCZONA); } catch { /* bez pamięci przeglądarki */ }
+        setIsInitiated(false);
         setIsLoungeOpen(false);
         setSelectedPathway(null);
         setShowPathwaySelector(true);
@@ -616,7 +642,7 @@ const App: React.FC = () => {
                     <CosmicBackground riskLevel={riskLevel} />
                     <div className="relative z-10 w-full h-full flex flex-col">
                         {!isInitiated ? (
-                            <OtakOSGateway onInitiate={() => setIsInitiated(true)} />
+                            <OtakOSGateway onInitiate={przekroczBrame} />
                         ) : isWiesioOnline === false ? (
                             <TestKoherencji />
                         ) : (

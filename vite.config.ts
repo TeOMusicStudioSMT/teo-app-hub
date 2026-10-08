@@ -32,6 +32,13 @@ export default defineConfig({
     'import.meta.env.VITE_TEO_ISKA_KEY': JSON.stringify(envVars['VITE_TEO_ISKA_KEY'] || ''),
   },
   server: {
+    // 🚪 Vite NIE obserwuje danych Katedry (Suweren 2026-10-08: „Katedra od czasu do czasu sama się wylogowuje”).
+    // Bez tego chokidar pilnował całego TeO_Genesis — samo _OtakOs_AI to ~126 tys. plików (środowiska Pythona,
+    // modele), a _OtakOs_Wymiar most zapisuje co chwilę: Vite rósł do 1,8 GB, mielił procesor i przestawał
+    // odpowiadać. Hub niczego z tych katalogów nie importuje (sprawdzone grepem), więc nic nie tracimy.
+    watch: {
+      ignored: ['**/_OtakOs_*/**', '**/TeO_Skille/**', '**/TeO_Arcade_Forge/**', '**/public/apps/**', '**/*.glb', '**/*.mp4', '**/*.wav', '**/*.gguf', '**/*.safetensors'],
+    },
     headers: {
       "Cross-Origin-Resource-Policy": "cross-origin"
     },
