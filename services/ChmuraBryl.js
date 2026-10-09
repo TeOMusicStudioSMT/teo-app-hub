@@ -29,12 +29,45 @@ export const USD_ZA_KREDYT = Number(process.env.OTAKOS_MESHY_USD_ZA_KREDYT) || 0
 export const MAX_MB = 20;
 export const MAX_AKCJI = 10;
 const BAZA = process.env.OTAKOS_MESHY_URL || 'https://api.meshy.ai/openapi/v1';
-const SCIEZKA = { retekstura: 'retexture', remesh: 'remesh', obraz3d: 'image-to-3d', rig: 'rigging' };
+const SCIEZKA = { retekstura: 'retexture', remesh: 'remesh', obraz3d: 'image-to-3d', rig: 'rigging', akcje: 'animations' };
+
+/**
+ * 🎛️ Auto-dobór akcji (Suweren 2026-10-09: „można wybrać tylko 10 z dużej listy… niech jakaś automatyczna opcja”):
+ * zestaw = lista słów szukanych w nazwie/kluczu akcji biblioteki Meshy (pierwsza pasująca, bez powtórek) albo cała
+ * kategoria. Więcej niż 10 = kolejne paczki „🎞️ Akcje” na TYM SAMYM rigu (bez ponownego rigowania).
+ */
+export const ZESTAWY_AKCJI = {
+    gra: { nazwa: '🎮 podstawy gry', slowa: ['idle', 'jump', 'attack', 'hit', 'death', 'die', 'wave', 'pick', 'crouch', 'roll', 'talk', 'sit'] },
+    walka: { nazwa: '⚔️ walka', kategoria: 'Fighting' },
+    taniec: { nazwa: '💃 taniec', kategoria: 'Dancing' },
+    codzienne: { nazwa: '🏡 codzienne', kategoria: 'DailyActions' },
+    cialo: { nazwa: '🤸 ruchy ciała', kategoria: 'BodyMovements' },
+};
+/** Akcje zestawu z biblioteki: id po kolei, bez tych, które bryła już ma, najwyżej `ile`. */
+export function dobierzAkcje(zestaw, biblioteka, { pominac = [], ile = MAX_AKCJI } = {}) {
+    const z = ZESTAWY_AKCJI[zestaw];
+    if (!z) throw new Error(`Nieznany zestaw akcji „${zestaw}”. Są: ${Object.keys(ZESTAWY_AKCJI).join(', ')}.`);
+    const wolne = biblioteka.filter((a) => !pominac.includes(a.id));
+    const out = [];
+    if (z.kategoria) for (const a of wolne) { if (a.kategoria === z.kategoria) out.push(a); if (out.length >= ile) break; }
+    else for (const s of z.slowa) {
+        const a = wolne.find((x) => !out.includes(x) && `${x.nazwa} ${x.klucz}`.toLowerCase().includes(s));
+        if (a) out.push(a);
+        if (out.length >= ile) break;
+    }
+    return out;
+}
 
 /** Zlecenie od Suwerena → sprawdzone. */
 export function oczyscZlecenie(z = {}) {
     const rodzaj = SCIEZKA[z.rodzaj] ? z.rodzaj : null;
-    if (!rodzaj) throw new Error('Rodzaj: retekstura albo remesh (albo obraz3d, rig).');
+    if (!rodzaj) throw new Error('Rodzaj: retekstura albo remesh (albo obraz3d, rig, akcje).');
+    if (rodzaj === 'akcje') {
+        const akcje = [...new Set((Array.isArray(z.akcje) ? z.akcje : []).map((x) => Math.round(Number(x))).filter((x) => Number.isInteger(x) && x >= 0))];
+        if (!akcje.length) throw new Error('Wybierz akcje z biblioteki (albo zestaw automatyczny).');
+        if (akcje.length > MAX_AKCJI) throw new Error(`Najwyżej ${MAX_AKCJI} akcji w jednej paczce — resztę wyślij kolejną paczką na tym samym rigu.`);
+        return { rodzaj, akcje };
+    }
     if (rodzaj === 'retekstura') {
         const styl = String(z.styl ?? '').trim().slice(0, 800);
         if (styl.length < 3) throw new Error('Retekstura: opisz styl (np. „czarna sierść mieniąca się jak opal, świecące bursztynowe oko”).');
@@ -65,6 +98,7 @@ export function wycena(z) {
     const kredyty = z.rodzaj === 'remesh' ? CENNIK_MESHY.remesh
         : z.rodzaj === 'obraz3d' ? CENNIK_MESHY.obraz3d[z.model][z.rozdzielczosc]
             : z.rodzaj === 'rig' ? CENNIK_MESHY.rig + CENNIK_MESHY.akcja * z.akcje.length
+                : z.rodzaj === 'akcje' ? CENNIK_MESHY.akcja * z.akcje.length
                 : CENNIK_MESHY.retekstura[z.rozdzielczosc];
     return { kredyty, usdOkolo: Math.round(kredyty * USD_ZA_KREDYT * 100) / 100, cennik: CENNIK_MESHY.zrodlo };
 }
@@ -73,6 +107,7 @@ export function wycena(z) {
 export function cialoMeshy(z, wejscie) {
     if (z.rodzaj === 'remesh') return { model_url: wejscie, topology: z.topologia, target_polycount: z.sciany, target_formats: ['glb'] };
     if (z.rodzaj === 'obraz3d') return { image_url: wejscie, ai_model: z.model, should_texture: true, enable_pbr: z.pbr, texture_resolution: z.rozdzielczosc, ...(z.poza ? { pose_mode: z.poza } : {}), target_formats: ['glb'] };
+    if (z.rodzaj === 'akcje') return { rig_task_id: wejscie.zadanie, action_ids: z.akcje };
     if (z.rodzaj === 'rig') return { ...(typeof wejscie === 'object' && wejscie?.zadanie ? { input_task_id: wejscie.zadanie } : { model_url: wejscie }), height_meters: z.wzrost };
     return { model_url: wejscie, text_style_prompt: z.styl, texture_resolution: z.rozdzielczosc, enable_pbr: z.pbr, enable_original_uv: z.oryginalneUV, target_formats: ['glb'] };
 }
@@ -136,6 +171,11 @@ export function utworzChmureBryl({ klucz, plikBryly, obrazBryly = null, metaBryl
             const mime = b[0] === 0x89 ? 'image/png' : 'image/jpeg';
             return { wartosc: `data:${mime};base64,${b.toString('base64')}`, mb: b.length / 1e6 };
         }
+        if (z.rodzaj === 'akcje') {
+            const m = await metaBryly(id);
+            if (m?.chmura?.rodzaj !== 'rig' || !m.chmura.zadanie) throw new Error('Akcje dokłada się do bryły z RIGIEM z Meshy — wybierz wersję po „🦴 Rig + ruchy”.');
+            return { wartosc: { zadanie: m.chmura.zadanie }, mb: 0 };
+        }
         if (z.rodzaj === 'rig') {
             const m = await metaBryly(id);
             if (!m?.tekstury) throw new Error('Rig potrzebuje bryły z TEKSTURAMI — najpierw „Retekstura” albo „Image-to-3D” w chmurze, potem rig tej nowej wersji.');
@@ -179,6 +219,19 @@ export function utworzChmureBryl({ klucz, plikBryly, obrazBryly = null, metaBryl
         const z = zad.zlecenie;
         const d = await czekaj(zad, SCIEZKA[z.rodzaj], zad.meshyId);
         let kredyty = Number(d.consumed_credits ?? zad.kredyty);
+        if (z.rodzaj === 'akcje') {
+            // 🎞️ paczka akcji na gotowym rigu → ta sama wersja bryły, kolejny plik ruchu: akcje, akcje2, akcje3…
+            const ua = d.result?.animation_glb_url;
+            if (!ua) throw new Error('Meshy skończyło animacje, ale nie oddało GLB.');
+            const m = await metaBryly(zad.bryla);
+            const zajete = new Set((m?.ruchy ?? []).map((r) => r.ruch));
+            let nazwa = 'akcje';
+            for (let i = 2; zajete.has(nazwa); i++) nazwa = `akcje${i}`;
+            await zapiszRuch(zad.bryla, nazwa, await pobierz(ua), { zrodlo: 'meshy', opis: `akcje Meshy: ${z.akcje.join(', ')}`, akcje: z.akcje });
+            zad.asset = zad.bryla; zad.ruchy = [nazwa]; zad.kredyty = kredyty; zad.stan = 'gotowe';
+            await szyna?.nadaj?.({ agent: 'Assety3D', rodzaj: 'praca', tresc: `☁️ Meshy: ${z.akcje.length} akcji na rigu „${zad.bryla}” → ruch „${nazwa}” (${kredyty} kredytów)`, dane: { asset: zad.bryla } }).catch(() => {});
+            return;
+        }
         const url = z.rodzaj === 'rig' ? d.result?.rigged_character_glb_url : d.model_urls?.glb;
         if (!url) throw new Error('Meshy skończyło, ale nie oddało GLB.');
         const glb = await pobierz(url);
@@ -244,7 +297,14 @@ export function utworzChmureBryl({ klucz, plikBryly, obrazBryly = null, metaBryl
         return biblioteka.lista.filter((a) => (!kategoria || a.kategoria === kategoria) && (!s || a.nazwa.toLowerCase().includes(s) || a.klucz.toLowerCase().includes(s)));
     }
 
-    return { saldo, wycen, zlec, akcje, zadanie: (id) => zadania.get(id) ?? null, lista: () => [...zadania.values()], stan: () => ({ maKlucz: !!klucz(), cennik: CENNIK_MESHY, usdZaKredyt: USD_ZA_KREDYT }) };
+    /** 🎛️ Zestaw automatyczny: akcje z biblioteki dobrane do zestawu, bez tych, które bryła już ma (meta.ruchy[].akcje). */
+    async function zestaw(id, nazwa) {
+        const m = await metaBryly(id);
+        const pominac = (m?.ruchy ?? []).flatMap((r) => r.akcje ?? []);
+        return dobierzAkcje(nazwa, await akcje(), { pominac });
+    }
+
+    return { saldo, wycen, zlec, akcje, zestaw, zadanie: (id) => zadania.get(id) ?? null, lista: () => [...zadania.values()], stan: () => ({ maKlucz: !!klucz(), cennik: CENNIK_MESHY, usdZaKredyt: USD_ZA_KREDYT }) };
 }
 
-export default { utworzChmureBryl, oczyscZlecenie, wycena, cialoMeshy, promptStylu, oczyscStyl, akcjaZBiblioteki, CENNIK_MESHY, USD_ZA_KREDYT, MAX_AKCJI };
+export default { utworzChmureBryl, dobierzAkcje, ZESTAWY_AKCJI, oczyscZlecenie, wycena, cialoMeshy, promptStylu, oczyscStyl, akcjaZBiblioteki, CENNIK_MESHY, USD_ZA_KREDYT, MAX_AKCJI };

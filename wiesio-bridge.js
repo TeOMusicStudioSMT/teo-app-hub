@@ -9,7 +9,7 @@ import { utworzJev, PROG_ZROBIONE as JEV_PROG } from './services/Jev.js';
 import { utworzJevLokalny } from './services/JevLokalny.js';
 import { utworzPartytury } from './services/Partytury.js';
 import { utworzStrazModeli } from './services/StrazModeli.js';
-import { utworzChmureBryl, promptStylu, oczyscStyl } from './services/ChmuraBryl.js';
+import { utworzChmureBryl, promptStylu, oczyscStyl, ZESTAWY_AKCJI } from './services/ChmuraBryl.js';
 import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch.js';
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
@@ -8153,6 +8153,13 @@ ModeleAgentow.wszystkie().catch(() => {});   // pamięć przydziału dla Studia 
 const gddUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 app.get('/api/gdd/silniki', (_req, res) => res.json({ success: true, silniki: Gdd.SILNIKI }));
 // 📜 Scenariusze Suwerena jako projekty (services/SzablonyGier.js) — „Teterhia — Wieczna Saga”: projekt gry + GDD + gałęzie świata.
+// ✨ nowe propozycje do gałęzi świata (model Reżysera) i 🐾 brakujące gałęzie scenariusza (np. Mini-TeOgochi)
+app.post('/api/gdd/:id/galezie/:galaz/propozycje', async (req, res) => {
+    const narysowane = (await Assety3D.listaObrazow().catch(() => [])).filter((o) => o.projekt === req.params.id && o.galaz === req.params.galaz).map((o) => o.opis);
+    return ytOdp(res, Gdd.nowePropozycje(req.params.id, req.params.galaz, { ile: Math.min(8, Math.max(1, Number(req.body?.ile) || 5)), narysowane, model: TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('rezyser') || modelMechanika()) }).then((propozycje) => ({ propozycje })));
+});
+app.get('/api/gdd/:id/galezie/brakujace', (req, res) => ytOdp(res, Gdd.wczytaj(req.params.id).then((g) => ({ galezie: SzablonyGier.brakujaceGalezie(g).map((x) => ({ id: x.id, nazwa: x.nazwa, opis: x.opis })) }))));
+app.post('/api/gdd/:id/galezie/uzupelnij', (req, res) => ytOdp(res, Gdd.wczytaj(req.params.id).then((g) => Gdd.dodajGalezie(req.params.id, SzablonyGier.brakujaceGalezie(g))).then((dodane) => ({ dodane }))));
 app.get('/api/gdd/szablony', (_req, res) => res.json({ success: true, szablony: Object.values(SzablonyGier.SZABLONY).map((s) => ({ id: s.id, nazwa: s.nazwa, opis: s.opis, galezie: s.gdd.galezie.length, kamienie: s.gdd.kamienie.length })) }));
 app.post('/api/gdd/szablon/:szablon', async (req, res) => {
     try { res.json({ success: true, ...(await SzablonyGier.zasiej(req.params.szablon, { appStudio: AppStudio, gdd: Gdd }, { nadpisz: req.body?.nadpisz === true })) }); }
@@ -8376,6 +8383,8 @@ app.post('/api/merch/:id/market', async (req, res) => {
 });
 /** GET /api/assety3d/chmura/akcje?kategoria=&szukaj= — biblioteka animacji Meshy (darmowa) do riggingu. */
 app.get('/api/assety3d/chmura/akcje', (req, res) => ytOdp(res, ChmuraBryl.akcje({ kategoria: String(req.query.kategoria ?? ''), szukaj: String(req.query.szukaj ?? '') }).then((akcje) => ({ akcje }))));
+/** GET /api/assety3d/chmura/:id/zestaw/:zestaw — 🎛️ auto-dobór ≤ 10 akcji z biblioteki (gra, walka, taniec…), bez tych, które bryła ma. */
+app.get('/api/assety3d/chmura/:id/zestaw/:zestaw', (req, res) => ytOdp(res, ChmuraBryl.zestaw(req.params.id, req.params.zestaw).then((akcje) => ({ akcje, zestawy: Object.fromEntries(Object.entries(ZESTAWY_AKCJI).map(([k, v]) => [k, v.nazwa])) }))));
 /** POST /api/assety3d/chmura/:id/przytnij — dawna wersja z chmury: tekstura model.glb ≤ 2K (master zostaje). */
 app.post('/api/assety3d/chmura/:id/przytnij', (req, res) => ytOdp(res, Assety3D.przytnijTeksturyModelu(req.params.id)));
 app.get('/api/assety3d/chmura', (_req, res) => res.json({ success: true, ...ChmuraBryl.stan(), zadania: ChmuraBryl.lista() }));

@@ -641,19 +641,38 @@ async function zrzucNieudaneIPrzywroc(dir, id) {
  * rundzie i szukamy ich nazwy w importach pozostałych plików projektu (bez rozszerzenia, bo
  * bundler pozwala na `./wrogowie`). Pliki typów (.d.ts) i wejście (main) pomijamy.
  */
+/**
+ * Moduły nieosiągalne z punktów wejścia (main/index + pliki spoza src, np. index.html). Dawniej liczył się tylko import
+ * z punktów wejścia — moduł podpięty w innym module (src/gra/rytm.ts → ../trybTestu) był „martwy” i każdy model
+ * łańcucha przegrywał w kółko na zadaniu 8.1 (2026-10-09). Importy względne, też `import './x'` i dynamiczne, z .ts/.js.
+ */
+export function martweZGrafu(wszystkie, kandydaci) {
+    const bezRozszerzenia = (s) => s.replace(/\.(tsx?|jsx?|mjs)$/, '').replace(/\/index$/, '');
+    const wgSciezki = new Map(kandydaci.map((k) => [bezRozszerzenia(k.sciezka), k]));
+    const osiagniete = new Set();
+    const kolejka = wszystkie.filter((p) => !kandydaci.includes(p));
+    const wzor = /(?:\bfrom\s*|\bimport\s*\(?\s*)['"`](\.{1,2}\/[^'"`]+|\/src\/[^'"`]+)['"`]/g;
+    while (kolejka.length) {
+        const p = kolejka.shift();
+        const katalog = path.posix.dirname(p.sciezka.replace(/\\/g, '/'));
+        for (const m of p.tresc.matchAll(wzor)) {
+            const cel = m[1].startsWith('/') ? m[1].slice(1) : path.posix.normalize(path.posix.join(katalog, m[1]));
+            const k = wgSciezki.get(bezRozszerzenia(cel)) ?? wgSciezki.get(bezRozszerzenia(cel) + '/index');
+            if (k && !osiagniete.has(k)) { osiagniete.add(k); kolejka.push(k); }
+        }
+    }
+    return kandydaci.filter((k) => !osiagniete.has(k));
+}
+
 async function modulyBezImportu(dir) {
     // Sprawdzamy WSZYSTKIE moduly projektu, nie tylko oddane w tej rundzie: modul potrafi
     // powstac w jednej rundzie, a import zniknac w kolejnej (tak w nocy 2026-09-23 przepadl
     // src/fale.ts - zadanie zameldowalo sukces, a w grze fal nie bylo).
     let wszystkie = [];
     try { wszystkie = await pliki(path.basename(dir)); } catch { return []; }
-    const kandydaci = wszystkie.filter((p) => /^src\/.+\.tsx?$/.test(p.sciezka) && !/\.d\.ts$/.test(p.sciezka) && !/^src\/(main|index)\./.test(p.sciezka));
+    const kandydaci = wszystkie.filter((p) => /^src\/.+\.tsx?$/.test(p.sciezka) && !/\.(d|test|spec)\.tsx?$/.test(p.sciezka) && !/^src\/(main|index)\./.test(p.sciezka));
     if (!kandydaci.length) return [];
-    const caly = wszystkie.filter((p) => !kandydaci.some((k) => k.sciezka === p.sciezka)).map((p) => p.tresc).join('\n');
-    return kandydaci.filter((k) => {
-        const nazwa = path.basename(k.sciezka).replace(/\.tsx?$/, '');
-        return !new RegExp(`from\\s*['"\`][^'"\`]*${nazwa}(\\.tsx?)?['"\`]`).test(caly);
-    }).map((k) => ({ plik: k.sciezka }));
+    return martweZGrafu(wszystkie, kandydaci).map((k) => ({ plik: k.sciezka }));
 }
 
 export async function weryfikujBuild(dir) {
@@ -919,7 +938,23 @@ function kontekstPlikow(lista, cel = '') {
  * `blokKlockow` (z produkcji GDD, services/KlockiGry.js) — klocki TEGO zadania z rolami; zastępuje listę
  * wszystkich assetów projektu (2026-10-07: „UŻYWAJ ich” bez ról = gemma 12B pisała ładowarkę wszystkich brył).
  */
-export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, blokKlockow } = {}, naKrok = () => {}) {
+/** Jak daleko zaszła odrzucona runda (wyżej = bliżej celu) — dziedzictwo dla następnego modelu bierze najdalszą. */
+export const ETAPY_RUNDY = { 'martwy-modul': 1, recenzent: 1, build: 2, przegladarka: 3, oczy: 4, 'sedzia-zachowania': 4, zachowanie: 4, 'sedzia-zadania': 5 };
+const MAX_DZIEDZICTWA = 32_000;
+
+/** Blok promptu z prób poprzednich modeli łańcucha: ich najdalej posunięte pliki + wszystkie różne błędy (Suweren 2026-10-09:
+ *  „niech korzystają z błędów poprzedników… dwa pierwsze strzały to przeważnie gotowe skrypty”). */
+export function blokDziedzictwa(d) {
+    if (!d || (!d.pliki?.length && !d.bledy?.length)) return '';
+    let budzet = MAX_DZIEDZICTWA;
+    const pliki = [];
+    for (const p of d.pliki ?? []) { if (p.tresc.length > budzet) continue; budzet -= p.tresc.length; pliki.push(p); }
+    return `\nPOPRZEDNIE PRÓBY TEGO ZADANIA (${(d.modele ?? [d.model]).filter(Boolean).join(' → ') || 'inne modele'}) NIE PRZESZŁY. Nie zaczynaj od zera — ich kod bywał prawie gotowy.\n` +
+        (d.bledy?.length ? `BŁĘDY, NA KTÓRYCH POLEGLI (nie powtarzaj żadnego):\n${d.bledy.map((b, i) => `${i + 1}. ${b}`).join('\n')}\n` : '') +
+        (pliki.length ? `NAJDALEJ POSUNIĘTA PRÓBA (${d.model}, odpadła na etapie: ${d.etap}) — pliki, które oddała (w projekcie ich NIE ma, został stan sprzed próby). Weź je za punkt wyjścia, popraw wskazany błąd i oddaj w całości:\n${pliki.map((p) => `=== PLIK: ${p.sciezka} ===\n${p.tresc}\n=== KONIEC ===`).join('\n')}${pliki.length < d.pliki.length ? `\n(pominięto ${d.pliki.length - pliki.length} plik(ów) — za długie)` : ''}\n` : '');
+}
+
+export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, blokKlockow, dziedzictwo = null } = {}, naKrok = () => {}) {
     if (!idOk(projektId) || !(await czytajProjekt(projektId))) throw new Error('Nie ma takiego projektu.');
     const cel = String(tresc || '').trim();
     if (!cel) throw new Error('Powiedz Kodeksowi, co ma zbudować.');
@@ -947,11 +982,23 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
         // 🥚 JaJo Mistrza: pliki każdej rundy + werdykt sędziów → po zwycięstwie pary „źle → dobrze” (cfg.poRundach).
         const rundyOdrzucone = [];
         let oddaneWRundzie = null;
+        // 🧬 najdalej posunięta odrzucona runda + wszystkie różne błędy → wynik.dziedzictwo dla następnego modelu łańcucha
+        let najdalsza = null;
+        const bledyRund = [];
+        let biezacaRunda = 0;
+        const zapamietaj = (etap) => {
+            const sedno = feedback.replace(/\s+/g, ' ').trim().slice(0, 500);
+            if (sedno && !bledyRund.some((b) => b.slice(0, 160) === sedno.slice(0, 160))) bledyRund.push(sedno);
+            const poziom = ETAPY_RUNDY[etap] ?? 0;
+            if (oddaneWRundzie && (!najdalsza || poziom > najdalsza.poziom)) najdalsza = { poziom, etap, runda: biezacaRunda, pliki: oddaneWRundzie };
+        };
+        const blokPoprzednikow = blokDziedzictwa(dziedzictwo);
+        if (blokPoprzednikow) krok('stan', `🧬 dziedzictwo: ${dziedzictwo.pliki?.length ?? 0} plik(ów) najdalszej próby (${dziedzictwo.model}, etap ${dziedzictwo.etap ?? '—'}) i ${dziedzictwo.bledy?.length ?? 0} błędów poprzedników`);
         try {
             for (let runda = 1; runda <= rundy; runda++) {
                 if (przerwanie.signal.aborted) { feedback = 'przerwane przez Suwerena'; break; }
                 if (oddaneWRundzie && feedback) { rundyOdrzucone.push({ runda: runda - 1, pliki: oddaneWRundzie, powod: feedback.slice(0, 1500) }); oddaneWRundzie = null; }
-                z.rundy = runda;
+                z.rundy = runda; biezacaRunda = runda;
                 const obecne = await pliki(projektId);
                 const eskalacja = powtorki >= 1
                     ? `\nUWAGA: to DOKŁADNIE TEN SAM błąd, co w poprzedniej rundzie — Twoja poprawka go nie usunęła. Zanim oddasz pliki, napisz w pierwszej linii odpowiedzi jednym zdaniem, co konkretnie zmieniasz (np. „dodaję 'idle' do typu Phase"), a potem bloki plików. Sprawdź numer linii z błędu i popraw TĘ linię i jej typ.\n`
@@ -965,7 +1012,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 // Mapa projektu (services/WikiProjektu.js) — Suweren 2026-09-24: „nie mogą się odnaleźć".
                 // Kilkanaście linii: co jest w którym module, kto kogo używa, gdzie w main.ts podpiąć.
                 const mapa = await WikiProjektu.skrot(dir).catch(() => '');
-                const prompt = `PROJEKT: ${projektId}\n${mapa ? mapa + '\n\n' : ''}\nOBECNE PLIKI:\n${kontekstPlikow(obecne, cel)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${podzial}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
+                const prompt = `PROJEKT: ${projektId}\n${mapa ? mapa + '\n\n' : ''}\nOBECNE PLIKI:\n${kontekstPlikow(obecne, cel)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${podzial}${runda === 1 ? blokPoprzednikow : ''}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
                 // ComfyUI po renderze trzyma modele w karcie (zmierzone: ~2 GB po TRELLIS.2) — Ollama
                 // dostaje resztkę i liczy prompt na CPU. Prosimy o zwolnienie, jeśli ComfyUI nie liczy.
                 if (runda === 1 && cfg.zwolnijComfy) await cfg.zwolnijComfy().catch(() => {});
@@ -1019,7 +1066,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 if (martwe.length) {
                     feedback = `Dodałeś ${martwe.map((m) => m.plik).join(', ')}, ale ŻADEN plik projektu tego nie importuje — ten kod nigdy się nie wykona i w grze nic nie widać. Podepnij go tam, gdzie ma działać (zwykle src/main.ts: import + wywołanie w pętli gry), i oddaj też ten plik.`;
                     krok('blad', `martwy moduł: ${martwe.map((m) => m.plik).join(', ')} — nikt nie importuje, wymuszam podpięcie`);
-                    continue;
+                    zapamietaj('martwy-modul'); continue;
                 }
                 // RECENZENT KODU (services/RecenzentKodeksa.js): zaślepki „// … reszta", uciszony tsc,
                 // pusty catch, atrapy, wycięte funkcje — rzeczy, które przechodzą build i testy.
@@ -1034,7 +1081,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                     }
                     feedback = rec.feedback;
                     krok('blad', `runda ${runda}: ${rec.podsumowanie} — pliki wróciły do stanu sprzed rundy`, { recenzja: rec.blokujace });
-                    continue;
+                    zapamietaj('recenzent'); continue;
                 }
                 krok('test', rec.podsumowanie, rec.uwagi.length ? { uwagi: rec.uwagi } : undefined);
                 krok('pliki', `runda ${runda}: zapisano ${nowe.length} plik(ów): ${nowe.map((p) => p.sciezka).join(', ')}`, { pliki: nowe.map((p) => p.sciezka), tokeny: odp.tokeny });
@@ -1043,7 +1090,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 krok(w.ok ? 'build' : 'blad', `${w.etap} (${w.sekundy} s): ${w.ok ? 'OK' : w.log.slice(0, 1500)}`);
                 ostatniBuildOk = w.ok;
                 if (!w.ok) {
-                    feedback = `${w.etap}:\n${w.log}`;
+                    feedback = `${w.etap}:\n${w.log}`; zapamietaj('build');
                     const odcisk = w.log.replace(/\(\d+,\d+\)/g, '(_)').replace(/linia \d+:/g, 'linia _:').replace(/\s+/g, ' ').trim().slice(0, 400);
                     powtorki = odcisk === poprzedniBlad ? powtorki + 1 : 0;
                     poprzedniBlad = odcisk;
@@ -1054,13 +1101,13 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 const t = await przetestujWPrzegladarce(projektId, typProjektu, cel);
                 if (t.zrzut) ostatniZrzut = t.zrzut;
                 krok(t.ok === false ? 'blad' : 'test', `przeglądarka (${t.sekundy} s): ${t.log.slice(0, 1500)}`, { zrzut: t.zrzut ?? null });
-                if (t.ok === false) { feedback = `Aplikacja zbudowała się, ale w przeglądarce:\n${t.bledy.join('\n')}`; continue; }
+                if (t.ok === false) { feedback = `Aplikacja zbudowała się, ale w przeglądarce:\n${t.bledy.join('\n')}`; zapamietaj('przegladarka'); continue; }
                 // Gra ma sędziego deterministycznego w teście (pozycja po klawiszach) + sędziego z oczami
                 // (zrzut → model z widzeniem: czy w ogóle widać scenę). Apka: sędzia zachowania z migawek tekstu.
                 if (typProjektu === 'gra') {
                     const oczy = t.zrzut ? await ocenZrzut({ cel, sciezkaZrzutu: path.join(dir, t.zrzut), model: z.model }) : { ok: true, niepewne: true };
                     krok(oczy.ok ? 'test' : 'blad', oczy.ok ? `oczy (${oczy.model ?? '?'}): ${oczy.niepewne ? 'sędzia niepewny — przepuszczam' + (oczy.blad ? ' (' + oczy.blad + ')' : '') : 'scenę widać — ' + (oczy.opis || 'OK')}` : `oczy (${oczy.model}): ${oczy.powod}`);
-                    if (!oczy.ok) { feedback = `Gra buduje się i stan window.__gra się zmienia, ale NA EKRANIE: ${oczy.powod}\nSPRAWDŹ KAMERĘ: OrthographicCamera musi mieć frustum z aspektu i wysokości widoku w jednostkach świata (np. h=20: left=-h*a/2, right=h*a/2, top=h/2, bottom=-h/2), NIE -1..1; PerspectiveCamera — pozycja (gracz.x, 10, gracz.z + 10) i lookAt(gracz). Podłoga (PlaneGeometry 40×40, obrócona -PI/2) i światło muszą być w scenie. Oddaj poprawiony plik w całości.`; continue; }
+                    if (!oczy.ok) { feedback = `Gra buduje się i stan window.__gra się zmienia, ale NA EKRANIE: ${oczy.powod}\nSPRAWDŹ KAMERĘ: OrthographicCamera musi mieć frustum z aspektu i wysokości widoku w jednostkach świata (np. h=20: left=-h*a/2, right=h*a/2, top=h/2, bottom=-h/2), NIE -1..1; PerspectiveCamera — pozycja (gracz.x, 10, gracz.z + 10) i lookAt(gracz). Podłoga (PlaneGeometry 40×40, obrócona -PI/2) i światło muszą być w scenie. Oddaj poprawiony plik w całości.`; zapamietaj('oczy'); continue; }
                 }
                 // SĘDZIA ZACHOWANIA (gry): czy to, o co prosiło zlecenie, naprawdę działa w grze.
                 // Build i „canvas żyje" przepuszczały martwy kod — moduł bez importu, dźwięk,
@@ -1070,12 +1117,12 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                     krok(s.ok ? 'test' : 'blad', s.ok
                         ? `sędzia zachowania: ${s.zdane.join('; ') || 'brak sprawdzianów'}${s.nieocenione.length ? ` (nieocenione: ${s.nieocenione.join('; ')})` : ''}`
                         : `sędzia zachowania: ${s.powod}`);
-                    if (!s.ok) { feedback = `Kod się kompiluje i gra działa, ale ZADANIE NIE JEST ZROBIONE: ${s.powod}`; continue; }
+                    if (!s.ok) { feedback = `Kod się kompiluje i gra działa, ale ZADANIE NIE JEST ZROBIONE: ${s.powod}`; zapamietaj('sedzia-zachowania'); continue; }
                 }
                 const o = typProjektu === 'gra' ? { ok: true, powod: null } : await ocenZachowanie({ cel, migawki: t.migawki, model: z.model });
                 krok(o.ok ? 'test' : 'blad', o.ok ? `ocena zachowania: zgodne z zadaniem${o.niepewne ? ' (sędzia niepewny — przepuszczam)' : ''}` : `ocena zachowania: ${o.powod}`, { migawki: t.migawki });
                 if (!o.ok) { feedback = `Aplikacja działa bez błędów konsoli, ale ZACHOWUJE SIĘ źle: ${o.powod}
-PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy czas trwania jest w ms (4000), a odliczasz po 1 na sekundę? Trzymaj wszystko w sekundach. (2) useEffect — czy interwał/timeout jest tworzony i czyszczony w tym samym efekcie, z właściwymi zależnościami? (3) czy stan naprawdę się zmienia (setState na nowej wartości, nie mutacja)? (4) czy przycisk woła funkcję, która startuje timer?\nMigawki tekstu strony:\n${(t.migawki || []).map((m) => `[${m.kiedy}] ${m.tekst}`).join('\n')}`; continue; }
+PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy czas trwania jest w ms (4000), a odliczasz po 1 na sekundę? Trzymaj wszystko w sekundach. (2) useEffect — czy interwał/timeout jest tworzony i czyszczony w tym samym efekcie, z właściwymi zależnościami? (3) czy stan naprawdę się zmienia (setState na nowej wartości, nie mutacja)? (4) czy przycisk woła funkcję, która startuje timer?\nMigawki tekstu strony:\n${(t.migawki || []).map((m) => `[${m.kiedy}] ${m.tekst}`).join('\n')}`; zapamietaj('zachowanie'); continue; }
                 // ⚖️ SĘDZIA ZADANIA (Jev, services/Jev.js): build, przeglądarka i sędzia zachowania sprawdzają, że kod
                 // DZIAŁA — nie, że robi TO zadanie. Kustosz 2026-10-07 dostał ptaszek za samo wczytanie skrzyni, bez
                 // wywołania mostu. Jev patrzy na cały diff zadania (z nowymi plikami); bez klucza / gdy padnie — pomijamy.
@@ -1085,7 +1132,7 @@ PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy
                     if (w && !w.blad && Number.isFinite(w.p)) {
                         const prog = cfg.jevProg ?? 0.35;
                         krok(w.p >= prog ? 'test' : 'blad', `sędzia zadania (${w.model}): ${w.p >= prog ? 'zadanie zrobione' : 'zadanie wygląda na NIEZROBIONE'} — p=${w.p.toFixed(2)} (próg ${prog})`);
-                        if (w.p < prog) { feedback = `Kod się buduje i działa, ale SĘDZIA ZADANIA uznał, że zmiany NIE realizują zadania (p=${w.p.toFixed(2)}). Przeczytaj zadanie jeszcze raz i zrób KAŻDY jego element — np. wywołanie wskazanej trasy mostu, okno, postać, zachowanie — a nie tylko część.`; continue; }
+                        if (w.p < prog) { feedback = `Kod się buduje i działa, ale SĘDZIA ZADANIA uznał, że zmiany NIE realizują zadania (p=${w.p.toFixed(2)}). Przeczytaj zadanie jeszcze raz i zrób KAŻDY jego element — np. wywołanie wskazanej trasy mostu, okno, postać, zachowanie — a nie tylko część.`; zapamietaj('sedzia-zadania'); continue; }
                     } else if (w?.blad) krok('test', `sędzia zadania niedostępny — pomijam (${String(w.blad).slice(0, 160)})`);
                 }
                 ok = true;
@@ -1120,7 +1167,7 @@ PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy
             await WikiProjektu.odswiez(dir, p.nazwa ?? projektId).catch(() => {});   // WIKI.md zawsze aktualne
             await zapiszProjekt(p);
             z.stan = ok ? 'gotowe' : 'blad';
-            z.wynik = { ok, rundy: z.rundy, sekundy, commit, zrzut: ostatniZrzut, powod: ok ? null : `Po ${z.rundy} rundach nadal błędy — ostatnie: ${feedback.slice(0, 600)}` };
+            z.wynik = { ok, rundy: z.rundy, sekundy, commit, zrzut: ostatniZrzut, powod: ok ? null : `Po ${z.rundy} rundach nadal błędy — ostatnie: ${feedback.slice(0, 600)}`, ...(ok ? {} : { dziedzictwo: { model: z.model, etap: najdalsza?.etap ?? null, pliki: najdalsza?.pliki ?? [], bledy: bledyRund.slice(-6) } }) };
             z.koniec = new Date().toISOString();
             krok(ok ? 'koniec' : 'blad', ok ? `GOTOWE w ${sekundy} s, ${z.rundy} rund, commit ${commit}` : z.wynik.powod);
             await szyna(ok ? 'praca' : 'blad', ok ? `„${projektId}": zbudowane w ${sekundy} s (${z.rundy} rund) — ${cel.slice(0, 100)}` : `„${projektId}": nie udało się po ${z.rundy} rundach — ${cel.slice(0, 100)}`, { projekt: projektId, zadanie: z.id });
@@ -1249,4 +1296,4 @@ export async function rozwin(projektId, { model } = {}) {
     return { id: z.id, projekt: projektId, model: z.model, zadanie: '(analiza w toku)' };
 }
 
-export default { skonfiguruj, projekty, nowyProjekt, projekt, pliki, zrzut, buduj, zadanie, zadaniaProjektu, cofnij, usunProjekt, silniki, analizuj, rozwin, ocenZrzut };
+export default { blokDziedzictwa, martweZGrafu, skonfiguruj, projekty, nowyProjekt, projekt, pliki, zrzut, buduj, zadanie, zadaniaProjektu, cofnij, usunProjekt, silniki, analizuj, rozwin, ocenZrzut };

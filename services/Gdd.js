@@ -56,6 +56,59 @@ function puste(tytul = '') {
  * Pracownia obrazów i Assety 3D biorą propozycje: postacie, stwory, ekwipunek, krainy… Każda propozycja = opis + styl obrazu.
  */
 const STYLE_GALEZI = ['pojedynczy', 'zestaw', 'postac', 'postac3d', 'krajobraz'];
+/** Odpowiedź modelu „STYL | opis” (linia po linii) → propozycje: tylko style gałęzi, bez dubli z tym, co już jest. */
+export function odczytajPropozycje(tekst, istniejace = [], ile = 5) {
+    const znane = new Set(istniejace.map((x) => String(x).toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 60)));
+    const out = [];
+    for (const linia of String(tekst ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').split('\n')) {
+        const m = /^\s*(?:[-*•\d.)]+\s*)?([a-z0-9]+)\s*\|\s*(.{12,600})$/i.exec(linia.trim());
+        if (!m || !STYLE_GALEZI.includes(m[1].toLowerCase())) continue;
+        const opis = m[2].replace(/^["„]|["”]$/g, '').trim();
+        const klucz = opis.toLowerCase().replace(/\s+/g, ' ').slice(0, 60);
+        if (znane.has(klucz)) continue;
+        znane.add(klucz);
+        out.push({ opis, styl: m[1].toLowerCase() });
+        if (out.length >= ile) break;
+    }
+    return out;
+}
+
+/**
+ * ✨ Nowe propozycje do gałęzi świata (Suweren 2026-10-09: „w obrazach — wygeneruj nowe propozycje”): model Reżysera
+ * dostaje skrót GDD, gałąź, jej dotychczasowe propozycje i to, co już narysowano — i daje NOWE, w stylach Pracowni.
+ * Nowe idą na początek listy gałęzi (najwyżej 12 — najstarsze odpadają).
+ */
+export async function nowePropozycje(projektId, galazId, { ile = 5, narysowane = [], model } = {}) {
+    const g = await wczytaj(projektId);
+    if (!g) throw new Error('Ten projekt nie ma GDD.');
+    const gal = (g.galezie ?? []).find((x) => x.id === galazId);
+    if (!gal) throw new Error('Nie ma takiej gałęzi świata w GDD.');
+    const dotad = [...gal.propozycje.map((p) => p.opis), ...narysowane];
+    const system = `Jesteś Reżyserem Gry. Wymyślasz NOWE obiekty do narysowania dla jednej gałęzi świata gry (Pracownia obrazów → bryły 3D).
+Każda propozycja w osobnej linii, dokładnie: STYL | opis po polsku (1 zdanie, konkretny wygląd: kształt, materiał, barwy, jeden wyróżnik).
+STYLE: postac3d = postać/stworek na dwóch nogach w A-pozie (pod rig i animację — WSZYSTKIE postacie i stworki tak); pojedynczy = jeden przedmiot/budowla/stwór bez nóg; zestaw = kit modelarski (części + złożona figura); krajobraz = koncept krainy (nie do 3D).
+Nie powtarzaj niczego z listy „JUŻ SĄ”. Bez wstępu, bez numeracji, tylko ${ile} linii.`;
+    const prompt = `GDD (skrót):\n${jakoTekst(g, { zKamieniami: false }).slice(0, 4000)}\n\nGAŁĄŹ: ${gal.nazwa} — ${gal.opis}\n\nJUŻ SĄ:\n${dotad.slice(0, 40).map((x) => `- ${x}`).join('\n') || '(nic)'}`;
+    const odp = await cfg.pisz({ system, prompt, model: model || cfg.model(), timeoutMs: 5 * 60_000 });
+    const nowe = odczytajPropozycje(odp.tekst ?? odp, dotad, ile);
+    if (!nowe.length) throw new Error(`Model nie dał propozycji w formacie „STYL | opis” (odpowiedź: „${String(odp.tekst ?? odp).slice(0, 120)}”).`);
+    const g2 = await wczytaj(projektId);
+    const gal2 = g2.galezie.find((x) => x.id === galazId);
+    gal2.propozycje = [...nowe, ...gal2.propozycje].slice(0, 12);
+    await zapisz(projektId, g2);
+    return nowe;
+}
+
+/** Dopisz gałęzie (np. brakujące ze scenariusza) — istniejące zostają nietknięte. */
+export async function dodajGalezie(projektId, galezie) {
+    const g = await wczytaj(projektId);
+    if (!g) throw new Error('Ten projekt nie ma GDD.');
+    const ma = new Set((g.galezie ?? []).map((x) => x.id));
+    const nowe = galezie.filter((x) => !ma.has(x.id));
+    if (nowe.length) await zapisz(projektId, { ...g, galezie: [...(g.galezie ?? []), ...nowe] });
+    return nowe.map((x) => x.id);
+}
+
 export function oczyscGalezie(lista) {
     if (!Array.isArray(lista)) return [];
     const widziane = new Set();
@@ -393,6 +446,22 @@ export function przerwij(projektId) { const p = produkcje.get(projektId); if (p 
  * bez dubli i bez głównego, najwyżej 3. Zadanie, które padło na modelu, próbuje następny z listy; model, który
  * zadanie zrobił, prowadzi dalej (nie męczymy martwego modelu przy każdym zadaniu).
  */
+/** Dziedzictwo łańcucha: zostają pliki próby, która zaszła NAJDALEJ (remis = wcześniejsza — pierwsze strzały bywają
+ *  prawie gotowe), błędy wszystkich poprzedników bez powtórek (≤ 8), lista modeli. */
+const POZIOM_ETAPU = { 'martwy-modul': 1, recenzent: 1, build: 2, przegladarka: 3, oczy: 4, 'sedzia-zachowania': 4, zachowanie: 4, 'sedzia-zadania': 5 };
+export function scalDziedzictwo(stare, nowe, powod = null) {
+    if (!nowe && !powod) return stare;
+    const n = nowe ?? { model: null, etap: null, pliki: [], bledy: [] };
+    const bledy = [...(stare?.bledy ?? [])];
+    for (const b of [...(n.bledy ?? []), ...(!n.bledy?.length && powod ? [String(powod).slice(0, 500)] : [])]) if (!bledy.some((x) => x.slice(0, 160) === b.slice(0, 160))) bledy.push(b);
+    const lepsze = n.pliki?.length && (!stare?.pliki?.length || (POZIOM_ETAPU[n.etap] ?? 0) > (POZIOM_ETAPU[stare.etap] ?? 0));
+    return {
+        modele: [...(stare?.modele ?? []), ...(n.model ? [n.model] : [])],
+        bledy: bledy.slice(-8),
+        ...(lepsze ? { model: n.model, etap: n.etap, pliki: n.pliki } : { model: stare?.model ?? n.model, etap: stare?.etap ?? n.etap, pliki: stare?.pliki ?? [] }),
+    };
+}
+
 export function listaZapasowych(glowny, zapasowe) {
     const out = [];
     for (const m of Array.isArray(zapasowe) ? zapasowe : []) {
@@ -493,9 +562,9 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
             zd.stan = 'trwa'; zd.kiedy = new Date().toISOString();
             await fs.writeFile(plik(projektId), JSON.stringify(gAkt, null, 2), 'utf8');
             const kontekst = `KONTEKST Z GDD (trzymaj się go): ${gAkt.tytul} — ${gAkt.gatunek}. Kamień milowy: ${km.tytul} — ${km.opis}.\nZADANIE: ${zd.tresc}`;
-            const sprobuj = async (m) => {
+            const sprobuj = async (m, dziedzictwo) => {
                 try {
-                    const z = await cfg.appStudio.buduj(projektId, { zadanie: kontekst, model: m, blokKlockow });
+                    const z = await cfg.appStudio.buduj(projektId, { zadanie: kontekst, model: m, blokKlockow, dziedzictwo });
                     zd.zadanieId = z.id;
                     for (;;) {
                         await new Promise((r) => setTimeout(r, cfg.odstepSondazuMs ?? 10_000));
@@ -507,14 +576,16 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
             };
             const lancuch = [prod.model, ...prod.zapasowe.filter((m) => m !== prod.model)];
             let wynik = null; let modelZadania = prod.model;
+            let dziedzictwo = null;   // 🧬 próby poprzedników w łańcuchu: najdalsze pliki + wszystkie błędy
             for (let i = 0; i < lancuch.length; i++) {
                 modelZadania = lancuch[i];
                 if (i > 0) {
                     if (prod.przerwij) break;
                     krok(`↻ ${lancuch[i - 1]} nie dał rady (${String(wynik?.powod || '').slice(0, 120)}) — próbuję zapasowym: ${modelZadania}`);
                 }
-                wynik = await sprobuj(modelZadania);
+                wynik = await sprobuj(modelZadania, dziedzictwo);
                 if (wynik?.ok) break;
+                dziedzictwo = scalDziedzictwo(dziedzictwo, wynik?.dziedzictwo, wynik?.powod);
             }
             if (wynik?.ok && modelZadania !== prod.model) { krok(`⇢ dalej prowadzi ${modelZadania} (zrobił zadanie, na którym ${prod.model} padł)`); prod.model = modelZadania; }
             const g2 = await wczytaj(projektId);
@@ -533,4 +604,4 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
     return { start: true, zadan: kolejka.length, model: prod.model, zapasowe: prod.zapasowe };
 }
 
-export default { skonfiguruj, SILNIKI, ZDARZENIA_GRY, oczyscFilmy, scalFilmy, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
+export default { skonfiguruj, SILNIKI, ZDARZENIA_GRY, oczyscFilmy, scalFilmy, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, scalDziedzictwo, nowePropozycje, odczytajPropozycje, dodajGalezie, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };

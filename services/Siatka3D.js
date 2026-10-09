@@ -204,6 +204,31 @@ export function poziomy(kolory) {
  * dlatego osobny suwak czerni: czarny kot z czarnego obrazu po samej gammie zostaje czarny, zmierzone 2026-10-08).
  * @returns {Float32Array} nowe kolory liniowe
  */
+/**
+ * 🎨 Piksele RGBA (sRGB, bajty) w miejscu — TA SAMA matematyka co kolory wierzchołków (`przekoloruj`), paczkami,
+ * żeby tekstura 8K nie zajęła gigabajta. Auto-poziomy z próbki całej tekstury. Alfa nietknięta.
+ */
+export function przekolorujPiksele(rgba, ustawienia = {}) {
+    const LIN = new Float32Array(256);
+    for (let i = 0; i < 256; i++) LIN[i] = doLin(i / 255);
+    const n = rgba.length / 4;
+    let pz = null;
+    if (ustawienia.auto) {
+        const krok = Math.max(1, Math.floor(n / 20000)), probka = [];
+        for (let v = 0; v < n; v += krok) probka.push(LIN[rgba[v * 4]], LIN[rgba[v * 4 + 1]], LIN[rgba[v * 4 + 2]]);
+        pz = poziomy(probka);
+    }
+    const PACZKA = 1 << 18;
+    const buf = new Float32Array(PACZKA * 3);
+    for (let start = 0; start < n; start += PACZKA) {
+        const ile = Math.min(PACZKA, n - start);
+        for (let j = 0; j < ile; j++) { const o = (start + j) * 4; buf[j * 3] = LIN[rgba[o]]; buf[j * 3 + 1] = LIN[rgba[o + 1]]; buf[j * 3 + 2] = LIN[rgba[o + 2]]; }
+        const wynik = przekoloruj(ile === PACZKA ? buf : buf.subarray(0, ile * 3), ustawienia, pz);
+        for (let j = 0; j < ile; j++) { const o = (start + j) * 4; for (let c = 0; c < 3; c++) rgba[o + c] = Math.round(obetnij(doSrgb(wynik[j * 3 + c])) * 255); }
+    }
+    return rgba;
+}
+
 export function przekoloruj(kolory, { jasnosc = 0, kontrast = 0, nasycenie = 0, odcien = 0, czern = 0, auto = false } = {}, pz = auto ? poziomy(kolory) : null) {
     const out = new Float32Array(kolory.length);
     const lo = pz ? pz.czern : 0, rozp = pz ? Math.max(0.05, pz.biel - pz.czern) : 1;

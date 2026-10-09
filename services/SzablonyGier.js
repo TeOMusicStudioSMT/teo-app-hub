@@ -101,9 +101,25 @@ Krainy: koncepty krajobrazów dla każdego biomu (Strumień, Gaj, Równina, Grzb
                 { opis: 'wierzchowiec z kory i mchu, podobny do łosia, z latarniami na porożu', styl: 'pojedynczy' },
                 { opis: 'lewitująca deska dźwiękowa z głośnikiem w napędzie', styl: 'pojedynczy' },
             ] },
+            // 🐾 Suweren 2026-10-09: „zakładka na mini-TeOgochi” — armia Wędrowca (do 7), każdy z 3 skillami i 1 specjalnym
+            { id: 'mini-teogochi', nazwa: 'Mini-TeOgochi', opis: 'Mini-stworki armii Wędrowca (do 7) — każdy z unikalnym wyglądem, 3 skillami i 1 specjalnym; na dwóch nogach (pod rig i taniec), jeden stworek na spokojnym tle.', propozycje: [
+                { opis: 'mini-TeOgochi Iskierka — mały stworek z żaru na dwóch nóżkach, ogon jak płomyk świecy, okrągłe bursztynowe oczy, słuchawki z miedzianego drutu', styl: 'postac3d' },
+                { opis: 'mini-TeOgochi Kropla — przejrzysty stworek z wody na dwóch nóżkach, w środku pływa perła, płetwy zamiast uszu, kapelusz z liścia lilii', styl: 'postac3d' },
+                { opis: 'mini-TeOgochi Mszak — krępy stworek z kory i mchu na dwóch nóżkach, grzybek na głowie, w łapkach malutki bęben', styl: 'postac3d' },
+                { opis: 'mini-TeOgochi Szept — lekki stworek z chmurki na dwóch nóżkach, skrzydełka z piór, szalik na wietrze, dzwoneczek na szyi', styl: 'postac3d' },
+                { opis: 'mini-TeOgochi Eterek — fioletowy, półprzezroczysty stworek z gwiazdami w środku, na dwóch nóżkach, trzecie oko świecące na czole', styl: 'postac3d' },
+            ] },
         ],
     },
 };
+
+/** Gałęzie szablonu, których GDD projektu jeszcze nie ma (dopisane po założeniu projektu — np. Mini-TeOgochi). */
+export function brakujaceGalezie(gdd) {
+    const sz = SZABLONY[String(gdd?.zrodlo ?? '').replace(/^szablon:/, '')];
+    if (!sz) return [];
+    const ma = new Set((gdd?.galezie ?? []).map((g) => g.id));
+    return sz.gdd.galezie.filter((g) => !ma.has(g.id));
+}
 
 export const SZABLONY = { teterhia: TETERHIA };
 
@@ -123,4 +139,4 @@ export async function zasiej(idSzablonu, { appStudio, gdd }, { nadpisz = false }
     return { projekt: projekt.id, nowy: !istniejacy, gdd: zapisane, nadpisano: maTresc };
 }
 
-export default { TETERHIA, SZABLONY, zasiej };
+export default { TETERHIA, SZABLONY, zasiej, brakujaceGalezie };

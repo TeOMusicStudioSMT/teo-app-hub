@@ -26,7 +26,7 @@ import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import ffmpegPath from 'ffmpeg-static';
-import { zmniejszTekstury } from './GlbTekstury.js';
+import { zmniejszTekstury, przekolorujTekstury } from './GlbTekstury.js';
 import * as Siatka3D from './Siatka3D.js';
 
 const uruchomProces = promisify(execFile);
@@ -115,7 +115,7 @@ export async function meta(id) {
 /** Katalog assetu (dla ruchu brył — services/RuchBryl.js). */
 export const katalogAssetu = (id) => dirAssetu(id);
 export function sciezkaPliku(id, plik) {
-    if (!idOk(id) || !/^(model\.glb|master\.glb|obraz\.png|obraz-zrodlo\.(png|jpg|jpeg|webp)|ruch-[a-z]+\.(glb|mp4))$/.test(plik)) return null;
+    if (!idOk(id) || !/^(model\.glb|master\.glb|obraz\.png|obraz-zrodlo\.(png|jpg|jpeg|webp)|ruch-[a-z][a-z0-9]*\.(glb|mp4))$/.test(plik)) return null;
     const p = path.join(dirAssetu(id), plik);
     return fsSync.existsSync(p) ? p : null;
 }
@@ -389,7 +389,44 @@ async function nowaWersja(id, poprawka, { sciany } = {}) {
 
 /** 🎨 Przekoloruj bryłę: jasność, kontrast, nasycenie (−1…1), odcień (°), podnieś czerń (0…1), auto-poziomy → nowa wersja. */
 export async function przekolorujBryle(id, ustawienia = {}) {
+    const m = await meta(id);
+    if (m?.tekstury) return przekolorujTeksturyBryly(id, ustawienia);
     return nowaWersja(id, { rodzaj: 'kolor', ...oczyscKolor(ustawienia), kiedy: new Date().toISOString() });
+}
+
+/**
+ * 🎨 Kolor bryły z TEKSTURAMI (Meshy): te same suwaki, liczone na pikselach tekstur barwy (Siatka3D.przekolorujPiksele)
+ * w model.glb, master.glb i każdym ruchu (rig ma własną kopię tekstury) → nowa wersja obok starej; rig i ruchy zostają.
+ */
+export async function przekolorujTeksturyBryly(id, ustawienia = {}) {
+    const m = await meta(id);
+    if (!m) throw new Error('Nie ma takiego assetu.');
+    if (m.stan !== 'gotowe') throw new Error('Bryła jeszcze się liczy albo padła — poprawki tylko na gotowej.');
+    const ust = oczyscKolor(ustawienia);
+    let nowy = `${m.nazwa}-${crypto.randomBytes(2).toString('hex')}`;
+    while (fsSync.existsSync(dirAssetu(nowy))) nowy = `${m.nazwa}-${crypto.randomBytes(2).toString('hex')}`;
+    const dir = dirAssetu(nowy);
+    await fs.mkdir(dir, { recursive: true });
+    try {
+        const t0 = Date.now();
+        const narzedzia = { ffmpeg: ffmpegPath, uruchom: (c, a) => uruchomProces(c, a, { maxBuffer: 1 << 26 }) };
+        const przelicz = (px) => Siatka3D.przekolorujPiksele(px, ust);
+        let obrazow = 0;
+        for (const p of await fs.readdir(dirAssetu(id))) {
+            const z = path.join(dirAssetu(id), p);
+            if (/^(model|master)\.glb$|^ruch-[a-z][a-z0-9]*\.glb$/.test(p)) {
+                const r = await przekolorujTekstury(await fs.readFile(z), przelicz, narzedzia);
+                if (p === 'model.glb') obrazow = r.obrazow;
+                await fs.writeFile(path.join(dir, p), r.glb);
+            } else if (/^(obraz\.png|obraz-zrodlo\.(png|jpg|jpeg|webp)|wycinek\.png|ruch-[a-z][a-z0-9]*\.mp4)$/.test(p)) await fs.copyFile(z, path.join(dir, p));
+        }
+        if (!obrazow) throw new Error('Ta bryła nie ma tekstur barwy w model.glb — nie ma czego przekolorować.');
+        const { blad: _b, wGrach: _w, ...reszta } = m;
+        const n = { ...reszta, id: nowy, utworzono: new Date().toISOString(), stan: 'gotowe', wGrach: [], ulepsza: id, rozmiarGlb: (await fs.stat(path.join(dir, 'model.glb'))).size, czasy: { razem: Math.round((Date.now() - t0) / 1000) }, poprawki: [...(m.poprawki ?? []), { rodzaj: 'kolor', tekstury: true, ...ust, kiedy: new Date().toISOString() }] };
+        await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(n, null, 2), 'utf8');
+        await cfg.szyna?.nadaj?.({ agent: 'Assety3D', rodzaj: 'praca', tresc: `„${m.nazwa}” — nowa wersja (kolor tekstur, ${obrazow} obraz(y), ${n.czasy.razem} s)`, dane: { asset: nowy, z: id } }).catch(() => {});
+        return n;
+    } catch (e) { await fs.rm(dir, { recursive: true, force: true }); throw e; }
 }
 
 /** 🔍 Gęściej we fragmencie: pudełko {x0,x1,y0,y1[,z0,z1]} (ułamki ramki bryły, y w górę) + ściany fragmentu i całości. */
@@ -416,7 +453,7 @@ export async function zaswiec(id, { fragment, prog = 0.5, kolor = null, moc = 4 
 // ☁️ WERSJA Z CHMURY (services/ChmuraBryl.js — Meshy). GLB z chmury ma TEKSTURY i UV, nie kolory wierzchołków:
 // zapisujemy go bez przeróbek (Siatka3D zdjęłaby tekstury) jako model.glb i master.glb nowej wersji (`tekstury: true`).
 // ─────────────────────────────────────────────────────────────────────────────
-const BEZ_LOKALNYCH = 'To wersja z chmury (Meshy) — ma tekstury, a lokalne poprawki (kolor, gęstszy fragment, oko, uproszczenie) działają na kolorach wierzchołków. Zrób je na wersji sprzed chmury, a potem wyślij ją do chmury jeszcze raz.';
+const BEZ_LOKALNYCH = 'To wersja z chmury (Meshy) — ma tekstury, a gęstszy fragment, oko i uproszczenie działają na kolorach wierzchołków (kolor tej wersji zmienisz suwakami — liczy się na teksturach). Zrób je na wersji sprzed chmury, a potem wyślij ją do chmury jeszcze raz.';
 
 /** Plik bryły do wysłania w chmurę: model.glb (ten, który idzie do gry). */
 export async function plikDoChmury(id) {
@@ -470,7 +507,7 @@ export async function przytnijTeksturyModelu(id) {
  * kształcie co ruchy z Blendera (RuchBryl), więc „Do gry {ruch}” działa bez zmian. Tekstura ≤ 2K jak model.
  */
 export async function ruchZChmury(id, ruch, glb, wpis = {}) {
-    if (!/^[a-z]{2,20}$/.test(ruch)) throw new Error('Zła nazwa ruchu.');
+    if (!/^[a-z][a-z0-9]{1,19}$/.test(ruch)) throw new Error('Zła nazwa ruchu.');
     const m = await meta(id);
     if (!m) throw new Error('Nie ma takiego assetu.');
     if (!Buffer.isBuffer(glb) || glb.toString('ascii', 0, 4) !== 'glTF') throw new Error(`Ruch „${ruch}” z chmury nie jest GLB.`);

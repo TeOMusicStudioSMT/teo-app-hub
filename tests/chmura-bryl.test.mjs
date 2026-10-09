@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { utworzChmureBryl, oczyscZlecenie, wycena, cialoMeshy, promptStylu, oczyscStyl, CENNIK_MESHY } from '../services/ChmuraBryl.js';
+import { utworzChmureBryl, oczyscZlecenie, wycena, cialoMeshy, promptStylu, oczyscStyl, dobierzAkcje, CENNIK_MESHY } from '../services/ChmuraBryl.js';
 import * as Assety3D from '../services/Assety3D.js';
 import { zapiszGlb } from '../services/Siatka3D.js';
 
@@ -93,7 +93,10 @@ test('wersja z chmury: GLB bez przeróbek (tekstury), obok starej; lokalne popra
     assert.deepEqual(n.poprawki.at(-1), { rodzaj: 'chmura', usluga: 'meshy', zlecenie: 'retekstura', kredyty: 10, kiedy: 'teraz' });
     assert.deepEqual(await fs.readFile(path.join(kat, n.id, 'model.glb')), GLB);
     await fs.access(path.join(kat, n.id, 'obraz.png'));
-    await assert.rejects(Assety3D.przekolorujBryle(n.id, { czern: 0.3 }), /wersja z chmury \(Meshy\) — ma tekstury/);
+    // 🎨 kolor wersji z chmury liczy się na teksturach (tests/glb-tekstury.test.mjs) — atrapa GLB bez tekstur = błąd wprost, bez nowej wersji
+    const przed = (await fs.readdir(kat)).length;
+    await assert.rejects(Assety3D.przekolorujBryle(n.id, { czern: 0.3 }), /bez kawałka JSON|nie ma tekstur barwy/);
+    assert.equal((await fs.readdir(kat)).length, przed, 'nieudana wersja posprzątana');
     await assert.rejects(Assety3D.uprosc(n.id, 2000), /wersja z chmury/);
 });
 
@@ -161,4 +164,37 @@ test('📚 biblioteka animacji Meshy: odczyt, filtr, pamięć', async () => {
     assert.deepEqual((await C.akcje({ kategoria: 'Fighting' })).map((a) => a.nazwa), ['Attack']);
     assert.deepEqual((await C.akcje({ szukaj: 'WAL' })).map((a) => a.id), [1]);
     assert.equal(wolan, 1, 'biblioteka z pamięci');
+});
+
+test('🎛️ akcje: auto-zestaw z biblioteki; kolejna paczka na TYM SAMYM rigu → akcje2 (bez nowej wersji)', async () => {
+    const bib = [
+        { id: 1, nazwa: 'Idle', klucz: 'idle', kategoria: 'DailyActions' }, { id: 2, nazwa: 'Jump Up', klucz: 'jump', kategoria: 'BodyMovements' },
+        { id: 3, nazwa: 'Sword Attack', klucz: 'attack_1', kategoria: 'Fighting' }, { id: 4, nazwa: 'Punch', klucz: 'punch', kategoria: 'Fighting' },
+        { id: 5, nazwa: 'Hip Hop', klucz: 'dance_1', kategoria: 'Dancing' }, { id: 6, nazwa: 'Wave Hello', klucz: 'wave', kategoria: 'DailyActions' },
+    ];
+    assert.deepEqual(dobierzAkcje('gra', bib).map((a) => a.id), [1, 2, 3, 6]);
+    assert.deepEqual(dobierzAkcje('walka', bib, { pominac: [3] }).map((a) => a.id), [4], 'bez akcji, które bryła już ma');
+    assert.throws(() => dobierzAkcje('nie-ma', bib), /Nieznany zestaw/);
+    assert.throws(() => oczyscZlecenie({ rodzaj: 'akcje', akcje: [] }), /Wybierz akcje/);
+    assert.throws(() => oczyscZlecenie({ rodzaj: 'akcje', akcje: Array.from({ length: 11 }, (_, i) => i) }), /kolejną paczką/);
+    assert.equal(wycena(oczyscZlecenie({ rodzaj: 'akcje', akcje: [1, 2, 3] })).kredyty, 9);
+    const wolania = [], ruchy = [];
+    let odczyt = 0;
+    const f = async (url, o = {}) => {
+        wolania.push({ url, metoda: o.method ?? 'GET', cialo: o.body ? JSON.parse(o.body) : null });
+        if (url.endsWith('/balance')) return { ok: true, json: async () => ({ balance: 100 }) };
+        if (url.endsWith('/animations') && o.method === 'POST') return { ok: true, json: async () => ({ result: 'anim-7' }) };
+        if (url.includes('/animations/anim-7')) return { ok: true, json: async () => (odczyt++ ? { status: 'SUCCEEDED', consumed_credits: 9, result: { animation_glb_url: 'https://cdn/a.glb' } } : { status: 'IN_PROGRESS' }) };
+        if (url.startsWith('https://cdn/')) return { ok: true, arrayBuffer: async () => GLB.buffer.slice(GLB.byteOffset, GLB.byteOffset + GLB.length) };
+        throw new Error(`nieoczekiwany adres ${url}`);
+    };
+    const meta = { 'kot-rig': { tekstury: true, chmura: { rodzaj: 'rig', zadanie: 'rig-5' }, ruchy: [{ ruch: 'chod' }, { ruch: 'akcje', akcje: [3] }] }, 'kot-tex': { tekstury: true, chmura: { rodzaj: 'retekstura', zadanie: 'r' } } };
+    const C = utworzChmureBryl({ klucz: () => 'msy_test', fetch: f, coMs: 1, plikBryly: async () => ({ bajty: GLB }), metaBryly: async (id) => meta[id],
+        zapiszWersje: async () => { throw new Error('akcje nie robią nowej wersji'); }, zapiszRuch: async (id, ruch) => { ruchy.push([id, ruch]); } });
+    await assert.rejects(C.wycen('kot-tex', { rodzaj: 'akcje', akcje: [1] }), /z RIGIEM/);
+    const zad = await C.zlec('kot-rig', { rodzaj: 'akcje', akcje: [1, 2, 6] }, { zgodaKredyty: 9 });
+    assert.deepEqual(wolania.find((x) => x.metoda === 'POST').cialo, { rig_task_id: 'rig-5', action_ids: [1, 2, 6] });
+    for (let i = 0; i < 200 && !['gotowe', 'blad'].includes(C.zadanie(zad.id).stan); i++) await new Promise((r) => setTimeout(r, 5));
+    assert.equal(C.zadanie(zad.id).stan, 'gotowe', C.zadanie(zad.id).blad);
+    assert.deepEqual(ruchy, [['kot-rig', 'akcje2']]);
 });

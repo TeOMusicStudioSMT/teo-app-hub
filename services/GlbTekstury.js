@@ -105,4 +105,47 @@ export async function zmniejszTekstury(glb, maks, { ffmpeg, uruchom }) {
     return { glb: zlozGlb(p.json, p.bin), zmniejszone };
 }
 
-export default { zmniejszTekstury, rozbierzGlb, zlozGlb, wymiaryObrazu, podmienWidoki };
+/** Obrazy z BARWĄ (baseColor, emisja) — normalne, metaliczność/szorstkość i okluzja zostają nietknięte. */
+export function obrazyBarwy(json) {
+    const zTekstury = (t) => (Number.isInteger(t?.index) ? json.textures?.[t.index]?.source : undefined);
+    const out = new Set();
+    for (const m of json.materials ?? []) for (const t of [m.pbrMetallicRoughness?.baseColorTexture, m.emissiveTexture]) { const s = zTekstury(t); if (Number.isInteger(s)) out.add(s); }
+    return [...out];
+}
+
+/**
+ * 🎨 Kolor tekstur (Suweren 2026-10-09: „modeli z Meshy nie można obrazowo zmieniać odcieni jak naszych”): każdy obraz barwy
+ * → ffmpeg do surowego RGBA → `przelicz(rgba, szer, wys)` zmienia piksele w miejscu → ten sam format z powrotem.
+ * @returns {Promise<{ glb: Buffer, obrazow: number }>}
+ */
+export async function przekolorujTekstury(glb, przelicz, { ffmpeg, uruchom }) {
+    const { json, bin } = rozbierzGlb(glb);
+    if ((json.buffers?.length ?? 0) !== 1) return { glb, obrazow: 0 };
+    const nowe = new Map();
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'glb-kolor-'));
+    try {
+        for (const i of obrazyBarwy(json)) {
+            const img = json.images?.[i];
+            if (!Number.isInteger(img?.bufferView)) continue;
+            const v = json.bufferViews[img.bufferView];
+            const dane = bin.slice(v.byteOffset ?? 0, (v.byteOffset ?? 0) + v.byteLength);
+            const wym = wymiaryObrazu(dane);
+            if (!wym) continue;
+            const id = crypto.randomBytes(4).toString('hex');
+            const we = path.join(tmp, `${id}-we.${wym.format}`), raw = path.join(tmp, `${id}.rgba`), wy = path.join(tmp, `${id}-wy.${wym.format}`);
+            await fs.writeFile(we, dane);
+            await uruchom(ffmpeg, ['-loglevel', 'error', '-y', '-i', we, '-f', 'rawvideo', '-pix_fmt', 'rgba', raw]);
+            const px = await fs.readFile(raw);
+            if (px.length !== wym.w * wym.h * 4) throw new Error(`Tekstura ${wym.w}×${wym.h}: ffmpeg oddał ${px.length} bajtów zamiast ${wym.w * wym.h * 4}.`);
+            przelicz(px, wym.w, wym.h);
+            await fs.writeFile(raw, px);
+            await uruchom(ffmpeg, ['-loglevel', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${wym.w}x${wym.h}`, '-i', raw, ...(wym.format === 'jpg' ? ['-q:v', '2', '-pix_fmt', 'yuvj444p'] : []), '-frames:v', '1', wy]);
+            nowe.set(img.bufferView, await fs.readFile(wy));
+        }
+    } finally { await fs.rm(tmp, { recursive: true, force: true }).catch(() => {}); }
+    if (!nowe.size) return { glb, obrazow: 0 };
+    const p = podmienWidoki(json, bin, nowe);
+    return { glb: zlozGlb(p.json, p.bin), obrazow: nowe.size };
+}
+
+export default { zmniejszTekstury, przekolorujTekstury, obrazyBarwy, rozbierzGlb, zlozGlb, wymiaryObrazu, podmienWidoki };
