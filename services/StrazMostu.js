@@ -78,6 +78,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/mistrz-gry',   // 🎲 Mistrz Gry Teterhii: orzeczenia na Jev/modelu (koszt) i kronika — gra z mostu Katedry (gość zdalny = etap MRPG)
     '/api/mistrz',   // 🥚 JaJo Mistrza: dziennik poprawek Suwerena i lekcje na jego modelu — tylko przy Katedrze
     '/api/modele/zadania',   // 🎯 wybór modeli zadań technicznych — decyzja przy Katedrze
+    '/api/postac-katedry',   // 🏛️ postać Katedry: FLUX/TRELLIS, zdjęcie z dysku, publikacja — tylko przy Katedrze (plik postaci publicznie: /wizytowka/postac.glb)
     '/api/bohaterowie',   // 🧝 bohaterowie gry: FLUX/TRELLIS na karcie i zapis do plików gry — tylko przy Katedrze
     '/api/merch',   // 🖨️ Pracownia merchu: kredyty Meshy, pliki brył wychodzą z Katedry — tylko przy maszynie
     '/api/assety3d/chmura',   // ☁️ Meshy = rachunek za kredyty i bryła wychodzi z Katedry — tylko przy maszynie
@@ -107,7 +108,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
  * Adres tunelu trafia wtedy do rejestru, więc wszystko poza tą listą dalej żąda klucza sesji.
  * Trasy same oddają 404, gdy Katedra nie ma nicka (wizytówka wyłączona).
  */
-export const SCIEZKI_WIZYTOWKI = { dokladne: new Set(['/api/wizytowka']), prefiksy: ['/wizytowka/plik/', '/wizytowka/plakat/'] };
+export const SCIEZKI_WIZYTOWKI = { dokladne: new Set(['/api/wizytowka', '/wizytowka/postac.glb']), prefiksy: ['/wizytowka/plik/', '/wizytowka/plakat/'] };
 export function czyWizytowka(req) {
     // 💬 Skrzynka TOST (services/TostSiec.js): inne Katedry wrzucają tu koperty — szyfrowane, podpisane,
     // nadawca sprawdzany w rejestrze otakos.wtf. Tylko POST tej jednej ścieżki.

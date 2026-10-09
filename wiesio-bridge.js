@@ -15,6 +15,7 @@ import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
 import { utworzFilmyGry } from './services/FilmyGry.js';
 import { utworzBohaterow } from './services/Bohaterowie.js';
+import { utworzPostacKatedry } from './services/PostacKatedry.js';
 import { utworzJajo } from './services/JajoMistrza.js';
 import { utworzMistrzaGry } from './services/MistrzGry.js';
 import { utworzKlub } from './services/KlubMistrzow.js';
@@ -8226,6 +8227,28 @@ app.post('/api/bohaterowie/:projekt/:id/obraz', (req, res) => ytOdp(res, Bohater
 app.post('/api/bohaterowie/:projekt/:id/bryla', (req, res) => ytOdp(res, Bohaterowie.wyrzezb(req.params.projekt, req.params.id)));
 app.post('/api/bohaterowie/:projekt/:id/do-gry', (req, res) => ytOdp(res, Bohaterowie.doGry(req.params.projekt, req.params.id)));
 app.delete('/api/bohaterowie/:projekt/:id/do-gry', (req, res) => ytOdp(res, Bohaterowie.zGry(req.params.projekt, req.params.id).then((bohaterowie) => ({ bohaterowie }))));
+// 🏛️ Postać Katedry (services/PostacKatedry.js) — JEDNA postać tej Katedry (avatar Suwerena w MRPG Teterhii):
+// opis → obraz → bryła albo zdjęcie → bryła → [Meshy tekstury + rig] → opublikuj (postac.glb: gra + wizytówka).
+const PostacKatedry = utworzPostacKatedry({
+    katalog: path.join(ANTIGRAVITY_DIR, 'postac-katedry'), szyna: Szyna,
+    imieSuwerena: async () => (await wlascicielKsiegi())?.nazwa ?? null,
+    assety: { obraz: (o) => Assety3D.obraz(o), generuj: (o) => Assety3D.generuj(o), lista: () => Assety3D.lista(), metaObrazu: (id) => Assety3D.metaObrazu(id), sciezkaPliku: (id, p) => Assety3D.sciezkaPliku(id, p) },
+});
+Wizytowka.skonfiguruj({ postacKatedry: PostacKatedry });
+app.get('/api/postac-katedry', (_req, res) => ytOdp(res, PostacKatedry.stan()));
+app.get('/api/postac-katedry/gra', (_req, res) => ytOdp(res, PostacKatedry.publiczna().then((postac) => ({ postac }))));
+app.post('/api/postac-katedry', (req, res) => ytOdp(res, PostacKatedry.zapisz(req.body ?? {}).then((karta) => ({ karta }))));
+app.post('/api/postac-katedry/obraz', (_req, res) => ytOdp(res, PostacKatedry.narysuj()));
+app.post('/api/postac-katedry/bryla', (_req, res) => ytOdp(res, PostacKatedry.wyrzezb()));
+app.post('/api/postac-katedry/zdjecie', (req, res) => ytOdp(res, PostacKatedry.zeZdjecia(req.body?.dataURL)));
+app.post('/api/postac-katedry/opublikuj', (_req, res) => ytOdp(res, PostacKatedry.opublikuj().then((opublikowana) => ({ opublikowana }))));
+app.delete('/api/postac-katedry/opublikuj', (_req, res) => ytOdp(res, PostacKatedry.wycofaj().then((karta) => ({ karta }))));
+// publicznie (Straż: czyWizytowka) — tylko opublikowany plik postaci, tylko odczyt
+app.get('/wizytowka/postac.glb', cors({ origin: '*' }), (_req, res) => {
+    const p = PostacKatedry.plik();
+    if (!p) return res.status(404).json({ success: false, message: 'Ta Katedra nie opublikowała postaci.' });
+    res.type('model/gltf-binary'); res.set('Cache-Control', 'no-cache'); return res.sendFile(p);
+});
 app.post('/api/gdd/:id/film/:film/zlec', (req, res) => ytOdp(res, FilmyGry.zlec(req.params.id, req.params.film).then((film) => ({ film }))));
 app.post('/api/gdd/:id/realizuj', async (req, res) => {
     try { res.json({ success: true, ...(await Gdd.realizuj(req.params.id, { model: req.body?.model, zapasowe: req.body?.zapasowe, tylkoKamien: req.body?.kamien || null, chmuraPoChmurze: req.body?.chmuraPoChmurze !== false })), sondaz: `/api/gdd/${encodeURIComponent(req.params.id)}/sondaz` }); }
