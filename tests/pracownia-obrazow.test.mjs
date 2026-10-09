@@ -18,10 +18,11 @@ async function wymiary(plik) {
     return [Number(m[1]), Number(m[2])];
 }
 
-test('style: tylko „pojedynczy” idzie do 3D w całości; wymiary podzielne przez 16 (FLUX.2)', () => {
+test('style: do 3D w całości idą „pojedynczy” i „postac3d” (dwie nogi, A-poza pod rig); wymiary podzielne przez 16 (FLUX.2)', () => {
     const S = Assety3D.STYLE_OBRAZU;
-    assert.deepEqual(Object.keys(S).sort(), ['krajobraz', 'pojedynczy', 'postac', 'zestaw']);
-    assert.deepEqual(Object.entries(S).filter(([, s]) => s.do3d).map(([k]) => k), ['pojedynczy']);
+    assert.deepEqual(Object.keys(S).sort(), ['krajobraz', 'pojedynczy', 'postac', 'postac3d', 'zestaw']);
+    assert.deepEqual(Object.entries(S).filter(([, s]) => s.do3d).map(([k]) => k).sort(), ['pojedynczy', 'postac3d']);
+    assert.match(S.postac3d.baza, /standing upright on two legs, A-pose/);
     for (const s of Object.values(S)) { assert.equal(s.szer % 16, 0); assert.equal(s.wys % 16, 0); }
 });
 

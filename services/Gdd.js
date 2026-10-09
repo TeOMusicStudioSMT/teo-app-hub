@@ -55,7 +55,7 @@ function puste(tytul = '') {
  * 🌳 GAŁĘZIE ŚWIATA (Suweren 2026-10-06: „propozycje przypisane do gałęzi kategorii świata gry”) — kategorie, z których
  * Pracownia obrazów i Assety 3D biorą propozycje: postacie, stwory, ekwipunek, krainy… Każda propozycja = opis + styl obrazu.
  */
-const STYLE_GALEZI = ['pojedynczy', 'zestaw', 'postac', 'krajobraz'];
+const STYLE_GALEZI = ['pojedynczy', 'zestaw', 'postac', 'postac3d', 'krajobraz'];
 export function oczyscGalezie(lista) {
     if (!Array.isArray(lista)) return [];
     const widziane = new Set();
@@ -160,6 +160,7 @@ export const MOCE_KATEDRY_DLA_GIER = `CO KATEDRA JUŻ DAJE GROM (most 127.0.0.1:
 - 🏛️ Globalny Klub Mistrzów: turnieje globalne między Katedrami (ogłasza Suweren w Hubie), wyniki i ranking na otakos.wtf — gra tylko gra turniej i zgłasza wynik z kluczem eventu.
 - 🗝️ Kustosz: POST /api/tgs/quest → quest na żywo z lokalnego modelu (tytul, tresc, wybory z tonami). 🎭 Rozmowa w roli: POST /api/delegat/rozmowa {delegat, scena} (np. towarzysz-kot w Teterhii).
 - 🗿 Assety 3D: bryły GLB (TRELLIS.2), kolor, gęstszy fragment, świecące oko, ruch (Blender), dopracowanie w chmurze Meshy (za zgodą Suwerena) → „Do gry” kładzie GLB w public/assety + assety.json.
+- 🦴 POSTACIE = DWIE NOGI (zasada Suwerena 2026-10-09): każda postać i stworek, który ma się ruszać, stoi na dwóch nogach — w gałęziach proponuj ją stylem „postac3d” (A-poza, przodem). Taka bryła dostaje w chmurze szkielet (rig Meshy) z chodem, biegiem i akcjami (walka, taniec) → AnimationMixer w grze. Postać czworonożna nie dostanie szkieletu.
 - 🥚 JaJo Mistrza uczy się stylu Suwerena z jego poprawek — ZASADY STYLU (gdy są) masz niżej; trzymaj się ich w tekstach gry i w rozmowie.`;
 
 /** Surowa odpowiedź modelu, gdy JSON się nie złożył — do obejrzenia, zamiast zgadywania. */

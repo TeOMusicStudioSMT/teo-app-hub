@@ -65,9 +65,9 @@ Krainy: koncepty krajobrazów dla każdego biomu (Strumień, Gaj, Równina, Grzb
         galezie: [
             { id: 'postacie', nazwa: 'Postacie i frakcje', opis: 'Wędrowiec, NPC, członkowie frakcji — karta postaci albo zestaw modelarski; do bryły wycinek złożonej postaci.', propozycje: [
                 { opis: 'DJ z Kuźni Dźwięku w tech-wear: czarna bluza z kapturem, maska z filtrami, słuchawki z niebieskim neonem, rękawice, spodnie cargo', styl: 'zestaw' },
-                { opis: 'Opiekunka Gaju w płaszczu z mchu i kory, z latarnią pełną świetlików', styl: 'postac' },
-                { opis: 'Badacz Wyrwy w goglach i płaszczu z mapami, z mosiężnym sekstantem', styl: 'postac' },
-                { opis: 'Wędrowiec Równin z lekkim plecakiem, szal na wietrze, laska z dzwoneczkami', styl: 'pojedynczy' },
+                { opis: 'Opiekunka Gaju w płaszczu z mchu i kory, z latarnią pełną świetlików', styl: 'postac3d' },
+                { opis: 'Badacz Wyrwy w goglach i płaszczu z mapami, z mosiężnym sekstantem', styl: 'postac3d' },
+                { opis: 'Wędrowiec Równin z lekkim plecakiem, szal na wietrze, laska z dzwoneczkami', styl: 'postac3d' },
             ] },
             { id: 'stwory', nazwa: 'Stwory i Strażnicy Nut', opis: 'Zgrzytowce i Strażnicy — jeden stwór na spokojnym tle.', propozycje: [
                 { opis: 'Szumak — przygarbiony stwór z wyblakłej, szarobiałej materii, z pękającą skorupą i szumem zamiast twarzy', styl: 'pojedynczy' },
