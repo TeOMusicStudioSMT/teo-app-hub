@@ -33,6 +33,8 @@ test('Klub: ogłoszenie, przedstawicielstwo, zwiad (podszywacz odrzucony), ranki
                 { nick: 'wyspa-ola', adres: 'https://ola.example', klucz: 'KOLA' },
                 { nick: 'falszywa', adres: 'https://zly.example', klucz: 'KPRAWDZIWY' },
                 { nick: 'stara', adres: 'https://stara.example', klucz: 'KS' },
+                // nowy rejestr niesie mistrza sam — do tej Katedry nie pukamy (brak jej wizytówki w atrapie sieci)
+                { nick: 'z-rejestru', adres: 'https://nie-pukaj.example', klucz: 'KZ', motto: 'Z rejestru', mistrz: { etap: 'wykluty', eventy: [], wyniki: [] } },
             ] },
             'https://ola.example/api/wizytowka': { nick: 'wyspa-ola', klucz: 'KOLA', motto: 'Kot i fale', mistrz: { etap: 'pęka', teterhia: 'Dzień tonu: empatyczny',
                 eventy: [{ id: 'g-11112222', typ: 'turniej', dziedzina: 'urok', od: '2026-10-09', do: '2026-10-11', opis: 'Dla kotów' }],
@@ -56,7 +58,8 @@ test('Klub: ogłoszenie, przedstawicielstwo, zwiad (podszywacz odrzucony), ranki
         assert.equal(pub.eventy[0].klucz, undefined, 'wizytówka niesie dane źródłowe, nie wyliczone');
         // zwiad
         const p = await K.zwiad();
-        assert.deepEqual(p.czlonkowie.map((c) => c.nick), ['wyspa-ola']);
+        assert.deepEqual(p.czlonkowie.map((c) => c.nick).sort(), ['wyspa-ola', 'z-rejestru']);
+        assert.deepEqual([p.czlonkowie.find((c) => c.nick === 'z-rejestru').etap, p.czlonkowie.find((c) => c.nick === 'z-rejestru').motto], ['wykluty', 'Z rejestru']);
         assert.deepEqual(p.pominiete.map((x) => x.nick).sort(), ['falszywa', 'stara']);
         assert.match(p.pominiete.find((x) => x.nick === 'falszywa').powod, /nie zgadza się z rejestrem/);
         assert.deepEqual(p.eventy.map((e) => e.klucz), [moj.klucz, 'wyspa-ola:g-11112222']);

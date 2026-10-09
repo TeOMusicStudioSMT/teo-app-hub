@@ -126,11 +126,17 @@ export function utworzKlub({ katalog, nick, rejestr, mistrz = async () => ({}), 
             for (let i = 0; i < katedry.length; i += 5) {
                 await Promise.all(katedry.slice(i, i + 5).map(async (k) => {
                     try {
-                        const w = await (await f(`${k.adres.replace(/\/+$/, '')}/api/wizytowka`, { signal: AbortSignal.timeout(8000) })).json();
-                        if (w?.nick !== k.nick || w?.klucz !== k.klucz) { pominiete.push({ nick: k.nick, powod: 'wizytówka nie zgadza się z rejestrem (nick/klucz)' }); return; }
-                        if (!w.mistrz || typeof w.mistrz !== 'object') { pominiete.push({ nick: k.nick, powod: 'Katedra bez Mistrza (starsza wersja)' }); return; }
-                        const m = w.mistrz;
-                        czlonkowie.push({ nick: k.nick, motto: String(w.motto ?? '').slice(0, 140), etap: String(m.etap ?? '').slice(0, 20), teterhia: String(m.teterhia ?? '').slice(0, 80) || null,
+                        // Rejestr otakos.wtf niesie już `mistrz` (oczyszczony, z wizytówki sprawdzonej przy meldunku) — wtedy
+                        // nie pukamy do Katedry. Starszy rejestr bez tego pola → wizytówka wprost, nick + klucz jak w rejestrze.
+                        let m = k.mistrz && typeof k.mistrz === 'object' ? k.mistrz : null;
+                        let motto = k.motto;
+                        if (!m) {
+                            const w = await (await f(`${k.adres.replace(/\/+$/, '')}/api/wizytowka`, { signal: AbortSignal.timeout(8000) })).json();
+                            if (w?.nick !== k.nick || w?.klucz !== k.klucz) { pominiete.push({ nick: k.nick, powod: 'wizytówka nie zgadza się z rejestrem (nick/klucz)' }); return; }
+                            if (!w.mistrz || typeof w.mistrz !== 'object') { pominiete.push({ nick: k.nick, powod: 'Katedra bez Mistrza (starsza wersja)' }); return; }
+                            m = w.mistrz; motto = w.motto;
+                        }
+                        czlonkowie.push({ nick: k.nick, motto: String(motto ?? '').slice(0, 140), etap: String(m.etap ?? '').slice(0, 20), teterhia: String(m.teterhia ?? '').slice(0, 80) || null,
                             eventy: (Array.isArray(m.eventy) ? m.eventy : []).slice(0, MAX_MOICH).map((e) => eventZSieci(e, k.nick, teraz())).filter(Boolean),
                             wyniki: (Array.isArray(m.wyniki) ? m.wyniki : []).slice(0, 10).map((x) => wynikZSieci(x, k.nick)).filter(Boolean) });
                     } catch (e) { pominiete.push({ nick: k.nick, powod: `nie odpowiada (${String(e.message).slice(0, 60)})` }); }
