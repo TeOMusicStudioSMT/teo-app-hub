@@ -213,6 +213,17 @@ export const GATUNKI: Gatunek[] = [
         zadania: ['Dyrygencie, dobierz modele do tego projektu', 'Dyrygencie, czym zrobimy film z tej sceny?', 'Dyrygencie, czego brakuje do podcastu?'],
     },
     {
+        // 🥚 Suweren (2026-10-07/09): „obserwuje, co robi Suweren, i układa szkolenia… może być Mistrzem Gry Teterhii…
+        // widzi dwa światy… przedstawiciel Katedry w Globalnym Klubie Mistrzów". services/JajoMistrza.js — etap 1: dziennik
+        // prawdziwych poprawek i decyzji Suwerena → zasady stylu z dowodami + dane do Kuźni Soup. Nie pisze wkładów stada.
+        id: 'mistrz', imie: 'JaJo Mistrza', dziedzina: 'Styl Suwerena i nauka stada',
+        opis: 'Patrzy, jak Suweren poprawia i decyduje, spisuje z tego zasady jego stylu i układa dane do treningu — z czasem Mistrz Gry Teterhii i głos Katedry w Klubie Mistrzów.',
+        formy: { 'jajko': '🥚', 'pisklę': '🐣', 'młodzik': '🦅', 'kompan': '🧙', 'legenda': '👑' },
+        kolor: '#f5c542',
+        narzedzia: ['/api/mistrz', '/api/mistrz/lekcja', '/api/mistrz/kurs'],
+        zadania: ['JaJo, czego nauczyłeś się z moich poprawek?', 'JaJo, spisz zasady mojego stylu', 'JaJo, ile brakuje do wyklucia?'],
+    },
+    {
         // 🎭 Suweren (2026-10-03): „moi aktorzy i scenografia… interaktywni aktorzy, którzy opowiadają o swym najnowszym
         // dziele, filmie, który właśnie złożyliśmy na YT… można powołać TeOgochi Aktora". services/WywiadAktorow.js —
         // obsada (zdjęcie, rola, głos) → scenariusz wywiadu z faktów projektu → nagranie → katalog montaży projektu.

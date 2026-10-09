@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OtakOSBus, BUS } from '../../lib/otakosBus';
+import JajoMistrzaPanel from './JajoMistrzaPanel';
 
 // ── Typy ──────────────────────────────────────────────────────────────────────
 interface InkubatorAgent {
@@ -392,6 +393,9 @@ ${session.insight.slice(0, 600)}...
 
     return (
         <div className="w-full max-w-6xl mx-auto p-6 bg-gradient-to-br from-slate-950 to-slate-900 rounded-3xl border border-purple-500/20 shadow-[0_0_40px_rgba(168,85,247,0.1)] text-slate-200 font-mono">
+
+            {/* 🥚 JaJo Mistrza — uczy się stylu Suwerena z jego prawdziwych poprawek */}
+            <JajoMistrzaPanel />
 
             {/* Header */}
             <div className="flex items-center justify-between border-b border-purple-500/20 pb-4 mb-6">

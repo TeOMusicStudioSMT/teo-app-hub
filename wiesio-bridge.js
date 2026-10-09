@@ -10,6 +10,7 @@ import { utworzJevLokalny } from './services/JevLokalny.js';
 import { utworzPartytury } from './services/Partytury.js';
 import { utworzStrazModeli } from './services/StrazModeli.js';
 import { utworzChmureBryl } from './services/ChmuraBryl.js';
+import { utworzJajo } from './services/JajoMistrza.js';
 import { utworzZwiadowcePromocji, MODEL as ZWIADOWCA_PROMOCJI_MODEL } from './services/ZwiadowcaPromocji.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11033,6 +11034,18 @@ app.post('/api/stol', async (req, res) => {
         res.json({ success: true, karta: await Stol.dodaj({ tytul, tresc, zrodlo: dostep.urzadzenie ? 'telefon' : zrodlo, zalozyl: dostep.urzadzenie }) });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
+// 🥚 JaJo Mistrza (services/JajoMistrza.js) — patrzy na prawdziwe poprawki i decyzje Suwerena, uczy się jego stylu.
+const Jajo = utworzJajo({
+    katalog: path.join(ANTIGRAVITY_DIR, 'jajo-mistrza'),
+    katalogKuzni: path.join(ANTIGRAVITY_DIR, 'kuznia-soup'),
+    pisz: async ({ system, prompt }) => (await piszModelem((await ModeleAgentow.modelDla('mistrz').catch(() => null)) || null, system, prompt)).tekst,
+    szyna: Szyna,
+});
+/** Obserwacja nigdy nie psuje pracy: błąd JaJa ląduje w konsoli, odpowiedź trasy idzie dalej. */
+const jajoPatrzy = (p) => { Promise.resolve().then(p).catch((e) => console.warn('[JaJo Mistrza]', e.message)); };
+app.get('/api/mistrz', async (_req, res) => { try { res.json({ success: true, ...(await Jajo.stan()) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+app.post('/api/mistrz/kurs', async (_req, res) => { try { res.json({ success: true, ...(await Jajo.kurs()) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
+app.post('/api/mistrz/lekcja', async (req, res) => { try { res.json({ success: true, ...(await Jajo.lekcja({ ile: req.body?.ile })) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc], ['ratyfikuj', Stol.ratyfikuj], ['doskonal', Stol.doskonal], ['nocna', Stol.naNoc]]) {
     app.post(`/api/stol/:id/${akcja}`, async (req, res) => {
         const dostep = await dostepStada(req, res);
@@ -11044,7 +11057,9 @@ for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc],
             // Skąd uwagi (np. „rozmowa Podcast Twin") — telefon zawsze podpisuje się swoją nazwą.
             const zrodloUwag = dostep.urzadzenie ? undefined : req.body?.zrodloUwag;
             // 🎼 Dyrygent dobiera modele jako pierwszy przy każdej przyjętej karcie — chyba że Suweren wprost poda `dyrygent: false`.
-            res.json({ success: true, ...(await fn(req.params.id, { uczestnicy, rundy, petla, uwagi, zrodloUwag, powtorzenia, dyrygent: dyrygent === undefined ? true : !!dyrygent, kto: dostep.urzadzenie || 'Katedra' })) });
+            const wynik = await fn(req.params.id, { uczestnicy, rundy, petla, uwagi, zrodloUwag, powtorzenia, dyrygent: dyrygent === undefined ? true : !!dyrygent, kto: dostep.urzadzenie || 'Katedra' });
+            if (['przyjmij', 'odrzuc', 'ratyfikuj'].includes(akcja)) jajoPatrzy(() => Jajo.decyzja({ zrodlo: 'stol', obiekt: req.params.id, tytul: wynik?.karta?.tytul ?? '', werdykt: akcja, opis: String(wynik?.karta?.tresc ?? '').slice(0, 600), uwagi: typeof uwagi === 'string' ? uwagi : '' }));
+            res.json({ success: true, ...wynik });
         } catch (e) { res.status(400).json({ success: false, message: e.message }); }
     });
 }
@@ -14427,9 +14442,15 @@ app.post('/api/youtube/publikacje/przygotuj', async (req, res) => {
         return res.json({ success: true, publikacja: await PublikacjeYT.przygotuj(z) });
     } catch (e) { return res.status(400).json({ success: false, message: e.message }); }
 });
-app.post('/api/youtube/publikacje/:id/zmien', (req, res) => ytOdp(res, PublikacjeYT.zmien(req.params.id, req.body ?? {}).then((publikacja) => ({ publikacja }))));
-app.post('/api/youtube/publikacje/:id/zatwierdz', (req, res) => ytOdp(res, PublikacjeYT.zatwierdz(req.params.id).then((publikacja) => ({ publikacja }))));
-app.post('/api/youtube/publikacje/:id/odrzuc', (req, res) => ytOdp(res, PublikacjeYT.odrzuc(req.params.id).then((publikacja) => ({ publikacja }))));
+const publikacjaPrzed = async (id) => structuredClone((await PublikacjeYT.wszystkie()).find((p) => p.id === id) ?? null);
+app.post('/api/youtube/publikacje/:id/zmien', (req, res) => ytOdp(res, (async () => {
+    const przed = await publikacjaPrzed(req.params.id);
+    const publikacja = await PublikacjeYT.zmien(req.params.id, req.body ?? {});
+    if (przed) jajoPatrzy(() => Jajo.poprawkaPol({ zrodlo: 'youtube', obiekt: req.params.id, tytul: publikacja.tytul, przed, po: publikacja, pola: ['tytul', 'opis', 'tagi'] }));
+    return { publikacja };
+})()));
+app.post('/api/youtube/publikacje/:id/zatwierdz', (req, res) => ytOdp(res, PublikacjeYT.zatwierdz(req.params.id).then((publikacja) => { jajoPatrzy(() => Jajo.decyzja({ zrodlo: 'youtube', obiekt: req.params.id, tytul: publikacja.tytul, werdykt: 'zatwierdz', opis: String(publikacja.opis ?? '').slice(0, 600) })); return { publikacja }; })));
+app.post('/api/youtube/publikacje/:id/odrzuc', (req, res) => ytOdp(res, PublikacjeYT.odrzuc(req.params.id).then((publikacja) => { jajoPatrzy(() => Jajo.decyzja({ zrodlo: 'youtube', obiekt: req.params.id, tytul: publikacja.tytul, werdykt: 'odrzuc', opis: String(publikacja.opis ?? '').slice(0, 600) })); return { publikacja }; })));
 
 // ── 🎭 Aktorzy i wywiad o filmie (services/WywiadAktorow.js) ──
 // Obsada (postać, zdjęcie, głos) → scenariusz od modelu gatunku `aktor` z faktów projektu → głos + kadry → film
@@ -14514,7 +14535,12 @@ app.delete('/api/aktorzy/:id', (req, res) => ytOdp(res, Wywiady.usunAktora(req.p
 app.get('/api/wywiady', (_req, res) => ytOdp(res, Wywiady.wywiady().then((wywiady) => ({ wywiady })), 500));
 app.get('/api/wywiady/:id', (req, res) => ytOdp(res, Wywiady.wywiad(req.params.id).then((wywiad) => ({ wywiad })), 404));
 app.post('/api/wywiady/przygotuj', (req, res) => ytOdp(res, Wywiady.przygotuj(req.body ?? {}).then((wywiad) => ({ wywiad }))));
-app.post('/api/wywiady/:id/zmien', (req, res) => ytOdp(res, Wywiady.zmien(req.params.id, req.body ?? {}).then((wywiad) => ({ wywiad }))));
+app.post('/api/wywiady/:id/zmien', (req, res) => ytOdp(res, (async () => {
+    const przed = await Wywiady.wywiad(req.params.id).catch(() => null);
+    const wywiad = await Wywiady.zmien(req.params.id, req.body ?? {});
+    if (przed) jajoPatrzy(() => Jajo.poprawkaDialogu({ zrodlo: 'wywiad', obiekt: req.params.id, tytul: przed.temat ?? przed.tytul ?? '', przed: przed.kwestie, po: wywiad.kwestie }));
+    return { wywiad };
+})()));
 app.post('/api/wywiady/:id/przetlumacz', (req, res) => ytOdp(res, Wywiady.przetlumacz(req.params.id, { jezyk: req.body?.jezyk }).then((wywiad) => ({ wywiad }))));
 app.post('/api/wywiady/:id/nagraj', (req, res) => ytOdp(res, Wywiady.nagraj(req.params.id, {
     bezGlosu: req.body?.bezGlosu === true, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
@@ -14554,7 +14580,12 @@ app.get('/api/sceny/tla', (req, res) => ytOdp(res, Promise.all([
 ]).then(([projekt, skladnica]) => ({ tla: [...projekt, ...skladnica] }))));
 app.post('/api/sceny/przygotuj', (req, res) => ytOdp(res, Sceny.przygotuj(req.body ?? {}).then((scena) => ({ scena }))));
 app.get('/api/sceny/:id', (req, res) => ytOdp(res, Sceny.scena(req.params.id).then((scena) => ({ scena })), 404));
-app.post('/api/sceny/:id/zmien', (req, res) => ytOdp(res, Sceny.zmien(req.params.id, req.body ?? {}).then((scena) => ({ scena }))));
+app.post('/api/sceny/:id/zmien', (req, res) => ytOdp(res, (async () => {
+    const przed = await Sceny.scena(req.params.id).catch(() => null);
+    const scena = await Sceny.zmien(req.params.id, req.body ?? {});
+    if (przed && Array.isArray(req.body?.kwestie)) jajoPatrzy(() => Jajo.poprawkaDialogu({ zrodlo: 'scena', obiekt: req.params.id, tytul: przed.opis ?? '', przed: przed.kwestie, po: scena.kwestie }));
+    return { scena };
+})()));
 app.post('/api/sceny/:id/do-rekopisu', (req, res) => ytOdp(res, Sceny.doRekopisu(req.params.id)));
 app.post('/api/sceny/:id/dalej', (req, res) => ytOdp(res, Sceny.dalej(req.params.id, req.body ?? {}).then((scena) => ({ scena }))));
 app.post('/api/sceny/:id/nagraj', (req, res) => ytOdp(res, Sceny.nagraj(req.params.id, {
@@ -14837,7 +14868,12 @@ app.post('/api/studio-podcast/glos-prowadzacego', async (req, res) => {
 app.get('/api/studio-podcast/odcinki', (req, res) => wStudiu(req, res, async (st) => ({ odcinki: await st.odcinki() }), 500));
 app.get('/api/studio-podcast/odcinki/:id', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.odcinek(req.params.id) }), 404));
 app.post('/api/studio-podcast/odcinki/przygotuj', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.przygotuj(req.body ?? {}) })));
-app.post('/api/studio-podcast/odcinki/:id/zmien', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.zmien(req.params.id, req.body ?? {}) })));
+app.post('/api/studio-podcast/odcinki/:id/zmien', (req, res) => wStudiu(req, res, async (st) => {
+    const przed = await st.odcinek(req.params.id).catch(() => null);
+    const odcinek = await st.zmien(req.params.id, req.body ?? {});
+    if (przed && Array.isArray(req.body?.kwestie)) jajoPatrzy(() => Jajo.poprawkaDialogu({ zrodlo: 'podcast', obiekt: req.params.id, tytul: przed.temat ?? przed.tytul ?? '', przed: przed.kwestie, po: odcinek.kwestie }));
+    return { odcinek };
+}));
 // Dogrywka: kolejne rundy rozmowy (wydłużenie materiału), styl/Pralka/język z odcinka albo nowe.
 app.post('/api/studio-podcast/odcinki/:id/dogrywka', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.dogrywka(req.params.id, { rundy: req.body?.rundy, styl: req.body?.styl, pralka: req.body?.pralka }) })));
 app.post('/api/studio-podcast/odcinki/:id/goscie', (req, res) => wStudiu(req, res, async (st) => ({ odcinek: await st.zrobGosci(req.params.id, { bezGlosu: req.body?.bezGlosu === true }) })));

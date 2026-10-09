@@ -156,7 +156,7 @@ const nadaj = (agent, tresc, dane) => cfg.szyna?.nadaj?.({ agent, rodzaj: 'proje
 export const KODEKS_Z_PIONKIEM = 'Technika gry/apki: architektura (ekrany, stan, dane, zapis gry), stos w Studiu Gier (three.js albo Vite + React), co zbudować najpierw i jak sprawdzić, że działa. Dokument gry pisze Pionek — Ty mówisz, jak go zbudować; linii „GRA:" nie piszesz.';
 
 /** TeOgochi, którzy NIE piszą wkładów: Dyrygent dobiera modele przed stadem (dyryguje, nie gra). */
-export const POZA_SKLADEM = new Set(['dyrygent']);
+export const POZA_SKLADEM = new Set(['dyrygent', 'mistrz']);   // 🥚 JaJo Mistrza patrzy i uczy się, nie pisze wkładów
 
 export function zaplanuj(wszyscy) {
     const uczestnicy = wszyscy.filter((u) => !POZA_SKLADEM.has(u.id));
