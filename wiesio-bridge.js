@@ -11,6 +11,7 @@ import { utworzPartytury } from './services/Partytury.js';
 import { utworzStrazModeli } from './services/StrazModeli.js';
 import { utworzChmureBryl } from './services/ChmuraBryl.js';
 import { utworzJajo } from './services/JajoMistrza.js';
+import { utworzMistrzaGry } from './services/MistrzGry.js';
 import { utworzZwiadowcePromocji, MODEL as ZWIADOWCA_PROMOCJI_MODEL } from './services/ZwiadowcaPromocji.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11041,6 +11042,21 @@ const Jajo = utworzJajo({
     pisz: async ({ system, prompt }) => (await piszModelem((await ModeleAgentow.modelDla('mistrz').catch(() => null)) || null, system, prompt)).tekst,
     szyna: Szyna,
 });
+// 🎲👑 Mistrz Gry Teterhii (services/MistrzGry.js) — rola JaJa: rozstrzyga kwestie (ton z pięciu), ogłasza event dnia
+// z faktów Katedry (katalog z widełkami), zapisuje turnieje. Gra liczy skutki sama; ogłoszenia idą kanałem Mistrza.
+const MistrzGry = utworzMistrzaGry({
+    katalog: path.join(ANTIGRAVITY_DIR, 'mistrz-gry'),
+    pisz: async ({ system, prompt }) => (await piszModelem((await ModeleAgentow.modelDla('mistrz').catch(() => null)) || null, system, prompt)).tekst,
+    jev: Jev,
+    zasady: async () => ((await Jajo.stan()).zasady?.zasady ?? []).map((z) => z.zasada),
+    zdarzenia: (dzien) => Szyna.dzien(dzien, { max: 600 }),
+    wiesc: (w) => Jajo.wiesc(w),
+});
+app.get('/api/mistrz-gry/event', async (_req, res) => { try { res.json({ success: true, event: await MistrzGry.eventDnia() }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+app.post('/api/mistrz-gry/kwestia', async (req, res) => { try { res.json({ success: true, ...(await MistrzGry.rozstrzygnijKwestie(req.body ?? {})) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
+app.post('/api/mistrz-gry/turniej', async (req, res) => { try { res.json({ success: true, wynik: await MistrzGry.wynikTurnieju(req.body ?? {}) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
+app.get('/api/mistrz-gry/kronika', async (req, res) => { try { res.json({ success: true, kronika: await MistrzGry.kronika({ ile: Number(req.query.ile) || 30 }) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+
 // ⚖️ Rundy Kodeksa: przegrane przed sędziami i przyjęta → pary „źle → dobrze” + wieść na kanale Mistrza.
 AppStudio.skonfiguruj({ poRundach: (r) => Jajo.rundaKodeksa(r) });
 /** Obserwacja nigdy nie psuje pracy: błąd JaJa ląduje w konsoli, odpowiedź trasy idzie dalej. */
