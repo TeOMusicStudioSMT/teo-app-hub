@@ -16,6 +16,16 @@
  *                   z numerami obserwacji, na których stoi (bez numeru = odrzucona) → `zasady.md`;
  *   · `stan()`    — ile widział, z czego, i jak daleko jajo do wyklucia (progi `ETAPY`).
  * Mistrz Gry Teterhii i Klub Mistrzów stoją na tych zasadach — to następne etapy, nie ten.
+ *
+ * 📯 KANAŁ MISTRZA (Suweren 2026-10-09: „podłączyć do KatedraOrb… jako Rola Mistrzowska może zostać kanałem
+ * dla Mistrzów… odezwać się, jak coś zaobserwuje, albo gdy będzie potrzebny przekaz z pola”): `wiesci.jsonl`
+ * — JaJo sam mówi, gdy: jajo przechodzi etap, uzbierało się dość nowych poprawek na lekcję, Kodeks po porażkach
+ * wygrał zadanie; „z pola” (`wiesc`) — przekaz z zewnątrz (dziś: most/Główny, jutro Klub Mistrzów).
+ * Orbita odpytuje `/api/mistrz/wiesci?od=` i pokazuje (opcjonalnie mówi) — nic nie wychodzi z Katedry.
+ *
+ * ⚖️ RUNDY KODEKSA: AppStudio oddaje po zadaniu rundy odrzucone przez sędziów (build, przeglądarka, Recenzent,
+ * Jev…) i rundę przyjętą → `rundy-kodeksa.jsonl` = pary kodu „źle → dobrze” z powodem werdyktu (dla Kodeksa,
+ * osobno od stylu Suwerena; w kursie `kuznia-soup/kodeks/pary-kodeksa.jsonl`).
  */
 import fs from 'fs/promises';
 import path from 'path';
@@ -33,6 +43,28 @@ export const ZRODLA = {
     youtube: 'Publikacja YouTube', stol: 'Stół ratyfikacji',
 };
 const MAX_TEKST = 2000;
+const MAX_KODU = 12_000;
+/** Nowe poprawki od ostatniej lekcji, po których JaJo sam proponuje kolejną. */
+export const PROG_NOWEJ_LEKCJI = 10;
+
+/** Pliki rundy → jeden tekst (do pary DPO). */
+export function plikiJakoTekst(pliki = [], limit = MAX_KODU) {
+    return pliki.map((p) => `=== PLIK: ${p.sciezka} ===\n${p.tresc}\n=== KONIEC ===`).join('\n').slice(0, limit);
+}
+/** Kto odrzucił rundę — z pierwszych słów uwag (tak, jak AppStudio je pisze). */
+export function sedziaZPowodu(powod) {
+    const t = String(powod ?? '');
+    if (/SĘDZIA ZADANIA/i.test(t)) return 'Jev (sędzia zadania)';
+    if (/ŻADEN plik projektu tego nie importuje/.test(t)) return 'martwy moduł';
+    if (/IDENTYCZNYCH/.test(t)) return 'bez zmian';
+    if (/NA EKRANIE/.test(t)) return 'oczy';
+    if (/ZADANIE NIE JEST ZROBIONE|ZACHOWUJE SIĘ/.test(t)) return 'sędzia zachowania';
+    if (/w przeglądarce/.test(t)) return 'przeglądarka';
+    if (/bloku === PLIK|nie zmieściła się/.test(t)) return 'format';
+    if (/RECENZ|zaślepk|atrap|regresj|@ts-ignore|pusty catch/i.test(t)) return 'Recenzent';
+    if (/^(tsc|vite|build)|error TS\d+|TS\d{4}/im.test(t)) return 'build';
+    return 'sędzia';
+}
 
 const slowa = (t) => new Set(String(t ?? '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
 /** Podobieństwo słów (Jaccard) — czy nowa kwestia to poprawka tamtej, czy zupełnie inna. */
@@ -89,23 +121,67 @@ export function odczytajZasady(tekst, numery) {
 export function utworzJajo({ katalog, katalogKuzni = null, pisz = null, szyna = null, teraz = () => new Date() }) {
     const PLIK = () => path.join(katalog, 'obserwacje.jsonl');
     const PLIK_ZASAD = () => path.join(katalog, 'zasady.json');
+    const PLIK_WIESCI = () => path.join(katalog, 'wiesci.jsonl');
+    const PLIK_RUND = () => path.join(katalog, 'rundy-kodeksa.jsonl');
+    const PLIK_KANALU = () => path.join(katalog, 'kanal.json');
+    const czytajJsonl = async (plik) => { try { return (await fs.readFile(plik, 'utf8')).split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; } };
     let kolejka = Promise.resolve();
 
-    async function wszystkie() {
-        try { return (await fs.readFile(PLIK(), 'utf8')).split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); }
-        catch { return []; }
-    }
-    function dopisz(wpisy) {
+    const wszystkie = () => czytajJsonl(PLIK());
+    /** Dopisanie numerowanych wpisów do pliku JSONL — jedno naraz (kolejka), numer = pozycja w pliku. */
+    function dopiszDo(plik, wpisy) {
         if (!wpisy.length) return Promise.resolve([]);
-        kolejka = kolejka.then(async () => {
+        const wynik = kolejka.then(async () => {
             await fs.mkdir(katalog, { recursive: true });
-            const n0 = (await wszystkie()).length;
+            const n0 = (await czytajJsonl(plik)).length;
             const z = wpisy.map((w, i) => ({ nr: n0 + i + 1, id: crypto.randomBytes(4).toString('hex'), kiedy: teraz().toISOString(), ...w }));
-            await fs.appendFile(PLIK(), z.map((w) => JSON.stringify(w)).join('\n') + '\n', 'utf8');
+            await fs.appendFile(plik, z.map((w) => JSON.stringify(w)).join('\n') + '\n', 'utf8');
             return z;
         }).catch(() => []);
-        return kolejka;
+        kolejka = wynik;
+        return wynik;
     }
+    const czytajKanal = async () => { try { return JSON.parse(await fs.readFile(PLIK_KANALU(), 'utf8')); } catch { return {}; } };
+    const zapiszKanal = async (k) => { await fs.mkdir(katalog, { recursive: true }); await fs.writeFile(PLIK_KANALU(), JSON.stringify(k), 'utf8'); };
+
+    /** 📯 Wieść na kanale Mistrza (Orbita ją odbierze). */
+    async function wiesc({ tresc, rodzaj = 'pole', skad = 'JaJo Mistrza', glos = false } = {}) {
+        const t = String(tresc ?? '').replace(/\s+/g, ' ').trim().slice(0, 400);
+        if (t.length < 3) throw new Error('Pusta wieść.');
+        const [w] = await dopiszDo(PLIK_WIESCI(), [{ rodzaj: String(rodzaj).slice(0, 20), skad: String(skad).slice(0, 60), tresc: t, glos: !!glos }]);
+        void szyna?.nadaj?.({ agent: 'JaJo Mistrza', rodzaj: 'wiesc', tresc: `📯 ${t}` })?.catch?.(() => {});
+        return w;
+    }
+    async function wiesci({ od = 0 } = {}) {
+        const w = await czytajJsonl(PLIK_WIESCI());
+        return { wiesci: w.filter((x) => x.nr > (Number(od) || 0)).slice(-20), ostatni: w.at(-1)?.nr ?? 0 };
+    }
+
+    /** Po każdej obserwacji: czy jajo przeszło etap, czy czas na lekcję — wtedy JaJo sam się odzywa. */
+    async function poObserwacji() {
+        const s = await stan();
+        const k = await czytajKanal();
+        if (k.etap !== s.etap.nazwa) {
+            const pierwszy = k.etap === undefined && s.etap.nazwa === 'jajo';
+            k.etap = s.etap.nazwa;
+            await zapiszKanal(k);
+            if (!pierwszy) await wiesc({ rodzaj: 'etap', glos: true, tresc: s.etap.nazwa === 'wykluty' ? '🐥 Wyklułem się! Znam Twój styl na tyle, by uczyć stado i sędziować.' : `${s.etap.nazwa === 'pęka' ? '🐣' : '🥚'} Jajo ${s.etap.nazwa}: ${s.etap.opis}` });
+        }
+        const odLekcji = s.poprawki - (s.zasady ? (k.poprawkiPrzyLekcji ?? 0) : 0);
+        const gotowe = s.zasady ? odLekcji >= PROG_NOWEJ_LEKCJI : s.poprawki >= 5;
+        if (gotowe && k.lekcjaZaproponowana !== (k.poprawkiPrzyLekcji ?? 0)) {
+            k.lekcjaZaproponowana = k.poprawkiPrzyLekcji ?? 0;
+            await zapiszKanal(k);
+            await wiesc({ rodzaj: 'lekcja', tresc: s.zasady
+                ? `📜 Uzbierałem ${odLekcji} nowych Twoich poprawek od ostatniej lekcji — mogę spisać świeże zasady stylu (Inkubator → „📜 Lekcja stylu”).`
+                : `📜 Widziałem już ${s.poprawki} Twoich poprawek — mogę spisać pierwszą lekcję Twojego stylu (Inkubator → „📜 Lekcja stylu”).` });
+        }
+    }
+    const dopisz = async (wpisy) => {
+        const z = await dopiszDo(PLIK(), wpisy);
+        if (z.length) await poObserwacji().catch(() => {});
+        return z;
+    };
     const tnij = (t) => String(t ?? '').slice(0, MAX_TEKST);
 
     /** Poprawka dialogu (wywiad / podcast / scena): pary kwestia „model → Suweren”. */
@@ -151,10 +227,39 @@ export function utworzJajo({ katalog, katalogKuzni = null, pisz = null, szyna = 
             if (w.rodzaj === 'poprawka') z.poprawki++; else z.decyzje++;
         }
         const poprawki = o.filter((w) => w.rodzaj === 'poprawka').length;
-        return { obserwacji: o.length, poprawki, decyzje: o.length - poprawki, zrodla, etap: etap(poprawki * 2 + (o.length - poprawki)), ostatnie: o.slice(-12).reverse(), zasady: await zasadyZPliku() };
+        const rundy = await czytajJsonl(PLIK_RUND());
+        const sedziowie = {};
+        for (const r of rundy) sedziowie[r.sedzia] = (sedziowie[r.sedzia] ?? 0) + 1;
+        return {
+            obserwacji: o.length, poprawki, decyzje: o.length - poprawki, zrodla,
+            etap: etap(poprawki * 2 + (o.length - poprawki) + rundy.length),
+            ostatnie: o.slice(-12).reverse(), zasady: await zasadyZPliku(),
+            rundyKodeksa: { par: rundy.length, zadan: new Set(rundy.map((r) => r.zadanie)).size, sedziowie, ostatnie: rundy.slice(-5).reverse().map(({ odrzucona: _o, przyjeta: _p, ...r }) => r) },
+        };
     }
 
     /** Dane treningowe Mistrza z poprawek → katalog Kuźni Soup (bez treningu). */
+    /**
+     * ⚖️ Rundy Kodeksa po zadaniu: odrzucone przez sędziów + przyjęta → pary „źle → dobrze”. Tylko zadanie, które
+     * w końcu PRZESZŁO i miało porażki po drodze (sama porażka nie ma „dobrze”, samo zwycięstwo nie ma „źle”).
+     */
+    async function rundaKodeksa({ projekt, zadanie, cel, model, ok, odrzucone = [], przyjete = null, rundy } = {}) {
+        if (!ok || !przyjete?.length || !odrzucone.length) return [];
+        const przyjeta = plikiJakoTekst(przyjete);
+        const wpisy = odrzucone.filter((r) => r.pliki?.length).map((r) => ({
+            projekt: String(projekt), zadanie: String(zadanie ?? ''), cel: tnij(cel), model: String(model ?? ''), runda: r.runda,
+            sedzia: sedziaZPowodu(r.powod), powod: tnij(r.powod).slice(0, 800), odrzucona: plikiJakoTekst(r.pliki), przyjeta, rundaPrzyjeta: rundy,
+        }));
+        const z = await dopiszDo(PLIK_RUND(), wpisy);
+        if (z.length) {
+            const kto = [...new Set(z.map((r) => r.sedzia))].join(', ');
+            const ile = z.length === 1 ? 'rundę' : z.length < 5 ? 'rundy' : 'rund';
+            await wiesc({ rodzaj: 'kodeks', glos: true, tresc: `⚖️ Kodeks (${String(model).replace(/^.*[/:]/, '').slice(0, 40)}) na „${projekt}” przegrał ${z.length} ${ile} (${kto}) i wygrał w ${rundy}. — „${String(cel).slice(0, 80)}”. Zapisałem ${z.length} ${z.length === 1 ? 'parę' : z.length < 5 ? 'pary' : 'par'} „źle → dobrze”.` }).catch(() => {});
+            await poObserwacji().catch(() => {});
+        }
+        return z;
+    }
+
     async function kurs({ zapisz = true } = {}) {
         const o = (await wszystkie()).filter((w) => w.rodzaj === 'poprawka');
         const system = 'Piszesz tak, jak pisze Suweren Katedry OtakOS — jego słowami, rytmem i wyborami. Po polsku, konkretnie.';
@@ -169,7 +274,15 @@ export function utworzJajo({ katalog, katalogKuzni = null, pisz = null, szyna = 
             await fs.writeFile(path.join(gdzie, 'pary-suwerena.jsonl'), jl(pary), 'utf8');
             await fs.writeFile(path.join(gdzie, 'sft-suwerena.jsonl'), jl(sft), 'utf8');
         }
-        return { pary: pary.length, sft: sft.length, katalog: gdzie, przyklad: pary[0] ?? null };
+        const rundy = await czytajJsonl(PLIK_RUND());
+        const paryKodu = rundy.map((r) => ({ prompt: `Projekt: ${r.projekt}\nZADANIE SUWERENA:\n${r.cel}\nOddaj pliki w blokach === PLIK: … === / === KONIEC ===.`, chosen: r.przyjeta, rejected: r.odrzucona }));
+        let katalogKodeksa = null;
+        if (zapisz && katalogKuzni && paryKodu.length) {
+            katalogKodeksa = path.join(katalogKuzni, 'kodeks');
+            await fs.mkdir(katalogKodeksa, { recursive: true });
+            await fs.writeFile(path.join(katalogKodeksa, 'pary-kodeksa.jsonl'), paryKodu.map((x) => JSON.stringify(x)).join('\n') + '\n', 'utf8');
+        }
+        return { pary: pary.length, sft: sft.length, paryKodeksa: paryKodu.length, katalog: gdzie, katalogKodeksa, przyklad: pary[0] ?? null };
     }
 
     /** Lekcja stylu: Mistrz spisuje zasady z ostatnich obserwacji (każda z dowodami). */
@@ -189,12 +302,15 @@ export function utworzJajo({ katalog, katalogKuzni = null, pisz = null, szyna = 
         const wynik = { kiedy: teraz().toISOString(), obserwacji: o.length, zasady, odrzucone: odrzucone.length };
         await fs.mkdir(katalog, { recursive: true });
         await fs.writeFile(PLIK_ZASAD(), JSON.stringify(wynik, null, 2), 'utf8');
+        const k = await czytajKanal();
+        k.poprawkiPrzyLekcji = (await wszystkie()).filter((w) => w.rodzaj === 'poprawka').length;
+        await zapiszKanal(k).catch(() => {});
         await fs.writeFile(path.join(katalog, 'zasady.md'), `# Zasady stylu Suwerena (JaJo Mistrza, ${wynik.kiedy.slice(0, 10)})\n\n${zasady.map((z, i) => `${i + 1}. ${z.zasada} [${z.dowody.map((n) => `#${n}`).join(', ')}]`).join('\n')}\n`, 'utf8');
         void szyna?.nadaj?.({ agent: 'JaJo Mistrza', rodzaj: 'praca', tresc: `🥚📜 lekcja stylu: ${zasady.length} zasad z ${o.length} obserwacji` })?.catch?.(() => {});
         return wynik;
     }
 
-    return { poprawkaDialogu, poprawkaPol, decyzja, stan, kurs, lekcja, wszystkie };
+    return { poprawkaDialogu, poprawkaPol, decyzja, stan, kurs, lekcja, wszystkie, wiesc, wiesci, rundaKodeksa };
 }
 
-export default { utworzJajo, paryKwestii, podobienstwo, odczytajZasady, ETAPY, ZRODLA };
+export default { utworzJajo, paryKwestii, podobienstwo, odczytajZasady, plikiJakoTekst, sedziaZPowodu, ETAPY, ZRODLA, PROG_NOWEJ_LEKCJI };

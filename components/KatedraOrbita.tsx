@@ -29,6 +29,7 @@ import {
 } from '../lib/mozgOrbity';
 import MatrixRainSkin from './special/MatrixRainSkin';
 import { orbZGlownym, ustawOrbZGlownym } from '../lib/glownyOrb';
+import { useKanalMistrza, kanalMistrzaWlaczony, ustawKanalMistrza, glosMistrza, ustawGlosMistrza } from '../lib/kanalMistrza';
 
 interface KatedraOrbitaProps {
     showParticles?: boolean;
@@ -112,6 +113,10 @@ export function KatedraOrbita({
     const [sladow, setSladow] = useState(0);
     const [chmura, setChmura] = useState(() => chmuraGotowa());
     const [zGlownym, setZGlownym] = useState(() => orbZGlownym());
+    // 📯 Kanał Mistrza — JaJo Mistrza odzywa się przez Orbitę (lib/kanalMistrza.ts).
+    const [kanalMistrza, setKanalMistrza] = useState(() => kanalMistrzaWlaczony());
+    const [mistrzMowi, setMistrzMowi] = useState(() => glosMistrza());
+    const mistrz = useKanalMistrza(kanalMistrza && !staticMode);
 
     // Szybkie sprawdzenie rysuje listę od razu; dokładne (IndexedDB) poprawia
     // ją chwilę później, gdy klucz siedzi w zaszyfrowanym Kiblu.
@@ -1033,6 +1038,17 @@ export function KatedraOrbita({
                             </span>
                         </label>
 
+                        <div className="space-y-1 rounded-lg border border-yellow-500/30 bg-yellow-950/20 p-2">
+                            <label className="flex items-start gap-2">
+                                <input type="checkbox" checked={kanalMistrza} onChange={(e) => { setKanalMistrza(e.target.checked); ustawKanalMistrza(e.target.checked); }} className="mt-0.5 accent-yellow-500" />
+                                <span className="text-[10px] leading-relaxed text-yellow-200/90">📯 Kanał Mistrza — JaJo Mistrza odzywa się tu, gdy coś zaobserwuje (etap jaja, lekcja, Kodeks wygrał po porażkach) albo przyjdzie przekaz z pola.</span>
+                            </label>
+                            <label className="flex items-center gap-2 pl-5">
+                                <input type="checkbox" disabled={!kanalMistrza} checked={mistrzMowi} onChange={(e) => { setMistrzMowi(e.target.checked); ustawGlosMistrza(e.target.checked); }} className="accent-yellow-500" />
+                                <span className="text-[10px] text-yellow-200/70">🗣️ mów na głos (barwa TeOgochi „mistrz”)</span>
+                            </label>
+                        </div>
+
                         <label className="block">
                             <span className="text-[10px] font-mono text-slate-500">domena Sfery — wypowiedz ją, a Orbita się zbudzi</span>
                             <input
@@ -1060,6 +1076,25 @@ export function KatedraOrbita({
                         </p>
                     </div>
                 )}
+
+                {/* 📯 Wieść Mistrza — nad orbitą, znika sama po 25 s albo po kliknięciu. */}
+                <AnimatePresence>
+                    {mistrz.wiesc && (
+                        <motion.button
+                            key={mistrz.wiesc.nr}
+                            initial={{ opacity: 0, y: -8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -8 }}
+                            onClick={mistrz.zamknij}
+                            title="Kliknij — następna wieść albo zamknij"
+                            className="absolute left-1/2 top-6 z-30 max-w-[70%] -translate-x-1/2 rounded-xl px-3 py-2 text-left backdrop-blur-sm"
+                            style={{ background: 'rgba(24,18,4,0.78)', border: '1px solid rgba(245,197,66,0.45)' }}
+                        >
+                            <div className="text-[10px] font-mono text-yellow-400/90">📯 {mistrz.wiesc.skad} · {new Date(mistrz.wiesc.kiedy).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</div>
+                            <div className="mt-0.5 text-[12px] leading-snug text-yellow-50">{mistrz.wiesc.tresc}</div>
+                        </motion.button>
+                    )}
+                </AnimatePresence>
 
                 {/* Stan rozmowy — pojawia się tylko, gdy coś się dzieje. */}
                 <AnimatePresence>

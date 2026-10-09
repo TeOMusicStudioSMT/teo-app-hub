@@ -940,9 +940,13 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
         let poprzedniBlad = '';
         let powtorki = 0;
         let ostatniBuildOk = false;   // build przeszedł, tylko przeglądarka marudziła → warto zachować
+        // 🥚 JaJo Mistrza: pliki każdej rundy + werdykt sędziów → po zwycięstwie pary „źle → dobrze” (cfg.poRundach).
+        const rundyOdrzucone = [];
+        let oddaneWRundzie = null;
         try {
             for (let runda = 1; runda <= rundy; runda++) {
                 if (przerwanie.signal.aborted) { feedback = 'przerwane przez Suwerena'; break; }
+                if (oddaneWRundzie && feedback) { rundyOdrzucone.push({ runda: runda - 1, pliki: oddaneWRundzie, powod: feedback.slice(0, 1500) }); oddaneWRundzie = null; }
                 z.rundy = runda;
                 const obecne = await pliki(projektId);
                 const eskalacja = powtorki >= 1
@@ -982,6 +986,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                     krok('blad', sufit ? `runda ${runda}: kontekst modelu wyczerpany (${odp.tokeny}/${odp.numCtx ?? NUM_CTX} tokenów) — projekt za duży na jeden prompt, wymuszam podział na moduły` : `runda ${runda}: model nie oddał plików (${odp.tokeny} tokenów)`);
                     continue;
                 }
+                oddaneWRundzie = nowe.map((p) => ({ sciezka: p.sciezka, tresc: p.tresc }));
                 // BEZ ZMIAN: model bywa, że oddaje pliki IDENTYCZNE z tym, co już leży w projekcie —
                 // build i testy wtedy przechodzą, commit nie powstaje (nie ma czego commitować),
                 // a zadanie melduje sukces. Tak „zrobił się" respawn wrogów w nocy 2026-09-23.
@@ -1106,6 +1111,7 @@ PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy
                 try { await git(dir, ['-c', 'user.name=Kodeks', '-c', 'user.email=kodeks@katedra.local', 'commit', '-q', '-m', `Kodeks: ${cel.slice(0, 200)}`]); commit = await git(dir, ['rev-parse', '--short', 'HEAD']); } catch { /* nic do commitowania */ }
             }
             const sekundy = Math.round((Date.now() - t0) / 1000);
+            if (cfg.poRundach) void Promise.resolve().then(() => cfg.poRundach({ projekt: projektId, zadanie: z.id, cel, model: z.model, ok, odrzucone: rundyOdrzucone, przyjete: ok ? oddaneWRundzie : null, rundy: z.rundy })).catch(() => {});
             p.historia.push({ zadanie: z.id, tresc: cel, ok, rundy: z.rundy, sekundy, kiedy: new Date().toISOString(), commit, model: z.model });
             await WikiProjektu.odswiez(dir, p.nazwa ?? projektId).catch(() => {});   // WIKI.md zawsze aktualne
             await zapiszProjekt(p);

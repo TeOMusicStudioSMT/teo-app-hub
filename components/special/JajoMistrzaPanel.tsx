@@ -9,7 +9,8 @@ const MOST = 'http://127.0.0.1:3001';
 interface Obserwacja { nr: number; kiedy: string; rodzaj: 'poprawka' | 'decyzja'; zrodlo: string; tytul?: string; kto?: string; przed?: string; po?: string; werdykt?: string; opis?: string }
 interface Etap { nazwa: string; opis: string; punkty: number; nastepny: { nazwa: string; od: number; brakuje: number } | null }
 interface Zasada { zasada: string; dowody: number[] }
-interface Stan { obserwacji: number; poprawki: number; decyzje: number; zrodla: Record<string, { nazwa: string; poprawki: number; decyzje: number }>; etap: Etap; ostatnie: Obserwacja[]; zasady: { kiedy: string; obserwacji: number; zasady: Zasada[] } | null }
+interface RundaKodeksa { nr: number; projekt: string; cel: string; model: string; runda: number; sedzia: string; rundaPrzyjeta: number }
+interface Stan { obserwacji: number; poprawki: number; decyzje: number; zrodla: Record<string, { nazwa: string; poprawki: number; decyzje: number }>; etap: Etap; ostatnie: Obserwacja[]; zasady: { kiedy: string; obserwacji: number; zasady: Zasada[] } | null; rundyKodeksa?: { par: number; zadan: number; sedziowie: Record<string, number>; ostatnie: RundaKodeksa[] } }
 
 const IKONA: Record<string, string> = { jajo: '🥚', 'drży': '🥚', 'pęka': '🐣', wykluty: '🐥' };
 const WERDYKT: Record<string, string> = { przyjmij: '✅ przyjął', odrzuc: '✖ odrzucił', ratyfikuj: '📜 ratyfikował', zatwierdz: '✅ zatwierdził', skrot: '✂️ przyciął' };
@@ -37,7 +38,11 @@ export default function JajoMistrzaPanel() {
     };
     const kurs = async () => {
         setTrwa('kurs'); setKomunikat(null);
-        try { const k = await zMostu<{ pary: number; sft: number; katalog: string | null }>('/api/mistrz/kurs', { method: 'POST', body: '{}' }); setKomunikat(k.pary ? `⚒️ ${k.pary} par „model → Ty” i ${k.sft} przykładów SFT → ${k.katalog}` : '⚒️ Brak poprawek — nie ma z czego ułożyć kursu.'); }
+        try {
+            const k = await zMostu<{ pary: number; sft: number; paryKodeksa: number; katalog: string | null; katalogKodeksa: string | null }>('/api/mistrz/kurs', { method: 'POST', body: '{}' });
+            const czesci = [k.pary ? `${k.pary} par „model → Ty” i ${k.sft} przykładów SFT → ${k.katalog}` : null, k.paryKodeksa ? `${k.paryKodeksa} par kodu „źle → dobrze” → ${k.katalogKodeksa}` : null].filter(Boolean);
+            setKomunikat(czesci.length ? `⚒️ ${czesci.join(' · ')}` : '⚒️ Brak poprawek i rund Kodeksa — nie ma z czego ułożyć kursu.');
+        }
         catch (e) { setKomunikat(`⚠ ${(e as Error).message}`); } finally { setTrwa(null); }
     };
 
@@ -89,7 +94,13 @@ export default function JajoMistrzaPanel() {
                         : <p className="text-[11px] text-slate-500">Jeszcze bez lekcji. Po 5 poprawkach „📜 Lekcja stylu” spisze zasady — każdą z numerami obserwacji, na których stoi.</p>}
                 </div>
             </div>
-            <p className="mt-3 text-[10px] leading-snug text-slate-500">Dalej (po wykluciu): Mistrz Gry Teterhii — rozstrzyga bitwy, turnieje i eventy na tych zasadach; głos Katedry w Globalnym Klubie Mistrzów.</p>
+            {stan.rundyKodeksa && stan.rundyKodeksa.par > 0 && (
+                <div className="mt-3">
+                    <p className="mb-1 text-[10px] uppercase tracking-wider text-slate-500">⚖️ Rundy Kodeksa „źle → dobrze” · {stan.rundyKodeksa.par} par z {stan.rundyKodeksa.zadan} zadań · {Object.entries(stan.rundyKodeksa.sedziowie).map(([k, v]) => `${k} ${v}`).join(', ')}</p>
+                    <div className="space-y-1">{stan.rundyKodeksa.ostatnie.map((r) => <div key={r.nr} className="rounded-lg bg-black/30 px-2 py-1 text-[10px] text-slate-300"><span className="text-red-300/80">runda {r.runda} ✖ {r.sedzia}</span> → <span className="text-emerald-300">✓ w {r.rundaPrzyjeta}.</span> <span className="text-slate-500">{r.projekt}: {r.cel.slice(0, 80)}</span></div>)}</div>
+                </div>
+            )}
+            <p className="mt-3 text-[10px] leading-snug text-slate-500">📯 JaJo odzywa się przez Orbitę (prawy klik na środku → „Kanał Mistrza”). Dalej (po wykluciu): Mistrz Gry Teterhii — rozstrzyga bitwy, turnieje i eventy na tych zasadach; głos Katedry w Globalnym Klubie Mistrzów.</p>
         </div>
     );
 }

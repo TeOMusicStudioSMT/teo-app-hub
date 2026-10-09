@@ -11041,10 +11041,16 @@ const Jajo = utworzJajo({
     pisz: async ({ system, prompt }) => (await piszModelem((await ModeleAgentow.modelDla('mistrz').catch(() => null)) || null, system, prompt)).tekst,
     szyna: Szyna,
 });
+// ⚖️ Rundy Kodeksa: przegrane przed sędziami i przyjęta → pary „źle → dobrze” + wieść na kanale Mistrza.
+AppStudio.skonfiguruj({ poRundach: (r) => Jajo.rundaKodeksa(r) });
 /** Obserwacja nigdy nie psuje pracy: błąd JaJa ląduje w konsoli, odpowiedź trasy idzie dalej. */
 const jajoPatrzy = (p) => { Promise.resolve().then(p).catch((e) => console.warn('[JaJo Mistrza]', e.message)); };
 app.get('/api/mistrz', async (_req, res) => { try { res.json({ success: true, ...(await Jajo.stan()) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
 app.post('/api/mistrz/kurs', async (_req, res) => { try { res.json({ success: true, ...(await Jajo.kurs()) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
+/** 📯 Kanał Mistrza: Orbita odpytuje wieści od numeru, który już widziała. */
+app.get('/api/mistrz/wiesci', async (req, res) => { try { res.json({ success: true, ...(await Jajo.wiesci({ od: req.query.od })) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+/** POST /api/mistrz/wiesc { tresc, skad?, glos? } — przekaz „z pola” na kanale Mistrza (maszyna: most, Główny; jutro Klub Mistrzów). */
+app.post('/api/mistrz/wiesc', async (req, res) => { try { res.json({ success: true, wiesc: await Jajo.wiesc({ tresc: req.body?.tresc, skad: req.body?.skad || 'z pola', rodzaj: 'pole', glos: req.body?.glos === true }) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 app.post('/api/mistrz/lekcja', async (req, res) => { try { res.json({ success: true, ...(await Jajo.lekcja({ ile: req.body?.ile })) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc], ['ratyfikuj', Stol.ratyfikuj], ['doskonal', Stol.doskonal], ['nocna', Stol.naNoc]]) {
     app.post(`/api/stol/:id/${akcja}`, async (req, res) => {
