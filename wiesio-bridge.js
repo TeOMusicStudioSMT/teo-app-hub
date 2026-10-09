@@ -12,6 +12,7 @@ import { utworzStrazModeli } from './services/StrazModeli.js';
 import { utworzChmureBryl, promptStylu, oczyscStyl } from './services/ChmuraBryl.js';
 import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch.js';
 import { utworzRytm } from './services/RytmUtworu.js';
+import { utworzModeleZadan } from './services/ModeleZadan.js';
 import { utworzJajo } from './services/JajoMistrza.js';
 import { utworzMistrzaGry } from './services/MistrzGry.js';
 import { utworzKlub } from './services/KlubMistrzow.js';
@@ -179,6 +180,8 @@ import * as Produkty from './services/Produkty.js';
 import * as KolejkaKadrow from './services/KolejkaKadrow.js';
 import * as Assety from './services/Assety.js';
 import * as Oko from './services/Oko.js';
+/** 👁️ Oko Katedry: OTAKOS_MODEL_WZROKU, gdy ustawiony; inaczej rejestr zadań (model, który Ollama ma i który widzi). */
+const okoKatedry = async () => process.env.OTAKOS_MODEL_WZROKU || (await ModeleZadan.dla('oczy').catch(() => null))?.model || Oko.MODEL_WZROKU;
 import * as Dialogi from './services/SciezkaDialogowa.js';
 import * as Karta from './services/RuchNaKarcie.js';
 import * as SilnikiObrazu from './services/SilnikiObrazu.js';
@@ -8323,7 +8326,13 @@ app.get('/api/assety3d/chmura/akcje', (req, res) => ytOdp(res, ChmuraBryl.akcje(
 app.post('/api/assety3d/chmura/:id/przytnij', (req, res) => ytOdp(res, Assety3D.przytnijTeksturyModelu(req.params.id)));
 app.get('/api/assety3d/chmura', (_req, res) => res.json({ success: true, ...ChmuraBryl.stan(), zadania: ChmuraBryl.lista() }));
 app.get('/api/assety3d/chmura/zadanie/:id', (req, res) => { const z = ChmuraBryl.zadanie(req.params.id); return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania (most mógł wystartować od nowa — wynik może czekać w panelu Meshy).' }); });
-/** POST /api/assety3d/chmura/:id/styl — 👁️ styl retekstury ze zdjęcia bryły (model widzący, lokalnie; OTAKOS_OCZY_MODEL). */
+// 🎯 Modele do zadań technicznych (services/ModeleZadan.js) — oczy itd.: model, który Ollama MA i który umie zadanie;
+// każde użycie zapisane (+ ocena Jev), po ≥ 5 użyciach wybór z danych. Kodeks (sędzia zrzutów) bierze oczy stąd.
+const ModeleZadan = utworzModeleZadan({ katalog: ANTIGRAVITY_DIR, ollama: OLLAMA_BASE, jev: Jev });
+AppStudio.skonfiguruj({ oczy: async () => (await ModeleZadan.dla('oczy')).model, notujOczy: (w) => ModeleZadan.notuj('oczy', w) });
+app.get('/api/modele/zadania', (_req, res) => ytOdp(res, ModeleZadan.przeglad(), 500));
+app.put('/api/modele/zadania', (req, res) => ytOdp(res, ModeleZadan.ustaw(String(req.body?.zadanie ?? ''), req.body?.model || null).then((wybor) => ({ wybor }))));
+/** POST /api/assety3d/chmura/:id/styl — 👁️ styl retekstury ze zdjęcia bryły (oczy z rejestru zadań, lokalnie). */
 app.post('/api/assety3d/chmura/:id/styl', async (req, res) => {
     try {
         const m = await Assety3D.meta(req.params.id);
@@ -8331,14 +8340,18 @@ app.post('/api/assety3d/chmura/:id/styl', async (req, res) => {
         const obraz = Assety3D.sciezkaPliku(req.params.id, 'obraz.png');
         if (!obraz) return res.status(400).json({ success: false, message: 'Bryła nie ma obrazu źródłowego (obraz.png) — opisz styl ręcznie.' });
         const swiatlo = [...(m.poprawki ?? [])].reverse().find((p) => p.rodzaj === 'swiatlo')?.kolor ?? null;
-        const model = process.env.OTAKOS_OCZY_MODEL || 'qwen3.5:9b';
+        const model = (await ModeleZadan.dla('oczy')).model;
+        const t0 = Date.now();
         const r = await fetch(`${OLLAMA_BASE}/api/chat`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(240_000),
             body: JSON.stringify({ model, stream: false, think: false, options: { temperature: 0.3 }, messages: [{ role: 'user', content: promptStylu({ opis: String(m.opis ?? '').replace(/;?\s*jeden obiekt na spokojnym tle\s*$/i, ''), swiatlo }), images: [(await fs.readFile(obraz)).toString('base64')] }] }),
         });
-        if (!r.ok) throw new Error(`Ollama (${model}) HTTP ${r.status}: ${(await r.text().catch(() => '')).slice(0, 160)}`);
+        if (!r.ok) { void ModeleZadan.notuj('oczy', { model, ok: false, ms: Date.now() - t0 }).catch(() => {}); throw new Error(`Ollama (${model}) HTTP ${r.status}: ${(await r.text().catch(() => '')).slice(0, 160)}`); }
         const d = await r.json();
-        res.json({ success: true, styl: oczyscStyl(d.message?.content), model });
+        let styl;
+        try { styl = oczyscStyl(d.message?.content); } catch (e) { void ModeleZadan.notuj('oczy', { model, ok: false, ms: Date.now() - t0 }).catch(() => {}); throw e; }
+        void ModeleZadan.notuj('oczy', { model, ok: true, ms: Date.now() - t0, wynik: styl }).catch(() => {});   // Jev oceni jakość w tle
+        res.json({ success: true, styl, model });
     } catch (e) { res.status(500).json({ success: false, message: e.name === 'TimeoutError' ? 'Oczy Katedry nie zdążyły (4 min) — karta zajęta? Spróbuj później albo opisz ręcznie.' : e.message }); }
 });
 app.post('/api/assety3d/chmura/:id/wycena', (req, res) => ytOdp(res, ChmuraBryl.wycen(req.params.id, req.body?.zlecenie ?? {})));
@@ -9429,7 +9442,7 @@ app.get('/api/oko/stan', async (req, res) => {
         const bezObrazu = assety.filter((a) => !Oko.TYPY_WIDZIALNE.has(a.typ) && pusty(a));
         return res.json({
             success: true,
-            model: Oko.MODEL_WZROKU,
+            model: await okoKatedry(),
             wszystkich: assety.length,
             zOpisem: assety.filter((a) => !pusty(a)).length,
             doOpisania: doOpisania.map((a) => ({ id: a.id, nazwa: a.nazwa, typ: a.typ })),
@@ -9447,7 +9460,8 @@ app.get('/api/oko/stan', async (req, res) => {
  * choć obraz dostała (+152 tokeny wejścia). Modelom nie wierzymy na słowo.
  */
 app.post('/api/oko/sprawdz-wzrok', async (req, res) => {
-    const { projekt = '', id = '', model = Oko.MODEL_WZROKU } = req.body ?? {};
+    const { projekt = '', id = '' } = req.body ?? {};
+    const model = req.body?.model || await okoKatedry();
     try {
         const asset = await Assety.jeden(ANTIGRAVITY_DIR, projekt, id);
         if (!asset) throw new Error('Nie ma takiego assetu — nie ma na czym sprawdzać wzroku.');
@@ -9462,7 +9476,8 @@ app.post('/api/oko/sprawdz-wzrok', async (req, res) => {
 
 /** Jedno spojrzenie na jeden asset. `zapisz: false` = pokaż, ale nie nadpisuj. */
 app.post('/api/oko/opisz', async (req, res) => {
-    const { projekt = '', id = '', model = Oko.MODEL_WZROKU, zapisz = true } = req.body ?? {};
+    const { projekt = '', id = '', zapisz = true } = req.body ?? {};
+    const model = req.body?.model || await okoKatedry();
     try {
         const w = await Oko.opisz({ katalogKatedry: ANTIGRAVITY_DIR, projekt, id, ollamaBase: OLLAMA_BASE, model });
         if (!w.ok) return res.status(422).json({ success: false, message: w.powod, ...w });
@@ -9479,7 +9494,8 @@ app.post('/api/oko/opisz', async (req, res) => {
  * na sztukę, więc przy dziewięciu to około 4,5 minuty.
  */
 app.post('/api/oko/przejrzyj', async (req, res) => {
-    const { projekt = '', model = Oko.MODEL_WZROKU, nadpisuj = false, idki = null } = req.body ?? {};
+    const { projekt = '', nadpisuj = false, idki = null } = req.body ?? {};
+    const model = req.body?.model || await okoKatedry();
     try {
         if (!String(projekt).trim()) throw new Error('Podaj projekt.');
         const t0 = Date.now();

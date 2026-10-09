@@ -632,6 +632,42 @@ export const PromocjePanel: React.FC = () => {
     );
 };
 
+/**
+ * 🎯 Modele zadań technicznych (services/ModeleZadan.js): oczy itd. — model z faktów Ollamy (zdolność + rozmiar), ręczny
+ * wybór Suwerena albo z DANYCH (≥ 5 użyć: skuteczność × ocena Jev). Każde użycie zbiera dane — tu widać, ile już jest.
+ */
+interface StatZadania { model: string; prob: number; skutecznosc: number; sredniaJev: number | null; medianaMs: number | null }
+interface Zadanie { nazwa: string; opis: string; potrzeba: string[]; wybrany: string | null; zrodlo: string | null; reczny: string | null; kandydaci: { model: string; gb: number }[]; statystyki: StatZadania[]; uzyc: number; blad: string | null }
+export const ModeleZadanPanel: React.FC = () => {
+    const [d, setD] = useState<{ zadania: Record<string, Zadanie>; jev: boolean; minProb: number } | null>(null);
+    const wczytaj = useCallback(() => zMostu<{ zadania: Record<string, Zadanie>; jev: boolean; minProb: number }>('/api/modele/zadania').then(setD).catch((e) => toast.error(blad(e))), []);
+    useEffect(() => { void wczytaj(); }, [wczytaj]);
+    const ustaw = async (zadanie: string, model: string) => {
+        try { await zMostu('/api/modele/zadania', { method: 'PUT', body: JSON.stringify({ zadanie, model: model || null }) }); toast.success(model ? `🎯 ${zadanie} → ${model}` : `🎯 ${zadanie}: wybór automatyczny`); await wczytaj(); } catch (e) { toast.error(blad(e)); }
+    };
+    if (!d) return null;
+    const ZRODLO: Record<string, string> = { fakty: 'z faktów Ollamy', dane: 'z danych (Jev + skuteczność)', reczny: 'Twój wybór', env: 'zmienna środowiska' };
+    return (
+        <div className="space-y-2 rounded-xl border border-sky-800/50 bg-black/30 p-3">
+            <h3 className="text-sm font-bold text-sky-200">🎯 Modele zadań Katedry</h3>
+            <p className="text-[10px] text-slate-500">Model wybiera się z tego, co Ollama naprawdę ma i umie. Każde użycie zbiera dane{d.jev ? ', a Jev ocenia jakość wyniku' : ' (bez klucza Jev — tylko skuteczność i czas)'}; od {d.minProb} użyć decydują dane.</p>
+            {Object.entries(d.zadania).map(([id, z]) => (
+                <div key={id} className="space-y-1 rounded-lg border border-slate-800 p-2 text-[11px]">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <b className="text-slate-200">{z.nazwa}</b><span className="text-slate-500">{z.opis} · potrzebuje: {z.potrzeba.join(' + ')}</span>
+                    </div>
+                    {z.blad ? <p className="text-amber-300">⚠ {z.blad}</p> : <p className="text-emerald-300">→ {z.wybrany} <span className="text-slate-500">({ZRODLO[z.zrodlo ?? ''] ?? z.zrodlo}) · użyć: {z.uzyc}</span></p>}
+                    <select value={z.reczny ?? ''} onChange={(e) => void ustaw(id, e.target.value)} className="rounded border border-slate-700 bg-black/40 px-1 py-0.5 text-[11px]">
+                        <option value="">automatycznie (fakty → dane)</option>
+                        {z.kandydaci.map((k) => <option key={k.model} value={k.model}>{k.model} · {k.gb} GB</option>)}
+                    </select>
+                    {z.statystyki.length > 0 && <div className="text-[10px] text-slate-400">{z.statystyki.slice(0, 4).map((s) => `${s.model}: ${s.prob}× · ${Math.round(s.skutecznosc * 100)}% ok${s.sredniaJev !== null ? ` · Jev ${s.sredniaJev}` : ''}${s.medianaMs ? ` · ${Math.round(s.medianaMs / 1000)} s` : ''}`).join(' | ')}</div>}
+                </div>
+            ))}
+        </div>
+    );
+};
+
 export default function DyrygentIKuznia() {
-    return <div className="space-y-4"><DyrygentPanel /><ZwiadowcaPanel /><PromocjePanel /><KuzniaSoupPanel /><PorzadkiPanel /></div>;
+    return <div className="space-y-4"><DyrygentPanel /><ModeleZadanPanel /><ZwiadowcaPanel /><PromocjePanel /><KuzniaSoupPanel /><PorzadkiPanel /></div>;
 }

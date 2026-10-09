@@ -760,7 +760,10 @@ export async function ocenZachowanie({ cel, migawki, model }) {
  * Niepewność (błąd, brak JSON, timeout) = przepuszczamy; sędzia ma łapać, nie blokować.
  */
 export async function ocenZrzut({ cel, sciezkaZrzutu, model }) {
-    const modelOczu = /^(claude|gemini):/.test(model || '') || !/qwen3\.5/.test(model || '') ? 'qwen3.5:9b' : model;
+    // 👁️ Oczy z rejestru zadań (services/ModeleZadan.js: model, który Ollama MA i który widzi obrazy) — dawniej na sztywno
+    // qwen3.5:9b, którego Ollama nie miała (HTTP 404 = każdy sędzia zrzutu „niepewny”). Bez rejestru: model wołającego.
+    const modelOczu = cfg.oczy ? await cfg.oczy().catch(() => model) : model;
+    const t0 = Date.now();
     try {
         const obraz = (await fs.readFile(sciezkaZrzutu)).toString('base64');
         const prompt = `To zrzut ekranu z automatycznego testu gry 3D w three.js (rzut z góry/izometria, Chrome bez GPU). Zadanie gry: ${String(cel).slice(0, 400)}\nOceń WIDOCZNOŚĆ, nie jakość grafiki. Odpowiedz WYŁĄCZNIE JSON-em:\n{"ok": true/false, "powod": "jedno zdanie po polsku"}\nok=false tylko gdy: (a) ekran pusty/czarny bez sceny, (b) jedna bryła zasłania prawie cały ekran (kamera za blisko lub zły frustum), (c) nie widać podłogi/świata wokół gracza. Proste bryły zamiast modeli to NIE błąd, HUD z zerami to NIE błąd.`;
@@ -776,9 +779,10 @@ export async function ocenZrzut({ cel, sciezkaZrzutu, model }) {
         });
         const m = tekst.match(/\{[\s\S]*\}/);
         const j = m ? JSON.parse(m[0]) : null;
+        void cfg.notujOczy?.({ model: modelOczu, ok: !!j && typeof j.ok === 'boolean', ms: Date.now() - t0 })?.catch?.(() => {});
         if (!j || typeof j.ok !== 'boolean') return { ok: true, powod: null, niepewne: true, model: modelOczu };
         return { ok: j.ok, powod: j.ok ? null : String(j.powod || 'na zrzucie nie widać sceny').slice(0, 300), opis: String(j.powod || '').slice(0, 300), model: modelOczu };
-    } catch (e) { return { ok: true, powod: null, niepewne: true, blad: e.message }; }
+    } catch (e) { void cfg.notujOczy?.({ model: modelOczu, ok: false, ms: Date.now() - t0 })?.catch?.(() => {}); return { ok: true, powod: null, niepewne: true, blad: e.message }; }
 }
 
 /**
