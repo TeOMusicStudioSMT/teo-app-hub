@@ -13,6 +13,7 @@ import { utworzChmureBryl, promptStylu, oczyscStyl } from './services/ChmuraBryl
 import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch.js';
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
+import { utworzFilmyGry } from './services/FilmyGry.js';
 import { utworzJajo } from './services/JajoMistrza.js';
 import { utworzMistrzaGry } from './services/MistrzGry.js';
 import { utworzKlub } from './services/KlubMistrzow.js';
@@ -8155,6 +8156,7 @@ app.post('/api/gdd/szablon/:szablon', async (req, res) => {
     try { res.json({ success: true, ...(await SzablonyGier.zasiej(req.params.szablon, { appStudio: AppStudio, gdd: Gdd }, { nadpisz: req.body?.nadpisz === true })) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
+app.get('/api/gdd/zdarzenia', (_req, res) => res.json({ success: true, zdarzenia: Gdd.ZDARZENIA_GRY }));
 app.get('/api/gdd/:id', async (req, res) => {
     const g = await Gdd.wczytaj(req.params.id);
     return g ? res.json({ success: true, gdd: g, produkcja: Gdd.produkcja(req.params.id) }) : res.json({ success: true, gdd: null, produkcja: null });
@@ -8196,6 +8198,21 @@ app.post('/api/gdd/:id/zadanie/:zadanie', async (req, res) => {
     try { res.json({ success: true, gdd: await Gdd.ustawZadanie(req.params.id, req.params.zadanie, { klocki: req.body?.klocki, zastepcze: req.body?.zastepcze }) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
+// 🎬 Filmy gry (services/FilmyGry.js) — Reżyser proponuje cutscenki i intro w GDD, Suweren zleca: Wan 2.2 lokalnie →
+// _OtakOs_Apki/<gra>/public/filmy/<id>.mp4 + filmy.json → gra odtwarza przy zdarzeniu (src/filmy.ts).
+const FilmyGry = utworzFilmyGry({
+    katalogGier: path.join(process.cwd(), '..', '_OtakOs_Apki'),
+    gdd: { wczytaj: (id) => Gdd.wczytaj(id), zapisz: (id, g) => Gdd.zapisz(id, g) },
+    generuj: async ({ prompt, sekundy }) => {
+        const przed = await stanWideoZBudzeniem('film gry');
+        if (!przed.comfy) return { ok: false, powod: przed.braki.join(' | ') };
+        return Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, sekundy });
+    },
+    stan: (z) => Wideo.stanZlecenia(COMFY_BASE, z, COMFY_DIR),
+    pisz: async ({ system, prompt }) => (await AppStudio.pisz({ system, prompt, model: TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('rezyser') || modelMechanika()), timeoutMs: 5 * 60_000 })).tekst,
+    szyna: Szyna,
+});
+app.post('/api/gdd/:id/film/:film/zlec', (req, res) => ytOdp(res, FilmyGry.zlec(req.params.id, req.params.film).then((film) => ({ film }))));
 app.post('/api/gdd/:id/realizuj', async (req, res) => {
     try { res.json({ success: true, ...(await Gdd.realizuj(req.params.id, { model: req.body?.model, zapasowe: req.body?.zapasowe, tylkoKamien: req.body?.kamien || null, chmuraPoChmurze: req.body?.chmuraPoChmurze !== false })), sondaz: `/api/gdd/${encodeURIComponent(req.params.id)}/sondaz` }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }

@@ -48,7 +48,7 @@ const plik = (id) => path.join(cfg.katalog, id, 'gdd.json');
 const noweId = (p) => `${p}-${crypto.randomBytes(3).toString('hex')}`;
 
 function puste(tytul = '') {
-    return { wersja: 1, tytul, gatunek: '', silnik: 'three', perspektywa: '', platformy: ['przeglądarka'], sekcje: Object.fromEntries(SEKCJE.map((s) => [s, ''])), kamienie: [], galezie: [], historia: [], zrodlo: null, zmieniono: null };
+    return { wersja: 1, tytul, gatunek: '', silnik: 'three', perspektywa: '', platformy: ['przeglądarka'], sekcje: Object.fromEntries(SEKCJE.map((s) => [s, ''])), kamienie: [], galezie: [], filmy: [], historia: [], zrodlo: null, zmieniono: null };
 }
 
 /**
@@ -71,6 +71,55 @@ export function oczyscGalezie(lista) {
         };
     }).filter(Boolean);
 }
+/**
+ * 🎬 FILMY GRY (Suweren 2026-10-09: „Reżyser Gry może zlecić wszystkie filmy, jakie potrzebuje… każda walka czy
+ * zdarzenie może mieć cutscenkę… czy film wstępny”). Film = jedno ujęcie Wan 2.2 (lokalnie, 2–5 s), przypięte do
+ * ZDARZENIA w grze (gra odtwarza je sama — src/filmy.ts). Stan i plik trzyma most (services/FilmyGry.js).
+ */
+export const ZDARZENIA_GRY = {
+    start: 'Intro — pierwsze wejście do gry', ladowanie: 'Lądowanie na wyspie', straznik: 'Strażnik Nuty pokonany albo udobruchany',
+    nuta: 'Zdobyta Nuta', zgrzytowiec: 'Rozbrojony Zgrzytowiec', turniej: 'Wygrany turniej', taniec: 'Taniec z rangą S', poziom: 'Nowy poziom wędrowca',
+};
+const STANY_FILMU = ['pomysl', 'zlecony', 'gotowy', 'blad'];
+/** Filmy z GDD / propozycji → czyste; stan, plik i zlecenie zostają z poprzedniej wersji tego samego id. */
+export function oczyscFilmy(lista, stare = []) {
+    if (!Array.isArray(lista)) return [];
+    const poId = new Map(stare.map((f) => [f.id, f]));
+    const widziane = new Set();
+    return lista.slice(0, 20).map((f) => {
+        if (!f || typeof f !== 'object') return null;
+        const id = idOk(String(f.id || '')) ? f.id : noweId('fm');
+        if (widziane.has(id)) return null;
+        widziane.add(id);
+        const tytul = String(f.tytul || '').trim().slice(0, 120);
+        const opis = String(f.opis || '').trim().slice(0, 800);
+        if (!tytul && !opis) return null;
+        const byl = poId.get(id);
+        // nowa wartość wygrywa, gdy jest poprawna; plik tylko w postaci filmy/<id>.mp4|webm (nic spoza katalogu filmów gry)
+        const pole = (k, ok) => (k in f ? (ok(f[k]) ? f[k] : null) : (byl?.[k] ?? null));
+        return {
+            id, zdarzenie: ZDARZENIA_GRY[f.zdarzenie] ? f.zdarzenie : 'start', tytul: tytul || opis.slice(0, 60), opis,
+            prompt: f.prompt ? String(f.prompt).trim().slice(0, 600) : (byl?.prompt ?? null),
+            sekundy: Math.max(2, Math.min(5, Math.round(Number(f.sekundy) || byl?.sekundy || 4))),
+            stan: STANY_FILMU.includes(f.stan) ? f.stan : (byl?.stan ?? 'pomysl'),
+            plik: pole('plik', (v) => typeof v === 'string' && /^filmy\/[a-z0-9-]+\.(mp4|webm)$/.test(v)),
+            zlecenie: pole('zlecenie', (v) => typeof v === 'string' && v.length <= 80),
+            blad: pole('blad', (v) => typeof v === 'string') ? String(pole('blad', () => true)).slice(0, 300) : null,
+            kiedy: pole('kiedy', (v) => typeof v === 'string' && v.length <= 40),
+        };
+    }).filter(Boolean);
+}
+/** Propozycja Reżysera: filmy z id podmieniają treść (stan zostaje), bez id — dochodzą na koniec. */
+export function scalFilmy(stare = [], nowe = []) {
+    const out = stare.map((f) => ({ ...f }));
+    for (const n of Array.isArray(nowe) ? nowe : []) {
+        const i = out.findIndex((f) => f.id === n?.id);
+        if (i >= 0) out[i] = { ...out[i], ...n, stan: out[i].stan, plik: out[i].plik, zlecenie: out[i].zlecenie };
+        else out.push({ ...n, id: undefined });
+    }
+    return oczyscFilmy(out, stare);
+}
+
 // 'klocki' = czeka na klocek (obraz/bryłę z warsztatu Katedry) — patrz services/KlockiGry.js.
 const STANY_ZADANIA = ['czeka', 'trwa', 'gotowe', 'blad', 'pominiete', 'klocki'];
 /** Klocki i zgoda na zastępcze — tylko gdy są (zadania bez nich zostają jak dawniej). */
@@ -92,6 +141,7 @@ function oczysc(g, stare = puste()) {
         zadania: (Array.isArray(k.zadania) ? k.zadania : []).slice(0, 6).map((z) => typeof z === 'string' ? { id: noweId('zd'), tresc: z.slice(0, 700), stan: 'czeka' } : { id: idOk(String(z.id || '')) ? z.id : noweId('zd'), tresc: String(z.tresc || '').slice(0, 700), stan: STANY_ZADANIA.includes(z.stan) ? z.stan : 'czeka', zadanieId: z.zadanieId ?? null, kiedy: z.kiedy ?? null, uwaga: z.uwaga ? String(z.uwaga).slice(0, 300) : null, ...klockiZadania(z) }),
     }));
     if (Array.isArray(g.galezie)) out.galezie = oczyscGalezie(g.galezie);
+    if (Array.isArray(g.filmy)) out.filmy = oczyscFilmy(g.filmy, stare.filmy ?? []);
     if (typeof g.zrodlo === 'string') out.zrodlo = g.zrodlo.slice(0, 200);
     out.zmieniono = new Date().toISOString();
     return out;
@@ -118,6 +168,7 @@ export function jakoTekst(g, { zKamieniami = true, zId = false } = {}) {
     const linie = [`TYTUŁ: ${g.tytul || '—'} · GATUNEK: ${g.gatunek || '—'} · SILNIK DOKUMENTU: ${g.silnik} · PERSPEKTYWA: ${g.perspektywa || '—'} · PLATFORMY: ${(g.platformy || []).join(', ') || '—'}`];
     for (const s of SEKCJE) if (g.sekcje?.[s]) linie.push(`## ${ETYKIETY[s]}\n${g.sekcje[s]}`);
     if (g.galezie?.length) linie.push('## Gałęzie świata (kategorie assetów)\n' + g.galezie.map((x) => `- ${x.nazwa}: ${x.opis}`).join('\n'));
+    if (g.filmy?.length) linie.push('## Filmy gry (cutscenki / intro, Wan 2.2)\n' + g.filmy.map((f) => `- ${zId ? `(id: ${f.id}) ` : ''}[${f.stan}] ${f.tytul} — przy: ${f.zdarzenie} — ${f.opis}`).join('\n'));
     if (zKamieniami && g.kamienie?.length) linie.push('## Kamienie milowe\n' + g.kamienie.map((k, i) => `${i + 1}. ${zId ? `(id: ${k.id}) ` : ''}${k.tytul} — ${k.opis}\n${k.zadania.map((z) => `   - [${z.stan}] ${z.tresc}`).join('\n')}`).join('\n'));
     return linie.join('\n\n').slice(0, 14_000);
 }
@@ -160,6 +211,7 @@ export const MOCE_KATEDRY_DLA_GIER = `CO KATEDRA JUŻ DAJE GROM (most 127.0.0.1:
 - 🏛️ Globalny Klub Mistrzów: turnieje globalne między Katedrami (ogłasza Suweren w Hubie), wyniki i ranking na otakos.wtf — gra tylko gra turniej i zgłasza wynik z kluczem eventu.
 - 🗝️ Kustosz: POST /api/tgs/quest → quest na żywo z lokalnego modelu (tytul, tresc, wybory z tonami). 🎭 Rozmowa w roli: POST /api/delegat/rozmowa {delegat, scena} (np. towarzysz-kot w Teterhii).
 - 🗿 Assety 3D: bryły GLB (TRELLIS.2), kolor, gęstszy fragment, świecące oko, ruch (Blender), dopracowanie w chmurze Meshy (za zgodą Suwerena) → „Do gry” kładzie GLB w public/assety + assety.json.
+- 🎬 FILMY GRY: cutscenki i intro proponujesz w "filmy" (jedno ujęcie Wan 2.2, 2–5 s, przy zdarzeniu gry); Suweren zleca je przyciskiem, plik trafia do public/filmy, a gra sama odtwarza film przy zdarzeniu (src/filmy.ts: zagrajFilm(zdarzenie)). Kodeks NIE buduje odtwarzacza ani nie generuje wideo — najwyżej dodaje wywołanie zagrajFilm('<zdarzenie>') przy nowym zdarzeniu.
 - 🦴 POSTACIE = DWIE NOGI (zasada Suwerena 2026-10-09): każda postać i stworek, który ma się ruszać, stoi na dwóch nogach — w gałęziach proponuj ją stylem „postac3d” (A-poza, przodem). Taka bryła dostaje w chmurze szkielet (rig Meshy) z chodem, biegiem i akcjami (walka, taniec) → AnimationMixer w grze. Postać czworonożna nie dostanie szkieletu.
 - 🥚 JaJo Mistrza uczy się stylu Suwerena z jego poprawek — ZASADY STYLU (gdy są) masz niżej; trzymaj się ich w tekstach gry i w rozmowie.`;
 
@@ -310,7 +362,8 @@ export async function rozmowa(projektId, { wypowiedz, historia = [], model } = {
     const system = `Jesteś Reżyserem Gry — rozmawiasz z Suwerenem o JEGO grze i pilnujesz GDD oraz planu produkcji (kamienie milowe → zadania dla programisty Kodeksa, lokalny model 9B, jedno zadanie = jedna runda ≤ 20 min, więc zadania mają być MAŁE i sprawdzalne). Mówisz po polsku, konkretnie, 2–6 zdań; zadajesz jedno pytanie naraz, gdy czegoś brakuje. ${RAMKA_SILNIKA}
 ${MOCE_KATEDRY_DLA_GIER}${await blokZasad()}
 Gdy ustalicie coś, co powinno trafić do dokumentu albo planu, dopisz na końcu odpowiedzi blok (poprawny JSON, nic po nim):
-PROPOZYCJA_GDD: {"sekcje":{"mechanika":"pełna nowa treść sekcji"}, "tytul":"…", "kamienie":[{"id":"km-…","tytul":"…","opis":"…","zadania":["zadanie 1","zadanie 2"]}]}
+PROPOZYCJA_GDD: {"sekcje":{"mechanika":"pełna nowa treść sekcji"}, "tytul":"…", "kamienie":[{"id":"km-…","tytul":"…","opis":"…","zadania":["zadanie 1","zadanie 2"]}], "filmy":[{"zdarzenie":"start","tytul":"…","opis":"co widać w ujęciu, po polsku, 1–3 zdania"}]}
+🎬 FILMY: możesz proponować cutscenki i intro — każdy film to JEDNO ujęcie 2–5 s (Wan 2.2 lokalnie), przypięte do zdarzenia gry: ${Object.entries(ZDARZENIA_GRY).map(([k, v]) => `${k} (${v})`).join(', ')}. Opisz, co widać (miejsce, postać, ruch kamery), nie dialogi. W "filmy" podajesz tylko nowe albo zmieniane (z id).
 Zasady: tylko pola, które się zmieniają; treść sekcji w całości; w "kamienie" podajesz TYLKO kamienie, które zmieniasz, z ich id z planu i PEŁNĄ nową listą zadań tego kamienia — zadania oznaczone [gotowe] przepisz dosłownie, żeby nie zgubić ich stanu; nowy kamień — bez id. Limit planu: najwyżej 12 kamieni i 6 zadań w kamieniu (więcej się nie zapisze — rozbij na kolejny kamień). Bez propozycji, gdy nic nie ustalono.
 NIE piszesz „zapisałem” ani „dodałem do planu”: zmiana trafia do GDD dopiero, gdy Suweren kliknie „Wpisz do GDD” przy Twojej propozycji — mów „proponuję”.`;
     const dialog = historia.slice(-12).map((h) => `${h.kto === 'suweren' ? 'Suweren' : 'Reżyser'}: ${String(h.tresc).slice(0, 800)}`).join('\n');
@@ -320,6 +373,7 @@ NIE piszesz „zapisałem” ani „dodałem do planu”: zmiana trafia do GDD d
     const m = odpowiedz.match(/PROPOZYCJA_GDD:\s*(\{[\s\S]*\})\s*$/);
     if (m) { try { propozycja = JSON.parse(m[1]); odpowiedz = odpowiedz.slice(0, m.index).trim(); } catch { try { propozycja = JSON.parse(domknijJson(m[1])); odpowiedz = odpowiedz.slice(0, m.index).trim(); } catch { /* zostawiamy w tekście */ } } }
     if (propozycja?.kamienie) propozycja.kamienie = scalKamienie(g.kamienie ?? [], propozycja.kamienie);
+    if (propozycja?.filmy) propozycja.filmy = scalFilmy(g.filmy ?? [], propozycja.filmy);
     const wpisy = [{ kiedy: new Date().toISOString(), kto: 'suweren', tresc }, { kiedy: new Date().toISOString(), kto: 'rezyser', tresc: odpowiedz }];
     if (fsSync.existsSync(path.join(cfg.katalog, projektId))) { g.historia = [...(g.historia ?? []), ...wpisy].slice(-200); await fs.writeFile(plik(projektId), JSON.stringify(g, null, 2), 'utf8'); }
     return { odpowiedz, propozycja, model: odp.model ?? (model || cfg.model()) };
@@ -479,4 +533,4 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
     return { start: true, zadan: kolejka.length, model: prod.model, zapasowe: prod.zapasowe };
 }
 
-export default { skonfiguruj, SILNIKI, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
+export default { skonfiguruj, SILNIKI, ZDARZENIA_GRY, oczyscFilmy, scalFilmy, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
