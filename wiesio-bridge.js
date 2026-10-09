@@ -10,6 +10,7 @@ import { utworzJevLokalny } from './services/JevLokalny.js';
 import { utworzPartytury } from './services/Partytury.js';
 import { utworzStrazModeli } from './services/StrazModeli.js';
 import { utworzChmureBryl, promptStylu, oczyscStyl } from './services/ChmuraBryl.js';
+import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch.js';
 import { utworzJajo } from './services/JajoMistrza.js';
 import { utworzMistrzaGry } from './services/MistrzGry.js';
 import { utworzKlub } from './services/KlubMistrzow.js';
@@ -8273,6 +8274,42 @@ const ChmuraBryl = utworzChmureBryl({
     metaBryly: (id) => Assety3D.meta(id),
     zapiszRuch: (id, ruch, glb, wpis) => Assety3D.ruchZChmury(id, ruch, glb, wpis),
     szyna: Szyna,
+});
+// 🖨️ Pracownia merchu (services/Merch.js) — Creative Lab Meshy (figurka, brelok, magnes…) i druk 3D z brył
+// (darmowa analiza drukowalności + 3MF wielokolorowy) → Wystawa i Marketplace. Płatne kroki tylko z potwierdzoną kwotą.
+const Merch = utworzMerch({
+    katalog: path.join(ANTIGRAVITY_DIR, 'merch'),
+    klucz: () => kluczChmurySync('meshy'),
+    obrazBryly: async (id) => { const p = Assety3D.sciezkaPliku(id, 'obraz.png'); if (!p) throw new Error('Bryła nie ma obrazu (obraz.png).'); return fs.readFile(p); },
+    // druk: zadanie Meshy (image-to-3d / retekstura / remesh) — Meshy samo bierze swój plik; inaczej master.glb (pełna jakość)
+    glbBryly: async (id) => {
+        const m = await Assety3D.meta(id);
+        if (!m) throw new Error('Nie ma takiej bryły.');
+        const zadanie = m.chmura?.zadanie && ['obraz3d', 'retekstura', 'remesh'].includes(m.chmura.rodzaj) ? m.chmura.zadanie : null;
+        const p = Assety3D.sciezkaPliku(id, 'master.glb') ?? Assety3D.sciezkaPliku(id, 'model.glb');
+        if (!p && !zadanie) throw new Error('Bryła nie ma pliku GLB.');
+        return { bajty: p ? await fs.readFile(p) : Buffer.alloc(0), zadanie };
+    },
+    szyna: Szyna,
+});
+app.get('/api/merch', async (_req, res) => { try { res.json({ success: true, merch: await Merch.lista(), produkty: Merch.PRODUKTY, cennik: CENNIK_MERCHU, ksztalty: KSZTALTY, drukarki: DRUKARKI, maKlucz: !!kluczChmurySync('meshy') }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+app.post('/api/merch/wycena', (req, res) => ytOdp(res, Merch.wycen(String(req.body?.krok ?? ''))));
+app.post('/api/merch/prototyp', (req, res) => ytOdp(res, Merch.prototyp(req.body?.zlecenie ?? {}, { bryla: req.body?.bryla || null, dataURL: req.body?.dataURL || null, zgodaKredyty: req.body?.zgodaKredyty }).then((merch) => ({ merch }))));
+app.post('/api/merch/druk', (req, res) => ytOdp(res, Merch.druk({ id: req.body?.id || null, bryla: req.body?.bryla || null, ustawienia: req.body?.ustawienia ?? {}, z3mf: req.body?.z3mf === true, zgodaKredyty: req.body?.zgodaKredyty }).then((merch) => ({ merch }))));
+app.post('/api/merch/:id/buduj', (req, res) => ytOdp(res, Merch.buduj(req.params.id, { zgodaKredyty: req.body?.zgodaKredyty }).then((merch) => ({ merch }))));
+app.get('/api/merch/:id/plik/:plik', async (req, res) => { try { res.sendFile(await Merch.plik(req.params.id, req.params.plik)); } catch (e) { res.status(404).json({ success: false, message: e.message }); } });
+/** POST /api/merch/:id/market {cenaGRV, opis} — gotowy merch jako produkt Marketplace (moduł „merch”, pliki w payloadzie). */
+app.post('/api/merch/:id/market', async (req, res) => {
+    try {
+        const m = await Merch.czytaj(req.params.id);
+        if (m.stan !== 'gotowy') throw new Error('Na Marketplace tylko gotowy merch (bryła albo 3MF).');
+        if (m.market) throw new Error('Ten merch już jest na Marketplace.');
+        const mk = await loadMarket();
+        const product = { id: `merch-${m.id}`, module: 'merch', type: m.produkt, name: m.nazwa, desc: String(req.body?.opis ?? '').slice(0, 300) || `${Merch.PRODUKTY[m.produkt]?.nazwa ?? 'Druk 3D'} z Pracowni merchu Katedry${m.pliki.druk ? ' · plik 3MF do druku' : ' · bryła GLB do druku'}`, priceGrv: Math.max(0, Math.round(Number(req.body?.cenaGRV) || 0)), creator: (await wlascicielKsiegi().catch(() => null)) ?? 'Katedra', votes: 0, createdAt: Date.now(), payload: { merch: m.id, pliki: m.pliki } };
+        mk.products.push(product); await saveMarket();
+        await Merch.oznacz(m.id, { market: product.id });
+        res.json({ success: true, product });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 /** GET /api/assety3d/chmura/akcje?kategoria=&szukaj= — biblioteka animacji Meshy (darmowa) do riggingu. */
 app.get('/api/assety3d/chmura/akcje', (req, res) => ytOdp(res, ChmuraBryl.akcje({ kategoria: String(req.query.kategoria ?? ''), szukaj: String(req.query.szukaj ?? '') }).then((akcje) => ({ akcje }))));

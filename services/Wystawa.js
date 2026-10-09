@@ -231,6 +231,14 @@ async function produkty() {
         if (!p) continue;
         wynik.push({ id: `print-${p.id}`, rodzaj: 'print', dzial: 'TeO Lab · Printy', tytul: p.nazwa, opis: String(p.problem || '').slice(0, 240), obraz: null, kiedy: p.data });
     }
+    // 🖨️ Merch — gotowe gadżety i druki z Pracowni merchu (miniatura z Meshy albo koncept).
+    const merch = path.join(cfg.katalogKatedry, 'merch');
+    for (const d of (await fs.readdir(merch).catch(() => [])).filter((x) => /^m-[0-9a-f]{8}$/.test(x))) {
+        const m = await czytajJson(path.join(merch, d, 'meta.json'), null);
+        if (!m || m.stan !== 'gotowy') continue;
+        const obraz = [m.pliki?.miniatura, m.pliki?.koncept].filter(Boolean).map((p) => path.join(merch, d, p)).find((p) => fsSync.existsSync(p)) ?? null;
+        wynik.push({ id: `merch-${m.id}`, rodzaj: 'merch', dzial: 'Merch · druk 3D', tytul: m.nazwa, opis: [m.druk?.raport?.werdykt, m.pliki?.druk ? 'plik 3MF wielokolorowy' : null, m.market ? 'na Marketplace' : null].filter(Boolean).join(' · '), obraz, kiedy: m.zmieniono || m.utworzono });
+    }
     wynik.sort((a, b) => String(b.kiedy || '').localeCompare(String(a.kiedy || '')));
     return wynik;
 }
