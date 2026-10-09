@@ -28,6 +28,11 @@ import Klocki from './KlockiGry.js';
 
 let cfg = { katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: null, appStudio: null, pisz: null, model: () => 'qwen3.5:9b', assety3d: null };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
+/** 🥚 Zasady stylu Suwerena od JaJa Mistrza (`cfg.zasadyStylu`, z mostu) — pusty napis, gdy lekcji jeszcze nie było. */
+async function blokZasad() {
+    const z = cfg.zasadyStylu ? await Promise.resolve(cfg.zasadyStylu()).catch(() => []) : [];
+    return z?.length ? `\nZASADY STYLU SUWERENA (JaJo Mistrza, z jego prawdziwych poprawek):\n${z.slice(0, 12).map((x, i) => `${i + 1}. ${x}`).join('\n')}` : '';
+}
 
 export const SILNIKI = {
     three:   { etykieta: 'three.js — przeglądarka (Katedra buduje)', dostepny: true,  uwaga: 'Jedyny silnik, w którym Kodeks naprawdę buduje i testuje (puppeteer).' },
@@ -145,6 +150,18 @@ export function wylowJson(tekst) {
 
 const RAMKA_SILNIKA = `KATEDRA BUDUJE W three.js (TypeScript, przeglądarka, kamera podążająca, własna pętla z dt, kolizje z odległości, HUD w DOM, dane w JSON/TS, bez zewnętrznych assetów). Rozwiązania z Unity/Godot przepisuj na odpowiedniki: NavMesh → własny ruch/siatka; ScriptableObjects → tablice danych w TS; Cinemachine → kamera podążająca; Animator → prosta animacja skali/obrotu; Shader Graph → materiały MeshStandardMaterial; UI Toolkit → HUD w HTML.`;
 
+/**
+ * 🧭 Co Katedra JUŻ daje grom (Suweren 2026-10-09: „sprawdź, czy Reżyser wie o nowościach… o jaju Mistrza”).
+ * Bez tego Reżyser planował Kodeksowi budowanie od zera rzeczy, które stoją w moście — albo nie wiedział, że może
+ * z nich korzystać. Każda linia = prawdziwa trasa / moduł; Teterhia ma je już wpięte (src/mistrzGry.ts, kustosz.ts…).
+ */
+export const MOCE_KATEDRY_DLA_GIER = `CO KATEDRA JUŻ DAJE GROM (most 127.0.0.1:3001 — NIE planuj budowania tego od zera; planuj KORZYSTANIE):
+- 🎲 Mistrz Gry (JaJo Mistrza): POST /api/mistrz-gry/kwestia {sytuacja, czyn} → ton czynu gracza z pięciu (autentyczny/empatyczny/holistyczny/sztuczny/brutalny) + 1–3 zdania skutku; GET /api/mistrz-gry/event → event dnia z faktów Katedry (dzień dziedziny ×1,5 EXP, dzień tonu +3 barwy, turniej 3 starć, Złota Pauza ×1,2 mGRV) + turnieje Klubu; POST /api/mistrz-gry/turniej → wynik do kroniki. Skutki liczy gra, Mistrz tylko orzeka z zamkniętych list. W Teterhii wpięte: pole „własny czyn” w oknie questu, event przy starcie, turnieje w panelu armii.
+- 🏛️ Globalny Klub Mistrzów: turnieje globalne między Katedrami (ogłasza Suweren w Hubie), wyniki i ranking na otakos.wtf — gra tylko gra turniej i zgłasza wynik z kluczem eventu.
+- 🗝️ Kustosz: POST /api/tgs/quest → quest na żywo z lokalnego modelu (tytul, tresc, wybory z tonami). 🎭 Rozmowa w roli: POST /api/delegat/rozmowa {delegat, scena} (np. towarzysz-kot w Teterhii).
+- 🗿 Assety 3D: bryły GLB (TRELLIS.2), kolor, gęstszy fragment, świecące oko, ruch (Blender), dopracowanie w chmurze Meshy (za zgodą Suwerena) → „Do gry” kładzie GLB w public/assety + assety.json.
+- 🥚 JaJo Mistrza uczy się stylu Suwerena z jego poprawek — ZASADY STYLU (gdy są) masz niżej; trzymaj się ich w tekstach gry i w rozmowie.`;
+
 /** Surowa odpowiedź modelu, gdy JSON się nie złożył — do obejrzenia, zamiast zgadywania. */
 async function zapiszNieudane(projektId, etap, tekst) {
     try {
@@ -188,7 +205,7 @@ export async function plan(projektId, { model, odNowa = false } = {}) {
     if (g.kamienie?.length && !odNowa) return g;
     // Plan zna KLOCKI (Suweren 2026-10-07: „każą budować z lego, a klocków jeszcze nie ma").
     const kat = await katalogKlockow(projektId);
-    const system = `Jesteś Reżyserem Gry. Z GDD układasz PLAN PRODUKCJI dla programisty (Kodeks), który buduje w three.js i dostaje zadania PO KOLEI, każde na osobną rundę. ${RAMKA_SILNIKA}
+    const system = `Jesteś Reżyserem Gry. Z GDD układasz PLAN PRODUKCJI dla programisty (Kodeks), który buduje w three.js i dostaje zadania PO KOLEI, każde na osobną rundę. ${RAMKA_SILNIKA}\n${MOCE_KATEDRY_DLA_GIER}${await blokZasad()}
 ${ZASADA_KLOCKOW}
 Odpowiadasz WYŁĄCZNIE JSON-em, bez komentarzy: {"kamienie":[{"tytul":"…","opis":"…","zadania":[{"tresc":"jedno konkretne zlecenie","klocki":[{"rola":"…","klocek":"K3"},{"rola":"…","brak":"opis obrazu do Pracowni"}]}]}]}
 Kamieni DOKŁADNIE 5, w kolejności budowania (najpierw to, na czym stoi reszta: ruch gracza + kamera + świat; potem wrogowie/walka lub główna pętla; potem statystyki/przedmioty; potem HUD/menu; na końcu poziom/fabuła). Zadań DOKŁADNIE 2 na kamień, każde jako JEDNO zlecenie („dodaj…", „zrób…"), wykonalne w jednej rundzie i sprawdzalne po WSAD/spacji/kliknięciu (co ma pokazać HUD albo window.__gra).`;
@@ -290,6 +307,7 @@ export async function rozmowa(projektId, { wypowiedz, historia = [], model } = {
     // zmiany w PLANIE: podać kamień po id z nową listą zadań (Suweren 2026-09-22: „rozbij ostatni
     // kamień na mniejsze zadania"). Zadania gotowe zostają — front dopasowuje po treści.
     const system = `Jesteś Reżyserem Gry — rozmawiasz z Suwerenem o JEGO grze i pilnujesz GDD oraz planu produkcji (kamienie milowe → zadania dla programisty Kodeksa, lokalny model 9B, jedno zadanie = jedna runda ≤ 20 min, więc zadania mają być MAŁE i sprawdzalne). Mówisz po polsku, konkretnie, 2–6 zdań; zadajesz jedno pytanie naraz, gdy czegoś brakuje. ${RAMKA_SILNIKA}
+${MOCE_KATEDRY_DLA_GIER}${await blokZasad()}
 Gdy ustalicie coś, co powinno trafić do dokumentu albo planu, dopisz na końcu odpowiedzi blok (poprawny JSON, nic po nim):
 PROPOZYCJA_GDD: {"sekcje":{"mechanika":"pełna nowa treść sekcji"}, "tytul":"…", "kamienie":[{"id":"km-…","tytul":"…","opis":"…","zadania":["zadanie 1","zadanie 2"]}]}
 Zasady: tylko pola, które się zmieniają; treść sekcji w całości; w "kamienie" podajesz TYLKO kamienie, które zmieniasz, z ich id z planu i PEŁNĄ nową listą zadań tego kamienia — zadania oznaczone [gotowe] przepisz dosłownie, żeby nie zgubić ich stanu; nowy kamień — bez id. Limit planu: najwyżej 12 kamieni i 6 zadań w kamieniu (więcej się nie zapisze — rozbij na kolejny kamień). Bez propozycji, gdy nic nie ustalono.

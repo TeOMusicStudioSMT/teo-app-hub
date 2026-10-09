@@ -9,7 +9,7 @@ import { utworzJev, PROG_ZROBIONE as JEV_PROG } from './services/Jev.js';
 import { utworzJevLokalny } from './services/JevLokalny.js';
 import { utworzPartytury } from './services/Partytury.js';
 import { utworzStrazModeli } from './services/StrazModeli.js';
-import { utworzChmureBryl } from './services/ChmuraBryl.js';
+import { utworzChmureBryl, promptStylu, oczyscStyl } from './services/ChmuraBryl.js';
 import { utworzJajo } from './services/JajoMistrza.js';
 import { utworzMistrzaGry } from './services/MistrzGry.js';
 import { utworzKlub } from './services/KlubMistrzow.js';
@@ -8138,7 +8138,7 @@ app.get('/api/appstudio/zadania/:id/sondaz', (req, res) => {
 // 📜 GDD + REŻYSER GRY + PRODUKCJA Z PLANU (services/Gdd.js). GDD leży w projekcie gry
 // (_OtakOs_Apki/<id>/gdd.json); produkcja karmi pętlę Kodeksa zadanie po zadaniu.
 // ═════════════════════════════════════════════════════════════════════════════
-Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, model: () => TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('kodeks') || modelMechanika()), assety3d: Assety3D,
+Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, zasadyStylu: async () => ((await Jajo.stan()).zasady?.zasady ?? []).map((z) => z.zasada), model: () => TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('kodeks') || modelMechanika()), assety3d: Assety3D,
     // ☁️ chmura po chmurze: modele chmury z kluczem (Claude/Gemini) — zapas, gdy główny z chmury padnie
     modeleChmury: async () => (await AppStudio.silniki()).filter((m) => m.dostepny && /^(claude|gemini):/.test(m.model)).map((m) => m.model) });
 ModeleAgentow.wszystkie().catch(() => {});   // pamięć przydziału dla Studia Gier od startu
@@ -8272,6 +8272,24 @@ const ChmuraBryl = utworzChmureBryl({
 });
 app.get('/api/assety3d/chmura', (_req, res) => res.json({ success: true, ...ChmuraBryl.stan(), zadania: ChmuraBryl.lista() }));
 app.get('/api/assety3d/chmura/zadanie/:id', (req, res) => { const z = ChmuraBryl.zadanie(req.params.id); return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania (most mógł wystartować od nowa — wynik może czekać w panelu Meshy).' }); });
+/** POST /api/assety3d/chmura/:id/styl — 👁️ styl retekstury ze zdjęcia bryły (model widzący, lokalnie; OTAKOS_OCZY_MODEL). */
+app.post('/api/assety3d/chmura/:id/styl', async (req, res) => {
+    try {
+        const m = await Assety3D.meta(req.params.id);
+        if (!m) return res.status(404).json({ success: false, message: 'Nie ma takiego assetu.' });
+        const obraz = Assety3D.sciezkaPliku(req.params.id, 'obraz.png');
+        if (!obraz) return res.status(400).json({ success: false, message: 'Bryła nie ma obrazu źródłowego (obraz.png) — opisz styl ręcznie.' });
+        const swiatlo = [...(m.poprawki ?? [])].reverse().find((p) => p.rodzaj === 'swiatlo')?.kolor ?? null;
+        const model = process.env.OTAKOS_OCZY_MODEL || 'qwen3.5:9b';
+        const r = await fetch(`${OLLAMA_BASE}/api/chat`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(240_000),
+            body: JSON.stringify({ model, stream: false, think: false, options: { temperature: 0.3 }, messages: [{ role: 'user', content: promptStylu({ opis: String(m.opis ?? '').replace(/;?\s*jeden obiekt na spokojnym tle\s*$/i, ''), swiatlo }), images: [(await fs.readFile(obraz)).toString('base64')] }] }),
+        });
+        if (!r.ok) throw new Error(`Ollama (${model}) HTTP ${r.status}: ${(await r.text().catch(() => '')).slice(0, 160)}`);
+        const d = await r.json();
+        res.json({ success: true, styl: oczyscStyl(d.message?.content), model });
+    } catch (e) { res.status(500).json({ success: false, message: e.name === 'TimeoutError' ? 'Oczy Katedry nie zdążyły (4 min) — karta zajęta? Spróbuj później albo opisz ręcznie.' : e.message }); }
+});
 app.post('/api/assety3d/chmura/:id/wycena', (req, res) => ytOdp(res, ChmuraBryl.wycen(req.params.id, req.body?.zlecenie ?? {})));
 app.post('/api/assety3d/chmura/:id/zlec', (req, res) => ytOdp(res, ChmuraBryl.zlec(req.params.id, req.body?.zlecenie ?? {}, { zgodaKredyty: req.body?.zgodaKredyty }).then((zadanie) => ({ zadanie }))));
 app.get('/api/assety3d/:id/sylwetka', (req, res) => ytOdp(res, Assety3D.sylwetka(req.params.id).then((sylwetka) => ({ sylwetka }))));

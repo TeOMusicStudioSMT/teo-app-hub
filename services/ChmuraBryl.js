@@ -32,6 +32,27 @@ export function oczyscZlecenie(z = {}) {
     return { rodzaj, sciany, topologia: z.topologia === 'quad' ? 'quad' : 'triangle' };
 }
 
+/**
+ * 👁️ Styl retekstury ze zdjęcia bryły (Suweren 2026-10-09: „jeśli tylko wpiszę styl… może niech idzie auto ze zdjęcia”):
+ * model widzący (oczy Katedry) opisuje MATERIAŁY i BARWY obiektu z obrazu, z którego powstała bryła — po angielsku,
+ * jak przykłady promptów Meshy. Opis bryły i jej poprawki (świecące oko) idą jako wskazówka.
+ */
+export function promptStylu({ opis = '', swiatlo = null } = {}) {
+    return [
+        'This image shows a single object that was turned into a 3D model. Write a texture style prompt for re-texturing it (Meshy AI).',
+        'Describe ONLY surfaces: materials, colors, patterns, wear, sheen, emissive parts. No camera, background, pose or story.',
+        opis ? `Object description from its maker: ${String(opis).slice(0, 300)}` : null,
+        swiatlo ? `It has a glowing part (emissive) of color ${swiatlo}.` : null,
+        'Answer with ONE paragraph in English, at most 600 characters, nothing else.',
+    ].filter(Boolean).join('\n');
+}
+/** Odpowiedź modelu → styl (bez cudzysłowów, nagłówków, ≤ 800 znaków); za krótka = błąd wprost. */
+export function oczyscStyl(t) {
+    const s = String(t ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^\s*(style( prompt)?|prompt)\s*:\s*/i, '').replace(/^["'„”\s]+|["'„”\s]+$/g, '').replace(/\s+/g, ' ').trim();
+    if (s.length < 15) throw new Error(`Oczy Katedry nie opisały tekstur (odpowiedź: „${s.slice(0, 80)}”).`);
+    return s.slice(0, 800);
+}
+
 /** Wycena: kredyty z cennika i około USD. */
 export function wycena(z) {
     const kredyty = z.rodzaj === 'remesh' ? CENNIK_MESHY.remesh : CENNIK_MESHY.retekstura[z.rozdzielczosc];
@@ -126,4 +147,4 @@ export function utworzChmureBryl({ klucz, plikBryly, zapiszWersje, szyna = null,
     return { saldo, wycen, zlec, zadanie: (id) => zadania.get(id) ?? null, lista: () => [...zadania.values()], stan: () => ({ maKlucz: !!klucz(), cennik: CENNIK_MESHY, usdZaKredyt: USD_ZA_KREDYT }) };
 }
 
-export default { utworzChmureBryl, oczyscZlecenie, wycena, cialoMeshy, CENNIK_MESHY, USD_ZA_KREDYT };
+export default { utworzChmureBryl, oczyscZlecenie, wycena, cialoMeshy, promptStylu, oczyscStyl, CENNIK_MESHY, USD_ZA_KREDYT };

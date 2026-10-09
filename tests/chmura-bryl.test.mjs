@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { utworzChmureBryl, oczyscZlecenie, wycena, cialoMeshy, CENNIK_MESHY } from '../services/ChmuraBryl.js';
+import { utworzChmureBryl, oczyscZlecenie, wycena, cialoMeshy, promptStylu, oczyscStyl, CENNIK_MESHY } from '../services/ChmuraBryl.js';
 import * as Assety3D from '../services/Assety3D.js';
 import { zapiszGlb } from '../services/Siatka3D.js';
 
@@ -95,4 +95,14 @@ test('wersja z chmury: GLB bez przeróbek (tekstury), obok starej; lokalne popra
     await fs.access(path.join(kat, n.id, 'obraz.png'));
     await assert.rejects(Assety3D.przekolorujBryle(n.id, { czern: 0.3 }), /wersja z chmury \(Meshy\) — ma tekstury/);
     await assert.rejects(Assety3D.uprosc(n.id, 2000), /wersja z chmury/);
+});
+
+test('👁️ styl ze zdjęcia: prompt z opisem i świecącą częścią, odpowiedź oczyszczona, za krótka = błąd wprost', () => {
+    const p = promptStylu({ opis: 'TeOgochi — stworek-duszek', swiatlo: '#ffb289' });
+    assert.match(p, /Object description from its maker: TeOgochi/);
+    assert.match(p, /glowing part \(emissive\) of color #ffb289/);
+    assert.doesNotMatch(promptStylu(), /description|glowing/);
+    assert.equal(oczyscStyl('<think>hmm</think>Style prompt: "Glossy black fur, opal sheen."'), 'Glossy black fur, opal sheen.');
+    assert.equal(oczyscStyl('x'.repeat(900)).length, 800);
+    assert.throws(() => oczyscStyl('ok'), /nie opisały tekstur/);
 });
