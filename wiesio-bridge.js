@@ -14,6 +14,7 @@ import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
 import { utworzFilmyGry } from './services/FilmyGry.js';
+import { utworzBohaterow } from './services/Bohaterowie.js';
 import { utworzJajo } from './services/JajoMistrza.js';
 import { utworzMistrzaGry } from './services/MistrzGry.js';
 import { utworzKlub } from './services/KlubMistrzow.js';
@@ -8212,6 +8213,19 @@ const FilmyGry = utworzFilmyGry({
     pisz: async ({ system, prompt }) => (await AppStudio.pisz({ system, prompt, model: TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('rezyser') || modelMechanika()), timeoutMs: 5 * 60_000 })).tekst,
     szyna: Szyna,
 });
+// 🧝 Bohaterowie startowi (services/Bohaterowie.js) — karta → obraz (FLUX, postać do riga) → bryła (TRELLIS) →
+// [Meshy tekstury + rig w Assetach 3D, za zgodą] → do gry (public/assety/bohaterowie.json → wybór w Bramie).
+const Bohaterowie = utworzBohaterow({
+    katalog: path.join(ANTIGRAVITY_DIR, 'bohaterowie'), katalogApek: APKI_DIR, szyna: Szyna,
+    assety: { obraz: (o) => Assety3D.obraz(o), generuj: (o) => Assety3D.generuj(o), doGry: (id, p, o) => Assety3D.doGry(id, p, o), lista: () => Assety3D.lista(), metaObrazu: (id) => Assety3D.metaObrazu(id) },
+});
+app.get('/api/bohaterowie/:projekt', (req, res) => ytOdp(res, Bohaterowie.lista(req.params.projekt).then((bohaterowie) => ({ bohaterowie }))));
+app.post('/api/bohaterowie/:projekt', (req, res) => ytOdp(res, Bohaterowie.zapisz(req.params.projekt, req.body ?? {}).then((bohater) => ({ bohater }))));
+app.delete('/api/bohaterowie/:projekt/:id', (req, res) => ytOdp(res, Bohaterowie.usun(req.params.projekt, req.params.id).then(() => ({}))));
+app.post('/api/bohaterowie/:projekt/:id/obraz', (req, res) => ytOdp(res, Bohaterowie.narysuj(req.params.projekt, req.params.id)));
+app.post('/api/bohaterowie/:projekt/:id/bryla', (req, res) => ytOdp(res, Bohaterowie.wyrzezb(req.params.projekt, req.params.id)));
+app.post('/api/bohaterowie/:projekt/:id/do-gry', (req, res) => ytOdp(res, Bohaterowie.doGry(req.params.projekt, req.params.id)));
+app.delete('/api/bohaterowie/:projekt/:id/do-gry', (req, res) => ytOdp(res, Bohaterowie.zGry(req.params.projekt, req.params.id).then((bohaterowie) => ({ bohaterowie }))));
 app.post('/api/gdd/:id/film/:film/zlec', (req, res) => ytOdp(res, FilmyGry.zlec(req.params.id, req.params.film).then((film) => ({ film }))));
 app.post('/api/gdd/:id/realizuj', async (req, res) => {
     try { res.json({ success: true, ...(await Gdd.realizuj(req.params.id, { model: req.body?.model, zapasowe: req.body?.zapasowe, tylkoKamien: req.body?.kamien || null, chmuraPoChmurze: req.body?.chmuraPoChmurze !== false })), sondaz: `/api/gdd/${encodeURIComponent(req.params.id)}/sondaz` }); }

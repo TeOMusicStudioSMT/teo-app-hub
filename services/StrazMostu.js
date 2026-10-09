@@ -78,6 +78,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/mistrz-gry',   // 🎲 Mistrz Gry Teterhii: orzeczenia na Jev/modelu (koszt) i kronika — gra z mostu Katedry (gość zdalny = etap MRPG)
     '/api/mistrz',   // 🥚 JaJo Mistrza: dziennik poprawek Suwerena i lekcje na jego modelu — tylko przy Katedrze
     '/api/modele/zadania',   // 🎯 wybór modeli zadań technicznych — decyzja przy Katedrze
+    '/api/bohaterowie',   // 🧝 bohaterowie gry: FLUX/TRELLIS na karcie i zapis do plików gry — tylko przy Katedrze
     '/api/merch',   // 🖨️ Pracownia merchu: kredyty Meshy, pliki brył wychodzą z Katedry — tylko przy maszynie
     '/api/assety3d/chmura',   // ☁️ Meshy = rachunek za kredyty i bryła wychodzi z Katedry — tylko przy maszynie
     '/api/aktorzy', '/api/wywiady',   // 🎭 obsada wskazuje zdjęcia z dysku, nagranie liczy ffmpeg na maszynie — tylko przy Katedrze
