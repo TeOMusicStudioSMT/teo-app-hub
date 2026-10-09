@@ -108,7 +108,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
  * Adres tunelu trafia wtedy do rejestru, więc wszystko poza tą listą dalej żąda klucza sesji.
  * Trasy same oddają 404, gdy Katedra nie ma nicka (wizytówka wyłączona).
  */
-export const SCIEZKI_WIZYTOWKI = { dokladne: new Set(['/api/wizytowka', '/wizytowka/postac.glb']), prefiksy: ['/wizytowka/plik/', '/wizytowka/plakat/'] };
+export const SCIEZKI_WIZYTOWKI = { dokladne: new Set(['/api/wizytowka', '/wizytowka/postac.glb']), prefiksy: ['/wizytowka/plik/', '/wizytowka/plakat/', '/wizytowka/postac-'] };
 export function czyWizytowka(req) {
     // 💬 Skrzynka TOST (services/TostSiec.js): inne Katedry wrzucają tu koperty — szyfrowane, podpisane,
     // nadawca sprawdzany w rejestrze otakos.wtf. Tylko POST tej jednej ścieżki.

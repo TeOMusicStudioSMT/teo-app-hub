@@ -31,7 +31,23 @@ export const WZORCOWI_TETERHII = [
 ];
 
 const ID = /^[a-z0-9-]{2,40}$/;
+const ID_ZASOBU = /^[a-z0-9-]{2,80}$/;
 const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/Ł/g, 'L').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'bohater';
+
+/**
+ * Wszystkie wersje bryły bohatera: z jego obrazu Pracowni (`zObrazu`) albo potomkowie podpiętej bryły-korzenia
+ * (łańcuch `ulepsza` — retekstura, rig, kolor…). Korzeń z obrazu Pracowni wciąga też wersje z tego obrazu.
+ */
+export function rodzinaWersji(karta, lista) {
+    const korzen = karta.korzen ? lista.find((m) => m.id === karta.korzen) : null;
+    const obrazy = new Set([karta.obraz, korzen?.zObrazu].filter(Boolean));
+    const wRodzinie = new Set(karta.korzen ? [karta.korzen] : []);
+    for (let zmiana = true; zmiana;) {
+        zmiana = false;
+        for (const m of lista) if (!wRodzinie.has(m.id) && m.ulepsza && wRodzinie.has(m.ulepsza)) { wRodzinie.add(m.id); zmiana = true; }
+    }
+    return lista.filter((m) => wRodzinie.has(m.id) || obrazy.has(m.zObrazu));
+}
 
 /** Karta bohatera z wejścia — pola z list Teterhii, wygląd ≥ 10 znaków. */
 export function oczyscBohatera(b, stary = null) {
@@ -46,7 +62,9 @@ export function oczyscBohatera(b, stary = null) {
         plec: z('plec', Object.keys(PLCI), 'inna'),
         zywiol: z('zywiol', ZYWIOLY, 'eter'),
         droga: z('droga', DROGI, 'wedrowiec'),
-        obraz: stary?.obraz ?? null,
+        // 🔗 gotowy obraz Pracowni / gotowa bryła z Assetów 3D (zamiast rysowania od zera); null = odepnij
+        obraz: b?.obraz !== undefined ? (ID_ZASOBU.test(String(b.obraz ?? '')) ? b.obraz : null) : stary?.obraz ?? null,
+        korzen: b?.korzen !== undefined ? (ID_ZASOBU.test(String(b.korzen ?? '')) ? b.korzen : null) : stary?.korzen ?? null,
         wGrze: stary?.wGrze ?? null,
     };
 }
@@ -114,7 +132,7 @@ export function utworzBohaterow({ katalog, katalogApek, assety, szyna = null }) 
         const out = [];
         for (const b of bohaterowie) {
             const obraz = b.obraz ? await assety.metaObrazu(b.obraz).catch(() => null) : null;
-            out.push({ ...b, ...etapBohatera(b, obraz, b.obraz ? wszystkie.filter((m) => m.zObrazu === b.obraz) : []) });
+            out.push({ ...b, ...etapBohatera(b, obraz, rodzinaWersji(b, wszystkie)) });
         }
         return out;
     }
@@ -126,10 +144,15 @@ export function utworzBohaterow({ katalog, katalogApek, assety, szyna = null }) 
     };
 
     /** Nowy bohater albo zmiana karty (zmiana wyglądu = obraz od nowa, stary zostaje w Pracowni). */
-    const zapisz = (projekt, dane) => { sprawdzProjekt(projekt); return zmien(projekt, (lista) => {
+    /** Podpięty obraz/bryła musi istnieć (obraz gotowy w Pracowni, bryła w Assetach 3D). */
+    async function sprawdzPodpiete(dane) {
+        if (dane?.obraz) { const o = await assety.metaObrazu(dane.obraz).catch(() => null); if (!o) throw new Error('Nie ma takiego obrazu w Pracowni.'); }
+        if (dane?.korzen && !(await assety.lista()).some((m) => m.id === dane.korzen)) throw new Error('Nie ma takiej bryły w Assetach 3D.');
+    }
+    const zapisz = async (projekt, dane) => { sprawdzProjekt(projekt); await sprawdzPodpiete(dane); return zmien(projekt, (lista) => {
         const stary = dane?.id ? lista.find((x) => x.id === dane.id) : null;
         const b = oczyscBohatera(dane, stary);
-        if (stary && stary.opis !== b.opis) b.obraz = null;
+        if (stary && stary.opis !== b.opis && dane?.obraz === undefined) b.obraz = null;
         if (!stary) { while (lista.some((x) => x.id === b.id)) b.id = `${b.id.slice(0, 34)}-${crypto.randomBytes(2).toString('hex')}`; lista.push(b); }
         else lista[lista.indexOf(stary)] = b;
         return b;
@@ -149,7 +172,7 @@ export function utworzBohaterow({ katalog, katalogApek, assety, szyna = null }) 
     async function wyrzezb(projekt, id) {
         sprawdzProjekt(projekt);
         const b = znajdz(await wczytaj(projekt), id);
-        if (!b.obraz) throw new Error('Najpierw obraz bohatera (🖼️ Narysuj).');
+        if (!b.obraz) throw new Error('Najpierw obraz bohatera (🖼️ Narysuj albo podepnij obraz z Pracowni).');
         const o = await assety.metaObrazu(b.obraz);
         if (o?.stan !== 'gotowe') throw new Error(o?.stan === 'trwa' ? 'Obraz jeszcze się rysuje.' : 'Obraz bohatera się nie udał — narysuj od nowa.');
         return assety.generuj({ zObrazu: b.obraz, projekt, nazwa: `bohater-${b.id}`, opis: `${b.imie} — ${b.opis}`, sciany: 20000, rozdzielczosc: 1024 });
@@ -157,16 +180,16 @@ export function utworzBohaterow({ katalog, katalogApek, assety, szyna = null }) 
 
     /** Katalog gry: public/assety (źródło) + dist/assety, gdy gra jest zbudowana (most serwuje /apki/<id>/ z dist). */
     async function zapiszKatalogGry(projekt, lista) {
-        const wpisy = lista.filter((b) => b.wGrze).map((b) => ({ id: b.id, imie: b.imie, plec: b.plec, zywiol: b.zywiol, droga: b.droga, opis: b.opis, plik: b.wGrze.plik, ruch: b.wGrze.ruch ?? null }));
+        const wpisy = lista.filter((b) => b.wGrze).map((b) => ({ id: b.id, imie: b.imie, plec: b.plec, zywiol: b.zywiol, droga: b.droga, opis: b.opis, plik: b.wGrze.plik, ruch: b.wGrze.ruch ?? null, ...(b.wGrze.ruchy ? { ruchy: b.wGrze.ruchy } : {}) }));
         const katalogi = [path.join(katalogApek, projekt, 'public', 'assety')];
         if (fsSync.existsSync(path.join(katalogApek, projekt, 'dist'))) katalogi.push(path.join(katalogApek, projekt, 'dist', 'assety'));
         for (const k of katalogi) {
             await fs.mkdir(k, { recursive: true });
             await fs.writeFile(path.join(k, 'bohaterowie.json'), JSON.stringify({ bohaterowie: wpisy, zmieniono: new Date().toISOString() }, null, 2), 'utf8');
         }
-        if (katalogi.length > 1) for (const b of wpisy) {
-            const z = path.join(katalogi[0], b.plik);
-            if (fsSync.existsSync(z)) await fs.copyFile(z, path.join(katalogi[1], b.plik));
+        if (katalogi.length > 1) for (const b of wpisy) for (const f of [b.plik, ...Object.values(b.ruchy ?? {})]) {
+            const z = path.join(katalogi[0], f);
+            if (fsSync.existsSync(z)) await fs.copyFile(z, path.join(katalogi[1], f));
         }
         return wpisy;
     }
@@ -178,7 +201,12 @@ export function utworzBohaterow({ katalog, katalogApek, assety, szyna = null }) 
         if (!b.najlepsza) throw new Error('Bohater nie ma jeszcze bryły.');
         const ruch = b.najlepsza.ruchy.includes('chod') ? 'chod' : null;
         const r = await assety.doGry(b.najlepsza.id, projekt, { ruch });
-        const wGrze = { plik: r.plik.replace(/^assety\//, ''), zrodlo: b.najlepsza.id, ruch, kiedy: new Date().toISOString() };
+        // 🕹️ pozostałe ruchy riga (bieg, akcje…) też do gry — gra dokłada ich klipy do ciała (src/ruchyPostaci.ts)
+        const ruchy = {};
+        for (const x of b.najlepsza.ruchy.filter((y) => y !== ruch)) {
+            try { ruchy[x] = (await assety.doGry(b.najlepsza.id, projekt, { ruch: x })).plik.replace(/^assety\//, ''); } catch { /* ruch bez pliku — pomijamy */ }
+        }
+        const wGrze = { plik: r.plik.replace(/^assety\//, ''), zrodlo: b.najlepsza.id, ruch, ...(Object.keys(ruchy).length ? { ruchy } : {}), kiedy: new Date().toISOString() };
         const wpisy = await zmien(projekt, async (l) => { znajdz(l, id).wGrze = wGrze; return zapiszKatalogGry(projekt, l); });
         void szyna?.nadaj?.({ agent: 'Reżyser', rodzaj: 'praca', tresc: `🧝 ${b.imie} w grze „${projekt}”${ruch ? ' (z chodem)' : ''} — wybór w Bramie` })?.catch?.(() => {});
         return { wGrze, bohaterowie: wpisy };
@@ -189,4 +217,4 @@ export function utworzBohaterow({ katalog, katalogApek, assety, szyna = null }) 
     return { lista, zapisz, usun, narysuj, wyrzezb, doGry, zGry };
 }
 
-export default { utworzBohaterow, etapBohatera, oczyscBohatera, opisDoObrazu, WZORCOWI_TETERHII };
+export default { utworzBohaterow, rodzinaWersji, etapBohatera, oczyscBohatera, opisDoObrazu, WZORCOWI_TETERHII };

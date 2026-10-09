@@ -14,19 +14,13 @@
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
-import { etapBohatera, oczyscBohatera, opisDoObrazu } from './Bohaterowie.js';
+import { etapBohatera, oczyscBohatera, opisDoObrazu, rodzinaWersji } from './Bohaterowie.js';
 
 const MAX_ZDJECIA = 15 * 1024 * 1024;
+const RUCH = /^[a-z][a-z0-9]{1,19}$/;
 
-/** Wszystkie wersje postaci: z obrazu Pracowni (zObrazu) albo potomkowie bryły-korzenia ze zdjęcia (łańcuch `ulepsza`). */
-export function rodzinaPostaci(karta, lista) {
-    const wRodzinie = new Set(karta.korzen ? [karta.korzen] : []);
-    for (let zmiana = true; zmiana;) {
-        zmiana = false;
-        for (const m of lista) if (!wRodzinie.has(m.id) && m.ulepsza && wRodzinie.has(m.ulepsza)) { wRodzinie.add(m.id); zmiana = true; }
-    }
-    return lista.filter((m) => wRodzinie.has(m.id) || (karta.obraz && m.zObrazu === karta.obraz));
-}
+/** Wszystkie wersje postaci: z obrazu Pracowni (zObrazu) albo potomkowie bryły-korzenia (zdjęcie / podpięta bryła). */
+export const rodzinaPostaci = rodzinaWersji;
 
 /**
  * @param {{ katalog: string, assety: { obraz: Function, generuj: Function, lista: Function, metaObrazu: Function, sciezkaPliku: Function },
@@ -58,8 +52,11 @@ export function utworzPostacKatedry({ katalog, assety, imieSuwerena = async () =
     async function zapisz(dane) {
         const stara = await karta();
         const imie = String(dane?.imie ?? '').trim() || stara?.imie || (await imieSuwerena().catch(() => null)) || '';
-        const k = { ...stara, ...oczyscBohatera({ ...dane, imie, id: 'katedra' }, stara ? { ...stara, id: 'katedra' } : null), korzen: stara?.korzen ?? null, opublikowana: stara?.opublikowana ?? null };
-        if (stara && stara.opis !== k.opis) k.obraz = null;
+        // 🔗 podpięty gotowy obraz z Pracowni / gotowa bryła z Assetów 3D — muszą istnieć
+        if (dane?.obraz && !(await assety.metaObrazu(dane.obraz).catch(() => null))) throw new Error('Nie ma takiego obrazu w Pracowni.');
+        if (dane?.korzen && !(await assety.lista()).some((m) => m.id === dane.korzen)) throw new Error('Nie ma takiej bryły w Assetach 3D.');
+        const k = { ...stara, ...oczyscBohatera({ ...dane, imie, id: 'katedra' }, stara ? { ...stara, id: 'katedra' } : null), opublikowana: stara?.opublikowana ?? null };
+        if (stara && stara.opis !== k.opis && dane?.obraz === undefined) k.obraz = null;
         delete k.wGrze;
         return zapiszKarte(k);
     }
@@ -109,7 +106,14 @@ export function utworzPostacKatedry({ katalog, assety, imieSuwerena = async () =
         if (!zrodlo) throw new Error('Bryła nie ma jeszcze pliku modelu.');
         await fs.mkdir(katalog, { recursive: true });
         await fs.copyFile(zrodlo, plikGlb);
-        const opublikowana = { zrodlo: s.najlepsza.id, ruch, bajtow: (await fs.stat(plikGlb)).size, kiedy: new Date().toISOString() };
+        // 🕹️ pozostałe ruchy riga (bieg, akcje…) jako postac-<ruch>.glb — gra dokłada ich klipy do ciała (src/ruchyPostaci.ts)
+        for (const p of await fs.readdir(katalog)) if (/^postac-[a-z0-9]+\.glb$/.test(p)) await fs.rm(path.join(katalog, p), { force: true });
+        const ruchy = [];
+        for (const r of s.najlepsza.ruchy.filter((x) => x !== ruch && RUCH.test(x))) {
+            const z = assety.sciezkaPliku(s.najlepsza.id, `ruch-${r}.glb`);
+            if (z) { await fs.copyFile(z, path.join(katalog, `postac-${r}.glb`)); ruchy.push(r); }
+        }
+        const opublikowana = { zrodlo: s.najlepsza.id, ruch, ruchy, bajtow: (await fs.stat(plikGlb)).size, kiedy: new Date().toISOString() };
         await zapiszKarte({ ...s.karta, opublikowana });
         void szyna?.nadaj?.({ agent: 'Katedra', rodzaj: 'praca', tresc: `🏛️ postać Katedry „${s.karta.imie}” opublikowana${ruch ? ' (z chodem)' : ''} — zejdzie z nią na każdą wyspę Teterhii` })?.catch?.(() => {});
         return opublikowana;
@@ -117,6 +121,7 @@ export function utworzPostacKatedry({ katalog, assety, imieSuwerena = async () =
     async function wycofaj() {
         const k = await potrzebnaKarta();
         await fs.rm(plikGlb, { force: true });
+        for (const p of await fs.readdir(katalog).catch(() => [])) if (/^postac-[a-z0-9]+\.glb$/.test(p)) await fs.rm(path.join(katalog, p), { force: true });
         return zapiszKarte({ ...k, opublikowana: null });
     }
 
@@ -125,9 +130,15 @@ export function utworzPostacKatedry({ katalog, assety, imieSuwerena = async () =
         const k = await karta();
         if (!k?.opublikowana || !fsSync.existsSync(plikGlb)) return null;
         const v = Date.parse(k.opublikowana.kiedy) || 0;
-        return { imie: k.imie, plec: k.plec, zywiol: k.zywiol, droga: k.droga, opis: k.opis, ruch: k.opublikowana.ruch ?? null, glb: `/wizytowka/postac.glb?v=${v}${k.opublikowana.ruch ? `&ruch=${k.opublikowana.ruch}` : ''}` };
+        const ruchy = Object.fromEntries((k.opublikowana.ruchy ?? []).filter((r) => fsSync.existsSync(path.join(katalog, `postac-${r}.glb`))).map((r) => [r, `/wizytowka/postac-${r}.glb?v=${v}`]));
+        return { imie: k.imie, plec: k.plec, zywiol: k.zywiol, droga: k.droga, opis: k.opis, ruch: k.opublikowana.ruch ?? null, glb: `/wizytowka/postac.glb?v=${v}${k.opublikowana.ruch ? `&ruch=${k.opublikowana.ruch}` : ''}`, ...(Object.keys(ruchy).length ? { ruchy } : {}) };
     }
-    const plik = () => (fsSync.existsSync(plikGlb) ? plikGlb : null);
+    /** Plik opublikowanej postaci (bez nazwy) albo jej ruchu (`bieg`, `akcje`…) — tylko z katalogu postaci. */
+    const plik = (ruch = null) => {
+        if (ruch !== null && !RUCH.test(String(ruch))) return null;
+        const p = ruch ? path.join(katalog, `postac-${ruch}.glb`) : plikGlb;
+        return fsSync.existsSync(p) ? p : null;
+    };
 
     return { stan, zapisz, narysuj, wyrzezb, zeZdjecia, opublikuj, wycofaj, publiczna, plik };
 }

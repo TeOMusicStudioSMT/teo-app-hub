@@ -8252,8 +8252,8 @@ app.post('/api/postac-katedry/zdjecie', (req, res) => ytOdp(res, PostacKatedry.z
 app.post('/api/postac-katedry/opublikuj', (_req, res) => ytOdp(res, PostacKatedry.opublikuj().then((opublikowana) => ({ opublikowana }))));
 app.delete('/api/postac-katedry/opublikuj', (_req, res) => ytOdp(res, PostacKatedry.wycofaj().then((karta) => ({ karta }))));
 // publicznie (Straż: czyWizytowka) — tylko opublikowany plik postaci, tylko odczyt
-app.get('/wizytowka/postac.glb', cors({ origin: '*' }), (_req, res) => {
-    const p = PostacKatedry.plik();
+app.get(/^\/wizytowka\/postac(?:-([a-z][a-z0-9]{1,19}))?\.glb$/, cors({ origin: '*' }), (req, res) => {
+    const p = PostacKatedry.plik(req.params[0] ?? null);
     if (!p) return res.status(404).json({ success: false, message: 'Ta Katedra nie opublikowała postaci.' });
     res.type('model/gltf-binary'); res.set('Cache-Control', 'no-cache'); return res.sendFile(p);
 });
@@ -8338,6 +8338,7 @@ const ChmuraBryl = utworzChmureBryl({
     // Image-to-3D: obraz, z którego powstała bryła; rig: meta (tekstury? id zadania Meshy); ruchy rigu → ruch-<id>.glb
     obrazBryly: async (id) => { const p = Assety3D.sciezkaPliku(id, 'obraz.png'); if (!p) throw new Error('Bryła nie ma obrazu źródłowego (obraz.png).'); return fs.readFile(p); },
     metaBryly: (id) => Assety3D.meta(id),
+    scianyBryly: (id) => Assety3D.scianyMastera(id),
     zapiszRuch: (id, ruch, glb, wpis) => Assety3D.ruchZChmury(id, ruch, glb, wpis),
     szyna: Szyna,
 });

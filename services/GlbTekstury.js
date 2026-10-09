@@ -148,4 +148,16 @@ export async function przekolorujTekstury(glb, przelicz, { ffmpeg, uruchom }) {
     return { glb: zlozGlb(p.json, p.bin), obrazow: nowe.size };
 }
 
-export default { zmniejszTekstury, przekolorujTekstury, obrazyBarwy, rozbierzGlb, zlozGlb, wymiaryObrazu, podmienWidoki };
+/** Liczba trójkątów w GLB z akcesorów (indeksy/3 albo pozycje/3; tylko tryb TRIANGLES) — bez dekodowania geometrii. */
+export function scianyGlb(glb) {
+    const { json } = rozbierzGlb(glb);
+    let n = 0;
+    for (const m of json.meshes ?? []) for (const p of m.primitives ?? []) {
+        if ((p.mode ?? 4) !== 4) continue;
+        const acc = json.accessors?.[Number.isInteger(p.indices) ? p.indices : p.attributes?.POSITION];
+        if (acc) n += Math.floor(acc.count / 3);
+    }
+    return n;
+}
+
+export default { zmniejszTekstury, scianyGlb, przekolorujTekstury, obrazyBarwy, rozbierzGlb, zlozGlb, wymiaryObrazu, podmienWidoki };

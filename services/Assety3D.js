@@ -26,7 +26,7 @@ import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import ffmpegPath from 'ffmpeg-static';
-import { zmniejszTekstury, przekolorujTekstury } from './GlbTekstury.js';
+import { zmniejszTekstury, przekolorujTekstury, scianyGlb } from './GlbTekstury.js';
 import * as Siatka3D from './Siatka3D.js';
 
 const uruchomProces = promisify(execFile);
@@ -466,10 +466,27 @@ export async function plikDoChmury(id) {
 }
 
 /** Nowa wersja z GLB z chmury — obok starej (`ulepsza`), z wpisem o usłudze, zleceniu i kredytach. */
+/** Liczba ścian bryły w pełnej rozdzielczości (master.glb, inaczej model.glb) — rig Meshy ma limit. */
+export async function scianyMastera(id) {
+    const m = await meta(id);
+    if (!m) return null;
+    const p = [path.join(dirAssetu(id), 'master.glb'), path.join(dirAssetu(id), 'model.glb')].find((x) => fsSync.existsSync(x));
+    return p ? scianyGlb(await fs.readFile(p)) : null;
+}
+
+/** 🎨 Poprawki koloru tekstur Suwerena (kolejno) na GLB z chmury — rig/remesh/akcje biorą od Meshy jego ORYGINALNE tekstury. */
+async function kolorySuwerena(glb, poprawki) {
+    const kolory = (poprawki ?? []).filter((p) => p.rodzaj === 'kolor' && p.tekstury);
+    for (const k of kolory) glb = (await przekolorujTekstury(glb, (px) => Siatka3D.przekolorujPiksele(px, k), { ffmpeg: ffmpegPath, uruchom: (c, a) => uruchomProces(c, a, { maxBuffer: 1 << 26 }) })).glb;
+    return glb;
+}
+
 export async function wersjaZChmury(id, glb, wpis) {
     const m = await meta(id);
     if (!m) throw new Error('Nie ma takiego assetu.');
     if (!Buffer.isBuffer(glb) || glb.length < 12 || glb.toString('ascii', 0, 4) !== 'glTF') throw new Error('Chmura oddała plik, który nie jest GLB.');
+    // rig i remesh nie zmieniają wyglądu — kolor, który Suweren nadał teksturom, idzie na nową wersję (retekstura i Image-to-3D = nowe tekstury)
+    if (['rig', 'remesh'].includes(wpis?.rodzaj)) glb = await kolorySuwerena(glb, m.poprawki);
     let nowy = `${m.nazwa}-${crypto.randomBytes(2).toString('hex')}`;
     while (fsSync.existsSync(dirAssetu(nowy))) nowy = `${m.nazwa}-${crypto.randomBytes(2).toString('hex')}`;
     const dir = dirAssetu(nowy);
@@ -511,6 +528,7 @@ export async function ruchZChmury(id, ruch, glb, wpis = {}) {
     const m = await meta(id);
     if (!m) throw new Error('Nie ma takiego assetu.');
     if (!Buffer.isBuffer(glb) || glb.toString('ascii', 0, 4) !== 'glTF') throw new Error(`Ruch „${ruch}” z chmury nie jest GLB.`);
+    if (wpis?.zrodlo === 'meshy') glb = await kolorySuwerena(glb, m.poprawki);
     const r = await przyciete(glb);
     const plik = `ruch-${ruch}.glb`;
     await fs.writeFile(path.join(dirAssetu(id), plik), r.glb);

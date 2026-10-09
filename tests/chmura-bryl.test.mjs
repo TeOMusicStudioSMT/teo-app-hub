@@ -198,3 +198,34 @@ test('🎛️ akcje: auto-zestaw z biblioteki; kolejna paczka na TYM SAMYM rigu 
     assert.equal(C.zadanie(zad.id).stan, 'gotowe', C.zadanie(zad.id).blad);
     assert.deepEqual(ruchy, [['kot-rig', 'akcje2']]);
 });
+
+test('🔺 rig bryły > 300 000 ścian: wycena z Remeshem, zlecenie Remesh → rig na jego wyniku (input_task_id)', async () => {
+    const wolania = [];
+    let odczytR = 0, odczytRig = 0;
+    const f = async (url, o = {}) => {
+        wolania.push({ url, metoda: o.method ?? 'GET', cialo: o.body ? JSON.parse(o.body) : null });
+        if (url.endsWith('/balance')) return { ok: true, json: async () => ({ balance: 100 }) };
+        if (url.endsWith('/remesh') && o.method === 'POST') return { ok: true, json: async () => ({ result: 'rm-1' }) };
+        if (url.endsWith('/rigging') && o.method === 'POST') return { ok: true, json: async () => ({ result: 'rig-9' }) };
+        if (url.includes('/remesh/rm-1')) return { ok: true, json: async () => (odczytR++ ? { status: 'SUCCEEDED', consumed_credits: 5, model_urls: { glb: 'https://cdn/rm.glb' } } : { status: 'IN_PROGRESS' }) };
+        if (url.includes('/rigging/rig-9')) return { ok: true, json: async () => (odczytRig++ ? { status: 'SUCCEEDED', consumed_credits: 5, result: { rigged_character_glb_url: 'https://cdn/rig.glb', basic_animations: { walking_glb_url: 'https://cdn/walk.glb' } } } : { status: 'IN_PROGRESS' }) };
+        if (url.startsWith('https://cdn/')) return { ok: true, arrayBuffer: async () => GLB.buffer.slice(GLB.byteOffset, GLB.byteOffset + GLB.length) };
+        throw new Error(`nieoczekiwany adres ${url}`);
+    };
+    const C = utworzChmureBryl({ klucz: () => 'msy_test', fetch: f, coMs: 1, plikBryly: async () => ({ bajty: GLB }), metaBryly: async () => ({ tekstury: true, chmura: { rodzaj: 'obraz3d', zadanie: 'i3d-1' } }), scianyBryly: async () => 963_244,
+        zapiszWersje: async (id) => ({ id: `${id}-rig` }), zapiszRuch: async () => {} });
+    const w = await C.wycen('kot', { rodzaj: 'rig' });
+    assert.deepEqual([w.kredyty, w.zlecenie.przedRigiem], [10, { z: 963_244, na: 100_000 }], 'rig 5 + remesh 5');
+    await assert.rejects(C.zlec('kot', { rodzaj: 'rig' }, { zgodaKredyty: 5 }), /z Remeshem 963/);
+    const zad = await C.zlec('kot', { rodzaj: 'rig', scianyRig: 60000 }, { zgodaKredyty: 10 });
+    assert.deepEqual(wolania.find((x) => x.metoda === 'POST').cialo, { input_task_id: 'i3d-1', target_polycount: 60000, topology: 'triangle', target_formats: ['glb'] });
+    for (let i = 0; i < 300 && !['gotowe', 'blad'].includes(C.zadanie(zad.id).stan); i++) await new Promise((r) => setTimeout(r, 5));
+    const k = C.zadanie(zad.id);
+    assert.equal(k.stan, 'gotowe', k.blad);
+    assert.deepEqual(wolania.filter((x) => x.metoda === 'POST').map((x) => x.url.split('/').pop()), ['remesh', 'rigging']);
+    assert.deepEqual(wolania.find((x) => x.url.endsWith('/rigging')).cialo, { input_task_id: 'rm-1', height_meters: 1.7 });
+    assert.deepEqual([k.asset, k.kredyty, k.ruchy], ['kot-rig', 10, ['chod']]);
+    // mała bryła — bez Remeshu
+    const C2 = utworzChmureBryl({ klucz: () => 'msy_test', fetch: f, plikBryly: async () => ({ bajty: GLB }), metaBryly: async () => ({ tekstury: true, chmura: { rodzaj: 'obraz3d', zadanie: 'x' } }), scianyBryly: async () => 80_000, zapiszWersje: async () => ({}) });
+    assert.equal((await C2.wycen('maly', { rodzaj: 'rig' })).kredyty, 5);
+});

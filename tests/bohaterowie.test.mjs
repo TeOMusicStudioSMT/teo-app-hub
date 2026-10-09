@@ -80,3 +80,21 @@ test('droga bohatera: obraz w Pracowni, bryła z obrazu, do gry z chodem → boh
         assert.deepEqual(await utworzBohaterow({ katalog: path.join(kat, 'w2'), katalogApek: apki, assety }).lista('teterhia-x').then((l) => l.length), 6);
     } finally { await fs.rm(kat, { recursive: true, force: true }); }
 });
+
+test('🔗 podpięta gotowa bryła albo obraz z Pracowni: rodzina wersji od korzenia, nieistniejące = błąd wprost', async () => {
+    const { rodzinaWersji } = await import('../services/Bohaterowie.js');
+    const lista = [{ id: 'k1', zObrazu: 'ob1', stan: 'gotowe', utworzono: '1' }, { id: 'k2', ulepsza: 'k1', zObrazu: 'ob1', stan: 'gotowe', tekstury: true, utworzono: '2' }, { id: 'k3', ulepsza: 'k2', stan: 'gotowe', tekstury: true, ruchy: [{ ruch: 'chod' }], utworzono: '3' }, { id: 'z', zObrazu: 'ob1', stan: 'gotowe', utworzono: '0' }, { id: 'obca', stan: 'gotowe' }];
+    assert.deepEqual(rodzinaWersji({ korzen: 'k2' }, lista).map((m) => m.id), ['k1', 'k2', 'k3', 'z'], 'korzeń z obrazu wciąga wersje tego obrazu');
+    assert.deepEqual(rodzinaWersji({ obraz: 'ob1' }, lista).map((m) => m.id), ['k1', 'k2', 'z']);
+    assert.deepEqual(rodzinaWersji({ korzen: 'k3' }, lista).map((m) => m.id), ['k3'], 'bryła bez obrazu: tylko ona i jej potomkowie');
+    const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'boh2-'));
+    try {
+        await fs.mkdir(path.join(kat, 'apki', 'gra'), { recursive: true });
+        const B = utworzBohaterow({ katalog: path.join(kat, 'w'), katalogApek: path.join(kat, 'apki'), assety: { lista: async () => lista, metaObrazu: async (id) => (id === 'ob1' ? { stan: 'gotowe' } : null), obraz: async () => ({}), generuj: async () => ({}), doGry: async () => ({}) } });
+        await assert.rejects(B.zapisz('gra', { imie: 'Kot', opis: 'kot tancerz na dwóch nogach', korzen: 'nie-ma' }), /Nie ma takiej bryły/);
+        await assert.rejects(B.zapisz('gra', { imie: 'Kot', opis: 'kot tancerz na dwóch nogach', obraz: 'nie-ma' }), /Nie ma takiego obrazu/);
+        const b = await B.zapisz('gra', { imie: 'Kot Tancerz', opis: 'kot tancerz na dwóch nogach', plec: 'inna', korzen: 'k2' });
+        const l = (await B.lista('gra')).find((x) => x.id === b.id);
+        assert.deepEqual([l.etap, l.najlepsza.id], ['rig', 'k3']);
+    } finally { await fs.rm(kat, { recursive: true, force: true }); }
+});

@@ -28,6 +28,9 @@ export const CENNIK_MESHY = {
 export const USD_ZA_KREDYT = Number(process.env.OTAKOS_MESHY_USD_ZA_KREDYT) || 0.02;
 export const MAX_MB = 20;
 export const MAX_AKCJI = 10;
+/** Rig Meshy przyjmuje najwyżej tyle ścian (docs: „more than 300,000 faces are not supported for rigging”). Image-to-3D
+ *  oddaje bywa ~1 mln (kot tancerz: 963 244) → przed rigiem sam Remesh do `scianyRig` (domyślnie 100 000 — postać do gry). */
+export const LIMIT_SCIAN_RIGU = 300_000;
 const BAZA = process.env.OTAKOS_MESHY_URL || 'https://api.meshy.ai/openapi/v1';
 const SCIEZKA = { retekstura: 'retexture', remesh: 'remesh', obraz3d: 'image-to-3d', rig: 'rigging', akcje: 'animations' };
 
@@ -86,7 +89,8 @@ export function oczyscZlecenie(z = {}) {
         if (!(wzrost >= 0.2 && wzrost <= 5)) throw new Error('Wzrost postaci: od 0,2 do 5 m.');
         const akcje = [...new Set((Array.isArray(z.akcje) ? z.akcje : []).map((x) => Math.round(Number(x))).filter((x) => Number.isInteger(x) && x >= 0))];
         if (akcje.length > MAX_AKCJI) throw new Error(`Najwyżej ${MAX_AKCJI} akcji w jednym zleceniu.`);
-        return { rodzaj, wzrost: Math.round(wzrost * 100) / 100, akcje };
+        const scianyRig = Math.max(10_000, Math.min(LIMIT_SCIAN_RIGU, Math.round(Number(z.scianyRig) || 100_000)));
+        return { rodzaj, wzrost: Math.round(wzrost * 100) / 100, akcje, scianyRig, ...(z.przedRigiem ? { przedRigiem: z.przedRigiem } : {}) };
     }
     const sciany = Math.round(Number(z.sciany) || 30000);
     if (sciany < 100 || sciany > 300000) throw new Error('Remesh: od 100 do 300 000 ścian.');
@@ -97,7 +101,7 @@ export function oczyscZlecenie(z = {}) {
 export function wycena(z) {
     const kredyty = z.rodzaj === 'remesh' ? CENNIK_MESHY.remesh
         : z.rodzaj === 'obraz3d' ? CENNIK_MESHY.obraz3d[z.model][z.rozdzielczosc]
-            : z.rodzaj === 'rig' ? CENNIK_MESHY.rig + CENNIK_MESHY.akcja * z.akcje.length
+            : z.rodzaj === 'rig' ? CENNIK_MESHY.rig + CENNIK_MESHY.akcja * z.akcje.length + (z.przedRigiem ? CENNIK_MESHY.remesh : 0)
                 : z.rodzaj === 'akcje' ? CENNIK_MESHY.akcja * z.akcje.length
                 : CENNIK_MESHY.retekstura[z.rozdzielczosc];
     return { kredyty, usdOkolo: Math.round(kredyty * USD_ZA_KREDYT * 100) / 100, cennik: CENNIK_MESHY.zrodlo };
@@ -147,7 +151,7 @@ export function akcjaZBiblioteki(a) {
  *           zapiszRuch?: (id: string, ruch: string, glb: Buffer, wpis: object) => Promise<unknown>,
  *           szyna?: object|null, fetch?: Function, coMs?: number, limitMs?: number }} o
  */
-export function utworzChmureBryl({ klucz, plikBryly, obrazBryly = null, metaBryly = async () => null, zapiszWersje, zapiszRuch = null, szyna = null, fetch: f = globalThis.fetch, coMs = 5000, limitMs = 30 * 60_000 }) {
+export function utworzChmureBryl({ klucz, plikBryly, obrazBryly = null, metaBryly = async () => null, scianyBryly = async () => null, zapiszWersje, zapiszRuch = null, szyna = null, fetch: f = globalThis.fetch, coMs = 5000, limitMs = 30 * 60_000 }) {
     const zadania = new Map();
     let biblioteka = { kiedy: 0, lista: null };
     const naglowki = () => {
@@ -186,9 +190,19 @@ export function utworzChmureBryl({ klucz, plikBryly, obrazBryly = null, metaBryl
     }
 
     /** Wycena przed wysłaniem: kredyty, około USD, saldo konta, czy wystarczy, rozmiar pliku. */
-    async function wycen(id, zlecenie) {
-        const z = oczyscZlecenie(zlecenie);
+    /** Zlecenie + wejście; rig bryły z więcej niż LIMIT_SCIAN_RIGU ścian dostaje Remesh przed rigiem (w wycenie i zleceniu). */
+    async function przygotuj(id, zlecenie) {
+        const z = oczyscZlecenie({ ...zlecenie, przedRigiem: undefined });
         const we = await wejscie(id, z);
+        if (z.rodzaj === 'rig') {
+            const sciany = await Promise.resolve(scianyBryly(id)).catch(() => null);
+            if (Number(sciany) > LIMIT_SCIAN_RIGU) z.przedRigiem = { z: Number(sciany), na: z.scianyRig };
+        }
+        return { z, we };
+    }
+
+    async function wycen(id, zlecenie) {
+        const { z, we } = await przygotuj(id, zlecenie);
         const mb = Math.round(we.mb * 10) / 10;
         const w = wycena(z);
         const s = await saldo();
@@ -215,10 +229,33 @@ export function utworzChmureBryl({ klucz, plikBryly, obrazBryly = null, metaBryl
     }
     const pobierz = async (url) => Buffer.from(await (await f(url, { signal: AbortSignal.timeout(180000) })).arrayBuffer());
 
+    /** 🔺 Remesh przed rigiem: czekamy na Remesh, potem rig na jego wyniku (input_task_id; odmowa = GLB Remeshu jako data URI). */
+    async function remeshPrzedRigiem(zad) {
+        const z = zad.zlecenie;
+        zad.etap = `remesh ${z.przedRigiem.z.toLocaleString('pl-PL')} → ${z.przedRigiem.na.toLocaleString('pl-PL')} ścian`;
+        const dr = await czekaj(zad, 'remesh', zad.meshyId);
+        zad.kredytyRemesh = Number(dr.consumed_credits ?? CENNIK_MESHY.remesh);
+        zad.remesh = zad.meshyId;
+        const zRigu = async (cialo) => {
+            const r = await f(`${BAZA}/rigging`, { method: 'POST', headers: naglowki(), signal: AbortSignal.timeout(120000), body: JSON.stringify({ ...cialo, height_meters: z.wzrost }) });
+            return { r, d: await r.json().catch(() => ({})) };
+        };
+        let { r, d } = await zRigu({ input_task_id: zad.remesh });
+        if (!r.ok && r.status === 400 && dr.model_urls?.glb) {
+            const glb = await pobierz(dr.model_urls.glb);
+            if (glb.length / 1e6 > MAX_MB) throw new Error(`Remesh gotowy (${zad.remesh}), ale rig go nie przyjął przez id, a plik ma ${(glb.length / 1e6).toFixed(1)} MB — za duży do wysłania.`);
+            ({ r, d } = await zRigu({ model_url: `data:application/octet-stream;base64,${glb.toString('base64')}` }));
+        }
+        if (!r.ok || !d.result) throw new Error(`Remesh gotowy (${zad.remesh}), ale Meshy odmówiło riga (HTTP ${r.status}): ${JSON.stringify(d).slice(0, 200)}`);
+        zad.meshyId = d.result;
+        zad.etap = 'rig';
+    }
+
     async function sledz(zad) {
         const z = zad.zlecenie;
+        if (z.rodzaj === 'rig' && z.przedRigiem && !zad.remesh) await remeshPrzedRigiem(zad);
         const d = await czekaj(zad, SCIEZKA[z.rodzaj], zad.meshyId);
-        let kredyty = Number(d.consumed_credits ?? zad.kredyty);
+        let kredyty = Number(d.consumed_credits ?? zad.kredyty) + (zad.kredytyRemesh ?? 0);
         if (z.rodzaj === 'akcje') {
             // 🎞️ paczka akcji na gotowym rigu → ta sama wersja bryły, kolejny plik ruchu: akcje, akcje2, akcje3…
             const ua = d.result?.animation_glb_url;
@@ -267,12 +304,15 @@ export function utworzChmureBryl({ klucz, plikBryly, obrazBryly = null, metaBryl
 
     /** Zlecenie — TYLKO z potwierdzoną kwotą (zgodaKredyty === wycena). Wraca od razu, praca w tle. */
     async function zlec(id, zlecenie, { zgodaKredyty } = {}) {
-        const z = oczyscZlecenie(zlecenie);
+        const { z, we } = await przygotuj(id, zlecenie);
         const w = wycena(z);
-        if (Number(zgodaKredyty) !== w.kredyty) throw Object.assign(new Error(`Brak zgody na koszt: to zlecenie kosztuje ${w.kredyty} kredytów (≈ $${w.usdOkolo}) — potwierdź kwotę.`), { kod: 'BEZ_ZGODY' });
-        const we = await wejscie(id, z);
+        if (Number(zgodaKredyty) !== w.kredyty) throw Object.assign(new Error(`Brak zgody na koszt: to zlecenie kosztuje ${w.kredyty} kredytów (≈ $${w.usdOkolo})${z.przedRigiem ? ` — z Remeshem ${z.przedRigiem.z.toLocaleString('pl-PL')} → ${z.przedRigiem.na.toLocaleString('pl-PL')} ścian przed rigiem` : ''} — potwierdź kwotę.`), { kod: 'BEZ_ZGODY' });
         if (we.mb > MAX_MB) throw new Error(`Plik ma ${we.mb.toFixed(1)} MB — powyżej ${MAX_MB} MB nie wysyłam (najpierw „Uprość”).`);
-        const r = await f(`${BAZA}/${SCIEZKA[z.rodzaj]}`, { method: 'POST', headers: naglowki(), signal: AbortSignal.timeout(120000), body: JSON.stringify(cialoMeshy(z, we.wartosc)) });
+        // 🔺 rig za dużej bryły: najpierw Remesh (to samo wejście), rig rusza w `sledz` na wyniku Remeshu
+        const pierwszy = z.przedRigiem
+            ? { sciezka: 'remesh', cialo: { ...(typeof we.wartosc === 'object' && we.wartosc?.zadanie ? { input_task_id: we.wartosc.zadanie } : { model_url: we.wartosc }), target_polycount: z.przedRigiem.na, topology: 'triangle', target_formats: ['glb'] } }
+            : { sciezka: SCIEZKA[z.rodzaj], cialo: cialoMeshy(z, we.wartosc) };
+        const r = await f(`${BAZA}/${pierwszy.sciezka}`, { method: 'POST', headers: naglowki(), signal: AbortSignal.timeout(120000), body: JSON.stringify(pierwszy.cialo) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.result) {
             const powod = { 401: 'zły klucz', 402: 'za mało kredytów na koncie Meshy', 429: 'limit zapytań — za chwilę' }[r.status] ?? '';
@@ -307,4 +347,4 @@ export function utworzChmureBryl({ klucz, plikBryly, obrazBryly = null, metaBryl
     return { saldo, wycen, zlec, akcje, zestaw, zadanie: (id) => zadania.get(id) ?? null, lista: () => [...zadania.values()], stan: () => ({ maKlucz: !!klucz(), cennik: CENNIK_MESHY, usdZaKredyt: USD_ZA_KREDYT }) };
 }
 
-export default { utworzChmureBryl, dobierzAkcje, ZESTAWY_AKCJI, oczyscZlecenie, wycena, cialoMeshy, promptStylu, oczyscStyl, akcjaZBiblioteki, CENNIK_MESHY, USD_ZA_KREDYT, MAX_AKCJI };
+export default { utworzChmureBryl, LIMIT_SCIAN_RIGU, dobierzAkcje, ZESTAWY_AKCJI, oczyscZlecenie, wycena, cialoMeshy, promptStylu, oczyscStyl, akcjaZBiblioteki, CENNIK_MESHY, USD_ZA_KREDYT, MAX_AKCJI };
