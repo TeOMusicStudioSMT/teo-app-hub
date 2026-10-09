@@ -8268,8 +8268,16 @@ const ChmuraBryl = utworzChmureBryl({
     klucz: () => kluczChmurySync('meshy'),
     plikBryly: (id) => Assety3D.plikDoChmury(id),
     zapiszWersje: (id, glb, wpis) => Assety3D.wersjaZChmury(id, glb, wpis),
+    // Image-to-3D: obraz, z którego powstała bryła; rig: meta (tekstury? id zadania Meshy); ruchy rigu → ruch-<id>.glb
+    obrazBryly: async (id) => { const p = Assety3D.sciezkaPliku(id, 'obraz.png'); if (!p) throw new Error('Bryła nie ma obrazu źródłowego (obraz.png).'); return fs.readFile(p); },
+    metaBryly: (id) => Assety3D.meta(id),
+    zapiszRuch: (id, ruch, glb, wpis) => Assety3D.ruchZChmury(id, ruch, glb, wpis),
     szyna: Szyna,
 });
+/** GET /api/assety3d/chmura/akcje?kategoria=&szukaj= — biblioteka animacji Meshy (darmowa) do riggingu. */
+app.get('/api/assety3d/chmura/akcje', (req, res) => ytOdp(res, ChmuraBryl.akcje({ kategoria: String(req.query.kategoria ?? ''), szukaj: String(req.query.szukaj ?? '') }).then((akcje) => ({ akcje }))));
+/** POST /api/assety3d/chmura/:id/przytnij — dawna wersja z chmury: tekstura model.glb ≤ 2K (master zostaje). */
+app.post('/api/assety3d/chmura/:id/przytnij', (req, res) => ytOdp(res, Assety3D.przytnijTeksturyModelu(req.params.id)));
 app.get('/api/assety3d/chmura', (_req, res) => res.json({ success: true, ...ChmuraBryl.stan(), zadania: ChmuraBryl.lista() }));
 app.get('/api/assety3d/chmura/zadanie/:id', (req, res) => { const z = ChmuraBryl.zadanie(req.params.id); return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania (most mógł wystartować od nowa — wynik może czekać w panelu Meshy).' }); });
 /** POST /api/assety3d/chmura/:id/styl — 👁️ styl retekstury ze zdjęcia bryły (model widzący, lokalnie; OTAKOS_OCZY_MODEL). */

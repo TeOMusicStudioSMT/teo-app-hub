@@ -106,3 +106,59 @@ test('👁️ styl ze zdjęcia: prompt z opisem i świecącą częścią, odpowi
     assert.equal(oczyscStyl('x'.repeat(900)).length, 800);
     assert.throws(() => oczyscStyl('ok'), /nie opisały tekstur/);
 });
+
+test('🧊 Image-to-3D i 🦴 rig: wycena z cennika, ciało API, rig tylko z teksturami', () => {
+    assert.deepEqual(wycena(oczyscZlecenie({ rodzaj: 'obraz3d', rozdzielczosc: '8k' })).kredyty, 35);
+    assert.equal(wycena(oczyscZlecenie({ rodzaj: 'obraz3d', model: 'meshy-6-lite' })).kredyty, 15);
+    assert.throws(() => oczyscZlecenie({ rodzaj: 'obraz3d', model: 'meshy-6-lite', rozdzielczosc: '4k' }), /tylko tekstury 2K/);
+    const o = oczyscZlecenie({ rodzaj: 'obraz3d', poza: 't-pose', pbr: true });
+    assert.deepEqual(cialoMeshy(o, 'data:image/png;base64,x'), { image_url: 'data:image/png;base64,x', ai_model: 'latest', should_texture: true, enable_pbr: true, texture_resolution: '2k', pose_mode: 't-pose', target_formats: ['glb'] });
+    const r = oczyscZlecenie({ rodzaj: 'rig', wzrost: 1.8, akcje: [4, 4, 92, '10'] });
+    assert.deepEqual(r.akcje, [4, 92, 10]);
+    assert.equal(wycena(r).kredyty, 5 + 3 * 3);
+    assert.deepEqual(cialoMeshy(r, { zadanie: 'm-1' }), { input_task_id: 'm-1', height_meters: 1.8 });
+    assert.deepEqual(cialoMeshy(r, 'data:x'), { model_url: 'data:x', height_meters: 1.8 });
+    assert.throws(() => oczyscZlecenie({ rodzaj: 'rig', akcje: Array.from({ length: 11 }, (_, i) => i) }), /Najwyżej 10 akcji/);
+    assert.throws(() => oczyscZlecenie({ rodzaj: 'rig', wzrost: 9 }), /Wzrost/);
+});
+
+test('🦴 rig: bryła bez tekstur odmawia; z teksturami → rig (input_task_id) → chód, bieg, akcje → ruchy nowej wersji', async () => {
+    const wolania = [];
+    const ruchy = [];
+    let odczytRig = 0, odczytAnim = 0;
+    const f = async (url, o = {}) => {
+        wolania.push({ url, metoda: o.method ?? 'GET', cialo: o.body ? JSON.parse(o.body) : null });
+        if (url.endsWith('/balance')) return { ok: true, json: async () => ({ balance: 500 }) };
+        if (url.endsWith('/rigging') && o.method === 'POST') return { ok: true, json: async () => ({ result: 'rig-1' }) };
+        if (url.endsWith('/animations') && o.method === 'POST') return { ok: true, json: async () => ({ result: 'anim-1' }) };
+        if (url.includes('/rigging/rig-1')) return { ok: true, json: async () => (odczytRig++ ? { status: 'SUCCEEDED', progress: 100, consumed_credits: 5, result: { rigged_character_glb_url: 'https://cdn/rig.glb', basic_animations: { walking_glb_url: 'https://cdn/walk.glb', running_glb_url: 'https://cdn/run.glb' } } } : { status: 'IN_PROGRESS', progress: 50 }) };
+        if (url.includes('/animations/anim-1')) return { ok: true, json: async () => (odczytAnim++ ? { status: 'SUCCEEDED', progress: 100, consumed_credits: 6, result: { animation_glb_url: 'https://cdn/akcje.glb' } } : { status: 'IN_PROGRESS', progress: 10 }) };
+        if (url.startsWith('https://cdn/')) return { ok: true, arrayBuffer: async () => GLB.buffer.slice(GLB.byteOffset, GLB.byteOffset + GLB.length) };
+        throw new Error(`nieoczekiwany adres ${url}`);
+    };
+    const meta = { 'kot-bez': { tekstury: false }, 'kot-tex': { tekstury: true, chmura: { rodzaj: 'retekstura', zadanie: 'retex-9' } } };
+    const C = utworzChmureBryl({ klucz: () => 'msy_test', fetch: f, coMs: 1, plikBryly: async () => ({ bajty: GLB }), metaBryly: async (id) => meta[id],
+        zapiszWersje: async (id) => ({ id: `${id}-rig` }), zapiszRuch: async (id, ruch, glb, wpis) => { ruchy.push([id, ruch, glb.toString('ascii', 0, 4), wpis.zrodlo]); } });
+    await assert.rejects(C.wycen('kot-bez', { rodzaj: 'rig' }), /potrzebuje bryły z TEKSTURAMI/);
+    const w = await C.wycen('kot-tex', { rodzaj: 'rig', akcje: [4, 92] });
+    assert.deepEqual([w.kredyty, w.mb], [11, 0]);
+    const zad = await C.zlec('kot-tex', { rodzaj: 'rig', akcje: [4, 92] }, { zgodaKredyty: 11 });
+    assert.deepEqual(wolania.find((x) => x.metoda === 'POST').cialo, { input_task_id: 'retex-9', height_meters: 1.7 });
+    for (let i = 0; i < 200 && !['gotowe', 'blad'].includes(C.zadanie(zad.id).stan); i++) await new Promise((r) => setTimeout(r, 5));
+    const k = C.zadanie(zad.id);
+    assert.equal(k.stan, 'gotowe', k.blad);
+    assert.deepEqual([k.asset, k.ruchy, k.kredyty], ['kot-tex-rig', ['chod', 'bieg', 'akcje'], 11]);
+    assert.deepEqual(wolania.find((x) => x.url.endsWith('/animations')).cialo, { rig_task_id: 'rig-1', action_ids: [4, 92] });
+    assert.deepEqual(ruchy.map((r) => r[1]), ['chod', 'bieg', 'akcje']);
+    assert.ok(ruchy.every((r) => r[0] === 'kot-tex-rig' && r[2] === 'glTF' && r[3] === 'meshy'));
+});
+
+test('📚 biblioteka animacji Meshy: odczyt, filtr, pamięć', async () => {
+    let wolan = 0;
+    const C = utworzChmureBryl({ klucz: () => 'msy_test', plikBryly: async () => ({ bajty: GLB }), zapiszWersje: async () => ({}),
+        fetch: async () => { wolan++; return { ok: true, json: async () => ({ result: [{ action_id: 4, name: 'Attack', key: 'attack', category: 'Fighting', sub_category: 'AttackingwithWeapon', preview_url: 'https://x/p.mp4' }, { action_id: 1, name: 'Walk', key: 'walk', category: 'WalkAndRun' }, { name: 'bez id' }] }) }; } });
+    assert.deepEqual((await C.akcje()).map((a) => a.id), [4, 1]);
+    assert.deepEqual((await C.akcje({ kategoria: 'Fighting' })).map((a) => a.nazwa), ['Attack']);
+    assert.deepEqual((await C.akcje({ szukaj: 'WAL' })).map((a) => a.id), [1]);
+    assert.equal(wolan, 1, 'biblioteka z pamięci');
+});

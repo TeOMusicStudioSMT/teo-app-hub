@@ -26,6 +26,7 @@ import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import ffmpegPath from 'ffmpeg-static';
+import { zmniejszTekstury } from './GlbTekstury.js';
 import * as Siatka3D from './Siatka3D.js';
 
 const uruchomProces = promisify(execFile);
@@ -434,12 +435,49 @@ export async function wersjaZChmury(id, glb, wpis) {
     const dir = dirAssetu(nowy);
     await fs.mkdir(dir, { recursive: true });
     for (const p of await fs.readdir(dirAssetu(id))) if (/^(obraz\.png|obraz-zrodlo\.(png|jpg|jpeg|webp)|wycinek\.png)$/.test(p)) await fs.copyFile(path.join(dirAssetu(id), p), path.join(dir, p));
-    await fs.writeFile(path.join(dir, 'model.glb'), glb);
+    // master = pełna rozdzielczość z chmury; model (podgląd i gra) = tekstura ≤ 2K — 8K (~340 MB VRAM) czerniło Hub
+    // na karcie 6 GB zajętej podcastem (Suweren 2026-10-09). Nieczytelny GLB = zostaje, jak przyszedł.
+    const doGryGlb = await przyciete(glb);
+    await fs.writeFile(path.join(dir, 'model.glb'), doGryGlb.glb);
     await fs.writeFile(path.join(dir, 'master.glb'), glb);
     const { ruchy: _r, blad: _b, siatka: _s, rozmiarGlb: _g, wGrach: _w, jasnoscKolorow: _j, ...reszta } = m;
-    const n = { ...reszta, id: nowy, utworzono: new Date().toISOString(), stan: 'gotowe', wGrach: [], ulepsza: id, tekstury: true, chmura: wpis, rozmiarGlb: glb.length, czasy: {}, poprawki: [...(m.poprawki ?? []), { rodzaj: 'chmura', usluga: wpis.usluga, zlecenie: wpis.rodzaj, kredyty: wpis.kredyty, kiedy: wpis.kiedy }] };
+    const n = { ...reszta, id: nowy, utworzono: new Date().toISOString(), stan: 'gotowe', wGrach: [], ulepsza: id, tekstury: true, chmura: wpis, rozmiarGlb: doGryGlb.glb.length, rozmiarMastera: glb.length, ...(doGryGlb.zmniejszone.length ? { teksturyModelu: doGryGlb.zmniejszone } : {}), czasy: {}, poprawki: [...(m.poprawki ?? []), { rodzaj: 'chmura', usluga: wpis.usluga, zlecenie: wpis.rodzaj, kredyty: wpis.kredyty, kiedy: wpis.kiedy }] };
     await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(n, null, 2), 'utf8');
     return n;
+}
+
+/** Największa tekstura GLB do podglądu i gry (`OTAKOS_TEKSTURA_MAX`, domyślnie 2048). */
+export const TEKSTURA_MAX = Number(process.env.OTAKOS_TEKSTURA_MAX) || 2048;
+async function przyciete(glb) {
+    try { return await zmniejszTekstury(glb, TEKSTURA_MAX, { ffmpeg: ffmpegPath, uruchom: (c, a) => uruchomProces(c, a, { maxBuffer: 1 << 26 }) }); }
+    catch { return { glb, zmniejszone: [] }; }
+}
+/** Dawna wersja z chmury z teksturą 8K w model.glb → model.glb z teksturą ≤ 2K (master zostaje). */
+export async function przytnijTeksturyModelu(id) {
+    const m = await meta(id);
+    if (!m?.tekstury) throw new Error('To nie jest wersja z chmury (bez tekstur).');
+    const plik = path.join(dirAssetu(id), 'model.glb');
+    const r = await przyciete(await fs.readFile(plik));
+    if (r.zmniejszone.length) { await fs.writeFile(plik, r.glb); m.rozmiarGlb = r.glb.length; m.teksturyModelu = r.zmniejszone; await fs.writeFile(path.join(dirAssetu(id), 'meta.json'), JSON.stringify(m, null, 2), 'utf8'); }
+    return { zmniejszone: r.zmniejszone, rozmiar: r.glb.length };
+}
+
+/**
+ * 🦴 Ruch z chmury (Meshy rig: chód, bieg, akcje z biblioteki) → `ruch-<ruch>.glb` + wpis w meta.ruchy w tym samym
+ * kształcie co ruchy z Blendera (RuchBryl), więc „Do gry {ruch}” działa bez zmian. Tekstura ≤ 2K jak model.
+ */
+export async function ruchZChmury(id, ruch, glb, wpis = {}) {
+    if (!/^[a-z]{2,20}$/.test(ruch)) throw new Error('Zła nazwa ruchu.');
+    const m = await meta(id);
+    if (!m) throw new Error('Nie ma takiego assetu.');
+    if (!Buffer.isBuffer(glb) || glb.toString('ascii', 0, 4) !== 'glTF') throw new Error(`Ruch „${ruch}” z chmury nie jest GLB.`);
+    const r = await przyciete(glb);
+    const plik = `ruch-${ruch}.glb`;
+    await fs.writeFile(path.join(dirAssetu(id), plik), r.glb);
+    const swiezy = await meta(id);
+    swiezy.ruchy = [...(swiezy.ruchy ?? []).filter((x) => x.ruch !== ruch), { ruch, glb: plik, mp4: null, sekundy: null, klatek: null, czas: null, utworzono: new Date().toISOString(), ...wpis }];
+    await fs.writeFile(path.join(dirAssetu(id), 'meta.json'), JSON.stringify(swiezy, null, 2), 'utf8');
+    return swiezy.ruchy;
 }
 
 /** Ramka sylwetki na obrazie źródłowym (ułamki 0–1, y w dół) — Game Studio przelicza zaznaczenie na obrazie na pudełko bryły. */
@@ -623,4 +661,4 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wyc
     return { zadanie: z.id, asset: assetId };
 }
 
-export default { plikDoChmury, wersjaZChmury, skonfiguruj, zywyComfy, upiekszLokalnie, przekolorujBryle, zageszczFragment, zaswiec, sylwetka, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
+export default { plikDoChmury, wersjaZChmury, ruchZChmury, przytnijTeksturyModelu, TEKSTURA_MAX, skonfiguruj, zywyComfy, upiekszLokalnie, przekolorujBryle, zageszczFragment, zaswiec, sylwetka, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
