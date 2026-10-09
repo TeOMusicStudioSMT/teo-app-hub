@@ -219,7 +219,19 @@ export function utworzMistrzaGry({ katalog, pisz = null, jev = null, zasady = as
         return { ...z, nagrodaMGRV: w === n ? ev.mod.turniej.nagrodaMGRV : 0 };
     }
 
-    return { rozstrzygnijKwestie, eventDnia, eventDzisiaj, wynikTurnieju, kronika };
+    /** 💃 Taniec TeOgochi z parkietu Teterhii → kronika; wieść do Katedry przy randze S/A albo awansie tańca. */
+    async function wynikTanca({ utwor, procent, ranga, poziom, awans = false, gracz = {} } = {}) {
+        const p = Math.round(Number(procent));
+        if (!(p >= 0 && p <= 100) || !['S', 'A', 'B', 'C', 'D'].includes(ranga)) throw new Error('Zły wynik tańca.');
+        const imie = String(gracz.imie ?? 'Wędrowiec').slice(0, 40);
+        const u = String(utwor ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        const lv = Math.max(1, Math.min(10, Math.round(Number(poziom) || 1)));
+        const z = await kronikuj({ rodzaj: 'taniec', gracz: imie, utwor: u, procent: p, ranga, poziom: lv, awans: !!awans });
+        if (['S', 'A'].includes(ranga) || awans) await wiesc?.({ rodzaj: 'teterhia', skad: 'Mistrz Gry · Teterhia', glos: ranga === 'S' || !!awans, tresc: `💃 TeOgochi ${imie} zatańczył „${u}” — ${ranga} (${p}%)${awans ? ` i wskoczył na ${lv}. poziom tańca` : ''}!` })?.catch?.(() => {});
+        return z;
+    }
+
+    return { rozstrzygnijKwestie, eventDnia, eventDzisiaj, wynikTurnieju, wynikTanca, kronika };
 }
 
 export default { utworzMistrzaGry, zbudujEvent, eventZLosu, faktyKatedry, tonZJev, TONY, KATALOG, DZIEDZINY, DZIEDZINY_D };

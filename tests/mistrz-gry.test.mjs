@@ -84,3 +84,17 @@ test('event dnia: z faktu Katedry przez model, raz na dzień, ogłoszony kanałe
         await fs.rm(kat2, { recursive: true, force: true });
     } finally { await fs.rm(kat, { recursive: true, force: true }); }
 });
+
+test('💃 taniec: kronika zawsze, wieść tylko przy S/A albo awansie; zły wynik — odmowa', async () => {
+    const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'mg-t-'));
+    try {
+        const wiesci = [];
+        const M = utworzMistrzaGry({ katalog: kat, teraz, wiesc: async (w) => wiesci.push(w) });
+        await assert.rejects(M.wynikTanca({ procent: 140, ranga: 'S' }), /Zły wynik tańca/);
+        await M.wynikTanca({ utwor: 'Bitt Tw2 A', procent: 41, ranga: 'C', poziom: 1, gracz: { imie: 'Arek' } });
+        assert.equal(wiesci.length, 0);
+        await M.wynikTanca({ utwor: 'Bitt Tw2 A', procent: 93, ranga: 'S', poziom: 2, awans: true, gracz: { imie: 'Arek' } });
+        assert.match(wiesci[0].tresc, /TeOgochi Arek zatańczył „Bitt Tw2 A” — S \(93%\) i wskoczył na 2\. poziom tańca/);
+        assert.deepEqual((await M.kronika()).map((k) => k.ranga), ['S', 'C']);
+    } finally { await fs.rm(kat, { recursive: true, force: true }); }
+});

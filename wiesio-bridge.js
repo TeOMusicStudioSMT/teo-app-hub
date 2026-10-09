@@ -11,6 +11,7 @@ import { utworzPartytury } from './services/Partytury.js';
 import { utworzStrazModeli } from './services/StrazModeli.js';
 import { utworzChmureBryl, promptStylu, oczyscStyl } from './services/ChmuraBryl.js';
 import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch.js';
+import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzJajo } from './services/JajoMistrza.js';
 import { utworzMistrzaGry } from './services/MistrzGry.js';
 import { utworzKlub } from './services/KlubMistrzow.js';
@@ -8275,6 +8276,11 @@ const ChmuraBryl = utworzChmureBryl({
     zapiszRuch: (id, ruch, glb, wpis) => Assety3D.ruchZChmury(id, ruch, glb, wpis),
     szyna: Szyna,
 });
+// 🥁 Rytm utworu (services/RytmUtworu.js) — BPM i uderzenia z dźwięku, lokalnie (ffmpeg + JS) — taniec TeOgochi w Teterhii.
+const RytmUtworu = utworzRytm({ katalogMuzyki: MUSIC_DIR, katalog: path.join(ANTIGRAVITY_DIR, 'rytm'), ffmpeg: ffmpegPath, uruchom: (c, a, o) => execFileAsync(c, a, { windowsHide: true, ...o }) });
+app.get('/api/rytm/utwory', (_req, res) => ytOdp(res, RytmUtworu.utwory().then((utwory) => ({ utwory }))));
+app.get('/api/rytm', (req, res) => ytOdp(res, RytmUtworu.analizuj(String(req.query.plik ?? '')).then((rytm) => ({ rytm }))));
+
 // 🖨️ Pracownia merchu (services/Merch.js) — Creative Lab Meshy (figurka, brelok, magnes…) i druk 3D z brył
 // (darmowa analiza drukowalności + 3MF wielokolorowy) → Wystawa i Marketplace. Płatne kroki tylko z potwierdzoną kwotą.
 const Merch = utworzMerch({
@@ -11144,6 +11150,7 @@ app.post('/api/klub-mistrzow/eventy', async (req, res) => { try { res.json({ suc
 app.delete('/api/klub-mistrzow/eventy/:id', async (req, res) => { try { res.json({ success: true, wycofany: await KlubMistrzow.wycofaj(req.params.id) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 app.get('/api/mistrz-gry/event', async (_req, res) => { try { res.json({ success: true, event: await MistrzGry.eventDnia(), globalne: await KlubMistrzow.aktywneGlobalne().catch(() => []) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
 app.post('/api/mistrz-gry/kwestia', async (req, res) => { try { res.json({ success: true, ...(await MistrzGry.rozstrzygnijKwestie(req.body ?? {})) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
+app.post('/api/mistrz-gry/taniec', async (req, res) => { try { res.json({ success: true, wpis: await MistrzGry.wynikTanca(req.body ?? {}) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 app.post('/api/mistrz-gry/turniej', async (req, res) => { try { res.json({ success: true, wynik: await MistrzGry.wynikTurnieju(req.body ?? {}) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 app.get('/api/mistrz-gry/kronika', async (req, res) => { try { res.json({ success: true, kronika: await MistrzGry.kronika({ ile: Number(req.query.ile) || 30 }) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
 
