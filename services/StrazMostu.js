@@ -74,6 +74,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/wizytowka/',   // profil i meldunek wizytówki zmienia Suweren przy Katedrze (sama /api/wizytowka jest publiczna)
     '/api/dyrygent/zastosuj', '/api/modele/karta',   // stałe silniki TeOgochi i karty modeli zmienia Suweren przy Katedrze
     '/api/dyrygent/partytury', '/api/dyrygent/straz',   // 📜 partytury i 🛡️ straż modeli (zmienia przydział silników) — tylko przy Katedrze
+    '/api/klub-mistrzow',   // 🏛️ Klub Mistrzów: ogłaszanie eventów globalnych i zwiad po sieci — decyzje przy Katedrze
     '/api/mistrz-gry',   // 🎲 Mistrz Gry Teterhii: orzeczenia na Jev/modelu (koszt) i kronika — gra z mostu Katedry (gość zdalny = etap MRPG)
     '/api/mistrz',   // 🥚 JaJo Mistrza: dziennik poprawek Suwerena i lekcje na jego modelu — tylko przy Katedrze
     '/api/assety3d/chmura',   // ☁️ Meshy = rachunek za kredyty i bryła wychodzi z Katedry — tylko przy maszynie

@@ -12,6 +12,7 @@ import { utworzStrazModeli } from './services/StrazModeli.js';
 import { utworzChmureBryl } from './services/ChmuraBryl.js';
 import { utworzJajo } from './services/JajoMistrza.js';
 import { utworzMistrzaGry } from './services/MistrzGry.js';
+import { utworzKlub } from './services/KlubMistrzow.js';
 import { utworzZwiadowcePromocji, MODEL as ZWIADOWCA_PROMOCJI_MODEL } from './services/ZwiadowcaPromocji.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11051,8 +11052,34 @@ const MistrzGry = utworzMistrzaGry({
     zasady: async () => ((await Jajo.stan()).zasady?.zasady ?? []).map((z) => z.zasada),
     zdarzenia: (dzien) => Szyna.dzien(dzien, { max: 600 }),
     wiesc: (w) => Jajo.wiesc(w),
+    klub: { zapiszWynik: (w) => KlubMistrzow.zapiszWynik(w) },
 });
-app.get('/api/mistrz-gry/event', async (_req, res) => { try { res.json({ success: true, event: await MistrzGry.eventDnia() }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+// 🏛️ Globalny Klub Mistrzów (services/KlubMistrzow.js) — JaJo przedstawia Katedrę w wizytówce, czyta wizytówki Katedr
+// z rejestru (nick + klucz zgodne), zbiera eventy globalne i rankingi; nowe eventy i wyniki mówi kanałem Mistrza.
+const KlubMistrzow = utworzKlub({
+    katalog: ANTIGRAVITY_DIR,
+    nick: async () => (await Wizytowka.profil()).nick || null,
+    rejestr: (process.env.OTAKOS_REJESTR_URL || 'https://otakos.wtf/api/katedry').replace(/\/meldunek$/, ''),
+    mistrz: async () => {
+        const s = await Jajo.stan();
+        const e = await MistrzGry.eventDzisiaj();
+        return { etap: s.etap.nazwa, obserwacji: s.obserwacji, zasad: s.zasady?.zasady?.length ?? 0, teterhia: e?.nazwa ?? null };
+    },
+    wiesc: (w) => Jajo.wiesc(w),
+});
+Wizytowka.skonfiguruj({ klub: KlubMistrzow });
+KlubMistrzow.startPetli();
+app.get('/api/klub-mistrzow', async (req, res) => {
+    try {
+        const ja = (await Wizytowka.profil()).nick || null;
+        let pole = KlubMistrzow.ostatniZwiad(), blad = null;
+        if (req.query.zwiad === '1' || !pole) { try { pole = ja ? await KlubMistrzow.zwiad({ swiezo: req.query.zwiad === '1' }) : null; } catch (e) { blad = e.message; } }
+        res.json({ success: true, nick: ja, przedstawiciel: ja ? await KlubMistrzow.publiczne() : null, moje: await KlubMistrzow.mojeAktywne(), pole, blad });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/klub-mistrzow/eventy', async (req, res) => { try { res.json({ success: true, event: await KlubMistrzow.oglos(req.body ?? {}) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
+app.delete('/api/klub-mistrzow/eventy/:id', async (req, res) => { try { res.json({ success: true, wycofany: await KlubMistrzow.wycofaj(req.params.id) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
+app.get('/api/mistrz-gry/event', async (_req, res) => { try { res.json({ success: true, event: await MistrzGry.eventDnia(), globalne: await KlubMistrzow.aktywneGlobalne().catch(() => []) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
 app.post('/api/mistrz-gry/kwestia', async (req, res) => { try { res.json({ success: true, ...(await MistrzGry.rozstrzygnijKwestie(req.body ?? {})) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 app.post('/api/mistrz-gry/turniej', async (req, res) => { try { res.json({ success: true, wynik: await MistrzGry.wynikTurnieju(req.body ?? {}) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 app.get('/api/mistrz-gry/kronika', async (req, res) => { try { res.json({ success: true, kronika: await MistrzGry.kronika({ ile: Number(req.query.ile) || 30 }) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });

@@ -142,7 +142,9 @@ export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     const moc = cfg.gieldaMocy ? await cfg.gieldaMocy.publiczna().catch(() => null) : null;
     // 📋 Zlecenia Giełdy Master Flow — czego ta Katedra szuka (zadanie / projekt); pusta lista = brak pola.
     const zlecenia = cfg.gieldaMocy?.publiczneZlecenia ? await cfg.gieldaMocy.publiczneZlecenia().catch(() => []) : [];
-    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(zlecenia.length ? { zlecenia } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
+    // 🏛️ Klub Mistrzów (services/KlubMistrzow.js): przedstawicielstwo JaJa Mistrza — etap, event dnia Teterhii, eventy globalne, wyniki.
+    const mistrz = cfg.klub ? await cfg.klub.publiczne().catch(() => null) : null;
+    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(zlecenia.length ? { zlecenia } : {}), ...(mistrz ? { mistrz } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
 }
 
 /** Ścieżka pliku wizytówki — tylko id z ostatnio zbudowanej wizytówki (nigdy ścieżka z URL-a). */

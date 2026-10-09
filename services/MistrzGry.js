@@ -105,7 +105,7 @@ function json(t) {
  *           zasady?: () => Promise<string[]>, zdarzenia?: (dzien:string) => Promise<object[]>,
  *           wiesc?: (w:object) => Promise<unknown>, teraz?: () => Date }} o
  */
-export function utworzMistrzaGry({ katalog, pisz = null, jev = null, zasady = async () => [], zdarzenia = async () => [], wiesc = null, teraz = () => new Date() }) {
+export function utworzMistrzaGry({ katalog, pisz = null, jev = null, zasady = async () => [], zdarzenia = async () => [], wiesc = null, klub = null, teraz = () => new Date() }) {
     const PLIK_KRONIKI = () => path.join(katalog, 'kronika.jsonl');
     const plikEventu = (d) => path.join(katalog, 'eventy', `${d}.json`);
     const dzis = () => teraz().toISOString().slice(0, 10);
@@ -191,8 +191,20 @@ export function utworzMistrzaGry({ katalog, pisz = null, jev = null, zasady = as
         try { return await obietnica; } finally { tworzony = null; }
     }
 
+    /** Dzisiejszy event, jeśli już ogłoszony — bez tworzenia (wizytówkę czyta sieć; nie budzimy modelu). */
+    async function eventDzisiaj() { try { return JSON.parse(await fs.readFile(plikEventu(dzis()), 'utf8')); } catch { return null; } }
+
     /** 🏆 Wynik turnieju z gry → kronika + wieść w Katedrze (tylko gdy dziś naprawdę jest ten turniej). */
-    async function wynikTurnieju({ dziedzina, wygrane, starc, gracz = {}, mini = [] } = {}) {
+    async function wynikTurnieju({ dziedzina, wygrane, starc, gracz = {}, mini = [], event = null } = {}) {
+        if (event) {
+            // 🏛️ turniej Klubu Mistrzów — wynik idzie do wizytówki tej Katedry (ranking widzą wszystkie), bez mGRV
+            if (!klub) throw new Error('Ta Katedra nie ma Klubu Mistrzów.');
+            const imie = String(gracz.imie ?? 'Wędrowiec').slice(0, 40);
+            const r = await klub.zapiszWynik({ event, dziedzina, wygrane, starc, mini: mini.map(String) });
+            const z = await kronikuj({ rodzaj: 'turniej-klubu', event, organizator: r.event.organizator, gracz: imie, dziedzina, wygrane: r.wynik.wygrane, starc: r.wynik.starc, poprawiony: r.poprawiony });
+            if (r.poprawiony) await wiesc?.({ rodzaj: 'klub', skad: 'Klub Mistrzów', glos: r.wynik.wygrane === r.wynik.starc, tresc: `🏛️ ${imie} — ${r.event.nazwa} (Katedra „${r.event.organizator}”): ${r.wynik.wygrane}/${r.wynik.starc}. Wynik idzie do Klubu w wizytówce Katedry.` })?.catch?.(() => {});
+            return { ...z, nagrodaMGRV: 0 };
+        }
         const ev = await eventDnia();
         if (ev.typ !== 'turniej') throw new Error('Dziś w Teterhii nie ma turnieju.');
         if (dziedzina !== ev.parametr) throw new Error(`Dzisiejszy turniej jest w dziedzinie ${DZIEDZINY[ev.parametr]}.`);
@@ -207,7 +219,7 @@ export function utworzMistrzaGry({ katalog, pisz = null, jev = null, zasady = as
         return { ...z, nagrodaMGRV: w === n ? ev.mod.turniej.nagrodaMGRV : 0 };
     }
 
-    return { rozstrzygnijKwestie, eventDnia, wynikTurnieju, kronika };
+    return { rozstrzygnijKwestie, eventDnia, eventDzisiaj, wynikTurnieju, kronika };
 }
 
 export default { utworzMistrzaGry, zbudujEvent, eventZLosu, faktyKatedry, tonZJev, TONY, KATALOG, DZIEDZINY, DZIEDZINY_D };

@@ -4,6 +4,7 @@
  * i przygotowanie danych do Kuźni Soup. Nic tu nie jest wymyślone — wszystko z dziennika obserwacji.
  */
 import React, { useCallback, useEffect, useState } from 'react';
+import KlubMistrzowPanel from './KlubMistrzowPanel';
 
 const MOST = 'http://127.0.0.1:3001';
 interface Obserwacja { nr: number; kiedy: string; rodzaj: 'poprawka' | 'decyzja'; zrodlo: string; tytul?: string; kto?: string; przed?: string; po?: string; werdykt?: string; opis?: string }
@@ -100,7 +101,8 @@ export default function JajoMistrzaPanel() {
                     <div className="space-y-1">{stan.rundyKodeksa.ostatnie.map((r) => <div key={r.nr} className="rounded-lg bg-black/30 px-2 py-1 text-[10px] text-slate-300"><span className="text-red-300/80">runda {r.runda} ✖ {r.sedzia}</span> → <span className="text-emerald-300">✓ w {r.rundaPrzyjeta}.</span> <span className="text-slate-500">{r.projekt}: {r.cel.slice(0, 80)}</span></div>)}</div>
                 </div>
             )}
-            <p className="mt-3 text-[10px] leading-snug text-slate-500">📯 JaJo odzywa się przez Orbitę (prawy klik na środku → „Kanał Mistrza”). Dalej (po wykluciu): Mistrz Gry Teterhii — rozstrzyga bitwy, turnieje i eventy na tych zasadach; głos Katedry w Globalnym Klubie Mistrzów.</p>
+            <p className="mt-3 text-[10px] leading-snug text-slate-500">📯 JaJo odzywa się przez Orbitę (prawy klik na środku → „Kanał Mistrza”). 🎲 W Teterhii jest Mistrzem Gry (kwestie, event dnia, turnieje).</p>
+            <KlubMistrzowPanel />
         </div>
     );
 }
