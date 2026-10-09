@@ -8135,7 +8135,9 @@ app.get('/api/appstudio/zadania/:id/sondaz', (req, res) => {
 // 📜 GDD + REŻYSER GRY + PRODUKCJA Z PLANU (services/Gdd.js). GDD leży w projekcie gry
 // (_OtakOs_Apki/<id>/gdd.json); produkcja karmi pętlę Kodeksa zadanie po zadaniu.
 // ═════════════════════════════════════════════════════════════════════════════
-Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, model: () => TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('kodeks') || modelMechanika()), assety3d: Assety3D });
+Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, model: () => TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('kodeks') || modelMechanika()), assety3d: Assety3D,
+    // ☁️ chmura po chmurze: modele chmury z kluczem (Claude/Gemini) — zapas, gdy główny z chmury padnie
+    modeleChmury: async () => (await AppStudio.silniki()).filter((m) => m.dostepny && /^(claude|gemini):/.test(m.model)).map((m) => m.model) });
 ModeleAgentow.wszystkie().catch(() => {});   // pamięć przydziału dla Studia Gier od startu
 const gddUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 app.get('/api/gdd/silniki', (_req, res) => res.json({ success: true, silniki: Gdd.SILNIKI }));
@@ -8187,7 +8189,7 @@ app.post('/api/gdd/:id/zadanie/:zadanie', async (req, res) => {
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.post('/api/gdd/:id/realizuj', async (req, res) => {
-    try { res.json({ success: true, ...(await Gdd.realizuj(req.params.id, { model: req.body?.model, zapasowe: req.body?.zapasowe, tylkoKamien: req.body?.kamien || null })), sondaz: `/api/gdd/${encodeURIComponent(req.params.id)}/sondaz` }); }
+    try { res.json({ success: true, ...(await Gdd.realizuj(req.params.id, { model: req.body?.model, zapasowe: req.body?.zapasowe, tylkoKamien: req.body?.kamien || null, chmuraPoChmurze: req.body?.chmuraPoChmurze !== false })), sondaz: `/api/gdd/${encodeURIComponent(req.params.id)}/sondaz` }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 /** Sondaż produkcji gry dla Nocnej Zmiany: „trwa" do końca, potem gotowe / błąd z krokiem, na którym stanęła. */

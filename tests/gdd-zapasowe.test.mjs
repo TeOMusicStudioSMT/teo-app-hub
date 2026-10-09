@@ -58,3 +58,28 @@ test('wszystkie modele padły → stop, zadanie z błędem, reszta czeka; bez za
     const g = JSON.parse(await fs.readFile(path.join(kat, 'gra', 'gdd.json'), 'utf8'));
     assert.deepEqual(g.kamienie[0].zadania.map((z) => z.stan), ['blad', 'czeka']);
 });
+
+test('☁️ chmura po chmurze: główny z chmury → inna chmura przed lokalnym; wybór Suwerena pierwszy', () => {
+    const dost = ['claude:claude-haiku-5-5', 'claude:claude-sonnet-5-5', 'claude:claude-opus-5-5', 'gemini:gemini-3.8-flash', 'gemini:gemini-3.5-flash'];
+    const ling = 'hf.co/mradermacher/Ling-3.0-tiny:Q4_K_M';
+    // nic z chmury nie zaznaczone → najmocniejszy Gemini (inny dostawca), potem Opus; Ling na końcu
+    assert.deepEqual(Gdd.zapasoweChmuraPoChmurze('claude:claude-sonnet-5-5', [ling], dost), ['gemini:gemini-3.8-flash', 'claude:claude-opus-5-5', ling]);
+    // Suweren zaznaczył Opusa → jego wybór, lokalny dalej po chmurze
+    assert.deepEqual(Gdd.zapasoweChmuraPoChmurze('claude:claude-sonnet-5-5', [ling, 'claude:claude-opus-5-5'], dost), ['claude:claude-opus-5-5', ling]);
+    // główny lokalny → bez zmian
+    assert.deepEqual(Gdd.zapasoweChmuraPoChmurze('qwen2.5-coder:7b', [ling], dost), [ling]);
+    // Gemini główny → Opus (inna głowa), słabszych Gemini nie bierze
+    assert.deepEqual(Gdd.zapasoweChmuraPoChmurze('gemini:gemini-3.8-flash', [], dost), ['claude:claude-opus-5-5']);
+});
+
+test('☁️ produkcja: Sonnet pada → Gemini z mostu robi zadanie, Ling nietknięty', async () => {
+    const kat = await projekt(1);
+    const a = atrapaStudia(new Set(['gemini:gemini-3.8-flash']));
+    Gdd.skonfiguruj({ katalog: kat, appStudio: a.appStudio, odstepSondazuMs: 1, szyna: null, modeleChmury: async () => ['claude:claude-sonnet-5-5', 'gemini:gemini-3.8-flash'] });
+    const start = await Gdd.realizuj('gra', { model: 'claude:claude-sonnet-5-5', zapasowe: ['ling:tiny'] });
+    assert.deepEqual(start.zapasowe, ['gemini:gemini-3.8-flash', 'ling:tiny']);
+    const p = await koniec('gra');
+    assert.equal(p.stan, 'gotowe');
+    assert.deepEqual(a.wywolania, ['claude:claude-sonnet-5-5', 'gemini:gemini-3.8-flash']);
+    Gdd.skonfiguruj({ modeleChmury: undefined });
+});

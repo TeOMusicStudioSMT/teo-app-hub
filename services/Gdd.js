@@ -329,7 +329,39 @@ export function listaZapasowych(glowny, zapasowe) {
     return out.slice(0, 3);
 }
 
-export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = null } = {}) {
+const czyChmura = (m) => /^(claude|gemini):/.test(String(m ?? ''));
+const dostawca = (m) => String(m).split(':')[0];
+/** Siła modelu chmury w obrębie dostawcy: rodzina (opus > fable > sonnet > haiku; pro > flash > lite), potem wersja. */
+function silaChmury(m) {
+    const n = String(m).toLowerCase();
+    const rodzina = /opus/.test(n) ? 4 : /fable/.test(n) ? 3 : /sonnet/.test(n) ? 2 : /haiku/.test(n) ? 1 : /pro/.test(n) ? 3 : /lite/.test(n) ? 1 : 2;
+    const wersja = Number((n.match(/(\d+(?:[.-]\d+)?)/)?.[1] ?? '0').replace('-', '.')) || 0;
+    return rodzina * 100 + wersja;
+}
+
+/**
+ * ☁️ Chmura po chmurze (Suweren 2026-10-09: „jak chmurze się nie udało, to tym bardziej lokalnemu Lingowi… trzeba
+ * ustawić, by próbował na chmurze innego modelu chmury… przełączałem na Gemini 3.8 Flash czy Opus 5.5”).
+ * Główny z chmury → najpierw zapasowe z chmury (wybrane przez Suwerena, w jego kolejności), a gdy żadnego nie wybrał:
+ * najmocniejszy model INNEGO dostawcy (inna głowa) i najmocniejszy tego samego; lokalne zapasowe na końcu.
+ * Główny lokalny → bez zmian. Wynik ≤ 3 jak `listaZapasowych`.
+ */
+export function zapasoweChmuraPoChmurze(glowny, zapasowe, dostepneChmury = []) {
+    const lista = listaZapasowych(glowny, zapasowe);
+    if (!czyChmura(glowny)) return lista;
+    const chmurowe = lista.filter(czyChmura);
+    const lokalne = lista.filter((m) => !czyChmura(m));
+    if (!chmurowe.length) {
+        const dost = [...new Set(dostepneChmury.filter((m) => czyChmura(m) && m !== glowny))];
+        const najlepszy = (xs) => xs.sort((a, b) => silaChmury(b) - silaChmury(a))[0];
+        const inny = najlepszy(dost.filter((m) => dostawca(m) !== dostawca(glowny)));
+        const ten = najlepszy(dost.filter((m) => dostawca(m) === dostawca(glowny) && silaChmury(m) >= silaChmury(glowny)));
+        for (const m of [inny, ten]) if (m) chmurowe.push(m);
+    }
+    return [...chmurowe, ...lokalne].slice(0, 3);
+}
+
+export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = null, chmuraPoChmurze = true } = {}) {
     const g = await wczytaj(projektId);
     if (!g) throw new Error('Ten projekt nie ma GDD.');
     if (!g.kamienie?.length) throw new Error('GDD nie ma planu — najpierw „Plan z GDD".');
@@ -342,9 +374,12 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
     const kolejka = g.kamienie.filter((k) => !tylkoKamien || k.id === tylkoKamien).flatMap((k) => k.zadania.filter(doZrobienia).map((z) => ({ kamien: k, zadanie: z })));
     if (!kolejka.length) throw new Error('Nic nie czeka — wszystkie zadania planu są gotowe albo pominięte.');
     const prod = { stan: 'trwa', od: new Date().toISOString(), biezace: null, kroki: [], zrobione: 0, padlo: 0, naKlocki: 0, razem: kolejka.length, przerwij: false, model: model || cfg.model(), zapasowe: [] };
-    prod.zapasowe = listaZapasowych(prod.model, zapasowe);
+    prod.zapasowe = chmuraPoChmurze && czyChmura(prod.model)
+        ? zapasoweChmuraPoChmurze(prod.model, zapasowe, await Promise.resolve(cfg.modeleChmury?.()).catch(() => []) ?? [])
+        : listaZapasowych(prod.model, zapasowe);
     produkcje.set(projektId, prod);
     const krok = (t) => { prod.kroki.push({ kiedy: new Date().toISOString(), tekst: String(t).slice(0, 400) }); if (prod.kroki.length > 200) prod.kroki.shift(); };
+    if (prod.zapasowe.length) krok(`↻ łańcuch modeli: ${[prod.model, ...prod.zapasowe].join(' → ')}${chmuraPoChmurze && czyChmura(prod.model) ? ' (☁️ chmura po chmurze)' : ''}`);
     await cfg.szyna?.nadaj?.({ agent: 'Reżyser', rodzaj: 'praca', tresc: `produkcja „${projektId}": ${kolejka.length} zadań z planu GDD → Kodeks`, dane: { projekt: projektId } }).catch(() => {});
 
     (async () => {
@@ -425,4 +460,4 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
     return { start: true, zadan: kolejka.length, model: prod.model, zapasowe: prod.zapasowe };
 }
 
-export default { skonfiguruj, SILNIKI, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
+export default { skonfiguruj, SILNIKI, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
