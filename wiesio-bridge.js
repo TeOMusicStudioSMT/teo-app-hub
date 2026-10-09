@@ -8078,6 +8078,7 @@ AppStudio.skonfiguruj({
     klucze: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey() },
 });
 // Chrome puppeteera ładujemy leniwie — przy pierwszym teście, nie przy starcie mostu.
+AppStudio.skonfiguruj({ podpowiedz: (o) => Jajo.podpowiedzKodeksowi(o) });   // 💡 JaJo Mistrza: rada od 3. rundy (services/JajoMistrza.js)
 import('puppeteer').then((m) => AppStudio.skonfiguruj({ puppeteer: m.default })).catch((e) => console.warn(`[AppStudio] puppeteer niedostępny: ${e.message}`));
 
 app.get('/api/appstudio/silniki', async (_req, res) => {
@@ -8146,7 +8147,7 @@ app.get('/api/appstudio/zadania/:id/sondaz', (req, res) => {
 // 📜 GDD + REŻYSER GRY + PRODUKCJA Z PLANU (services/Gdd.js). GDD leży w projekcie gry
 // (_OtakOs_Apki/<id>/gdd.json); produkcja karmi pętlę Kodeksa zadanie po zadaniu.
 // ═════════════════════════════════════════════════════════════════════════════
-Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, pisz: AppStudio.pisz, zasadyStylu: async () => ((await Jajo.stan()).zasady?.zasady ?? []).map((z) => z.zasada), model: () => TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('kodeks') || modelMechanika()), assety3d: Assety3D,
+Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna: Szyna, appStudio: AppStudio, jajo: { podpowiedzKodeksowi: (o) => Jajo.podpowiedzKodeksowi(o) }, pisz: AppStudio.pisz, zasadyStylu: async () => ((await Jajo.stan()).zasady?.zasady ?? []).map((z) => z.zasada), model: () => TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('kodeks') || modelMechanika()), assety3d: Assety3D,
     // ☁️ chmura po chmurze: modele chmury z kluczem (Claude/Gemini) — zapas, gdy główny z chmury padnie
     modeleChmury: async () => (await AppStudio.silniki()).filter((m) => m.dostepny && /^(claude|gemini):/.test(m.model)).map((m) => m.model) });
 ModeleAgentow.wszystkie().catch(() => {});   // pamięć przydziału dla Studia Gier od startu

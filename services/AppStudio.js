@@ -945,11 +945,11 @@ const MAX_DZIEDZICTWA = 32_000;
 /** Blok promptu z prób poprzednich modeli łańcucha: ich najdalej posunięte pliki + wszystkie różne błędy (Suweren 2026-10-09:
  *  „niech korzystają z błędów poprzedników… dwa pierwsze strzały to przeważnie gotowe skrypty”). */
 export function blokDziedzictwa(d) {
-    if (!d || (!d.pliki?.length && !d.bledy?.length)) return '';
+    if (!d || (!d.pliki?.length && !d.bledy?.length && !d.rada)) return '';
     let budzet = MAX_DZIEDZICTWA;
     const pliki = [];
     for (const p of d.pliki ?? []) { if (p.tresc.length > budzet) continue; budzet -= p.tresc.length; pliki.push(p); }
-    return `\nPOPRZEDNIE PRÓBY TEGO ZADANIA (${(d.modele ?? [d.model]).filter(Boolean).join(' → ') || 'inne modele'}) NIE PRZESZŁY. Nie zaczynaj od zera — ich kod bywał prawie gotowy.\n` +
+    return (d.rada ? `\n${d.rada}\n` : '') + `\nPOPRZEDNIE PRÓBY TEGO ZADANIA (${(d.modele ?? [d.model]).filter(Boolean).join(' → ') || 'inne modele'}) NIE PRZESZŁY. Nie zaczynaj od zera — ich kod bywał prawie gotowy.\n` +
         (d.bledy?.length ? `BŁĘDY, NA KTÓRYCH POLEGLI (nie powtarzaj żadnego):\n${d.bledy.map((b, i) => `${i + 1}. ${b}`).join('\n')}\n` : '') +
         (pliki.length ? `NAJDALEJ POSUNIĘTA PRÓBA (${d.model}, odpadła na etapie: ${d.etap}) — pliki, które oddała (w projekcie ich NIE ma, został stan sprzed próby). Weź je za punkt wyjścia, popraw wskazany błąd i oddaj w całości:\n${pliki.map((p) => `=== PLIK: ${p.sciezka} ===\n${p.tresc}\n=== KONIEC ===`).join('\n')}${pliki.length < d.pliki.length ? `\n(pominięto ${d.pliki.length - pliki.length} plik(ów) — za długie)` : ''}\n` : '');
 }
@@ -985,8 +985,10 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
         // 🧬 najdalej posunięta odrzucona runda + wszystkie różne błędy → wynik.dziedzictwo dla następnego modelu łańcucha
         let najdalsza = null;
         const bledyRund = [];
+        const rundyBledow = [];   // 💡 dla JaJa Mistrza: każda odrzucona runda {model, powod} (bez łączenia powtórek — liczy się „ile razy”)
         let biezacaRunda = 0;
         const zapamietaj = (etap) => {
+            rundyBledow.push({ model: z.model, powod: feedback.slice(0, 1500) });
             const sedno = feedback.replace(/\s+/g, ' ').trim().slice(0, 500);
             if (sedno && !bledyRund.some((b) => b.slice(0, 160) === sedno.slice(0, 160))) bledyRund.push(sedno);
             const poziom = ETAPY_RUNDY[etap] ?? 0;
@@ -999,6 +1001,13 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 if (przerwanie.signal.aborted) { feedback = 'przerwane przez Suwerena'; break; }
                 if (oddaneWRundzie && feedback) { rundyOdrzucone.push({ runda: runda - 1, pliki: oddaneWRundzie, powod: feedback.slice(0, 1500) }); oddaneWRundzie = null; }
                 z.rundy = runda; biezacaRunda = runda;
+                // 💡 JaJo Mistrza (Suweren 2026-10-09: „niech JaJo daje im podpowiedzi… tak jak ja teraz”): od 3. rundy
+                // (≥ 2 odrzucone) rada z wszystkich prób tego zadania — też poprzednich modeli łańcucha.
+                let radaMistrza = '';
+                if (runda >= 3 && feedback && cfg.podpowiedz) {
+                    const p = await Promise.resolve(cfg.podpowiedz({ projekt: projektId, cel, bledy: [...(dziedzictwo?.rundy ?? []), ...rundyBledow] })).catch(() => null);
+                    if (p?.tekst) { radaMistrza = `\n${p.tekst}\n`; krok('stan', `💡 Mistrz podpowiada (${(p.sedziowie ?? []).map((s) => `${s.sedzia} ${s.razy}×`).join(', ')}${p.uparty ? ' — uparty sędzia' : ''})`); }
+                }
                 const obecne = await pliki(projektId);
                 const eskalacja = powtorki >= 1
                     ? `\nUWAGA: to DOKŁADNIE TEN SAM błąd, co w poprzedniej rundzie — Twoja poprawka go nie usunęła. Zanim oddasz pliki, napisz w pierwszej linii odpowiedzi jednym zdaniem, co konkretnie zmieniasz (np. „dodaję 'idle' do typu Phase"), a potem bloki plików. Sprawdź numer linii z błędu i popraw TĘ linię i jej typ.\n`
@@ -1012,7 +1021,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 // Mapa projektu (services/WikiProjektu.js) — Suweren 2026-09-24: „nie mogą się odnaleźć".
                 // Kilkanaście linii: co jest w którym module, kto kogo używa, gdzie w main.ts podpiąć.
                 const mapa = await WikiProjektu.skrot(dir).catch(() => '');
-                const prompt = `PROJEKT: ${projektId}\n${mapa ? mapa + '\n\n' : ''}\nOBECNE PLIKI:\n${kontekstPlikow(obecne, cel)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${podzial}${runda === 1 ? blokPoprzednikow : ''}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
+                const prompt = `PROJEKT: ${projektId}\n${mapa ? mapa + '\n\n' : ''}\nOBECNE PLIKI:\n${kontekstPlikow(obecne, cel)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${podzial}${runda === 1 ? blokPoprzednikow : ''}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}${radaMistrza}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
                 // ComfyUI po renderze trzyma modele w karcie (zmierzone: ~2 GB po TRELLIS.2) — Ollama
                 // dostaje resztkę i liczy prompt na CPU. Prosimy o zwolnienie, jeśli ComfyUI nie liczy.
                 if (runda === 1 && cfg.zwolnijComfy) await cfg.zwolnijComfy().catch(() => {});
@@ -1167,7 +1176,7 @@ PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy
             await WikiProjektu.odswiez(dir, p.nazwa ?? projektId).catch(() => {});   // WIKI.md zawsze aktualne
             await zapiszProjekt(p);
             z.stan = ok ? 'gotowe' : 'blad';
-            z.wynik = { ok, rundy: z.rundy, sekundy, commit, zrzut: ostatniZrzut, powod: ok ? null : `Po ${z.rundy} rundach nadal błędy — ostatnie: ${feedback.slice(0, 600)}`, ...(ok ? {} : { dziedzictwo: { model: z.model, etap: najdalsza?.etap ?? null, pliki: najdalsza?.pliki ?? [], bledy: bledyRund.slice(-6) } }) };
+            z.wynik = { ok, rundy: z.rundy, sekundy, commit, zrzut: ostatniZrzut, powod: ok ? null : `Po ${z.rundy} rundach nadal błędy — ostatnie: ${feedback.slice(0, 600)}`, ...(ok ? {} : { dziedzictwo: { model: z.model, etap: najdalsza?.etap ?? null, pliki: najdalsza?.pliki ?? [], bledy: bledyRund.slice(-6), rundy: rundyBledow.slice(-20) } }) };
             z.koniec = new Date().toISOString();
             krok(ok ? 'koniec' : 'blad', ok ? `GOTOWE w ${sekundy} s, ${z.rundy} rund, commit ${commit}` : z.wynik.powod);
             await szyna(ok ? 'praca' : 'blad', ok ? `„${projektId}": zbudowane w ${sekundy} s (${z.rundy} rund) — ${cel.slice(0, 100)}` : `„${projektId}": nie udało się po ${z.rundy} rundach — ${cel.slice(0, 100)}`, { projekt: projektId, zadanie: z.id });

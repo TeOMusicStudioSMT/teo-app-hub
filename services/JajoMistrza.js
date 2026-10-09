@@ -26,6 +26,14 @@
  * ⚖️ RUNDY KODEKSA: AppStudio oddaje po zadaniu rundy odrzucone przez sędziów (build, przeglądarka, Recenzent,
  * Jev…) i rundę przyjętą → `rundy-kodeksa.jsonl` = pary kodu „źle → dobrze” z powodem werdyktu (dla Kodeksa,
  * osobno od stylu Suwerena; w kursie `kuznia-soup/kodeks/pary-kodeksa.jsonl`).
+ *
+ * 💡 PODPOWIEDZI DLA KODEKSA (Suweren 2026-10-09: „niech JaJo Mistrza daje im podpowiedzi… tak jak ja teraz”):
+ * `podpowiedzKodeksowi({projekt, cel, bledy})` — przed kolejną próbą (następny model łańcucha albo kolejna runda)
+ * Mistrz czyta błędy poprzedników i daje radę jak Suweren: (1) porada od sędziego, który odrzucał (`PORADY_SEDZIOW`),
+ * (2) co POMOGŁO, gdy ten sam sędzia odrzucał wcześniej (`rundy-kodeksa.jsonl`: linie dopisane w przyjętej rundzie,
+ * których odrzucona nie miała), (3) UPARTY SĘDZIA — ten sam werdykt u ≥ 2 modeli i ≥ 3 razy: Kodeks dostaje „kod bywa
+ * prawie dobry — popraw tylko to”, a Suweren wieść kanałem Mistrza „może to sędzia się myli” (raz na zadanie i sędziego;
+ * tak było z martwym modułem 2026-10-09 — sędzia nie widział importu z innego modułu).
  */
 import fs from 'fs/promises';
 import path from 'path';
@@ -64,6 +72,68 @@ export function sedziaZPowodu(powod) {
     if (/RECENZ|zaślepk|atrap|regresj|@ts-ignore|pusty catch/i.test(t)) return 'Recenzent';
     if (/^(tsc|vite|build)|error TS\d+|TS\d{4}/im.test(t)) return 'build';
     return 'sędzia';
+}
+
+/** Rada od sędziego, który odrzucił — z przyczyn, które Katedra już zmierzyła (CLAUDE.md, historia AppStudio). */
+const RADA_PRZEGLADARKI = 'Błąd w konsoli przy starcie: sprawdź kolejność (użycie przed utworzeniem), wyniki querySelector bez sprawdzenia null i importy, które przy starcie coś wywołują.';
+export const PORADY_SEDZIOW = {
+    'martwy moduł': 'Każdy nowy plik src/*.ts musi być osiągalny importem od src/main.ts (wprost albo przez moduł, który main już importuje), a jego funkcja musi być WYWOŁANA tam, gdzie gra działa. Jeśli możesz, dopisz kod do istniejącego modułu zamiast tworzyć nowy plik.',
+    build: 'Czytaj numer linii i nazwę typu z błędu tsc — popraw TĘ linię i jej typ. Nie zmieniaj sygnatur eksportów, których używają inne pliki; nowe pole typu uzupełnij we wszystkich miejscach, gdzie powstaje obiekt.',
+    'przeglądarka': RADA_PRZEGLADARKI,
+    oczy: 'Na ekranie nic nie widać: kamera, światło i obiekty muszą być w scenie, a pętla renderu działać — nie zasłaniaj płótna nieprzezroczystą nakładką.',
+    'sędzia zachowania': 'Zadanie ma być WIDAĆ w grze: stan w window.__gra musi się zmieniać po klawiszu/zdarzeniu z zadania. Samo dopisanie funkcji to za mało — podepnij ją do pętli albo obsługi klawisza.',
+    'Jev (sędzia zadania)': 'Przeczytaj zadanie zdanie po zdaniu i zrób KAŻDY element (trasa mostu, okno, postać, zachowanie) — nie tylko pierwszy.',
+    Recenzent: 'Bez zaślepek („// reszta bez zmian”), @ts-ignore, pustych catch, danych na sztywno i bez wycinania działającego kodu poza zadaniem — oddaj pliki w całości.',
+    'bez zmian': 'Oddałeś pliki identyczne z projektem — napisz KOD, który realizuje zadanie.',
+    format: 'Oddaj mniej: tylko zmieniane pliki, w blokach === PLIK: … === / === KONIEC ===; duże pliki podziel na moduły.',
+};
+
+/** Linie dopisane w przyjętej rundzie, których odrzucona nie miała — „co pomogło” (bez znaczników plików i pustych). */
+export function coPomoglo(odrzucona, przyjeta, ile = 10) {
+    const bylo = new Set(String(odrzucona ?? '').split('\n').map((l) => l.trim()));
+    const out = [];
+    for (const l of String(przyjeta ?? '').split('\n')) {
+        const t = l.trim();
+        if (t.length < 4 || t.startsWith('=== ') || /^[{}()[\];,]+$/.test(t) || bylo.has(t) || out.includes(t)) continue;
+        out.push(t.slice(0, 160));
+        if (out.length >= ile) break;
+    }
+    return out;
+}
+
+/**
+ * Czysta część podpowiedzi: błędy poprzedników [{model, powod}] + historia rund (rundy-kodeksa) → rada.
+ * `uparty` = sędzia, który odrzucał u ≥ 2 modeli i ≥ 3 razy.
+ */
+export function ulozPodpowiedz({ bledy = [], historia = [], projekt = '' } = {}) {
+    if (!bledy.length) return null;
+    const wgSedziego = new Map();
+    for (const b of bledy) {
+        const s = sedziaZPowodu(b.powod);
+        const w = wgSedziego.get(s) ?? { sedzia: s, razy: 0, modele: new Set() };
+        w.razy++;
+        if (b.model) w.modele.add(String(b.model));
+        wgSedziego.set(s, w);
+    }
+    const sedziowie = [...wgSedziego.values()].sort((a, b) => b.razy - a.razy);
+    const uparty = sedziowie.find((w) => w.razy >= 3 && w.modele.size >= 2) ?? null;
+    const linie = ['💡 PODPOWIEDŹ MISTRZA (JaJo — patrzy na wszystkie próby tego zadania):'];
+    if (uparty) linie.push(`Sędzia „${uparty.sedzia}” odrzucił ${uparty.razy} rund u ${uparty.modele.size} modeli (${[...uparty.modele].join(', ')}). Kod poprzedników bywał prawie dobry — NIE przepisuj wszystkiego, popraw tylko to, co mówi ten sędzia.`);
+    for (const w of sedziowie.slice(0, 3)) if (PORADY_SEDZIOW[w.sedzia]) linie.push(`• ${w.sedzia} (${w.razy}×): ${PORADY_SEDZIOW[w.sedzia]}`);
+    const wzory = [];
+    for (const w of sedziowie.slice(0, 2)) {
+        const przypadki = historia.filter((r) => r.sedzia === w.sedzia).sort((a, b) => (b.projekt === projekt) - (a.projekt === projekt)).slice(0, 2);
+        for (const r of przypadki) {
+            const pomoglo = coPomoglo(r.odrzucona, r.przyjeta);
+            if (pomoglo.length) wzory.push(`Kiedyś (${r.projekt}) sędzia „${w.sedzia}” odrzucił: „${String(r.powod).replace(/\s+/g, ' ').slice(0, 160)}”. Przeszło, gdy dopisano m.in.:\n${pomoglo.map((l) => `    ${l}`).join('\n')}`);
+        }
+    }
+    if (wzory.length) linie.push('Z pamięci Mistrza (co pomogło przy tym samym sędzi):', ...wzory.slice(0, 3));
+    return {
+        tekst: linie.join('\n').slice(0, 3500),
+        uparty: uparty ? { sedzia: uparty.sedzia, razy: uparty.razy, modele: [...uparty.modele] } : null,
+        sedziowie: sedziowie.map((w) => ({ sedzia: w.sedzia, razy: w.razy, modele: w.modele.size })),
+    };
 }
 
 const slowa = (t) => new Set(String(t ?? '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
@@ -260,6 +330,22 @@ export function utworzJajo({ katalog, katalogKuzni = null, pisz = null, szyna = 
         return z;
     }
 
+    /**
+     * 💡 Podpowiedź dla następnej próby Kodeksa. `bledy` = [{model, powod}] wszystkich odrzuconych rund tego zadania
+     * (wszystkich modeli łańcucha). Uparty sędzia → także wieść do Suwerena (raz na zadanie i sędziego).
+     */
+    async function podpowiedzKodeksowi({ projekt = '', cel = '', bledy = [] } = {}) {
+        const p = ulozPodpowiedz({ bledy, historia: await czytajJsonl(PLIK_RUND()), projekt });
+        if (!p?.uparty) return p;
+        const klucz = `uparty:${crypto.createHash('sha1').update(`${projekt}|${cel}|${p.uparty.sedzia}`).digest('hex').slice(0, 16)}`;
+        const k = await czytajKanal();
+        if (!k[klucz]) {
+            await zapiszKanal({ ...k, [klucz]: new Date().toISOString() });
+            await wiesc({ rodzaj: 'kodeks', glos: true, tresc: `🧐 Sędzia „${p.uparty.sedzia}” odrzucił ${p.uparty.razy} rund u ${p.uparty.modele.length} modeli na „${projekt}” — „${String(cel).replace(/\s+/g, ' ').slice(0, 80)}”. Daję im podpowiedź, ale rzuć okiem: może to sędzia się myli.` }).catch(() => {});
+        }
+        return p;
+    }
+
     async function kurs({ zapisz = true } = {}) {
         const o = (await wszystkie()).filter((w) => w.rodzaj === 'poprawka');
         const system = 'Piszesz tak, jak pisze Suweren Katedry OtakOS — jego słowami, rytmem i wyborami. Po polsku, konkretnie.';
@@ -310,7 +396,7 @@ export function utworzJajo({ katalog, katalogKuzni = null, pisz = null, szyna = 
         return wynik;
     }
 
-    return { poprawkaDialogu, poprawkaPol, decyzja, stan, kurs, lekcja, wszystkie, wiesc, wiesci, rundaKodeksa };
+    return { poprawkaDialogu, poprawkaPol, decyzja, stan, kurs, lekcja, wszystkie, wiesc, wiesci, rundaKodeksa, podpowiedzKodeksowi };
 }
 
 export default { utworzJajo, paryKwestii, podobienstwo, odczytajZasady, plikiJakoTekst, sedziaZPowodu, ETAPY, ZRODLA, PROG_NOWEJ_LEKCJI };

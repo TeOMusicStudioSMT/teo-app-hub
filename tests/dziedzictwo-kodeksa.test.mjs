@@ -45,3 +45,17 @@ test('blokDziedzictwa: błędy poprzedników i pliki najdalszej próby w prompci
     assert.doesNotMatch(blok, /src\/duzy\.ts ===/);
     assert.match(blok, /pominięto 1 plik/);
 });
+
+test('💡 JaJo w dziedzictwie: wszystkie odrzucone rundy z modelem idą dalej, rada Mistrza na górze bloku', async () => {
+    const a = scalDziedzictwo(null, { model: 'sonnet', etap: 'martwy-modul', pliki: [], bledy: ['martwy'], rundy: [{ model: 'sonnet', powod: 'Dodałeś src/x.ts, ale ŻADEN plik projektu tego nie importuje' }, { model: 'sonnet', powod: 'Dodałeś src/x.ts, ale ŻADEN plik projektu tego nie importuje' }] });
+    const b = scalDziedzictwo(a, { model: 'gemini', etap: 'martwy-modul', pliki: [], bledy: ['martwy'], rundy: [{ model: 'gemini', powod: 'Dodałeś src/x.ts, ale ŻADEN plik projektu tego nie importuje' }] });
+    assert.equal(b.rundy.length, 3, 'powtórki zostają — JaJo liczy, ile razy');
+    assert.deepEqual(scalDziedzictwo(null, null, 'zadanie zniknęło').rundy, [{ model: null, powod: 'zadanie zniknęło' }]);
+    const { ulozPodpowiedz } = await import('../services/JajoMistrza.js');
+    const p = ulozPodpowiedz({ bledy: b.rundy, historia: [] });
+    assert.equal(p.uparty?.razy, 3);
+    const blok = blokDziedzictwa({ ...b, rada: p.tekst });
+    assert.ok(blok.trimStart().startsWith('💡 PODPOWIEDŹ MISTRZA'), 'rada Mistrza na samej górze');
+    assert.match(blok, /POPRZEDNIE PRÓBY TEGO ZADANIA \(sonnet → gemini\)/);
+    assert.match(blokDziedzictwa({ rada: 'sama rada' }), /sama rada/);
+});

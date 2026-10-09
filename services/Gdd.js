@@ -458,6 +458,7 @@ export function scalDziedzictwo(stare, nowe, powod = null) {
     return {
         modele: [...(stare?.modele ?? []), ...(n.model ? [n.model] : [])],
         bledy: bledy.slice(-8),
+        rundy: [...(stare?.rundy ?? []), ...(n.rundy ?? (!n.bledy?.length && powod ? [{ model: n.model, powod: String(powod).slice(0, 1500) }] : []))].slice(-40),
         ...(lepsze ? { model: n.model, etap: n.etap, pliki: n.pliki } : { model: stare?.model ?? n.model, etap: stare?.etap ?? n.etap, pliki: stare?.pliki ?? [] }),
     };
 }
@@ -582,6 +583,11 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
                 if (i > 0) {
                     if (prod.przerwij) break;
                     krok(`↻ ${lancuch[i - 1]} nie dał rady (${String(wynik?.powod || '').slice(0, 120)}) — próbuję zapasowym: ${modelZadania}`);
+                    // 💡 JaJo Mistrza czyta wszystkie odrzucone rundy poprzedników i daje radę następnemu modelowi
+                    if (dziedzictwo?.rundy?.length && cfg.jajo?.podpowiedzKodeksowi) {
+                        const p = await cfg.jajo.podpowiedzKodeksowi({ projekt: projektId, cel: zd.tresc, bledy: dziedzictwo.rundy }).catch(() => null);
+                        if (p?.tekst) { dziedzictwo = { ...dziedzictwo, rada: p.tekst }; krok(`💡 Mistrz podpowiada ${modelZadania}: ${(p.sedziowie ?? []).map((s) => `${s.sedzia} ${s.razy}×`).join(', ')}${p.uparty ? ` — uparty sędzia „${p.uparty.sedzia}” (wieść do Suwerena)` : ''}`); }
+                    }
                 }
                 wynik = await sprobuj(modelZadania, dziedzictwo);
                 if (wynik?.ok) break;
