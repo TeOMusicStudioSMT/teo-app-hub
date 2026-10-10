@@ -6,9 +6,12 @@
  * 🏛️ Hub + każda otwarta apka; ↻ przeładuj, ↗ do osobnej karty, ✕ zamknij; „+” = narzędzia Katedry
  * (ComfyUI, VoiceStudio, Świat klocków — „i tym podobne apki, z których korzysta Katedra”).
  * Alt+PageUp / Alt+PageDown — poprzednia / następna (gdy fokus jest w Hubie albo na kole).
+ * 🌍 Język Huba idzie do każdej warstwy (`postMessage({typ:'otakos-jezyk', jezyk})` po załadowaniu, przy zmianie
+ * i na pytanie apki `otakos-jezyk?`) — apka z public/tlumacz.js tłumaczy się tym samym Tłumaczem co Hub.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { stanPierscienia, sluchajPierscienia, pokazApke, pokazHub, zamknijApke, przewin, otworzApke, przeladujApke } from '../lib/pierscien';
+import { obserwujStan, stanTlumacza } from '../lib/tlumaczDom';
 
 // Mikrofon (Sampler głosu), schowek (Ctrl+V zrzutów), dźwięk, pełny ekran — apki Katedry z nich korzystają.
 const POZWOLENIA = 'microphone; camera; clipboard-read; clipboard-write; autoplay; fullscreen; display-capture';
@@ -17,6 +20,12 @@ const MOST = 'http://127.0.0.1:3001';
 /** Czy pod adresem coś odpowiada (bez CORS — wystarczy, że połączenie nie zostało odrzucone). */
 async function zyje(adres: string): Promise<boolean> {
     try { await fetch(adres, { mode: 'no-cors', signal: AbortSignal.timeout(2500) }); return true; } catch { return false; }
+}
+
+/** Podaj język Huba warstwie — tylko na origin jej adresu (gdy apka odeszła gdzie indziej, wiadomość przepada). */
+function podajJezyk(ramka: HTMLIFrameElement | null | undefined, url: string): void {
+    if (!ramka?.contentWindow) return;
+    try { ramka.contentWindow.postMessage({ typ: 'otakos-jezyk', jezyk: stanTlumacza().jezyk }, new URL(url, window.location.href).origin); } catch { /* zły adres */ }
 }
 
 interface Narzedzie { id: string; tytul: string; url: string; znak: string; kolor: string; obudz?: () => Promise<string | null>; sprawdz: string }
@@ -40,6 +49,23 @@ export const PierscienApek: React.FC = () => {
     const [praca, setPraca] = useState<string | null>(null);
     const [blad, setBlad] = useState<string | null>(null);
     useEffect(() => sluchajPierscienia(setS), []);
+    const ramki = useRef(new Map<string, HTMLIFrameElement>());
+    const adresy = useRef(new Map<string, string>());
+    // Zmiana języka w Hubie → każda warstwa; pytanie apki „otakos-jezyk?” → odpowiedź tylko naszym warstwom.
+    useEffect(() => {
+        let jezyk = stanTlumacza().jezyk;
+        const odpisz = obserwujStan((st) => {
+            if (st.jezyk === jezyk) return;
+            jezyk = st.jezyk;
+            ramki.current.forEach((r, id) => podajJezyk(r, adresy.current.get(id) ?? ''));
+        });
+        const pytanie = (e: MessageEvent) => {
+            if (e.data?.typ !== 'otakos-jezyk?') return;
+            for (const [id, r] of ramki.current) if (r.contentWindow === e.source) podajJezyk(r, adresy.current.get(id) ?? '');
+        };
+        window.addEventListener('message', pytanie);
+        return () => { odpisz(); window.removeEventListener('message', pytanie); };
+    }, []);
     useEffect(() => {
         const k = (e: KeyboardEvent) => {
             if (!e.altKey || (e.key !== 'PageDown' && e.key !== 'PageUp')) return;
@@ -70,7 +96,9 @@ export const PierscienApek: React.FC = () => {
                         return (
                             <div key={a.id} className="absolute inset-0 bg-black"
                                 style={{ transform: widac ? 'translateX(0)' : 'translateX(104%)', transition: 'transform 420ms cubic-bezier(.2,.8,.2,1), visibility 0s linear ' + (widac ? '0s' : '420ms'), visibility: widac ? 'visible' : 'hidden', boxShadow: widac ? `-24px 0 60px ${a.kolor}33` : 'none' }}>
-                                <iframe key={`${a.id}-${a.wersja ?? 0}`} src={a.url} title={a.tytul} allow={POZWOLENIA} className="h-full w-full border-0" />
+                                <iframe key={`${a.id}-${a.wersja ?? 0}`} src={a.url} title={a.tytul} allow={POZWOLENIA} className="h-full w-full border-0"
+                                    ref={(r) => { if (r) { ramki.current.set(a.id, r); adresy.current.set(a.id, a.url); } else ramki.current.delete(a.id); }}
+                                    onLoad={(e) => podajJezyk(e.currentTarget, a.url)} />
                             </div>
                         );
                     })}

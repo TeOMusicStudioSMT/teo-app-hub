@@ -230,6 +230,7 @@ import * as GlosStudio from './services/GlosStudio.js';
 import * as Montazownia from './services/Montazownia.js';
 import * as Spawacz from './services/Spawacz.js';
 import { czyscSciezkiMiddleware } from './services/Sciezki.js';
+import { htmlZTlumaczem } from './services/TlumaczApek.js';
 import * as MuzykaDoFilmu from './services/MuzykaDoFilmu.js';
 import * as Arkusz from './services/ArkuszWielokat.js';
 import * as Brief from './services/BriefOpowiesci.js';
@@ -470,7 +471,7 @@ for (const app_ of ['music', 'story', 'app', 'games', 'lab']) {
             next();
         });
     }
-    app.use(`/apps/${app_}`, ...middlewares, express.static(path.join(APPS_DIR, app_)));
+    app.use(`/apps/${app_}`, ...middlewares, htmlZTlumaczem(path.join(APPS_DIR, app_)), express.static(path.join(APPS_DIR, app_)));
 }
 
 // ── 📱 STRONA GOŚCIA (telefon jako kamera) ────────────────────────────────────
@@ -487,7 +488,7 @@ app.use('/gosc', cors({ origin: '*' }), express.static(path.join(__dirname, 'pub
 app.use('/delegat', cors({ origin: '*' }), express.static(path.join(__dirname, 'public', 'delegat')));
 // 🧱 Świat klocków (StoL i Hub) — statyczny jak Delegat; klucz Straży i token telefonu jadą
 // we fragmencie adresu (#k=…&t=…), a dane strona bierze z /api/stado/swiat za Strażą.
-app.use('/swiat', cors({ origin: '*' }), express.static(path.join(__dirname, 'public', 'swiat')));
+app.use('/swiat', cors({ origin: '*' }), htmlZTlumaczem(path.join(__dirname, 'public', 'swiat')), express.static(path.join(__dirname, 'public', 'swiat')));
 // Strona parowania StoL-a z QR (public/stol/paruj.html): aparaty otwierają z QR tylko https, nie otakos-stol://.
 // Statyczna, bez sekretów — klucz i kod jadą we fragmencie adresu (#…), którego przeglądarka nie wysyła.
 app.use('/stol', express.static(path.join(__dirname, 'public', 'stol')));
@@ -498,8 +499,14 @@ app.use('/swiat/three/examples/jsm', express.static(path.join(__dirname, 'node_m
 const APKI_DIR = path.join(process.cwd(), '..', '_OtakOs_Apki');
 app.use('/apki/:id', (req, res, next) => {
     if (!/^[a-z0-9-]{2,48}$/.test(req.params.id)) return res.status(400).send('zły identyfikator apki');
-    return express.static(path.join(APKI_DIR, req.params.id, 'dist'))(req, res, next);
+    const dist = path.join(APKI_DIR, req.params.id, 'dist');
+    return htmlZTlumaczem(dist)(req, res, () => express.static(dist)(req, res, next));
 });
+// 🌍 Tłumacz dla apek w Pierścieniu (public/tlumacz.js + rdzeń lib/tlumaczRdzen.js — ten sam co w Hubie).
+// Moduły ES z innego originu (studia na swoich portach) wymagają CORS. Język apce podaje Hub przez postMessage.
+const wyslijModul = (plik) => (_req, res) => { res.set('Cache-Control', 'no-cache'); res.type('application/javascript').sendFile(plik); };
+app.get('/tlumacz.js', cors({ origin: '*' }), wyslijModul(path.join(__dirname, 'public', 'tlumacz.js')));
+app.get('/tlumacz-rdzen.js', cors({ origin: '*' }), wyslijModul(path.join(__dirname, 'lib', 'tlumaczRdzen.js')));
 
 // ── 🛡️ STRAŻ MOSTU ───────────────────────────────────────────────────────────
 // Wpięta TUTAJ celowo: po trasach statycznych (żeby strumień muzyki i substrony
