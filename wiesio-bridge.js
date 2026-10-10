@@ -8159,6 +8159,18 @@ app.post('/api/gdd/:id/galezie/:galaz/propozycje', async (req, res) => {
     const narysowane = (await Assety3D.listaObrazow().catch(() => [])).filter((o) => o.projekt === req.params.id && o.galaz === req.params.galaz).map((o) => o.opis);
     return ytOdp(res, Gdd.nowePropozycje(req.params.id, req.params.galaz, { ile: Math.min(8, Math.max(1, Number(req.body?.ile) || 5)), narysowane, model: TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('rezyser') || modelMechanika()) }).then((propozycje) => ({ propozycje })));
 });
+// 🌲 elementy otoczenia z konceptu krainy: model Reżysera czyta opis krajobrazu → propozycje w gałęzi „Otoczenie i roślinność”
+app.post('/api/gdd/:id/krajobraz/:obraz/elementy', async (req, res) => {
+    try {
+        const o = await Assety3D.metaObrazu(req.params.obraz);
+        if (!o) throw new Error('Nie ma takiego obrazu w Pracowni.');
+        const g = await Gdd.wczytaj(req.params.id);
+        if (!(g?.galezie ?? []).some((x) => x.id === 'otoczenie')) await Gdd.dodajGalezie(req.params.id, SzablonyGier.TETERHIA.gdd.galezie.filter((x) => x.id === 'otoczenie'));
+        const narysowane = (await Assety3D.listaObrazow().catch(() => [])).filter((x) => x.projekt === req.params.id && x.galaz === 'otoczenie').map((x) => x.opis);
+        const propozycje = await Gdd.nowePropozycje(req.params.id, 'otoczenie', { ile: Math.min(8, Math.max(2, Number(req.body?.ile) || 6)), narysowane, kontekst: `koncept krainy „${o.opis}” — wymyśl drzewa, krzewy, trawy, skały i szczyty, które w niej rosną i stoją (styl pojedynczy, jeden element)`, model: TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('rezyser') || modelMechanika()) });
+        res.json({ success: true, propozycje });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 app.get('/api/gdd/:id/galezie/brakujace', (req, res) => ytOdp(res, Gdd.wczytaj(req.params.id).then((g) => ({ galezie: SzablonyGier.brakujaceGalezie(g).map((x) => ({ id: x.id, nazwa: x.nazwa, opis: x.opis })) }))));
 app.post('/api/gdd/:id/galezie/uzupelnij', (req, res) => ytOdp(res, Gdd.wczytaj(req.params.id).then((g) => Gdd.dodajGalezie(req.params.id, SzablonyGier.brakujaceGalezie(g))).then((dodane) => ({ dodane }))));
 app.get('/api/gdd/szablony', (_req, res) => res.json({ success: true, szablony: Object.values(SzablonyGier.SZABLONY).map((s) => ({ id: s.id, nazwa: s.nazwa, opis: s.opis, galezie: s.gdd.galezie.length, kamienie: s.gdd.kamienie.length })) }));
@@ -8427,7 +8439,7 @@ app.post('/api/assety3d/:id/uprosc', async (req, res) => {
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.post('/api/assety3d/:id/do-gry', async (req, res) => {
-    try { res.json({ success: true, ...(await Assety3D.doGry(req.params.id, req.body?.projekt, { ruch: req.body?.ruch || null })) }); }
+    try { res.json({ success: true, ...(await Assety3D.doGry(req.params.id, req.body?.projekt, { ruch: req.body?.ruch || null, otoczenie: req.body?.otoczenie || null, wysokosc: req.body?.wysokosc ?? null })) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.delete('/api/assety3d/:id', async (req, res) => res.json({ success: true, usunieto: await Assety3D.usun(req.params.id) }));

@@ -101,6 +101,16 @@ Krainy: koncepty krajobrazów dla każdego biomu (Strumień, Gaj, Równina, Grzb
                 { opis: 'wierzchowiec z kory i mchu, podobny do łosia, z latarniami na porożu', styl: 'pojedynczy' },
                 { opis: 'lewitująca deska dźwiękowa z głośnikiem w napędzie', styl: 'pojedynczy' },
             ] },
+            // 🌲 Suweren 2026-10-10: „lepsze elementy do otoczenia… drzewa, trawy, góry… więcej roślinności” — bryły dla otoczenia
+            // („Do gry” jako otoczenie biomu → gra rozsiewa je po wyspie); elementy z konceptów krain: „🌲 elementy tej krainy”
+            { id: 'otoczenie', nazwa: 'Otoczenie i roślinność', opis: 'Drzewa, krzewy, kępy traw, skały i szczyty do rozsiania po biomach wyspy — jeden element na spokojnym tle, bez gruntu pod spodem.', propozycje: [
+                { opis: 'drzewo Gaju: gruby, skręcony pień z korą jak struny, gęsta zaokrąglona korona w odcieniach szmaragdu, kilka świetlików między liśćmi', styl: 'pojedynczy' },
+                { opis: 'smukła sosna Grzbietu z warstwowymi gałęziami jak schody, ośnieżone końce igieł', styl: 'pojedynczy' },
+                { opis: 'kępa wysokiej trawy Równiny z kłosami w kolorze miodu i kilkoma polnymi kwiatami', styl: 'pojedynczy' },
+                { opis: 'omszały głaz z wyrytą spiralą i małymi paprociami u podstawy', styl: 'pojedynczy' },
+                { opis: 'martwe drzewo Pustki: wybielony, powykręcany pień z gałęziami jak palce, bez liści', styl: 'pojedynczy' },
+                { opis: 'kępa trzcin Strumienia z kolbami i jedną kwitnącą lilią wodną', styl: 'pojedynczy' },
+            ] },
             // 🐾 Suweren 2026-10-09: „zakładka na mini-TeOgochi” — armia Wędrowca (do 7), każdy z 3 skillami i 1 specjalnym
             { id: 'mini-teogochi', nazwa: 'Mini-TeOgochi', opis: 'Mini-stworki armii Wędrowca (do 7) — każdy z unikalnym wyglądem, 3 skillami i 1 specjalnym; na dwóch nogach (pod rig i taniec), jeden stworek na spokojnym tle.', propozycje: [
                 { opis: 'mini-TeOgochi Iskierka — mały stworek z żaru na dwóch nóżkach, ogon jak płomyk świecy, okrągłe bursztynowe oczy, słuchawki z miedzianego drutu', styl: 'postac3d' },

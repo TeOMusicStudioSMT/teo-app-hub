@@ -78,7 +78,7 @@ export function odczytajPropozycje(tekst, istniejace = [], ile = 5) {
  * dostaje skrót GDD, gałąź, jej dotychczasowe propozycje i to, co już narysowano — i daje NOWE, w stylach Pracowni.
  * Nowe idą na początek listy gałęzi (najwyżej 12 — najstarsze odpadają).
  */
-export async function nowePropozycje(projektId, galazId, { ile = 5, narysowane = [], model } = {}) {
+export async function nowePropozycje(projektId, galazId, { ile = 5, narysowane = [], model, kontekst = '' } = {}) {
     const g = await wczytaj(projektId);
     if (!g) throw new Error('Ten projekt nie ma GDD.');
     const gal = (g.galezie ?? []).find((x) => x.id === galazId);
@@ -88,7 +88,7 @@ export async function nowePropozycje(projektId, galazId, { ile = 5, narysowane =
 Każda propozycja w osobnej linii, dokładnie: STYL | opis po polsku (1 zdanie, konkretny wygląd: kształt, materiał, barwy, jeden wyróżnik).
 STYLE: postac3d = postać/stworek na dwóch nogach w A-pozie (pod rig i animację — WSZYSTKIE postacie i stworki tak); pojedynczy = jeden przedmiot/budowla/stwór bez nóg; zestaw = kit modelarski (części + złożona figura); krajobraz = koncept krainy (nie do 3D).
 Nie powtarzaj niczego z listy „JUŻ SĄ”. Bez wstępu, bez numeracji, tylko ${ile} linii.`;
-    const prompt = `GDD (skrót):\n${jakoTekst(g, { zKamieniami: false }).slice(0, 4000)}\n\nGAŁĄŹ: ${gal.nazwa} — ${gal.opis}\n\nJUŻ SĄ:\n${dotad.slice(0, 40).map((x) => `- ${x}`).join('\n') || '(nic)'}`;
+    const prompt = `GDD (skrót):\n${jakoTekst(g, { zKamieniami: false }).slice(0, 4000)}\n\nGAŁĄŹ: ${gal.nazwa} — ${gal.opis}${kontekst ? `\n\nNA PODSTAWIE: ${String(kontekst).slice(0, 1200)}` : ''}\n\nJUŻ SĄ:\n${dotad.slice(0, 40).map((x) => `- ${x}`).join('\n') || '(nic)'}`;
     const odp = await cfg.pisz({ system, prompt, model: model || cfg.model(), timeoutMs: 5 * 60_000 });
     const nowe = odczytajPropozycje(odp.tekst ?? odp, dotad, ile);
     if (!nowe.length) throw new Error(`Model nie dał propozycji w formacie „STYL | opis” (odpowiedź: „${String(odp.tekst ?? odp).slice(0, 120)}”).`);

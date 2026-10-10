@@ -140,7 +140,11 @@ export async function uprosc(id, sciany) {
 }
 
 /** „Do gry": kopia GLB do public/assety projektu + wpis w assety.json (Kodeks czyta to w prompcie). */
-export async function doGry(id, projektId, { ruch = null } = {}) {
+/** Biomy wyspy Teterhii — bryła „Do gry” jako otoczenie jednego z nich (gra rozsiewa ją po jego kaflach). */
+export const BIOMY_OTOCZENIA = ['gaj', 'rownina', 'grzbiet', 'strumien', 'pustka'];
+
+export async function doGry(id, projektId, { ruch = null, otoczenie = null, wysokosc = null } = {}) {
+    if (otoczenie !== null && !BIOMY_OTOCZENIA.includes(otoczenie)) throw new Error(`Otoczenie: jeden z biomów ${BIOMY_OTOCZENIA.join(', ')}.`);
     const m = await meta(id);
     if (!m) throw new Error('Nie ma takiego assetu.');
     if (!/^[a-z0-9-]{2,48}$/.test(String(projektId || '')) || !fsSync.existsSync(path.join(cfg.katalogApek, projektId))) throw new Error('Nie ma takiego projektu gry.');
@@ -158,7 +162,8 @@ export async function doGry(id, projektId, { ruch = null } = {}) {
     try { kat = JSON.parse(await fs.readFile(plikKat, 'utf8')); } catch { kat = []; }
     kat = kat.filter((a) => a.plik !== nazwaPliku);
     const sw = m.siatka?.swiatlo;   // ✨ świecące oko: gra stawia PointLight (userData.swiatlo węzła „asset”)
-    kat.push({ plik: nazwaPliku, nazwa: m.nazwa, opis: m.opis, sciany: m.sciany ?? null, zrodlo: id, ...(wpisRuchu ? { animacja: `ruch_${ruch}` } : {}), ...(sw && !wpisRuchu ? { swiatlo: { kolor: sw.kolor, moc: sw.moc } } : {}), dodano: new Date().toISOString() });
+    const wys = Number(wysokosc);
+    kat.push({ plik: nazwaPliku, nazwa: m.nazwa, opis: m.opis, sciany: m.sciany ?? null, zrodlo: id, ...(wpisRuchu ? { animacja: `ruch_${ruch}` } : {}), ...(otoczenie ? { otoczenie, wysokosc: Number.isFinite(wys) && wys > 0 ? Math.min(40, wys) : 4 } : {}), ...(sw && !wpisRuchu ? { swiatlo: { kolor: sw.kolor, moc: sw.moc } } : {}), dodano: new Date().toISOString() });
     await fs.writeFile(plikKat, JSON.stringify(kat, null, 2), 'utf8');
     m.wGrach = [...new Set([...(m.wGrach ?? []), projektId])];
     await fs.writeFile(path.join(dirAssetu(id), 'meta.json'), JSON.stringify(m, null, 2), 'utf8');

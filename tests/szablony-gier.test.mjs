@@ -31,7 +31,7 @@ test('zasiej: nowy projekt gry + GDD z gałęziami; drugi raz zwraca istniejący
     const w1 = await zasiej('teterhia', { appStudio, gdd: Gdd });
     assert.equal(w1.nowy, true);
     assert.equal(w1.projekt, 'teterhia-wieczna-saga');
-    assert.equal(w1.gdd.galezie.length, 8, '7 gałęzi świata + Mini-TeOgochi (2026-10-09)');
+    assert.equal(w1.gdd.galezie.length, 9, '7 gałęzi świata + Otoczenie (2026-10-10) + Mini-TeOgochi (2026-10-09)');
     assert.equal(w1.gdd.kamienie.length, 6);
     assert.equal(w1.gdd.zrodlo, 'szablon:teterhia');
     assert.match(Gdd.jakoTekst(w1.gdd), /Gałęzie świata/);
