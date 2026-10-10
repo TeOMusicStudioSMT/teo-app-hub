@@ -262,6 +262,40 @@ function plikZOutputs(outputs, klucze) {
     return null;
 }
 
+/**
+ * 🎬 Kadr filmu FLUX.2 klein z WZORAMI (Suweren 2026-10-10: „film stylu gry oraz postacie z gry w nim”): do 3 obrazów
+ * postaci z gry → LoadImage → ImageScaleToTotalPixels (1 MP) → VAEEncode → ReferenceLatent (łańcuch) → guider; wymiary
+ * wielokrotności 16. Ten sam graf co Pracownia (flux2_klein_4b.json), zwraca ścieżkę PNG w wyjściu ComfyUI.
+ */
+export async function kadrFilmu({ prompt, referencje = [], szer = 1280, wys = 720, ziarno = null, prefiks = 'katedra/filmy-gry/kadr' } = {}) {
+    if (!String(prompt || '').trim()) throw new Error('Pusty opis kadru.');
+    await zywyComfy('/object_info/ReferenceLatent');
+    const g = JSON.parse(await fs.readFile(path.join(cfg.katalogWorkflow, GRAF_OBRAZ), 'utf8')); delete g._opis;
+    const w16 = (v) => Math.max(256, Math.round(Number(v) / 16) * 16);
+    g['5'].inputs.text = String(prompt).slice(0, 2000);
+    g['7'].inputs.width = w16(szer); g['7'].inputs.height = w16(wys); g['8'].inputs.width = w16(szer); g['8'].inputs.height = w16(wys);
+    g['11'].inputs.noise_seed = Number.isFinite(Number(ziarno)) && ziarno !== null ? Number(ziarno) : Math.floor(Math.random() * 1e9);
+    g['14'].inputs.filename_prefix = prefiks;
+    let kond = ['5', 0];
+    let n = 100;
+    for (const ref of referencje.filter((r) => fsSync.existsSync(r)).slice(0, 3)) {
+        const nazwa = await wgrajObraz(ref, `wzor-${crypto.createHash('sha1').update(ref).digest('hex').slice(0, 12)}.png`);
+        g[String(n)] = { class_type: 'LoadImage', inputs: { image: nazwa } };
+        g[String(n + 1)] = { class_type: 'ImageScaleToTotalPixels', inputs: { image: [String(n), 0], upscale_method: 'lanczos', megapixels: 1, resolution_steps: 1 } };
+        g[String(n + 2)] = { class_type: 'VAEEncode', inputs: { pixels: [String(n + 1), 0], vae: ['3', 0] } };
+        g[String(n + 3)] = { class_type: 'ReferenceLatent', inputs: { conditioning: kond, latent: [String(n + 2), 0] } };
+        kond = [String(n + 3), 0];
+        n += 10;
+    }
+    g['10'].inputs.conditioning = kond;
+    const wynik = await czekajNaComfy(await zlecGraf(g), { limitMs: 20 * 60_000 });
+    const plik = plikZOutputs(wynik.outputs, ['images']);
+    if (!plik) throw new Error('FLUX nie oddał kadru.');
+    return plik;
+}
+/** Obraz do wejścia ComfyUI (dla Wan: kadr startowy) → nazwa w ComfyUI. */
+export const wgrajDoComfy = (sciezka) => wgrajObraz(sciezka, `kadr-${crypto.createHash('sha1').update(sciezka + Date.now()).digest('hex').slice(0, 12)}.png`);
+
 /** FLUX.2 klein: prompt → plik PNG w wyjściu ComfyUI (ścieżka). */
 async function rysuj({ prompt, szer = 1024, wys = 1024, ziarno = null, prefiks, z }) {
     const g = JSON.parse(await fs.readFile(path.join(cfg.katalogWorkflow, GRAF_OBRAZ), 'utf8')); delete g._opis;

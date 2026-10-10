@@ -134,6 +134,10 @@ export const ZDARZENIA_GRY = {
     nuta: 'Zdobyta Nuta', zgrzytowiec: 'Rozbrojony Zgrzytowiec', turniej: 'Wygrany turniej', taniec: 'Taniec z rangą S', poziom: 'Nowy poziom wędrowca',
 };
 const STANY_FILMU = ['pomysl', 'zlecony', 'gotowy', 'blad'];
+/** 🎬 Silnik filmu: kadr FLUX z postaciami gry → Wan go ożywia (domyślny) / sam kadr FLUX z ruchem kamery / sam Wan z tekstu. */
+export const SILNIKI_FILMU = { 'flux-wan': 'FLUX → Wan (kadr z postaciami gry, ożywiony)', flux: 'FLUX (kadr z postaciami gry + ruch kamery, szybko)', wan: 'Wan (z samego tekstu)' };
+/** Ruch kamery po kadrze (silnik flux; przy flux-wan — wskazówka dla Wan). */
+export const RUCHY_KAMERY = { najazd: 'najazd', odjazd: 'odjazd', 'w-lewo': 'panorama w lewo', 'w-prawo': 'panorama w prawo', 'w-gore': 'w górę', staly: 'kamera stoi' };
 /** Filmy z GDD / propozycji → czyste; stan, plik i zlecenie zostają z poprzedniej wersji tego samego id. */
 export function oczyscFilmy(lista, stare = []) {
     if (!Array.isArray(lista)) return [];
@@ -159,6 +163,14 @@ export function oczyscFilmy(lista, stare = []) {
             zlecenie: pole('zlecenie', (v) => typeof v === 'string' && v.length <= 80),
             blad: pole('blad', (v) => typeof v === 'string') ? String(pole('blad', () => true)).slice(0, 300) : null,
             kiedy: pole('kiedy', (v) => typeof v === 'string' && v.length <= 40),
+            silnik: SILNIKI_FILMU[f.silnik] ? f.silnik : (byl?.silnik ?? 'flux-wan'),
+            // obsada filmu (id z obsady gry: katedra, b:<bohater>, o:<obraz Pracowni>); pusta = wybiera Reżyser Wideo
+            postacie: Array.isArray(f.postacie) ? f.postacie.filter((x) => typeof x === 'string' && /^(katedra|[bo]:[a-z0-9-]{2,80})$/.test(x)).slice(0, 3) : (byl?.postacie ?? []),
+            ruch: RUCHY_KAMERY[f.ruch] ? f.ruch : (byl?.ruch ?? null),
+            kadr: pole('kadr', (v) => typeof v === 'string' && /^filmy\/[a-z0-9-]+-kadr\.png$/.test(v)),
+            kadrPrompt: pole('kadrPrompt', (v) => typeof v === 'string') ? String(pole('kadrPrompt', () => true)).slice(0, 800) : null,
+            obsadaUzyta: pole('obsadaUzyta', (v) => Array.isArray(v)) ?? [],
+            silnikUzyty: pole('silnikUzyty', (v) => !!SILNIKI_FILMU[v]),
         };
     }).filter(Boolean);
 }
@@ -610,4 +622,4 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
     return { start: true, zadan: kolejka.length, model: prod.model, zapasowe: prod.zapasowe };
 }
 
-export default { skonfiguruj, SILNIKI, ZDARZENIA_GRY, oczyscFilmy, scalFilmy, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, scalDziedzictwo, nowePropozycje, odczytajPropozycje, dodajGalezie, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
+export default { skonfiguruj, SILNIKI, ZDARZENIA_GRY, SILNIKI_FILMU, RUCHY_KAMERY, oczyscFilmy, scalFilmy, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, scalDziedzictwo, nowePropozycje, odczytajPropozycje, dodajGalezie, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };

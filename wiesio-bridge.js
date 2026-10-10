@@ -8225,14 +8225,52 @@ app.post('/api/gdd/:id/zadanie/:zadanie', async (req, res) => {
 const FilmyGry = utworzFilmyGry({
     katalogGier: path.join(process.cwd(), '..', '_OtakOs_Apki'),
     gdd: { wczytaj: (id) => Gdd.wczytaj(id), zapisz: (id, g) => Gdd.zapisz(id, g) },
-    generuj: async ({ prompt, sekundy }) => {
+    generuj: async ({ prompt, sekundy, obrazStartowy = '' }) => {
         const przed = await stanWideoZBudzeniem('film gry');
         if (!przed.comfy) return { ok: false, powod: przed.braki.join(' | ') };
-        return Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, sekundy });
+        return Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, sekundy, obrazStartowy });
     },
     stan: (z) => Wideo.stanZlecenia(COMFY_BASE, z, COMFY_DIR),
     pisz: async ({ system, prompt }) => (await AppStudio.pisz({ system, prompt, model: TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('rezyser') || modelMechanika()), timeoutMs: 5 * 60_000 })).tekst,
+    // 🎥 Reżyser Wideo: obsada gry z obrazami (wzory dla FLUX), kadr FLUX.2 z referencjami, wgranie kadru dla Wan, ruch kamery ffmpeg
+    obsada: (projekt) => obsadaGry(projekt),
+    kadr: async ({ prompt, referencje }) => {
+        const przed = await stanWideoZBudzeniem('kadr filmu gry');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        return Assety3D.kadrFilmu({ prompt, referencje });
+    },
+    wgraj: (sciezka) => Assety3D.wgrajDoComfy(sciezka),
+    ruchKadru: async ({ kadr, wyjscie, filtr, sekundy }) => { await execFileAsync(ffmpegPath, ['-loglevel', 'error', '-y', '-loop', '1', '-i', kadr, '-vf', filtr, '-t', String(sekundy), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', wyjscie], { maxBuffer: 1 << 24, timeout: 10 * 60_000 }); },
     szyna: Szyna,
+});
+/**
+ * 🎭 Obsada gry dla Reżysera Wideo: postać Katedry, bohaterowie startowi, obrazy Pracowni z gałęzi postaci / Mini-TeOgochi /
+ * stworów tej gry — każdy z obrazem (wzór dla FLUX). Id: `katedra`, `b:<bohater>`, `o:<obraz>`.
+ */
+async function obsadaGry(projekt) {
+    const out = [];
+    const wszystkie = await Assety3D.lista().catch(() => []);
+    const obrazBryly = (id) => (id ? Assety3D.sciezkaPliku(id, 'obraz.png') : null);
+    try {
+        const s = await PostacKatedry.stan();
+        if (s.karta) out.push({ id: 'katedra', imie: s.karta.imie, opis: s.karta.opis, obraz: obrazBryly(s.najlepsza?.id) ?? (s.karta.obraz ? Assety3D.plikObrazu(s.karta.obraz) : null) });
+    } catch { /* bez postaci Katedry */ }
+    try {
+        for (const b of await Bohaterowie.lista(projekt)) out.push({ id: `b:${b.id}`, imie: b.imie, opis: b.opis, obraz: obrazBryly(b.najlepsza?.id) ?? (b.obraz ? Assety3D.plikObrazu(b.obraz) : null) });
+    } catch { /* gra bez bohaterów */ }
+    for (const o of await Assety3D.listaObrazow().catch(() => [])) {
+        if (o.stan !== 'gotowe' || o.projekt !== projekt || !['postacie', 'mini-teogochi', 'stwory'].includes(o.galaz)) continue;
+        out.push({ id: `o:${o.id}`, imie: o.opis.split(/[—:,]/)[0].trim().slice(0, 40), opis: o.opis, obraz: Assety3D.plikObrazu(o.id) });
+    }
+    void wszystkie;
+    return out.filter((x) => x.obraz).slice(0, 40);
+}
+app.get('/api/gdd/:id/obsada', (req, res) => ytOdp(res, obsadaGry(req.params.id).then((obsada) => ({ obsada: obsada.map(({ obraz: _o, ...r }) => r) }))));
+app.get('/api/gdd/:id/film/:film/kadr', (req, res) => {
+    const id = String(req.params.film);
+    if (!/^[a-z0-9-]{2,60}$/.test(id) || !/^[a-z0-9-]{2,48}$/.test(req.params.id)) return res.status(400).end();
+    const p = path.join(APKI_DIR, req.params.id, 'public', 'filmy', `${id}-kadr.png`);
+    return fsSync.existsSync(p) ? res.sendFile(p) : res.status(404).end();
 });
 // 🧝 Bohaterowie startowi (services/Bohaterowie.js) — karta → obraz (FLUX, postać do riga) → bryła (TRELLIS) →
 // [Meshy tekstury + rig w Assetach 3D, za zgodą] → do gry (public/assety/bohaterowie.json → wybór w Bramie).
