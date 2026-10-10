@@ -126,7 +126,7 @@ export function oczyscGalezie(lista) {
 }
 /**
  * 🎬 FILMY GRY (Suweren 2026-10-09: „Reżyser Gry może zlecić wszystkie filmy, jakie potrzebuje… każda walka czy
- * zdarzenie może mieć cutscenkę… czy film wstępny”). Film = jedno ujęcie Wan 2.2 (lokalnie, 2–5 s), przypięte do
+ * zdarzenie może mieć cutscenkę… czy film wstępny”). Film = 2–20 s, ujęcia po ≤ 5 s (Wan 2.2 / FLUX lokalnie, opcjonalnie muzyka Joanny), przypięte do
  * ZDARZENIA w grze (gra odtwarza je sama — src/filmy.ts). Stan i plik trzyma most (services/FilmyGry.js).
  */
 export const ZDARZENIA_GRY = {
@@ -157,7 +157,8 @@ export function oczyscFilmy(lista, stare = []) {
         return {
             id, zdarzenie: ZDARZENIA_GRY[f.zdarzenie] ? f.zdarzenie : 'start', tytul: tytul || opis.slice(0, 60), opis,
             prompt: f.prompt ? String(f.prompt).trim().slice(0, 600) : (byl?.prompt ?? null),
-            sekundy: Math.max(2, Math.min(5, Math.round(Number(f.sekundy) || byl?.sekundy || 4))),
+            // 2–20 s: dłuższy niż jedno ujęcie (5 s) liczy się jako kilka ujęć (FilmyGry.ileUjec)
+            sekundy: Math.max(2, Math.min(20, Math.round(Number(f.sekundy) || byl?.sekundy || 4))),
             stan: STANY_FILMU.includes(f.stan) ? f.stan : (byl?.stan ?? 'pomysl'),
             plik: pole('plik', (v) => typeof v === 'string' && /^filmy\/[a-z0-9-]+\.(mp4|webm)$/.test(v)),
             zlecenie: pole('zlecenie', (v) => typeof v === 'string' && v.length <= 80),
@@ -171,6 +172,14 @@ export function oczyscFilmy(lista, stare = []) {
             kadrPrompt: pole('kadrPrompt', (v) => typeof v === 'string') ? String(pole('kadrPrompt', () => true)).slice(0, 800) : null,
             obsadaUzyta: pole('obsadaUzyta', (v) => Array.isArray(v)) ?? [],
             silnikUzyty: pole('silnikUzyty', (v) => !!SILNIKI_FILMU[v]),
+            // plan ujęć Reżysera Wideo (ruch + kamera), postęp liczenia
+            ujecia: pole('ujecia', (v) => Array.isArray(v))?.slice(0, 8).map((u) => ({ ruch: u?.ruch ? String(u.ruch).slice(0, 400) : null, kamera: RUCHY_KAMERY[u?.kamera] ? u.kamera : 'najazd' })) ?? [],
+            postep: pole('postep', (v) => typeof v === 'string' && v.length <= 80),
+            // 🎵 dźwięk od Joanny: `dzwiek` = Suweren chce, `maDzwiek` = plik w grze go ma
+            dzwiek: typeof f.dzwiek === 'boolean' ? f.dzwiek : !!byl?.dzwiek,
+            maDzwiek: !!pole('maDzwiek', (v) => typeof v === 'boolean'),
+            muzykaBrief: pole('muzykaBrief', (v) => typeof v === 'string') ? String(pole('muzykaBrief', () => true)).slice(0, 400) : null,
+            dzwiekBlad: pole('dzwiekBlad', (v) => typeof v === 'string') ? String(pole('dzwiekBlad', () => true)).slice(0, 300) : null,
         };
     }).filter(Boolean);
 }
@@ -179,7 +188,7 @@ export function scalFilmy(stare = [], nowe = []) {
     const out = stare.map((f) => ({ ...f }));
     for (const n of Array.isArray(nowe) ? nowe : []) {
         const i = out.findIndex((f) => f.id === n?.id);
-        if (i >= 0) out[i] = { ...out[i], ...n, stan: out[i].stan, plik: out[i].plik, zlecenie: out[i].zlecenie };
+        if (i >= 0) out[i] = { ...out[i], ...n, stan: out[i].stan, plik: out[i].plik, zlecenie: out[i].zlecenie, maDzwiek: out[i].maDzwiek };
         else out.push({ ...n, id: undefined });
     }
     return oczyscFilmy(out, stare);
@@ -276,7 +285,7 @@ export const MOCE_KATEDRY_DLA_GIER = `CO KATEDRA JUŻ DAJE GROM (most 127.0.0.1:
 - 🏛️ Globalny Klub Mistrzów: turnieje globalne między Katedrami (ogłasza Suweren w Hubie), wyniki i ranking na otakos.wtf — gra tylko gra turniej i zgłasza wynik z kluczem eventu.
 - 🗝️ Kustosz: POST /api/tgs/quest → quest na żywo z lokalnego modelu (tytul, tresc, wybory z tonami). 🎭 Rozmowa w roli: POST /api/delegat/rozmowa {delegat, scena} (np. towarzysz-kot w Teterhii).
 - 🗿 Assety 3D: bryły GLB (TRELLIS.2), kolor, gęstszy fragment, świecące oko, ruch (Blender), dopracowanie w chmurze Meshy (za zgodą Suwerena) → „Do gry” kładzie GLB w public/assety + assety.json.
-- 🎬 FILMY GRY: cutscenki i intro proponujesz w "filmy" (jedno ujęcie Wan 2.2, 2–5 s, przy zdarzeniu gry); Suweren zleca je przyciskiem, plik trafia do public/filmy, a gra sama odtwarza film przy zdarzeniu (src/filmy.ts: zagrajFilm(zdarzenie)). Kodeks NIE buduje odtwarzacza ani nie generuje wideo — najwyżej dodaje wywołanie zagrajFilm('<zdarzenie>') przy nowym zdarzeniu.
+- 🎬 FILMY GRY: cutscenki i intro proponujesz w "filmy" (2–20 s — dłuższy to kilka ujęć po ≤ 5 s, Wan 2.2 / FLUX lokalnie, przy zdarzeniu gry; opcjonalnie muzyka od Joanny); Suweren zleca je przyciskiem, plik trafia do public/filmy, a gra sama odtwarza film przy zdarzeniu (src/filmy.ts: zagrajFilm(zdarzenie)). Kodeks NIE buduje odtwarzacza ani nie generuje wideo — najwyżej dodaje wywołanie zagrajFilm('<zdarzenie>') przy nowym zdarzeniu.
 - 🦴 POSTACIE = DWIE NOGI (zasada Suwerena 2026-10-09): każda postać i stworek, który ma się ruszać, stoi na dwóch nogach — w gałęziach proponuj ją stylem „postac3d” (A-poza, przodem). Taka bryła dostaje w chmurze szkielet (rig Meshy) z chodem, biegiem i akcjami (walka, taniec) → AnimationMixer w grze. Postać czworonożna nie dostanie szkieletu.
 - 🥚 JaJo Mistrza uczy się stylu Suwerena z jego poprawek — ZASADY STYLU (gdy są) masz niżej; trzymaj się ich w tekstach gry i w rozmowie.`;
 
@@ -428,7 +437,7 @@ export async function rozmowa(projektId, { wypowiedz, historia = [], model } = {
 ${MOCE_KATEDRY_DLA_GIER}${await blokZasad()}
 Gdy ustalicie coś, co powinno trafić do dokumentu albo planu, dopisz na końcu odpowiedzi blok (poprawny JSON, nic po nim):
 PROPOZYCJA_GDD: {"sekcje":{"mechanika":"pełna nowa treść sekcji"}, "tytul":"…", "kamienie":[{"id":"km-…","tytul":"…","opis":"…","zadania":["zadanie 1","zadanie 2"]}], "filmy":[{"zdarzenie":"start","tytul":"…","opis":"co widać w ujęciu, po polsku, 1–3 zdania"}]}
-🎬 FILMY: możesz proponować cutscenki i intro — każdy film to JEDNO ujęcie 2–5 s (Wan 2.2 lokalnie), przypięte do zdarzenia gry: ${Object.entries(ZDARZENIA_GRY).map(([k, v]) => `${k} (${v})`).join(', ')}. Opisz, co widać (miejsce, postać, ruch kamery), nie dialogi. W "filmy" podajesz tylko nowe albo zmieniane (z id).
+🎬 FILMY: możesz proponować cutscenki i intro — każdy film ma 2–20 s (dłuższy niż 5 s = kilka ujęć, każde ujęcie Wan liczy się długo na tej karcie — dłuższe tylko tam, gdzie scena tego potrzebuje), przypięte do zdarzenia gry: ${Object.entries(ZDARZENIA_GRY).map(([k, v]) => `${k} (${v})`).join(', ')}. Opisz, co widać (miejsce, postać, ruch kamery), nie dialogi. W "filmy" podajesz tylko nowe albo zmieniane (z id).
 Zasady: tylko pola, które się zmieniają; treść sekcji w całości; w "kamienie" podajesz TYLKO kamienie, które zmieniasz, z ich id z planu i PEŁNĄ nową listą zadań tego kamienia — zadania oznaczone [gotowe] przepisz dosłownie, żeby nie zgubić ich stanu; nowy kamień — bez id. Limit planu: najwyżej 12 kamieni i 6 zadań w kamieniu (więcej się nie zapisze — rozbij na kolejny kamień). Bez propozycji, gdy nic nie ustalono.
 NIE piszesz „zapisałem” ani „dodałem do planu”: zmiana trafia do GDD dopiero, gdy Suweren kliknie „Wpisz do GDD” przy Twojej propozycji — mów „proponuję”.`;
     const dialog = historia.slice(-12).map((h) => `${h.kto === 'suweren' ? 'Suweren' : 'Reżyser'}: ${String(h.tresc).slice(0, 800)}`).join('\n');

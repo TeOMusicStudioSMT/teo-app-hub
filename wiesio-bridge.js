@@ -8248,6 +8248,24 @@ const FilmyGry = utworzFilmyGry({
     },
     wgraj: (sciezka) => Assety3D.wgrajDoComfy(sciezka),
     ruchKadru: async ({ kadr, wyjscie, filtr, sekundy }) => { await execFileAsync(ffmpegPath, ['-loglevel', 'error', '-y', '-loop', '1', '-i', kadr, '-vf', filtr, '-t', String(sekundy), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', wyjscie], { maxBuffer: 1 << 24, timeout: 10 * 60_000 }); },
+    // 🎞️ dłuższe filmy: następne ujęcie Wan od ostatniej klatki poprzedniego (format z filmu — jak Ciąg Dalszy)
+    dopisz: async ({ plik, prompt, sekundy }) => {
+        const przed = await stanWideoZBudzeniem('ujęcie filmu gry');
+        if (!przed.comfy) return { ok: false, powod: przed.braki.join(' | ') };
+        const opis = await CiagDalszy.opisFilmu(plik, COMFY_DIR);
+        const klatka = await CiagDalszy.ostatniaKlatka(plik, COMFY_DIR);
+        return Wideo.dopiszUjecie({ comfyBase: COMFY_BASE, prompt, klatka: klatka.nazwa, szerokosc: opis.szerokosc, wysokosc: opis.wysokosc, fps: opis.fps, klatek: Wideo.klatekZSekund(sekundy) });
+    },
+    // 🎵 dźwięk od Joanny: brief (model jak w Montażowni) → ACE-Step tą samą trasą co /api/montazownia/skomponuj
+    joanna: async ({ system, prompt }) => (await piszModelem(undefined, system, prompt)).tekst,
+    pamiecJoanny: async () => joannaKontekst(await joannaPamiec(ANTIGRAVITY_DIR)),
+    komponuj: async ({ prompt, sekundy }) => {
+        const odp = await fetch(`http://127.0.0.1:${PORT}/api/music/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, duration: sekundy, rodzina: (await ustawieniaMuzyki()).rodzinaFilmowa }) });
+        const d = await odp.json();
+        if (!d.success) throw new Error(d.message || 'Silnik muzyki odmówił.');
+        return czekajNaAudio(d.promptId);
+    },
+    roboczy: path.join(ANTIGRAVITY_DIR, 'filmy-gry-robocze'),
     szyna: Szyna,
 });
 /**
