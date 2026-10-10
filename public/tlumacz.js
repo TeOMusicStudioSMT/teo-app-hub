@@ -9,6 +9,8 @@
  * każdej warstwie po załadowaniu i przy zmianie; apka sama pyta rodzica `{typ:'otakos-jezyk?'}` na starcie.
  * Przyjmujemy tylko od rodzica z tej maszyny (localhost/127.0.0.1/[::1]) albo z originu mostu. Ostatni język apka
  * pamięta (localStorage `otakos_tl_jezyk` swojego originu) — po przeładowaniu warstwy nie mruga polskim.
+ * Bez Huba (StoL pokazuje Świat w WebView przez tunel): język i klucz Straży we fragmencie adresu
+ * `#…&jezyk=en&k=<klucz>` — klucz idzie tylko do mostu, z którego przyszła strona (most przez tunel żąda klucza).
  * W apce: `window.__otakosTlumacz` {ustawJezyk, obserwujStan, stan}.
  */
 import { utworzTlumacza, czyOriginKatedry, kodJezyka } from './tlumacz-rdzen.js';
@@ -17,11 +19,16 @@ const KLUCZ = 'otakos_tl_jezyk';
 
 if (!window.__otakosTlumacz) {
     const most = new URL(import.meta.url).origin;
-    const t = utworzTlumacza({ most });
+    const frag = new URLSearchParams(location.hash.slice(1));
+    const klucz = location.origin === most ? frag.get('k') : null;
+    const pobierz = klucz ? (adres, o = {}) => fetch(adres, { ...o, headers: { ...(o.headers || {}), 'x-teo-klucz': klucz } }) : undefined;
+    const t = utworzTlumacza({ most, ...(pobierz ? { pobierz } : {}) });
     window.__otakosTlumacz = t;
 
     let zapamietany = null;
     try { zapamietany = kodJezyka(localStorage.getItem(KLUCZ)); } catch { /* prywatne okno */ }
+    const zAdresu = kodJezyka(frag.get('jezyk'));
+    if (zAdresu) { zapamietany = zAdresu; try { localStorage.setItem(KLUCZ, zAdresu); } catch { /* bez pamięci */ } }
     if (zapamietany && zapamietany !== 'pl') void t.ustawJezyk(zapamietany);
 
     window.addEventListener('message', (e) => {
