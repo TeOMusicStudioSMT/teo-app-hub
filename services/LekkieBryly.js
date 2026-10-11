@@ -4,7 +4,7 @@
  * Zmierzone na Teterhii: bryły z TRELLIS to 0,9–1,2 mln trójkątów przy teksturze < 3 MB (siatka = 90% pliku),
  * bryły z rigiem Meshy — ~100 tys. trójkątów i tekstury 2K/4K (tekstury = 60–70% pliku).
  *   · bez skóry i morfów: siatka uproszczona `simplifySloppy` (meshoptimizer, jak w Siatka3D) do `celScian`
- *     (domyślnie 30 tys. na całą bryłę, rozdzielone po prymitywach), potem nieużyte wierzchołki wycięte (compactPrimitive);
+ *     (domyślnie 60 tys. na całą bryłę — Suweren 2026-10-11: 30 tys. było zbyt rozmyte, rozdzielone po prymitywach), potem nieużyte wierzchołki wycięte (compactPrimitive);
  *   · ze skórą albo morfami: siatka NIETKNIĘTA (rig i animacje bajt w bajt), tylko tekstury;
  *   · tekstury ≤ `maksTekstury` (1024 px) przez `GlbTekstury.zmniejszTekstury` (ffmpeg, ten sam format).
  * Pełne bryły zostają w grze (Katedra, komputer, zip dla innych Katedr) — to tylko kopie obok.
@@ -15,7 +15,7 @@ import { compactPrimitive, prune } from '@gltf-transform/functions';
 import { MeshoptSimplifier } from 'meshoptimizer';
 import { zmniejszTekstury } from './GlbTekstury.js';
 
-export const CEL_SCIAN = Number(process.env.OTAKOS_LEKKIE_SCIANY || 30_000);
+export const CEL_SCIAN = Number(process.env.OTAKOS_LEKKIE_SCIANY || 60_000);
 export const MAKS_TEKSTURY = Number(process.env.OTAKOS_LEKKIE_TEKSTURA || 1024);
 
 const trojkaty = (p) => (p.getIndices() ? p.getIndices().getCount() : p.getAttribute('POSITION')?.getCount() ?? 0) / 3;

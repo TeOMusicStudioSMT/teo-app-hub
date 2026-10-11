@@ -90,7 +90,7 @@ import * as ModeleAgentow  from './services/ModeleAgentow.js';
 import { utworzMozg } from './services/MozgKatedry.js';
 import { utworzPlanGry } from './services/PlanGry.js';
 import { utworzPaczkiGier, zamontujTrasyGier } from './services/PaczkiGier.js';
-import { odchudzBryle } from './services/LekkieBryly.js';
+import { odchudzBryle, CEL_SCIAN, MAKS_TEKSTURY } from './services/LekkieBryly.js';
 import { policzKoherencje } from './services/KoherencjaKatedry.js';
 import { rozmiarModelu } from './services/BledyModeli.js';
 import * as ProjektStada   from './services/ProjektStada.js';
@@ -8804,7 +8804,8 @@ const PaczkiGier = utworzPaczkiGier({
     klucz: async () => (await Wizytowka.klucz()).publiczny,
     podpisz: (t) => Wizytowka.podpiszTekst(t),
     rejestr: process.env.OTAKOS_REJESTR_URL || 'https://otakos.wtf/api/katedry',
-    // 📱 lekkie kopie brył dla telefonu gościa (services/LekkieBryly.js): siatka bez riga ≤ 30 tys. trójkątów, tekstury ≤ 1024 px
+    // 📱 lekkie kopie brył dla telefonu gościa (services/LekkieBryly.js): siatka bez riga ≤ 60 tys. trójkątów, tekstury ≤ 1024 px
+    ustawieniaLekkich: `${CEL_SCIAN}|${MAKS_TEKSTURY}`,
     odchudz: (glb) => odchudzBryle(glb, { ffmpeg: ffmpegPath, uruchom: (c, a) => execFileAsync(c, a, { maxBuffer: 1 << 26, windowsHide: true }) }),
 });
 Wizytowka.skonfiguruj({ paczkiGier: PaczkiGier });

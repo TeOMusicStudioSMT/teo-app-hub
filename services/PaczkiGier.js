@@ -213,7 +213,7 @@ export function utworzLimitGosci({ max = Number(process.env.OTAKOS_GOSCIE_MAX ||
  * @param {{ katalog: string, katalogApek: string, nick: () => Promise<string>, klucz: () => Promise<string>,
  *           podpisz: (t: string) => Promise<string>, rejestr: string, fetch?: Function, teraz?: () => number, szyna?: object }} o
  */
-export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, rejestr, fetch: f = globalThis.fetch, teraz = () => Date.now(), szyna = null, odchudz = null }) {
+export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, rejestr, fetch: f = globalThis.fetch, teraz = () => Date.now(), szyna = null, odchudz = null, ustawieniaLekkich = '' }) {
     const PLIK = path.join(katalog, 'gry-udostepnione.json');
     const kat = (gra) => path.join(katalog, 'gry-paczki', gra);
     const czytaj = async () => { try { return JSON.parse(await fs.readFile(PLIK, 'utf8')); } catch { return { gry: {} }; } };
@@ -252,7 +252,7 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         const nowy = {}; const bledy = []; let zrobione = 0;
         for (const plik of pliki) {
             const st = await fs.stat(path.join(zrodla, plik));
-            const klucz = `${st.size}|${Math.round(st.mtimeMs)}`;
+            const klucz = `${st.size}|${Math.round(st.mtimeMs)}|${ustawieniaLekkich}`;   // zmiana celu odchudzania = nowe kopie
             if (indeks[plik]?.zrodlo === klucz && (!indeks[plik].lekki || fsSync.existsSync(path.join(cel, plik)))) { nowy[plik] = indeks[plik]; continue; }
             try {
                 const w = await odchudz(await fs.readFile(path.join(zrodla, plik)));
