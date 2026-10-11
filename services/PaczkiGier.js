@@ -379,7 +379,7 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         const paczki = Array.isArray(k.paczkiGier) ? k.paczkiGier : [];
         const p = (gra && paczki.find((x) => x.id === gra)) || paczki.find((x) => /teterhia/.test(x.id)) || paczki[0] || null;
         return {
-            nick: k.nick, adres: k.adres, motto: k.motto ?? '',
+            nick: k.nick, adres: k.adres, motto: k.motto ?? '', wlasna: k.nick === await nick(),
             postac: k.postac?.glb ? { imie: k.postac.imie, plec: k.postac.plec, opis: k.postac.opis, ruch: k.postac.ruch ?? null, glb: k.postac.glb } : null,
             mistrz: k.mistrz?.teterhia ? { event: String(k.mistrz.teterhia).slice(0, 80), etap: k.mistrz.etap ?? null } : null,
             gra: p ? { id: p.id, nazwa: p.nazwa, baza: `${k.adres}/wizytowka/gra/${p.id}/` } : null,

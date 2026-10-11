@@ -76,6 +76,7 @@ test('udostępnienie → instalacja u innej Katedry; podszyty podpis i podmienio
         assert.deepEqual((await kup.wSieci()).map((x) => x.nick), ['teo-mas']);
         const g = await kup.gospodarz('teo-mas');
         assert.equal(g.gra.baza, 'https://teo.example/wizytowka/gra/teterhia-wieczna-saga/');
+        assert.equal(g.wlasna, false);
 
         // podszyty podpis: rejestr zna inny klucz niż ten, którym podpisano manifest
         kluczWRejestrze = obcy.pub;
