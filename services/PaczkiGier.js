@@ -28,6 +28,7 @@ import zlib from 'zlib';
 import { promisify } from 'util';
 import { Transform } from 'stream';
 import cors from 'cors';
+import { utworzPlac } from './PlacObecnosci.js';
 
 const deflateRaw = promisify(zlib.deflateRaw);
 export const ID_GRY = /^[a-z0-9][a-z0-9-]{1,47}$/;
@@ -396,7 +397,7 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
  * @param {{ paczki: ReturnType<typeof utworzPaczkiGier>, nick: () => Promise<string|null>, wczytajRynek: () => Promise<{products: object[]}>,
  *           zapiszRynek: () => Promise<void>, limit?: ReturnType<typeof utworzLimitGosci>, bps?: number, maxPobran?: number }} o
  */
-export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek, limit = utworzLimitGosci(), bps = Number(process.env.OTAKOS_PACZKA_KBPS || 2048) * 1024, maxPobran = Number(process.env.OTAKOS_PACZKA_POBRANIA || 2) }) {
+export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek, limit = utworzLimitGosci(), bps = Number(process.env.OTAKOS_PACZKA_KBPS || 2048) * 1024, maxPobran = Number(process.env.OTAKOS_PACZKA_POBRANIA || 2), plac = null }) {
     const odp = (res, p, kod = 400) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(kod).json({ success: false, message: e.message }));
     const GoscieWyspy = limit;
     const PACZKA_BPS = bps;
@@ -449,8 +450,19 @@ export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek
         if (/\.html$/i.test(plik)) { res.set('Cache-Control', 'no-cache'); return res.sendFile(plik); }
         try { return await wyslijDlawiony(req, res, plik); } catch (e) { if (!res.headersSent) res.status(500).json({ success: false, message: e.message }); }
     });
+    // 👥 Plac obecności (services/PlacObecnosci.js): meldunki pozycji graczy udostępnionej gry — w pamięci, bez modeli.
+    const Plac = plac ?? utworzPlac({ max: GoscieWyspy.max + 1, czyCialo: async (gra, plik) => !!(await paczki.plikGoscia(gra, `assety/${plik}`)) });
+    const corsPlacu = cors({ origin: '*', methods: ['POST', 'OPTIONS'], allowedHeaders: ['Content-Type'] });
+    app.options(/^\/wizytowka\/plac\/([a-z0-9-]{2,48})(\/wyjdz)?$/, corsPlacu);
+    app.post(/^\/wizytowka\/plac\/([a-z0-9-]{2,48})$/, corsPlacu, async (req, res) => {
+        if (!(await paczki.udostepniona(req.params[0]).catch(() => false))) return res.status(404).json({ success: false, message: 'Ta Katedra nie udostępnia takiej gry — placu nie ma.' });
+        if (JSON.stringify(req.body ?? {}).length > 2000) return res.status(413).json({ success: false, message: 'Meldunek za duży.' });
+        try { const w = await Plac.melduj(req.params[0], ktoGosc(req), req.body ?? {}); return res.status(w.pelny ? 503 : 200).json({ success: !w.pelny, ...w }); }
+        catch (e) { return res.status(400).json({ success: false, message: e.message }); }
+    });
+    app.post(/^\/wizytowka\/plac\/([a-z0-9-]{2,48})\/wyjdz$/, corsPlacu, (req, res) => res.json({ success: true, wyszedl: Plac.wyjdz(req.params[0], ktoGosc(req), req.body?.id) }));
     app.get('/api/gry', async (_req, res) => {
-        try { res.json({ success: true, nick: await nick(), gry: await paczki.lista(), goscie: { aktywni: GoscieWyspy.aktywni(), max: GoscieWyspy.max }, paczka: { kbps: PACZKA_BPS / 1024, pobrania: MAX_POBRAN_PACZKI } }); }
+        try { res.json({ success: true, nick: await nick(), gry: await paczki.lista(), goscie: { aktywni: GoscieWyspy.aktywni(), max: GoscieWyspy.max }, plac: Plac.stan(), paczka: { kbps: PACZKA_BPS / 1024, pobrania: MAX_POBRAN_PACZKI } }); }
         catch (e) { res.status(500).json({ success: false, message: e.message }); }
     });
     app.post('/api/gry/udostepnij', async (req, res) => {
