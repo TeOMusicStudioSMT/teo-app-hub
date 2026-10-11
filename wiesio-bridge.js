@@ -88,6 +88,8 @@ import * as StrumienStada  from './services/StrumienStada.js';
 import * as KlockiStada    from './services/KlockiStada.js';
 import * as ModeleAgentow  from './services/ModeleAgentow.js';
 import { utworzMozg } from './services/MozgKatedry.js';
+import { policzKoherencje } from './services/KoherencjaKatedry.js';
+import { rozmiarModelu } from './services/BledyModeli.js';
 import * as ProjektStada   from './services/ProjektStada.js';
 import * as PowitanieDnia  from './services/PowitanieDnia.js';
 import * as Stol           from './services/Stol.js';
@@ -3533,7 +3535,9 @@ async function buildModuleMap(level, parentRel) {
                 const count = await countCodeFiles(path.join(root, e.name));
                 if (count > 0) nodes.push({ id: e.name, label: e.name, type: 'dir', count, path: e.name, hasChildren: true });
             } else if (MAP_CODE_EXT.has(path.extname(e.name))) {
-                nodes.push({ id: e.name, label: e.name, type: 'file', count: 1, path: e.name, hasChildren: false });
+                let lines = 0;
+                try { lines = (await fs.readFile(path.join(root, e.name), 'utf8')).split('\n').length; } catch { /* skip */ }
+                nodes.push({ id: e.name, label: e.name, type: 'file', count: 1, lines, path: e.name, hasChildren: false });
             }
         }
         nodes.sort((a, b) => b.count - a.count);
@@ -11381,6 +11385,29 @@ app.put('/api/mozg', async (req, res) => {
         await Szyna.nadaj({ agent: 'katedra', rodzaj: 'ustawienie', tresc: `🧠 Mózg Katedry: domyślny ${mozg.domyslny}` }).catch(() => null);
         res.json({ success: true, mozg });
     } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+/**
+ * GET /api/koherencja — 🫀 Koherencja Katedry: czy rury dochodzą (Ollama, model domyślny i modele ról w Ollamie, rozmiar
+ * modeli ról piszących długo, Mechanik, ComfyUI, błędy mostu i chmury z doby) → procent + rady. Wskaźnik na głównej
+ * i zakładka 🫀 w TeO-Sim (services/KoherencjaKatedry.js).
+ */
+app.get('/api/koherencja', async (_req, res) => {
+    try {
+        const doba = Date.now() - 24 * 3600_000;
+        const [ollama, agenci, comfy, tryb, log] = await Promise.all([
+            modeleOllamyMozgu(),
+            ModeleAgentow.wszystkie(),
+            comfyStatus().catch(() => ({ online: false })),
+            fetch(`http://127.0.0.1:${PORT}/api/tryb`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json()).catch(() => null),
+            fs.readFile(path.join(ANTIGRAVITY_DIR, 'most-bledy.log'), 'utf8').catch(() => ''),
+        ]);
+        const bledyMostuDoby = log.split('\n').filter((l) => /^\d{4}-\d\d-\d\dT/.test(l) && Date.parse(l.slice(0, 24)) >= doba).length;
+        const ob = tryb?.ostatniBlad;
+        const bladChmuryDoby = ob && Date.parse(ob.kiedy) >= doba ? String(ob.tekst ?? '') : null;
+        const k = policzKoherencje({ ollama: ollama ? ollama.map((m) => m.nazwa) : null, domyslny: Mozg.domyslny(), agenci, mechanik: modelMechanika(), comfy: !!comfy.online, bledyMostuDoby, bladChmuryDoby, rozmiar: rozmiarModelu });
+        res.json({ success: true, ...k, kiedy: new Date().toISOString() });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 /** POST /api/stado/model { agent, model } — silnik TeOgochi (pusty = domyślny). Tylko z maszyny. */

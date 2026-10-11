@@ -56,7 +56,10 @@ import NotebookTwinPanel from './components/special/NotebookTwinPanel';
 import SimulationDashboard from './components/special/SimulationDashboard';
 import { zsynchronizujMozg, ZDARZENIE_OTWORZ as ZDARZENIE_OTWORZ_MOZG } from './lib/mozgKatedry';
 import TeoLab from './components/special/TeoLab';
-import McpSkillboardPanel from './components/McpSkillboardPanel';
+import TostMessenger from './components/special/TostMessenger';
+import TostIkona from './components/special/TostIkona';
+import { useKoherencja, ZDARZENIE_TEOSIM } from './lib/koherencja';
+import type { ZakladkaTeoSim } from './components/special/SimulationDashboard';
 import { sluchajTelefonu } from './lib/teogochiDelegate';
 import { zsynchronizujWezel } from './lib/mojWezel';
 
@@ -114,16 +117,21 @@ const App: React.FC = () => {
     const [showScenography, setShowScenography] = useState(false);
     const [showJournal, setShowJournal] = useState(false); // 📓 Kwantowy Dziennik
     const [showPodcast, setShowPodcast] = useState(false); // 🎙️ Podcast Twin
-    const [showTeoSim, setShowTeoSim] = useState(false); // 🧠 TeO-Sim: Mózg Katedry, Dyrygent i Kuźnia, Reasoning Loops
+    const [showTeoSim, setShowTeoSim] = useState(false); // 🧠 TeO-Sim: Mózg Katedry, Koherencja, Oczy, Impresario, MCP, Skarbiec
+    const [teoSimStart, setTeoSimStart] = useState<ZakladkaTeoSim>('mozg');
+    // 🫀 Koherencja Katedry (most: /api/koherencja) — pasek na głównej, dawniej „INTEGRACJA” z licznika odpuszczania
+    const koherencja = useKoherencja(60_000);
     // 🧠 jedno miejsce na modele: każde „zmień model” w Hubie otwiera TeO-Sim → Mózg Katedry; start Huba = prawda z mostu
     useEffect(() => {
         void zsynchronizujMozg();
-        const otworz = () => setShowTeoSim(true);
+        const otworz = () => { setTeoSimStart('mozg'); setShowTeoSim(true); };
+        const naZakladke = (e: Event) => { setTeoSimStart(((e as CustomEvent).detail as ZakladkaTeoSim) || 'mozg'); setShowTeoSim(true); };
         window.addEventListener(ZDARZENIE_OTWORZ_MOZG, otworz);
-        return () => window.removeEventListener(ZDARZENIE_OTWORZ_MOZG, otworz);
+        window.addEventListener(ZDARZENIE_TEOSIM, naZakladke);
+        return () => { window.removeEventListener(ZDARZENIE_OTWORZ_MOZG, otworz); window.removeEventListener(ZDARZENIE_TEOSIM, naZakladke); };
     }, []);
     const [showLab, setShowLab] = useState(false); // 🧪 TeO Lab (Agro + RadioSMT)
-    const [showMcpSkillboard, setShowMcpSkillboard] = useState(false); // ⚡ MCP Skillboard
+    const [showTost, setShowTost] = useState(false); // 💬 TOST w menu (MCP Skillboard przeniesiony do TeO-Sim)
     const [isWiesioOnline, setIsWiesioOnline] = useState<boolean | null>(null);
     const wiesioOnlineRef = useRef(false);
 
@@ -766,7 +774,9 @@ const App: React.FC = () => {
                                 )}
 
                                 {/* 🌀 Field Resonance Indicator - Vibe Pulse */}
-                                <div className="fixed top-1/2 -translate-y-1/2 right-3 z-[1500] pointer-events-none flex flex-col items-center gap-2">
+                                <div className="fixed top-1/2 -translate-y-1/2 right-3 z-[1500] pointer-events-auto cursor-pointer flex flex-col items-center gap-2"
+                                    onClick={() => { setTeoSimStart('koherencja'); setShowTeoSim(true); }}
+                                    title={koherencja ? `🫀 Koherencja Katedry ${koherencja.procent}%${koherencja.braki ? ` — ${koherencja.braki} do naprawy` : ''} (klik — szczegóły)` : '🫀 Koherencja Katedry — most milczy'}>
                                     <motion.div
                                         className="w-1.5 h-64 bg-slate-900/40 rounded-full border border-white/5 overflow-hidden flex flex-col-reverse relative"
                                         initial={{ opacity: 0, x: 20 }}
@@ -774,10 +784,10 @@ const App: React.FC = () => {
                                     >
                                         <motion.div
                                             animate={{
-                                                height: `${resonance}%`,
-                                                boxShadow: resonance > 0 ? `0 0 15px rgba(34,211,238,${0.2 + resonance / 200})` : 'none'
+                                                height: `${koherencja?.procent ?? 0}%`,
+                                                boxShadow: (koherencja?.procent ?? 0) > 0 ? `0 0 15px rgba(34,211,238,${0.2 + (koherencja?.procent ?? 0) / 200})` : 'none'
                                             }}
-                                            className="w-full bg-gradient-to-t from-cyan-500 via-blue-400 to-indigo-400 rounded-full"
+                                            className={`w-full rounded-full bg-gradient-to-t ${!koherencja ? 'from-slate-600 to-slate-500' : koherencja.procent >= 90 ? 'from-cyan-500 via-emerald-400 to-teal-300' : koherencja.procent >= 70 ? 'from-amber-500 via-yellow-400 to-amber-300' : 'from-rose-600 via-red-500 to-orange-400'}`}
                                             transition={{ type: "spring", stiffness: 50, damping: 20 }}
                                         />
                                     </motion.div>
@@ -786,7 +796,7 @@ const App: React.FC = () => {
                                         animate={{ opacity: [0.4, 1, 0.4] }}
                                         transition={{ duration: 3, repeat: Infinity }}
                                     >
-                                        INTEGRACJA {resonance}%
+                                        KOHERENCJA {koherencja ? `${koherencja.procent}%` : '—'}
                                     </motion.span>
                                 </div>
 
@@ -846,9 +856,9 @@ const App: React.FC = () => {
                                     </div>
                                     <div className="pointer-events-auto">
                                         <button
-                                            onClick={() => setShowTeoSim(true)}
+                                            onClick={() => { setTeoSimStart('mozg'); setShowTeoSim(true); }}
                                             className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-green-500 to-emerald-800 border-2 border-green-300/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                            title="🧠 TeO-Sim: Mózg Katedry — modele, Dyrygent, Kuźnia"
+                                            title="🧠 TeO-Sim: Mózg Katedry — modele, Koherencja, Oczy Suwerena, Impresario, MCP, Skarbiec"
                                         >
                                             🧠
                                         </button>
@@ -863,17 +873,16 @@ const App: React.FC = () => {
                                             🧪
                                         </button>
                                     </div>
-                                    {/* ⚡ MCP SKILLBOARD (0.00G Cyber-Hub) */}
+                                    {/* 💬 TOST — TeO Secret Messenger (w miejscu MCP Skillboard, który jest teraz w TeO-Sim) */}
                                     <div className="pointer-events-auto">
                                         <button
-                                            onClick={() => setShowMcpSkillboard(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-700 border-2 border-cyan-300/70 shadow-[0_0_20px_rgba(6,182,212,0.7)] cursor-pointer hover:scale-115 transition-all duration-300 relative group"
-                                            title="⚡ MCP SKILLBOARD (0.00G)"
+                                            onClick={() => setShowTost(true)}
+                                            className="w-12 h-12 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-300 via-amber-500 to-emerald-700 border-2 border-amber-200/70 shadow-[0_0_20px_rgba(251,191,36,0.55)] cursor-pointer hover:scale-110 transition-all duration-300 relative group"
+                                            title="💬 TOST — rozmowy z TeO i z innymi Katedrami (szyfrowane)"
                                         >
-                                            <span className="animate-pulse">⚡</span>
-                                            <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 shadow-[0_0_8px_#34d399]" />
-                                            <span className="absolute -left-44 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/90 backdrop-blur-md px-3 py-1 rounded-lg text-xs font-bold text-cyan-300 border border-cyan-500/40 whitespace-nowrap pointer-events-none shadow-xl">
-                                                ⚡ MCP SKILLBOARD
+                                            <TostIkona rozmiar={26} />
+                                            <span className="absolute -left-36 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/90 backdrop-blur-md px-3 py-1 rounded-lg text-xs font-bold text-amber-300 border border-amber-500/40 whitespace-nowrap pointer-events-none shadow-xl">
+                                                💬 TOST
                                             </span>
                                         </button>
                                     </div>
@@ -1005,7 +1014,7 @@ const App: React.FC = () => {
                                                 <div className="flex justify-end mb-2">
                                                     <button onClick={() => setShowTeoSim(false)} className="text-slate-400 hover:text-white text-sm border border-slate-700 rounded-lg px-3 py-1">✕ Zamknij</button>
                                                 </div>
-                                                <SimulationDashboard />
+                                                <SimulationDashboard start={teoSimStart} onClose={() => setShowTeoSim(false)} />
                                             </motion.div>
                                         </motion.div>
                                     )}
@@ -1024,20 +1033,23 @@ const App: React.FC = () => {
                                             </motion.div>
                                         </motion.div>
                                     )}
-                                    {showMcpSkillboard && (
+                                    {showTost && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/95 flex justify-center overflow-y-auto z-[3005] p-4 md:p-8"
-                                            onClick={() => setShowMcpSkillboard(false)}
+                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-[3005] p-4 md:p-8"
+                                            onClick={() => setShowTost(false)}
                                         >
                                             <motion.div
                                                 initial={{ scale: 0.95, opacity: 0, y: 20 }}
                                                 animate={{ scale: 1, opacity: 1, y: 0 }}
                                                 exit={{ scale: 0.95, opacity: 0, y: 20 }}
                                                 onClick={(e) => e.stopPropagation()}
-                                                className="my-auto w-full max-w-6xl"
+                                                className="my-auto w-full max-w-5xl"
                                             >
-                                                <McpSkillboardPanel onClose={() => setShowMcpSkillboard(false)} />
+                                                <div className="flex justify-end mb-2">
+                                                    <button onClick={() => setShowTost(false)} className="text-slate-400 hover:text-white text-sm border border-slate-700 rounded-lg px-3 py-1">✕ Zamknij</button>
+                                                </div>
+                                                <TostMessenger />
                                             </motion.div>
                                         </motion.div>
                                     )}

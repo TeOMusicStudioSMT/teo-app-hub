@@ -63,6 +63,8 @@ export const ModuleSieci: React.FC<{ onClose?: () => void }> = ({ onClose }) => 
             const data = await res.json();
             if (!data.success || !Array.isArray(data.nodes)) throw new TypeError('Niepoprawna struktura odpowiedzi.');
             setNodes(data.nodes);
+            // most odpowiedział — zdejmij „(offline)” po wcześniejszej porażce (dawniej zostawał na zawsze)
+            if (level === 'macro') setCrumbs([{ level: 'macro', parent: '', label: 'KATEDRA' }]);
         } catch (e: any) {
             // Defensive Design: abort / ReferenceError / TypeError / sieć → mapa zapasowa.
             const aborted = e?.name === 'AbortError';
