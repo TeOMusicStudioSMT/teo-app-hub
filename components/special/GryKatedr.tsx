@@ -13,7 +13,7 @@ import { otworzApke } from '../../lib/pierscien';
 const BRIDGE = 'http://127.0.0.1:3001';
 const MB = 1048576;
 
-interface MojaGra { id: string; nazwa: string; zainstalowana: { nick: string; wersja: string } | null; udostepniona: { wersja: string; bajtow: number; lekka?: number; cenaGRV: number; udostepniono: string; produkt?: string } | null }
+interface MojaGra { id: string; nazwa: string; zainstalowana: { nick: string; gra: string; wersja: string } | null; udostepniona: { wersja: string; bajtow: number; lekka?: number; cenaGRV: number; udostepniono: string; produkt?: string } | null }
 interface Stan { nick: string | null; gry: MojaGra[]; goscie: { aktywni: number; max: number }; paczka: { kbps: number; pobrania: number } }
 interface KatedraZGrami { nick: string; adres: string; gry: { id: string; nazwa: string; wersja: string; bajtow: number }[] }
 interface Oferta { gra: string; nazwa: string; wersja: string; bajtow: number; autor: string; cenaGRV: number | null; zaplacone: boolean; rozmiary?: { pelna: number; lekka: number } | null }
@@ -83,7 +83,10 @@ export default function GryKatedr() {
             const d = await r.json();
             if (!d.success) throw new Error(d.message || `most HTTP ${r.status}`);
             setOferta(null);
-            setInfo(`✅ ${d.zakup ? `Zapłacone ${d.zakup.kwota} GRV (pokwitowanie Katedry „${o.autor}”). ` : ''}Zainstalowana „${d.gra.nazwa}” (${d.gra.wersja}) — podpis i SHA-256 się zgadzają. Liczy się u Ciebie.`);
+            const jak = d.gra.tryb === 'pliki'
+                ? `Zaktualizowana do ${d.gra.wersja} po podpisanej liście plików: ${d.gra.zmienione} zmienionych (${(d.gra.pobrano / MB).toFixed(1)} MB z ${Math.round(d.gra.bajtow / MB)} MB paczki), usunięte ${d.gra.usuniete}.`
+                : `Zainstalowana „${d.gra.nazwa}” (${d.gra.wersja}) — cała paczka${d.gra.powod && d.gra.powod !== 'pierwsza instalacja' ? ` (${d.gra.powod})` : ''}, podpis i SHA-256 się zgadzają.`;
+            setInfo(`✅ ${d.zakup ? `Zapłacone ${d.zakup.kwota} GRV (pokwitowanie Katedry „${o.autor}”). ` : ''}${jak} Liczy się u Ciebie.`);
             otworzApke({ id: d.gra.id, tytul: `${d.gra.nazwa} · ${o.autor}`, url: `${BRIDGE}${d.gra.url}`, znak: '🏝️', kolor: '#22c55e' });
             await wczytaj();
         } catch (e) { setInfo(`⚠ ${(e as Error).message}`); }
@@ -131,6 +134,7 @@ export default function GryKatedr() {
                     {zainstalowane.map((g) => (
                         <div key={g.id} className="flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-black/30 p-3">
                             <div className="min-w-0 flex-1"><div className="truncate font-bold text-emerald-200">{g.nazwa}</div><div className="text-[10px] text-zinc-500">od „{g.zainstalowana!.nick}” · {g.zainstalowana!.wersja}</div></div>
+                            <button disabled={!!praca} onClick={() => void pokazOferte(g.zainstalowana!.nick, { id: g.zainstalowana!.gra })} title="Sprawdź nową wersję — pobiera tylko zmienione pliki (podpisana lista)" className="rounded border border-sky-500/50 px-3 py-1 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-40">↻ Aktualizuj</button>
                             <button onClick={() => zagraj(g)} className="rounded border border-emerald-500/50 px-3 py-1 text-xs font-bold text-emerald-300 hover:bg-emerald-950/40">▶ Zagraj</button>
                         </div>
                     ))}

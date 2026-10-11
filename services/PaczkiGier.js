@@ -42,6 +42,31 @@ const BEZ_KOMPRESJI = /\.(glb|gltf|bin|mp4|webm|mov|png|jpe?g|webp|gif|avif|wav|
 /** Treść podpisu manifestu — ta sama funkcja po stronie autora i kupującego. */
 export const trescManifestu = (m) => `otakos-gra\n${m.gra}\n${m.wersja}\n${m.sha256}\n${m.bajtow}\n${m.autor}`;
 
+/**
+ * 📋 Podpisana lista plików gry (aktualizacje bez ponownego pobierania całej paczki): każdy plik `dist/` z SHA-256
+ * i rozmiarem. Podpis osobny od podpisu paczki (`podpisListy` nad `trescListy`) — starsze manifesty weryfikują się dalej.
+ * Skrót listy = SHA-256 z linii `<sha256> <bajtow> <sciezka>` w kolejności ścieżek.
+ */
+export const skrotListy = (pliki) => crypto.createHash('sha256').update(pliki.map((p) => `${p.sha256} ${p.bajtow} ${p.sciezka}`).join('\n'), 'utf8').digest('hex');
+export const trescListy = (m) => `otakos-lista\n${m.gra}\n${m.wersja}\n${m.autor}\n${m.pliki.length}\n${skrotListy(m.pliki)}`;
+/** Lista z sieci: ścieżki względne bez „..”, „\\”, „/” na początku; sumy i rozmiary poprawne; posortowana, bez dubli. */
+export function oczyscListe(pliki) {
+    if (!Array.isArray(pliki) || !pliki.length || pliki.length > MAX_PLIKOW) return null;
+    const out = [];
+    let suma = 0;
+    for (const p of pliki) {
+        const s = String(p?.sciezka ?? '');
+        if (!s || s.length > 300 || s.startsWith('/') || s.includes('\\') || /^[a-z]:/i.test(s) || s.split('/').some((x) => !x || x === '..' || x === '.')) return null;
+        if (!/^[0-9a-f]{64}$/.test(String(p.sha256)) || !Number.isInteger(p.bajtow) || p.bajtow < 0) return null;
+        suma += p.bajtow;
+        out.push({ sciezka: s, sha256: p.sha256, bajtow: p.bajtow });
+    }
+    if (suma > MAX_BAJTOW) return null;
+    const posort = [...out].sort((a, b) => (a.sciezka < b.sciezka ? -1 : a.sciezka > b.sciezka ? 1 : 0));
+    if (posort.some((p, i) => i && p.sciezka === posort[i - 1].sciezka)) return null;
+    return posort.every((p, i) => p === out[i]) ? out : null;   // lista musi przyjść w kolejności ścieżek (tak liczy się skrót)
+}
+
 /** Wersja jak w paczce Katedry: yyyy.MM.dd.HHmm (UTC). */
 export function wersjaZDaty(t = Date.now()) {
     const d = new Date(t), p = (n) => String(n).padStart(2, '0');
@@ -80,9 +105,11 @@ export async function spakujKatalog(kat, docelowy) {
         out.write(buf, (e) => (e ? zle(e) : ok()));
     });
     const centralne = [];
+    const pliki = [];
     try {
         for (const nazwa of nazwy) {
             const dane = await fs.readFile(path.join(kat, ...nazwa.split('/')));
+            pliki.push({ sciezka: nazwa, sha256: crypto.createHash('sha256').update(dane).digest('hex'), bajtow: dane.length });
             const crc = zlib.crc32(dane);
             const scisk = !BEZ_KOMPRESJI.test(nazwa) && dane.length > 64;
             const tresc = scisk ? await deflateRaw(dane, { level: 6 }) : dane;
@@ -116,7 +143,7 @@ export async function spakujKatalog(kat, docelowy) {
         await fs.rm(docelowy, { force: true });
         throw e;
     }
-    return { sha256: hash.digest('hex'), bajtow: offset, plikow: nazwy.length };
+    return { sha256: hash.digest('hex'), bajtow: offset, plikow: nazwy.length, pliki };
 }
 
 /**
@@ -300,11 +327,13 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         if (!fsSync.existsSync(path.join(dist, 'index.html'))) throw new Error(`Gra „${gra}” nie jest zbudowana (brak dist/index.html) — zbuduj ją najpierw.`);
         if (await czytajZrodlo(gra)) throw new Error('To gra zainstalowana z cudzej paczki — udostępnia ją jej autor, nie ta Katedra.');
         const tmp = path.join(kat(gra), `paczka-${teraz()}.zip`);
-        const { sha256, bajtow, plikow } = await spakujKatalog(dist, tmp);
+        const { sha256, bajtow, plikow, pliki } = await spakujKatalog(dist, tmp);
         await fs.rename(tmp, path.join(kat(gra), 'paczka.zip'));
         const lekkie = odchudz ? await zrobLekkie(gra) : null;
         const m = { gra, nazwa: await nazwaGry(gra), wersja: wersjaZDaty(teraz()), sha256, bajtow, plikow, autor, klucz: await klucz(), utworzono: new Date(teraz()).toISOString() };
         m.podpis = await podpisz(trescManifestu(m));
+        m.pliki = pliki;   // 📋 lista plików z sumami — aktualizacja pobiera tylko zmienione
+        m.podpisListy = await podpisz(trescListy(m));
         // rozmiary (poza podpisem — informacja): cała gra pełna i z lekkimi bryłami, które dostaje telefon gościa
         m.rozmiary = { ...(await rozmiaryGry(gra, lekkie)), lekkichBryl: lekkie?.lekkich ?? 0, bryl: lekkie?.plikow ?? 0 };
         if (lekkie?.bledy.length) m.rozmiary.bledy = lekkie.bledy.slice(0, 5);
@@ -388,8 +417,63 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         try { ok = crypto.verify(null, Buffer.from(trescManifestu(m), 'utf8'), crypto.createPublicKey({ key: Buffer.from(k.klucz, 'base64'), format: 'der', type: 'spki' }), Buffer.from(String(m.podpis ?? ''), 'base64')); } catch { ok = false; }
         if (!ok) throw new Error(`Podpis manifestu nie zgadza się z kluczem Katedry „${n}” z rejestru — paczka odrzucona (podszyta albo uszkodzona).`);
         const cena = Number.isInteger(m.cenaGRV) && m.cenaGRV >= 0 ? m.cenaGRV : null;
-        return { k, m, cena };
+        // 📋 lista plików: tylko gdy podpis kluczem z rejestru się zgadza (inaczej aktualizacja = cała paczka)
+        let lista = null, listaBlad = null;
+        if (m.pliki || m.podpisListy) {
+            const czysta = oczyscListe(m.pliki);
+            let okL = false;
+            if (czysta) { try { okL = crypto.verify(null, Buffer.from(trescListy({ ...m, pliki: czysta }), 'utf8'), crypto.createPublicKey({ key: Buffer.from(k.klucz, 'base64'), format: 'der', type: 'spki' }), Buffer.from(String(m.podpisListy ?? ''), 'base64')); } catch { okL = false; } }
+            if (okL) lista = czysta; else listaBlad = czysta ? 'podpis listy plików nie zgadza się z kluczem z rejestru' : 'lista plików niepoprawna';
+        }
+        return { k, m, cena, lista, listaBlad };
     }
+    /** Suma SHA-256 pliku strumieniem (gra bywa ponad 1 GB — nie wczytujemy całych plików naraz). */
+    const shaPliku = (p) => new Promise((ok, zle) => { const h = crypto.createHash('sha256'); fsSync.createReadStream(p).on('data', (d) => h.update(d)).on('end', () => ok(h.digest('hex'))).on('error', zle); });
+
+    /**
+     * 📋 Aktualizacja zainstalowanej gry po podpisanej liście: sumy plików u nas vs lista → pobieramy TYLKO zmienione
+     * i nowe (z tunelu autora: `/wizytowka/gra/<gra>/<plik>`), każdy sprawdzony z listą (rozmiar i SHA-256), najpierw
+     * do katalogu roboczego obok gry, dopiero gdy wszystkie się zgadzają — podmiana i usunięcie plików spoza listy.
+     * Autor przebudował grę bez nowej paczki (pliki na żywo ≠ lista) = błąd → wołający bierze całą paczkę.
+     */
+    async function aktualizujPlikami({ id, cel, n, gra, k, m, lista }) {
+        const dist = path.resolve(cel, 'dist');
+        const u = new Map();
+        for (const rel of await plikiKatalogu(dist)) u.set(rel, await shaPliku(path.join(dist, ...rel.split('/'))));
+        const doPobrania = lista.filter((p) => u.get(p.sciezka) !== p.sha256);
+        const wLiscie = new Set(lista.map((p) => p.sciezka));
+        const doUsuniecia = [...u.keys()].filter((rel) => !wLiscie.has(rel));
+        const robocze = path.join(katalogApek, `.${id}-aktualizacja`);
+        await fs.rm(robocze, { recursive: true, force: true });
+        let pobrano = 0;
+        try {
+            for (const p of doPobrania) {
+                const adres = `${k.adres}/wizytowka/gra/${gra}/${p.sciezka.split('/').map(encodeURIComponent).join('/')}`;
+                const r = await f(adres, { headers: await naglowkiPobrania(gra), signal: AbortSignal.timeout(30 * 60_000), redirect: 'error' });
+                if (!r.ok) throw new Error(`plik ${p.sciezka}: HTTP ${r.status}`);
+                const dane = Buffer.from(await r.arrayBuffer());
+                if (dane.length !== p.bajtow || crypto.createHash('sha256').update(dane).digest('hex') !== p.sha256) throw new Error(`plik ${p.sciezka} różni się od podpisanej listy (autor przebudował grę bez nowej paczki?)`);
+                const cz = path.resolve(robocze, ...p.sciezka.split('/'));
+                if (!cz.startsWith(path.resolve(robocze) + path.sep)) throw new Error(`zła ścieżka ${p.sciezka}`);
+                await fs.mkdir(path.dirname(cz), { recursive: true });
+                await fs.writeFile(cz, dane);
+                pobrano += dane.length;
+            }
+            // wszystko pobrane i zgodne — podmiana
+            for (const p of doPobrania) {
+                const docel = path.resolve(dist, ...p.sciezka.split('/'));
+                if (!docel.startsWith(dist + path.sep)) throw new Error(`zła ścieżka ${p.sciezka}`);
+                await fs.mkdir(path.dirname(docel), { recursive: true });
+                await fs.rename(path.resolve(robocze, ...p.sciezka.split('/')), docel);
+            }
+            for (const rel of doUsuniecia) await fs.rm(path.join(dist, ...rel.split('/')), { force: true });
+        } finally { await fs.rm(robocze, { recursive: true, force: true }); }
+        const zrodlo = { nick: n, gra, nazwa: String(m.nazwa ?? gra).slice(0, 80), wersja: m.wersja, sha256: m.sha256, bajtow: m.bajtow, klucz: k.klucz, adres: k.adres, zainstalowano: new Date(teraz()).toISOString(), tryb: 'pliki', pobrano, zmienione: doPobrania.length, usuniete: doUsuniecia.length };
+        await fs.writeFile(path.join(cel, 'zrodlo-paczki.json'), JSON.stringify(zrodlo, null, 2), 'utf8');
+        await szyna?.nadaj?.({ agent: 'kodeks', rodzaj: 'praca', tresc: `🏝️ Zaktualizowana gra „${zrodlo.nazwa}” od Katedry „${n}” do ${m.wersja}: ${doPobrania.length} plików (${Math.round(pobrano / MB)} MB z ${Math.round(m.bajtow / MB)} MB paczki), usunięte ${doUsuniecia.length} — lista podpisana, sumy sprawdzone.` })?.catch?.(() => {});
+        return { id, url: `/apki/${id}/`, ...zrodlo };
+    }
+
     /** Cena gry tej Katedry (null = nieudostępniona). */
     async function cena(gra) { const w = ID_GRY.test(String(gra ?? '')) ? (await czytaj()).gry[gra] : null; return w ? Math.max(0, Math.floor(Number(w.cenaGRV) || 0)) : null; }
 
@@ -401,7 +485,14 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         if (n === await nick()) throw new Error('To Twoja własna gra — gra już jest w tej Katedrze.');
         const cel = path.join(katalogApek, id);
         if (fsSync.existsSync(cel) && !(await czytajZrodlo(id))) throw new Error(`Katalog „${id}” istnieje i nie jest zainstalowaną paczką — nie nadpisuję cudzej pracy.`);
-        const { k, m } = await oferta(n, gra);
+        const { k, m, lista, listaBlad } = await oferta(n, gra);
+        const zrodloByle = fsSync.existsSync(cel) ? await czytajZrodlo(id) : null;
+        // 📋 gra już zainstalowana + podpisana lista → pobieramy tylko zmienione pliki; coś nie gra → cała paczka
+        let powodPaczki = !zrodloByle ? 'pierwsza instalacja' : !lista ? (listaBlad ?? 'manifest bez listy plików (starszy most autora)') : null;
+        if (zrodloByle && lista) {
+            try { return await aktualizujPlikami({ id, cel, n, gra, k, m, lista }); }
+            catch (e) { powodPaczki = `aktualizacja plikami nie wyszła (${e.message})`; }
+        }
 
         const robocze = path.join(katalog, 'gry-pobrane', `${id}-${teraz()}`);
         await fs.mkdir(robocze, { recursive: true });
@@ -426,7 +517,7 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
             if (hash.digest('hex') !== m.sha256) throw new Error('Suma SHA-256 paczki nie zgadza się z podpisanym manifestem — odrzucona.');
             const nowy = path.join(robocze, 'gra');
             await rozpakujBezpiecznie(zip, path.join(nowy, 'dist'));
-            const zrodlo = { nick: n, gra, nazwa: String(m.nazwa ?? gra).slice(0, 80), wersja: m.wersja, sha256: m.sha256, bajtow: m.bajtow, klucz: k.klucz, adres: k.adres, zainstalowano: new Date(teraz()).toISOString() };
+            const zrodlo = { nick: n, gra, nazwa: String(m.nazwa ?? gra).slice(0, 80), wersja: m.wersja, sha256: m.sha256, bajtow: m.bajtow, klucz: k.klucz, adres: k.adres, zainstalowano: new Date(teraz()).toISOString(), tryb: 'paczka', pobrano: m.bajtow, powod: powodPaczki };
             await fs.writeFile(path.join(nowy, 'zrodlo-paczki.json'), JSON.stringify(zrodlo, null, 2), 'utf8');
             await fs.rm(cel, { recursive: true, force: true });
             await fs.mkdir(katalogApek, { recursive: true });
@@ -609,4 +700,4 @@ export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek
     app.get('/api/gry/gospodarz/:nick', (req, res) => odp(res, paczki.gospodarz(String(req.params.nick).toLowerCase(), { gra: req.query.gra ? String(req.query.gra) : null }).then((gospodarz) => ({ gospodarz })), 502));
 }
 
-export default { utworzPaczkiGier, zamontujTrasyGier, utworzLimitGosci, spakujKatalog, rozpakujBezpiecznie, trescManifestu, wersjaZDaty, katalogInstalacji, dlawik, ID_GRY, MAX_BAJTOW };
+export default { utworzPaczkiGier, zamontujTrasyGier, skrotListy, trescListy, oczyscListe, utworzLimitGosci, spakujKatalog, rozpakujBezpiecznie, trescManifestu, wersjaZDaty, katalogInstalacji, dlawik, ID_GRY, MAX_BAJTOW };
