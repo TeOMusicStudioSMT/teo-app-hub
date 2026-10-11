@@ -12,7 +12,7 @@ import { otworzApke } from '../../lib/pierscien';
 const BRIDGE = 'http://127.0.0.1:3001';
 const MB = 1048576;
 
-interface MojaGra { id: string; nazwa: string; zainstalowana: { nick: string; wersja: string } | null; udostepniona: { wersja: string; bajtow: number; cenaGRV: number; udostepniono: string; produkt?: string } | null }
+interface MojaGra { id: string; nazwa: string; zainstalowana: { nick: string; wersja: string } | null; udostepniona: { wersja: string; bajtow: number; lekka?: number; cenaGRV: number; udostepniono: string; produkt?: string } | null }
 interface Stan { nick: string | null; gry: MojaGra[]; goscie: { aktywni: number; max: number }; paczka: { kbps: number; pobrania: number } }
 interface KatedraZGrami { nick: string; adres: string; gry: { id: string; nazwa: string; wersja: string; bajtow: number }[] }
 
@@ -83,7 +83,7 @@ export default function GryKatedr() {
                     <div key={g.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-800/70 bg-black/30 p-3">
                         <div className="min-w-0 flex-1">
                             <div className="truncate font-bold text-amber-200">{g.nazwa} <span className="text-[9px] text-zinc-500">· {g.id}</span></div>
-                            <div className="text-[10px] text-zinc-500">{g.udostepniona ? `udostępniona ${g.udostepniona.wersja} · ${Math.round(g.udostepniona.bajtow / MB)} MB · ${g.udostepniona.cenaGRV} GRV` : 'tylko w tej Katedrze'}</div>
+                            <div className="text-[10px] text-zinc-500">{g.udostepniona ? `udostępniona ${g.udostepniona.wersja} · paczka ${Math.round(g.udostepniona.bajtow / MB)} MB${g.udostepniona.lekka ? ` · 📱 telefon: cała gra z lekkimi bryłami ${Math.round(g.udostepniona.lekka / MB)} MB` : ''} · ${g.udostepniona.cenaGRV} GRV` : 'tylko w tej Katedrze'}</div>
                         </div>
                         <input value={ceny[g.id] ?? String(g.udostepniona?.cenaGRV ?? 333)} onChange={(e) => setCeny({ ...ceny, [g.id]: e.target.value.replace(/\D/g, '') })} title="Cena w GRV (płatność ręczna — etap 4)"
                             className="w-20 rounded border border-zinc-700 bg-black/50 px-2 py-1 text-xs text-amber-200" />
