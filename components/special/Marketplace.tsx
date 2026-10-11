@@ -7,15 +7,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { mojWezel } from '../../lib/mojWezel';
 import PracowniaMerchu from './PracowniaMerchu';
+import GryKatedr from './GryKatedr';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
-interface Product { id: string; module: string; type: string; name: string; desc: string; priceGrv: number; priceGrvDyn?: number; creator: string; votes: number; payload?: { action?: string; modId?: string; code?: string } | null; }
+interface Product { id: string; module: string; type: string; name: string; desc: string; priceGrv: number; priceGrvDyn?: number; creator: string; votes: number; payload?: { action?: string; modId?: string; code?: string; platnosc?: string; gra?: string; nick?: string } | null; }
 const effPrice = (p: Product) => p.priceGrvDyn ?? p.priceGrv; // cena dynamiczna (popyt)
 
 export const Marketplace: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
-  const [tab, setTab] = useState<'shop' | 'vote' | 'create' | 'merch'>('shop');
+  const [tab, setTab] = useState<'shop' | 'vote' | 'create' | 'merch' | 'gry'>('shop');
   const [status, setStatus] = useState('');
   const [form, setForm] = useState({ module: 'katedra-chat', name: '', desc: '', priceGrv: '100', creator: mojWezel() });
   const [balance, setBalance] = useState<number | 'INFINITE' | null>(null);
@@ -118,11 +119,11 @@ export const Marketplace: React.FC = () => {
               ⛓️ księga: {chainOk ? 'OK' : '⚠ NARUSZONA'}
             </div>
           )}
-          <div className="flex gap-2">{tabBtn('shop', '🛒 Sklep')}{tabBtn('vote', '🗳️ Głosowanie')}{tabBtn('create', '➕ Dodaj')}{tabBtn('merch', '🖨️ Merch')}</div>
+          <div className="flex gap-2">{tabBtn('shop', '🛒 Sklep')}{tabBtn('vote', '🗳️ Głosowanie')}{tabBtn('create', '➕ Dodaj')}{tabBtn('merch', '🖨️ Merch')}{tabBtn('gry', '🏝️ Gry')}</div>
         </div>
       </div>
 
-      {tab === 'merch' ? <PracowniaMerchu /> : tab === 'create' ? (
+      {tab === 'gry' ? <GryKatedr /> : tab === 'merch' ? <PracowniaMerchu /> : tab === 'create' ? (
         <div className="space-y-2 max-w-md">
           <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Nazwa produktu"
             className="w-full bg-black/40 border border-amber-500/20 rounded px-2 py-1.5 text-sm text-amber-100 outline-none focus:border-amber-500" />
@@ -157,7 +158,11 @@ export const Marketplace: React.FC = () => {
                   className="px-3 py-1 rounded border border-emerald-500/40 text-emerald-300 text-xs font-bold hover:bg-emerald-950/40">
                   {tab === 'vote' ? '🗳️ Głosuj' : '▲'}
                 </button>
-                {tab !== 'vote' && (
+                {tab !== 'vote' && p.payload?.platnosc === 'reczna' ? (
+                  // 🏝️ paczka gry innej Katedry: przelewu GRV między Katedrami jeszcze nie ma — bez udawanego „Kup”
+                  <button onClick={() => setTab('gry')} title="Płatność: ręczne potwierdzenie między Suwerenami (przelew GRV między Katedrami = etap 4)"
+                    className="px-3 py-1 rounded border border-sky-500/50 text-sky-300 text-xs font-bold hover:bg-sky-950/40">🏝️ Gra · płatność ręczna</button>
+                ) : tab !== 'vote' && (
                   owned.includes(p.id)
                     ? <span className="px-3 py-1 rounded border border-emerald-500/40 text-emerald-300 text-xs font-bold">✓ Masz</span>
                     : <button onClick={() => buy(p)} title={effPrice(p) > 0 ? `Kup za ${effPrice(p)} GRV` : 'Pobierz za darmo'}

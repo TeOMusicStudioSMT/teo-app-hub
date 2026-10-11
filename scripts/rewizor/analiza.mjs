@@ -319,8 +319,9 @@ export function plikiKlienta(korzen) {
  */
 export function rewizja(korzen) {
     const most = path.join(korzen, 'wiesio-bridge.js');
-    const trasy = wyciagnijTrasy(fs.readFileSync(most, 'utf8'));
     const serwer = plikiSerwera(korzen);
+    // trasy mostu + trasy montowane przez serwisy (np. zamontujTrasyGier(app, …) w services/PaczkiGier.js)
+    const trasy = serwer.flatMap((p) => wyciagnijTrasy(fs.readFileSync(p, 'utf8')));
     const ws = serwer.flatMap((p) => wyciagnijSciezkiWs(fs.readFileSync(p, 'utf8')));
     const wzory = [...trasy, ...ws].map((trasa) => ({ trasa, re: wzorTrasy(trasa) }));
     const vite = path.join(korzen, 'vite.config.ts');

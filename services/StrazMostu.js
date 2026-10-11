@@ -95,6 +95,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/mozg',   // 🧠 Mózg Katedry: domyślne modele Katedry — ustawia tylko Suweren przy Katedrze
     '/api/tryb',   // ☁️/🏠 Tryb Katedry (CLOUD/JusT) = rachunek za tokeny — przełącza tylko Suweren przy Katedrze
     '/api/glos/',   // 🎙️ głos ze stemu: zapisuje próbki klonu i profile głosu — tylko przy Katedrze
+    '/api/gry/',   // 🏝️ paczki gier: udostępnianie, instalacja cudzej paczki (zapis na dysk) — tylko przy Katedrze; publicznie tylko /wizytowka/gra/…
 ];
 
 /**
@@ -111,12 +112,18 @@ export const SCIEZKI_TYLKO_LOKALNE = [
  * Trasy same oddają 404, gdy Katedra nie ma nicka (wizytówka wyłączona).
  */
 export const SCIEZKI_WIZYTOWKI = { dokladne: new Set(['/api/wizytowka', '/wizytowka/postac.glb']), prefiksy: ['/wizytowka/plik/', '/wizytowka/plakat/', '/wizytowka/postac-'] };
+/**
+ * 🏝️ Paczki gier (services/PaczkiGier.js): manifest, zip i pliki gry dla gościa — z podkatalogami (assets/, assety/),
+ * dlatego osobny prefiks. Trasa sama oddaje 404 dla gier, których Suweren nie udostępnił, i nie wychodzi poza dist.
+ */
+export const PREFIKS_GIER = '/wizytowka/gra/';
 export function czyWizytowka(req) {
     // 💬 Skrzynka TOST (services/TostSiec.js): inne Katedry wrzucają tu koperty — szyfrowane, podpisane,
     // nadawca sprawdzany w rejestrze otakos.wtf. Tylko POST tej jednej ścieżki.
     if (req.method === 'POST' && req.path === '/api/tost/skrzynka') return true;
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
     const p = String(req.path || '');
+    if (p.startsWith(PREFIKS_GIER) && !p.includes('..') && !p.includes('\\')) return true;
     return SCIEZKI_WIZYTOWKI.dokladne.has(p) || SCIEZKI_WIZYTOWKI.prefiksy.some((x) => p.startsWith(x) && !p.slice(x.length).includes('/'));
 }
 

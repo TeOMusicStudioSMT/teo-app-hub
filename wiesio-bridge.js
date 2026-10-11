@@ -89,6 +89,7 @@ import * as KlockiStada    from './services/KlockiStada.js';
 import * as ModeleAgentow  from './services/ModeleAgentow.js';
 import { utworzMozg } from './services/MozgKatedry.js';
 import { utworzPlanGry } from './services/PlanGry.js';
+import { utworzPaczkiGier, zamontujTrasyGier } from './services/PaczkiGier.js';
 import { policzKoherencje } from './services/KoherencjaKatedry.js';
 import { rozmiarModelu } from './services/BledyModeli.js';
 import * as ProjektStada   from './services/ProjektStada.js';
@@ -8790,6 +8791,20 @@ app.get('/wizytowka/plakat/:id', cors({ origin: '*' }), plikWizytowki((id) => Wi
 app.get('/api/wizytowka/profil', async (_req, res) => { try { res.json({ success: true, ...(await Wizytowka.profil()) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
 app.put('/api/wizytowka/profil', async (req, res) => { try { res.json({ success: true, ...(await Wizytowka.ustawProfil(req.body ?? {})) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 app.post('/api/wizytowka/meldunek', async (_req, res) => { try { res.json({ success: true, meldunek: await Wizytowka.meldunek() }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+
+// ── 🏝️ PACZKI GIER (services/PaczkiGier.js) — gra Katedry jako podpisana paczka; gra liczy się u GRAJĄCEGO ──
+// Publicznie (Straż: czyWizytowka, tylko GET/HEAD) TYLKO gry z listy udostępnionych: manifest, zip (dławiony, ≤ N pobrań
+// naraz) i pliki gry dla gościa z telefonu (limit gości). Reszta /api/gry/* — tylko maszyna. Dla gości most NIE odpala
+// żadnego modelu ani ComfyUI: wychodzą wyłącznie pliki statyczne. Trasy: zamontujTrasyGier (w serwisie — testowalne).
+const PaczkiGier = utworzPaczkiGier({
+    katalog: ANTIGRAVITY_DIR, katalogApek: APKI_DIR, szyna: Szyna,
+    nick: async () => (await Wizytowka.profil()).nick || null,
+    klucz: async () => (await Wizytowka.klucz()).publiczny,
+    podpisz: (t) => Wizytowka.podpiszTekst(t),
+    rejestr: process.env.OTAKOS_REJESTR_URL || 'https://otakos.wtf/api/katedry',
+});
+Wizytowka.skonfiguruj({ paczkiGier: PaczkiGier });
+zamontujTrasyGier(app, { paczki: PaczkiGier, nick: async () => (await Wizytowka.profil()).nick || null, wczytajRynek: loadMarket, zapiszRynek: saveMarket });
 // Skrzynka TOST — publiczna (Straż: tylko ten POST), reszta /api/tost/siec/* jak inne trasy (maszyna albo tunel z kluczem — StoL)
 app.post('/api/tost/skrzynka', cors({ origin: '*' }), async (req, res) => {
     try { const w = await TostSiec.odbierz(req.body); return res.status(w.status).json({ wiadomosc: w.wiadomosc }); }
@@ -17387,6 +17402,8 @@ app.post('/api/market/kup', async (req, res) => {
     const m = await loadMarket();
     const produkt = m.products.find(p => p.id === id);
     if (!produkt) return res.status(404).json({ success: false, message: `Produkt „${id}" nie istnieje.` });
+    // 🏝️ Gra innej Katedry (PaczkiGier): przelewu GRV między Katedrami jeszcze nie ma — nie udajemy zapłaty w lokalnej księdze.
+    if (produkt.payload?.platnosc === 'reczna') return res.status(409).json({ success: false, code: 'PLATNOSC_RECZNA', message: `„${produkt.name}" — płatność: ręczne potwierdzenie między Suwerenami (przelew GRV między Katedrami to etap 4). Grę instaluje się przyciskiem „📥 Zainstaluj”.` });
 
     // 1. Czy już to ma? Podwójny zakup był głównym objawem błędu.
     const d = await wczytajPosiadane();

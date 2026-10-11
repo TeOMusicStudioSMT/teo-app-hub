@@ -148,7 +148,9 @@ export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     const postac = cfg.postacKatedry ? await cfg.postacKatedry.publiczna().catch(() => null) : null;
     // 📜 Plan gry (services/PlanGry.js): postęp kamieni Teterhii i zadania wiszące ≥ 3 dni — strona pokazuje je sama.
     const gra = cfg.planGry ? await cfg.planGry.publiczny().catch(() => null) : null;
-    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(zlecenia.length ? { zlecenia } : {}), ...(mistrz ? { mistrz } : {}), ...(postac ? { postac } : {}), ...(gra ? { gra } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
+    // 🏝️ Paczki gier (services/PaczkiGier.js): co ta Katedra daje do zagrania i zainstalowania — rejestr podaje to dalej.
+    const paczkiGier = cfg.paczkiGier ? await cfg.paczkiGier.publiczne().catch(() => []) : [];
+    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(zlecenia.length ? { zlecenia } : {}), ...(mistrz ? { mistrz } : {}), ...(postac ? { postac } : {}), ...(gra ? { gra } : {}), ...(paczkiGier.length ? { paczkiGier } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
 }
 
 /** Ścieżka pliku wizytówki — tylko id z ostatnio zbudowanej wizytówki (nigdy ścieżka z URL-a). */

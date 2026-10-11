@@ -94,3 +94,20 @@ describe('📺 powrót z ekranu zgody Google', () => {
         assert.equal(przepusc(zadanie({ naglowki: tunel, method: 'POST', path: '/api/youtube/publikacje/yt_1/zatwierdz' })), 'dalej');
     });
 });
+
+describe('🏝️ paczki gier przez tunel', () => {
+    const gosc = { 'cf-connecting-ip': '5.6.7.8' };
+    test('gość bez klucza: manifest, zip i pliki gry (z podkatalogami) — tylko GET', () => {
+        assert.equal(przepusc(zadanie({ naglowki: gosc, path: '/wizytowka/gra/teterhia-wieczna-saga.json' })), 'dalej');
+        assert.equal(przepusc(zadanie({ naglowki: gosc, path: '/wizytowka/gra/teterhia-wieczna-saga.zip' })), 'dalej');
+        assert.equal(przepusc(zadanie({ naglowki: gosc, path: '/wizytowka/gra/teterhia-wieczna-saga/assets/index-abc.js' })), 'dalej');
+        assert.equal(przepusc(zadanie({ naglowki: gosc, method: 'POST', path: '/wizytowka/gra/teterhia-wieczna-saga/index.html' })), 401);
+        assert.equal(przepusc(zadanie({ naglowki: gosc, path: '/wizytowka/gra/x/../../api/grv/ja' })), 401);
+    });
+    test('gość nie dostanie /api mostu (Mistrz, Kustosz, rozmowa) ani instalacji', () => {
+        assert.equal(przepusc(zadanie({ naglowki: gosc, method: 'POST', path: '/api/mistrz-gry/kwestia' })), 401);
+        assert.equal(przepusc(zadanie({ naglowki: gosc, method: 'POST', path: '/api/tgs/quest' })), 401);
+        assert.equal(przepusc(zadanie({ naglowki: { ...gosc, 'x-teo-klucz': KLUCZ }, method: 'POST', path: '/api/gry/instaluj' })), 403);
+        assert.equal(przepusc(zadanie({ naglowki: { origin: 'https://teo.center' }, method: 'POST', path: '/api/gry/udostepnij' })), 403);
+    });
+});
