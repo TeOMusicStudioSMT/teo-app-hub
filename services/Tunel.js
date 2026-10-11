@@ -149,11 +149,14 @@ export async function start() {
         p.on('error', (e) => { dopiszLog(`błąd procesu: ${e.message}`); clearTimeout(t); resolve(null); });
         p.on('exit', (kod) => {
             dopiszLog(`cloudflared zakończył się (kod ${kod})`);
+            const dzialal = proces === p && stan.stan === 'dziala';
             if (proces === p) { proces = null; stan.stan = stan.adres && kod === 0 ? 'zatrzymany' : 'blad'; if (!stan.adres) stan.blad = stan.blad || `cloudflared zakończył się z kodem ${kod}`; stan.adres = null; }
             clearTimeout(t); resolve(null);
+            if (dzialal) poPadnieciu();   // padł sam w trakcie pracy (nie stop) — autostart podnosi go ponownie
         });
     });
 
+    zatrzymanyRecznie = false;
     if (!adres) {
         stan.stan = 'blad';
         stan.blad = stan.blad || (stan.tryb === 'nazwany'
@@ -169,12 +172,72 @@ export async function start() {
 }
 
 export async function stop() {
+    zatrzymanyRecznie = true;
     if (!proces) { stan.stan = 'zatrzymany'; stan.adres = null; return { ...stan }; }
     const p = proces; proces = null;
     try { p.kill(); } catch { /* trudno */ }
     stan.stan = 'zatrzymany'; stan.adres = null; stan.blad = null;
     await cfg.szyna?.nadaj?.({ agent: 'Tunel', rodzaj: 'info', tresc: 'Kwantowy Tunel zamknięty.' }).catch(() => {});
     return { ...stan };
+}
+
+// ── 🔁 AUTOSTART (Suweren 2026-10-12: „autostart tunelu po starcie mostu”) ──────────────────────────────────
+// Dotąd każdy restart mostu (Start_OtakOS.bat, aktualizacja, padnięcie) gasił tunel razem z nim (cloudflared to
+// dziecko mostu), a Katedra znikała z sieci, dopóki ktoś nie kliknął „Uruchom tunel”. Teraz most PAMIĘTA wybór
+// Suwerena: start z karty Tunelu zapisuje „włączony”, stop — „wyłączony” (`_OtakOs_Wymiar/tunel-autostart.json`).
+// Po starcie mostu włączony tunel wstaje sam (ponowienia: 30 s, 2 min, 5 min), a gdy cloudflared padnie w trakcie
+// pracy — też wstaje (najwyżej 3 razy z rzędu; udany start zeruje licznik). `OTAKOS_TUNEL_AUTOSTART=0|1` nadpisuje plik.
+let zatrzymanyRecznie = false;
+let padniecZRzedu = 0;
+const PRZERWY_MS = [30_000, 120_000, 300_000];
+const plikAutostartu = () => path.join(cfg.katalogWymiaru ?? path.join(process.cwd(), '_OtakOs_Wymiar'), 'tunel-autostart.json');
+
+/** Czy tunel ma wstawać sam: zmienna środowiskowa wygrywa, inaczej ostatni wybór Suwerena. */
+export function czyAutostart(env = process.env) {
+    if (env.OTAKOS_TUNEL_AUTOSTART === '0') return false;
+    if (env.OTAKOS_TUNEL_AUTOSTART === '1') return true;
+    try { return JSON.parse(fsSync.readFileSync(plikAutostartu(), 'utf8'))?.wlaczony === true; } catch { return false; }
+}
+/** Zapisz wybór Suwerena (start = włączony, stop = wyłączony). */
+export function zapamietaj(wlaczony) {
+    try {
+        fsSync.mkdirSync(path.dirname(plikAutostartu()), { recursive: true });
+        fsSync.writeFileSync(plikAutostartu(), JSON.stringify({ wlaczony: wlaczony === true, zmieniono: new Date().toISOString() }, null, 2), 'utf8');
+    } catch (e) { dopiszLog(`autostart: nie zapisałem wyboru (${e.message})`); }
+}
+
+const czekaj = (ms) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Start mostu: gdy autostart włączony, a tunel nie działa — uruchom (po `opoznienieMs`, z ponowieniami).
+ * Zwraca stan po próbach albo null, gdy autostart wyłączony. `uruchom` wstrzykiwany do testów.
+ */
+export async function autostart({ opoznienieMs = 3000, przerwy = PRZERWY_MS, uruchom = start, poStarcie = cfg.poStarcie } = {}) {
+    if (!czyAutostart()) return null;
+    await czekaj(opoznienieMs);
+    for (let proba = 0; proba <= przerwy.length; proba++) {
+        if (zatrzymanyRecznie || !czyAutostart()) return null;   // Suweren w międzyczasie zatrzymał tunel
+        if (proces && stan.stan === 'dziala') return { ...stan };
+        try {
+            const s = await uruchom();
+            dopiszLog(`autostart: tunel wstał sam${proba ? ` (próba ${proba + 1})` : ''}`);
+            await cfg.szyna?.nadaj?.({ agent: 'Tunel', rodzaj: 'praca', tresc: `🔁 Autostart: Kwantowy Tunel wstał sam po starcie mostu — ${s.adres}` }).catch?.(() => {});
+            try { await poStarcie?.(s); } catch { /* meldunek dojdzie w swojej pętli */ }
+            return s;
+        } catch (e) {
+            dopiszLog(`autostart: próba ${proba + 1} nieudana (${e.message})`);
+            if (proba < przerwy.length) await czekaj(przerwy[proba]);
+        }
+    }
+    await cfg.szyna?.nadaj?.({ agent: 'Tunel', rodzaj: 'info', tresc: `🔁 Autostart: tunel nie wstał po ${przerwy.length + 1} próbach — ${stan.blad ?? 'bez powodu'}. Uruchom go w karcie Tunelu.` }).catch?.(() => {});
+    return { ...stan };
+}
+/** cloudflared padł sam w trakcie pracy → przy włączonym autostarcie ponów (≤ 3 razy z rzędu). */
+function poPadnieciu() {
+    if (zatrzymanyRecznie || !czyAutostart()) return;
+    if (padniecZRzedu >= PRZERWY_MS.length) { dopiszLog('autostart: tunel padł 3 razy z rzędu — czekam na Suwerena'); return; }
+    const przerwa = PRZERWY_MS[padniecZRzedu++];
+    dopiszLog(`autostart: tunel padł — ponawiam za ${przerwa / 1000} s`);
+    void czekaj(przerwa).then(() => autostart({ opoznienieMs: 0, przerwy: [] })).then((s) => { if (s?.stan === 'dziala') padniecZRzedu = 0; });
 }
 
 // Most gaśnie → tunel też, żeby nie został sierocy proces wskazujący na martwy port.
@@ -191,4 +254,4 @@ for (const s of ['SIGINT', 'SIGTERM']) {
     });
 }
 
-export default { skonfiguruj, stanTunelu, start, stop, konfiguracjaNazwanego };
+export default { skonfiguruj, stanTunelu, start, stop, konfiguracjaNazwanego, czyAutostart, zapamietaj, autostart };

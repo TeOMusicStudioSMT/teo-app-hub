@@ -8071,13 +8071,15 @@ app.post('/api/delegat/rozmowa/:id/podsumuj', async (req, res) => {
 app.get('/api/delegat/fakty', async (req, res) => res.json({ success: true, fakty: await Delegat.fakty(Number(req.query.ile) || 50) }));
 
 // ── 🛰️ Kwantowy Tunel jednym przyciskiem (services/Tunel.js) — TYLKO LOKALNIE (Straż) ──
-Tunel.skonfiguruj({ portMostu: PORT, szyna: Szyna });
-app.get('/api/tunel/stan', async (_req, res) => res.json({ success: true, ...(await Tunel.stanTunelu()), klucz: KLUCZ_STRAZY }));
+// 🔁 Autostart: start z karty zapisuje „włączony”, stop — „wyłączony”; po starcie mostu włączony tunel wstaje sam
+// (app.listen → Tunel.autostart), a po wstaniu od razu meldunek wizytówki, żeby rejestr otakos.wtf widział Katedrę.
+Tunel.skonfiguruj({ portMostu: PORT, szyna: Szyna, katalogWymiaru: ANTIGRAVITY_DIR, poStarcie: () => Wizytowka.meldunek() });
+app.get('/api/tunel/stan', async (_req, res) => res.json({ success: true, ...(await Tunel.stanTunelu()), autostart: Tunel.czyAutostart(), klucz: KLUCZ_STRAZY }));
 app.post('/api/tunel/start', async (_req, res) => {
-    try { res.json({ success: true, ...(await Tunel.start()), klucz: KLUCZ_STRAZY }); }
+    try { const s = await Tunel.start(); Tunel.zapamietaj(true); res.json({ success: true, ...s, autostart: Tunel.czyAutostart(), klucz: KLUCZ_STRAZY }); }
     catch (e) { res.status(500).json({ success: false, message: e.message, ...(await Tunel.stanTunelu()) }); }
 });
-app.post('/api/tunel/stop', async (_req, res) => res.json({ success: true, ...(await Tunel.stop()) }));
+app.post('/api/tunel/stop', async (_req, res) => { const s = await Tunel.stop(); Tunel.zapamietaj(false); res.json({ success: true, ...s, autostart: Tunel.czyAutostart() }); });
 
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -18112,6 +18114,7 @@ process.on('uncaughtException', (e) => zapiszBladMostu('nieobsłużony wyjątek'
 
 const httpServer = app.listen(PORT, () => {
     SilnikKlonu.zapewnij({ aiDir: AI_DIR, base: VOICE_BASE }).catch(() => {});
+    void Tunel.autostart().catch((e) => console.warn('[Tunel] autostart:', e.message));   // 🔁 tunel wstaje sam, gdy Suweren go zostawił włączony
     console.log(`================================================`);
     console.log(` 🔌 Wiesław nasłuchuje na porcie ${PORT}`);
     console.log(`================================================`);
