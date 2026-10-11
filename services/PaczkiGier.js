@@ -213,7 +213,7 @@ export function utworzLimitGosci({ max = Number(process.env.OTAKOS_GOSCIE_MAX ||
  * @param {{ katalog: string, katalogApek: string, nick: () => Promise<string>, klucz: () => Promise<string>,
  *           podpisz: (t: string) => Promise<string>, rejestr: string, fetch?: Function, teraz?: () => number, szyna?: object }} o
  */
-export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, rejestr, fetch: f = globalThis.fetch, teraz = () => Date.now(), szyna = null, odchudz = null, ustawieniaLekkich = '' }) {
+export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, rejestr, fetch: f = globalThis.fetch, teraz = () => Date.now(), szyna = null, odchudz = null, ustawieniaLekkich = '', naglowkiPobrania = async () => ({}) }) {
     const PLIK = path.join(katalog, 'gry-udostepnione.json');
     const kat = (gra) => path.join(katalog, 'gry-paczki', gra);
     const czytaj = async () => { try { return JSON.parse(await fs.readFile(PLIK, 'utf8')); } catch { return { gry: {} }; } };
@@ -369,14 +369,14 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         return k;
     }
 
-    async function instaluj({ nick: n, gra } = {}) {
+    /**
+     * 💳 Oferta gry innej Katedry: manifest z JEJ tunelu, podpis kluczem z rejestru, rozmiar w limicie, cena (pole
+     * poza podpisem — kwotę i tak sprawdza sprzedający przy zapłacie). Wspólne dla „kup” i „instaluj”.
+     */
+    async function oferta(n, gra) {
         n = String(n ?? '').trim().toLowerCase(); gra = String(gra ?? '').trim();
         if (!NICK.test(n)) throw new Error('Zły nick Katedry autora.');
         sprawdzId(gra);
-        const id = katalogInstalacji(gra, n);
-        if (n === await nick()) throw new Error('To Twoja własna gra — gra już jest w tej Katedrze.');
-        const cel = path.join(katalogApek, id);
-        if (fsSync.existsSync(cel) && !(await czytajZrodlo(id))) throw new Error(`Katalog „${id}” istnieje i nie jest zainstalowaną paczką — nie nadpisuję cudzej pracy.`);
         const k = await katedraZRejestru(n);
         const rm = await f(`${k.adres}/wizytowka/gra/${gra}.json`, { signal: AbortSignal.timeout(15_000), redirect: 'error' });
         if (!rm.ok) throw new Error(`Katedra „${n}” nie udostępnia gry „${gra}” (HTTP ${rm.status}).`);
@@ -387,12 +387,28 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         let ok = false;
         try { ok = crypto.verify(null, Buffer.from(trescManifestu(m), 'utf8'), crypto.createPublicKey({ key: Buffer.from(k.klucz, 'base64'), format: 'der', type: 'spki' }), Buffer.from(String(m.podpis ?? ''), 'base64')); } catch { ok = false; }
         if (!ok) throw new Error(`Podpis manifestu nie zgadza się z kluczem Katedry „${n}” z rejestru — paczka odrzucona (podszyta albo uszkodzona).`);
+        const cena = Number.isInteger(m.cenaGRV) && m.cenaGRV >= 0 ? m.cenaGRV : null;
+        return { k, m, cena };
+    }
+    /** Cena gry tej Katedry (null = nieudostępniona). */
+    async function cena(gra) { const w = ID_GRY.test(String(gra ?? '')) ? (await czytaj()).gry[gra] : null; return w ? Math.max(0, Math.floor(Number(w.cenaGRV) || 0)) : null; }
+
+    async function instaluj({ nick: n, gra } = {}) {
+        n = String(n ?? '').trim().toLowerCase(); gra = String(gra ?? '').trim();
+        if (!NICK.test(n)) throw new Error('Zły nick Katedry autora.');
+        sprawdzId(gra);
+        const id = katalogInstalacji(gra, n);
+        if (n === await nick()) throw new Error('To Twoja własna gra — gra już jest w tej Katedrze.');
+        const cel = path.join(katalogApek, id);
+        if (fsSync.existsSync(cel) && !(await czytajZrodlo(id))) throw new Error(`Katalog „${id}” istnieje i nie jest zainstalowaną paczką — nie nadpisuję cudzej pracy.`);
+        const { k, m } = await oferta(n, gra);
 
         const robocze = path.join(katalog, 'gry-pobrane', `${id}-${teraz()}`);
         await fs.mkdir(robocze, { recursive: true });
         try {
             const zip = path.join(robocze, 'paczka.zip');
-            const rz = await f(`${k.adres}/wizytowka/gra/${gra}.zip`, { signal: AbortSignal.timeout(60 * 60_000), redirect: 'error' });
+            const rz = await f(`${k.adres}/wizytowka/gra/${gra}.zip`, { headers: await naglowkiPobrania(gra), signal: AbortSignal.timeout(60 * 60_000), redirect: 'error' });
+            if (rz.status === 402) throw new Error((await rz.json().catch(() => ({})))?.message || `Katedra „${n}” wydaje paczkę dopiero po zapłacie.`);
             if (!rz.ok) throw new Error(`Pobranie paczki: HTTP ${rz.status}.`);
             const hash = crypto.createHash('sha256');
             let ile = 0;
@@ -448,7 +464,7 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         };
     }
 
-    return { lista, udostepnij, wycofaj, ustawProdukt, udostepniona, manifest, sciezkaZip, plikGoscia, publiczne, instaluj, wSieci, gospodarz, odchudzPlik, lekkiPlik };
+    return { lista, udostepnij, wycofaj, ustawProdukt, udostepniona, manifest, sciezkaZip, plikGoscia, publiczne, oferta, cena, instaluj, wSieci, gospodarz, odchudzPlik, lekkiPlik, katedraZRejestru };
 }
 
 /**
@@ -458,7 +474,7 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
  * @param {{ paczki: ReturnType<typeof utworzPaczkiGier>, nick: () => Promise<string|null>, wczytajRynek: () => Promise<{products: object[]}>,
  *           zapiszRynek: () => Promise<void>, limit?: ReturnType<typeof utworzLimitGosci>, bps?: number, maxPobran?: number }} o
  */
-export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek, limit = utworzLimitGosci(), bps = Number(process.env.OTAKOS_PACZKA_KBPS || 2048) * 1024, maxPobran = Number(process.env.OTAKOS_PACZKA_POBRANIA || 2), plac = null, poUdostepnieniu = null }) {
+export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek, limit = utworzLimitGosci(), bps = Number(process.env.OTAKOS_PACZKA_KBPS || 2048) * 1024, maxPobran = Number(process.env.OTAKOS_PACZKA_POBRANIA || 2), plac = null, poUdostepnieniu = null, rozliczenia = null }) {
     const odp = (res, p, kod = 400) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(kod).json({ success: false, message: e.message }));
     const GoscieWyspy = limit;
     const PACZKA_BPS = bps;
@@ -491,11 +507,17 @@ export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek
     app.get(/^\/wizytowka\/gra\/([a-z0-9-]{2,48})\.json$/, cors({ origin: '*' }), async (req, res) => {
         const m = await paczki.manifest(req.params[0]).catch(() => null);
         if (!m) return res.status(404).json({ success: false, message: 'Ta Katedra nie udostępnia takiej gry.' });
-        res.set('Cache-Control', 'no-cache'); return res.json(m);
+        // 💳 cena poza podpisem manifestu — kwotę i tak sprawdza ta Katedra przy przyjęciu zapłaty
+        res.set('Cache-Control', 'no-cache'); return res.json({ ...m, cenaGRV: await paczki.cena(req.params[0]) });
     });
     app.get(/^\/wizytowka\/gra\/([a-z0-9-]{2,48})\.zip$/, cors({ origin: '*' }), async (req, res) => {
         const zip = await paczki.sciezkaZip(req.params[0]).catch(() => null);
         if (!zip) return res.status(404).json({ success: false, message: 'Ta Katedra nie udostępnia takiej gry.' });
+        // 💳 paczkę płatnej gry dostaje Katedra po zapłacie — żądanie podpisane jej kluczem (RozliczeniaKatedr.mozePobrac)
+        if (rozliczenia && !req.lokalny) {
+            const zgoda = await rozliczenia.mozePobrac(req.params[0], { nick: req.get('x-katedra-nick'), czas: req.get('x-katedra-czas'), podpis: req.get('x-katedra-podpis') }).catch((e) => ({ tak: false, powod: e.message }));
+            if (!zgoda.tak) return res.status(402).json({ success: false, message: zgoda.powod });
+        }
         if (pobieraniaPaczki >= MAX_POBRAN_PACZKI) { res.set('Retry-After', '60'); return res.status(503).json({ success: false, message: `Paczkę pobiera teraz ${pobieraniaPaczki} Katedr — spróbuj za minutę (ochrona łącza Suwerena).` }); }
         pobieraniaPaczki++;
         let zwolnione = false; const zwolnij = () => { if (!zwolnione) { zwolnione = true; pobieraniaPaczki--; } };
@@ -532,8 +554,8 @@ export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek
             const { manifest: m, wpis } = await paczki.udostepnij(gra, { cenaGRV: req.body?.cenaGRV ?? 333 });
             // 🛒 wpis w Marketplace tej Katedry — UCZCIWIE: przelewu GRV między Katedrami jeszcze nie ma (etap 4)
             const rynek = await wczytajRynek();
-            const opis = `Gra Katedry „${m.autor}” jako podpisana paczka (${m.wersja}, ${Math.round(m.bajtow / 1048576)} MB). Instaluje się w Katedrze grającego i tam się liczy. Płatność: ręczne potwierdzenie między Suwerenami — przelew GRV między Katedrami to etap 4, instalacja niczego nie pobiera.`;
-            const payload = { gra, nick: m.autor, wersja: m.wersja, paczka: `/wizytowka/gra/${gra}.zip`, manifest: `/wizytowka/gra/${gra}.json`, instaluj: { nick: m.autor, gra }, platnosc: 'reczna' };
+            const opis = `Gra Katedry „${m.autor}” jako podpisana paczka (${m.wersja}, ${Math.round(m.bajtow / 1048576)} MB). Instaluje się w Katedrze grającego i tam się liczy. Płatność: przelew GRV między Katedrami z pokwitowaniami podpisanymi przez obie (Marketplace → 🏝️ Gry → Kup i zainstaluj).`;
+            const payload = { gra, nick: m.autor, wersja: m.wersja, paczka: `/wizytowka/gra/${gra}.zip`, manifest: `/wizytowka/gra/${gra}.json`, instaluj: { nick: m.autor, gra }, platnosc: 'przelew-katedr' };
             let produkt = rynek.products.find((p) => p.module === 'teterhia' && p.type === 'gra' && p.payload?.gra === gra && p.payload?.nick === m.autor);
             if (produkt) Object.assign(produkt, { name: m.nazwa, desc: opis, priceGrv: wpis.cenaGRV, payload });
             else { produkt = { id: `teterhia-gra-${gra}-${Date.now().toString(36)}`.slice(0, 60), module: 'teterhia', type: 'gra', name: m.nazwa, desc: opis, priceGrv: wpis.cenaGRV, creator: m.autor, votes: 0, createdAt: Date.now(), payload }; rynek.products.push(produkt); }
@@ -551,6 +573,34 @@ export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek
         } catch (e) { res.status(400).json({ success: false, message: e.message }); }
     });
     app.get('/api/gry/siec', (_req, res) => odp(res, paczki.wSieci().then((katedry) => ({ katedry })), 502));
+    // ── 💳 krok 4: przelew GRV między Katedrami (services/RozliczeniaKatedr.js) ──
+    // publicznie (Straż: SCIEZKA_PLATNOSCI): zlecenie innej Katedry → pokwitowanie albo odmowa z powodem
+    app.options(/^\/wizytowka\/gra\/([a-z0-9-]{2,48})\/platnosc$/, corsPlacu);
+    app.post(/^\/wizytowka\/gra\/([a-z0-9-]{2,48})\/platnosc$/, corsPlacu, async (req, res) => {
+        if (!rozliczenia) return res.status(404).json({ success: false, odrzucone: true, powod: 'Ta Katedra nie przyjmuje płatności.' });
+        if (JSON.stringify(req.body ?? {}).length > 4000) return res.status(413).json({ success: false, odrzucone: true, powod: 'Zlecenie za duże.' });
+        if (req.body?.zlecenie?.gra !== req.params[0]) return res.status(409).json({ success: false, odrzucone: true, powod: 'Zlecenie dotyczy innej gry niż adres.' });
+        try { const w = await rozliczenia.przyjmij(req.body ?? {}); return res.status(w.odrzucone ? 409 : 200).json({ success: !w.odrzucone, ...w }); }
+        catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+    });
+    // przy maszynie: oferta (cena, czy zapłacone), kup = zapłać i zainstaluj, stan rozliczeń, ponowienie
+    app.get('/api/gry/oferta', (req, res) => odp(res, paczki.oferta(req.query.nick, req.query.gra).then(async ({ m, cena }) => ({ oferta: { gra: m.gra, nazwa: m.nazwa, wersja: m.wersja, bajtow: m.bajtow, rozmiary: m.rozmiary ?? null, autor: m.autor, cenaGRV: cena, zaplacone: rozliczenia ? await rozliczenia.zaplacone(m.autor, m.gra) : false } })), 502));
+    app.post('/api/gry/kup', async (req, res) => {
+        try {
+            const { m, cena } = await paczki.oferta(req.body?.nick, req.body?.gra);
+            if (cena == null) throw new Error('Manifest nie podaje ceny — ta Katedra ma starszą wersję mostu.');
+            let zakup = null;
+            if (cena > 0) {
+                if (Number(req.body?.kwota) !== cena) throw new Error(`Cena to ${cena} GRV (potwierdziłeś ${req.body?.kwota}) — potwierdź jeszcze raz.`);
+                if (!rozliczenia) throw new Error('Rozliczenia nie są włączone w tej Katedrze.');
+                zakup = await rozliczenia.zaplac({ sprzedawca: m.autor, gra: m.gra, kwota: cena });
+                if (zakup.stan !== 'potwierdzona') return res.status(zakup.stan === 'zwrot' ? 409 : 202).json({ success: false, zakup, message: zakup.blad });
+            }
+            res.json({ success: true, zakup, gra: await paczki.instaluj({ nick: m.autor, gra: m.gra }) });
+        } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+    });
+    app.get('/api/gry/rozliczenia', (_req, res) => odp(res, rozliczenia ? rozliczenia.stan() : Promise.resolve({ zakupy: [], sprzedaz: [] }), 500));
+    app.post('/api/gry/rozliczenia/:id/ponow', (req, res) => odp(res, rozliczenia ? rozliczenia.ponow(req.params.id).then((zakup) => ({ zakup })) : Promise.reject(new Error('Rozliczenia wyłączone.'))));
     app.post('/api/gry/instaluj', async (req, res) => {
         try { res.json({ success: true, gra: await paczki.instaluj({ nick: req.body?.nick, gra: req.body?.gra }) }); }
         catch (e) { res.status(400).json({ success: false, message: e.message }); }

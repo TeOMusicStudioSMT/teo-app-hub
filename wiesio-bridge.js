@@ -91,6 +91,7 @@ import { utworzMozg } from './services/MozgKatedry.js';
 import { utworzPlanGry } from './services/PlanGry.js';
 import { utworzPaczkiGier, zamontujTrasyGier } from './services/PaczkiGier.js';
 import { odchudzBryle, CEL_SCIAN, MAKS_TEKSTURY } from './services/LekkieBryly.js';
+import { utworzRozliczenia } from './services/RozliczeniaKatedr.js';
 import { policzKoherencje } from './services/KoherencjaKatedry.js';
 import { rozmiarModelu } from './services/BledyModeli.js';
 import * as ProjektStada   from './services/ProjektStada.js';
@@ -8806,10 +8807,31 @@ const PaczkiGier = utworzPaczkiGier({
     rejestr: process.env.OTAKOS_REJESTR_URL || 'https://otakos.wtf/api/katedry',
     // 📱 lekkie kopie brył dla telefonu gościa (services/LekkieBryly.js): siatka bez riga ≤ 60 tys. trójkątów, tekstury ≤ 1024 px
     ustawieniaLekkich: `${CEL_SCIAN}|${MAKS_TEKSTURY}`,
+    naglowkiPobrania: (gra) => Rozliczenia.naglowkiPobrania(gra),   // 💳 zip płatnej gry — żądanie podpisane kluczem tej Katedry
     odchudz: (glb) => odchudzBryle(glb, { ffmpeg: ffmpegPath, uruchom: (c, a) => execFileAsync(c, a, { maxBuffer: 1 << 26, windowsHide: true }) }),
 });
 Wizytowka.skonfiguruj({ paczkiGier: PaczkiGier });
-zamontujTrasyGier(app, { paczki: PaczkiGier, nick: async () => (await Wizytowka.profil()).nick || null, wczytajRynek: loadMarket, zapiszRynek: saveMarket,
+// 💳 Rozliczenia Katedr (services/RozliczeniaKatedr.js, krok 4): przelew GRV za grę — każda księga robi swoją połowę,
+// spinają je podpisane zlecenie i pokwitowanie; każdy ruch w księdze dostaje pieczęć `rozliczenie-katedr` z notatką.
+const Rozliczenia = utworzRozliczenia({
+    katalog: ANTIGRAVITY_DIR, szyna: Szyna,
+    nick: async () => (await Wizytowka.profil()).nick || null,
+    podpisz: (t) => Wizytowka.podpiszTekst(t),
+    katedra: (n) => PaczkiGier.katedraZRejestru(n),
+    cena: (gra) => PaczkiGier.cena(gra),
+    ksiega: {
+        przelej: async (od, doWezla, kwota, notatka) => {
+            const w = await przelejGrv(od, doWezla, kwota);
+            await sealGrv('rozliczenie-katedr', { od, do: doWezla, kwota, ...notatka });
+            await saveGrvLedger();
+            return w;
+        },
+        wlasciciel: () => wlascicielKsiegi(),
+        zarzadca: () => zarzadcaKsiegi(),
+        saldo: async (w) => (await loadGrvLedger()).nodes[w]?.grv ?? 0,
+    },
+});
+zamontujTrasyGier(app, { rozliczenia: Rozliczenia, paczki: PaczkiGier, nick: async () => (await Wizytowka.profil()).nick || null, wczytajRynek: loadMarket, zapiszRynek: saveMarket,
     // postać Katedry też w wersji lekkiej dla telefonu gościa (/wizytowka/postac.glb?lekki=1)
     poUdostepnieniu: async () => {
         const ruchy = Object.keys((await PostacKatedry.publiczna().catch(() => null))?.ruchy ?? {});
@@ -17413,7 +17435,7 @@ app.post('/api/market/kup', async (req, res) => {
     const produkt = m.products.find(p => p.id === id);
     if (!produkt) return res.status(404).json({ success: false, message: `Produkt „${id}" nie istnieje.` });
     // 🏝️ Gra innej Katedry (PaczkiGier): przelewu GRV między Katedrami jeszcze nie ma — nie udajemy zapłaty w lokalnej księdze.
-    if (produkt.payload?.platnosc === 'reczna') return res.status(409).json({ success: false, code: 'PLATNOSC_RECZNA', message: `„${produkt.name}" — płatność: ręczne potwierdzenie między Suwerenami (przelew GRV między Katedrami to etap 4). Grę instaluje się przyciskiem „📥 Zainstaluj”.` });
+    if (['reczna', 'przelew-katedr'].includes(produkt.payload?.platnosc)) return res.status(409).json({ success: false, code: 'PRZELEW_KATEDR', message: `„${produkt.name}" to gra innej Katedry — płaci się przelewem GRV między Katedrami z pokwitowaniami: Marketplace → 🏝️ Gry → „💳 Kup i zainstaluj”.` });
 
     // 1. Czy już to ma? Podwójny zakup był głównym objawem błędu.
     const d = await wczytajPosiadane();

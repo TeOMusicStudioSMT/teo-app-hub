@@ -176,8 +176,8 @@ test('trasy na prawdziwym Expressie za Strażą: gość czyta tylko udostępnion
         const u = await (await fetch(`${adres}/api/gry/udostepnij`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gra: 'teterhia-wieczna-saga' }) })).json();
         assert.equal(u.success, true, u.message);
         assert.equal(rynek.products.length, 1);
-        assert.deepEqual([rynek.products[0].module, rynek.products[0].type, rynek.products[0].priceGrv, rynek.products[0].payload.platnosc], ['teterhia', 'gra', 333, 'reczna']);
-        assert.match(rynek.products[0].desc, /etap 4/);
+        assert.deepEqual([rynek.products[0].module, rynek.products[0].type, rynek.products[0].priceGrv, rynek.products[0].payload.platnosc], ['teterhia', 'gra', 333, 'przelew-katedr']);
+        assert.match(rynek.products[0].desc, /przelew GRV między Katedrami/);
         await fetch(`${adres}/api/gry/udostepnij`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gra: 'teterhia-wieczna-saga', cenaGRV: 100 }) });
         assert.equal(rynek.products.length, 1, 'ponowne udostępnienie odświeża wpis, nie dubluje');
         assert.equal(rynek.products[0].priceGrv, 100);
