@@ -210,7 +210,8 @@ function oczysc(g, stare = puste()) {
     if (g.silnik && SILNIKI[g.silnik]) out.silnik = g.silnik;
     if (Array.isArray(g.platformy)) out.platformy = g.platformy.map(String).slice(0, 6);
     if (g.sekcje && typeof g.sekcje === 'object') for (const s of SEKCJE) if (typeof g.sekcje[s] === 'string') out.sekcje[s] = g.sekcje[s].slice(0, 6000);
-    if (Array.isArray(g.kamienie)) out.kamienie = g.kamienie.slice(0, 12).map((k, i) => ({
+    // plan na wiele etapów (Etap 1 zajął 12 kamieni — 2026-10-11 limit 12 zjadał Etap 2): do MAX_KAMIENI
+    if (Array.isArray(g.kamienie)) out.kamienie = g.kamienie.slice(0, MAX_KAMIENI).map((k, i) => ({
         id: idOk(String(k.id || '')) ? k.id : noweId('km'), tytul: String(k.tytul || `Kamień ${i + 1}`).slice(0, 120), opis: String(k.opis || '').slice(0, 600),
         zadania: (Array.isArray(k.zadania) ? k.zadania : []).slice(0, 6).map((z) => typeof z === 'string' ? { id: noweId('zd'), tresc: z.slice(0, 700), stan: 'czeka' } : { id: idOk(String(z.id || '')) ? z.id : noweId('zd'), tresc: String(z.tresc || '').slice(0, 700), stan: STANY_ZADANIA.includes(z.stan) ? z.stan : 'czeka', zadanieId: z.zadanieId ?? null, kiedy: z.kiedy ?? null, uwaga: z.uwaga ? String(z.uwaga).slice(0, 300) : null, ...klockiZadania(z) }),
     }));
@@ -238,6 +239,8 @@ export async function zapewnij(projektId, tytul) {
 }
 
 /** Tekst GDD do promptu — zwięzły, żeby zmieścić się w 16k kontekstu obok kodu. */
+/** Ile kamieni milowych mieści plan (kilka etapów gry). */
+export const MAX_KAMIENI = 24;
 export const LIMIT_GDD_TEKSTU = 14_000;
 /**
  * GDD jako tekst dla modelu (≤ LIMIT_GDD_TEKSTU znaków). Kamienie milowe, filmy i gałęzie MAJĄ zarezerwowane miejsce —
@@ -458,7 +461,7 @@ ${MOCE_KATEDRY_DLA_GIER}${await blokZasad()}
 Gdy ustalicie coś, co powinno trafić do dokumentu albo planu, dopisz na końcu odpowiedzi blok (poprawny JSON, nic po nim):
 PROPOZYCJA_GDD: {"sekcje":{"mechanika":"pełna nowa treść sekcji"}, "tytul":"…", "kamienie":[{"id":"km-…","tytul":"…","opis":"…","zadania":["zadanie 1","zadanie 2"]}], "filmy":[{"zdarzenie":"start","tytul":"…","opis":"co widać w ujęciu, po polsku, 1–3 zdania"}]}
 🎬 FILMY: możesz proponować cutscenki i intro — każdy film ma 2–20 s (dłuższy niż 5 s = kilka ujęć, każde ujęcie Wan liczy się długo na tej karcie — dłuższe tylko tam, gdzie scena tego potrzebuje), przypięte do zdarzenia gry: ${Object.entries(ZDARZENIA_GRY).map(([k, v]) => `${k} (${v})`).join(', ')}. Opisz, co widać (miejsce, postać, ruch kamery), nie dialogi. W "filmy" podajesz tylko nowe albo zmieniane (z id).
-Zasady: tylko pola, które się zmieniają; treść sekcji w całości; w "kamienie" podajesz TYLKO kamienie, które zmieniasz, z ich id z planu i PEŁNĄ nową listą zadań tego kamienia — zadania oznaczone [gotowe] przepisz dosłownie, żeby nie zgubić ich stanu; nowy kamień — bez id. Limit planu: najwyżej 12 kamieni i 6 zadań w kamieniu (więcej się nie zapisze — rozbij na kolejny kamień). Bez propozycji, gdy nic nie ustalono.
+Zasady: tylko pola, które się zmieniają; treść sekcji w całości; w "kamienie" podajesz TYLKO kamienie, które zmieniasz, z ich id z planu i PEŁNĄ nową listą zadań tego kamienia — zadania oznaczone [gotowe] przepisz dosłownie, żeby nie zgubić ich stanu; nowy kamień — bez id. Limit planu: najwyżej ${MAX_KAMIENI} kamieni i 6 zadań w kamieniu (więcej się nie zapisze — rozbij na kolejny kamień). Nowy etap = NOWE kamienie dopisane po istniejących (bez id) — istniejących nie przepisuj, jeśli ich nie zmieniasz. Bez propozycji, gdy nic nie ustalono.
 NIE piszesz „zapisałem” ani „dodałem do planu”: zmiana trafia do GDD dopiero, gdy Suweren kliknie „Wpisz do GDD” przy Twojej propozycji — mów „proponuję”.`;
     const dialog = historia.slice(-12).map((h) => `${h.kto === 'suweren' ? 'Suweren' : 'Reżyser'}: ${String(h.tresc).slice(0, 800)}`).join('\n');
     const odp = await cfg.pisz({ system, prompt: `GDD (kotwica — nie wymyślaj wbrew niemu):\n${jakoTekst(g, { zId: true })}\n\nROZMOWA:\n${dialog}\nSuweren: ${tresc}\nReżyser:`, model: model || cfg.model(), timeoutMs: 10 * 60_000 });
