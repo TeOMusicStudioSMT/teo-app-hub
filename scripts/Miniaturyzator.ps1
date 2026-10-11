@@ -65,7 +65,9 @@ $xdStatic = @(
     'TeO_Arcade_Forge\RealityScan_2.2','TeO_Arcade_Forge\OtakOS','TeO_Arcade_Forge\GENESIS_OVERRIDE',
     # 2026-09-21: distro urosło do 643 MB (ZIP 143 MB > limit GitHub 100 MB). Winni:
     # projekt Unreal Suwerena (258 MB) i cache analizy kodu graphify (39 MB) — nie są Katedrą.
-    'TeO_Arcade_Forge\MojProjekt','graphify-out'
+    'TeO_Arcade_Forge\MojProjekt','graphify-out',
+    # 2026-10-11: dzienniki Suwerena (Dziennik Pokładowy z public/dzienniki) — jego zapiski, nie Katedra
+    'public\dzienniki'
 )
 # Dołap dynamicznie wszelkie inne _OtakOs_* (na wypadek nowych) — dane i dzieła Suwerena.
 $xdDynamic = Get-ChildItem $Source -Directory -Filter '_OtakOs_*' -ErrorAction SilentlyContinue |
