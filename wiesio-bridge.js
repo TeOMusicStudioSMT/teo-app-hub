@@ -88,6 +88,7 @@ import * as StrumienStada  from './services/StrumienStada.js';
 import * as KlockiStada    from './services/KlockiStada.js';
 import * as ModeleAgentow  from './services/ModeleAgentow.js';
 import { utworzMozg } from './services/MozgKatedry.js';
+import { utworzPlanGry } from './services/PlanGry.js';
 import { policzKoherencje } from './services/KoherencjaKatedry.js';
 import { rozmiarModelu } from './services/BledyModeli.js';
 import * as ProjektStada   from './services/ProjektStada.js';
@@ -8325,7 +8326,7 @@ const PostacKatedry = utworzPostacKatedry({
     imieSuwerena: async () => (await wlascicielKsiegi())?.nazwa ?? null,
     assety: { obraz: (o) => Assety3D.obraz(o), generuj: (o) => Assety3D.generuj(o), lista: () => Assety3D.lista(), metaObrazu: (id) => Assety3D.metaObrazu(id), sciezkaPliku: (id, p) => Assety3D.sciezkaPliku(id, p) },
 });
-Wizytowka.skonfiguruj({ postacKatedry: PostacKatedry });
+Wizytowka.skonfiguruj({ postacKatedry: PostacKatedry, planGry: utworzPlanGry({ katalogGier: APKI_DIR }) });
 app.get('/api/postac-katedry', (_req, res) => ytOdp(res, PostacKatedry.stan()));
 app.get('/api/postac-katedry/gra', (_req, res) => ytOdp(res, PostacKatedry.publiczna().then((postac) => ({ postac }))));
 app.post('/api/postac-katedry', (req, res) => ytOdp(res, PostacKatedry.zapisz(req.body ?? {}).then((karta) => ({ karta }))));

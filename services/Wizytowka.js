@@ -146,7 +146,9 @@ export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     const mistrz = cfg.klub ? await cfg.klub.publiczne().catch(() => null) : null;
     // 🏛️ Postać Katedry (services/PostacKatedry.js): avatar Suwerena w MRPG Teterhii — tylko opublikowana.
     const postac = cfg.postacKatedry ? await cfg.postacKatedry.publiczna().catch(() => null) : null;
-    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(zlecenia.length ? { zlecenia } : {}), ...(mistrz ? { mistrz } : {}), ...(postac ? { postac } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
+    // 📜 Plan gry (services/PlanGry.js): postęp kamieni Teterhii i zadania wiszące ≥ 3 dni — strona pokazuje je sama.
+    const gra = cfg.planGry ? await cfg.planGry.publiczny().catch(() => null) : null;
+    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(zlecenia.length ? { zlecenia } : {}), ...(mistrz ? { mistrz } : {}), ...(postac ? { postac } : {}), ...(gra ? { gra } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
 }
 
 /** Ścieżka pliku wizytówki — tylko id z ostatnio zbudowanej wizytówki (nigdy ścieżka z URL-a). */
