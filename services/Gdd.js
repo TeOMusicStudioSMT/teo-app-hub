@@ -238,13 +238,33 @@ export async function zapewnij(projektId, tytul) {
 }
 
 /** Tekst GDD do promptu — zwięzły, żeby zmieścić się w 16k kontekstu obok kodu. */
+export const LIMIT_GDD_TEKSTU = 14_000;
+/**
+ * GDD jako tekst dla modelu (≤ LIMIT_GDD_TEKSTU znaków). Kamienie milowe, filmy i gałęzie MAJĄ zarezerwowane miejsce —
+ * dawniej całość cięto od końca i przy długich sekcjach (Mechanika 4 k+) Reżyser widział plan tylko do kamienia 7 i w
+ * kółko pytał o 8–12 (2026-10-11). Teraz, gdy się nie mieści, przycinane są NAJDŁUŻSZE sekcje (z dopiskiem), nie plan.
+ */
 export function jakoTekst(g, { zKamieniami = true, zId = false } = {}) {
-    const linie = [`TYTUŁ: ${g.tytul || '—'} · GATUNEK: ${g.gatunek || '—'} · SILNIK DOKUMENTU: ${g.silnik} · PERSPEKTYWA: ${g.perspektywa || '—'} · PLATFORMY: ${(g.platformy || []).join(', ') || '—'}`];
-    for (const s of SEKCJE) if (g.sekcje?.[s]) linie.push(`## ${ETYKIETY[s]}\n${g.sekcje[s]}`);
-    if (g.galezie?.length) linie.push('## Gałęzie świata (kategorie assetów)\n' + g.galezie.map((x) => `- ${x.nazwa}: ${x.opis}`).join('\n'));
-    if (g.filmy?.length) linie.push('## Filmy gry (cutscenki / intro, Wan 2.2)\n' + g.filmy.map((f) => `- ${zId ? `(id: ${f.id}) ` : ''}[${f.stan}] ${f.tytul} — przy: ${f.zdarzenie} — ${f.opis}`).join('\n'));
-    if (zKamieniami && g.kamienie?.length) linie.push('## Kamienie milowe\n' + g.kamienie.map((k, i) => `${i + 1}. ${zId ? `(id: ${k.id}) ` : ''}${k.tytul} — ${k.opis}\n${k.zadania.map((z) => `   - [${z.stan}] ${z.tresc}`).join('\n')}`).join('\n'));
-    return linie.join('\n\n').slice(0, 14_000);
+    const naglowek = `TYTUŁ: ${g.tytul || '—'} · GATUNEK: ${g.gatunek || '—'} · SILNIK DOKUMENTU: ${g.silnik} · PERSPEKTYWA: ${g.perspektywa || '—'} · PLATFORMY: ${(g.platformy || []).join(', ') || '—'}`;
+    const ogon = [];
+    if (g.galezie?.length) ogon.push('## Gałęzie świata (kategorie assetów)\n' + g.galezie.map((x) => `- ${x.nazwa}: ${x.opis}`).join('\n'));
+    if (g.filmy?.length) ogon.push('## Filmy gry (cutscenki / intro, Wan 2.2)\n' + g.filmy.map((f) => `- ${zId ? `(id: ${f.id}) ` : ''}[${f.stan}] ${f.tytul} — przy: ${f.zdarzenie} — ${f.opis}`).join('\n'));
+    if (zKamieniami && g.kamienie?.length) ogon.push('## Kamienie milowe\n' + g.kamienie.map((k, i) => `${i + 1}. ${zId ? `(id: ${k.id}) ` : ''}${k.tytul} — ${k.opis}\n${k.zadania.map((z) => `   - [${z.stan}] ${z.tresc}`).join('\n')}`).join('\n'));
+    const sekcje = SEKCJE.filter((s) => g.sekcje?.[s]).map((s) => ({ s, tekst: String(g.sekcje[s]) }));
+    const stale = naglowek.length + ogon.reduce((n, x) => n + x.length + 2, 0) + sekcje.reduce((n, x) => n + ETYKIETY[x.s].length + 6, 0);
+    const budzet = Math.max(1500, LIMIT_GDD_TEKSTU - stale);
+    // sprawiedliwy podział: krótkie sekcje w całości, nadmiar odbierany najdłuższym
+    if (sekcje.reduce((a, x) => a + x.tekst.length, 0) > budzet) {
+        const rosnaco = sekcje.map((x) => x.tekst.length).sort((a, b) => a - b);
+        let reszta = budzet, sufit = budzet;
+        for (let i = 0; i < rosnaco.length; i++) {
+            const naJedna = reszta / (rosnaco.length - i);
+            if (rosnaco[i] <= naJedna) reszta -= rosnaco[i]; else { sufit = Math.floor(naJedna); break; }
+        }
+        for (const x of sekcje) if (x.tekst.length > sufit) x.tekst = `${x.tekst.slice(0, Math.max(200, sufit - 40))}… [sekcja skrócona dla modelu]`;
+    }
+    const linie = [naglowek, ...sekcje.map((x) => `## ${ETYKIETY[x.s]}\n${x.tekst}`), ...ogon];
+    return linie.join('\n\n').slice(0, LIMIT_GDD_TEKSTU);
 }
 
 /**
