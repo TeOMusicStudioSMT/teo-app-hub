@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal, Send, BrainCircuit, RefreshCw, DownloadCloud, Database, Cpu, Server, Zap, ChevronLeft, ChevronRight, Activity, Pickaxe, Wrench, FolderPlus, FileText, Cloud, Layers, Search, Youtube, PanelLeftClose, PanelRightClose, PanelLeft, PanelRight, X, Bot } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useOtakOSBus, BUS } from '../../lib/otakosBus';
+import { otworzMozg } from '../../lib/mozgKatedry';
 
 interface Message { id: string; role: 'user' | 'ai' | 'system' | 'wiesio'; content: string; timestamp: string; }
 type ComputePower = 'LOCAL' | 'CLOUD_MAGISTRALA';
@@ -449,9 +450,7 @@ export const TerminalZero: React.FC = () => {
                     {/* Aktywny Model */}
                     <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700">
                         <Server size={14} className="text-emerald-400 hidden md:block" />
-                        <select value={activeModel} onChange={(e) => { setActiveModel(e.target.value); localStorage.setItem('otakos_active_model', e.target.value); addSystemMessage(`🔌 Przełączono zmysły na rdzeń: ${e.target.value}`, 'system');}} className="bg-transparent text-[10px] md:text-xs text-emerald-300 outline-none w-24 md:w-32 truncate cursor-pointer">
-                            {availableModels?.length > 0 ? availableModels.map(m => <option key={m} value={m} className="bg-slate-900">{m}</option>) : <option value="">Ładowanie...</option>}
-                        </select>
+                        <button onClick={otworzMozg} title="Model ustawia się w jednym miejscu: TeO-Sim → Mózg Katedry" className="bg-transparent text-[10px] md:text-xs text-emerald-300 outline-none max-w-32 truncate cursor-pointer hover:text-emerald-200">🧠 {activeModel || '—'}</button>
                         <button onClick={fetchModels} className="text-slate-500 hover:text-cyan-400" title="Odśwież Listę Modeli"><RefreshCw size={14} /></button>
                     </div>
                     

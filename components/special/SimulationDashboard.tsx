@@ -11,6 +11,8 @@ import { useSimulationStore, type LogRole } from '../../store/simulationStore';
 import { reasoningLoopSimulator } from '../../services/teo-sim/ReasoningLoopSimulator';
 import ModuleSieci from './ModuleSieci';
 import VaultDashboard from './VaultDashboard';
+import MozgKatedry from './MozgKatedry';
+import KuzniaModeli from './KuzniaModeli';
 
 const ROLE_STYLE: Record<LogRole, { color: string; tag: string }> = {
     ACTION:     { color: '#34d399', tag: 'AKCJA' },
@@ -28,10 +30,13 @@ const SCENARIOS = [
     'Wyciek pamięci w pętli korygującej rdzenia',
 ];
 
-export const SimulationDashboard: React.FC = () => {
+/** Zakładki TeO-Sim. 🧠 Mózg Katedry pierwszy — jedno miejsce na modele (Suweren 2026-10-11). */
+export type ZakladkaTeoSim = 'mozg' | 'kuznia' | 'reasoning' | 'sieci' | 'vault';
+export const SimulationDashboard: React.FC<{ start?: ZakladkaTeoSim }> = ({ start = 'mozg' }) => {
     const { logs, isRunning, result, activeAgent } = useSimulationStore();
     const [scenario, setScenario] = useState(SCENARIOS[0]);
-    const [tab, setTab] = useState<'reasoning' | 'sieci' | 'vault'>('reasoning');
+    const [tab, setTab] = useState<ZakladkaTeoSim>(start);
+    useEffect(() => { setTab(start); }, [start]);
     const logRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -47,7 +52,7 @@ export const SimulationDashboard: React.FC = () => {
     // ── Zakładki hubu TeO-Sim: Reasoning Loops | Mapa Sieci ──
     const tabBar = (
         <div className="flex flex-wrap gap-2 mb-3">
-            {([['reasoning', '🧠 Reasoning Loops'], ['sieci', '🗺️ Mapa Sieci'], ['vault', '🔐 Skarbiec']] as const).map(([k, label]) => (
+            {([['mozg', '🧠 Mózg Katedry'], ['kuznia', '🎼 Dyrygent i Kuźnia'], ['reasoning', '🔁 Reasoning Loops'], ['sieci', '🗺️ Mapa Sieci'], ['vault', '🔐 Skarbiec']] as const).map(([k, label]) => (
                 <button key={k} onClick={() => setTab(k)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-colors border
                         ${tab === k ? 'bg-emerald-700/60 text-white border-emerald-400/50' : 'bg-slate-900/60 text-slate-400 border-slate-700 hover:text-slate-200'}`}>
@@ -57,6 +62,12 @@ export const SimulationDashboard: React.FC = () => {
         </div>
     );
 
+    if (tab === 'mozg') {
+        return <div className="w-full">{tabBar}<MozgKatedry /></div>;
+    }
+    if (tab === 'kuznia') {
+        return <div className="w-full">{tabBar}<KuzniaModeli /></div>;
+    }
     if (tab === 'sieci') {
         return <div className="w-full">{tabBar}<ModuleSieci /></div>;
     }

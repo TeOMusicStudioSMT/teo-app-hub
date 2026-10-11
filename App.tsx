@@ -54,6 +54,7 @@ import AutoPanicSentinel from './components/special/AutoPanicSentinel';
 import PierscienApek from './components/PierscienApek';
 import NotebookTwinPanel from './components/special/NotebookTwinPanel';
 import SimulationDashboard from './components/special/SimulationDashboard';
+import { zsynchronizujMozg, ZDARZENIE_OTWORZ as ZDARZENIE_OTWORZ_MOZG } from './lib/mozgKatedry';
 import TeoLab from './components/special/TeoLab';
 import McpSkillboardPanel from './components/McpSkillboardPanel';
 import { sluchajTelefonu } from './lib/teogochiDelegate';
@@ -113,7 +114,14 @@ const App: React.FC = () => {
     const [showScenography, setShowScenography] = useState(false);
     const [showJournal, setShowJournal] = useState(false); // 📓 Kwantowy Dziennik
     const [showPodcast, setShowPodcast] = useState(false); // 🎙️ Podcast Twin
-    const [showTeoSim, setShowTeoSim] = useState(false); // 🧠 TeO-Sim Reasoning Loops
+    const [showTeoSim, setShowTeoSim] = useState(false); // 🧠 TeO-Sim: Mózg Katedry, Dyrygent i Kuźnia, Reasoning Loops
+    // 🧠 jedno miejsce na modele: każde „zmień model” w Hubie otwiera TeO-Sim → Mózg Katedry; start Huba = prawda z mostu
+    useEffect(() => {
+        void zsynchronizujMozg();
+        const otworz = () => setShowTeoSim(true);
+        window.addEventListener(ZDARZENIE_OTWORZ_MOZG, otworz);
+        return () => window.removeEventListener(ZDARZENIE_OTWORZ_MOZG, otworz);
+    }, []);
     const [showLab, setShowLab] = useState(false); // 🧪 TeO Lab (Agro + RadioSMT)
     const [showMcpSkillboard, setShowMcpSkillboard] = useState(false); // ⚡ MCP Skillboard
     const [isWiesioOnline, setIsWiesioOnline] = useState<boolean | null>(null);
@@ -840,7 +848,7 @@ const App: React.FC = () => {
                                         <button
                                             onClick={() => setShowTeoSim(true)}
                                             className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-green-500 to-emerald-800 border-2 border-green-300/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                                            title="🧠 TeO-Sim: Reasoning Loops"
+                                            title="🧠 TeO-Sim: Mózg Katedry — modele, Dyrygent, Kuźnia"
                                         >
                                             🧠
                                         </button>
@@ -992,7 +1000,7 @@ const App: React.FC = () => {
                                             <motion.div
                                                 initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
                                                 onClick={(e) => e.stopPropagation()}
-                                                className="w-full max-w-3xl"
+                                                className="w-full max-w-5xl max-h-[92vh] overflow-y-auto"
                                             >
                                                 <div className="flex justify-end mb-2">
                                                     <button onClick={() => setShowTeoSim(false)} className="text-slate-400 hover:text-white text-sm border border-slate-700 rounded-lg px-3 py-1">✕ Zamknij</button>

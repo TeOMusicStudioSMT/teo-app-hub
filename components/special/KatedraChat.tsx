@@ -25,6 +25,8 @@ import {
 import { ThinkingOrb } from 'thinking-orbs';
 import toast from 'react-hot-toast';
 import { ApiDyrygent, CLOUD_MODELS, ImageAttachment } from '../../lib/router/ApiDyrygent';
+import { otworzMozg } from '../../lib/mozgKatedry';
+import { ZDARZENIE_ZMIANY } from '../../lib/router/trybPracy';
 import * as Historia from '../../lib/historiaCzatu';
 import { obrazyZ, nazwaZrzutu } from '../../lib/schowekObrazy';
 
@@ -431,6 +433,12 @@ const KatedraChat: React.FC = () => {
     // Chmura — OSOBNE modele dla Klaudiusza i Adamusa
     const [cloudFastModel,  setCloudFastModel]  = useState(ApiDyrygent.getCloudFastModel());
     const [cloudHeavyModel, setCloudHeavyModel] = useState(ApiDyrygent.getCloudHeavyModel());
+    // 🧠 modele ustawia Mózg Katedry (TeO-Sim) — czat tylko pokazuje i odświeża się po zmianie
+    useEffect(() => {
+        const odswiez = () => { setFastModel(ApiDyrygent.getFastModel()); setHeavyModel(ApiDyrygent.getHeavyModel()); setCloudFastModel(ApiDyrygent.getCloudFastModel()); setCloudHeavyModel(ApiDyrygent.getCloudHeavyModel()); };
+        window.addEventListener(ZDARZENIE_ZMIANY, odswiez);
+        return () => window.removeEventListener(ZDARZENIE_ZMIANY, odswiez);
+    }, []);
 
     // Moderator
     const [showModerator, setShowModerator] = useState(true);
@@ -1799,14 +1807,13 @@ ${String(d.tresc || '').slice(0, 4000)}
                         <div className="flex items-center gap-1.5">
                             <Zap size={12} className="text-purple-400" />
                             <span className="text-xs text-slate-400">Klaudiusz:</span>
-                            <DarkSelect value={fastModel} onChange={saveFastModel}
-                                options={ollamaOpts} color="#c4b5fd" />
+                            <span className="text-xs font-mono text-violet-300">{fastModel}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
                             <Users size={12} className="text-amber-400" />
                             <span className="text-xs text-slate-400">Adamus:</span>
-                            <DarkSelect value={heavyModel} onChange={saveHeavyModel}
-                                options={ollamaOpts} color="#fcd34d" />
+                            <span className="text-xs font-mono text-amber-300">{heavyModel}</span>
+                            <button onClick={otworzMozg} title="Modele ustawia się w jednym miejscu: TeO-Sim → Mózg Katedry" className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/30">🧠 zmień w Mózgu</button>
                         </div>
 
                         {/* 🧬 DiffusionGemma — placeholder silnika (nieaktywny, pulsuje fioletowo) */}
@@ -1831,14 +1838,13 @@ ${String(d.tresc || '').slice(0, 4000)}
                         <div className="flex items-center gap-1.5">
                             <Zap size={12} className="text-purple-400" />
                             <span className="text-xs text-slate-400">Klaudiusz (☁️):</span>
-                            <DarkSelect value={cloudFastModel} onChange={saveCloudFastModel}
-                                options={cloudFastOpts} color="#c4b5fd" />
+                            <span className="text-xs font-mono text-violet-300">{cloudFastModel}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
                             <Users size={12} className="text-amber-400" />
                             <span className="text-xs text-slate-400">Adamus (☁️):</span>
-                            <DarkSelect value={cloudHeavyModel} onChange={saveCloudHeavyModel}
-                                options={cloudHeavyOpts} color="#fcd34d" />
+                            <span className="text-xs font-mono text-amber-300">{cloudHeavyModel}</span>
+                            <button onClick={otworzMozg} title="Modele ustawia się w jednym miejscu: TeO-Sim → Mózg Katedry" className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/30">🧠 zmień w Mózgu</button>
                         </div>
                     </>)}
 

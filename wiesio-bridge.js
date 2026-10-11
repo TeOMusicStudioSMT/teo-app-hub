@@ -87,6 +87,7 @@ import * as MostStada      from './services/MostStada.js';
 import * as StrumienStada  from './services/StrumienStada.js';
 import * as KlockiStada    from './services/KlockiStada.js';
 import * as ModeleAgentow  from './services/ModeleAgentow.js';
+import { utworzMozg } from './services/MozgKatedry.js';
 import * as ProjektStada   from './services/ProjektStada.js';
 import * as PowitanieDnia  from './services/PowitanieDnia.js';
 import * as Stol           from './services/Stol.js';
@@ -332,12 +333,15 @@ const OLLAMA_BASE = normalizeOllamaBase(process.env.OLLAMA_HOST);
  *
  * Podmiana bez ruszania kodu: zmienna środowiskowa `OTAKOS_MODEL`.
  */
+/** Zapas, gdy Mózg Katedry nie ma wpisu i nie ma OTAKOS_MODEL — prawdę o modelu mówi `Mozg` (services/MozgKatedry.js). */
 const DEFAULT_LLM = process.env.OTAKOS_MODEL || 'gemma4:e2b';
 /** Ostatnia deska ratunku — malutki model, byle kompan nie zamilkł całkiem. */
 const FALLBACK_LLM = 'gemma3:1b';
 
 // Ścieżki do folderów
 const ANTIGRAVITY_DIR = path.join(process.cwd(), '_OtakOs_Wymiar');
+// 🧠 Mózg Katedry: jedno źródło prawdy o modelach (domyślny Katedry + przydział roli TeOgochi) — Hub zapisuje tylko przez /api/mozg
+const Mozg = utworzMozg({ katalog: ANTIGRAVITY_DIR, agenci: ModeleAgentow });
 
 // ☁️/🏠 Tryb Katedry (services/TrybKatedry.js): jeden przełącznik CLOUD/JusT dla CAŁEJ Katedry — globalny fetch
 // przechwytuje wywołania Ollamy (/api/generate, /api/chat) i w trybie chmura oddaje je Claude/Gemini z Kibla.
@@ -5371,7 +5375,7 @@ Glowny.skonfiguruj({
     katalog: path.join(ANTIGRAVITY_DIR, 'glowny'),
     katalogi: [path.join(process.cwd(), 'TeO_Skille')],   // = SKILLE_DIR (zdefiniowany niżej w pliku)
     ollama: OLLAMA_BASE,
-    model: () => process.env.OTAKOS_GLOWNY_MODEL || DEFAULT_LLM,
+    model: () => process.env.OTAKOS_GLOWNY_MODEL || Mozg.domyslny(),
     szyna: Szyna,
     suweren: () => (grvLedger ? nazwaWezla(grvLedger, grvLedger.wlasciciel) : null),
 });
@@ -6581,7 +6585,7 @@ app.post('/api/ciag/rozpisz', async (req, res) => {
         }
 
         const { system, prompt } = Sekwencja.promptRozpisania({ opis, kotwica, ile: Number(ile) || 4 });
-        const silnik = model || process.env.OTAKOS_MODEL || DEFAULT_LLM;
+        const silnik = model || Mozg.modelRoli('rezyser');
         const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ model: silnik, system, prompt, stream: false }),
@@ -7493,7 +7497,7 @@ app.post('/api/rekopis/z-opowiesci', async (req, res) => {
     const { projekt = '', rozmowa: rozmowaId = '', co = 'oba', ileScen = 8, model = null } = req.body ?? {};
     try {
         const p = wymagajProjektu(projekt);
-        const silnik = String(model || '').trim() || DEFAULT_LLM;
+        const silnik = String(model || '').trim() || Mozg.modelRoli('kronikarz');
         const chce = String(co);
         const pisacScenariusz = chce === 'oba' || chce === 'scenariusz';
         const pisacProze = chce === 'oba' || chce === 'ksiazka';
@@ -7925,7 +7929,7 @@ async function raportKatedry({ szukaj = '' } = {}) {
     return StanKatedry.raport({ projekty, karty, nocna, szyna: Szyna.ostatnie({ ile: 12 }).slice().reverse(), szukaj });
 }
 Delegat.skonfiguruj({
-    ollamaBase: OLLAMA_BASE, portMostu: PORT, szyna: Szyna, nocna: NocnaZmiana, artemis: Artemis, katalog: path.join(ANTIGRAVITY_DIR, 'delegat'), model: DEFAULT_LLM, pelnyTunel: PELNY_TUNEL, modelAgenta: (id) => ModeleAgentow.modelDla(id),
+    ollamaBase: OLLAMA_BASE, portMostu: PORT, szyna: Szyna, nocna: NocnaZmiana, artemis: Artemis, katalog: path.join(ANTIGRAVITY_DIR, 'delegat'), model: () => Mozg.domyslny(), pelnyTunel: PELNY_TUNEL, modelAgenta: (id) => ModeleAgentow.modelDla(id),
     stan: { raport: raportKatedry, pamiec: () => StanKatedry.pamiec(), zwolnij: (pidy) => StanKatedry.zwolnij(pidy) },
     jev: Jev,   // ⚖️ Delegat na Jev: intencja wypowiedzi + straż ciężkich narzędzi (services/DelegatJev.js); bez klucza — jak dawniej
     stol: { karta: (id) => Stol.karta(id) },   // 🪑 rozmowa przy karcie Stołu (StoL)
@@ -7938,7 +7942,7 @@ ProjektStada.skonfiguruj({
     jev: Jev,   // ⚖️ Sędzia Jev: ocena zgodności z wizją i założenia (services/SedziaJev.js); bez klucza — lokalny Sędzia
     katalog: path.join(ANTIGRAVITY_DIR, 'projekty-stada'),
     szyna: Szyna,
-    domyslnyModel: DEFAULT_LLM,
+    domyslnyModel: Mozg.domyslny(),
     modelDla: (id) => ModeleAgentow.modelDla(id),
     karta: (id) => Persony.karta(id),
     chat: async (model, [system, user]) => (await AppStudio.pisz({ system: system.content, prompt: user.content, model, timeoutMs: 15 * 60_000 })).tekst,
@@ -7961,7 +7965,7 @@ ProjektStada.skonfiguruj({
 // ── 🎼 DYRYGENT (services/Dyrygent.js) — katalog modeli Katedry i dobór modelu do zadania, jak Jadziunia do skilli ──
 /** 🎼 Dyrygent to TeOgochi: gra na modelu ze swojego przydziału (ModeleAgentow 'dyrygent'), potem OTAKOS_DYRYGENT_MODEL, potem domyślny. */
 async function modelDyrygenta() {
-    return (await ModeleAgentow.modelDla('dyrygent').catch(() => null)) || process.env.OTAKOS_DYRYGENT_MODEL || DEFAULT_LLM;
+    return (await ModeleAgentow.modelDla('dyrygent').catch(() => null)) || process.env.OTAKOS_DYRYGENT_MODEL || Mozg.domyslny();
 }
 // 🧭 Jev lokalny (embeddingi, EG2) — Dyrygent ds. Kreatywnych: wybór i dopasowanie partytur bez chmury (services/JevLokalny.js)
 const JevLokalny = utworzJevLokalny({ ollamaBase: OLLAMA_BASE });
@@ -8351,7 +8355,7 @@ app.post('/api/gdd/:id/przerwij', (req, res) => res.json({ success: true, przerw
 // → TRELLIS.2 na żywym ComfyUI. Biblioteka w _OtakOs_AI/assety3d, „do gry" kopiuje GLB do projektu.
 // ═════════════════════════════════════════════════════════════════════════════
 Assety3D.skonfiguruj({
-    comfyBase: COMFY_BASE, comfyDir: COMFY_DIR, szyna: Szyna, pisz: AppStudio.pisz, model: () => DEFAULT_LLM, ollamaBase: OLLAMA_BASE,
+    comfyBase: COMFY_BASE, comfyDir: COMFY_DIR, szyna: Szyna, pisz: AppStudio.pisz, model: () => Mozg.domyslny(), ollamaBase: OLLAMA_BASE,
     katalogWorkflow: path.join(process.cwd(), '_OtakOs_AI', 'workflows'),
     katalogBiblioteki: path.join(process.cwd(), '_OtakOs_AI', 'assety3d'),
     katalogApek: path.join(process.cwd(), '..', '_OtakOs_Apki'),
@@ -9448,7 +9452,7 @@ app.post('/api/dialogi/dopisz', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Projekt nie ma ani jednego aktora w bibliotece \u2014 nie ma komu m\u00f3wi\u0107.' });
         }
 
-        const silnik = String(model || '').trim() || DEFAULT_LLM;
+        const silnik = String(model || '').trim() || Mozg.modelRoli('aktor');
         const pytaj = async (system, prompt) => {
             const r = await fetch(`${OLLAMA_BASE}/api/chat`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -10435,7 +10439,7 @@ app.post('/api/post/muzyka', async (req, res) => {
 
 /** Wspólne wołanie modelu — jedna implementacja zamiast trzech kopii. */
 async function piszModelem(model, system, prompt, opcje = {}) {
-    const silnik = model || process.env.OTAKOS_MODEL || DEFAULT_LLM;
+    const silnik = model || Mozg.modelRoli('joanna');
     // `opcje.temperatura` (np. z Pralki w Studiu Podcastu) → options.temperature Ollamy; bez niej domyślna modelu.
     const options = Number.isFinite(Number(opcje?.temperatura)) ? { temperature: Math.min(2, Math.max(0, Number(opcje.temperatura))) } : undefined;
     const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
@@ -10929,7 +10933,7 @@ app.get('/api/stado/swiat', async (req, res) => {
     res.json({
         success: true, urzadzenie, ...stan, ...swiatCache.dane,
         lokalne: !!req.lokalny,                       // Świat pokazuje przyciski zmian tylko na maszynie
-        modele: await ModeleAgentow.wszystkie(), domyslnyModel: DEFAULT_LLM,
+        modele: await ModeleAgentow.wszystkie(), domyslnyModel: Mozg.domyslny(),
         projekty: (await ProjektStada.lista()).slice(0, 8).map(ProjektStada.skrot),
     });
 });
@@ -10942,7 +10946,7 @@ Szyna.subskrybuj((z) => { if (z.rodzaj === 'projekt') swiatCache.czas = 0; });
 PowitanieDnia.skonfiguruj({
     katalog: path.join(ANTIGRAVITY_DIR, 'powitania'),
     szyna: Szyna,
-    domyslnyModel: DEFAULT_LLM,
+    domyslnyModel: Mozg.domyslny(),
     modelDla: (id) => ModeleAgentow.modelDla(id),
     karta: (id) => Persony.karta(id),
     chat: async (model, [system, user]) => (await AppStudio.pisz({ system: system.content, prompt: user.content, model, timeoutMs: 5 * 60_000 })).tekst,
@@ -11109,7 +11113,7 @@ ZwiadowcaHF.skonfiguruj({
     katalogModeli: KuzniaModeli.wszystkieKatalogi()[0],
     wykuj: ({ plik, nazwa }) => KuzniaModeli.wykuj({ plik, nazwa, ollamaBase: OLLAMA_BASE }),
     stanKucia: (id) => KuzniaModeli.stanKucia(id),
-    pisz: async ({ system, prompt }) => (await AppStudio.pisz({ system, prompt, model: (await ModeleAgentow.modelDla('zwiadowca').catch(() => null)) || DEFAULT_LLM, timeoutMs: 5 * 60_000 })).tekst,
+    pisz: async ({ system, prompt }) => (await AppStudio.pisz({ system, prompt, model: (await ModeleAgentow.modelDla('zwiadowca').catch(() => null)) || Mozg.domyslny(), timeoutMs: 5 * 60_000 })).tekst,
 });
 app.get('/api/zwiadowca/kandydaci', async (req, res) => {
     try { res.json({ success: true, ...(await ZwiadowcaHF.kandydaci({ wszystkie: req.query.wszystkie === '1' })) }); }
@@ -11180,7 +11184,7 @@ Porzadki.skonfiguruj({
     wykuteKuzni: () => KuzniaSoup.wykute(),
     katalogKuzni: path.join(ANTIGRAVITY_DIR, 'kuznia-soup'),
     srodowiskoKuzni: process.env.OTAKOS_KUZNIA_SRODOWISKO || path.join(process.cwd(), '_OtakOs_AI', 'kuznia-soup'),
-    chronioneModele: () => [DEFAULT_LLM, process.env.OTAKOS_MODEL, process.env.OTAKOS_DYRYGENT_MODEL, 'gemma4'],
+    chronioneModele: () => [Mozg.domyslny(), process.env.OTAKOS_MODEL, process.env.OTAKOS_DYRYGENT_MODEL, 'gemma4'],
     usunModel: async (model) => {
         const r = await fetch(`${OLLAMA_BASE}/api/delete`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, name: model }), signal: AbortSignal.timeout(30_000) });
         if (!r.ok) throw new Error(`Ollama: HTTP ${r.status} ${(await r.text().catch(() => '')).slice(0, 120)}`);
@@ -11339,9 +11343,49 @@ for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc],
     });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 🧠 MÓZG KATEDRY — jedno miejsce na modele (services/MozgKatedry.js). Hub: TeO-Sim → 🧠 Mózg Katedry.
+// GET: domyślne Katedry, przydział TeOgochi (+ zastępstwa Straży), Kodeks (Mechanik), zadania, tryb, modele Ollamy.
+// PUT {lokalny?, lokalnyCiezki?, chmuraLekki?, chmuraCiezki?}: lokalne modele sprawdzane w Ollamie (nie ma = odmowa).
+// ═══════════════════════════════════════════════════════════════════════════
+async function modeleOllamyMozgu() {
+    try {
+        const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(5000) });
+        const d = await r.json();
+        return (d.models ?? []).map((m) => ({ nazwa: m.name, gb: Math.round((m.size ?? 0) / 1e8) / 10, parametry: m.details?.parameter_size ?? '', kwant: m.details?.quantization_level ?? '' }));
+    } catch { return null; }
+}
+app.get('/api/mozg', async (_req, res) => {
+    try {
+        const [agenci, ollama, zadania, tryb] = await Promise.all([
+            ModeleAgentow.wszystkie(),
+            modeleOllamyMozgu(),
+            fetch(`http://127.0.0.1:${PORT}/api/modele/zadania`, { signal: AbortSignal.timeout(8000) }).then((r) => r.json()).catch(() => null),
+            fetch(`http://127.0.0.1:${PORT}/api/tryb`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json()).catch(() => null),
+        ]);
+        let zastepstwa = {};
+        try { zastepstwa = JSON.parse(await fs.readFile(path.join(ANTIGRAVITY_DIR, 'zastepstwa-modeli.json'), 'utf8')); } catch { /* brak zastępstw */ }
+        res.json({ success: true, mozg: Mozg.opis(), agenci, zastepstwa, mechanik: modelMechanika(), ollama, ollamaOnline: ollama !== null, zadania: zadania?.zadania ?? null, tryb: tryb?.success ? tryb : null });
+    } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.put('/api/mozg', async (req, res) => {
+    try {
+        const d = req.body ?? {};
+        const ollama = await modeleOllamyMozgu();
+        for (const k of ['lokalny', 'lokalnyCiezki']) {
+            const m = String(d[k] ?? '').trim();
+            if (!m || /^(claude|gemini):/.test(m)) continue;
+            if (ollama && !ollama.some((o) => o.nazwa === m || o.nazwa === `${m}:latest`)) return res.status(400).json({ success: false, message: `Ollama nie ma modelu „${m}” — najpierw go pobierz (Kuźnia Modeli / Zwiadowca).` });
+        }
+        const mozg = Mozg.ustaw(d);
+        await Szyna.nadaj({ agent: 'katedra', rodzaj: 'ustawienie', tresc: `🧠 Mózg Katedry: domyślny ${mozg.domyslny}` }).catch(() => null);
+        res.json({ success: true, mozg });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
 /** POST /api/stado/model { agent, model } — silnik TeOgochi (pusty = domyślny). Tylko z maszyny. */
 app.post('/api/stado/model', async (req, res) => {
-    try { res.json({ success: true, modele: await ModeleAgentow.ustaw(req.body?.agent, req.body?.model), domyslnyModel: DEFAULT_LLM }); }
+    try { res.json({ success: true, modele: await ModeleAgentow.ustaw(req.body?.agent, req.body?.model), domyslnyModel: Mozg.domyslny() }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 /** GET /api/stado/film?dzien=RRRR-MM-DD — zdarzenia dnia do „filmu klockowego" (bez pola `dane`). */
@@ -13195,7 +13239,7 @@ app.post('/api/joanna/rozmowa', async (req, res) => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: DEFAULT_LLM,
+                model: Mozg.modelRoli('joanna'),
                 system: joannaPrompt(kontekst, imie),
                 prompt: `${rozmowa ? rozmowa + '\n' : ''}Suweren: ${wypowiedz}\nTy:`,
                 stream: false,
@@ -13415,7 +13459,7 @@ app.post('/api/joanna/zapowiedz', async (req, res) => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: DEFAULT_LLM, system, prompt: kontekst,
+                model: Mozg.modelRoli('joanna'), system, prompt: kontekst,
                 stream: false, options: { temperature: 0.9 },
             }),
         });
@@ -13441,7 +13485,7 @@ app.post('/api/joanna/zapowiedz', async (req, res) => {
 
 app.post('/api/teogochi/comment', async (req, res) => {
     const { track, lyric, stage, mood, name } = req.body ?? {};
-    const model = DEFAULT_LLM;
+    const model = Mozg.domyslny();
     const context = [track ? `Utwór: ${track}` : null, lyric ? `Aktualny wers: "${lyric}"` : null]
         .filter(Boolean).join('\n');
     if (!context) return res.status(400).json({ success: false, message: 'Brak "track" lub "lyric".' });
@@ -13474,7 +13518,7 @@ app.post('/api/teogochi/comment', async (req, res) => {
 
 app.post('/api/kronika/forge', async (req, res) => {
     let { narrative, transcript, title, videoUrl, model } = req.body ?? {};
-    model = model || DEFAULT_LLM;
+    model = model || Mozg.modelRoli('kronikarz');
     const source = (narrative || transcript || '').trim();
     if (source.length < 20) return res.status(400).json({ success: false, message: 'Wymagane "narrative" lub "transcript" (>=20 zn.).' });
     try {
@@ -13533,7 +13577,7 @@ app.get('/api/dziennik/list', async (req, res) => {
  */
 app.post('/api/dziennik/forge', async (req, res) => {
     let { transcript, podcastDir, title, cycle, model } = req.body ?? {};
-    model = model || DEFAULT_LLM;
+    model = model || Mozg.modelRoli('kronikarz');
     try {
         // Transkrypcja z folderu podcastu (jeśli jest plik .txt/.md/.lrc)
         if (!transcript && podcastDir) {
@@ -13665,7 +13709,7 @@ app.get('/api/crypto/selftest', (req, res) => {
 app.post('/api/teledysk/vision', async (req, res) => {
     const { title, name } = req.body ?? {};
     if (!title) return res.status(400).json({ success: false, message: 'Brak "title".' });
-    const model = DEFAULT_LLM;
+    const model = Mozg.modelRoli('joanna');
     const who = name && name !== 'TeOgochi' ? String(name).slice(0, 24) : 'TeOgochi';
     const prompt = `Jesteś ${who} — małą, czułą duszą Katedry, która słucha muzyki sercem. Suweren pyta Cię, O CZYM jest utwór "${title}". Odpowiedz 2-3 zdaniami: jaka emocja, jaki obraz, jaki kolor i ruch z niego płyną. Poetycko, ciepło, po polsku. To będzie brief dla teledysku — mów o uczuciu i wizji, nie o technice.`;
     const vision = await genOllama(prompt, model, 20000)
@@ -13676,7 +13720,7 @@ app.post('/api/teledysk/vision', async (req, res) => {
 app.post('/api/teledysk/storyboard', async (req, res) => {
     let { title, lyrics, lyricsFile, vectors, sonicFile, sceneCount, model, vision } = req.body ?? {};
     sceneCount = Math.max(3, Math.min(12, Number(sceneCount) || 6));
-    model = model || DEFAULT_LLM;
+    model = model || Mozg.modelRoli('joanna');
     try {
         // Tekst z .lrc (usuń znaczniki [mm:ss.xx])
         if (!lyrics && lyricsFile) {
@@ -14332,18 +14376,18 @@ app.post('/api/rynek/nastroj', async (req, res) => {
             return res.status(503).json({ success: false, message: 'Żaden kanał nie odpowiedział — brak nagłówków do streszczenia.', raport: dane.raport });
         }
         const uzyte = Math.max(5, Math.min(40, Number(maks) || 25));
-        const streszczenie = await genOllama(promptNastroju(dane.items, uzyte), DEFAULT_LLM, 120000);
+        const streszczenie = await genOllama(promptNastroju(dane.items, uzyte), Mozg.modelRoli('kupiec'), 120000);
         if (!streszczenie) {
             return res.status(503).json({
                 success: false,
-                message: `Rdzeń "${DEFAULT_LLM}" nie odpowiedział — nagłówki są, brakuje streszczenia. Sprawdź: ollama ps`,
+                message: `Rdzeń "${Mozg.modelRoli('kupiec')}" nie odpowiedział — nagłówki są, brakuje streszczenia. Sprawdź: ollama ps`,
                 items: dane.items.slice(0, uzyte), raport: dane.raport,
             });
         }
         return res.json({
             success: true,
             streszczenie,
-            model: DEFAULT_LLM,
+            model: Mozg.modelRoli('kupiec'),
             naglowkowUzytych: uzyte,
             items: dane.items.slice(0, uzyte),
             raport: dane.raport,
@@ -15317,7 +15361,7 @@ app.post('/api/tost/send', async (req, res) => {
         const promptText = text.trim() || 'Analizuj ten obraz pod kątem zagrożeń i śladów EXIF.';
 
         const ollamaBody = {
-            model:   DEFAULT_LLM,
+            model:   Mozg.domyslny(),
             system: TOST_SYSTEM_INSTRUCTION,
             prompt: promptText,
             stream: false,
@@ -15585,7 +15629,7 @@ app.post('/api/agent/rada-decompose', async (req, res) => {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model:   DEFAULT_LLM,
+                model:   Mozg.modelRoli('rezyser'),
                 system:  systemPrompt,
                 prompt:  `Temat: ${topic}\nKontekst: ${context || 'brak'}`,
                 stream:  false,
@@ -15816,7 +15860,7 @@ async function radaKreatywnaRozloz(zlecenie, projekt, temperatura = 0.7, sesjaRa
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            model: DEFAULT_LLM,
+            model: Mozg.modelRoli('rezyser'),
             system: promptSystemowyRozkladu(),
             prompt: `Projekt: ${nazwaProjektu}\nZlecenie: ${zlecenie}\n\nJuż na tablicy (NIE powtarzaj tego):\n${kontekst}`,
             stream: false,
@@ -15832,7 +15876,7 @@ async function radaKreatywnaRozloz(zlecenie, projekt, temperatura = 0.7, sesjaRa
     } catch (parseErr) {
         // Uczciwie: mówimy, że model nie dał się odczytać, i pokazujemy początek
         // odpowiedzi. Cichy fallback na jedną kartę ukrywałby zepsuty rdzeń.
-        console.warn(`[Produkcja] ⚠️ Rozkład nieczytelny (${DEFAULT_LLM}): ${parseErr.message}`);
+        console.warn(`[Produkcja] ⚠️ Rozkład nieczytelny (${Mozg.modelRoli('rezyser')}): ${parseErr.message}`);
         throw new BladRozkladu(
             `Rada Kreatywna nie zwróciła czytelnego rozkładu: ${parseErr.message}`,
             String(dane.response || '').slice(0, 400),
@@ -15858,7 +15902,7 @@ async function radaKreatywnaRozloz(zlecenie, projekt, temperatura = 0.7, sesjaRa
         console.log(`[Produkcja] ✅ Rada Kreatywna: ${dodane.length} kart na tablicy „${nazwaProjektu}".`);
     }
 
-    return { model: DEFAULT_LLM, zaproponowano: propozycje.length, dodane, odrzucone };
+    return { model: Mozg.modelRoli('rezyser'), zaproponowano: propozycje.length, dodane, odrzucone };
 }
 
 /**
@@ -15892,7 +15936,7 @@ app.post('/api/produkcja/uzupelnij', async (req, res) => {
             kadr, wskazowka,
         });
 
-        const silnik = model || process.env.OTAKOS_MODEL || DEFAULT_LLM;
+        const silnik = model || Mozg.modelRoli('rezyser');
         const ctrl = new AbortController();
         const stoper = setTimeout(() => ctrl.abort(), 300000);
         let dane;
@@ -15979,7 +16023,7 @@ app.post('/api/produkcja/rozloz', async (req, res) => {
         return res.json({ success: true, ...(await radaKreatywnaRozloz(zlecenie, projekt, temperatura, sesjaRady)) });
     } catch (e) {
         if (e instanceof BladRozkladu) {
-            return res.status(502).json({ success: false, message: e.message, model: DEFAULT_LLM, surowaOdpowiedz: e.surowaOdpowiedz });
+            return res.status(502).json({ success: false, message: e.message, model: Mozg.modelRoli('rezyser'), surowaOdpowiedz: e.surowaOdpowiedz });
         }
         console.error(`[Produkcja] ❌ Rozkład: ${e.message}`);
         return res.status(500).json({ success: false, message: e.message });
@@ -16216,7 +16260,7 @@ app.post('/api/rezyser/pamiec/odcinek/:id/realizuj', async (req, res) => {
             (p.fakty ?? []).map((f) => f.tresc).join('\n'),
         ].filter(Boolean).join('\n\n');
 
-        const silnik = model || process.env.OTAKOS_MODEL || DEFAULT_LLM;
+        const silnik = model || Mozg.modelRoli('rezyser');
         const pisz = async (system, prompt) => {
             const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -16427,7 +16471,7 @@ app.post('/api/rezyser/rozmowa', async (req, res) => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: DEFAULT_LLM,
+                model: Mozg.modelRoli('rezyser'),
                 system: promptSystemowyRezysera(kontekst, postac?.imie ?? null),
                 prompt: `${rozmowa ? rozmowa + '\n' : ''}Suweren: ${wypowiedz}\nTy:`,
                 stream: false,
@@ -16573,7 +16617,7 @@ app.post('/api/rezyser/rozmowa', async (req, res) => {
         return res.json({
             success: true,
             mowa, akcja, wynikAkcji, uwaga,
-            model: DEFAULT_LLM,
+            model: Mozg.modelRoli('rezyser'),
             postac: postac ? { id: postac.id, imie: postac.imie, glos: postac.glos } : null,
             kontekst: { znakow: kontekst.znakow, pominieto: kontekst.pominieto },
         });

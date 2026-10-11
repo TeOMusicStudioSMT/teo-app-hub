@@ -63,13 +63,15 @@ export const getTryb = (): TrybPracy => {
 export const setTryb = (t: TrybPracy): TrybPracy => { zapisz(KLUCZ_TRYBU, t); return t; };
 
 export const getModelLokalny = (): string => czytaj(KLUCZ_MODELU_LOKALNEGO, 'gemma4:e2b');
-export const setModelLokalny = (m: string): string => { zapisz(KLUCZ_MODELU_LOKALNEGO, m); return m; };
+/** 🧠 Zmiana modelu idzie też do mostu (Mózg Katedry = źródło prawdy dla zadań mostu); most odmówi = zostaje w przeglądarce + ostrzeżenie. */
+const doMozgu = (pole: 'lokalny' | 'chmuraLekki' | 'chmuraCiezki', m: string) => { void import('../mozgKatedry').then((x) => x.ustawMozg({ [pole]: m })).catch((e) => console.warn('🧠 Mózg Katedry nie przyjął zmiany:', (e as Error).message)); };
+export const setModelLokalny = (m: string): string => { zapisz(KLUCZ_MODELU_LOKALNEGO, m); doMozgu('lokalny', m); return m; };
 
 export const getModelChmuryLekki = (): string => czytaj(KLUCZ_MODELU_CHMURY_SZYBKI, 'claude-haiku-4-5');
-export const setModelChmuryLekki = (m: string): string => { zapisz(KLUCZ_MODELU_CHMURY_SZYBKI, m); return m; };
+export const setModelChmuryLekki = (m: string): string => { zapisz(KLUCZ_MODELU_CHMURY_SZYBKI, m); doMozgu('chmuraLekki', m); return m; };
 
 export const getModelChmuryCiezki = (): string => czytaj(KLUCZ_MODELU_CHMURY_CIEZKI, 'claude-opus-5-5');
-export const setModelChmuryCiezki = (m: string): string => { zapisz(KLUCZ_MODELU_CHMURY_CIEZKI, m); return m; };
+export const setModelChmuryCiezki = (m: string): string => { zapisz(KLUCZ_MODELU_CHMURY_CIEZKI, m); doMozgu('chmuraCiezki', m); return m; };
 
 /** Subskrypcja zmian — także tych z INNEJ karty (zdarzenie `storage`). */
 export function nasluchujZmian(cb: () => void): () => void {

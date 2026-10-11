@@ -452,7 +452,7 @@ export async function rozmawiaj({ delegat, tekst, rozmowaId, model, lokalne = fa
     if (!profil) throw new Error(`Nie ma takiego delegata: ${delegat}. Znane: ${Object.keys(PROFILE).join(', ')} i gatunki z kartą roli.`);
     const tresc = String(tekst || '').trim();
     if (!tresc) throw new Error('Pusta wypowiedź.');
-    const silnik = model || (await cfg.modelAgenta(profil.gatunek).catch(() => null)) || cfg.model;
+    const silnik = model || (await cfg.modelAgenta(profil.gatunek).catch(() => null)) || modelDomyslny();
     const agent = `Delegat·${profil.imie}`;
 
     const id = bezpieczneId(rozmowaId) || `tel-${Date.now().toString(36)}-${crypto.randomBytes(2).toString('hex')}`;
@@ -576,7 +576,7 @@ export async function podsumuj(rozmowaId, { model } = {}) {
     const profil = PROFILE[r.delegat] || PROFILE.joanna;
     const agent = `Delegat·${profil.imie}`;
     const zapis = r.tury.filter((t) => t.kto !== 'narzedzie').map((t) => `${t.kto === 'suweren' ? 'Suweren' : profil.imie}: ${t.tresc}`).join('\n');
-    const surowe = await ollamaChat(model || cfg.model, [
+    const surowe = await ollamaChat(model || modelDomyslny(), [
         { role: 'system', content: 'Streszczasz rozmowę telefoniczną Suwerena z jego TeOgochi. Odpowiadasz WYŁĄCZNIE JSON-em: {"streszczenie":"jedno zdanie","fakty":["ustalenie 1","ustalenie 2"]}. Fakty to konkretne decyzje, prośby, terminy, preferencje — max 5, po polsku. Bez faktów → pusta lista.' },
         { role: 'user', content: zapis.slice(0, 8000) },
     ]);
@@ -612,3 +612,6 @@ export function profile() {
 }
 
 export default { skonfiguruj, PROFILE, NARZEDZIA, profilDla, rozmawiaj, podsumuj, profile, wszyscy, rozmowy, rozmowa, fakty };
+
+/** Domyślny model Delegata: funkcja z Mózgu Katedry (zmiana bez restartu) albo stała nazwa. */
+const modelDomyslny = () => (typeof cfg.model === 'function' ? cfg.model() : cfg.model);
