@@ -449,10 +449,44 @@ export function scalKamienie(obecne, proponowane) {
  * ROZMOWA Z REŻYSEREM GRY — jak w Pokoju Opowieści: historia z frontu, kotwica = GDD.
  * Reżyser może dodać blok PROPOZYCJA_GDD: {"sekcje":{…}} — front pokaże „Wpisz do GDD".
  */
-export async function rozmowa(projektId, { wypowiedz, historia = [], model } = {}) {
+/**
+ * 📎 Gotowe assety gry dołączone do rozmowy z Reżyserem (Suweren 2026-10-11: „gotowy asset gry można dodać do rozmowy”).
+ * Klucze z katalogu klocków (b: w grze · a: bryła · o: obraz), najwyżej 8; dla brył w grze — fakty z assety.json gry
+ * (ruchy, świecenie, otoczenie). Reżyser może je wpisać do planu jako klocki zadań (z kluczem), do filmów jako obsadę.
+ */
+export const MAX_ZALACZNIKOW = 8;
+const STAN_KLOCKA = { 'w-grze': '✅ w grze', bryla: '📦 bryła (do gry dołoży się sama)', obraz: '🗿 obraz bez bryły', koncept: '🏞️ koncept krajobrazu' };
+export function zalacznikiRozmowy(klucze, kat, assetyGry = []) {
+    const out = [];
+    for (const k of (Array.isArray(klucze) ? klucze : []).slice(0, MAX_ZALACZNIKOW)) {
+        if (typeof k !== 'string' || !/^[abo]:[\w.\-]{1,160}$/.test(k)) continue;
+        const w = kat.find((x) => x.klucz === k);
+        if (!w || out.some((x) => x.klucz === k)) continue;
+        const a = k.startsWith('b:') ? assetyGry.find((x) => x.plik === k.slice(2)) : null;
+        const fakty = [STAN_KLOCKA[w.stan] ?? w.stan, w.galaz ? `gałąź: ${w.galaz}` : null, a?.plik ? `plik: assety/${a.plik}` : null,
+            a?.animacja ? `ruch: ${a.animacja}` : null, a?.ruchy ? `ruchy: ${Object.keys(a.ruchy).join(', ')}` : null,
+            a?.swiatlo ? `świeci (${a.swiatlo.kolor ?? ''}, moc ${a.swiatlo.moc ?? '?'})` : null, a?.otoczenie ? `otoczenie biomu ${a.otoczenie}` : null,
+            a?.sciany ? `${a.sciany} ścian` : null].filter(Boolean);
+        out.push({ klucz: k, nazwa: String(w.nazwa || w.opis || k).slice(0, 160), opis: String(w.opis || '').slice(0, 400), fakty });
+    }
+    return out;
+}
+export function blokZalacznikow(zal) {
+    if (!zal.length) return '';
+    return `\n📎 SUWEREN DOŁĄCZA GOTOWE ASSETY GRY (prawdziwe pliki z Katedry — możesz je wpisać do planu jako klocki zadań z ich kluczem, do filmów jako obsadę, do sekcji; nie wymyślaj ich wyglądu wbrew opisowi):\n`
+        + zal.map((x) => `- [${x.klucz}] ${x.nazwa}${x.opis && x.opis !== x.nazwa ? ` — ${x.opis}` : ''} · ${x.fakty.join(' · ')}`).join('\n') + '\n';
+}
+
+export async function rozmowa(projektId, { wypowiedz, historia = [], model, zalaczniki = [] } = {}) {
     const g = (await wczytaj(projektId)) ?? puste();
     const tresc = String(wypowiedz || '').trim();
     if (tresc.length < 2) throw new Error('Pusta wypowiedź.');
+    let zal = [];
+    if (Array.isArray(zalaczniki) && zalaczniki.length) {
+        let assetyGry = [];
+        try { assetyGry = JSON.parse(await fs.readFile(path.join(cfg.katalog, projektId, 'public', 'assety', 'assety.json'), 'utf8')); } catch { /* gra bez assetów */ }
+        zal = zalacznikiRozmowy(zalaczniki, await katalogKlockow(projektId), Array.isArray(assetyGry) ? assetyGry : []);
+    }
     // Bez karty Reżysera serialu (patrz importuj) — tu ma być reżyser GRY. Może proponować też
     // zmiany w PLANIE: podać kamień po id z nową listą zadań (Suweren 2026-09-22: „rozbij ostatni
     // kamień na mniejsze zadania"). Zadania gotowe zostają — front dopasowuje po treści.
@@ -464,16 +498,17 @@ PROPOZYCJA_GDD: {"sekcje":{"mechanika":"pełna nowa treść sekcji"}, "tytul":"�
 Zasady: tylko pola, które się zmieniają; treść sekcji w całości; w "kamienie" podajesz TYLKO kamienie, które zmieniasz, z ich id z planu i PEŁNĄ nową listą zadań tego kamienia — zadania oznaczone [gotowe] przepisz dosłownie, żeby nie zgubić ich stanu; nowy kamień — bez id. Limit planu: najwyżej ${MAX_KAMIENI} kamieni i 6 zadań w kamieniu (więcej się nie zapisze — rozbij na kolejny kamień). Nowy etap = NOWE kamienie dopisane po istniejących (bez id) — istniejących nie przepisuj, jeśli ich nie zmieniasz. Bez propozycji, gdy nic nie ustalono.
 NIE piszesz „zapisałem” ani „dodałem do planu”: zmiana trafia do GDD dopiero, gdy Suweren kliknie „Wpisz do GDD” przy Twojej propozycji — mów „proponuję”.`;
     const dialog = historia.slice(-12).map((h) => `${h.kto === 'suweren' ? 'Suweren' : 'Reżyser'}: ${String(h.tresc).slice(0, 800)}`).join('\n');
-    const odp = await cfg.pisz({ system, prompt: `GDD (kotwica — nie wymyślaj wbrew niemu):\n${jakoTekst(g, { zId: true })}\n\nROZMOWA:\n${dialog}\nSuweren: ${tresc}\nReżyser:`, model: model || cfg.model(), timeoutMs: 10 * 60_000 });
+    const odp = await cfg.pisz({ system, prompt: `GDD (kotwica — nie wymyślaj wbrew niemu):\n${jakoTekst(g, { zId: true })}\n\nROZMOWA:\n${dialog}${blokZalacznikow(zal)}\nSuweren: ${tresc}\nReżyser:`, model: model || cfg.model(), timeoutMs: 10 * 60_000 });
     let odpowiedz = odp.tekst.trim();
     let propozycja = null;
     const m = odpowiedz.match(/PROPOZYCJA_GDD:\s*(\{[\s\S]*\})\s*$/);
     if (m) { try { propozycja = JSON.parse(m[1]); odpowiedz = odpowiedz.slice(0, m.index).trim(); } catch { try { propozycja = JSON.parse(domknijJson(m[1])); odpowiedz = odpowiedz.slice(0, m.index).trim(); } catch { /* zostawiamy w tekście */ } } }
     if (propozycja?.kamienie) propozycja.kamienie = scalKamienie(g.kamienie ?? [], propozycja.kamienie);
     if (propozycja?.filmy) propozycja.filmy = scalFilmy(g.filmy ?? [], propozycja.filmy);
-    const wpisy = [{ kiedy: new Date().toISOString(), kto: 'suweren', tresc }, { kiedy: new Date().toISOString(), kto: 'rezyser', tresc: odpowiedz }];
+    const trescZZal = zal.length ? `${tresc}\n📎 ${zal.map((x) => x.nazwa.slice(0, 60)).join(' · ')}` : tresc;
+    const wpisy = [{ kiedy: new Date().toISOString(), kto: 'suweren', tresc: trescZZal }, { kiedy: new Date().toISOString(), kto: 'rezyser', tresc: odpowiedz }];
     if (fsSync.existsSync(path.join(cfg.katalog, projektId))) { g.historia = [...(g.historia ?? []), ...wpisy].slice(-200); await fs.writeFile(plik(projektId), JSON.stringify(g, null, 2), 'utf8'); }
-    return { odpowiedz, propozycja, model: odp.model ?? (model || cfg.model()) };
+    return { odpowiedz, propozycja, model: odp.model ?? (model || cfg.model()), zalaczniki: zal };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -654,4 +689,4 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
     return { start: true, zadan: kolejka.length, model: prod.model, zapasowe: prod.zapasowe };
 }
 
-export default { skonfiguruj, SILNIKI, ZDARZENIA_GRY, SILNIKI_FILMU, RUCHY_KAMERY, oczyscFilmy, scalFilmy, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, scalDziedzictwo, nowePropozycje, odczytajPropozycje, dodajGalezie, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
+export default { skonfiguruj, zalacznikiRozmowy, blokZalacznikow, SILNIKI, ZDARZENIA_GRY, SILNIKI_FILMU, RUCHY_KAMERY, oczyscFilmy, scalFilmy, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, scalDziedzictwo, nowePropozycje, odczytajPropozycje, dodajGalezie, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
