@@ -90,6 +90,7 @@ import * as ModeleAgentow  from './services/ModeleAgentow.js';
 import { utworzMozg } from './services/MozgKatedry.js';
 import { utworzPlanGry } from './services/PlanGry.js';
 import { utworzPaczkiGier, zamontujTrasyGier } from './services/PaczkiGier.js';
+import { odchudzBryle } from './services/LekkieBryly.js';
 import { policzKoherencje } from './services/KoherencjaKatedry.js';
 import { rozmiarModelu } from './services/BledyModeli.js';
 import * as ProjektStada   from './services/ProjektStada.js';
@@ -8337,9 +8338,10 @@ app.post('/api/postac-katedry/zdjecie', (req, res) => ytOdp(res, PostacKatedry.z
 app.post('/api/postac-katedry/opublikuj', (_req, res) => ytOdp(res, PostacKatedry.opublikuj().then((opublikowana) => ({ opublikowana }))));
 app.delete('/api/postac-katedry/opublikuj', (_req, res) => ytOdp(res, PostacKatedry.wycofaj().then((karta) => ({ karta }))));
 // publicznie (Straż: czyWizytowka) — tylko opublikowany plik postaci, tylko odczyt
-app.get(/^\/wizytowka\/postac(?:-([a-z][a-z0-9]{1,19}))?\.glb$/, cors({ origin: '*' }), (req, res) => {
-    const p = PostacKatedry.plik(req.params[0] ?? null);
+app.get(/^\/wizytowka\/postac(?:-([a-z][a-z0-9]{1,19}))?\.glb$/, cors({ origin: '*' }), async (req, res) => {
+    let p = PostacKatedry.plik(req.params[0] ?? null);
     if (!p) return res.status(404).json({ success: false, message: 'Ta Katedra nie opublikowała postaci.' });
+    if (req.query.lekki === '1') p = (await PaczkiGier.lekkiPlik(p)) ?? p;   // 📱 telefon gościa: lekka kopia, gdy jest
     res.type('model/gltf-binary'); res.set('Cache-Control', 'no-cache'); return res.sendFile(p);
 });
 app.post('/api/gdd/:id/film/:film/zlec', (req, res) => ytOdp(res, FilmyGry.zlec(req.params.id, req.params.film).then((film) => ({ film }))));
@@ -8802,9 +8804,16 @@ const PaczkiGier = utworzPaczkiGier({
     klucz: async () => (await Wizytowka.klucz()).publiczny,
     podpisz: (t) => Wizytowka.podpiszTekst(t),
     rejestr: process.env.OTAKOS_REJESTR_URL || 'https://otakos.wtf/api/katedry',
+    // 📱 lekkie kopie brył dla telefonu gościa (services/LekkieBryly.js): siatka bez riga ≤ 30 tys. trójkątów, tekstury ≤ 1024 px
+    odchudz: (glb) => odchudzBryle(glb, { ffmpeg: ffmpegPath, uruchom: (c, a) => execFileAsync(c, a, { maxBuffer: 1 << 26, windowsHide: true }) }),
 });
 Wizytowka.skonfiguruj({ paczkiGier: PaczkiGier });
-zamontujTrasyGier(app, { paczki: PaczkiGier, nick: async () => (await Wizytowka.profil()).nick || null, wczytajRynek: loadMarket, zapiszRynek: saveMarket });
+zamontujTrasyGier(app, { paczki: PaczkiGier, nick: async () => (await Wizytowka.profil()).nick || null, wczytajRynek: loadMarket, zapiszRynek: saveMarket,
+    // postać Katedry też w wersji lekkiej dla telefonu gościa (/wizytowka/postac.glb?lekki=1)
+    poUdostepnieniu: async () => {
+        const ruchy = Object.keys((await PostacKatedry.publiczna().catch(() => null))?.ruchy ?? {});
+        for (const r of [null, ...ruchy]) await PaczkiGier.odchudzPlik(PostacKatedry.plik(r));
+    } });
 // Skrzynka TOST — publiczna (Straż: tylko ten POST), reszta /api/tost/siec/* jak inne trasy (maszyna albo tunel z kluczem — StoL)
 app.post('/api/tost/skrzynka', cors({ origin: '*' }), async (req, res) => {
     try { const w = await TostSiec.odbierz(req.body); return res.status(w.status).json({ wiadomosc: w.wiadomosc }); }

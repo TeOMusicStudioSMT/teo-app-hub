@@ -213,7 +213,7 @@ export function utworzLimitGosci({ max = Number(process.env.OTAKOS_GOSCIE_MAX ||
  * @param {{ katalog: string, katalogApek: string, nick: () => Promise<string>, klucz: () => Promise<string>,
  *           podpisz: (t: string) => Promise<string>, rejestr: string, fetch?: Function, teraz?: () => number, szyna?: object }} o
  */
-export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, rejestr, fetch: f = globalThis.fetch, teraz = () => Date.now(), szyna = null }) {
+export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, rejestr, fetch: f = globalThis.fetch, teraz = () => Date.now(), szyna = null, odchudz = null }) {
     const PLIK = path.join(katalog, 'gry-udostepnione.json');
     const kat = (gra) => path.join(katalog, 'gry-paczki', gra);
     const czytaj = async () => { try { return JSON.parse(await fs.readFile(PLIK, 'utf8')); } catch { return { gry: {} }; } };
@@ -240,6 +240,56 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         }
         return gry;
     }
+    // ── 📱 lekkie bryły dla telefonu (services/LekkieBryly.js przez `odchudz`) — kopie obok, pełne zostają ──
+    /** Lekkie kopie GLB z `dist/assety` → `gry-paczki/<gra>/lekkie/assety/`; robi tylko zmienione (rozmiar + czas pliku). */
+    async function zrobLekkie(gra) {
+        const zrodla = path.join(katalogApek, gra, 'dist', 'assety');
+        const cel = path.join(kat(gra), 'lekkie', 'assety');
+        const PLIK_INDEKSU = path.join(kat(gra), 'lekkie', 'indeks.json');
+        let indeks = {}; try { indeks = JSON.parse(await fs.readFile(PLIK_INDEKSU, 'utf8')); } catch { /* pierwszy raz */ }
+        let pliki = []; try { pliki = (await fs.readdir(zrodla)).filter((x) => /\.glb$/i.test(x)); } catch { /* gra bez assetów */ }
+        await fs.mkdir(cel, { recursive: true });
+        const nowy = {}; const bledy = []; let zrobione = 0;
+        for (const plik of pliki) {
+            const st = await fs.stat(path.join(zrodla, plik));
+            const klucz = `${st.size}|${Math.round(st.mtimeMs)}`;
+            if (indeks[plik]?.zrodlo === klucz && (!indeks[plik].lekki || fsSync.existsSync(path.join(cel, plik)))) { nowy[plik] = indeks[plik]; continue; }
+            try {
+                const w = await odchudz(await fs.readFile(path.join(zrodla, plik)));
+                const lekki = w.po < st.size * 0.9;
+                if (lekki) await fs.writeFile(path.join(cel, plik), w.glb); else await fs.rm(path.join(cel, plik), { force: true });
+                nowy[plik] = { zrodlo: klucz, pelny: st.size, bajtow: lekki ? w.po : st.size, lekki, trojkaty: w.trojkaty, rig: w.rig };
+                zrobione++;
+            } catch (e) { bledy.push(`${plik}: ${e.message}`); nowy[plik] = { zrodlo: '', pelny: st.size, bajtow: st.size, lekki: false }; await fs.rm(path.join(cel, plik), { force: true }); }
+        }
+        for (const plik of Object.keys(indeks)) if (!nowy[plik]) await fs.rm(path.join(cel, plik), { force: true });
+        await fs.writeFile(PLIK_INDEKSU, JSON.stringify(nowy, null, 2), 'utf8');
+        const wpisy = Object.values(nowy);
+        return { plikow: wpisy.length, lekkich: wpisy.filter((x) => x.lekki).length, zrobione, bledy, pelne: wpisy.reduce((s, x) => s + x.pelny, 0), lekkie: wpisy.reduce((s, x) => s + x.bajtow, 0) };
+    }
+    /** Rozmiar całej gry (dist) — pełnej i z lekkimi bryłami. */
+    async function rozmiaryGry(gra, lekkie) {
+        const dist = path.join(katalogApek, gra, 'dist');
+        let razem = 0;
+        for (const rel of await plikiKatalogu(dist)) razem += (await fs.stat(path.join(dist, ...rel.split('/')))).size;
+        return { pelna: razem, lekka: lekkie ? razem - lekkie.pelne + lekkie.lekkie : razem };
+    }
+    /** Lekka kopia dowolnego pliku GLB (np. postać Katedry) — w `gry-paczki/_lekkie/`, po rozmiarze i czasie pliku. */
+    const sciezkaLekkiej = (pelna, st) => path.join(katalog, 'gry-paczki', '_lekkie', `${path.basename(pelna, '.glb')}-${st.size}-${Math.round(st.mtimeMs)}.glb`);
+    async function odchudzPlik(pelna) {
+        if (!odchudz || !pelna) return null;
+        const st = await fs.stat(pelna);
+        const cel = sciezkaLekkiej(pelna, st);
+        if (fsSync.existsSync(cel)) return cel;
+        const w = await odchudz(await fs.readFile(pelna));
+        if (w.po >= st.size * 0.9) return null;
+        await fs.mkdir(path.dirname(cel), { recursive: true });
+        for (const stary of await fs.readdir(path.dirname(cel))) if (stary.startsWith(`${path.basename(pelna, '.glb')}-`)) await fs.rm(path.join(path.dirname(cel), stary), { force: true });
+        await fs.writeFile(cel, w.glb);
+        return cel;
+    }
+    async function lekkiPlik(pelna) { try { const p = sciezkaLekkiej(pelna, await fs.stat(pelna)); return fsSync.existsSync(p) ? p : null; } catch { return null; } }
+
     async function czytajZrodlo(id) { try { return JSON.parse(await fs.readFile(path.join(katalogApek, id, 'zrodlo-paczki.json'), 'utf8')); } catch { return null; } }
 
     async function udostepnij(gra, { cenaGRV = 333 } = {}) {
@@ -252,11 +302,15 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         const tmp = path.join(kat(gra), `paczka-${teraz()}.zip`);
         const { sha256, bajtow, plikow } = await spakujKatalog(dist, tmp);
         await fs.rename(tmp, path.join(kat(gra), 'paczka.zip'));
+        const lekkie = odchudz ? await zrobLekkie(gra) : null;
         const m = { gra, nazwa: await nazwaGry(gra), wersja: wersjaZDaty(teraz()), sha256, bajtow, plikow, autor, klucz: await klucz(), utworzono: new Date(teraz()).toISOString() };
         m.podpis = await podpisz(trescManifestu(m));
+        // rozmiary (poza podpisem — informacja): cała gra pełna i z lekkimi bryłami, które dostaje telefon gościa
+        m.rozmiary = { ...(await rozmiaryGry(gra, lekkie)), lekkichBryl: lekkie?.lekkich ?? 0, bryl: lekkie?.plikow ?? 0 };
+        if (lekkie?.bledy.length) m.rozmiary.bledy = lekkie.bledy.slice(0, 5);
         await fs.writeFile(path.join(kat(gra), 'manifest.json'), JSON.stringify(m, null, 2), 'utf8');
         const d = await czytaj();
-        d.gry[gra] = { ...(d.gry[gra] ?? {}), nazwa: m.nazwa, wersja: m.wersja, bajtow, udostepniono: m.utworzono, cenaGRV: Math.max(0, Math.floor(Number(cenaGRV) || 0)) };
+        d.gry[gra] = { ...(d.gry[gra] ?? {}), nazwa: m.nazwa, wersja: m.wersja, bajtow, lekka: m.rozmiary.lekka, udostepniono: m.utworzono, cenaGRV: Math.max(0, Math.floor(Number(cenaGRV) || 0)) };
         await zapisz(d);
         await szyna?.nadaj?.({ agent: 'kodeks', rodzaj: 'praca', tresc: `🏝️ Gra „${m.nazwa}” udostępniona jako paczka ${m.wersja} (${Math.round(bajtow / MB)} MB, podpisana).` })?.catch?.(() => {});
         return { manifest: m, wpis: d.gry[gra] };
@@ -287,6 +341,13 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         const dist = path.resolve(katalogApek, gra, 'dist');
         let r; try { r = decodeURIComponent(String(rel || 'index.html')); } catch { return null; }
         if (!r || r.endsWith('/')) r += 'index.html';
+        // 📱 lekka bryła dla telefonu: `lekkie/assety/<plik>.glb` → kopia odchudzona, a gdy jej nie ma — pełna
+        const lekka = r.match(/^lekkie\/assety\/([^/\\]+\.glb)$/i);
+        if (lekka) {
+            const pl = path.join(kat(gra), 'lekkie', 'assety', lekka[1]);
+            if (!lekka[1].includes('..') && fsSync.existsSync(pl)) return pl;
+            r = `assety/${lekka[1]}`;
+        }
         const p = path.resolve(dist, ...r.split('/'));
         if (!p.startsWith(dist + path.sep)) return null;
         try { return (await fs.stat(p)).isFile() ? p : null; } catch { return null; }
@@ -387,7 +448,7 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
         };
     }
 
-    return { lista, udostepnij, wycofaj, ustawProdukt, udostepniona, manifest, sciezkaZip, plikGoscia, publiczne, instaluj, wSieci, gospodarz };
+    return { lista, udostepnij, wycofaj, ustawProdukt, udostepniona, manifest, sciezkaZip, plikGoscia, publiczne, instaluj, wSieci, gospodarz, odchudzPlik, lekkiPlik };
 }
 
 /**
@@ -397,7 +458,7 @@ export function utworzPaczkiGier({ katalog, katalogApek, nick, klucz, podpisz, r
  * @param {{ paczki: ReturnType<typeof utworzPaczkiGier>, nick: () => Promise<string|null>, wczytajRynek: () => Promise<{products: object[]}>,
  *           zapiszRynek: () => Promise<void>, limit?: ReturnType<typeof utworzLimitGosci>, bps?: number, maxPobran?: number }} o
  */
-export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek, limit = utworzLimitGosci(), bps = Number(process.env.OTAKOS_PACZKA_KBPS || 2048) * 1024, maxPobran = Number(process.env.OTAKOS_PACZKA_POBRANIA || 2), plac = null }) {
+export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek, limit = utworzLimitGosci(), bps = Number(process.env.OTAKOS_PACZKA_KBPS || 2048) * 1024, maxPobran = Number(process.env.OTAKOS_PACZKA_POBRANIA || 2), plac = null, poUdostepnieniu = null }) {
     const odp = (res, p, kod = 400) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(kod).json({ success: false, message: e.message }));
     const GoscieWyspy = limit;
     const PACZKA_BPS = bps;
@@ -478,6 +539,7 @@ export function zamontujTrasyGier(app, { paczki, nick, wczytajRynek, zapiszRynek
             else { produkt = { id: `teterhia-gra-${gra}-${Date.now().toString(36)}`.slice(0, 60), module: 'teterhia', type: 'gra', name: m.nazwa, desc: opis, priceGrv: wpis.cenaGRV, creator: m.autor, votes: 0, createdAt: Date.now(), payload }; rynek.products.push(produkt); }
             await zapiszRynek();
             await paczki.ustawProdukt(gra, produkt.id);
+            if (poUdostepnieniu) void Promise.resolve().then(poUdostepnieniu).catch((e) => console.warn('[Gry] po udostępnieniu:', e.message));
             res.json({ success: true, manifest: m, wpis: { ...wpis, produkt: produkt.id }, produkt });
         } catch (e) { res.status(400).json({ success: false, message: e.message }); }
     });
