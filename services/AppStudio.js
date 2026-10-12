@@ -1000,6 +1000,9 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
         const blokPoprzednikow = blokDziedzictwa(dziedzictwo);
         if (blokPoprzednikow) krok('stan', `🧬 dziedzictwo: ${dziedzictwo.pliki?.length ?? 0} plik(ów) najdalszej próby (${dziedzictwo.model}, etap ${dziedzictwo.etap ?? '—'}) i ${dziedzictwo.bledy?.length ?? 0} błędów poprzedników`);
         try {
+            // moduły martwe JUŻ przed zadaniem (np. przygotowany moduł, którego podpięcie to osobne zadanie planu — 2026-10-12
+            // src/gra/bestiariusz.ts karał rundy Sceny Tańca): sędzia nie liczy ich tej rundzie, chyba że runda je zmieniła
+            const martweNaStarcie = new Set((await modulyBezImportu(dir).catch(() => [])).map((m) => m.plik));
             for (let runda = 1; runda <= rundy; runda++) {
                 if (przerwanie.signal.aborted) { feedback = 'przerwane przez Suwerena'; break; }
                 if (oddaneWRundzie && feedback) { rundyOdrzucone.push({ runda: runda - 1, pliki: oddaneWRundzie, powod: feedback.slice(0, 1500) }); oddaneWRundzie = null; }
@@ -1077,7 +1080,8 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 // przechodzi testy — a w grze nic się nie dzieje. Tak wyglądały obie nocne roboty
                 // 2026-09-22 (wrogowie.ts napisany, nigdzie nie podpięty; Suweren: „nie widzę tych
                 // efektów"). Sprawdzamy to deterministycznie, zanim ucieszymy się z „GOTOWE".
-                const martwe = await modulyBezImportu(dir);
+                const ruszone = new Set(nowe.map((p) => p.sciezka));
+                const martwe = (await modulyBezImportu(dir)).filter((m) => !martweNaStarcie.has(m.plik) || ruszone.has(m.plik));
                 if (martwe.length) {
                     feedback = `Dodałeś ${martwe.map((m) => m.plik).join(', ')}, ale ŻADEN plik projektu tego nie importuje — ten kod nigdy się nie wykona i w grze nic nie widać. Podepnij go tam, gdzie ma działać (zwykle src/main.ts: import + wywołanie w pętli gry), i oddaj też ten plik.`;
                     krok('blad', `martwy moduł: ${martwe.map((m) => m.plik).join(', ')} — nikt nie importuje, wymuszam podpięcie`);
