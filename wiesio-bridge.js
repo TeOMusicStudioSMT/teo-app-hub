@@ -92,6 +92,7 @@ import { utworzMozg } from './services/MozgKatedry.js';
 import { utworzPlanGry } from './services/PlanGry.js';
 import { utworzBestiariusz } from './services/Bestiariusz.js';
 import { utworzPaczkiGier, zamontujTrasyGier } from './services/PaczkiGier.js';
+import { zamontujTrasyRingu } from './services/RingTaneczny.js';
 import { odchudzBryle, CEL_SCIAN, MAKS_TEKSTURY } from './services/LekkieBryly.js';
 import { utworzRozliczenia } from './services/RozliczeniaKatedr.js';
 import { policzKoherencje } from './services/KoherencjaKatedry.js';
@@ -8850,6 +8851,9 @@ zamontujTrasyGier(app, { rozliczenia: Rozliczenia, paczki: PaczkiGier, nick: asy
         const ruchy = Object.keys((await PostacKatedry.publiczna().catch(() => null))?.ruchy ?? {});
         for (const r of [null, ...ruchy]) await PaczkiGier.odchudzPlik(PostacKatedry.plik(r));
     } });
+// 💃🥊 Ring taneczny (services/RingTaneczny.js): pojedynki Mini-TeOgochi między Katedrami — walkę liczą gracze
+// (apka _OtakOs_Apki/taneczne-starcie), most trzyma w pamięci tylko karty, ziarno, start i ruchy {takt, skill}.
+zamontujTrasyRingu(app, { cors, nick: async () => (await Wizytowka.profil()).nick || null });
 // Skrzynka TOST — publiczna (Straż: tylko ten POST), reszta /api/tost/siec/* jak inne trasy (maszyna albo tunel z kluczem — StoL)
 app.post('/api/tost/skrzynka', cors({ origin: '*' }), async (req, res) => {
     try { const w = await TostSiec.odbierz(req.body); return res.status(w.status).json({ wiadomosc: w.wiadomosc }); }

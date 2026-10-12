@@ -41,6 +41,8 @@ const NARZEDZIA: Narzedzie[] = [
     },
     { id: 'voicestudio', tytul: 'VoiceStudio', url: 'http://127.0.0.1:3900/', znak: '🎙️', kolor: '#14b8a6', sprawdz: 'http://127.0.0.1:3900/' },
     { id: 'swiat', tytul: 'Świat klocków', url: `${MOST}/swiat/`, znak: '🧱', kolor: '#38bdf8', sprawdz: `${MOST}/swiat/` },
+    // 💃🥊 Taneczne Starcie — bijatyka taneczna Mini-TeOgochi (apka _OtakOs_Apki/taneczne-starcie, ring: services/RingTaneczny.js)
+    { id: 'starcie', tytul: 'Taneczne Starcie', url: `${MOST}/apki/taneczne-starcie/`, znak: '💃', kolor: '#db2777', sprawdz: `${MOST}/apki/taneczne-starcie/` },
 ];
 
 export const PierscienApek: React.FC = () => {

@@ -61,6 +61,7 @@ const WYGLAD: Record<string, { znak: string; kolor: string }> = {
     comfy: { znak: '🎛️', kolor: '#f97316' }, voicestudio: { znak: '🎙️', kolor: '#14b8a6' }, swiat: { znak: '🧱', kolor: '#38bdf8' },
     story: { znak: '🎬', kolor: '#a855f7' }, music: { znak: '🎵', kolor: '#ec4899' }, app: { znak: '🛠️', kolor: '#06b6d4' },
     games: { znak: '🎮', kolor: '#22c55e' }, fashion: { znak: '👗', kolor: '#f472b6' }, lab: { znak: '🧪', kolor: '#3b82f6' },
+    starcie: { znak: '💃', kolor: '#db2777' },
 };
 
 /**
