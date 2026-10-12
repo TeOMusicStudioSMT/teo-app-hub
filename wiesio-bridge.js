@@ -93,6 +93,7 @@ import { utworzPlanGry } from './services/PlanGry.js';
 import { utworzBestiariusz } from './services/Bestiariusz.js';
 import { utworzPaczkiGier, zamontujTrasyGier } from './services/PaczkiGier.js';
 import { zamontujTrasyRingu } from './services/RingTaneczny.js';
+import { utworzBazylike } from './services/BazylikaDzwieku.js';
 import { odchudzBryle, CEL_SCIAN, MAKS_TEKSTURY } from './services/LekkieBryly.js';
 import { utworzRozliczenia } from './services/RozliczeniaKatedr.js';
 import { policzKoherencje } from './services/KoherencjaKatedry.js';
@@ -8446,6 +8447,28 @@ const ChmuraBryl = utworzChmureBryl({
 });
 // 🥁 Rytm utworu (services/RytmUtworu.js) — BPM i uderzenia z dźwięku, lokalnie (ffmpeg + JS) — taniec TeOgochi w Teterhii.
 const RytmUtworu = utworzRytm({ katalogMuzyki: MUSIC_DIR, katalog: path.join(ANTIGRAVITY_DIR, 'rytm'), ffmpeg: ffmpegPath, uruchom: (c, a, o) => execFileAsync(c, a, { windowsHide: true, ...o }) });
+// 🎵 Bazylika Dźwięku (services/BazylikaDzwieku.js) — miejsce na wyspie Teterhii: bit z Pracowni gry → biblioteka muzyki,
+// zamówienie utworu u Joanny (generator muzyki Katedry), album/składanka → produkt Marketplace. Trasy tylko z maszyny.
+const Bazylika = utworzBazylike({
+    katalogMuzyki: MUSIC_DIR, katalog: path.join(ANTIGRAVITY_DIR, 'bazylika'), ffmpeg: ffmpegPath,
+    uruchom: (c, a, o) => execFileAsync(c, a, { windowsHide: true, maxBuffer: 1 << 24, ...o }),
+    pisz: async (system, prompt) => {
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(180_000),
+            body: JSON.stringify({ model: Mozg.modelRoli('joanna'), system, prompt, stream: false, options: { temperature: 0.7 } }) });
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
+        return (await r.json()).response ?? '';
+    },
+    most: async (sciezka, body) => {
+        const r = await fetch(`http://127.0.0.1:${PORT}${sciezka}`, { method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(120_000), headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d?.message || `HTTP ${r.status}`);
+        return d;
+    },
+});
+app.get('/api/bazylika', async (_req, res) => { try { res.json({ success: true, bity: await Bazylika.bity(), zamowienia: await Bazylika.zamowienia(), albumy: await Bazylika.albumy() }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+app.post('/api/bazylika/bit', (req, res) => ytOdp(res, Bazylika.zapiszBit(req.body ?? {}).then((bit) => ({ bit }))));
+app.post('/api/bazylika/zamow', (req, res) => ytOdp(res, Bazylika.zamow(req.body ?? {}).then((zamowienie) => ({ zamowienie }))));
+app.post('/api/bazylika/album', (req, res) => ytOdp(res, Bazylika.album(req.body ?? {}).then((album) => ({ album }))));
 app.get('/api/rytm/utwory', (_req, res) => ytOdp(res, RytmUtworu.utwory().then((utwory) => ({ utwory }))));
 app.get('/api/rytm', (req, res) => ytOdp(res, RytmUtworu.analizuj(String(req.query.plik ?? '')).then((rytm) => ({ rytm }))));
 
