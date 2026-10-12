@@ -393,10 +393,13 @@ async function piszAnthropic({ system, prompt, model, timeoutMs }) {
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(`Anthropic HTTP ${r.status}: ${d?.error?.message || ''}`.trim());
         const tekst = (d.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
-        return { tekst, tokeny: (d.usage?.input_tokens || 0) + (d.usage?.output_tokens || 0) };
+        // chmura: okno to setki tysięcy tokenów — „sufit” = odpowiedź ucięta na limicie WYJŚCIA, nie wejście (2026-10-12)
+        return { tekst, tokeny: (d.usage?.input_tokens || 0) + (d.usage?.output_tokens || 0), obciete: d.stop_reason === 'max_tokens', limitWyjscia: 16000 };
     } finally { clearTimeout(t); }
 }
 
+/** Limit odpowiedzi Gemini: modele 2.5+ oddają do 65 k tokenów; 16 k ucinało przepisane pliki gry w pół (2026-10-12). */
+const MAX_WYJSCIA_GEMINI = 32_000;
 /** Gemini generateContent — bez strumienia, klucz z Kibla. */
 async function piszGemini({ system, prompt, model, timeoutMs }) {
     const klucz = await cfg.klucze.gemini();
@@ -406,12 +409,12 @@ async function piszGemini({ system, prompt, model, timeoutMs }) {
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
             method: 'POST', signal: ctrl.signal,
             headers: { 'content-type': 'application/json', 'x-goog-api-key': klucz },
-            body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 16000 } }),
+            body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: MAX_WYJSCIA_GEMINI } }),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(`Gemini HTTP ${r.status}: ${d?.error?.message || ''}`.trim());
         const tekst = (d.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
-        return { tekst, tokeny: d.usageMetadata?.totalTokenCount || 0 };
+        return { tekst, tokeny: d.usageMetadata?.totalTokenCount || 0, obciete: d.candidates?.[0]?.finishReason === 'MAX_TOKENS', limitWyjscia: MAX_WYJSCIA_GEMINI };
     } finally { clearTimeout(t); }
 }
 
@@ -1039,11 +1042,14 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 } });
                 const nowe = wylowPliki(odp.tekst);
                 if (!nowe.length) {
-                    const sufit = odp.tokeny >= (odp.numCtx ?? NUM_CTX) - 64;
-                    feedback = sufit
+                    // chmura mówi wprost, czy ucięła odpowiedź (limit WYJŚCIA); lokalna Ollama — okno kontekstu num_ctx
+                    const sufit = typeof odp.obciete === 'boolean' ? odp.obciete : odp.tokeny >= (odp.numCtx ?? NUM_CTX) - 64;
+                    feedback = sufit && typeof odp.obciete === 'boolean'
+                        ? `Twoja poprzednia odpowiedź została ucięta na limicie odpowiedzi (${odp.limitWyjscia} tokenów) i nie było w niej ani jednego kompletnego bloku === PLIK: … ===. Oddaj MNIEJ naraz: tylko pliki, które zmieniasz, duże pliki podziel na moduły.`
+                        : sufit
                         ? `Twoja poprzednia odpowiedź nie zmieściła się w oknie modelu (${odp.tokeny}/${odp.numCtx ?? NUM_CTX} tokenów) i nie było w niej ani jednego kompletnego bloku === PLIK: … ===. Oddaj MNIEJ: tylko pliki, które zmieniasz, a duże pliki podziel na moduły (patrz PLIKI ZA DUŻE).`
                         : 'Nie znalazłem żadnego bloku === PLIK: … === w Twojej odpowiedzi. Oddaj pliki DOKŁADNIE w tym formacie.';
-                    krok('blad', sufit ? `runda ${runda}: kontekst modelu wyczerpany (${odp.tokeny}/${odp.numCtx ?? NUM_CTX} tokenów) — projekt za duży na jeden prompt, wymuszam podział na moduły` : `runda ${runda}: model nie oddał plików (${odp.tokeny} tokenów)`);
+                    krok('blad', sufit && typeof odp.obciete === 'boolean' ? `runda ${runda}: odpowiedź ucięta na limicie wyjścia modelu (${odp.limitWyjscia} tokenów) — prośba o mniej plików naraz` : sufit ? `runda ${runda}: kontekst modelu wyczerpany (${odp.tokeny}/${odp.numCtx ?? NUM_CTX} tokenów) — projekt za duży na jeden prompt, wymuszam podział na moduły` : `runda ${runda}: model nie oddał plików (${odp.tokeny} tokenów)`);
                     continue;
                 }
                 oddaneWRundzie = nowe.map((p) => ({ sciezka: p.sciezka, tresc: p.tresc }));
