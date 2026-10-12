@@ -337,6 +337,117 @@ export const KuzniaSoupPanel: React.FC = () => {
 };
 
 /**
+ * 🧪 KUŹNIA W COLABIE (services/KuzniaColab.js): Katedra składa notatnik Google Colab z danymi Kuźni Soup / JaJa
+ * (bez kluczy i ścieżek) — trening na A100/H100 z planu Google AI Pro, bo 6 GB lokalnej karty nie uniesie LoRA 26B.
+ * Dane wyjeżdżają do Google, gdy Suweren otworzy notatnik w Colabie. Powrót: GGUF do `_OtakOs_AI/models/` →
+ * Kuźnia Modeli (`/api/modele/wykuj`) jako `teogochi-<agent>-colab`. Silnika TeOgochi nie podmienia.
+ */
+interface StanColab {
+    agent: string; imie: string; sft: number; dpo: number; zrodla: string[]; wystarczy: boolean; powod: string | null; dpoPowod: string | null;
+    minimum: number; bazy: { id: string; nazwa: string; hf: string; metody: string[]; domyslna: string; vram: string }[];
+    metody: Record<string, string>; modelPoPowrocie: string;
+}
+interface PlikModelu { plik: string; gb: number; rodzaj: string; kowalny: boolean; wykuty: boolean | null }
+
+export const KuzniaColabPanel: React.FC = () => {
+    const [stado, setStado] = useState<Gatunek[]>([]);
+    const [agent, setAgent] = useState('mistrz');
+    const [stan, setStan] = useState<StanColab | null>(null);
+    const [baza, setBaza] = useState('gemma4-e4b');
+    const [metoda, setMetoda] = useState('pelny');
+    const [zajety, setZajety] = useState(false);
+    const [wczytanie, setWczytanie] = useState<string | null>(null);
+
+    useEffect(() => {
+        zMostu<{ gatunki: Gatunek[] }>('/api/stado/stan').then((s) => setStado((s.gatunki ?? []).filter((g) => g.wyklute && g.id !== 'mistrz'))).catch(() => {});
+    }, []);
+    useEffect(() => {
+        setStan(null);
+        zMostu<StanColab>(`/api/kuznia-colab/stan?agent=${encodeURIComponent(agent)}`).then(setStan).catch((e) => toast.error(blad(e)));
+    }, [agent]);
+    const wybranaBaza = stan?.bazy.find((b) => b.id === baza);
+    useEffect(() => { if (wybranaBaza && !wybranaBaza.metody.includes(metoda)) setMetoda(wybranaBaza.domyslna); }, [wybranaBaza, metoda]);
+
+    const pobierz = async () => {
+        setZajety(true);
+        try {
+            const r = await fetch(`${MOST}/api/kuznia-colab/notatnik`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent, baza, metoda }) });
+            if (!r.ok) { const d = await r.json().catch(() => null); throw new Error(d?.message || `HTTP ${r.status}`); }
+            const nazwa = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') ?? '')?.[1] ?? `kuznia-colab-${agent}.ipynb`;
+            const url = URL.createObjectURL(await r.blob());
+            const a = Object.assign(document.createElement('a'), { href: url, download: nazwa });
+            document.body.appendChild(a); a.click(); a.remove();
+            window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+            toast.success(`Notatnik ${nazwa} pobrany — otwórz go w Colabie (Plik → Prześlij notatnik).`);
+        } catch (e) { toast.error(blad(e), { duration: 10000 }); }
+        finally { setZajety(false); }
+    };
+
+    const wczytaj = async () => {
+        if (!stan) return;
+        setZajety(true); setWczytanie(null);
+        try {
+            const s = await zMostu<{ modele: PlikModelu[]; katalog: string }>('/api/modele/lokalne');
+            const kand = s.modele.filter((m) => m.kowalny && m.plik.toLowerCase().startsWith(stan.modelPoPowrocie));
+            if (!kand.length) { setWczytanie(`Nie widzę pliku ${stan.modelPoPowrocie}-q4_k_m.gguf w ${s.katalog}. Połóż go tam i spróbuj jeszcze raz.`); return; }
+            const m = kand[0];
+            const d = await zMostu<{ id: string; nazwa: string }>('/api/modele/wykuj', { method: 'POST', body: JSON.stringify({ plik: m.plik, nazwa: stan.modelPoPowrocie }) });
+            setWczytanie(`Kuję ${d.nazwa} z ${m.plik} (${m.gb} GB)…`);
+            for (let i = 0; i < 360; i++) {
+                await new Promise((ok) => window.setTimeout(ok, 5000));
+                const p = await zMostu<{ przebieg: { stan: string; postep: string; blad: string | null } }>(`/api/modele/wykuj/stan?id=${d.id}`).catch(() => null);
+                if (!p) continue;
+                if (p.przebieg.stan === 'gotowe') { setWczytanie(`✓ ${d.nazwa} jest w Ollamie. Silnik TeOgochi zostaje — przydziel go w Dyrygencie, jeśli chcesz.`); return; }
+                if (p.przebieg.stan === 'blad') { setWczytanie(`✕ ${p.przebieg.blad}`); return; }
+                setWczytanie(`Kuję ${d.nazwa}… ${p.przebieg.postep}`);
+            }
+        } catch (e) { setWczytanie(`✕ ${blad(e)}`); }
+        finally { setZajety(false); }
+    };
+
+    return (
+        <div className="space-y-3 rounded-2xl border border-violet-500/25 bg-violet-950/10 p-4">
+            <h3 className="text-sm font-bold text-violet-200">🧪 Kuźnia w Colabie — trening na dużej karcie Google</h3>
+            <p className="text-[11px] text-slate-400">
+                Katedra składa notatnik Google Colab z danymi Kuźni (praca stada z oceną Sędziego, poprawki Suwerena z JaJa, rundy Kodeksa) — trening na A100/H100
+                z planu Google AI Pro, bo lokalna karta 6 GB nie uniesie LoRA na 26B. <b className="text-amber-200">Dane wyjeżdżają do Google</b> na czas sesji Colab;
+                klucze z Kibla i ścieżki z dysku Katedra zamazuje przed wklejeniem. Notatnik nie był uruchamiany przez Katedrę — pierwszy przebieg w Colabie to próba.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+                <select value={agent} onChange={(e) => setAgent(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
+                    <option value="mistrz">🥚 Mistrz — styl Suwerena (JaJo)</option>
+                    {stado.map((g) => <option key={g.id} value={g.id}>{g.forma} {g.imie}</option>)}
+                </select>
+                <select value={baza} onChange={(e) => setBaza(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
+                    {(stan?.bazy ?? []).map((b) => <option key={b.id} value={b.id}>{b.nazwa}</option>)}
+                </select>
+                <select value={metoda} onChange={(e) => setMetoda(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
+                    {(wybranaBaza?.metody ?? []).map((m) => <option key={m} value={m}>{stan?.metody[m] ?? m}</option>)}
+                </select>
+            </div>
+            {wybranaBaza && <div className="text-[10px] text-slate-500">🎛️ {wybranaBaza.vram} · baza <span className="font-mono">{wybranaBaza.hf}</span> (sprawdź nazwę i licencję Gemmy na huggingface.co).</div>}
+            {stan && (
+                <div className="text-[11px] text-slate-300">
+                    Próbki: <b>{stan.sft}</b> SFT (min. {stan.minimum}) · <b>{stan.dpo}</b> par DPO · źródła: {stan.zrodla.join(', ')}.
+                    {stan.powod && <div className="text-amber-300">{stan.powod}</div>}
+                    {!stan.powod && stan.dpoPowod && <div className="text-slate-500">{stan.dpoPowod}</div>}
+                </div>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+                <button onClick={pobierz} disabled={zajety || !stan?.wystarczy} className="rounded bg-violet-500 px-3 py-1.5 text-xs font-bold text-slate-900 disabled:opacity-40">⬇️ Pobierz notatnik</button>
+                <button onClick={wczytaj} disabled={zajety || !stan} title="Plik GGUF z Colaba w _OtakOs_AI/models/ → Ollama" className="rounded bg-slate-700/60 px-3 py-1.5 text-xs text-slate-100 disabled:opacity-40">📥 Wczytaj wykuty GGUF</button>
+            </div>
+            <ol className="list-decimal space-y-0.5 pl-5 text-[11px] text-slate-400">
+                <li>Pobierz notatnik → colab.research.google.com → Plik → Prześlij notatnik; typ środowiska A100 (albo H100).</li>
+                <li>Uruchom komórki po kolei (token HF wpisujesz w okienku Colaba, nie w kodzie); na końcu pobierz <span className="font-mono">{stan?.modelPoPowrocie ?? 'teogochi-…-colab'}-q4_k_m.gguf</span>.</li>
+                <li>Połóż plik w <span className="font-mono">_OtakOs_AI/models/</span> i kliknij „📥 Wczytaj wykuty GGUF”. Silnika TeOgochi to nie zmienia — przydział to Twoja decyzja.</li>
+            </ol>
+            {wczytanie && <div className="rounded-lg bg-black/30 p-2 text-[11px] text-violet-100">{wczytanie}</div>}
+        </div>
+    );
+};
+
+/**
  * Środowisko Kuźni: gdzie jest Soup (Katedra / pipx na C: / PATH), czy PyTorch widzi kartę graficzną,
  * instalacja W KATEDRZE (Python 3.12 venv → PyTorch CUDA pod sterownik → soup-cli[train]) i linki.
  * Suweren 2026-09-29: pipx dał soup.exe w C:\Users\…\.local\bin (poza PATH), na Pythonie 3.13 — a soup-cli
@@ -669,5 +780,5 @@ export const ModeleZadanPanel: React.FC = () => {
 };
 
 export default function DyrygentIKuznia() {
-    return <div className="space-y-4"><DyrygentPanel /><ModeleZadanPanel /><ZwiadowcaPanel /><PromocjePanel /><KuzniaSoupPanel /><PorzadkiPanel /></div>;
+    return <div className="space-y-4"><DyrygentPanel /><ModeleZadanPanel /><ZwiadowcaPanel /><PromocjePanel /><KuzniaSoupPanel /><KuzniaColabPanel /><PorzadkiPanel /></div>;
 }

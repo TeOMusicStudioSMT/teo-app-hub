@@ -17,6 +17,7 @@ import { utworzFilmyGry } from './services/FilmyGry.js';
 import { utworzBohaterow } from './services/Bohaterowie.js';
 import { utworzPostacKatedry } from './services/PostacKatedry.js';
 import { utworzJajo } from './services/JajoMistrza.js';
+import { utworzKuznieColab } from './services/KuzniaColab.js';
 import { utworzMistrzaGry } from './services/MistrzGry.js';
 import { utworzKlub } from './services/KlubMistrzow.js';
 import { utworzZwiadowcePromocji, MODEL as ZWIADOWCA_PROMOCJI_MODEL } from './services/ZwiadowcaPromocji.js';
@@ -11290,6 +11291,30 @@ for (const [akcja, fn] of [['przygotuj', KuzniaSoup.przygotuj], ['wykuj', Kuznia
         catch (e) { res.status(400).json({ success: false, message: e.message }); }
     });
 }
+
+// ── 🧪 KUŹNIA W COLABIE (services/KuzniaColab.js) — notatnik Google Colab do treningu na A100/H100; dane z Kuźni Soup i JaJa ──
+// Dane wyjeżdżają do Google dopiero, gdy Suweren sam otworzy notatnik w Colabie. Powrót: GGUF → Kuźnia Modeli (/api/modele/wykuj).
+const KuzniaColab = utworzKuznieColab({
+    katalogKuzni: path.join(ANTIGRAVITY_DIR, 'kuznia-soup'),
+    katalogWymiaru: ANTIGRAVITY_DIR,
+    projekty: () => ProjektStada.lista(),
+    karta: (id) => Persony.karta(id),
+    kursMistrza: () => Jajo.kurs(),
+});
+app.get('/api/kuznia-colab/stan', async (req, res) => {
+    try { res.json({ success: true, ...(await KuzniaColab.stan(String(req.query.agent || 'mistrz'))) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+/** POST /api/kuznia-colab/notatnik { baza, metoda, agent } → plik .ipynb do pobrania (za mało próbek = 400 z powodem). */
+app.post('/api/kuznia-colab/notatnik', async (req, res) => {
+    try {
+        const { baza, metoda, agent } = req.body ?? {};
+        const r = await KuzniaColab.notatnik({ baza: baza ? String(baza) : undefined, metoda: metoda ? String(metoda) : undefined, agent: agent ? String(agent) : undefined });
+        res.setHeader('Content-Disposition', `attachment; filename="${r.nazwa}"`);
+        res.setHeader('X-Kuznia-Probki', `sft=${r.sft}; dpo=${r.dpo}; zamazane=${r.zamazane.sekrety + r.zamazane.sciezki}`);
+        res.type('application/x-ipynb+json').send(JSON.stringify(r.notatnik, null, 1));
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 
 // ── 🪑 STÓŁ RATYFIKACJI (services/Stol.js) — propozycje → Projekt Stada → Biblia → ratyfikacja → moduły ──
 // Maszyna albo sparowany telefon (dostepStada). Projekt ze Stołu nie zleca modułów sam — dopiero ratyfikacja.

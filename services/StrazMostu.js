@@ -63,6 +63,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/stado/projekt/', '/api/stado/model',   // ponawianie zleceń i zmiana silników — decyzje Suwerena przy maszynie
     '/api/stado/powitanie/zrob',   // film powitania liczy się na karcie graficznej maszyny
     '/api/kuznia-soup/',
+    '/api/kuznia-colab',   // 🧪 notatnik Colab niesie dane treningowe Katedry — składa się i pobiera tylko przy maszynie
     // 📺 Konto YouTube (klient OAuth, łączenie, rozłączanie) i skarbiec kluczy — tylko przy maszynie.
     // Publikacje (/api/youtube/publikacje*) telefon może zatwierdzać z kluczem (Izba Akceptacji).
     '/api/impresario/youtube/', '/api/impresario/secrets/',
