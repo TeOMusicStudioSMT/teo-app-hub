@@ -89,6 +89,7 @@ import * as KlockiStada    from './services/KlockiStada.js';
 import * as ModeleAgentow  from './services/ModeleAgentow.js';
 import { utworzMozg } from './services/MozgKatedry.js';
 import { utworzPlanGry } from './services/PlanGry.js';
+import { utworzBestiariusz } from './services/Bestiariusz.js';
 import { utworzPaczkiGier, zamontujTrasyGier } from './services/PaczkiGier.js';
 import { odchudzBryle, CEL_SCIAN, MAKS_TEKSTURY } from './services/LekkieBryly.js';
 import { utworzRozliczenia } from './services/RozliczeniaKatedr.js';
@@ -8309,6 +8310,10 @@ async function obsadaGry(projekt) {
     void wszystkie;
     return out.filter((x) => x.obraz).slice(0, 40);
 }
+// 🐾 Bestiariusz Mini-TeOgochi gry (services/Bestiariusz.js): rzadkości, skille, stworki z wariantami i dropami → public/bestiariusz.json
+const Bestiariusz = utworzBestiariusz({ katalogGier: APKI_DIR });
+app.get('/api/bestiariusz/:projekt', (req, res) => ytOdp(res, Bestiariusz.wczytaj(req.params.projekt).then((bestiariusz) => ({ bestiariusz }))));
+app.put('/api/bestiariusz/:projekt', (req, res) => ytOdp(res, Bestiariusz.zapisz(req.params.projekt, req.body?.bestiariusz ?? req.body ?? {}).then((bestiariusz) => ({ bestiariusz }))));
 app.get('/api/gdd/:id/obsada', (req, res) => ytOdp(res, obsadaGry(req.params.id).then((obsada) => ({ obsada: obsada.map(({ obraz: _o, ...r }) => r) }))));
 app.get('/api/gdd/:id/film/:film/kadr', (req, res) => {
     const id = String(req.params.film);
