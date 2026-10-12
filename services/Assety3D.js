@@ -108,6 +108,27 @@ export async function lista() {
     }
     return out.sort((a, b) => String(b.utworzono).localeCompare(String(a.utworzono)));
 }
+/**
+ * 👻 Duchy po restarcie mostu (Suweren 2026-10-12: „czemu ta produkcja wciąż wisi od wczoraj”): bryła albo obraz
+ * zapisany jako „trwa”, którego żadne zadanie w pamięci już nie liczy (most wstał od nowa w trakcie) → błąd z powodem,
+ * żeby dało się ponowić. Wołane przy starcie mostu i bezpieczne później: żywe zadania (`zadania`) zostają nietknięte.
+ */
+export const POWOD_DUCHA = 'Przerwane — most wystartował od nowa w trakcie liczenia i nic już tego nie liczy. Zleć ponownie.';
+export async function sprzatnijDuchy() {
+    const zywe = new Set([...zadania.values()].filter((z) => z.stan === 'trwa').flatMap((z) => [z.asset, z.obraz].filter(Boolean)));
+    const sprzatniete = [];
+    for (const m of await lista().catch(() => [])) {
+        if (m.stan !== 'trwa' || zywe.has(m.id)) continue;
+        await fs.writeFile(path.join(dirAssetu(m.id), 'meta.json'), JSON.stringify({ ...m, stan: 'blad', blad: POWOD_DUCHA }, null, 2), 'utf8').catch(() => null);
+        sprzatniete.push(m.id);
+    }
+    for (const o of await listaObrazow().catch(() => [])) {
+        if (o.stan !== 'trwa' || zywe.has(o.id)) continue;
+        await fs.writeFile(path.join(dirObrazu(o.id), 'meta.json'), JSON.stringify({ ...o, stan: 'blad', blad: POWOD_DUCHA }, null, 2), 'utf8').catch(() => null);
+        sprzatniete.push(o.id);
+    }
+    return sprzatniete;
+}
 export async function meta(id) {
     if (!idOk(id)) return null;
     try { return JSON.parse(await fs.readFile(path.join(dirAssetu(id), 'meta.json'), 'utf8')); } catch { return null; }

@@ -8282,6 +8282,11 @@ const FilmyGry = utworzFilmyGry({
     roboczy: path.join(ANTIGRAVITY_DIR, 'filmy-gry-robocze'),
     szyna: Szyna,
 });
+// 👻 Po starcie mostu nic jeszcze nie liczy: „trwa” w Assetach 3D i „zlecony” w Filmach gry z poprzedniego życia mostu
+// to duchy — zamieniamy je na błąd z powodem, żeby dało się ponowić (Suweren 2026-10-12: „wisi od wczoraj”).
+setTimeout(() => {
+    Promise.all([Assety3D.sprzatnijDuchy(), FilmyGry.sprzatnijDuchy()]).then(([a, f]) => { if (a.length || f.length) console.log(`[Duchy] 👻 przerwane po restarcie: bryły/obrazy ${a.length}, filmy ${f.length}`); }).catch((e) => console.warn('[Duchy]', e.message));
+}, 1500);
 /**
  * 🎭 Obsada gry dla Reżysera Wideo: postać Katedry, bohaterowie startowi, obrazy Pracowni z gałęzi postaci / Mini-TeOgochi /
  * stworów tej gry — każdy z obrazem (wzór dla FLUX). Id: `katedra`, `b:<bohater>`, `o:<obraz>`.

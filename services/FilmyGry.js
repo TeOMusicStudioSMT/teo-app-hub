@@ -366,7 +366,24 @@ export function utworzFilmyGry({ katalogGier, gdd, generuj, dopisz = null, stan,
         return f0;
     }
 
-    return { zlec, manifest, liczy: () => [...pracuje] };
+    /**
+     * 👻 Film „zlecony”, którego nikt nie liczy (most wystartował od nowa) → błąd z powodem, można zlecić ponownie.
+     * Żywe zlecenia (`pracuje`) zostają nietknięte.
+     */
+    async function sprzatnijDuchy() {
+        const out = [];
+        for (const d of await fs.readdir(katalogGier, { withFileTypes: true }).catch(() => [])) {
+            if (!d.isDirectory()) continue;
+            const g = await gdd.wczytaj(d.name).catch(() => null);
+            for (const f of g?.filmy ?? []) {
+                if (f.stan !== 'zlecony' || pracuje.has(`${d.name}/${f.id}`)) continue;
+                await ustawFilm(d.name, f.id, { stan: 'blad', blad: 'Przerwane — most wystartował od nowa w trakcie liczenia i nic już tego nie liczy. Zleć ponownie.', postep: null }).catch(() => null);
+                out.push(`${d.name}:${f.id}`);
+            }
+        }
+        return out;
+    }
+    return { zlec, manifest, liczy: () => [...pracuje], sprzatnijDuchy };
 }
 
 export default { utworzFilmyGry, promptFilmu, odczytajUjecie, promptRezyseraWideo, filtrRuchuKadru, filtrSklejenia, sklejUjecia, wpiszDzwiek, dlugoscPliku, ileUjec, dopelnijUjecia, RUCHY, UJECIE_MAX, PRZENIKANIE_KADROW };
