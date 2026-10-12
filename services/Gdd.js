@@ -518,6 +518,21 @@ NIE piszesz „zapisałem” ani „dodałem do planu”: zmiana trafia do GDD d
 const produkcje = new Map();   // projektId → { stan, biezace, od, kroki[], zrobione, padlo }
 
 export function produkcja(projektId) { return produkcje.get(projektId) ?? null; }
+/**
+ * 👻 Zadanie planu „trwa”, a produkcja tej gry nie pracuje (most wystartował od nowa w trakcie rundy) → „czeka” z adnotacją,
+ * żeby „Realizuj plan” mogło je podjąć (Suweren 2026-10-12: zadanie 13.2 wisiało „w toku” od wieczora). Żywa produkcja nietknięta.
+ */
+export async function sprzatnijDuchy() {
+    const out = [];
+    for (const d of await fs.readdir(cfg.katalog, { withFileTypes: true }).catch(() => [])) {
+        if (!d.isDirectory() || produkcje.get(d.name)?.stan === 'trwa') continue;
+        const g = await wczytaj(d.name).catch(() => null);
+        if (!g?.kamienie?.some((k) => k.zadania?.some((z) => z.stan === 'trwa'))) continue;
+        for (const k of g.kamienie) for (const z of k.zadania ?? []) if (z.stan === 'trwa') { z.stan = 'czeka'; z.uwaga = 'przerwane — most wystartował od nowa w trakcie rundy; podejmie je „Realizuj plan”'; out.push(`${d.name}:${z.id}`); }
+        await fs.writeFile(plik(d.name), JSON.stringify(g, null, 2), 'utf8');
+    }
+    return out;
+}
 // ⏹ Przerwij = TERAZ: flaga dla kolejki + zerwanie rundy Kodeksa w toku (dawniej czekało do końca zadania, 4 × ~10 min).
 export function przerwij(projektId) { const p = produkcje.get(projektId); if (p && p.stan === 'trwa') { p.przerwij = true; cfg.appStudio?.przerwijProjekt?.(projektId); return true; } return false; }
 
@@ -690,4 +705,4 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
     return { start: true, zadan: kolejka.length, model: prod.model, zapasowe: prod.zapasowe };
 }
 
-export default { skonfiguruj, zalacznikiRozmowy, blokZalacznikow, SILNIKI, ZDARZENIA_GRY, SILNIKI_FILMU, RUCHY_KAMERY, oczyscFilmy, scalFilmy, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, scalDziedzictwo, nowePropozycje, odczytajPropozycje, dodajGalezie, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
+export default { skonfiguruj, sprzatnijDuchy, zalacznikiRozmowy, blokZalacznikow, SILNIKI, ZDARZENIA_GRY, SILNIKI_FILMU, RUCHY_KAMERY, oczyscFilmy, scalFilmy, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, scalDziedzictwo, nowePropozycje, odczytajPropozycje, dodajGalezie, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };

@@ -8286,7 +8286,7 @@ const FilmyGry = utworzFilmyGry({
 // 👻 Po starcie mostu nic jeszcze nie liczy: „trwa” w Assetach 3D i „zlecony” w Filmach gry z poprzedniego życia mostu
 // to duchy — zamieniamy je na błąd z powodem, żeby dało się ponowić (Suweren 2026-10-12: „wisi od wczoraj”).
 setTimeout(() => {
-    Promise.all([Assety3D.sprzatnijDuchy(), FilmyGry.sprzatnijDuchy()]).then(([a, f]) => { if (a.length || f.length) console.log(`[Duchy] 👻 przerwane po restarcie: bryły/obrazy ${a.length}, filmy ${f.length}`); }).catch((e) => console.warn('[Duchy]', e.message));
+    Promise.all([Assety3D.sprzatnijDuchy(), FilmyGry.sprzatnijDuchy(), Gdd.sprzatnijDuchy()]).then(([a, f, z]) => { if (a.length || f.length || z.length) console.log(`[Duchy] 👻 przerwane po restarcie: bryły/obrazy ${a.length}, filmy ${f.length}, zadania planu ${z.length}`); }).catch((e) => console.warn('[Duchy]', e.message));
 }, 1500);
 /**
  * 🎭 Obsada gry dla Reżysera Wideo: postać Katedry, bohaterowie startowi, obrazy Pracowni z gałęzi postaci / Mini-TeOgochi /
