@@ -213,6 +213,7 @@ import * as Tunel from './services/Tunel.js';
 import * as Stado from './services/Stado.js';
 import * as AppStudio from './services/AppStudio.js';
 import { utworzKluczeMostu, utworzListyModeli } from './services/ModeleChmury.js';
+import { utworzMapeAgi, stanZSilnikow } from './services/MapaAgi.js';
 import * as Persony from './services/Persony.js';
 import * as Gdd from './services/Gdd.js';
 import * as Assety3D from './services/Assety3D.js';
@@ -14463,45 +14464,54 @@ app.post('/api/cathedrals/peer', async (req, res) => {
 });
 
 /**
- * GET /api/agi/state — żywy stan lokalnej sieci neuronowej (dla mapy AGI na
- * otakos.wtf). Rdzeń realny (Ollama ping, kolejka Mechanika), reszta gotowość.
- * Mapuje na id węzłów z agi.local.ts: ollama/bridge/mechanik/koom/podcast/
- * scout/kronos/video/ted/music/shield/vault/quantum.
+ * GET /api/agi/state — żywy stan sieci neuronowej Katedry (mapa w Hubie i na otakos.wtf; manifest lib/agi.local.ts).
+ * Każdy węzeł ma sondę z prawdziwego modułu (services/MapaAgi.js) i niesie `powod` — nic nie „oddycha” z zegara.
+ * Sondy niczego nie budzą; baza silników (ComfyUI, głos, usta…) ze schowka 30 s.
  */
-app.get('/api/agi/state', async (req, res) => {
-    const nodes = {};
-    const set = (id, status, load = 0) => { nodes[id] = { status, load: Math.max(0, Math.min(1, load)) }; };
-
-    // BRIDGE — skoro odpowiada, żyje.
-    set('bridge', 'online', 0.4);
-
-    // OLLAMA — szybki ping (timeout 1.2s).
-    try {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 1200);
-        const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: ctrl.signal });
-        clearTimeout(t);
-        const data = r.ok ? await r.json().catch(() => ({})) : {};
-        const loaded = Array.isArray(data.models) ? data.models.length : 0;
-        set('ollama', r.ok ? 'online' : 'offline', r.ok ? Math.min(1, 0.3 + loaded * 0.1) : 0);
-    } catch { set('ollama', 'offline', 0); }
-
-    // MECHANIK — głębokość kolejki = obciążenie.
-    try {
-        const q = await MechanicService.getInstance().getQueue();
-        const pending = Array.isArray(q) ? q.filter(t => t && t.status !== 'DONE' && t.status !== 'REJECTED').length : 0;
-        set('mechanik', pending > 0 ? 'online' : 'idle', Math.min(1, pending / 5));
-    } catch { set('mechanik', 'idle', 0); }
-
-    // SHIELD — Tarcza zawsze czuwa (singleton dostępny).
-    set('shield', 'online', 0.5);
-
-    // Reszta węzłów — gotowość (idle), lekki oddech z czasu.
-    const breath = (Math.sin(Date.now() / 2500) + 1) / 2 * 0.4 + 0.1;
-    ['koom', 'podcast', 'scout', 'kronos', 'video', 'ted', 'music', 'vault', 'quantum']
-        .forEach(id => set(id, 'idle', +breath.toFixed(2)));
-
-    return res.json({ success: true, origin: 'local', dimension: '0.00G', ts: Date.now(), nodes });
+const MapaAgi = utworzMapeAgi({
+    silniki: () => Silniki.baza(),
+    sondy: {
+        bridge: () => ({ status: 'online', load: 0.4, powod: 'most odpowiada (:3001)' }),
+        ollama: async () => {
+            try {
+                const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(1500) });
+                const d = r.ok ? await r.json().catch(() => ({})) : {};
+                const n = Array.isArray(d.models) ? d.models.length : 0;
+                return r.ok ? { status: 'online', load: Math.min(1, 0.3 + n * 0.05), powod: `${n} modeli w Ollamie` } : { status: 'offline', powod: `Ollama HTTP ${r.status}` };
+            } catch { return { status: 'offline', powod: 'Ollama nie odpowiada (:11434)' }; }
+        },
+        mechanik: async () => {
+            const q = await MechanicService.getInstance().getQueue();
+            const n = Array.isArray(q) ? q.filter((t) => t && t.status !== 'DONE' && t.status !== 'REJECTED').length : 0;
+            return n ? { status: 'online', load: Math.min(1, n / 5), powod: `${n} patchy w kolejce` } : { status: 'idle', powod: 'kolejka pusta' };
+        },
+        stado: async () => {
+            const d = await Stado.stan();
+            const n = (d.wyklute ?? []).length;
+            return { status: n ? 'online' : 'idle', load: Math.min(1, n / 12), powod: `${n} wyklutych TeOgochi, aktywny: ${d.aktywny ?? '—'}` };
+        },
+        dyrygent: async () => { const m = await Promise.resolve(modelDyrygenta()).catch(() => null); return m ? { status: 'idle', powod: `gra na ${m}` } : { status: 'offline', powod: 'brak modelu Dyrygenta' }; },
+        glowny: () => { const g = Glowny.stan(); return g.program ? { status: 'idle', powod: `Claude Code: ${g.zrodlo}${g.chmura ? ' (konto Anthropic)' : ` · model ${g.model}`}` } : { status: 'offline', powod: 'nie znalazłem programu claude (OTAKOS_CLAUDE)' }; },
+        mowa: ({ silniki }) => stanZSilnikow(silniki, 'mowa'),
+        zwiadowca: () => (process.env.OTAKOS_ZWIADOWCA === '0' ? { status: 'offline', powod: 'wyłączony (OTAKOS_ZWIADOWCA=0)' } : { status: 'idle', powod: 'czeka na zwiad (Kuźnia Modeli albo Nocna Zmiana)' }),
+        jev: () => (Jev.stan().maKlucz ? { status: 'online', powod: 'klucz TypeSafe udostępniony mostowi' } : { status: 'offline', powod: 'bez klucza — opcja chmury, Katedra działa bez niego' }),
+        stol: async () => { const d = JSON.parse(await fs.readFile(path.join(ANTIGRAVITY_DIR, 'stol.json'), 'utf8').catch(() => '{}')); const n = Array.isArray(d.karty) ? d.karty.length : 0; return { status: n ? 'online' : 'idle', load: Math.min(1, n / 10), powod: `${n} kart na Stole` }; },
+        kodeks: () => ({ status: 'idle', powod: 'Studio Gier i Apek — buduje na modelu z przydziału, gdy dostanie zadanie' }),
+        obraz: ({ silniki }) => stanZSilnikow(silniki, 'obraz'),
+        wideo: ({ silniki }) => stanZSilnikow(silniki, 'wideo'),
+        bryly: ({ silniki }) => stanZSilnikow(silniki, '3d'),
+        glos: ({ silniki }) => stanZSilnikow(silniki, 'glos'),
+        muzyka: ({ silniki }) => stanZSilnikow(silniki, 'muzyka'),
+        usta: ({ silniki }) => stanZSilnikow(silniki, 'usta'),
+        tarcza: () => ({ status: 'online', load: 0.5, powod: 'skanuje każdy patch przed zapisem' }),
+        straz: () => ({ status: 'online', load: 0.3, powod: 'pilnuje, kto pyta most (maszyna / telefon z kluczem / gość)' }),
+        ksiega: async () => { const w = await wlascicielKsiegi(); return w ? { status: 'online', powod: `właściciel: ${w.nazwa ?? w.id ?? w}` } : { status: 'idle', powod: 'księga bez właściciela — imię przy pierwszym wejściu' }; },
+        tunel: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? { status: 'online', powod: `Katedra w sieci${t.nazwany?.host ? ` (${t.nazwany.host})` : ''}` } : { status: t.zainstalowany ? 'idle' : 'offline', powod: t.zainstalowany ? 'wyłączony — Katedra tylko lokalnie' : 'brak cloudflared' }; },
+    },
+});
+app.get('/api/agi/state', async (_req, res) => {
+    try { return res.json({ success: true, origin: 'local', dimension: '0.00G', ts: Date.now(), nodes: await MapaAgi.stan() }); }
+    catch (e) { return res.status(500).json({ success: false, message: e.message }); }
 });
 
 /**

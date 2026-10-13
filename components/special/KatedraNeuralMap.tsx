@@ -23,10 +23,15 @@ const LAYER_COLOR: Record<AgiLayer, string> = {
   GUARD: '#fb7185', // rose
 };
 
-const W = 1000, H = 540, PAD_X = 120, PAD_Y = 70;
+const W = 1000, H = 640, PAD_X = 120, PAD_Y = 70;
 const BRIDGE = 'http://127.0.0.1:3001';
 
-type LiveState = Record<string, { status: string; load: number }>;
+type LiveState = Record<string, { status: string; load: number; powod?: string }>;
+const STATUS_LABEL: Record<string, { pl: string; en: string }> = {
+  online: { pl: 'działa', en: 'running' },
+  idle:   { pl: 'gotowe / śpi', en: 'ready / asleep' },
+  offline:{ pl: 'brak', en: 'missing' },
+};
 
 export const NeuralMap: React.FC<{ lang?: 'pl' | 'en' | 'it' }> = ({ lang = 'pl' }) => {
   const [hovered, setHovered] = useState<string | null>(null);
@@ -74,7 +79,8 @@ export const NeuralMap: React.FC<{ lang?: 'pl' | 'en' | 'it' }> = ({ lang = 'pl'
     const t = setInterval(() => setPulse(p => (p + 1) % AGI_LOCAL.nodes.length), 1300);
     return () => clearInterval(t);
   }, []);
-  const activeId = AGI_LOCAL.nodes[pulse]?.id;
+  // Z żywym mostem świecą tylko prawdziwe stany — puls zostaje dla samego manifestu.
+  const activeId = live ? null : AGI_LOCAL.nodes[pulse]?.id;
 
   const nodeById = (id: string) => AGI_LOCAL.nodes.find(n => n.id === id)!;
   const hoveredNode = hovered ? nodeById(hovered) : null;
@@ -100,8 +106,8 @@ export const NeuralMap: React.FC<{ lang?: 'pl' | 'en' | 'it' }> = ({ lang = 'pl'
           </h3>
           <p className="text-[11px] text-zinc-400 max-w-md">
             {lang === 'pl'
-              ? 'Żywa mapa lokalnej AGI — suwerenne węzły na Twoich tranzystorach. Zero chmury.'
-              : 'Live local-AGI map — sovereign nodes on your transistors. Zero cloud.'}
+              ? 'Moduły i TeOgochi Katedry na Twoim sprzęcie. Z mostem uruchomionym na tej maszynie każdy węzeł pokazuje prawdziwy stan i powód; bez mostu — sam manifest.'
+              : 'The Cathedral’s modules and TeOgochi on your hardware. With the bridge running on this machine every node shows its real state and reason; without it — the manifest only.'}
           </p>
         </div>
         <div className="text-right font-mono">
@@ -153,6 +159,7 @@ export const NeuralMap: React.FC<{ lang?: 'pl' | 'en' | 'it' }> = ({ lang = 'pl'
           const ls = live?.[n.id];
           const online = ls?.status === 'online';
           const offline = ls?.status === 'offline';
+          const idle = ls?.status === 'idle';
           const load = ls?.load ?? 0;
           const lit = isLit(n.id) || online;
           return (
@@ -161,8 +168,9 @@ export const NeuralMap: React.FC<{ lang?: 'pl' | 'en' | 'it' }> = ({ lang = 'pl'
               {online && <circle r={30 + load * 16} fill={c} opacity={0.10 + load * 0.18} />}
               {lit && <circle r={34} fill={c} opacity={0.16} />}
               <circle r={24} fill="#04080c" stroke={c} strokeWidth={online ? 3 : lit ? 2.5 : 1.5}
-                className={n.layer === 'CORE' ? 'agi-node-core' : ''}
-                opacity={offline ? 0.35 : lit ? 1 : 0.85} />
+                strokeDasharray={idle ? '4 3' : undefined}
+                className={n.layer === 'CORE' && !live ? 'agi-node-core' : ''}
+                opacity={offline ? 0.35 : idle ? 0.7 : lit ? 1 : 0.85} />
               <text textAnchor="middle" dy="6" fontSize="20">{n.emoji}</text>
               <text textAnchor="middle" y={42} fontFamily="monospace" fontSize="11"
                 fill={lit ? c : '#a1a1aa'} fontWeight={lit ? 'bold' : 'normal'}>
@@ -184,13 +192,19 @@ export const NeuralMap: React.FC<{ lang?: 'pl' | 'en' | 'it' }> = ({ lang = 'pl'
                 <span className="ml-2 text-[10px] text-zinc-500">{LAYER_LABEL[hoveredNode.layer][lang]}</span>
               </div>
               <div className="text-[11px] text-zinc-400">{lang === 'pl' ? hoveredNode.desc : hoveredNode.descEn}</div>
+              {live?.[hoveredNode.id] && (
+                <div className="text-[11px] mt-0.5" style={{ color: live[hoveredNode.id].status === 'online' ? '#34d399' : live[hoveredNode.id].status === 'offline' ? '#f87171' : '#a1a1aa' }}>
+                  ● {STATUS_LABEL[live[hoveredNode.id].status]?.[lang === 'pl' ? 'pl' : 'en'] ?? live[hoveredNode.id].status}
+                  {live[hoveredNode.id].powod ? ` — ${live[hoveredNode.id].powod}` : ''}
+                </div>
+              )}
             </div>
           </div>
         ) : (
           <div className="text-[11px] text-zinc-500 flex items-center h-full">
             {lang === 'pl'
-              ? '↑ Najedź na neuron, by odczytać jego funkcję. Puls pokazuje żywą aktywność sieci.'
-              : '↑ Hover a neuron to read its function. The pulse shows live network activity.'}
+              ? '↑ Najedź na neuron, by odczytać jego funkcję i stan. Linia przerywana = gotowe, ale śpi; przygaszony = brak.'
+              : '↑ Hover a neuron to read its function and state. Dashed = ready but asleep; dimmed = missing.'}
           </div>
         )}
       </div>

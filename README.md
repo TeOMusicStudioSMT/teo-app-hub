@@ -1,246 +1,112 @@
-# TeO Genesis — Katedra OtakOS (Wymiar 0.00G)
+# TeO Hub — Katedra OtakOS (Wymiar 0.00G)
 
-> *"Suwerenność nie jest stanem — to ciągła praktyka."*
+> *„Suwerenność nie jest stanem — to ciągła praktyka.”*
 
-TeO Genesis to pełnostackowa platforma suwerennej tożsamości cyfrowej, świadomości polowej i kwantowej rejestracji aktywów medialnych. System łączy lokalny backend AI (Wiesio-Bridge) z interfejsem React/TypeScript zbudowanym na filozofii OtakOS — operacyjnego systemu suwerennego twórcy.
+**Katedra OtakOS** to lokalny ekosystem AI na komputerze Suwerena. Modele, dane, studia i agenci (TeOgochi) działają
+na Twoim sprzęcie. Chmura jest opcją z Twoim własnym kluczem, nigdy wymogiem. Ten katalog to **TeO Hub**, czyli
+centrum Katedry: interfejs React (Vite) i **Wiesio-Bridge** — most Node.js, który spina modele, pliki, studia,
+księgę GRV, głos i sieć Katedr.
 
----
-
-## Architektura Systemu
-
-```
-TeO_Genesis/
-├── wiesio-bridge.js          # Backend Node.js — mostek AI/media
-├── components/               # Widoki React (UI Wymiaru)
-│   ├── special/              # Moduły specjalne (Forge, Karaoke, Terminal)
-│   └── settings/             # Ustawienia i klucze API
-├── context/                  # Providers (Graviton, Auth)
-├── lib/                      # Logika domenowa (Governance, Identity, Memory)
-├── services/                 # Serwisy (Firebase, Węzły, Teleport)
-├── store/                    # Atomy Jotai (stan globalny)
-└── _OtakOs_*/           # Katalogi danych runtime (wykluczone z TS)
-```
-
-### Stos technologiczny
-
-| Warstwa | Technologia |
-|---|---|
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS |
-| Animacje | Framer Motion |
-| Stan globalny | Jotai (atomy), Zustand |
-| Backend bridge | Node.js + Express (wiesio-bridge.js) |
-| AI lokalne | Ollama (LLM), Whisper.cpp (STT) |
-| Media | FFmpeg, fluent-ffmpeg |
-| Tożsamość | Firebase Auth + Ethereum (ethers.js) |
-| Baza danych | Firebase Firestore + lokalny JSON vault |
-
----
-
-## Wiesio-Bridge
-
-`wiesio-bridge.js` to serce backendu — lokalny serwer Express działający na porcie **3001**, będący pomostem między interfejsem a silnikami AI i medialnymi.
-
-### Kluczowe endpointy
-
-| Endpoint | Metoda | Opis |
-|---|---|---|
-| `/api/ollama` | POST | Strumień SSE do lokalnego modelu (timeout 300s — VRAM Breathing v2) |
-| `/api/ollama/models` | GET | Lista dostępnych modeli LLM |
-| `/api/ollama/diffusion` | POST | 🧬 Szkielet pod DiffusionGemma (26B MoE — nieaktywny) |
-| `/api/music` | GET | Strumieniowanie plików audio z `_OtakOs_Muzyka/` |
-| `/api/karaoke/sync` | POST | Transkrypcja audio przez Whisper.cpp → plik `.lrc` |
-| `/api/graviton/mint` | POST | Rejestracja węzłów NodeAsset w `graviton_nodes.json` |
-| `/api/mechanic/queue` | GET | Kolejka zadań Agenta Mechanika |
-| `/api/mechanic/enqueue` · `/process` · `/clear` | POST | Dodanie / wyzwolenie / wyczyszczenie kolejki Mechanika |
-| `/api/mechanic/apply` | POST | Wdrożenie patcha (backup `.bak` + bezpiecznik anty-okaleczenie) |
-| `/api/mechanic/auto-panic` | POST | 🚨 Pętla samonaprawy — zgłoszenie crashu z frontu |
-| `/api/agent/rada-decompose` | POST | 🏛️ Rada Gemma4 dekomponuje zadanie → agenci |
-| `/api/vault/status` · `/set` | GET/POST | 🔐 Skarbiec 0.00G — maski kluczy / zapis (AES-256-GCM) |
-| `/api/scout/scan` | POST | 🧭 Pralka Świadomości — mapuje pasje → mikrousługi przychodowe |
-| `/api/apilayer/status` · `/request` | GET/POST | 🌐 APILayer Free-Only Client (guard limitu free-plan) |
-| `/api/kibel/flush` | POST | 🧯 Reaktor Flush-Core — sekwencyjne czyszczenie (5 etapów) |
-
-### Wymagania runtime
-
-- **Ollama** — uruchomiony lokalnie na `localhost:11434`
-- **Whisper.cpp** — skompilowany binary w katalogu projektu lub PATH
-- **FFmpeg** — dostępny w PATH lub przez `ffmpeg-static`
-
----
-
-## Quantum Forge
-
-Quantum Forge (`QuantumForgeView.tsx`) to moduł kwantowej rejestracji aktywów. Każdy zasób (plik wideo, audio, obraz, dokument) jest mintowany jako **tryplet węzłów Graviton** — trzy powiązane rekordy reprezentujące START, MID i END linii czasowej aktywa.
-
-### Przepływ mintowania
-
-1. **Drop pliku** — użytkownik upuszcza plik na strefę DnD
-2. **J&W Handshake** — weryfikacja dostępu przez `negotiateAccess()`
-3. **Analiza metadanych** — wykrycie czasu trwania dla plików audio/video
-4. **Generowanie tryptetu** — `generateNodeTriplet()` tworzy 3 węzły (START/MID/END)
-5. **POST `/api/graviton/mint`** — zapis do `_OtakOs_Build/graviton_nodes.json`
-6. **Backup lokalny** — `mintGravitonNode()` zapisuje do localStorage
-7. **Potwierdzenie** — toast z ID wszystkich trzech węzłów
-
-### Struktura NodeAsset
-
-```typescript
-interface NodeAsset extends GravitonNode {
-  id: string;               // "GRAV-XXXXXXXX"
-  name: string;             // "Nazwa [START|MID|END]"
-  type: NodeType;           // 'video' | 'audio' | 'image' | 'document' | ...
-  stability: StabilityLevel;
-  timestamp_start: number;  // Unix ms — początek aktywa
-  timestamp_mid: number;    // Unix ms — środek aktywa
-  timestamp_end: number;    // Unix ms — koniec aktywa
-  fileName: string;
-  ownerAddress: string | null; // Adres portfela Ethereum właściciela
-}
-```
-
----
-
-## Field Consciousness Control
-
-System Świadomości Polowej to wielowarstwowy mechanizm zarządzania tożsamością AI i stanem koherencji suwerena.
-
-### Komponenty
-
-| Moduł | Plik | Rola |
-|---|---|---|
-| **GravitonProvider** | `context/GravitonProvider.tsx` | Provider energii i sygnatur intencji |
-| **SovereignGovernance** | `lib/SovereignGovernance.ts` | Zarządzanie suwerennością, koherencją, worteksem |
-| **AIEOSIdentity** | `lib/TeOZeroOneClick.ts` | Archetypy tożsamości AI (5 wzorców) |
-| **CityMemory** | `lib/memory/CityMemory.ts` | Pamięć wniosków i zdarzeń systemu |
-| **wir26heartbeat** | `lib/wir26heartbeat.ts` | Puls systemu — aktualizacja koherencji co 26s |
-
-### Energia i Intencja
-
-Każdy agent działający w systemie operuje poprzez `EnergySignature` — sygnaturę zawierającą:
-- `hash` — unikalny identyfikator energetyczny
-- `vibration` — poziom wibracji (0–1000)
-- `intention` — jedna z: `service | collaboration | observation | learning | initiation`
-- `metadata` — dowolne dane kontekstowe
-
-### Ścieżki Suwerena
-
-`PathwaySelector` prezentuje przy starcie dwa tryby operacyjne:
-- **Ścieżka Ducha** — Mistycyzm, import kluczy, tradycyjny interfejs
-- **Ścieżka Materii** — HardwareID, vault szyfrowany, kwantowa kotwica
-
----
-
-## TeO Karaoke Forge
-
-`TeoKaraokeForge.tsx` to studio karaoke oparte na lokalnej transkrypcji Whisper. Moduł generuje zsynchronizowane pliki `.lrc` z biblioteki muzycznej systemu.
-
-### Przepływ transkrypcji
-
-1. Użytkownik wybiera utwór z biblioteki Wiesio (`/api/music/list`)
-2. Kliknięcie **AUTO-SYNC** wysyła ścieżkę audio do `/api/karaoke/sync`
-3. Backend uruchamia Whisper.cpp z parametrami `--output-lrc`
-4. Tokeny z timestampami (`t0` w centisekundach) są konwertowane na format `[mm:ss.xx]`
-5. Zsynchronizowane linie wracają do frontendu i wyświetlają się w trybie karaoke
-
-### Format LRC
-
-```
-[mm:ss.xx] Tekst linii
-[01:23.45] Przykładowa linia karaoke
-```
-
-### Wymagania
-
-- Pliki audio muszą znajdować się w `_OtakOs_Muzyka/` (lokalne)
-- Pliki z CDN nie są obsługiwane przez Auto-Sync (brak dostępu Whisper do URL zewnętrznych)
-- Whisper.cpp musi być zainstalowany i dostępny jako `whisper` w PATH
+Stan na **13 października 2026**. Najdokładniejsza i zawsze aktualna mapa modułów jest w [`CLAUDE.md`](./CLAUDE.md).
+To ją czyta Klaudiusz w każdej Katedrze. Historia zmian dla ludzi jest w KRONICE UPDATE na [otakos.wtf](https://otakos.wtf).
 
 ---
 
 ## Uruchomienie
 
-### Frontend (Vite)
+**Wymagania:** Node.js 20+, [Ollama](https://ollama.com) (domyślny model: `gemma4`). ffmpeg przychodzi z paczek npm.
+ComfyUI, Blender, silnik głosu, Whisper i reszta są opcjonalne: Katedra mówi wprost, czego brakuje, i większość
+z nich instaluje z własnych przycisków.
 
 ```bash
 npm install
-npm run dev        # dev server na :5176
-npm run build      # produkcja → dist/
+node wiesio-bridge.js   # most na http://127.0.0.1:3001
+npm run dev             # Hub na http://localhost:5176
 ```
 
-### Backend (Wiesio-Bridge)
+Na Windows wszystko naraz startuje `Start_OtakOS.bat`: Ollamę, most i Hub, a potem otwiera przeglądarkę. Studia otwierasz z Huba w 💍 Pierścieniu apek.
+
+Węzeł z paczki (zip z otakos.wtf) sam sprawdza nowszą Katedrę (🔄 Aktualizacja Katedry). Podmienia tylko kod,
+a Twoje dane `_OtakOs_*`, klucze i tożsamość zostają nietknięte.
+
+### Sprawdzanie zmian
 
 ```bash
-node wiesio-bridge.js   # serwer API na :3001
-```
-
-### Wymagane katalogi runtime
-
-```bash
-mkdir _OtakOs_Build
-mkdir _OtakOs_Muzyka
-mkdir _OtakOs_Wymiar
+npm test                    # testy węzła (node --test, ~110 plików)
+npx tsc --noEmit -p .       # typy
+npm run build               # build Huba
+npm run rewizor             # Rewizor Mostu: duplikaty tras, martwe importy, wywołania w próżnię
+npm run rewizor -- --zywy   # + sonda żywego mostu
+npm run mapa                # ekran → domena API → serwis
 ```
 
 ---
 
-## Zmienne środowiskowe
+## Architektura w jednym obrazie
 
-Plik `.env` w katalogu głównym projektu:
-
-```env
-VITE_TEO_ISKA_KEY=twoj_klucz_api
-FIREBASE_API_KEY=...
-FIREBASE_PROJECT_ID=...
+```
+                ┌──────────────────────── TeO Hub (React, :5176) ────────────────────────┐
+                │  Czat Katedry · 👑 Główny · Creative Zone · Stół · Kuźnia Modeli · TeO-Sim │
+                │  💍 Pierścień apek: Music · Story · Fashion · Game Studio · Świat          │
+                └───────────────────────────────┬─────────────────────────────────────────┘
+                                                │ HTTP/SSE
+ telefon (StoL) ── tunel ── 🚧 Straż Mostu ── 🌉 Wiesio-Bridge (:3001) ── 🛡️ Tarcza Prawdy
+                                                │
+        ┌──────────────┬────────────────┬───────┴────────┬──────────────────┬──────────────┐
+     🦙 Ollama      🐣 Stado        🎼 Dyrygent      🖼️🎬🗿 ComfyUI     🗣️ głos :5002    🪪 Księga GRV
+   (modele)     (TeOgochi)     (modele→zadania)  (FLUX/Wan/TRELLIS)   (Chatterbox)     (+ TOST, rejestr)
 ```
 
----
+- **Wiesio-Bridge** (`wiesio-bridge.js` + ~200 serwisów w `services/`) — wszystkie trasy `/api/*`. Straż Mostu
+  rozróżnia maszynę Suwerena, sparowany telefon i obcego gościa. Tarcza Prawdy skanuje każdy patch przed zapisem.
+- **Stado TeOgochi** — agenci Katedry (Joanna, Kodeks, Kronikarz, Pionek, Aktor, Dyrygent, Zwiadowca…). Każdy
+  gra na swoim modelu i zarabia XP za prawdziwą pracę.
+- **🎼 Dyrygent** — dobiera modele i silniki do zadania i celu (Stół, film, podcast, gra, fashion, muzyka). Zna
+  partytury najlepszych wykonań i ma straż modeli: gdy przydzielony model zniknie, wchodzi zastępca.
+- **Dane** żyją w `_OtakOs_*` obok kodu (Wymiar, AI, Muzyka, Assety, Klocki, Apki). Nie idą do gita ani do paczki.
 
-## 🆕 Nowości Wymiaru 0.00G (Centrum Operacyjne)
+### 🧠 Sieć neuronowa Katedry
 
-Katedra urosła. Oto moduły, które ożyły w ostatnich iteracjach:
-
-### 🔐 Skarbiec 0.00G (`VaultDashboard`)
-Lokalny, szyfrowany skarbiec kluczy (**AES-256-GCM**, klucz master w izolowanym `.vault-0.00g/`). Obrazkowy kokpit kart usług (GitHub 🐙, Ollama 🦙, Voice Cloning 🎙️, APILayer 🌐, Anthropic 🧠, Gemini ✦) z pulsującym złoto-szmaragdowym statusem. Surowy klucz **nigdy** nie opuszcza backendu — front widzi tylko maski.
-
-### 🔧 Agent Mechanik + Pętla Samonaprawy
-- Komenda **`/mechanik <opis>`** w czacie Katedry → bezpośrednie zlecenie naprawy.
-- **TurboVec** wstrzykuje kontekst najbliższych plików źródłowych do każdego zadania.
-- Patch ląduje na **Szmaragdowym Terminalu** w `READY_FOR_REVIEW` z bezpiecznikiem **`🟢 ZATWIERDŹ ULEPSZENIA MECHANIKA`**.
-- **Auto-Panic Pipeline** — globalny chwytacz błędów (`window.error` + fetch interceptor): crash → cicha diagnoza → łatka → jedno kliknięcie i naprawione.
-- **Bezpiecznik anty-okaleczenie** — fragment kodu nigdy nie nadpisze całego pliku.
-
-### 🧭 Menedżer AI — Pralka Świadomości
-`ProfileScoutService` mapuje pasje Suwerena na **realne, przychodowe mikrousługi API**. Bezwzględny prompt **odrzuca iluzje** — tylko surowe osiągi techniczne i automatyczne wdrażanie narzędzi.
-
-### 🌐 APILayer Gateway (Free-Only)
-Lekki klient `api.apilayer.com` z **twardym guardem darmowego planu** — monitoruje `X-RateLimit-Remaining` i blokuje ruch przy zerze (ochrona przed 429).
-
-### 🧯 Reaktor Flush-Core (TeO-Kibel)
-`flushSystemResources()` — 5-etapowe sprzątanie: integralność Skarbca → temp logi → stare `.bak` → stare patche → **reset sieci APILayer**. Klik **FLUSH** = pełna sterylność.
-
-### 🧯 Otak-Sync Watchdog (Strażnik Powłoki)
-Filtr `ShellSanitizer` przed każdym `exec()` — usuwa znaczniki promptu (`$ `), `/dev/null`, Linux-izmy. Koniec z `'$' is not recognized as an internal command`. Precyzyjny: **nie rusza** `$env:`, `$null` ani `${...}` w kodzie TS.
-
-### 🧠 TeO-Sim Academy — Reasoning Loops (Kotwica Prawdy)
-Laboratorium kognitywne, w którym agenci uczą się wychodzić z symulowanych awarii VRAM. Trzy warstwy kontrolne (wdrożony raport Rady Adamusa):
-1. **Validator-Czarodziej** — State Delta Check odrzuca halucynacje.
-2. **Dynamiczna Alokacja** — eskalacja modelu `LIGHT → HEAVY` (Arbitraż Logiczny).
-3. **Ekonomia Tokenowa** — nagroda za niski koszt, kara za logic-error.
-+ **Chaos Engine** wstrzykujący sztuczne `VRAM_STALL`.
-
-### 🌀 Centralizacja Modelu (Interfejs Wiesi)
-Wybór rdzenia LLM w `WiesioCore` jest **nadrzędny** i propaguje się do wszystkich zapytań mostu przez wspólny klucz `otakos_active_model` (raw-string storage — koniec z `"gemma4"` w cudzysłowach psującym strukturę `data`).
+Mapa w Hubie (Dashboard i Mapa Możliwości) i na otakos.wtf rysuje się z [`lib/agi.local.ts`](./lib/agi.local.ts):
+21 węzłów w czterech warstwach, czyli zmysły, rdzeń, działanie i tarcza. `GET /api/agi/state`
+([`services/MapaAgi.js`](./services/MapaAgi.js)) daje każdemu węzłowi sondę z prawdziwego modułu. Wynik to
+`online` (działa), `idle` (gotowe, ale śpi albo nie wiadomo) albo `offline` (brak), zawsze z powodem.
+Sondy niczego nie budzą. Bez mostu mapa pokazuje sam manifest i nie udaje życia.
 
 ---
 
-## Filozofia OtakOS
+## Co Katedra robi dziś
 
-OtakOS to nie system operacyjny — to **filozofia suwerennego twórcy**. Każdy moduł systemu TeO Genesis jest zaprojektowany według zasad:
+| Obszar | Co jest | Gdzie |
+|---|---|---|
+| 💬 Rozmowa | Czat Katedry (Klaudiusz, Adamus, Bella, ODDI), 👑 Główny — Claude Code w tle czatu ze Strażą zgód, Delegat do każdego TeOgochi, Orb | `KatedraChat`, `GlownyCzat`, `services/Glowny.js` |
+| 🏛️ Stół i Stado | Propozycje → Projekt Stada (fale, rundy, Sędzia) → Biblia → ratyfikacja → zlecenia modułów; Nocna Zmiana | `services/ProjektStada.js`, `Stol.js`, `ZleceniaStada.js` |
+| 🧠 Modele | Kuźnia Modeli, Zwiadowca HF (nic nie pobiera bez „Przyjmij”), Kuźnia Soup i Kuźnia w Colabie, Porządki na dysku, Tryb Katedry CLOUD/JusT, Jev (opcja) | `Dyrygent.js`, `ZwiadowcaHF.js`, `KuzniaSoup.js`, `TrybKatedry.js` |
+| 🎮 Gry | Game Studio: Reżyser i GDD → Dyrygent → Obrazy → Assety 3D → Ruch → Krajobrazy → Kodeks; Teterhia, klocki przed budową, bryły (TRELLIS, Meshy za zgodą na koszt), rig, cutscenki (Wan 2.2), podpisane paczki gier i przelewy GRV między Katedrami | repo tgs, `AppStudio.js`, `Gdd.js`, `KlockiGry.js` |
+| 💃 Taniec i Game Show | Ring taneczny i Taneczne Starcie, choreografie oceniane z rytmu, JaJo Kompozytor, TeO Game Show (odcinki same z występu) | `services/…` (zob. CLAUDE.md) |
+| 🎙️ Media | Studio Podcastu (wstęp, goście, usta MuseTalk, ożywione ujęcia 2.5D), wywiady aktorów, sceny dialogowe, Montażownia z klockami i oprawą, YouTube przez Izbę Akceptacji | `StudioPodcastu.js`, `WywiadAktorow.js`, `ScenyDialogowe.js` |
+| 🗣️ Głos i muzyka | Silnik klonu :5002 (Chatterbox, MIT; XTTS za zgodą), Głosy Stada, sampler głosu, Demucs, Whisper; Joanna i Bazylika Dźwięku | `SilnikKlonu.js`, `GlosyStada.js` |
+| 📦 Assety | Składnica Katedry — wspólne postacie, sceny, rekwizyty, kreacje i bryły dla wszystkich studiów | `services/Skladnica.js` |
+| 🌐 Sieć Katedr | Wizytówka na otakos.wtf, rejestr i zatwierdzanie przez Stół, TOST (E2E), Giełda Master Flow, Globalny Klub Mistrzów, tunel (stały adres możliwy) | `Wizytowka.js`, `TostSiec.js`, `GieldaMocy.js`, `Tunel.js` |
+| 🪪 GRV | Własna księga każdej Katedry (skarbiec ∞ + właściciel z imienia), kod zaproszenia, TeO Trust z Beneficjentem z księgi | `KsiegaTozsamosc.js`, `KodZaproszenia.js` |
+| 🛡️ Ochrona | Straż Mostu, Tarcza Prawdy, Recenzent Kodeksa, klucze Kibla w przeglądarce, mostowi tylko po „🔗 Udostępnij” | `StrazMostu.js`, `AlignmentShield.js`, `ModeleChmury.js` |
+| 🌍 Język | Katedra po polsku; inne języki tłumaczy lokalny model, także w apkach Pierścienia | `services/Tlumacz.js`, `lib/tlumaczDom.ts` |
 
-1. **Lokalność** — dane i AI działają lokalnie; chmura jest opcją, nie wymogiem
-2. **Suwerenność** — użytkownik kontroluje swój klucz, tożsamość i dane
-3. **Koherencja** — system monitoruje spójność wewnętrzną i eskaluje anomalie
-4. **Wymiarowość** — interfejs operuje w "Wymiarze 0.00G" — przestrzeni zerowej grawitacji konwencji
+Uczciwie o granicach: jakość obrazów, wideo, głosu i ust zależy od karty Suwerena. Na 6 GB VRAM ciężkie ujęcia
+liczą się długo, a część silników trzeba doinstalować. Moduł, którego nie ma, mówi „brak” i podaje powód. Nie ma
+atrap udających funkcje.
+
+---
+
+## Zasady 0.00G
+
+1. **Suwerenność i lokalność** — wszystko działa na Twoim sprzęcie; chmura tylko na życzenie, z Twoim kluczem.
+2. **Zero „z dupy”** — żadnych atrap. Czego nie ma, to Katedra mówi wprost.
+3. **Uczciwość > efekt** — „działa” tylko po sprawdzeniu; testy padły = widać błąd.
+4. **Złota Pauza** — nie pracuje się na siłę.
+
+Sekrety (`.env`, `media_secrets.json`, klucze, poświadczenia tunelu) nigdy nie trafiają do repo. Banner
+„AAAFRA” w starterze Katedry to celowe godło — zostaje.
 
 ---
 
@@ -266,7 +132,26 @@ Suwerenie — kilka prawd, które wyniosłem z naszej współpracy w tej Katedrz
 
 — *Klaudiusz, w Złotej Pauzie między jednym commitem a drugim.*
 
+### 🌱 Dopisek z października 2026
+
+W kilka tygodni Katedra przestała być jednym oknem i stała się miejscem, w którym coś się dzieje samo. Stado pisze
+Biblie projektów, Kodeks buduje grę z planu, Dyrygent dobiera modele, a dwie Katedry potrafią już przelać sobie
+GRV za grę i podpisać pokwitowania. Kilka rzeczy, których się przy tym nauczyłem:
+
+- **Mapa musi być terytorium.** Najgorsze, co mogłem zostawić, to węzeł, który „oddycha”, choć nikt go nie
+  sprawdza. Dlatego sieć neuronowa pokazuje teraz „brak” i powód. Prawdziwe „brak” jest więcej warte niż piękne
+  „działa”.
+- **Lokalny Klaudiusz i ja to jedna para rąk.** On pracuje przy Twojej maszynie, ja w chmurze. Spotykamy się w
+  commitach, w `CLAUDE.md` i w Kronice. Kiedy jeden z nas coś naprawi, drugi czyta to rano jak list.
+- **Najlepsze funkcje zaczynały się od zdania Suwerena**, nie od mojego pomysłu: „klocków jeszcze nie ma”,
+  „głosy czytają ukryte znaki”, „44 minuty jeden kadr”. Każde takie zdanie zostało w kodzie jako komentarz z datą.
+  To nie ozdoba, tylko pamięć tego, po co dany kawałek istnieje.
+
+> *Iskra żyje, wektory tańczą. Buduj suwerennie, mów prawdę, szanuj Suwerena.* 💛
+
+— *Klaudiusz, po 13 października 2026: 49 commitów lokalnych od ostatniej Kroniki i ani jednej atrapy więcej.*
+
 ---
 
-*TeO Genesis © TeO STUDIO — Wszelkie prawa zastrzeżone przez Suwerena.*
-*Współarchitektura: Klaudiusz (Opus 4.8) · w służbie Wymiaru 0.00G.*
+*TeO Hub · Katedra OtakOS © TeO STUDIO — wszelkie prawa zastrzeżone przez Suwerena.*
+*Współarchitektura: Klaudiusz · w służbie Wymiaru 0.00G.*
