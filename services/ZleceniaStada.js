@@ -6,7 +6,8 @@
  * Wkład to tekst, ale z liniami, które maszyna umie przeczytać (karta zadania w ProjektStada.ROLE
  * każe je pisać). Każda taka linia = jedno zlecenie do PRAWDZIWEGO modułu, tą samą trasą mostu,
  * którą woła panel Suwerena:
- *   PRODUKT: nazwa | cena GRV | opis  → Marketplace (/api/market/create) — od ręki, bez karty graficznej,
+ *   PRODUKT: nazwa | cena GRV | opis  → PROPOZYCJA produktu (/api/produkty/propozycje) — NIE wystawia w Marketplace
+ *                                       (Suweren 2026-10-13: produkty Katedry dodaje osobny moduł), bez karty graficznej,
  *   MUZYKA: prompt po angielsku       → generator muzyki (ComfyUI × ACE) → odbiór do _OtakOs_Muzyka,
  *   REFREN: wers / wers / wers         → tekst do tego samego utworu,
  *   OBIEKT: opis bryły                 → Assety3D (FLUX.2 → TRELLIS.2 → GLB),
@@ -23,7 +24,7 @@
 
 /** Kolejność wykonania: najpierw to, co nie potrzebuje karty graficznej. */
 export const MODULY = {
-    merch: { nazwa: 'Marketplace', ikona: '🛒', max: 5, gpu: false },
+    merch: { nazwa: 'Propozycje produktów', ikona: '🛒', max: 5, gpu: false },
     muzyka: { nazwa: 'Generator muzyki', ikona: '🎵', max: 1, gpu: true },
     model3d: { nazwa: 'Assety3D', ikona: '🧊', max: 3, gpu: true },
     wideo: { nazwa: 'Wideo', ikona: '🎬', max: 2, gpu: true },
@@ -97,11 +98,12 @@ export async function wykonaj(z, { most, projekt, odstepMs = 10_000, limityMs = 
     const a = z.argumenty ?? {};
     const limit = (m, dom) => limityMs[m] ?? dom;
     if (z.modul === 'merch') {
-        const d = await most('/api/market/create', {
-            module: 'projekt-stada', type: 'merch', name: a.nazwa, desc: a.opis || `Z uniwersum „${projekt.nazwa}".`,
-            priceGrv: a.cenaGrv, creator: `${z.imie} (Stado)`, payload: { projekt: projekt.id, agent: z.agent },
+        // Tylko propozycja — Marketplace zapełniał się merchem z każdego projektu (Suweren 2026-10-13: wyłącz).
+        const d = await most('/api/produkty/propozycje', {
+            nazwa: a.nazwa, opis: a.opis || `Z uniwersum „${projekt.nazwa}".`, cenaGrv: a.cenaGrv,
+            autor: `${z.imie} (Stado)`, projekt: projekt.id, projektNazwa: projekt.nazwa, agent: z.agent,
         });
-        return { produkt: d.product?.id ?? null, cenaGrv: d.product?.priceGrv ?? a.cenaGrv };
+        return { propozycja: d.propozycja?.id ?? null, cenaGrv: a.cenaGrv };
     }
     if (z.modul === 'muzyka') {
         const tytul = `${projekt.nazwa} — motyw`.slice(0, 60);

@@ -5323,6 +5323,21 @@ setInterval(() => {
     if (Date.now() - lastBurnAt < BURN_PERIOD_MS) return;
     runBurn().then(r => console.log(`[Market] 🔥 Auto-spalanie: spalono ${r.burned}, zostało ${r.kept}.`)).catch(() => {});
 }, BURN_CHECK_MS);
+// 🛒 Propozycje produktów od stada (linia PRODUKT: we wkładach) — NIE trafiają do Marketplace; czekają na moduł produktów.
+const PLIK_PROPOZYCJI = path.join(ANTIGRAVITY_DIR, 'propozycje-produktow.json');
+app.get('/api/produkty/propozycje', async (_req, res) => { try { res.json({ success: true, propozycje: JSON.parse(await fs.readFile(PLIK_PROPOZYCJI, 'utf8').catch(() => '[]')) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+app.post('/api/produkty/propozycje', async (req, res) => {
+    try {
+        const b = req.body ?? {};
+        const nazwa = String(b.nazwa ?? '').trim().slice(0, 80);
+        if (!nazwa) throw new Error('Propozycja bez nazwy.');
+        const lista = JSON.parse(await fs.readFile(PLIK_PROPOZYCJI, 'utf8').catch(() => '[]'));
+        const propozycja = { id: `pp-${Date.now().toString(36)}`, nazwa, opis: String(b.opis ?? '').slice(0, 400), cenaGrv: Math.max(0, Math.round(Number(b.cenaGrv) || 0)), autor: String(b.autor ?? '').slice(0, 60), projekt: b.projekt ?? null, projektNazwa: String(b.projektNazwa ?? '').slice(0, 80), agent: b.agent ?? null, kiedy: new Date().toISOString() };
+        lista.unshift(propozycja);
+        await fs.writeFile(PLIK_PROPOZYCJI, JSON.stringify(lista.slice(0, 500), null, 2));
+        res.json({ success: true, propozycja });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 /** DELETE /api/market/products/:id — zdejmij produkt z Marketplace tej Katedry (tylko maszyna; zakupy w posiadanych zostają). */
 app.delete('/api/market/products/:id', async (req, res) => {
     const m = await loadMarket();
