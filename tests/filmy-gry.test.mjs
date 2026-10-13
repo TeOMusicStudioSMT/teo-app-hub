@@ -68,9 +68,10 @@ test('🎥 Reżyser Wideo: obsada gry → kadr FLUX z wzorami → Wan z kadru st
     try {
         await fs.mkdir(path.join(kat, 'gra'), { recursive: true });
         Gdd.skonfiguruj({ katalog: kat });
-        await Gdd.zapisz('gra', { tytul: 'Teterhia', sekcje: { wizual: 'malowana fantastyka' }, filmy: [{ tytul: 'Intro', zdarzenie: 'start', opis: 'Kot tańczy', sekundy: 3 }, { tytul: 'Taniec', zdarzenie: 'taniec', opis: 'Kot kłania się', sekundy: 2, silnik: 'flux', postacie: ['katedra'], ruch: 'najazd' }] });
-        const [intro, taniec] = (await Gdd.wczytaj('gra')).filmy;
-        assert.equal(intro.silnik, 'flux-wan', 'domyślnie FLUX → Wan');
+        await Gdd.zapisz('gra', { tytul: 'Teterhia', sekcje: { wizual: 'malowana fantastyka' }, filmy: [{ tytul: 'Intro', zdarzenie: 'start', opis: 'Kot tańczy', sekundy: 3, silnik: 'flux-wan' }, { tytul: 'Domyslny', zdarzenie: 'poziom', opis: 'x', sekundy: 2 }, { tytul: 'Taniec', zdarzenie: 'taniec', opis: 'Kot kłania się', sekundy: 2, silnik: 'flux', postacie: ['katedra'], ruch: 'najazd' }] });
+        const [intro, domyslny, taniec] = (await Gdd.wczytaj('gra')).filmy;
+        assert.equal(domyslny.silnik, 'flux', 'domyślnie FLUX + ruch kamery (Suweren 2026-10-13: „Wan 2.2 zmień na Flux”)');
+        assert.equal(intro.silnik, 'flux-wan', 'Wan zostaje opcją');
         const kadrPng = path.join(kat, 'kadr.png'), wan = path.join(kat, 'wan.mp4');
         await fs.writeFile(kadrPng, 'png'); await fs.writeFile(wan, 'mp4');
         const wolania = [];
@@ -87,7 +88,7 @@ test('🎥 Reżyser Wideo: obsada gry → kadr FLUX z wzorami → Wan z kadru st
         await F.zlec('gra', intro.id);
         await F.zlec('gra', taniec.id);
         for (let i = 0; i < 300 && F.liczy().length; i++) await new Promise((r) => setTimeout(r, 5));
-        const [i2, t2] = (await Gdd.wczytaj('gra')).filmy;
+        const po = (await Gdd.wczytaj('gra')).filmy; const i2 = po.find((f) => f.id === intro.id), t2 = po.find((f) => f.id === taniec.id);
         assert.deepEqual([i2.stan, i2.silnikUzyty, i2.kadr, i2.ruch, i2.obsadaUzyta.map((o) => o.id)], ['gotowy', 'flux-wan', `filmy/${intro.id}-kadr.png`, 'odjazd', ['b:mira']], i2.blad);
         assert.deepEqual(wolania[0], ['kadr', ['/x/mira.png']]);
         assert.deepEqual(wolania[1].slice(0, 2), ['wan', 'kadr-abc.png'], 'Wan startuje z kadru FLUX');

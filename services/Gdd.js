@@ -164,7 +164,7 @@ export function oczyscFilmy(lista, stare = []) {
             zlecenie: pole('zlecenie', (v) => typeof v === 'string' && v.length <= 80),
             blad: pole('blad', (v) => typeof v === 'string') ? String(pole('blad', () => true)).slice(0, 300) : null,
             kiedy: pole('kiedy', (v) => typeof v === 'string' && v.length <= 40),
-            silnik: SILNIKI_FILMU[f.silnik] ? f.silnik : (byl?.silnik ?? 'flux-wan'),
+            silnik: SILNIKI_FILMU[f.silnik] ? f.silnik : (byl?.silnik ?? 'flux'),
             // obsada filmu (id z obsady gry: katedra, b:<bohater>, o:<obraz Pracowni>); pusta = wybiera Reżyser Wideo
             postacie: Array.isArray(f.postacie) ? f.postacie.filter((x) => typeof x === 'string' && /^(katedra|[bo]:[a-z0-9-]{2,80})$/.test(x)).slice(0, 3) : (byl?.postacie ?? []),
             ruch: RUCHY_KAMERY[f.ruch] ? f.ruch : (byl?.ruch ?? null),

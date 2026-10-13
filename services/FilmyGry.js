@@ -6,8 +6,8 @@
  * postacie z gry w nim… zmienić na FLUX albo mieć wybór między Wan a FLUX”): model Reżysera dostaje STYL WIZUALNY z GDD,
  * krainy i OBSADĘ GRY (postać Katedry, bohaterowie, Mini-TeOgochi, stwory — z ich obrazami) i do filmu pisze plan ujęć:
  * kadr (FLUX, po angielsku), ruch (Wan, po angielsku), ruch kamery i kogo z obsady obsadza (≤ 3). Silnik filmu:
- *   flux-wan (domyślny) — kadr FLUX.2 z obrazami obsady jako WZORAMI (ReferenceLatent) → Wan 2.2 TI2V ożywia kadr,
- *   flux — kadry FLUX + ruch kamery ffmpeg (najazd/odjazd/panorama), szybko, bez Wan,
+ *   flux-wan — kadr FLUX.2 z obrazami obsady jako WZORAMI (ReferenceLatent) → Wan 2.2 TI2V ożywia kadr,
+ *   flux — (DOMYŚLNY od 2026-10-13: „Wan 2.2 zmień na Flux”) kadry FLUX + ruch kamery ffmpeg (najazd/odjazd/panorama), szybko, bez Wan,
  *   wan — Wan z samego tekstu.
  * Wynik: `_OtakOs_Apki/<projekt>/public/filmy/<id>.mp4` (+ `<id>-kadr.png`) i dist/filmy, manifest `filmy.json` (gotowe).
  * Stan w GDD: pomysl → zlecony → gotowy | blad (z powodem).
@@ -323,7 +323,7 @@ export function utworzFilmyGry({ katalogGier, gdd, generuj, dopisz = null, stan,
         if (!g) throw new Error('Ten projekt nie ma GDD.');
         const film = (g.filmy ?? []).find((f) => f.id === id);
         if (!film) throw new Error('Nie ma takiego filmu w GDD.');
-        const silnik = film.silnik ?? 'flux-wan';
+        const silnik = film.silnik ?? 'flux';
         if (silnik !== 'wan' && !kadr) throw new Error('Ta Katedra nie ma kadrów FLUX dla filmów — wybierz silnik „Wan”.');
         if (silnik === 'flux' && !ruchKadru) throw new Error('Ta Katedra nie ma ruchu kamery (ffmpeg) — wybierz „FLUX → Wan” albo „Wan”.');
         if (silnik !== 'flux' && ileUjec(film.sekundy) > 1 && !dopisz) throw new Error(`Film ${film.sekundy} s to kilka ujęć, a ta Katedra nie umie dopisywać ujęć Wan — skróć do ${UJECIE_MAX} s albo wybierz „FLUX”.`);
