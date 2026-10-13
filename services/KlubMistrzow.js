@@ -17,6 +17,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
+import { tanecZSieci, rankingTanca, okresyTanca } from './Choreografie.js';
 
 export const DZIEDZINY = { takt: 'Takt', zwinnosc: 'Zwinność', spryt: 'Spryt', urok: 'Urok' };
 export const DZIEDZINY_D = { takt: 'Taktu', zwinnosc: 'Zwinności', spryt: 'Sprytu', urok: 'Uroku' };
@@ -57,7 +58,7 @@ export function ranking(wyniki) {
  * @param {{ katalog: string, nick: () => Promise<string|null>, rejestr: string, mistrz?: () => Promise<object>,
  *           wiesc?: (w:object) => Promise<unknown>, fetch?: Function, teraz?: () => number }} o
  */
-export function utworzKlub({ katalog, nick, rejestr, mistrz = async () => ({}), wiesc = null, fetch: f = globalThis.fetch, teraz = () => Date.now() }) {
+export function utworzKlub({ katalog, nick, rejestr, mistrz = async () => ({}), tance = async () => [], wiesc = null, fetch: f = globalThis.fetch, teraz = () => Date.now() }) {
     const PLIK = () => path.join(katalog, 'klub-mistrzow.json');
     let pamiec = null;
     let pole = { kiedy: 0, wynik: null };
@@ -83,7 +84,9 @@ export function utworzKlub({ katalog, nick, rejestr, mistrz = async () => ({}), 
         const m = await mistrz().catch(() => ({}));
         const wyniki = Object.values(s.wyniki).sort((a, b) => String(b.kiedy).localeCompare(String(a.kiedy))).slice(0, 10);
         const eventy = (await mojeAktywne()).map(({ id, typ, dziedzina, opis, od, do: do_ }) => ({ id, typ, dziedzina, opis, od, do: do_ }));
-        return { wersja: 1, imie: 'JaJo Mistrza', ...m, eventy, wyniki };
+        // 🩰 turnieje taneczne (services/Choreografie.js): najlepszy występ w każdym otwartym okresie, z danymi do sprawdzenia
+        const t = await tance().catch(() => []);
+        return { wersja: 1, imie: 'JaJo Mistrza', ...m, eventy, wyniki, tance: Array.isArray(t) ? t.slice(0, 5) : [] };
     }
 
     /** Suweren ogłasza event globalny (dziś: turniej w dziedzinie na 1–7 dni). */
@@ -130,15 +133,24 @@ export function utworzKlub({ katalog, nick, rejestr, mistrz = async () => ({}), 
                         // nie pukamy do Katedry. Starszy rejestr bez tego pola → wizytówka wprost, nick + klucz jak w rejestrze.
                         let m = k.mistrz && typeof k.mistrz === 'object' ? k.mistrz : null;
                         let motto = k.motto;
-                        if (!m) {
+                        const wizytowka = async () => {
                             const w = await (await f(`${k.adres.replace(/\/+$/, '')}/api/wizytowka`, { signal: AbortSignal.timeout(8000) })).json();
-                            if (w?.nick !== k.nick || w?.klucz !== k.klucz) { pominiete.push({ nick: k.nick, powod: 'wizytówka nie zgadza się z rejestrem (nick/klucz)' }); return; }
+                            return w?.nick === k.nick && w?.klucz === k.klucz ? w : null;
+                        };
+                        if (!m) {
+                            const w = await wizytowka();
+                            if (!w) { pominiete.push({ nick: k.nick, powod: 'wizytówka nie zgadza się z rejestrem (nick/klucz)' }); return; }
                             if (!w.mistrz || typeof w.mistrz !== 'object') { pominiete.push({ nick: k.nick, powod: 'Katedra bez Mistrza (starsza wersja)' }); return; }
                             m = w.mistrz; motto = w.motto;
+                        } else if (!Array.isArray(m.tance)) {
+                            // rejestr otakos.wtf (jeszcze) nie przenosi `tance` — występy taneczne prosto z wizytówki Katedry
+                            try { const w = await wizytowka(); if (Array.isArray(w?.mistrz?.tance)) m = { ...m, tance: w.mistrz.tance }; } catch { /* bez tańców */ }
                         }
+                        const tanceZ = (Array.isArray(m.tance) ? m.tance : []).slice(0, 5).map((x) => tanecZSieci(x, k.nick, teraz())).filter(Boolean);
                         czlonkowie.push({ nick: k.nick, motto: String(motto ?? '').slice(0, 140), etap: String(m.etap ?? '').slice(0, 20), teterhia: String(m.teterhia ?? '').slice(0, 80) || null,
                             eventy: (Array.isArray(m.eventy) ? m.eventy : []).slice(0, MAX_MOICH).map((e) => eventZSieci(e, k.nick, teraz())).filter(Boolean),
-                            wyniki: (Array.isArray(m.wyniki) ? m.wyniki : []).slice(0, 10).map((x) => wynikZSieci(x, k.nick)).filter(Boolean) });
+                            wyniki: (Array.isArray(m.wyniki) ? m.wyniki : []).slice(0, 10).map((x) => wynikZSieci(x, k.nick)).filter(Boolean),
+                            tance: tanceZ.filter((x) => !x.odrzucony), tanceOdrzucone: tanceZ.filter((x) => x.odrzucony) });
                     } catch (e) { pominiete.push({ nick: k.nick, powod: `nie odpowiada (${String(e.message).slice(0, 60)})` }); }
                 }));
             }
@@ -148,6 +160,11 @@ export function utworzKlub({ katalog, nick, rejestr, mistrz = async () => ({}), 
             const s = await wczytaj();
             const wszystkieWyniki = [...czlonkowie.flatMap((c) => c.wyniki), ...(ja ? Object.values(s.wyniki).map((w) => wynikZSieci(w, ja)).filter(Boolean) : [])];
             const rankingi = Object.fromEntries(eventy.map((e) => [e.klucz, ranking(wszystkieWyniki.filter((w) => w.event === e.klucz))]));
+            // 🩰 rankingi turniejów tanecznych: każdy otwarty okres (Taniec Dnia… Mistrzostwa Świata); moje — też sprawdzone wzorem
+            const mojeTance = ja ? (await tance().catch(() => [])).map((x) => tanecZSieci(x, ja, teraz())).filter((x) => x && !x.odrzucony) : [];
+            const wszystkieTance = [...czlonkowie.flatMap((c) => c.tance), ...mojeTance];
+            const rankingiTanca = Object.fromEntries(okresyTanca(teraz()).map((o) => [o.okres, { ...o, ranking: rankingTanca(wszystkieTance.filter((x) => x.okres === o.okres && x.klucz === o.klucz)) }]));
+            const tanceOdrzucone = czlonkowie.flatMap((c) => c.tanceOdrzucone);
             // 📯 nowe eventy innych i nowe wyniki w moich eventach — Mistrz mówi o nich w Orbicie (każde raz)
             const widziane = new Set(s.widziane);
             const doOgloszenia = [];
@@ -156,8 +173,21 @@ export function utworzKlub({ katalog, nick, rejestr, mistrz = async () => ({}), 
                 const k = `${e.klucz}|${w.nick}|${w.wygrane}`;
                 if (!widziane.has(k)) { widziane.add(k); doOgloszenia.push({ glos: w.wygrane === w.starc, tresc: `🏛️ ${e.nazwa} (Twój): Katedra „${w.nick}” — ${w.wygrane}/${w.starc}.` }); }
             }
+            // nowy lider okresu → jedna wieść na Katedrę-lidera (z listą okresów, które prowadzi)
+            const liderzy = new Map();
+            for (const r of Object.values(rankingiTanca)) {
+                const lider = r.ranking[0];
+                if (!lider || lider.nick === ja) continue;
+                const k = `taniec|${r.okres}:${r.klucz}|${lider.nick}|${lider.ocena.wynik}`;
+                if (widziane.has(k)) continue;
+                widziane.add(k);
+                const kl = `${lider.nick}|${lider.odcisk}`;
+                if (!liderzy.has(kl)) liderzy.set(kl, { lider, okresy: [], glos: false });
+                const l = liderzy.get(kl); l.okresy.push(r.nazwa); l.glos ||= r.okres !== 'dzien';
+            }
+            for (const { lider, okresy, glos } of liderzy.values()) doOgloszenia.push({ glos, tresc: `🩰 Katedra „${lider.nick}” prowadzi: ${okresy.join(', ')} — ${lider.mini} do „${lider.utwor}”, ${lider.ocena.wynik}/100.${mojeTance.length ? '' : ' Zgłoś swoją choreografię w Tanecznym Starciu.'}` });
             if (doOgloszenia.length) { s.widziane = [...widziane].slice(-500); await zapisz(); for (const o of doOgloszenia.slice(0, 5)) await wiesc?.({ rodzaj: 'klub', skad: 'Klub Mistrzów · z pola', ...o })?.catch?.(() => {}); }
-            const wynik = { kiedy: new Date(teraz()).toISOString(), ja: ja_, online: katedry.length, czlonkowie, pominiete, eventy, rankingi };
+            const wynik = { kiedy: new Date(teraz()).toISOString(), ja: ja_, online: katedry.length, czlonkowie, pominiete, eventy, rankingi, tance: rankingiTanca, tanceOdrzucone };
             pole = { kiedy: teraz(), wynik };
             return wynik;
         })();

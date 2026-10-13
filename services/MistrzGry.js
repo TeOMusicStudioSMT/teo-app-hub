@@ -231,7 +231,22 @@ export function utworzMistrzaGry({ katalog, pisz = null, jev = null, zasady = as
         return z;
     }
 
-    return { rozstrzygnijKwestie, eventDnia, eventDzisiaj, wynikTurnieju, wynikTanca, kronika };
+    /**
+     * 🩰 Choreografia zgłoszona do turniejów tanecznych (Taniec Dnia/Tygodnia/…; services/Choreografie.js) → kronika;
+     * wieść, gdy występ poprawił któryś okres albo ma rangę S/A.
+     */
+    async function wynikChoreografii({ mini, utwor, wynik, ranga, okresy = [] } = {}) {
+        const w = Math.round(Number(wynik));
+        if (!(w >= 0 && w <= 100) || !['S', 'A', 'B', 'C', 'D'].includes(ranga)) throw new Error('Zły wynik choreografii.');
+        const imie = String(mini ?? 'TeOgochi').slice(0, 40);
+        const u = String(utwor ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        const o = (Array.isArray(okresy) ? okresy : []).map((x) => String(x).slice(0, 40)).slice(0, 5);
+        const z = await kronikuj({ rodzaj: 'choreografia', gracz: imie, utwor: u, procent: w, ranga, okresy: o });
+        if (o.length || ['S', 'A'].includes(ranga)) await wiesc?.({ rodzaj: 'teterhia', skad: 'Mistrz Gry · Taneczne Starcie', glos: ranga === 'S', tresc: `🩰 ${imie} zatańczył choreografię do „${u}” — ${ranga} (${w}/100)${o.length ? `. Nowy najlepszy występ: ${o.join(', ')}` : ''}.` })?.catch?.(() => {});
+        return z;
+    }
+
+    return { rozstrzygnijKwestie, eventDnia, eventDzisiaj, wynikTurnieju, wynikTanca, wynikChoreografii, kronika };
 }
 
 export default { utworzMistrzaGry, zbudujEvent, eventZLosu, faktyKatedry, tonZJev, TONY, KATALOG, DZIEDZINY, DZIEDZINY_D };

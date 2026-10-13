@@ -94,6 +94,7 @@ import { utworzBestiariusz } from './services/Bestiariusz.js';
 import { utworzPaczkiGier, zamontujTrasyGier } from './services/PaczkiGier.js';
 import { zamontujTrasyRingu } from './services/RingTaneczny.js';
 import { utworzBazylike } from './services/BazylikaDzwieku.js';
+import { utworzChoreografie, zamontujTrasyChoreografii } from './services/Choreografie.js';
 import { odchudzBryle, CEL_SCIAN, MAKS_TEKSTURY } from './services/LekkieBryly.js';
 import { utworzRozliczenia } from './services/RozliczeniaKatedr.js';
 import { policzKoherencje } from './services/KoherencjaKatedry.js';
@@ -11399,6 +11400,17 @@ const MistrzGry = utworzMistrzaGry({
     wiesc: (w) => Jajo.wiesc(w),
     klub: { zapiszWynik: (w) => KlubMistrzow.zapiszWynik(w) },
 });
+// 🩰 Choreografie Tanecznego Starcia (services/Choreografie.js): układ ruchów TeOgochi na frazach utworu (frazy i ocenę
+// liczy most z /api/rytm), nagranie występu → produkcje/taneczne-starcie/montaz (mp4), turnieje Taniec Dnia… Mistrzostwa
+// Świata — najlepszy występ okresu idzie w wizytówce (Klub Mistrzów), inne Katedry sprawdzają ocenę same.
+const Choreografie = utworzChoreografie({
+    katalog: ANTIGRAVITY_DIR,
+    rytm: (plik) => RytmUtworu.analizuj(plik),
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    ffmpeg: ffmpegPath,
+    uruchom: (c, a, o) => execFileAsync(c, a, { windowsHide: true, maxBuffer: 1 << 24, ...o }),
+    mistrzGry: { wynikChoreografii: (w) => MistrzGry.wynikChoreografii(w) },
+});
 // 🏛️ Globalny Klub Mistrzów (services/KlubMistrzow.js) — JaJo przedstawia Katedrę w wizytówce, czyta wizytówki Katedr
 // z rejestru (nick + klucz zgodne), zbiera eventy globalne i rankingi; nowe eventy i wyniki mówi kanałem Mistrza.
 const KlubMistrzow = utworzKlub({
@@ -11410,8 +11422,10 @@ const KlubMistrzow = utworzKlub({
         const e = await MistrzGry.eventDzisiaj();
         return { etap: s.etap.nazwa, obserwacji: s.obserwacji, zasad: s.zasady?.zasady?.length ?? 0, teterhia: e?.nazwa ?? null };
     },
+    tance: () => Choreografie.publiczne(),
     wiesc: (w) => Jajo.wiesc(w),
 });
+zamontujTrasyChoreografii(app, { choreografie: Choreografie, raw: express.raw, klub: KlubMistrzow, mistrzGry: MistrzGry });
 Wizytowka.skonfiguruj({ klub: KlubMistrzow });
 KlubMistrzow.startPetli();
 app.get('/api/klub-mistrzow', async (req, res) => {
