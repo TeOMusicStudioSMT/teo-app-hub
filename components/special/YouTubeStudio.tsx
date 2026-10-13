@@ -83,8 +83,8 @@ export const PolaczYouTube: React.FC<{ onZmiana?: () => void }> = ({ onZmiana })
     );
 };
 
-interface Publikacja { id: string; etap: string; nazwa: string; tytul?: string; opis?: string; tagi?: string[]; model?: string | null; blad?: string | null; uwaga?: string | null; url?: string; utworzono: string; kanalId?: string | null; kanalNazwa?: string | null; videoId?: string; playlista?: { id: string; stan: string; powod?: string }; kopiaZ?: string }
-const ETAP: Record<string, string> = { przygotowuje: '✍️ Kronikarz pisze…', do_akceptacji: '⏳ czeka na Twoje ✓', wysylanie: '⬆️ Impresariat wysyła', prywatna: '🔒 na YouTube, ale prywatny', opublikowana: '✓ na YouTube', odrzucona: '✕ odrzucona', blad: '⚠ błąd' };
+interface Publikacja { id: string; etap: string; nazwa: string; tytul?: string; opis?: string; tagi?: string[]; model?: string | null; blad?: string | null; uwaga?: string | null; url?: string; utworzono: string; kanalId?: string | null; kanalNazwa?: string | null; videoId?: string; playlista?: { id: string; stan: string; powod?: string }; kopiaZ?: string; ponowOd?: string }
+const ETAP: Record<string, string> = { przygotowuje: '✍️ Kronikarz pisze…', do_akceptacji: '⏳ czeka na Twoje ✓', wysylanie: '⬆️ Impresariat wysyła', limit: '⏳ limit YouTube na dziś — ponowię sam', prywatna: '🔒 na YouTube, ale prywatny', opublikowana: '✓ na YouTube', odrzucona: '✕ odrzucona', blad: '⚠ błąd' };
 
 export const PublikacjeYouTubePanel: React.FC = () => {
     const [lista, setLista] = useState<Publikacja[] | null>(null);
@@ -132,6 +132,7 @@ export const PublikacjeYouTubePanel: React.FC = () => {
                             {p.url && <a href={p.url} target="_blank" rel="noreferrer" className="ml-auto text-red-300 underline">{p.url}</a>}
                         </div>
                         {(p.blad || p.uwaga) && <div className="mt-1 text-[10px] text-amber-300">{p.blad ?? p.uwaga}</div>}
+                        {p.etap === 'limit' && p.ponowOd && <div className="mt-1 text-[10px] text-sky-300">⏳ ponowię sama ok. {new Date(p.ponowOd).toLocaleString('pl-PL', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</div>}
                         {p.playlista && <div className={`mt-1 text-[10px] ${p.playlista.stan === 'dodana' ? 'text-emerald-300' : 'text-amber-300'}`}>📋 playlista: {p.playlista.stan === 'dodana' ? 'dopisany' : `${p.playlista.stan} — ${p.playlista.powod ?? ''}`}
                             {p.playlista.stan === 'blad' && <button onClick={() => void zMostu(`/api/youtube/publikacje/${p.id}/playlista`, { method: 'POST', body: '{}' }).then(odswiez).catch((e) => toast.error(String(e instanceof Error ? e.message : e)))} className="ml-2 underline">↻ ponów</button>}</div>}
                         {kanaly.length > 1 && p.tytul && p.etap !== 'odrzucona' && (

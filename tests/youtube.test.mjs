@@ -200,3 +200,32 @@ test('publikacja po angielsku: Kronikarz dostaje prośbę PO ANGIELSKU, etykiety
     assert.equal(p.tytul, 'The Architecture of Whispers — Interview');
     assert.match(systemy[0], /PO ANGIELSKU/);
 });
+
+test('⏳ limit YouTube na dziś: etap „limit” po polsku, sam wraca do kolejki po dobie i się publikuje', async () => {
+    const s = swiat();
+    const p = await s.pub.przygotuj({ plik: s.plik, nazwa: 'Taniec Kota' });
+    await s.pub.zatwierdz(p.id);
+    Object.assign(s.kolejka[0], { status: 'FAILED', error: '[YouTube] Inicjacja resumable upload nieudana: HTTP 400 — {"error":{"message":"The user has exceeded the number of videos they may upload."}}' });
+    await s.pub.sprawdz();
+    let w = (await s.pub.wszystkie())[0];
+    assert.equal(w.etap, 'limit');
+    assert.match(w.uwaga, /Limit YouTube na dziś/);
+    assert.ok(Date.parse(w.ponowOd) > Date.now() + 23 * 3600_000, 'ponowienie za dobę');
+    await s.pub.sprawdz();
+    assert.equal(s.kolejka.length, 1, 'przed upływem doby nic nie wysyła');
+    // doba minęła → sama wraca do kolejki
+    const dane = JSON.parse(fs.readFileSync(path.join(s.katalog, 'media', 'publikacje-youtube.json'), 'utf8'));
+    dane[0].ponowOd = new Date(Date.now() - 1000).toISOString();
+    fs.writeFileSync(path.join(s.katalog, 'media', 'publikacje-youtube.json'), JSON.stringify(dane));
+    const s2 = { ...s };
+    const { utworzPublikacje: utworz } = await import('../services/PublikacjeYouTube.js');
+    s2.pub = utworz({ katalog: s.katalog, pisz: async () => ({ tekst: '' }), impresariat: { enqueuePublication: async (t, a, pl, f, o) => { const j = { id: `pub_${s.kolejka.length}`, title: t, status: 'PENDING', ...o }; s.kolejka.push(j); return j; }, getQueue: async () => s.kolejka }, statusFilmu: async (id) => ({ id, istnieje: true, widocznosc: 'unlisted' }), naWystawe: async () => {}, gotowyYouTube: async () => true });
+    await s2.pub.sprawdz();
+    w = (await s2.pub.wszystkie())[0];
+    assert.equal(w.etap, 'wysylanie');
+    assert.equal(s.kolejka.length, 2);
+    assert.equal(s.kolejka[1].publikacjaId, p.id);
+    Object.assign(s.kolejka[1], { status: 'COMPLETE', youtubeVideoId: 'kot12345678' });
+    await s2.pub.sprawdz();
+    assert.equal((await s2.pub.wszystkie())[0].etap, 'opublikowana');
+});

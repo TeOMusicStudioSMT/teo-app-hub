@@ -22,7 +22,15 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-export const ETAPY = ['przygotowuje', 'do_akceptacji', 'wysylanie', 'prywatna', 'opublikowana', 'odrzucona', 'blad'];
+export const ETAPY = ['przygotowuje', 'do_akceptacji', 'wysylanie', 'limit', 'prywatna', 'opublikowana', 'odrzucona', 'blad'];
+/**
+ * ⏳ Dzienny limit wgrywania kanału (YouTube: „The user has exceeded the number of videos they may upload” /
+ * uploadLimitExceeded) to nie błąd Katedry — publikacja przechodzi w etap `limit` i SAMA wraca do kolejki po
+ * `OTAKOS_YT_LIMIT_PONOW_H` godzinach (24); kolejna odmowa = następna doba.
+ */
+export const LIMIT_PONOW_H = Number(process.env.OTAKOS_YT_LIMIT_PONOW_H) || 24;
+export const czyLimitYouTube = (blad) => /exceeded the number of videos|uploadLimitExceeded/i.test(String(blad ?? ''));
+const KOMUNIKAT_LIMITU = 'Limit YouTube na dziś — kanał wgrał już tyle filmów, ile YouTube pozwala na dobę. Katedra ponowi wysyłkę sama. Weryfikacja kanału telefonem (YouTube Studio → Ustawienia → Kanał) podnosi limity.';
 const WIDEO = /\.(mp4|mov|webm)$/i;
 
 /**
@@ -164,7 +172,7 @@ export function utworzPublikacje(o) {
 
     async function odrzuc(id) {
         const p = await znajdz(id);
-        if (!['do_akceptacji', 'blad', 'przygotowuje'].includes(p.etap)) throw new Error('Tej publikacji nie da się już odrzucić.');
+        if (!['do_akceptacji', 'blad', 'przygotowuje', 'limit'].includes(p.etap)) throw new Error('Tej publikacji nie da się już odrzucić.');
         Object.assign(p, { etap: 'odrzucona', odrzucono: czas() });
         await zapisz();
         return p;
@@ -173,15 +181,26 @@ export function utworzPublikacje(o) {
     /** Postęp: kolejka Impresariatu + prawdziwy status filmu. Woła pętla mostu i każdy odczyt listy. */
     async function sprawdz() {
         const l = await wczytaj();
-        const czekajace = l.filter((p) => p.etap === 'wysylanie' || p.etap === 'prywatna');
-        if (!czekajace.length) return l;
-        const kolejka = await cfg.impresariat.getQueue().catch(() => []);
         let zmiana = false;
+        // ⏳ limit dnia: dawny „błąd” z tą odmową → etap limit; po upływie doby — sama z powrotem do kolejki
+        const doLimitu = (p, odKiedy = Date.now()) => { const od = odKiedy + LIMIT_PONOW_H * 3600_000; Object.assign(p, { etap: 'limit', blad: null, limitYouTube: p.blad ?? p.limitYouTube ?? null, uwaga: KOMUNIKAT_LIMITU, ponowOd: new Date(od).toISOString(), prob: (p.prob ?? 0) + 1 }); zmiana = true; };
+        for (const p of l) if (p.etap === 'blad' && czyLimitYouTube(p.blad) && p.jobId) doLimitu(p, Date.parse(p.zatwierdzono ?? '') || Date.now());
+        for (const p of l.filter((x) => x.etap === 'limit' && Date.parse(x.ponowOd ?? 0) <= Date.now())) {
+            try {
+                const job = await cfg.impresariat.enqueuePublication(p.tytul, p.zrodlo?.projekt ?? null, ['youtube'], p.plik, { opis: p.opis, tagi: p.tagi, widocznosc: 'unlisted', publikacjaId: p.id, kanalId: p.kanalId });
+                Object.assign(p, { etap: 'wysylanie', jobId: job.id, uwaga: `Ponowiona po limicie dnia (próba ${(p.prob ?? 1) + 1}).` });
+                nadaj(`„${p.tytul}” — minęła doba, ponawiam wysyłkę na YouTube${p.kanalNazwa ? ` (kanał „${p.kanalNazwa}”)` : ''}`);
+            } catch (e) { p.uwaga = `${KOMUNIKAT_LIMITU} (ponowienie nie weszło do kolejki: ${e.message})`; }
+            zmiana = true;
+        }
+        const czekajace = l.filter((p) => p.etap === 'wysylanie' || p.etap === 'prywatna');
+        if (!czekajace.length) { if (zmiana) await zapisz(); return l; }
+        const kolejka = await cfg.impresariat.getQueue().catch(() => []);
         for (const p of czekajace) {
             if (p.etap === 'wysylanie') {
                 const job = kolejka.find((j) => j.id === p.jobId);
                 if (!job) { Object.assign(p, { etap: 'blad', blad: 'Zlecenie zniknęło z kolejki Impresariatu.' }); zmiana = true; continue; }
-                if (job.status === 'FAILED') { Object.assign(p, { etap: 'blad', blad: job.error ?? 'Wysyłka nieudana.' }); zmiana = true; continue; }
+                if (job.status === 'FAILED') { if (czyLimitYouTube(job.error)) { p.blad = job.error; doLimitu(p); nadaj(`„${p.tytul}” — limit YouTube na dziś, ponowię za ${LIMIT_PONOW_H} h`); continue; } Object.assign(p, { etap: 'blad', blad: job.error ?? 'Wysyłka nieudana.' }); zmiana = true; continue; }
                 if (job.status !== 'COMPLETE') continue;
                 if (!job.youtubeVideoId) { Object.assign(p, { etap: 'blad', blad: 'YouTube nie oddał id filmu — sprawdź kanał.' }); zmiana = true; continue; }
                 Object.assign(p, { videoId: job.youtubeVideoId, url: `https://youtu.be/${job.youtubeVideoId}`, wyslano: job.completedAt ?? czas() });
