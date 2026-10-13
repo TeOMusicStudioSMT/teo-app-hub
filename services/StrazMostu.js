@@ -58,6 +58,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/tunel/',   // tunelu nie odpala się (ani nie gasi) z tunelu
     '/api/system/free',   // zamyka procesy na maszynie
     '/api/choreografie', '/api/taniec/',   // 🩰 choreografie, nagrania występów i zgłoszenia do turniejów — przy maszynie
+    '/api/game-show',   // 🎪 odcinki TeO Game Show (GPU, ffmpeg) i kanał programu — przy maszynie; ✓ publikacji zostaje w Izbie
     // Stado należy do Katedry: telefon (StoL) PATRZY — nie publikuje migawki, nie paruje
     // innych urządzeń i nie odłącza ich. Jego jedyne zdalne wejście to /api/stado/paruj.
     '/api/stado/publikuj', '/api/stado/parowanie', '/api/stado/odlacz',

@@ -225,7 +225,8 @@ import { utworzTost } from './services/TostSiec.js';
 import { utworzZarzadce } from './services/ZarzadcaRejestru.js';
 import { utworzKontoYouTube, SCIEZKA_ZWROTU as ZWROT_YOUTUBE } from './services/YouTubeKonto.js';
 import { utworzPublikacje } from './services/PublikacjeYouTube.js';
-import { utworzWywiady } from './services/WywiadAktorow.js';
+import { utworzWywiady, prowadzacyZObsady } from './services/WywiadAktorow.js';
+import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzGlebie } from './services/GlebiaKadru.js';
 import { utworzUsta } from './services/UstaAktorow.js';
@@ -11389,6 +11390,9 @@ const Choreografie = utworzChoreografie({
     ffmpeg: ffmpegPath,
     uruchom: (c, a, o) => execFileAsync(c, a, { windowsHide: true, maxBuffer: 1 << 24, ...o }),
     mistrzGry: { wynikChoreografii: (w) => MistrzGry.wynikChoreografii(w) },
+    // 🎪 po zapisie nagrania występu sam rusza odcinek TeO Game Show (OTAKOS_GAME_SHOW=0 wyłącza)
+    poNagraniu: ({ choreografia, nagranie }) => (process.env.OTAKOS_GAME_SHOW === '0' ? null
+        : GameShow.utworz(choreografia.id, nagranie.nazwa).then((s) => ({ id: s.id, stan: s.stan }))),
 });
 // 🏛️ Globalny Klub Mistrzów (services/KlubMistrzow.js) — JaJo przedstawia Katedrę w wizytówce, czyta wizytówki Katedr
 // z rejestru (nick + klucz zgodne), zbiera eventy globalne i rankingi; nowe eventy i wyniki mówi kanałem Mistrza.
@@ -14997,6 +15001,74 @@ app.post('/api/wywiady/:id/nagraj', (req, res) => ytOdp(res, Wywiady.nagraj(req.
     bezGlosu: req.body?.bezGlosu === true, podklad: req.body?.podklad || null, glosnosc: req.body?.glosnosc,
     glosProwadzacego: req.body?.glosProwadzacego,
 }).then((wywiad) => ({ wywiad }))));
+
+// ── 🎪 TeO Game Show (services/TeoGameShow.js) ──
+// Nagranie występu z Tanecznego Starcia → intro postaci (Wan, obraz tancerza jako pierwsza klatka) → plansza konkurencji
+// z głosem prowadzącego → występ → finał (wynik, klatka „po”, wywiad po stworkowemu) → Spawacz → Kronikarz →
+// publikacja `do_akceptacji` na kanale programu (projekt `teo-game-show`). Wysyłka dopiero po ✓ Suwerena.
+const GRA_TANCA = 'teterhia-wieczna-saga';
+/** Tancerz z Bestiariusza gry: imię, opis i obraz bryły (Assety 3D `obraz.png`) — klucz `b:<plik>` przez assety.json gry. */
+async function tancerzGameShow(mini) {
+    const b = await Bestiariusz.wczytaj(GRA_TANCA).catch(() => null);
+    const m = (b?.mini ?? []).find((x) => x.id === mini?.id) ?? null;
+    let assetId = null;
+    if (m?.klucz?.startsWith('a:')) assetId = m.klucz.slice(2);
+    else if (m?.klucz?.startsWith('b:')) {
+        const lista = JSON.parse(await fs.readFile(path.join(APKI_DIR, GRA_TANCA, 'public', 'assety', 'assety.json'), 'utf8').catch(() => '[]'));
+        assetId = (Array.isArray(lista) ? lista : []).find((a) => a.plik === m.klucz.slice(2))?.zrodlo ?? null;
+    }
+    let obraz = null;
+    if (assetId) { try { const p = Assety3D.sciezkaPliku(assetId, 'obraz.png'); if (fsSync.existsSync(p)) obraz = p; } catch { /* zły id assetu */ } }
+    return { imie: m?.nazwa || mini?.nazwa || 'TeOgochi', opis: m?.opis ?? '', obraz };
+}
+const GameShow = utworzGameShow({
+    katalog: ANTIGRAVITY_DIR,
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    katalogNagran: () => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, 'taneczne-starcie'),
+    choreografie: { wczytaj: (id) => Choreografie.wczytaj(id) },
+    tancerz: tancerzGameShow,
+    intro: async ({ prompt, obraz, sekundy }) => {
+        const przed = await stanWideoZBudzeniem('intro TeO Game Show');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        const obrazStartowy = obraz ? await Assety3D.wgrajDoComfy(obraz) : '';
+        const z = await Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, sekundy, obrazStartowy });
+        if (!z.ok) throw new Error(z.powod || 'ComfyUI nie przyjął intro.');
+        const plik = await czekajNaPlikWideo(z.zlecenie, () => false);
+        if (!plik) throw new Error('Wan nie oddał pliku intro.');
+        return plik;
+    },
+    chat: (model, system, user) => piszModelem(model, system, user),
+    modelDla: (id) => ModeleAgentow.modelDla(id),
+    mow: async ({ tekst, kto, jezyk }) => {
+        // prowadzący = karta Kronikarza z obsady Aktorów; stworek = barwa Głosów Stada dla `aktor` (bez niej tor domyślny)
+        const glos = kto === 'prowadzacy' ? prowadzacyZObsady(await Wywiady.aktorzy()).glos : await GlosyStada.glos('aktor').catch(() => null);
+        return Wywiady.mowa({ tekst: tekstDoMowy(tekst), glos: glos ?? null, jezyk });
+    },
+    opisz: (p) => Montazownia.opisz(p),
+    spawaj: ({ klipy, wyjscie, celWedlug }) => Spawacz.spawaj({ klipy, wyjscie, opisz: Montazownia.opisz, uruchom: execFileAsync, ffmpeg: ffmpegPath, celWedlug }),
+    klocki: () => Spawacz.zestawKlockow(KORZENIE_WIDEO().klocki, 'GameShow'),
+    okresy: () => Choreografie.okresy(),
+    publikuj: (z) => PublikacjeYT.przygotuj(z),
+    ffmpeg: ffmpegPath,
+    szyna: Szyna,
+});
+app.get('/api/game-show', (_req, res) => ytOdp(res, (async () => ({
+    odcinki: await GameShow.lista(), kanal: await PublikacjeYT.kanalProjektu(GAME_SHOW.PROJEKT),
+    inneSieci: GAME_SHOW.INNE_SIECI, instrukcja: GAME_SHOW.INSTRUKCJA_KANALU, automat: process.env.OTAKOS_GAME_SHOW !== '0',
+}))(), 500));
+app.get('/api/game-show/:id', (req, res) => ytOdp(res, GameShow.wczytaj(req.params.id).then((odcinek) => ({ odcinek })), 404));
+/** { choreografia, nagranie?, bezIntro? } — odcinek z nagrania (most robi to sam po zapisie nagrania). */
+app.post('/api/game-show', (req, res) => ytOdp(res, GameShow.utworz(String(req.body?.choreografia ?? ''), req.body?.nagranie, { bezIntro: req.body?.bezIntro === true }).then((odcinek) => ({ odcinek }))));
+app.post('/api/game-show/:id/ponow', (req, res) => ytOdp(res, GameShow.ponow(req.params.id, { bezIntro: req.body?.bezIntro === true }).then((odcinek) => ({ odcinek }))));
+app.delete('/api/game-show/:id', (req, res) => ytOdp(res, GameShow.usun(req.params.id).then((usuniety) => ({ usuniety }))));
+/** { kanalId|null } — dedykowany kanał programu (zapis jak przy ✓; zmiana przed każdym ✓ dalej możliwa). */
+app.put('/api/game-show/kanal', (req, res) => ytOdp(res, PublikacjeYT.ustawKanalProjektu(GAME_SHOW.PROJEKT, req.body?.kanalId || null).then((kanal) => ({ kanal }))));
+/** Karta na Stół: propozycja zarządzania kanałem przez stado (harmonogram, opisy). Jedna otwarta naraz. */
+app.post('/api/game-show/stol', (_req, res) => ytOdp(res, (async () => {
+    const k = GAME_SHOW.kartaZarzadzania();
+    const otwarta = (await Stol.lista()).find((x) => x.tytul === k.tytul && !['odrzucona'].includes(x.etap));
+    return { karta: otwarta ?? await Stol.dodaj({ ...k, zrodlo: 'hub', zalozyl: 'TeO Game Show' }), nowa: !otwarta };
+})()));
 
 // ── 💬 Sceny dialogowe filmu (services/ScenyDialogowe.js) ──
 // Silnik Studia Podcastu bez studia: postacie z obsady rozmawiają na tle kadrów projektu → montaże projektu (Montażownia).

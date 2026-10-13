@@ -68,10 +68,10 @@ export function utworzPublikacje(o) {
     const kanalyKatedry = async () => (cfg.kanaly ? await cfg.kanaly().catch(() => null) : null) ?? { domyslny: null, kanaly: [] };
     async function kanalyProjektow() { try { return JSON.parse(await fs.readFile(PLIK_KANALOW, 'utf8')) ?? {}; } catch { return {}; } }
     /** Kanał dla projektu: zapamiętany (jeśli dalej połączony) → domyślny. */
-    async function kanalDla(projekt) {
+    async function kanalDla(projekt, wskazany = null) {
         const { domyslny, kanaly } = await kanalyKatedry();
         const zap = projekt ? (await kanalyProjektow())[projekt] : null;
-        const k = kanaly.find((x) => x.id === zap) ?? kanaly.find((x) => x.id === domyslny) ?? kanaly[0] ?? null;
+        const k = kanaly.find((x) => x.id === wskazany) ?? kanaly.find((x) => x.id === zap) ?? kanaly.find((x) => x.id === domyslny) ?? kanaly[0] ?? null;
         return k ? { kanalId: k.id, kanalNazwa: k.nazwa } : { kanalId: null, kanalNazwa: null };
     }
     const czas = () => new Date(cfg.teraz()).toISOString();
@@ -107,7 +107,7 @@ export function utworzPublikacje(o) {
         const l = await wczytaj();
         const otwarta = l.find((x) => x.plik === z.plik && ['przygotowuje', 'do_akceptacji', 'wysylanie', 'prywatna'].includes(x.etap));
         if (otwarta) return otwarta;   // drugi klik nie robi drugiego filmu na kanale
-        const p = { id: `yt_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`, etap: 'przygotowuje', plik: z.plik, nazwa: String(z.nazwa ?? path.basename(z.plik)).slice(0, 160), wystawaId: z.wystawaId ?? null, zrodlo: z.zrodlo ?? null, ...(await kanalDla(z.zrodlo?.projekt)), utworzono: czas(), autor: 'Kronikarz', jezyk: z.jezyk === 'en' ? 'en' : 'pl' };
+        const p = { id: `yt_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`, etap: 'przygotowuje', plik: z.plik, nazwa: String(z.nazwa ?? path.basename(z.plik)).slice(0, 160), wystawaId: z.wystawaId ?? null, zrodlo: z.zrodlo ?? null, ...(await kanalDla(z.zrodlo?.projekt, z.kanalId)), utworzono: czas(), autor: 'Kronikarz', jezyk: z.jezyk === 'en' ? 'en' : 'pl' };
         l.unshift(p);
         await zapisz();
         try {
@@ -204,7 +204,26 @@ export function utworzPublikacje(o) {
 
     async function wszystkie() { return [...(await wczytaj())]; }
 
-    return { przygotuj, zmien, zatwierdz, odrzuc, sprawdz, wszystkie };
+    /**
+     * Kanał projektu na stałe (np. dedykowany kanał „TeO Game Show” dla projektu `teo-game-show`) — ten sam zapis, który
+     * robi ✓ publikacji. `kanalId` null = zapomnij (publikacje projektu idą na domyślny).
+     */
+    async function ustawKanalProjektu(projekt, kanalId) {
+        const p = String(projekt ?? '').trim();
+        if (!/^[a-z0-9][a-z0-9-]{0,60}$/.test(p)) throw new Error('Złe id projektu.');
+        const mapa = await kanalyProjektow();
+        if (kanalId) {
+            const k = (await kanalyKatedry()).kanaly.find((x) => x.id === kanalId);
+            if (!k) throw new Error('Ten kanał nie jest połączony z Katedrą — najpierw „➕ Dodaj kanał”.');
+            mapa[p] = k.id;
+        } else delete mapa[p];
+        await fs.mkdir(path.dirname(PLIK_KANALOW), { recursive: true });
+        await fs.writeFile(PLIK_KANALOW, JSON.stringify(mapa, null, 1), 'utf8');
+        return kanalProjektu(p);
+    }
+    async function kanalProjektu(projekt) { return { projekt, ...(await kanalDla(projekt)), zapamietany: (await kanalyProjektow())[projekt] ?? null }; }
+
+    return { przygotuj, zmien, zatwierdz, odrzuc, sprawdz, wszystkie, ustawKanalProjektu, kanalProjektu };
 }
 
 export default { utworzPublikacje, odczytajMetadane, SYSTEM_KRONIKARZA, ETAPY };

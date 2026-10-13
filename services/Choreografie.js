@@ -183,9 +183,10 @@ export const rankingTanca = (wpisy) => [...wpisy].sort((a, b) => b.ocena.wynik -
 
 /**
  * @param {{ katalog: string, rytm: (plik:string) => Promise<object>, katalogMontazy: (projekt:string) => Promise<string>,
- *           ffmpeg?: string, uruchom?: Function, mistrzGry?: { wynikChoreografii?: Function }, teraz?: () => number }} o
+ *           ffmpeg?: string, uruchom?: Function, mistrzGry?: { wynikChoreografii?: Function }, teraz?: () => number,
+ *           poNagraniu?: (o:{ choreografia:object, nagranie:object }) => Promise<any> }} o   poNagraniu = 🎪 TeO Game Show (błąd nie psuje nagrania)
  */
-export function utworzChoreografie({ katalog, rytm, katalogMontazy, ffmpeg = null, uruchom = null, mistrzGry = null, teraz = () => Date.now() }) {
+export function utworzChoreografie({ katalog, rytm, katalogMontazy, ffmpeg = null, uruchom = null, mistrzGry = null, poNagraniu = null, teraz = () => Date.now() }) {
     const KAT = () => path.join(katalog, 'choreografie');
     const plikC = (id) => { if (!ID.test(String(id))) throw new Error('Złe id choreografii.'); return path.join(KAT(), `${id}.json`); };
     const PLIK_T = () => path.join(KAT(), 'turnieje.json');
@@ -265,7 +266,9 @@ export function utworzChoreografie({ katalog, rytm, katalogMontazy, ffmpeg = nul
             cc.nagrania = [...(cc.nagrania ?? []), { nazwa: wpis.nazwa, bajtow: wpis.bajtow, kiedy: wpis.kiedy, odcisk: wpis.odcisk }].slice(-20);
             await fs.writeFile(plikC(id), JSON.stringify(cc, null, 2), 'utf8');
         });
-        return { ...wpis, projekt: PROJEKT };
+        let show = null;
+        if (poNagraniu) { try { show = await poNagraniu({ choreografia: c, nagranie: wpis }); } catch (e) { show = { blad: e.message }; } }
+        return { ...wpis, projekt: PROJEKT, ...(show ? { show } : {}) };
     }
 
     // ── turnieje ──
