@@ -150,7 +150,9 @@ export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     const gra = cfg.planGry ? await cfg.planGry.publiczny().catch(() => null) : null;
     // 🏝️ Paczki gier (services/PaczkiGier.js): co ta Katedra daje do zagrania i zainstalowania — rejestr podaje to dalej.
     const paczkiGier = cfg.paczkiGier ? await cfg.paczkiGier.publiczne().catch(() => []) : [];
-    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(zlecenia.length ? { zlecenia } : {}), ...(mistrz ? { mistrz } : {}), ...(postac ? { postac } : {}), ...(gra ? { gra } : {}), ...(paczkiGier.length ? { paczkiGier } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
+    // 🎪 TeO Game Show (services/TeoGameShow.js): playlista programu i jej filmy z językiem z metadanych — strona pokazuje je w wybranym języku.
+    const gameShow = cfg.gameShow ? await cfg.gameShow.publiczne().catch(() => null) : null;
+    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(zlecenia.length ? { zlecenia } : {}), ...(mistrz ? { mistrz } : {}), ...(postac ? { postac } : {}), ...(gra ? { gra } : {}), ...(paczkiGier.length ? { paczkiGier } : {}), ...(gameShow ? { gameShow } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
 }
 
 /** Ścieżka pliku wizytówki — tylko id z ostatnio zbudowanej wizytówki (nigdy ścieżka z URL-a). */

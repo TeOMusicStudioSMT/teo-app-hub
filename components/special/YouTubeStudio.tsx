@@ -83,7 +83,7 @@ export const PolaczYouTube: React.FC<{ onZmiana?: () => void }> = ({ onZmiana })
     );
 };
 
-interface Publikacja { id: string; etap: string; nazwa: string; tytul?: string; opis?: string; tagi?: string[]; model?: string | null; blad?: string | null; uwaga?: string | null; url?: string; utworzono: string; kanalId?: string | null; kanalNazwa?: string | null }
+interface Publikacja { id: string; etap: string; nazwa: string; tytul?: string; opis?: string; tagi?: string[]; model?: string | null; blad?: string | null; uwaga?: string | null; url?: string; utworzono: string; kanalId?: string | null; kanalNazwa?: string | null; videoId?: string; playlista?: { id: string; stan: string; powod?: string }; kopiaZ?: string }
 const ETAP: Record<string, string> = { przygotowuje: '✍️ Kronikarz pisze…', do_akceptacji: '⏳ czeka na Twoje ✓', wysylanie: '⬆️ Impresariat wysyła', prywatna: '🔒 na YouTube, ale prywatny', opublikowana: '✓ na YouTube', odrzucona: '✕ odrzucona', blad: '⚠ błąd' };
 
 export const PublikacjeYouTubePanel: React.FC = () => {
@@ -132,6 +132,16 @@ export const PublikacjeYouTubePanel: React.FC = () => {
                             {p.url && <a href={p.url} target="_blank" rel="noreferrer" className="ml-auto text-red-300 underline">{p.url}</a>}
                         </div>
                         {(p.blad || p.uwaga) && <div className="mt-1 text-[10px] text-amber-300">{p.blad ?? p.uwaga}</div>}
+                        {p.playlista && <div className={`mt-1 text-[10px] ${p.playlista.stan === 'dodana' ? 'text-emerald-300' : 'text-amber-300'}`}>📋 playlista: {p.playlista.stan === 'dodana' ? 'dopisany' : `${p.playlista.stan} — ${p.playlista.powod ?? ''}`}
+                            {p.playlista.stan === 'blad' && <button onClick={() => void zMostu(`/api/youtube/publikacje/${p.id}/playlista`, { method: 'POST', body: '{}' }).then(odswiez).catch((e) => toast.error(String(e instanceof Error ? e.message : e)))} className="ml-2 underline">↻ ponów</button>}</div>}
+                        {kanaly.length > 1 && p.tytul && p.etap !== 'odrzucona' && (
+                            <label className="mt-1 flex items-center gap-2 text-[10px] text-slate-500">➕ także na kanał:
+                                <select value="" onChange={(ev) => ev.target.value && void zMostu(`/api/youtube/publikacje/${p.id}/na-kanal`, { method: 'POST', body: JSON.stringify({ kanalId: ev.target.value }) }).then(() => { toast.success('Kopia czeka na Twoje ✓ (osobna wysyłka na ten kanał).'); return odswiez(); }).catch((e) => toast.error(String(e instanceof Error ? e.message : e)))} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-300">
+                                    <option value="">— wybierz —</option>
+                                    {kanaly.filter((k) => k.id !== p.kanalId).map((k) => <option key={k.id} value={k.id}>{k.nazwa || k.id}</option>)}
+                                </select>
+                            </label>
+                        )}
                         {doAkc && (
                             <div className="mt-2 flex flex-col gap-1.5">
                                 <input value={e?.tytul ?? p.tytul ?? ''} maxLength={100} onChange={(ev) => setEdycja((x) => ({ ...x, [p.id]: { tytul: ev.target.value, opis: x[p.id]?.opis ?? p.opis ?? '', tagi: x[p.id]?.tagi ?? (p.tagi ?? []).join(', ') } }))} placeholder="tytuł" className="rounded border border-slate-700 bg-black/40 px-2 py-1 font-bold text-slate-100" />

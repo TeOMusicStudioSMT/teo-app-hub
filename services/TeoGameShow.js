@@ -145,7 +145,7 @@ const nowyEtap = () => Object.fromEntries(ETAPY.map((e) => [e, { stan: 'czeka' }
  *   mow?:(o:{tekst:string, kto:'prowadzacy'|'stworek', jezyk:string})=>Promise<{audio:Buffer, ext:string}>,
  *   opisz:(p:string)=>Promise<{sekundy:number|null}>, spawaj:(o:{klipy:string[], wyjscie:string, celWedlug:number})=>Promise<any>,
  *   klocki?:()=>Promise<{start:string[], end:string[]}>, okresy?:()=>any[], publikuj?:(z:object)=>Promise<any>,
- *   odrzucPublikacje?:(id:string)=>Promise<any>, ffmpeg?:string, szyna?:any, teraz?:()=>number }} o
+ *   odrzucPublikacje?:(id:string)=>Promise<any>, playlistaRss?:(id:string)=>Promise<{tytul:string, filmy:any[], blad?:string}>, ffmpeg?:string, szyna?:any, teraz?:()=>number }} o
  */
 export function utworzGameShow(o) {
     const cfg = { ffmpeg: 'ffmpeg', teraz: () => Date.now(), modelDla: async () => null, okresy: () => [], klocki: async () => ({ start: [], end: [] }), ...o };
@@ -159,12 +159,36 @@ export function utworzGameShow(o) {
     const czytaj = async (p) => JSON.parse(await fs.readFile(p, 'utf8'));
     // ⚙️ ustawienia programu: język odcinków (domyślnie angielski — program dla świata)
     const PLIK_U = path.join(KAT, 'ustawienia.json');
-    async function ustawienia() { try { const u = JSON.parse(await fs.readFile(PLIK_U, 'utf8')); return { jezyk: jezykShow(u.jezyk) }; } catch { return { jezyk: 'en' }; } }
-    async function ustaw({ jezyk } = {}) {
-        if (!JEZYKI[jezyk]) throw new Error(`Język programu: ${Object.keys(JEZYKI).join(' / ')}.`);
+    // + playlista programu (Suweren 2026-10-13: „tu wrzucam wszystkie filmy z tańca… automatyczna dla mojej Katedry,
+    //   inni mają swój pipeline”) — KAŻDA Katedra ustawia własną; pusta = bez dopisywania.
+    async function ustawienia() {
+        try {
+            const u = JSON.parse(await fs.readFile(PLIK_U, 'utf8'));
+            return { jezyk: jezykShow(u.jezyk), playlista: u.playlista ?? null, playlistaKanal: u.playlistaKanal ?? null, playlistaTytul: u.playlistaTytul ?? null };
+        } catch { return { jezyk: 'en', playlista: null, playlistaKanal: null, playlistaTytul: null }; }
+    }
+    /** { jezyk?, playlista? (id; null = zdejmij), playlistaKanal?, playlistaTytul? } — zmienia tylko podane pola. */
+    async function ustaw(zmiany = {}) {
+        const u = await ustawienia();
+        if (zmiany.jezyk !== undefined) {
+            if (!JEZYKI[zmiany.jezyk]) throw new Error(`Język programu: ${Object.keys(JEZYKI).join(' / ')}.`);
+            u.jezyk = zmiany.jezyk;
+        }
+        if (zmiany.playlista !== undefined) {
+            if (zmiany.playlista && !/^[\w-]{10,64}$/.test(String(zmiany.playlista))) throw new Error('Złe id playlisty.');
+            Object.assign(u, { playlista: zmiany.playlista || null, playlistaKanal: zmiany.playlista ? zmiany.playlistaKanal ?? null : null, playlistaTytul: zmiany.playlista ? zmiany.playlistaTytul ?? null : null });
+        }
         await fs.mkdir(KAT, { recursive: true });
-        await fs.writeFile(PLIK_U, JSON.stringify({ jezyk }, null, 1), 'utf8');
+        await fs.writeFile(PLIK_U, JSON.stringify(u, null, 1), 'utf8');
         return ustawienia();
+    }
+    /** Pole `gameShow` publicznej wizytówki: playlista programu i jej filmy z językiem z metadanych (otakos.wtf). */
+    async function publiczne() {
+        const u = await ustawienia();
+        if (!u.playlista || !cfg.playlistaRss) return null;
+        const p = await cfg.playlistaRss(u.playlista).catch(() => null);
+        if (!p || p.blad) return { playlista: u.playlista, tytul: u.playlistaTytul, filmy: [] };
+        return { playlista: u.playlista, tytul: p.tytul || u.playlistaTytul, filmy: p.filmy };
     }
     const pisz = async (s) => {
         const p = plikS(s.id);
@@ -408,7 +432,7 @@ export function utworzGameShow(o) {
         return true;
     }
 
-    return { lista, wczytaj, utworz, ponow, usun, ustawienia, ustaw, wRobocie: (id) => wRobocie.has(id), czekaj: () => kolejka };
+    return { lista, wczytaj, utworz, ponow, usun, ustawienia, ustaw, publiczne, wRobocie: (id) => wRobocie.has(id), czekaj: () => kolejka };
 }
 
 /** Inne sieci społecznościowe: uczciwa lista „niepodłączone” z powodem (bez atrap). */

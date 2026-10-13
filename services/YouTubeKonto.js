@@ -28,7 +28,8 @@
  */
 import crypto from 'node:crypto';
 
-export const ZAKRESY = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly'];
+// `youtube` (zarządzanie) — od 2026-10-13 dla playlist (TeO Game Show dopisuje odcinki); kanały połączone wcześniej muszą dać zgodę ponownie.
+export const ZAKRESY = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly', 'https://www.googleapis.com/auth/youtube'];
 export const SCIEZKA_ZWROTU = '/api/impresario/youtube/zwrot';
 const WAZNOSC_STATE_MS = 10 * 60_000;
 
@@ -137,6 +138,28 @@ export function utworzKontoYouTube(o) {
         return { id, istnieje: true, widocznosc: s.privacyStatus, przetworzony: s.uploadStatus === 'processed', odrzucony: s.rejectionReason ?? null };
     }
 
+    /**
+     * Film na playlistę (tokenem kanału, który ją ma). Już jest = nic nie dopisuje. Brak zgody na playlisty = powód wprost.
+     * @returns {Promise<{ dodano:boolean, juzByl?:boolean }>}
+     */
+    async function dodajDoPlaylisty(videoId, playlistId, kanalId = null) {
+        if (!/^[\w-]{11}$/.test(String(videoId ?? ''))) throw new Error('Złe id filmu.');
+        if (!/^[\w-]{10,64}$/.test(String(playlistId ?? ''))) throw new Error('Złe id playlisty.');
+        const token = await tokenDostepu(kanalId);
+        const jest = await api(`playlistItems?part=id&playlistId=${playlistId}&videoId=${videoId}`, token).catch(() => null);
+        if (jest?.items?.length) return { dodano: false, juzByl: true };
+        const r = await cfg.fetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet', {
+            method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ snippet: { playlistId, resourceId: { kind: 'youtube#video', videoId } } }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) return { dodano: true };
+        const powod = d.error?.errors?.[0]?.reason ?? d.error?.status ?? '';
+        if (r.status === 403 && /insufficient|PERMISSION/i.test(`${powod} ${d.error?.message ?? ''}`)) throw new Error('Kanał połączony bez zgody na playlisty — w Impresariacie kliknij „➕ Dodaj kanał” i wybierz ten sam kanał (nowa zgoda obejmuje playlisty).');
+        if (r.status === 403 || r.status === 404) throw new Error(`YouTube nie pozwala dopisać do tej playlisty (${powod || r.status}) — playlista musi należeć do kanału, na który poszedł film.`);
+        throw new Error(`YouTube API ${r.status}: ${d.error?.message ?? ''}`.trim());
+    }
+
     /** Lista połączonych kanałów (bez tokenów). */
     async function kanaly() {
         const s = await cfg.sekrety().catch(() => ({}));
@@ -160,7 +183,7 @@ export function utworzKontoYouTube(o) {
         return { klient, polaczony: lista.length > 0 || !!s?.REFRESH_TOKEN?.trim(), kanaly: lista, domyslny, kanal: dom, blad: blad ?? dom?.blad ?? null, zwrot: zwrot() };
     }
 
-    return { adresZgody, przyjmijZwrot, tokenDostepu, kanal, kanaly, statusFilmu, stan };
+    return { adresZgody, przyjmijZwrot, tokenDostepu, kanal, kanaly, statusFilmu, dodajDoPlaylisty, stan };
 }
 
 export default { utworzKontoYouTube, ZAKRESY, SCIEZKA_ZWROTU };

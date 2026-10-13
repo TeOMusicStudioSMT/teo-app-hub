@@ -14832,6 +14832,13 @@ const PublikacjeYT = utworzPublikacje({
     statusFilmu: (id, kanalId) => KontoYouTube.statusFilmu(id, kanalId),
     kanaly: () => KontoYouTube.kanaly(),
     naWystawe: (filmId, url) => Wystawa.ustawYouTube({ filmId, url }),
+    // 📋 odcinki TeO Game Show same idą na playlistę programu tej Katedry (ustawienia Game Show)
+    playlistaDla: async (p) => {
+        if (p.zrodlo?.projekt !== GAME_SHOW.PROJEKT) return null;
+        const u = await GameShow.ustawienia();
+        return u.playlista ? { id: u.playlista, kanalId: u.playlistaKanal } : null;
+    },
+    dodajDoPlaylisty: (videoId, playlistId, kanalId) => KontoYouTube.dodajDoPlaylisty(videoId, playlistId, kanalId),
     gotowyYouTube: async () => (await ImpresarioService.getInstance().getYouTubeSecretsStatus()).allPresent,
     szyna: Szyna,
 });
@@ -14905,6 +14912,10 @@ app.post('/api/youtube/publikacje/:id/zmien', (req, res) => ytOdp(res, (async ()
     return { publikacja };
 })()));
 app.post('/api/youtube/publikacje/:id/zatwierdz', (req, res) => ytOdp(res, PublikacjeYT.zatwierdz(req.params.id).then((publikacja) => { jajoPatrzy(() => Jajo.decyzja({ zrodlo: 'youtube', obiekt: req.params.id, tytul: publikacja.tytul, werdykt: 'zatwierdz', opis: String(publikacja.opis ?? '').slice(0, 600) })); return { publikacja }; })));
+/** { kanalId } — ➕ ten sam film na kolejny kanał (kopia z tymi samymi metadanymi, osobne ✓). */
+app.post('/api/youtube/publikacje/:id/na-kanal', (req, res) => ytOdp(res, PublikacjeYT.naKanal(req.params.id, String(req.body?.kanalId ?? '')).then((publikacja) => ({ publikacja }))));
+/** ↻ dopisz wysłany film do playlisty projektu (np. po ponownym połączeniu kanału ze zgodą na playlisty). */
+app.post('/api/youtube/publikacje/:id/playlista', (req, res) => ytOdp(res, PublikacjeYT.ponowPlayliste(req.params.id).then((publikacja) => ({ publikacja }))));
 app.post('/api/youtube/publikacje/:id/odrzuc', (req, res) => ytOdp(res, PublikacjeYT.odrzuc(req.params.id).then((publikacja) => { jajoPatrzy(() => Jajo.decyzja({ zrodlo: 'youtube', obiekt: req.params.id, tytul: publikacja.tytul, werdykt: 'odrzuc', opis: String(publikacja.opis ?? '').slice(0, 600) })); return { publikacja }; })));
 
 // ── 🎭 Aktorzy i wywiad o filmie (services/WywiadAktorow.js) ──
@@ -15050,6 +15061,7 @@ const GameShow = utworzGameShow({
     okresy: () => Choreografie.okresy(),
     publikuj: (z) => PublikacjeYT.przygotuj(z),
     odrzucPublikacje: (id) => PublikacjeYT.odrzuc(id),
+    playlistaRss: (id) => KanalYT.playlista(id),
     ffmpeg: ffmpegPath,
     szyna: Szyna,
 });
@@ -15064,8 +15076,24 @@ app.post('/api/game-show', (req, res) => ytOdp(res, GameShow.utworz(String(req.b
 app.post('/api/game-show/:id/ponow', (req, res) => ytOdp(res, GameShow.ponow(req.params.id, { bezIntro: req.body?.bezIntro === true, jezyk: req.body?.jezyk || null }).then((odcinek) => ({ odcinek }))));
 app.delete('/api/game-show/:id', (req, res) => ytOdp(res, GameShow.usun(req.params.id).then((usuniety) => ({ usuniety }))));
 /** { jezyk: 'en'|'pl' } — język nowych odcinków (domyślnie en). */
-app.put('/api/game-show/ustawienia', (req, res) => ytOdp(res, GameShow.ustaw({ jezyk: req.body?.jezyk }).then((ustawienia) => ({ ustawienia }))));
+app.put('/api/game-show/ustawienia', (req, res) => ytOdp(res, (async () => {
+    const b = req.body ?? {};
+    const zmiany = {};
+    if (b.jezyk !== undefined) zmiany.jezyk = b.jezyk;
+    if (b.playlista !== undefined) {
+        if (!b.playlista) zmiany.playlista = null;
+        else {
+            // link albo id → RSS playlisty (publiczny): tytuł i kanał, na który YouTube pozwoli dopisywać
+            const pl = await KanalYT.playlista(String(b.playlista));
+            if (!pl) throw new Error('To nie wygląda na link do playlisty YouTube (…/playlist?list=PL…).');
+            if (pl.blad) throw new Error(`Playlisty nie da się odczytać (${pl.blad}) — musi być publiczna albo niepubliczna, nie prywatna.`);
+            Object.assign(zmiany, { playlista: pl.id, playlistaKanal: pl.kanalId, playlistaTytul: pl.tytul });
+        }
+    }
+    return { ustawienia: await GameShow.ustaw(zmiany) };
+})()));
 /** { kanalId|null } — dedykowany kanał programu (zapis jak przy ✓; zmiana przed każdym ✓ dalej możliwa). */
+Wizytowka.skonfiguruj({ gameShow: GameShow });
 app.put('/api/game-show/kanal', (req, res) => ytOdp(res, PublikacjeYT.ustawKanalProjektu(GAME_SHOW.PROJEKT, req.body?.kanalId || null).then((kanal) => ({ kanal }))));
 /** Karta na Stół: propozycja zarządzania kanałem przez stado (harmonogram, opisy). Jedna otwarta naraz. */
 app.post('/api/game-show/stol', (_req, res) => ytOdp(res, (async () => {

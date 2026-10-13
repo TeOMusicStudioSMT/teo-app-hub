@@ -50,6 +50,41 @@ export function filmyZRss(xml) {
     return { nazwa: nazwa.slice(0, 100), filmy: filmy.slice(0, 15) };
 }
 
+/** Id playlisty z linku (…?list=PL…) albo samego id. */
+export function rozpoznajPlayliste(wejscie) {
+    const t = String(wejscie ?? '').trim();
+    const m = t.match(/[?&]list=([\w-]{10,64})/) ?? t.match(/^([\w-]{10,64})$/);
+    return m && /^(PL|UU|FL|OL|LL)/.test(m[1]) ? m[1] : null;
+}
+
+/**
+ * Język filmu z metadanych (tytuł + opis), bez modelu: polskie litery i częste słowa → pl, angielskie słowa → en,
+ * nic pewnego → null (strona pokazuje go wtedy w każdym języku). Czysta.
+ */
+export function jezykZMetadanych(tekst) {
+    const t = ` ${String(tekst ?? '').toLowerCase()} `;
+    const pl = (t.match(/[ąćęłńóśźż]/g) ?? []).length * 2 + (t.match(/ (i|w|na|z|się|jest|nie|do|dla|oraz|taniec|tańczy|wynik|odcinek|konkurencja|dnia) /g) ?? []).length;
+    const en = (t.match(/ (the|and|of|to|is|in|with|for|on|dance|day|score|episode|challenge|welcome|show) /g) ?? []).length;
+    if (pl >= 3 && pl > en * 1.2) return 'pl';
+    if (en >= 3 && en > pl * 1.2) return 'en';
+    return null;
+}
+
+/** RSS playlisty → { tytul, kanalId, filmy: [{ id, tytul, kiedy, jezyk }] } (do 15 najnowszych — tyle daje YouTube). */
+export function playlistaZRss(xml) {
+    const t = String(xml ?? '');
+    const [glowa] = t.split('<entry>');
+    const filmy = [];
+    for (const e of t.split('<entry>').slice(1)) {
+        const id = e.match(/<yt:videoId>([\w-]{11})<\/yt:videoId>/)?.[1];
+        if (!id) continue;
+        const tytul = odEncji(e.match(/<title>([^<]*)<\/title>/)?.[1] ?? '').trim().slice(0, 160);
+        const opis = odEncji(e.match(/<media:description>([\s\S]*?)<\/media:description>/)?.[1] ?? '');
+        filmy.push({ id, tytul, kiedy: e.match(/<published>([^<]+)<\/published>/)?.[1] ?? null, jezyk: jezykZMetadanych(`${tytul}\n${opis}`) });
+    }
+    return { tytul: odEncji(glowa.match(/<title>([^<]*)<\/title>/)?.[1] ?? '').trim().slice(0, 120), kanalId: glowa.match(/<yt:channelId>([\w-]+)<\/yt:channelId>/)?.[1] ?? null, filmy: filmy.slice(0, 15) };
+}
+
 /** @param {{ fetch?:typeof fetch, teraz?:()=>number }} o */
 export function utworzKanalYouTube(o = {}) {
     const cfg = { fetch: (...a) => fetch(...a), teraz: () => Date.now(), ...o };
@@ -80,7 +115,19 @@ export function utworzKanalYouTube(o = {}) {
         pamiec.set(k.adres, { kiedy: cfg.teraz(), wynik });
         return wynik;
     }
-    return { pobierz };
+    /** Playlista (publiczna, RSS bez klucza): { id, tytul, kanalId, filmy } albo { id, blad }. */
+    async function playlista(wejscie) {
+        const id = rozpoznajPlayliste(wejscie);
+        if (!id) return null;
+        const z = pamiec.get(`pl:${id}`);
+        if (z && cfg.teraz() - z.kiedy < WAZNOSC_MS) return z.wynik;
+        let wynik;
+        try { wynik = { id, ...playlistaZRss(await tekst(`https://www.youtube.com/feeds/videos.xml?playlist_id=${id}`)) }; }
+        catch (e) { wynik = { id, blad: e.message }; }
+        pamiec.set(`pl:${id}`, { kiedy: cfg.teraz(), wynik });
+        return wynik;
+    }
+    return { pobierz, playlista, odswiez: (klucz) => pamiec.delete(klucz) };
 }
 
 // ── Linki do innych serwisów (Instagram, TikTok, Spotify…) — tylko https, nazwa z domeny ──

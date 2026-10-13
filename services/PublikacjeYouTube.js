@@ -58,6 +58,7 @@ export function odczytajMetadane(tekst) {
  *   statusFilmu:(id:string, kanalId?:string|null)=>Promise<{istnieje:boolean, widocznosc?:string}>,
  *   kanaly?:()=>Promise<{ domyslny:string|null, kanaly:{id:string,nazwa:string}[] }>,
  *   naWystawe:(filmId:string, url:string)=>Promise<any>, gotowyYouTube:()=>Promise<boolean>,
+ *   playlistaDla?:(p:object)=>Promise<{id:string, kanalId?:string|null}|null>, dodajDoPlaylisty?:(videoId:string, playlistId:string, kanalId:string|null)=>Promise<{dodano:boolean, juzByl?:boolean}>,
  *   szyna?:any, teraz?:()=>number }} o
  */
 export function utworzPublikacje(o) {
@@ -105,7 +106,7 @@ export function utworzPublikacje(o) {
         if (!z?.plik || !WIDEO.test(z.plik)) throw new Error('YouTube przyjmie tylko plik wideo (.mp4 / .mov / .webm).');
         await fs.access(z.plik).catch(() => { throw new Error(`Nie ma pliku: ${path.basename(z.plik)}`); });
         const l = await wczytaj();
-        const otwarta = l.find((x) => x.plik === z.plik && ['przygotowuje', 'do_akceptacji', 'wysylanie', 'prywatna'].includes(x.etap));
+        const otwarta = l.find((x) => x.plik === z.plik && !x.kopiaZ && ['przygotowuje', 'do_akceptacji', 'wysylanie', 'prywatna'].includes(x.etap));
         if (otwarta) return otwarta;   // drugi klik nie robi drugiego filmu na kanale
         const p = { id: `yt_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`, etap: 'przygotowuje', plik: z.plik, nazwa: String(z.nazwa ?? path.basename(z.plik)).slice(0, 160), wystawaId: z.wystawaId ?? null, zrodlo: z.zrodlo ?? null, ...(await kanalDla(z.zrodlo?.projekt, z.kanalId)), utworzono: czas(), autor: 'Kronikarz', jezyk: z.jezyk === 'en' ? 'en' : 'pl' };
         l.unshift(p);
@@ -149,7 +150,7 @@ export function utworzPublikacje(o) {
         if (p.kanalId && kanaly.length && !kanaly.some((x) => x.id === p.kanalId)) throw new Error(`Kanał „${p.kanalNazwa ?? p.kanalId}” nie jest już połączony — wybierz inny kanał.`);
         if (!p.kanalId) Object.assign(p, await kanalDla(p.zrodlo?.projekt));
         const job = await cfg.impresariat.enqueuePublication(p.tytul, p.zrodlo?.projekt ?? null, ['youtube'], p.plik, { opis: p.opis, tagi: p.tagi, widocznosc: 'unlisted', publikacjaId: p.id, kanalId: p.kanalId });
-        if (p.zrodlo?.projekt && p.kanalId) {   // projekt zapamiętuje kanał — następny odcinek pójdzie tam sam
+        if (p.zrodlo?.projekt && p.kanalId && !p.kopiaZ) {   // projekt zapamiętuje kanał (kopia na drugi kanał — nie) — następny odcinek pójdzie tam sam
             const mapa = await kanalyProjektow();
             mapa[p.zrodlo.projekt] = p.kanalId;
             await fs.mkdir(path.dirname(PLIK_KANALOW), { recursive: true });
@@ -184,6 +185,7 @@ export function utworzPublikacje(o) {
                 if (job.status !== 'COMPLETE') continue;
                 if (!job.youtubeVideoId) { Object.assign(p, { etap: 'blad', blad: 'YouTube nie oddał id filmu — sprawdź kanał.' }); zmiana = true; continue; }
                 Object.assign(p, { videoId: job.youtubeVideoId, url: `https://youtu.be/${job.youtubeVideoId}`, wyslano: job.completedAt ?? czas() });
+                await naPlayliste(p);
                 zmiana = true;
             }
             let s;
@@ -205,6 +207,52 @@ export function utworzPublikacje(o) {
     async function wszystkie() { return [...(await wczytaj())]; }
 
     /**
+     * 📋 Playlista projektu (np. „🩰TeO Game Show🩰”): `cfg.playlistaDla(p)` → { id, kanalId } albo null. Film na innym kanale
+     * niż playlista = pominięty z powodem (YouTube nie dopisze cudzego kanału). Wynik zostaje w `p.playlista`.
+     */
+    async function naPlayliste(p) {
+        if (!cfg.playlistaDla || !cfg.dodajDoPlaylisty || !p.videoId) return p;
+        const pl = await cfg.playlistaDla(p).catch(() => null);
+        if (!pl?.id) return p;
+        if (pl.kanalId && p.kanalId && pl.kanalId !== p.kanalId) { p.playlista = { id: pl.id, stan: 'pominieta', powod: `film poszedł na „${p.kanalNazwa ?? p.kanalId}”, a playlista jest na innym kanale` }; return p; }
+        try {
+            const w = await cfg.dodajDoPlaylisty(p.videoId, pl.id, p.kanalId ?? null);
+            p.playlista = { id: pl.id, stan: 'dodana', juzByl: !!w?.juzByl, kiedy: czas() };
+            nadaj(`„${p.tytul}” dopisany do playlisty programu`);
+        } catch (e) { p.playlista = { id: pl.id, stan: 'blad', powod: e.message }; }
+        return p;
+    }
+    /** „↻ na playlistę” — ponowienie dla wysłanej publikacji. */
+    async function ponowPlayliste(id) {
+        const p = await znajdz(id);
+        if (!p.videoId) throw new Error('Ten film nie jest jeszcze na YouTube.');
+        delete p.playlista;
+        await naPlayliste(p);
+        if (!p.playlista) throw new Error('Ten projekt nie ma ustawionej playlisty.');
+        await zapisz();
+        return p;
+    }
+
+    /**
+     * ➕ Ten sam film na KOLEJNY kanał (Suweren 2026-10-13: „w Impresario można tylko na jeden kanał na raz dany film”):
+     * kopia publikacji z tymi samymi tytułem, opisem i tagami → osobne ✓ i osobna wysyłka na wybrany kanał.
+     */
+    async function naKanal(id, kanalId) {
+        const zrodlo = await znajdz(id);
+        const k = (await kanalyKatedry()).kanaly.find((x) => x.id === kanalId);
+        if (!k) throw new Error('Ten kanał nie jest połączony z Katedrą.');
+        if (!zrodlo.tytul || !zrodlo.opis) throw new Error('Najpierw tytuł i opis (Kronikarz albo Ty) — potem kopia na inny kanał.');
+        const l = await wczytaj();
+        const otwarta = l.find((x) => x.plik === zrodlo.plik && x.kanalId === k.id && !['odrzucona', 'blad'].includes(x.etap));
+        if (otwarta) throw new Error(`Ten film już jest (albo czeka) na kanale „${k.nazwa}”.`);
+        await fs.access(zrodlo.plik).catch(() => { throw new Error(`Nie ma już pliku: ${path.basename(zrodlo.plik)}`); });
+        const p = { id: `yt_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`, etap: 'do_akceptacji', plik: zrodlo.plik, nazwa: zrodlo.nazwa, wystawaId: null, zrodlo: zrodlo.zrodlo ?? null, kanalId: k.id, kanalNazwa: k.nazwa, utworzono: czas(), autor: zrodlo.autor ?? 'Kronikarz', jezyk: zrodlo.jezyk ?? 'pl', tytul: zrodlo.tytul, opis: zrodlo.opis, tagi: [...(zrodlo.tagi ?? [])], model: zrodlo.model ?? null, kopiaZ: zrodlo.id };
+        l.unshift(p);
+        await zapisz();
+        return p;
+    }
+
+    /**
      * Kanał projektu na stałe (np. dedykowany kanał „TeO Game Show” dla projektu `teo-game-show`) — ten sam zapis, który
      * robi ✓ publikacji. `kanalId` null = zapomnij (publikacje projektu idą na domyślny).
      */
@@ -223,7 +271,7 @@ export function utworzPublikacje(o) {
     }
     async function kanalProjektu(projekt) { return { projekt, ...(await kanalDla(projekt)), zapamietany: (await kanalyProjektow())[projekt] ?? null }; }
 
-    return { przygotuj, zmien, zatwierdz, odrzuc, sprawdz, wszystkie, ustawKanalProjektu, kanalProjektu };
+    return { przygotuj, zmien, zatwierdz, odrzuc, sprawdz, wszystkie, ustawKanalProjektu, kanalProjektu, naKanal, naPlayliste, ponowPlayliste };
 }
 
 export default { utworzPublikacje, odczytajMetadane, SYSTEM_KRONIKARZA, ETAPY };

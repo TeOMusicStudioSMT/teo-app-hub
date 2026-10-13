@@ -22,7 +22,7 @@ interface Odcinek {
     etapy: Record<string, Etap>; publikacja: { id: string; tytul: string | null; kanalNazwa: string | null } | null;
 }
 interface Kanal { kanalId: string | null; kanalNazwa: string | null; zapamietany: string | null }
-interface Stan { odcinki: Odcinek[]; kanal: Kanal; inneSieci: { siec: string; stan: string; powod: string }[]; instrukcja: string[]; automat: boolean; ustawienia?: { jezyk: string }; jezyki?: Record<string, string> }
+interface Stan { odcinki: Odcinek[]; kanal: Kanal; inneSieci: { siec: string; stan: string; powod: string }[]; instrukcja: string[]; automat: boolean; ustawienia?: { jezyk: string; playlista: string | null; playlistaTytul: string | null; playlistaKanal: string | null }; jezyki?: Record<string, string> }
 const FLAGA: Record<string, string> = { en: '🇬🇧', pl: '🇵🇱' };
 interface KanalYT { id: string; nazwa: string }
 
@@ -35,6 +35,7 @@ export const GameShowPanel: React.FC = () => {
     const [blad, setBlad] = useState<string | null>(null);
     const [kanaly, setKanaly] = useState<KanalYT[]>([]);
     const [pokaz, setPokaz] = useState(false);
+    const [playlista, setPlaylista] = useState('');
     const odswiez = useCallback(async () => {
         try { setS(await zMostu<Stan>('/api/game-show')); setBlad(null); }
         catch (e) { setBlad(/HTTP 404/.test(String(e)) ? 'Most sprzed restartu — zrestartuj Katedrę, żeby włączyć TeO Game Show.' : String(e instanceof Error ? e.message : e)); }
@@ -61,6 +62,14 @@ export const GameShowPanel: React.FC = () => {
                             {Object.entries(s.jezyki ?? { en: 'English', pl: 'polski' }).map(([k, n]) => <option key={k} value={k}>{FLAGA[k] ?? ''} {n}</option>)}
                         </select>
                     </label>
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">Playlista programu:
+                        {s.ustawienia?.playlista
+                            ? <><a href={`https://www.youtube.com/playlist?list=${s.ustawienia.playlista}`} target="_blank" rel="noreferrer" className="text-amber-200 underline">{s.ustawienia.playlistaTytul || s.ustawienia.playlista}</a>
+                                <span className="text-slate-500">— wysłane odcinki trafiają tu same; filmy z niej idą do wizytówki (otakos.wtf)</span>
+                                <button onClick={() => confirm('Odpiąć playlistę? Odcinki przestaną być na nią dopisywane.') && void wolaj('/api/game-show/ustawienia', 'PUT', { playlista: null }, 'Playlista odpięta.')} className="text-slate-600 hover:text-rose-300">odepnij</button></>
+                            : <><input value={playlista} onChange={(ev) => setPlaylista(ev.target.value)} placeholder="link do playlisty YouTube (…/playlist?list=PL…)" className="min-w-[260px] rounded border border-slate-700 bg-black/40 px-1.5 py-0.5 text-slate-200" />
+                                <button disabled={!playlista.trim()} onClick={() => void wolaj('/api/game-show/ustawienia', 'PUT', { playlista: playlista.trim() }, 'Playlista programu ustawiona.').then(() => setPlaylista(''))} className="rounded bg-amber-600/30 px-2 py-0.5 text-amber-100">ustaw</button></>}
+                    </div>
                     <label className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">Kanał programu:
                         <select value={s.kanal.zapamietany ?? ''} onChange={(ev) => void wolaj('/api/game-show/kanal', 'PUT', { kanalId: ev.target.value || null }, ev.target.value ? 'Kanał programu ustawiony — odcinki pójdą tam same.' : 'Kanał programu zapomniany — odcinki idą na domyślny.')} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
                             <option value="">— domyślny kanał Katedry —</option>
