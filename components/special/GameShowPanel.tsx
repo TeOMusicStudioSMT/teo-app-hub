@@ -17,12 +17,13 @@ async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
 
 interface Etap { stan: string; powod?: string }
 interface Odcinek {
-    id: string; stan: string; powod: string | null; utworzono: string; plik: string | null; uwagi: string[];
+    id: string; stan: string; powod: string | null; jezyk?: string; utworzono: string; plik: string | null; uwagi: string[];
     tancerz: { imie: string }; utwor: { tytul: string; bpm: number | null }; ocena: { wynik: number }; konkurencja: { nazwa: string };
     etapy: Record<string, Etap>; publikacja: { id: string; tytul: string | null; kanalNazwa: string | null } | null;
 }
 interface Kanal { kanalId: string | null; kanalNazwa: string | null; zapamietany: string | null }
-interface Stan { odcinki: Odcinek[]; kanal: Kanal; inneSieci: { siec: string; stan: string; powod: string }[]; instrukcja: string[]; automat: boolean }
+interface Stan { odcinki: Odcinek[]; kanal: Kanal; inneSieci: { siec: string; stan: string; powod: string }[]; instrukcja: string[]; automat: boolean; ustawienia?: { jezyk: string }; jezyki?: Record<string, string> }
+const FLAGA: Record<string, string> = { en: '🇬🇧', pl: '🇵🇱' };
 interface KanalYT { id: string; nazwa: string }
 
 const ETAPY: [string, string][] = [['intro', '🎬 intro'], ['konkurencja', '🏷️ konkurencja'], ['final', '🏆 finał'], ['sklejanie', '🧱 sklejenie'], ['publikacja', '✍️ Kronikarz']];
@@ -55,6 +56,11 @@ export const GameShowPanel: React.FC = () => {
             {blad && <p className="text-[10px] text-amber-300">⚠ {blad}</p>}
             {s && (
                 <>
+                    <label className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">Język odcinków:
+                        <select value={s.ustawienia?.jezyk ?? 'en'} onChange={(ev) => void wolaj('/api/game-show/ustawienia', 'PUT', { jezyk: ev.target.value }, ev.target.value === 'en' ? 'Nowe odcinki po angielsku (wstęp, wywiad, opis).' : 'Nowe odcinki po polsku.')} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
+                            {Object.entries(s.jezyki ?? { en: 'English', pl: 'polski' }).map(([k, n]) => <option key={k} value={k}>{FLAGA[k] ?? ''} {n}</option>)}
+                        </select>
+                    </label>
                     <label className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">Kanał programu:
                         <select value={s.kanal.zapamietany ?? ''} onChange={(ev) => void wolaj('/api/game-show/kanal', 'PUT', { kanalId: ev.target.value || null }, ev.target.value ? 'Kanał programu ustawiony — odcinki pójdą tam same.' : 'Kanał programu zapomniany — odcinki idą na domyślny.')} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
                             <option value="">— domyślny kanał Katedry —</option>
@@ -75,6 +81,7 @@ export const GameShowPanel: React.FC = () => {
                     {s.odcinki.slice(0, 12).map((o) => (
                         <div key={o.id} className="mb-2 rounded border border-white/5 bg-black/30 p-2">
                             <div className="flex flex-wrap items-center gap-2">
+                                <span title={o.jezyk ?? 'pl'}>{FLAGA[o.jezyk ?? 'pl']}</span>
                                 <b className="text-slate-200">{o.tancerz.imie}</b>
                                 <span className="text-slate-500">· {o.konkurencja.nazwa} · „{o.utwor.tytul}” · {o.ocena?.wynik ?? '?'}/100</span>
                                 <span className="ml-auto text-slate-400">{STAN[o.stan] ?? o.stan}</span>
@@ -86,6 +93,7 @@ export const GameShowPanel: React.FC = () => {
                             {o.uwagi?.length > 0 && <div className="mt-1 text-[10px] text-slate-500">uwagi: {o.uwagi.join(' · ')}</div>}
                             {o.publikacja?.tytul && <div className="mt-1 text-[10px] text-slate-400">✍️ „{o.publikacja.tytul}”{o.publikacja.kanalNazwa ? ` → ${o.publikacja.kanalNazwa}` : ''}</div>}
                             <div className="mt-1 flex gap-2">
+                                {['blad', 'do_akceptacji'].includes(o.stan) && Object.keys(FLAGA).filter((j) => j !== (o.jezyk ?? 'pl')).map((j) => <button key={j} onClick={() => confirm(`Przerobić odcinek na ${j === 'en' ? 'angielski' : 'polski'}? Intro zostaje, plansze, wywiad i opis Kronikarza powstaną od nowa, a obecna publikacja (jeśli czeka na ✓) pójdzie do odrzuconych.`) && void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { jezyk: j }, 'Przerabiam odcinek — intro zostaje.')} className="rounded bg-sky-700/40 px-2 py-0.5 text-sky-100">{FLAGA[j]} przerób {j === 'en' ? 'po angielsku' : 'po polsku'}</button>)}
                                 {o.stan === 'blad' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', {}, 'Ponawiam od etapu, który stanął.')} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-100">↻ Ponów</button>}
                                 {o.stan === 'blad' && o.etapy.intro?.stan === 'blad' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { bezIntro: true }, 'Składam odcinek bez intro.')} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-100">bez intro</button>}
                                 {!['robi', 'w_kolejce'].includes(o.stan) && <button onClick={() => confirm('Usunąć odcinek (pliki robocze)? Gotowy film w montażach i publikacja zostają.') && void wolaj(`/api/game-show/${o.id}`, 'DELETE', {}, 'Usunięty.')} className="ml-auto text-[10px] text-slate-600 hover:text-rose-300">✕</button>}

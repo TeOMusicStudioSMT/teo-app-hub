@@ -15049,18 +15049,22 @@ const GameShow = utworzGameShow({
     klocki: () => Spawacz.zestawKlockow(KORZENIE_WIDEO().klocki, 'GameShow'),
     okresy: () => Choreografie.okresy(),
     publikuj: (z) => PublikacjeYT.przygotuj(z),
+    odrzucPublikacje: (id) => PublikacjeYT.odrzuc(id),
     ffmpeg: ffmpegPath,
     szyna: Szyna,
 });
 app.get('/api/game-show', (_req, res) => ytOdp(res, (async () => ({
     odcinki: await GameShow.lista(), kanal: await PublikacjeYT.kanalProjektu(GAME_SHOW.PROJEKT),
     inneSieci: GAME_SHOW.INNE_SIECI, instrukcja: GAME_SHOW.INSTRUKCJA_KANALU, automat: process.env.OTAKOS_GAME_SHOW !== '0',
+    ustawienia: await GameShow.ustawienia(), jezyki: GAME_SHOW.JEZYKI,
 }))(), 500));
 app.get('/api/game-show/:id', (req, res) => ytOdp(res, GameShow.wczytaj(req.params.id).then((odcinek) => ({ odcinek })), 404));
 /** { choreografia, nagranie?, bezIntro? } — odcinek z nagrania (most robi to sam po zapisie nagrania). */
-app.post('/api/game-show', (req, res) => ytOdp(res, GameShow.utworz(String(req.body?.choreografia ?? ''), req.body?.nagranie, { bezIntro: req.body?.bezIntro === true }).then((odcinek) => ({ odcinek }))));
-app.post('/api/game-show/:id/ponow', (req, res) => ytOdp(res, GameShow.ponow(req.params.id, { bezIntro: req.body?.bezIntro === true }).then((odcinek) => ({ odcinek }))));
+app.post('/api/game-show', (req, res) => ytOdp(res, GameShow.utworz(String(req.body?.choreografia ?? ''), req.body?.nagranie, { bezIntro: req.body?.bezIntro === true, jezyk: req.body?.jezyk || null }).then((odcinek) => ({ odcinek }))));
+app.post('/api/game-show/:id/ponow', (req, res) => ytOdp(res, GameShow.ponow(req.params.id, { bezIntro: req.body?.bezIntro === true, jezyk: req.body?.jezyk || null }).then((odcinek) => ({ odcinek }))));
 app.delete('/api/game-show/:id', (req, res) => ytOdp(res, GameShow.usun(req.params.id).then((usuniety) => ({ usuniety }))));
+/** { jezyk: 'en'|'pl' } — język nowych odcinków (domyślnie en). */
+app.put('/api/game-show/ustawienia', (req, res) => ytOdp(res, GameShow.ustaw({ jezyk: req.body?.jezyk }).then((ustawienia) => ({ ustawienia }))));
 /** { kanalId|null } — dedykowany kanał programu (zapis jak przy ✓; zmiana przed każdym ✓ dalej możliwa). */
 app.put('/api/game-show/kanal', (req, res) => ytOdp(res, PublikacjeYT.ustawKanalProjektu(GAME_SHOW.PROJEKT, req.body?.kanalId || null).then((kanal) => ({ kanal }))));
 /** Karta na Stół: propozycja zarządzania kanałem przez stado (harmonogram, opisy). Jedna otwarta naraz. */

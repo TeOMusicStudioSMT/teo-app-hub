@@ -46,68 +46,92 @@ export function promptIntro({ imie }) {
         + 'warm stage lights, cinematic, smooth slow camera push-in, same character as in the first frame, high detail';
 }
 
-/** Która konkurencja Teterhii: najważniejszy otwarty okres turnieju (Mistrzostwa > Rok > … > Dzień — w kolejności listy). */
-export function konkurencja(okresy = []) {
+/** Języki programu (Suweren 2026-10-13: „wszystko jest po polsku… chciałbym globalnie po angielsku”). Domyślnie en. */
+export const JEZYKI = { en: 'English', pl: 'polski' };
+export const jezykShow = (j) => (JEZYKI[j] ? j : 'en');
+const NAZWY_OKRESOW_EN = { dzien: 'Dance of the Day', tydzien: 'Dance of the Week', miesiac: 'Dance of the Month', rok: 'Dance of the Year', mistrzostwa: 'World Championship' };
+/** Napisy na planszach. */
+export const NAPISY = {
+    pl: { konkurencja: 'konkurencja z Teterhii', starcie: 'Taneczne Starcie', wynik: 'wynik', ranga: 'ranga', takt: 'takt', energia: 'energia', roznorodnosc: 'różnorodność', pyta: 'Kronikarz pyta', stworkowy: 'po stworkowemu' },
+    en: { konkurencja: 'a Teterhia challenge', starcie: 'Dance Clash', wynik: 'score', ranga: 'rank', takt: 'rhythm', energia: 'energy', roznorodnosc: 'variety', pyta: 'The Chronicler asks', stworkowy: 'in creature speak' },
+};
+
+/** Która konkurencja Teterhii: Mistrzostwa (grudzień), inaczej Taniec Dnia. Nazwa w języku odcinka. Czysta. */
+export function konkurencja(okresy = [], jezyk = 'en') {
     const l = Array.isArray(okresy) ? okresy : [];
-    const ms = l.find((o) => o.okres === 'mistrzostwa');
-    const dzien = l.find((o) => o.okres === 'dzien');
-    const glowna = ms ?? dzien ?? l[0] ?? null;
-    return { nazwa: glowna ? glowna.nazwa : 'Taneczne Starcie', klucz: glowna?.klucz ?? null, wszystkie: l.map((o) => o.nazwa) };
+    const en = jezykShow(jezyk) === 'en';
+    const nazwa = (o) => (en ? `${NAZWY_OKRESOW_EN[o.okres] ?? o.nazwa}${o.okres === 'mistrzostwa' ? ` ${String(o.klucz ?? '').replace(/^MS-/, '')}` : ''}`.trim() : o.nazwa);
+    const glowna = l.find((o) => o.okres === 'mistrzostwa') ?? l.find((o) => o.okres === 'dzien') ?? l[0] ?? null;
+    return { nazwa: glowna ? nazwa(glowna) : NAPISY[en ? 'en' : 'pl'].starcie, klucz: glowna?.klucz ?? null, wszystkie: l.map(nazwa) };
 }
 
-/** Tekst zapowiedzi prowadzącego (czytany głosem, na planszy w skrócie). Czysta. */
-export function zapowiedz({ tancerz, utwor, bpm, konk }) {
+/** Tekst zapowiedzi prowadzącego (czytany głosem). Czysta. */
+export function zapowiedz({ tancerz, utwor, bpm, konk, jezyk = 'en' }) {
+    if (jezykShow(jezyk) === 'en') {
+        return `Welcome to the TeO Game Show! Today's challenge from Teterhia: Dance Clash — ${konk.nazwa}. `
+            + `On the dance floor: ${tancerz}, dancing to “${utwor}”${bpm ? `, ${Math.round(bpm)} beats per minute` : ''}. Music!`;
+    }
     return `Witajcie w TeO Game Show! Konkurencja z Teterhii: Taneczne Starcie — ${konk.nazwa}. `
-        + `Na parkiet wchodzi ${tancerz} i tańczy do utworu „${utwor}”${bpm ? `, ${bpm} uderzeń na minutę` : ''}. Muzyka!`;
+        + `Na parkiet wchodzi ${tancerz} i tańczy do utworu „${utwor}”${bpm ? `, ${Math.round(bpm)} uderzeń na minutę` : ''}. Muzyka!`;
 }
 
 /** Tekst ogłoszenia wyniku. Czysta. */
-export function ogloszenieWyniku({ tancerz, ocena }) {
+export function ogloszenieWyniku({ tancerz, ocena, jezyk = 'en' }) {
     const w = Math.round(Number(ocena?.wynik) || 0);
+    if (jezykShow(jezyk) === 'en') {
+        return `${tancerz} scores ${w} out of a hundred — rank ${rangaOceny(w)}! `
+            + `Rhythm ${procent(ocena?.takt)}, energy ${procent(ocena?.energia)}, variety ${procent(ocena?.roznorodnosc)}.`;
+    }
     return `${tancerz} zdobywa ${w} punktów na sto — ranga ${rangaOceny(w)}! `
         + `Takt ${procent(ocena?.takt)}, energia ${procent(ocena?.energia)}, różnorodność ${procent(ocena?.roznorodnosc)}.`;
 }
 
-/** Prośba do Aktora: krótki wywiad po występie — prowadzący po polsku, stworek po stworkowemu z tłumaczeniem. */
-export function promptWywiaduStworka({ tancerz, opis = '', utwor, ocena }) {
+/**
+ * Prośba do Aktora: krótki wywiad po występie — prowadzący w języku odcinka, stworek po stworkowemu z tłumaczeniem
+ * na język odcinka. Etykiety PYTANIE / STWOREK / TŁUMACZENIE zostają (format dla parsera, nie treść).
+ */
+export function promptWywiaduStworka({ tancerz, opis = '', utwor, ocena, jezyk = 'en' }) {
+    const en = jezykShow(jezyk) === 'en';
+    const jezykNazwa = en ? 'ANGIELSKU (English)' : 'polsku';
     const system = [
         `Jesteś TeOgochi Aktor. Grasz stworka „${tancerz}” z wyspy Teterhia, który właśnie skończył taniec w programie TeO Game Show.`,
         opis ? `Wygląd i charakter stworka: ${String(opis).slice(0, 400)}` : '',
         'Stworek mówi WŁASNYM językiem stworków: krótkie, melodyjne, wymyślone sylaby (np. „mru-tii pa-lo, nunu!”), bez prawdziwych słów polskich ani angielskich.',
-        'Pod każdą odpowiedzią dajesz wierne tłumaczenie na polski. Ciepło, z humorem, 1–2 zdania na kwestię. Nie zmyślaj liczb — wynik jest podany.',
-        'Odpowiedz DOKŁADNIE w tym formacie, 2 lub 3 razy, bez niczego przed i po:',
-        'PYTANIE: <pytanie prowadzącego po polsku>',
+        `Pytania prowadzącego piszesz po ${jezykNazwa}, a pod każdą odpowiedzią stworka dajesz wierne tłumaczenie po ${jezykNazwa}. Ciepło, z humorem, 1–2 zdania na kwestię. Nie zmyślaj liczb — wynik jest podany.`,
+        'Odpowiedz DOKŁADNIE w tym formacie (etykiety bez zmian), 2 lub 3 razy, bez niczego przed i po:',
+        `PYTANIE: <pytanie prowadzącego po ${jezykNazwa}>`,
         'STWOREK: <odpowiedź po stworkowemu>',
-        'PO POLSKU: <tłumaczenie odpowiedzi>',
+        `TŁUMACZENIE: <tłumaczenie odpowiedzi po ${jezykNazwa}>`,
     ].filter(Boolean).join('\n');
     const user = `Tancerz: ${tancerz}\nUtwór: ${utwor}\nWynik: ${ocena?.wynik ?? '?'}/100 (ranga ${rangaOceny(ocena?.wynik ?? 0)}), takt ${procent(ocena?.takt)}, energia ${procent(ocena?.energia)}, różnorodność ${procent(ocena?.roznorodnosc)}.\nNapisz wywiad.`;
     return { system, user };
 }
 
-/** Odpowiedź modelu → [{ pytanie, stworek, polski }] (1–3); rzuca, gdy format nie trzymał. Czysta. */
+/** Odpowiedź modelu → [{ pytanie, stworek, tlumaczenie }] (1–3); rzuca, gdy format nie trzymał. Czysta. */
 export function odczytajWywiadStworka(tekst) {
     const t = String(tekst ?? '').replace(/\r/g, '').replace(/<think>[\s\S]*?<\/think>/g, '');
     const out = [];
-    const re = /PYTANIE:\s*(.+)\n+\s*STWOREK:\s*(.+)\n+\s*PO POLSKU:\s*(.+)/gi;
+    const re = /(?:PYTANIE|QUESTION):\s*(.+)\n+\s*(?:STWOREK|CREATURE):\s*(.+)\n+\s*(?:T[ŁL]UMACZENIE|PO POLSKU|TRANSLATION):\s*(.+)/gi;
     let m;
     while ((m = re.exec(t)) && out.length < 3) {
-        const [pytanie, stworek, polski] = [m[1], m[2], m[3]].map((x) => x.replace(/\*+/g, '').trim().slice(0, 300));
-        if (pytanie && stworek && polski) out.push({ pytanie, stworek, polski });
+        const [pytanie, stworek, tlumaczenie] = [m[1], m[2], m[3]].map((x) => x.replace(/\*+/g, '').trim().slice(0, 300));
+        if (pytanie && stworek && tlumaczenie) out.push({ pytanie, stworek, tlumaczenie });
     }
-    if (!out.length) throw new Error('Aktor nie trzymał formatu wywiadu (PYTANIE / STWOREK / PO POLSKU).');
+    if (!out.length) throw new Error('Aktor nie trzymał formatu wywiadu (PYTANIE / STWOREK / TŁUMACZENIE).');
     return out;
 }
 
-/** Kontekst dla Kronikarza — tylko fakty z odcinka. Czysta. */
+/** Kontekst dla Kronikarza — tylko fakty z odcinka (Kronikarz pisze w języku publikacji). Czysta. */
 export function kontekstKronikarza(s) {
+    const en = jezykShow(s.jezyk) === 'en';
     return [
         `To odcinek programu „${NAZWA}” Katedry OtakOS — teleturnieju, w którym TeOgochi z wyspy Teterhia rywalizują w konkurencjach gry.`,
-        'Tytuł zaczynaj od „TeO Game Show:”. W opisie: konkurencja, tancerz, utwór, wynik i jedna linia z wywiadu (tłumaczenie).',
-        `Konkurencja: Taneczne Starcie — ${s.konkurencja?.nazwa ?? '?'}${s.konkurencja?.wszystkie?.length ? ` (otwarte turnieje: ${s.konkurencja.wszystkie.join(', ')})` : ''}`,
+        `Tytuł zaczynaj od „TeO Game Show:”. W opisie: konkurencja, tancerz, utwór, wynik i jedna linia z wywiadu (tłumaczenie).${en ? ' Film jest PO ANGIELSKU — tytuł, opis i tagi po angielsku.' : ''}`,
+        `Konkurencja: ${en ? 'Dance Clash' : 'Taneczne Starcie'} — ${s.konkurencja?.nazwa ?? '?'}${s.konkurencja?.wszystkie?.length ? ` (otwarte turnieje: ${s.konkurencja.wszystkie.join(', ')})` : ''}`,
         `Tancerz: ${s.tancerz?.imie ?? '?'}${s.tancerz?.opis ? ` — ${String(s.tancerz.opis).slice(0, 300)}` : ''}`,
-        `Utwór: ${s.utwor?.tytul ?? '?'}${s.utwor?.bpm ? ` (${s.utwor.bpm} BPM)` : ''}`,
+        `Utwór: ${s.utwor?.tytul ?? '?'}${s.utwor?.bpm ? ` (${Math.round(s.utwor.bpm)} BPM)` : ''}`,
         `Wynik: ${s.ocena?.wynik ?? '?'}/100, ranga ${rangaOceny(s.ocena?.wynik ?? 0)}; takt ${procent(s.ocena?.takt)}, energia ${procent(s.ocena?.energia)}, różnorodność ${procent(s.ocena?.roznorodnosc)}`,
-        ...(s.wywiad?.length ? ['Wywiad (tłumaczenie z języka stworków):', ...s.wywiad.map((w) => `- ${w.pytanie} → ${w.polski}`)] : []),
+        ...(s.wywiad?.length ? ['Wywiad (tłumaczenie z języka stworków):', ...s.wywiad.map((w) => `- ${w.pytanie} → ${w.tlumaczenie ?? w.polski}`)] : []),
     ].join('\n');
 }
 
@@ -121,7 +145,7 @@ const nowyEtap = () => Object.fromEntries(ETAPY.map((e) => [e, { stan: 'czeka' }
  *   mow?:(o:{tekst:string, kto:'prowadzacy'|'stworek', jezyk:string})=>Promise<{audio:Buffer, ext:string}>,
  *   opisz:(p:string)=>Promise<{sekundy:number|null}>, spawaj:(o:{klipy:string[], wyjscie:string, celWedlug:number})=>Promise<any>,
  *   klocki?:()=>Promise<{start:string[], end:string[]}>, okresy?:()=>any[], publikuj?:(z:object)=>Promise<any>,
- *   ffmpeg?:string, szyna?:any, teraz?:()=>number }} o
+ *   odrzucPublikacje?:(id:string)=>Promise<any>, ffmpeg?:string, szyna?:any, teraz?:()=>number }} o
  */
 export function utworzGameShow(o) {
     const cfg = { ffmpeg: 'ffmpeg', teraz: () => Date.now(), modelDla: async () => null, okresy: () => [], klocki: async () => ({ start: [], end: [] }), ...o };
@@ -133,6 +157,15 @@ export function utworzGameShow(o) {
     let kolejka = Promise.resolve();   // jeden odcinek naraz (GPU i ffmpeg)
 
     const czytaj = async (p) => JSON.parse(await fs.readFile(p, 'utf8'));
+    // ⚙️ ustawienia programu: język odcinków (domyślnie angielski — program dla świata)
+    const PLIK_U = path.join(KAT, 'ustawienia.json');
+    async function ustawienia() { try { const u = JSON.parse(await fs.readFile(PLIK_U, 'utf8')); return { jezyk: jezykShow(u.jezyk) }; } catch { return { jezyk: 'en' }; } }
+    async function ustaw({ jezyk } = {}) {
+        if (!JEZYKI[jezyk]) throw new Error(`Język programu: ${Object.keys(JEZYKI).join(' / ')}.`);
+        await fs.mkdir(KAT, { recursive: true });
+        await fs.writeFile(PLIK_U, JSON.stringify({ jezyk }, null, 1), 'utf8');
+        return ustawienia();
+    }
     const pisz = async (s) => {
         const p = plikS(s.id);
         await fs.mkdir(path.dirname(p), { recursive: true });
@@ -166,7 +199,8 @@ export function utworzGameShow(o) {
      * Nowy odcinek z nagrania występu. Startuje łańcuch w tle (kolejka: jeden odcinek naraz).
      * @param {string} choreografiaId  @param {string} nagranie nazwa pliku nagrania (z choreografii)
      */
-    async function utworz(choreografiaId, nagranie, { bezIntro = false, kanalId = null } = {}) {
+    async function utworz(choreografiaId, nagranie, { bezIntro = false, kanalId = null, jezyk: jezykZadany = null } = {}) {
+        const jezyk = jezykZadany ? jezykShow(jezykZadany) : (await ustawienia()).jezyk;
         const c = await cfg.choreografie.wczytaj(choreografiaId);
         const nazwa = String(nagranie ?? c.nagrania?.at(-1)?.nazwa ?? '');
         if (!nazwa || !(c.nagrania ?? []).some((n) => n.nazwa === nazwa)) throw new Error('Ta choreografia nie ma takiego nagrania — najpierw nagraj występ.');
@@ -180,7 +214,7 @@ export function utworzGameShow(o) {
             choreografia: { id: c.id, nazwa: c.nazwa, odcisk: c.odcisk }, nagranie: { nazwa, plik: plikNagrania },
             tancerz: { id: c.mini?.id ?? null, imie: t?.imie || c.mini?.nazwa || 'TeOgochi', opis: t?.opis ?? '', obraz: t?.obraz ?? null },
             utwor: { tytul: c.utwor?.tytul ?? '', bpm: c.utwor?.bpm ?? null }, ocena: c.ocena,
-            konkurencja: konkurencja(cfg.okresy()), etapy: nowyEtap(), uwagi: [], wywiad: null, plik: null, publikacja: null,
+            jezyk, konkurencja: konkurencja(cfg.okresy(), jezyk), etapy: nowyEtap(), uwagi: [], wywiad: null, plik: null, publikacja: null,
             kanalId: kanalId ? String(kanalId) : null, utworzono: czas(),
         };
         if (bezIntro) s.etapy.intro = { stan: 'pominiety', powod: 'bez intro (wybór Suwerena)' };
@@ -221,6 +255,8 @@ export function utworzGameShow(o) {
             const czcionka = CZCIONKI.find((p) => fsSync.existsSync(p));
             if (!czcionka) throw new Error('Nie znalazłem czcionki z polskimi znakami (OTAKOS_POWITANIE_CZCIONKA).');
             await fs.copyFile(czcionka, path.join(praca, 'czcionka.ttf'));
+            const jez = jezykShow(s.jezyk ?? 'pl');   // odcinki sprzed wersji językowej były po polsku
+            const N = NAPISY[jez];
             const obrazTancerza = s.tancerz.obraz && fsSync.existsSync(s.tancerz.obraz) ? s.tancerz.obraz : null;
             if (obrazTancerza) await fs.copyFile(obrazTancerza, path.join(praca, 'tancerz.png'));
 
@@ -230,7 +266,7 @@ export function utworzGameShow(o) {
                 if (mowa && cfg.mow) {
                     try {
                         // jedno ponowienie: zerwane połączenie z silnikiem głosu („terminated”) bywa chwilowe
-                        const g = await cfg.mow({ tekst: mowa, kto, jezyk: 'pl' }).catch(() => cfg.mow({ tekst: mowa, kto, jezyk: 'pl' }));
+                        const g = await cfg.mow({ tekst: mowa, kto, jezyk: jez }).catch(() => cfg.mow({ tekst: mowa, kto, jezyk: jez }));
                         audio = `a-${nr}.${g.ext || 'wav'}`;
                         await fs.writeFile(path.join(praca, audio), g.audio);
                         const sek = (await cfg.opisz(path.join(praca, audio)).catch(() => null))?.sekundy;
@@ -255,17 +291,17 @@ export function utworzGameShow(o) {
                 if (!cfg.intro) throw new Error('Ta Katedra nie ma silnika wideo — wybierz „bez intro”.');
                 const prompt = promptIntro(s.tancerz);
                 const plik = await cfg.intro({ prompt, obraz: obrazTancerza, sekundy: SEKUNDY_INTRO });
-                const cel = path.join(praca, `intro${path.extname(plik) || '.mp4'}`);
+                const cel = path.join(KAT, id, `intro${path.extname(plik) || '.mp4'}`);   // poza praca/ — zostaje na przeróbkę w innym języku
                 await fs.copyFile(plik, cel);
                 return { plik: cel, prompt, zObrazu: !!obrazTancerza };
             }))) return;
 
             // 2. KONKURENCJA — plansza + zapowiedź prowadzącego
             if (!(await zrob('konkurencja', async () => {
-                const mowa = zapowiedz({ tancerz: s.tancerz.imie, utwor: s.utwor.tytul, bpm: s.utwor.bpm, konk: s.konkurencja });
+                const mowa = zapowiedz({ tancerz: s.tancerz.imie, utwor: s.utwor.tytul, bpm: s.utwor.bpm, konk: s.konkurencja, jezyk: jez });
                 const seg = await segment('k1', {
-                    obraz: obrazTancerza ? 'tancerz.png' : null, naglowek: `${NAZWA} · konkurencja z Teterhii`, mowa, czas: 4,
-                    linie: [`Taneczne Starcie — ${s.konkurencja.nazwa}`, ...zawin(`${s.tancerz.imie} · „${s.utwor.tytul}”${s.utwor.bpm ? ` · ${s.utwor.bpm} BPM` : ''}`, 62, 2)],
+                    obraz: obrazTancerza ? 'tancerz.png' : null, naglowek: `${NAZWA} · ${N.konkurencja}`, mowa, czas: 4,
+                    linie: [`${N.starcie} — ${s.konkurencja.nazwa}`, ...zawin(`${s.tancerz.imie} · „${s.utwor.tytul}”${s.utwor.bpm ? ` · ${Math.round(s.utwor.bpm)} BPM` : ''}`, 62, 2)],
                 });
                 return { plik: await sklejSegmenty([seg], 'konkurencja.mp4'), zapowiedz: mowa };
             }))) return;
@@ -281,13 +317,13 @@ export function utworzGameShow(o) {
                 const segmenty = [];
                 const o = s.ocena ?? {};
                 segmenty.push(await segment('f1', {
-                    obraz: kadr, naglowek: `${NAZWA} · wynik`, mowa: ogloszenieWyniku({ tancerz: s.tancerz.imie, ocena: o }), czas: 4,
-                    linie: [`${s.tancerz.imie}: ${Math.round(Number(o.wynik) || 0)}/100 · ranga ${rangaOceny(o.wynik ?? 0)}`, `takt ${procent(o.takt)} · energia ${procent(o.energia)} · różnorodność ${procent(o.roznorodnosc)}`, `Taneczne Starcie — ${s.konkurencja.nazwa}`],
+                    obraz: kadr, naglowek: `${NAZWA} · ${N.wynik}`, mowa: ogloszenieWyniku({ tancerz: s.tancerz.imie, ocena: o, jezyk: jez }), czas: 4,
+                    linie: [`${s.tancerz.imie}: ${Math.round(Number(o.wynik) || 0)}/100 · ${N.ranga} ${rangaOceny(o.wynik ?? 0)}`, `${N.takt} ${procent(o.takt)} · ${N.energia} ${procent(o.energia)} · ${N.roznorodnosc} ${procent(o.roznorodnosc)}`, `${N.starcie} — ${s.konkurencja.nazwa}`],
                 }));
                 let wywiad = null;
                 if (cfg.chat) {
                     try {
-                        const { system, user } = promptWywiaduStworka({ tancerz: s.tancerz.imie, opis: s.tancerz.opis, utwor: s.utwor.tytul, ocena: o });
+                        const { system, user } = promptWywiaduStworka({ tancerz: s.tancerz.imie, opis: s.tancerz.opis, utwor: s.utwor.tytul, ocena: o, jezyk: jez });
                         const model = (await cfg.modelDla('aktor').catch(() => null)) ?? (await cfg.modelDla('kronikarz').catch(() => null));
                         const odp = await cfg.chat(model, system, user);
                         wywiad = odczytajWywiadStworka(odp.tekst);
@@ -295,8 +331,8 @@ export function utworzGameShow(o) {
                     } catch (e) { s.uwagi.push(`wywiad: ${String(e.message).slice(0, 200)} — finał bez wywiadu`); }
                 } else s.uwagi.push('Katedra nie ma modelu do wywiadu — finał bez wywiadu');
                 for (const [i, w] of (wywiad ?? []).entries()) {
-                    segmenty.push(await segment(`p${i}`, { obraz: kadr, naglowek: 'Kronikarz pyta', linie: zawin(w.pytanie, 62, 3), mowa: w.pytanie, kto: 'prowadzacy' }));
-                    segmenty.push(await segment(`s${i}`, { obraz: kadr, naglowek: `${s.tancerz.imie} (po stworkowemu)`, linie: [...zawin(`„${w.stworek}”`, 62, 1), ...zawin(w.polski, 62, 3)], mowa: w.stworek, kto: 'stworek' }));
+                    segmenty.push(await segment(`p${i}`, { obraz: kadr, naglowek: N.pyta, linie: zawin(w.pytanie, 62, 3), mowa: w.pytanie, kto: 'prowadzacy' }));
+                    segmenty.push(await segment(`s${i}`, { obraz: kadr, naglowek: `${s.tancerz.imie} (${N.stworkowy})`, linie: [...zawin(`„${w.stworek}”`, 62, 1), ...zawin(w.tlumaczenie, 62, 3)], mowa: w.stworek, kto: 'stworek' }));
                 }
                 s.wywiad = wywiad;
                 return { plik: await sklejSegmenty(segmenty, 'final.mp4'), obrazPo: !!obrazPo, wywiad: wywiad?.length ?? 0 };
@@ -309,7 +345,7 @@ export function utworzGameShow(o) {
                 const klipy = [...k.start, ...intro, s.etapy.konkurencja.plik, s.nagranie.plik, s.etapy.final.plik, ...k.end];
                 const kat = await cfg.katalogMontazy(PROJEKT);
                 const slug = s.tancerz.imie.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30) || 'tancerz';
-                const wyjscie = path.join(kat, `gameshow_${slug}_${s.id.slice(2)}.mp4`);
+                const wyjscie = path.join(kat, `gameshow_${slug}_${jez}_${s.id.slice(2)}.mp4`);
                 await cfg.spawaj({ klipy, wyjscie, celWedlug: k.start.length + intro.length + 1 });
                 const opis = await cfg.opisz(wyjscie).catch(() => null);
                 s.plik = wyjscie;
@@ -319,7 +355,7 @@ export function utworzGameShow(o) {
             // 6. PUBLIKACJA — Kronikarz pisze opis → do_akceptacji (wysyłka dopiero po ✓ Suwerena)
             if (!(await zrob('publikacja', async () => {
                 if (!cfg.publikuj) throw new Error('Publikacje YouTube niepodłączone w tej Katedrze.');
-                const p = await cfg.publikuj({ plik: s.plik, nazwa: `${NAZWA} — ${s.tancerz.imie} · ${s.konkurencja.nazwa}`, kontekst: kontekstKronikarza(s), zrodlo: { projekt: PROJEKT, show: s.id }, kanalId: s.kanalId });
+                const p = await cfg.publikuj({ plik: s.plik, nazwa: `${NAZWA} — ${s.tancerz.imie} · ${s.konkurencja.nazwa}`, jezyk: jez, kontekst: kontekstKronikarza({ ...s, jezyk: jez }), zrodlo: { projekt: PROJEKT, show: s.id }, kanalId: s.kanalId });
                 s.publikacja = { id: p.id, etap: p.etap, tytul: p.tytul ?? null, kanalNazwa: p.kanalNazwa ?? null, blad: p.blad ?? null };
                 if (p.etap === 'blad') throw new Error(`Kronikarz: ${p.blad ?? 'nie przygotował opisu'} — popraw w Impresariacie albo „↻ Ponów”.`);
                 return { publikacja: p.id };
@@ -336,9 +372,24 @@ export function utworzGameShow(o) {
     }
 
     // Uwaga: `praca/` zostaje do końca łańcucha (intro, konkurencja i finał to pliki w niej) — „↻ Ponów” je odzyskuje.
-    async function ponow(id, { bezIntro = false } = {}) {
+    /**
+     * „↻ Ponów” od etapu, który stanął — albo PRZERÓB w innym języku (`jezyk`): intro (film bez słów) zostaje, plansze,
+     * wywiad, sklejenie i opis Kronikarza liczą się od nowa; stara publikacja czekająca na ✓ idzie do odrzuconych.
+     */
+    async function ponow(id, { bezIntro = false, jezyk = null } = {}) {
         const s = await wczytaj(id);
         if (wRobocie.has(id)) throw new Error('Ten odcinek już jest w pracy.');
+        const nowyJezyk = jezyk && jezykShow(jezyk) !== jezykShow(s.jezyk ?? 'pl') ? jezykShow(jezyk) : null;
+        if (nowyJezyk) {
+            if (!['blad', 'do_akceptacji'].includes(s.stan)) throw new Error('Przerobić w innym języku można odcinek gotowy (czeka na ✓) albo zatrzymany na błędzie.');
+            if (s.publikacja?.id && cfg.odrzucPublikacje) await cfg.odrzucPublikacje(s.publikacja.id).catch(() => {});
+            const intro = s.etapy.intro;
+            Object.assign(s, { jezyk: nowyJezyk, konkurencja: konkurencja(cfg.okresy(), nowyJezyk), etapy: { ...nowyEtap(), intro: intro?.stan === 'blad' || (intro?.stan === 'gotowy' && !(intro.plik && fsSync.existsSync(intro.plik))) ? { stan: 'czeka' } : intro }, wywiad: null, uwagi: [], plik: null, publikacja: null });
+            Object.assign(s, { stan: 'w_kolejce', powod: null });
+            await pisz(s);
+            zakolejkuj(id);
+            return s;
+        }
         if (!['blad'].includes(s.stan)) throw new Error('Ponowić można tylko odcinek, który stanął na błędzie.');
         for (const e of ETAPY) if (['gotowy'].includes(s.etapy[e]?.stan) && s.etapy[e].plik && !fsSync.existsSync(s.etapy[e].plik)) s.etapy[e] = { stan: 'czeka' };
         for (const e of ETAPY) if (s.etapy[e]?.stan === 'blad') s.etapy[e] = { stan: 'czeka' };
@@ -357,7 +408,7 @@ export function utworzGameShow(o) {
         return true;
     }
 
-    return { lista, wczytaj, utworz, ponow, usun, wRobocie: (id) => wRobocie.has(id), czekaj: () => kolejka };
+    return { lista, wczytaj, utworz, ponow, usun, ustawienia, ustaw, wRobocie: (id) => wRobocie.has(id), czekaj: () => kolejka };
 }
 
 /** Inne sieci społecznościowe: uczciwa lista „niepodłączone” z powodem (bez atrap). */
@@ -397,4 +448,4 @@ export function kartaZarzadzania() {
     };
 }
 
-export default { utworzGameShow, promptIntro, konkurencja, zapowiedz, ogloszenieWyniku, promptWywiaduStworka, odczytajWywiadStworka, kontekstKronikarza, kartaZarzadzania, INNE_SIECI, INSTRUKCJA_KANALU, PROJEKT, NAZWA, ETAPY };
+export default { JEZYKI, NAPISY, utworzGameShow, promptIntro, konkurencja, zapowiedz, ogloszenieWyniku, promptWywiaduStworka, odczytajWywiadStworka, kontekstKronikarza, kartaZarzadzania, INNE_SIECI, INSTRUKCJA_KANALU, PROJEKT, NAZWA, ETAPY };

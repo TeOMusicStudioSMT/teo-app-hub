@@ -25,21 +25,28 @@ test('prompt intro po angielsku z imieniem; konkurencja = Mistrzostwa, inaczej T
     assert.match(p, /^Kot Tancerz, a small cute TeOgochi creature/);
     assert.match(p, /first frame/);
     const dzien = { okres: 'dzien', klucz: '2026-10-13', nazwa: 'Taniec Dnia' };
-    assert.equal(konkurencja([dzien, { okres: 'rok', klucz: '2026', nazwa: 'Taniec Roku' }]).nazwa, 'Taniec Dnia');
-    assert.equal(konkurencja([dzien, { okres: 'mistrzostwa', klucz: 'MS-2026', nazwa: 'Mistrzostwa Świata 2026' }]).nazwa, 'Mistrzostwa Świata 2026');
-    assert.equal(konkurencja([]).nazwa, 'Taneczne Starcie');
-    assert.match(zapowiedz({ tancerz: 'Kot', utwor: 'Joann1', bpm: 128, konk: { nazwa: 'Taniec Dnia' } }), /Taneczne Starcie — Taniec Dnia.*Kot.*„Joann1”, 128 uderzeń/);
-    assert.match(ogloszenieWyniku({ tancerz: 'Kot', ocena: OCENA }), /86 punktów na sto — ranga A! Takt 92%, energia 80%, różnorodność 85%/);
+    assert.equal(konkurencja([dzien, { okres: 'rok', klucz: '2026', nazwa: 'Taniec Roku' }], 'pl').nazwa, 'Taniec Dnia');
+    assert.equal(konkurencja([dzien, { okres: 'mistrzostwa', klucz: 'MS-2026', nazwa: 'Mistrzostwa Świata 2026' }], 'pl').nazwa, 'Mistrzostwa Świata 2026');
+    assert.equal(konkurencja([], 'pl').nazwa, 'Taneczne Starcie');
+    // domyślnie po angielsku (program dla świata)
+    assert.equal(konkurencja([dzien]).nazwa, 'Dance of the Day');
+    assert.equal(konkurencja([dzien, { okres: 'mistrzostwa', klucz: 'MS-2026', nazwa: 'Mistrzostwa Świata 2026' }]).nazwa, 'World Championship 2026');
+    assert.match(zapowiedz({ tancerz: 'Kot', utwor: 'Joann1', bpm: 128, konk: { nazwa: 'Taniec Dnia' }, jezyk: 'pl' }), /Taneczne Starcie — Taniec Dnia.*Kot.*„Joann1”, 128 uderzeń/);
+    assert.match(zapowiedz({ tancerz: 'Kot', utwor: 'Joann1', bpm: 133.1, konk: { nazwa: 'Dance of the Day' } }), /^Welcome to the TeO Game Show!.*Dance Clash — Dance of the Day.*“Joann1”, 133 beats per minute/);
+    assert.match(ogloszenieWyniku({ tancerz: 'Kot', ocena: OCENA, jezyk: 'pl' }), /86 punktów na sto — ranga A! Takt 92%, energia 80%, różnorodność 85%/);
+    assert.match(ogloszenieWyniku({ tancerz: 'Kot', ocena: OCENA }), /Kot scores 86 out of a hundred — rank A! Rhythm 92%, energy 80%, variety 85%/);
 });
 
 test('wywiad po stworkowemu: prompt zakazuje prawdziwych słów, parser bierze 1–3 trójki, bez formatu = błąd', () => {
     const { system, user } = promptWywiaduStworka({ tancerz: 'Kot', opis: 'puszysty', utwor: 'Joann1', ocena: OCENA });
     assert.match(system, /WŁASNYM językiem stworków/);
-    assert.match(system, /PO POLSKU:/);
+    assert.match(system, /TŁUMACZENIE: <tłumaczenie odpowiedzi po ANGIELSKU/);
+    assert.match(promptWywiaduStworka({ tancerz: 'Kot', utwor: 'x', ocena: OCENA, jezyk: 'pl' }).system, /TŁUMACZENIE: <tłumaczenie odpowiedzi po polsku>/);
     assert.match(user, /86\/100 \(ranga A\)/);
     const w = odczytajWywiadStworka(`<think>hmm</think>${WYWIAD}`);
     assert.equal(w.length, 2);
-    assert.deepEqual(w[0], { pytanie: 'Jak się tańczyło?', stworek: 'Mru-tii pa-lo, nunu!', polski: 'Wspaniale, łapki same szły!' });
+    assert.deepEqual(w[0], { pytanie: 'Jak się tańczyło?', stworek: 'Mru-tii pa-lo, nunu!', tlumaczenie: 'Wspaniale, łapki same szły!' });
+    assert.equal(odczytajWywiadStworka('PYTANIE: How was it?\nSTWOREK: Mru!\nTŁUMACZENIE: Great!')[0].tlumaczenie, 'Great!');
     assert.throws(() => odczytajWywiadStworka('Kot mówi: miau.'), /nie trzymał formatu/);
 });
 
@@ -81,7 +88,7 @@ test('łańcuch: intro pada → odcinek staje z powodem → „bez intro” koń
 
     const choreo = { id: 'c-12345678', nazwa: 'Kot — Joann1', odcisk: 'abcd1234', mini: { id: 'mini-kot', nazwa: 'Kot Tancerz' }, utwor: { tytul: 'Joann1', bpm: 128 }, ocena: OCENA, nagrania: [{ nazwa: 'taniec_kot_abc123.mp4' }] };
     let introPada = true;
-    const prosbyIntro = [], publikacje = [], mowy = [];
+    const prosbyIntro = [], publikacje = [], mowy = [], odrzucone = [];
     const GS = utworzGameShow({
         katalog: kat, ffmpeg: ffmpegPath,
         katalogMontazy: async (p) => { const d = path.join(kat, 'produkcje', p, 'montaz'); fs.mkdirSync(d, { recursive: true }); return d; },
@@ -95,12 +102,13 @@ test('łańcuch: intro pada → odcinek staje z powodem → „bez intro” koń
         spawaj: ({ klipy, wyjscie, celWedlug }) => Spawacz.spawaj({ klipy, wyjscie, opisz, uruchom: async (b, a) => execFileSync(b, a, { stdio: 'pipe' }), ffmpeg: ffmpegPath, celWedlug }),
         klocki: async () => ({ start: [klockiStart], end: [] }),
         okresy: () => [{ okres: 'dzien', klucz: '2026-10-13', nazwa: 'Taniec Dnia' }],
+        odrzucPublikacje: async (id) => { odrzucone.push(id); },
         publikuj: async (z) => { publikacje.push(z); return { id: `yt_${publikacje.length}`, etap: 'do_akceptacji', tytul: 'TeO Game Show: Kot Tancerz tańczy', kanalNazwa: 'TeO Game Show' }; },
     });
     await assert.rejects(GS.utworz(choreo.id, 'inny.mp4'), /nie ma takiego nagrania/);
 
     // 1) intro pada: odcinek staje na intro, reszta czeka
-    const s1 = await GS.utworz(choreo.id, 'taniec_kot_abc123.mp4');
+    const s1 = await GS.utworz(choreo.id, 'taniec_kot_abc123.mp4', { jezyk: 'pl' });
     assert.equal((await GS.utworz(choreo.id, 'taniec_kot_abc123.mp4')).id, s1.id, 'drugie wywołanie nie robi drugiego odcinka');
     await GS.czekaj();
     let s = await GS.wczytaj(s1.id);
@@ -126,7 +134,8 @@ test('łańcuch: intro pada → odcinek staje z powodem → „bez intro” koń
     assert.match(publikacje[0].kontekst, /Wynik: 86\/100/);
     assert.equal(s.publikacja.id, 'yt_1');
     assert.ok(mowy.some((m) => m.kto === 'stworek' && /Mru-tii/.test(m.tekst)));
-    assert.ok(mowy.some((m) => m.kto === 'prowadzacy' && /Witajcie w TeO Game Show/.test(m.tekst)));
+    assert.ok(mowy.some((m) => m.kto === 'prowadzacy' && /Witajcie w TeO Game Show/.test(m.tekst) && m.jezyk === 'pl'));
+    assert.equal(publikacje[0].jezyk, 'pl');
 
     // 3) nowe nagranie, intro działa — film dłuższy o intro
     introPada = false;
@@ -142,6 +151,27 @@ test('łańcuch: intro pada → odcinek staje z powodem → „bez intro” koń
     assert.ok(zIntro.sekundy > bez.sekundy + 0.8, `intro (1 s) wydłuża odcinek (${bez.sekundy} → ${zIntro.sekundy})`);
     assert.equal((await GS.lista()).length, 2);
     await assert.rejects(GS.ponow(s2.id), /tylko odcinek, który stanął na błędzie/);
+    // domyślny język = angielski: zapowiedź, wywiad i Kronikarz po angielsku, plik z _en_
+    assert.equal(z.jezyk, 'en');
+    assert.equal(z.konkurencja.nazwa, 'Dance of the Day');
+    assert.match(z.plik, /gameshow_Kot_Tancerz_en_/);
+    assert.ok(mowy.some((m) => m.kto === 'prowadzacy' && m.jezyk === 'en' && /^Welcome to the TeO Game Show/.test(m.tekst)));
+    assert.equal(publikacje.at(-1).jezyk, 'en');
+
+    // 4) przeróbka gotowego odcinka po polsku: intro zostaje (Wan nie liczy drugi raz), stara publikacja odrzucona
+    const introPrzed = prosbyIntro.length, staraPub = z.publikacja.id;
+    await GS.ponow(s2.id, { jezyk: 'pl' });
+    await GS.czekaj();
+    const zPl = await GS.wczytaj(s2.id);
+    assert.equal(zPl.stan, 'do_akceptacji', zPl.powod ?? '');
+    assert.equal(zPl.jezyk, 'pl');
+    assert.equal(zPl.konkurencja.nazwa, 'Taniec Dnia');
+    assert.equal(prosbyIntro.length, introPrzed, 'intro nie liczy się drugi raz');
+    assert.equal(zPl.etapy.intro.stan, 'gotowy');
+    assert.deepEqual(odrzucone, [staraPub]);
+    assert.match(zPl.plik, /gameshow_Kot_Tancerz_pl_/);
+    assert.ok((await opisz(zPl.plik)).sekundy > bez.sekundy + 0.8, 'przerobiony odcinek dalej ma intro');
+    assert.equal(publikacje.at(-1).jezyk, 'pl');
 });
 
 test('duch po restarcie: „robi” bez pracy w pamięci = błąd z powodem, można ponowić', async () => {
