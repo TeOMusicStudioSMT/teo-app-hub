@@ -1199,10 +1199,30 @@ ${String(d.tresc || '').slice(0, 4000)}
             await dispatchStan(text.replace(/^\/stan\b/i, '').trim());
             return;
         }
+        if (/^\/zwolnij\s+kart/i.test(text)) {
+            // 🎛️ Karta graficzna: prosimy serwer głosu, Ollamę i VoiceStudio o oddanie pamięci — nic się nie zamyka.
+            setCurrentInput('');
+            const co = /g[lł]os/i.test(text) ? 'glos' : /ollam/i.test(text) ? 'ollama' : 'wszystko';
+            const widgetId = addMessage({ sender: 'mechanik', content: `🎛️ ZWALNIAM KARTĘ (${co})...` });
+            try {
+                const d = await (await fetch('http://127.0.0.1:3001/api/karta/zwolnij', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ co }),
+                })).json();
+                if (!d.success) throw new Error(d.message || 'błąd');
+                const zdjete = (d.zwolniono?.zdjete ?? []).map((m: any) => `✅ ${m.nazwa ?? m.id} — ${m.vramMiB} MiB`);
+                updateMessage(widgetId, { content: `🎛️ ZWALNIAM KARTĘ (${co})\n\n${zdjete.join('\n') || '(nikt nic nie oddał)'}` +
+                    (d.przed?.znane !== false && d.po ? `\nwolne ${d.przed?.wolneMiB} → ${d.po?.wolneMiB} MiB` : '') +
+                    (d.trzymaja?.length ? `\n✋ nadal trzyma: ${d.trzymaja.join(', ')}` : '') + (d.powod ? `\n${d.powod}` : '') });
+            } catch (err: any) {
+                updateMessage(widgetId, { content: `🎛️ ZWALNIAM KARTĘ\n\n❌ ${err.message}` });
+            }
+            scrollToBottom(true);
+            return;
+        }
         if (/^\/zwolnij\b/i.test(text)) {
             setCurrentInput('');
             const pidy = (text.match(/\d+/g) ?? []).map(Number);
-            if (!pidy.length) { addMessage({ sender: 'mechanik', content: '🧹 Podaj PID: /zwolnij 1234 (PID-y pokazuje /stan).' }); return; }
+            if (!pidy.length) { addMessage({ sender: 'mechanik', content: '🧹 Podaj PID: /zwolnij 1234 (PID-y pokazuje /stan). Kartę graficzną: /zwolnij karte [glos|ollama].' }); return; }
             await dispatchZwolnij(pidy);
             return;
         }

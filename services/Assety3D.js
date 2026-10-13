@@ -28,6 +28,7 @@ import { promisify } from 'util';
 import ffmpegPath from 'ffmpeg-static';
 import { zmniejszTekstury, przekolorujTekstury, scianyGlb } from './GlbTekstury.js';
 import * as Siatka3D from './Siatka3D.js';
+import { przedRenderem } from './RuchNaKarcie.js';
 
 const uruchomProces = promisify(execFile);
 
@@ -263,6 +264,7 @@ async function zwolnijVram() {
 }
 
 async function zlecGraf(graf) {
+    await przedRenderem('grafem FLUX/TRELLIS (Assety 3D)');   // serwer głosu i Ollama oddają kartę — RuchNaKarcie.js
     const r = await fetch(`${cfg.comfyBase}/prompt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: graf }), signal: AbortSignal.timeout(30000) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || d?.error) throw new Error(`ComfyUI odrzucił graf: ${JSON.stringify(d?.error ?? d).slice(0, 300)}`);

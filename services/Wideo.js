@@ -27,6 +27,7 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
+import { przedRenderem } from './RuchNaKarcie.js';
 
 const KATALOG_WF = () => path.join(process.cwd(), '_OtakOs_AI', 'workflows');
 
@@ -298,6 +299,7 @@ export async function generujScene({ comfyBase, prompt, szerokosc, wysokosc, kla
     dekodujKafelkami(graf);
 
     try {
+        await przedRenderem('sceną Wan');
         const r = await pobierzZLimitem(`${comfyBase}/prompt`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: graf }),
@@ -361,6 +363,7 @@ export async function generujKadrObraz({ comfyBase, prompt, szerokosc, wysokosc,
     graf['99'] = { class_type: 'SaveImage', inputs: { images: [dekoder, 0], filename_prefix: 'katedra/kadr' } };
 
     try {
+        await przedRenderem('kadrem FLUX');
         const r = await pobierzZLimitem(`${comfyBase}/prompt`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: graf }),
@@ -420,6 +423,7 @@ export async function dopiszUjecie({ comfyBase, prompt, klatka, szerokosc, wysok
     dekodujKafelkami(graf);
 
     try {
+        await przedRenderem('dopisaniem ujęcia Wan');
         const r = await pobierzZLimitem(`${comfyBase}/prompt`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: graf }),
@@ -567,6 +571,7 @@ export async function generujObrazSilnikiem({
     if (w.sampler && graf[w.sampler]) graf[w.sampler].inputs.seed = nasiono;
 
     try {
+        await przedRenderem('obrazem (ComfyUI)');
         const r = await pobierzZLimitem(`${comfyBase}/prompt`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: graf }),

@@ -6,8 +6,15 @@ nigdy nie było w repo — kloner Katedry „jakby nigdy nie był podłączony�
 instalowany przez most (`POST /api/glos/silnik/instaluj`).
 
 KONTRAKT (services/PrzewodyGlosuService.js → torKlonLokalny):
-    GET  /                 → {"ok": true, "silnik": "chatterbox|xtts_v2", "model": "ladowanie|gotowy|blad", ...}
+    GET  /                 → {"ok": true, "silnik": "chatterbox|xtts_v2", "model": "ladowanie|gotowy|uspiony|blad", "vram_mb", ...}
     POST /api/tts          {"text": "...", "speaker_wav": "<pełna ścieżka WAV>", "language": "pl"} → audio/wav
+                           (uśpiony model wstaje sam; czas wstawania w nagłówku X-Glos-Ladowanie-S)
+    POST /zwolnij          {"powod": "..."} → {"zwolniono": bool, "vram_mb_przed", "vram_mb_po", "powod"} — oddaje kartę
+
+KARTA (2026-10-13): na 6 GB karty model trzymany od pierwszego nagrania (~3,3 GB) wypychał Wana z ComfyUI do RAM
+(krok 10 → 812 s/it, 43 min). Teraz model ŚPI: po bezczynności (OTAKOS_GLOS_BEZCZYNNOSC_S, domyślnie 180 s; 0 = nigdy)
+i na prośbę mostu (`POST /zwolnij` przed renderem) — `del` + `torch.cuda.empty_cache()`; następne `/api/tts` ładuje go
+z powrotem (wagi z dysku, bez pobierania). Proces zostaje — nic się nie zabija.
 
 SILNIKI (jeden na środowisko; wybór: OTAKOS_GLOS_SILNIK albo plik `.silnik` w środowisku, który pisze instalator):
   • chatterbox (DOMYŚLNY) — Chatterbox Multilingual od Resemble AI, licencja MIT: wolno używać KOMERCYJNIE
@@ -21,11 +28,13 @@ Zero zależności poza silnikiem: http.server ze standardowej biblioteki, jedna 
 """
 
 import io
+import gc
 import json
 import os
 import re
 import sys
 import threading
+import time
 import traceback
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -34,6 +43,10 @@ PORT = int(os.environ.get("OTAKOS_GLOS_PORT", "5002"))
 MODEL_XTTS = os.environ.get("OTAKOS_GLOS_MODEL", "tts_models/multilingual/multi-dataset/xtts_v2")
 DOMYSLNA_PROBKA = os.environ.get("OTAKOS_GLOS_PROBKA", "")
 MAX_KAWALKA = 250   # znaków na jedną syntezę
+try:
+    BEZCZYNNOSC_S = max(0.0, float(os.environ.get("OTAKOS_GLOS_BEZCZYNNOSC_S", "180")))
+except ValueError:
+    BEZCZYNNOSC_S = 180.0
 
 JEZYKI = {
     "chatterbox": {"ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi", "it", "ja", "ko", "ms", "nl", "no",
@@ -57,10 +70,32 @@ def wybierz_silnik():
 
 
 SILNIK = wybierz_silnik()
-stan = {"model": "ladowanie", "blad": None, "urzadzenie": None}
+stan = {"model": "ladowanie", "blad": None, "urzadzenie": None, "bezczynnosc_s": BEZCZYNNOSC_S,
+        "ladowanie_s": None, "uspienia": 0, "uspiony_bo": None}
 _model = None
 _probka = None   # próbka, z której Chatterbox ma przygotowane warunki (prepare_conditionals)
 _blokada = threading.Lock()
+_ostatnio = time.monotonic()   # koniec ostatniej syntezy (albo załadowania)
+
+
+def _torch():
+    """torch, jeśli jest (atrapy w testach go nie mają)."""
+    try:
+        import torch  # noqa: WPS433
+        return torch
+    except ImportError:
+        return None
+
+
+def vram_mb():
+    """Ile pamięci karty trzyma TEN proces (zarezerwowane przez PyTorch), w MB; None bez CUDA."""
+    torch = _torch()
+    try:
+        if torch is not None and torch.cuda.is_available():
+            return round(torch.cuda.memory_reserved() / 1048576)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 
 def zgoda_licencji():
@@ -78,8 +113,11 @@ def urzadzenie(torch):
 
 
 def zaladuj():
-    """Ładuje model w tle (pierwszy raz pobiera wagi). Błąd zostaje w `stan`, serwer odpowiada dalej."""
-    global _model
+    """Ładuje model (start: w tle, pierwszy raz pobiera wagi; po uśpieniu: z dysku). Błąd zostaje w `stan`."""
+    global _model, _ostatnio
+    t0 = time.monotonic()
+    stan["model"] = "ladowanie"
+    stan["blad"] = None
     try:
         import torch  # noqa: WPS433 — ciężki import dopiero w tle
         urz = urzadzenie(torch)
@@ -94,10 +132,57 @@ def zaladuj():
             from TTS.api import TTS
             _model = TTS(MODEL_XTTS).to("cuda" if urz == "cuda" else "cpu")
         stan["model"] = "gotowy"
+        stan["ladowanie_s"] = round(time.monotonic() - t0, 1)
+        stan["uspiony_bo"] = None
+        _ostatnio = time.monotonic()
     except Exception as e:  # noqa: BLE001 — każdy powód ma trafić do Suwerena
         stan["model"] = "blad"
         stan["blad"] = f"{type(e).__name__}: {e}"[:400]
         traceback.print_exc()
+
+
+def zwolnij(powod="prośba"):
+    """Oddaje kartę: model do kosza + `torch.cuda.empty_cache()`. NIE czeka na trwającą syntezę (most prosi przed
+    renderem — nie może wisieć na długim nagraniu): mówi wtedy wprost, że model zostaje. Zwraca słownik dla HTTP."""
+    global _model, _probka
+    if not _blokada.acquire(blocking=False):
+        return {"zwolniono": False, "powod": "właśnie mówi — model zostaje do końca nagrania", "model": stan["model"]}
+    try:
+        if stan["model"] != "gotowy" or _model is None:
+            return {"zwolniono": False, "powod": f"model nie jest załadowany ({stan['model']})", "model": stan["model"]}
+        przed = vram_mb()
+        _model = None
+        _probka = None
+        gc.collect()
+        torch = _torch()
+        try:
+            if torch is not None and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:  # noqa: BLE001 — sprzątanie nie jest powodem, żeby serwer padł
+            traceback.print_exc()
+        stan["model"] = "uspiony"
+        stan["uspienia"] += 1
+        stan["uspiony_bo"] = str(powod)[:120]
+        po = vram_mb()
+        melduj(f"[Głos] model uśpiony ({powod}) — karta {przed} → {po} MB")
+        return {"zwolniono": True, "vram_mb_przed": przed, "vram_mb_po": po, "powod": stan["uspiony_bo"], "model": "uspiony"}
+    finally:
+        _blokada.release()
+
+
+def czy_uspic(teraz=None):
+    """Czy bezczynny model na karcie ma już zasnąć (na CPU usypianie nic nie daje — RAM wróci tylko wolniej)."""
+    if BEZCZYNNOSC_S <= 0 or stan["model"] != "gotowy" or stan["urzadzenie"] not in ("cuda", "mps"):
+        return False
+    return ((time.monotonic() if teraz is None else teraz) - _ostatnio) >= BEZCZYNNOSC_S
+
+
+def straz_bezczynnosci(co_s=15.0):
+    """Wątek: model bezczynny dłużej niż BEZCZYNNOSC_S → zwolnij."""
+    while True:
+        time.sleep(co_s)
+        if czy_uspic():
+            zwolnij(f"bezczynność {int(BEZCZYNNOSC_S)} s")
 
 
 def kawalki(tekst, maks=MAX_KAWALKA):
@@ -144,9 +229,13 @@ def _syntezuj_kawalek(tekst, probka, jezyk):
     return dane, getattr(getattr(_model, "synthesizer", None), "output_sample_rate", 24000) or 24000
 
 
-def syntezuj(tekst, probka, jezyk):
-    """Tekst + próbka głosu → WAV (bajty). Rzuca ValueError z powodem po polsku."""
-    if stan["model"] != "gotowy" or _model is None:
+def syntezuj(tekst, probka, jezyk, info=None):
+    """Tekst + próbka głosu → WAV (bajty). Rzuca ValueError z powodem po polsku.
+    Uśpiony model wstaje tu (pod blokadą); `info["ladowanie_s"]` = ile trwało wstawanie."""
+    global _ostatnio
+    if stan["model"] == "uspiony":
+        pass   # wstanie niżej, pod blokadą
+    elif stan["model"] != "gotowy" or _model is None:
         raise ValueError(f"model nie jest gotowy ({stan['model']}{': ' + stan['blad'] if stan['blad'] else ''})")
     if not probka or not os.path.isfile(probka):
         raise ValueError("brak próbki głosu (speaker_wav) — profil klonu potrzebuje pliku WAV z głosem")
@@ -155,11 +244,21 @@ def syntezuj(tekst, probka, jezyk):
         raise ValueError(f"silnik {NAZWY[SILNIK]} nie zna języka „{j}”")
     probki, czestotliwosc = [], 24000
     with _blokada:
+        if stan["model"] == "uspiony" or _model is None:
+            t0 = time.monotonic()
+            zaladuj()
+            if stan["model"] != "gotowy" or _model is None:
+                raise ValueError(f"model nie jest gotowy (wstawanie po uśpieniu: {stan['blad'] or stan['model']})")
+            wstal = round(time.monotonic() - t0, 1)
+            if info is not None:
+                info["ladowanie_s"] = wstal
+            melduj(f"[Głos] model wstał po uśpieniu w {wstal} s")
         for i, k in enumerate(kawalki(tekst)):
             dane, czestotliwosc = _syntezuj_kawalek(k, probka, j)
             if i:
                 probki.extend([0.0] * int(czestotliwosc * 0.15))   # oddech między zdaniami
             probki.extend(list(dane) if not hasattr(dane, "tolist") else dane.tolist())
+        _ostatnio = time.monotonic()
     return wav_z_probek(probki, czestotliwosc)
 
 
@@ -196,13 +295,24 @@ class Obsluga(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802 — nazwa z http.server
         if self.path.split("?")[0] in ("/", "/stan"):
             return self._json(200, {"ok": True, "silnik": NAZWY[SILNIK], "licencja": LICENCJE[SILNIK], **stan,
+                                    "vram_mb": vram_mb(),
+                                    "bezczynny_s": round(time.monotonic() - _ostatnio) if stan["model"] == "gotowy" else None,
                                     "zgoda": zgoda_licencji() if SILNIK == "xtts" else None,
                                     "jezyki": sorted(JEZYKI[SILNIK])})
         return self._json(404, {"blad": "nie ma takiej ścieżki"})
 
     def do_POST(self):  # noqa: N802
-        if self.path.split("?")[0] != "/api/tts":
+        sciezka = self.path.split("?")[0]
+        if sciezka == "/zwolnij":
+            try:
+                dlugosc = int(self.headers.get("Content-Length") or 0)
+                dane = json.loads(self.rfile.read(min(dlugosc, 10_000)) or b"{}") if dlugosc else {}
+            except ValueError:
+                dane = {}
+            return self._json(200, {"ok": True, **zwolnij(str((dane or {}).get("powod") or "prośba mostu"))})
+        if sciezka != "/api/tts":
             return self._json(404, {"blad": "nie ma takiej ścieżki"})
+        info = {}
         try:
             dlugosc = int(self.headers.get("Content-Length") or 0)
             if dlugosc > 1_000_000:
@@ -211,7 +321,7 @@ class Obsluga(BaseHTTPRequestHandler):
             tekst = str(dane.get("text") or "").strip()
             if not tekst:
                 return self._json(400, {"blad": "pusty tekst"})
-            wav = syntezuj(tekst[:4000], dane.get("speaker_wav") or DOMYSLNA_PROBKA, dane.get("language"))
+            wav = syntezuj(tekst[:4000], dane.get("speaker_wav") or DOMYSLNA_PROBKA, dane.get("language"), info)
         except ValueError as e:
             return self._json(503 if "model" in str(e) else 400, {"blad": str(e)})
         except Exception as e:  # noqa: BLE001
@@ -219,6 +329,8 @@ class Obsluga(BaseHTTPRequestHandler):
             return self._json(500, {"blad": f"{type(e).__name__}: {e}"[:400]})
         self.send_response(200)
         self.send_header("Content-Type", "audio/wav")
+        if info.get("ladowanie_s") is not None:
+            self.send_header("X-Glos-Ladowanie-S", str(info["ladowanie_s"]))
         self.send_header("Content-Length", str(len(wav)))
         self.end_headers()
         self.wfile.write(wav)
@@ -246,6 +358,7 @@ def main():
     serwer = ThreadingHTTPServer(("127.0.0.1", PORT), Obsluga)
     if os.environ.get("OTAKOS_GLOS_BEZ_MODELU") != "1":   # testy kontraktu HTTP ładują własny silnik
         threading.Thread(target=zaladuj, daemon=True).start()
+    threading.Thread(target=straz_bezczynnosci, daemon=True).start()
     melduj(f"[Głos] silnik klonu {NAZWY[SILNIK]} na http://127.0.0.1:{PORT}")
     serwer.serve_forever()
 

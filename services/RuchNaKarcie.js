@@ -30,9 +30,31 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
-const uruchom = promisify(execFile);
-
 const VOICESTUDIO = process.env.OTAKOS_VOICESTUDIO || 'http://127.0.0.1:3900';
+
+/**
+ * ⚠️ CZWARTY GRACZ (2026-10-13): silnik klonu głosu Katedry (:5002, services/glos/voice_server.py). Trzymał
+ * Chatterboxa na karcie od pierwszego nagrania (~3,3 GB) i odcinek TeO Game Show stał — Wan w ComfyUI przelewał
+ * się do RAM, krok 10 trwał 43 min (812 s/it). Rozjemca znał VoiceStudio i Ollamę, a o NASZYM serwerze głosu
+ * nie wiedział. Serwer ma teraz `POST /zwolnij` (model śpi, proces zostaje) i sam usypia model po bezczynności.
+ */
+const KLON = process.env.OTAKOS_VOICE_HOST || 'http://127.0.0.1:5002';
+
+let cfg = {
+    /** (program, argumenty) → Promise<{stdout}> — podmienialne w testach */
+    uruchom: promisify(execFile),
+    ollamaBase: null,
+    klonBase: KLON,
+    voiceStudio: VOICESTUDIO,
+    /** zapis na szynę ({agent, rodzaj, tresc, dane}) — ustawia most */
+    nadaj: null,
+    /** `przedRenderem` działa dopiero, gdy most go włączy (testy modułów wideo nie pukają do prawdziwej karty) */
+    wlaczone: false,
+    teraz: () => Date.now(),
+};
+/** Most ustawia adresy i szynę raz przy starcie (`wlaczone: true`). */
+export function skonfiguruj(o = {}) { cfg = { ...cfg, ...o }; ostatniaProsba = null; }
+const uruchom = (...a) => cfg.uruchom(...a);
 
 /**
  * Ile MiB musi być wolne, żeby puszczać render.
@@ -80,7 +102,78 @@ export async function stanKarty() {
 }
 
 async function pobierz(sciezka, opcje = {}, limitMs = 20000) {
-    return fetch(`${VOICESTUDIO}${sciezka}`, { ...opcje, signal: AbortSignal.timeout(limitMs) });
+    return fetch(`${cfg.voiceStudio}${sciezka}`, { ...opcje, signal: AbortSignal.timeout(limitMs) });
+}
+
+/**
+ * Kto jest na karcie wg sterownika: [{ pid, program, vramMiB|null }].
+ * ⚠️ Windows (WDDM) zwykle NIE podaje pamięci na proces („[N/A]") — wtedy `vramMiB: null`, a ile kto trzyma
+ * wiemy tylko od tych, którzy sami mówią (serwer głosu, Ollama, VoiceStudio).
+ */
+export async function procesyKarty() {
+    try {
+        const { stdout } = await uruchom('nvidia-smi', [
+            '--query-compute-apps=pid,process_name,used_memory',
+            '--format=csv,noheader,nounits',
+        ], { timeout: 10000, windowsHide: true });
+        return String(stdout).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+            const czesci = l.split(',').map((x) => x.trim());
+            const pid = Number(czesci[0]);
+            const mb = Number(czesci.at(-1));
+            const sciezka = czesci.slice(1, -1).join(',');
+            return { pid, program: sciezka.split(/[\\/]/).pop() || sciezka, vramMiB: Number.isFinite(mb) ? mb : null };
+        }).filter((p) => Number.isInteger(p.pid) && p.pid > 0);
+    } catch {
+        return [];
+    }
+}
+
+/** Co trzyma silnik klonu głosu Katedry (:5002). */
+export async function modelKlonu() {
+    try {
+        const r = await fetch(`${cfg.klonBase}/`, { signal: AbortSignal.timeout(4000) });
+        if (!r.ok) return { zywe: false };
+        const d = await r.json();
+        return {
+            zywe: true,
+            silnik: d.silnik ?? null,
+            model: d.model ?? null,
+            urzadzenie: d.urzadzenie ?? null,
+            vramMiB: Number.isFinite(Number(d.vram_mb)) && d.vram_mb !== null ? Math.round(Number(d.vram_mb)) : null,
+            bezczynnyS: d.bezczynny_s ?? null,
+            usypiaPoS: d.bezczynnosc_s ?? null,
+            ladowanieS: d.ladowanie_s ?? null,
+            // starszy serwer (sprzed 2026-10-13) nie zna `/zwolnij` — nie ma w stanie `uspienia`
+            umieZwolnic: d.uspienia !== undefined,
+        };
+    } catch {
+        return { zywe: false };
+    }
+}
+
+/** Czy serwer głosu siedzi na karcie z załadowanym modelem. */
+const klonNaKarcie = (k) => k.zywe && k.model === 'gotowy' && /cuda|mps/i.test(String(k.urzadzenie ?? ''));
+
+/**
+ * Poproś serwer głosu Katedry, żeby uśpił model (`POST /zwolnij`). Proces zostaje — następne nagranie
+ * załaduje model z dysku. W trakcie nagrania serwer odmawia (nie przerywamy mowy).
+ */
+export async function oddajKarteZKlonu(powod = 'render') {
+    const k = await modelKlonu();
+    if (!k.zywe) return { zrobione: false, powod: 'Silnik głosu Katedry nie działa — nic nie trzyma.', zdjete: [] };
+    if (!klonNaKarcie(k)) return { zrobione: true, zdjete: [], powod: `Silnik głosu nie trzyma karty (model: ${k.model ?? '?'}).` };
+    if (!k.umieZwolnic) return { zrobione: false, zdjete: [], powod: 'Silnik głosu to starsza wersja bez /zwolnij — zrestartuj go (most odpali nowy).' };
+    try {
+        const r = await fetch(`${cfg.klonBase}/zwolnij`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ powod }), signal: AbortSignal.timeout(30000),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!d.zwolniono) return { zrobione: false, zdjete: [], powod: `Silnik głosu: ${d.powod ?? `HTTP ${r.status}`}` };
+        return { zrobione: true, zdjete: [{ nazwa: `głos Katedry (${k.silnik ?? 'klon'})`, vramMiB: d.vram_mb_przed ?? k.vramMiB ?? 0 }], powod: null };
+    } catch (e) {
+        return { zrobione: false, zdjete: [], powod: `Silnik głosu nie odpowiedział: ${e.message}` };
+    }
 }
 
 /** Które modele VoiceStudio trzyma teraz na karcie. */
@@ -211,14 +304,16 @@ export async function oddajKarteZRenderu(comfyBase) {
  * Zwraca `{ wolno, ... }` — `wolno: false` znaczy, że mimo próśb miejsca nie ma
  * i puszczanie renderu skończy się tak samo jak wtedy: martwym kontekstem CUDA.
  */
-export async function zrobMiejsceNaRender({ potrzeba = POTRZEBA_NA_RENDER, ollamaBase = null } = {}) {
+export async function zrobMiejsceNaRender({ potrzeba = POTRZEBA_NA_RENDER, ollamaBase = cfg.ollamaBase, powod: poCo = 'render' } = {}) {
     const przed = await stanKarty();
     if (!przed.znane) return { wolno: true, znane: false, powod: 'Nie widzę karty — nie blokuję.' };
+    ostatniaProsba = cfg.teraz();
 
     // ⚠️ PYTAMY OBU KONKURENTÓW. Zmierzone: przy wyłączonym VoiceStudio kartę
     // trzymała Ollama (qwen3.6:35b-a3b, 1892 MiB), więc komunikat „zamknij
     // VoiceStudio" był bezużyteczny — bo już był zamknięty.
     const zMowy = await oddajKarteZMowy();
+    const zKlonu = await oddajKarteZKlonu(poCo);
     const zMysli = ollamaBase ? await oddajKarteZMysli(ollamaBase) : { zrobione: false, zdjete: [], powod: 'Nie znam adresu Ollamy.' };
 
     const po = await stanKarty();
@@ -226,6 +321,7 @@ export async function zrobMiejsceNaRender({ potrzeba = POTRZEBA_NA_RENDER, ollam
     // Kto NADAL trzyma kartę PO poproszeniu.
     const trzymaja = [];
     if ((await modeleGlosu()).modele.some((m) => /cuda|gpu/i.test(m.urzadzenie))) trzymaja.push('VoiceStudio');
+    if (klonNaKarcie(await modelKlonu())) trzymaja.push('silnik głosu Katedry');
     if (ollamaBase && (await modeleMysli(ollamaBase)).modele.length) trzymaja.push('Ollama');
 
     /**
@@ -251,8 +347,8 @@ export async function zrobMiejsceNaRender({ potrzeba = POTRZEBA_NA_RENDER, ollam
     return {
         wolno, znane: true, przed, po, potrzeba, trzymaja,
         zwolniono: {
-            zdjete: [...(zMowy.zdjete ?? []), ...(zMysli.zdjete ?? [])],
-            mowa: zMowy, mysl: zMysli,
+            zdjete: [...(zMowy.zdjete ?? []), ...(zKlonu.zdjete ?? []), ...(zMysli.zdjete ?? [])],
+            mowa: zMowy, klon: zKlonu, mysl: zMysli,
         },
         ostrzezenie: (wolno && malo)
             ? `Na karcie wolne tylko ${po.wolneMiB} MiB, ale trzyma ją ComfyUI albo program spoza `
@@ -265,6 +361,61 @@ export async function zrobMiejsceNaRender({ potrzeba = POTRZEBA_NA_RENDER, ollam
               + 'Dwa silniki naraz kończą się błędem CUDA i martwym kontekstem — '
               + 'zamknij ten program i spróbuj ponownie.',
     };
+}
+
+/** Kiedy ostatnio prosiliśmy o kartę — kolejka kadrów nie musi pytać przy każdym kadrze. */
+let ostatniaProsba = null;
+export const ODSTEP_PROSB_MS = 20_000;
+
+/**
+ * 🚦 Przed ciężką robotą GPU w ComfyUI (Wan, FLUX, TRELLIS) — wołane w JEDNYM miejscu każdej wysyłki grafu
+ * (services/Wideo.js, services/Assety3D.js). PROSI serwer głosu, VoiceStudio i Ollamę o zwolnienie karty i zapisuje
+ * na szynie, co oddali. NIGDY nie rzuca i nie blokuje — trasy, które mają blokować (507), wołają
+ * `zrobMiejsceNaRender` same. Nic nie zabija.
+ * @returns {Promise<object>} wynik `zrobMiejsceNaRender` albo `{ pominiete: powód }`
+ */
+export async function przedRenderem(poCo = 'render') {
+    if (!cfg.wlaczone || process.env.OTAKOS_GPU_ZWALNIAJ === '0') return { pominiete: 'wyłączone' };
+    if (ostatniaProsba && cfg.teraz() - ostatniaProsba < ODSTEP_PROSB_MS) return { pominiete: 'prośba przed chwilą' };
+    try {
+        const ollamaBase = process.env.OTAKOS_GPU_ZWALNIAJ_OLLAMA === '0' ? null : cfg.ollamaBase;
+        const r = await zrobMiejsceNaRender({ ollamaBase, powod: poCo });
+        const zdjete = r.zwolniono?.zdjete ?? [];
+        if (zdjete.length || r.trzymaja?.length) {
+            const ile = zdjete.reduce((s, m) => s + (m.vramMiB || 0), 0);
+            const tresc = `🚦 Przed ${poCo}: ` +
+                (zdjete.length ? `oddali kartę — ${zdjete.map((m) => `${m.nazwa ?? m.id} ${m.vramMiB} MiB`).join(', ')} (≈ ${ile} MiB)` : 'nikt nie oddał karty') +
+                (r.po?.znane !== false && r.po ? `; wolne ${r.przed?.wolneMiB} → ${r.po.wolneMiB} MiB` : '') +
+                (r.trzymaja?.length ? `; nadal trzyma: ${r.trzymaja.join(', ')}` : '') + '.';
+            console.log(`[Karta] ${tresc}`);
+            try { await cfg.nadaj?.({ agent: 'most', rodzaj: 'karta', tresc, dane: { poCo, zdjete, przed: r.przed?.wolneMiB ?? null, po: r.po?.wolneMiB ?? null, trzymaja: r.trzymaja ?? [] } }); } catch { /* szyna nie jest powodem */ }
+        }
+        return r;
+    } catch (e) {
+        return { pominiete: `błąd prośby o kartę: ${e.message}` };
+    }
+}
+
+/**
+ * Pamięć KARTY dla 🧠 Pamięci Katedry: całość ze sterownika + kto trzyma (z ich własnych słów, bo WDDM nie podaje
+ * pamięci na proces) + lista programów na karcie.
+ */
+export async function pamiecKarty() {
+    const [karta, procesy, klon, glos, mysl] = await Promise.all([
+        stanKarty(), procesyKarty(), modelKlonu(), modeleGlosu(), cfg.ollamaBase ? modeleMysli(cfg.ollamaBase) : Promise.resolve({ zywe: false, modele: [] }),
+    ]);
+    const trzymaja = [];
+    if (klon.zywe) {
+        trzymaja.push({
+            kto: 'głos Katedry', co: `${klon.silnik ?? 'klon'} · ${klon.model ?? '?'}`,
+            vramMiB: klonNaKarcie(klon) ? klon.vramMiB : 0, zwolnij: 'glos',
+            uwaga: klon.model === 'uspiony' ? 'model śpi — wstanie przy następnym nagraniu'
+                : klon.usypiaPoS ? `zaśnie sam po ${Math.round(klon.usypiaPoS / 60 * 10) / 10} min bezczynności` : null,
+        });
+    }
+    for (const m of (glos.modele ?? []).filter((x) => /cuda|gpu/i.test(x.urzadzenie))) trzymaja.push({ kto: 'VoiceStudio', co: m.nazwa || m.id, vramMiB: m.vramMiB, zwolnij: 'voicestudio' });
+    for (const m of mysl.modele ?? []) trzymaja.push({ kto: 'Ollama', co: m.nazwa, vramMiB: m.vramMiB, zwolnij: 'ollama' });
+    return { ...karta, procesy, trzymaja };
 }
 
 /** Zrób miejsce na MOWĘ. Ta sama zasada, druga strona. */
@@ -291,4 +442,5 @@ export default {
     POTRZEBA_NA_RENDER, POTRZEBA_NA_MOWE,
     stanKarty, modeleGlosu, modeleMysli, oddajKarteZMowy, oddajKarteZMysli, oddajKarteZRenderu,
     zrobMiejsceNaRender, zrobMiejsceNaMowe,
+    skonfiguruj, procesyKarty, modelKlonu, oddajKarteZKlonu, przedRenderem, pamiecKarty, ODSTEP_PROSB_MS,
 };

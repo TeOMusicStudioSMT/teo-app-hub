@@ -9454,6 +9454,13 @@ app.delete('/api/silniki-obrazu/:id', async (req, res) => {
     }
 });
 
+// 🚦 Rozjemca karty dostaje adres Ollamy i szynę: każda wysyłka grafu do ComfyUI (Wideo.js, Assety3D.js, arkusz,
+// muzyka) najpierw PROSI serwer głosu Katedry, VoiceStudio i Ollamę o oddanie karty (`przedRenderem`) — 2026-10-13
+// Chatterbox trzymał 3,3 GB i Wan liczył krok 43 min. Wyłącz: OTAKOS_GPU_ZWALNIAJ=0 (Ollamę: OTAKOS_GPU_ZWALNIAJ_OLLAMA=0).
+Karta.skonfiguruj({ ollamaBase: OLLAMA_BASE, nadaj: (z) => Szyna.nadaj(z), wlaczone: true });
+// 🧠 Pamięć Katedry (Hub, StoL, /stan) pokazuje też KARTĘ: kto ile trzyma i przycisk „zwolnij kartę”.
+StanKatedry.skonfiguruj({ karta: () => Karta.pamiecKarty() });
+
 /**
  * 🚦 Kto trzyma kartę graficzną.
  *
@@ -9474,6 +9481,7 @@ app.get('/api/karta/stan', async (_req, res) => {
             karta,
             progi: { render: Karta.POTRZEBA_NA_RENDER, mowa: Karta.POTRZEBA_NA_MOWE },
             wystarczyNaRender: !karta.znane || karta.wolneMiB >= Karta.POTRZEBA_NA_RENDER,
+            klon: await Karta.modelKlonu(),
             trzymaja: [
                 ...(glos.modele ?? []).filter((m) => /cuda|gpu/i.test(m.urzadzenie))
                     .map((m) => ({ kto: 'VoiceStudio', co: m.nazwa || m.id, vramMiB: m.vramMiB })),
@@ -9485,13 +9493,29 @@ app.get('/api/karta/stan', async (_req, res) => {
     }
 });
 
-/** Poproś wszystkich o oddanie karty. Nikogo nie ubija — patrz RuchNaKarcie.js. */
-app.post('/api/karta/zwolnij', async (_req, res) => {
+/**
+ * Poproś o oddanie karty. Nikogo nie ubija — patrz RuchNaKarcie.js.
+ * `co` (2026-10-13, 🧠 Pamięć Katedry): 'glos' = model serwera głosu Katedry (:5002) śpi, 'ollama' = keep_alive 0,
+ * 'voicestudio' = modele VoiceStudio; bez `co` / 'wszystko' = wszyscy (jak przed renderem).
+ */
+app.post('/api/karta/zwolnij', async (req, res) => {
     try {
-        const r = await Karta.zrobMiejsceNaRender({ ollamaBase: OLLAMA_BASE });
+        const co = String(req.body?.co || 'wszystko');
+        let r;
+        if (co === 'wszystko') r = await Karta.zrobMiejsceNaRender({ ollamaBase: OLLAMA_BASE, powod: 'prośba Suwerena' });
+        else {
+            const przed = await Karta.stanKarty();
+            const z = co === 'glos' ? await Karta.oddajKarteZKlonu('prośba Suwerena')
+                : co === 'ollama' ? await Karta.oddajKarteZMysli(OLLAMA_BASE)
+                : co === 'voicestudio' ? await Karta.oddajKarteZMowy()
+                : null;
+            if (!z) return res.status(400).json({ success: false, message: `Nie znam „${co}” — glos, ollama, voicestudio albo wszystko.` });
+            r = { przed, po: await Karta.stanKarty(), zwolniono: { zdjete: z.zdjete ?? [], [co]: z }, powod: z.powod ?? null };
+        }
         const ile = (r.zwolniono?.zdjete ?? []).reduce((s, m) => s + (m.vramMiB || 0), 0);
-        console.log(`[Karta] 🚦 zwolniono ${ile} MiB — wolne ${r.przed?.wolneMiB} → ${r.po?.wolneMiB} MiB`);
-        return res.json({ success: true, ...r });
+        console.log(`[Karta] 🚦 zwolniono (${co}) ${ile} MiB — wolne ${r.przed?.wolneMiB} → ${r.po?.wolneMiB} MiB`);
+        if (ile) Szyna.nadaj({ agent: 'most', rodzaj: 'karta', tresc: `🚦 Kartę oddali na prośbę Suwerena (${co}): ${(r.zwolniono.zdjete).map((m) => `${m.nazwa ?? m.id} ${m.vramMiB} MiB`).join(', ')}; wolne ${r.przed?.wolneMiB} → ${r.po?.wolneMiB} MiB.` }).catch(() => {});
+        return res.json({ success: true, co, ...r });
     } catch (e) {
         return res.status(500).json({ success: false, message: e.message });
     }
@@ -9847,6 +9871,7 @@ app.post('/api/arkusz/policz', async (req, res) => {
                         kotwica: Arkusz.kotwica(asset.typ), kroki: stan.kroki, ziarno,
                         prefiks: `katedra/arkusz_${poz.klucz}`,
                     });
+                    await Karta.przedRenderem('kadrem arkusza');
                     const odp = await fetch(`${COMFY_BASE}/prompt`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ prompt: graf }),
@@ -12029,6 +12054,7 @@ app.post('/api/music/generate', async (req, res) => {
 
     // 4) Do kolejki ComfyUI
     try {
+        await Karta.przedRenderem('muzyką w ComfyUI');   // serwer głosu i Ollama oddają kartę (RuchNaKarcie.js)
         const r = await fetch(`${COMFY_BASE}/prompt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

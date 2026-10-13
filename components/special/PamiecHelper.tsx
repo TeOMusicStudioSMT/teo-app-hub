@@ -18,8 +18,16 @@ const ZAMKNIJ: Record<string, { znak: string; tekst: string; klasa: string }> = 
   nie: { znak: '✋', tekst: 'lepiej nie', klasa: 'text-rose-300 border-rose-500/40' },
 };
 
+/** Karta graficzna z mostu (RuchNaKarcie.pamiecKarty): całość ze sterownika + kto trzyma (z ich własnych słów). */
+interface Karta {
+  znane: boolean; nazwa?: string; razemMiB?: number; zajeteMiB?: number; wolneMiB?: number; blad?: string;
+  trzymaja?: { kto: string; co: string; vramMiB: number | null; zwolnij?: string; uwaga?: string | null }[];
+  procesy?: { pid: number; program: string; vramMiB: number | null }[];
+}
+
 export const PamiecHelper: React.FC = () => {
   const [mem, setMem] = useState<{ totalGB: number; freeGB: number; usedGB: number } | null>(null);
+  const [karta, setKarta] = useState<Karta | null>(null);
   const [procs, setProcs] = useState<Proc[]>([]);
   const [sel, setSel] = useState<Record<number, boolean>>({});
   const [busy, setBusy] = useState(false);
@@ -27,7 +35,7 @@ export const PamiecHelper: React.FC = () => {
   const load = useCallback(async () => {
     try {
       const d = await (await fetch(`${BRIDGE}/api/system/memory`)).json();
-      if (d.success) { setMem({ totalGB: d.totalGB, freeGB: d.freeGB, usedGB: d.usedGB }); setProcs(d.procesy || []); }
+      if (d.success) { setMem({ totalGB: d.totalGB, freeGB: d.freeGB, usedGB: d.usedGB }); setProcs(d.procesy || []); setKarta(d.karta ?? null); }
     } catch { /* most offline */ }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -47,6 +55,21 @@ export const PamiecHelper: React.FC = () => {
         setSel({}); setTimeout(load, 800);
       }
       else toast.error(`⚠ ${d.message}`);
+    } catch { toast.error('⚠ Most offline (:3001).'); }
+    finally { setBusy(false); }
+  };
+
+  /** Poproś o oddanie karty: 'glos' | 'ollama' | 'voicestudio' | 'wszystko' — nic się nie zamyka. */
+  const zwolnijKarte = async (co: string) => {
+    setBusy(true);
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/karta/zwolnij`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ co }) })).json();
+      if (!d.success) { toast.error(`⚠ ${d.message}`); return; }
+      const zdjete = (d.zwolniono?.zdjete ?? []) as { nazwa?: string; id?: string; vramMiB: number }[];
+      if (zdjete.length) toast.success(`🎛️ Oddali kartę: ${zdjete.map((m) => `${m.nazwa ?? m.id} ${m.vramMiB} MiB`).join(', ')}${d.po?.wolneMiB != null ? ` — wolne ${d.po.wolneMiB} MiB` : ''}.`, { duration: 6000 });
+      else toast(d.powod || d.zwolniono?.[co]?.powod || 'Nikt nic nie oddał — karta była wolna od nich.', { icon: '🎛️', duration: 6000 });
+      if (d.trzymaja?.length) toast(`✋ Nadal trzyma: ${d.trzymaja.join(', ')}`, { duration: 7000 });
+      setTimeout(load, 800);
     } catch { toast.error('⚠ Most offline (:3001).'); }
     finally { setBusy(false); }
   };
@@ -95,6 +118,40 @@ export const PamiecHelper: React.FC = () => {
               {busy ? '⟳ …' : '🧹 Zwolnij zaznaczone'}
             </button>
           </div>
+          {karta && (
+            <div className="mt-2 pt-2 border-t border-orange-900/40">
+              {karta.znane ? (
+                <>
+                  <div className="flex items-center justify-between text-[10px] mb-1">
+                    <span className="text-zinc-400">🎛️ karta {karta.nazwa}: wolne <b className={(karta.wolneMiB ?? 0) >= 2500 ? 'text-emerald-400' : 'text-orange-400'}>{karta.wolneMiB} MiB</b> / {karta.razemMiB} MiB</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-black/50 overflow-hidden mb-1.5">
+                    <div className="h-full bg-gradient-to-r from-sky-600 to-violet-500" style={{ width: `${Math.min(100, ((karta.zajeteMiB ?? 0) / (karta.razemMiB || 1)) * 100)}%` }} />
+                  </div>
+                  {(karta.trzymaja ?? []).map((t, i) => (
+                    <div key={i} title={t.uwaga ?? ''} className="flex items-center justify-between gap-2 text-[10px] text-zinc-300 px-1">
+                      <span className="truncate">▪ {t.kto} <span className="text-sky-300/70">— {t.co}</span>{t.uwaga && <span className="text-zinc-500"> · {t.uwaga}</span>}</span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-zinc-500">{t.vramMiB ? `${t.vramMiB} MiB` : 'nic na karcie'}</span>
+                        {!!t.vramMiB && t.zwolnij && <button onClick={() => zwolnijKarte(t.zwolnij!)} disabled={busy} className="text-[9px] px-1.5 rounded border border-sky-500/40 text-sky-300 hover:bg-sky-950/40 disabled:opacity-50">zwolnij</button>}
+                      </span>
+                    </div>
+                  ))}
+                  {!!karta.procesy?.length && (
+                    <div className="text-[9px] text-zinc-500 px-1 mt-0.5 truncate" title="Programy na karcie wg sterownika (Windows zwykle nie podaje, ile który trzyma).">
+                      na karcie: {karta.procesy.map((p) => `${p.program}${p.vramMiB != null ? ` ${p.vramMiB} MiB` : ''}`).join(', ')}
+                    </div>
+                  )}
+                  <button onClick={() => zwolnijKarte('wszystko')} disabled={busy} className="mt-1.5 text-[10px] px-2 py-1 rounded border border-sky-500/50 bg-sky-950/30 text-sky-300 font-bold hover:bg-sky-900/50 disabled:opacity-50">
+                    {busy ? '⟳ …' : '🎛️ Zwolnij kartę (głos, Ollama, VoiceStudio)'}
+                  </button>
+                </>
+              ) : (
+                <div className="text-[10px] text-zinc-500">🎛️ Karty nie widzę ({karta.blad ?? 'brak nvidia-smi'}).</div>
+              )}
+            </div>
+          )}
+
           <div className="text-[9px] text-zinc-600 mt-1.5 italic">⚠ Zapisz pracę w zamykanych appach! Zamyka się po PID (jeden proces z drzewem), 🔒 = systemowe i most — chronione. „Memory Compression" to RAM ściśnięty przez Windows: zmaleje sam, gdy zamkniesz to, co pamięć zjada.</div>
         </>
       ) : (

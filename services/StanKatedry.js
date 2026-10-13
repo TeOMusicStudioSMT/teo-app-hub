@@ -25,6 +25,8 @@ let cfg = {
     zabij: null,
     wlasnyPid: process.pid,
     ram: () => ({ total: os.totalmem(), free: os.freemem() }),
+    /** pamięć KARTY (RuchNaKarcie.pamiecKarty) — ustawia most; bez niej raport jej nie ma */
+    karta: null,
 };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
 
@@ -94,7 +96,13 @@ async function surowe() {
  */
 export async function pamiec({ ile = 14 } = {}) {
     const { total, free } = cfg.ram();
-    const baza = { totalGB: +(total / 1e9).toFixed(1), freeGB: +(free / 1e9).toFixed(1), usedGB: +((total - free) / 1e9).toFixed(1) };
+    // 🎛️ Pamięć KARTY (2026-10-13): RAM-u nie brakowało, a Wan stał — kartę trzymał serwer głosu. Lista procesów
+    // z RAM-u tego nie pokaże, więc obok idzie karta: całość ze sterownika + kto trzyma (z ich własnych słów).
+    const karta = cfg.karta ? await Promise.race([
+        Promise.resolve().then(cfg.karta).catch((e) => ({ znane: false, blad: e.message })),
+        new Promise((r) => { setTimeout(() => r({ znane: false, blad: 'karta nie odpowiedziała w 15 s' }), 15_000).unref?.(); }),
+    ]) : null;
+    const baza = { totalGB: +(total / 1e9).toFixed(1), freeGB: +(free / 1e9).toFixed(1), usedGB: +((total - free) / 1e9).toFixed(1), ...(karta ? { karta } : {}) };
     let lista = [];
     try { lista = await surowe(); } catch (e) { return { ...baza, procesy: [], blad: `Nie odczytałem listy procesów: ${e.message}` }; }
     const procesy = lista.slice(0, ile).map((p) => {
@@ -185,7 +193,21 @@ export function tekstPamieci(m) {
     if (!m) return '';
     const linie = [`PAMIĘĆ: wolne ${m.freeGB} GB z ${m.totalGB} GB.${m.blad ? ` ${m.blad}` : ''}`];
     for (const p of (m.procesy ?? []).slice(0, 10)) linie.push(`- PID ${p.pid} ${p.name} ${p.mb} MB${p.opis ? ` — ${p.opis}` : ''}${p.skrypt ? ` (${p.skrypt})` : ''}${p.chroniony ? ' [chroniony]' : ''}${p.uwaga ? ` · ${p.uwaga}` : ''}`);
+    const t = tekstKarty(m.karta);
+    if (t) linie.push(t);
     return linie.join('\n');
 }
 
-export default { skonfiguruj, pamiec, zwolnij, rozpoznaj, skrypt, raport, zdanieProjektu, tekstPamieci };
+/** Karta → tekst dla agenta (czysta funkcja). */
+export function tekstKarty(k) {
+    if (!k) return '';
+    if (!k.znane) return `KARTA: nie widzę (${k.blad ?? 'brak nvidia-smi'}).`;
+    const linie = [`KARTA ${k.nazwa}: zajęte ${k.zajeteMiB} MiB z ${k.razemMiB} MiB, wolne ${k.wolneMiB} MiB.`];
+    for (const t of k.trzymaja ?? []) linie.push(`- ${t.kto}: ${t.co} — ${t.vramMiB ? `${t.vramMiB} MiB` : 'nic na karcie'}${t.uwaga ? ` (${t.uwaga})` : ''}`);
+    const programy = (k.procesy ?? []).map((p) => `${p.program}#${p.pid}${p.vramMiB != null ? ` ${p.vramMiB} MiB` : ''}`);
+    if (programy.length) linie.push(`- programy na karcie${(k.procesy ?? []).every((p) => p.vramMiB == null) ? ' (sterownik nie podaje pamięci na proces)' : ''}: ${programy.join(', ')}`);
+    linie.push('- zwolnij kartę (model głosu, Ollama, VoiceStudio — proszą, nic nie zabija): /zwolnij karte');
+    return linie.join('\n');
+}
+
+export default { skonfiguruj, pamiec, zwolnij, rozpoznaj, skrypt, raport, zdanieProjektu, tekstPamieci, tekstKarty };
