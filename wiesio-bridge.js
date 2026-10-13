@@ -3810,8 +3810,15 @@ app.post('/api/vault/set', async (req, res) => {
     }
 });
 
-/** DELETE /api/vault/:service/:field — usuwa pojedynczy sekret. */
-app.delete('/api/vault/:service/:field', async (req, res) => {
+/** POST /api/vault/resetuj {potwierdzam: true} — kasuje wszystkie sekrety i klucz główny, tworzy nowy (tylko maszyna). */
+app.post('/api/vault/resetuj', async (req, res) => {
+    if (req.body?.potwierdzam !== true) return res.status(400).json({ success: false, error: 'Brak potwierdzenia (potwierdzam: true).' });
+    try { return res.json({ success: true, ...(await VaultService.getInstance().resetuj()) }); }
+    catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+});
+
+/** DELETE /api/vault/sekret/:service/:field — usuwa pojedynczy sekret (tylko maszyna). */
+app.delete('/api/vault/sekret/:service/:field', async (req, res) => {
     const { service, field } = req.params;
     try {
         const removed = await VaultService.getInstance().deleteSecret(service, field);

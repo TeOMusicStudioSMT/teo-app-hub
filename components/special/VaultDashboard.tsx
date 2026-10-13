@@ -13,7 +13,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Lock, Shield, ShieldCheck, Github, Cpu, Mic, Brain, Sparkles, Key,
+    Lock, Shield, ShieldCheck, Trash2, Flame, Github, Cpu, Mic, Brain, Sparkles, Key,
     RefreshCw, Check, X, Eye, EyeOff, TrendingUp, AlertTriangle, Zap, Gauge, Globe,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -100,6 +100,29 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
         }
     }, [drafts, fetchStatus]);
 
+    // 🗑️ Usuń jeden klucz / 🔥 nowy skarbiec (Suweren 2026-10-13: „w skarbcu nie da się usunąć kluczy”)
+    const usunSekret = useCallback(async (service: string, field: string) => {
+        if (!window.confirm(`Usunąć ${service}.${field} ze skarbca?\n\nKlucz u dostawcy dalej działa — unieważnij go też w jego panelu.`)) return;
+        try {
+            const res = await fetch(`${BRIDGE}/api/vault/sekret/${encodeURIComponent(service)}/${encodeURIComponent(field)}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) { toast.success(data.removed ? `🗑️ Usunięto ${service}.${field}` : 'Tego klucza już nie było'); fetchStatus(); }
+            else toast.error(data.error || data.message || 'Nie udało się usunąć');
+        } catch { toast.error('Skarbiec offline (:3001)'); }
+    }, [fetchStatus]);
+
+    const nowySkarbiec = useCallback(async () => {
+        if (!window.confirm('🔥 Wyczyścić CAŁY skarbiec i wygenerować nowy klucz główny?\n\nWszystkie zapisane klucze przepadną — wpiszesz potem NOWE klucze od dostawców. Stary klucz główny przestanie do czegokolwiek pasować.')) return;
+        try {
+            const res = await fetch(`${BRIDGE}/api/vault/resetuj`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ potwierdzam: true }),
+            });
+            const data = await res.json();
+            if (data.success) { toast.success(`🔥 Nowy skarbiec — usunięto ${data.usunietoUslug} usług, nowy klucz główny`); fetchStatus(); }
+            else toast.error(data.error || data.message || 'Nie udało się');
+        } catch { toast.error('Skarbiec offline (:3001)'); }
+    }, [fetchStatus]);
+
     const runScout = useCallback(async () => {
         if (!profile.trim() || scanning) return;
         setScanning(true);
@@ -145,6 +168,10 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button onClick={nowySkarbiec} title="Wyczyść cały skarbiec i wygeneruj nowy klucz główny"
+                        className="px-2.5 py-2 rounded-lg text-[11px] font-bold text-rose-300 border border-rose-500/40 hover:bg-rose-950/40 transition-colors flex items-center gap-1.5">
+                        <Flame size={14} /> Nowy skarbiec
+                    </button>
                     <button onClick={fetchStatus} title="Odśwież"
                         className="p-2 rounded-lg text-slate-400 hover:text-emerald-300 border border-slate-700 hover:border-emerald-500/50 transition-colors">
                         <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
@@ -235,6 +262,13 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
                                                                 title="Zapisz w skarbcu">
                                                                 {savingKey === k ? <RefreshCw size={13} className="animate-spin" /> : <Lock size={13} />}
                                                             </button>
+                                                            {f.configured && (
+                                                                <button onClick={() => usunSekret(svc.id, f.field)}
+                                                                    className="p-1.5 rounded-lg text-rose-400 hover:text-rose-200 border border-rose-500/30 hover:bg-rose-950/40 transition-colors"
+                                                                    title="Usuń klucz ze skarbca">
+                                                                    <Trash2 size={13} />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 );
