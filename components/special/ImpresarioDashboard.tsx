@@ -13,6 +13,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PolaczYouTube, PublikacjeYouTubePanel } from './YouTubeStudio';
+import { GameShowPanel } from './GameShowPanel';
 
 // ─── Stałe ────────────────────────────────────────────────────────────────────
 
@@ -492,6 +493,7 @@ const ImpresarioDashboard: React.FC = () => {
                     <div className="mt-4 flex flex-col gap-3">
                         <PolaczYouTube key={ytKluczePoz} onZmiana={fetchStatus} />
                         <PublikacjeYouTubePanel />
+                        <GameShowPanel />
                     </div>
                 </section>
 

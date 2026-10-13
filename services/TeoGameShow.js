@@ -229,7 +229,8 @@ export function utworzGameShow(o) {
                 let audio = null, dl = Math.max(czasMin, czasBezGlosu(mowa ?? linie.join(' ')));
                 if (mowa && cfg.mow) {
                     try {
-                        const g = await cfg.mow({ tekst: mowa, kto, jezyk: 'pl' });
+                        // jedno ponowienie: zerwane połączenie z silnikiem głosu („terminated”) bywa chwilowe
+                        const g = await cfg.mow({ tekst: mowa, kto, jezyk: 'pl' }).catch(() => cfg.mow({ tekst: mowa, kto, jezyk: 'pl' }));
                         audio = `a-${nr}.${g.ext || 'wav'}`;
                         await fs.writeFile(path.join(praca, audio), g.audio);
                         const sek = (await cfg.opisz(path.join(praca, audio)).catch(() => null))?.sekundy;
