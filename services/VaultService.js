@@ -120,10 +120,28 @@ class VaultServiceClass {
         const vault = await this._readVault();
         if (vault.services?.[service]?.fields?.[field] !== undefined) {
             delete vault.services[service].fields[field];
+            if (!Object.keys(vault.services[service].fields).length) delete vault.services[service];
             await this._writeVault(vault);
+            console.log(`[VaultService] 🗑️  Usunięto sekret: ${service}.${field}.`);
             return true;
         }
         return false;
+    }
+
+    /**
+     * 🔥 Nowy skarbiec (Suweren 2026-10-13: „w skarbcu nie da się usunąć kluczy”, po wycieku klucza głównego):
+     * kasuje vault.enc i stary klucz główny, generuje nowy. Każdy dawny sekret przepada — wpisujesz NOWE klucze
+     * od dostawców. Stary klucz główny przestaje pasować do czegokolwiek.
+     */
+    async resetuj() {
+        await this._ensureDir();
+        const bylo = Object.keys((await this._readVault()).services || {}).length;
+        await fs.rm(VAULT_FILE, { force: true });
+        await fs.rm(MASTER_FILE, { force: true });
+        const key = crypto.randomBytes(32);
+        await fs.writeFile(MASTER_FILE, key.toString('base64'), { encoding: 'utf8', mode: 0o600 });
+        console.log(`[VaultService] 🔥 Skarbiec wyczyszczony (${bylo} usług), nowy klucz główny.`);
+        return { usunietoUslug: bylo, nowyKluczGlowny: true };
     }
 
     /** Maska — surowy klucz NIGDY nie trafia do frontu. */
