@@ -13,7 +13,7 @@ import { utworzChmureBryl, promptStylu, oczyscStyl, ZESTAWY_AKCJI } from './serv
 import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch.js';
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
-import { utworzFilmyGry } from './services/FilmyGry.js';
+import { utworzFilmyGry, filtrRuchuKadru } from './services/FilmyGry.js';
 import { utworzBohaterow } from './services/Bohaterowie.js';
 import { utworzPostacKatedry } from './services/PostacKatedry.js';
 import { utworzJajo } from './services/JajoMistrza.js';
@@ -15130,9 +15130,17 @@ const GameShow = utworzGameShow({
     katalogNagran: () => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, 'taneczne-starcie'),
     choreografie: { wczytaj: (id) => Choreografie.wczytaj(id) },
     tancerz: tancerzGameShow,
-    intro: async ({ prompt, obraz, sekundy }) => {
+    intro: async ({ prompt, obraz, sekundy, silnik = 'flux', ruch = 'najazd' }) => {
         const przed = await stanWideoZBudzeniem('intro TeO Game Show');
         if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        if (silnik === 'flux') {
+            // 🎬 FLUX (Suweren 2026-10-13: „Wan 2.2 zmień na Flux”): kadr FLUX.2 klein z obrazem tancerza jako WZOREM
+            // (ten sam graf co kadry Reżysera Wideo) + ruch kamery ffmpeg — minuty zamiast ~50 min Wana na 6 GB.
+            const kadr = await Assety3D.kadrFilmu({ prompt, referencje: obraz ? [obraz] : [], prefiks: 'katedra/game-show/intro' });
+            const wyjscie = path.join(os.tmpdir(), `otakos-game-show-intro-${Date.now().toString(36)}.mp4`);
+            await execFileAsync(ffmpegPath, ['-loglevel', 'error', '-y', '-loop', '1', '-i', kadr, '-vf', filtrRuchuKadru(ruch, sekundy), '-t', String(sekundy), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', wyjscie], { maxBuffer: 1 << 24, timeout: 10 * 60_000 });
+            return wyjscie;
+        }
         const obrazStartowy = obraz ? await Assety3D.wgrajDoComfy(obraz) : '';
         const z = await Wideo.generujScene({ comfyBase: COMFY_BASE, prompt, sekundy, obrazStartowy });
         if (!z.ok) throw new Error(z.powod || 'ComfyUI nie przyjął intro.');
@@ -15161,12 +15169,12 @@ const GameShow = utworzGameShow({
 app.get('/api/game-show', (_req, res) => ytOdp(res, (async () => ({
     odcinki: await GameShow.lista(), kanal: await PublikacjeYT.kanalProjektu(GAME_SHOW.PROJEKT),
     inneSieci: GAME_SHOW.INNE_SIECI, instrukcja: GAME_SHOW.INSTRUKCJA_KANALU, automat: process.env.OTAKOS_GAME_SHOW !== '0',
-    ustawienia: await GameShow.ustawienia(), jezyki: GAME_SHOW.JEZYKI,
+    ustawienia: await GameShow.ustawienia(), jezyki: GAME_SHOW.JEZYKI, silnikiIntro: GAME_SHOW.SILNIKI_INTRO,
 }))(), 500));
 app.get('/api/game-show/:id', (req, res) => ytOdp(res, GameShow.wczytaj(req.params.id).then((odcinek) => ({ odcinek })), 404));
 /** { choreografia, nagranie?, bezIntro? } — odcinek z nagrania (most robi to sam po zapisie nagrania). */
 app.post('/api/game-show', (req, res) => ytOdp(res, GameShow.utworz(String(req.body?.choreografia ?? ''), req.body?.nagranie, { bezIntro: req.body?.bezIntro === true, jezyk: req.body?.jezyk || null }).then((odcinek) => ({ odcinek }))));
-app.post('/api/game-show/:id/ponow', (req, res) => ytOdp(res, GameShow.ponow(req.params.id, { bezIntro: req.body?.bezIntro === true, jezyk: req.body?.jezyk || null }).then((odcinek) => ({ odcinek }))));
+app.post('/api/game-show/:id/ponow', (req, res) => ytOdp(res, GameShow.ponow(req.params.id, { bezIntro: req.body?.bezIntro === true, jezyk: req.body?.jezyk || null, silnikIntro: req.body?.silnikIntro || null }).then((odcinek) => ({ odcinek }))));
 /** 🧱 Klocki Dance (Start/End w języku odcinka) doklejone do gotowego odcinka czekającego na ✓ — ten sam plik, opis zostaje. */
 app.post('/api/game-show/:id/klocki', (req, res) => ytOdp(res, GameShow.doklejKlocki(req.params.id).then((odcinek) => ({ odcinek }))));
 app.delete('/api/game-show/:id', (req, res) => ytOdp(res, GameShow.usun(req.params.id).then((usuniety) => ({ usuniety }))));
@@ -15175,6 +15183,7 @@ app.put('/api/game-show/ustawienia', (req, res) => ytOdp(res, (async () => {
     const b = req.body ?? {};
     const zmiany = {};
     if (b.jezyk !== undefined) zmiany.jezyk = b.jezyk;
+    if (b.silnikIntro !== undefined) zmiany.silnikIntro = b.silnikIntro;
     if (b.playlista !== undefined) {
         if (!b.playlista) zmiany.playlista = null;
         else {

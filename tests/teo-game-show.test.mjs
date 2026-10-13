@@ -118,6 +118,11 @@ test('łańcuch: intro pada → odcinek staje z powodem → „bez intro” koń
     assert.equal(s.etapy.konkurencja.stan, 'czeka');
     assert.equal(prosbyIntro[0].obraz, path.join(kat, 'kot.png'));
     assert.match(prosbyIntro[0].prompt, /^Kot Tancerz/);
+    // domyślne intro = FLUX (kadr z obrazem tancerza jako wzorem + ruch kamery), nie Wan
+    assert.equal(prosbyIntro[0].silnik, 'flux');
+    assert.equal(prosbyIntro[0].ruch, 'najazd');
+    assert.match(prosbyIntro[0].prompt, /from the reference image/);
+    assert.equal(s.silnikIntro, 'flux');
 
     // 2) „bez intro” — reszta łańcucha do końca
     await GS.ponow(s1.id, { bezIntro: true });
@@ -137,8 +142,10 @@ test('łańcuch: intro pada → odcinek staje z powodem → „bez intro” koń
     assert.ok(mowy.some((m) => m.kto === 'prowadzacy' && /Witajcie w TeO Game Show/.test(m.tekst) && m.jezyk === 'pl'));
     assert.equal(publikacje[0].jezyk, 'pl');
 
-    // 3) nowe nagranie, intro działa — film dłuższy o intro
+    // 3) nowe nagranie, intro działa — film dłuższy o intro; Wan jako opcja z ustawień programu
     introPada = false;
+    await assert.rejects(GS.ustaw({ silnikIntro: 'sora' }), /Silnik intro: flux \/ wan/);
+    assert.equal((await GS.ustaw({ silnikIntro: 'wan' })).silnikIntro, 'wan');
     choreo.nagrania.push({ nazwa: 'taniec_kot_def456.mp4' });
     fs.copyFileSync(path.join(nagrania, 'taniec_kot_abc123.mp4'), path.join(nagrania, 'taniec_kot_def456.mp4'));
     const s2 = await GS.utworz(choreo.id, 'taniec_kot_def456.mp4');
@@ -146,6 +153,11 @@ test('łańcuch: intro pada → odcinek staje z powodem → „bez intro” koń
     const z = await GS.wczytaj(s2.id);
     assert.equal(z.stan, 'do_akceptacji', z.powod ?? '');
     assert.equal(z.etapy.intro.stan, 'gotowy');
+    assert.equal(z.etapy.intro.silnik, 'wan');
+    assert.ok(Number.isInteger(z.etapy.intro.sekundyLiczenia));
+    assert.equal(prosbyIntro.at(-1).silnik, 'wan');
+    assert.match(prosbyIntro.at(-1).prompt, /first frame/);
+    await GS.ustaw({ silnikIntro: 'flux' });
     assert.equal(z.etapy.sklejanie.klocki.start, 1);
     const zIntro = await opisz(z.plik);
     assert.ok(zIntro.sekundy > bez.sekundy + 0.8, `intro (1 s) wydłuża odcinek (${bez.sekundy} → ${zIntro.sekundy})`);

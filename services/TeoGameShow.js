@@ -4,7 +4,8 @@
  * obraz TeOgochi po, mały wywiad w stworka języku… całość dostaje piękny opis TeO Game Show… trafia do Impresario…”).
  *
  * Łańcuch jednego odcinka (każdy etap ma stan i powód — nic nie udaje):
- *   1. INTRO — film postaci: Wan 2.2 w ComfyUI z obrazem tancerza jako pierwszą klatką (kolejka GPU, jedno naraz).
+ *   1. INTRO — ujęcie postaci. Domyślnie FLUX (Suweren 2026-10-13: „Wan 2.2 zmień na Flux”): kadr FLUX.2 klein z obrazem
+ *      tancerza jako WZOREM + ruch kamery ffmpeg (minuty); opcja Wan 2.2 TI2V z obrazem jako pierwszą klatką (na 6 GB ~50 min).
  *      Nie wyszło (ComfyUI śpi, brak modelu…) = odcinek STAJE z powodem: „↻ Ponów” albo „bez intro”.
  *   2. KONKURENCJA — plansza ffmpeg: która konkurencja Teterhii (Taniec Dnia / Tygodnia… z okresów turnieju),
  *      tancerz, utwór, BPM; zapowiedź głosem prowadzącego (Kronikarz z obsady Aktorów).
@@ -37,6 +38,20 @@ const KOLOR = '#f59e0b';
 
 const procent = (x) => `${Math.round((Number(x) || 0) * 100)}%`;
 export const rangaOceny = (w) => (w >= 90 ? 'S' : w >= 75 ? 'A' : w >= 60 ? 'B' : w >= 40 ? 'C' : 'D');
+
+/** Silnik intro (ustawienia programu). FLUX domyślny — Wan na 6 GB liczył intro ~50 min i wypychał resztę z karty. */
+export const SILNIKI_INTRO = { flux: 'FLUX — kadr z postacią + ruch kamery (minuty)', wan: 'Wan 2.2 — film (na 6 GB ~50 min)' };
+export const silnikIntro = (x) => (SILNIKI_INTRO[x] ? x : 'flux');
+/** Ruch kamery po kadrze intro FLUX (FilmyGry.RUCHY). */
+export const RUCH_INTRO = 'najazd';
+
+/** Prompt kadru FLUX (jedna klatka, po angielsku): postać z obrazu-wzoru na scenie teleturnieju. Czysta. */
+export function promptKadruIntro({ imie }) {
+    const kto = String(imie || 'TeOgochi').replace(/[^\p{L}\p{N} '-]/gu, '').slice(0, 40);
+    return `${kto}, the small cute TeOgochi creature from the reference image, stands in the center of a glowing game show dance stage, `
+        + 'waving happily to the audience in a dance pose, spotlights and colorful confetti in the air, warm stage lights, '
+        + 'wide cinematic shot 16:9, the same character design and colors as the reference, high detail, no text';
+}
 
 /** Prompt Wan (po angielsku — Wan rozumie go najlepiej): postać z obrazu wchodzi na scenę teleturnieju. Czysta. */
 export function promptIntro({ imie }) {
@@ -178,8 +193,8 @@ export function utworzGameShow(o) {
     async function ustawienia() {
         try {
             const u = JSON.parse(await fs.readFile(PLIK_U, 'utf8'));
-            return { jezyk: jezykShow(u.jezyk), playlista: u.playlista ?? null, playlistaKanal: u.playlistaKanal ?? null, playlistaTytul: u.playlistaTytul ?? null };
-        } catch { return { jezyk: 'en', playlista: null, playlistaKanal: null, playlistaTytul: null }; }
+            return { jezyk: jezykShow(u.jezyk), silnikIntro: silnikIntro(u.silnikIntro), playlista: u.playlista ?? null, playlistaKanal: u.playlistaKanal ?? null, playlistaTytul: u.playlistaTytul ?? null };
+        } catch { return { jezyk: 'en', silnikIntro: 'flux', playlista: null, playlistaKanal: null, playlistaTytul: null }; }
     }
     /** { jezyk?, playlista? (id; null = zdejmij), playlistaKanal?, playlistaTytul? } — zmienia tylko podane pola. */
     async function ustaw(zmiany = {}) {
@@ -187,6 +202,10 @@ export function utworzGameShow(o) {
         if (zmiany.jezyk !== undefined) {
             if (!JEZYKI[zmiany.jezyk]) throw new Error(`Język programu: ${Object.keys(JEZYKI).join(' / ')}.`);
             u.jezyk = zmiany.jezyk;
+        }
+        if (zmiany.silnikIntro !== undefined) {
+            if (!SILNIKI_INTRO[zmiany.silnikIntro]) throw new Error(`Silnik intro: ${Object.keys(SILNIKI_INTRO).join(' / ')}.`);
+            u.silnikIntro = zmiany.silnikIntro;
         }
         if (zmiany.playlista !== undefined) {
             if (zmiany.playlista && !/^[\w-]{10,64}$/.test(String(zmiany.playlista))) throw new Error('Złe id playlisty.');
@@ -237,8 +256,9 @@ export function utworzGameShow(o) {
      * Nowy odcinek z nagrania występu. Startuje łańcuch w tle (kolejka: jeden odcinek naraz).
      * @param {string} choreografiaId  @param {string} nagranie nazwa pliku nagrania (z choreografii)
      */
-    async function utworz(choreografiaId, nagranie, { bezIntro = false, kanalId = null, jezyk: jezykZadany = null } = {}) {
-        const jezyk = jezykZadany ? jezykShow(jezykZadany) : (await ustawienia()).jezyk;
+    async function utworz(choreografiaId, nagranie, { bezIntro = false, kanalId = null, jezyk: jezykZadany = null, silnikIntro: silnikZadany = null } = {}) {
+        const u = await ustawienia();
+        const jezyk = jezykZadany ? jezykShow(jezykZadany) : u.jezyk;
         const c = await cfg.choreografie.wczytaj(choreografiaId);
         const nazwa = String(nagranie ?? c.nagrania?.at(-1)?.nazwa ?? '');
         if (!nazwa || !(c.nagrania ?? []).some((n) => n.nazwa === nazwa)) throw new Error('Ta choreografia nie ma takiego nagrania — najpierw nagraj występ.');
@@ -252,7 +272,7 @@ export function utworzGameShow(o) {
             choreografia: { id: c.id, nazwa: c.nazwa, odcisk: c.odcisk }, nagranie: { nazwa, plik: plikNagrania },
             tancerz: { id: c.mini?.id ?? null, imie: t?.imie || c.mini?.nazwa || 'TeOgochi', opis: t?.opis ?? '', obraz: t?.obraz ?? null },
             utwor: { tytul: c.utwor?.tytul ?? '', bpm: c.utwor?.bpm ?? null }, ocena: c.ocena,
-            jezyk, konkurencja: konkurencja(cfg.okresy(), jezyk), etapy: nowyEtap(), uwagi: [], wywiad: null, plik: null, publikacja: null,
+            jezyk, silnikIntro: silnikZadany ? silnikIntro(silnikZadany) : u.silnikIntro, konkurencja: konkurencja(cfg.okresy(), jezyk), etapy: nowyEtap(), uwagi: [], wywiad: null, plik: null, publikacja: null,
             kanalId: kanalId ? String(kanalId) : null, utworzono: czas(),
         };
         if (bezIntro) s.etapy.intro = { stan: 'pominiety', powod: 'bez intro (wybór Suwerena)' };
@@ -324,14 +344,16 @@ export function utworzGameShow(o) {
                 return path.join(praca, wyj);
             };
 
-            // 1. INTRO — film postaci (Wan), obraz tancerza jako pierwsza klatka
+            // 1. INTRO — FLUX (kadr z obrazem tancerza jako wzorem + ruch kamery) albo Wan (obraz tancerza = pierwsza klatka)
             if (!(await zrob('intro', async () => {
                 if (!cfg.intro) throw new Error('Ta Katedra nie ma silnika wideo — wybierz „bez intro”.');
-                const prompt = promptIntro(s.tancerz);
-                const plik = await cfg.intro({ prompt, obraz: obrazTancerza, sekundy: SEKUNDY_INTRO });
+                const silnik = silnikIntro(s.silnikIntro);   // odcinki sprzed 2026-10-13 nie mają pola → FLUX
+                const prompt = silnik === 'flux' ? promptKadruIntro(s.tancerz) : promptIntro(s.tancerz);
+                const t0 = Date.now();
+                const plik = await cfg.intro({ prompt, obraz: obrazTancerza, sekundy: SEKUNDY_INTRO, silnik, ruch: RUCH_INTRO });
                 const cel = path.join(KAT, id, `intro${path.extname(plik) || '.mp4'}`);   // poza praca/ — zostaje na przeróbkę w innym języku
                 await fs.copyFile(plik, cel);
-                return { plik: cel, prompt, zObrazu: !!obrazTancerza };
+                return { plik: cel, prompt, zObrazu: !!obrazTancerza, silnik, sekundyLiczenia: Math.round((Date.now() - t0) / 1000) };
             }))) return;
 
             // 2. KONKURENCJA — plansza + zapowiedź prowadzącego
@@ -415,7 +437,7 @@ export function utworzGameShow(o) {
      * „↻ Ponów” od etapu, który stanął — albo PRZERÓB w innym języku (`jezyk`): intro (film bez słów) zostaje, plansze,
      * wywiad, sklejenie i opis Kronikarza liczą się od nowa; stara publikacja czekająca na ✓ idzie do odrzuconych.
      */
-    async function ponow(id, { bezIntro = false, jezyk = null } = {}) {
+    async function ponow(id, { bezIntro = false, jezyk = null, silnikIntro: silnikZadany = null } = {}) {
         const s = await wczytaj(id);
         if (wRobocie.has(id)) throw new Error('Ten odcinek już jest w pracy.');
         const nowyJezyk = jezyk && jezykShow(jezyk) !== jezykShow(s.jezyk ?? 'pl') ? jezykShow(jezyk) : null;
@@ -433,6 +455,7 @@ export function utworzGameShow(o) {
         for (const e of ETAPY) if (['gotowy'].includes(s.etapy[e]?.stan) && s.etapy[e].plik && !fsSync.existsSync(s.etapy[e].plik)) s.etapy[e] = { stan: 'czeka' };
         for (const e of ETAPY) if (s.etapy[e]?.stan === 'blad') s.etapy[e] = { stan: 'czeka' };
         if (bezIntro && s.etapy.intro.stan !== 'gotowy') s.etapy.intro = { stan: 'pominiety', powod: 'bez intro (wybór Suwerena)' };
+        if (silnikZadany && s.etapy.intro.stan !== 'gotowy') s.silnikIntro = silnikIntro(silnikZadany);   // Wan stanął → ponów na FLUX (i odwrotnie)
         // nowa kolejność plików = nowe sklejenie i nowa publikacja
         if (s.etapy.sklejanie.stan === 'gotowy' && (bezIntro || s.etapy.intro.stan !== 'gotowy')) { s.etapy.sklejanie = { stan: 'czeka' }; s.etapy.publikacja = { stan: 'czeka' }; }
         Object.assign(s, { stan: 'w_kolejce', powod: null });
@@ -514,4 +537,4 @@ export function kartaZarzadzania() {
     };
 }
 
-export default { JEZYKI, NAPISY, utworzGameShow, promptIntro, konkurencja, zapowiedz, ogloszenieWyniku, promptWywiaduStworka, odczytajWywiadStworka, kontekstKronikarza, kartaZarzadzania, INNE_SIECI, INSTRUKCJA_KANALU, PROJEKT, NAZWA, ETAPY };
+export default { JEZYKI, NAPISY, SILNIKI_INTRO, utworzGameShow, promptIntro, promptKadruIntro, konkurencja, zapowiedz, ogloszenieWyniku, promptWywiaduStworka, odczytajWywiadStworka, kontekstKronikarza, kartaZarzadzania, INNE_SIECI, INSTRUKCJA_KANALU, PROJEKT, NAZWA, ETAPY };

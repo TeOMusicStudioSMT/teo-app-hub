@@ -17,12 +17,12 @@ async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
 
 interface Etap { stan: string; powod?: string }
 interface Odcinek {
-    id: string; stan: string; powod: string | null; jezyk?: string; klockiDoklejone?: { start: string[]; end: string[] }; utworzono: string; plik: string | null; uwagi: string[];
+    id: string; stan: string; powod: string | null; jezyk?: string; silnikIntro?: string; klockiDoklejone?: { start: string[]; end: string[] }; utworzono: string; plik: string | null; uwagi: string[];
     tancerz: { imie: string }; utwor: { tytul: string; bpm: number | null }; ocena: { wynik: number }; konkurencja: { nazwa: string };
     etapy: Record<string, Etap>; publikacja: { id: string; tytul: string | null; kanalNazwa: string | null } | null;
 }
 interface Kanal { kanalId: string | null; kanalNazwa: string | null; zapamietany: string | null }
-interface Stan { odcinki: Odcinek[]; kanal: Kanal; inneSieci: { siec: string; stan: string; powod: string }[]; instrukcja: string[]; automat: boolean; ustawienia?: { jezyk: string; playlista: string | null; playlistaTytul: string | null; playlistaKanal: string | null }; jezyki?: Record<string, string> }
+interface Stan { odcinki: Odcinek[]; kanal: Kanal; inneSieci: { siec: string; stan: string; powod: string }[]; instrukcja: string[]; automat: boolean; ustawienia?: { jezyk: string; silnikIntro?: string; playlista: string | null; playlistaTytul: string | null; playlistaKanal: string | null }; jezyki?: Record<string, string>; silnikiIntro?: Record<string, string> }
 const FLAGA: Record<string, string> = { en: '🇬🇧', pl: '🇵🇱' };
 interface KanalYT { id: string; nazwa: string }
 interface UtworSuno { id: string; tytul: string; sekundy: number | null; bpm: number | null; stan: string; powod?: string; plik?: string }
@@ -67,6 +67,10 @@ export const GameShowPanel: React.FC = () => {
                     <label className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">Język odcinków:
                         <select value={s.ustawienia?.jezyk ?? 'en'} onChange={(ev) => void wolaj('/api/game-show/ustawienia', 'PUT', { jezyk: ev.target.value }, ev.target.value === 'en' ? 'Nowe odcinki po angielsku (wstęp, wywiad, opis).' : 'Nowe odcinki po polsku.')} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
                             {Object.entries(s.jezyki ?? { en: 'English', pl: 'polski' }).map(([k, n]) => <option key={k} value={k}>{FLAGA[k] ?? ''} {n}</option>)}
+                        </select>
+                        <span className="ml-2">Intro:</span>
+                        <select value={s.ustawienia?.silnikIntro ?? 'flux'} onChange={(ev) => void wolaj('/api/game-show/ustawienia', 'PUT', { silnikIntro: ev.target.value }, ev.target.value === 'flux' ? 'Intro nowych odcinków: kadr FLUX + ruch kamery.' : 'Intro nowych odcinków: Wan 2.2 (długo na 6 GB).')} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
+                            {Object.entries(s.silnikiIntro ?? { flux: 'FLUX', wan: 'Wan 2.2' }).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
                         </select>
                     </label>
                     <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">Playlista programu:
@@ -126,6 +130,7 @@ export const GameShowPanel: React.FC = () => {
                                 {o.klockiDoklejone && <span className="text-[10px] text-violet-300">🧱 {[...o.klockiDoklejone.start, ...o.klockiDoklejone.end].join(' + ')}</span>}
                                 {o.stan === 'blad' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', {}, 'Ponawiam od etapu, który stanął.')} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-100">↻ Ponów</button>}
                                 {o.stan === 'blad' && o.etapy.intro?.stan === 'blad' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { bezIntro: true }, 'Składam odcinek bez intro.')} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-100">bez intro</button>}
+                                {o.stan === 'blad' && o.etapy.intro?.stan === 'blad' && (o.silnikIntro ?? 'flux') !== 'flux' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { silnikIntro: 'flux' }, 'Ponawiam intro na FLUX.')} className="rounded bg-amber-700/40 px-2 py-0.5 text-amber-100">↻ intro na FLUX</button>}
                                 {!['robi', 'w_kolejce'].includes(o.stan) && <button onClick={() => confirm('Usunąć odcinek (pliki robocze)? Gotowy film w montażach i publikacja zostają.') && void wolaj(`/api/game-show/${o.id}`, 'DELETE', {}, 'Usunięty.')} className="ml-auto text-[10px] text-slate-600 hover:text-rose-300">✕</button>}
                             </div>
                         </div>
