@@ -111,7 +111,8 @@ test('Stół: przyjęcie karty domyślnie z Dyrygentem (dobiera modele jako pier
     const Stol = await import('../services/Stol.js');
     const zalozone = [];
     Stol.skonfiguruj({
-        katalog: fs.mkdtempSync(path.join(os.tmpdir(), 'stol-dyr-')),
+        // Stół czyta `plik` (nie `katalog`) — dawniej test pisał karty do prawdziwego _OtakOs_Wymiar/stol.json Suwerena
+        plik: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'stol-dyr-')), 'stol.json'),
         uczestnicy: async () => [{ id: 'kodeks', imie: 'Kodeks' }, { id: 'rezyser', imie: 'Reżyser' }],
         zaloz: async (o) => { zalozone.push(o); return { id: `p${zalozone.length}`, rundy: 1, petla: 0 }; },
         projekt: async () => null, szyna: null,
