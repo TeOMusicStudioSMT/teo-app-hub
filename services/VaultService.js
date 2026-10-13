@@ -37,6 +37,9 @@ export const SERVICE_CATALOG = {
     // zamiast zgadywać po zmiennych środowiskowych.
     elevenlabs:       { label: 'ElevenLabs (klon głosu)', fields: ['api_key'],          security: 'HIGH',     glyph: '🧬' },
     twilio:           { label: 'Twilio (telefonia AI)',   fields: ['account_sid', 'auth_token', 'from_number'], security: 'CRITICAL', glyph: '☎️' },
+    // 💳 Stripe (2026-10-13) — darowizny i sprzedaż pakietów Mini na otakos.wtf (services/Stripe.js). Klucz tajny
+    // sk_live_… / sk_test_… albo ograniczony rk_… — nigdy do przeglądarki ani na stronę.
+    stripe:           { label: 'Stripe (płatności, darowizny)', fields: ['secret_key'],  security: 'CRITICAL', glyph: '💳' },
 };
 
 class VaultServiceClass {
