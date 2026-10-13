@@ -13,12 +13,17 @@
  * przez tunel. Najwyżej `MAX_POKOI` pokoi, 2 graczy, ≤ `MAX_RUCHOW` ruchów na stronę, cisza `ZYWOTNOSC_MS` = gracz
  * wyszedł (pokój przechodzi w `koniec`, nowy rywal nie wejdzie do rozpoczętej walki).
  *
+ * ⚔️ PvP RYTMICZNY (Suweren 2026-10-13): pokój z polem `rytm` {takty, poziom, sekcje [{typ, od, do}], tytul} — oś JaJa
+ * Kompozytora (albo wzorzec). Obie apki liczą z niej ten sam wzór nut (src/rytmika.ts, ziarno pokoju), a ruchy niosą
+ * TRAFIENIA {takt: nr nuty, skill: `t<ms+500>`} i Overdrive {takt: 60000 + nr, skill: 'od'}; horyzont = ostatnia nuta,
+ * której okno minęło. Most nadal tylko przekazuje — wynik liczy każdy gracz u siebie.
+ *
  * UCZCIWIE: karta zawodnika (skille, moc, poziom) jest DEKLARACJĄ Katedry gracza — most przycina ją do granic
  * Bestiariusza (moc 1–100, ≤ 4 skille, poziom 1–20), ale nie sprawdza, czy ten Mini naprawdę wykluł się u niej.
  */
 
 export const MAX_POKOI = 4;
-export const MAX_RUCHOW = 400;
+export const MAX_RUCHOW = 2400;   // walka: aktywacje skilli; ⚔️ rytm: do 2000 nut + Overdrive
 export const ZYWOTNOSC_MS = 15_000;
 export const MIN_ODSTEP_MS = 120;
 /** Ile ms po dołączeniu drugiego gracza rusza walka (odliczanie na ekranie). */
@@ -30,6 +35,8 @@ const PLIK_MODELU = /^[a-z0-9][a-z0-9._-]{0,90}\.glb$/i;
 const NICK = /^[a-z0-9-]{2,40}$/;
 const TYPY = ['cios', 'specjalny', 'pasywny', 'taniec'];
 const DZIEDZINY = ['takt', 'zwinnosc', 'spryt', 'urok'];
+const SEKCJE_RYTMU = ['intro', 'staccato', 'buildup', 'drop', 'outro'];
+const POZIOMY_RYTMU = ['initiate', 'organist', 'archon'];
 
 const liczba = (v, min, max, dom) => { const n = Number(v); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dom; };
 const tekst = (v, n) => String(v ?? '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -62,6 +69,21 @@ export function oczyscKarte(k = {}) {
     };
 }
 
+/** ⚔️ Oś pojedynku rytmicznego: 8–64 taktów, sekcje po kolei w granicach, znany poziom. Zła = błąd z powodem. */
+export function oczyscRytm(r = {}) {
+    const takty = Math.round(Number(r.takty));
+    if (!Number.isInteger(takty) || takty < 8 || takty > 64) throw new Error('Pojedynek rytmiczny: 8–64 taktów.');
+    if (!POZIOMY_RYTMU.includes(r.poziom)) throw new Error(`Pojedynek rytmiczny: poziom ${POZIOMY_RYTMU.join(' / ')}.`);
+    const sekcje = (Array.isArray(r.sekcje) ? r.sekcje : []).slice(0, 16).map((x) => ({ typ: String(x?.typ), od: Number(x?.od), do: Number(x?.do) }));
+    if (!sekcje.length) throw new Error('Pojedynek rytmiczny bez sekcji osi.');
+    let koniec = 0;
+    for (const x of sekcje) {
+        if (!SEKCJE_RYTMU.includes(x.typ) || !Number.isInteger(x.od) || !Number.isInteger(x.do) || x.od < koniec || x.do <= x.od || x.do > takty) throw new Error('Pojedynek rytmiczny: sekcje osi poza taktami albo nie po kolei.');
+        koniec = x.do;
+    }
+    return { takty, poziom: r.poziom, sekcje, tytul: tekst(r.tytul, 60) || 'Pojedynek rytmiczny' };
+}
+
 const ruchyZ = (lista, horyzontStary) => (Array.isArray(lista) ? lista : [])
     .map((r) => ({ takt: Math.round(Number(r?.takt)), skill: String(r?.skill ?? '') }))
     .filter((r) => Number.isFinite(r.takt) && r.takt > horyzontStary && r.takt < 100_000 && /^[a-z0-9-]{2,48}$/.test(r.skill));
@@ -85,19 +107,19 @@ export function utworzRing({ teraz = () => Date.now(), losuj = Math.random } = {
     }
 
     const widok = (p, kto) => ({
-        id: p.id, stan: p.stan, ziarno: p.ziarno, bpm: p.bpm, start: p.start, teraz: teraz(),
+        id: p.id, stan: p.stan, ziarno: p.ziarno, bpm: p.bpm, rytm: p.rytm, start: p.start, teraz: teraz(),
         ja: p.gracze.findIndex((g) => g.id === kto),
         gracze: p.gracze.map((g) => ({ karta: g.karta, ruchy: g.ruchy, horyzont: g.horyzont, wyszedl: !!g.wyszedl, wynik: g.wynik ?? null })),
     });
 
     /** Suweren otwiera pokój (tylko przy swojej maszynie — sprawdza trasa). */
-    function otworz({ gracz, karta, bpm, adres = 'maszyna' } = {}) {
+    function otworz({ gracz, karta, bpm, rytm = null, adres = 'maszyna' } = {}) {
         sprzataj();
         if (!ID_GRACZA.test(String(gracz))) throw new Error('Zły identyfikator gracza (8–32 znaki a–z0–9).');
         if (pokoje.size >= MAX_POKOI) throw new Error(`Na ringu tej Katedry jest już ${MAX_POKOI} pokoi — zamknij któryś.`);
         const p = {
             id: noweId(), utworzono: teraz(), stan: 'czeka', start: null,
-            ziarno: Math.floor(losuj() * 2 ** 31), bpm: Math.round(liczba(bpm, 80, 160, 120)),
+            ziarno: Math.floor(losuj() * 2 ** 31), bpm: Math.round(liczba(bpm, 80, 160, 120)), rytm: rytm ? oczyscRytm(rytm) : null,
             gracze: [{ id: gracz, adres, karta: oczyscKarte(karta), ruchy: [], horyzont: -1, kiedy: teraz() }],
         };
         pokoje.set(p.id, p);
@@ -151,7 +173,7 @@ export function utworzRing({ teraz = () => Date.now(), losuj = Math.random } = {
     function lista() {
         sprzataj();
         return [...pokoje.values()].map((p) => ({
-            id: p.id, stan: p.stan, bpm: p.bpm, graczy: p.gracze.length,
+            id: p.id, stan: p.stan, bpm: p.bpm, graczy: p.gracze.length, tryb: p.rytm ? 'rytm' : 'walka', rytm: p.rytm ? { tytul: p.rytm.tytul, poziom: p.rytm.poziom, takty: p.rytm.takty } : null,
             gospodarz: { nazwa: p.gracze[0].karta.nazwa, rzadkosc: p.gracze[0].karta.rzadkosc, poziom: p.gracze[0].karta.poziom, gracz: p.gracze[0].karta.gracz },
         }));
     }
@@ -211,4 +233,4 @@ export function zamontujTrasyRingu(app, { ring = utworzRing(), cors, nick = asyn
     return ring;
 }
 
-export default { utworzRing, zamontujTrasyRingu, oczyscKarte, katedryDoRingu };
+export default { utworzRing, zamontujTrasyRingu, oczyscKarte, oczyscRytm, katedryDoRingu };

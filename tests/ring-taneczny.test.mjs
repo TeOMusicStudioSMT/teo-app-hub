@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import cors from 'cors';
-import { utworzRing, oczyscKarte, zamontujTrasyRingu, ZYWOTNOSC_MS, ODLICZANIE_MS, MAX_POKOI } from '../services/RingTaneczny.js';
+import { utworzRing, oczyscKarte, oczyscRytm, zamontujTrasyRingu, ZYWOTNOSC_MS, ODLICZANIE_MS, MAX_POKOI } from '../services/RingTaneczny.js';
 
 const karta = (o = {}) => ({ id: 'mini-a', nazwa: 'Mszak', rzadkosc: 'pospolity', poziom: 3, mnoznik: 1, skille: [{ id: 'sk-a', nazwa: 'Bęben', typ: 'cios', moc: 13, dziedzina: 'takt' }], ...o });
 
@@ -36,6 +36,31 @@ test('ring: otwarcie, dołączenie, odliczanie → walka, ruchy i horyzont, trze
     R.melduj(p.id, 'maszyna', { gracz: 'aaaaaaaa', wynik: { zwyciezca: 0, rundy: '2:1' } });
     t += 200;
     assert.equal(R.melduj(p.id, '2.2.2.2', { gracz: 'bbbbbbbb', wynik: { zwyciezca: 0, rundy: '2:1' } }).pokoj.stan, 'koniec');
+});
+
+test('⚔️ ring rytmiczny: oś w pokoju (sprawdzana), tryb na liście, trafienia jako ruchy ponad dawny limit 400', () => {
+    let t = 0;
+    const R = utworzRing({ teraz: () => t, losuj: () => 0.25 });
+    const rytm = { takty: 32, poziom: 'organist', tytul: 'Cathedral Electro-Pulse', sekcje: [{ typ: 'intro', od: 0, do: 4 }, { typ: 'drop', od: 16, do: 28 }, { typ: 'outro', od: 28, do: 32 }] };
+    const p = R.otworz({ gracz: 'aaaaaaaa', karta: karta(), bpm: 126, rytm });
+    assert.deepEqual(p.rytm, rytm);
+    assert.deepEqual(R.lista()[0].tryb, 'rytm');
+    assert.deepEqual(R.lista()[0].rytm, { tytul: 'Cathedral Electro-Pulse', poziom: 'organist', takty: 32 });
+    assert.equal(utworzRing().otworz({ gracz: 'cccccccc', karta: karta() }).rytm, null, 'zwykła walka bez osi');
+    assert.throws(() => oczyscRytm({ ...rytm, takty: 200 }), /8–64/);
+    assert.throws(() => oczyscRytm({ ...rytm, poziom: 'mistrz' }), /poziom/);
+    assert.throws(() => oczyscRytm({ ...rytm, sekcje: [{ typ: 'drop', od: 10, do: 40 }] }), /poza taktami/);
+    assert.throws(() => oczyscRytm({ ...rytm, sekcje: [{ typ: 'chorus', od: 0, do: 4 }] }), /poza taktami albo nie po kolei/);
+    t += 200;
+    R.melduj(p.id, '2.2.2.2', { gracz: 'bbbbbbbb', karta: karta() });
+    t += ODLICZANIE_MS;
+    const ruchy = Array.from({ length: 450 }, (_, n) => ({ takt: n, skill: `t${500 + (n % 90)}` })).concat([{ takt: 60_017, skill: 'od' }]);
+    const a = R.melduj(p.id, 'maszyna', { gracz: 'aaaaaaaa', ruchy: ruchy.slice(0, 300), horyzont: 10 });
+    assert.equal(a.pokoj.gracze[0].ruchy.length, 300);
+    t += 200;
+    const a2 = R.melduj(p.id, 'maszyna', { gracz: 'aaaaaaaa', ruchy: ruchy.slice(300), horyzont: 440 });
+    assert.equal(a2.pokoj.gracze[0].ruchy.length, 451, 'ponad dawny limit 400 — nuty pojedynku rytmicznego');
+    assert.deepEqual(a2.pokoj.gracze[0].ruchy.at(-1), { takt: 60_017, skill: 'od' });
 });
 
 test('ring: karta bez nazwy/skilli odrzucona, model tylko jako plik, limit pokoi, wygasanie', () => {
