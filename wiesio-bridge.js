@@ -8430,8 +8430,8 @@ app.post('/api/assety3d/generuj', assetUpload.single('zdjecie'), async (req, res
 });
 // 🖼️ Pracownia obrazów (Game Studio): obraz w stylu (jeden obiekt / zestaw / karta postaci / kraina) z gałęzią świata,
 // a z niego bryła przez POST /api/assety3d/generuj { zObrazu, wycinek: {x,y,w,h} }.
-app.get('/api/assety3d/obrazy', async (_req, res) => res.json({ success: true, obrazy: await Assety3D.listaObrazow(), style: Assety3D.STYLE_OBRAZU, zadania: Assety3D.zadaniaLista().filter((z) => z.obraz) }));
-app.post('/api/assety3d/obrazy', (req, res) => ytOdp(res, Assety3D.obraz({ opis: req.body?.opis, styl: req.body?.styl || 'pojedynczy', galaz: req.body?.galaz || null, projekt: req.body?.projekt || null, ziarno: req.body?.ziarno ?? null })));
+app.get('/api/assety3d/obrazy', async (_req, res) => res.json({ success: true, obrazy: await Assety3D.listaObrazow(), style: Assety3D.STYLE_OBRAZU, silniki: Assety3D.SILNIKI_OBRAZU, zadania: Assety3D.zadaniaLista().filter((z) => z.obraz) }));
+app.post('/api/assety3d/obrazy', (req, res) => ytOdp(res, Assety3D.obraz({ opis: req.body?.opis, styl: req.body?.styl || 'pojedynczy', galaz: req.body?.galaz || null, projekt: req.body?.projekt || null, ziarno: req.body?.ziarno ?? null, silnik: req.body?.silnik || 'flux' })));
 app.get('/api/assety3d/obrazy/:id/plik', (req, res) => { const p = Assety3D.plikObrazu(req.params.id); return p ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Nie ma takiego obrazu.' }); });
 app.delete('/api/assety3d/obrazy/:id', async (req, res) => res.json({ success: true, usunieto: await Assety3D.usunObraz(req.params.id) }));
 app.get('/api/assety3d/:id/plik/:plik', (req, res) => {

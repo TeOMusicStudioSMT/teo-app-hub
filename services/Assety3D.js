@@ -66,6 +66,51 @@ export async function zywyComfy(sciezka = '/object_info/EmptyFlux2LatentImage') 
 }
 
 const GRAF_OBRAZ = 'flux2_klein_4b.json';
+
+/**
+ * 🎨 Silniki obrazu Pracowni (Suweren 2026-10-13: „do samych obrazów qwen image”). W Katedrze jest tylko
+ * Qwen-Image-EDIT 2511 (fp8, 20,5 GB) — zwykłego Qwen-Image ani „2.1” nie ma. Edit bez obrazów wejściowych rysuje od
+ * zera (TextEncodeQwenImageEditPlus bez image1–3 + pusty latent); z LoRA Lightning 4 kroki. Zmierzone 2026-10-14 na
+ * 6 GB: 162 s z ładowaniem (model + koder 9,4 GB z RAM), 25 s na ciepło, 1024² — opis trzymany dokładnie.
+ * FLUX zostaje domyślny i jest ZAPASEM: Qwen padł → ten sam obraz na FLUX (`silnikUzyty`, `uwaga`).
+ */
+export const SILNIKI_OBRAZU = {
+    flux: { nazwa: 'FLUX.2 klein 4B — szybki (domyślny)' },
+    qwen: { nazwa: 'Qwen-Image-Edit 2511 + Lightning — dokładniej trzyma opis (20B; ~3 min pierwszy, ~25 s kolejne)' },
+};
+export const PLIKI_QWEN = {
+    unet: 'qwen_image_edit_2511_fp8mixed.safetensors',
+    lora: 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
+    clip: 'qwen_2.5_vl_7b_fp8_scaled.safetensors',
+    vae: 'qwen_image_vae.safetensors',
+};
+const w16 = (x) => Math.max(256, Math.round(Number(x) / 16) * 16);
+/** Graf Qwen-Image-Edit 2511 jako obraz od zera (czysta funkcja). */
+export function grafQwen({ prompt, szer = 1024, wys = 1024, ziarno = 0, prefiks = 'katedra/qwen' }) {
+    return {
+        1: { class_type: 'UNETLoader', inputs: { unet_name: PLIKI_QWEN.unet, weight_dtype: 'default' } },
+        2: { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: PLIKI_QWEN.lora, strength_model: 1 } },
+        3: { class_type: 'ModelSamplingAuraFlow', inputs: { model: ['2', 0], shift: 3.1 } },
+        4: { class_type: 'CLIPLoader', inputs: { clip_name: PLIKI_QWEN.clip, type: 'qwen_image', device: 'default' } },
+        5: { class_type: 'VAELoader', inputs: { vae_name: PLIKI_QWEN.vae } },
+        6: { class_type: 'TextEncodeQwenImageEditPlus', inputs: { clip: ['4', 0], prompt: String(prompt), vae: ['5', 0] } },
+        7: { class_type: 'TextEncodeQwenImageEditPlus', inputs: { clip: ['4', 0], prompt: '', vae: ['5', 0] } },
+        8: { class_type: 'EmptySD3LatentImage', inputs: { width: w16(szer), height: w16(wys), batch_size: 1 } },
+        9: { class_type: 'KSampler', inputs: { model: ['3', 0], positive: ['6', 0], negative: ['7', 0], latent_image: ['8', 0], seed: Number(ziarno) || 0, steps: 4, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1 } },
+        10: { class_type: 'VAEDecode', inputs: { samples: ['9', 0], vae: ['5', 0] } },
+        11: { class_type: 'SaveImage', inputs: { images: ['10', 0], filename_prefix: prefiks } },
+    };
+}
+/** Czy ComfyUI widzi pliki Qwen — braki po nazwie (Katedra niczego nie pobiera sama). */
+export async function stanQwen() {
+    const lista = async (wezel, pole) => (await comfy(`/object_info/${wezel}`, {}, 8000).catch(() => null))?.[wezel]?.input?.required?.[pole]?.[0] ?? [];
+    const [unety, lory, clipy, vae] = await Promise.all([lista('UNETLoader', 'unet_name'), lista('LoraLoaderModelOnly', 'lora_name'), lista('CLIPLoader', 'clip_name'), lista('VAELoader', 'vae_name')]);
+    const braki = [[unety, PLIKI_QWEN.unet], [lory, PLIKI_QWEN.lora], [clipy, PLIKI_QWEN.clip], [vae, PLIKI_QWEN.vae]]
+        .filter(([l, plik]) => !l.some((x) => String(x).replace(/\\/g, '/').split('/').pop() === plik)).map(([, plik]) => plik);
+    return { gotowy: braki.length === 0, braki };
+}
+const nazwaWComfy = async (wezel, pole, plik) => ((await comfy(`/object_info/${wezel}`, {}, 8000).catch(() => null))?.[wezel]?.input?.required?.[pole]?.[0] ?? [])
+    .find((x) => String(x).replace(/\\/g, '/').split('/').pop() === plik) ?? plik;
 const GRAF_3D = 'trellis2_obraz_do_3d.json';
 const WYMAGANE = {
     clip_vision: 'dino_v3_vit_l.safetensors', diffusion_models: 'trellis_2_int8_convrot.safetensors',
@@ -320,11 +365,22 @@ export async function kadrFilmu({ prompt, referencje = [], szer = 1280, wys = 72
 export const wgrajDoComfy = (sciezka) => wgrajObraz(sciezka, `kadr-${crypto.createHash('sha1').update(sciezka + Date.now()).digest('hex').slice(0, 12)}.png`);
 
 /** FLUX.2 klein: prompt → plik PNG w wyjściu ComfyUI (ścieżka). */
-async function rysuj({ prompt, szer = 1024, wys = 1024, ziarno = null, prefiks, z }) {
+async function rysuj({ prompt, szer = 1024, wys = 1024, ziarno = null, prefiks, z, silnik = 'flux' }) {
+    const nasiono = Number.isFinite(Number(ziarno)) && ziarno !== null && ziarno !== '' ? Number(ziarno) : Math.floor(Math.random() * 1e9);
+    if (silnik === 'qwen') {
+        const g = grafQwen({ prompt, szer, wys, ziarno: nasiono, prefiks });
+        // pliki mogą leżeć w podkatalogach ścieżek ComfyUI — bierzemy nazwę tak, jak ją widzi ComfyUI
+        g['1'].inputs.unet_name = await nazwaWComfy('UNETLoader', 'unet_name', PLIKI_QWEN.unet);
+        g['2'].inputs.lora_name = await nazwaWComfy('LoraLoaderModelOnly', 'lora_name', PLIKI_QWEN.lora);
+        const w = await czekajNaComfy(await zlecGraf(g), { limitMs: 20 * 60_000, naPostep: (s) => { if (z) z.sekundyEtapu = s; } });
+        const plik = plikZOutputs(w.outputs, ['images']);
+        if (!plik) throw new Error('Qwen nie oddał obrazu.');
+        return plik;
+    }
     const g = JSON.parse(await fs.readFile(path.join(cfg.katalogWorkflow, GRAF_OBRAZ), 'utf8')); delete g._opis;
     g['5'].inputs.text = prompt;
     g['7'].inputs.width = szer; g['7'].inputs.height = wys; g['8'].inputs.width = szer; g['8'].inputs.height = wys;
-    g['11'].inputs.noise_seed = Number.isFinite(Number(ziarno)) && ziarno !== null && ziarno !== '' ? Number(ziarno) : Math.floor(Math.random() * 1e9);
+    g['11'].inputs.noise_seed = nasiono;
     g['14'].inputs.filename_prefix = prefiks;
     const w = await czekajNaComfy(await zlecGraf(g), { limitMs: 15 * 60_000, naPostep: (s) => { if (z) z.sekundyEtapu = s; } });
     const plik = plikZOutputs(w.outputs, ['images']);
@@ -617,19 +673,24 @@ export async function sylwetka(id) {
 }
 
 /** Obraz z opisu w stylu Pracowni — w tle (jedno zadanie GPU naraz, wspólna kolejka z bryłami). */
-export async function obraz({ opis, styl = 'pojedynczy', galaz = null, projekt = null, ziarno = null } = {}) {
+export async function obraz({ opis, styl = 'pojedynczy', galaz = null, projekt = null, ziarno = null, silnik = 'flux' } = {}) {
     const st = STYLE_OBRAZU[styl];
     if (!st) throw new Error(`Nieznany styl „${styl}”. Są: ${Object.keys(STYLE_OBRAZU).join(', ')}.`);
+    if (!SILNIKI_OBRAZU[silnik]) throw new Error(`Nieznany silnik obrazu „${silnik}”. Są: ${Object.keys(SILNIKI_OBRAZU).join(', ')}.`);
     const tekst = String(opis || '').trim();
     if (tekst.length < 3) throw new Error('Opisz, co narysować.');
     await zywyComfy('/object_info/EmptyFlux2LatentImage');
     if (!fsSync.existsSync(path.join(cfg.katalogWorkflow, GRAF_OBRAZ))) throw new Error(`brak grafu ${GRAF_OBRAZ}`);
     if ([...zadania.values()].some((z) => z.stan === 'trwa')) throw new Error('Jedno zadanie GPU naraz — ComfyUI już liczy.');
+    if (silnik === 'qwen') {
+        const q = await stanQwen();
+        if (!q.gotowy) throw new Error(`ComfyUI nie widzi plików Qwen: ${q.braki.join(', ')} — Katedra sama ich nie pobiera; wybierz FLUX albo dołóż pliki do _OtakOs_AI/models/obrazy.`);
+    }
     const baza = slug(tekst);
     let id = `${baza}-${crypto.randomBytes(2).toString('hex')}`;
     while (fsSync.existsSync(dirObrazu(id))) id = `${baza}-${crypto.randomBytes(2).toString('hex')}`;
     await fs.mkdir(dirObrazu(id), { recursive: true });
-    const m = { id, opis: tekst.slice(0, 1000), styl, galaz: galaz ? String(galaz).slice(0, 60) : null, projekt: projekt ? String(projekt).slice(0, 60) : null, szer: st.szer, wys: st.wys, do3d: st.do3d, stan: 'trwa', utworzono: new Date().toISOString(), bryly: [] };
+    const m = { id, opis: tekst.slice(0, 1000), styl, galaz: galaz ? String(galaz).slice(0, 60) : null, projekt: projekt ? String(projekt).slice(0, 60) : null, szer: st.szer, wys: st.wys, do3d: st.do3d, silnik, stan: 'trwa', utworzono: new Date().toISOString(), bryly: [] };
     const zapisz = () => fs.writeFile(path.join(dirObrazu(id), 'meta.json'), JSON.stringify(m, null, 2), 'utf8');
     await zapisz();
     const z = { id: `ob-${Date.now().toString(36)}`, obraz: id, stan: 'trwa', etap: 'prompt', kroki: [], od: m.utworzono };
@@ -640,7 +701,17 @@ export async function obraz({ opis, styl = 'pojedynczy', galaz = null, projekt =
             m.promptObrazu = await promptObrazu(tekst, st.baza);
             await zwolnijOllame(cfg.model());
             z.etap = 'obraz';
-            const plik = await rysuj({ prompt: m.promptObrazu, szer: st.szer, wys: st.wys, ziarno, prefiks: `katedra/obrazy-gry/${id}`, z });
+            let plik;
+            try {
+                plik = await rysuj({ prompt: m.promptObrazu, szer: st.szer, wys: st.wys, ziarno, prefiks: `katedra/obrazy-gry/${id}`, z, silnik });
+                m.silnikUzyty = silnik;
+            } catch (e) {
+                if (silnik === 'flux') throw e;
+                // FLUX zapasem: Qwen padł (brak pamięci, węzeł, plik) — ten sam opis na FLUX, powód zostaje w meta
+                m.uwaga = `Qwen padł (${String(e.message).slice(0, 200)}) — narysował FLUX`;
+                plik = await rysuj({ prompt: m.promptObrazu, szer: st.szer, wys: st.wys, ziarno, prefiks: `katedra/obrazy-gry/${id}`, z, silnik: 'flux' });
+                m.silnikUzyty = 'flux';
+            }
             await fs.copyFile(plik, path.join(dirObrazu(id), 'obraz.png'));
             m.stan = 'gotowe'; m.czas = Math.round((Date.now() - t0) / 1000);
             z.stan = 'gotowe'; z.etap = 'gotowe';
@@ -781,4 +852,4 @@ export async function generuj({ nazwa, opis, tekst, zdjecie, zObrazu = null, wyc
     return { zadanie: z.id, asset: assetId };
 }
 
-export default { plikDoChmury, wersjaZChmury, ruchZChmury, przytnijTeksturyModelu, TEKSTURA_MAX, skonfiguruj, zywyComfy, upiekszLokalnie, przekolorujBryle, zageszczFragment, zaswiec, sylwetka, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
+export default { SILNIKI_OBRAZU, PLIKI_QWEN, grafQwen, stanQwen, plikDoChmury, wersjaZChmury, ruchZChmury, przytnijTeksturyModelu, TEKSTURA_MAX, skonfiguruj, zywyComfy, upiekszLokalnie, przekolorujBryle, zageszczFragment, zaswiec, sylwetka, stan, lista, meta, katalogAssetu, sciezkaPliku, usun, uprosc, doGry, assetyProjektu, generuj, zadanie, zadaniaLista, STYLE_OBRAZU, filtrWycinka, obraz, listaObrazow, metaObrazu, plikObrazu, usunObraz };
