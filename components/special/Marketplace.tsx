@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { mojWezel } from '../../lib/mojWezel';
 import PracowniaMerchu from './PracowniaMerchu';
 import GryKatedr from './GryKatedr';
+import SklepMini from './SklepMini';
 
 const BRIDGE = 'http://127.0.0.1:3001';
 
@@ -16,7 +17,7 @@ const effPrice = (p: Product) => p.priceGrvDyn ?? p.priceGrv; // cena dynamiczna
 
 export const Marketplace: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
-  const [tab, setTab] = useState<'shop' | 'vote' | 'create' | 'merch' | 'gry'>('shop');
+  const [tab, setTab] = useState<'shop' | 'vote' | 'create' | 'merch' | 'gry' | 'mini'>('shop');
   const [status, setStatus] = useState('');
   const [form, setForm] = useState({ module: 'katedra-chat', name: '', desc: '', priceGrv: '100', creator: mojWezel() });
   const [balance, setBalance] = useState<number | 'INFINITE' | null>(null);
@@ -119,11 +120,11 @@ export const Marketplace: React.FC = () => {
               ⛓️ księga: {chainOk ? 'OK' : '⚠ NARUSZONA'}
             </div>
           )}
-          <div className="flex gap-2">{tabBtn('shop', '🛒 Sklep')}{tabBtn('vote', '🗳️ Głosowanie')}{tabBtn('create', '➕ Dodaj')}{tabBtn('merch', '🖨️ Merch')}{tabBtn('gry', '🏝️ Gry')}</div>
+          <div className="flex gap-2">{tabBtn('shop', '🛒 Sklep')}{tabBtn('vote', '🗳️ Głosowanie')}{tabBtn('create', '➕ Dodaj')}{tabBtn('merch', '🖨️ Merch')}{tabBtn('gry', '🏝️ Gry')}{tabBtn('mini', '🐾 Sklep Mini')}</div>
         </div>
       </div>
 
-      {tab === 'gry' ? <GryKatedr /> : tab === 'merch' ? <PracowniaMerchu /> : tab === 'create' ? (
+      {tab === 'mini' ? <SklepMini /> : tab === 'gry' ? <GryKatedr /> : tab === 'merch' ? <PracowniaMerchu /> : tab === 'create' ? (
         <div className="space-y-2 max-w-md">
           <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Nazwa produktu"
             className="w-full bg-black/40 border border-amber-500/20 rounded px-2 py-1.5 text-sm text-amber-100 outline-none focus:border-amber-500" />

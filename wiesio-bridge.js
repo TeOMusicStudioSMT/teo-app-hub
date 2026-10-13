@@ -11,6 +11,8 @@ import { utworzPartytury } from './services/Partytury.js';
 import { utworzStrazModeli } from './services/StrazModeli.js';
 import { utworzChmureBryl, promptStylu, oczyscStyl, ZESTAWY_AKCJI } from './services/ChmuraBryl.js';
 import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch.js';
+import { utworzStripe } from './services/Stripe.js';
+import { utworzSklepMini, zamontujTrasySklepu } from './services/SklepMini.js';
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
 import { utworzFilmyGry, filtrRuchuKadru } from './services/FilmyGry.js';
@@ -91,7 +93,7 @@ import * as ModeleAgentow  from './services/ModeleAgentow.js';
 import { utworzMozg } from './services/MozgKatedry.js';
 import { utworzPlanGry } from './services/PlanGry.js';
 import { utworzBestiariusz } from './services/Bestiariusz.js';
-import { utworzPaczkiGier, zamontujTrasyGier } from './services/PaczkiGier.js';
+import { utworzPaczkiGier, zamontujTrasyGier, spakujKatalog } from './services/PaczkiGier.js';
 import { zamontujTrasyRingu } from './services/RingTaneczny.js';
 import { utworzBazylike } from './services/BazylikaDzwieku.js';
 import { utworzKompozytora, zamontujTrasyKompozytora } from './services/JajoKompozytora.js';
@@ -8911,6 +8913,20 @@ zamontujTrasyGier(app, { rozliczenia: Rozliczenia, paczki: PaczkiGier, nick: asy
         const ruchy = Object.keys((await PostacKatedry.publiczna().catch(() => null))?.ruchy ?? {});
         for (const r of [null, ...ruchy]) await PaczkiGier.odchudzPlik(PostacKatedry.plik(r));
     } });
+// 💳 Stripe (services/Stripe.js): klucz tylko ze Skarbca 0.00G (usługa `stripe`, pole `secret_key`), czytany przy każdym
+// użyciu. 🐾🛒 Sklep Mini (services/SklepMini.js): plan zasobów Mini, 3 propozycje dnia od stada, produkcja przyjętej
+// (TRELLIS → Meshy Image-to-3D → rig + akcje → 3 obrazy wariantów → pakiet), sprzedaż przez Stripe Checkout na tunelu.
+const GRA_SKLEPU = process.env.OTAKOS_SKLEP_GRA || 'teterhia-wieczna-saga';   // Bestiariusz tej gry daje rzadkości Mini
+const Stripe = utworzStripe({ klucz: () => sekretPrzewodu('stripe', 'secret_key'), katalog: ANTIGRAVITY_DIR });
+const SklepMini = utworzSklepMini({
+    katalog: path.join(ANTIGRAVITY_DIR, 'sklep-mini'), assety: Assety3D, chmura: ChmuraBryl, stripe: Stripe, szyna: Szyna,
+    bestiariusz: () => Bestiariusz.wczytaj(GRA_SKLEPU), projekt: GRA_SKLEPU, spakuj: spakujKatalog,
+    // „stado” pisze propozycje modelem przydziału Pionka (Gry), inaczej domyślnym silnikiem Katedry
+    pisz: async (system, prompt) => (await piszModelem((await ModeleAgentow.modelDla('pionek').catch(() => null)) || Mozg.domyslny(), system, prompt, { temperatura: 0.9 })).tekst,
+});
+zamontujTrasySklepu(app, { sklep: SklepMini, stripe: Stripe, adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
+Wizytowka.skonfiguruj({ sklep: SklepMini });
+if (process.env.OTAKOS_SKLEP_MINI !== '0') setTimeout(() => SklepMini.startPetli(), 120_000).unref?.();
 // 💃🥊 Ring taneczny (services/RingTaneczny.js): pojedynki Mini-TeOgochi między Katedrami — walkę liczą gracze
 // (apka _OtakOs_Apki/taneczne-starcie), most trzyma w pamięci tylko karty, ziarno, start i ruchy {takt, skill}.
 zamontujTrasyRingu(app, { cors, nick: async () => (await Wizytowka.profil()).nick || null });
