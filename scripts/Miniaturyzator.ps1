@@ -67,7 +67,9 @@ $xdStatic = @(
     # projekt Unreal Suwerena (258 MB) i cache analizy kodu graphify (39 MB) — nie są Katedrą.
     'TeO_Arcade_Forge\MojProjekt','graphify-out',
     # 2026-10-11: dzienniki Suwerena (Dziennik Pokładowy z public/dzienniki) — jego zapiski, nie Katedra
-    'public\dzienniki'
+    'public\dzienniki',
+    # SKARBIEC 0.00G (klucz główny, zaszyfrowany skarbiec, pliki kluczy) — NIGDY do paczki.
+    '.vault-0.00g'
 )
 # Dołap dynamicznie wszelkie inne _OtakOs_* (na wypadek nowych) — dane i dzieła Suwerena.
 $xdDynamic = Get-ChildItem $Source -Directory -Filter '_OtakOs_*' -ErrorAction SilentlyContinue |
@@ -79,6 +81,8 @@ $XF = @(
     '.env','.env.local','.env.development','.env.production','.env.*.local',
     '.anthropic_key.env','media_secrets.json','*.key','*.pem',
     '*.log','*.bak','*.tmp','dev_server.log','.eve.example.txt',
+    # skarbiec i klucze w plikach (pas i szelki obok wykluczenia katalogu .vault-0.00g)
+    '*.enc','.master','*key.txt','*_key','kibel_*.txt',
     # narzędzie deweloperskie MCP (289 MB) — leżało w _OtakOs_AIin obok whispera, nie do distro
     'codebase-memory-mcp.exe'
 )
@@ -144,13 +148,16 @@ $leakFiles = Get-ChildItem $Stage -Recurse -File -Force | Where-Object {
     ($_.Name -match 'secret' -and $_.Extension -in '.json','.env','.txt','.key','.pem','.yaml','.yml','.cfg','.ini') -or
     ($_.Extension -in '.key','.pem') -or
     ($_.Name -eq '.anthropic_key.env') -or
-    ($_.Name -eq 'media_secrets.json')
+    ($_.Name -eq 'media_secrets.json') -or
+    ($_.FullName -match '[\\/]\.vault') -or ($_.Name -eq '.master') -or ($_.Extension -eq '.enc') -or
+    ($_.Name -match 'key\.txt$') -or ($_.Name -match '^kibel_.*\.txt$')
 }
 $tokenHits = @()
 Get-ChildItem $Stage -Recurse -File -Include *.env*,*.json,*.txt,*.md,*.ts,*.tsx,*.js -Force -ErrorAction SilentlyContinue |
   Where-Object { $_.Length -lt 200000 } | ForEach-Object {
     $c = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
-    if ($c -match 'ghp_[A-Za-z0-9]{20,}' -or $c -match 'sk-ant-[A-Za-z0-9_-]{20,}' -or $c -match 'BEGIN [A-Z ]*PRIVATE KEY') {
+    if ($c -match 'ghp_[A-Za-z0-9]{20,}' -or $c -match 'sk-ant-[A-Za-z0-9_-]{20,}' -or $c -match 'BEGIN [A-Z ]*PRIVATE KEY' -or
+        $c -match 'apikey_[A-Za-z0-9_-]{20,}' -or $c -match 'msy_[A-Za-z0-9_-]{20,}' -or $c -match 'hf_[A-Za-z0-9]{30,}') {
         $tokenHits += $_.FullName.Replace($Stage,'')
     }
 }
