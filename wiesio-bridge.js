@@ -5257,41 +5257,11 @@ let market = null;
 async function saveMarket() { try { await fs.writeFile(MARKET_FILE, JSON.stringify(market, null, 2), 'utf8'); } catch (e) { console.warn('[Market]', e.message); } }
 async function loadMarket() {
     if (market) return market;
+    // Sklep startuje PUSTY i niczego sam nie dosiewa (Suweren 2026-10-13: dawne produkty były do testów —
+    // nowe produkty Katedry dodaje osobny moduł). Funkcje (Odpal Tu...Kurka!, Złote Taco, UnEnG) żyją w Hubie.
     try { market = JSON.parse(await fs.readFile(MARKET_FILE, 'utf8')); }
-    catch {
-        market = { products: [{
-            id: 'btn-odpal-kurka', module: 'katedra-chat', type: 'button',
-            name: 'Odpal Tu...Kurka!', desc: 'Buton w KatedraChat — odpala Klaudiusza (Claude Code) w Katedrze przez Ollamę, na bieżącym modelu.',
-            priceGrv: 0, creator: 'TeO', votes: 0, createdAt: Date.now(),
-            payload: { action: 'claude-launch' },
-        }] };
-        await saveMarket();
-        console.log('[Market] 🛒 Zasiano sklep: pierwszy produkt „Odpal Tu...Kurka!".');
-    }
-    // Zapewnij Tarczę Prywatności „Złote Taco" (idempotentnie)
-    if (market.products && !market.products.find(p => p.id === 'zlote-taco-antilustro')) {
-        market.products.push({
-            id: 'zlote-taco-antilustro', module: 'prywatnosc', type: 'shield',
-            name: '🌮 Złote Taco — Anty-Lustro Matrixa',
-            desc: 'Tarcza Prywatności: audyt śledzenia, czyszczenie lokalnych śladów i generator wabika (szum profilujący). „Niech coś mają."',
-            priceGrv: 0, creator: 'TeO', votes: 0, createdAt: Date.now(),
-            payload: { action: 'open-antimatrix' },
-        });
-        await saveMarket();
-        console.log('[Market] 🌮 Dodano Tarczę „Złote Taco — Anty-Lustro Matrixa".');
-    }
-    // Zapewnij „UnEnG" — Unreal Engine dla Game Forge (idempotentnie)
-    if (market.products && !market.products.find(p => p.id === 'uneng-unreal-engine')) {
-        market.products.push({
-            id: 'uneng-unreal-engine', module: 'forge', type: 'engine',
-            name: '🎮 UnEnG — Unreal Engine dla Game Forge',
-            desc: 'Specjalna wersja Klaudiusza tworzy grywalne ŚWIATY (i rozwija samą Katedrę) mocą Unreal Engine (Filar II). ⚠ Agenci pilnują limitów licencji Epic: darmowe < 1 MLN USD przychodu, potem 5% tantiem / opłata stanowiskowa. Odpowiedzialność = Komunikacja — nie obciążamy Katedry.',
-            priceGrv: 0, creator: 'TeO', votes: 0, createdAt: Date.now(),
-            payload: { action: 'launch-uneng' },
-        });
-        await saveMarket();
-        console.log('[Market] 🎮 Dodano „UnEnG — Unreal Engine dla Game Forge".');
-    }
+    catch { market = { products: [] }; await saveMarket(); }
+    if (!Array.isArray(market.products)) market.products = [];
     return market;
 }
 // 📈 Cena DYNAMICZNA: popyt (głosy) podbija cenę. +5%/głos, sufit 3× bazy.
@@ -5351,6 +5321,15 @@ setInterval(() => {
     if (Date.now() - lastBurnAt < BURN_PERIOD_MS) return;
     runBurn().then(r => console.log(`[Market] 🔥 Auto-spalanie: spalono ${r.burned}, zostało ${r.kept}.`)).catch(() => {});
 }, BURN_CHECK_MS);
+/** DELETE /api/market/products/:id — zdejmij produkt z Marketplace tej Katedry (tylko maszyna; zakupy w posiadanych zostają). */
+app.delete('/api/market/products/:id', async (req, res) => {
+    const m = await loadMarket();
+    const p = m.products.find((x) => x.id === req.params.id);
+    if (!p) return res.status(404).json({ success: false, message: 'Nie ma takiego produktu.' });
+    m.products = m.products.filter((x) => x.id !== p.id);
+    await saveMarket();
+    res.json({ success: true, usuniety: { id: p.id, name: p.name } });
+});
 app.post('/api/market/burn', async (req, res) => {
     const r = await runBurn();
     res.json({ success: true, ...r });
