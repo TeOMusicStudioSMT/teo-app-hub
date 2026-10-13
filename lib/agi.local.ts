@@ -1,20 +1,15 @@
 /**
- * 🧠 agi.local.ts — PLIK AGI LOKALNEJ (Wymiar 0.00G)
+ * 🧠 agi.local.ts — mapa sieci neuronowej Katedry OtakOS (Wymiar 0.00G)
  * ────────────────────────────────────────────────────────────────────────────
- * Manifest żywej, lokalnej sieci neuronowej Katedry OtakOS. To NIE jest model
- * chmurowy — to mapa suwerennych węzłów (modułów/agentów) działających na
- * Twoich tranzystorach. Każdy węzeł = neuron; każda krawędź = synapsa.
+ * Mapa suwerennych węzłów (modułów i TeOgochi) działających na Twoim sprzęcie. Węzeł = neuron, krawędź = synapsa
+ * (prawdziwa zależność: kto kogo woła). Plik jest w dwóch miejscach z tą samą treścią: Hub (`lib/agi.local.ts`)
+ * i otakos.wtf (`src/agi.local.ts`).
  *
- * Warstwy (jak w sieci neuronowej):
- *   CORE   — rdzeń (wnioskowanie, most, samonaprawa)
- *   SENSE  — zmysły / wejście (zbieranie i rozumienie)
- *   ACT    — działanie / wyjście (twórczość, rynek, montaż)
- *   GUARD  — tarcza (bezpieczeństwo, prawda, skarbiec)
+ * Suweren 2026-10-13: „ma być zgodny z rzeczywistością”. Zdjęte węzły, których Katedra już nie ma albo których nikt
+ * nie sprawdzał (Kronos, Ted, VideO-Use, KsięgOOdbioru, Kwantowa Tarcza). Każdy węzeł poniżej ma sondę w moście
+ * (services/MapaAgi.js → GET /api/agi/state) i swój powód — bez mostu mapa pokazuje sam manifest, nic nie udaje życia.
  *
- * Plik jest WERSJONOWANY — rozwijasz Katedrę, dopisujesz węzeł, mapa rośnie.
- * Uruchomiona Katedra może w przyszłości NADPISAĆ ten plik swoim żywym stanem
- * (agi.local.json eksportowany przez Wiesio-Bridge) — wtedy mapa staje się
- * lustrem realnej, lokalnej AGI.
+ * Warstwy: CORE (rdzeń), SENSE (zmysły / wejście), ACT (działanie / wyjście), GUARD (tarcza).
  */
 
 export type AgiLayer = 'CORE' | 'SENSE' | 'ACT' | 'GUARD';
@@ -40,70 +35,96 @@ export interface AgiManifest {
 }
 
 export const AGI_LOCAL: AgiManifest = {
-  version: 'V_ZERO',
+  version: '2026.10',
   dimension: '0.00G',
   origin: 'local',
   nodes: [
     // ── CORE ──────────────────────────────────────────────────────────────
-    { id: 'ollama',  label: 'Rdzeń AI (Ollama)',  labelEn: 'AI Core (Ollama)', emoji: '🦙', layer: 'CORE',
-      desc: 'Lokalny silnik wnioskowania. Twoje VRAM, Twoje myśli — zero chmury.',
-      descEn: 'Local inference engine. Your VRAM, your thoughts — zero cloud.' },
-    { id: 'bridge',  label: 'Wiesio-Bridge',      labelEn: 'Wiesio-Bridge', emoji: '🌉', layer: 'CORE',
-      desc: 'Most :3001 — układ nerwowy łączący wszystkie węzły.',
-      descEn: 'Bridge :3001 — the nervous system linking every node.' },
-    { id: 'mechanik',label: 'Mechanik',           labelEn: 'Mechanic', emoji: '🔧', layer: 'CORE',
-      desc: 'Pętla samonaprawy — pisze, weryfikuje i leczy własny kod.',
-      descEn: 'Self-repair loop — writes, verifies and heals its own code.' },
+    { id: 'ollama', label: 'Ollama', labelEn: 'Ollama', emoji: '🦙', layer: 'CORE',
+      desc: 'Lokalne modele językowe i widzące (domyślnie gemma4) na Twojej karcie.',
+      descEn: 'Local language and vision models (gemma4 by default) on your GPU.' },
+    { id: 'bridge', label: 'Wiesio-Bridge', labelEn: 'Wiesio-Bridge', emoji: '🌉', layer: 'CORE',
+      desc: 'Most :3001 — układ nerwowy: modele, pliki, studia, GRV, głos, sieć.',
+      descEn: 'Bridge :3001 — the nervous system: models, files, studios, GRV, voice, network.' },
+    { id: 'stado', label: 'Stado TeOgochi', labelEn: 'TeOgochi Herd', emoji: '🐣', layer: 'CORE',
+      desc: 'Agenci Katedry — każdy na swoim modelu, piszą wkłady do Projektów Stada.',
+      descEn: 'The Cathedral agents — each on its own model, writing contributions to Herd Projects.' },
+    { id: 'dyrygent', label: 'Dyrygent', labelEn: 'Conductor', emoji: '🎼', layer: 'CORE',
+      desc: 'Mózg Katedry — dobiera modele i silniki do zadania i celu.',
+      descEn: 'The Cathedral brain — assigns models and engines to a task and goal.' },
+    { id: 'glowny', label: 'Główny (Claude Code)', labelEn: 'Lead (Claude Code)', emoji: '👑', layer: 'CORE',
+      desc: 'Claude Code w tle czatu — działa w Katedrze, na zmiany rdzenia pyta o zgodę.',
+      descEn: 'Claude Code behind the chat — works in the Cathedral, asks consent for core changes.' },
+    { id: 'mechanik', label: 'Mechanik', labelEn: 'Mechanic', emoji: '🔧', layer: 'CORE',
+      desc: 'Kolejka patchy — każdy przechodzi przez Tarczę, zanim trafi na dysk.',
+      descEn: 'Patch queue — each one passes the Shield before it reaches disk.' },
 
     // ── SENSE ─────────────────────────────────────────────────────────────
-    { id: 'koom',    label: 'KsięgOOdbioru (KOOM)', labelEn: 'Book of Reception (KOOM)', emoji: '📖', layer: 'SENSE',
-      desc: 'Zbiera rozmowy, dekoduje plany na zadania dla Mechanika.',
-      descEn: 'Collects conversations, decodes plans into Mechanic tasks.' },
-    { id: 'podcast', label: 'Podcast Twin',        labelEn: 'Podcast Twin', emoji: '🎙️', layer: 'SENSE',
-      desc: 'Dwóch gospodarzy (ISKRA/ECHO) — refleksja i pamięć dialogu.',
-      descEn: 'Two hosts (ISKRA/ECHO) — reflection and dialogue memory.' },
-    { id: 'scout',   label: 'Zwiad (Scout)',       labelEn: 'Scout', emoji: '🛰️', layer: 'SENSE',
-      desc: 'Skan otoczenia i profili — zmysł rozpoznania.',
-      descEn: 'Environment & profile scan — the sense of recognition.' },
+    { id: 'stol', label: 'Stół ratyfikacji', labelEn: 'Ratification Table', emoji: '🏛️', layer: 'SENSE',
+      desc: 'Propozycje Suwerena (Podcast Twin, telefon, plik) → Projekt Stada.',
+      descEn: 'The Sovereign’s proposals (Podcast Twin, phone, file) → Herd Project.' },
+    { id: 'mowa', label: 'Whisper', labelEn: 'Whisper', emoji: '📝', layer: 'SENSE',
+      desc: 'Mowa → tekst lokalnie (whisper.cpp) dla Dziennika i podcastów.',
+      descEn: 'Speech → text locally (whisper.cpp) for the Log and podcasts.' },
+    { id: 'zwiadowca', label: 'Zwiadowca', labelEn: 'Scout', emoji: '🔭', layer: 'SENSE',
+      desc: 'Szuka modeli i silników na HuggingFace — nic nie pobiera bez „Przyjmij”.',
+      descEn: 'Finds models and engines on HuggingFace — downloads nothing without “Accept”.' },
+    { id: 'jev', label: 'Jev (sędzia)', labelEn: 'Jev (judge)', emoji: '⚖️', layer: 'SENSE',
+      desc: 'Opcja chmury z własnym kluczem: ocena prawdopodobieństwem dla Kodeksa, Sędziego i Dyrygenta.',
+      descEn: 'Cloud option with your own key: probability judgements for the Codex, Judge and Conductor.' },
 
     // ── ACT ───────────────────────────────────────────────────────────────
-    { id: 'kronos',  label: 'Kronos (Nasiono)',    labelEn: 'Kronos (Seed)', emoji: '🔮', layer: 'ACT',
-      desc: 'Projekcja świec K-line — lokalna geometria rynku.',
-      descEn: 'K-line candle projection — local market geometry.' },
-    { id: 'video',   label: 'VideO-Use',           labelEn: 'VideO-Use', emoji: '🎬', layer: 'ACT',
-      desc: 'Montaż słowem — surowy materiał → final.mp4.',
-      descEn: 'Editing by words — raw footage → final.mp4.' },
-    { id: 'ted',     label: 'Ted (Trader)',        labelEn: 'Ted (Trader)', emoji: '💰', layer: 'ACT',
-      desc: 'Centrum Finansowe — skan rynków, Złota Pauza 0.00G.',
-      descEn: 'Financial Center — market scan, Golden Pause 0.00G.' },
-    { id: 'music',   label: 'Music V2',            labelEn: 'Music V2', emoji: '🎵', layer: 'ACT',
-      desc: 'Synteza dźwięku (ACE-Step) + rezonans wektorów sonicznych.',
-      descEn: 'Sound synthesis (ACE-Step) + sonic vector resonance.' },
+    { id: 'kodeks', label: 'Kodeks (Studio Gier)', labelEn: 'Codex (Game Studio)', emoji: '🧱', layer: 'ACT',
+      desc: 'Buduje gry i apki z planu GDD — build, przeglądarka, recenzent przed każdą rundą.',
+      descEn: 'Builds games and apps from the GDD plan — build, browser, reviewer before each round.' },
+    { id: 'obraz', label: 'Obraz (FLUX)', labelEn: 'Image (FLUX)', emoji: '🖼️', layer: 'ACT',
+      desc: 'Pracownia obrazów przez ComfyUI — koncepty, postacie, krainy.',
+      descEn: 'Image workshop via ComfyUI — concepts, characters, lands.' },
+    { id: 'wideo', label: 'Wideo (Wan)', labelEn: 'Video (Wan)', emoji: '🎬', layer: 'ACT',
+      desc: 'Ujęcia i filmy gry przez ComfyUI, montaż ffmpeg.',
+      descEn: 'Shots and game films via ComfyUI, ffmpeg editing.' },
+    { id: 'bryly', label: 'Bryły 3D', labelEn: '3D meshes', emoji: '🗿', layer: 'ACT',
+      desc: 'Obraz → bryła (TRELLIS lokalnie), ruch w Blenderze, Meshy tylko za zgodą na koszt.',
+      descEn: 'Image → mesh (TRELLIS locally), motion in Blender, Meshy only with cost consent.' },
+    { id: 'glos', label: 'Głos (klon)', labelEn: 'Voice (clone)', emoji: '🗣️', layer: 'ACT',
+      desc: 'Silnik klonu głosu :5002 (Chatterbox, MIT) — aktorzy, podcast, TeOgochi.',
+      descEn: 'Voice clone engine :5002 (Chatterbox, MIT) — actors, podcast, TeOgochi.' },
+    { id: 'muzyka', label: 'Muzyka', labelEn: 'Music', emoji: '🎵', layer: 'ACT',
+      desc: 'Joanna i Music Studio — utwory przez ComfyUI (ACE-Step), podkłady do gry i tańca.',
+      descEn: 'Joanna and Music Studio — tracks via ComfyUI (ACE-Step), music for the game and dance.' },
+    { id: 'usta', label: 'Usta aktorów', labelEn: 'Actor lips', emoji: '👄', layer: 'ACT',
+      desc: 'MuseTalk 1.5 (MIT) — aktorzy mówią ustami pod swój głos.',
+      descEn: 'MuseTalk 1.5 (MIT) — actors move their lips to their voice.' },
 
     // ── GUARD ─────────────────────────────────────────────────────────────
-    { id: 'shield',  label: 'Tarcza Prawdy (iFixAi)', labelEn: 'Truth Shield (iFixAi)', emoji: '🛡️', layer: 'GUARD',
-      desc: 'Inspekcja alignmentu przed zapisem — blokuje sekrety i sabotaż.',
-      descEn: 'Pre-write alignment inspection — blocks secrets and sabotage.' },
-    { id: 'vault',   label: 'Skarbiec (Vault)',    labelEn: 'Vault', emoji: '🔐', layer: 'GUARD',
-      desc: 'Szyfrowane klucze AES-256-GCM — suwerenna tajemnica.',
-      descEn: 'AES-256-GCM encrypted keys — sovereign secret.' },
-    { id: 'quantum', label: 'Kwantowa Tarcza',     labelEn: 'Quantum Shield', emoji: '⚛️', layer: 'GUARD',
-      desc: 'Proxy brzegowe (Cloudflare Worker) — osłona ruchu.',
-      descEn: 'Edge proxy (Cloudflare Worker) — traffic shielding.' },
+    { id: 'tarcza', label: 'Tarcza Prawdy', labelEn: 'Shield of Truth', emoji: '🛡️', layer: 'GUARD',
+      desc: 'Skanuje patche przed zapisem — sekrety, rm -rf, eval, sabotaż.',
+      descEn: 'Scans patches before writing — secrets, rm -rf, eval, sabotage.' },
+    { id: 'straz', label: 'Straż Mostu', labelEn: 'Bridge Guard', emoji: '🚧', layer: 'GUARD',
+      desc: 'Rozróżnia maszynę Suwerena, sparowany telefon i obcego gościa.',
+      descEn: 'Tells the Sovereign’s machine, a paired phone and a stranger apart.' },
+    { id: 'ksiega', label: 'Księga GRV', labelEn: 'GRV Ledger', emoji: '🪪', layer: 'GUARD',
+      desc: 'Własny skarbiec i właściciel tej Katedry, podpisane pokwitowania przelewów.',
+      descEn: 'This Cathedral’s own treasury and owner, signed transfer receipts.' },
+    { id: 'tunel', label: 'Tunel', labelEn: 'Tunnel', emoji: '🌐', layer: 'GUARD',
+      desc: 'Wyjście do sieci Katedr (Cloudflare) — tylko gdy Suweren go włączy.',
+      descEn: 'Exit to the Cathedral network (Cloudflare) — only when the Sovereign turns it on.' },
   ],
   edges: [
-    // Rdzeń spina się ze wszystkim
-    { from: 'ollama', to: 'bridge' }, { from: 'bridge', to: 'mechanik' },
+    // Rdzeń
+    { from: 'ollama', to: 'bridge' }, { from: 'bridge', to: 'stado' }, { from: 'dyrygent', to: 'stado' },
+    { from: 'ollama', to: 'dyrygent' }, { from: 'glowny', to: 'bridge' }, { from: 'mechanik', to: 'bridge' },
     // Zmysły → rdzeń
-    { from: 'koom', to: 'bridge' }, { from: 'podcast', to: 'bridge' }, { from: 'scout', to: 'bridge' },
-    { from: 'koom', to: 'mechanik' }, { from: 'podcast', to: 'ollama' },
+    { from: 'stol', to: 'stado' }, { from: 'mowa', to: 'bridge' }, { from: 'zwiadowca', to: 'dyrygent' },
+    { from: 'jev', to: 'dyrygent' }, { from: 'jev', to: 'kodeks' },
     // Rdzeń → działanie
-    { from: 'ollama', to: 'kronos' }, { from: 'ollama', to: 'video' },
-    { from: 'bridge', to: 'ted' }, { from: 'bridge', to: 'music' }, { from: 'bridge', to: 'video' },
-    // Tarcza pilnuje rdzenia i działania
-    { from: 'shield', to: 'mechanik' }, { from: 'shield', to: 'bridge' },
-    { from: 'vault', to: 'bridge' }, { from: 'quantum', to: 'bridge' },
-    { from: 'ted', to: 'kronos' },
+    { from: 'stado', to: 'kodeks' }, { from: 'ollama', to: 'kodeks' },
+    { from: 'bridge', to: 'obraz' }, { from: 'bridge', to: 'wideo' }, { from: 'bridge', to: 'bryly' },
+    { from: 'bridge', to: 'glos' }, { from: 'bridge', to: 'muzyka' },
+    { from: 'obraz', to: 'bryly' }, { from: 'obraz', to: 'wideo' }, { from: 'glos', to: 'usta' },
+    // Tarcza
+    { from: 'tarcza', to: 'mechanik' }, { from: 'tarcza', to: 'kodeks' }, { from: 'straz', to: 'bridge' },
+    { from: 'ksiega', to: 'bridge' }, { from: 'tunel', to: 'straz' },
   ],
 };
 

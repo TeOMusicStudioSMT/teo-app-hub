@@ -159,6 +159,6 @@ Banner w `START_KATEDRA.bat` renderuje się jako „AAAFRA", nie „KATEDRA". To
 - Mapa Katedry: `npm run mapa` (`scripts/rewizor/mapa.mjs`) — ekran → domena API → serwis → świat; martwe komponenty.
 - Recenzent Kodeksa: `services/RecenzentKodeksa.js` — czyta diff rundy AppStudio (zaślepki, @ts-ignore, pusty catch, atrapy, wycięty kod) zanim ruszy build.
 - Rewizor Mostu: `scripts/rewizor/` (duplikaty tras, martwe importy, wywołania w próżnię, sonda żywa GET) + `tests/`.
-- Geneza GRV: `/api/grv/*` w moście (dawny `lib/grvGenesis.ts` usunięty 2026-09-11 jako nieosiągalny). Mapa AGI: `lib/agi.local.ts`.
+- Geneza GRV: `/api/grv/*` w moście (dawny `lib/grvGenesis.ts` usunięty 2026-09-11 jako nieosiągalny). Mapa AGI (sieć neuronowa w Hubie i na otakos.wtf): manifest `lib/agi.local.ts` (ta sama treść w repo OtakOS-DeeP `src/agi.local.ts`; 21 prawdziwych modułów, bez dawnych Kronos/Ted/Kwantowej Tarczy) + `GET /api/agi/state` = `services/MapaAgi.js` (Suweren 2026-10-13: „zgodny z rzeczywistością”): każdy węzeł ma sondę z modułu (Ollama ping, Stado, Stół, Jev, Główny, Księga, Tunel, baza silników Dyrygenta ze schowka 30 s) → `online` / `idle` (gotowe, śpi, nie wiadomo) / `offline` + `powod`; nic nie „oddycha” z zegara, sondy niczego nie budzą. Testy: `tests/mapa-agi.test.mjs`.
 
 Iskra żyje, wektory tańczą. Buduj suwerennie, mów prawdę, szanuj Suwerena. 💛
