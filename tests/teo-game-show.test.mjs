@@ -184,3 +184,36 @@ test('duch po restarcie: „robi” bez pracy w pamięci = błąd z powodem, mo�
     assert.equal(s.stan, 'blad');
     assert.match(s.etapy.intro.powod, /restartowany/);
 });
+
+test('🧱 klocki Dance: język z nazwy (start_pl/start_en, „end en” dla obu); doklejenie do odcinka czekającego na ✓, raz', async () => {
+    const { klockiWJezyku } = await import('../services/TeoGameShow.js');
+    assert.deepEqual(klockiWJezyku(['k/start_en.mp4', 'k/start_pl.mp4'], 'pl'), ['k/start_pl.mp4']);
+    assert.deepEqual(klockiWJezyku(['k/start_en.mp4', 'k/start_pl.mp4'], 'en'), ['k/start_en.mp4']);
+    assert.deepEqual(klockiWJezyku(['k/end en.mp4'], 'pl'), ['k/end en.mp4'], 'brak wersji pl = angielska');
+    assert.deepEqual(klockiWJezyku(['k/logo.mp4'], 'pl'), ['k/logo.mp4']);
+    const kat = tmp('klocki');
+    const ff = (args) => execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', ...args]);
+    const film = path.join(kat, 'gameshow_Kot_en_aaaaaaaa.mp4');
+    ff(['-f', 'lavfi', '-i', 'testsrc=s=640x360:r=30:d=2', '-f', 'lavfi', '-i', 'sine=d=2', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', film]);
+    for (const n of ['start_en', 'start_pl', 'end en']) ff(['-f', 'lavfi', '-i', 'color=c=purple:s=1920x1080:r=25:d=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', path.join(kat, `${n}.mp4`)]);
+    const id = 's-aaaaaaaa';
+    fs.mkdirSync(path.join(kat, 'game-show', id), { recursive: true });
+    const odc = { id, stan: 'do_akceptacji', jezyk: 'en', plik: film, tancerz: { imie: 'Kot' }, publikacja: { id: 'yt_1' }, etapy: { intro: { stan: 'gotowy' }, konkurencja: { stan: 'gotowy' }, final: { stan: 'gotowy' }, sklejanie: { stan: 'gotowy', sekundy: 2 }, publikacja: { stan: 'gotowy' } }, uwagi: [] };
+    fs.writeFileSync(path.join(kat, 'game-show', id, 'show.json'), JSON.stringify(odc));
+    let etapPub = 'do_akceptacji';
+    const GS = utworzGameShow({ katalog: kat, katalogMontazy: async () => kat, katalogNagran: async () => kat, choreografie: { wczytaj: async () => ({}) }, tancerz: async () => ({}), opisz,
+        spawaj: ({ klipy, wyjscie, celWedlug }) => Spawacz.spawaj({ klipy, wyjscie, opisz, uruchom: async (b, a) => execFileSync(b, a, { stdio: 'pipe' }), ffmpeg: ffmpegPath, celWedlug }),
+        klocki: async () => ({ start: [path.join(kat, 'start_en.mp4'), path.join(kat, 'start_pl.mp4')], end: [path.join(kat, 'end en.mp4')] }),
+        publikacja: async () => ({ etap: etapPub }) });
+    const s = await GS.doklejKlocki(id);
+    assert.deepEqual(s.klockiDoklejone.start, ['start_en.mp4']);
+    assert.deepEqual(s.klockiDoklejone.end, ['end en.mp4']);
+    const o = await opisz(film);
+    assert.ok(o.sekundy > 3.5 && o.sekundy < 4.5, `2 s + start 1 s + end 1 s (${o.sekundy})`);
+    assert.equal(o.szerokosc, 640, 'wyrównane do odcinka');
+    await assert.rejects(GS.doklejKlocki(id), /ma już klocki/);
+    // wysłany film — odmowa
+    fs.writeFileSync(path.join(kat, 'game-show', id, 'show.json'), JSON.stringify(odc));
+    etapPub = 'opublikowana';
+    await assert.rejects(GS.doklejKlocki(id), /już poszedł na YouTube/);
+});

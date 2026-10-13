@@ -15061,6 +15061,7 @@ const GameShow = utworzGameShow({
     okresy: () => Choreografie.okresy(),
     publikuj: (z) => PublikacjeYT.przygotuj(z),
     odrzucPublikacje: (id) => PublikacjeYT.odrzuc(id),
+    publikacja: async (id) => (await PublikacjeYT.wszystkie()).find((x) => x.id === id) ?? null,
     playlistaRss: (id) => KanalYT.playlista(id),
     ffmpeg: ffmpegPath,
     szyna: Szyna,
@@ -15074,6 +15075,8 @@ app.get('/api/game-show/:id', (req, res) => ytOdp(res, GameShow.wczytaj(req.para
 /** { choreografia, nagranie?, bezIntro? } — odcinek z nagrania (most robi to sam po zapisie nagrania). */
 app.post('/api/game-show', (req, res) => ytOdp(res, GameShow.utworz(String(req.body?.choreografia ?? ''), req.body?.nagranie, { bezIntro: req.body?.bezIntro === true, jezyk: req.body?.jezyk || null }).then((odcinek) => ({ odcinek }))));
 app.post('/api/game-show/:id/ponow', (req, res) => ytOdp(res, GameShow.ponow(req.params.id, { bezIntro: req.body?.bezIntro === true, jezyk: req.body?.jezyk || null }).then((odcinek) => ({ odcinek }))));
+/** 🧱 Klocki Dance (Start/End w języku odcinka) doklejone do gotowego odcinka czekającego na ✓ — ten sam plik, opis zostaje. */
+app.post('/api/game-show/:id/klocki', (req, res) => ytOdp(res, GameShow.doklejKlocki(req.params.id).then((odcinek) => ({ odcinek }))));
 app.delete('/api/game-show/:id', (req, res) => ytOdp(res, GameShow.usun(req.params.id).then((usuniety) => ({ usuniety }))));
 /** { jezyk: 'en'|'pl' } — język nowych odcinków (domyślnie en). */
 app.put('/api/game-show/ustawienia', (req, res) => ytOdp(res, (async () => {

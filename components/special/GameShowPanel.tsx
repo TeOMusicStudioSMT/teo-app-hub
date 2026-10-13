@@ -17,7 +17,7 @@ async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
 
 interface Etap { stan: string; powod?: string }
 interface Odcinek {
-    id: string; stan: string; powod: string | null; jezyk?: string; utworzono: string; plik: string | null; uwagi: string[];
+    id: string; stan: string; powod: string | null; jezyk?: string; klockiDoklejone?: { start: string[]; end: string[] }; utworzono: string; plik: string | null; uwagi: string[];
     tancerz: { imie: string }; utwor: { tytul: string; bpm: number | null }; ocena: { wynik: number }; konkurencja: { nazwa: string };
     etapy: Record<string, Etap>; publikacja: { id: string; tytul: string | null; kanalNazwa: string | null } | null;
 }
@@ -103,6 +103,8 @@ export const GameShowPanel: React.FC = () => {
                             {o.publikacja?.tytul && <div className="mt-1 text-[10px] text-slate-400">✍️ „{o.publikacja.tytul}”{o.publikacja.kanalNazwa ? ` → ${o.publikacja.kanalNazwa}` : ''}</div>}
                             <div className="mt-1 flex gap-2">
                                 {['blad', 'do_akceptacji'].includes(o.stan) && Object.keys(FLAGA).filter((j) => j !== (o.jezyk ?? 'pl')).map((j) => <button key={j} onClick={() => confirm(`Przerobić odcinek na ${j === 'en' ? 'angielski' : 'polski'}? Intro zostaje, plansze, wywiad i opis Kronikarza powstaną od nowa, a obecna publikacja (jeśli czeka na ✓) pójdzie do odrzuconych.`) && void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { jezyk: j }, 'Przerabiam odcinek — intro zostaje.')} className="rounded bg-sky-700/40 px-2 py-0.5 text-sky-100">{FLAGA[j]} przerób {j === 'en' ? 'po angielsku' : 'po polsku'}</button>)}
+                                {o.stan === 'do_akceptacji' && !o.klockiDoklejone && !((o.etapy.sklejanie as Etap & { klocki?: { start: number; end: number } })?.klocki?.start || (o.etapy.sklejanie as Etap & { klocki?: { start: number; end: number } })?.klocki?.end) && <button onClick={() => void wolaj(`/api/game-show/${o.id}/klocki`, 'POST', {}, 'Klocki Start/End doklejone — publikacja czeka na ✓ z nowym plikiem.')} className="rounded bg-violet-700/40 px-2 py-0.5 text-violet-100">🧱 doklej klocki Dance</button>}
+                                {o.klockiDoklejone && <span className="text-[10px] text-violet-300">🧱 {[...o.klockiDoklejone.start, ...o.klockiDoklejone.end].join(' + ')}</span>}
                                 {o.stan === 'blad' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', {}, 'Ponawiam od etapu, który stanął.')} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-100">↻ Ponów</button>}
                                 {o.stan === 'blad' && o.etapy.intro?.stan === 'blad' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { bezIntro: true }, 'Składam odcinek bez intro.')} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-100">bez intro</button>}
                                 {!['robi', 'w_kolejce'].includes(o.stan) && <button onClick={() => confirm('Usunąć odcinek (pliki robocze)? Gotowy film w montażach i publikacja zostają.') && void wolaj(`/api/game-show/${o.id}`, 'DELETE', {}, 'Usunięty.')} className="ml-auto text-[10px] text-slate-600 hover:text-rose-300">✕</button>}

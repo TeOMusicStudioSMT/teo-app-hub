@@ -135,6 +135,20 @@ export function kontekstKronikarza(s) {
     ].join('\n');
 }
 
+/**
+ * Klocki w języku odcinka (Suweren 2026-10-13: „Klocki Dance… start ma wersje pl i en, end na razie tylko en”): plik
+ * z językiem w nazwie (`start_pl`, `end en`) idzie tylko do swojego języka; brak wersji w języku odcinka = angielska,
+ * potem jakakolwiek; klocek bez języka w nazwie idzie zawsze. Czysta.
+ */
+export function klockiWJezyku(pliki = [], jezyk = 'en') {
+    const jez = (f) => path.basename(f).replace(/\.[^.]+$/, '').toLowerCase().match(/(?:^|[\s_.-])(pl|en)$/)?.[1] ?? null;
+    const bez = pliki.filter((f) => !jez(f));
+    const z = pliki.filter((f) => jez(f));
+    if (!z.length) return bez;
+    for (const j of [jezykShow(jezyk), 'en']) { const t = z.filter((f) => jez(f) === j); if (t.length) return [...bez, ...t].sort((a, b) => pliki.indexOf(a) - pliki.indexOf(b)); }
+    return pliki;
+}
+
 const nowyEtap = () => Object.fromEntries(ETAPY.map((e) => [e, { stan: 'czeka' }]));
 
 /**
@@ -145,7 +159,7 @@ const nowyEtap = () => Object.fromEntries(ETAPY.map((e) => [e, { stan: 'czeka' }
  *   mow?:(o:{tekst:string, kto:'prowadzacy'|'stworek', jezyk:string})=>Promise<{audio:Buffer, ext:string}>,
  *   opisz:(p:string)=>Promise<{sekundy:number|null}>, spawaj:(o:{klipy:string[], wyjscie:string, celWedlug:number})=>Promise<any>,
  *   klocki?:()=>Promise<{start:string[], end:string[]}>, okresy?:()=>any[], publikuj?:(z:object)=>Promise<any>,
- *   odrzucPublikacje?:(id:string)=>Promise<any>, playlistaRss?:(id:string)=>Promise<{tytul:string, filmy:any[], blad?:string}>, ffmpeg?:string, szyna?:any, teraz?:()=>number }} o
+ *   odrzucPublikacje?:(id:string)=>Promise<any>, publikacja?:(id:string)=>Promise<{etap:string}|null>, playlistaRss?:(id:string)=>Promise<{tytul:string, filmy:any[], blad?:string}>, ffmpeg?:string, szyna?:any, teraz?:()=>number }} o
  */
 export function utworzGameShow(o) {
     const cfg = { ffmpeg: 'ffmpeg', teraz: () => Date.now(), modelDla: async () => null, okresy: () => [], klocki: async () => ({ start: [], end: [] }), ...o };
@@ -364,7 +378,8 @@ export function utworzGameShow(o) {
 
             // 5. SKLEJENIE — klocki Start → intro → konkurencja → występ → finał → End (wyrównanie do występu)
             if (!(await zrob('sklejanie', async () => {
-                const k = await cfg.klocki().catch(() => ({ start: [], end: [] }));
+                const kk = await cfg.klocki().catch(() => ({ start: [], end: [] }));
+                const k = { start: klockiWJezyku(kk.start, jez), end: klockiWJezyku(kk.end, jez) };
                 const intro = s.etapy.intro.stan === 'gotowy' && s.etapy.intro.plik && fsSync.existsSync(s.etapy.intro.plik) ? [s.etapy.intro.plik] : [];
                 const klipy = [...k.start, ...intro, s.etapy.konkurencja.plik, s.nagranie.plik, s.etapy.final.plik, ...k.end];
                 const kat = await cfg.katalogMontazy(PROJEKT);
@@ -425,6 +440,33 @@ export function utworzGameShow(o) {
         zakolejkuj(id);
         return s;
     }
+    /**
+ * 🧱 Klocki Start/End doklejone do GOTOWEGO odcinka czekającego na ✓ (Suweren 2026-10-13: „dodaj te klocki do czekających
+ * publikacji”): Start + odcinek + End → ten sam plik (publikacja i opis Kronikarza zostają). Wysłany film = odmowa
+ * (YouTube nie podmienia filmu). Drugi raz = odmowa (klocki byłyby podwójnie).
+ */
+    async function doklejKlocki(id) {
+        const s = await wczytaj(id);
+        if (wRobocie.has(id)) throw new Error('Ten odcinek jest w pracy.');
+        if (s.stan !== 'do_akceptacji' || !s.plik || !fsSync.existsSync(s.plik)) throw new Error('Klocki doklejam tylko do gotowego odcinka, który czeka na ✓.');
+        if (s.klockiDoklejone || (s.etapy.sklejanie?.klocki && (s.etapy.sklejanie.klocki.start || s.etapy.sklejanie.klocki.end))) throw new Error('Ten odcinek ma już klocki.');
+        const pub = s.publikacja?.id && cfg.publikacja ? await cfg.publikacja(s.publikacja.id).catch(() => null) : null;
+        if (pub && !['do_akceptacji', 'blad', 'przygotowuje'].includes(pub.etap)) throw new Error('Ten odcinek już poszedł na YouTube — wysłanego filmu YouTube nie podmienia.');
+        const jez = jezykShow(s.jezyk ?? 'pl');
+        const kk = await cfg.klocki();
+        const k = { start: klockiWJezyku(kk.start, jez), end: klockiWJezyku(kk.end, jez) };
+        if (!k.start.length && !k.end.length) throw new Error('W katalogu klocków nie ma Start ani End.');
+        const tmp = s.plik.replace(/\.mp4$/i, '.z-klockami.mp4');
+        await cfg.spawaj({ klipy: [...k.start, s.plik, ...k.end], wyjscie: tmp, celWedlug: k.start.length });
+        await fs.rename(tmp, s.plik);
+        const opis = await cfg.opisz(s.plik).catch(() => null);
+        Object.assign(s, { klockiDoklejone: { start: k.start.map((f) => path.basename(f)), end: k.end.map((f) => path.basename(f)), kiedy: czas() } });
+        if (opis?.sekundy && s.etapy.sklejanie) s.etapy.sklejanie.sekundy = opis.sekundy;
+        await pisz(s);
+        nadaj(`klocki Start/End doklejone do odcinka „${s.tancerz.imie}” (${jez})`);
+        return s;
+    }
+
     async function usun(id) {
         if (wRobocie.has(id)) throw new Error('Odcinek jest w pracy — poczekaj na koniec albo błąd.');
         await wczytaj(id);
@@ -432,7 +474,7 @@ export function utworzGameShow(o) {
         return true;
     }
 
-    return { lista, wczytaj, utworz, ponow, usun, ustawienia, ustaw, publiczne, wRobocie: (id) => wRobocie.has(id), czekaj: () => kolejka };
+    return { lista, wczytaj, utworz, ponow, doklejKlocki, usun, ustawienia, ustaw, publiczne, wRobocie: (id) => wRobocie.has(id), czekaj: () => kolejka };
 }
 
 /** Inne sieci społecznościowe: uczciwa lista „niepodłączone” z powodem (bez atrap). */
