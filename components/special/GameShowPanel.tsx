@@ -25,6 +25,9 @@ interface Kanal { kanalId: string | null; kanalNazwa: string | null; zapamietany
 interface Stan { odcinki: Odcinek[]; kanal: Kanal; inneSieci: { siec: string; stan: string; powod: string }[]; instrukcja: string[]; automat: boolean; ustawienia?: { jezyk: string; playlista: string | null; playlistaTytul: string | null; playlistaKanal: string | null }; jezyki?: Record<string, string> }
 const FLAGA: Record<string, string> = { en: '🇬🇧', pl: '🇵🇱' };
 interface KanalYT { id: string; nazwa: string }
+interface UtworSuno { id: string; tytul: string; sekundy: number | null; bpm: number | null; stan: string; powod?: string; plik?: string }
+interface AlbumSunoStan { album: string | null; nazwa?: string; katalog?: string; utwory?: UtworSuno[]; sprawdzono?: string; blad?: string | null }
+const ZNAK_SUNO: Record<string, string> = { 'na-dysku': '✓', pobrany: '⬇ nowy', prywatny: '🔒 prywatny' };
 
 const ETAPY: [string, string][] = [['intro', '🎬 intro'], ['konkurencja', '🏷️ konkurencja'], ['final', '🏆 finał'], ['sklejanie', '🧱 sklejenie'], ['publikacja', '✍️ Kronikarz']];
 const ZNAK: Record<string, string> = { czeka: '·', robi: '⏳', gotowy: '✓', blad: '⚠', pominiety: '—' };
@@ -36,10 +39,14 @@ export const GameShowPanel: React.FC = () => {
     const [kanaly, setKanaly] = useState<KanalYT[]>([]);
     const [pokaz, setPokaz] = useState(false);
     const [playlista, setPlaylista] = useState('');
+    const [album, setAlbum] = useState<AlbumSunoStan | null>(null);
+    const [albumLink, setAlbumLink] = useState('');
+    const [synchro, setSynchro] = useState(false);
     const odswiez = useCallback(async () => {
         try { setS(await zMostu<Stan>('/api/game-show')); setBlad(null); }
         catch (e) { setBlad(/HTTP 404/.test(String(e)) ? 'Most sprzed restartu — zrestartuj Katedrę, żeby włączyć TeO Game Show.' : String(e instanceof Error ? e.message : e)); }
         try { setKanaly((await zMostu<{ kanaly: KanalYT[] }>('/api/youtube/kanaly')).kanaly); } catch { /* bez kanałów */ }
+        try { setAlbum((await zMostu<{ album: AlbumSunoStan }>('/api/suno-album')).album); } catch { /* most bez albumu Suno */ }
     }, []);
     useEffect(() => { void odswiez(); const t = setInterval(odswiez, 15_000); return () => clearInterval(t); }, [odswiez]);
     const wolaj = async (sciezka: string, metoda: string, cialo: object, ok: string) => {
@@ -77,6 +84,18 @@ export const GameShowPanel: React.FC = () => {
                         </select>
                         <span className="text-slate-500">{s.kanal.kanalNazwa ? `→ ${s.kanal.kanalNazwa}` : 'YouTube niepołączony'}</span>
                     </label>
+                    <div className="mb-2 rounded border border-white/5 bg-black/20 p-2 text-[10px] text-slate-400">
+                        <div className="flex flex-wrap items-center gap-2">🎵 Album Suno do tańca:
+                            {album?.album
+                                ? <><a href={`https://suno.com/album/${album.album}`} target="_blank" rel="noreferrer" className="text-amber-200 underline">{album.nazwa || album.album}</a>
+                                    <span className="text-slate-500">→ biblioteka „{album.katalog ?? '…'}” (choreografia i wszystkie tryby Tanecznego Starcia)</span>
+                                    <button disabled={synchro} onClick={async () => { setSynchro(true); try { setAlbum((await zMostu<{ album: AlbumSunoStan }>('/api/suno-album/synchronizuj', { method: 'POST', body: '{}' })).album); } catch (e) { toast.error(String(e instanceof Error ? e.message : e)); } finally { setSynchro(false); } }} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-100">{synchro ? '⏳' : '↻ synchronizuj'}</button></>
+                                : <><input value={albumLink} onChange={(ev) => setAlbumLink(ev.target.value)} placeholder="https://suno.com/album/…" className="min-w-[260px] rounded border border-slate-700 bg-black/40 px-1.5 py-0.5 text-slate-200" />
+                                    <button disabled={!albumLink.trim()} onClick={() => void wolaj('/api/suno-album', 'PUT', { album: albumLink.trim() }, 'Album Suno podpięty — utwory idą do biblioteki.').then(() => setAlbumLink(''))} className="rounded bg-amber-600/30 px-2 py-0.5 text-amber-100">podepnij</button></>}
+                        </div>
+                        {album?.blad && <div className="text-amber-300">⚠ {album.blad}</div>}
+                        {(album?.utwory ?? []).map((u) => <div key={u.id} title={u.powod ?? u.plik ?? ''} className={u.stan === 'prywatny' ? 'text-amber-300' : 'text-slate-400'}>{ZNAK_SUNO[u.stan] ?? u.stan} {u.tytul}{u.sekundy ? ` · ${Math.floor(u.sekundy / 60)}:${String(u.sekundy % 60).padStart(2, '0')}` : ''}{u.bpm ? ` · ${u.bpm} BPM` : ''}{u.powod ? ` — ${u.powod}` : ''}</div>)}
+                    </div>
                     {pokaz && (
                         <div className="mb-2 rounded border border-white/5 bg-black/30 p-2 text-[10px] text-slate-400">
                             <b className="text-slate-300">Dedykowany kanał (zakładasz Ty — API YouTube nie zakłada kanałów):</b>

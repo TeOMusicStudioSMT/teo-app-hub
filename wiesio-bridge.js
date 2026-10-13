@@ -229,6 +229,7 @@ import { utworzKontoYouTube, SCIEZKA_ZWROTU as ZWROT_YOUTUBE } from './services/
 import { utworzPublikacje } from './services/PublikacjeYouTube.js';
 import { utworzWywiady, prowadzacyZObsady } from './services/WywiadAktorow.js';
 import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
+import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzGlebie } from './services/GlebiaKadru.js';
 import { utworzUsta } from './services/UstaAktorow.js';
@@ -8490,6 +8491,13 @@ const Kompozytor = utworzKompozytora({
     szyna: Szyna,
 });
 zamontujTrasyKompozytora(app, { kompozytor: Kompozytor });
+// 🎵 Album Suno → biblioteka muzyki (services/AlbumSuno.js): utwory z albumu Suwerena same lądują w _OtakOs_Muzyka/Suno <album>/
+// — podkład dla wszystkich trybów Tanecznego Starcia. Prywatny utwór Suno nie oddaje pliku — stan „prywatny” z radą.
+const AlbumSuno = utworzAlbumSuno({ katalog: ANTIGRAVITY_DIR, katalogMuzyki: MUSIC_DIR, szyna: Szyna });
+AlbumSuno.startPetli();
+app.get('/api/suno-album', (_req, res) => ytOdp(res, AlbumSuno.stan().then((album) => ({ album })), 500));
+app.put('/api/suno-album', (req, res) => ytOdp(res, AlbumSuno.ustaw(req.body?.album || null).then((album) => ({ album }))));
+app.post('/api/suno-album/synchronizuj', (_req, res) => ytOdp(res, AlbumSuno.synchronizuj().then((album) => ({ album }))));
 app.get('/api/rytm/utwory', (_req, res) => ytOdp(res, RytmUtworu.utwory().then((utwory) => ({ utwory }))));
 app.get('/api/rytm', (req, res) => ytOdp(res, RytmUtworu.analizuj(String(req.query.plik ?? '')).then((rytm) => ({ rytm }))));
 

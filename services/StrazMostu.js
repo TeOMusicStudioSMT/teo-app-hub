@@ -59,6 +59,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/system/free',   // zamyka procesy na maszynie
     '/api/choreografie', '/api/taniec/',   // 🩰 choreografie, nagrania występów i zgłoszenia do turniejów — przy maszynie
     '/api/game-show',   // 🎪 odcinki TeO Game Show (GPU, ffmpeg) i kanał programu — przy maszynie; ✓ publikacji zostaje w Izbie
+    '/api/suno-album',   // 🎵 album Suno pobiera pliki do biblioteki muzyki — przy maszynie
     // Stado należy do Katedry: telefon (StoL) PATRZY — nie publikuje migawki, nie paruje
     // innych urządzeń i nie odłącza ich. Jego jedyne zdalne wejście to /api/stado/paruj.
     '/api/stado/publikuj', '/api/stado/parowanie', '/api/stado/odlacz',
