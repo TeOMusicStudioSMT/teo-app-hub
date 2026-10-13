@@ -183,3 +183,10 @@ test('trasy: zapis, nagranie surowym ciałem, turnieje i zgłoszenie', async () 
         assert.equal((await j(`/api/choreografie/${id}`, { method: 'DELETE' })).usunieta, true);
     } finally { srv.close(); await fs.rm(kat, { recursive: true, force: true }); }
 });
+
+test('oczyscRuchy: tancerz z 85 klipami z riga — wszystkie zostają (dawny limit 40 odrzucał układ)', async () => {
+    const { oczyscRuchy, MAX_RUCHOW } = await import('../services/Choreografie.js');
+    const r = oczyscRuchy(Array.from({ length: 85 }, (_, i) => ({ nazwa: `Ruch ${i}`, sek: 2, moc: 1 })));
+    assert.equal(r.length, 85);
+    assert.ok(MAX_RUCHOW >= 85);
+});

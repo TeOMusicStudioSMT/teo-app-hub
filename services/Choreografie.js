@@ -25,7 +25,7 @@ import crypto from 'crypto';
 
 export const FRAZY = [4, 8, 16];
 export const MAX_FRAZ = 96;
-export const MAX_RUCHOW = 40;
+export const MAX_RUCHOW = 128;   // Kot/TeO CaT ma 85 klipów z riga — dawne 40 ucinało listę i zapis odrzucał układ
 export const UDERZENIA_KLIPU = [1, 2, 3, 4, 6, 8, 12, 16];
 export const WAGI = { takt: 0.4, energia: 0.35, roznorodnosc: 0.25 };
 export const PROJEKT = 'taneczne-starcie';
