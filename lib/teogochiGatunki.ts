@@ -224,6 +224,17 @@ export const GATUNKI: Gatunek[] = [
         zadania: ['JaJo, czego nauczyłeś się z moich poprawek?', 'JaJo, spisz zasady mojego stylu', 'JaJo, ile brakuje do wyklucia?'],
     },
     {
+        // 🏛️⚡ Suweren (2026-10-13): „Kompozytor i Producent TeO Game Show [Domena: Bam]… motywy taneczne 124–128 BPM
+        // łączące organowe basy z electro… Staccato, Drop, Build-up… gotowe osie czasu, markery i prompty”.
+        // services/JajoKompozytora.js — oś czasu w JSON (sprawdzana) → Bazylika (zamówienie), choreografia, PvP rytmiczny.
+        id: 'kompozytor', imie: 'JaJo Kompozytor', dziedzina: 'Aranżacje taneczne i oprawa TeO Game Show',
+        opis: 'Układa osie czasu utworów tanecznych (Intro, Staccato, Build-up, Drop, Outro) z ruchami TeOgochi, światłami ekranów LED i promptem dla generatora muzyki — 🏛️⚡ organy + electro.',
+        formy: { 'jajko': '🥚', 'pisklę': '🎹', 'młodzik': '🔥', 'kompan': '👾', 'legenda': '🏛️' },
+        kolor: '#a855f7',
+        narzedzia: ['/api/kompozytor', '/api/kompozytor/komponuj', '/api/kompozytor/os/:id/zamow', '/api/kompozytor/dla'],
+        zadania: ['Kompozytorze, ułóż oś do tego utworu', 'Kompozytorze, zamów u Joanny utwór 126 BPM z dropem', 'Kompozytorze, gdzie w utworze jest Drop?'],
+    },
+    {
         // 🎭 Suweren (2026-10-03): „moi aktorzy i scenografia… interaktywni aktorzy, którzy opowiadają o swym najnowszym
         // dziele, filmie, który właśnie złożyliśmy na YT… można powołać TeOgochi Aktora". services/WywiadAktorow.js —
         // obsada (zdjęcie, rola, głos) → scenariusz wywiadu z faktów projektu → nagranie → katalog montaży projektu.

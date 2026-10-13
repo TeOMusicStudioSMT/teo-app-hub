@@ -91,12 +91,16 @@ export function utworzBazylike({ katalogMuzyki, katalog, ffmpeg, uruchom, pisz =
     }
     async function zapiszZam() { await fs.mkdir(katalog, { recursive: true }); await fs.writeFile(PLIK_ZAMOWIEN, JSON.stringify(zamowienia.slice(-50), null, 2)); }
 
-    async function zamow({ opis, bpm = 124, sekundy = 90, styl = '' } = {}) {
+    /** `prompt` = gotowe tagi (🏛️⚡ JaJo Kompozytor) — Joanna wtedy nie pisze, `os` = id osi czasu Kompozytora. */
+    async function zamow({ opis, bpm = 124, sekundy = 90, styl = '', prompt = '', os = null } = {}) {
         const o = tekst(opis, 400);
         if (o.length < 3) throw new Error('Opisz utwór (co najmniej kilka słów).');
         await wczytajZam();
         if (zamowienia.filter((z) => ['czeka', 'pisze', 'gra'].includes(z.stan)).length >= 3) throw new Error('Joanna ma już 3 utwory w kolejce — poczekaj, aż skończy.');
         const z = { id: `zam-${Date.now().toString(36)}`, opis: o, styl: tekst(styl, 40), bpm: Math.round(Math.min(180, Math.max(70, Number(bpm) || 124))), sekundy: Math.round(Math.min(240, Math.max(20, Number(sekundy) || 90))), stan: 'czeka', utworzono: new Date().toISOString() };
+        const gotowy = oczyscPrompt(prompt);
+        if (gotowy.length >= 10) z.promptGotowy = gotowy;
+        if (typeof os === 'string' && /^o-[0-9a-f]{8}$/.test(os)) z.os = os;
         zamowienia.push(z);
         await zapiszZam();
         const kopia = { ...z };
@@ -108,17 +112,17 @@ export function utworzBazylike({ katalogMuzyki, katalog, ffmpeg, uruchom, pisz =
         const zmien = async (d) => { Object.assign(z, d); await zapiszZam(); };
         try {
             await zmien({ stan: 'pisze' });
-            let prompt = '';
-            if (pisz) {
+            let prompt = z.promptGotowy ?? '';
+            if (!prompt && pisz) {
                 try {
                     prompt = oczyscPrompt(await pisz(
                         'Jesteś Joanną, producentką muzyczną Katedry. Zamieniasz opis utworu na JEDNĄ linię tagów po angielsku dla generatora muzyki (gatunek, nastrój, instrumenty, tempo w bpm, „instrumental” jeśli bez śpiewu). Zwróć SAMĄ linię tagów.',
                         `Opis Suwerena: ${z.opis}\nStyl: ${z.styl || 'taneczny'}\nTempo: ${z.bpm} bpm\nUtwór do tańca TeOgochi na wyspie Teterhii.`));
                 } catch { prompt = ''; }
             }
-            const zModelu = prompt.length >= 10;
-            if (!zModelu) prompt = szablonPromptu(z);
-            await zmien({ stan: 'gra', prompt, promptOdJoanny: zModelu });
+            const zModelu = !z.promptGotowy && prompt.length >= 10;
+            if (prompt.length < 10) prompt = szablonPromptu(z);
+            await zmien({ stan: 'gra', prompt, promptOdJoanny: zModelu, promptOdKompozytora: !!z.promptGotowy });
             const g = await most('/api/music/generate', { prompt, lyrics: '', duration: z.sekundy, bpm: z.bpm });
             if (!g?.promptId) throw new Error(g?.message || 'Generator muzyki nie przyjął zlecenia.');
             await zmien({ promptId: g.promptId, silnik: g.engine ?? null });

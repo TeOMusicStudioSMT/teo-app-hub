@@ -94,6 +94,7 @@ import { utworzBestiariusz } from './services/Bestiariusz.js';
 import { utworzPaczkiGier, zamontujTrasyGier } from './services/PaczkiGier.js';
 import { zamontujTrasyRingu } from './services/RingTaneczny.js';
 import { utworzBazylike } from './services/BazylikaDzwieku.js';
+import { utworzKompozytora, zamontujTrasyKompozytora } from './services/JajoKompozytora.js';
 import { rodzinyZRuchem } from './services/MiniZRuchem.js';
 import { utworzChoreografie, zamontujTrasyChoreografii } from './services/Choreografie.js';
 import { odchudzBryle, CEL_SCIAN, MAKS_TEKSTURY } from './services/LekkieBryly.js';
@@ -509,6 +510,8 @@ app.use('/swiat', cors({ origin: '*' }), htmlZTlumaczem(path.join(__dirname, 'pu
 // Strona parowania StoL-a z QR (public/stol/paruj.html): aparaty otwierają z QR tylko https, nie otakos-stol://.
 // Statyczna, bez sekretów — klucz i kod jadą we fragmencie adresu (#…), którego przeglądarka nie wysyła.
 app.use('/stol', express.static(path.join(__dirname, 'public', 'stol')));
+// 🏛️⚡ ikona JaJa Kompozytora dla apek na moście (Bazylika w Teterhii, Taneczne Starcie) — Hub ma ją z public/ Vite.
+app.use('/kompozytor', express.static(path.join(__dirname, 'public', 'kompozytor')));
 // three.js dla trybu 3D świata — tylko build/ i examples/jsm/ z node_modules (ta sama wersja co Games Studio).
 app.use('/swiat/three/build', express.static(path.join(__dirname, 'node_modules', 'three', 'build')));
 app.use('/swiat/three/examples/jsm', express.static(path.join(__dirname, 'node_modules', 'three', 'examples', 'jsm')));
@@ -8476,6 +8479,17 @@ app.get('/api/bazylika', async (_req, res) => { try { res.json({ success: true, 
 app.post('/api/bazylika/bit', (req, res) => ytOdp(res, Bazylika.zapiszBit(req.body ?? {}).then((bit) => ({ bit }))));
 app.post('/api/bazylika/zamow', (req, res) => ytOdp(res, Bazylika.zamow(req.body ?? {}).then((zamowienie) => ({ zamowienie }))));
 app.post('/api/bazylika/album', (req, res) => ytOdp(res, Bazylika.album(req.body ?? {}).then((album) => ({ album }))));
+// 🏛️⚡ JaJo Kompozytor (services/JajoKompozytora.js) — oś czasu utworu tanecznego (sekcje w taktach, ruchy, sceny LED,
+// prompt) na modelu przydziału `kompozytor`; zamówienie u Joanny z promptem Kompozytora; poprawki Suwerena = pary pod trening.
+const Kompozytor = utworzKompozytora({
+    katalog: path.join(ANTIGRAVITY_DIR, 'jajo-kompozytora'),
+    katalogKuzni: path.join(ANTIGRAVITY_DIR, 'kuznia-soup'),
+    pisz: async ({ system, prompt }) => { const w = await piszModelem(Mozg.modelRoli('kompozytor'), system, prompt, { temperatura: 0.6, json: true }); return { tekst: w.tekst, model: w.silnik }; },
+    rytm: (plik) => RytmUtworu.analizuj(plik),
+    bazylika: Bazylika,
+    szyna: Szyna,
+});
+zamontujTrasyKompozytora(app, { kompozytor: Kompozytor });
 app.get('/api/rytm/utwory', (_req, res) => ytOdp(res, RytmUtworu.utwory().then((utwory) => ({ utwory }))));
 app.get('/api/rytm', (req, res) => ytOdp(res, RytmUtworu.analizuj(String(req.query.plik ?? '')).then((rytm) => ({ rytm }))));
 
@@ -10544,7 +10558,8 @@ async function piszModelem(model, system, prompt, opcje = {}) {
     const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         // think:false — qwen3.x bez tego oddaje pustą treść (zmierzone przy /api/ollama/pisz).
-        body: JSON.stringify({ model: silnik, system, prompt, stream: false, think: false, ...(options ? { options } : {}) }),
+        // `opcje.json` (🏛️⚡ Kompozytor) → format:'json' Ollamy: model musi oddać poprawny JSON.
+        body: JSON.stringify({ model: silnik, system, prompt, stream: false, think: false, ...(options ? { options } : {}), ...(opcje?.json ? { format: 'json' } : {}) }),
     });
     if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
     return { tekst: String((await r.json()).response || '').trim(), silnik };
