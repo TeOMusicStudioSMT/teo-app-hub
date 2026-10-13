@@ -208,6 +208,24 @@ export function odrzuc(id, { kto = null } = {}) {
     });
 }
 
+/**
+ * 🗑️ Usuń kartę ze stołu na dobre (Suweren 2026-10-13: „przycisk szybszego usunięcia z listy”). Karta, nad którą
+ * stado właśnie pracuje, zostaje — najpierw niech skończy albo odrzuć. Projekt stada nie znika (zostaje w Domu).
+ */
+export function usun(id, { kto = null } = {}) {
+    return poKolei(async () => {
+        const d = await czytaj();
+        const k = d.karty.find((x) => x.id === id);
+        if (!k) throw new Error('Nie ma takiej karty na stole.');
+        const p = k.projekt ? await cfg.projekt(k.projekt).catch(() => null) : null;
+        if (etap(k, p) === 'opracowuje') throw new Error('Stado właśnie opracowuje tę kartę — nie usunę jej teraz.');
+        d.karty = d.karty.filter((x) => x.id !== id);
+        await zapisz(d);
+        nadaj(`${kto && kto !== 'Katedra' ? kto : 'Suweren'} zdjął kartę „${k.tytul}" ze stołu`);
+        return { usunieta: { id: k.id, tytul: k.tytul } };
+    });
+}
+
 /** Ratyfikacja gotowej Biblii → zlecenia modułów z wkładów (produkty, muzyka, 3D, wideo). */
 export function ratyfikuj(id, { kto = null } = {}) {
     return zmien(id, async (k, e) => {
@@ -256,4 +274,4 @@ export function naNoc(id, { rundy = 1, petla, powtorzenia = 1, kto = null } = {}
     });
 }
 
-export default { skonfiguruj, kartaUlepszeniaBryly, dodaj, lista, karta, przyjmij, odrzuc, ratyfikuj, doskonal, naNoc, etap, czytajKarte, ZRODLA };
+export default { skonfiguruj, kartaUlepszeniaBryly, dodaj, lista, karta, przyjmij, odrzuc, usun, ratyfikuj, doskonal, naNoc, etap, czytajKarte, ZRODLA };

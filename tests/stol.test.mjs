@@ -142,3 +142,16 @@ test('po ratyfikacji też można doskonalić (z uwagami) i dać na Nocną Zmian�
     assert.equal((await Stol.karta(k.id)).etap, 'do_akceptacji', 'po doskonaleniu czeka na NOWĄ ratyfikację');
     assert.deepEqual((await Stol.karta(k.id)).decyzje.map((d) => d.co), ['przyjeta', 'zratyfikowana', 'na_noc', 'doskonalona']);
 });
+
+test('Stół: 🗑️ usunięcie karty z listy; karty w opracowaniu nie usuwa', async () => {
+    const w = swiat();
+    const a = await Stol.dodaj({ tytul: 'Do kosza', tresc: 'Karta, którą Suweren zdejmie ze stołu jednym klikiem.' });
+    const b = await Stol.dodaj({ tytul: 'Pracuje', tresc: 'Karta, nad którą stado właśnie pracuje — zostaje.' });
+    await Stol.przyjmij(b.id, {});
+    const u = await Stol.usun(a.id, { kto: 'StoL' });
+    assert.equal(u.usunieta.tytul, 'Do kosza');
+    assert.equal((await Stol.lista()).some((k) => k.id === a.id), false);
+    await assert.rejects(Stol.usun(b.id), /opracowuje/);
+    await assert.rejects(Stol.usun('k-nie-ma'), /Nie ma takiej karty/);
+    assert.ok(w.szyna.some((t) => /StoL zdjął kartę „Do kosza"/.test(t)));
+});

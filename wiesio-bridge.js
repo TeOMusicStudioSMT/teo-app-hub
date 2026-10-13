@@ -11455,7 +11455,7 @@ app.get('/api/mistrz/wiesci', async (req, res) => { try { res.json({ success: tr
 /** POST /api/mistrz/wiesc { tresc, skad?, glos? } — przekaz „z pola” na kanale Mistrza (maszyna: most, Główny; jutro Klub Mistrzów). */
 app.post('/api/mistrz/wiesc', async (req, res) => { try { res.json({ success: true, wiesc: await Jajo.wiesc({ tresc: req.body?.tresc, skad: req.body?.skad || 'z pola', rodzaj: 'pole', glos: req.body?.glos === true }) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 app.post('/api/mistrz/lekcja', async (req, res) => { try { res.json({ success: true, ...(await Jajo.lekcja({ ile: req.body?.ile })) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
-for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc], ['ratyfikuj', Stol.ratyfikuj], ['doskonal', Stol.doskonal], ['nocna', Stol.naNoc]]) {
+for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc], ['usun', Stol.usun], ['ratyfikuj', Stol.ratyfikuj], ['doskonal', Stol.doskonal], ['nocna', Stol.naNoc]]) {
     app.post(`/api/stol/:id/${akcja}`, async (req, res) => {
         const dostep = await dostepStada(req, res);
         if (!dostep) return;
