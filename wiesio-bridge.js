@@ -94,6 +94,7 @@ import { utworzBestiariusz } from './services/Bestiariusz.js';
 import { utworzPaczkiGier, zamontujTrasyGier } from './services/PaczkiGier.js';
 import { zamontujTrasyRingu } from './services/RingTaneczny.js';
 import { utworzBazylike } from './services/BazylikaDzwieku.js';
+import { rodzinyZRuchem } from './services/MiniZRuchem.js';
 import { utworzChoreografie, zamontujTrasyChoreografii } from './services/Choreografie.js';
 import { odchudzBryle, CEL_SCIAN, MAKS_TEKSTURY } from './services/LekkieBryly.js';
 import { utworzRozliczenia } from './services/RozliczeniaKatedr.js';
@@ -8296,6 +8297,16 @@ async function obsadaGry(projekt) {
 }
 // 🐾 Bestiariusz Mini-TeOgochi gry (services/Bestiariusz.js): rzadkości, skille, stworki z wariantami i dropami → public/bestiariusz.json
 const Bestiariusz = utworzBestiariusz({ katalogGier: APKI_DIR });
+// 🐾🕺 Mini z ruchem (services/MiniZRuchem.js): rodziny wersji brył z Assetów 3D, które mają ruchy z riga — scalona
+// (najwięcej klipów) wersja, kategoria z nazw klipów, sortowanie. Bestiariusz pokazuje tylko je i scala klucze Mini.
+app.get('/api/bestiariusz/:projekt/z-ruchem', async (req, res) => {
+    try {
+        if (!/^[a-z0-9-]{2,48}$/.test(req.params.projekt)) throw new Error('Zły projekt.');
+        const assetyGry = JSON.parse(await fs.readFile(path.join(APKI_DIR, req.params.projekt, 'public', 'assety', 'assety.json'), 'utf8').catch(() => '[]'));
+        const rodziny = await rodzinyZRuchem({ lista: await Assety3D.lista(), sciezka: (id, plik) => Assety3D.sciezkaPliku(id, plik), assetyGry: Array.isArray(assetyGry) ? assetyGry : [] });
+        res.json({ success: true, rodziny });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 app.get('/api/bestiariusz/:projekt', (req, res) => ytOdp(res, Bestiariusz.wczytaj(req.params.projekt).then((bestiariusz) => ({ bestiariusz }))));
 app.put('/api/bestiariusz/:projekt', (req, res) => ytOdp(res, Bestiariusz.zapisz(req.params.projekt, req.body?.bestiariusz ?? req.body ?? {}).then((bestiariusz) => ({ bestiariusz }))));
 app.get('/api/gdd/:id/obsada', (req, res) => ytOdp(res, obsadaGry(req.params.id).then((obsada) => ({ obsada: obsada.map(({ obraz: _o, ...r }) => r) }))));
