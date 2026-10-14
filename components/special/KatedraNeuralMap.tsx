@@ -43,16 +43,20 @@ export const NeuralMap: React.FC<{ lang?: 'pl' | 'en' | 'it' }> = ({ lang = 'pl'
   // Online → mapa = lustro realnej AGI. Offline → statyczny manifest.
   useEffect(() => {
     let alive = true;
+    let wToku = false;
+    // Jedno pytanie naraz i limit 8 s: dawne 1,5 s ucinało odpowiedź, gdy most liczył sondy silników, a każde
+    // ucięcie Strażnik (AutoPanicSentinel) zgłaszał Mechanikowi jako awarię — Gemma pisała po tym „łatki”.
+    // Karta w tle nie pyta wcale.
     const probe = async () => {
+      if (wToku || document.hidden) return;
+      wToku = true;
       try {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 1500);
-        const r = await fetch(`${BRIDGE}/api/agi/state`, { signal: ctrl.signal });
-        clearTimeout(t);
+        const r = await fetch(`${BRIDGE}/api/agi/state`, { signal: AbortSignal.timeout(8000) });
         const d = await r.json();
         if (alive && d?.success && d.nodes) setLive(d.nodes);
         else if (alive) setLive(null);
       } catch { if (alive) setLive(null); }
+      finally { wToku = false; }
     };
     probe();
     const iv = setInterval(probe, 4000);

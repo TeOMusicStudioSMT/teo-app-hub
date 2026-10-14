@@ -37,6 +37,23 @@ test('mapa: sondy dostają bazę silników ze schowka, pad i zwłoka = idle z po
     assert.equal(wywolan, 1, 'baza silników ze schowka');
 });
 
+test('mapa: przeterminowana baza silników odpowiada od razu (odświeżanie w tle), równoległe pytania = jeden przebieg', async () => {
+    let t = 0, wywolan = 0, sond = 0, puscic;
+    const M = utworzMapeAgi({
+        ttlSilnikowMs: 1000, teraz: () => t,
+        silniki: async () => { wywolan++; if (wywolan === 2) await new Promise((r) => { puscic = r; }); return { silniki: [{ rodzaj: 'glos', nazwa: `v${wywolan}`, gotowy: true }] }; },
+        sondy: { glos: ({ silniki }) => { sond++; return { status: 'online', powod: silniki[0].nazwa }; } },
+    });
+    assert.equal((await M.stan()).glos.powod, 'v1');
+    t = 5000;   // schowek przeterminowany, sonda silników „wisi”
+    const [a, b] = await Promise.all([M.stan(), M.stan()]);
+    assert.equal(a.glos.powod, 'v1', 'stara baza od razu, bez czekania na sondy silników');
+    assert.equal(a, b);
+    assert.equal(sond, 2, 'dwa równoległe pytania = jeden przebieg sond');
+    puscic(); await new Promise((r) => setImmediate(r));
+    assert.equal((await M.stan()).glos.powod, 'v2', 'odświeżona baza przy następnym pytaniu');
+});
+
 test('manifest: krawędzie łączą istniejące węzły, bez dawnych atrap', () => {
     const ids = new Set(AGI.nodes.map((n) => n.id));
     assert.equal(ids.size, AGI.nodes.length);

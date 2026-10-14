@@ -44,16 +44,25 @@ export function utworzMapeAgi({ sondy = {}, silniki = async () => ({ silniki: []
     let wTrakcie = null;
     async function bazaSilnikow() {
         if (schowek && teraz() - schowek.czas < ttlSilnikowMs) return schowek.silniki;
+        // przeterminowany schowek: odpowiadamy nim od razu, a bazę odświeżamy w tle (sondy silników trwają do 10 s —
+        // mapa w Hubie pyta co 4 s i nie może na nie czekać)
         if (!wTrakcie) {
             wTrakcie = Promise.resolve().then(silniki).then((b) => {
                 schowek = { czas: teraz(), silniki: b?.silniki ?? [] };
                 return schowek.silniki;
             }).catch(() => schowek?.silniki ?? []).finally(() => { wTrakcie = null; });
         }
-        return wTrakcie;
+        return schowek ? schowek.silniki : wTrakcie;
     }
 
-    async function stan() {
+    let stanWTrakcie = null;
+    /** Równoległe pytania (Hub, otakos.wtf, kilka kart) dzielą jeden przebieg sond. */
+    function stan() {
+        stanWTrakcie ??= policzStan().finally(() => { stanWTrakcie = null; });
+        return stanWTrakcie;
+    }
+
+    async function policzStan() {
         const lista = await bazaSilnikow();
         const wpisy = await Promise.all(Object.entries(sondy).map(async ([id, sonda]) => {
             let t;
