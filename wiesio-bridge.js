@@ -22,7 +22,7 @@ import { utworzJajo } from './services/JajoMistrza.js';
 import { utworzKuznieColab } from './services/KuzniaColab.js';
 import { utworzMistrzaGry } from './services/MistrzGry.js';
 import { utworzKlub } from './services/KlubMistrzow.js';
-import { utworzZwiadowcePromocji, MODEL as ZWIADOWCA_PROMOCJI_MODEL } from './services/ZwiadowcaPromocji.js';
+import { utworzZwiadowcePromocji, MODEL as ZWIADOWCA_PROMOCJI_MODEL, MODEL_GEMINI as ZWIADOWCA_PROMOCJI_GEMINI } from './services/ZwiadowcaPromocji.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
@@ -113,6 +113,7 @@ import * as Porzadki       from './services/Porzadki.js';
 import * as Aktualizator   from './services/Aktualizator.js';
 import * as Tlumacz        from './services/Tlumacz.js';
 import * as Glowny         from './services/Glowny.js';
+import { utworzArgoBoba }   from './services/ArgoBob.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import * as SilnikKlonu    from './services/SilnikKlonu.js';
@@ -3076,8 +3077,11 @@ app.post('/wiesio/action', async (req, res) => {
         const { description, componentName, style = 'OtakOS 0.00G', tags = [], model: aiModel } = payload;
         if (!description || !componentName) return res.status(400).json({ success: false, message: 'Brak description lub componentName' });
 
-        const apiKey = await getAnthropicKey();
-        if (!apiKey) return res.status(401).json({ success: false, message: 'Brak klucza Anthropic' });
+        // ☁️ Claude albo Gemini (Suweren 2026-10-14: nie tylko Anthropic) — model „gemini-…” albo brak klucza Anthropic = Gemini
+        const chceGemini = /^gemini[-:]/.test(String(aiModel || ''));
+        const kluczA = chceGemini ? null : await getAnthropicKey();
+        const kluczG = kluczA ? null : await getGeminiKey();
+        if (!kluczA && !kluczG) return res.status(401).json({ success: false, message: 'Brak klucza Anthropic ani Gemini w moście — TeO Kibel → „🔗 Udostępnij mostowi”.' });
 
         console.log(`[Wiesio-Bridge] 🎨 MCP_UI_BUILD: "${componentName}" (${style})`);
         const prompt = `Jesteś Klaudiusz — ekspert React i Framer Motion.
@@ -3096,21 +3100,28 @@ WYMAGANIA TECHNICZNE:
 ODPOWIEDZ TYLKO BLOKIEM KODU tsx. Żadnego tekstu przed ani po.`;
 
         try {
-            const resp = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-                body: JSON.stringify({
-                    model: aiModel || 'claude-sonnet-4-20250514',
-                    max_tokens: 4096,
-                    messages: [{ role: 'user', content: prompt }],
-                }),
-            });
-            if (!resp.ok) {
-                const err = await resp.json().catch(() => ({}));
-                return res.status(500).json({ success: false, message: err?.error?.message || 'Błąd API' });
+            let raw = '';
+            if (kluczA) {
+                const model = aiModel || (await listyModeliChmury('anthropic', kluczA)).modele[0]?.model || 'claude-sonnet-5-5';
+                const resp = await fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': kluczA, 'anthropic-version': '2023-06-01' },
+                    body: JSON.stringify({ model, max_tokens: 4096, messages: [{ role: 'user', content: prompt }] }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) return res.status(500).json({ success: false, message: data?.error?.message || 'Błąd API Anthropic' });
+                raw = data.content?.[0]?.text || '';
+            } else {
+                const model = String(aiModel || '').replace(/^gemini:/, '') || (await listyModeliChmury('gemini', kluczG)).modele[0]?.model || 'gemini-2.5-pro';
+                const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': kluczG },
+                    body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 8192 } }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) return res.status(500).json({ success: false, message: data?.error?.message || 'Błąd API Gemini' });
+                raw = (data.candidates?.[0]?.content?.parts ?? []).filter((x) => x.text && !x.thought).map((x) => x.text).join('');
             }
-            const data = await resp.json();
-            const raw = data.content?.[0]?.text || '';
             const code = extractCodeBlock(raw) || raw;
             if (!code || code.length < 20) return res.status(500).json({ success: false, message: 'Model nie wygenerował kodu' });
 
@@ -5438,6 +5449,45 @@ app.get('/api/glowny/zalacznik/:plik', (req, res) => {
     return p ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Nie ma takiego załącznika.' });
 });
 app.post('/api/glowny/sesja/:id/przerwij', async (req, res) => res.json({ success: true, ...(await Glowny.przerwij(req.params.id)) }));
+
+// ── ⚗️ ARGO BOB (services/ArgoBob.js) — węzeł Gemini z narzędziami (Suweren 2026-10-14) ──
+// Odczyt Katedry i Game Studio bez pytania; zapis przez Tarczę Prawdy i diagnostyka (rewizor, testy, tsc) po ✓.
+// Ten sam kształt sesji co Główny — Hub pokazuje obu w GlownyCzat. Tylko maszyna (Straż: /api/argo/).
+const ArgoBob = utworzArgoBoba({
+    katalog: path.join(ANTIGRAVITY_DIR, 'argo-bob'),
+    korzenie: { katedra: process.cwd(), tgs: path.join(process.cwd(), '..', 'TeO_Games_Studio') },
+    klucz: () => getGeminiKey(),
+    modele: async () => { const k = await getGeminiKey(); return k ? (await listyModeliChmury('gemini', k)).modele.map((m) => m.model) : []; },
+    tarcza: AlignmentShield.getInstance(),
+    szyna: Szyna,
+    suweren: () => (grvLedger ? nazwaWezla(grvLedger, grvLedger.wlasciciel) : null),
+    zalacznik: (plik) => Glowny.sciezkaZalacznika(plik),   // zrzuty ekranu wgrywa ten sam /api/glowny/zalacznik
+});
+app.get('/api/argo/stan', async (_req, res) => res.json({ success: true, ...(await ArgoBob.stan()) }));
+app.get('/api/argo/sesje', async (_req, res) => res.json({ success: true, sesje: await ArgoBob.lista() }));
+app.get('/api/argo/sesja/:id', async (req, res) => {
+    const s = await ArgoBob.sesja(req.params.id);
+    return s ? res.json({ success: true, sesja: s }) : res.status(404).json({ success: false, message: 'Nie ma takiej rozmowy z Argo BoBem.' });
+});
+app.get('/api/argo/sesja/:id/strumien', async (req, res) => {
+    const s = await ArgoBob.sesja(req.params.id);
+    if (!s) return res.status(404).json({ success: false, message: 'Nie ma takiej rozmowy z Argo BoBem.' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    const wyslij = (z) => { try { res.write(`data: ${JSON.stringify(z)}\n\n`); } catch { /* klient odszedł */ } };
+    wyslij({ typ: 'sesja', sesja: s });
+    const odpnij = ArgoBob.sluchaj(s.id, wyslij);
+    const puls = setInterval(() => { try { res.write(': puls\n\n'); } catch { /* klient odszedł */ } }, 25_000);
+    req.on('close', () => { clearInterval(puls); odpnij(); });
+});
+app.post('/api/argo/wiadomosc', async (req, res) => {
+    try { res.json({ success: true, ...(await ArgoBob.wiadomosc({ tekst: req.body?.tekst, sesja: req.body?.sesja || null, model: req.body?.model || null, zrodlo: String(req.body?.zrodlo || 'czat').slice(0, 30), zalaczniki: req.body?.zalaczniki ?? [] })) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/argo/sesja/:id/prosba/:pid', async (req, res) => {
+    try { res.json({ success: true, ...(await ArgoBob.decyzja(req.params.id, req.params.pid, req.body?.zgoda === true)) }); }
+    catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.post('/api/argo/sesja/:id/przerwij', async (req, res) => res.json({ success: true, ...(await ArgoBob.przerwij(req.params.id)) }));
 
 /** POST /api/uneng/launch — odpala Unreal Engine (Game Forge). Ścieżka z env OTAKOS_UE_PATH. */
 app.post('/api/uneng/launch', async (req, res) => {
@@ -11308,10 +11358,14 @@ app.post('/api/zwiadowca/link', async (req, res) => {
 app.get('/api/zwiadowca/sondaz', (_req, res) => res.json(ZwiadowcaHF.sondaz()));
 // 🏷️ Zwiadowca promocji (services/ZwiadowcaPromocji.js) — kody rabatowe i promocje usług (np. Meshy) przez wyszukiwanie
 // w sieci API Claude; tylko znaleziska ze źródłem z wyników wyszukiwania. Nic nie wpisuje i nie płaci. Szukanie = maszyna.
-const ZwiadowcaPromocji = utworzZwiadowcePromocji({ klucz: () => getAnthropicKey(), katalog: path.join(ANTIGRAVITY_DIR, 'zwiadowca'), szyna: Szyna });
-app.get('/api/zwiadowca/promocje', async (_req, res) => res.json({ success: true, zwiady: await ZwiadowcaPromocji.lista(), model: ZWIADOWCA_PROMOCJI_MODEL }));
+const ZwiadowcaPromocji = utworzZwiadowcePromocji({
+    klucze: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey() },   // ☁️ Claude albo Gemini (Google Search) — nie tylko Anthropic
+    modelGemini: async () => process.env.OTAKOS_PROMOCJE_MODEL_GEMINI || ((await listyModeliChmury('gemini', await getGeminiKey())).modele.find((m) => /flash/.test(m.model)) ?? {}).model || ZWIADOWCA_PROMOCJI_GEMINI,
+    katalog: path.join(ANTIGRAVITY_DIR, 'zwiadowca'), szyna: Szyna,
+});
+app.get('/api/zwiadowca/promocje', async (_req, res) => res.json({ success: true, zwiady: await ZwiadowcaPromocji.lista(), model: ZWIADOWCA_PROMOCJI_MODEL, dostawcy: await ZwiadowcaPromocji.dostawcy() }));
 app.post('/api/zwiadowca/promocje', async (req, res) => {
-    try { res.json({ success: true, zwiad: await ZwiadowcaPromocji.szukaj(req.body?.usluga, { kontekst: req.body?.kontekst }) }); }
+    try { res.json({ success: true, zwiad: await ZwiadowcaPromocji.szukaj(req.body?.usluga, { kontekst: req.body?.kontekst, dostawca: req.body?.dostawca || 'auto' }) }); }
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
@@ -14543,6 +14597,7 @@ const MapaAgi = utworzMapeAgi({
         glowny: () => { const g = Glowny.stan(); return g.program ? { status: 'idle', powod: `Claude Code: ${g.zrodlo}${g.chmura ? ' (konto Anthropic)' : ` · model ${g.model}`}` } : { status: 'offline', powod: 'nie znalazłem programu claude (OTAKOS_CLAUDE)' }; },
         mowa: ({ silniki }) => stanZSilnikow(silniki, 'mowa'),
         zwiadowca: () => (process.env.OTAKOS_ZWIADOWCA === '0' ? { status: 'offline', powod: 'wyłączony (OTAKOS_ZWIADOWCA=0)' } : { status: 'idle', powod: 'czeka na zwiad (Kuźnia Modeli albo Nocna Zmiana)' }),
+        argo: async () => { const a = await ArgoBob.stan(); return { status: a.status, load: a.status === 'online' ? 0.8 : 0, powod: a.powod }; },
         jev: () => (Jev.stan().maKlucz ? { status: 'online', powod: 'klucz TypeSafe udostępniony mostowi' } : { status: 'offline', powod: 'bez klucza — opcja chmury, Katedra działa bez niego' }),
         stol: async () => { const d = JSON.parse(await fs.readFile(path.join(ANTIGRAVITY_DIR, 'stol.json'), 'utf8').catch(() => '{}')); const n = Array.isArray(d.karty) ? d.karty.length : 0; return { status: n ? 'online' : 'idle', load: Math.min(1, n / 10), powod: `${n} kart na Stole` }; },
         kodeks: () => ({ status: 'idle', powod: 'Studio Gier i Apek — buduje na modelu z przydziału, gdy dostanie zadanie' }),

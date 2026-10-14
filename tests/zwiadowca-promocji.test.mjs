@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { utworzZwiadowcePromocji, sprawdzZnaleziska, zrodlaZOdpowiedzi, wylowJson } from '../services/ZwiadowcaPromocji.js';
+import { utworzZwiadowcePromocji, sprawdzZnaleziska, zrodlaZOdpowiedzi, zrodlaZGroundingu, wylowJson } from '../services/ZwiadowcaPromocji.js';
 
 const JSON_MODELU = {
     znalezione: [
@@ -44,7 +44,8 @@ test('szukaj: klucz, narzędzie web_search, pause_turn, zapis, koszt; bez klucza
     const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'promocje-'));
     try {
         const bez = utworzZwiadowcePromocji({ klucz: async () => null, katalog: kat, fetch: async () => { throw new Error('nie wołać'); } });
-        await assert.rejects(bez.szukaj('Meshy'), /nie ma klucza Anthropic/);
+        await assert.rejects(bez.szukaj('Meshy'), /nie ma klucza żadnego/);
+        await assert.rejects(bez.szukaj('Meshy', { dostawca: 'anthropic' }), /nie ma klucza Anthropic/);
         const wolania = [];
         const odp = [ODPOWIEDZ('pause_turn'), { stop_reason: 'end_turn', usage: { input_tokens: 10, output_tokens: 5 }, content: [] }];
         const f = async (url, o) => { wolania.push({ url, o, cialo: JSON.parse(o.body) }); const d = odp[(wolania.length - 1) % 2]; return { ok: true, json: async () => d }; };
@@ -65,5 +66,40 @@ test('szukaj: klucz, narzędzie web_search, pause_turn, zapis, koszt; bez klucza
         assert.equal((await Z.lista()).length, 1, 'ta sama usługa nadpisuje');
         const zly = utworzZwiadowcePromocji({ klucz: async () => 'k', katalog: kat, fetch: async () => ({ ok: false, status: 401, json: async () => ({ error: { message: 'invalid x-api-key' } }) }) });
         await assert.rejects(zly.szukaj('Meshy'), /HTTP 401: invalid x-api-key/);
+    } finally { await fs.rm(kat, { recursive: true, force: true }); }
+});
+
+test('☁️ Gemini (Google Search): auto bez klucza Anthropic, źródła z groundingu potwierdzone domeną, zmyślone odrzucone', async () => {
+    const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'promocje-g-'));
+    try {
+        const zapytania = [];
+        const odp = {
+            candidates: [{
+                content: { parts: [{ text: `Znalazłem.\n${JSON.stringify({ znalezione: [
+                    { rodzaj: 'program', opis: 'Edu', zrodlo: 'https://www.meshy.ai/edu', pewnosc: 'oficjalne' },
+                    { rodzaj: 'kod', kod: 'ZMYSL', opis: 'x', zrodlo: 'https://nieznane.example/k', pewnosc: 'agregator' },
+                ], podsumowanie: 'Jest program edu.' })}` }] },
+                groundingMetadata: { webSearchQueries: ['meshy discount', 'meshy edu'], groundingChunks: [
+                    { web: { uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/AbC', title: 'meshy.ai' } },
+                    { web: { uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/XyZ', title: 'Jakiś tytuł bez domeny' } },
+                ] },
+            }],
+            usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50 },
+        };
+        const Z = utworzZwiadowcePromocji({
+            klucze: { anthropic: async () => null, gemini: async () => 'AIza-g' }, katalog: kat, modelGemini: async () => 'gemini-9-flash',
+            fetch: async (url, init) => { zapytania.push({ url, body: JSON.parse(init.body), klucz: init.headers['x-goog-api-key'] }); return { ok: true, json: async () => odp }; },
+        });
+        assert.deepEqual(await Z.dostawcy(), { anthropic: false, gemini: true, auto: 'gemini' });
+        const w = await Z.szukaj('Meshy');
+        assert.match(zapytania[0].url, /models\/gemini-9-flash:generateContent$/);
+        assert.equal(zapytania[0].klucz, 'AIza-g');
+        assert.deepEqual(zapytania[0].body.tools, [{ google_search: {} }]);
+        assert.equal(w.dostawca, 'gemini');
+        assert.deepEqual(w.znalezione.map((z) => [z.zrodlo, z.potwierdzone]), [['https://www.meshy.ai/edu', 'domena']]);
+        assert.equal(w.odrzucone.length, 1);
+        assert.equal(w.koszt.wyszukan, 2);
+        assert.equal(w.koszt.usdWyszukiwania, null, 'kwoty za grounding nie zgadujemy');
+        assert.equal(zrodlaZGroundingu(odp.candidates[0].groundingMetadata).size, 1, 'tytuł bez domeny i przekierowanie Google nie są źródłem');
     } finally { await fs.rm(kat, { recursive: true, force: true }); }
 });

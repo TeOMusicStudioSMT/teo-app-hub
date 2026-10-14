@@ -1,5 +1,7 @@
 /**
  * 👑 GlownyCzat — rozmowa z Głównym (Claude Code w tle, services/Glowny.js) w Hubie: Creative Zone, KatedraChat, Orb.
+ * ⚗️ Ten sam czat prowadzi też Argo BoBa (Gemini z narzędziami, services/ArgoBob.js, /api/argo/*) — przełącznik
+ * w nagłówku (localStorage `otakos_operator`); sesje, prośby i zgody mają ten sam kształt.
  *
  * Zamiast okna terminala, którego nikt nie widział: wiadomości, narzędzia, odpowiedzi i PROŚBY na żywo (SSE).
  * Prośba = polecenie, którego Główny nie może wykonać bez zgody Suwerena. Tłumacz mówi po ludzku, co ono zrobi,
@@ -15,12 +17,23 @@ interface Prosba { id: string; narzedzie: string; polecenie: string; coRobi: str
 interface Wpis { kto: 'suweren' | 'glowny' | 'narzedzie' | 'prosba' | 'decyzja' | 'blad'; tresc?: string; zalaczniki?: string[]; narzedzie?: string; opis?: string | null; prosba?: Prosba; kiedy: string }
 interface Sesja { id: string; tytul: string; model: string; wpisy: Wpis[]; prosby: Prosba[]; trwa: boolean; blad: string | null }
 interface SesjaSkrot { id: string; tytul: string; ostatnia: string; trwa: boolean; czeka: number }
-interface StanGlownego { program: string; zrodlo: string; model: string; chmura: boolean; katalogi: string[] }
+interface StanGlownego { program?: string; zrodlo?: string; model: string; chmura: boolean; katalogi?: string[]; status?: 'online' | 'idle' | 'offline'; powod?: string; modele?: string[] }
+type Operator = 'glowny' | 'argo';
 
-const KLUCZ_MODELU = 'otakos_glowny_model';
+const OPERATORZY: Record<Operator, { znak: string; imie: string; dopelniacz: string; opis: string; kluczModelu: string; ramka: string; dymek: string; przycisk: string }> = {
+    glowny: { znak: '👑', imie: 'Główny', dopelniacz: 'Głównego', opis: 'Claude Code w Katedrze', kluczModelu: 'otakos_glowny_model', ramka: 'border-amber-500/30', dymek: 'bg-amber-950/30', przycisk: 'bg-amber-600/80 hover:bg-amber-500' },
+    argo: { znak: '⚗️', imie: 'Argo BoB', dopelniacz: 'Argo BoBa', opis: 'Gemini z narzędziami Katedry', kluczModelu: 'otakos_argo_model', ramka: 'border-violet-500/40', dymek: 'bg-violet-950/40', przycisk: 'bg-violet-600/80 hover:bg-violet-500' },
+};
+/** Trasy wypisane wprost (Rewizor Mostu sprawdza każdą z osobna — zmienna w środku ścieżki byłaby dla niego ślepa). */
+const TRASY: Record<Operator, { stan: string; sesje: string; wiadomosc: string; sesja: (id: string) => string; strumien: (id: string) => string; prosba: (id: string, p: string) => string; przerwij: (id: string) => string }> = {
+    glowny: { stan: '/api/glowny/stan', sesje: '/api/glowny/sesje', wiadomosc: '/api/glowny/wiadomosc', sesja: (id) => `/api/glowny/sesja/${id}`, strumien: (id) => `/api/glowny/sesja/${id}/strumien`, prosba: (id, p) => `/api/glowny/sesja/${id}/prosba/${p}`, przerwij: (id) => `/api/glowny/sesja/${id}/przerwij` },
+    argo: { stan: '/api/argo/stan', sesje: '/api/argo/sesje', wiadomosc: '/api/argo/wiadomosc', sesja: (id) => `/api/argo/sesja/${id}`, strumien: (id) => `/api/argo/sesja/${id}/strumien`, prosba: (id, p) => `/api/argo/sesja/${id}/prosba/${p}`, przerwij: (id) => `/api/argo/sesja/${id}/przerwij` },
+};
+const KLUCZ_OPERATORA = 'otakos_operator';
+const czytajOperatora = (): Operator => { try { return localStorage.getItem(KLUCZ_OPERATORA) === 'argo' ? 'argo' : 'glowny'; } catch { return 'glowny'; } };
 /** Małe modele (≤ 4B, „e2b/e4b") gubią się w narzędziach Claude Code — mówimy to przy wyborze, nie po porażce. */
 export const malyModel = (m: string) => /(^|[:\-_])(e[24]b|[0-4](\.\d+)?b)(\b|[-_:]|$)/i.test(m);
-const czytajModel = () => { try { return localStorage.getItem(KLUCZ_MODELU) || ''; } catch { return ''; } };
+const czytajModel = (op: Operator) => { try { return localStorage.getItem(OPERATORZY[op].kluczModelu) || ''; } catch { return ''; } };
 
 const KOLOR_RYZYKA: Record<string, string> = { niskie: 'border-emerald-500/50 bg-emerald-950/30', srednie: 'border-amber-500/50 bg-amber-950/30', wysokie: 'border-rose-500/60 bg-rose-950/40', nieznane: 'border-slate-500/50 bg-slate-900/50' };
 
@@ -32,14 +45,16 @@ async function zMostu<T>(sciezka: string, init?: RequestInit): Promise<T> {
 }
 
 /** `obrazy` — zrzuty przekazane z zewnątrz (np. wklejone w Manifest Creative Zone) — trafiają do załączników. */
-export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: File[]; kompaktowy?: boolean; className?: string }> = ({ zrodlo = 'czat', zadanie, obrazy, kompaktowy = false, className = '' }) => {
+export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: File[]; kompaktowy?: boolean; className?: string; operator?: Operator }> = ({ zrodlo = 'czat', zadanie, obrazy, kompaktowy = false, className = '', operator: operatorStaly }) => {
+    const [operator, setOperator] = useState<Operator>(() => operatorStaly ?? czytajOperatora());
+    const O = OPERATORZY[operator];
     const [stan, setStan] = useState<StanGlownego | null>(null);
     const [sesje, setSesje] = useState<SesjaSkrot[]>([]);
     const [sesja, setSesja] = useState<Sesja | null>(null);
     const [tekst, setTekst] = useState(zadanie ?? '');
     const [wysyla, setWysyla] = useState(false);
     const [modele, setModele] = useState<string[]>([]);
-    const [model, setModel] = useState<string>(czytajModel);
+    const [model, setModel] = useState<string>(() => czytajModel(operatorStaly ?? czytajOperatora()));
     const [zalaczniki, setZalaczniki] = useState<string[]>([]);   // nazwy plików w moście (po wgraniu)
     const [wgrywa, setWgrywa] = useState(0);
     const [przeciaga, setPrzeciaga] = useState(false);
@@ -49,13 +64,15 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
     useEffect(() => {
         fetch(`${MOST}/api/ollama/models`).then((r) => r.json()).then((d) => setModele(d.models ?? [])).catch(() => {});
     }, []);
-    const wybierzModel = (m: string) => { setModel(m); try { m ? localStorage.setItem(KLUCZ_MODELU, m) : localStorage.removeItem(KLUCZ_MODELU); } catch { /* bez pamięci */ } };
+    const wybierzModel = (m: string) => { setModel(m); try { m ? localStorage.setItem(O.kluczModelu, m) : localStorage.removeItem(O.kluczModelu); } catch { /* bez pamięci */ } };
+    const zmienOperatora = (op: Operator) => { setOperator(op); setSesja(null); setModel(czytajModel(op)); try { localStorage.setItem(KLUCZ_OPERATORA, op); } catch { /* bez pamięci */ } };
+    const listaModeli = operator === 'argo' ? (stan?.modele ?? []) : modele;
     const modelTeraz = model || sesja?.model || stan?.model || '';
 
     /** Zrzut ekranu → most (plik w _OtakOs_Wymiar/glowny/zalaczniki) → Główny otworzy go narzędziem Read. */
     const wgraj = async (pliki: File[]) => {
         const obrazy = pliki.filter((f) => f.type.startsWith('image/'));
-        if (!obrazy.length) { if (pliki.length) toast('👑 Główny przyjmuje tu obrazy (zrzuty ekranu). Pliki Katedry czyta sam — podaj ścieżkę.'); return; }
+        if (!obrazy.length) { if (pliki.length) toast(`${O.znak} ${O.imie} przyjmuje tu obrazy (zrzuty ekranu). Pliki Katedry czyta sam — podaj ścieżkę.`); return; }
         setWgrywa((n) => n + obrazy.length);
         for (const f of obrazy) {
             try {
@@ -67,73 +84,85 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
     };
 
     const wczytajSesje = useCallback(async () => {
-        try { setSesje((await zMostu<{ sesje: SesjaSkrot[] }>('/api/glowny/sesje')).sesje); } catch { /* most offline */ }
-    }, []);
+        try { setSesje((await zMostu<{ sesje: SesjaSkrot[] }>(TRASY[operator].sesje)).sesje); } catch { setSesje([]); }
+    }, [operator]);
     useEffect(() => {
-        zMostu<StanGlownego>('/api/glowny/stan').then(setStan).catch(() => setStan(null));
+        setStan(null);
+        zMostu<StanGlownego>(TRASY[operator].stan).then(setStan).catch(() => setStan(null));
         wczytajSesje();
-    }, [wczytajSesje]);
+    }, [wczytajSesje, operator]);
     useEffect(() => { if (zadanie) setTekst(zadanie); }, [zadanie]);
 
     // Strumień otwartej sesji: pełny stan na start, potem wpisy i zmiany stanu.
     const id = sesja?.id;
     useEffect(() => {
         if (!id) return;
-        const es = new EventSource(`${MOST}/api/glowny/sesja/${id}/strumien`);
+        const es = new EventSource(`${MOST}${TRASY[operator].strumien(id)}`);
         es.onmessage = (ev) => {
             let z: any; try { z = JSON.parse(ev.data); } catch { return; }
             if (z.typ === 'sesja') setSesja(z.sesja);
             else if (z.typ === 'wpis') setSesja((s) => (s && s.id === id ? { ...s, wpisy: [...s.wpisy, z.wpis], prosby: z.wpis.prosba && z.wpis.kto === 'prosba' ? [...s.prosby, z.wpis.prosba] : s.prosby } : s));
             else if (z.typ === 'stan') {
                 setSesja((s) => (s && s.id === id ? { ...s, trwa: z.trwa, blad: z.blad ?? s.blad } : s));
-                if (!z.trwa) { wczytajSesje(); if (z.czeka) toast(`👑 Główny prosi o zgodę (${z.czeka})`, { icon: '✋' }); }
+                if (!z.trwa) { wczytajSesje(); if (z.czeka) toast(`${O.znak} ${O.imie} prosi o zgodę (${z.czeka})`, { icon: '✋' }); }
             }
         };
         return () => es.close();
-    }, [id, wczytajSesje]);
+    }, [id, wczytajSesje, operator, O.znak, O.imie]);
     useEffect(() => { dol.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [sesja?.wpisy.length]);
 
     useEffect(() => { if (obrazy?.length) wgraj(obrazy); }, [obrazy]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const otworz = async (sid: string) => {
-        try { setSesja((await zMostu<{ sesja: Sesja }>(`/api/glowny/sesja/${sid}`)).sesja); } catch (e: any) { toast.error(e.message); }
+        try { setSesja((await zMostu<{ sesja: Sesja }>(TRASY[operator].sesja(sid))).sesja); } catch (e: any) { toast.error(e.message); }
     };
     const wyslij = async () => {
         const t = tekst.trim();
         if ((!t && !zalaczniki.length) || wysyla || wgrywa) return;
         setWysyla(true);
         try {
-            const d = await zMostu<{ sesja: string }>('/api/glowny/wiadomosc', { method: 'POST', body: JSON.stringify({ tekst: t, sesja: sesja?.id ?? null, zrodlo, model: model || null, zalaczniki }) });
+            const d = await zMostu<{ sesja: string }>(TRASY[operator].wiadomosc, { method: 'POST', body: JSON.stringify({ tekst: t, sesja: sesja?.id ?? null, zrodlo, model: model || null, zalaczniki }) });
             setTekst(''); setZalaczniki([]);
             if (!sesja || sesja.id !== d.sesja) await otworz(d.sesja);
             wczytajSesje();
-        } catch (e: any) { toast.error(`👑 ${e.message}`); }
+        } catch (e: any) { toast.error(`${O.znak} ${e.message}`); }
         finally { setWysyla(false); }
     };
     const decyduj = async (p: Prosba, zgoda: boolean) => {
         if (!sesja) return;
         try {
-            await zMostu(`/api/glowny/sesja/${sesja.id}/prosba/${p.id}`, { method: 'POST', body: JSON.stringify({ zgoda }) });
+            await zMostu(TRASY[operator].prosba(sesja.id, p.id), { method: 'POST', body: JSON.stringify({ zgoda }) });
             setSesja((s) => (s ? { ...s, prosby: s.prosby.map((x) => (x.id === p.id ? { ...x, stan: zgoda ? 'zgoda' : 'odmowa' } : x)), wpisy: s.wpisy.map((w) => (w.prosba?.id === p.id ? { ...w, prosba: { ...w.prosba, stan: zgoda ? 'zgoda' : 'odmowa' } } : w)) } : s));
         } catch (e: any) { toast.error(e.message); }
     };
-    const przerwij = async () => { if (sesja) await zMostu(`/api/glowny/sesja/${sesja.id}/przerwij`, { method: 'POST', body: '{}' }).catch(() => {}); };
+    const przerwij = async () => { if (sesja) await zMostu(TRASY[operator].przerwij(sesja.id), { method: 'POST', body: '{}' }).catch(() => {}); };
 
     const czeka = sesja?.prosby.filter((p) => p.stan === 'czeka') ?? [];
     return (
-        <div className={`flex flex-col gap-2 rounded-xl border bg-black/40 p-3 text-xs text-slate-200 ${przeciaga ? 'border-cyan-400 ring-1 ring-cyan-400/60' : 'border-amber-500/30'} ${className}`}
+        <div className={`flex flex-col gap-2 rounded-xl border bg-black/40 p-3 text-xs text-slate-200 ${przeciaga ? 'border-cyan-400 ring-1 ring-cyan-400/60' : O.ramka} ${className}`}
             onDragOver={(e) => { if (Array.from(e.dataTransfer?.types ?? []).includes('Files')) { e.preventDefault(); setPrzeciaga(true); } }}
             onDragLeave={(e) => { if (e.currentTarget === e.target) setPrzeciaga(false); }}
             onDrop={(e) => { setPrzeciaga(false); const f = Array.from(e.dataTransfer?.files ?? []); if (f.length) { e.preventDefault(); wgraj(f); } }}>
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="font-bold text-amber-200">👑 Główny <span className="font-normal text-slate-400">— Claude Code w Katedrze{stan ? ` · ${stan.chmura ? 'chmura' : 'Ollama'}` : ''}</span></div>
+                <div className="flex flex-wrap items-center gap-2">
+                    {!operatorStaly && (
+                        <div className="flex overflow-hidden rounded border border-slate-700 text-[11px]" role="tablist" aria-label="Operator">
+                            {(Object.keys(OPERATORZY) as Operator[]).map((op) => (
+                                <button key={op} role="tab" onClick={() => zmienOperatora(op)} aria-selected={operator === op} disabled={!!sesja?.trwa}
+                                    title={`${OPERATORZY[op].imie} — ${OPERATORZY[op].opis}`}
+                                    className={`px-1.5 py-0.5 ${operator === op ? 'bg-slate-700 font-bold text-white' : 'text-slate-400 hover:bg-slate-800'} disabled:opacity-50`}>{OPERATORZY[op].znak} {OPERATORZY[op].imie}</button>
+                            ))}
+                        </div>
+                    )}
+                    <div className={operator === 'argo' ? 'text-violet-200' : 'text-amber-200'}>{operatorStaly ? <b>{O.znak} {O.imie} </b> : null}<span className="text-slate-400">— {O.opis}{stan ? ` · ${operator === 'argo' ? (stan.status === 'offline' ? 'offline' : stan.status === 'online' ? 'pracuje' : 'gotowy') : stan.chmura ? 'chmura' : 'Ollama'}` : ''}</span></div>
+                </div>
                 <div className="flex items-center gap-1.5">
-                    {stan && !stan.chmura && (
+                    {stan && (operator === 'argo' ? stan.status !== 'offline' : !stan.chmura) && (
                         <select value={model} onChange={(e) => wybierzModel(e.target.value)}
-                            title="Model Głównego (Ollama). Zmiana działa od następnej wiadomości — także w trwającej rozmowie."
-                            className={`max-w-[11rem] rounded border bg-black/50 px-1.5 py-0.5 text-[11px] ${malyModel(modelTeraz) ? 'border-amber-500/70 text-amber-200' : 'border-slate-700'}`}>
+                            title={`Model ${operator === 'argo' ? 'Argo BoBa (Gemini z Twojego konta)' : 'Głównego (Ollama)'}. Zmiana działa od następnej wiadomości — także w trwającej rozmowie.`}
+                            className={`max-w-[11rem] rounded border bg-black/50 px-1.5 py-0.5 text-[11px] ${operator === 'glowny' && malyModel(modelTeraz) ? 'border-amber-500/70 text-amber-200' : 'border-slate-700'}`}>
                             <option value="">domyślny ({stan.model})</option>
-                            {modele.map((m) => <option key={m} value={m}>{malyModel(m) ? '⚠ ' : ''}{m}</option>)}
+                            {listaModeli.map((m) => <option key={m} value={m}>{operator === 'glowny' && malyModel(m) ? '⚠ ' : ''}{m}</option>)}
                         </select>
                     )}
                     {!kompaktowy && sesje.length > 0 && (
@@ -146,14 +175,17 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                     {sesja && <button onClick={() => setSesja(null)} className="rounded border border-slate-600 px-1.5 py-0.5 text-[11px] hover:bg-slate-800">+ nowa</button>}
                 </div>
             </div>
-            {stan === null && <div className="text-[11px] text-rose-300">⚠ Most offline (:3001) — Główny działa przez most Katedry.</div>}
-            {stan && !stan.chmura && malyModel(modelTeraz) && (
+            {stan === null && <div className="text-[11px] text-rose-300">⚠ Most offline (:3001) albo bez tras {TRASY[operator].stan.replace(/\/stan$/, '')} (starszy most — zrestartuj go) — {O.imie} działa przez most Katedry.</div>}
+            {operator === 'argo' && stan?.status === 'offline' && <div className="text-[11px] text-rose-300">⚠ Argo BoB offline: {stan.powod}</div>}
+            {operator === 'glowny' && stan && !stan.chmura && malyModel(modelTeraz) && (
                 <div className="text-[10px] text-amber-300/90">⚠ {modelTeraz} to mały model — Claude Code potrzebuje mocnego w narzędziach (np. qwen3-coder, gpt-oss:20b, gemma4 26B/31B). Mały często mówi „nie mam narzędzia”, choć Katedra je ma.</div>
             )}
 
             {/* Rozmowa to treść (Suweren ↔ Główny), nie interfejs — Tłumacz ekranu jej nie rusza. */}
             <div data-bez-tlumaczenia className={`space-y-1.5 overflow-y-auto pr-1 ${kompaktowy ? 'max-h-64' : 'max-h-[28rem]'}`}>
-                {!sesja && <div className="text-[11px] text-slate-400">Napisz zadanie — Główny czyta i zmienia pliki Katedry sam, zleca pracę TeOgochi, a o polecenia (instalacje, git, usuwanie…) prosi Cię z wyjaśnieniem.</div>}
+                {!sesja && <div className="text-[11px] text-slate-400">{operator === 'argo'
+                    ? 'Napisz zadanie — Argo BoB czyta Katedrę i Game Studio sam, a każdą zmianę pliku (po Tarczy Prawdy) i diagnostykę (rewizor, testy, tsc) pokazuje Ci do ✓.'
+                    : 'Napisz zadanie — Główny czyta i zmienia pliki Katedry sam, zleca pracę TeOgochi, a o polecenia (instalacje, git, usuwanie…) prosi Cię z wyjaśnieniem.'}</div>}
                 {sesja?.wpisy.map((w, i) => {
                     if (w.kto === 'suweren') return (
                         <div key={i} className="ml-8 rounded-lg bg-sky-950/50 px-2 py-1.5 text-sky-100">
@@ -163,7 +195,7 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                                     <img src={`${MOST}/api/glowny/zalacznik/${encodeURIComponent(z)}`} alt={z} className="h-14 rounded border border-sky-700/60 object-cover" />
                                 </a>))}</div>}
                         </div>);
-                    if (w.kto === 'glowny') return <div key={i} className="mr-8 whitespace-pre-wrap rounded-lg bg-amber-950/30 px-2 py-1.5">{w.tresc}</div>;
+                    if (w.kto === 'glowny') return <div key={i} className={`mr-8 whitespace-pre-wrap rounded-lg px-2 py-1.5 ${O.dymek}`}>{w.tresc}</div>;
                     if (w.kto === 'narzedzie') return <div key={i} className="text-[10px] text-slate-500">🔧 {w.narzedzie}{w.opis ? ` — ${w.opis}` : ''}</div>;
                     if (w.kto === 'decyzja') return <div key={i} className="text-[10px] text-slate-400">{w.tresc}</div>;
                     if (w.kto === 'blad') return <div key={i} className="rounded border border-rose-600/50 bg-rose-950/40 px-2 py-1 text-rose-200">⚠ {w.tresc}</div>;
@@ -171,7 +203,7 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                         const p = sesja.prosby.find((x) => x.id === w.prosba!.id) ?? w.prosba;
                         return (
                             <div key={i} className={`rounded-lg border p-2 ${KOLOR_RYZYKA[p.ryzyko] ?? KOLOR_RYZYKA.nieznane}`}>
-                                <div className="font-bold">✋ Główny prosi o zgodę · ryzyko {p.ryzykoSlownie}</div>
+                                <div className="font-bold">✋ {O.imie} prosi o zgodę · ryzyko {p.ryzykoSlownie}</div>
                                 <div className="mt-0.5">🗣️ <b>O co mu chodzi:</b> {p.coRobi}</div>
                                 {p.dlaczego && <div className="mt-0.5 text-slate-300">💭 <b>Po co (jego słowami):</b> {p.dlaczego}</div>}
                                 <div className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-all rounded bg-black/50 px-1.5 py-1 font-mono text-[10px] text-slate-300">{p.narzedzie}: {p.polecenie}</div>
@@ -186,7 +218,7 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                     }
                     return null;
                 })}
-                {sesja?.trwa && <div className="text-[11px] text-amber-300">⟳ Główny pracuje… <button onClick={przerwij} className="ml-1 underline hover:text-amber-100">przerwij</button></div>}
+                {sesja?.trwa && <div className="text-[11px] text-amber-300">⟳ {O.imie} pracuje… <button onClick={przerwij} className="ml-1 underline hover:text-amber-100">przerwij</button></div>}
                 <div ref={dol} />
             </div>
 
@@ -209,11 +241,11 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                 <textarea value={tekst} onChange={(e) => setTekst(e.target.value)} rows={kompaktowy ? 2 : 3}
                     onPaste={(e) => { const o = obrazyZ(e.clipboardData); if (o.length) { e.preventDefault(); wgraj(o); } }}
                     onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) wyslij(); }}
-                    placeholder={czeka.length ? 'Najpierw zdecyduj o prośbie powyżej (✓ / ✕)…' : sesja ? 'Dalej… (Ctrl+Enter · Ctrl+V wkleja zrzut)' : 'Zadanie dla Głównego… (Ctrl+Enter · zrzut ekranu: Ctrl+V albo upuść)'}
+                    placeholder={czeka.length ? 'Najpierw zdecyduj o prośbie powyżej (✓ / ✕)…' : sesja ? 'Dalej… (Ctrl+Enter · Ctrl+V wkleja zrzut)' : `Zadanie dla ${O.dopelniacz}… (Ctrl+Enter · zrzut ekranu: Ctrl+V albo upuść)`}
                     disabled={!!sesja?.trwa || czeka.length > 0}
                     className="flex-1 resize-none rounded border border-slate-700 bg-black/50 px-2 py-1.5 text-xs disabled:opacity-50" />
                 <button onClick={wyslij} disabled={(!tekst.trim() && !zalaczniki.length) || wgrywa > 0 || wysyla || !!sesja?.trwa || czeka.length > 0}
-                    className="self-end rounded bg-amber-600/80 px-3 py-1.5 font-bold text-amber-50 hover:bg-amber-500 disabled:opacity-40">{wysyla ? '⟳' : '👑 Wyślij'}</button>
+                    className={`self-end rounded px-3 py-1.5 font-bold text-amber-50 disabled:opacity-40 ${O.przycisk}`}>{wysyla ? '⟳' : `${O.znak} Wyślij`}</button>
             </div>
         </div>
     );

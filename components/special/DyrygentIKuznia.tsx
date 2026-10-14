@@ -702,19 +702,23 @@ export const PorzadkiPanel: React.FC = () => {
 
 /**
  * 🏷️ Zwiadowca promocji (services/ZwiadowcaPromocji.js): kody rabatowe i promocje usług (Meshy, ElevenLabs, chmury…)
- * przez wyszukiwanie w sieci API Claude. Tylko znaleziska ze źródłem z wyników wyszukiwania; nic nie wpisuje i nie płaci.
+ * przez wyszukiwanie w sieci — Claude (web search) albo Gemini (Google Search). Tylko znaleziska ze źródłem z wyników
+ * wyszukiwania; nic nie wpisuje i nie płaci.
  */
-interface Znalezisko { rodzaj: string; kod: string | null; opis: string; rabat: string | null; zrodlo: string; tytulZrodla: string | null; wiekStrony: string | null; data: string | null; pewnosc: string; uwagi: string | null }
-interface Zwiad { usluga: string; kiedy: string; znalezione: Znalezisko[]; odrzucone: unknown[]; podsumowanie: string; koszt: { wyszukan: number; usdWyszukiwania: number }; uwaga: string }
+interface Znalezisko { rodzaj: string; kod: string | null; opis: string; rabat: string | null; zrodlo: string; tytulZrodla: string | null; wiekStrony: string | null; data: string | null; pewnosc: string; uwagi: string | null; potwierdzone?: 'adres' | 'domena' | null }
+interface Zwiad { usluga: string; kiedy: string; dostawca?: 'anthropic' | 'gemini'; znalezione: Znalezisko[]; odrzucone: unknown[]; podsumowanie: string; koszt: { wyszukan: number; usdWyszukiwania: number | null }; uwaga: string }
+type DostawcaPromocji = 'auto' | 'anthropic' | 'gemini';
 export const PromocjePanel: React.FC = () => {
     const [zwiady, setZwiady] = useState<Zwiad[]>([]);
     const [usluga, setUsluga] = useState('Meshy');
     const [trwa, setTrwa] = useState(false);
-    useEffect(() => { zMostu<{ zwiady: Zwiad[] }>('/api/zwiadowca/promocje').then((d) => setZwiady(d.zwiady)).catch(() => {}); }, []);
+    const [dostawca, setDostawca] = useState<DostawcaPromocji>('auto');
+    const [klucze, setKlucze] = useState<{ anthropic: boolean; gemini: boolean } | null>(null);
+    useEffect(() => { zMostu<{ zwiady: Zwiad[]; dostawcy?: { anthropic: boolean; gemini: boolean } }>('/api/zwiadowca/promocje').then((d) => { setZwiady(d.zwiady); setKlucze(d.dostawcy ?? null); }).catch(() => {}); }, []);
     const szukaj = async () => {
         setTrwa(true);
         try {
-            const d = await zMostu<{ zwiad: Zwiad }>('/api/zwiadowca/promocje', { method: 'POST', body: JSON.stringify({ usluga: usluga.trim() }) });
+            const d = await zMostu<{ zwiad: Zwiad }>('/api/zwiadowca/promocje', { method: 'POST', body: JSON.stringify({ usluga: usluga.trim(), dostawca }) });
             setZwiady((z) => [d.zwiad, ...z.filter((x) => x.usluga.toLowerCase() !== d.zwiad.usluga.toLowerCase())]);
             toast.success(`🏷️ ${d.zwiad.usluga}: ${d.zwiad.znalezione.length} zniżek ze źródłami`);
         } catch (e) { toast.error(blad(e)); } finally { setTrwa(false); }
@@ -722,19 +726,22 @@ export const PromocjePanel: React.FC = () => {
     return (
         <div className="space-y-2 rounded-xl border border-amber-800/50 bg-black/30 p-3">
             <h3 className="text-sm font-bold text-amber-200">🏷️ Zwiadowca promocji — kody rabatowe usług</h3>
-            <p className="text-[10px] text-slate-500">Szuka w sieci przez API Claude (klucz Anthropic z Kibla; ~$0,01 za wyszukanie + tokeny). Pokazuje tylko to, co ma źródło. Kod sprawdzasz sam przy płatności.</p>
+            <p className="text-[10px] text-slate-500">Szuka w sieci przez Claude (web search, ~$0,01 za wyszukanie + tokeny) albo Gemini (Google Search, cennik Google) — klucz z Kibla, „🔗 Udostępnij mostowi”{klucze ? ` · most ma: ${[klucze.anthropic && 'Claude', klucze.gemini && 'Gemini'].filter(Boolean).join(', ') || 'żadnego klucza'}` : ''}. Pokazuje tylko to, co ma źródło. Kod sprawdzasz sam przy płatności.</p>
             <div className="flex gap-2">
                 <input value={usluga} onChange={(e) => setUsluga(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !trwa) void szukaj(); }} placeholder="usługa, np. Meshy, ElevenLabs, RunPod" className="flex-1 rounded-lg border border-slate-700 bg-black/40 px-2 py-1 text-xs outline-none" />
+                <select value={dostawca} onChange={(e) => setDostawca(e.target.value as DostawcaPromocji)} title="Kto szuka w sieci" className="rounded-lg border border-slate-700 bg-black/40 px-1 text-xs">
+                    <option value="auto">☁️ auto</option><option value="anthropic">Claude</option><option value="gemini">Gemini</option>
+                </select>
                 <button onClick={() => void szukaj()} disabled={trwa || usluga.trim().length < 2} className="rounded-lg border border-amber-600/60 px-3 py-1 text-xs text-amber-200 disabled:opacity-40">{trwa ? 'szukam…' : 'Szukaj'}</button>
             </div>
             {zwiady.map((z) => (
                 <div key={z.usluga} className="space-y-1 rounded-lg border border-slate-800 p-2">
-                    <div className="text-xs font-semibold text-slate-200">{z.usluga} <span className="font-normal text-[10px] text-slate-500">· {new Date(z.kiedy).toLocaleString('pl-PL')} · {z.koszt.wyszukan} wyszukań (≈ ${z.koszt.usdWyszukiwania}){z.odrzucone.length ? ` · ${z.odrzucone.length} odrzucone bez źródła` : ''}</span></div>
+                    <div className="text-xs font-semibold text-slate-200">{z.usluga} <span className="font-normal text-[10px] text-slate-500">· {new Date(z.kiedy).toLocaleString('pl-PL')} · {z.dostawca === 'gemini' ? 'Gemini' : 'Claude'} · {z.koszt.wyszukan} wyszukań{z.koszt.usdWyszukiwania != null ? ` (≈ $${z.koszt.usdWyszukiwania})` : ''}{z.odrzucone.length ? ` · ${z.odrzucone.length} odrzucone bez źródła` : ''}</span></div>
                     {z.znalezione.length === 0 && <div className="text-[11px] text-slate-400">Nic ze źródłem. {z.podsumowanie}</div>}
                     {z.znalezione.map((n, i) => (
                         <div key={i} className="text-[11px] text-slate-300">
                             {n.kod && <code className="mr-1 rounded bg-amber-500/20 px-1 text-amber-200">{n.kod}</code>}{n.rabat && <b className="mr-1 text-emerald-300">{n.rabat}</b>}{n.opis}
-                            <span className="text-[10px] text-slate-500"> · {n.pewnosc === 'oficjalne' ? '✅ oficjalne' : n.pewnosc === 'forum' ? '💬 forum' : '🧾 agregator'}{n.data || n.wiekStrony ? ` · ${n.data ?? n.wiekStrony}` : ''}{n.uwagi ? ` · ${n.uwagi}` : ''} · <a href={n.zrodlo} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">{n.tytulZrodla ?? 'źródło'}</a></span>
+                            <span className="text-[10px] text-slate-500"> · {n.pewnosc === 'oficjalne' ? '✅ oficjalne' : n.pewnosc === 'forum' ? '💬 forum' : '🧾 agregator'}{n.data || n.wiekStrony ? ` · ${n.data ?? n.wiekStrony}` : ''}{n.uwagi ? ` · ${n.uwagi}` : ''} · <a href={n.zrodlo} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">{n.tytulZrodla ?? 'źródło'}</a>{n.potwierdzone === 'domena' ? ' · potwierdzone domeną' : ''}</span>
                         </div>
                     ))}
                 </div>

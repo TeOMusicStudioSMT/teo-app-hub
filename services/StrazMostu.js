@@ -74,6 +74,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/zwiadowca/szukaj', '/api/zwiadowca/kandydat/', '/api/zwiadowca/link', '/api/zwiadowca/promocje',   // zwiad i pobieranie modeli (GB na dysk) — decyzja przy maszynie
     '/api/porzadki/usun',   // kasowanie plików i modeli — tylko przy maszynie
     '/api/glowny/',   // Główny (Claude Code) zmienia pliki Katedry — rozmowa i zgody tylko przy maszynie
+    '/api/argo/',   // ⚗️ Argo BoB (Gemini) czyta pliki Katedry i TGS, zmienia je po ✓ — rozmowa i zgody tylko przy maszynie
     '/api/aktualizacja/zastosuj', '/api/aktualizacja/cofnij',   // podmiana kodu Katedry — tylko przy maszynie
     '/api/wizytowka/',   // profil i meldunek wizytówki zmienia Suweren przy Katedrze (sama /api/wizytowka jest publiczna)
     '/api/dyrygent/zastosuj', '/api/modele/karta',   // stałe silniki TeOgochi i karty modeli zmienia Suweren przy Katedrze

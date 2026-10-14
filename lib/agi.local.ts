@@ -55,6 +55,9 @@ export const AGI_LOCAL: AgiManifest = {
     { id: 'glowny', label: 'Główny (Claude Code)', labelEn: 'Lead (Claude Code)', emoji: '👑', layer: 'CORE',
       desc: 'Claude Code w tle czatu — działa w Katedrze, na zmiany rdzenia pyta o zgodę.',
       descEn: 'Claude Code behind the chat — works in the Cathedral, asks consent for core changes.' },
+    { id: 'argo', label: 'Argo BoB (Gemini)', labelEn: 'Argo BoB (Gemini)', emoji: '⚗️', layer: 'CORE',
+      desc: 'Węzeł Gemini z narzędziami — czyta Katedrę i Game Studio, zmiany przez Tarczę i za zgodą Suwerena.',
+      descEn: 'Gemini node with tools — reads the Cathedral and Game Studio, changes pass the Shield and need consent.' },
     { id: 'mechanik', label: 'Mechanik', labelEn: 'Mechanic', emoji: '🔧', layer: 'CORE',
       desc: 'Kolejka patchy — każdy przechodzi przez Tarczę, zanim trafi na dysk.',
       descEn: 'Patch queue — each one passes the Shield before it reaches disk.' },
@@ -113,7 +116,7 @@ export const AGI_LOCAL: AgiManifest = {
   edges: [
     // Rdzeń
     { from: 'ollama', to: 'bridge' }, { from: 'bridge', to: 'stado' }, { from: 'dyrygent', to: 'stado' },
-    { from: 'ollama', to: 'dyrygent' }, { from: 'glowny', to: 'bridge' }, { from: 'mechanik', to: 'bridge' },
+    { from: 'ollama', to: 'dyrygent' }, { from: 'glowny', to: 'bridge' }, { from: 'argo', to: 'bridge' }, { from: 'mechanik', to: 'bridge' },
     // Zmysły → rdzeń
     { from: 'stol', to: 'stado' }, { from: 'mowa', to: 'bridge' }, { from: 'zwiadowca', to: 'dyrygent' },
     { from: 'jev', to: 'dyrygent' }, { from: 'jev', to: 'kodeks' },
