@@ -114,6 +114,7 @@ import * as Aktualizator   from './services/Aktualizator.js';
 import * as Tlumacz        from './services/Tlumacz.js';
 import * as Glowny         from './services/Glowny.js';
 import { utworzArgoBoba }   from './services/ArgoBob.js';
+import { utworzGolDnia, zamontujTrasyGolDnia } from './services/GolDnia.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import * as SilnikKlonu    from './services/SilnikKlonu.js';
@@ -15223,6 +15224,58 @@ async function tancerzGameShow(mini) {
     if (assetId) { try { const p = Assety3D.sciezkaPliku(assetId, 'obraz.png'); if (fsSync.existsSync(p)) obraz = p; } catch { /* zły id assetu */ } }
     return { imie: m?.nazwa || mini?.nazwa || 'TeOgochi', opis: m?.opis ?? '', obraz };
 }
+// ── ⚽ GOL DNIA (services/GolDnia.js) — TeOgochi rysuje i opowiada bramki z FAKTÓW meczów (Suweren 2026-10-15) ──
+// Obraz NIE z cudzych nagrań: fakty (TheSportsDB + Zwiadowca z sieci, sprawdzone wynikiem) → FLUX w stylu Katedry.
+/** Zwiad faktów w sieci: Claude (web_search), bez klucza Anthropic — Gemini (Google Search). Zwraca tekst i adresy źródeł. */
+async function zwiadSieci(prompt) {
+    const ka = await getAnthropicKey().catch(() => null);
+    if (ka) {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST', signal: AbortSignal.timeout(180_000),
+            headers: { 'content-type': 'application/json', 'x-api-key': ka, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: process.env.OTAKOS_GOL_DNIA_MODEL || 'claude-sonnet-5-5', max_tokens: 4000, messages: [{ role: 'user', content: prompt }], tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }] }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(`Anthropic HTTP ${r.status}: ${d?.error?.message ?? ''}`.trim());
+        const zrodla = new Set();
+        for (const b of d.content ?? []) {
+            if (b?.type === 'web_search_tool_result' && Array.isArray(b.content)) for (const x of b.content) if (x?.url) zrodla.add(x.url);
+            for (const c of b?.citations ?? []) if (c?.url) zrodla.add(c.url);
+        }
+        return { tekst: (d.content ?? []).filter((b) => b.type === 'text').map((b) => b.text).join(''), zrodla: [...zrodla] };
+    }
+    const kg = await getGeminiKey().catch(() => null);
+    if (!kg) throw new Error('Zwiadowca potrzebuje klucza Claude albo Gemini (TeO Kibel → „🔗 Udostępnij mostowi”).');
+    const model = (await listyModeliChmury('gemini', kg)).modele.find((m) => /flash/.test(m.model))?.model || 'gemini-2.5-flash';
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST', signal: AbortSignal.timeout(180_000), headers: { 'Content-Type': 'application/json', 'x-goog-api-key': kg },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(`Gemini HTTP ${r.status}: ${d?.error?.message ?? ''}`.trim());
+    const k = d.candidates?.[0];
+    return { tekst: (k?.content?.parts ?? []).filter((x) => x.text && !x.thought).map((x) => x.text).join(''), zrodla: (k?.groundingMetadata?.groundingChunks ?? []).map((c) => c.web?.title || c.web?.uri).filter(Boolean) };
+}
+const GolDnia = utworzGolDnia({
+    katalog: ANTIGRAVITY_DIR,
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    zwiad: zwiadSieci,
+    chat: (model, system, user) => piszModelem(model, system, user),
+    modelDla: (id) => ModeleAgentow.modelDla(id),
+    rysuj: async ({ prompt, prefiks }) => {
+        const przed = await stanWideoZBudzeniem('Gol Dnia');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        return Assety3D.kadrFilmu({ prompt, referencje: [], prefiks });
+    },
+    // głos narratora = Głosy Stada pod jego id (pilkarka, krolik, byk, sowa); bez barwy — tor domyślny Katedry
+    mow: async ({ tekst, narrator, jezyk }) => Wywiady.mowa({ tekst: tekstDoMowy(tekst), glos: await GlosyStada.glos(narrator).catch(() => null), jezyk }),
+    opisz: (p) => Montazownia.opisz(p),
+    publikuj: (z) => PublikacjeYT.przygotuj(z),
+    ffmpeg: ffmpegPath,
+    szyna: Szyna,
+});
+zamontujTrasyGolDnia(app, GolDnia, { kanalProjektu: (p) => PublikacjeYT.kanalProjektu(p), ustawKanalProjektu: (p, k) => PublikacjeYT.ustawKanalProjektu(p, k) });
+
 const GameShow = utworzGameShow({
     katalog: ANTIGRAVITY_DIR,
     katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),

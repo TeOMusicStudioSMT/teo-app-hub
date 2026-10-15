@@ -14,6 +14,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PolaczYouTube, PublikacjeYouTubePanel } from './YouTubeStudio';
 import { GameShowPanel } from './GameShowPanel';
+import { GolDniaPanel } from './GolDniaPanel';
 
 // ─── Stałe ────────────────────────────────────────────────────────────────────
 
@@ -494,6 +495,7 @@ const ImpresarioDashboard: React.FC = () => {
                         <PolaczYouTube key={ytKluczePoz} onZmiana={fetchStatus} />
                         <PublikacjeYouTubePanel />
                         <GameShowPanel />
+                        <GolDniaPanel />
                     </div>
                 </section>
 

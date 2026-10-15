@@ -255,6 +255,17 @@ export const GATUNKI: Gatunek[] = [
         narzedzia: ['/api/rynek/wiadomosci', '/api/rynek/nastroj', '/api/rynek/dziennik', '/api/kronos/forecast'],
         zadania: ['Ted, zeskanuj rynek i Tunel RSS', 'Ted, odpal Auto-Maszynę na świecach 1m', 'Ted, zapisz decyzję w Dzienniku'],
     },
+    {
+        // ⚽ Suweren (2026-10-15): „zaprojektujemy nową piłkarską ze swym nowym słodkim głosem… będzie komentowała materiał,
+        // co widzi, i się uczyła i rozwijała — z każdym odcinkiem bogatszy komentarz”. services/GolDnia.js — rysuje i opowiada
+        // bramki z FAKTÓW meczów (nie z cudzych nagrań); pamięta strzelców i poprawki Suwerena.
+        id: 'pilkarka', imie: 'Piłkarka', dziedzina: 'Piłka nożna i komentarz',
+        opis: 'Prowadzi Gol Dnia: z faktów meczu pisze kartę strzelca, okrzyk i opis każdej bramki, FLUX rysuje sceny w stylu Katedry — z każdym odcinkiem pamięta więcej.',
+        formy: { 'jajko': '🥚', 'pisklę': '🐣', 'młodzik': '⚽', 'kompan': '🎙️', 'legenda': '🏆' },
+        kolor: '#22c55e',
+        narzedzia: ['/api/gol-dnia', '/api/gol-dnia/mecze', '/api/gol-dnia/fakty'],
+        zadania: ['Piłkarko, zrób Gol Dnia z ostatniego meczu Premier League', 'Piłkarko, opowiedz ten mecz jako Byk', 'Piłkarko, kogo już znasz ze strzelców?'],
+    },
 ];
 
 export const gatunekPo = (id: string): Gatunek | undefined => GATUNKI.find(g => g.id === id);
