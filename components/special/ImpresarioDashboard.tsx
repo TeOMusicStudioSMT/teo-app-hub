@@ -14,6 +14,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PolaczYouTube, PublikacjeYouTubePanel } from './YouTubeStudio';
 import { GameShowPanel } from './GameShowPanel';
+import { FormatyPanel } from './FormatyPanel';
 import { otworzApke } from '../../lib/pierscien';
 
 // ─── Stałe ────────────────────────────────────────────────────────────────────
@@ -495,6 +496,7 @@ const ImpresarioDashboard: React.FC = () => {
                         <PolaczYouTube key={ytKluczePoz} onZmiana={fetchStatus} />
                         <PublikacjeYouTubePanel />
                         <GameShowPanel />
+                        <FormatyPanel />
                         {/* ⚽ Gol Dnia przeniesiony do Studia Zebrra Football jako zakładka (Suweren 2026-10-15) */}
                         <button onClick={() => otworzApke({ id: 'studio-zebrra', tytul: 'Studio Zebrra Football', url: 'http://127.0.0.1:3001/apki/studio-zebrra/?zakladka=gol-dnia', znak: '🦓', kolor: '#22c55e' })}
                             className="rounded-2xl border border-emerald-500/30 bg-emerald-950/10 p-3 text-left text-xs text-emerald-100 hover:bg-emerald-900/20">

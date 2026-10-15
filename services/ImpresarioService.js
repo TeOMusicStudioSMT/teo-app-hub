@@ -764,6 +764,27 @@ class ImpresarioService {
         });
     }
 
+    // ── 📱 TikTok i Instagram (services/KontaSieci.js, 2026-10-15) ──
+    // Klucze aplikacji i tokeny kont w tym samym skarbcu, pod `tiktok` / `instagram` — tylko w procesie mostu.
+    async sekretySieci(siec) {
+        if (!['tiktok', 'instagram'].includes(siec)) throw new Error(`Nieznana sieć: ${siec}`);
+        return (await this._readSecrets())?.[siec] ?? {};
+    }
+
+    async zapiszSekretySieci(siec, zmiana) {
+        if (!['tiktok', 'instagram'].includes(siec)) throw new Error(`Nieznana sieć: ${siec}`);
+        await this._ensureDir();
+        // skarbiec istnieje, ale się nie czyta → NIE nadpisujemy go pustym (zgubiłyby się klucze YouTube)
+        let current = {};
+        try { current = JSON.parse(await fs.readFile(SECRETS_FILE, 'utf8')); }
+        catch (e) { if (e.code !== 'ENOENT') throw new Error('Skarbiec Impresariatu (media_secrets.json) nie daje się odczytać — nie zapisuję, żeby nic nie zgubić.'); }
+        const s = structuredClone(current[siec] ?? {});
+        zmiana(s);
+        await fs.writeFile(SECRETS_TEMP, JSON.stringify({ ...current, [siec]: s }, null, 2), 'utf8');
+        await fs.rename(SECRETS_TEMP, SECRETS_FILE);
+        return true;
+    }
+
     // Skarbiec sekretów — nigdy nie rzuca wyjątku (graceful degradation)
     async _readSecrets() {
         try {

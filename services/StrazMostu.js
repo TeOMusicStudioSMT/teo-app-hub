@@ -71,6 +71,8 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     // 📺 Konto YouTube (klient OAuth, łączenie, rozłączanie) i skarbiec kluczy — tylko przy maszynie.
     // Publikacje (/api/youtube/publikacje*) telefon może zatwierdzać z kluczem (Izba Akceptacji).
     '/api/impresario/youtube/', '/api/impresario/secrets/',
+    // 📱 Formaty i sieci: ffmpeg na maszynie, konta TikTok/Instagram (klucze aplikacji, OAuth) i ✓ wysyłki do sieci — tylko przy maszynie
+    '/api/formaty', '/api/impresario/tiktok/', '/api/impresario/instagram/',
     '/api/pliki/upusc',   // zapis upuszczonego pliku do katalogu projektu — tylko przy maszynie   // trening modeli trwa godziny na karcie graficznej i pisze po dysku — tylko przy maszynie
     '/api/zwiadowca/szukaj', '/api/zwiadowca/kandydat/', '/api/zwiadowca/link', '/api/zwiadowca/promocje',   // zwiad i pobieranie modeli (GB na dysk) — decyzja przy maszynie
     '/api/porzadki/usun',   // kasowanie plików i modeli — tylko przy maszynie
@@ -161,8 +163,10 @@ export function czyWizytowka(req) {
  * bez nagłówków tunelu, z Host = ta maszyna (żadnego DNS rebinding). Podrzucony kod odpada na `state`.
  */
 export const SCIEZKA_ZWROTU_YOUTUBE = '/api/impresario/youtube/zwrot';
+/** 📱 Te same zasady dla powrotów z TikTok (Login Kit) i Facebooka (Instagram) — services/KontaSieci.js. */
+export const SCIEZKI_ZWROTU_OAUTH = new Set([SCIEZKA_ZWROTU_YOUTUBE, '/api/impresario/tiktok/zwrot', '/api/impresario/instagram/zwrot']);
 export function czyZwrotYouTube(req) {
-    if (req.method !== 'GET' || req.path !== SCIEZKA_ZWROTU_YOUTUBE) return false;
+    if (req.method !== 'GET' || !SCIEZKI_ZWROTU_OAUTH.has(req.path)) return false;
     if (req.get?.('cf-connecting-ip') || req.get?.('x-forwarded-for') || req.get?.('cf-ray')) return false;
     if (!IP_PETLI.has(String(req.ip || req.socket?.remoteAddress || ''))) return false;
     return HOST_MASZYNY.test(String(req.get?.('host') || ''));

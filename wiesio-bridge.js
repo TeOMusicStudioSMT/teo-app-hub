@@ -232,6 +232,8 @@ import { utworzTost } from './services/TostSiec.js';
 import { utworzZarzadce } from './services/ZarzadcaRejestru.js';
 import { utworzKontoYouTube, SCIEZKA_ZWROTU as ZWROT_YOUTUBE } from './services/YouTubeKonto.js';
 import { utworzPublikacje } from './services/PublikacjeYouTube.js';
+import { utworzFormaty, zamontujTrasyFormatow } from './services/Formaty.js';
+import { utworzKontoTikTok, utworzKontoInstagram } from './services/KontaSieci.js';
 import { utworzWywiady, prowadzacyZObsady } from './services/WywiadAktorow.js';
 import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
@@ -15358,6 +15360,31 @@ app.post('/api/game-show/stol', (_req, res) => ytOdp(res, (async () => {
     const otwarta = (await Stol.lista()).find((x) => x.tytul === k.tytul && !['odrzucona'].includes(x.etap));
     return { karta: otwarta ?? await Stol.dodaj({ ...k, zrodlo: 'hub', zalozyl: 'TeO Game Show' }), nowa: !otwarta };
 })()));
+
+// ── 📱 Formaty i sieci (services/Formaty.js, services/KontaSieci.js) — odcinki → pion 9:16 dla Shorts / TikTok / Reels ──
+// Konta TikTok i Instagram jak YouTube: OAuth z pętlą zwrotną na moście, tokeny w skarbcu Impresariatu. Wysyłka po ✓ Suwerena.
+const KontoTikTok = utworzKontoTikTok({
+    sekrety: (s) => ImpresarioService.getInstance().sekretySieci(s),
+    zapiszSekrety: (s, z) => ImpresarioService.getInstance().zapiszSekretySieci(s, z),
+    adresMostu: `http://127.0.0.1:${PORT}`,
+});
+const KontoInstagram = utworzKontoInstagram({
+    sekrety: (s) => ImpresarioService.getInstance().sekretySieci(s),
+    zapiszSekrety: (s, z) => ImpresarioService.getInstance().zapiszSekretySieci(s, z),
+    adresMostu: `http://localhost:${PORT}`,   // Meta: http tylko dla localhost i tylko w trybie deweloperskim (Live → OTAKOS_INSTAGRAM_ZWROT = https)
+});
+const Formaty = utworzFormaty({
+    katalog: ANTIGRAVITY_DIR,
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    opisz: (p) => Montazownia.opisz(p),
+    ffmpeg: ffmpegPath,
+    pisz: async (system, prompt) => piszModelem(await ModeleAgentow.modelDla('kronikarz').catch(() => null), system, prompt),
+    youtube: PublikacjeYT,
+    tiktok: KontoTikTok,
+    instagram: KontoInstagram,
+    szyna: Szyna,
+});
+zamontujTrasyFormatow(app, Formaty, { tiktok: KontoTikTok, instagram: KontoInstagram, youtubeStan: () => KontoYouTube.stan(), szyna: Szyna });
 
 // ── 💬 Sceny dialogowe filmu (services/ScenyDialogowe.js) ──
 // Silnik Studia Podcastu bez studia: postacie z obsady rozmawiają na tle kadrów projektu → montaże projektu (Montażownia).
