@@ -330,3 +330,19 @@ test('kompilacja: kilka meczów z faktami osobno → bloki MECZ w scenariuszu i 
         await czekaj(B, b.id, ['gotowy', 'blad']);
     } finally { await fs.rm(kat, { recursive: true, force: true }); }
 });
+
+import { odpowiedzGeminiZwiadu, promptZwiadu } from '../services/GolDnia.js';
+test('Gemini: źródła z groundingu; bez nich — adresy z JSON tylko, gdy model naprawdę szukał; z pamięci = bez źródeł', () => {
+    const json = (zrodla) => JSON.stringify({ gole: GOLE, zrodla });
+    const odp = (tekst, meta) => ({ candidates: [{ content: { parts: [{ text: tekst }] }, groundingMetadata: meta }] });
+    const a = odpowiedzGeminiZwiadu(odp(json([]), { webSearchQueries: ['Coventry Newcastle goals'], groundingChunks: [{ web: { uri: 'https://vertexaisearch.cloud.google.com/x', title: 'bbc.com' } }] }));
+    assert.deepEqual(a.zrodla, ['https://vertexaisearch.cloud.google.com/x']);
+    assert.equal(a.szukal, true);
+    const b = odpowiedzGeminiZwiadu(odp('```json\n' + json(['https://www.bbc.com/sport/football/123', 'nie-adres']) + '\n```', { webSearchQueries: ['Coventry Newcastle'] }));
+    assert.deepEqual(b.zrodla, ['https://www.bbc.com/sport/football/123']);
+    assert.equal(b.zJsona, true);
+    const c = odpowiedzGeminiZwiadu(odp(json(['https://www.bbc.com/sport/football/123']), undefined));
+    assert.equal(c.szukal, false);
+    assert.deepEqual(c.zrodla, [], 'bez wyszukiwania adresy z pamięci modelu nie są źródłem');
+    assert.match(promptZwiadu(MECZ), /"zrodla":\["pełny adres strony/);
+});

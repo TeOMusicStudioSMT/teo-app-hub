@@ -224,7 +224,7 @@ export function sprawdzGole(gole, wynik) {
 export function promptZwiadu(mecz) {
     return `Mecz piłkarski: ${mecz.gospodarze} – ${mecz.goscie}, ${mecz.data ?? ''}${mecz.liga ? `, ${mecz.liga}` : ''}, wynik końcowy ${mecz.wynik[0]}:${mecz.wynik[1]}.
 Znajdź w sieci WSZYSTKIE bramki tego meczu: minuta, strzelec, drużyna (gospodarze/goscie — drużyna, której gol zalicza się do wyniku; przy samobójczym ta, która zyskała), asysta i krótki opis akcji (np. „strzał z woleja z 16 m po rzucie rożnym”). Tylko fakty z relacji — niczego nie dopowiadaj.
-Odpowiedz WYŁĄCZNIE JSON-em: {"gole":[{"minuta":"23","strzelec":"…","druzyna":"gospodarze|goscie","asysta":"… albo null","opis":"…","samobojczy":false,"karny":false}]}
+Odpowiedz WYŁĄCZNIE JSON-em: {"gole":[{"minuta":"23","strzelec":"…","druzyna":"gospodarze|goscie","asysta":"… albo null","opis":"…","samobojczy":false,"karny":false}],"zrodla":["pełny adres strony z relacją, z której wziąłeś fakty"]}
 Goli ma być dokładnie ${mecz.wynik[0] + mecz.wynik[1]} (${mecz.wynik[0]} gospodarzy, ${mecz.wynik[1]} gości).`;
 }
 
@@ -247,6 +247,31 @@ export async function zwiadPoKolei(proby, prompt, sprawdz = null) {
     throw new Error(powody.every((x) => /brak klucza/.test(x))
         ? 'Zwiadowca potrzebuje sieci: klucza Claude albo Gemini (TeO Kibel → „🔗 Udostępnij mostowi”). Model lokalny nie przeszuka internetu — możesz wpisać gole ręcznie.'
         : `Zwiadowca nie zdobył faktów — ${powody.join(' · ')}. Spróbuj później albo wpisz gole ręcznie.`);
+}
+
+/** Dopisek do zwiadu przez Gemini: bez niego model potrafi odpowiedzieć z pamięci, nie szukając (= brak źródeł). */
+export const SZUKAJ_W_GOOGLE = '\n\nNAJPIERW użyj wyszukiwarki Google (relacje meczu: strona ligi, klubu, BBC, ESPN, Flashscore itp.) — nie odpowiadaj z pamięci. W polu "zrodla" podaj adresy stron, z których wziąłeś fakty.';
+
+/**
+ * Odpowiedź Gemini z narzędziem google_search → tekst i źródła. Źródła: strony z groundingu (`groundingChunks`); gdy
+ * Google ich nie podał, a wyszukiwanie SIĘ ODBYŁO (`webSearchQueries`), bierzemy adresy http(s) z pola "zrodla" JSON-u
+ * modelu. Bez wyszukiwania — żadnych źródeł (odpowiedź z pamięci nie jest faktem). `szukal` mówi, czy model szukał.
+ */
+export function odpowiedzGeminiZwiadu(d) {
+    const k = d?.candidates?.[0];
+    const tekst = (k?.content?.parts ?? []).filter((x) => x.text && !x.thought).map((x) => x.text).join('');
+    const meta = k?.groundingMetadata ?? {};
+    const zGroundingu = (meta.groundingChunks ?? []).map((c) => c?.web?.uri || c?.web?.title).filter(Boolean);
+    const zapytania = (meta.webSearchQueries ?? []).filter(Boolean);
+    const szukal = zGroundingu.length > 0 || zapytania.length > 0 || !!meta.searchEntryPoint;
+    let zrodla = zGroundingu;
+    let zJsona = false;
+    if (!zrodla.length && szukal) {
+        const s = tekst.replace(/```(?:json)?/gi, '');
+        const a = s.indexOf('{'), b = s.lastIndexOf('}');
+        try { zrodla = (JSON.parse(s.slice(a, b + 1))?.zrodla ?? []).map(String).filter((u) => /^https?:\/\/[^\s]+\.[a-z]{2,}/i.test(u)).slice(0, 8); zJsona = zrodla.length > 0; } catch { zrodla = []; }
+    }
+    return { tekst, zrodla, szukal, zapytania, zJsona, powodKonca: k?.finishReason ?? null };
 }
 
 // ─── Scenariusz ──────────────────────────────────────────────────────────────────────────────────────
@@ -823,4 +848,4 @@ export function zamontujTrasyGolDnia(app, G, { kanalProjektu = null, ustawKanalP
     app.delete('/api/gol-dnia/:id', (req, res) => odp(res, G.usun(req.params.id).then((usuniety) => ({ usuniety }))));
 }
 
-export default { utworzGolDnia, zamontujTrasyGolDnia, NARRATORZY, PROWADZACY, WIDEO, LIGI, sprawdzGole, odczytajGole, odczytajScenariusz, promptScenariusza, promptyObrazow, kwestieOdcinka, zwiadPoKolei, czyKompilacja, meczeOdcinka, MAX_MECZOW, ktoMowi, wspolprowadzacyOdcinka, skladOdcinka, MAX_WSPOL, monogram, barwyZNazwy, barwyZDruzyny };
+export default { utworzGolDnia, zamontujTrasyGolDnia, NARRATORZY, PROWADZACY, WIDEO, LIGI, sprawdzGole, odczytajGole, odczytajScenariusz, promptScenariusza, promptyObrazow, kwestieOdcinka, zwiadPoKolei, odpowiedzGeminiZwiadu, czyKompilacja, meczeOdcinka, MAX_MECZOW, ktoMowi, wspolprowadzacyOdcinka, skladOdcinka, MAX_WSPOL, monogram, barwyZNazwy, barwyZDruzyny };

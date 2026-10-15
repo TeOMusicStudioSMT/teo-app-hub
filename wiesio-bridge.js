@@ -114,7 +114,7 @@ import * as Aktualizator   from './services/Aktualizator.js';
 import * as Tlumacz        from './services/Tlumacz.js';
 import * as Glowny         from './services/Glowny.js';
 import { utworzArgoBoba }   from './services/ArgoBob.js';
-import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei } from './services/GolDnia.js';
+import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei, odpowiedzGeminiZwiadu, SZUKAJ_W_GOOGLE } from './services/GolDnia.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import * as SilnikKlonu    from './services/SilnikKlonu.js';
@@ -15247,14 +15247,23 @@ async function zwiadClaude(prompt, ka) {
 /** Zwiad przez Gemini (narzędzie google_search) — tekst i źródła z groundingu. */
 async function zwiadGemini(prompt, kg) {
     const model = process.env.OTAKOS_GOL_DNIA_MODEL_GEMINI || (await listyModeliChmury('gemini', kg)).modele.find((m) => /flash/.test(m.model))?.model || 'gemini-2.5-flash';
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-        method: 'POST', signal: AbortSignal.timeout(180_000), headers: { 'Content-Type': 'application/json', 'x-goog-api-key': kg },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }),
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(`HTTP ${r.status}: ${d?.error?.message ?? ''}`.trim());
-    const k = d.candidates?.[0];
-    return { tekst: (k?.content?.parts ?? []).filter((x) => x.text && !x.thought).map((x) => x.text).join(''), zrodla: (k?.groundingMetadata?.groundingChunks ?? []).map((c) => c.web?.title || c.web?.uri).filter(Boolean) };
+    const zapytaj = async (tekst) => {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+            method: 'POST', signal: AbortSignal.timeout(180_000), headers: { 'Content-Type': 'application/json', 'x-goog-api-key': kg },
+            body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: tekst }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${d?.error?.message ?? ''}`.trim());
+        return d;
+    };
+    // Gemini potrafi odpowiedzieć z pamięci bez wyszukiwania (= brak źródeł) → prośba wprost, a gdy nie szukał — raz jeszcze
+    let d = await zapytaj(prompt + SZUKAJ_W_GOOGLE);
+    let w = odpowiedzGeminiZwiadu(d);
+    if (!w.zrodla.length) { d = await zapytaj(`${prompt}${SZUKAJ_W_GOOGLE}\nPoprzednia odpowiedź nie miała źródeł — tym razem koniecznie przeszukaj sieć.`); w = odpowiedzGeminiZwiadu(d); }
+    // diagnoza bez klucza: ostatnia odpowiedź Gemini (tekst, grounding) — gdy znowu „bez źródeł”, widać dlaczego
+    fs.mkdir(path.join(ANTIGRAVITY_DIR, 'gol-dnia'), { recursive: true }).then(() => fs.writeFile(path.join(ANTIGRAVITY_DIR, 'gol-dnia', 'zwiad-gemini-ostatnia.json'), JSON.stringify({ kiedy: new Date().toISOString(), model, szukal: w.szukal, zapytania: w.zapytania, zrodla: w.zrodla, zJsona: w.zJsona, odpowiedz: d }, null, 1), 'utf8')).catch(() => {});
+    if (!w.zrodla.length) throw new Error(w.szukal ? `${model}: szukał (${w.zapytania.slice(0, 2).join('; ') || 'bez zapytań'}), ale nie oddał adresów stron` : `${model}: odpowiedział z pamięci, bez wyszukiwania w Google`);
+    return { tekst: w.tekst, zrodla: w.zrodla };
 }
 /**
  * Zwiad faktów w sieci (Suweren 2026-10-15: „na sztywno jest Anthropic… niech automatycznie bierze… mam z chmury
