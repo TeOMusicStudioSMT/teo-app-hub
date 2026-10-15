@@ -174,6 +174,9 @@ test('🎛️ akcje: auto-zestaw z biblioteki; kolejna paczka na TYM SAMYM rigu 
     ];
     assert.deepEqual(dobierzAkcje('gra', bib).map((a) => a.id), [1, 2, 3, 6]);
     assert.deepEqual(dobierzAkcje('walka', bib, { pominac: [3] }).map((a) => a.id), [4], 'bez akcji, które bryła już ma');
+    const studio = [...bib, { id: 7, nazwa: 'Talk with Hands Open', kategoria: 'DailyActions' }, { id: 8, nazwa: 'Cheer with Both Hands Up', kategoria: 'DailyActions' }, { id: 9, nazwa: 'Talk with Hands Open Fast', kategoria: 'DailyActions' }];
+    assert.deepEqual(dobierzAkcje('studio', studio).map((a) => a.id), [1, 7, 8], 'prowadzący studia: dokładne nazwy (bez „…Fast”), kolejność zestawu');
+    assert.deepEqual(dobierzAkcje('studio', studio, { pominac: [1] }).map((a) => a.id), [7, 8]);
     assert.throws(() => dobierzAkcje('nie-ma', bib), /Nieznany zestaw/);
     assert.throws(() => oczyscZlecenie({ rodzaj: 'akcje', akcje: [] }), /Wybierz akcje/);
     assert.throws(() => oczyscZlecenie({ rodzaj: 'akcje', akcje: Array.from({ length: 11 }, (_, i) => i) }), /kolejną paczką/);

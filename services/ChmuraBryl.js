@@ -45,6 +45,9 @@ export const ZESTAWY_AKCJI = {
     taniec: { nazwa: '💃 taniec', kategoria: 'Dancing' },
     codzienne: { nazwa: '🏡 codzienne', kategoria: 'DailyActions' },
     cialo: { nazwa: '🤸 ruchy ciała', kategoria: 'BodyMovements' },
+    // Studio Zebrra (Suweren 2026-10-15): prowadzący STOJĄ za stołem — spoczynek, mowa z gestami, okrzyk przy golu.
+    // Nazwy dokładne z biblioteki; studio rozpoznaje rolę z nazwy klipu (idle → stoi, talk/gesture/wave → mówi, cheer/victory → okrzyk).
+    studio: { nazwa: '🎙️ prowadzący studia', nazwy: ['Idle', 'Talk with Hands Open', 'Talk with Right Hand Open', 'Talk with Left Hand Raised', 'Talk Passionately', 'Agree Gesture', 'Big Wave Hello', 'Cheer with Both Hands Up', 'Victory Fist Pump', 'Idle 3'] },
 };
 /** Akcje zestawu z biblioteki: id po kolei, bez tych, które bryła już ma, najwyżej `ile`. */
 export function dobierzAkcje(zestaw, biblioteka, { pominac = [], ile = MAX_AKCJI } = {}) {
@@ -52,7 +55,12 @@ export function dobierzAkcje(zestaw, biblioteka, { pominac = [], ile = MAX_AKCJI
     if (!z) throw new Error(`Nieznany zestaw akcji „${zestaw}”. Są: ${Object.keys(ZESTAWY_AKCJI).join(', ')}.`);
     const wolne = biblioteka.filter((a) => !pominac.includes(a.id));
     const out = [];
-    if (z.kategoria) for (const a of wolne) { if (a.kategoria === z.kategoria) out.push(a); if (out.length >= ile) break; }
+    if (z.nazwy) for (const n of z.nazwy) {
+        const a = wolne.find((x) => !out.includes(x) && String(x.nazwa).trim().toLowerCase() === n.toLowerCase());
+        if (a) out.push(a);
+        if (out.length >= ile) break;
+    }
+    else if (z.kategoria) for (const a of wolne) { if (a.kategoria === z.kategoria) out.push(a); if (out.length >= ile) break; }
     else for (const s of z.slowa) {
         const a = wolne.find((x) => !out.includes(x) && `${x.nazwa} ${x.klucz}`.toLowerCase().includes(s));
         if (a) out.push(a);
