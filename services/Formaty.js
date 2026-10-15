@@ -132,7 +132,7 @@ export function propozycjeGolDnia(s, dlugosci) {
 /**
  * @param {{ katalog:string, katalogMontazy:(projekt:string)=>Promise<string>, opisz:(p:string)=>Promise<{sekundy:number|null, maAudio?:boolean, szerokosc?:number, wysokosc?:number}>,
  *   ffmpeg?:string, pisz?:(system:string, prompt:string)=>Promise<{tekst:string, silnik?:string}>,
- *   youtube?:{ przygotuj:Function, zmien:Function, wszystkie:()=>Promise<any[]> },
+ *   youtube?:{ przygotuj:Function, zmien:Function, zatwierdz?:Function, wszystkie:()=>Promise<any[]> },
  *   tiktok?:{ stan:Function, wyslijSzkic:Function, stanWysylki:Function }, instagram?:{ stan:Function, opublikujReel:Function },
  *   szyna?:any, teraz?:()=>number }} o
  */
@@ -310,7 +310,7 @@ export function utworzFormaty(o) {
             id: `f-${crypto.randomBytes(4).toString('hex')}`, projekt, zrodlo: abs, nazwaZrodla: path.basename(abs), program: programZPliku(abs), jezyk: jezykZPliku(abs),
             propozycja: p?.id ?? null, nazwa: String(z.nazwa ?? p?.nazwa ?? `${Math.round(od)}–${Math.round(dok)} s`).slice(0, 120),
             od, do: dok, uklad, kadrX: Math.min(1, Math.max(0, Number(z.kadrX ?? 0.5) || 0)), napisy, napisyLista, tytul: czystyNapis(z.tytul ?? p?.tytul ?? '').slice(0, 80),
-            stan: 'w_kolejce', plik: null, sekundy: null, cele: null, publikacje: {}, utworzono: czas(),
+            stan: 'w_kolejce', plik: null, sekundy: null, cele: null, publikacje: {}, utworzono: czas(), ...(z.autopilot ? { autopilot: true } : {}),
         };
         (await wczytaj()).unshift(k);
         await zapisz();
@@ -363,8 +363,10 @@ export function utworzFormaty(o) {
 
     /**
      * Klip → publikacja do ✓. youtube: PublikacjeYouTube (Kronikarz, Izba); tiktok/instagram: Kronikarz pisze opis tutaj.
+     * `auto` = 🤖 autopilot formatów (Suweren 2026-10-16: „wysyła automatycznie” — dla sieci, które włączył): po opisie
+     * Kronikarza wysyłka idzie od razu, bez ręcznego ✓. Bez opisu Kronikarza autopilot NIE wysyła (czeka na ✓ jak zwykle).
      */
-    async function doPublikacji(id, siec, { kontoId = null, kanalId = null } = {}) {
+    async function doPublikacji(id, siec, { kontoId = null, kanalId = null, auto = false } = {}) {
         const k = await znajdz(id);
         if (k.stan !== 'gotowy' || !k.plik || !fsSync.existsSync(k.plik)) throw new Error('Najpierw gotowy klip (przerobienie).');
         const cel = SIECI_PUBLIKACJI[siec];
@@ -372,18 +374,20 @@ export function utworzFormaty(o) {
         const c = celeKlipu(k.sekundy)[cel];
         if (!c.ok) throw new Error(`${CELE[cel].nazwa}: ${c.powod}.`);
         const stara = k.publikacje?.[siec];
-        if (stara && !['odrzucona', 'blad'].includes(stara.etap)) throw new Error('Ten klip już czeka (albo poszedł) do tej sieci.');
+        if (stara && !['odrzucona', 'blad'].includes(stara.etap) && !(auto && stara.auto && stara.etap === 'do_akceptacji')) throw new Error('Ten klip już czeka (albo poszedł) do tej sieci.');
         if (siec === 'youtube') {
             if (!cfg.youtube) throw new Error('Publikacje YouTube niedostępne.');
             let p = await cfg.youtube.przygotuj({ plik: k.plik, nazwa: `${k.nazwa} — Short`, jezyk: k.jezyk, kontekst: `${await kontekstKlipu(k)}\nTo YouTube Short: tytuł krótki, opis 1–2 zdania.`, zrodlo: { projekt: k.projekt, format: 'shorts', klip: k.id }, kanalId });
             if (p.etap === 'do_akceptacji' && !/#shorts/i.test(`${p.tytul} ${p.opis}`)) p = await cfg.youtube.zmien(p.id, { opis: `${p.opis}\n\n#Shorts` });
-            k.publikacje = { ...k.publikacje, youtube: { etap: p.etap, publikacjaId: p.id, tytul: p.tytul ?? null, kanalNazwa: p.kanalNazwa ?? null, blad: p.blad ?? null } };
+            if (auto && p.etap === 'do_akceptacji') p = await cfg.youtube.zatwierdz(p.id);
+            k.publikacje = { ...k.publikacje, youtube: { etap: p.etap, publikacjaId: p.id, tytul: p.tytul ?? null, kanalNazwa: p.kanalNazwa ?? null, blad: p.blad ?? null, auto: auto || undefined } };
             await zapisz();
+            if (auto && p.etap === 'blad') throw new Error(`Short: ${p.blad ?? 'Kronikarz nie przygotował opisu'}`);
             return k;
         }
         const st = await wymagajKonta(siec);
         const konto = st.konta.find((x) => x.id === kontoId) ?? st.konta.find((x) => x.id === st.domyslny) ?? st.konta[0];
-        const p = { etap: 'przygotowuje', kontoId: konto.id, kontoNazwa: konto.nazwa, utworzono: czas(), opis: '' };
+        const p = { etap: 'przygotowuje', kontoId: konto.id, kontoNazwa: konto.nazwa, utworzono: czas(), opis: '', ...(auto ? { auto: true } : {}) };
         k.publikacje = { ...k.publikacje, [siec]: p };
         await zapisz();
         try {
@@ -394,8 +398,10 @@ export function utworzFormaty(o) {
             Object.assign(p, { opis: `${m.tytul}\n\n${m.opis.split('\n\n')[0]}\n\n${tagi.join(' ')}`.slice(0, 2200), model: silnik ?? null, etap: 'do_akceptacji' });
         } catch (e) {
             Object.assign(p, { etap: 'do_akceptacji', opis: k.tytul || k.nazwa, uwaga: `Kronikarz: ${e.message} — popraw opis ręcznie.` });
+            if (auto) { await zapisz(); throw new Error(`Kronikarz nie napisał opisu (${e.message}) — autopilot nie wysyła bez opisu; czeka na Twoje ✓.`); }
         }
         await zapisz();
+        if (auto) return zatwierdz(id, siec, { czekaj: true });
         return k;
     }
 
@@ -427,7 +433,7 @@ export function utworzFormaty(o) {
     }
 
     /** ✓ Suwerena → wysyłka. TikTok: szkic do skrzynki; Instagram: Reel publiczny (w tle — przetwarzanie trwa minuty). */
-    async function zatwierdz(id, siec) {
+    async function zatwierdz(id, siec, { czekaj = false } = {}) {
         const k = await znajdz(id);
         const p = k.publikacje?.[siec];
         if (!p || siec === 'youtube') throw new Error(siec === 'youtube' ? 'Short na YouTube zatwierdzasz w Izbie (publikacje YouTube).' : 'Ten klip nie czeka na tę sieć.');
@@ -452,7 +458,8 @@ export function utworzFormaty(o) {
             } catch (e) { Object.assign(p, { etap: 'blad', blad: e.message, postep: null }); }
             finally { wRobocie.delete(klucz); await zapisz(); }
         })();
-        if (siec === 'tiktok') await praca;   // szkic TikTok to sekundy — wynik od razu
+        if (siec === 'tiktok' || czekaj) await praca;   // szkic TikTok to sekundy — wynik od razu; autopilot czeka też na Instagram
+        if (czekaj && p.etap === 'blad') throw new Error(`${siec === 'tiktok' ? 'TikTok' : 'Instagram'}: ${p.blad}`);
         return k;
     }
 
@@ -484,14 +491,17 @@ export function utworzFormaty(o) {
     async function wszystkie() { return [...(await sprawdz())]; }
     const sciezkaKlipu = async (id) => { const k = await znajdz(id); return k.plik && fsSync.existsSync(k.plik) ? k.plik : null; };
 
-    return { zrodla, propozycje, utworz, ponow, usun, wszystkie, sprawdz, doPublikacji, zmienPublikacje, odrzucPublikacje, zatwierdz, sciezkaKlipu, zrodloMontazu, czekaj: () => kolejka };
+    /** Klip po przerobieniu (czeka na kolejkę ffmpeg) — dla autopilota. */
+    async function gotowy(id) { await kolejka; return znajdz(id); }
+
+    return { zrodla, propozycje, utworz, ponow, usun, wszystkie, sprawdz, doPublikacji, zmienPublikacje, odrzucPublikacje, zatwierdz, sciezkaKlipu, zrodloMontazu, gotowy, czekaj: () => kolejka };
 }
 
 /**
  * Trasy działu (Straż: `/api/formaty`, `/api/impresario/tiktok/`, `/api/impresario/instagram/` — tylko maszyna; powroty OAuth
  * wpuszcza `czyZwrotYouTube`). Montowane z mostu, testowalne na Expressie.
  */
-export function zamontujTrasyFormatow(app, F, { tiktok = null, instagram = null, youtubeStan = null, szyna = null } = {}) {
+export function zamontujTrasyFormatow(app, F, { tiktok = null, instagram = null, youtubeStan = null, szyna = null, autopilot = null } = {}) {
     const odp = (res, p, kod = 400) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(kod).json({ success: false, message: e.message }));
     const strona = (res, siec, kolor, tekst) => res.type('html').send(`<meta charset="utf-8"><title>${siec} · Katedra</title><body style="font-family:sans-serif;background:#0b1020;color:${kolor};padding:2rem;font-size:18px">${String(tekst).replace(/</g, '&lt;')}<p style="color:#64748b;font-size:14px">Możesz zamknąć to okno i wrócić do Katedry.</p></body>`);
 
@@ -504,6 +514,18 @@ export function zamontujTrasyFormatow(app, F, { tiktok = null, instagram = null,
         const bezpiecznie = async (f, siec) => { try { return f ? await f() : { siec, polaczony: false, powod: 'niepodłączone: most nie ma modułu kont' }; } catch (e) { return { siec, polaczony: false, powod: e.message }; } };
         return { youtube: await bezpiecznie(youtubeStan, 'youtube'), tiktok: await bezpiecznie(tiktok?.stan, 'tiktok'), instagram: await bezpiecznie(instagram?.stan, 'instagram') };
     })(), 500));
+    if (autopilot) {
+        // 🤖 autopilot formatów (services/AutopilotFormatow.js) — przełączniki, limity, „▶ przerób zaległe teraz”, ↻ porzucony
+        app.get('/api/formaty/autopilot', (_req, res) => odp(res, autopilot.stan().then((stan) => ({ autopilot: stan })), 500));
+        app.put('/api/formaty/autopilot', (req, res) => odp(res, autopilot.ustaw(req.body ?? {}).then((stan) => ({ autopilot: stan }))));
+        app.post('/api/formaty/autopilot/teraz', (_req, res) => odp(res, (async () => {
+            const st = await autopilot.stan();
+            if (!Object.values(st.cele).some((c) => c.wlaczony)) throw new Error('Autopilot ma wyłączone wszystkie sieci — włącz Shorts, Reels albo TikTok.');
+            void autopilot.przebieg({ reczny: true }).catch(() => {});   // trwa minuty (ffmpeg, wysyłki) — wynik w stanie
+            return { ruszyl: true };
+        })()));
+        app.post('/api/formaty/autopilot/ponow', (req, res) => odp(res, autopilot.ponow(String(req.body?.plik ?? ''), String(req.body?.cel ?? '')).then((stan) => ({ autopilot: stan }))));
+    }
     app.post('/api/formaty', (req, res) => odp(res, F.utworz(req.body ?? {}).then((klip) => ({ klip }))));
     app.get('/api/formaty/:id/plik', async (req, res) => { try { const p = await F.sciezkaKlipu(req.params.id); return p ? res.sendFile(p) : res.status(404).end(); } catch { return res.status(404).end(); } });
     app.post('/api/formaty/:id/ponow', (req, res) => odp(res, F.ponow(req.params.id).then((klip) => ({ klip }))));

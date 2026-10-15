@@ -49,7 +49,7 @@ export const INSTRUKCJE = {
         'Dodaj produkty: Login Kit i Content Posting API (bez „Direct Post” — Katedra wysyła szkice do skrzynki).',
         'Login Kit → platforma Desktop → Redirect URI: {zwrot} (dokładnie tak, z portem).',
         'Zakresy: user.info.basic i video.upload.',
-        'Skopiuj Client key i Client secret → wklej poniżej → „Połącz z TikTok”.',
+        'Skopiuj Client key i Client secret → wklej w Skarbcu 0.00G (usługa „TikTok”) albo w polach poniżej → „Połącz z TikTok”.',
         'Bez zatwierdzenia aplikacji (App Review) działa tylko tryb Sandbox z kontami dodanymi jako „target users” — do pełnego użycia złóż wniosek o review w portalu TikTok.',
         'Film przychodzi do skrzynki w aplikacji TikTok (powiadomienie) — tam ustawiasz opis, prywatność i publikujesz.',
     ],
@@ -59,7 +59,7 @@ export const INSTRUKCJE = {
         'developers.facebook.com → My Apps → Create app (typ: Business) → dodaj produkt „Instagram” (API z Facebook Login for Business) i „Facebook Login for Business”.',
         'Facebook Login → Settings → Valid OAuth Redirect URIs: {zwrot}. Aplikacja zostaje w trybie deweloperskim (localhost działa tylko w nim; Ty jako administrator nie potrzebujesz App Review).',
         'Opcjonalnie: Facebook Login for Business → Configurations → utwórz konfigurację z uprawnieniami instagram_basic, instagram_content_publish, pages_show_list, pages_read_engagement, business_management i wklej jej Configuration ID.',
-        'Skopiuj App ID i App secret (Settings → Basic) → wklej poniżej → „Połącz z Instagramem” → wybierz stronę i konto Instagram.',
+        'Skopiuj App ID i App secret (Settings → Basic) → wklej w Skarbcu 0.00G (usługa „Instagram”) albo w polach poniżej → „Połącz z Instagramem” → wybierz stronę i konto Instagram.',
         'Instagram nie ma szkiców w API: wysłany Reel jest od razu PUBLICZNY — dlatego Katedra wysyła dopiero po Twoim ✓.',
     ],
 };
@@ -108,6 +108,52 @@ function kontaSkarbca(siec, cfg) {
     return { lista, zapiszKonto, ustawDomyslne, rozlacz, konto, bledy };
 }
 
+/**
+ * 🔐 Klucze APLIKACJI w Skarbcu 0.00G (Suweren 2026-10-16: „dodaj do skarbca 0.00G miejsce na te wpinki”): usługi `tiktok`
+ * {client_key, client_secret} i `instagram` {app_id, app_secret, config_id} (services/VaultService.js). Odczyt: Skarbiec
+ * pierwszy, skarbiec Impresariatu (media_secrets) jako zapas — znaleziony tam klucz przenosi się RAZ do Skarbca i znika
+ * z media_secrets. Tokeny KONT (KONTA, DOMYSLNY) zostają w media_secrets — tam, gdzie tokeny kanałów YouTube.
+ */
+export const POLA_SKARBCA = {
+    tiktok: { CLIENT_KEY: 'client_key', CLIENT_SECRET: 'client_secret' },
+    instagram: { APP_ID: 'app_id', APP_SECRET: 'app_secret', CONFIG_ID: 'config_id' },
+};
+function zeSkarbcem(siec, cfg) {
+    const surowe = cfg.sekrety;
+    const pola = Object.entries(POLA_SKARBCA[siec]);
+    return async (s_) => {
+        const media = (await surowe(s_)) ?? {};
+        if (!cfg.skarbiec) return media;
+        const wynik = { ...media };
+        const doPrzeniesienia = [];
+        for (const [klucz, pole] of pola) {
+            const zSkarbca = await cfg.skarbiec.czytaj(siec, pole).catch(() => null);
+            if (zSkarbca) wynik[klucz] = zSkarbca;
+            else if (media[klucz]) doPrzeniesienia.push([klucz, pole, media[klucz]]);
+        }
+        if (doPrzeniesienia.length) {
+            try {
+                for (const [, pole, v] of doPrzeniesienia) await cfg.skarbiec.zapisz(siec, pole, v);
+                await cfg.zapiszSekrety(siec, (s) => { for (const [klucz] of doPrzeniesienia) delete s[klucz]; });
+            } catch { /* przeniesienie następnym razem — klucz działa z media_secrets */ }
+        }
+        return wynik;
+    };
+}
+/** Zapis kluczy aplikacji: Skarbiec 0.00G (gdy podłączony), inaczej media_secrets. Puste pole = usuń. */
+async function zapiszKlucze(siec, cfg, wartosci) {
+    if (cfg.skarbiec) {
+        for (const [klucz, pole] of Object.entries(POLA_SKARBCA[siec])) {
+            const v = wartosci[klucz];
+            if (v) await cfg.skarbiec.zapisz(siec, pole, v);
+            else if (v === null) await cfg.skarbiec.usun?.(siec, pole);
+        }
+        await cfg.zapiszSekrety(siec, (s) => { for (const k of Object.keys(POLA_SKARBCA[siec])) delete s[k]; });
+        return;
+    }
+    await cfg.zapiszSekrety(siec, (s) => { for (const [k, v] of Object.entries(wartosci)) s[k] = v; });
+}
+
 /** Jednorazowe `state` (10 min) z dowolnym ładunkiem (weryfikator PKCE). */
 function stany(teraz) {
     const m = new Map();
@@ -143,10 +189,11 @@ export function kawalkiTikTok(rozmiar, kawalek = 10 * MB) {
 }
 
 /**
- * @param {{ sekrety, zapiszSekrety, adresMostu?:string, fetch?:typeof fetch, teraz?:()=>number, czytajPlik?:(p:string)=>Promise<Buffer> }} o
+ * @param {{ sekrety, zapiszSekrety, skarbiec?:{czytaj:(siec:string, pole:string)=>Promise<string|null>, zapisz:Function, usun?:Function}, adresMostu?:string, fetch?:typeof fetch, teraz?:()=>number, czytajPlik?:(p:string)=>Promise<Buffer> }} o
  */
 export function utworzKontoTikTok(o) {
     const cfg = { adresMostu: 'http://127.0.0.1:3001', fetch: (...a) => fetch(...a), teraz: () => Date.now(), czytajPlik: (p) => fs.readFile(p), ...o };
+    cfg.sekrety = zeSkarbcem('tiktok', cfg);
     const K = kontaSkarbca('tiktok', cfg);
     const st = stany(cfg.teraz);
     const zwrot = () => `${cfg.adresMostu}${SCIEZKI_ZWROTU.tiktok}`;
@@ -157,7 +204,7 @@ export function utworzKontoTikTok(o) {
     async function zapiszKlienta({ clientKey = '', clientSecret = '' } = {}) {
         const key = String(clientKey).trim(), secret = String(clientSecret).trim();
         if (!/^[\w-]{8,64}$/.test(key) || secret.length < 8) throw new Error('Client key i Client secret z portalu developers.tiktok.com (Manage apps → Twoja aplikacja).');
-        await cfg.zapiszSekrety('tiktok', (s) => { s.CLIENT_KEY = key; s.CLIENT_SECRET = secret; });
+        await zapiszKlucze('tiktok', cfg, { CLIENT_KEY: key, CLIENT_SECRET: secret });
         return stan();
     }
 
@@ -258,7 +305,7 @@ export function utworzKontoTikTok(o) {
         const { domyslny, konta } = await K.lista();
         const kl = !!klient(s);
         return {
-            siec: 'tiktok', klient: kl, polaczony: konta.length > 0, konta, domyslny, zwrot: zwrot(), zakresy: ZAKRESY_TIKTOK, tryb: 'szkic',
+            siec: 'tiktok', klient: kl, klucze: cfg.skarbiec ? 'skarbiec' : 'impresariat', polaczony: konta.length > 0, konta, domyslny, zwrot: zwrot(), zakresy: ZAKRESY_TIKTOK, tryb: 'szkic',
             powod: !kl ? 'niepodłączone: brak aplikacji TikTok (Client key / secret z developers.tiktok.com)' : !konta.length ? 'niepodłączone: aplikacja jest, ale żadne konto nie dało zgody — „Połącz z TikTok”' : null,
             instrukcja: INSTRUKCJE.tiktok.map((x) => x.replace('{zwrot}', zwrot())),
         };
@@ -275,6 +322,7 @@ export function utworzKontoTikTok(o) {
  */
 export function utworzKontoInstagram(o) {
     const cfg = { adresMostu: 'http://localhost:3001', adresZwrotu: process.env.OTAKOS_INSTAGRAM_ZWROT || null, fetch: (...a) => fetch(...a), teraz: () => Date.now(), czytajPlik: (p) => fs.readFile(p), czekaj: (ms) => new Promise((r) => setTimeout(r, ms)), wersja: WERSJA_GRAPH, ...o };
+    cfg.sekrety = zeSkarbcem('instagram', cfg);
     const K = kontaSkarbca('instagram', cfg);
     const st = stany(cfg.teraz);
     const zwrot = () => cfg.adresZwrotu || `${cfg.adresMostu}${SCIEZKI_ZWROTU.instagram}`;
@@ -285,7 +333,7 @@ export function utworzKontoInstagram(o) {
         const id = String(appId).trim(), secret = String(appSecret).trim(), conf = String(configId ?? '').trim();
         if (!/^\d{6,20}$/.test(id) || !/^[0-9a-f]{16,64}$/i.test(secret)) throw new Error('App ID (same cyfry) i App secret (Settings → Basic aplikacji Meta).');
         if (conf && !/^\d{6,20}$/.test(conf)) throw new Error('Configuration ID to same cyfry (Facebook Login for Business → Configurations).');
-        await cfg.zapiszSekrety('instagram', (s) => { s.APP_ID = id; s.APP_SECRET = secret; s.CONFIG_ID = conf || null; });
+        await zapiszKlucze('instagram', cfg, { APP_ID: id, APP_SECRET: secret, CONFIG_ID: conf || null });
         return stan();
     }
 
@@ -368,7 +416,7 @@ export function utworzKontoInstagram(o) {
         const { domyslny, konta } = await K.lista();
         const kl = !!klient(s);
         return {
-            siec: 'instagram', klient: kl, polaczony: konta.length > 0, konta, domyslny, zwrot: zwrot(), zakresy: ZAKRESY_INSTAGRAM, konfiguracja: !!s?.CONFIG_ID, tryb: 'publiczny',
+            siec: 'instagram', klient: kl, klucze: cfg.skarbiec ? 'skarbiec' : 'impresariat', polaczony: konta.length > 0, konta, domyslny, zwrot: zwrot(), zakresy: ZAKRESY_INSTAGRAM, konfiguracja: !!s?.CONFIG_ID, tryb: 'publiczny',
             powod: !kl ? 'niepodłączone: brak aplikacji Meta (App ID / App secret z developers.facebook.com)' : !konta.length ? 'niepodłączone: aplikacja jest, ale żadne konto Instagram (profesjonalne, połączone ze stroną) nie dało zgody — „Połącz z Instagramem”' : null,
             instrukcja: INSTRUKCJE.instagram.map((x) => x.replace('{zwrot}', zwrot())),
         };
@@ -377,4 +425,4 @@ export function utworzKontoInstagram(o) {
     return { stan, zapiszKlienta, adresZgody, przyjmijZwrot, opublikujReel, konta: K.lista, ustawDomyslne: K.ustawDomyslne, rozlacz: K.rozlacz };
 }
 
-export default { utworzKontoTikTok, utworzKontoInstagram, kawalkiTikTok, SIECI, SCIEZKI_ZWROTU, INSTRUKCJE };
+export default { utworzKontoTikTok, utworzKontoInstagram, kawalkiTikTok, SIECI, SCIEZKI_ZWROTU, INSTRUKCJE, POLA_SKARBCA };

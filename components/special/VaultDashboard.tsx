@@ -22,7 +22,7 @@ const BRIDGE = 'http://127.0.0.1:3001';
 
 interface VaultField  { field: string; configured: boolean; masked: string | null; }
 interface VaultStatus {
-    id: string; label: string; glyph: string;
+    id: string; label: string; glyph: string; opis?: string | null;
     security: 'CRITICAL' | 'HIGH' | 'STANDARD';
     connected: boolean; configuredCount: number; totalFields: number;
     fields: VaultField[]; updatedAt: string | null;
@@ -229,6 +229,8 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
                                                 </span>
                                             </div>
                                         </div>
+
+                                        {svc.opis && <p className="mb-2 text-[10px] leading-snug text-slate-500">{svc.opis}</p>}
 
                                         {/* Pola (klucze) */}
                                         <div className="space-y-2">

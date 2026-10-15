@@ -40,6 +40,12 @@ export const SERVICE_CATALOG = {
     // 💳 Stripe (2026-10-13) — darowizny i sprzedaż pakietów Mini na otakos.wtf (services/Stripe.js). Klucz tajny
     // sk_live_… / sk_test_… albo ograniczony rk_… — nigdy do przeglądarki ani na stronę.
     stripe:           { label: 'Stripe (płatności, darowizny)', fields: ['secret_key'],  security: 'CRITICAL', glyph: '💳' },
+    // 📱 Formaty i sieci (2026-10-16, services/KontaSieci.js): klucze APLIKACJI deweloperskich — z nich most robi logowanie
+    // kont. Tokeny połączonych kont leżą obok tokenów YouTube w skarbcu Impresariatu (media_secrets.json).
+    tiktok:           { label: 'TikTok (Login Kit + Content Posting)', fields: ['client_key', 'client_secret'], security: 'CRITICAL', glyph: '🎵',
+                        opis: 'developers.tiktok.com → Manage apps → Twoja aplikacja (Desktop) → Client key i Client secret. Konto łączysz potem w Impresariacie → 📱 Formaty i sieci.' },
+    instagram:        { label: 'Instagram (Meta · Facebook Login for Business)', fields: ['app_id', 'app_secret', 'config_id'], security: 'CRITICAL', glyph: '📸',
+                        opis: 'developers.facebook.com → Twoja aplikacja (Business) → Settings → Basic: App ID i App secret; config_id (opcja) z Facebook Login for Business → Configurations.' },
     ted_dex:          { label: 'Ted DEX (Portfel Operacyjny Base/Arbitrum/Polygon)', fields: ['private_key', 'rpc_url'], security: 'CRITICAL', glyph: '🦄' },
     // 🤖 Autopilot TeDa na BNB Chain (prywatny moduł moduly/ted, TedAutopilot.js) — klucz portfela operacyjnego; podpisuje TYLKO most, z limitami.
     ted_bsc:          { label: 'TeD Autopilot (portfel BNB Chain)',                fields: ['private_key'],            security: 'CRITICAL', glyph: '🤖' },
@@ -178,6 +184,7 @@ class VaultServiceClass {
             out.push({
                 id,
                 label:          meta.label,
+                opis:           meta.opis ?? null,
                 glyph:          meta.glyph,
                 security:       meta.security,
                 connected:      configuredCount > 0,

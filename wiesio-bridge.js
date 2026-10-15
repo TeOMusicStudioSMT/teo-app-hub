@@ -234,6 +234,7 @@ import { utworzKontoYouTube, SCIEZKA_ZWROTU as ZWROT_YOUTUBE } from './services/
 import { utworzPublikacje } from './services/PublikacjeYouTube.js';
 import { utworzFormaty, zamontujTrasyFormatow } from './services/Formaty.js';
 import { utworzKontoTikTok, utworzKontoInstagram } from './services/KontaSieci.js';
+import { utworzAutopilotFormatow } from './services/AutopilotFormatow.js';
 import { utworzWywiady, prowadzacyZObsady } from './services/WywiadAktorow.js';
 import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
@@ -15385,14 +15386,22 @@ app.post('/api/game-show/stol', (_req, res) => ytOdp(res, (async () => {
 
 // ── 📱 Formaty i sieci (services/Formaty.js, services/KontaSieci.js) — odcinki → pion 9:16 dla Shorts / TikTok / Reels ──
 // Konta TikTok i Instagram jak YouTube: OAuth z pętlą zwrotną na moście, tokeny w skarbcu Impresariatu. Wysyłka po ✓ Suwerena.
+// 🔐 klucze aplikacji TikTok/Instagram w Skarbcu 0.00G (usługi `tiktok`, `instagram`); tokeny kont — skarbiec Impresariatu
+const skarbiecSieci = {
+    czytaj: (usluga, pole) => sekretPrzewodu(usluga, pole),
+    zapisz: (usluga, pole, v) => VaultService.getInstance().setSecret(usluga, pole, v),
+    usun: (usluga, pole) => VaultService.getInstance().deleteSecret(usluga, pole),
+};
 const KontoTikTok = utworzKontoTikTok({
     sekrety: (s) => ImpresarioService.getInstance().sekretySieci(s),
     zapiszSekrety: (s, z) => ImpresarioService.getInstance().zapiszSekretySieci(s, z),
+    skarbiec: skarbiecSieci,
     adresMostu: `http://127.0.0.1:${PORT}`,
 });
 const KontoInstagram = utworzKontoInstagram({
     sekrety: (s) => ImpresarioService.getInstance().sekretySieci(s),
     zapiszSekrety: (s, z) => ImpresarioService.getInstance().zapiszSekretySieci(s, z),
+    skarbiec: skarbiecSieci,
     adresMostu: `http://localhost:${PORT}`,   // Meta: http tylko dla localhost i tylko w trybie deweloperskim (Live → OTAKOS_INSTAGRAM_ZWROT = https)
 });
 const Formaty = utworzFormaty({
@@ -15406,7 +15415,19 @@ const Formaty = utworzFormaty({
     instagram: KontoInstagram,
     szyna: Szyna,
 });
-zamontujTrasyFormatow(app, Formaty, { tiktok: KontoTikTok, instagram: KontoInstagram, youtubeStan: () => KontoYouTube.stan(), szyna: Szyna });
+// 🤖 autopilot: wysłane odcinki → piony → Shorts / TikTok / Reels bez ręcznego ✓ (tylko sieci włączone przez Suwerena)
+const AutopilotFormatow = utworzAutopilotFormatow({
+    katalog: ANTIGRAVITY_DIR,
+    formaty: Formaty,
+    publikacje: () => PublikacjeYT.wszystkie(),
+    stanSieci: async (siec) => {
+        if (siec === 'youtube') { const s = await KontoYouTube.stan(); return { polaczony: s.polaczony, powod: s.polaczony ? null : 'YouTube niepołączony — „Połącz z YouTube” w Impresariacie' }; }
+        return (siec === 'tiktok' ? KontoTikTok : KontoInstagram).stan();
+    },
+    szyna: Szyna,
+});
+AutopilotFormatow.uruchom();
+zamontujTrasyFormatow(app, Formaty, { tiktok: KontoTikTok, instagram: KontoInstagram, youtubeStan: () => KontoYouTube.stan(), szyna: Szyna, autopilot: AutopilotFormatow });
 
 // ── 💬 Sceny dialogowe filmu (services/ScenyDialogowe.js) ──
 // Silnik Studia Podcastu bez studia: postacie z obsady rozmawiają na tle kadrów projektu → montaże projektu (Montażownia).

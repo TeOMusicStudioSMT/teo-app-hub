@@ -5,6 +5,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import { ZDARZENIE_TEOSIM } from '../../lib/koherencja';
 
 const MOST = 'http://127.0.0.1:3001';
 async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
@@ -25,7 +26,15 @@ interface Klip {
     uklad: string; napisy: string; cele: Record<string, Cel> | null; publikacje: Record<string, PubSieci>; utworzono: string;
 }
 interface Konto { id: string; nazwa: string; strona?: string | null; blad?: string | null }
-interface StanSieci { siec: string; klient?: boolean; polaczony: boolean; konta?: Konto[]; kanaly?: Konto[]; domyslny?: string | null; powod?: string | null; instrukcja?: string[]; zwrot?: string; tryb?: string; blad?: string | null }
+interface StanSieci { siec: string; klient?: boolean; klucze?: string; polaczony: boolean; konta?: Konto[]; kanaly?: Konto[]; domyslny?: string | null; powod?: string | null; instrukcja?: string[]; zwrot?: string; tryb?: string; blad?: string | null }
+interface CelAuto { nazwa: string; siec: string; wlaczony: boolean; limit: number; maxLimit: number; maxSekund: number; doZrobienia: number; wyslane: number; porzucone: number; dzisiaj: number; konto: { polaczony: boolean; powod: string | null }; uwaga: string }
+interface Autopilot {
+    cele: Record<string, CelAuto>; filmow: number; pozaMontazem: number; przerobione: number; trwa: boolean; petla: boolean;
+    bledy: { kiedy: string; cel: string; film: string; powod: string }[]; porzucone: { plik: string; cel: string; film?: string; powod?: string; stan: string }[];
+    ostatniPrzebieg: { kiedy: string; cele: Record<string, { wyslane: number; bledy: number; czeka: string | null }> } | null;
+}
+const CELE_AUTO = ['shorts', 'reels', 'tiktok'];
+const otworzSkarbiec = () => window.dispatchEvent(new CustomEvent(ZDARZENIE_TEOSIM, { detail: 'vault' }));
 interface Stan { klipy: Klip[]; cele: Record<string, { nazwa: string; max: number }>; uklady: Record<string, string>; napisy: Record<string, string>; maxKlipu: number }
 
 const SIECI: [string, string, string][] = [['youtube', '📺 Short', 'shorts'], ['tiktok', '🎵 TikTok', 'tiktok'], ['instagram', '📸 Reels', 'reels']];
@@ -67,6 +76,7 @@ const KontoSieci: React.FC<{ siec: 'tiktok' | 'instagram'; s: StanSieci | undefi
             {kroki && (
                 <div className="mt-2 space-y-1 text-[10px] text-slate-400">
                     <ol className="list-decimal space-y-0.5 pl-4">{(s?.instrukcja ?? []).map((x, i) => <li key={i}>{x}</li>)}</ol>
+                    <p>Klucze aplikacji trzymam w <button onClick={otworzSkarbiec} className="text-amber-200 underline">🔐 Skarbcu 0.00G</button> (usługa „{nazwa}”){s?.klucze === 'impresariat' ? ' — most sprzed restartu trzyma je jeszcze w skarbcu Impresariatu' : ''}; tokeny kont — w skarbcu Impresariatu, obok kanałów YouTube.</p>
                     <div className="flex flex-wrap gap-1 pt-1">
                         <input value={a} onChange={(e) => setA(e.target.value)} placeholder={siec === 'tiktok' ? 'Client key' : 'App ID'} className="w-36 rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />
                         <input value={b} onChange={(e) => setB(e.target.value)} type="password" placeholder={siec === 'tiktok' ? 'Client secret' : 'App secret'} className="w-36 rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />
@@ -94,11 +104,14 @@ export const FormatyPanel: React.FC = () => {
     const [problem, setProblem] = useState<string | null>(null);
     const [pokaz, setPokaz] = useState(false);
     const [opisy, setOpisy] = useState<Record<string, string>>({});
+    const [auto, setAuto] = useState<Autopilot | null>(null);
+    const [autoPokaz, setAutoPokaz] = useState(false);
 
     const odswiez = useCallback(async () => {
         try { setS(await zMostu<Stan>('/api/formaty')); setProblem(null); }
         catch (e) { setProblem(/HTTP 404/.test(blad(e)) ? 'Most sprzed restartu — zrestartuj Katedrę, żeby włączyć dział formatów.' : blad(e)); }
         try { const w = await zMostu<Record<string, StanSieci>>('/api/formaty/sieci'); setSieci(w); } catch { /* most sprzed restartu */ }
+        try { setAuto((await zMostu<{ autopilot: Autopilot }>('/api/formaty/autopilot')).autopilot); } catch { setAuto(null); }
     }, []);
     useEffect(() => { void odswiez(); const t = setInterval(odswiez, 15_000); return () => clearInterval(t); }, [odswiez]);
     useEffect(() => { if (pokaz) zMostu<{ zrodla: Zrodlo[] }>('/api/formaty/zrodla').then((w) => setZrodla(w.zrodla)).catch(() => {}); }, [pokaz]);
@@ -122,7 +135,7 @@ export const FormatyPanel: React.FC = () => {
         <div className="rounded-lg border border-fuchsia-500/25 p-3 text-[11px]">
             <div className="mb-2 flex flex-wrap items-center gap-2">
                 <span className="text-[10px] uppercase tracking-widest text-fuchsia-300">📱 Formaty i sieci</span>
-                <span className="text-[10px] text-slate-500">odcinki → pion 9:16 dla Shorts / TikTok / Reels · wysyłka tylko po Twoim ✓</span>
+                <span className="text-[10px] text-slate-500">odcinki → pion 9:16 dla Shorts / TikTok / Reels · wysyłka po Twoim ✓ albo autopilotem (tylko włączone sieci)</span>
                 <button onClick={() => setPokaz((x) => !x)} className="ml-auto text-[10px] text-slate-400 hover:text-fuchsia-200">{pokaz ? 'zwiń' : 'przerób odcinek'}</button>
             </div>
             {problem && <p className="text-[10px] text-amber-300">⚠ {problem}</p>}
@@ -132,6 +145,46 @@ export const FormatyPanel: React.FC = () => {
                 <span className={sieci.tiktok?.polaczony ? 'text-emerald-300' : 'text-slate-400'}>🎵 TikTok: {sieci.tiktok?.polaczony ? 'połączony' : 'niepodłączone'}</span>
                 <span className={sieci.instagram?.polaczony ? 'text-emerald-300' : 'text-slate-400'}>📸 Instagram: {sieci.instagram?.polaczony ? 'połączony' : 'niepodłączone'}</span>
             </div>
+
+            {auto && (
+                <div className="mb-2 rounded border border-cyan-500/25 bg-cyan-950/10 p-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <b className="text-cyan-200">🤖 Autopilot</b>
+                        <span className="text-[10px] text-slate-400">wysłane odcinki ({auto.filmow}{auto.pozaMontazem ? `, ${auto.pozaMontazem} spoza montażu pominięte` : ''}) → pion → wysyłka sama, raz na sieć · pionów: {auto.przerobione}{auto.trwa ? ' · ⏳ pracuje' : ''}</span>
+                        <button disabled={auto.trwa} onClick={() => void wolaj('/api/formaty/autopilot/teraz', {}, 'Autopilot ruszył — przerabia i wysyła zaległe (minuty).')} className="ml-auto rounded border border-cyan-500/40 px-2 text-[10px] text-cyan-200 disabled:opacity-40">▶ przerób zaległe teraz</button>
+                        <button onClick={() => setAutoPokaz((x) => !x)} className="text-[10px] text-slate-400">{autoPokaz ? 'zwiń' : 'błędy'}</button>
+                    </div>
+                    <div className="mt-1 grid gap-1 md:grid-cols-3">
+                        {CELE_AUTO.map((c) => { const x = auto.cele[c]; if (!x) return null; return (
+                            <div key={c} className={`rounded border p-1.5 text-[10px] ${x.wlaczony ? 'border-emerald-500/40' : 'border-slate-700/60'}`}>
+                                <label className="flex items-center gap-1.5 text-slate-200">
+                                    <input type="checkbox" checked={x.wlaczony} onChange={(e) => { if (e.target.checked && !confirm(`Włączyć autopilota ${x.nazwa}? ${x.uwaga} Wysyłka pójdzie BEZ Twojego ✓ (do ${x.limit} na dobę).`)) return; void wolaj('/api/formaty/autopilot', { wlaczone: { [c]: e.target.checked } }, e.target.checked ? `${x.nazwa}: autopilot włączony.` : `${x.nazwa}: autopilot wyłączony.`, 'PUT'); }} />
+                                    <b>{x.nazwa}</b><span className="text-slate-500">≤ {x.maxSekund} s</span>
+                                    <span className="ml-auto text-slate-500">na dobę</span>
+                                    <input type="number" min={0} max={x.maxLimit} value={x.limit} onChange={(e) => void wolaj('/api/formaty/autopilot', { limit: { [c]: Number(e.target.value) } }, 'Limit zapisany.', 'PUT')} className="w-10 rounded bg-black/60 px-1 text-slate-200" />
+                                </label>
+                                <div className="text-slate-400">do zrobienia {x.doZrobienia} · wysłane {x.wyslane} · dziś {x.dzisiaj}/{x.limit}{x.porzucone ? ` · porzucone ${x.porzucone}` : ''}</div>
+                                {!x.konto.polaczony && <div className="text-amber-300">⏸ {x.konto.powod ?? 'konto niepodłączone'} — czeka</div>}
+                                {auto.ostatniPrzebieg?.cele?.[c]?.czeka && x.konto.polaczony && <div className="text-amber-200">⏸ {auto.ostatniPrzebieg.cele[c].czeka}</div>}
+                                <div className="text-slate-500">{x.uwaga}</div>
+                            </div>
+                        ); })}
+                    </div>
+                    {autoPokaz && (
+                        <div className="mt-1 space-y-0.5 text-[10px]">
+                            {auto.ostatniPrzebieg && <div className="text-slate-500">ostatni przebieg: {new Date(auto.ostatniPrzebieg.kiedy).toLocaleString('pl-PL')}</div>}
+                            {auto.bledy.slice(0, 6).map((b, i) => <div key={i} className="text-rose-300">⚠ {auto.cele[b.cel]?.nazwa ?? b.cel} · „{b.film}”: {b.powod}</div>)}
+                            {auto.porzucone.map((p) => (
+                                <div key={`${p.plik}|${p.cel}`} className="flex flex-wrap gap-2 text-amber-200">
+                                    <span>{p.stan === 'porzucony' ? '✖ porzucony' : '↻ ponowi'} · {auto.cele[p.cel]?.nazwa ?? p.cel} · „{p.film}”: {p.powod}</span>
+                                    {p.stan === 'porzucony' && <button onClick={() => void wolaj('/api/formaty/autopilot/ponow', { plik: p.plik, cel: p.cel }, 'Wraca do kolejki autopilota.')} className="text-cyan-200">↻ ponów</button>}
+                                </div>
+                            ))}
+                            {!auto.bledy.length && !auto.porzucone.length && <div className="text-slate-500">bez błędów</div>}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {pokaz && (
                 <div className="mb-3 space-y-2">
