@@ -183,7 +183,27 @@ export function utworzKontoYouTube(o) {
         return { klient, polaczony: lista.length > 0 || !!s?.REFRESH_TOKEN?.trim(), kanaly: lista, domyslny, kanal: dom, blad: blad ?? dom?.blad ?? null, zwrot: zwrot() };
     }
 
-    return { adresZgody, przyjmijZwrot, tokenDostepu, kanal, kanaly, statusFilmu, dodajDoPlaylisty, stan };
+    /**
+     * 📊 Statystyki (raport dnia TeDa): wyświetlenia / polubienia / komentarze filmów (≤ 50 id na zapytanie) i liczniki
+     * kanału (subskrypcje, wyświetlenia) — tokenem kanału. Tylko odczyt (`youtube.readonly` mieści się w zakresie `youtube`).
+     */
+    async function statystyki(idFilmow = [], kanalId = null) {
+        const ids = [...new Set(idFilmow.filter((x) => /^[\w-]{11}$/.test(String(x))))];
+        const filmy = {};
+        for (let i = 0; i < ids.length; i += 50) {
+            const d = await api(`videos?part=statistics&id=${ids.slice(i, i + 50).join(',')}`, null, kanalId);
+            for (const v of d.items ?? []) filmy[v.id] = { wyswietlenia: Number(v.statistics?.viewCount ?? 0), polubienia: Number(v.statistics?.likeCount ?? 0), komentarze: Number(v.statistics?.commentCount ?? 0) };
+        }
+        let kanal = null;
+        if (kanalId) {
+            const d = await api(`channels?part=statistics&id=${encodeURIComponent(kanalId)}`, null, kanalId);
+            const st = d.items?.[0]?.statistics;
+            if (st) kanal = { subskrypcje: st.hiddenSubscriberCount ? null : Number(st.subscriberCount ?? 0), wyswietlenia: Number(st.viewCount ?? 0), filmow: Number(st.videoCount ?? 0) };
+        }
+        return { filmy, kanal };
+    }
+
+    return { adresZgody, przyjmijZwrot, tokenDostepu, kanal, kanaly, statusFilmu, dodajDoPlaylisty, statystyki, stan };
 }
 
 export default { utworzKontoYouTube, ZAKRESY, SCIEZKA_ZWROTU };

@@ -15047,6 +15047,21 @@ app.post('/api/impresario/youtube/rozlacz', (req, res) => ytOdp(res, ImpresarioS
 app.post('/api/impresario/youtube/domyslny', (req, res) => ytOdp(res, ImpresarioService.getInstance().ustawDomyslnyYouTube(String(req.body?.kanalId ?? ''))));
 // Lista kanałów bez tokenów — także dla telefonu (wybór kanału przy ✓ w Izbie)
 app.get('/api/youtube/kanaly', (_req, res) => ytOdp(res, KontoYouTube.kanaly(), 500));
+/** GET /api/youtube/statystyki — wyświetlenia opublikowanych filmów Katedry i liczniki kanałów (raport dnia TeDa). */
+app.get('/api/youtube/statystyki', (_req, res) => ytOdp(res, (async () => {
+    const publikacje = (await PublikacjeYT.wszystkie()).filter((p) => p.videoId);
+    const kanaly = {};
+    for (const p of publikacje) (kanaly[p.kanalId || ''] ??= []).push(p);
+    const out = { kanaly: [], filmy: [] };
+    for (const [kanalId, lista] of Object.entries(kanaly)) {
+        try {
+            const s = await KontoYouTube.statystyki(lista.map((p) => p.videoId), kanalId || null);
+            if (s.kanal) out.kanaly.push({ kanalId, nazwa: lista[0].kanalNazwa ?? null, ...s.kanal });
+            for (const p of lista) out.filmy.push({ videoId: p.videoId, tytul: p.tytul, projekt: p.zrodlo?.projekt ?? null, kanalId, wyslano: p.wyslano ?? null, ...(s.filmy[p.videoId] ?? { niedostepny: true }) });
+        } catch (e) { out.kanaly.push({ kanalId, nazwa: lista[0].kanalNazwa ?? null, blad: e.message }); }
+    }
+    return out;
+})(), 500));
 
 app.get('/api/youtube/publikacje', (_req, res) => ytOdp(res, PublikacjeYT.sprawdz().then((lista) => ({ publikacje: lista })), 500));
 /** { wystawaId } — film z Wystawy, albo { projekt, odcinekId } — odcinek z Biblioteki. Kronikarz pisze od razu. */
