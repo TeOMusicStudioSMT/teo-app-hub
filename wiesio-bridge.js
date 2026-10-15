@@ -114,7 +114,7 @@ import * as Aktualizator   from './services/Aktualizator.js';
 import * as Tlumacz        from './services/Tlumacz.js';
 import * as Glowny         from './services/Glowny.js';
 import { utworzArgoBoba }   from './services/ArgoBob.js';
-import { utworzGolDnia, zamontujTrasyGolDnia } from './services/GolDnia.js';
+import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei } from './services/GolDnia.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import * as SilnikKlonu    from './services/SilnikKlonu.js';
@@ -15228,35 +15228,45 @@ async function tancerzGameShow(mini) {
 }
 // ── ⚽ GOL DNIA (services/GolDnia.js) — TeOgochi rysuje i opowiada bramki z FAKTÓW meczów (Suweren 2026-10-15) ──
 // Obraz NIE z cudzych nagrań: fakty (TheSportsDB + Zwiadowca z sieci, sprawdzone wynikiem) → FLUX w stylu Katedry.
-/** Zwiad faktów w sieci: Claude (web_search), bez klucza Anthropic — Gemini (Google Search). Zwraca tekst i adresy źródeł. */
-async function zwiadSieci(prompt) {
-    const ka = await getAnthropicKey().catch(() => null);
-    if (ka) {
-        const r = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST', signal: AbortSignal.timeout(180_000),
-            headers: { 'content-type': 'application/json', 'x-api-key': ka, 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({ model: process.env.OTAKOS_GOL_DNIA_MODEL || 'claude-sonnet-5-5', max_tokens: 4000, messages: [{ role: 'user', content: prompt }], tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }] }),
-        });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(`Anthropic HTTP ${r.status}: ${d?.error?.message ?? ''}`.trim());
-        const zrodla = new Set();
-        for (const b of d.content ?? []) {
-            if (b?.type === 'web_search_tool_result' && Array.isArray(b.content)) for (const x of b.content) if (x?.url) zrodla.add(x.url);
-            for (const c of b?.citations ?? []) if (c?.url) zrodla.add(c.url);
-        }
-        return { tekst: (d.content ?? []).filter((b) => b.type === 'text').map((b) => b.text).join(''), zrodla: [...zrodla] };
+/** Zwiad przez Claude (narzędzie web_search) — tekst i adresy źródeł. */
+async function zwiadClaude(prompt, ka) {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST', signal: AbortSignal.timeout(180_000),
+        headers: { 'content-type': 'application/json', 'x-api-key': ka, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: process.env.OTAKOS_GOL_DNIA_MODEL || 'claude-sonnet-5-5', max_tokens: 4000, messages: [{ role: 'user', content: prompt }], tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 4 }] }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${d?.error?.message ?? ''}`.trim());
+    const zrodla = new Set();
+    for (const b of d.content ?? []) {
+        if (b?.type === 'web_search_tool_result' && Array.isArray(b.content)) for (const x of b.content) if (x?.url) zrodla.add(x.url);
+        for (const c of b?.citations ?? []) if (c?.url) zrodla.add(c.url);
     }
-    const kg = await getGeminiKey().catch(() => null);
-    if (!kg) throw new Error('Zwiadowca potrzebuje klucza Claude albo Gemini (TeO Kibel → „🔗 Udostępnij mostowi”).');
-    const model = (await listyModeliChmury('gemini', kg)).modele.find((m) => /flash/.test(m.model))?.model || 'gemini-2.5-flash';
+    return { tekst: (d.content ?? []).filter((b) => b.type === 'text').map((b) => b.text).join(''), zrodla: [...zrodla] };
+}
+/** Zwiad przez Gemini (narzędzie google_search) — tekst i źródła z groundingu. */
+async function zwiadGemini(prompt, kg) {
+    const model = process.env.OTAKOS_GOL_DNIA_MODEL_GEMINI || (await listyModeliChmury('gemini', kg)).modele.find((m) => /flash/.test(m.model))?.model || 'gemini-2.5-flash';
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST', signal: AbortSignal.timeout(180_000), headers: { 'Content-Type': 'application/json', 'x-goog-api-key': kg },
         body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }),
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(`Gemini HTTP ${r.status}: ${d?.error?.message ?? ''}`.trim());
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${d?.error?.message ?? ''}`.trim());
     const k = d.candidates?.[0];
     return { tekst: (k?.content?.parts ?? []).filter((x) => x.text && !x.thought).map((x) => x.text).join(''), zrodla: (k?.groundingMetadata?.groundingChunks ?? []).map((c) => c.web?.title || c.web?.uri).filter(Boolean) };
+}
+/**
+ * Zwiad faktów w sieci (Suweren 2026-10-15: „na sztywno jest Anthropic… niech automatycznie bierze… mam z chmury
+ * Gemini”): kolejność z trybu Katedry (dostawca chmury: auto = Claude → Gemini, gemini = Gemini → Claude), a padnięty
+ * dostawca (limit, błąd, brak klucza) oddaje zwiad następnemu — `zwiadPoKolei` w GolDnia.js. Model lokalny nie przeszuka
+ * sieci, więc bez kluczy chmury fakty wpisuje Suweren.
+ */
+async function zwiadSieci(prompt, sprawdz) {
+    const pref = TrybKatedry.stan().dostawca;
+    const kolejnosc = pref === 'gemini' ? ['gemini', 'anthropic'] : ['anthropic', 'gemini'];
+    const proby = { anthropic: { nazwa: 'Claude', klucz: () => getAnthropicKey(), fn: zwiadClaude }, gemini: { nazwa: 'Gemini', klucz: () => getGeminiKey(), fn: zwiadGemini } };
+    return zwiadPoKolei(kolejnosc.map((d) => proby[d]), prompt, sprawdz);
 }
 const GolDnia = utworzGolDnia({
     katalog: ANTIGRAVITY_DIR,

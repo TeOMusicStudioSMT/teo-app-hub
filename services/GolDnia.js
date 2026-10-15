@@ -197,6 +197,27 @@ Odpowiedz WYŁĄCZNIE JSON-em: {"gole":[{"minuta":"23","strzelec":"…","druzyna
 Goli ma być dokładnie ${mecz.wynik[0] + mecz.wynik[1]} (${mecz.wynik[0]} gospodarzy, ${mecz.wynik[1]} gości).`;
 }
 
+/**
+ * Zwiad po kolei: każdy dostawca z kluczem pyta sieć; błąd (limit konta, HTTP, brak JSON-u, fakty niezgodne z wynikiem
+ * — `sprawdz` rzuca) = następny. Bez klucza = pominięty z powodem. Wszyscy padli = jeden błąd z powodami każdego.
+ * @param {{ nazwa: string, klucz: () => Promise<string|null>|string|null, fn: (prompt: string, klucz: string) => Promise<{ tekst: string, zrodla: string[] }> }[]} proby
+ */
+export async function zwiadPoKolei(proby, prompt, sprawdz = null) {
+    const powody = [];
+    for (const p of proby) {
+        const klucz = await Promise.resolve().then(() => p.klucz()).catch(() => null);
+        if (!klucz) { powody.push(`${p.nazwa}: brak klucza`); continue; }
+        try {
+            const w = await p.fn(prompt, klucz);
+            const wynik = sprawdz ? sprawdz(w) : w;
+            return { ...w, ...(wynik && typeof wynik === 'object' ? wynik : {}), dostawca: p.nazwa, pominieci: powody };
+        } catch (e) { powody.push(`${p.nazwa}: ${String(e.message || e).slice(0, 200)}`); }
+    }
+    throw new Error(powody.every((x) => /brak klucza/.test(x))
+        ? 'Zwiadowca potrzebuje sieci: klucza Claude albo Gemini (TeO Kibel → „🔗 Udostępnij mostowi”). Model lokalny nie przeszuka internetu — możesz wpisać gole ręcznie.'
+        : `Zwiadowca nie zdobył faktów — ${powody.join(' · ')}. Spróbuj później albo wpisz gole ręcznie.`);
+}
+
 // ─── Scenariusz ──────────────────────────────────────────────────────────────────────────────────────
 
 export function promptScenariusza({ mecz, gole, narrator, wspolprowadzacy = null, wspol = null, jezyk = 'en', pamiec = null }) {
@@ -332,13 +353,18 @@ export function utworzGolDnia(o) {
     async function zbierzFakty(mecz) {
         if (!cfg.zwiad) throw new Error('Zwiadowca nie ma klucza wyszukiwania (Claude albo Gemini w Kiblu) — wpisz gole ręcznie.');
         if (mecz.wynik[0] + mecz.wynik[1] === 0) return { gole: [], zrodla: [], zwiad: 'bezbramkowy' };
-        const z = await cfg.zwiad(promptZwiadu(mecz));
-        const gole = odczytajGole(z.tekst);
-        if (!gole) throw new Error('Zwiadowca nie oddał listy goli (JSON) — spróbuj ponownie albo wpisz gole ręcznie.');
-        if (!z.zrodla?.length) throw new Error('Zwiadowca nie podał źródeł — bez nich faktów nie przyjmuję.');
-        const zly = sprawdzGole(gole, mecz.wynik);
-        if (zly) throw new Error(`Zwiadowca: ${zly} — popraw ręcznie albo spróbuj ponownie.`);
-        return { gole, zrodla: z.zrodla.slice(0, 8) };
+        // każda odpowiedź sprawdzana od razu — zła u jednego dostawcy = pyta następnego (most: zwiadPoKolei)
+        const sprawdz = (z) => {
+            const gole = odczytajGole(z.tekst);
+            if (!gole) throw new Error('nie oddał listy goli (JSON)');
+            if (!z.zrodla?.length) throw new Error('nie podał źródeł — bez nich faktów nie przyjmuję');
+            const zly = sprawdzGole(gole, mecz.wynik);
+            if (zly) throw new Error(zly);
+            return { gole };
+        };
+        const z = await cfg.zwiad(promptZwiadu(mecz), sprawdz);
+        const w = z.gole ? z : sprawdz(z);   // zwiad bez obsługi `sprawdz` (np. atrapa) — sprawdzenie tutaj
+        return { gole: w.gole, zrodla: z.zrodla.slice(0, 8), dostawca: z.dostawca ?? null, pominieci: z.pominieci ?? [] };
     }
 
     async function wczytaj(id) {
@@ -701,4 +727,4 @@ export function zamontujTrasyGolDnia(app, G, { kanalProjektu = null, ustawKanalP
     app.delete('/api/gol-dnia/:id', (req, res) => odp(res, G.usun(req.params.id).then((usuniety) => ({ usuniety }))));
 }
 
-export default { utworzGolDnia, zamontujTrasyGolDnia, NARRATORZY, PROWADZACY, WIDEO, LIGI, sprawdzGole, odczytajGole, odczytajScenariusz, promptScenariusza, promptyObrazow, kwestieOdcinka, ktoMowi, wspolprowadzacyOdcinka, skladOdcinka, MAX_WSPOL, monogram, barwyZNazwy, barwyZDruzyny };
+export default { utworzGolDnia, zamontujTrasyGolDnia, NARRATORZY, PROWADZACY, WIDEO, LIGI, sprawdzGole, odczytajGole, odczytajScenariusz, promptScenariusza, promptyObrazow, kwestieOdcinka, zwiadPoKolei, ktoMowi, wspolprowadzacyOdcinka, skladOdcinka, MAX_WSPOL, monogram, barwyZNazwy, barwyZDruzyny };

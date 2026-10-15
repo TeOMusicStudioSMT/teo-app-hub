@@ -234,3 +234,19 @@ test('prowadzący + do trzech współprowadzących: gole komentują po kolei, pr
         await assert.rejects(G.utworz({ mecz: MECZ, gole: GOLE, narrator: 'zebra', wspolprowadzacy: ['lew', 'lew'] }), /każdy raz/);
     } finally { await fs.rm(kat, { recursive: true, force: true }); }
 });
+
+import { zwiadPoKolei } from '../services/GolDnia.js';
+test('zwiad po kolei: limit Claude → Gemini, złe fakty → następny, bez kluczy = rada wpisania ręcznie', async () => {
+    const ok = { tekst: JSON.stringify({ gole: GOLE }), zrodla: ['https://x.example'] };
+    const limit = async () => { throw new Error('HTTP 400: You have reached your specified API usage limits.'); };
+    const w = await zwiadPoKolei([{ nazwa: 'Claude', klucz: () => 'k', fn: limit }, { nazwa: 'Gemini', klucz: async () => 'g', fn: async () => ok }], 'p');
+    assert.equal(w.dostawca, 'Gemini');
+    assert.match(w.pominieci[0], /Claude: HTTP 400: You have reached/);
+    const sprawdz = (z) => { const g = JSON.parse(z.tekst).gole; if (g.length !== 3) throw new Error('fakty nie zgadzają się z wynikiem'); return { gole: g }; };
+    const zle = { tekst: JSON.stringify({ gole: GOLE.slice(0, 1) }), zrodla: ['https://y.example'] };
+    const w2 = await zwiadPoKolei([{ nazwa: 'Gemini', klucz: () => 'g', fn: async () => zle }, { nazwa: 'Claude', klucz: () => 'k', fn: async () => ok }], 'p', sprawdz);
+    assert.equal(w2.dostawca, 'Claude');
+    assert.equal(w2.gole.length, 3);
+    await assert.rejects(zwiadPoKolei([{ nazwa: 'Claude', klucz: () => null, fn: limit }, { nazwa: 'Gemini', klucz: () => null, fn: limit }], 'p'), /Model lokalny nie przeszuka internetu/);
+    await assert.rejects(zwiadPoKolei([{ nazwa: 'Claude', klucz: () => 'k', fn: limit }, { nazwa: 'Gemini', klucz: () => null, fn: limit }], 'p'), /Claude: HTTP 400.*Gemini: brak klucza/);
+});
