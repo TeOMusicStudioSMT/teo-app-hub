@@ -58,6 +58,7 @@ import { zsynchronizujMozg, ZDARZENIE_OTWORZ as ZDARZENIE_OTWORZ_MOZG } from './
 import TeoLab from './components/special/TeoLab';
 import TostMessenger from './components/special/TostMessenger';
 import TostIkona from './components/special/TostIkona';
+import CentrumTeda from './lib/modulTed';   // 💹 prywatny moduł TeDa (moduly/ted) — bez niego nic się nie pokazuje
 import { useKoherencja, ZDARZENIE_TEOSIM } from './lib/koherencja';
 import type { ZakladkaTeoSim } from './components/special/SimulationDashboard';
 import { sluchajTelefonu } from './lib/teogochiDelegate';
@@ -886,6 +887,7 @@ const App: React.FC = () => {
                                             </span>
                                         </button>
                                     </div>
+                                    <CentrumTeda tryb="ikona" />
 
                                     {/* 🏛️ Nagroda - Rada Podstawowa (Unlocked at 100%) */}
                                     {isRadaUnlocked && (

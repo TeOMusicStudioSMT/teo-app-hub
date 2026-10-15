@@ -118,4 +118,4 @@ export async function zapytajAgenta(odKogo: string, doKogo: string, pytanie: str
 
 /** Imię gatunku do wyświetlenia; nieznane id zwracamy jak jest. */
 export const imieAgenta = (id: string): string =>
-    GATUNKI.find(g => g.id === id)?.imie ?? id;
+    (() => { try { const r = localStorage.getItem(id === 'joanna' ? 'teogochi_state' : `teogochi_state_${id}`); const n = r ? JSON.parse(r)?.name : ''; if (n && String(n).trim()) return String(n).trim(); } catch {} return GATUNKI.find(g => g.id === id)?.imie ?? id; })();

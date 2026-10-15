@@ -35,11 +35,15 @@ export const WirTeogochi: React.FC<{
     // Stado czytamy przy otwarciu wiru, nie przy każdym renderze.
     const stado = useMemo(() => {
         const ids = wykluteGatunki();
-        return GATUNKI.filter(g => ids.includes(g.id)).map(g => ({
-            gat: g,
-            etap: stageOf(stanGatunku(g.id).xp),
-        }));
-    }, [otwarty]);
+        return GATUNKI.filter(g => ids.includes(g.id)).map(g => {
+            const st = stanGatunku(g.id);
+            return {
+                gat: g,
+                imie: (st.name && st.name.trim()) ? st.name.trim() : g.imie,
+                etap: stageOf(st.xp),
+            };
+        });
+    }, [otwarty, panelGatunekId]);
 
     const wybierz = (id: string) => {
         ustawAktywny(id);
@@ -76,7 +80,7 @@ export const WirTeogochi: React.FC<{
                                 <motion.button
                                     key={gat.id}
                                     onClick={() => wybierz(gat.id)}
-                                    title={`${gat.imie} — ${gat.dziedzina} (${etap.title})`}
+                                    title={`${(stanGatunku(gat.id).name || '').trim() || gat.imie} — ${gat.dziedzina} (${etap.title})`}
                                     whileHover={{ scale: 1.25 }}
                                     // Przeciw-obrót: ikona ma stać prosto, mimo że wir się kręci.
                                     animate={{ rotate: -360 }}

@@ -245,6 +245,16 @@ export const GATUNKI: Gatunek[] = [
         narzedzia: ['/api/aktorzy', '/api/wywiady/przygotuj', '/api/wywiady/:id/nagraj', '/api/voice/profiles'],
         zadania: ['Aktorze, zagraj Kaela w wywiadzie o filmie', 'Aktorze, napisz wywiad o naszym nowym filmie', 'Aktorze, kogo mamy w obsadzie?'],
     },
+    {
+        // 📈 Suweren (2026-10-14): „niech TeD ma swe własne JaJo… uczy się z tych testów co z nim teraz robię tym auto".
+        // JaJo TeDa rośnie na żywych świecach Binance i w Skanerze Rynku — uczy się wag wskaźników (RSI, Z-Score, EMA) z trafionych i chybionych rund.
+        id: 'ted', imie: 'JaJo TeDa', dziedzina: 'Giełda, Świece i Alchemia Rynku',
+        opis: 'Uczy się mikro-struktury świec (RSI, Z-Score, EMA), dostraja wagi po każdej rundzie Auto-Maszyny, pilnuje Złotej Pauzy i zapisuje wnioski w Dzienniku Decyzji.',
+        formy: { 'jajko': '🥚', 'pisklę': '🐣', 'młodzik': '📈', 'kompan': '🐂', 'legenda': '🏦' },
+        kolor: '#c9953a',
+        narzedzia: ['/api/rynek/wiadomosci', '/api/rynek/nastroj', '/api/rynek/dziennik', '/api/kronos/forecast'],
+        zadania: ['Ted, zeskanuj rynek i Tunel RSS', 'Ted, odpal Auto-Maszynę na świecach 1m', 'Ted, zapisz decyzję w Dzienniku'],
+    },
 ];
 
 export const gatunekPo = (id: string): Gatunek | undefined => GATUNKI.find(g => g.id === id);

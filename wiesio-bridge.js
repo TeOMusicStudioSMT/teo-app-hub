@@ -24,7 +24,7 @@ import { utworzMistrzaGry } from './services/MistrzGry.js';
 import { utworzKlub } from './services/KlubMistrzow.js';
 import { utworzZwiadowcePromocji, MODEL as ZWIADOWCA_PROMOCJI_MODEL, MODEL_GEMINI as ZWIADOWCA_PROMOCJI_GEMINI } from './services/ZwiadowcaPromocji.js';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 // NOWOŚĆ: Moduł do wykonywania komend w terminalu
 import { exec, execFile, execFileSync, spawn } from 'child_process';
 import { initTacosGuard, executeTacosGuard } from './core/tacos-guard.js';
@@ -5488,6 +5488,19 @@ app.post('/api/argo/sesja/:id/prosba/:pid', async (req, res) => {
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.post('/api/argo/sesja/:id/przerwij', async (req, res) => res.json({ success: true, ...(await ArgoBob.przerwij(req.params.id)) }));
+
+// ── 💹 Prywatny moduł TeDa (repo TeD_OtakOS → moduly/ted/, w .gitignore) — ładowany TYLKO, gdy jest zainstalowany ──
+// Publiczna Katedra go nie ma i działa bez niego. Trasy /api/ted/* — Straż: tylko maszyna.
+{
+    const plikModuluTed = path.join(process.cwd(), 'moduly', 'ted', 'most.js');
+    if (fsSync.existsSync(plikModuluTed)) {
+        try {
+            const { zamontujModulTed } = await import(pathToFileURL(plikModuluTed).href);
+            const m = zamontujModulTed(app, { katalog: ANTIGRAVITY_DIR, skarbiec: VaultService.getInstance(), szyna: Szyna });
+            console.log(`[Wiesio-Bridge] 💹 Moduł TeDa zainstalowany (${m.wersja}) — autopilot i egzekutor na /api/ted/`);
+        } catch (e) { console.warn(`[Wiesio-Bridge] 💹 Moduł TeDa nie wstał: ${e.message}`); }
+    }
+}
 
 /** POST /api/uneng/launch — odpala Unreal Engine (Game Forge). Ścieżka z env OTAKOS_UE_PATH. */
 app.post('/api/uneng/launch', async (req, res) => {

@@ -16,19 +16,20 @@
 
 import { load } from 'cheerio';
 
-/** Kanały RSS. `kind` pozwala potem filtrować krypto vs. makro. */
+/** Kanały RSS. `kind` pozwala potem filtrować krypto vs. makro. `fallbackUrl` ratuje, gdy główny adres blokuje region UE (jak dawniej Yahoo GDPR). */
 export const SOURCES = [
     { id: 'cointelegraph', name: 'Cointelegraph', kind: 'krypto', url: 'https://cointelegraph.com/rss' },
     { id: 'decrypt',       name: 'Decrypt',       kind: 'krypto', url: 'https://decrypt.co/feed' },
     { id: 'coindesk',      name: 'CoinDesk',      kind: 'krypto', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
-    { id: 'yahoo',         name: 'Yahoo Finance', kind: 'makro',  url: 'https://finance.yahoo.com/news/rssindex' },
+    { id: 'marketwatch',   name: 'MarketWatch',   kind: 'makro',  url: 'https://feeds.content.dowjones.io/public/rss/mw_topstories', fallbackUrl: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664' },
+    { id: 'cnbc',          name: 'CNBC Markets',  kind: 'makro',  url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664', fallbackUrl: 'https://feeds.content.dowjones.io/public/rss/mw_marketpulse' },
     { id: 'wsj',           name: 'WSJ Markets',   kind: 'makro',  url: 'https://feeds.a.dj.com/rss/RSSMarketsMain.xml' },
     { id: 'investing',     name: 'Investing.com', kind: 'makro',  url: 'https://www.investing.com/rss/news_25.rss' },
 ];
 
 const FETCH_TIMEOUT_MS = 15_000;
 const CACHE_TTL_MS     = 10 * 60_000;   // 10 min — kanały i tak nie zmieniają się częściej
-const UA = 'Mozilla/5.0 (compatible; KatedraOtakOS/1.0; +local)';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 let cache = { at: 0, items: [], raport: [] };
 
@@ -44,19 +45,29 @@ function czysty(txt = '') {
         .trim();
 }
 
-/** Pobierz i sparsuj jeden kanał. Nigdy nie rzuca — zwraca raport z błędem. */
+async function pobierzXml(url, signal) {
+    const res = await fetch(url, {
+        signal,
+        redirect: 'follow',
+        headers: { 'User-Agent': UA, Accept: 'application/rss+xml, application/xml, text/xml, */*' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+}
+
+/** Pobierz i sparsuj jeden kanał (z automatycznym zapasem `fallbackUrl`). Nigdy nie rzuca — zwraca raport z błędem. */
 async function pobierzKanal(src) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
     const t0 = Date.now();
     try {
-        const res = await fetch(src.url, {
-            signal: ctrl.signal,
-            redirect: 'follow',                 // CoinDesk odpowiada 308 — bez tego zero pozycji
-            headers: { 'User-Agent': UA, Accept: 'application/rss+xml, application/xml, text/xml, */*' },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const xml = await res.text();
+        let xml;
+        try {
+            xml = await pobierzXml(src.url, ctrl.signal);
+        } catch (err) {
+            if (src.fallbackUrl) xml = await pobierzXml(src.fallbackUrl, ctrl.signal);
+            else throw err;
+        }
         const $ = load(xml, { xmlMode: true });
 
         const items = [];

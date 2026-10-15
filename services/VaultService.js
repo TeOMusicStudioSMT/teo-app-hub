@@ -40,6 +40,10 @@ export const SERVICE_CATALOG = {
     // 💳 Stripe (2026-10-13) — darowizny i sprzedaż pakietów Mini na otakos.wtf (services/Stripe.js). Klucz tajny
     // sk_live_… / sk_test_… albo ograniczony rk_… — nigdy do przeglądarki ani na stronę.
     stripe:           { label: 'Stripe (płatności, darowizny)', fields: ['secret_key'],  security: 'CRITICAL', glyph: '💳' },
+    ted_dex:          { label: 'Ted DEX (Portfel Operacyjny Base/Arbitrum/Polygon)', fields: ['private_key', 'rpc_url'], security: 'CRITICAL', glyph: '🦄' },
+    // 🤖 Autopilot TeDa na BNB Chain (prywatny moduł moduly/ted, TedAutopilot.js) — klucz portfela operacyjnego; podpisuje TYLKO most, z limitami.
+    ted_bsc:          { label: 'TeD Autopilot (portfel BNB Chain)',                fields: ['private_key'],            security: 'CRITICAL', glyph: '🤖' },
+    kraken:           { label: 'Kraken Pro (Giełda EUR · BaFin DE Spot API)',        fields: ['api_key', 'api_secret'],  security: 'CRITICAL', glyph: '🐙' },
 };
 
 class VaultServiceClass {

@@ -60,6 +60,27 @@ export function odczytajMetadane(tekst) {
     return { tytul: tytul.slice(0, 100), opis: opis.slice(0, 4800), tagi: [...new Set(tagi)].slice(0, 20) };
 }
 
+/** Stopka sprzedażowa Katedry (lejek YouTube → otakos.wtf: gra Teterhia, Sklep Mini 3D, wsparcie). */
+export function stopkaEkosystemu(jezyk = 'pl', zrodlo = null) {
+    const czyShow = zrodlo?.projekt === 'teo-game-show';
+    if (jezyk === 'en') {
+        return [
+            '──────────────────────────────',
+            czyShow
+                ? '🐾 Adopt this 3D Mini-TeOgochi dancer, get ready-to-rig GLB packs & play Teterhia MRPG:'
+                : '🏛️ Explore the Sovereign AI Ecosystem, 3D Mini-TeOgochi Shop & play Teterhia MRPG:',
+            '🌐 https://otakos.wtf',
+        ].join('\n');
+    }
+    return [
+        '──────────────────────────────',
+        czyShow
+            ? '🐾 Adoptuj tego tancerza Mini-TeOgochi 3D (paczki GLB/ruch w Sklepie Mini) i zagraj w Teterhię MRPG:'
+            : '🏛️ Wejdź do Katedry OtakOS, zobacz Sklep Mini-TeOgochi 3D i zagraj w Teterhię MRPG:',
+        '🌐 https://otakos.wtf',
+    ].join('\n');
+}
+
 /**
  * @param {{ katalog:string, pisz:(system:string, prompt:string)=>Promise<{tekst:string, silnik?:string}>,
  *   impresariat:{ enqueuePublication:Function, getQueue:()=>Promise<any[]> },
@@ -122,7 +143,11 @@ export function utworzPublikacje(o) {
         try {
             const prompt = `Film: ${p.nazwa}\nPlik: ${path.basename(p.plik)}\n${z.kontekst ? `\nMateriał o filmie (jedyne źródło faktów):\n${String(z.kontekst).slice(0, 6000)}` : '\nBrak dodatkowego materiału — opieraj się na nazwie, nie zmyślaj szczegółów fabuły.'}`;
             const { tekst, silnik } = await cfg.pisz(systemKronikarza(p.jezyk), prompt);
-            Object.assign(p, odczytajMetadane(tekst), { model: silnik ?? null, etap: 'do_akceptacji', blad: null });
+            const meta = odczytajMetadane(tekst);
+            if (!/otakos\.wtf/i.test(meta.opis)) {
+                meta.opis = `${meta.opis}\n\n${stopkaEkosystemu(p.jezyk, p.zrodlo)}`.slice(0, 4800);
+            }
+            Object.assign(p, meta, { model: silnik ?? null, etap: 'do_akceptacji', blad: null });
             nadaj(`przygotował publikację „${p.tytul}” — czeka na ✓ Suwerena w Izbie`);
         } catch (e) {
             Object.assign(p, { etap: 'blad', blad: e.message });

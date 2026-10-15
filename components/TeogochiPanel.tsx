@@ -24,7 +24,7 @@ import { pobierzPanele, type PanelDef } from '../lib/paneleTeogochi';
 import { melduj } from '../lib/szyna';
 import { X, Sparkles, Heart, Utensils, Cpu, Wrench, Shield, CheckCircle2, ChevronRight, RefreshCw } from 'lucide-react';
 
-// Importy wbudowanych podpaneli
+const PanelZwiadowcyLazy = React.lazy(() => import('./special/PanelZwiadowcy'));
 import PanelKlatka from './special/PanelKlatka';
 import PanelWektor from './special/PanelWektor';
 import PanelKodeks from './special/PanelKodeks';
@@ -485,6 +485,7 @@ export const TeogochiPanel: React.FC<TeogochiPanelProps> = ({
 
                             {/* 🗣️ Głos — barwa z Głosów Stada (jak aktorzy w wywiadach) */}
                             <GlosTeogochi id={gatunek.id} imie={gatunek.imie} onTest={(t) => void powiedz(t)} />
+                            {gatunek.id === 'zwiadowca' && <React.Suspense fallback={null}><PanelZwiadowcyLazy /></React.Suspense>}
 
                             {/* Szybkie Polecenia */}
                             <div>

@@ -112,3 +112,6 @@ docs/mapa-katedry.json
 # Python (silnik klonu głosu — services/glos)
 __pycache__/
 *.pyc
+
+# 💹 Prywatny moduł TeDa (repo TeD_OtakOS, prywatne) — wydawany po spełnieniu wymogów, nigdy w publicznym repo
+moduly/ted/

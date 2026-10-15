@@ -43,7 +43,21 @@ export const Marketplace: React.FC = () => {
   }, []);
 
   const load = useCallback(async () => {
-    try { const d = await (await fetch(`${BRIDGE}/api/market/products`)).json(); if (d.success) setProducts(d.products); }
+    try {
+      const d = await (await fetch(`${BRIDGE}/api/market/products`)).json();
+      const tedArtefakt: Product = {
+        id: 'ted-alchemia-777',
+        module: 'ted-alchemia',
+        type: 'module',
+        name: '📈 Ted & Alchemia Świec — Auto-Maszyna 0.00G (Filar III)',
+        desc: 'Odblokowuje samobieżny moduł giełdowy w prawym menu Katedry: żywe świece Binance 1m/5m, Auto-Maszynę TeDa i samouczące JaJo TeDa.',
+        priceGrv: 777777,
+        creator: 'TeO',
+        votes: 77,
+      };
+      const lista: Product[] = d.success && Array.isArray(d.products) ? d.products : [];
+      setProducts([tedArtefakt, ...lista.filter(p => p.id !== 'ted-alchemia-777')]);
+    }
     catch { setStatus('⚠ Most offline (:3001)'); }
   }, []);
   useEffect(() => { load(); fetchBalance(); fetchBurn(); }, [load, fetchBalance, fetchBurn]);

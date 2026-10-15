@@ -46,6 +46,7 @@ import TeOSimAcademy from './TeOSimAcademy';
 import { CrewCreator } from './CrewCreator';
 import { KwantowyInkubator } from './KwantowyInkubator';
 import TedTheTrader from './TedTheTrader';
+import { MODUL_TED } from '../../lib/modulTed';   // 💹 prywatny moduł TeDa — gdy jest, Ted mieszka w Centrum Finansowym
 import KronosOracle from './KronosOracle';
 import TunelRynkowy from './TunelRynkowy';
 import DziennikDecyzji from './DziennikDecyzji';
@@ -1323,7 +1324,21 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
           </button>
         </div>
 
-        {showTed && (
+        {showTed && MODUL_TED && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ padding: '12px', textAlign: 'center', color: '#e2e8f0', fontSize: '12px' }}>
+            <div style={{ marginBottom: '8px', color: '#fbbf24', fontWeight: 'bold' }}>
+              📈 Ted mieszka teraz w Centrum Finansowym — osobna ikona w prawym menu Katedry.
+            </div>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('otakos:otworz-teda'))}
+              style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #fbbf24', background: 'rgba(251, 191, 36, 0.15)', color: '#fde68a', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              📈 Otwórz Centrum Finansowe TeDa
+            </button>
+          </motion.div>
+        )}
+
+        {showTed && !MODUL_TED && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
             <TedTheTrader />
             {/* 📰 Tunel wiadomości NAD Kronosem — fakty (co mówią media) czyta się

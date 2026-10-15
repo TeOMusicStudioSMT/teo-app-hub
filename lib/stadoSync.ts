@@ -90,8 +90,16 @@ export async function hydratujStadoZMostu(limitMs = 2500): Promise<{ zMostu: str
         const lok = czytajLokalnie(id);
         const zM = m.stany?.[id] ?? null;
         const xpLok = Number(lok?.xp) || 0, xpM = Number(zM?.xp) || 0;
-        if (zM && (!lok || xpM > xpLok)) { zapiszLokalnie(id, zM); wynik.zMostu.push(id); }
-        else if (lok && (!zM || xpLok > xpM)) { doGory[id] = lok; wynik.doMostu.push(id); }
+        const imieLok = typeof lok?.name === 'string' ? lok.name.trim() : '';
+        const imieM = typeof zM?.name === 'string' ? zM.name.trim() : '';
+        if (zM && (!lok || xpM > xpLok)) {
+            // Zachowaj własne imię nadane przez Suwerena, jeśli most miał puste imię po nagrodzie za pracę
+            zapiszLokalnie(id, imieLok && !imieM ? { ...zM, name: imieLok } : zM);
+            wynik.zMostu.push(id);
+        } else if (lok && (!zM || xpLok > xpM || (imieLok && imieLok !== imieM))) {
+            doGory[id] = lok;
+            wynik.doMostu.push(id);
+        }
     }
     // wyklucie: suma zbiorów; aktywny: most, jeśli ma
     const wyklute = [...new Set(['joanna', ...(m.wyklute ?? []), ...lokalneWyklute])];

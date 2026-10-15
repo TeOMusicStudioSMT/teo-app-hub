@@ -85,7 +85,8 @@ const PrzywracanieStada: React.FC<{ onPrzywrocono: () => void }> = ({ onPrzywroc
 };
 
 /** Gatunki z panelem napisanym ręcznie. Reszta buduje swój w kreatorze. */
-const WBUDOWANE = ['joanna', 'klatka', 'wektor', 'kodeks', 'bilans'];
+const PanelZwiadowcyDom = React.lazy(() => import('./PanelZwiadowcy'));
+const WBUDOWANE = ['joanna', 'klatka', 'wektor', 'kodeks', 'bilans', 'zwiadowca'];
 
 const KartaGatunku: React.FC<{
     gat: Gatunek;
@@ -122,7 +123,7 @@ const KartaGatunku: React.FC<{
                 </div>
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-100">{gat.imie}</span>
+                        <span className="font-bold text-slate-100">{(stanGatunku(gat.id).name || '').trim() || gat.imie}</span>
                         {aktywny && (
                             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: gat.kolor, color: '#0a0f1c' }}>
                                 DYŻUR
@@ -297,7 +298,7 @@ export const DomTeogochi: React.FC = () => {
                 <p className="text-xs text-slate-500">
                     W stadzie: <b className="text-slate-300">{stado.length}</b> z {GATUNKI.length} ·
                     na dyżurze: <b style={{ color: GATUNKI.find(g => g.id === dyzurny)?.kolor }}>
-                        {GATUNKI.find(g => g.id === dyzurny)?.imie ?? dyzurny}
+                        {(stanGatunku(dyzurny).name || '').trim() || GATUNKI.find(g => g.id === dyzurny)?.imie || dyzurny}
                     </b>
                 </p>
             </header>
@@ -316,6 +317,7 @@ export const DomTeogochi: React.FC = () => {
             {dyzurny === 'wektor' && stado.includes('wektor') && <PanelWektor />}
             {dyzurny === 'kodeks' && stado.includes('kodeks') && <PanelKodeks />}
             {dyzurny === 'bilans' && stado.includes('bilans') && <PanelBilans />}
+            {dyzurny === 'zwiadowca' && stado.includes('zwiadowca') && <React.Suspense fallback={null}><PanelZwiadowcyDom /></React.Suspense>}
 
             {/* Kreator — otwarty świadomie z karty gatunku. */}
             {kreatorDla && (() => {

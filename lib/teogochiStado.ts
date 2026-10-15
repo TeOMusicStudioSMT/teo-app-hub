@@ -85,6 +85,16 @@ export function zapiszStanGatunku(id: string, s: TeogochiState): void {
     zsynchronizujStan(id, s as unknown as { xp: number });
 }
 
+/** Aktualne imię TeOgochi: nadane przez Suwerena w Chrzcielnicy panelu, a gdy brak — fabryczne imię gatunku. */
+export function imieGatunku(id: string): string {
+    const gat = GATUNKI.find(g => g.id === id);
+    try {
+        const s = stanGatunku(id);
+        if (s?.name && s.name.trim()) return s.name.trim();
+    } catch { /* ignoruj */ }
+    return gat?.imie ?? id;
+}
+
 /** Migawka stada, jaką Katedra publikuje do mostu (i jaką most trzyma w kopiach). */
 export interface MigawkaStada {
     czas?: number;
