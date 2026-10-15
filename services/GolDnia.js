@@ -274,6 +274,34 @@ export function odpowiedzGeminiZwiadu(d) {
     return { tekst, zrodla, szukal, zapytania, zJsona, powodKonca: k?.finishReason ?? null };
 }
 
+/**
+ * ⏱️ Oś zdarzeń TheSportsDB (`lookuptimeline.php`, darmowa) → gole: minuta, strzelec, asysta, drużyna, karny, samobój.
+ * Bez modelu i bez wyszukiwarki — dane źródła, z którego bierzemy też wynik. Liczą się tylko wpisy „Goal” (nie VAR,
+ * nie kartki, nie niewykorzystany karny). Gol samobójczy: drużyna z osi bywa drużyną strzelca, a my liczymy beneficjenta —
+ * rozstrzyga zgodność z wynikiem. Zwraca gole albo null, gdy osi brak; kompletność sprawdza `sprawdzGole`.
+ */
+export function goleZOsi(timeline, mecz) {
+    if (!Array.isArray(timeline)) return null;
+    const czyste = (x) => (x && x !== 'NULL' && x !== '0' ? String(x).trim() : null);
+    const wpisy = timeline.filter((t) => t?.strTimeline === 'Goal' && !/miss/i.test(t?.strTimelineDetail ?? ''));
+    const gole = wpisy.map((t) => {
+        const samobojczy = /own/i.test(t.strTimelineDetail ?? '');
+        const zDomu = t.strHome === 'Yes' || (t.strHome !== 'No' && t.strTeam === mecz.gospodarze);
+        return {
+            minuta: String(t.intTime ?? '').replace(/[^\d+]/g, '').slice(0, 6), strzelec: czyste(t.strPlayer)?.slice(0, 60) ?? '',
+            druzyna: zDomu ? 'gospodarze' : 'goscie', asysta: czyste(t.strAssist)?.slice(0, 60) ?? null, opis: null,
+            samobojczy, karny: /penalty/i.test(t.strTimelineDetail ?? ''),
+        };
+    }).sort((a, b) => Number(a.minuta.split('+')[0]) - Number(b.minuta.split('+')[0]));
+    if (!gole.length) return gole;
+    // samobój: gdy oś podała drużynę strzelca, odwrócenie samobójów zgra liczby z wynikiem — tylko wtedy odwracamy
+    if (gole.some((g) => g.samobojczy) && sprawdzGole(gole, mecz.wynik)) {
+        const odwr = gole.map((g) => (g.samobojczy ? { ...g, druzyna: g.druzyna === 'gospodarze' ? 'goscie' : 'gospodarze' } : g));
+        if (!sprawdzGole(odwr, mecz.wynik)) return odwr;
+    }
+    return gole;
+}
+
 // ─── Scenariusz ──────────────────────────────────────────────────────────────────────────────────────
 
 export function promptScenariusza({ mecz, mecze = null, gole, narrator, wspolprowadzacy = null, wspol = null, jezyk = 'en', pamiec = null }) {
@@ -419,9 +447,27 @@ export function utworzGolDnia(o) {
     }
 
     /** Fakty bramek z sieci (Zwiadowca) — przyjęte tylko, gdy zgadzają się z wynikiem i mają źródła. */
+    /** ⏱️ Fakty z osi zdarzeń TheSportsDB — pierwsze źródło (bez modelu); niepełna oś = powód, wtedy zwiad w sieci. */
+    async function faktyZOsi(mecz) {
+        if (!/^\d+$/.test(String(mecz.id ?? ''))) return { powod: 'mecz spoza TheSportsDB' };
+        const klucz = process.env.OTAKOS_THESPORTSDB_KLUCZ || '3';
+        try {
+            const r = await cfg.fetch(`https://www.thesportsdb.com/api/v1/json/${klucz}/lookuptimeline.php?id=${encodeURIComponent(mecz.id)}`, { signal: AbortSignal.timeout(20_000) });
+            if (!r.ok) return { powod: `HTTP ${r.status}` };
+            const gole = goleZOsi((await r.json())?.timeline, mecz);
+            if (!gole) return { powod: 'brak osi zdarzeń' };
+            const zly = sprawdzGole(gole, mecz.wynik);
+            if (zly) return { powod: `oś niepełna (${zly}${klucz === '3' ? '; darmowy klucz oddaje najwyżej 5 zdarzeń meczu' : ''})` };
+            return { gole, zrodla: [`https://www.thesportsdb.com/event/${mecz.id}`], dostawca: 'TheSportsDB (oś zdarzeń)' };
+        } catch (e) { return { powod: String(e.message || e).slice(0, 120) }; }
+    }
+
     async function zbierzFakty(mecz) {
-        if (!cfg.zwiad) throw new Error('Zwiadowca nie ma klucza wyszukiwania (Claude albo Gemini w Kiblu) — wpisz gole ręcznie.');
         if (mecz.wynik[0] + mecz.wynik[1] === 0) return { gole: [], zrodla: [], zwiad: 'bezbramkowy' };
+        const os = await faktyZOsi(mecz);
+        if (os.gole) return { gole: os.gole, zrodla: os.zrodla, dostawca: os.dostawca, pominieci: [] };
+        const zOsi = `TheSportsDB: ${os.powod}`;
+        if (!cfg.zwiad) throw new Error(`${zOsi}. Zwiadowca nie ma klucza wyszukiwania (Claude albo Gemini w Kiblu) — wpisz gole ręcznie.`);
         // każda odpowiedź sprawdzana od razu — zła u jednego dostawcy = pyta następnego (most: zwiadPoKolei)
         const sprawdz = (z) => {
             const gole = odczytajGole(z.tekst);
@@ -431,9 +477,10 @@ export function utworzGolDnia(o) {
             if (zly) throw new Error(zly);
             return { gole };
         };
-        const z = await cfg.zwiad(promptZwiadu(mecz), sprawdz);
+        let z;
+        try { z = await cfg.zwiad(promptZwiadu(mecz), sprawdz); } catch (e) { throw new Error(`${zOsi} · ${e.message}`); }
         const w = z.gole ? z : sprawdz(z);   // zwiad bez obsługi `sprawdz` (np. atrapa) — sprawdzenie tutaj
-        return { gole: w.gole, zrodla: z.zrodla.slice(0, 8), dostawca: z.dostawca ?? null, pominieci: z.pominieci ?? [] };
+        return { gole: w.gole, zrodla: z.zrodla.slice(0, 8), dostawca: z.dostawca ?? null, pominieci: [zOsi, ...(z.pominieci ?? [])] };
     }
 
     async function wczytaj(id) {
@@ -848,4 +895,4 @@ export function zamontujTrasyGolDnia(app, G, { kanalProjektu = null, ustawKanalP
     app.delete('/api/gol-dnia/:id', (req, res) => odp(res, G.usun(req.params.id).then((usuniety) => ({ usuniety }))));
 }
 
-export default { utworzGolDnia, zamontujTrasyGolDnia, NARRATORZY, PROWADZACY, WIDEO, LIGI, sprawdzGole, odczytajGole, odczytajScenariusz, promptScenariusza, promptyObrazow, kwestieOdcinka, zwiadPoKolei, odpowiedzGeminiZwiadu, czyKompilacja, meczeOdcinka, MAX_MECZOW, ktoMowi, wspolprowadzacyOdcinka, skladOdcinka, MAX_WSPOL, monogram, barwyZNazwy, barwyZDruzyny };
+export default { utworzGolDnia, zamontujTrasyGolDnia, NARRATORZY, PROWADZACY, WIDEO, LIGI, sprawdzGole, odczytajGole, odczytajScenariusz, promptScenariusza, promptyObrazow, kwestieOdcinka, zwiadPoKolei, goleZOsi, odpowiedzGeminiZwiadu, czyKompilacja, meczeOdcinka, MAX_MECZOW, ktoMowi, wspolprowadzacyOdcinka, skladOdcinka, MAX_WSPOL, monogram, barwyZNazwy, barwyZDruzyny };

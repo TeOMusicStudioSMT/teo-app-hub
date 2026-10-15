@@ -15,6 +15,8 @@ const GOLE = [
     { minuta: '55', strzelec: 'Alexander Isak', druzyna: 'goscie', asysta: null, opis: 'płaski strzał z 18 m' },
     { minuta: '90+2', strzelec: 'Haji Wright', druzyna: 'gospodarze', asysta: null, opis: 'rzut karny', karny: true },
 ];
+/** Atrapa TheSportsDB bez osi zdarzeń — testy nie pytają prawdziwej sieci. */
+const BEZ_OSI = async () => ({ ok: true, json: async () => ({ timeline: null }) });
 const SCENARIUSZ = (n) => ['INTRO: Cześć! Dziś Coventry i Newcastle.', ...Array.from({ length: n }, (_, i) => [`PRZED ${i + 1}: To on.`, `OKRZYK ${i + 1}: Gooool!`, `PO ${i + 1}: Piękna bramka.`, `SCENA ${i + 1}: striker heads the ball into the net`]).flat(), 'OUTRO: Do jutra!'].join('\n');
 
 test('fakty: liczba goli musi zgadzać się z wynikiem, minuty w meczu, strzelec i drużyna podane', () => {
@@ -55,7 +57,7 @@ test('łańcuch na prawdziwym ffmpeg: zwiad → scenariusz → obrazy → segmen
         let zwiadow = 0, rysunkow = 0;
         const czaty = [], publikacje = [];
         const G = utworzGolDnia({
-            katalog: kat, ffmpeg: ffmpegPath, katalogMontazy: async (p) => path.join(kat, 'montaz', p),
+            katalog: kat, ffmpeg: ffmpegPath, fetch: BEZ_OSI, katalogMontazy: async (p) => path.join(kat, 'montaz', p),
             zwiad: async () => { zwiadow++; return { tekst: JSON.stringify({ gole: GOLE }), zrodla: ['https://www.bbc.com/sport/football/x'] }; },
             chat: async (_m, system) => { czaty.push(system); return { tekst: SCENARIUSZ(3) }; },
             rysuj: async () => { rysunkow++; return obraz; },
@@ -85,7 +87,7 @@ test('łańcuch na prawdziwym ffmpeg: zwiad → scenariusz → obrazy → segmen
         assert.equal(zwiadow, 1, 'fakty z pierwszego odcinka');
         assert.match(czaty.at(-1), new RegExp(NARRATORZY.krolik.temperament.slice(0, 20)));
         // zwiad niezgodny z wynikiem → odmowa, nic nie powstaje
-        const Z = utworzGolDnia({ katalog: kat, katalogMontazy: async () => kat, zwiad: async () => ({ tekst: JSON.stringify({ gole: GOLE.slice(0, 2) }), zrodla: ['https://x.example'] }) });
+        const Z = utworzGolDnia({ katalog: kat, katalogMontazy: async () => kat, fetch: BEZ_OSI, zwiad: async () => ({ tekst: JSON.stringify({ gole: GOLE.slice(0, 2) }), zrodla: ['https://x.example'] }) });
         await assert.rejects(Z.utworz({ mecz: MECZ }), /nie zgadzają się z wynikiem/);
     } finally { await fs.rm(kat, { recursive: true, force: true }); }
 });
@@ -272,7 +274,7 @@ test('kompilacja: kilka meczów z faktami osobno → bloki MECZ w scenariuszu i 
         let zwiadow = 0;
         const uruchom = promisify(execFileCb);
         const cfgBaza = {
-            ffmpeg: ffmpegPath, katalogMontazy: async (p) => path.join(kat, 'montaz', p),
+            ffmpeg: ffmpegPath, fetch: BEZ_OSI, katalogMontazy: async (p) => path.join(kat, 'montaz', p),
             zwiad: async () => { zwiadow++; return { tekst: JSON.stringify({ gole: GOLE }), zrodla: ['https://x.example'] }; },
             chat: async (_m, system, user) => { czaty.push({ system, user }); return { tekst: SC_KOMP(3, 5) }; },
             rysuj: async () => obraz,
@@ -345,4 +347,48 @@ test('Gemini: źródła z groundingu; bez nich — adresy z JSON tylko, gdy mode
     assert.equal(c.szukal, false);
     assert.deepEqual(c.zrodla, [], 'bez wyszukiwania adresy z pamięci modelu nie są źródłem');
     assert.match(promptZwiadu(MECZ), /"zrodla":\["pełny adres strony/);
+});
+
+import { goleZOsi } from '../services/GolDnia.js';
+// prawdziwe wpisy osi TheSportsDB (lookuptimeline, 2026-10-15): Inter Milan 3:0 Parma, Roma 2:2 Inter Milan (darmowy klucz = 5 zdarzeń)
+const OS_INTER_PARMA = [
+    { strTimeline: 'Goal', strTimelineDetail: 'Normal Goal', strHome: 'Yes', intTime: '13', strPlayer: 'Petar Sučić', strAssist: '', strTeam: 'Inter Milan' },
+    { strTimeline: 'Var', strTimelineDetail: 'Penalty confirmed', strHome: 'Yes', intTime: '15', strPlayer: 'Francesco Esposito', strAssist: '', strTeam: 'Inter Milan' },
+    { strTimeline: 'Goal', strTimelineDetail: 'Penalty', strHome: 'Yes', intTime: '18', strPlayer: 'Hakan Çalhanoğlu', strAssist: '', strTeam: 'Inter Milan' },
+    { strTimeline: 'Goal', strTimelineDetail: 'Normal Goal', strHome: 'Yes', intTime: '31', strPlayer: 'Marcus Thuram', strAssist: 'Henrikh Mkhitaryan', strTeam: 'Inter Milan' },
+    { strTimeline: 'subst', strTimelineDetail: 'Substitution 1', strHome: 'Yes', intTime: '61', strPlayer: 'Francesco Esposito', strAssist: 'Ange-Yoan Bonny', strTeam: 'Inter Milan' },
+];
+const OS_ROMA_INTER = [
+    { strTimeline: 'Goal', strTimelineDetail: 'Normal Goal', strHome: 'Yes', intTime: '6', strPlayer: 'Manu Koné', strAssist: 'Nahuel Molina', strTeam: 'Roma' },
+    { strTimeline: 'Card', strTimelineDetail: 'Yellow Card', strHome: 'No', intTime: '11', strPlayer: 'Nicolo Barella', strAssist: '', strTeam: 'Inter Milan' },
+    { strTimeline: 'Goal', strTimelineDetail: 'Normal Goal', strHome: 'Yes', intTime: '37', strPlayer: 'Manu Koné', strAssist: 'Gianluca Mancini', strTeam: 'Roma' },
+];
+
+test('oś zdarzeń TheSportsDB: gole bez modelu (karny, asysta, VAR i zmiany pominięte); niepełna oś = zwiad; samobój liczony beneficjentowi', async () => {
+    const IP = { id: '2482195', gospodarze: 'Inter Milan', goscie: 'Parma', wynik: [3, 0] };
+    const g = goleZOsi(OS_INTER_PARMA, IP);
+    assert.deepEqual(g.map((x) => [x.minuta, x.strzelec, x.druzyna, x.karny]), [['13', 'Petar Sučić', 'gospodarze', false], ['18', 'Hakan Çalhanoğlu', 'gospodarze', true], ['31', 'Marcus Thuram', 'gospodarze', false]]);
+    assert.equal(g[2].asysta, 'Henrikh Mkhitaryan');
+    assert.equal(sprawdzGole(g, IP.wynik), null);
+    assert.match(sprawdzGole(goleZOsi(OS_ROMA_INTER, { gospodarze: 'Roma', goscie: 'Inter Milan', wynik: [2, 2] }), [2, 2]), /gole 2:0, wynik meczu 2:2/);
+    // samobój: oś podaje drużynę strzelca (gospodarzy), a gol liczy się gościom
+    const swoj = [{ strTimeline: 'Goal', strTimelineDetail: 'Own Goal', strHome: 'Yes', intTime: '50', strPlayer: 'X', strTeam: 'A' }];
+    assert.equal(goleZOsi(swoj, { gospodarze: 'A', goscie: 'B', wynik: [0, 1] })[0].druzyna, 'goscie');
+    assert.equal(goleZOsi(null, IP), null);
+    // zbierzFakty: oś kompletna = bez zwiadu w sieci; niepełna = zwiad, a powód osi idzie do „pominięci”
+    const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'gol-os-'));
+    try {
+        let zwiadow = 0;
+        const osDla = (t) => async (u) => ({ ok: true, json: async () => ({ timeline: /2482195/.test(u) ? OS_INTER_PARMA : t }) });
+        const G = utworzGolDnia({ katalog: kat, katalogMontazy: async () => kat, fetch: osDla(OS_ROMA_INTER), zwiad: async () => { zwiadow++; return { tekst: JSON.stringify({ gole: [{ minuta: '6', strzelec: 'Koné', druzyna: 'gospodarze' }, { minuta: '37', strzelec: 'Koné', druzyna: 'gospodarze' }, { minuta: '50', strzelec: 'Lautaro', druzyna: 'goscie' }, { minuta: '70', strzelec: 'Thuram', druzyna: 'goscie' }] }), zrodla: ['https://x.example'] }; } });
+        const f = await G.zbierzFakty(IP);
+        assert.equal(f.dostawca, 'TheSportsDB (oś zdarzeń)');
+        assert.deepEqual(f.zrodla, ['https://www.thesportsdb.com/event/2482195']);
+        assert.equal(zwiadow, 0);
+        const f2 = await G.zbierzFakty({ id: '2482181', gospodarze: 'Roma', goscie: 'Inter Milan', wynik: [2, 2] });
+        assert.equal(zwiadow, 1);
+        assert.match(f2.pominieci[0], /TheSportsDB: oś niepełna .* najwyżej 5 zdarzeń/);
+        const bez = utworzGolDnia({ katalog: kat, katalogMontazy: async () => kat, fetch: osDla(OS_ROMA_INTER) });
+        await assert.rejects(bez.zbierzFakty({ id: '2482181', gospodarze: 'Roma', goscie: 'Inter Milan', wynik: [2, 2] }), /TheSportsDB: oś niepełna.*wpisz gole ręcznie/);
+    } finally { await fs.rm(kat, { recursive: true, force: true }); }
 });
