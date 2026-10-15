@@ -147,8 +147,8 @@ test('Studio Zebrra Football: odcinek „studio” czeka na nagranie, głos kwes
             publikuj: async (z) => { publikacje.push(z); return { id: `yt_${publikacje.length}`, etap: 'do_akceptacji' }; },
         });
         const czekaj = async (id, stany) => { let s; for (let i = 0; i < 300; i++) { s = await G.wczytaj(id); if (stany.includes(s.stan)) return s; await new Promise((r) => setTimeout(r, 100)); } return s; };
-        await assert.rejects(G.utworz({ mecz: MECZ, gole: GOLE, narrator: 'zebra', wspol: 'zebra' }), /innym narratorem/);
-        const s0 = await G.utworz({ mecz: { ...MECZ, idGospodarzy: '134', idGosci: '999' }, gole: GOLE, narrator: 'zebra', wspol: 'lew', wideo: 'studio', jezyk: 'en' });
+        await assert.rejects(G.utworz({ mecz: MECZ, gole: GOLE, narrator: 'zebra', wspolprowadzacy: ['zebra'] }), /innymi narratorami/);
+        const s0 = await G.utworz({ mecz: { ...MECZ, idGospodarzy: '134', idGosci: '999' }, gole: GOLE, narrator: 'zebra', wspolprowadzacy: ['lew'], wideo: 'studio', jezyk: 'en' });
         let s = await czekaj(s0.id, ['studio', 'blad', 'gotowy']);
         assert.equal(s.stan, 'studio', s.powod ?? '');
         assert.equal(s.etapy.segmenty.stan, 'pominiety');
@@ -208,5 +208,29 @@ test('Studio Zebrra Football: odcinek „studio” czeka na nagranie, głos kwes
         assert.equal((await G.pamiec('lew')).poprawki.at(-1).jest, 'Zlat Kadabra widział lepsze, ale to było piękne.');
         assert.equal((await G.pamiec('zebra')).poprawki?.length ?? 0, 0);
         await czekaj(s.id, ['studio', 'blad']);
+    } finally { await fs.rm(kat, { recursive: true, force: true }); }
+});
+
+import { wspolprowadzacyOdcinka, skladOdcinka, MAX_WSPOL, nazwaPublikacji } from '../services/GolDnia.js';
+
+test('prowadzący + do trzech współprowadzących: gole komentują po kolei, prompt zna przydział, 4. = odmowa, stary `wspol` działa', async () => {
+    assert.equal(MAX_WSPOL, 3);
+    const s = { narrator: 'zebra', wspolprowadzacy: ['lew', 'byk', 'krolik'], jezyk: 'pl', mecz: MECZ, gole: [...GOLE, { ...GOLE[0], minuta: '70' }], scenariusz: odczytajScenariusz(SCENARIUSZ(4), 4), obrazy: null };
+    assert.deepEqual(skladOdcinka(s), ['zebra', 'lew', 'byk', 'krolik']);
+    assert.deepEqual([0, 1, 2, 3].map((g) => ktoMowi('okrzyk', s, g)), ['lew', 'byk', 'krolik', 'lew']);
+    assert.equal(ktoMowi('przed', s, 2), 'zebra');
+    assert.deepEqual(wspolprowadzacyOdcinka({ narrator: 'zebra', wspol: 'lew' }), ['lew'], 'starszy odcinek z jednym wspol');
+    assert.deepEqual(wspolprowadzacyOdcinka({ narrator: 'zebra', wspolprowadzacy: ['zebra', 'lew', 'lew', 'nikt'] }), ['lew'], 'bez prowadzącego, dubli i nieznanych');
+    const k = kwestieOdcinka(s);
+    assert.deepEqual(k.filter((x) => x.typ === 'po').map((x) => x.kto), ['lew', 'byk', 'krolik', 'lew']);
+    const p = promptScenariusza({ mecz: MECZ, gole: s.gole, narrator: 'zebra', wspolprowadzacy: s.wspolprowadzacy, jezyk: 'pl' });
+    assert.match(p.system, /gole → Zlat Kadabra: 1, 4; Byk: 2; Królik: 3/);
+    assert.match(promptyObrazow({ mecz: MECZ, gole: s.gole, scenariusz: s.scenariusz, narrator: 'zebra', wspolprowadzacy: s.wspolprowadzacy }).intro, /together with .*lion.* and .*bull.* and .*bunny/);
+    assert.match(nazwaPublikacji(s, true), /Gol Donna & Zlat Kadabra & Byk & Królik · Studio Zebrra Football/);
+    const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'gol-wspol-'));
+    try {
+        const G = utworzGolDnia({ katalog: kat, katalogMontazy: async () => kat });
+        await assert.rejects(G.utworz({ mecz: MECZ, gole: GOLE, narrator: 'zebra', wspolprowadzacy: ['lew', 'byk', 'krolik', 'sowa'] }), /Najwyżej 3/);
+        await assert.rejects(G.utworz({ mecz: MECZ, gole: GOLE, narrator: 'zebra', wspolprowadzacy: ['lew', 'lew'] }), /każdy raz/);
     } finally { await fs.rm(kat, { recursive: true, force: true }); }
 });
