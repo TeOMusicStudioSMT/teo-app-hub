@@ -15274,7 +15274,8 @@ const GolDnia = utworzGolDnia({
     ffmpeg: ffmpegPath,
     szyna: Szyna,
 });
-zamontujTrasyGolDnia(app, GolDnia, { kanalProjektu: (p) => PublikacjeYT.kanalProjektu(p), ustawKanalProjektu: (p, k) => PublikacjeYT.ustawKanalProjektu(p, k) });
+// raw = nagranie ze Studia Zebrra Football (apka _OtakOs_Apki/studio-zebrra) → mp4 odcinka
+zamontujTrasyGolDnia(app, GolDnia, { kanalProjektu: (p) => PublikacjeYT.kanalProjektu(p), ustawKanalProjektu: (p, k) => PublikacjeYT.ustawKanalProjektu(p, k), raw: express.raw });
 
 const GameShow = utworzGameShow({
     katalog: ANTIGRAVITY_DIR,

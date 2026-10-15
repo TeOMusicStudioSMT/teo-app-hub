@@ -2,21 +2,25 @@
  * ⚽ Gol Dnia (services/GolDnia.js, /api/gol-dnia) — TeOgochi rysuje i opowiada bramki z FAKTÓW meczów.
  * Liga → mecz → fakty (Zwiadowca z sieci, sprawdzone wynikiem; do poprawki ręcznie) → narrator z temperamentem →
  * odcinek (scenariusz, FLUX, głos, sklejenie, publikacja do ✓ w Izbie). Studio: ten sam mecz, inny narrator.
+ * 🦓🦁 Prowadzący Studia Zebrra Football (Gol Donna, Zlat Kadabra) — solo albo w duecie; wideo z napisami albo nagrane
+ * w apce 3D (`_OtakOs_Apki/studio-zebrra`, Pierścień apek) → POST /api/gol-dnia/:id/studio.
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { GlosTeogochi } from '../GlosTeogochi';
+import { otworzApke } from '../../lib/pierscien';
 
 const MOST = 'http://127.0.0.1:3001';
 interface Mecz { id: string; liga: string | null; data: string | null; gospodarze: string; goscie: string; wynik: [number, number] }
 interface Gol { minuta: string; strzelec: string; druzyna: 'gospodarze' | 'goscie' | null; asysta: string | null; opis: string | null; karny?: boolean; samobojczy?: boolean }
 interface ScenaGola { przed: string; okrzyk: string; po: string; scena: string }
 interface Odcinek {
-    id: string; stan: string; powod: string | null; mecz: Mecz; gole: Gol[]; zrodla: string[]; narrator: string; jezyk: string;
+    id: string; stan: string; powod: string | null; mecz: Mecz; gole: Gol[]; zrodla: string[]; narrator: string; wspol?: string | null; wideo?: string; jezyk: string;
+    studio?: { plik: string; prowadzacy: string[]; publikacja: { id: string | null } | null } | null;
     etapy: Record<string, { stan: string; powod?: string }>; scenariusz: { intro: string; gole: ScenaGola[]; outro: string } | null;
     obrazy: { intro: string; gole: { karta: string; scena: string }[]; wynik: string } | null; uwagi: string[]; plik: string | null; publikacja: { id: string | null } | null; utworzono: string;
 }
-interface Stan { odcinki: Odcinek[]; ustawienia: { jezyk: string; narrator: string; liga: number }; ligi: Record<string, string>; jezyki: Record<string, string>; narratorzy: Record<string, { imie: string; emoji: string; temperament: string }>; kanal: { kanalId?: string | null; kanalNazwa?: string | null } | null }
+interface Stan { odcinki: Odcinek[]; ustawienia: { jezyk: string; narrator: string; liga: number }; ligi: Record<string, string>; jezyki: Record<string, string>; narratorzy: Record<string, { imie: string; emoji: string; temperament: string; rola?: string }>; wideo?: Record<string, string>; kanal: { kanalId?: string | null; kanalNazwa?: string | null } | null }
 
 async function api<T>(sciezka: string, init?: RequestInit): Promise<T> {
     const r = await fetch(`${MOST}${sciezka}`, { headers: { 'Content-Type': 'application/json' }, ...init });
@@ -26,6 +30,7 @@ async function api<T>(sciezka: string, init?: RequestInit): Promise<T> {
 }
 const ETAPY = ['scenariusz', 'obrazy', 'segmenty', 'sklejenie', 'publikacja'];
 const ZNAK: Record<string, string> = { gotowy: '✓', robi: '⟳', blad: '✕', czeka: '·', pominiety: '–' };
+const otworzStudio = (id: string) => otworzApke({ id: 'studio-zebrra', tytul: 'Studio Zebrra Football', url: `${MOST}/apki/studio-zebrra/?odcinek=${id}`, znak: '🦓', kolor: '#22c55e' });
 const mow = async (tekst: string, teogochi: string) => {
     try { const r = await fetch(`${MOST}/api/voice/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: tekst, teogochi }) }); if (r.ok) void new Audio(URL.createObjectURL(await r.blob())).play(); } catch { /* bez głosu */ }
 };
@@ -37,6 +42,8 @@ export const GolDniaPanel: React.FC = () => {
     const [gole, setGole] = useState<Gol[] | null>(null);
     const [zrodla, setZrodla] = useState<string[]>([]);
     const [narrator, setNarrator] = useState('pilkarka');
+    const [wspol, setWspol] = useState('');
+    const [wideo, setWideo] = useState('napisy');
     const [pracuje, setPracuje] = useState<string | null>(null);
     const [otwarty, setOtwarty] = useState<string | null>(null);
     const [edycja, setEdycja] = useState<Odcinek['scenariusz']>(null);
@@ -53,7 +60,7 @@ export const GolDniaPanel: React.FC = () => {
     const fakty = zajety('fakty', async () => { if (!mecz) return; const d = await api<{ gole: Gol[]; zrodla: string[] }>('/api/gol-dnia/fakty', { method: 'POST', body: JSON.stringify({ mecz }) }); setGole(d.gole); setZrodla(d.zrodla); toast.success(`⚽ ${d.gole.length} bramek, zgodne z wynikiem`); });
     const zrob = zajety('odcinek', async () => {
         if (!mecz) return;
-        const d = await api<{ odcinek: Odcinek }>('/api/gol-dnia', { method: 'POST', body: JSON.stringify({ mecz, gole: gole ?? undefined, narrator }) });
+        const d = await api<{ odcinek: Odcinek }>('/api/gol-dnia', { method: 'POST', body: JSON.stringify({ mecz, gole: gole ?? undefined, narrator, wspol: wspol && wspol !== narrator ? wspol : null, wideo }) });
         toast.success('⚽ Odcinek w kolejce'); setOtwarty(d.odcinek.id); setMecz(null); setGole(null); void odswiez();
     });
     const zmienGol = (i: number, pole: keyof Gol, v: string) => setGole((g) => g ? g.map((x, j) => (j === i ? { ...x, [pole]: v || null } : x)) : g);
@@ -131,14 +138,27 @@ export const GolDniaPanel: React.FC = () => {
                             {zrodla.length > 0 && <div className="text-[10px] text-slate-500">źródła: {zrodla.slice(0, 4).map((z) => z.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]).join(', ')}</div>}
                         </div>
                     )}
-                    <div className="flex flex-wrap gap-1.5">
-                        {Object.entries(N).map(([id, n]) => (
-                            <button key={id} onClick={() => setNarrator(id)} title={n.temperament} className={`rounded-full border px-2 py-0.5 ${narrator === id ? 'border-emerald-400 bg-emerald-900/40 text-emerald-100' : 'border-slate-700 text-slate-300 hover:border-slate-500'}`}>{n.emoji} {n.imie}</button>
-                        ))}
-                    </div>
+                    {([['prowadzacy', '🦓🦁 Prowadzący studia — najciekawsze mecze i podsumowania'], ['stado', '🐾 Stado — reszta meczów']] as const).map(([rola, opis]) => (
+                        <div key={rola} className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] text-slate-500">{opis}:</span>
+                            {Object.entries(N).filter(([, n]) => (n.rola ?? 'stado') === rola).map(([id, n]) => (
+                                <button key={id} onClick={() => { setNarrator(id); if (wspol === id) setWspol(''); }} title={n.temperament} className={`rounded-full border px-2 py-0.5 ${narrator === id ? 'border-emerald-400 bg-emerald-900/40 text-emerald-100' : 'border-slate-700 text-slate-300 hover:border-slate-500'}`}>{n.emoji} {n.imie}</button>
+                            ))}
+                        </div>
+                    ))}
                     <div className="text-[10px] text-slate-400">{N[narrator]?.temperament}</div>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                        <label>👥 drugi prowadzący <select value={wspol} onChange={(e) => setWspol(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-1">
+                            <option value="">— solo</option>
+                            {Object.entries(N).filter(([id]) => id !== narrator).map(([id, n]) => <option key={id} value={id}>{n.emoji} {n.imie}</option>)}
+                        </select></label>
+                        <label>wideo <select value={wideo} onChange={(e) => setWideo(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-1">
+                            {Object.entries(stan.wideo ?? { napisy: '🎞️ kadry z napisami' }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select></label>
+                        {wspol && <span className="text-[10px] text-slate-500">{N[narrator]?.imie}: intro, strzelec, outro · {N[wspol]?.imie}: okrzyk i opis gola</span>}
+                    </div>
                     <details className="text-[10px]"><summary className="cursor-pointer text-slate-400">🗣️ Głos narratora {N[narrator]?.imie}</summary><GlosTeogochi id={narrator} imie={N[narrator]?.imie ?? narrator} onTest={(t) => void mow(t, narrator)} /></details>
-                    <button onClick={zrob} disabled={!!pracuje || !gole || gole.some((g) => !g.strzelec || !g.minuta)} className="rounded bg-emerald-600/80 px-3 py-1 font-bold text-white hover:bg-emerald-500 disabled:opacity-40">{pracuje === 'odcinek' ? '⟳' : `🎬 Zrób odcinek — ${N[narrator]?.emoji} ${N[narrator]?.imie}`}</button>
+                    <button onClick={zrob} disabled={!!pracuje || !gole || gole.some((g) => !g.strzelec || !g.minuta)} className="rounded bg-emerald-600/80 px-3 py-1 font-bold text-white hover:bg-emerald-500 disabled:opacity-40">{pracuje === 'odcinek' ? '⟳' : `🎬 Zrób odcinek — ${N[narrator]?.emoji} ${N[narrator]?.imie}${wspol ? ` & ${N[wspol]?.emoji} ${N[wspol]?.imie}` : ''}`}</button>
                 </div>
             )}
 
@@ -151,8 +171,8 @@ export const GolDniaPanel: React.FC = () => {
                         return (
                             <div key={o.id} className="rounded-lg border border-slate-800 bg-black/30 p-2">
                                 <button onClick={() => { setOtwarty(tu ? null : o.id); setEdycja(null); }} className="flex w-full flex-wrap items-center justify-between gap-1 text-left">
-                                    <span>{n?.emoji} <b>{o.mecz.gospodarze} {o.mecz.wynik[0]}:{o.mecz.wynik[1]} {o.mecz.goscie}</b> <span className="text-slate-400">· {n?.imie} · {o.jezyk}</span></span>
-                                    <span className="font-mono text-[10px] text-slate-400">{ETAPY.map((e) => `${ZNAK[o.etapy[e]?.stan] ?? '·'}`).join(' ')} {o.stan === 'gotowy' ? '✅' : o.stan === 'blad' ? '⚠' : '⟳'}</span>
+                                    <span>{n?.emoji}{o.wspol ? N[o.wspol]?.emoji : ''} <b>{o.mecz.gospodarze} {o.mecz.wynik[0]}:{o.mecz.wynik[1]} {o.mecz.goscie}</b> <span className="text-slate-400">· {n?.imie}{o.wspol ? ` & ${N[o.wspol]?.imie}` : ''} · {o.jezyk}{o.wideo === 'studio' ? ' · 🎥 studio' : ''}</span></span>
+                                    <span className="font-mono text-[10px] text-slate-400">{ETAPY.map((e) => `${ZNAK[o.etapy[e]?.stan] ?? '·'}`).join(' ')} {o.stan === 'gotowy' ? '✅' : o.stan === 'blad' ? '⚠' : o.stan === 'studio' ? '🎥' : '⟳'}</span>
                                 </button>
                                 {tu && (
                                     <div className="mt-2 space-y-2">
@@ -180,9 +200,12 @@ export const GolDniaPanel: React.FC = () => {
                                                 <button onClick={zajety('popraw', async () => { await api(`/api/gol-dnia/${o.id}/scenariusz`, { method: 'PUT', body: JSON.stringify({ scenariusz: edycja }) }); setEdycja(null); toast.success('✎ Zapisane — narrator uczy się z poprawki, odcinek liczy się od nowa'); void odswiez(); })} className="rounded border border-emerald-500/60 px-2 py-0.5">💾 Zapisz i przerób</button>
                                             </div>
                                         )}
+                                        {o.stan === 'studio' && <div className="rounded border border-emerald-500/40 bg-emerald-900/20 p-2 text-emerald-100">🎥 Scenariusz i obrazy gotowe — odcinek czeka na nagranie w Studiu Zebrra Football. <button onClick={() => otworzStudio(o.id)} className="ml-1 rounded bg-emerald-600/80 px-2 py-0.5 font-bold text-white">🦓 Otwórz Studio</button></div>}
                                         {o.plik && <video src={`${MOST}/api/gol-dnia/${o.id}/wideo`} controls className="max-h-56 rounded" />}
+                                        {o.studio?.plik && o.studio.plik !== o.plik && <div className="text-[10px] text-slate-400">🎥 Wersja ze Studia (obok): <video src={`${MOST}/api/gol-dnia/${o.id}/wideo?studio=1`} controls className="mt-1 max-h-56 rounded" />{o.studio.publikacja?.id && <span className="text-emerald-300">📺 opis od Kronikarza czeka na ✓ w Izbie</span>}</div>}
                                         <div className="flex flex-wrap gap-1.5">
                                             {o.scenariusz && !edycja && !['robi', 'w_kolejce'].includes(o.stan) && <button onClick={() => setEdycja(o.scenariusz)} className="rounded border border-slate-600 px-2 py-0.5">✎ Popraw scenariusz</button>}
+                                            {o.scenariusz && o.obrazy && !['robi', 'w_kolejce', 'studio'].includes(o.stan) && <button onClick={() => otworzStudio(o.id)} className="rounded border border-emerald-500/60 px-2 py-0.5">🎥 Nagraj w Studiu</button>}
                                             {o.stan === 'blad' && <button onClick={zajety('ponow', async () => { await api(`/api/gol-dnia/${o.id}/ponow`, { method: 'POST', body: '{}' }); void odswiez(); })} className="rounded border border-amber-500/60 px-2 py-0.5">↻ Ponów</button>}
                                             <span className="text-[10px] text-slate-500">🎙️ Ten sam mecz innym głosem:</span>
                                             {Object.entries(N).filter(([id]) => id !== o.narrator).map(([id, x]) => (

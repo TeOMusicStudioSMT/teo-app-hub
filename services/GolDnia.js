@@ -59,7 +59,24 @@ export const NARRATORZY = {
     sowa: { imie: 'Sowa', imieEn: 'Owl', emoji: '🦉', temperament: 'spokojna, analityczna, taktyka i ustawienie, rzeczowo z odrobiną humoru',
         temperamentEn: 'calm, analytical, tactics and positioning, matter-of-fact with a touch of humor',
         wyglad: 'a wise owl TeOgochi creature with round glasses and a tactics board', kreska: 'clean lines, blueprint accents, cool blue palette, tidy diagram style' },
+    // 🦓🦁 Prowadzący Studia Zebrra Football (Suweren 2026-10-15) — najciekawsze mecze i podsumowania; resztę opowiada stado.
+    // Zlat Kadabra to ORYGINALNA postać w stylu wielkiej gwiazdy — nie podszywa się pod żadnego prawdziwego piłkarza.
+    zebra: { imie: 'Gol Donna', imieEn: 'Gol Donna', emoji: '🦓', rola: 'prowadzacy', kolor: '#f5f5f5',
+        temperament: 'elegancka, pewna siebie, z humorem i klasą — czarno-biała gospodyni studia, która każdą bramkę podaje jak główne wydarzenie wieczoru; ripostuje z uśmiechem',
+        temperamentEn: 'elegant, self-assured, witty and classy — the black-and-white hostess of the studio who presents every goal like the main event of the night; quick with a smiling comeback',
+        wyglad: 'an elegant zebra TeOgochi creature hostess with bold black-and-white stripes, a sleek studio blazer, a confident smile and a microphone', kreska: 'crisp black-and-white contrast with neon pitch-green accents, glossy TV studio lighting, stylish cartoon' },
+    lew: { imie: 'Zlat Kadabra', imieEn: 'Zlat Kadabra', emoji: '🦁', rola: 'prowadzacy', kolor: '#f59e0b',
+        temperament: 'gwiazdorski i charyzmatyczny, chełpliwy z przymrużeniem oka, mówi o sobie w trzeciej osobie („Zlat Kadabra widział już takie gole…”), ale fakty podaje uczciwie i nikogo nie obraża',
+        temperamentEn: 'a superstar with huge charisma, boastful with a wink, talks about himself in the third person ("Zlat Kadabra has seen goals like this before…") but keeps the facts honest and never insults anyone',
+        wyglad: 'a charismatic lion TeOgochi creature with a huge golden mane, sunglasses pushed up on his head, a sharp golden suit, posing like a superstar', kreska: 'golden highlights, dramatic spotlight, bold glamorous comic style' },
 };
+/** Prowadzący studia (rola `prowadzacy`); reszta to stado narratorów. */
+export const PROWADZACY = Object.keys(NARRATORZY).filter((k) => NARRATORZY[k].rola === 'prowadzacy');
+/** Wideo odcinka: 🎞️ segmenty z napisami (ffmpeg) albo 🎥 nagranie ze Studia Zebrra Football (apka 3D). */
+export const WIDEO = { napisy: '🎞️ kadry z napisami', studio: '🎥 Studio Zebrra Football (3D)' };
+/** Duet: kto mówi którą linię — gospodarz prowadzi (intro, strzelec, outro), drugi komentuje gola (okrzyk, po). */
+export const LINIE_DRUGIEGO = ['okrzyk', 'po'];
+export function ktoMowi(typ, { narrator, wspol = null }) { return wspol && LINIE_DRUGIEGO.includes(typ) ? wspol : narrator; }
 
 const KLATKA_BEZ_PRAW = 'no real people, no real faces, no club crests, no logos, no brand names, no text, no watermark';
 
@@ -69,7 +86,60 @@ const KLATKA_BEZ_PRAW = 'no real people, no real faces, no club crests, no logos
 export function meczZTheSportsDb(e) {
     const g = Number(e?.intHomeScore), d = Number(e?.intAwayScore);
     if (!e?.idEvent || !Number.isInteger(g) || !Number.isInteger(d) || e.intHomeScore === null || e.intAwayScore === null) return null;
-    return { id: String(e.idEvent), liga: e.strLeague ?? null, data: e.dateEvent ?? null, gospodarze: String(e.strHomeTeam ?? ''), goscie: String(e.strAwayTeam ?? ''), wynik: [g, d], stadion: e.strVenue ?? null };
+    return { id: String(e.idEvent), liga: e.strLeague ?? null, data: e.dateEvent ?? null, gospodarze: String(e.strHomeTeam ?? ''), goscie: String(e.strAwayTeam ?? ''), wynik: [g, d], stadion: e.strVenue ?? null,
+        idGospodarzy: e.idHomeTeam ? String(e.idHomeTeam) : null, idGosci: e.idAwayTeam ? String(e.idAwayTeam) : null };
+}
+
+// ─── Barwy drużyn (odznaki-monogramy w studiu — NIE herby: herby to znaki towarowe) ─────────────────────────
+
+const HEX = /^#[0-9a-f]{6}$/i;
+/** Barwa z nazwy (gdy TheSportsDB nie poda): stały odcień z sumy znaków — ta sama drużyna = ta sama para. */
+export function barwyZNazwy(nazwa) {
+    let h = 0;
+    for (const z of String(nazwa)) h = (h * 31 + z.codePointAt(0)) >>> 0;
+    const hsl = (hh, s, l) => {
+        const a = s * Math.min(l, 1 - l), f = (n) => { const k = (n + hh / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, '0'); };
+        return `#${f(0)}${f(8)}${f(4)}`;
+    };
+    const odcien = h % 360;
+    return [hsl(odcien, 0.7, 0.42), (h >> 9) % 3 === 0 ? '#f8fafc' : hsl((odcien + 180) % 360, 0.6, 0.85)];
+}
+/** Barwy z wpisu drużyny TheSportsDB — tylko gdy nazwa się zgadza (darmowy klucz potrafi oddać inną drużynę). */
+export function barwyZDruzyny(team, nazwa) {
+    const norm = (x) => String(x ?? '').normalize('NFKD').replace(/[^\w]/g, '').toLowerCase();
+    if (!team || !norm(nazwa) || !(norm(team.strTeam).includes(norm(nazwa)) || norm(nazwa).includes(norm(team.strTeam)) || norm(team.strTeamAlternate).includes(norm(nazwa)))) return null;
+    const c = [team.strColour1, team.strColour2, team.strColour3].map((x) => String(x ?? '').trim()).filter((x) => HEX.test(x));
+    return c.length ? [c[0], c[1] && c[1].toLowerCase() !== c[0].toLowerCase() ? c[1] : (c[2] ?? '#f8fafc')] : null;
+}
+/** Monogram odznaki: pierwsze litery słów bez „FC/AFC/CF…”, 2–3 znaki („Newcastle United” → „NU”). */
+export function monogram(nazwa) {
+    const slowa = String(nazwa ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').split(/[\s.-]+/).filter((w) => w && !/^(fc|afc|cf|sc|ac|ssc|as|rc|cd|ud|sv|vfb|vfl|tsg|bv|fk|ks|1\.?)$/i.test(w));
+    if (!slowa.length) return '?';
+    if (slowa.length === 1) return slowa[0].slice(0, 3).toUpperCase();
+    return slowa.slice(0, 3).map((w) => w[0]).join('').toUpperCase();
+}
+
+/**
+ * Kwestie odcinka po kolei — wspólne dla segmentów z napisami i Studia 3D: kto mówi, co, z jakim obrazem i nagłówkiem.
+ * `typ`: intro | przed | okrzyk | po | outro; `gol` = indeks bramki albo null.
+ */
+export function kwestieOdcinka(s) {
+    if (!s?.scenariusz) return [];
+    const en = s.jezyk === 'en';
+    const imie = (k) => (en ? NARRATORZY[k]?.imieEn : NARRATORZY[k]?.imie) ?? k;
+    const kto = (typ) => ktoMowi(typ, s);
+    const ob = s.obrazy ?? null;
+    const out = [];
+    const dodaj = (typ, gol, tekst, naglowek, obraz) => out.push({ nr: out.length + 1, typ, gol, kto: kto(typ), tekst, naglowek, obraz });
+    dodaj('intro', null, s.scenariusz.intro, `${NARRATORZY[kto('intro')]?.emoji ?? ''} ${imie(kto('intro'))} · ${s.mecz.gospodarze} – ${s.mecz.goscie}`, ob?.intro ?? null);
+    for (const [i, g] of s.gole.entries()) {
+        const sc = s.scenariusz.gole[i];
+        dodaj('przed', i, sc.przed, `${g.minuta}' ${g.strzelec}`, ob?.gole?.[i]?.karta ?? null);
+        dodaj('okrzyk', i, sc.okrzyk, `⚽ ${en ? 'GOAL' : 'GOL'}! ${g.minuta}'`, ob?.gole?.[i]?.scena ?? null);
+        dodaj('po', i, sc.po, `${g.strzelec}${g.asysta ? ` · ${en ? 'assist' : 'asysta'}: ${g.asysta}` : ''}`, ob?.gole?.[i]?.scena ?? null);
+    }
+    dodaj('outro', null, s.scenariusz.outro, `${s.mecz.gospodarze} ${s.mecz.wynik[0]}:${s.mecz.wynik[1]} ${s.mecz.goscie}`, ob?.wynik ?? null);
+    return out;
 }
 
 /** Gole od Zwiadowcy (JSON w tekście) → oczyszczone; tylko strony gospodarze/goscie. */
@@ -116,12 +186,16 @@ Goli ma być dokładnie ${mecz.wynik[0] + mecz.wynik[1]} (${mecz.wynik[0]} gospo
 
 // ─── Scenariusz ──────────────────────────────────────────────────────────────────────────────────────
 
-export function promptScenariusza({ mecz, gole, narrator, jezyk = 'en', pamiec = null }) {
+export function promptScenariusza({ mecz, gole, narrator, wspol = null, jezyk = 'en', pamiec = null }) {
     const N = NARRATORZY[narrator];
     const en = jezyk === 'en';
+    const W = wspol && wspol !== narrator ? NARRATORZY[wspol] : null;
+    const duet = W ? (en
+        ? `\nYou host TOGETHER with ${W.imieEn} — temperament: ${W.temperamentEn}. Lines INTRO, PRZED n and OUTRO are spoken by ${N.imieEn}; lines OKRZYK n and PO n are spoken by ${W.imieEn} — write each line in the voice of its speaker; they may react to each other briefly.`
+        : `\nProwadzicie we dwoje z ${W.imie} — temperament: ${W.temperament}. Linie INTRO, PRZED n i OUTRO mówi ${N.imie}; linie OKRZYK n i PO n mówi ${W.imie} — każdą linię pisz głosem jej mówcy; mogą krótko na siebie reagować.`) : '';
     const znani = pamiec?.zawodnicy ? gole.map((g) => g.strzelec).filter((s, i, a) => a.indexOf(s) === i && pamiec.zawodnicy[s]).map((s) => `${s}: już ${pamiec.zawodnicy[s].gole} gol(e) w naszych odcinkach, ostatnio ${pamiec.zawodnicy[s].ostatnio}`) : [];
     const poprawki = (pamiec?.poprawki ?? []).slice(-4).map((p) => `— było: „${p.bylo}” → Suweren poprawił: „${p.jest}”`);
-    const system = `${en ? `You are ${N.imieEn}` : `Jesteś ${N.imie}`} — TeOgochi, narrator programu „${NAZWA}” Katedry OtakOS. Temperament: ${en ? N.temperamentEn : N.temperament}.
+    const system = `${en ? `You are ${N.imieEn}` : `Jesteś ${N.imie}`} — TeOgochi, narrator programu „${NAZWA}” Katedry OtakOS. Temperament: ${en ? N.temperamentEn : N.temperament}.${duet}
 ${en ? 'Write in English.' : 'Piszesz po polsku.'} Opowiadasz bramki z PODANYCH FAKTÓW — nie wymyślasz statystyk, transferów, wieku ani historii zawodników; gdy czegoś nie wiesz, mówisz o samej akcji i emocji. Bez obrażania kogokolwiek.
 ${znani.length ? `Twoja pamięć z poprzednich odcinków (możesz nawiązać): ${znani.join('; ')}.\n` : ''}${poprawki.length ? `Tak Suweren poprawiał Twoje teksty — ucz się z tego stylu:\n${poprawki.join('\n')}\n` : ''}${pamiec?.odcinkow ? `To Twój ${pamiec.odcinkow + 1}. odcinek — możesz być już swobodniejsza i bogatsza w komentarzu niż na początku.\n` : ''}
 Format odpowiedzi — DOKŁADNIE te linie, każda w jednej linii:
@@ -150,11 +224,12 @@ export function odczytajScenariusz(tekst, ileGoli) {
 }
 
 /** Prompty FLUX — stworki TeOgochi w barwach drużyn, temperament narratora w kresce, bez prawdziwych twarzy i herbów. */
-export function promptyObrazow({ mecz, gole, scenariusz, narrator }) {
+export function promptyObrazow({ mecz, gole, scenariusz, narrator, wspol = null }) {
     const N = NARRATORZY[narrator];
+    const W = wspol && wspol !== narrator ? NARRATORZY[wspol] : null;
     const druzyna = (g) => (g.druzyna === 'gospodarze' ? mecz.gospodarze : mecz.goscie);
     return {
-        intro: `${N.wyglad}, standing in a cozy football TV studio with a pitch view behind, waving hello, ${N.kreska}, 16:9, ${KLATKA_BEZ_PRAW}`,
+        intro: `${N.wyglad}${W ? `, together with ${W.wyglad}` : ''}, standing in a cozy football TV studio with a pitch view behind, waving hello, ${N.kreska}, 16:9, ${KLATKA_BEZ_PRAW}`,
         gole: gole.map((g, i) => ({
             karta: `portrait card of a cute TeOgochi creature footballer in the kit colors of ${druzyna(g)}, confident pose, stadium lights bokeh, ${N.kreska}, 16:9, ${KLATKA_BEZ_PRAW}`,
             scena: `a football goal moment drawn as a cartoon with TeOgochi creature players: ${scenariusz.gole[i].scena}; the scoring player wears the kit colors of ${druzyna(g)}, ball in motion, crowd in the background, ${N.kreska}, cinematic 16:9, ${KLATKA_BEZ_PRAW}`,
@@ -163,10 +238,18 @@ export function promptyObrazow({ mecz, gole, scenariusz, narrator }) {
     };
 }
 
-export function kontekstKronikarza(s) {
+export function kontekstKronikarza(s, { studio = false } = {}) {
     const N = NARRATORZY[s.narrator];
+    const W = s.wspol ? NARRATORZY[s.wspol] : null;
     const en = s.jezyk === 'en';
-    return `${en ? 'Program' : 'Program'} „${NAZWA}” Katedry OtakOS — TeOgochi ${en ? N.imieEn : N.imie} (${en ? N.temperamentEn : N.temperament}) draws and narrates the goals of ${s.mecz.gospodarze} – ${s.mecz.goscie} ${s.mecz.wynik[0]}:${s.mecz.wynik[1]}${s.mecz.liga ? ` (${s.mecz.liga})` : ''}${s.mecz.data ? `, ${s.mecz.data}` : ''}. Scorers: ${s.gole.map((g) => `${g.strzelec} ${g.minuta}'`).join(', ')}. All visuals are original AI illustrations (no match footage). ${en ? 'Write the title, description and tags in English.' : 'Tytuł, opis i tagi po polsku.'}`;
+    const kto = `TeOgochi ${en ? N.imieEn : N.imie} (${en ? N.temperamentEn : N.temperament})${W ? ` and ${en ? W.imieEn : W.imie} (${en ? W.temperamentEn : W.temperament})` : ''}`;
+    const gdzie = studio ? ` Hosted in the 3D studio "Zebrra Football" — the hosts are original animated TeOgochi characters (${W ? 'zebra and lion' : 'TeOgochi host'}); the LED screens show the match facts with our own team monogram badges, not club crests.` : '';
+    return `Program „${NAZWA}” Katedry OtakOS — ${kto} draw${W ? '' : 's'} and narrate${W ? '' : 's'} the goals of ${s.mecz.gospodarze} – ${s.mecz.goscie} ${s.mecz.wynik[0]}:${s.mecz.wynik[1]}${s.mecz.liga ? ` (${s.mecz.liga})` : ''}${s.mecz.data ? `, ${s.mecz.data}` : ''}. Scorers: ${s.gole.map((g) => `${g.strzelec} ${g.minuta}'`).join(', ')}. All visuals are original AI illustrations (no match footage).${gdzie} ${en ? 'Write the title, description and tags in English.' : 'Tytuł, opis i tagi po polsku.'}`;
+}
+
+export function nazwaPublikacji(s, studio = false) {
+    const kto = [s.narrator, s.wspol].filter(Boolean).map((k) => NARRATORZY[k]?.imie ?? k).join(' & ');
+    return `${NAZWA} — ${s.mecz.gospodarze} ${s.mecz.wynik[0]}:${s.mecz.wynik[1]} ${s.mecz.goscie} · ${kto}${studio ? ' · Studio Zebrra Football' : ''}`;
 }
 
 // ─── Serwis ──────────────────────────────────────────────────────────────────────────────────────────
@@ -189,7 +272,15 @@ export function utworzGolDnia(o) {
     const wRobocie = new Set();
     let kolejka = Promise.resolve();
 
-    const pisz = async (s) => { const p = plikO(s.id); await fs.mkdir(path.dirname(p), { recursive: true }); await fs.writeFile(`${p}.tmp`, JSON.stringify(s, null, 1), 'utf8'); await fs.rename(`${p}.tmp`, p); };
+    // Windows: rename na plik, który ktoś właśnie czyta (panel, Studio), daje EPERM/EBUSY — chwila i jeszcze raz
+    const pisz = async (s) => {
+        const p = plikO(s.id);
+        await fs.mkdir(path.dirname(p), { recursive: true });
+        await fs.writeFile(`${p}.tmp`, JSON.stringify(s, null, 1), 'utf8');
+        for (let proba = 0; ; proba++) {
+            try { await fs.rename(`${p}.tmp`, p); return; } catch (e) { if (!['EPERM', 'EBUSY', 'EACCES'].includes(e.code) || proba >= 8) throw e; await new Promise((r) => setTimeout(r, 25 * (proba + 1))); }
+        }
+    };
     const czytajJson = async (p, dom) => { try { return JSON.parse(await fs.readFile(p, 'utf8')); } catch { return dom; } };
 
     async function ustawienia() { const u = await czytajJson(plikU, {}); return { jezyk: JEZYKI[u.jezyk] ? u.jezyk : 'en', narrator: NARRATORZY[u.narrator] ? u.narrator : 'pilkarka', liga: LIGI[u.liga] ? Number(u.liga) : 4328 }; }
@@ -253,13 +344,13 @@ export function utworzGolDnia(o) {
      * Nowy odcinek: mecz + fakty (zebrane albo podane) + narrator. `zrodlo` = id odcinka, z którego brać fakty
      * (studio: ten sam mecz, inny narrator — bez drugiego zwiadu).
      */
-    async function utworz({ mecz, gole = null, narrator = null, jezyk = null, zrodlo = null, kanalId = null } = {}) {
+    async function utworz({ mecz, gole = null, narrator = null, wspol = null, wideo = null, jezyk = null, zrodlo = null, kanalId = null } = {}) {
         const u = await ustawienia();
         let fakty;
         if (zrodlo) {
             const z = await wczytaj(zrodlo);
             mecz = z.mecz; fakty = { gole: z.gole, zrodla: z.zrodla };
-            jezyk ??= z.jezyk; kanalId ??= z.kanalId;   // wersja innego narratora = ten sam program, ten sam język i kanał
+            jezyk ??= z.jezyk; kanalId ??= z.kanalId; wideo ??= z.wideo;   // wersja innego narratora = ten sam program, ten sam język, kanał i wideo
         } else {
             if (!mecz?.id || !Array.isArray(mecz.wynik) || mecz.wynik.some((x) => !Number.isInteger(Number(x)) || Number(x) < 0)) throw new Error('Wybierz mecz z listy (albo wpisz go z wynikiem).');
             if (!String(mecz.gospodarze ?? '').trim() || !String(mecz.goscie ?? '').trim()) throw new Error('Mecz potrzebuje obu drużyn.');
@@ -273,16 +364,19 @@ export function utworzGolDnia(o) {
         }
         if (!fakty.gole.length) throw new Error('Mecz bezbramkowy — nie ma czego opowiadać w Golu Dnia.');
         const n = narrator && NARRATORZY[narrator] ? narrator : u.narrator;
+        if (wspol && (!NARRATORZY[wspol] || wspol === n)) throw new Error('Drugi prowadzący musi być innym narratorem z listy.');
+        if (wideo && !WIDEO[wideo]) throw new Error(`Wideo: ${Object.keys(WIDEO).join(' albo ')}.`);
         const s = {
             wersja: 1, id: `g-${crypto.randomBytes(4).toString('hex')}`, stan: 'w_kolejce', powod: null,
-            mecz: { id: mecz.id, liga: mecz.liga ?? null, data: mecz.data ?? null, gospodarze: mecz.gospodarze, goscie: mecz.goscie, wynik: mecz.wynik, stadion: mecz.stadion ?? null },
-            gole: fakty.gole, zrodla: fakty.zrodla, narrator: n, jezyk: jezyk && JEZYKI[jezyk] ? jezyk : u.jezyk,
+            mecz: { id: mecz.id, liga: mecz.liga ?? null, data: mecz.data ?? null, gospodarze: mecz.gospodarze, goscie: mecz.goscie, wynik: mecz.wynik, stadion: mecz.stadion ?? null,
+                idGospodarzy: mecz.idGospodarzy ?? null, idGosci: mecz.idGosci ?? null, barwy: mecz.barwy ?? null },
+            gole: fakty.gole, zrodla: fakty.zrodla, narrator: n, wspol: wspol || null, wideo: wideo || 'napisy', studio: null, jezyk: jezyk && JEZYKI[jezyk] ? jezyk : u.jezyk,
             etapy: Object.fromEntries(ETAPY.map((e) => [e, { stan: 'czeka' }])), scenariusz: null, obrazy: null, uwagi: [], plik: null, publikacja: null,
             kanalId: kanalId ? String(kanalId) : null, zrodlo: zrodlo ?? null, utworzono: czas(),
         };
         await pisz(s);
         zakolejkuj(s.id);
-        nadaj(`odcinek ${s.mecz.gospodarze} – ${s.mecz.goscie} (${NARRATORZY[n].imie}) w kolejce`);
+        nadaj(`odcinek ${s.mecz.gospodarze} – ${s.mecz.goscie} (${NARRATORZY[n].imie}${s.wspol ? ` i ${NARRATORZY[s.wspol].imie}` : ''}) w kolejce`);
         return s;
     }
 
@@ -299,14 +393,96 @@ export function utworzGolDnia(o) {
     /** Pamięć narratora: strzelcy z odcinków, liczba odcinków, ostatnie poprawki Suwerena. */
     const pamiec = (n) => czytajJson(plikPamieci(n), { odcinkow: 0, zawodnicy: {}, poprawki: [] });
     async function zapamietaj(s) {
-        const p = await pamiec(s.narrator);
+        for (const n of [s.narrator, s.wspol].filter(Boolean)) await zapamietajNarratora(s, n);
+    }
+    async function zapamietajNarratora(s, narrator) {
+        const p = await pamiec(narrator);
         p.odcinkow = (p.odcinkow ?? 0) + 1;
         for (const g of s.gole) {
             const z = (p.zawodnicy[g.strzelec] ??= { gole: 0, ostatnio: null });
             z.gole++; z.ostatnio = `${s.mecz.gospodarze} – ${s.mecz.goscie}, ${g.minuta}'`;
         }
         await fs.mkdir(KAT, { recursive: true });
-        await fs.writeFile(plikPamieci(s.narrator), JSON.stringify(p, null, 1), 'utf8');
+        await fs.writeFile(plikPamieci(narrator), JSON.stringify(p, null, 1), 'utf8');
+    }
+
+    /** Barwy obu drużyn (TheSportsDB po id drużyny, tylko przy zgodnej nazwie; inaczej z nazwy) — zapisane w odcinku. */
+    async function barwy(id) {
+        const s = await wczytaj(id);
+        if (s.mecz.barwy?.gospodarze && s.mecz.barwy?.goscie) return s.mecz.barwy;
+        const klucz = process.env.OTAKOS_THESPORTSDB_KLUCZ || '3';
+        const druzyna = async (idD, nazwa) => {
+            if (idD) {
+                try {
+                    const r = await cfg.fetch(`https://www.thesportsdb.com/api/v1/json/${klucz}/lookupteam.php?id=${encodeURIComponent(idD)}`, { signal: AbortSignal.timeout(15_000) });
+                    const c = r.ok ? barwyZDruzyny((await r.json())?.teams?.[0], nazwa) : null;
+                    if (c) return { barwy: c, zrodlo: 'thesportsdb' };
+                } catch { /* sieć — barwy z nazwy */ }
+            }
+            return { barwy: barwyZNazwy(nazwa), zrodlo: 'nazwa' };
+        };
+        const g = await druzyna(s.mecz.idGospodarzy, s.mecz.gospodarze), d = await druzyna(s.mecz.idGosci, s.mecz.goscie);
+        s.mecz.barwy = { gospodarze: g.barwy, goscie: d.barwy, zrodlo: { gospodarze: g.zrodlo, goscie: d.zrodlo } };
+        if (!wRobocie.has(id)) await pisz(s);
+        return s.mecz.barwy;
+    }
+
+    /** 🎥 Głos kwestii dla Studia (Głosy Stada pod id mówcy) — liczony raz, potem z pracy odcinka. */
+    async function glos(id, nr) {
+        const s = await wczytaj(id);
+        const k = kwestieOdcinka(s).find((x) => x.nr === Number(nr));
+        if (!k) throw new Error('Nie ma takiej kwestii.');
+        const praca = path.join(KAT, id, 'praca');
+        const skrot = crypto.createHash('sha1').update(`${k.kto}|${s.jezyk}|${k.tekst}`).digest('hex').slice(0, 12);
+        for (const ext of ['wav', 'mp3']) { const p = path.join(praca, `studio-${skrot}.${ext}`); if (fsSync.existsSync(p)) return { plik: p, kto: k.kto }; }
+        if (!cfg.mow) throw new Error('Katedra nie ma silnika głosu — Studio pokaże kwestię napisem.');
+        const g = await cfg.mow({ tekst: k.tekst, narrator: k.kto, jezyk: s.jezyk });
+        await fs.mkdir(praca, { recursive: true });
+        const p = path.join(praca, `studio-${skrot}.${g.ext === 'mp3' ? 'mp3' : 'wav'}`);
+        await fs.writeFile(p, g.audio);
+        return { plik: p, kto: k.kto };
+    }
+
+    /**
+     * 🎥 Nagranie ze Studia Zebrra Football (webm/mp4 z MediaRecorder) → mp4 w Montażowni. Odcinek `wideo: studio` →
+     * to jest jego film i idzie dalej zwykłą drogą (publikacja → ✓ w Izbie). Odcinek z napisami → wersja studyjna OBOK,
+     * z własną publikacją.
+     */
+    async function nagranieStudia(id, bufor, { typ = 'video/webm', prowadzacy = null } = {}) {
+        const s = await wczytaj(id);
+        if (wRobocie.has(id)) throw new Error('Ten odcinek właśnie się robi — nagraj, gdy skończy.');
+        if (!s.scenariusz) throw new Error('Odcinek nie ma jeszcze scenariusza.');
+        if (!Buffer.isBuffer(bufor) || bufor.length < 10_000) throw new Error('Nagranie jest puste albo za krótkie.');
+        const praca = path.join(KAT, id, 'praca');
+        await fs.mkdir(praca, { recursive: true });
+        const we = `studio-surowe.${/mp4/.test(typ) ? 'mp4' : 'webm'}`;
+        await fs.writeFile(path.join(praca, we), bufor);
+        await ffmpeg(['-y', '-i', we, '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p', '-r', '30', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+            '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', 'studio.mp4'], praca);
+        const kat = await cfg.katalogMontazy(PROJEKT);
+        await fs.mkdir(kat, { recursive: true });
+        const bezp = (x) => String(x).normalize('NFKD').replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
+        const kto = (Array.isArray(prowadzacy) && prowadzacy.length ? prowadzacy : [s.narrator, s.wspol]).filter((x) => NARRATORZY[x]).slice(0, 2);
+        const cel = path.join(kat, `gol_${bezp(s.mecz.gospodarze)}-${bezp(s.mecz.goscie)}_studio_${kto.join('+')}_${s.jezyk}_${s.id.slice(2)}.mp4`);
+        await fs.copyFile(path.join(praca, 'studio.mp4'), cel);
+        await fs.rm(path.join(praca, we), { force: true });
+        s.studio = { plik: cel, prowadzacy: kto, sekundy: (await cfg.opisz(cel).catch(() => null))?.sekundy ?? null, kiedy: czas(), publikacja: null };
+        if (s.wideo === 'studio') {
+            s.plik = cel; s.publikacja = null;
+            s.etapy.publikacja = { stan: 'czeka' };
+            Object.assign(s, { stan: 'w_kolejce', powod: null });
+            await pisz(s);
+            await zapamietaj(s).catch(() => {});
+            zakolejkuj(id);
+        } else {
+            if (cfg.publikuj) {
+                const p = await cfg.publikuj({ plik: cel, nazwa: nazwaPublikacji(s, true), jezyk: s.jezyk, kontekst: kontekstKronikarza(s, { studio: true }), zrodlo: { projekt: PROJEKT, gol: s.id, studio: true }, kanalId: s.kanalId });
+                s.studio.publikacja = { id: p.id ?? null, etap: p.etap ?? null };
+            }
+            await pisz(s);
+        }
+        nadaj(`nagranie Studia Zebrra Football: ${s.mecz.gospodarze} – ${s.mecz.goscie} (${kto.map((k) => NARRATORZY[k].imie).join(' i ')}) w Montażowni`);
+        return s;
     }
 
     async function przebieg(id) {
@@ -327,12 +503,11 @@ export function utworzGolDnia(o) {
             if (!czcionka) throw new Error('Nie znalazłem czcionki z polskimi znakami.');
             await fs.copyFile(czcionka, path.join(praca, 'czcionka.ttf'));
             const N = NARRATORZY[s.narrator];
-            const en = s.jezyk === 'en';
 
             if (!await zrob('scenariusz', async () => {
                 if (s.scenariusz) return { zrodlo: 'Suweren' };   // poprawiony ręcznie — zostaje
                 if (!cfg.chat) throw new Error('Katedra nie ma modelu do pisania.');
-                const { system, user } = promptScenariusza({ mecz: s.mecz, gole: s.gole, narrator: s.narrator, jezyk: s.jezyk, pamiec: await pamiec(s.narrator) });
+                const { system, user } = promptScenariusza({ mecz: s.mecz, gole: s.gole, narrator: s.narrator, wspol: s.wspol, jezyk: s.jezyk, pamiec: await pamiec(s.narrator) });
                 const model = await cfg.modelDla('pilkarka').catch(() => null);
                 let ost = '';
                 for (let proba = 0; proba < 2; proba++) {
@@ -346,7 +521,7 @@ export function utworzGolDnia(o) {
 
             if (!await zrob('obrazy', async () => {
                 if (!cfg.rysuj) throw new Error('Katedra nie ma silnika obrazu (FLUX w ComfyUI).');
-                const P = promptyObrazow({ mecz: s.mecz, gole: s.gole, scenariusz: s.scenariusz, narrator: s.narrator });
+                const P = promptyObrazow({ mecz: s.mecz, gole: s.gole, scenariusz: s.scenariusz, narrator: s.narrator, wspol: s.wspol });
                 const kopiuj = async (src, nazwa) => { await fs.copyFile(src, path.join(praca, nazwa)); return nazwa; };
                 const ob = { intro: await kopiuj(await cfg.rysuj({ prompt: P.intro, prefiks: 'katedra/gol-dnia/intro' }), 'intro.png'), gole: [], wynik: null };
                 for (const [i, g] of P.gole.entries()) {
@@ -360,13 +535,23 @@ export function utworzGolDnia(o) {
                 return { obrazow: 2 + 2 * ob.gole.length };
             })) return;
 
+            // 🎥 Studio Zebrra Football: kadry i głos nagrywa apka 3D — most czeka na nagranie (POST /api/gol-dnia/:id/studio)
+            if (s.wideo === 'studio' && !s.studio?.plik) {
+                for (const e of ['segmenty', 'sklejenie']) if (s.etapy[e]?.stan !== 'gotowy') s.etapy[e] = { stan: 'pominiety', powod: 'wideo nagrywa Studio Zebrra Football' };
+                Object.assign(s, { stan: 'studio', powod: null });
+                await pisz(s);
+                nadaj(`odcinek ${s.mecz.gospodarze} – ${s.mecz.goscie} czeka na nagranie w Studiu Zebrra Football`);
+                return;
+            }
+
             if (!await zrob('segmenty', async () => {
                 const segmenty = [];
-                const segment = async (nr, { obraz, naglowek, tekst, mowa = true }) => {
+                const segment = async (k) => {
+                    const { nr, obraz, naglowek, tekst, kto } = k;
                     let audio = null, dl = czasBezGlosu(tekst);
-                    if (mowa && cfg.mow) {
+                    if (cfg.mow) {
                         try {
-                            const g = await cfg.mow({ tekst, narrator: s.narrator, jezyk: s.jezyk }).catch(() => cfg.mow({ tekst, narrator: s.narrator, jezyk: s.jezyk }));
+                            const g = await cfg.mow({ tekst, narrator: kto, jezyk: s.jezyk }).catch(() => cfg.mow({ tekst, narrator: kto, jezyk: s.jezyk }));
                             audio = `a-${nr}.${g.ext || 'wav'}`;
                             await fs.writeFile(path.join(praca, audio), g.audio);
                             const sek = (await cfg.opisz(path.join(praca, audio)).catch(() => null))?.sekundy;
@@ -377,19 +562,10 @@ export function utworzGolDnia(o) {
                     const pliki = [];
                     for (const [j, l] of zawin(tekst, 58).slice(0, 4).entries()) { const n = `l-${nr}-${j}.txt`; await fs.writeFile(path.join(praca, n), l, 'utf8'); pliki.push(n); }
                     const wyj = `seg-${String(nr).padStart(3, '0')}.mp4`;
-                    await ffmpeg(argumentyKwestii({ obraz, klip: null, kolor: KOLOR, imiePlik: `n-${nr}.txt`, liniePliki: pliki, czcionka: 'czcionka.ttf', czas: dl, audio, wyjscie: wyj }), praca);
+                    await ffmpeg(argumentyKwestii({ obraz, klip: null, kolor: kto === s.narrator ? KOLOR : (NARRATORZY[kto]?.kolor ?? KOLOR), imiePlik: `n-${nr}.txt`, liniePliki: pliki, czcionka: 'czcionka.ttf', czas: dl, audio, wyjscie: wyj }), praca);
                     segmenty.push(wyj);
                 };
-                const imie = en ? N.imieEn : N.imie;
-                let nr = 1;
-                await segment(nr++, { obraz: s.obrazy.intro, naglowek: `${N.emoji} ${imie} · ${s.mecz.gospodarze} – ${s.mecz.goscie}`, tekst: s.scenariusz.intro });
-                for (const [i, g] of s.gole.entries()) {
-                    const sc = s.scenariusz.gole[i];
-                    await segment(nr++, { obraz: s.obrazy.gole[i].karta, naglowek: `${g.minuta}' ${g.strzelec}`, tekst: sc.przed });
-                    await segment(nr++, { obraz: s.obrazy.gole[i].scena, naglowek: `⚽ ${en ? 'GOAL' : 'GOL'}! ${g.minuta}'`, tekst: sc.okrzyk });
-                    await segment(nr++, { obraz: s.obrazy.gole[i].scena, naglowek: `${g.strzelec}${g.asysta ? ` · ${en ? 'assist' : 'asysta'}: ${g.asysta}` : ''}`, tekst: sc.po });
-                }
-                await segment(nr++, { obraz: s.obrazy.wynik, naglowek: `${s.mecz.gospodarze} ${s.mecz.wynik[0]}:${s.mecz.wynik[1]} ${s.mecz.goscie}`, tekst: s.scenariusz.outro });
+                for (const k of kwestieOdcinka(s)) await segment(k);
                 s.segmenty = segmenty;
                 return { segmentow: segmenty.length };
             })) return;
@@ -400,7 +576,7 @@ export function utworzGolDnia(o) {
                 const kat = await cfg.katalogMontazy(PROJEKT);
                 await fs.mkdir(kat, { recursive: true });
                 const bezp = (x) => String(x).normalize('NFKD').replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
-                const cel = path.join(kat, `gol_${bezp(s.mecz.gospodarze)}-${bezp(s.mecz.goscie)}_${s.narrator}_${s.jezyk}_${s.id.slice(2)}.mp4`);
+                const cel = path.join(kat, `gol_${bezp(s.mecz.gospodarze)}-${bezp(s.mecz.goscie)}_${s.narrator}${s.wspol ? `+${s.wspol}` : ''}_${s.jezyk}_${s.id.slice(2)}.mp4`);
                 await fs.copyFile(path.join(praca, 'odcinek.mp4'), cel);
                 s.plik = cel;
                 await zapamietaj(s).catch(() => {});
@@ -409,14 +585,15 @@ export function utworzGolDnia(o) {
 
             if (!await zrob('publikacja', async () => {
                 if (!cfg.publikuj) return { pominieto: 'publikacje YouTube niepodłączone' };
-                const p = await cfg.publikuj({ plik: s.plik, nazwa: `${NAZWA} — ${s.mecz.gospodarze} ${s.mecz.wynik[0]}:${s.mecz.wynik[1]} ${s.mecz.goscie} · ${N.imie}`, jezyk: s.jezyk, kontekst: kontekstKronikarza(s), zrodlo: { projekt: PROJEKT, gol: s.id }, kanalId: s.kanalId });
+                const zeStudia = !!s.studio?.plik && s.plik === s.studio.plik;
+                const p = await cfg.publikuj({ plik: s.plik, nazwa: nazwaPublikacji(s, zeStudia), jezyk: s.jezyk, kontekst: kontekstKronikarza(s, { studio: zeStudia }), zrodlo: { projekt: PROJEKT, gol: s.id, ...(zeStudia ? { studio: true } : {}) }, kanalId: s.kanalId });
                 s.publikacja = { id: p.id ?? null, etap: p.etap ?? null };
                 return { publikacja: p.id ?? null };
             })) return;
 
             Object.assign(s, { stan: 'gotowy', powod: null });
             await pisz(s);
-            nadaj(`odcinek ${s.mecz.gospodarze} – ${s.mecz.goscie} (${N.imie}) gotowy — czeka na ✓ w Izbie`);
+            nadaj(`odcinek ${s.mecz.gospodarze} – ${s.mecz.goscie} (${N.imie}${s.wspol ? ` i ${NARRATORZY[s.wspol].imie}` : ''}) gotowy — czeka na ✓ w Izbie`);
         } catch (e) {
             Object.assign(s, { stan: 'blad', powod: String(e.message || e).slice(0, 400) });
             await pisz(s).catch(() => {});
@@ -426,7 +603,7 @@ export function utworzGolDnia(o) {
     return {
         ustawienia, ustaw, mecze, zbierzFakty, utworz, wczytaj, lista,
         /** Studio: ten sam mecz i fakty, inny narrator (bez drugiego zwiadu). */
-        wersja: (id, narrator) => utworz({ zrodlo: id, narrator }),
+        wersja: (id, narrator, { wspol = null, wideo = null } = {}) => utworz({ zrodlo: id, narrator, wspol, wideo }),
         /** ↻ od pierwszego niegotowego etapu (albo od wskazanego). */
         async ponow(id, { od = null } = {}) {
             const s = await wczytaj(id);
@@ -443,31 +620,40 @@ export function utworzGolDnia(o) {
             if (wRobocie.has(id)) throw new Error('Ten odcinek właśnie się robi.');
             const nowy = odczytajScenariusz([`INTRO: ${scenariusz?.intro ?? ''}`, ...(scenariusz?.gole ?? []).flatMap((g, i) => [`PRZED ${i + 1}: ${g.przed}`, `OKRZYK ${i + 1}: ${g.okrzyk}`, `PO ${i + 1}: ${g.po}`, `SCENA ${i + 1}: ${g.scena}`]), `OUTRO: ${scenariusz?.outro ?? ''}`].join('\n'), s.gole.length);
             if (!nowy) throw new Error('Scenariusz musi mieć intro, outro i dla każdego gola: przed, okrzyk, po, scenę.');
-            const p = await pamiec(s.narrator);
+            // poprawka trafia do pamięci TEGO, kto mówi tę linię (w duecie okrzyk i „po” mówi drugi prowadzący)
             const stare = s.scenariusz;
-            if (stare) for (const [k, a, b] of [['intro', stare.intro, nowy.intro], ['outro', stare.outro, nowy.outro], ...nowy.gole.flatMap((g, i) => ['przed', 'po'].map((x) => [x, stare.gole[i]?.[x], g[x]]))]) if (a && b && a !== b) p.poprawki = [...(p.poprawki ?? []), { co: k, bylo: a.slice(0, 200), jest: b.slice(0, 200) }].slice(-20);
+            const pamieci = new Map();
+            if (stare) for (const [k, a, b] of [['intro', stare.intro, nowy.intro], ['outro', stare.outro, nowy.outro], ...nowy.gole.flatMap((g, i) => ['przed', 'po'].map((x) => [x, stare.gole[i]?.[x], g[x]]))]) {
+                if (!a || !b || a === b) continue;
+                const kto = ktoMowi(k, s);
+                if (!pamieci.has(kto)) pamieci.set(kto, await pamiec(kto));
+                const p = pamieci.get(kto);
+                p.poprawki = [...(p.poprawki ?? []), { co: k, bylo: a.slice(0, 200), jest: b.slice(0, 200) }].slice(-20);
+            }
             await fs.mkdir(KAT, { recursive: true });
-            await fs.writeFile(plikPamieci(s.narrator), JSON.stringify(p, null, 1), 'utf8');
+            for (const [kto, p] of pamieci) await fs.writeFile(plikPamieci(kto), JSON.stringify(p, null, 1), 'utf8');
             const scenaZmieniona = !stare || nowy.gole.some((g, i) => g.scena !== stare.gole[i]?.scena);
             s.scenariusz = nowy;
             for (const e of ETAPY.slice(ETAPY.indexOf(scenaZmieniona ? 'obrazy' : 'segmenty'))) s.etapy[e] = { stan: 'czeka' };
             s.etapy.scenariusz = { stan: 'gotowy', zrodlo: 'Suweren', do: czas() };
             if (scenaZmieniona) s.obrazy = null;
-            Object.assign(s, { stan: 'w_kolejce', powod: null, plik: null, publikacja: null });
+            Object.assign(s, { stan: 'w_kolejce', powod: null, plik: null, publikacja: null, studio: null });   // stare nagranie studia nie pasuje do nowego tekstu
             await pisz(s); zakolejkuj(id);
             return s;
         },
+        barwy, glos, nagranieStudia,
         async usun(id) { if (wRobocie.has(id)) throw new Error('Ten odcinek właśnie się robi.'); await fs.rm(path.dirname(plikO(id)), { recursive: true, force: true }); return true; },
         sciezkaObrazu(id, plik) { if (!/^[\w-]+\.png$/.test(String(plik))) return null; const p = path.join(KAT, id, 'praca', plik); return ID.test(id) && fsSync.existsSync(p) ? p : null; },
         pamiec,
     };
 }
 
-export function zamontujTrasyGolDnia(app, G, { kanalProjektu = null, ustawKanalProjektu = null } = {}) {
+export function zamontujTrasyGolDnia(app, G, { kanalProjektu = null, ustawKanalProjektu = null, raw = null, maxNagraniaMb = 600 } = {}) {
     const odp = (res, p, kod = 400) => p.then((w) => res.json({ success: true, ...w })).catch((e) => res.status(kod).json({ success: false, message: e.message }));
     app.get('/api/gol-dnia', (_req, res) => odp(res, (async () => ({
         odcinki: await G.lista(), ustawienia: await G.ustawienia(), ligi: LIGI, jezyki: JEZYKI,
-        narratorzy: Object.fromEntries(Object.entries(NARRATORZY).map(([k, v]) => [k, { imie: v.imie, emoji: v.emoji, temperament: v.temperament }])),
+        narratorzy: Object.fromEntries(Object.entries(NARRATORZY).map(([k, v]) => [k, { imie: v.imie, imieEn: v.imieEn, emoji: v.emoji, temperament: v.temperament, rola: v.rola ?? 'stado', kolor: v.kolor ?? null }])),
+        wideo: WIDEO,
         kanal: kanalProjektu ? await kanalProjektu(PROJEKT).catch(() => null) : null,
     }))(), 500));
     app.get('/api/gol-dnia/mecze', (req, res) => odp(res, G.mecze(req.query.liga).then((mecze) => ({ mecze })), 502));
@@ -476,12 +662,24 @@ export function zamontujTrasyGolDnia(app, G, { kanalProjektu = null, ustawKanalP
     app.put('/api/gol-dnia/ustawienia', (req, res) => odp(res, G.ustaw(req.body ?? {}).then((ustawienia) => ({ ustawienia }))));
     if (ustawKanalProjektu) app.put('/api/gol-dnia/kanal', (req, res) => odp(res, ustawKanalProjektu(PROJEKT, req.body?.kanalId || null).then((kanal) => ({ kanal }))));
     app.get('/api/gol-dnia/:id', (req, res) => odp(res, G.wczytaj(req.params.id).then((odcinek) => ({ odcinek })), 404));
-    app.get('/api/gol-dnia/:id/wideo', async (req, res) => { try { const s = await G.wczytaj(req.params.id); return s.plik && fsSync.existsSync(s.plik) ? res.sendFile(s.plik) : res.status(404).end(); } catch { return res.status(404).end(); } });
+    app.get('/api/gol-dnia/:id/wideo', async (req, res) => { try { const s = await G.wczytaj(req.params.id); const plik = req.query.studio ? s.studio?.plik : s.plik; return plik && fsSync.existsSync(plik) ? res.sendFile(plik) : res.status(404).end(); } catch { return res.status(404).end(); } });
     app.get('/api/gol-dnia/:id/obraz/:plik', (req, res) => { const p = G.sciezkaObrazu(req.params.id, req.params.plik); return p ? res.sendFile(p) : res.status(404).end(); });
-    app.post('/api/gol-dnia/:id/wersja', (req, res) => odp(res, G.wersja(req.params.id, req.body?.narrator).then((odcinek) => ({ odcinek }))));
+    app.post('/api/gol-dnia/:id/wersja', (req, res) => odp(res, G.wersja(req.params.id, req.body?.narrator, { wspol: req.body?.wspol ?? null, wideo: req.body?.wideo ?? null }).then((odcinek) => ({ odcinek }))));
+    // 🎥 Studio Zebrra Football (apka _OtakOs_Apki/studio-zebrra): odcinek z kwestiami i barwami, głos kwestii, nagranie
+    app.get('/api/gol-dnia/:id/studio', (req, res) => odp(res, (async () => {
+        const odcinek = await G.wczytaj(req.params.id);
+        return { odcinek, kwestie: kwestieOdcinka(odcinek), barwy: await G.barwy(req.params.id), monogramy: { gospodarze: monogram(odcinek.mecz.gospodarze), goscie: monogram(odcinek.mecz.goscie) } };
+    })(), 404));
+    app.get('/api/gol-dnia/:id/glos/:nr', (req, res) => G.glos(req.params.id, req.params.nr)
+        .then(({ plik, kto }) => { res.set('X-Glos-Kto', kto); res.sendFile(plik); })
+        .catch((e) => res.status(502).json({ success: false, message: e.message })));
+    if (raw) app.post('/api/gol-dnia/:id/studio', raw({ type: ['video/*', 'application/octet-stream'], limit: `${maxNagraniaMb}mb` }), (req, res) => {
+        const prowadzacy = String(req.query.prowadzacy ?? '').split(',').filter(Boolean);
+        return odp(res, G.nagranieStudia(req.params.id, req.body, { typ: String(req.get('content-type') || ''), prowadzacy }).then((odcinek) => ({ odcinek })));
+    });
     app.post('/api/gol-dnia/:id/ponow', (req, res) => odp(res, G.ponow(req.params.id, { od: req.body?.od ?? null }).then((odcinek) => ({ odcinek }))));
     app.put('/api/gol-dnia/:id/scenariusz', (req, res) => odp(res, G.popraw(req.params.id, req.body?.scenariusz).then((odcinek) => ({ odcinek }))));
     app.delete('/api/gol-dnia/:id', (req, res) => odp(res, G.usun(req.params.id).then((usuniety) => ({ usuniety }))));
 }
 
-export default { utworzGolDnia, zamontujTrasyGolDnia, NARRATORZY, LIGI, sprawdzGole, odczytajGole, odczytajScenariusz, promptScenariusza, promptyObrazow };
+export default { utworzGolDnia, zamontujTrasyGolDnia, NARRATORZY, PROWADZACY, WIDEO, LIGI, sprawdzGole, odczytajGole, odczytajScenariusz, promptScenariusza, promptyObrazow, kwestieOdcinka, ktoMowi, monogram, barwyZNazwy, barwyZDruzyny };

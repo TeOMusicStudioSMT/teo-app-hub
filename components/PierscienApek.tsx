@@ -43,6 +43,8 @@ const NARZEDZIA: Narzedzie[] = [
     { id: 'swiat', tytul: 'Świat klocków', url: `${MOST}/swiat/`, znak: '🧱', kolor: '#38bdf8', sprawdz: `${MOST}/swiat/` },
     // 💃🥊 Taneczne Starcie — bijatyka taneczna Mini-TeOgochi (apka _OtakOs_Apki/taneczne-starcie, ring: services/RingTaneczny.js)
     { id: 'starcie', tytul: 'Taneczne Starcie', url: `${MOST}/apki/taneczne-starcie/`, znak: '💃', kolor: '#db2777', sprawdz: `${MOST}/apki/taneczne-starcie/` },
+    // 🦓🦁 Studio Zebrra Football — studio 3D programu ⚽ Gol Dnia (apka _OtakOs_Apki/studio-zebrra, most: services/GolDnia.js)
+    { id: 'studio-zebrra', tytul: 'Studio Zebrra Football', url: `${MOST}/apki/studio-zebrra/`, znak: '🦓', kolor: '#22c55e', sprawdz: `${MOST}/apki/studio-zebrra/` },
 ];
 
 export const PierscienApek: React.FC = () => {
