@@ -15283,6 +15283,9 @@ const GolDnia = utworzGolDnia({
     mow: async ({ tekst, narrator, jezyk }) => Wywiady.mowa({ tekst: tekstDoMowy(tekst), glos: await GlosyStada.glos(narrator).catch(() => null), jezyk }),
     opisz: (p) => Montazownia.opisz(p),
     publikuj: (z) => PublikacjeYT.przygotuj(z),
+    // ⚽⚽ oprawa kompilacji: _OtakOs_Klocki/Klocki Football/Start|End przez Spawacza (jak Game Show)
+    spawaj: ({ klipy, wyjscie, celWedlug }) => Spawacz.spawaj({ klipy, wyjscie, opisz: Montazownia.opisz, uruchom: execFileAsync, ffmpeg: ffmpegPath, celWedlug }),
+    klocki: () => Spawacz.zestawKlockow(path.join(process.cwd(), '_OtakOs_Klocki'), 'Football'),
     ffmpeg: ffmpegPath,
     szyna: Szyna,
 });

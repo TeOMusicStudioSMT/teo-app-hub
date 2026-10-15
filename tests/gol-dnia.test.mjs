@@ -95,7 +95,7 @@ import express from 'express';
 import { kwestieOdcinka, ktoMowi, monogram, barwyZNazwy, barwyZDruzyny, PROWADZACY, zamontujTrasyGolDnia } from '../services/GolDnia.js';
 
 test('duet: Gol Donna prowadzi, Zlat Kadabra komentuje gole; kwestie wspólne dla napisów i studia', () => {
-    assert.deepEqual(PROWADZACY, ['zebra', 'lew']);
+    assert.deepEqual(PROWADZACY, ['zebra', 'lew', 'lampart']);
     assert.match(NARRATORZY.lew.temperament, /trzeciej osobie/);
     assert.equal(ktoMowi('okrzyk', { narrator: 'zebra', wspol: 'lew' }), 'lew');
     assert.equal(ktoMowi('przed', { narrator: 'zebra', wspol: 'lew' }), 'zebra');
@@ -249,4 +249,84 @@ test('zwiad po kolei: limit Claude → Gemini, złe fakty → następny, bez klu
     assert.equal(w2.gole.length, 3);
     await assert.rejects(zwiadPoKolei([{ nazwa: 'Claude', klucz: () => null, fn: limit }, { nazwa: 'Gemini', klucz: () => null, fn: limit }], 'p'), /Model lokalny nie przeszuka internetu/);
     await assert.rejects(zwiadPoKolei([{ nazwa: 'Claude', klucz: () => 'k', fn: limit }, { nazwa: 'Gemini', klucz: () => null, fn: limit }], 'p'), /Claude: HTTP 400.*Gemini: brak klucza/);
+});
+
+import { czyKompilacja, meczeOdcinka, MAX_MECZOW } from '../services/GolDnia.js';
+import { spawaj as spawajNaprawde } from '../services/Spawacz.js';
+import { opisz as opiszNaprawde } from '../services/Montazownia.js';
+import { promisify } from 'node:util';
+import { execFile as execFileCb } from 'node:child_process';
+const MECZ2 = { id: '7001', liga: 'Serie A', data: '2026-10-11', gospodarze: 'Inter', goscie: 'Napoli', wynik: [1, 1] };
+const MECZ3 = { id: '7002', liga: 'LaLiga', data: '2026-10-11', gospodarze: 'Real Betis', goscie: 'Sevilla', wynik: [0, 0] };
+const GOLE2 = [{ minuta: '9', strzelec: 'Lautaro', druzyna: 'gospodarze' }, { minuta: '77', strzelec: 'Kvara', druzyna: 'goscie' }];
+const SC_KOMP = (meczow, goli) => ['INTRO: Witajcie w kompilacji!', ...Array.from({ length: meczow }, (_, k) => `MECZ ${k + 1}: Zapowiedź meczu ${k + 1}.`), ...Array.from({ length: goli }, (_, i) => [`PRZED ${i + 1}: Strzelec.`, `OKRZYK ${i + 1}: Gol!`, `PO ${i + 1}: Piękna akcja.`, `SCENA ${i + 1}: striker shoots`]).flat(), 'OUTRO: To wszystko!'].join('\n');
+
+test('kompilacja: kilka meczów z faktami osobno → bloki MECZ w scenariuszu i kwestiach, oprawa z klocków albo uwaga wprost; tryb studio też', async () => {
+    const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'gol-komp-'));
+    try {
+        const obraz = path.join(kat, 'kadr.png');
+        execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0x123456:s=640x360:d=1', '-frames:v', '1', obraz]);
+        const klocek = (n, kolor) => { const p = path.join(kat, n); execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `color=c=${kolor}:s=1920x1080:r=25:d=1.5`, '-f', 'lavfi', '-i', 'sine=frequency=500:duration=1.5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', p]); return p; };
+        const start = klocek('start_en.mp4', 'red'), end = klocek('end.mp4', 'blue');
+        const czaty = [], spawy = [], publikacje = [];
+        let zwiadow = 0;
+        const uruchom = promisify(execFileCb);
+        const cfgBaza = {
+            ffmpeg: ffmpegPath, katalogMontazy: async (p) => path.join(kat, 'montaz', p),
+            zwiad: async () => { zwiadow++; return { tekst: JSON.stringify({ gole: GOLE }), zrodla: ['https://x.example'] }; },
+            chat: async (_m, system, user) => { czaty.push({ system, user }); return { tekst: SC_KOMP(3, 5) }; },
+            rysuj: async () => obraz,
+            publikuj: async (z) => { publikacje.push(z); return { id: `yt_${publikacje.length}`, etap: 'do_akceptacji' }; },
+        };
+        const G = utworzGolDnia({ ...cfgBaza, katalog: kat,
+            klocki: async () => ({ katalog: 'Klocki Football', start: [start], end: [end] }),
+            spawaj: async (o) => { spawy.push(o); return spawajNaprawde({ ...o, opisz: opiszNaprawde, uruchom, ffmpeg: ffmpegPath }); } });
+        const czekaj = async (Gx, id, stany) => { let s; for (let i = 0; i < 400; i++) { s = await Gx.wczytaj(id); if (stany.includes(s.stan)) return s; await new Promise((r) => setTimeout(r, 100)); } return s; };
+        await assert.rejects(G.utworz({ kompilacja: Array.from({ length: MAX_MECZOW + 1 }, (_, i) => ({ mecz: { ...MECZ, id: `m${i}` }, gole: GOLE })) }), /najwyżej 6 meczów/);
+        await assert.rejects(G.utworz({ kompilacja: [{ mecz: MECZ2, gole: GOLE2.slice(0, 1) }, { mecz: MECZ3 }] }), /Inter – Napoli: fakty nie zgadzają się/);
+        // mecz 1: zwiad, mecz 2: wpisane, mecz 3: 0:0 (zwiad mówi „bezbramkowy”)
+        const s0 = await G.utworz({ kompilacja: [{ mecz: MECZ }, { mecz: MECZ2, gole: GOLE2 }, { mecz: MECZ3 }], narrator: 'zebra', wspolprowadzacy: ['lampart'], jezyk: 'en' });
+        assert.ok(czyKompilacja(s0));
+        assert.equal(zwiadow, 1, 'zwiad tylko dla meczu bez wpisanych goli i z bramkami');
+        assert.deepEqual(s0.gole.map((g) => g.mecz), [0, 0, 0, 1, 1]);
+        const s = await czekaj(G, s0.id, ['gotowy', 'blad']);
+        assert.equal(s.stan, 'gotowy', s.powod ?? '');
+        assert.match(czaty[0].system, /MECZ 3:/);
+        assert.match(czaty[0].user, /MECZ 3: Real Betis – Sevilla 0:0 .* — bez bramek/);
+        assert.match(czaty[0].user, /5\. \[mecz 2\] 77' Kvara \(Napoli\)/);
+        assert.equal(s.scenariusz.mecze.length, 3);
+        const kw = kwestieOdcinka(s);
+        assert.deepEqual(kw.filter((k) => k.typ === 'mecz').map((k) => k.mecz), [0, 1, 2]);
+        assert.deepEqual(kw.map((k) => k.typ).slice(0, 3), ['intro', 'mecz', 'przed']);
+        assert.equal(kw.at(-2).typ, 'mecz', 'mecz bez goli = sama zapowiedź przed outro');
+        assert.equal(kw.find((k) => k.typ === 'po' && k.gol === 4).mecz, 1);
+        assert.deepEqual(kw.map((k) => k.nr), kw.map((_, i) => i + 1));
+        assert.equal(s.segmenty.length, kw.length);
+        assert.match(path.basename(s.plik), /^gol_kompilacja-3_zebra\+lampart_en_[0-9a-f]{8}\.mp4$/);
+        assert.equal(spawy.length, 1);
+        assert.deepEqual(spawy[0].klipy.map((p) => path.basename(p)), ['start_en.mp4', 'odcinek.mp4', 'end.mp4']);
+        assert.deepEqual(s.oprawa, { start: ['start_en.mp4'], end: ['end.mp4'] });
+        const sek = (await opiszNaprawde(s.plik)).sekundy;
+        assert.ok(sek > 3, `film z oprawą ma ${sek} s`);
+        assert.match(publikacje[0].nazwa, /3 matches: Coventry City 2:1 Newcastle United · Inter 1:1 Napoli · Real Betis 0:0 Sevilla/);
+        assert.match(publikacje[0].kontekst, /compilation of 3 matches/);
+        // bez klocków: film bez oprawy i uwaga wprost; tryb studio: oprawa na nagraniu
+        const B = utworzGolDnia({ ...cfgBaza, katalog: path.join(kat, 'b'), klocki: async () => ({ katalog: '_OtakOs_Klocki/Klocki Football', start: [], end: [] }), spawaj: async () => { throw new Error('nie powinien'); } });
+        const b0 = await B.utworz({ kompilacja: [{ mecz: MECZ, gole: GOLE }, { mecz: MECZ2, gole: GOLE2 }, { mecz: MECZ3, gole: [] }], narrator: 'pilkarka', wideo: 'studio' });
+        const b = await czekaj(B, b0.id, ['studio', 'blad']);
+        assert.equal(b.stan, 'studio', b.powod ?? '');
+        const webm = path.join(kat, 'n.webm');
+        execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=1280x720:r=30:d=2', '-f', 'lavfi', '-i', 'sine=duration=2', '-c:v', 'libvpx', '-b:v', '800k', '-c:a', 'libopus', '-shortest', webm]);
+        const bn = await B.nagranieStudia(b.id, await fs.readFile(webm));
+        assert.match(path.basename(bn.studio.plik), /^gol_kompilacja-3_studio_pilkarka_/);
+        assert.match(bn.uwagi.join(' '), /brak klocków w _OtakOs_Klocki\/Klocki Football/);
+        // poprawka scenariusza kompilacji zna linie MECZ
+        const sc = { ...s.scenariusz, mecze: ['Pierwszy mecz!', 'Drugi mecz!', 'Trzeci, bez goli.'] };
+        await G.popraw(s.id, sc);
+        assert.equal((await G.wczytaj(s.id)).scenariusz.mecze[2], 'Trzeci, bez goli.');
+        await czekaj(G, s.id, ['gotowy', 'blad']);
+        await assert.rejects(G.popraw(s.id, { ...s.scenariusz, mecze: ['tylko jeden'] }), /zapowiedź każdego meczu/);
+        assert.equal(meczeOdcinka({ mecz: MECZ }).length, 1);
+        await czekaj(B, b.id, ['gotowy', 'blad']);
+    } finally { await fs.rm(kat, { recursive: true, force: true }); }
 });
