@@ -14,7 +14,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PolaczYouTube, PublikacjeYouTubePanel } from './YouTubeStudio';
 import { GameShowPanel } from './GameShowPanel';
-import { GolDniaPanel } from './GolDniaPanel';
+import { otworzApke } from '../../lib/pierscien';
 
 // ─── Stałe ────────────────────────────────────────────────────────────────────
 
@@ -495,7 +495,12 @@ const ImpresarioDashboard: React.FC = () => {
                         <PolaczYouTube key={ytKluczePoz} onZmiana={fetchStatus} />
                         <PublikacjeYouTubePanel />
                         <GameShowPanel />
-                        <GolDniaPanel />
+                        {/* ⚽ Gol Dnia przeniesiony do Studia Zebrra Football jako zakładka (Suweren 2026-10-15) */}
+                        <button onClick={() => otworzApke({ id: 'studio-zebrra', tytul: 'Studio Zebrra Football', url: 'http://127.0.0.1:3001/apki/studio-zebrra/?zakladka=gol-dnia', znak: '🦓', kolor: '#22c55e' })}
+                            className="rounded-2xl border border-emerald-500/30 bg-emerald-950/10 p-3 text-left text-xs text-emerald-100 hover:bg-emerald-900/20">
+                            <b className="text-sm">🦓 Otwórz Studio Zebrra — ⚽ Gol Dnia</b>
+                            <span className="block text-[11px] text-slate-400">Mecze, fakty bramek, prowadzący i do trzech współprowadzących, głosy, odcinki i nagranie — zakładka „⚽ Gol Dnia” w Studiu Zebrra Football.</span>
+                        </button>
                     </div>
                 </section>
 
