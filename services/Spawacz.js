@@ -76,7 +76,7 @@ export async function spawaj({ klipy, wyjscie, opisz, uruchom, ffmpeg, celWedlug
 
 /** Zestaw klocków formatu: Start → Add/Adds → End (pliki wideo, alfabetycznie w każdym katalogu). */
 export async function zestawKlockow(katalogKlocki, format) {
-    const PODKATALOG = { YT: 'Klocki do YT', Podcat: 'Klocki do Podcatów', Kronika: 'Klocki do Kronik', Muzyka: 'Klocki do Muzyki', Movie: 'Klocki do Movie', GameShow: 'Klocki Dance', Football: 'Klocki Football' };
+    const PODKATALOG = { YT: 'Klocki do YT', Podcat: 'Klocki do Podcatów', Kronika: 'Klocki do Kronik', Muzyka: 'Klocki do Muzyki', Movie: 'Klocki do Movie', GameShow: 'Klocki Dance', Football: 'Klocki Football', MameShow: 'Klocki Mame Show' };
     const pod = PODKATALOG[format];
     if (!pod) throw new Error(`Nieznany format klocków „${format}” (${Object.keys(PODKATALOG).join(' / ')}).`);
     const baza = path.join(katalogKlocki, pod);

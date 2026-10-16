@@ -15413,6 +15413,9 @@ const MameLeon = utworzMameLeon({
     stado: () => Stado.stan(),
     karta: (id) => Persony.karta(id),
     bryla: (id) => Assety3D.meta(id),
+    // 🎬 oprawa każdego odcinka: _OtakOs_Klocki/Klocki Mame Show/start|end przez Spawacza (jak Game Show)
+    spawaj: ({ klipy, wyjscie, celWedlug }) => Spawacz.spawaj({ klipy, wyjscie, opisz: Montazownia.opisz, uruchom: execFileAsync, ffmpeg: ffmpegPath, celWedlug }),
+    klocki: () => Spawacz.zestawKlockow(KORZENIE_WIDEO().klocki, 'MameShow'),
     chat: (model, system, user) => piszModelem(model, system, user),
     modelDla: (id) => ModeleAgentow.modelDla(id),
     mow: async ({ tekst, glos, jezyk }) => Wywiady.mowa({ tekst: tekstDoMowy(tekst), glos: await GlosyStada.glos(glos).catch(() => null), jezyk }),

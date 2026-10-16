@@ -121,3 +121,42 @@ test('trasy na prawdziwym ffmpeg: goście sprawdzeni → rozmowa (pierwsza ze zm
         } finally { serwer.close(); }
     } finally { await fs.rm(kat, { recursive: true, force: true }); }
 });
+
+import { spawaj as spawajNaprawde, zestawKlockow } from '../services/Spawacz.js';
+import { opisz as opiszNaprawde } from '../services/Montazownia.js';
+import { promisify } from 'node:util';
+import { execFile as execFileCb } from 'node:child_process';
+test('🎬 oprawa KAŻDEGO odcinka: klocki „Klocki Mame Show” start/end przez Spawacza; brak startu = sam end + uwaga; ↻ oprawa po dołożeniu startu', async () => {
+    const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'mame-leon-oprawa-'));
+    try {
+        const klocki = path.join(kat, '_OtakOs_Klocki');
+        await fs.mkdir(path.join(klocki, 'Klocki Mame Show', 'start'), { recursive: true });
+        await fs.mkdir(path.join(klocki, 'Klocki Mame Show', 'end'), { recursive: true });
+        const klocek = (p, kolor) => execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `color=c=${kolor}:s=1920x1080:r=25:d=1.5`, '-f', 'lavfi', '-i', 'sine=frequency=500:duration=1.5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', p]);
+        klocek(path.join(klocki, 'Klocki Mame Show', 'end', 'end en.mp4'), 'blue');   // jak u Suwerena 2026-10-16: tylko end
+        const webm = path.join(kat, 'n.webm');
+        execFileSync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=s=1280x720:r=30:d=2', '-f', 'lavfi', '-i', 'sine=duration=2', '-c:v', 'libvpx', '-b:v', '800k', '-c:a', 'libopus', '-shortest', webm]);
+        const uruchom = promisify(execFileCb);
+        const L = utworzMameLeon({
+            katalog: kat, ffmpeg: ffmpegPath, katalogMontazy: async (p) => path.join(kat, 'montaz', p),
+            stado: async () => ({ wyklute: ['joanna'], stany: { joanna: { name: 'Joanna', xp: 10 } } }),
+            chat: async () => ({ tekst: ROZMOWA.replace('Kot Tancerz', 'Joanna').replace(/Kot Tancerz/g, 'Joanna') }),
+            opisz: (p) => opiszNaprawde(p),
+            klocki: () => zestawKlockow(klocki, 'MameShow'),
+            spawaj: (o) => spawajNaprawde({ ...o, opisz: opiszNaprawde, uruchom, ffmpeg: ffmpegPath }),
+        });
+        const s0 = await L.utworz({ temat: 'Oprawa', jezyk: 'pl', goscie: [{ rodzaj: 'teogochi', id: 'joanna' }] });
+        await L.czekaj();
+        assert.equal((await L.wczytaj(s0.id)).stan, 'studio', (await L.wczytaj(s0.id)).powod);
+        const s1 = await L.nagranie(s0.id, await fs.readFile(webm));
+        assert.deepEqual(s1.oprawa, { start: [], end: ['end en.mp4'] }, 'odcinek po polsku bierze end po angielsku, gdy pl brak');
+        assert.match(s1.uwagaOprawy, /brak klocków start w .*Klocki Mame Show/);
+        assert.ok(s1.sekundy > 3.2 && s1.sekundy < 4.2, `nagranie 2 s + end 1,5 s, jest ${s1.sekundy}`);
+        klocek(path.join(klocki, 'Klocki Mame Show', 'start', 'start pl.mp4'), 'red');
+        const s2 = await L.przeoprawa(s0.id);
+        assert.deepEqual(s2.oprawa, { start: ['start pl.mp4'], end: ['end en.mp4'] });
+        assert.equal(s2.uwagaOprawy, null);
+        assert.ok(s2.sekundy > 4.7 && s2.sekundy < 5.7, `start + nagranie + end, jest ${s2.sekundy}`);
+        assert.equal(s2.plik, s1.plik, 'ten sam plik — publikacja czeka dalej');
+    } finally { await fs.rm(kat, { recursive: true, force: true }); }
+});
