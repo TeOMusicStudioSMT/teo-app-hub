@@ -110,6 +110,13 @@ test('trasy na prawdziwym ffmpeg: goście sprawdzeni → rozmowa (pierwsza ze zm
             const p = await fetch(u(`/api/mame-leon/${r.odcinek.id}/rozmowa`), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kwestie: [{ kto: 'kameleon', tekst: 'Witam!', nastroj: 'zaskoczony' }, { kto: 'g2', tekst: 'Miau.' }] }) }).then((x) => x.json());
             assert.equal(p.odcinek.plik, null);
             assert.deepEqual(kwestieOdcinka(p.odcinek).map((k) => k.nastroj), ['zaskoczony', null]);
+            // 🪑 ruchy bryły na stałe w programie
+            const pr = await fetch(u('/api/mame-leon/ruchy/kot-1'), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ przydzial: { siedzi: 'Chair_Sit_Idle_F', mowi: ['Sitting_Answering_Questions', 'Sitting_Answering_Questions', ''], okrzyk: ['Sitting_Clap'] } }) }).then((x) => x.json());
+            assert.deepEqual([pr.przydzial.siedzi, pr.przydzial.mowi, pr.przydzial.okrzyk], ['Chair_Sit_Idle_F', ['Sitting_Answering_Questions'], ['Sitting_Clap']]);
+            assert.equal((await (await fetch(u('/api/mame-leon/ruchy'))).json()).ruchy['kot-1'].siedzi, 'Chair_Sit_Idle_F');
+            assert.equal((await fetch(u('/api/mame-leon/ruchy/..%2Fx'), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((x) => x.json())).success, false);
+            await fetch(u('/api/mame-leon/ruchy/kot-1'), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ przydzial: null }) });
+            assert.equal((await (await fetch(u('/api/mame-leon/ruchy'))).json()).ruchy['kot-1'], undefined, 'null = studio dobiera samo');
             assert.match((await fetch(u(`/api/mame-leon/${r.odcinek.id}/rozmowa`), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kwestie: [{ kto: 'g9', tekst: 'x' }] }) }).then((x) => x.json())).message, /Nieznany mówca/);
         } finally { serwer.close(); }
     } finally { await fs.rm(kat, { recursive: true, force: true }); }

@@ -48,6 +48,9 @@ export const ZESTAWY_AKCJI = {
     // Studio Zebrra (Suweren 2026-10-15): prowadzący STOJĄ za stołem — spoczynek, mowa z gestami, okrzyk przy golu.
     // Nazwy dokładne z biblioteki; studio rozpoznaje rolę z nazwy klipu (idle → stoi, talk/gesture/wave → mówi, cheer/victory → okrzyk).
     studio: { nazwa: '🎙️ prowadzący studia', nazwy: ['Idle', 'Talk with Hands Open', 'Talk with Right Hand Open', 'Talk with Left Hand Raised', 'Talk Passionately', 'Agree Gesture', 'Big Wave Hello', 'Cheer with Both Hands Up', 'Victory Fist Pump', 'Idle 3'] },
+    // 🦎 Mame Leon Show (Suweren 2026-10-16: „postacie na kanapie mają siedzieć… siedzenie + parę gestykulacji”): ruchy NA SIEDZĄCO
+    // z biblioteki (klucze sprawdzone w bibliotece 2026-10-16): spoczynek, mowa i okrzyk — studio czyta rolę z nazwy klipu.
+    kanapa: { nazwa: '🪑 kanapa talk-show', klucze: ['Chair_Sit_Idle_F', 'Chair_Sit_Idle_M', 'Sit_on_Chair_Arms_Crossed', 'Sitting_Answering_Questions', 'Sit_Finger_Wag_No', 'Sit_Thumbs_Up_Right', 'Sit_Hands_on_Head_Lean_Back', 'Sitting_Clap', 'Seated_Fist_Pump', 'Sit_Cheer_with_Left_Hand'] },
 };
 /** Akcje zestawu z biblioteki: id po kolei, bez tych, które bryła już ma, najwyżej `ile`. */
 export function dobierzAkcje(zestaw, biblioteka, { pominac = [], ile = MAX_AKCJI } = {}) {
@@ -55,7 +58,12 @@ export function dobierzAkcje(zestaw, biblioteka, { pominac = [], ile = MAX_AKCJI
     if (!z) throw new Error(`Nieznany zestaw akcji „${zestaw}”. Są: ${Object.keys(ZESTAWY_AKCJI).join(', ')}.`);
     const wolne = biblioteka.filter((a) => !pominac.includes(a.id));
     const out = [];
-    if (z.nazwy) for (const n of z.nazwy) {
+    if (z.klucze) for (const k of z.klucze) {
+        const a = wolne.find((x) => !out.includes(x) && String(x.klucz).toLowerCase() === k.toLowerCase());
+        if (a) out.push(a);
+        if (out.length >= ile) break;
+    }
+    else if (z.nazwy) for (const n of z.nazwy) {
         const a = wolne.find((x) => !out.includes(x) && String(x.nazwa).trim().toLowerCase() === n.toLowerCase());
         if (a) out.push(a);
         if (out.length >= ile) break;

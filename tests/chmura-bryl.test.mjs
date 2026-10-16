@@ -177,6 +177,8 @@ test('🎛️ akcje: auto-zestaw z biblioteki; kolejna paczka na TYM SAMYM rigu 
     const studio = [...bib, { id: 7, nazwa: 'Talk with Hands Open', kategoria: 'DailyActions' }, { id: 8, nazwa: 'Cheer with Both Hands Up', kategoria: 'DailyActions' }, { id: 9, nazwa: 'Talk with Hands Open Fast', kategoria: 'DailyActions' }];
     assert.deepEqual(dobierzAkcje('studio', studio).map((a) => a.id), [1, 7, 8], 'prowadzący studia: dokładne nazwy (bez „…Fast”), kolejność zestawu');
     assert.deepEqual(dobierzAkcje('studio', studio, { pominac: [1] }).map((a) => a.id), [7, 8]);
+    const kanapa = [...bib, { id: 32, nazwa: 'Chair Sit Idle Female', klucz: 'Chair_Sit_Idle_F' }, { id: 52, nazwa: 'Sit to Stand Transition Female', klucz: 'Sit_to_Stand_Transition_F' }, { id: 307, nazwa: 'Sitting Answering Questions', klucz: 'Sitting_Answering_Questions' }, { id: 354, nazwa: 'Sitting Clap', klucz: 'Sitting_Clap' }];
+    assert.deepEqual(dobierzAkcje('kanapa', kanapa).map((a) => a.id), [32, 307, 354], '🪑 kanapa: siedzenie, mowa i okrzyk na siedząco po kluczach — bez przejść „wstań”');
     assert.throws(() => dobierzAkcje('nie-ma', bib), /Nieznany zestaw/);
     assert.throws(() => oczyscZlecenie({ rodzaj: 'akcje', akcje: [] }), /Wybierz akcje/);
     assert.throws(() => oczyscZlecenie({ rodzaj: 'akcje', akcje: Array.from({ length: 11 }, (_, i) => i) }), /kolejną paczką/);
