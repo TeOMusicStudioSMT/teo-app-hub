@@ -142,8 +142,12 @@ export const FormatyPanel: React.FC = () => {
 
             <div className="mb-2 flex flex-wrap gap-2 text-[10px]">
                 <span className={sieci.youtube?.polaczony ? 'text-emerald-300' : 'text-amber-300'}>📺 YouTube: {sieci.youtube?.polaczony ? `${(sieci.youtube.kanaly ?? []).length} kanał(y)` : 'niepołączony (wyżej „Połącz z YouTube”)'}</span>
-                <span className={sieci.tiktok?.polaczony ? 'text-emerald-300' : 'text-slate-400'}>🎵 TikTok: {sieci.tiktok?.polaczony ? 'połączony' : 'niepodłączone'}</span>
-                <span className={sieci.instagram?.polaczony ? 'text-emerald-300' : 'text-slate-400'}>📸 Instagram: {sieci.instagram?.polaczony ? 'połączony' : 'niepodłączone'}</span>
+                {(['tiktok', 'instagram'] as const).map((sn) => { const st = sieci[sn]; const n = sn === 'tiktok' ? '🎵 TikTok' : '📸 Instagram'; return (
+                    <span key={sn} className={st?.polaczony ? 'text-emerald-300' : 'text-slate-400'}>{n}: {st?.polaczony ? `połączony (${(st.konta ?? []).map((k) => k.nazwa).join(', ')})` : 'niepodłączone'}
+                        {st?.klient && !st.polaczony && <button onClick={() => window.open(`${MOST}/api/impresario/${sn}/polacz`, '_blank')} className="ml-1.5 rounded border border-cyan-500/50 px-1.5 text-cyan-200 hover:bg-cyan-900/30">🔗 Połącz z {sn === 'tiktok' ? 'TikTok' : 'Instagramem'}</button>}
+                        {!st?.klient && <button onClick={otworzSkarbiec} className="ml-1.5 text-amber-200 underline">klucze → Skarbiec</button>}
+                    </span>
+                ); })}
             </div>
 
             {auto && (
