@@ -43,8 +43,10 @@ const NARZEDZIA: Narzedzie[] = [
     { id: 'swiat', tytul: 'Świat klocków', url: `${MOST}/swiat/`, znak: '🧱', kolor: '#38bdf8', sprawdz: `${MOST}/swiat/` },
     // 💃🥊 Taneczne Starcie — bijatyka taneczna Mini-TeOgochi (apka _OtakOs_Apki/taneczne-starcie, ring: services/RingTaneczny.js)
     { id: 'starcie', tytul: 'Taneczne Starcie', url: `${MOST}/apki/taneczne-starcie/`, znak: '💃', kolor: '#db2777', sprawdz: `${MOST}/apki/taneczne-starcie/` },
-    // 🦓🦁 Studio Zebrra Football — studio 3D programu ⚽ Gol Dnia (apka _OtakOs_Apki/studio-zebrra, most: services/GolDnia.js)
-    { id: 'studio-zebrra', tytul: 'Studio Zebrra Football', url: `${MOST}/apki/studio-zebrra/`, znak: '🦓', kolor: '#22c55e', sprawdz: `${MOST}/apki/studio-zebrra/` },
+    // 🦓🦁 Studio Zebrra Sports (dawniej Football) — ⚽ Gol Dnia i 🩰 taniec (apka _OtakOs_Apki/studio-zebrra, most: services/GolDnia.js, services/ZebrraTaniec.js)
+    { id: 'studio-zebrra', tytul: 'Studio Zebrra Sports', url: `${MOST}/apki/studio-zebrra/`, znak: '🦓', kolor: '#22c55e', sprawdz: `${MOST}/apki/studio-zebrra/` },
+    // 🦎 Mame Leon Show — nocny talk-show (ta sama apka, strona mame-leon.html; most: services/MameLeonShow.js)
+    { id: 'mame-leon', tytul: 'Mame Leon Show', url: `${MOST}/apki/studio-zebrra/mame-leon.html`, znak: '🦎', kolor: '#e879f9', sprawdz: `${MOST}/apki/studio-zebrra/mame-leon.html` },
 ];
 
 export const PierscienApek: React.FC = () => {

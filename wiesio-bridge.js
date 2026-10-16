@@ -115,6 +115,8 @@ import * as Tlumacz        from './services/Tlumacz.js';
 import * as Glowny         from './services/Glowny.js';
 import { utworzArgoBoba }   from './services/ArgoBob.js';
 import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei, odpowiedzGeminiZwiadu, SZUKAJ_W_GOOGLE } from './services/GolDnia.js';
+import { utworzZebrraTaniec, zamontujTrasyZebrraTanca, PROJEKT as PROJEKT_ZEBRRA_SPORTS } from './services/ZebrraTaniec.js';
+import { utworzMameLeon, zamontujTrasyMameLeon } from './services/MameLeonShow.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import * as SilnikKlonu    from './services/SilnikKlonu.js';
@@ -15383,6 +15385,43 @@ app.post('/api/game-show/stol', (_req, res) => ytOdp(res, (async () => {
     const otwarta = (await Stol.lista()).find((x) => x.tytul === k.tytul && !['odrzucona'].includes(x.etap));
     return { karta: otwarta ?? await Stol.dodaj({ ...k, zrodlo: 'hub', zalozyl: 'TeO Game Show' }), nowa: !otwarta };
 })()));
+
+// ── 🩰 Taniec w Zebrra Sports (services/ZebrraTaniec.js) — prowadzący Studia Zebrra komentują występy Tanecznego Starcia ──
+// Fakty = choreografia (ocena mostu, ranga, ruchy, turnieje) + odcinek TeO Game Show; klip występu na ekranie LED apki.
+// Kanał = ten sam co Gol Dnia (Zebrra Sports), chyba że Suweren przypnie osobny projektowi `zebrra-sports`.
+const ZebrraTaniec = utworzZebrraTaniec({
+    katalog: ANTIGRAVITY_DIR,
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    choreografie: { wczytaj: (id) => Choreografie.wczytaj(id), lista: () => Choreografie.lista(), moje: () => Choreografie.moje() },
+    gameShow: () => GameShow.lista(),
+    publikacja: async (id) => (await PublikacjeYT.wszystkie()).find((x) => x.id === id) ?? null,
+    chat: (model, system, user) => piszModelem(model, system, user),
+    modelDla: (id) => ModeleAgentow.modelDla(id),
+    mow: async ({ tekst, glos, jezyk }) => Wywiady.mowa({ tekst: tekstDoMowy(tekst), glos: await GlosyStada.glos(glos).catch(() => null), jezyk }),
+    publikuj: (z) => PublikacjeYT.przygotuj(z),
+    kanal: async () => (await PublikacjeYT.kanalProjektu(PROJEKT_ZEBRRA_SPORTS)).zapamietany ?? (await PublikacjeYT.kanalProjektu('gol-dnia')).zapamietany ?? null,
+    opisz: (p) => Montazownia.opisz(p),
+    ffmpeg: ffmpegPath,
+    szyna: Szyna,
+});
+zamontujTrasyZebrraTanca(app, ZebrraTaniec, { raw: express.raw });
+
+// ── 🦎 Mame Leon Show (services/MameLeonShow.js) — nocny talk-show: kameleon-gospodarz, goście na kanapie (TeOgochi, bryły) ──
+const MameLeon = utworzMameLeon({
+    katalog: ANTIGRAVITY_DIR,
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    stado: () => Stado.stan(),
+    karta: (id) => Persony.karta(id),
+    bryla: (id) => Assety3D.meta(id),
+    chat: (model, system, user) => piszModelem(model, system, user),
+    modelDla: (id) => ModeleAgentow.modelDla(id),
+    mow: async ({ tekst, glos, jezyk }) => Wywiady.mowa({ tekst: tekstDoMowy(tekst), glos: await GlosyStada.glos(glos).catch(() => null), jezyk }),
+    publikuj: (z) => PublikacjeYT.przygotuj(z),
+    opisz: (p) => Montazownia.opisz(p),
+    ffmpeg: ffmpegPath,
+    szyna: Szyna,
+});
+zamontujTrasyMameLeon(app, MameLeon, { raw: express.raw });
 
 // ── 📱 Formaty i sieci (services/Formaty.js, services/KontaSieci.js) — odcinki → pion 9:16 dla Shorts / TikTok / Reels ──
 // Konta TikTok i Instagram jak YouTube: OAuth z pętlą zwrotną na moście, tokeny w skarbcu Impresariatu. Wysyłka po ✓ Suwerena.

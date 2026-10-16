@@ -55,6 +55,8 @@ const ID = /^f-[0-9a-f]{8}$/;
 /** Program z nazwy pliku montażu (tak je nazywają serwisy programów). */
 export function programZPliku(nazwa) {
     const n = path.basename(String(nazwa));
+    if (/^zebrra_taniec_/i.test(n)) return { id: 'zebrra-taniec', nazwa: '🩰 Zebrra Sports · Taniec' };
+    if (/^mameleon_/i.test(n)) return { id: 'mame-leon', nazwa: '🦎 Mame Leon Show' };
     if (/^gol_.*_studio_/i.test(n)) return { id: 'studio-zebrra', nazwa: '🦓 Studio Zebrra Football' };
     if (/^gol_/i.test(n)) return { id: 'gol-dnia', nazwa: '⚽ Gol Dnia' };
     if (/^gameshow_/i.test(n)) return { id: 'game-show', nazwa: '🎪 TeO Game Show' };

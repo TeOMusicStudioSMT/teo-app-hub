@@ -498,10 +498,16 @@ const ImpresarioDashboard: React.FC = () => {
                         <GameShowPanel />
                         <FormatyPanel />
                         {/* ⚽ Gol Dnia przeniesiony do Studia Zebrra Football jako zakładka (Suweren 2026-10-15) */}
-                        <button onClick={() => otworzApke({ id: 'studio-zebrra', tytul: 'Studio Zebrra Football', url: 'http://127.0.0.1:3001/apki/studio-zebrra/?zakladka=gol-dnia', znak: '🦓', kolor: '#22c55e' })}
+                        <button onClick={() => otworzApke({ id: 'studio-zebrra', tytul: 'Studio Zebrra Sports', url: 'http://127.0.0.1:3001/apki/studio-zebrra/?zakladka=gol-dnia', znak: '🦓', kolor: '#22c55e' })}
                             className="rounded-2xl border border-emerald-500/30 bg-emerald-950/10 p-3 text-left text-xs text-emerald-100 hover:bg-emerald-900/20">
-                            <b className="text-sm">🦓 Otwórz Studio Zebrra — ⚽ Gol Dnia</b>
-                            <span className="block text-[11px] text-slate-400">Mecze, fakty bramek, prowadzący i do trzech współprowadzących, głosy, odcinki i nagranie — zakładka „⚽ Gol Dnia” w Studiu Zebrra Football.</span>
+                            <b className="text-sm">🦓 Otwórz Studio Zebrra Sports — ⚽ Gol Dnia · 🩰 Taniec</b>
+                            <span className="block text-[11px] text-slate-400">Mecze i fakty bramek albo występy z Tanecznego Starcia (ocena mostu, klip na ekranie LED), prowadzący i do trzech współprowadzących, głosy, nagranie — zakładki „⚽ Gol Dnia” i „🩰 Taniec”.</span>
+                        </button>
+                        {/* 🦎 Mame Leon Show — nocny talk-show (services/MameLeonShow.js, strona mame-leon.html apki Studia) */}
+                        <button onClick={() => otworzApke({ id: 'mame-leon', tytul: 'Mame Leon Show', url: 'http://127.0.0.1:3001/apki/studio-zebrra/mame-leon.html', znak: '🦎', kolor: '#e879f9' })}
+                            className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-950/10 p-3 text-left text-xs text-fuchsia-100 hover:bg-fuchsia-900/20">
+                            <b className="text-sm">🦎 Otwórz Mame Leon Show</b>
+                            <span className="block text-[11px] text-slate-400">Talk-show: temat, do trzech gości na kanapie (TeOgochi ze stada albo bryły z Assetów 3D), rozmowa z faktów, głosy Stada, nagranie → Kronikarz → ✓ w Izbie.</span>
                         </button>
                     </div>
                 </section>
