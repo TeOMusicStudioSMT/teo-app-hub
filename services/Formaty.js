@@ -57,6 +57,7 @@ export function programZPliku(nazwa) {
     const n = path.basename(String(nazwa));
     if (/^zebrra_taniec_/i.test(n)) return { id: 'zebrra-taniec', nazwa: '🩰 Zebrra Sports · Taniec' };
     if (/^mameleon_/i.test(n)) return { id: 'mame-leon', nazwa: '🦎 Mame Leon Show' };
+    if (/^news_/i.test(n)) return { id: 'zebrra-news', nazwa: '📰 Zebrra News' };
     if (/^gol_.*_studio_/i.test(n)) return { id: 'studio-zebrra', nazwa: '🦓 Studio Zebrra Football' };
     if (/^gol_/i.test(n)) return { id: 'gol-dnia', nazwa: '⚽ Gol Dnia' };
     if (/^gameshow_/i.test(n)) return { id: 'game-show', nazwa: '🎪 TeO Game Show' };

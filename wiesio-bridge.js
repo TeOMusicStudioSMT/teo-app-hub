@@ -117,6 +117,7 @@ import { utworzArgoBoba }   from './services/ArgoBob.js';
 import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei, odpowiedzGeminiZwiadu, SZUKAJ_W_GOOGLE } from './services/GolDnia.js';
 import { utworzZebrraTaniec, zamontujTrasyZebrraTanca, PROJEKT as PROJEKT_ZEBRRA_SPORTS } from './services/ZebrraTaniec.js';
 import { utworzMameLeon, zamontujTrasyMameLeon } from './services/MameLeonShow.js';
+import { utworzZebrraNews, zamontujTrasyZebrraNews, PROJEKT as PROJEKT_ZEBRRA_NEWS } from './services/ZebrraNews.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
 import * as SilnikKlonu    from './services/SilnikKlonu.js';
@@ -15425,6 +15426,30 @@ const MameLeon = utworzMameLeon({
     szyna: Szyna,
 });
 zamontujTrasyMameLeon(app, MameLeon, { raw: express.raw });
+
+// ── 📰 Zebrra News (services/ZebrraNews.js) — dzienny serwis z publicznych nagłówków RSS, studio News w apce studio-zebrra ──
+// Tylko tytuł + opis + link ze źródeł, własne streszczenie, liczby tylko ze źródeł; obrazy FLUX symboliczne (opcja).
+const ZebrraNews = utworzZebrraNews({
+    katalog: ANTIGRAVITY_DIR,
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    chat: (model, system, user) => piszModelem(model, system, user),
+    modelDla: (id) => ModeleAgentow.modelDla(id),
+    mow: async ({ tekst, glos, jezyk }) => Wywiady.mowa({ tekst: tekstDoMowy(tekst), glos: await GlosyStada.glos(glos).catch(() => null), jezyk }),
+    rysuj: async ({ prompt, prefiks }) => {
+        const przed = await stanWideoZBudzeniem('Zebrra News');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        return Assety3D.kadrFilmu({ prompt, referencje: [], prefiks });
+    },
+    publikuj: (z) => PublikacjeYT.przygotuj(z),
+    kanal: async () => (await PublikacjeYT.kanalProjektu(PROJEKT_ZEBRRA_NEWS)).zapamietany ?? (await PublikacjeYT.kanalProjektu(PROJEKT_ZEBRRA_SPORTS)).zapamietany ?? (await PublikacjeYT.kanalProjektu('gol-dnia')).zapamietany ?? null,
+    spawaj: ({ klipy, wyjscie, celWedlug }) => Spawacz.spawaj({ klipy, wyjscie, opisz: Montazownia.opisz, uruchom: execFileAsync, ffmpeg: ffmpegPath, celWedlug }),
+    klocki: () => Spawacz.zestawKlockow(KORZENIE_WIDEO().klocki, 'News'),
+    opisz: (p) => Montazownia.opisz(p),
+    ffmpeg: ffmpegPath,
+    szyna: Szyna,
+});
+zamontujTrasyZebrraNews(app, ZebrraNews, { raw: express.raw });
+ZebrraNews.startPetli();   // 🤖 automat dnia — domyślnie wyłączony w ustawieniach; OTAKOS_ZEBRRA_NEWS=0 wyłącza pętlę
 
 // ── 📱 Formaty i sieci (services/Formaty.js, services/KontaSieci.js) — odcinki → pion 9:16 dla Shorts / TikTok / Reels ──
 // Konta TikTok i Instagram jak YouTube: OAuth z pętlą zwrotną na moście, tokeny w skarbcu Impresariatu. Wysyłka po ✓ Suwerena.

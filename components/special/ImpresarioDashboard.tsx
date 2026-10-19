@@ -509,6 +509,12 @@ const ImpresarioDashboard: React.FC = () => {
                             <b className="text-sm">🦎 Otwórz Mame Leon Show</b>
                             <span className="block text-[11px] text-slate-400">Talk-show: temat, do trzech gości na kanapie (TeOgochi ze stada albo bryły z Assetów 3D), rozmowa z faktów, głosy Stada, nagranie → Kronikarz → ✓ w Izbie.</span>
                         </button>
+                        {/* 📰 Zebrra News — dzienny serwis z publicznych nagłówków (services/ZebrraNews.js, strona news.html apki Studia) */}
+                        <button onClick={() => otworzApke({ id: 'zebrra-news', tytul: 'Zebrra News', url: 'http://127.0.0.1:3001/apki/studio-zebrra/news.html', znak: '📰', kolor: '#67e8f9' })}
+                            className="rounded-2xl border border-cyan-500/30 bg-cyan-950/10 p-3 text-left text-xs text-cyan-100 hover:bg-cyan-900/20">
+                            <b className="text-sm">📰 Otwórz Zebrra News</b>
+                            <span className="block text-[11px] text-slate-400">Dzienny serwis z publicznych RSS świata: 5–8 tematów, własne streszczenia ze źródłem, ilustracje symboliczne (AI), Gol Donna i Zlat w newsroomie, automat dnia (domyślnie wył.) → ✓ w Izbie.</span>
+                        </button>
                     </div>
                 </section>
 

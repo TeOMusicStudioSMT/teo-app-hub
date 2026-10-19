@@ -47,6 +47,8 @@ const NARZEDZIA: Narzedzie[] = [
     { id: 'studio-zebrra', tytul: 'Studio Zebrra Sports', url: `${MOST}/apki/studio-zebrra/`, znak: '🦓', kolor: '#22c55e', sprawdz: `${MOST}/apki/studio-zebrra/` },
     // 🦎 Mame Leon Show — nocny talk-show (ta sama apka, strona mame-leon.html; most: services/MameLeonShow.js)
     { id: 'mame-leon', tytul: 'Mame Leon Show', url: `${MOST}/apki/studio-zebrra/mame-leon.html`, znak: '🦎', kolor: '#e879f9', sprawdz: `${MOST}/apki/studio-zebrra/mame-leon.html` },
+    // 📰 Zebrra News — dzienny serwis z nagłówków świata (strona news.html; most: services/ZebrraNews.js)
+    { id: 'zebrra-news', tytul: 'Zebrra News', url: `${MOST}/apki/studio-zebrra/news.html`, znak: '📰', kolor: '#67e8f9', sprawdz: `${MOST}/apki/studio-zebrra/news.html` },
 ];
 
 export const PierscienApek: React.FC = () => {
