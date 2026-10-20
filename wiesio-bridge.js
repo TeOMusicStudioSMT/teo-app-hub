@@ -6360,20 +6360,32 @@ app.post('/api/comfy/ensure', async (req, res) => {
     res.json({ success: true, katalog: COMFY_DIR, base: COMFY_BASE, ...wynik });
 });
 
-/** Czy ComfyUI żyje i czy zna nody MiniMax (czyli czy jest dość świeży). */
+/**
+ * Czy ComfyUI żyje i czy zna nody MiniMax (czyli czy jest dość świeży).
+ * Życie = lekkie /system_stats (2,5 s). Lista nodów = /object_info (~2 MB, 1,8 s na rozgrzanym, dłużej
+ * po starcie i w trakcie renderu) — z dłuższym limitem i w pamięci na 10 min. Dawniej /object_info
+ * z limitem 2,5 s decydowało o „żyje” → Joanna meldowała „nieosiągalny (This operation was aborted)”.
+ */
+let pamiecNodowComfy = null; // { kiedy, nodeCount, minimaxNodes }
 async function comfyStatus() {
     try {
-        const c = new AbortController(); const t = setTimeout(() => c.abort(), 2500);
-        const r = await fetch(`${COMFY_BASE}/object_info`, { signal: c.signal });
-        clearTimeout(t);
+        const r = await fetch(`${COMFY_BASE}/system_stats`, { signal: AbortSignal.timeout(2500) });
         if (!r.ok) return { online: false, message: `ComfyUI odpowiedział HTTP ${r.status}` };
-        const info = await r.json();
-        const nody = Object.keys(info);
-        const minimax = nody.filter(n => /minimax/i.test(n));
-        return { online: true, nodeCount: nody.length, minimaxNodes: minimax, maMinimax: minimax.length > 0 };
     } catch (err) {
         return { online: false, message: `ComfyUI nieosiągalny na ${COMFY_BASE} (${err.message})` };
     }
+    if (!pamiecNodowComfy || Date.now() - pamiecNodowComfy.kiedy > 10 * 60_000) {
+        try {
+            const r = await fetch(`${COMFY_BASE}/object_info`, { signal: AbortSignal.timeout(20_000) });
+            if (r.ok) {
+                const nody = Object.keys(await r.json());
+                pamiecNodowComfy = { kiedy: Date.now(), nodeCount: nody.length, minimaxNodes: nody.filter(n => /minimax/i.test(n)) };
+            }
+        } catch { /* ComfyUI żyje, tylko lista nodów nie zdążyła — zostaje poprzednia pamięć */ }
+    }
+    if (!pamiecNodowComfy) return { online: true, nodeCount: null, minimaxNodes: [], maMinimax: false, message: 'ComfyUI żyje, ale lista nodów nie zdążyła się wczytać (20 s).' };
+    const { nodeCount, minimaxNodes } = pamiecNodowComfy;
+    return { online: true, nodeCount, minimaxNodes, maMinimax: minimaxNodes.length > 0 };
 }
 
 /**
