@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import { execFile as execFileCb } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import express from 'express';
-import { utworzZebrraNews, zamontujTrasyZebrraNews, naglowkiZXml, wybierzTematy, podobne, czyPowazny, odczytajScenariusz, sprawdzLiczby, kwestieOdcinka, ktoMowiNews, promptScenariusza, promptObrazu, promptWyboru, odczytajWybor, WYBORY } from '../services/ZebrraNews.js';
+import { utworzZebrraNews, zamontujTrasyZebrraNews, naglowkiZXml, wybierzTematy, podobne, czyPowazny, odczytajScenariusz, sprawdzLiczby, kwestieOdcinka, ktoMowiNews, promptScenariusza, promptObrazu, promptWyboru, odczytajWybor, WYBORY, promptRedakcji, odczytajRedakcje, zastosujRedakcje, REGIONY } from '../services/ZebrraNews.js';
 import { spawaj as spawajNaprawde, zestawKlockow } from '../services/Spawacz.js';
 import { opisz as opiszNaprawde } from '../services/Montazownia.js';
 import { programZPliku } from '../services/Formaty.js';
@@ -93,6 +93,7 @@ test('trasy na prawdziwym ffmpeg: nagłówki z atrapy RSS → odcinek → scenar
             katalog: kat, ffmpeg: ffmpegPath, katalogMontazy: async (p) => path.join(kat, 'montaz', p), teraz: () => teraz,
             fetch: async (u) => (kanaly[u] ? { ok: true, text: async () => kanaly[u] } : { ok: false, status: 404 }),
             chat: async (_m, _s, user) => {
+                if (/NUMER \| DZIEDZINA/.test(user)) return { tekst: '' };   // redakcja — atrapa nie redaguje, zostają etykiety kanału
                 prosby.push(user);
                 const ile = (user.match(/NEWS \d+ \[/g) ?? []).length;
                 const linie = ['INTRO: Good morning from Zebrra News.', ...Array.from({ length: ile }, (_, i) => `NEWS ${i + 1}: Story number in our own words, reports the source.`), `OUTRO: ${prosby.length === 1 ? 'See you at 7.' : 'See you tomorrow.'}`];
@@ -166,4 +167,29 @@ test('🤯 wybór zaskakujących: tylko numery z listy, bez dubli, ≤ 2 z redak
     assert.deepEqual(odczytajWybor('<think>9, 1</think>1, 2, 3, 2, 99, 4', k, 3), [0, 1, 3], 'trzeci z BBC odpada, 99 spoza listy');
     assert.throws(() => odczytajWybor('nie wiem', k, 3), /za mało tematów/);
     assert.deepEqual(Object.keys(WYBORY), ['roznorodne', 'zaskakujace']);
+});
+
+test('🗞️ redakcja: dziedzina i region z treści (zamknięte listy), tytuł w języku odcinka bez nowych liczb, oryginał zostaje', () => {
+    const newsy = [
+        { tytul: 'Japan launches historic mission to bring back Mars moon samples', opis: '', zrodlo: 'Al Jazeera', region: 'Bliski Wschód', dziedzina: 'kosmos', powaga: false },
+        { tytul: 'Suborbitalna rakieta polskiej konstrukcji poleciała po raz czwarty', opis: 'PERUN-em interesuje się wojsko', zrodlo: 'Rzeczpospolita', region: 'Polska', dziedzina: 'konflikt', powaga: false },
+        { tytul: 'Storm kills 3', opis: '', zrodlo: 'BBC News', region: 'świat', dziedzina: 'klimat', powaga: false },
+    ];
+    const { user } = promptRedakcji(newsy, 'en');
+    assert.match(user, /po angielsku/);
+    assert.match(user, /bliski-wschod/);
+    const red = odczytajRedakcje([
+        '1 | kosmos | azja | nie | Japan launches historic mission to bring back Mars moon samples',
+        '2 | technologia | polska | nie | Polish-built suborbital rocket flies for the fourth time',
+        '3 | klimat | europa | tak | Storm kills 30',          // liczba spoza źródła → odrzucone
+        '9 | kosmos | azja | nie | spoza listy',
+    ].join('\n'), newsy);
+    assert.deepEqual([...red.keys()], [0, 1]);
+    const n = zastosujRedakcje(newsy[1], red.get(1), 'en');
+    assert.equal(n.dziedzina, 'technologia');
+    assert.equal(n.region, 'Poland');
+    assert.equal(n.regionKanalu, 'Polska');
+    assert.equal(n.tytul, 'Polish-built suborbital rocket flies for the fourth time');
+    assert.equal(n.tytulOryginalny, newsy[1].tytul);
+    assert.equal(zastosujRedakcje(newsy[0], red.get(0), 'pl').region, REGIONY.azja[0]);
 });

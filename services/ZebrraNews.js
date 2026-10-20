@@ -67,6 +67,50 @@ export const DZIEDZINY = {
     sport: /\b(football|soccer|tennis|olympic|championship|match|league|sport|piłk|pilk|mecz|mistrzostw|olimpi)/i,
 };
 export const NAZWY_DZIEDZIN = { konflikt: ['konflikty', 'conflicts'], polityka: ['polityka', 'politics'], gospodarka: ['gospodarka', 'economy'], technologia: ['technologia', 'technology'], nauka: ['nauka', 'science'], kosmos: ['kosmos', 'space'], klimat: ['klimat i pogoda', 'climate & weather'], zdrowie: ['zdrowie', 'health'], kultura: ['kultura', 'culture'], sport: ['sport', 'sport'], swiat: ['świat', 'world'] };
+/** Regiony newsa (zamknięta lista; etykieta [pl, en]). Region kanału to tylko podpowiedź — Japonia z Al Jazeery to Azja. */
+export const REGIONY = { swiat: ['świat', 'world'], europa: ['Europa', 'Europe'], polska: ['Polska', 'Poland'], 'ameryka-pn': ['Ameryka Północna', 'North America'],
+    'ameryka-lac': ['Ameryka Łacińska', 'Latin America'], afryka: ['Afryka', 'Africa'], 'bliski-wschod': ['Bliski Wschód', 'Middle East'], azja: ['Azja', 'Asia'],
+    oceania: ['Oceania', 'Oceania'], kosmos: ['kosmos', 'space'], polarne: ['Arktyka i Antarktyda', 'polar regions'] };
+
+/**
+ * 🗞️ Redakcja wybranych newsów (2026-10-20: „Bliski Wschód” przy misji Japonii, „konflikty” przy rakiecie PERUN, polski tytuł
+ * w angielskim serwisie): model wydawcy ustala dziedzinę i region Z TREŚCI (zamknięte listy), powagę i tytuł w języku odcinka.
+ */
+export function promptRedakcji(newsy, jezyk) {
+    const en = jezyk === 'en';
+    const lista = newsy.map((n, i) => `${i + 1}. [${n.zrodlo}] ${n.tytul}${n.opis ? ` — ${String(n.opis).slice(0, 240)}` : ''}`).join('\n');
+    return {
+        system: 'Jesteś redaktorem serwisu Zebrra News. Opisujesz newsy krótkimi etykietami z zamkniętych list. Odpowiadasz tylko liniami w podanym formacie.',
+        user: `Dla każdego newsa podaj jedną linię:\nNUMER | DZIEDZINA | REGION | POWAŻNY | TYTUŁ\n` +
+            `DZIEDZINA — jedna z: ${Object.keys(NAZWY_DZIEDZIN).join(', ')} (o czym naprawdę jest news; rakieta badawcza to kosmos albo technologia, nie konflikt).\n` +
+            `REGION — jeden z: ${Object.keys(REGIONY).join(', ')} (gdzie dzieje się wydarzenie, NIE skąd jest redakcja; misja kosmiczna = kosmos albo kraj, który ją wysyła).\n` +
+            `POWAŻNY — tak, gdy news dotyczy wojny, katastrofy, śmierci albo cierpienia ludzi; inaczej nie.\n` +
+            `TYTUŁ — tytuł newsa ${en ? 'po angielsku' : 'po polsku'}, krótki (do 90 znaków), wierny źródłu: tłumacz, gdy jest w innym języku, bez nowych faktów i bez liczb, których nie ma w tytule ani opisie.\n\n${lista}`,
+    };
+}
+export function odczytajRedakcje(tekst, newsy) {
+    const z = (t) => String(t ?? '').match(/\d+(?:[.,]\d+)?/g)?.map((x) => x.replace(',', '.')) ?? [];
+    const wynik = new Map();
+    for (const linia of String(tekst ?? '').replace(/<think>[\s\S]*?<\/think>/gi, '').split('\n')) {
+        const cz = linia.split('|').map((x) => x.trim().replace(/^\*+|\*+$/g, ''));
+        if (cz.length < 5) continue;
+        const i = Number(cz[0].replace(/[^\d]/g, '')) - 1;
+        if (!(i >= 0 && i < newsy.length) || wynik.has(i)) continue;
+        const dziedzina = cz[1].toLowerCase(), region = cz[2].toLowerCase(), tytul = cz.slice(4).join(' | ').replace(/^["„“]|["”]$/g, '').trim();
+        if (!NAZWY_DZIEDZIN[dziedzina] || !REGIONY[region] || !tytul || tytul.length > 160) continue;
+        const dozwolone = new Set([...z(newsy[i].tytul), ...z(newsy[i].opis)]);
+        if (z(tytul).some((x) => !dozwolone.has(x))) continue;   // tłumacz nie dopisuje liczb
+        wynik.set(i, { dziedzina, region, powaga: /^(tak|yes)/i.test(cz[3]), tytul });
+    }
+    return wynik;
+}
+/** Wynik redakcji na news: dziedzina, region w języku odcinka, tytuł do ekranu; oryginał zostaje (źródło, opis filmu, sprawdzanie liczb). */
+export function zastosujRedakcje(n, red, jezyk) {
+    const en = jezyk === 'en';
+    return { ...n, tytulOryginalny: n.tytulOryginalny ?? n.tytul, regionKanalu: n.regionKanalu ?? n.region,
+        dziedzina: red.dziedzina, regionKlucz: red.region, region: REGIONY[red.region][en ? 1 : 0], powaga: n.powaga || red.powaga, tytul: red.tytul };
+}
+
 /** Wojny, katastrofy, śmierć — powaga w tonie, zero żartów. */
 const POWAGA = /\b(kill|killed|dead|death|dies|died|war|attack|bomb|shooting|earthquake|flood|disaster|crash|hostage|famine|massacre|wounded|injured|victim|genocide|zgin|zabit|śmier|smier|wojn|atak|zamach|ofiar|katastrof|trzęsieni|trzesieni|powódź|powodz|rann[iy]|zakładni|zakladni)/i;
 
@@ -177,6 +221,7 @@ export function promptScenariusza(s) {
         '3. Na końcu newsa podaj źródło słowami („podaje BBC News” / „reports BBC News”).',
         '4. Ton neutralny, bez opinii politycznych i bez stron. Przy newsach POWAŻNYCH (wojna, katastrofa, śmierć) — powaga i szacunek, zero żartów; Zlat Kadabra w serwisie mówi skromniej, bez gwiazdorzenia.',
         `5. Mów na głos, bez emoji i markdown. Język: ${en ? 'English' : 'polski'} (tłumacz streszczenie, jeśli źródło jest w innym języku).`,
+        '6. Zachowaj PUENTĘ nagłówka: jeśli news obala oczekiwanie (np. „wrak samolotu okazał się kępą drzew”), powiedz to wprost i wyraźnie, nie rozmywaj w ogólnikach.',
         'FORMAT (każda linia od etykiety, nic poza tym):',
         'INTRO: … (powitanie, data słowami bez liczb, zapowiedź dziedzin)',
         ...s.newsy.map((_, i) => `NEWS ${i + 1}: …`),
@@ -215,7 +260,7 @@ export function sprawdzLiczby(sc, s) {
     const zNazw = s.newsy.flatMap((n) => z(n.zrodlo));
     const intro = liczbyPozaFaktami(`${sc.intro} ${sc.outro}`, [s.newsy.length, ...zNazw]);
     if (intro.length) zle.push(`INTRO/OUTRO (${intro.join(', ')})`);
-    sc.newsy.forEach((t, i) => { const n = s.newsy[i]; const b = liczbyPozaFaktami(t, [i + 1, ...z(n.tytul), ...z(n.opis), ...z(n.zrodlo)]); if (b.length) zle.push(`NEWS ${i + 1} (${b.join(', ')})`); });
+    sc.newsy.forEach((t, i) => { const n = s.newsy[i]; const b = liczbyPozaFaktami(t, [i + 1, ...z(n.tytul), ...z(n.tytulOryginalny), ...z(n.opis), ...z(n.zrodlo)]); if (b.length) zle.push(`NEWS ${i + 1} (${b.join(', ')})`); });
     return zle.length ? `liczby spoza źródeł: ${zle.join('; ')}` : null;
 }
 
@@ -321,7 +366,7 @@ export function utworzZebrraNews(o) {
         const s = await M.wczytaj(id);
         try {
             if (!cfg.chat) throw new Error('Most nie ma modelu do scenariusza.');
-            if (s.wybor === 'zaskakujace' && s.kandydaci?.length > s.newsy.length) {
+            if (s.wybor === 'zaskakujace' && !s.wybrane && !s.napisano && s.kandydaci?.length > s.newsy.length) {
                 const ile = s.newsy.length;
                 try {
                     const model = (await cfg.modelDla(s.narrator).catch(() => null)) ?? (await cfg.modelDla('pilkarka').catch(() => null));
@@ -334,7 +379,19 @@ export function utworzZebrraNews(o) {
                     if (!idx) throw new Error(blad);
                     s.newsy = idx.map((i) => s.kandydaci[i]);
                     s.uwagaWyboru = null;
+                    s.wybrane = true;
                 } catch (e) { s.uwagaWyboru = `🤯 wybór zaskakujących nie wyszedł (${String(e.message || e).slice(0, 160)}) — zostały tematy różnorodne`; }
+                await M.pisz(s);
+            }
+            if (!s.zredagowane) {
+                try {
+                    const model = (await cfg.modelDla(s.narrator).catch(() => null)) ?? (await cfg.modelDla('pilkarka').catch(() => null));
+                    const { system, user } = promptRedakcji(s.newsy, s.jezyk);
+                    const red = odczytajRedakcje((await cfg.chat(model, system, user)).tekst, s.newsy);
+                    s.newsy = s.newsy.map((n, i) => (red.has(i) ? zastosujRedakcje(n, red.get(i), s.jezyk) : n));
+                    s.uwagaRedakcji = red.size < s.newsy.length ? `🗞️ redakcja objęła ${red.size} z ${s.newsy.length} newsów — reszta z etykietami kanału` : null;
+                } catch (e) { s.uwagaRedakcji = `🗞️ redakcja nie wyszła (${String(e.message || e).slice(0, 160)}) — etykiety kanału`; }
+                s.zredagowane = true;
                 await M.pisz(s);
             }
             const w = await napiszScenariusz(s);
@@ -344,6 +401,7 @@ export function utworzZebrraNews(o) {
                 const praca = M.praca(id);
                 await fsP.mkdir(praca, { recursive: true });
                 for (const [i, n] of s.newsy.entries()) {
+                    if (n.obraz && fsSync.existsSync(path.join(praca, n.obraz))) continue;   // przeróbka nie rysuje drugi raz
                     try {
                         const p = await cfg.rysuj({ prompt: promptObrazu(n), prefiks: `katedra/zebrra-news/${s.id}-${i + 1}` });
                         const cel = path.join(praca, `news-${i + 1}.png`);
@@ -380,8 +438,9 @@ export function utworzZebrraNews(o) {
     async function ponow(id) {
         const s = await M.wczytaj(id);
         if (M.wRobocie.has(id)) throw new Error('Ten odcinek właśnie się robi.');
-        Object.assign(s, { stan: 'robi', powod: null, scenariusz: null, plik: null, publikacja: null, uwagaObrazow: null });
-        for (const n of s.newsy) delete n.obraz;
+        // przeróbka: tematy dnia i narysowane ilustracje zostają; redakcja (etykiety, tytuły) i scenariusz od nowa
+        const odRedakcji = s.newsy.map(({ tytulOryginalny, regionKanalu, regionKlucz: _rk, ...n }) => ({ ...n, tytul: tytulOryginalny ?? n.tytul, region: regionKanalu ?? n.region }));
+        Object.assign(s, { stan: 'robi', powod: null, scenariusz: null, plik: null, publikacja: null, uwagaObrazow: null, zredagowane: false, uwagaRedakcji: null, newsy: odRedakcji });
         await M.pisz(s);
         M.zakolejkuj(id, () => przebieg(id));
         return s;
@@ -510,4 +569,4 @@ export function zamontujTrasyZebrraNews(app, N, { raw = null, maxNagraniaMb = 60
     app.delete('/api/zebrra-news/:id', (req, res) => odp(res, N.usun(req.params.id).then((usuniety) => ({ usuniety }))));
 }
 
-export default { utworzZebrraNews, zamontujTrasyZebrraNews, ZRODLA, naglowkiZXml, wybierzTematy, WYBORY, promptWyboru, odczytajWybor, podobne, dziedzinaNewsa, czyPowazny, promptScenariusza, odczytajScenariusz, sprawdzLiczby, kwestieOdcinka, ktoMowiNews, promptObrazu, kontekstKronikarza };
+export default { utworzZebrraNews, zamontujTrasyZebrraNews, ZRODLA, naglowkiZXml, wybierzTematy, WYBORY, promptWyboru, odczytajWybor, REGIONY, promptRedakcji, odczytajRedakcje, zastosujRedakcje, podobne, dziedzinaNewsa, czyPowazny, promptScenariusza, odczytajScenariusz, sprawdzLiczby, kwestieOdcinka, ktoMowiNews, promptObrazu, kontekstKronikarza };
