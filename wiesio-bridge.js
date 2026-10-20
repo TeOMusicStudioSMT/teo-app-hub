@@ -12080,8 +12080,20 @@ app.post('/api/music/generate', async (req, res) => {
         });
     }
 
-    // 2) ComfyUI żyje i zna MiniMax?
-    const comfy = await comfyStatus();
+    // 2) ComfyUI żyje i zna MiniMax? Śpi (np. zgasł z restartem mostu) → budzimy i czekamy ≤ 2 min,
+    //    zamiast odmawiać (2026-10-20: Joanna meldowała „nieosiągalny”, a nikt go nie obudził).
+    let comfy = await comfyStatus();
+    if (!comfy.online) {
+        const budzenie = await zapewnijComfyUI('generowanie muzyki').catch(() => null);
+        if (budzenie?.online || budzenie?.started || comfyStartuje) {
+            const koniec = Date.now() + 120_000;
+            while (!comfy.online && Date.now() < koniec) {
+                await new Promise((r) => setTimeout(r, 3000));
+                comfy = await comfyStatus();
+            }
+            if (!comfy.online) comfy = { ...comfy, message: `ComfyUI obudzony, ale nie wstał w 2 min (${comfy.message}). Dziennik startu: ${COMFY_DIR}.` };
+        }
+    }
     if (!comfy.online) {
         return res.status(424).json({
             success: false, etap: 'comfy', message: comfy.message,
