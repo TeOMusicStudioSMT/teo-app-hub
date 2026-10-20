@@ -12,13 +12,15 @@ import { Quiz } from '../../types';
 import { cn } from '../../lib/helpers';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FundamentKatedry, RecenzjeKatedry } from './AkademiaTresci';
+import { BibliotekaShoudow } from './BibliotekaShoudow';
 
-type Zakladka = 'quizzes' | 'tutorials' | 'fundament' | 'recenzje';
+type Zakladka = 'quizzes' | 'tutorials' | 'fundament' | 'recenzje' | 'biblioteka';
 const ZAKLADKI: { id: Zakladka; nazwa: string }[] = [
     { id: 'quizzes', nazwa: '🎓 Quizy' },
     { id: 'tutorials', nazwa: '🧭 Przewodniki' },
     { id: 'fundament', nazwa: '🏛️ Fundament' },
     { id: 'recenzje', nazwa: '💬 Recenzje' },
+    { id: 'biblioteka', nazwa: '📚 Biblioteka Shoudów' },
 ];
 
 const priorityConfig: { [key in Priority]: { label: string; selected: string; unselected: string; pill: string } } = {
@@ -254,6 +256,7 @@ export const QuantumCompass: React.FC<{ onOtworz?: (widok: string) => void }> = 
 
                 {activeTab === 'fundament' && <FundamentKatedry onOtworz={onOtworz} />}
                 {activeTab === 'recenzje' && <RecenzjeKatedry />}
+                {activeTab === 'biblioteka' && <BibliotekaShoudow />}
             </div>
         </DashboardCard>
     );

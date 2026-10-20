@@ -9,6 +9,7 @@ import { utworzJev, PROG_ZROBIONE as JEV_PROG } from './services/Jev.js';
 import { utworzJevLokalny } from './services/JevLokalny.js';
 import { utworzPartytury, skilleZKatalogu } from './services/Partytury.js';
 import { utworzUprzaz, zamontujTrasyUprzezy, zadanieZebrraNews } from './services/Uprzaz.js';
+import { utworzBazeWiedzy, zamontujTrasyBazyWiedzy, kolekcjaShoudow } from './services/BazaWiedzy.js';
 import { utworzStrazModeli } from './services/StrazModeli.js';
 import { utworzChmureBryl, promptStylu, oczyscStyl, ZESTAWY_AKCJI } from './services/ChmuraBryl.js';
 import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch.js';
@@ -15545,6 +15546,51 @@ const Uprzaz = utworzUprzaz({
     szyna: Szyna,
 });
 zamontujTrasyUprzezy(app, Uprzaz);
+
+// ── 📚 Baza Wiedzy (services/BazaWiedzy.js) — prywatne kolekcje z odpowiedziami z przypisami (RAG lokalnie) ──
+// Dziś „shoudy”: PDF-y Crimson Circle Suwerena z _OtakOs_Wiedza (© Crimson Circle IP — tylko maszyna, nic na zewnątrz).
+// Embeddingi lokalnie (Ollama /api/embed), odpowiedź większym modelem (domyślnie gemma4:12B; Tryb Katedry może ją wysłać do chmury).
+const BAZA_WIEDZY_MODEL = process.env.OTAKOS_BIBLIOTEKA_MODEL || 'gemma4:12B';
+const BazaWiedzy = utworzBazeWiedzy({
+    katalog: path.join(ANTIGRAVITY_DIR, 'baza-wiedzy'),
+    kolekcje: [kolekcjaShoudow(process.env.OTAKOS_SHOUDY_DIR || path.join(__dirname, '_OtakOs_Wiedza', 'CC Shoud materials', 'ALL CC Shoud PDF'))],
+    osadz: async (teksty, model) => {
+        const r = await fetch(`${OLLAMA_BASE}/api/embed`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, input: teksty, keep_alive: '2m' }), signal: AbortSignal.timeout(180_000) });
+        if (!r.ok) throw new Error(`Ollama /api/embed HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
+        return (await r.json()).embeddings;
+    },
+    // Strumień NDJSON: nagłówki wracają od razu (bez limitu 300 s undici), num_ctx mieści 8 fragmentów (~3 tys. tokenów) + odpowiedź.
+    pisz: async ({ model, system, prompt }) => {
+        const silnik = model || BAZA_WIEDZY_MODEL;
+        const r = await fetch(`${OLLAMA_BASE}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: silnik, system, prompt, stream: true, think: false, keep_alive: '2m', options: { num_ctx: 8192, temperature: 0.2 } }) });
+        if (!r.ok) throw new Error(`Ollama HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
+        let tekst = '', reszta = '';
+        const dekoder = new TextDecoder();
+        for await (const kawal of r.body) {
+            reszta += dekoder.decode(kawal, { stream: true });
+            const linie = reszta.split('\n'); reszta = linie.pop();
+            for (const l of linie) { if (!l.trim()) continue; const j = JSON.parse(l); if (j.error) throw new Error(j.error); tekst += j.response || ''; }
+        }
+        if (reszta.trim()) { const j = JSON.parse(reszta); if (j.error) throw new Error(j.error); tekst += j.response || ''; }
+        return { tekst: tekst.trim(), model: silnik };
+    },
+    modelOdpowiedzi: async () => BAZA_WIEDZY_MODEL,
+    // Karta 6 GB: embeddingi i model odpowiedzi nie liczą naraz z renderem ComfyUI (ComfyUI śpi = wolno).
+    kartaZajeta: async () => {
+        const r = await fetch(`${COMFY_BASE}/queue`, { signal: AbortSignal.timeout(3000) }).catch(() => null);
+        if (!r?.ok) return null;
+        const q = await r.json().catch(() => ({}));
+        return (q.queue_running?.length ?? 0) > 0 ? 'ComfyUI liczy render' : null;
+    },
+    zwolnijKarte: () => Karta.oddajKarteZRenderu(COMFY_BASE),
+    szyna: Szyna,
+});
+zamontujTrasyBazyWiedzy(app, BazaWiedzy, {
+    modele: async () => {
+        const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(4000) });
+        return ((await r.json()).models ?? []).map((m) => m.name).filter((n) => !/embed/i.test(n));
+    },
+});
 
 // ── 📱 Formaty i sieci (services/Formaty.js, services/KontaSieci.js) — odcinki → pion 9:16 dla Shorts / TikTok / Reels ──
 // Konta TikTok i Instagram jak YouTube: OAuth z pętlą zwrotną na moście, tokeny w skarbcu Impresariatu. Wysyłka po ✓ Suwerena.

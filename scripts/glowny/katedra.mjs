@@ -15,6 +15,7 @@
  *   node scripts/glowny/katedra.mjs wideo pliki [klocki|move]
  *   node scripts/glowny/katedra.mjs wideo przytnij <plik> <od_s> [do_s]   (nowy plik obok — oryginał zostaje)
  *   node scripts/glowny/katedra.mjs wideo potnij <plik> <sekundy>         (klocki po N s w podkatalogu)
+ *   node scripts/glowny/katedra.mjs biblioteka <pytanie…>                 (📚 Shoudy: odpowiedź z przypisami, prywatne)
  */
 const MOST = process.env.OTAKOS_MOST || 'http://127.0.0.1:3001';
 
@@ -49,6 +50,7 @@ const MOCE = `MOCE KATEDRY (most :3001) — przez ten skrypt, bez pytania:
   zapytaj <TeOgochi> <zadanie>         stado: muzyka, kod (kodeks), gry (pionek), modele (zwiadowca)…
   nocna <robota> [JSON]                Nocna Zmiana (długie roboty w nocy)
   stan / stol / pamiec                 fakty o projektach, Stole, RAM
+  biblioteka <pytanie>                 📚 Biblioteka Shoudów (prywatna, © Crimson Circle): odpowiedź tylko z fragmentów, z przypisami
 <plik> = ścieżka względna w _OtakOs_Klocki, „move:<plik>" albo pełna ścieżka wewnątrz tych katalogów.
 Inne moduły (ComfyUI, Assety3D, Marketplace, muzyka) — przez TeOgochi (zapytaj) albo trasy z CLAUDE.md (curl = prośba do Suwerena).`;
 
@@ -98,6 +100,14 @@ export const POLECENIA = {
         if (json) { try { parametry = JSON.parse(json); } catch { throw new Error('Parametry muszą być JSON-em, np. {"projektStada":"x-1"}'); } }
         const d = await most('/api/nocna/dodaj', { rodzaj, parametry, notatka: 'od Głównego' });
         return `Dodane do Nocnej Zmiany: ${rodzaj} (${d.zadanie?.id ?? d.id ?? 'ok'}) — ruszy, gdy Suweren włączy Zmianę i otworzą się bramy.`;
+    },
+    async biblioteka(argi) {
+        const pytanie = argi.join(' ').trim();
+        if (!pytanie) throw new Error('Użycie: biblioteka <pytanie…>');
+        const d = await most('/api/baza-wiedzy/shoudy/pytanie', { pytanie }, 15 * 60_000);
+        const uzyte = new Set(d.sprawdzenie?.uzyte ?? []);
+        return [d.odpowiedz, '', `Źródła (zdań ze źródłem ${d.sprawdzenie?.zZrodlem ?? 0}/${d.sprawdzenie?.zdan ?? 0}, model ${d.model ?? '—'}):`,
+            ...d.fragmenty.filter((f) => uzyte.has(f.n)).map((f) => `[${f.n}] ${f.etykieta}, s. ${f.strona} — ${f.plik}`)].join('\n');
     },
     async pamiec() {
         const d = await most('/api/system/memory');
