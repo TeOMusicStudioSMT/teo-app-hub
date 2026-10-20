@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import { execFile as execFileCb } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import express from 'express';
-import { utworzZebrraNews, zamontujTrasyZebrraNews, naglowkiZXml, wybierzTematy, podobne, czyPowazny, odczytajScenariusz, sprawdzLiczby, kwestieOdcinka, ktoMowiNews, promptScenariusza, promptObrazu } from '../services/ZebrraNews.js';
+import { utworzZebrraNews, zamontujTrasyZebrraNews, naglowkiZXml, wybierzTematy, podobne, czyPowazny, odczytajScenariusz, sprawdzLiczby, kwestieOdcinka, ktoMowiNews, promptScenariusza, promptObrazu, promptWyboru, odczytajWybor, WYBORY } from '../services/ZebrraNews.js';
 import { spawaj as spawajNaprawde, zestawKlockow } from '../services/Spawacz.js';
 import { opisz as opiszNaprawde } from '../services/Montazownia.js';
 import { programZPliku } from '../services/Formaty.js';
@@ -150,4 +150,20 @@ test('trasy na prawdziwym ffmpeg: nagłówki z atrapy RSS → odcinek → scenar
             await N.czekaj();
         } finally { serwer.close(); }
     } finally { await fs.rm(kat, { recursive: true, force: true }); }
+});
+
+test('🤯 wybór zaskakujących: tylko numery z listy, bez dubli, ≤ 2 z redakcji, błąd wprost przy za małej liczbie', () => {
+    const k = [
+        { tytul: 'Ośmiornica otwiera słoik', zrodlo: 'BBC News', region: 'świat', opis: 'Nagranie z akwarium' },
+        { tytul: 'Rekord głębokości', zrodlo: 'BBC News', region: 'świat' },
+        { tytul: 'Trzeci z BBC', zrodlo: 'BBC News', region: 'świat' },
+        { tytul: 'Nowa kometa', zrodlo: 'NASA', region: 'kosmos' },
+        { tytul: 'Pszczoły liczą', zrodlo: 'DW', region: 'Europa' },
+    ];
+    const { user } = promptWyboru(k, 3);
+    assert.match(user, /1\. \[BBC News · świat\] Ośmiornica otwiera słoik — Nagranie z akwarium/);
+    assert.match(user, /3 różnych numerów/);
+    assert.deepEqual(odczytajWybor('<think>9, 1</think>1, 2, 3, 2, 99, 4', k, 3), [0, 1, 3], 'trzeci z BBC odpada, 99 spoza listy');
+    assert.throws(() => odczytajWybor('nie wiem', k, 3), /za mało tematów/);
+    assert.deepEqual(Object.keys(WYBORY), ['roznorodne', 'zaskakujace']);
 });

@@ -29,6 +29,9 @@ export const PROJEKT = 'zebrra-news';
 export const NAZWA = 'Zebrra News';
 export const JEZYKI = { en: 'English', pl: 'polski' };
 export const MIN_NEWSOW = 3, MAX_NEWSOW = 8;
+/** Jak wybieramy tematy dnia: różnorodnie (heurystyka) albo 🤯 zaskakujące (model wybiera z szerokiej listy kandydatów). */
+export const WYBORY = { roznorodne: 'różnorodne', zaskakujace: 'zaskakujące' };
+export const MAX_KANDYDATOW = 24;
 const ID = /^n-[0-9a-f]{8}$/;
 
 /** Publiczne kanały RSS bez klucza (sprawdzone 2026-10-19 z tej maszyny). Suweren zmienia listę w ustawieniach. */
@@ -103,13 +106,13 @@ export function podobne(a, b) {
  * Tematy dnia: świeże (≤ `godzin` h, bez daty na końcu), bez dubli wydarzenia (podobieństwo ≥ 0,34), po kolei z RÓŻNYCH
  * dziedzin, potem regionów, najwyżej 2 z jednego kanału. Zwraca `ile` newsów z dziedziną i flagą powagi.
  */
-export function wybierzTematy(naglowki, { ile = 6, teraz = Date.now(), godzin = 36 } = {}) {
+export function wybierzTematy(naglowki, { ile = 6, teraz = Date.now(), godzin = 36, limit = MAX_NEWSOW } = {}) {
     const swieze = naglowki.filter((n) => !n.czas || teraz - Date.parse(n.czas) <= godzin * 3600_000)
         .sort((a, b) => (Date.parse(b.czas ?? 0) || 0) - (Date.parse(a.czas ?? 0) || 0));
     const unikalne = [];
     for (const n of swieze) if (!unikalne.some((u) => podobne(u.tytul, n.tytul) >= 0.34)) unikalne.push({ ...n, dziedzina: dziedzinaNewsa(n), powaga: czyPowazny(n) });
     const out = [], uzyteD = new Map(), uzyteR = new Map(), zKanalu = new Map();
-    const ile_ = Math.max(MIN_NEWSOW, Math.min(MAX_NEWSOW, ile));
+    const ile_ = Math.max(MIN_NEWSOW, Math.min(limit, ile));
     while (out.length < ile_) {
         const kand = unikalne.filter((n) => !out.includes(n) && (zKanalu.get(n.zrodloId) ?? 0) < 2);
         if (!kand.length) break;
@@ -120,6 +123,37 @@ export function wybierzTematy(naglowki, { ile = 6, teraz = Date.now(), godzin = 
         uzyteD.set(n.dziedzina, (uzyteD.get(n.dziedzina) ?? 0) + 1); uzyteR.set(n.region, (uzyteR.get(n.region) ?? 0) + 1); zKanalu.set(n.zrodloId, (zKanalu.get(n.zrodloId) ?? 0) + 1);
     }
     return out.map(({ dziedzinaKanalu: _d, ...n }) => n);
+}
+
+/**
+ * 🤯 Wybór „zaskakujących” (Suweren 2026-10-20: „najważniejsze, zaskakujące wiadomości ze świata”): model dostaje
+ * ponumerowanych kandydatów (już świeżych, bez dubli, z różnych kanałów) i oddaje TYLKO numery — nic nie dopisze.
+ */
+export function promptWyboru(kandydaci, ile) {
+    const lista = kandydaci.map((n, i) => `${i + 1}. [${n.zrodlo} · ${n.region}] ${n.tytul}${n.opis ? ` — ${String(n.opis).slice(0, 200)}` : ''}`).join('\n');
+    return {
+        system: 'Jesteś wydawcą serwisu informacyjnego Zebrra News. Wybierasz tematy dnia. Odpowiadasz wyłącznie numerami z listy.',
+        user: `Z poniższych nagłówków wybierz ${ile} wiadomości ze świata, które są NAJBARDZIEJ ZASKAKUJĄCE, a zarazem ważne: odkrycia naukowe, rekordy, nieoczekiwane zwroty, rzeczy, o których widz powie „nie wiedziałem, że to możliwe”.\n` +
+            `Zasady: nie wybieraj cudzej tragedii jako ciekawostki; nie oceniaj polityki i nie dobieraj tematów pod jedną stronę; różne dziedziny i regiony; najwyżej 2 z jednej redakcji.\n` +
+            `Kolejność = kolejność w serwisie: najmocniejszy temat pierwszy, drugi najmocniejszy na koniec.\n\n${lista}\n\n` +
+            `Odpowiedz JEDNĄ linią: ${ile} różnych numerów oddzielonych przecinkami, np. „7, 2, 15”. Bez komentarza.`,
+    };
+}
+/** Numery z odpowiedzi modelu → indeksy kandydatów (bez dubli, tylko z listy, ≤ 2 z redakcji). Za mało = błąd wprost. */
+export function odczytajWybor(tekst, kandydaci, ile) {
+    const bezMysli = String(tekst ?? '').replace(/<think>[\s\S]*?<\/think>/gi, '');
+    const numery = [...bezMysli.matchAll(/\d+/g)].map((m) => Number(m[0]) - 1).filter((i) => i >= 0 && i < kandydaci.length);
+    const out = [], zRedakcji = new Map();
+    for (const i of numery) {
+        if (out.includes(i)) continue;
+        const z = kandydaci[i].zrodlo;
+        if ((zRedakcji.get(z) ?? 0) >= 2) continue;
+        zRedakcji.set(z, (zRedakcji.get(z) ?? 0) + 1);
+        out.push(i);
+        if (out.length >= ile) break;
+    }
+    if (out.length < Math.min(ile, MIN_NEWSOW)) throw new Error(`model wskazał za mało tematów z listy (${out.length}): „${bezMysli.trim().slice(0, 120)}”`);
+    return out;
 }
 
 /** Kto mówi: prowadzący INTRO, OUTRO i newsy nieparzyste; współprowadzący po kolei newsy parzyste. */
@@ -227,7 +261,7 @@ export function utworzZebrraNews(o) {
         const zrodla = Array.isArray(u.zrodla) && u.zrodla.length ? u.zrodla : ZRODLA;
         return { auto: u.auto === true, godzina: Number.isInteger(u.godzina) && u.godzina >= 0 && u.godzina <= 23 ? u.godzina : 7, jezyk: JEZYKI[u.jezyk] ? u.jezyk : 'en',
             narrator: NARRATORZY[u.narrator] ? u.narrator : 'zebra', wspolprowadzacy: Array.isArray(u.wspolprowadzacy) ? u.wspolprowadzacy.filter((k) => NARRATORZY[k]).slice(0, MAX_WSPOL) : ['lew'],
-            ile: Math.max(MIN_NEWSOW, Math.min(MAX_NEWSOW, Number(u.ile) || 6)), obrazy: u.obrazy !== false, zrodla, ostatniAuto: u.ostatniAuto ?? null };
+            ile: Math.max(MIN_NEWSOW, Math.min(MAX_NEWSOW, Number(u.ile) || 6)), obrazy: u.obrazy !== false, wybor: WYBORY[u.wybor] ? u.wybor : 'roznorodne', zrodla, ostatniAuto: u.ostatniAuto ?? null };
     }
     async function ustaw(z = {}) {
         const u = await ustawienia();
@@ -238,6 +272,7 @@ export function utworzZebrraNews(o) {
         if (z.wspolprowadzacy !== undefined) u.wspolprowadzacy = (Array.isArray(z.wspolprowadzacy) ? z.wspolprowadzacy : []).filter((k, i, a) => NARRATORZY[k] && k !== u.narrator && a.indexOf(k) === i).slice(0, MAX_WSPOL);
         if (z.ile !== undefined) u.ile = Math.max(MIN_NEWSOW, Math.min(MAX_NEWSOW, Number(z.ile) || 6));
         if (z.obrazy !== undefined) u.obrazy = z.obrazy === true;
+        if (z.wybor !== undefined) { if (!WYBORY[z.wybor]) throw new Error(`Wybór tematów: ${Object.keys(WYBORY).join(' albo ')}.`); u.wybor = z.wybor; }
         if (z.zrodla !== undefined) {
             if (z.zrodla === null) u.zrodla = ZRODLA;
             else {
@@ -286,6 +321,22 @@ export function utworzZebrraNews(o) {
         const s = await M.wczytaj(id);
         try {
             if (!cfg.chat) throw new Error('Most nie ma modelu do scenariusza.');
+            if (s.wybor === 'zaskakujace' && s.kandydaci?.length > s.newsy.length) {
+                const ile = s.newsy.length;
+                try {
+                    const model = (await cfg.modelDla(s.narrator).catch(() => null)) ?? (await cfg.modelDla('pilkarka').catch(() => null));
+                    const { system, user } = promptWyboru(s.kandydaci, ile);
+                    let blad = null, idx = null;
+                    for (let proba = 0; proba < 2 && !idx; proba++) {
+                        const r = await cfg.chat(model, system, proba ? `${user}\n\nPOPRZEDNIA ODPOWIEDŹ ODRZUCONA: ${blad}` : user);
+                        try { idx = odczytajWybor(r.tekst, s.kandydaci, ile); } catch (e) { blad = e.message; }
+                    }
+                    if (!idx) throw new Error(blad);
+                    s.newsy = idx.map((i) => s.kandydaci[i]);
+                    s.uwagaWyboru = null;
+                } catch (e) { s.uwagaWyboru = `🤯 wybór zaskakujących nie wyszedł (${String(e.message || e).slice(0, 160)}) — zostały tematy różnorodne`; }
+                await M.pisz(s);
+            }
             const w = await napiszScenariusz(s);
             Object.assign(s, { scenariusz: w.sc, model: w.model, proby: w.proby });
             // obrazy symboliczne (opcja) — padnięty FLUX nie zatrzymuje serwisu, ekrany pokażą kartę dziedziny
@@ -308,17 +359,19 @@ export function utworzZebrraNews(o) {
     }
 
     /** Nowy odcinek: nagłówki teraz → tematy dnia → scenariusz w tle. `auto` = z pętli dziennej (apka może nagrać sama). */
-    async function utworz({ jezyk = null, narrator = null, wspolprowadzacy = null, ile = null, auto = false } = {}) {
+    async function utworz({ jezyk = null, narrator = null, wspolprowadzacy = null, ile = null, wybor = null, auto = false } = {}) {
         const u = await ustawienia();
         const n = await naglowki(u.zrodla);
         const ok = n.raport.filter((r) => r.ok).length;
         if (ok < 2) throw new Error(`Za mało działających kanałów RSS (${ok}): ${n.raport.filter((r) => !r.ok).map((r) => `${r.nazwa} — ${r.blad}`).slice(0, 4).join('; ')}`);
         const newsy = wybierzTematy(n.naglowki, { ile: ile ?? u.ile, teraz: cfg.teraz() });
+        const wyb = WYBORY[wybor] ? wybor : u.wybor;
+        const kandydaci = wyb === 'zaskakujace' ? wybierzTematy(n.naglowki, { ile: MAX_KANDYDATOW, limit: MAX_KANDYDATOW, teraz: cfg.teraz() }) : null;
         if (newsy.length < MIN_NEWSOW) throw new Error(`Za mało świeżych, różnych nagłówków (${newsy.length}).`);
         const prow = NARRATORZY[narrator] ? narrator : u.narrator;
         const wsp = (Array.isArray(wspolprowadzacy) ? wspolprowadzacy : u.wspolprowadzacy).filter((k, i, a) => NARRATORZY[k] && k !== prow && a.indexOf(k) === i).slice(0, MAX_WSPOL);
         const s = { wersja: 1, id: M.noweId('n'), stan: 'robi', powod: null, dzien: dzienLokalny(cfg.teraz()), auto: auto === true, jezyk: JEZYKI[jezyk] ? jezyk : u.jezyk,
-            narrator: prow, wspolprowadzacy: wsp, newsy, raport: n.raport, obrazy: u.obrazy, scenariusz: null, plik: null, publikacja: null, utworzono: czas() };
+            narrator: prow, wspolprowadzacy: wsp, newsy, wybor: wyb, kandydaci, raport: n.raport, obrazy: u.obrazy, scenariusz: null, plik: null, publikacja: null, utworzono: czas() };
         await M.pisz(s);
         M.zakolejkuj(s.id, () => przebieg(s.id));
         return s;
@@ -457,4 +510,4 @@ export function zamontujTrasyZebrraNews(app, N, { raw = null, maxNagraniaMb = 60
     app.delete('/api/zebrra-news/:id', (req, res) => odp(res, N.usun(req.params.id).then((usuniety) => ({ usuniety }))));
 }
 
-export default { utworzZebrraNews, zamontujTrasyZebrraNews, ZRODLA, naglowkiZXml, wybierzTematy, podobne, dziedzinaNewsa, czyPowazny, promptScenariusza, odczytajScenariusz, sprawdzLiczby, kwestieOdcinka, ktoMowiNews, promptObrazu, kontekstKronikarza };
+export default { utworzZebrraNews, zamontujTrasyZebrraNews, ZRODLA, naglowkiZXml, wybierzTematy, WYBORY, promptWyboru, odczytajWybor, podobne, dziedzinaNewsa, czyPowazny, promptScenariusza, odczytajScenariusz, sprawdzLiczby, kwestieOdcinka, ktoMowiNews, promptObrazu, kontekstKronikarza };
