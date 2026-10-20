@@ -199,3 +199,19 @@ test('trasy HTTP: stan, materiały, przebieg, ✓/✖, wycofaj', async () => {
         assert.equal((await j('POST', '/api/uprzaz/wycofaj', { zadanie: 'zebrra-news-scenariusz' })).uprzaz, null);
     } finally { srv.close(); }
 });
+
+test('padnięty model kandydata = awaria, nie lekcja; „wskazówka” z ogonkiem przyjęta', async () => {
+    assert.equal(oczyscZmiane({ rodzaj: 'Wskazówka', tresc: 'Name the newsroom at the end' }).rodzaj, 'wskazowka');
+    const kat = await tmp();
+    const { chat: zwykly } = atrapa();
+    let n = 0;
+    const chat = async (m, sys, u, o) => { if (/FORMAT \(każda linia/.test(sys) && n++ > 0) throw new Error('fetch failed'); return zwykly(m, sys, u, o); };
+    const U = utworzUprzaz({ katalog: kat, chat, zadania: [zadanieZebrraNews({ news: news() })] });
+    const p0 = await U.uruchom({ zadanie: 'zebrra-news-scenariusz', material: ODCINEK.id, k: 2 });
+    await U.czekaj();
+    const p = await U.przebieg(p0.id);
+    assert.equal(p.stan, 'gotowy', p.powod);
+    assert.ok(p.rundy[0].wersje.slice(1).every((w) => w.bladModelu === 'fetch failed' && w.wynik === null));
+    assert.equal(p.propozycja, null);
+    assert.equal((await U.lekcje()).length, 0, 'awaria modelu nie uczy zeszytu');
+});

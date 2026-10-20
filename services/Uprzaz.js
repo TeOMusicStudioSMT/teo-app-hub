@@ -48,7 +48,7 @@ const klucz = (z) => `${z.rodzaj}|${z.ref ?? ''}|${tnij(z.tresc, 400).toLowerCas
 
 /** Zmiana od modelu albo Suwerena → czysta zmiana albo błąd z powodem. `skille` [{id, opis}], `zasadyStylu` [tekst]. */
 export function oczyscZmiane(z, { skille = [], zasadyStylu = [] } = {}) {
-    const rodzaj = String(z?.rodzaj ?? '').toLowerCase().trim();
+    const rodzaj = String(z?.rodzaj ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();   // „wskazówka” = wskazowka
     if (!RODZAJE[rodzaj]) throw new Error(`nieznany rodzaj zmiany „${rodzaj}” (dozwolone: ${Object.keys(RODZAJE).join(', ')})`);
     const dlaczego = tnij(z?.dlaczego, 300);
     if (rodzaj === 'skill') {
@@ -304,11 +304,15 @@ export function utworzUprzaz(o) {
         try { tekst = (await cfg.chat(model, system, user, { temperatura: cfg.temperatura })).tekst; } catch (e) { blad = String(e.message || e).slice(0, 300); }
         const twarde = blad ? { ok: false, punkty: 0, bledy: [`model: ${blad}`] } : Z.twarde(tekst, s);
         const { sc: _sc, ...tw } = twarde;
-        return { lit, nazwa, zmiany, tekst, twarde: tw, ms: Date.now() - t0 };
+        // padnięty model (np. `fetch failed` po 300 s) to awaria, nie wynik uprzęży — bez sędziego i bez lekcji
+        return { lit, nazwa, zmiany, tekst, twarde: tw, ms: Date.now() - t0, ...(blad ? { bladModelu: blad } : {}) };
     }
 
     /** Sędzia kontrastu: Jev (gdy klucz), inaczej model lokalny z uczciwą adnotacją. Wpisuje `ocena` i `wynik` w wersje. */
-    async function osadz(Z, s, model, wersje) {
+    async function osadz(Z, s, model, wszystkie) {
+        for (const w of wszystkie.filter((x) => x.bladModelu)) { w.ocena = null; w.wynik = null; }
+        const wersje = wszystkie.filter((x) => !x.bladModelu);
+        if (!wersje.length) return { kto: 'brak', uwaga: 'Żadna wersja nie dostała odpowiedzi modelu.' };
         let oceny = null, sedzia = null;
         if (cfg.jev?.stan?.().maKlucz) {
             try {
@@ -352,6 +356,7 @@ export function utworzUprzaz(o) {
                 p.rundy.push(runda);
                 await krok(`runda ${r}: wykonanie bazowe (${baza.length} dodatków)`);
                 const A = await wykonaj(Z, s, model, baza, 'A', r === 1 ? 'baza' : `baza rundy ${r}`);
+                if (A.bladModelu) throw new Error(`wykonanie bazowe: model padł (${A.bladModelu}) — bez bazy nie ma kontrastu`);
                 // PROPOSE — z zachowania bazy: twarde błędy + sędzia o samej bazie (puenty), plus zeszyt lekcji
                 await krok(`runda ${r}: sędzia o wykonaniu bazowym`);
                 runda.sedziaBazy = await osadz(Z, s, model, [A]);   // ocena bazy liczona jeszcze raz w kontraście
@@ -376,7 +381,7 @@ export function utworzUprzaz(o) {
                 runda.sedzia = await osadz(Z, s, model, wersje);
                 runda.wersje = wersje;
                 // COMPOSE — zmiany, które pobiły bazę
-                const zwyc = wersje.slice(1).filter((w) => w.wynik > A.wynik + MARGINES).sort((a, b) => b.wynik - a.wynik);
+                const zwyc = wersje.slice(1).filter((w) => w.wynik != null && w.wynik > A.wynik + MARGINES).sort((a, b) => b.wynik - a.wynik);
                 runda.zwyciezcy = zwyc.map((w) => w.lit);
                 let wybrana = zwyc[0] ?? null;
                 if (zwyc.length >= 2) {
@@ -388,7 +393,7 @@ export function utworzUprzaz(o) {
                     if (kontra[2].wynik > kontra[1].wynik && kontra[2].wynik > kontra[0].wynik + MARGINES) wybrana = zl;
                 }
                 // ZESZYT — każda nowa zmiana z dowodem
-                const wpisy = wersje.slice(1).flatMap((w) => w.nowe.map((z) => {
+                const wpisy = wersje.slice(1).filter((w) => !w.bladModelu).flatMap((w) => w.nowe.map((z) => {
                     const delta = Math.round((w.wynik - A.wynik) * 1000) / 1000;
                     return { czas: czas(), zadanie: p.zadanie, zmiana: z, efekt: delta > MARGINES ? 'pomogla' : delta < -MARGINES ? 'zaszkodzila' : 'bez-zmian', delta,
                         dowod: { przebieg: p.id, runda: r, wersja: w.lit, material: p.material, wynikBazy: A.wynik, wynik: w.wynik, sedzia: runda.sedzia?.kto ?? null } };

@@ -11,7 +11,7 @@ interface Zmiana { rodzaj: string; ref: string | number | null; tresc: string; d
 interface Zadanie { id: string; nazwa: string; opis: string; aktywna: string | null }
 interface Uprzaz { id: string; zadanie: string; stan: 'proponowana' | 'aktywna' | 'odrzucona' | 'wycofana'; zmiany: Zmiana[]; blok: string; przebieg: string; wynik: { start: number; koniec: number }; sedzia: string | null; utworzono: string }
 interface PrzebiegSkrot { id: string; zadanie: string; material: string; stan: 'robi' | 'gotowy' | 'blad'; powod: string | null; k: number; glebokosc: number; rund: number; propozycja: string | null; utworzono: string; ostatniKrok: string | null }
-interface Wersja { lit: string; nazwa: string; zmiany: Zmiana[]; nowe?: Zmiana[]; tekst: string; twarde: { ok: boolean; punkty: number; bledy: string[] }; ocena?: { puenta: number | null; puenty: number[]; wybor: number }; wynik?: number; ms: number }
+interface Wersja { lit: string; nazwa: string; zmiany: Zmiana[]; nowe?: Zmiana[]; tekst: string; twarde: { ok: boolean; punkty: number; bledy: string[] }; ocena?: { puenta: number | null; puenty: number[]; wybor: number }; wynik?: number | null; ms: number; bladModelu?: string }
 interface Runda { nr: number; wersje: Wersja[]; sedzia: { kto?: string; uwaga?: string | null; jevBlad?: string; dlaczego?: string } | null; zwyciezcy: string[]; zlozona: { wersja: Wersja; wyniki: number[]; przeciw: string } | null; wybrana: { lit: string; wynik: number } | null }
 interface Przebieg extends Omit<PrzebiegSkrot, 'rund'> { rundy: Runda[]; kroki: { czas: string; t: string }[]; model: string | null; ulepszacz: string | null }
 interface Lekcja { czas: string; zadanie: string; zmiana: Zmiana; efekt: 'pomogla' | 'zaszkodzila' | 'bez-zmian'; delta: number; dowod: { przebieg: string; runda: number; wersja: string; sedzia: string | null } }
@@ -26,7 +26,7 @@ async function zMostu<T>(sciezka: string, init?: RequestInit): Promise<T> {
 }
 const EFEKT = { pomogla: '✓ pomogła', zaszkodzila: '✗ zaszkodziła', 'bez-zmian': '· bez różnicy' } as const;
 const STAN_U = { proponowana: '📝 czeka na ✓', aktywna: '✅ aktywna', odrzucona: '✖ odrzucona', wycofana: '↩ wycofana' } as const;
-const wynik = (x?: number) => (x === undefined ? '—' : x < 0 ? '✖' : x.toFixed(2));
+const wynik = (x?: number | null) => (x == null ? '—' : x < 0 ? '✖' : x.toFixed(2));
 
 function WersjaWiersz({ w, zwyciezca }: { w: Wersja; zwyciezca: boolean }) {
     const [tekst, setTekst] = useState(false);
@@ -35,6 +35,7 @@ function WersjaWiersz({ w, zwyciezca }: { w: Wersja; zwyciezca: boolean }) {
             <div className="flex flex-wrap items-center gap-2">
                 <b className="text-emerald-200">{w.lit}</b><span className="text-slate-300">{w.nazwa}</span>
                 <span className="text-slate-400">wynik {wynik(w.wynik)}</span>
+                {w.bladModelu && <span className="text-red-300">model padł — bez oceny i bez lekcji</span>}
                 {w.ocena?.puenta != null && <span className="text-slate-500">puenta {w.ocena.puenta.toFixed(2)} · wybór {w.ocena.wybor.toFixed(2)}</span>}
                 <span className="text-slate-500">twarde {w.twarde.ok ? `✓ ${w.twarde.punkty.toFixed(2)}` : '✖'}</span>
                 <span className="text-slate-600">{Math.round(w.ms / 1000)} s</span>
