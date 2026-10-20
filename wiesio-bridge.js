@@ -241,6 +241,7 @@ import { utworzAutopilotFormatow } from './services/AutopilotFormatow.js';
 import { utworzWywiady, prowadzacyZObsady } from './services/WywiadAktorow.js';
 import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
+import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzGlebie } from './services/GlebiaKadru.js';
 import { utworzUsta } from './services/UstaAktorow.js';
@@ -8587,6 +8588,15 @@ zamontujTrasyKompozytora(app, { kompozytor: Kompozytor });
 // — podkład dla wszystkich trybów Tanecznego Starcia. Prywatny utwór Suno nie oddaje pliku — stan „prywatny” z radą.
 const AlbumSuno = utworzAlbumSuno({ katalog: ANTIGRAVITY_DIR, katalogMuzyki: MUSIC_DIR, szyna: Szyna });
 AlbumSuno.startPetli();
+// 🎹 Jam z Joanną na żywo (services/JamZJoanna.js) — Suweren gra na MPK mini w Music Studio V2, odpowiedź liczy kod apki;
+// most: model `joanna` wybiera STRATEGIĘ z zamkniętej listy (bez nut) + zapis nagrania (mp3 + .mid) do _OtakOs_Muzyka/Jam z Joanną/.
+const JamZJoanna = utworzJam({
+    katalogMuzyki: MUSIC_DIR,
+    ffmpeg: ffmpegPath,
+    pisz: async ({ system, prompt }) => { const w = await piszModelem(Mozg.modelRoli('joanna'), system, prompt, { temperatura: 0.7, json: true }); return { tekst: w.tekst, model: w.silnik }; },
+    szyna: Szyna,
+});
+zamontujTrasyJamu(app, JamZJoanna);
 app.get('/api/suno-album', (_req, res) => ytOdp(res, AlbumSuno.stan().then((album) => ({ album })), 500));
 app.put('/api/suno-album', (req, res) => ytOdp(res, AlbumSuno.ustaw(req.body?.album || null).then((album) => ({ album }))));
 app.post('/api/suno-album/synchronizuj', (_req, res) => ytOdp(res, AlbumSuno.synchronizuj().then((album) => ({ album }))));

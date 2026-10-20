@@ -14,7 +14,8 @@ import { stanPierscienia, sluchajPierscienia, pokazApke, pokazHub, zamknijApke, 
 import { obserwujStan, stanTlumacza } from '../lib/tlumaczDom';
 
 // Mikrofon (Sampler głosu), schowek (Ctrl+V zrzutów), dźwięk, pełny ekran — apki Katedry z nich korzystają.
-const POZWOLENIA = 'microphone; camera; clipboard-read; clipboard-write; autoplay; fullscreen; display-capture';
+// midi — 🎹 Jam z Joanną (Music Studio) czyta MPK mini przez Web MIDI; w ramce bez tego pozwolenia przeglądarka odmawia
+const POZWOLENIA = 'microphone; camera; clipboard-read; clipboard-write; autoplay; fullscreen; display-capture; midi';
 const MOST = 'http://127.0.0.1:3001';
 
 /** Czy pod adresem coś odpowiada (bez CORS — wystarczy, że połączenie nie zostało odrzucone). */
@@ -48,6 +49,8 @@ const NARZEDZIA: Narzedzie[] = [
     // 🦎 Mame Leon Show — nocny talk-show (ta sama apka, strona mame-leon.html; most: services/MameLeonShow.js)
     { id: 'mame-leon', tytul: 'Mame Leon Show', url: `${MOST}/apki/studio-zebrra/mame-leon.html`, znak: '🦎', kolor: '#e879f9', sprawdz: `${MOST}/apki/studio-zebrra/mame-leon.html` },
     // 📰 Zebrra News — dzienny serwis z nagłówków świata (strona news.html; most: services/ZebrraNews.js)
+    // 🎹 Jam z Joanną — Music Studio V2 (serwer deweloperski :5173), moduł ?modul=jam: MPK mini + odpowiedzi Joanny (most: services/JamZJoanna.js)
+    { id: 'jam-joanna', tytul: 'Jam z Joanną', url: 'http://localhost:5173/?modul=jam', znak: '🎹', kolor: '#ec4899', sprawdz: 'http://localhost:5173/' },
     { id: 'zebrra-news', tytul: 'Zebrra News', url: `${MOST}/apki/studio-zebrra/news.html`, znak: '📰', kolor: '#67e8f9', sprawdz: `${MOST}/apki/studio-zebrra/news.html` },
 ];
 
