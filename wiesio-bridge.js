@@ -225,6 +225,9 @@ import { utworzMapeAgi, stanZSilnikow } from './services/MapaAgi.js';
 import * as Persony from './services/Persony.js';
 import * as Gdd from './services/Gdd.js';
 import * as Assety3D from './services/Assety3D.js';
+import * as RecenzentKodeksa from './services/RecenzentKodeksa.js';
+import { utworzStudioMcp, zamontujTrasyStudiaMcp } from './services/GameStudioMcp.js';
+import { utworzUnity, zamontujTrasyUnity } from './services/Unity.js';
 import * as WikiProjektu from './services/WikiProjektu.js';
 import * as RealizacjaNocna from './services/RealizacjaNocna.js';
 import * as TeledyskNowy from './services/TeledyskNowy.js';
@@ -5422,6 +5425,8 @@ Glowny.skonfiguruj({
     model: () => process.env.OTAKOS_GLOWNY_MODEL || Mozg.domyslny(),
     szyna: Szyna,
     suweren: () => (grvLedger ? nazwaWezla(grvLedger, grvLedger.wlasciciel) : null),
+    // 🎲 Unity MCP dla Głównego: wpis serwera (JSON, przepisany z tego, co zapisało okno pakietu) i pakiet w projekcie _OtakOs_Unity
+    unityMcp: () => { try { return process.env.OTAKOS_UNITY_MCP && Unity.stan().mcp.wProjektach.length ? JSON.parse(process.env.OTAKOS_UNITY_MCP) : null; } catch { return null; } },
 });
 app.get('/api/glowny/stan', (_req, res) => res.json({ success: true, ...Glowny.stan() }));
 app.get('/api/glowny/sesje', async (_req, res) => res.json({ success: true, sesje: await Glowny.lista() }));
@@ -8711,6 +8716,12 @@ app.post('/api/assety3d/:id/do-gry', async (req, res) => {
     catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 app.delete('/api/assety3d/:id', async (req, res) => res.json({ success: true, usunieto: await Assety3D.usun(req.params.id) }));
+// 🎮 MCP Game Studio (scripts/mcp/game-studio.mjs, services/GameStudioMcp.js): test gry na żądanie (puppeteer + window.__gra + zrzut)
+// i walidacja plików przed zapisem (Recenzent + tsc na kopii) — odpowiednik Roslyn z unity-mcp. Straż: tylko maszyna.
+zamontujTrasyStudiaMcp(app, utworzStudioMcp({ katalogApek: path.join(process.cwd(), '..', '_OtakOs_Apki'), appStudio: AppStudio, recenzent: RecenzentKodeksa, jev: Jev, nodeModulesGry: path.join(process.cwd(), '..', 'TeO_Games_Studio', 'node_modules') }));
+// 🎲 Unity jako drugi silnik (services/Unity.js): wykrywanie Hub/edytorów, projekty w _OtakOs_Unity, budowa CLI w tle, bryły GLB do Assets/. Straż: tylko maszyna.
+const Unity = utworzUnity({ katalog: process.env.OTAKOS_UNITY_PROJEKTY || path.join(process.cwd(), '..', '_OtakOs_Unity'), katalogDziennikow: path.join(process.cwd(), '_OtakOs_Wymiar', 'unity'), assety3d: Assety3D });
+zamontujTrasyUnity(app, Unity);
 
 /** Mapa projektu (WIKI.md) — dla Suwerena i dla robotów; budowana z kodu, bez modelu. */
 app.get('/api/appstudio/projekty/:id/wiki', async (req, res) => {

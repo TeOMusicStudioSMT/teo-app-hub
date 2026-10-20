@@ -98,6 +98,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/bestiariusz',   // 🐾 Bestiariusz Mini — zapis do plików gry, tylko przy Katedrze
     '/api/bohaterowie',   // 🧝 bohaterowie gry: FLUX/TRELLIS na karcie i zapis do plików gry — tylko przy Katedrze
     '/api/merch',   // 🖨️ Pracownia merchu: kredyty Meshy, pliki brył wychodzą z Katedry — tylko przy maszynie
+    '/api/game-studio/', '/api/unity/',   // 🎮 MCP Game Studio (test gry w Chrome, tsc na kopii) i 🎲 Unity (uruchamia edytor, buduje, kopiuje bryły) — tylko przy maszynie
     '/api/assety3d/chmura',   // ☁️ Meshy = rachunek za kredyty i bryła wychodzi z Katedry — tylko przy maszynie
     '/api/aktorzy', '/api/wywiady',   // 🎭 obsada wskazuje zdjęcia z dysku, nagranie liczy ffmpeg na maszynie — tylko przy Katedrze
     '/api/studio-podcast',   // 🎙️ Studio Podcastu: zdjęcia z dysku, ffmpeg i klon głosu — tylko przy Katedrze

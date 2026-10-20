@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "katedra-game-studio": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["scripts/mcp/game-studio.mjs"],
+      "env": {
+        "OTAKOS_MOST": "http://127.0.0.1:3001"
+      }
+    }
+  }
+}

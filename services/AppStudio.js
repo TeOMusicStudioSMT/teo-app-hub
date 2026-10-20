@@ -699,8 +699,8 @@ export async function weryfikujBuild(dir) {
     return { ok: true, etap: 'build', autonaprawy, log: `tsc + vite build: OK${autonaprawy.length ? ` (autonaprawa literówek: ${autonaprawy.join(', ')})` : ''}`, sekundy: Math.round((Date.now() - t0) / 1000) };
 }
 
-/** Puppeteer: otwórz zbudowaną apkę na moście, zbierz błędy, zrób zrzut. */
-async function przetestujWPrzegladarce(id, typ = 'apka', cel = '') {
+/** Puppeteer: otwórz zbudowaną apkę na moście, zbierz błędy, zrób zrzut. Eksport: 🎮 MCP Game Studio (test na żądanie). */
+export async function przetestujWPrzegladarce(id, typ = 'apka', cel = '') {
     const t0 = Date.now();
     if (!cfg.puppeteer) return { ok: null, bledy: [], log: 'puppeteer niedostępny — test w przeglądarce pominięty', sekundy: 0 };
     const dir = dirProjektu(id);
@@ -1315,4 +1315,4 @@ export async function rozwin(projektId, { model } = {}) {
     return { id: z.id, projekt: projektId, model: z.model, zadanie: '(analiza w toku)' };
 }
 
-export default { blokDziedzictwa, martweZGrafu, skonfiguruj, projekty, nowyProjekt, projekt, pliki, zrzut, buduj, zadanie, zadaniaProjektu, cofnij, usunProjekt, silniki, analizuj, rozwin, ocenZrzut };
+export default { blokDziedzictwa, martweZGrafu, skonfiguruj, projekty, nowyProjekt, projekt, pliki, zrzut, buduj, zadanie, zadaniaProjektu, cofnij, usunProjekt, silniki, analizuj, rozwin, ocenZrzut, przetestujWPrzegladarce, weryfikujBuild };

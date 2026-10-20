@@ -25,6 +25,7 @@ import os from 'os';
 import crypto from 'crypto';
 import { spawn } from 'child_process';
 import { wyjasnijBladModelu } from './BledyModeli.js';
+import { NARZEDZIA as NARZEDZIA_STUDIA, NAZWA as SERWER_STUDIA } from '../scripts/mcp/game-studio.mjs';
 
 let cfg = {
     katalog: path.join(process.cwd(), '_OtakOs_Wymiar', 'glowny'),
@@ -46,12 +47,26 @@ let cfg = {
     limitOdmow: 3,
     /** Imię Suwerena TEJ Katedry (właściciel z księgi GRV) — null, dopóki go nie wpisał. */
     suweren: () => null,
+    /** 🎮 MCP Game Studio (scripts/mcp/game-studio.mjs) — dołączany przez --mcp-config, gdy plik jest */
+    mcpStudio: path.join(process.cwd(), 'scripts', 'mcp', 'game-studio.mjs'),
+    /** 🎲 Unity MCP (CoplayDev/unity-mcp): wpis serwera albo null — most daje go tylko z OTAKOS_UNITY_MCP i pakietem w projekcie */
+    unityMcp: () => null,
 };
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
 
 /** Narzędzia, których Główny używa bez pytania: czytanie i edycja plików Katedry, skille, polecenia stada. */
 export const BEZ_PYTANIA = ['Read', 'Glob', 'Grep', 'LS', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'TodoWrite', 'Task', 'Skill',
     'Bash(node scripts/glowny/katedra.mjs:*)'];
+/** 🎮 Narzędzia MCP Game Studio bez pytania: odczyt, walidacja, test. Ciężkie/płatne (GPU, Kodeks, Meshy, Unity) — prośba ✓. */
+export const MCP_BEZ_PYTANIA = NARZEDZIA_STUDIA.filter((n) => !n.ciezkie).map((n) => `mcp__${SERWER_STUDIA}__${n.nazwa}`);
+/** Serwery MCP dla `--mcp-config` (pusto = flagi nie ma). */
+export function serweryMcp() {
+    const s = {};
+    if (cfg.mcpStudio && cfg.istnieje(cfg.mcpStudio)) s[SERWER_STUDIA] = { type: 'stdio', command: process.execPath, args: [cfg.mcpStudio] };
+    const u = cfg.unityMcp?.();
+    if (u && typeof u === 'object') s.unityMCP = u;
+    return s;
+}
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,6 +120,12 @@ export function tlumacz(narzedzie, wejscie = {}) {
             ? zmiany.slice(0, 3).map(([a, b]) => `- ${String(a ?? '').slice(0, 160)}\n+ ${String(b ?? '').slice(0, 160)}`).join('\n')
             : `(${String(wejscie.content ?? '').split('\n').length} linii nowej treści)`;
         return { coRobi, ryzyko, ryzykoSlownie: RYZYKO_SLOWNIE[ryzyko], dlaczego, polecenie: `${rel || abs}\n${podglad}`, klucz: `plik:${abs}` };
+    }
+    const mcp = /^mcp__([^_]+(?:[-_][^_]+)*)__(.+)$/.exec(String(narzedzie));
+    if (mcp && mcp[1] === SERWER_STUDIA) {
+        const n = NARZEDZIA_STUDIA.find((x) => x.nazwa === mcp[2]);
+        const ryzyko = /meshy|unity_buduj/.test(mcp[2]) ? 'wysokie' : 'srednie';
+        return { coRobi: `🎮 Game Studio (MCP): ${n?.opis ?? mcp[2]}`, ryzyko, ryzykoSlownie: RYZYKO_SLOWNIE[ryzyko], dlaczego, polecenie: JSON.stringify(wejscie).slice(0, 400), klucz: narzedzie };
     }
     if (narzedzie !== 'Bash') {
         const cel = wejscie?.file_path ?? wejscie?.url ?? wejscie?.path ?? null;
@@ -183,6 +204,7 @@ MOCE KATEDRY (też bez pytania, przez ten sam skrypt) — ZANIM powiesz „nie m
   wideo pliki [klocki|move]                       — filmy w _OtakOs_Klocki / _OtakOs_Move (ścieżki względne, sekundy)
   wideo przytnij <plik> <od_s> [do_s]             — przycięcie ffmpeg (nowy plik obok, oryginał zostaje); plik: względny albo pełna ścieżka
   wideo potnij <plik> <sekundy>                   — Nożyce: pocięcie na równe klocki po N s
+GAME STUDIO (MCP, narzędzia mcp__katedra-game-studio__*): gry Katedry (three.js) — gs_gry, gs_gdd, gs_klocki, gs_assety, gs_test_gry (zrzut + window.__gra); PRZED zmianą kodu gry gs_waliduj. Ciężkie (gs_buduj, gs_narysuj, gs_bryla_z_obrazu, Meshy, Unity) Straż zamienia w prośbę do Suwerena; po ✓ wołasz z zgoda: true.
 OBRAZY: gdy wiadomość ma „Załączone obrazy", otwórz każdy narzędziem Read (to zrzuty ekranu od Suwerena).
 SKILLE: ${cfg.katalogi.filter((k) => cfg.istnieje(k)).map((k) => path.basename(k)).join(', ') || '(brak)'} — katalogi z SKILL.md; czytaj właściwy, gdy zadanie pasuje.
 Nie udawaj: mów, co zrobiłeś, a czego nie. Na końcu krótko: co zrobione, co czeka na Suwerena.`;
@@ -192,6 +214,9 @@ export function argumenty({ tekst, sesjaId, wznow, pozwolenia = [], model }) {
     // Tekst zaczynający się od „-" parser argumentów wziąłby za flagę — dokładamy spację.
     const a = ['-p', String(tekst).replace(/^-/, ' -'), '--output-format', 'stream-json', '--verbose', '--permission-mode', 'dontAsk', '--setting-sources', 'project',
         '--max-turns', String(cfg.maxTur), '--model', model, '--allowedTools', ...BEZ_PYTANIA, ...pozwolenia];
+    const serwery = serweryMcp();
+    if (serwery[SERWER_STUDIA]) a.splice(a.indexOf('--allowedTools') + 1, 0, ...MCP_BEZ_PYTANIA);
+    if (Object.keys(serwery).length) a.push('--mcp-config', JSON.stringify({ mcpServers: serwery }));
     // Straż jako hook PreToolUse: ścieżki z „/" i w cudzysłowach (Windows: spacje w „F:\5 stars\…").
     const cmd = `"${process.execPath.replace(/\\/g, '/')}" "${String(cfg.straz).replace(/\\/g, '/')}"`;
     a.push('--settings', JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash|Edit|MultiEdit|Write|NotebookEdit', hooks: [{ type: 'command', command: cmd, timeout: 15 }] }] } }));
