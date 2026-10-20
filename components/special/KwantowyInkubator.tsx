@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { OtakOSBus, BUS } from '../../lib/otakosBus';
 import JajoMistrzaPanel from './JajoMistrzaPanel';
 import JajoKompozytoraPanel from './JajoKompozytoraPanel';
+import UprzazPanel from './UprzazPanel';
 
 // ── Typy ──────────────────────────────────────────────────────────────────────
 interface InkubatorAgent {
@@ -398,6 +399,7 @@ ${session.insight.slice(0, 600)}...
             {/* 🥚 JaJo Mistrza — uczy się stylu Suwerena z jego prawdziwych poprawek */}
             <JajoMistrzaPanel />
             <JajoKompozytoraPanel />
+            <UprzazPanel />
 
             {/* Header */}
             <div className="flex items-center justify-between border-b border-purple-500/20 pb-4 mb-6">

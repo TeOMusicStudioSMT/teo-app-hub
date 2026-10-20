@@ -32,6 +32,8 @@ export const MIN_NEWSOW = 3, MAX_NEWSOW = 8;
 /** Jak wybieramy tematy dnia: różnorodnie (heurystyka) albo 🤯 zaskakujące (model wybiera z szerokiej listy kandydatów). */
 export const WYBORY = { roznorodne: 'różnorodne', zaskakujace: 'zaskakujące' };
 export const MAX_KANDYDATOW = 24;
+/** 🧬 Zadanie uprzęży (services/Uprzaz.js), z którego scenariusz bierze przyjęte dodatki. */
+export const ZADANIE_UPRZEZY = 'zebrra-news-scenariusz';
 const ID = /^n-[0-9a-f]{8}$/;
 
 /** Publiczne kanały RSS bez klucza (sprawdzone 2026-10-19 z tej maszyny). Suweren zmienia listę w ustawieniach. */
@@ -207,7 +209,11 @@ export function ktoMowiNews(typ, s, i = 0) {
     return w[Math.floor(i / 2) % w.length];
 }
 
-export function promptScenariusza(s) {
+/**
+ * `uprzaz` — 🧬 tekst aktywnej uprzęży (services/Uprzaz.js, warstwa nad zasadami po ✓ Suwerena) albo wersji kandydata
+ * w próbie Harness²; żelazne zasady zostają, uprząż tylko dokłada.
+ */
+export function promptScenariusza(s, { uprzaz = '' } = {}) {
     const en = s.jezyk === 'en';
     const sklad = [s.narrator, ...(s.wspolprowadzacy ?? [])].map((k) => NARRATORZY[k]).filter(Boolean);
     const dz = (d) => NAZWY_DZIEDZIN[d]?.[en ? 1 : 0] ?? d;
@@ -222,6 +228,7 @@ export function promptScenariusza(s) {
         '4. Ton neutralny, bez opinii politycznych i bez stron. Przy newsach POWAŻNYCH (wojna, katastrofa, śmierć) — powaga i szacunek, zero żartów; Zlat Kadabra w serwisie mówi skromniej, bez gwiazdorzenia.',
         `5. Mów na głos, bez emoji i markdown. Język: ${en ? 'English' : 'polski'} (tłumacz streszczenie, jeśli źródło jest w innym języku).`,
         '6. Zachowaj PUENTĘ nagłówka: jeśli news obala oczekiwanie (np. „wrak samolotu okazał się kępą drzew”), powiedz to wprost i wyraźnie, nie rozmywaj w ogólnikach.',
+        ...(String(uprzaz || '').trim() ? [String(uprzaz).trim()] : []),
         'FORMAT (każda linia od etykiety, nic poza tym):',
         'INTRO: … (powitanie, data słowami bez liczb, zapowiedź dziedzin)',
         ...s.newsy.map((_, i) => `NEWS ${i + 1}: …`),
@@ -290,7 +297,7 @@ const dzienLokalny = (t) => { const d = new Date(t); return `${d.getFullYear()}-
 /**
  * @param {{ katalog: string, katalogMontazy: (p: string) => Promise<string>, fetch?: Function,
  *   chat?: Function, modelDla?: Function, mow?: Function, rysuj?: (o: { prompt: string, prefiks: string }) => Promise<string>,
- *   publikuj?: Function, kanal?: () => Promise<string|null>, klocki?: Function, spawaj?: Function, opisz?: Function,
+ *   publikuj?: Function, kanal?: () => Promise<string|null>, uprzaz?: (zadanie: string) => Promise<{ id: string, blok: string }|null>, klocki?: Function, spawaj?: Function, opisz?: Function,
  *   ffmpeg?: string, szyna?: any, teraz?: () => number }} o
  */
 export function utworzZebrraNews(o) {
@@ -348,7 +355,9 @@ export function utworzZebrraNews(o) {
 
     async function napiszScenariusz(s) {
         const model = (await cfg.modelDla(s.narrator).catch(() => null)) ?? (await cfg.modelDla('pilkarka').catch(() => null));
-        const { system, user } = promptScenariusza(s);
+        // 🧬 aktywna uprząż prowadzących (Harness² po katedralnemu) — tylko przyjęta przez Suwerena
+        const u = (await cfg.uprzaz?.(ZADANIE_UPRZEZY)?.catch?.(() => null)) ?? null;
+        const { system, user } = promptScenariusza(s, { uprzaz: u?.blok ?? '' });
         let blad = null;
         for (let proba = 0; proba < 2; proba++) {
             const r = await cfg.chat(model, system, proba ? `${user}\n\nPOPRZEDNIA WERSJA ODRZUCONA: ${blad}. Napisz całość od nowa, trzymając się formatu i źródeł.` : user);
@@ -356,7 +365,7 @@ export function utworzZebrraNews(o) {
                 const sc = odczytajScenariusz(r.tekst, s.newsy.length);
                 const zle = sprawdzLiczby(sc, s);
                 if (zle) throw new Error(zle);
-                return { sc, model, proby: proba + 1 };
+                return { sc, model, proby: proba + 1, uprzaz: u?.id ?? null };
             } catch (e) { blad = e.message; }
         }
         throw new Error(`Scenariusz odrzucony dwa razy — ${blad}`);
@@ -395,7 +404,7 @@ export function utworzZebrraNews(o) {
                 await M.pisz(s);
             }
             const w = await napiszScenariusz(s);
-            Object.assign(s, { scenariusz: w.sc, model: w.model, proby: w.proby });
+            Object.assign(s, { scenariusz: w.sc, model: w.model, proby: w.proby, uprzaz: w.uprzaz });
             // obrazy symboliczne (opcja) — padnięty FLUX nie zatrzymuje serwisu, ekrany pokażą kartę dziedziny
             if (s.obrazy && cfg.rysuj) {
                 const praca = M.praca(id);

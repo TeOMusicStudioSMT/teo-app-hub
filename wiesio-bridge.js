@@ -7,7 +7,8 @@ import { Readable } from 'stream';
 import { probkaZapasowa } from './services/ZapasGlosu.js';
 import { utworzJev, PROG_ZROBIONE as JEV_PROG } from './services/Jev.js';
 import { utworzJevLokalny } from './services/JevLokalny.js';
-import { utworzPartytury } from './services/Partytury.js';
+import { utworzPartytury, skilleZKatalogu } from './services/Partytury.js';
+import { utworzUprzaz, zamontujTrasyUprzezy, zadanieZebrraNews } from './services/Uprzaz.js';
 import { utworzStrazModeli } from './services/StrazModeli.js';
 import { utworzChmureBryl, promptStylu, oczyscStyl, ZESTAWY_AKCJI } from './services/ChmuraBryl.js';
 import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch.js';
@@ -15487,6 +15488,7 @@ zamontujTrasyMameLeon(app, MameLeon, { raw: express.raw });
 // ── 📰 Zebrra News (services/ZebrraNews.js) — dzienny serwis z publicznych nagłówków RSS, studio News w apce studio-zebrra ──
 // Tylko tytuł + opis + link ze źródeł, własne streszczenie, liczby tylko ze źródeł; obrazy FLUX symboliczne (opcja).
 const ZebrraNews = utworzZebrraNews({
+    uprzaz: (zadanie) => Uprzaz.aktywna(zadanie),   // 🧬 aktywna uprząż prowadzących (po ✓ Suwerena)
     katalog: ANTIGRAVITY_DIR,
     katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
     chat: (model, system, user) => piszModelem(model, system, user),
@@ -15507,6 +15509,21 @@ const ZebrraNews = utworzZebrraNews({
 });
 zamontujTrasyZebrraNews(app, ZebrraNews, { raw: express.raw });
 ZebrraNews.startPetli();   // 🤖 automat dnia — domyślnie wyłączony w ustawieniach; OTAKOS_ZEBRRA_NEWS=0 wyłącza pętlę
+
+// ── 🧬 Harness² po katedralnemu (services/Uprzaz.js) — uprząż TeOgochi jako nadpisania nad kartą i zasadami zadania ──
+// Propose–Probe–Compose na tym samym materiale (model z przydziału, lokalnie), sędzia: twarde sprawdziany + Jev
+// (bez klucza — model lokalny z adnotacją), zeszyt lekcji z dowodami w _OtakOs_Wymiar/uprzaz/, do użytku po ✓ Suwerena.
+const Uprzaz = utworzUprzaz({
+    katalog: path.join(ANTIGRAVITY_DIR, 'uprzaz'),
+    zadania: [zadanieZebrraNews({ news: ZebrraNews, modelDla: (id) => ModeleAgentow.modelDla(id), persona: (id) => fs.readFile(path.join(__dirname, 'services', 'persony', `${id}.md`), 'utf8') })],
+    chat: (model, system, user, opcje) => piszModelem(model, system, user, opcje),
+    jev: Jev,
+    skille: () => skilleZKatalogu(path.join(__dirname, 'TeO_Skille')),
+    zasadyStylu: async () => ((await Jajo.stan()).zasady?.zasady ?? []).map((z) => z.zasada),
+    jajo: { decyzja: (d) => Jajo.decyzja(d), wiesc: (w) => Jajo.wiesc(w) },
+    szyna: Szyna,
+});
+zamontujTrasyUprzezy(app, Uprzaz);
 
 // ── 📱 Formaty i sieci (services/Formaty.js, services/KontaSieci.js) — odcinki → pion 9:16 dla Shorts / TikTok / Reels ──
 // Konta TikTok i Instagram jak YouTube: OAuth z pętlą zwrotną na moście, tokeny w skarbcu Impresariatu. Wysyłka po ✓ Suwerena.
