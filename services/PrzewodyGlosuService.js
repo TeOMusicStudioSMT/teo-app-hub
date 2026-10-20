@@ -66,6 +66,16 @@ const ELEVEN_API = 'https://api.elevenlabs.io/v1';
 
 /** Czasy — synteza potrafi mielić, ale wieczności nie czekamy. */
 const TIMEOUT_LOKALNY = 120_000;
+/**
+ * Limit lokalnego klonu rośnie z tekstem (2026-10-20: kwestie Zebrra News po 400–700 znaków liczyły się
+ * na 6 GB dłużej niż stałe 120 s — most zrywał, serwer liczył dalej, a kolejne prośby czekały za zerwanymi).
+ * 120 s (ładowanie modelu) + 0,6 s/znak, najwyżej 900 s; `OTAKOS_KLON_LIMIT_S` = na sztywno.
+ */
+export function limitKlonu(znakow, env = process.env) {
+    const sztywny = Number(env.OTAKOS_KLON_LIMIT_S);
+    if (Number.isFinite(sztywny) && sztywny > 0) return Math.round(sztywny * 1000);
+    return Math.min(900_000, Math.round(120_000 + 600 * Number(znakow || 0)));
+}
 const TIMEOUT_CHMURA = 60_000;
 
 /**
@@ -100,7 +110,7 @@ async function torKlonLokalny({ tekst, jezyk, probka, base, powodSilnika = null 
                 speaker_wav: probka && fsSync.existsSync(probka) ? probka : undefined,
                 language: jezyk || 'pl',
             }),
-        }, TIMEOUT_LOKALNY);
+        }, limitKlonu(String(tekst ?? '').length));
     } catch (e) {
         throw new BladPrzewodu(
             `Lokalny silnik klonu (${base}) nie odpowiedział (${e.name === 'AbortError' ? 'przekroczony czas' : e.message}). ` +
