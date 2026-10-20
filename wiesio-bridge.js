@@ -242,6 +242,7 @@ import { utworzWywiady, prowadzacyZObsady } from './services/WywiadAktorow.js';
 import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
+import { utworzAranz, zamontujTrasyAranzu } from './services/AranzJoanny.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzGlebie } from './services/GlebiaKadru.js';
 import { utworzUsta } from './services/UstaAktorow.js';
@@ -8597,6 +8598,28 @@ const JamZJoanna = utworzJam({
     szyna: Szyna,
 });
 zamontujTrasyJamu(app, JamZJoanna);
+// 🎼 Joanna aranżuje szkic (services/AranzJoanny.js): plan utworu z jamu na modelu `joanna` (zamknięte listy), demo z apki,
+// pełne brzmienie przez Warsztat (ACE-Step remiks) → _OtakOs_Muzyka/Aranże Joanny/ + oś dla Kompozytora.
+const AranzJoanny = utworzAranz({
+    katalogMuzyki: MUSIC_DIR,
+    katalog: path.join(ANTIGRAVITY_DIR, 'aranze-joanny'),
+    ffmpeg: ffmpegPath,
+    pisz: async ({ system, prompt }) => { const w = await piszModelem(Mozg.modelRoli('joanna'), system, prompt, { temperatura: 0.6, json: true }); return { tekst: w.tekst, model: w.silnik }; },
+    warsztat: WarsztatUtworow,
+    // ComfyUI śpi → budzimy i czekamy ≤ 2 min (jak /api/music/generate), potem karta oddana renderowi
+    comfy: async () => {
+        let c = await comfyStatus();
+        if (!c.online) {
+            const b = await zapewnijComfyUI('aranż Joanny').catch(() => null);
+            if (b?.online || b?.started || comfyStartuje) { const koniec = Date.now() + 120_000; while (!c.online && Date.now() < koniec) { await new Promise((r) => setTimeout(r, 3000)); c = await comfyStatus(); } }
+        }
+        if (c.online) await Karta.przedRenderem('aranżem Joanny (ACE-Step)').catch(() => {});
+        return c;
+    },
+    kompozytor: Kompozytor,
+    szyna: Szyna,
+});
+zamontujTrasyAranzu(app, AranzJoanny);
 app.get('/api/suno-album', (_req, res) => ytOdp(res, AlbumSuno.stan().then((album) => ({ album })), 500));
 app.put('/api/suno-album', (req, res) => ytOdp(res, AlbumSuno.ustaw(req.body?.album || null).then((album) => ({ album }))));
 app.post('/api/suno-album/synchronizuj', (_req, res) => ytOdp(res, AlbumSuno.synchronizuj().then((album) => ({ album }))));

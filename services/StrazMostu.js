@@ -88,6 +88,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/dyrygent/partytury', '/api/dyrygent/straz',   // 📜 partytury i 🛡️ straż modeli (zmienia przydział silników) — tylko przy Katedrze
     '/api/klub-mistrzow',   // 🏛️ Klub Mistrzów: ogłaszanie eventów globalnych i zwiad po sieci — decyzje przy Katedrze
     '/api/mistrz-gry',   // 🎲 Mistrz Gry Teterhii: orzeczenia na Jev/modelu (koszt) i kronika — gra z mostu Katedry (gość zdalny = etap MRPG)
+    '/api/aranz',   // 🎼 Joanna aranżuje szkic: model Joanny, pliki biblioteki, ACE-Step na karcie — tylko przy Katedrze
     '/api/jam',   // 🎹 Jam z Joanną: model Joanny i zapis nagrania do biblioteki muzyki — tylko przy Katedrze
     '/api/kompozytor',   // 🏛️⚡ JaJo Kompozytor: osie czasu na modelu Katedry, zamówienia u Joanny (GPU) — tylko przy Katedrze
     '/api/mistrz',   // 🥚 JaJo Mistrza: dziennik poprawek Suwerena i lekcje na jego modelu — tylko przy Katedrze

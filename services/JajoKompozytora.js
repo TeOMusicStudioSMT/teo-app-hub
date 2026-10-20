@@ -326,7 +326,23 @@ export function utworzKompozytora({ katalog, katalogKuzni = null, pisz, rytm = n
         return { pary: pary.length, sft: sft.length, katalog: gdzie };
     }
 
-    return { komponuj, popraw, decyzja, usun, zamow, os: async (id) => zUtworem(await os(id)), osie, dla, stan, kurs };
+    /**
+     * 🎼 Oś z formy aranżu Joanny (services/AranzJoanny.js): sekcje policzone przez kod, nie przez model — więc
+     * stan `aranz` (nie „przyjęta”): `dla(plik)` ją znajdzie, a Kuźnia (`kurs`) jej nie bierze jako przykładu Kompozytora.
+     * Ten sam plik utworu = ta sama oś (nadpisana).
+     */
+    async function zFormy({ utwor, ...forma } = {}) {
+        const p = String(utwor ?? '');
+        if (!p) throw new Error('Oś z aranżu potrzebuje pliku utworu.');
+        const { pominiete, ...czysta } = oczyscOs(forma, { takty: forma.takty, bpm: forma.bpm });
+        void pominiete;
+        const stara = (await osie()).find((o) => o.zrodlo === 'aranz-joanny' && o.utwor?.plik === p);
+        const wpis = { id: stara?.id ?? `o-${crypto.randomBytes(4).toString('hex')}`, utworzono: stara?.utworzono ?? teraz().toISOString(), stan: 'aranz', zrodlo: 'aranz-joanny', prosba: 'aranż Joanny ze szkicu Suwerena', styl: '', utwor: { plik: p, tytul: tytulUtworu(p) }, model: null, ...czysta, odModelu: null, poprawiona: false, zamowienie: null };
+        await zapiszOs(wpis);
+        return wpis;
+    }
+
+    return { komponuj, popraw, decyzja, usun, zamow, os: async (id) => zUtworem(await os(id)), osie, dla, stan, kurs, zFormy };
 }
 
 /** Trasy Kompozytora (montowane z mostu; Straż: `/api/kompozytor` tylko przy maszynie). */
