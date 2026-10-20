@@ -16,7 +16,10 @@
  *    ⚠️ UCZCIWIE: Katedra deklaruje energię fraz i moc ruchów (nikt inny nie ma jej utworu i bryły) — sprawdzalna jest
  *    ARYTMETYKA oceny i to, że układ jest ten sam (odcisk), nie sama muzyka. Bez GRV między Katedrami.
  *
- * ⚠️ BLIŹNIAK: matematyka (frazy, rangi, tempo klipu, układ, ocena, odcisk) = `_OtakOs_Apki/taneczne-starcie/src/
+ *  · ✦ FIGURY: ruch może być figurą (przepis: klipy A/B na masce kości, warstwy, wejście — services/FiguryTanca.js
+ *    je proponuje i trzyma); przy zapisie most liczy jej długość i moc SAM z przepisu (`przeliczFigury`).
+ *
+ * ⚠️ BLIŹNIAK: matematyka (frazy, rangi, tempo klipu, układ, ocena, odcisk, przepis i moc figury) = `_OtakOs_Apki/taneczne-starcie/src/
  * choreografia.ts`. Zmieniasz wzór tutaj — zmień tam (test apki `testy/choreografia.test.ts` porównuje oba).
  */
 import fs from 'fs/promises';
@@ -106,12 +109,168 @@ export function ocenChoreografie({ okresSek, frazy, ruchy, uklad }) {
     return { wynik, takt: r3(takt), energia: r3(energia), roznorodnosc: r3(roznorodnosc) };
 }
 export function odciskChoreografii({ okresSek, frazy, ruchy, uklad }) {
-    const s = JSON.stringify([r3(okresSek), frazy.map((f) => [f.od, f.uderzen, f.energia]), ruchy.map((r) => [r.nazwa, r3(r.sek), r3(r.moc)]), uklad]);
+    // figura niesie kod przepisu — zwykły klip zostaje [nazwa, sek, moc] (odciski dawnych choreografii bez zmian)
+    const s = JSON.stringify([r3(okresSek), frazy.map((f) => [f.od, f.uderzen, f.energia]), ruchy.map((r) => (r.figura ? [r.nazwa, r3(r.sek), r3(r.moc), kodFigury(r.figura)] : [r.nazwa, r3(r.sek), r3(r.moc)])), uklad]);
     let h = 0x811c9dc5;
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
     return h.toString(16).padStart(8, '0');
 }
 export const rangaOceny = (w) => (w >= 90 ? 'S' : w >= 75 ? 'A' : w >= 60 ? 'B' : w >= 40 ? 'C' : 'D');
+
+// ── ✦ figury (bliźniak src/choreografia.ts: przepis, kod, moc) ──
+// Figura = przepis z zamkniętych list: klip A, opcjonalnie klip B na masce kości, warstwy proceduralne, wejście w takt.
+// Moc liczy most SAM z przepisu i części klipów ([moc, ścieżek] całości i masek, mierzone przez apkę z klatek) — opis
+// wzoru w src/choreografia.ts. Lustro, akcent i freeze nie zmieniają mocy (przestawiają ruch w czasie).
+export const SEKCJE_FIGUR = ['intro', 'staccato', 'buildup', 'drop', 'outro'];
+export const MASKI = ['gora', 'dol', 'rece', 'glowa'];
+export const WEJSCIA = { ciecie: 0, pol: 0.5, takt: 1 };
+export const KOLEJNOSC_WARSTW = ['obrot', 'podskok', 'pochylenie', 'lustro', 'akcent', 'freeze'];
+export const GRANICE = {
+    obrot: { obrotow: [1, 0.5, 2], co: [4, 2, 8], kierunek: [1, -1] },
+    podskok: { wysokosc: [0.03, 0.25], co: [2, 1, 4] },
+    pochylenie: { kat: [5, 30], co: [4, 2, 8], os: ['przod', 'bok'] },
+    akcent: { sila: [0.2, 0.8], co: [1, 2] },
+    freeze: { czesc: [0.25, 0.5], co: [4, 2, 8] },
+};
+export const ZAKRESY = new Set(['wysokosc', 'kat', 'sila', 'czesc']);
+export const WZROST_M = 1.7;
+export const RAMIE_M = 0.5;
+export const MAX_FIGUR = 48;
+
+const r2 = (x) => Math.round(x * 100) / 100;
+/** Jak model nazywa wejście (zmierzone 2026-10-20: teogochi_yay napisał „cale” = całe uderzenie). */
+const SYNONIMY_WEJSCIA = { cale: 'takt', caly: 'takt', calosc: 'takt', uderzenie: 'takt', beat: 'takt', cut: 'ciecie', ciecia: 'ciecie', polowa: 'pol', half: 'pol' };
+/** Słowo z listy bez ogonków i znaków („Ręce” → rece, „Dół” → dol, „cięcie” → ciecie). */
+const slowo = (s) => String(s ?? '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/[^a-z]/g, '');
+const typSekcjiFigury = (s) => {
+    const t = slowo(s);
+    const k = t === 'build' ? 'buildup' : t;
+    return SEKCJE_FIGUR.includes(k) ? k : null;
+};
+export function znajdzKlip(nazwa, klipy) {
+    const n = String(nazwa ?? '').trim();
+    if (!n) return null;
+    const k = /^k(\d+)$/i.exec(n);
+    if (k) return klipy[Number(k[1]) - 1] ?? null;
+    const m = n.toLowerCase();
+    return klipy.find((x) => x === n) ?? klipy.find((x) => x.toLowerCase() === m) ?? klipy.find((x) => x.split('|').pop().toLowerCase() === m.split('|').pop()) ?? null;
+}
+export function oczyscPrzepis(p, klipy) {
+    if (!p || typeof p !== 'object') throw new Error('Przepis figury nie jest obiektem.');
+    const o = p;
+    const sekcja = typSekcjiFigury(o.sekcja);
+    if (!sekcja) throw new Error(`Nieznana sekcja „${String(o.sekcja ?? '')}” (znane: ${SEKCJE_FIGUR.join(', ')}).`);
+    const a = znajdzKlip(o.a, klipy);
+    if (!a) throw new Error(`Klip A „${String(o.a ?? '')}” — tancerz nie ma takiego ruchu.`);
+    const bSurowe = o.b === undefined || o.b === null || /^(|-|—|brak|none|null)$/i.test(String(o.b).trim()) ? null : o.b;
+    const b = bSurowe === null ? null : znajdzKlip(bSurowe, klipy);
+    if (bSurowe !== null && !b) throw new Error(`Klip B „${String(bSurowe)}” — tancerz nie ma takiego ruchu.`);
+    if (b && b === a) throw new Error('Klip B jest tym samym klipem co A — miks nic nie zmieni.');
+    let maska = null;
+    if (b) {
+        const m = slowo(o.maska);
+        if (!MASKI.includes(m)) throw new Error(`Miks klipów potrzebuje maski kości: ${MASKI.join(', ')} (jest „${String(o.maska ?? '')}”).`);
+        maska = m;
+    }
+    const wejSurowe = o.wejscie === undefined || o.wejscie === null || o.wejscie === '' ? 'pol' : slowo(o.wejscie);
+    const wej = SYNONIMY_WEJSCIA[wejSurowe] ?? wejSurowe;
+    if (!(wej in WEJSCIA)) throw new Error(`Nieznane wejście „${wej}” (znane: ${Object.keys(WEJSCIA).join(', ')}).`);
+    const zrodlo = {};
+    if (Array.isArray(o.warstwy)) {
+        for (const w of o.warstwy) {
+            const typ = String(w?.typ ?? '').toLowerCase();
+            if (typ in zrodlo) throw new Error(`Warstwa „${typ}” dwa razy.`);
+            zrodlo[typ] = w;
+        }
+    } else if (o.warstwy && typeof o.warstwy === 'object') Object.assign(zrodlo, o.warstwy);
+    for (const typ of Object.keys(zrodlo)) if (!KOLEJNOSC_WARSTW.includes(typ)) throw new Error(`Nieznana warstwa „${typ}” (znane: ${KOLEJNOSC_WARSTW.join(', ')}).`);
+    const warstwy = {};
+    for (const typ of KOLEJNOSC_WARSTW) {
+        const w = zrodlo[typ];
+        if (w === undefined || w === null || w === false) continue;
+        if (typ === 'lustro') { warstwy.lustro = true; continue; }
+        const wo = w && typeof w === 'object' ? w : {};
+        const out = {};
+        for (const [k, dozw] of Object.entries(GRANICE[typ])) {
+            const v = wo[k];
+            if (ZAKRESY.has(k)) {
+                const [min, max] = dozw;
+                const x = Number(v);
+                out[k] = v === undefined || v === null || v === '' || !Number.isFinite(x) ? min : r2(Math.min(max, Math.max(min, x)));
+            } else if (v === undefined || v === null || v === '') out[k] = dozw[0];
+            else {
+                const x = typeof dozw[0] === 'number' ? Number(v) : slowo(v);
+                if (!dozw.includes(x)) throw new Error(`Warstwa ${typ}: „${k}” = ${String(v)} spoza listy (${dozw.join(' / ')}).`);
+                out[k] = x;
+            }
+        }
+        warstwy[typ] = out;
+    }
+    if (warstwy.akcent && warstwy.freeze) throw new Error('Akcent i freeze naraz — figura ma jedną zmianę czasu.');
+    if (!b && !Object.keys(warstwy).length) throw new Error('Figura bez miksu i bez warstw to zwykły klip.');
+    return { sekcja, a, b, maska, wejscie: wej, warstwy };
+}
+export function kodFigury(p) {
+    const w = KOLEJNOSC_WARSTW.filter((t) => p.warstwy[t]).map((t) => (t === 'lustro' ? [t] : [t, ...Object.keys(GRANICE[t]).map((k) => p.warstwy[t][k])]));
+    return JSON.stringify([p.sekcja, p.a, p.b, p.maska, p.wejscie, w]);
+}
+/** Kod (z wizytówki innej Katedry) → przepis sprawdzony tak samo jak przepis z apki. */
+export function przepisZKodu(kod, klipy) {
+    let t;
+    try { t = JSON.parse(String(kod)); } catch { throw new Error('zepsuty kod figury'); }
+    if (!Array.isArray(t) || t.length !== 6 || !Array.isArray(t[5])) throw new Error('zły kod figury');
+    const warstwy = {};
+    for (const w of t[5]) {
+        if (!Array.isArray(w) || !KOLEJNOSC_WARSTW.includes(w[0])) throw new Error('zła warstwa w kodzie figury');
+        warstwy[w[0]] = w[0] === 'lustro' ? true : Object.fromEntries(Object.keys(GRANICE[w[0]]).map((k, i) => [k, w[i + 1]]));
+    }
+    const p = oczyscPrzepis({ sekcja: t[0], a: t[1], b: t[2], maska: t[3], wejscie: t[4], warstwy }, klipy);
+    if (kodFigury(p) !== String(kod)) throw new Error('kod figury nie jest kanoniczny');
+    return p;
+}
+export function mocWarstw(w, okresSek) {
+    if (!(okresSek > 0)) return 0;
+    let m = 0;
+    if (w.obrot) m += (2 * Math.PI * w.obrot.obrotow) / (w.obrot.co * okresSek);
+    if (w.pochylenie) m += (4 * (w.pochylenie.kat * Math.PI) / 180) / (w.pochylenie.co * okresSek);
+    if (w.podskok) m += (2 * w.podskok.wysokosc * WZROST_M) / (w.podskok.co * okresSek) / RAMIE_M;
+    return m;
+}
+export function mocFigury(p, klipy, okresSek) {
+    const A = klipy.find((k) => k.nazwa === p.a && !k.figura), B = p.b ? klipy.find((k) => k.nazwa === p.b && !k.figura) : null;
+    if (!A || (p.b && !B)) throw new Error(`Figura wskazuje klip, którego tancerz nie ma (${!A ? p.a : p.b}).`);
+    let moc = A.moc, sek = A.sek;
+    if (B && p.maska) {
+        if (!A.czesci || !B.czesci) throw new Error(`Brak części klipu (${!A.czesci ? A.nazwa : B.nazwa}) — apka musi zmierzyć maski kości.`);
+        const [mc, nc] = A.czesci.cale, [ma, na] = A.czesci[p.maska], [mb, nb] = B.czesci[p.maska];
+        const n = nc - na + nb;
+        moc = n > 0 ? (mc * nc - ma * na + mb * nb) / n : 0;
+        if (nb > nc - na) sek = B.sek;
+    }
+    return { sek: r3(sek), moc: r3(moc + mocWarstw(p.warstwy, okresSek)) };
+}
+/** Części klipu z apki → [moc, ścieżek] w granicach (albo null, gdy ich nie ma). */
+export function oczyscCzesci(c) {
+    if (!c || typeof c !== 'object') return null;
+    const out = {};
+    for (const k of ['cale', ...MASKI]) {
+        const [m, n] = Array.isArray(c[k]) ? c[k].map(Number) : [];
+        if (!(m >= 0 && m < 1000) || !Number.isInteger(n) || n < 0 || n > 1000) throw new Error(`Złe części klipu (${k}).`);
+        out[k] = [r3(m), n];
+    }
+    if (MASKI.some((k) => out[k][1] > out.cale[1])) throw new Error('Maska ma więcej ścieżek niż cały klip.');
+    return out;
+}
+/** Figury w ruchach choreografii: przepis tylko z klipów tej listy, długość i moc liczone przez most z przepisu. */
+export function przeliczFigury(ruchy, okresSek) {
+    const klipy = ruchy.filter((r) => !r.figura);
+    const nazwy = klipy.map((r) => r.nazwa);
+    return ruchy.map((r) => {
+        if (!r.figura) return r;
+        const figura = oczyscPrzepis(r.figura, nazwy);
+        return { ...r, figura, ...mocFigury(figura, klipy, okresSek) };
+    });
+}
 
 // ── okresy turniejów (UTC) ──
 const dzienUTC = (t) => new Date(t).toISOString().slice(0, 10);
@@ -150,7 +309,11 @@ export function oczyscRuchy(ruchy) {
         const sek = Number(r?.sek), moc = Number(r?.moc);
         if (!nazwa || nazwy.has(nazwa) || !(sek > 0.1 && sek < 120) || !(moc >= 0 && moc < 1000)) throw new Error(`Ruch „${nazwa || '?'}” ma złe dane (długość/moc).`);
         nazwy.add(nazwa);
-        out.push({ nazwa, sek: r3(sek), moc: r3(moc) });
+        const wpis = { nazwa, sek: r3(sek), moc: r3(moc) };
+        const czesci = oczyscCzesci(r?.czesci);
+        if (czesci) wpis.czesci = czesci;
+        if (r?.figura && typeof r.figura === 'object') wpis.figura = r.figura;   // ✦ przepis sprawdza i liczy przeliczFigury
+        out.push(wpis);
     }
     if (out.length < 2) throw new Error('Choreografia potrzebuje co najmniej 2 ruchów tańca (rig z akcjami tanecznymi).');
     return out;
@@ -168,7 +331,10 @@ export function tanecZSieci(t, nick, teraz = Date.now()) {
         if (!Array.isArray(d.frazy) || d.frazy.length < 2 || d.frazy.length > MAX_FRAZ) throw new Error('złe frazy');
         const frazy = d.frazy.map((f) => ({ od: r3(Number(f?.[0])), uderzen: Math.round(Number(f?.[1])), energia: r3(Number(f?.[2])) }));
         if (frazy.some((f) => !(f.od >= 0) || !FRAZY.includes(f.uderzen) || !(f.energia >= 0 && f.energia <= 1))) throw new Error('złe frazy');
-        const ruchy = oczyscRuchy((Array.isArray(d.ruchy) ? d.ruchy : []).map((r) => ({ nazwa: r?.[0], sek: r?.[1], moc: r?.[2] })));
+        // ✦ figura przychodzi z kodem przepisu (4. pole) — sprawdzony jak z apki; moc deklaruje Katedra (części klipów nie idą w sieć)
+        const surowe = Array.isArray(d.ruchy) ? d.ruchy : [];
+        const klipySieci = surowe.filter((r) => r?.[3] === undefined).map((r) => String(r?.[0] ?? ''));
+        const ruchy = oczyscRuchy(surowe.map((r) => ({ nazwa: r?.[0], sek: r?.[1], moc: r?.[2], ...(r?.[3] !== undefined ? { figura: przepisZKodu(r[3], klipySieci) } : {}) })));
         const uklad = Array.isArray(d.uklad) ? d.uklad.map(Number) : [];
         const ocena = ocenChoreografie({ okresSek, frazy, ruchy, uklad });
         if (ocena.wynik !== Math.round(Number(t.ocena?.wynik))) throw new Error(`ocena się nie zgadza (deklaruje ${t.ocena?.wynik}, z układu wychodzi ${ocena.wynik})`);
@@ -214,7 +380,7 @@ export function utworzChoreografie({ katalog, rytm, katalogMontazy, ffmpeg = nul
         const r = await rytm(plik);
         const frazy = frazyZRytmu(r, fraza);
         if (frazy.length < 2) throw new Error('Utwór za krótki na choreografię (mniej niż 2 frazy).');
-        const ruchy = oczyscRuchy(dane.ruchy);
+        const ruchy = przeliczFigury(oczyscRuchy(dane.ruchy), r.okresSek);
         const uklad = Array.isArray(dane.uklad) ? dane.uklad.map(Number) : [];
         if (uklad.length !== frazy.length) throw new Error(`Układ ma ${uklad.length} fraz, a utwór (z rytmu mostu) ma ${frazy.length} — ułóż od nowa.`);
         if (uklad.some((m) => !Number.isInteger(m) || m < 0 || m >= ruchy.length)) throw new Error('Układ wskazuje ruch, którego nie ma.');
@@ -286,7 +452,7 @@ export function utworzChoreografie({ katalog, rytm, katalogMontazy, ffmpeg = nul
                 const stary = t.wyniki[k];
                 const lepszy = !stary || c.ocena.wynik > stary.ocena.wynik;
                 if (lepszy) t.wyniki[k] = { okres: o.okres, klucz: o.klucz, choreografia: c.id, ocena: c.ocena, odcisk: c.odcisk, mini: c.mini.nazwa, utwor: c.utwor.tytul, kiedy,
-                    dane: { okresSek: c.utwor.okresSek, frazy: c.frazy.map((f) => [f.od, f.uderzen, f.energia]), ruchy: c.ruchy.map((r) => [r.nazwa, r.sek, r.moc]), uklad: c.uklad } };
+                    dane: { okresSek: c.utwor.okresSek, frazy: c.frazy.map((f) => [f.od, f.uderzen, f.energia]), ruchy: c.ruchy.map((r) => (r.figura ? [r.nazwa, r.sek, r.moc, kodFigury(r.figura)] : [r.nazwa, r.sek, r.moc])), uklad: c.uklad } };
                 out.push({ ...o, poprawiony: lepszy, ocena: (lepszy ? c : stary).ocena.wynik, poprzednia: stary?.ocena?.wynik ?? null });
             }
             // stare okresy precz (zostaje 60 ostatnich wpisów)
@@ -337,4 +503,4 @@ export function zamontujTrasyChoreografii(app, { choreografie, raw, klub = null,
     app.post('/api/taniec/zglos', (req, res) => odp(res, choreografie.zglos(String(req.body?.id ?? ''))));
 }
 
-export default { utworzChoreografie, zamontujTrasyChoreografii, frazyZRytmu, ocenChoreografie, odciskChoreografii, ulozChoreografie, tempoKlipu, trafienieTaktu, rangi, okresyTanca, tydzienISO, tanecZSieci, rankingTanca, oczyscRuchy, rangaOceny };
+export default { oczyscPrzepis, kodFigury, przepisZKodu, mocFigury, mocWarstw, przeliczFigury, oczyscCzesci, utworzChoreografie, zamontujTrasyChoreografii, frazyZRytmu, ocenChoreografie, odciskChoreografii, ulozChoreografie, tempoKlipu, trafienieTaktu, rangi, okresyTanca, tydzienISO, tanecZSieci, rankingTanca, oczyscRuchy, rangaOceny };

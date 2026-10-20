@@ -100,6 +100,7 @@ import { utworzBazylike } from './services/BazylikaDzwieku.js';
 import { utworzKompozytora, zamontujTrasyKompozytora } from './services/JajoKompozytora.js';
 import { rodzinyZRuchem } from './services/MiniZRuchem.js';
 import { utworzChoreografie, zamontujTrasyChoreografii } from './services/Choreografie.js';
+import { utworzFiguryTanca, zamontujTrasyFigur } from './services/FiguryTanca.js';
 import { odchudzBryle, CEL_SCIAN, MAKS_TEKSTURY } from './services/LekkieBryly.js';
 import { utworzRozliczenia } from './services/RozliczeniaKatedr.js';
 import { policzKoherencje } from './services/KoherencjaKatedry.js';
@@ -11638,6 +11639,15 @@ const KlubMistrzow = utworzKlub({
     wiesc: (w) => Jajo.wiesc(w),
 });
 zamontujTrasyChoreografii(app, { choreografie: Choreografie, raw: express.raw, klub: KlubMistrzow, mistrzGry: MistrzGry });
+// ✦ Figury taneczne (services/FiguryTanca.js): Kompozytor (model przydziału `kompozytor`) składa nowe ruchy tancerza
+// z jego klipów riga — miks po kościach, warstwy, wejście w takt — tylko z zamkniętych list; Suweren ✓/✎ (pary do Kuźni).
+const FiguryTanca = utworzFiguryTanca({
+    katalog: path.join(ANTIGRAVITY_DIR, 'choreografie', 'figury'),
+    katalogKuzni: path.join(ANTIGRAVITY_DIR, 'kuznia-soup'),
+    pisz: async ({ system, prompt }) => { const w = await piszModelem(Mozg.modelRoli('kompozytor'), system, prompt, { temperatura: 0.7, json: true }); return { tekst: w.tekst, model: w.silnik }; },
+    szyna: Szyna,
+});
+zamontujTrasyFigur(app, { figury: FiguryTanca });
 Wizytowka.skonfiguruj({ klub: KlubMistrzow });
 KlubMistrzow.startPetli();
 app.get('/api/klub-mistrzow', async (req, res) => {
