@@ -313,7 +313,30 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
 
 // --- WEKTOROWE SOCZEWKI (EMBEDDINGS) ---
-let wiesioBrain = null;
+// 🧠 Wiesio-Mózg = wektory z Ollamy (/api/embed), ten sam model co 📚 Biblioteka Shoudów (`OTAKOS_WIEDZA_EMBED` → embeddinggemma-2).
+// 2026-10-22 zamiast @xenova/transformers + all-MiniLM-L6-v2 (npm audit: protobufjs, sharp, onnxruntime-web) — bez nowej paczki.
+// Kształt jak dawny pipeline: wiesioBrain(tekst) → { data: number[] }. Wektory innego modelu mają inny wymiar → Kroniki przeindeksowane same.
+const MODEL_WEKTOROW = process.env.OTAKOS_WIEDZA_EMBED || 'hf.co/unsloth/embeddinggemma-2-GGUF:Q8_0';
+async function wiesioBrain(tekst) {
+    const r = await fetch(`${OLLAMA_BASE}/api/embed`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: MODEL_WEKTOROW, input: String(tekst ?? '').slice(0, 8000), keep_alive: '2m' }), signal: AbortSignal.timeout(120_000) });
+    if (!r.ok) throw new Error(`Wektory (Ollama ${MODEL_WEKTOROW}) HTTP ${r.status}: ${(await r.text()).slice(0, 160)}`);
+    const v = (await r.json()).embeddings?.[0];
+    if (!Array.isArray(v) || !v.length) throw new Error('Ollama nie oddała wektora.');
+    return { data: v };
+}
+/** 🧬 Podświadomość Kronik: każda Kronika (.md/.txt) jako wektor → `_OtakOs_Kroniki/_podswiadomosc.json` (z modelem). */
+async function indeksujKroniki(kronikiDir) {
+    const files = fsSync.readdirSync(kronikiDir).filter(f => f.endsWith('.md') || f.endsWith('.txt'));
+    const memory = [];
+    for (const file of files) {
+        const content = fsSync.readFileSync(path.join(kronikiDir, file), 'utf8');
+        memory.push({ id: file, model: MODEL_WEKTOROW, vector: (await wiesioBrain(content)).data, content });
+        console.log(`[Wiesio-Mózg] 🧬 Przyswojono: ${file}`);
+    }
+    fsSync.writeFileSync(path.join(kronikiDir, '_podswiadomosc.json'), JSON.stringify(memory));
+    return memory;
+}
 
 function calculateGravity(vecA, vecB) {
     let dotProduct = 0, normA = 0, normB = 0;
@@ -326,18 +349,6 @@ function calculateGravity(vecA, vecB) {
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-(async () => {
-    try {
-        console.log('🧠 [Wiesio-Mózg] Budzę lokalne neurony... (To może potrwać chwilę przy pierwszym uruchomieniu)');
-        const { pipeline } = await import('@xenova/transformers');
-
-        // Ładujemy lekki, lokalny model do wektoryzacji tekstu
-        wiesioBrain = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-        console.log('✨ [Wiesio-Mózg] Wektorowe Soczewki założone! Gotów do czytania Kronik!');
-    } catch (err) {
-        console.error('❌ [Wiesio-Mózg] Błąd przy zakładaniu soczewek:', err);
-    }
-})();
 
 const app = express();
 // Port z env — pozwala odpalic drugi most obok dzialajacego (testy) bez kolizji.
@@ -1294,7 +1305,7 @@ app.post('/v1/embeddings', async (req, res) => {
         res.json({
             object: 'list',
             data,
-            model: model || 'all-MiniLM-L6-v2'
+            model: model || MODEL_WEKTOROW
         });
     } catch (e) {
         console.error('[Embeddings API] Błąd:', e.message);
@@ -2582,7 +2593,9 @@ app.get('/wiesio/ping', (req, res) => {
  * 🛰️ Dedykowany endpoint dla akcji Wiesława (w tym PodCaT)
  * Służy do cichej komunikacji z frontendem bez barier CORS.
  */
-app.post('/wiesio/action', async (req, res) => {
+// błąd w akcji (np. Ollama nie odda wektora) = odpowiedź 500 z powodem, nie wiszące żądanie (Express 4 nie łapie async)
+app.post('/wiesio/action', (req, res) => wiesioAkcja(req, res).catch((e) => { if (!res.headersSent) res.status(500).json({ status: 'error', message: e.message }); }));
+async function wiesioAkcja(req, res) {
     const { action, payload } = req.body;
 
     if (action === 'ZESPAWAJ_PODCAT') {
@@ -2769,7 +2782,9 @@ app.post('/wiesio/action', async (req, res) => {
         const queryVectorObj = await wiesioBrain(payload.query, { pooling: 'mean', normalize: true });
         const queryVector = Array.from(queryVectorObj.data);
 
-        const memory = JSON.parse(fsSync.readFileSync(memoryFile, 'utf8'));
+        let memory = JSON.parse(fsSync.readFileSync(memoryFile, 'utf8'));
+        // wektory innego modelu (dawny all-MiniLM: 384 wymiary) nie są porównywalne — przeindeksuj Kroniki obecnym modelem
+        if (memory.some((item) => item.vector?.length !== queryVector.length)) memory = await indeksujKroniki(path.dirname(memoryFile));
         let bestMatch = null;
         let highestGravity = -1;
 
@@ -2879,30 +2894,11 @@ app.post('/wiesio/action', async (req, res) => {
             return res.status(404).json({ error: 'Brak biblioteki Kronik!' });
         }
 
-        const files = fsSync.readdirSync(kronikiDir).filter(f => f.endsWith('.md') || f.endsWith('.txt'));
-        let memory = [];
+        console.log('[Wiesio-Mózg] 📖 Rozpoczynam czytanie Kronik...');
+        const memory = await indeksujKroniki(kronikiDir);
+        console.log(`[Wiesio-Mózg] 🧠 Cyfrowa Podświadomość zaktualizowana! Zapisano w ${path.basename(indexFile)}`);
 
-        console.log(`[Wiesio-Mózg] 📖 Rozpoczynam czytanie ${files.length} Kronik...`);
-
-        for (const file of files) {
-            const content = fsSync.readFileSync(path.join(kronikiDir, file), 'utf8');
-
-            // Zamiana treści Kroniki na wektor grawitacyjny!
-            const output = await wiesioBrain(content, { pooling: 'mean', normalize: true });
-
-            memory.push({
-                id: file,
-                vector: Array.from(output.data),
-                content: content // Zapisujemy też treść, by Rada mogła ją odzyskać
-            });
-            console.log(`[Wiesio-Mózg] 🧬 Przyswojono: ${file}`);
-        }
-
-        // Zapisanie Podświadomości na dysk
-        fsSync.writeFileSync(indexFile, JSON.stringify(memory));
-        console.log(`[Wiesio-Mózg] 🧠 Cyfrowa Podświadomość zaktualizowana! Zapisano w _podswiadomosc.json`);
-
-        return res.status(200).json({ status: 'success', indexed: files.length });
+        return res.status(200).json({ status: 'success', indexed: memory.length });
     }
 
     if (action === 'SAVE_KRONIKA') {
@@ -3241,7 +3237,7 @@ ODPOWIEDZ TYLKO BLOKIEM KODU tsx. Żadnego tekstu przed ani po.`;
     }
 
     res.status(400).json({ success: false, message: `Wiesław nie zna tej akcji: ${action}` });
-});
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  🔥 RAFINERIA — Transmutacja WEBM → MP4

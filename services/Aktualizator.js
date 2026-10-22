@@ -21,6 +21,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { rozpakujBezpiecznie } from './PaczkiGier.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -31,8 +32,9 @@ let cfg = {
     fetch: (...a) => fetch(...a),
     /** (program, argumenty, opcje) → { stdout } — podmienialne w testach */
     uruchom: (program, argumenty, opcje = {}) => execFileAsync(program, argumenty, { windowsHide: true, maxBuffer: 32 * 1024 * 1024, ...opcje }),
-    /** rozpakowanie zipa do katalogu (extract-zip; yauzl zamienia „\" ze starych paczek PowerShella na „/") */
-    rozpakuj: async (zip, dokad) => { const { default: extract } = await import('extract-zip'); await extract(zip, { dir: dokad }); },
+    /** rozpakowanie zipa do katalogu — bezpieczne jak paczki gier (bez „..”, dowiązań, wyjścia poza katalog; yauzl zamienia „\" ze starych
+     *  paczek PowerShella na „/”); 2026-10-22 zamiast extract-zip (npm audit: zapis plików przez dowiązania w archiwum) */
+    rozpakuj: (zip, dokad) => rozpakujBezpiecznie(zip, dokad, { wymagaj: null, maxBajtow: 4 * 1024 ** 3, maxPlikow: 100_000 }),
     npmInstall: async (katalog) => cfg.uruchom(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['install', '--legacy-peer-deps', '--no-audit', '--no-fund'],
         { cwd: katalog, timeout: 30 * 60_000, shell: process.platform === 'win32' }),
     szyna: null,

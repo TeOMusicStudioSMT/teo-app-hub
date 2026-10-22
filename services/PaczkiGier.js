@@ -148,9 +148,10 @@ export async function spakujKatalog(kat, docelowy) {
 
 /**
  * Rozpakowanie zipa TYLKO do `dokad`: ścieżki względne bez „..”, bez dowiązań, suma rozmiarów i liczba plików w limicie.
- * Najpierw przegląd wpisów (nic nie zapisujemy, gdy coś jest nie tak), potem zapis.
+ * Najpierw przegląd wpisów (nic nie zapisujemy, gdy coś jest nie tak), potem zapis. `wymagaj` = plik, który musi być w korzeniu
+ * (gra: index.html; Aktualizator: null). Też Aktualizator Katedry (2026-10-22: zamiast extract-zip — luka z dowiązaniami).
  */
-export async function rozpakujBezpiecznie(zip, dokad, { maxBajtow = MAX_BAJTOW, maxPlikow = MAX_PLIKOW } = {}) {
+export async function rozpakujBezpiecznie(zip, dokad, { maxBajtow = MAX_BAJTOW, maxPlikow = MAX_PLIKOW, wymagaj = 'index.html' } = {}) {
     const yauzl = (await import('yauzl')).default;
     const otworz = () => new Promise((ok, zle) => yauzl.open(zip, { lazyEntries: true, decodeStrings: true, validateEntrySizes: true }, (e, z) => (e ? zle(e) : ok(z))));
     const baza = path.resolve(dokad);
@@ -164,7 +165,7 @@ export async function rozpakujBezpiecznie(zip, dokad, { maxBajtow = MAX_BAJTOW, 
             if (tryb === 0o120000) { z.close(); return zle(new Error(`Paczka ma dowiązanie „${nazwa}” — odrzucona.`)); }
             if (nazwa.includes('\\') || nazwa.startsWith('/') || nazwa.split('/').includes('..') || /^[a-z]:/i.test(nazwa)) { z.close(); return zle(new Error(`Zła ścieżka w paczce: „${nazwa}”.`)); }
             const cel = path.resolve(baza, ...nazwa.split('/'));
-            if (cel !== baza && !cel.startsWith(baza + path.sep)) { z.close(); return zle(new Error(`Ścieżka „${nazwa}” wychodzi poza katalog gry.`)); }
+            if (cel !== baza && !cel.startsWith(baza + path.sep)) { z.close(); return zle(new Error(`Ścieżka „${nazwa}” wychodzi poza katalog docelowy.`)); }
             if (!nazwa.endsWith('/')) {
                 suma += e.uncompressedSize;
                 lista.push(nazwa);
@@ -176,7 +177,7 @@ export async function rozpakujBezpiecznie(zip, dokad, { maxBajtow = MAX_BAJTOW, 
         z.on('end', () => ok(lista));
         z.readEntry();
     });
-    if (!wpisy.includes('index.html')) throw new Error('Paczka nie ma index.html w korzeniu — to nie jest zbudowana gra.');
+    if (wymagaj && !wpisy.includes(wymagaj)) throw new Error(wymagaj === 'index.html' ? 'Paczka nie ma index.html w korzeniu — to nie jest zbudowana gra.' : `Paczka nie ma ${wymagaj} w korzeniu.`);
     await fs.mkdir(baza, { recursive: true });
     const z = await otworz();
     await new Promise((ok, zle) => {

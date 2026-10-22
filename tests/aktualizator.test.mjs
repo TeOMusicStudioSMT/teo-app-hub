@@ -156,3 +156,24 @@ test('Aktualizator (git): commity na origin → lista zmian; niezapisana praca b
     assert.equal((await Akt.sprawdz()).nowsza, false);
     await assert.rejects(Akt.cofnij(), /cofasz gitem/);
 });
+
+test('rozpakowanie paczki Katedry: bezpieczne jak paczki gier, bez wymogu index.html; „..” odrzucone, nic nie zapisane', async () => {
+    const { spakujKatalog, rozpakujBezpiecznie } = await import('../services/PaczkiGier.js');
+    const zrodlo = fs.mkdtempSync(path.join(os.tmpdir(), 'akt-zip-'));
+    fs.mkdirSync(path.join(zrodlo, 'services'));
+    fs.writeFileSync(path.join(zrodlo, 'wiesio-bridge.js'), '// most');
+    fs.writeFileSync(path.join(zrodlo, 'services', 'X.js'), 'export {}');
+    const zip = path.join(os.tmpdir(), `akt-${process.pid}.zip`);
+    await spakujKatalog(zrodlo, zip);
+    const dokad = fs.mkdtempSync(path.join(os.tmpdir(), 'akt-out-'));
+    await rozpakujBezpiecznie(zip, dokad, { wymagaj: null });
+    assert.equal(fs.readFileSync(path.join(dokad, 'services', 'X.js'), 'utf8'), 'export {}');
+    await assert.rejects(rozpakujBezpiecznie(zip, fs.mkdtempSync(path.join(os.tmpdir(), 'akt-gra-'))), /index\.html/);
+    // wpis „../zlo.txt” w archiwum: podmieniamy nazwę w nagłówkach (ta sama długość) — odrzucone przed zapisem
+    const b = fs.readFileSync(zip);
+    const zly = path.join(os.tmpdir(), `akt-zly-${process.pid}.zip`);
+    fs.writeFileSync(zly, Buffer.from(b.toString('latin1').split('services/X.js').join('../ervices.js'), 'latin1'));
+    const pusty = fs.mkdtempSync(path.join(os.tmpdir(), 'akt-zly-'));
+    await assert.rejects(rozpakujBezpiecznie(zly, pusty, { wymagaj: null }), /Zła ścieżka|poza katalog|invalid relative path/);
+    assert.deepEqual(fs.readdirSync(pusty), []);
+});
