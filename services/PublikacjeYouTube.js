@@ -104,7 +104,7 @@ export function stopkaEkosystemu(jezyk = 'pl', zrodlo = null) {
  *   statusFilmu:(id:string, kanalId?:string|null)=>Promise<{istnieje:boolean, widocznosc?:string}>,
  *   kanaly?:()=>Promise<{ domyslny:string|null, kanaly:{id:string,nazwa:string}[] }>,
  *   naWystawe:(filmId:string, url:string)=>Promise<any>, gotowyYouTube:()=>Promise<boolean>,
- *   playlistaDla?:(p:object)=>Promise<{id:string, kanalId?:string|null}|null>, dodajDoPlaylisty?:(videoId:string, playlistId:string, kanalId:string|null)=>Promise<{dodano:boolean, juzByl?:boolean}>,
+ *   playlistaDla?:(p:object)=>Promise<{id:string, kanalId?:string|null}|null>, kanalyProgramu?:(p:object)=>Promise<string[]>, dodajDoPlaylisty?:(videoId:string, playlistId:string, kanalId:string|null)=>Promise<{dodano:boolean, juzByl?:boolean}>,
  *   szyna?:any, teraz?:()=>number }} o
  */
 export function utworzPublikacje(o) {
@@ -210,6 +210,17 @@ export function utworzPublikacje(o) {
         Object.assign(p, { etap: 'wysylanie', jobId: job.id, zatwierdzono: czas() });
         await zapisz();
         nadaj(`„${p.tytul}” zatwierdzona — Impresariat wysyła na YouTube${p.kanalNazwa ? ` (kanał „${p.kanalNazwa}”)` : ''}`);
+        // 📡 Jedno ✓ = wszystkie kanały programu (`cfg.kanalyProgramu(p)`): kopia na każdy inny kanał, zatwierdzona tym samym ✓.
+        // Kopia sama kopii nie robi; film już (albo jeszcze) na kanale = pominięty z powodem.
+        if (!p.kopiaZ && cfg.kanalyProgramu) {
+            const kopie = [];
+            for (const k of (await cfg.kanalyProgramu(p).catch(() => [])) ?? []) {
+                if (!k || k === p.kanalId) continue;
+                try { const c = await naKanal(p.id, k); await zatwierdz(c.id); kopie.push({ kanalId: k, kanalNazwa: c.kanalNazwa, id: c.id }); }
+                catch (e) { kopie.push({ kanalId: k, blad: e.message }); }
+            }
+            if (kopie.length) { p.kopie = kopie; await zapisz(); }
+        }
         return p;
     }
 
@@ -276,7 +287,7 @@ export function utworzPublikacje(o) {
         if (!cfg.playlistaDla || !cfg.dodajDoPlaylisty || !p.videoId) return p;
         const pl = await cfg.playlistaDla(p).catch(() => null);
         if (!pl?.id) return p;
-        if (pl.kanalId && p.kanalId && pl.kanalId !== p.kanalId) { p.playlista = { id: pl.id, stan: 'pominieta', powod: `film poszedł na „${p.kanalNazwa ?? p.kanalId}”, a playlista jest na innym kanale` }; return p; }
+        if (pl.kanalId && p.kanalId && pl.kanalId !== p.kanalId) { p.playlista = { id: pl.id, stan: 'pominieta', powod: `kanał „${p.kanalNazwa ?? p.kanalId}” nie ma playlisty programu — dodaj ją w panelu programu` }; return p; }
         try {
             const w = await cfg.dodajDoPlaylisty(p.videoId, pl.id, p.kanalId ?? null);
             p.playlista = { id: pl.id, stan: 'dodana', juzByl: !!w?.juzByl, kiedy: czas() };

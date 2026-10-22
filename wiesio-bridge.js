@@ -15130,7 +15130,16 @@ const PublikacjeYT = utworzPublikacje({
     playlistaDla: async (p) => {
         if (p.zrodlo?.projekt !== GAME_SHOW.PROJEKT) return null;
         const u = await GameShow.ustawienia();
-        return u.playlista ? { id: u.playlista, kanalId: u.playlistaKanal } : null;
+        // playlista kanału, na który poszedł film; bez niej — pierwsza (naPlayliste pominie z powodem „kanał bez playlisty”)
+        const pl = u.playlisty.find((x) => x.kanal === p.kanalId) ?? u.playlisty.find((x) => !x.kanal) ?? u.playlisty[0];
+        return pl ? { id: pl.id, kanalId: pl.kanal } : null;
+    },
+    // 📡 ✓ odcinka Game Show = kopie na kanał programu i kanały dodatkowe (ustawienia Game Show)
+    kanalyProgramu: async (p) => {
+        if (p.zrodlo?.projekt !== GAME_SHOW.PROJEKT) return [];
+        const u = await GameShow.ustawienia();
+        const glowny = (await PublikacjeYT.kanalProjektu(GAME_SHOW.PROJEKT)).zapamietany;
+        return [...new Set([glowny, ...u.kanalyDodatkowe].filter(Boolean))];
     },
     dodajDoPlaylisty: (videoId, playlistId, kanalId) => KontoYouTube.dodajDoPlaylisty(videoId, playlistId, kanalId),
     gotowyYouTube: async () => (await ImpresarioService.getInstance().getYouTubeSecretsStatus()).allPresent,
@@ -15476,6 +15485,8 @@ app.put('/api/game-show/ustawienia', (req, res) => ytOdp(res, (async () => {
     const zmiany = {};
     if (b.jezyk !== undefined) zmiany.jezyk = b.jezyk;
     if (b.silnikIntro !== undefined) zmiany.silnikIntro = b.silnikIntro;
+    if (b.kanalyDodatkowe !== undefined) zmiany.kanalyDodatkowe = b.kanalyDodatkowe;
+    if (b.playlistaUsun !== undefined) zmiany.playlistaUsun = String(b.playlistaUsun);
     if (b.playlista !== undefined) {
         if (!b.playlista) zmiany.playlista = null;
         else {

@@ -190,13 +190,22 @@ export function utworzGameShow(o) {
     const PLIK_U = path.join(KAT, 'ustawienia.json');
     // + playlista programu (Suweren 2026-10-13: „tu wrzucam wszystkie filmy z tańca… automatyczna dla mojej Katedry,
     //   inni mają swój pipeline”) — KAŻDA Katedra ustawia własną; pusta = bez dopisywania.
-    async function ustawienia() {
-        try {
-            const u = JSON.parse(await fs.readFile(PLIK_U, 'utf8'));
-            return { jezyk: jezykShow(u.jezyk), silnikIntro: silnikIntro(u.silnikIntro), playlista: u.playlista ?? null, playlistaKanal: u.playlistaKanal ?? null, playlistaTytul: u.playlistaTytul ?? null };
-        } catch { return { jezyk: 'en', silnikIntro: 'flux', playlista: null, playlistaKanal: null, playlistaTytul: null }; }
+    // 📡 Wiele kanałów (Suweren 2026-10-22: „niech idzie na wszystkie 3 kanały… główny TeO Univers Studio, SMT zastępczy,
+    //   Zebrra Sports najnowszy… utworzę takie same playlisty na pozostałych”): `kanalyDodatkowe` = kanały, na które ✓ odcinka
+    //   wysyła też kopię; `playlisty` = po jednej na kanał. `playlista*` = pierwsza (wizytówka otakos.wtf, zgodność wstecz).
+    const ID_YT = /^[\w-]{10,64}$/;
+    function zUstawien(u = {}) {
+        const playlisty = (Array.isArray(u.playlisty) ? u.playlisty : u.playlista ? [{ id: u.playlista, kanal: u.playlistaKanal ?? null, tytul: u.playlistaTytul ?? null }] : [])
+            .filter((x) => ID_YT.test(String(x?.id ?? ''))).slice(0, 6).map((x) => ({ id: x.id, kanal: x.kanal ?? null, tytul: x.tytul ?? null }));
+        const kanalyDodatkowe = [...new Set((Array.isArray(u.kanalyDodatkowe) ? u.kanalyDodatkowe : []).filter((k) => ID_YT.test(String(k))))].slice(0, 5);
+        return { jezyk: jezykShow(u.jezyk), silnikIntro: silnikIntro(u.silnikIntro), playlisty, kanalyDodatkowe,
+            playlista: playlisty[0]?.id ?? null, playlistaKanal: playlisty[0]?.kanal ?? null, playlistaTytul: playlisty[0]?.tytul ?? null };
     }
-    /** { jezyk?, playlista? (id; null = zdejmij), playlistaKanal?, playlistaTytul? } — zmienia tylko podane pola. */
+    async function ustawienia() {
+        try { return zUstawien(JSON.parse(await fs.readFile(PLIK_U, 'utf8'))); } catch { return zUstawien({ jezyk: 'en', silnikIntro: 'flux' }); }
+    }
+    /** { jezyk?, silnikIntro?, playlista? (id + playlistaKanal/playlistaTytul = dodaj/podmień playlistę tego kanału; null = zdejmij wszystkie),
+     *    playlistaUsun? (id), kanalyDodatkowe? ([kanalId]) } — zmienia tylko podane pola. */
     async function ustaw(zmiany = {}) {
         const u = await ustawienia();
         if (zmiany.jezyk !== undefined) {
@@ -208,11 +217,22 @@ export function utworzGameShow(o) {
             u.silnikIntro = zmiany.silnikIntro;
         }
         if (zmiany.playlista !== undefined) {
-            if (zmiany.playlista && !/^[\w-]{10,64}$/.test(String(zmiany.playlista))) throw new Error('Złe id playlisty.');
-            Object.assign(u, { playlista: zmiany.playlista || null, playlistaKanal: zmiany.playlista ? zmiany.playlistaKanal ?? null : null, playlistaTytul: zmiany.playlista ? zmiany.playlistaTytul ?? null : null });
+            if (!zmiany.playlista) u.playlisty = [];
+            else {
+                if (!ID_YT.test(String(zmiany.playlista))) throw new Error('Złe id playlisty.');
+                const nowa = { id: zmiany.playlista, kanal: zmiany.playlistaKanal ?? null, tytul: zmiany.playlistaTytul ?? null };
+                const i = u.playlisty.findIndex((x) => x.id === nowa.id || (nowa.kanal && x.kanal === nowa.kanal));   // jedna playlista na kanał
+                if (i >= 0) u.playlisty[i] = nowa; else u.playlisty.push(nowa);
+            }
         }
+        if (zmiany.playlistaUsun !== undefined) u.playlisty = u.playlisty.filter((x) => x.id !== zmiany.playlistaUsun);
+        if (zmiany.kanalyDodatkowe !== undefined) {
+            if (!Array.isArray(zmiany.kanalyDodatkowe) || zmiany.kanalyDodatkowe.some((k) => !ID_YT.test(String(k)))) throw new Error('Kanały dodatkowe: lista id kanałów YouTube.');
+            u.kanalyDodatkowe = zmiany.kanalyDodatkowe;
+        }
+        const { playlista: _p, playlistaKanal: _k, playlistaTytul: _t, ...doZapisu } = u;
         await fs.mkdir(KAT, { recursive: true });
-        await fs.writeFile(PLIK_U, JSON.stringify(u, null, 1), 'utf8');
+        await fs.writeFile(PLIK_U, JSON.stringify(doZapisu, null, 1), 'utf8');
         return ustawienia();
     }
     /** Pole `gameShow` publicznej wizytówki: playlista programu i jej filmy z językiem z metadanych (otakos.wtf). */

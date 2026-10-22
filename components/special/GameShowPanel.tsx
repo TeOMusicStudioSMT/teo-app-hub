@@ -22,7 +22,7 @@ interface Odcinek {
     etapy: Record<string, Etap>; publikacja: { id: string; tytul: string | null; kanalNazwa: string | null } | null;
 }
 interface Kanal { kanalId: string | null; kanalNazwa: string | null; zapamietany: string | null }
-interface Stan { odcinki: Odcinek[]; kanal: Kanal; inneSieci: { siec: string; stan: string; powod: string }[]; instrukcja: string[]; automat: boolean; ustawienia?: { jezyk: string; silnikIntro?: string; playlista: string | null; playlistaTytul: string | null; playlistaKanal: string | null }; jezyki?: Record<string, string>; silnikiIntro?: Record<string, string> }
+interface Stan { odcinki: Odcinek[]; kanal: Kanal; inneSieci: { siec: string; stan: string; powod: string }[]; instrukcja: string[]; automat: boolean; ustawienia?: { jezyk: string; silnikIntro?: string; playlista: string | null; playlistaTytul: string | null; playlistaKanal: string | null; playlisty?: { id: string; kanal: string | null; tytul: string | null }[]; kanalyDodatkowe?: string[] }; jezyki?: Record<string, string>; silnikiIntro?: Record<string, string> }
 const FLAGA: Record<string, string> = { en: '🇬🇧', pl: '🇵🇱' };
 interface KanalYT { id: string; nazwa: string }
 interface UtworSuno { id: string; tytul: string; sekundy: number | null; bpm: number | null; stan: string; powod?: string; plik?: string }
@@ -73,13 +73,17 @@ export const GameShowPanel: React.FC = () => {
                             {Object.entries(s.silnikiIntro ?? { flux: 'FLUX', wan: 'Wan 2.2' }).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
                         </select>
                     </label>
-                    <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">Playlista programu:
-                        {s.ustawienia?.playlista
-                            ? <><a href={`https://www.youtube.com/playlist?list=${s.ustawienia.playlista}`} target="_blank" rel="noreferrer" className="text-amber-200 underline">{s.ustawienia.playlistaTytul || s.ustawienia.playlista}</a>
-                                <span className="text-slate-500">— wysłane odcinki trafiają tu same; filmy z niej idą do wizytówki (otakos.wtf)</span>
-                                <button onClick={() => confirm('Odpiąć playlistę? Odcinki przestaną być na nią dopisywane.') && void wolaj('/api/game-show/ustawienia', 'PUT', { playlista: null }, 'Playlista odpięta.')} className="text-slate-600 hover:text-rose-300">odepnij</button></>
-                            : <><input value={playlista} onChange={(ev) => setPlaylista(ev.target.value)} placeholder="link do playlisty YouTube (…/playlist?list=PL…)" className="min-w-[260px] rounded border border-slate-700 bg-black/40 px-1.5 py-0.5 text-slate-200" />
-                                <button disabled={!playlista.trim()} onClick={() => void wolaj('/api/game-show/ustawienia', 'PUT', { playlista: playlista.trim() }, 'Playlista programu ustawiona.').then(() => setPlaylista(''))} className="rounded bg-amber-600/30 px-2 py-0.5 text-amber-100">ustaw</button></>}
+                    <div className="mb-2 text-[10px] text-slate-400">📋 Playlisty programu (po jednej na kanał — wysłane odcinki trafiają na playlistę SWOJEGO kanału; pierwsza idzie do wizytówki otakos.wtf):
+                        {(s.ustawienia?.playlisty ?? []).map((pl) => (
+                            <div key={pl.id} className="ml-2 flex flex-wrap items-center gap-2">
+                                <a href={`https://www.youtube.com/playlist?list=${pl.id}`} target="_blank" rel="noreferrer" className="text-amber-200 underline">{pl.tytul || pl.id}</a>
+                                <span className="text-slate-500">· {kanaly.find((k) => k.id === pl.kanal)?.nazwa ?? pl.kanal ?? 'kanał nieznany'}</span>
+                                <button onClick={() => confirm('Odpiąć tę playlistę? Odcinki z jej kanału przestaną być na nią dopisywane.') && void wolaj('/api/game-show/ustawienia', 'PUT', { playlistaUsun: pl.id }, 'Playlista odpięta.')} className="text-slate-600 hover:text-rose-300">odepnij</button>
+                            </div>))}
+                        <div className="ml-2 mt-1 flex flex-wrap items-center gap-2">
+                            <input value={playlista} onChange={(ev) => setPlaylista(ev.target.value)} placeholder="➕ link do playlisty YouTube (…/playlist?list=PL…)" className="min-w-[260px] rounded border border-slate-700 bg-black/40 px-1.5 py-0.5 text-slate-200" />
+                            <button disabled={!playlista.trim()} onClick={() => void wolaj('/api/game-show/ustawienia', 'PUT', { playlista: playlista.trim() }, 'Playlista dodana — most rozpoznał jej kanał.').then(() => setPlaylista(''))} className="rounded bg-amber-600/30 px-2 py-0.5 text-amber-100">dodaj</button>
+                        </div>
                     </div>
                     <label className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">Kanał programu:
                         <select value={s.kanal.zapamietany ?? ''} onChange={(ev) => void wolaj('/api/game-show/kanal', 'PUT', { kanalId: ev.target.value || null }, ev.target.value ? 'Kanał programu ustawiony — odcinki pójdą tam same.' : 'Kanał programu zapomniany — odcinki idą na domyślny.')} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
@@ -88,6 +92,14 @@ export const GameShowPanel: React.FC = () => {
                         </select>
                         <span className="text-slate-500">{s.kanal.kanalNazwa ? `→ ${s.kanal.kanalNazwa}` : 'YouTube niepołączony'}</span>
                     </label>
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">📡 Jedno ✓ wysyła też na:
+                        {kanaly.filter((k) => k.id !== s.kanal.zapamietany).map((k) => {
+                            const dod = s.ustawienia?.kanalyDodatkowe ?? [];
+                            const wl = dod.includes(k.id);
+                            return <label key={k.id} className="flex items-center gap-1"><input type="checkbox" checked={wl} onChange={() => void wolaj('/api/game-show/ustawienia', 'PUT', { kanalyDodatkowe: wl ? dod.filter((x) => x !== k.id) : [...dod, k.id] }, wl ? `„${k.nazwa}” — bez kopii.` : `„${k.nazwa}” — każdy ✓ odcinka wyśle tam też kopię.`)} />{k.nazwa || k.id}</label>;
+                        })}
+                        <span className="text-slate-500">(kopie z tym samym tytułem i opisem, każdy kanał ma własny dobowy limit YouTube)</span>
+                    </div>
                     <div className="mb-2 rounded border border-white/5 bg-black/20 p-2 text-[10px] text-slate-400">
                         <div className="flex flex-wrap items-center gap-2">🎵 Album Suno do tańca:
                             {album?.album
