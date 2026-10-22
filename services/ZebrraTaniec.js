@@ -92,7 +92,7 @@ export function promptScenariusza({ wystepy, narrator, wspolprowadzacy = [], jez
         '3. Ocena pochodzi z mostu Katedry: takt = jak dobrze ruchy trafiają w tempo, energia = czy mocne ruchy idą na mocne frazy, różnorodność = ile różnych ruchów.',
         '4. Krótko: każda linia 1–3 zdania, mówione na głos. Bez emoji, bez markdown.',
         `5. Język: ${en ? 'English' : 'polski'}.`,
-        'FORMAT (każda linia od etykiety, nic poza tym):',
+        'FORMAT (każda linia od etykiety, nic poza tym). Etykieta to NAZWA CZĘŚCI, nie imię mówiącego — nigdy nie zaczynaj linii od imienia:',
         'INTRO: …',
         ...wystepy.flatMap((_, i) => [`WYSTEP ${i + 1}: … (zapowiedź: tancerz i utwór)`, `OCENA ${i + 1}: … (wynik, ranga, takt/energia/różnorodność, turnieje)`, `RUCHY ${i + 1}: … (ruchy i układ)`]),
         'OUTRO: …',
@@ -102,7 +102,17 @@ export function promptScenariusza({ wystepy, narrator, wspolprowadzacy = [], jez
 }
 
 /** Odczyt scenariusza: etykiety INTRO / WYSTEP n / OCENA n / RUCHY n / OUTRO — wszystkie obowiązkowe. */
-export function odczytajScenariusz(tekst, ileWystepow) {
+export function odczytajScenariusz(tekst, ileWystepow, imiona = []) {
+    // zapas (zmierzone 2026-10-21, teogochi_yay z duetem Gol Donna + Zlat): linie podpisane imionami prowadzących zamiast
+    // etykiet — bierzemy je po kolei TYLKO, gdy jest ich dokładnie tyle, ile części (INTRO, po 3 na występ, OUTRO)
+    if (imiona.length && !/^[\s*#>-]*(INTRO|OUTRO|WYST[EĘ]P|OCENA|RUCHY)\s*\d*\s*[:：]/im.test(String(tekst ?? ''))) {
+        const nazwy = imiona.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+        const wzor = new RegExp(`^[\\s*#>-]*(?:${nazwy})\\s*[:：]\\s*(.+)$`, 'i');
+        const linie = String(tekst ?? '').replace(/\r/g, '').split('\n').map((l) => wzor.exec(l.replace(/\*\*/g, '').trim())?.[1]?.trim()).filter(Boolean);
+        if (linie.length === 2 + 3 * ileWystepow) {
+            tekst = [`INTRO: ${linie[0]}`, ...Array.from({ length: ileWystepow }, (_, i) => [`WYSTEP ${i + 1}: ${linie[1 + 3 * i]}`, `OCENA ${i + 1}: ${linie[2 + 3 * i]}`, `RUCHY ${i + 1}: ${linie[3 + 3 * i]}`]).flat(), `OUTRO: ${linie.at(-1)}`].join('\n');
+        }
+    }
     const sc = { intro: '', outro: '', wystepy: Array.from({ length: ileWystepow }, () => ({ zapowiedz: '', ocena: '', ruchy: '' })) };
     let biezace = null;
     const pole = { WYSTEP: 'zapowiedz', 'WYSTĘP': 'zapowiedz', OCENA: 'ocena', RUCHY: 'ruchy' };
@@ -215,9 +225,12 @@ export function utworzZebrraTaniec(o) {
         const { system, user } = promptScenariusza({ wystepy: s.wystepy, narrator: s.narrator, wspolprowadzacy: s.wspolprowadzacy, jezyk: s.jezyk, s });
         let blad = null;
         for (let proba = 0; proba < 2; proba++) {
-            const r = await cfg.chat(model, system, proba ? `${user}\n\nPOPRZEDNIA WERSJA ODRZUCONA: ${blad}. Napisz całość od nowa, trzymając się formatu i faktów.` : user);
+            // przy duecie model lubi podpisywać linie imionami („Gol Donna: …”) — druga próba dostaje wzór etykiet wprost
+            const wzor = ['INTRO: …', ...s.wystepy.flatMap((_, i) => [`WYSTEP ${i + 1}: …`, `OCENA ${i + 1}: …`, `RUCHY ${i + 1}: …`]), 'OUTRO: …'].join('\n');
+            const r = await cfg.chat(model, system, proba ? `${user}\n\nPOPRZEDNIA WERSJA ODRZUCONA: ${blad}. Napisz całość od nowa, trzymając się faktów. Linie zaczynaj DOKŁADNIE od tych etykiet (bez imion mówiących):\n${wzor}` : user);
             try {
-                const sc = odczytajScenariusz(r.tekst, s.wystepy.length);
+                const imiona = [s.narrator, ...(s.wspolprowadzacy ?? [])].flatMap((k) => [NARRATORZY[k]?.imie, NARRATORZY[k]?.imieEn]).filter(Boolean);
+                const sc = odczytajScenariusz(r.tekst, s.wystepy.length, imiona);
                 const zle = sprawdzLiczby(sc, s.wystepy);
                 if (zle) throw new Error(zle);
                 return { sc, model, proby: proba + 1 };
@@ -237,7 +250,7 @@ export function utworzZebrraTaniec(o) {
         await M.pisz(s);
     }
 
-    async function utworz({ wystepy, narrator = 'zebra', wspolprowadzacy = [], jezyk = 'en' } = {}) {
+    async function utworz({ wystepy, narrator = 'zebra', wspolprowadzacy = [], jezyk = 'en', wieczor = null } = {}) {
         const ids = [...new Set((Array.isArray(wystepy) ? wystepy : []).map(String))];
         if (!ids.length) throw new Error('Wybierz co najmniej jeden występ (choreografię z nagraniem).');
         if (ids.length > MAX_WYSTEPOW) throw new Error(`Najwyżej ${MAX_WYSTEPOW} występy w odcinku.`);
@@ -245,7 +258,9 @@ export function utworzZebrraTaniec(o) {
         const wsp = (Array.isArray(wspolprowadzacy) ? wspolprowadzacy : []).filter((k, i, a) => NARRATORZY[k] && k !== narrator && a.indexOf(k) === i).slice(0, MAX_WSPOL);
         const fakty = await zbierzFakty(ids);
         const s = { wersja: 1, id: M.noweId('z'), stan: 'robi', powod: null, narrator, wspolprowadzacy: wsp, jezyk: JEZYKI[jezyk] ? jezyk : 'en',
-            wystepy: fakty.map(({ klipPlik: _k, ...w }) => w), klipy: fakty.map((w) => w.klipPlik), scenariusz: null, plik: null, publikacja: null, utworzono: czas() };
+            wystepy: fakty.map(({ klipPlik: _k, ...w }) => w), klipy: fakty.map((w) => w.klipPlik), scenariusz: null, plik: null, publikacja: null, utworzono: czas(),
+            // 🌙 część Wieczoru Tańca (services/WieczorTanca.js) — automat nagrywania studia bierze tylko takie
+            ...(/^w-[0-9a-f]{8}$/.test(String(wieczor)) ? { wieczor: String(wieczor) } : {}) };
         await M.pisz(s);
         M.zakolejkuj(s.id, () => przebieg(s.id));
         return s;

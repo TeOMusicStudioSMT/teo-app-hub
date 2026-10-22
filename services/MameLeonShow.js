@@ -221,7 +221,7 @@ export function utworzMameLeon(o) {
         await M.pisz(s);
     }
 
-    async function utworz({ temat, goscie, jezyk = 'pl', uwagi = '' } = {}) {
+    async function utworz({ temat, goscie, jezyk = 'pl', uwagi = '', wieczor = null } = {}) {
         const t = czyste(temat, 300);
         if (t.length < 3) throw new Error('Podaj temat rozmowy.');
         const lista = Array.isArray(goscie) ? goscie : [];
@@ -231,7 +231,9 @@ export function utworzMameLeon(o) {
         for (const x of lista) g.push(await gosc(x));
         const imiona = g.map((x) => kluczImienia(x.imie));
         if (new Set(imiona).size !== imiona.length || imiona.includes(kluczImienia(GOSPODARZ.imie))) throw new Error('Każdy gość potrzebuje innego imienia (i innego niż Mame Leon).');
-        const s = { wersja: 1, id: M.noweId('m'), stan: 'robi', powod: null, temat: t, uwagi: czyste(uwagi, 600), jezyk: JEZYKI[jezyk] ? jezyk : 'pl', goscie: g, rozmowa: null, plik: null, publikacja: null, utworzono: czas() };
+        const s = { wersja: 1, id: M.noweId('m'), stan: 'robi', powod: null, temat: t, uwagi: czyste(uwagi, 600), jezyk: JEZYKI[jezyk] ? jezyk : 'pl', goscie: g, rozmowa: null, plik: null, publikacja: null, utworzono: czas(),
+            // 🌙 część Wieczoru Tańca (services/WieczorTanca.js) — automat nagrywania studia bierze tylko takie
+            ...(/^w-[0-9a-f]{8}$/.test(String(wieczor)) ? { wieczor: String(wieczor) } : {}) };
         await M.pisz(s);
         M.zakolejkuj(s.id, () => przebieg(s.id));
         return s;

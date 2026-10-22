@@ -60,6 +60,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/choreografie', '/api/taniec/',   // 🩰 choreografie, nagrania występów i zgłoszenia do turniejów — przy maszynie
     '/api/gol-dnia',   // ⚽ Gol Dnia: zwiad w sieci (koszt), FLUX, głos, publikacja — tylko przy maszynie
     '/api/zebrra-taniec',   // 🩰 Taniec w Zebrra Sports: model, głos, nagranie, publikacja — tylko przy maszynie
+    '/api/wieczor-tanca',   // 🌙 Wieczór Tańca: zakłada odcinki programów, skleja film, publikacja — tylko przy maszynie
     '/api/mame-leon',   // 🦎 Mame Leon Show: model, głos, nagranie, publikacja — tylko przy maszynie
     '/api/zebrra-news',   // 📰 Zebrra News: nagłówki z sieci, model, FLUX, głos, nagranie, publikacja — tylko przy maszynie
     '/api/game-show',   // 🎪 odcinki TeO Game Show (GPU, ffmpeg) i kanał programu — przy maszynie; ✓ publikacji zostaje w Izbie

@@ -120,6 +120,7 @@ import { utworzArgoBoba }   from './services/ArgoBob.js';
 import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei, odpowiedzGeminiZwiadu, SZUKAJ_W_GOOGLE } from './services/GolDnia.js';
 import { utworzZebrraTaniec, zamontujTrasyZebrraTanca, PROJEKT as PROJEKT_ZEBRRA_SPORTS } from './services/ZebrraTaniec.js';
 import { utworzMameLeon, zamontujTrasyMameLeon } from './services/MameLeonShow.js';
+import { utworzWieczorTanca, zamontujTrasyWieczoru } from './services/WieczorTanca.js';
 import { utworzZebrraNews, zamontujTrasyZebrraNews, PROJEKT as PROJEKT_ZEBRRA_NEWS } from './services/ZebrraNews.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
@@ -11622,8 +11623,16 @@ const Choreografie = utworzChoreografie({
     uruchom: (c, a, o) => execFileAsync(c, a, { windowsHide: true, maxBuffer: 1 << 24, ...o }),
     mistrzGry: { wynikChoreografii: (w) => MistrzGry.wynikChoreografii(w) },
     // 🎪 po zapisie nagrania występu sam rusza odcinek TeO Game Show (OTAKOS_GAME_SHOW=0 wyłącza)
-    poNagraniu: ({ choreografia, nagranie }) => (process.env.OTAKOS_GAME_SHOW === '0' ? null
-        : GameShow.utworz(choreografia.id, nagranie.nazwa).then((s) => ({ id: s.id, stan: s.stan }))),
+    // 🌙 + Wieczór Tańca (Zebrra Sports, Mame Leon, jeden film) — gdy włączony w ustawieniach; jego błąd nie psuje Game Show
+    poNagraniu: async ({ choreografia, nagranie }) => {
+        const show = process.env.OTAKOS_GAME_SHOW === '0' ? null
+            : await GameShow.utworz(choreografia.id, nagranie.nazwa).then((s) => ({ id: s.id, stan: s.stan })).catch((e) => ({ blad: e.message }));
+        let wieczor = null;
+        if (process.env.OTAKOS_WIECZOR_TANCA !== '0' && (await WieczorTanca.ustawienia()).auto) {
+            wieczor = await WieczorTanca.zacznij({ choreografia: choreografia.id, nagranie: nagranie.nazwa, gameShowId: show?.id ?? null }).then((w) => ({ id: w.id, czesci: w.czesci })).catch((e) => ({ blad: e.message }));
+        }
+        return show || wieczor ? { ...(show ?? {}), ...(wieczor ? { wieczor } : {}) } : null;
+    },
 });
 // 🏛️ Globalny Klub Mistrzów (services/KlubMistrzow.js) — JaJo przedstawia Katedrę w wizytówce, czyta wizytówki Katedr
 // z rejestru (nick + klucz zgodne), zbiera eventy globalne i rankingi; nowe eventy i wyniki mówi kanałem Mistrza.
@@ -15308,7 +15317,7 @@ async function tancerzGameShow(mini) {
     }
     let obraz = null;
     if (assetId) { try { const p = Assety3D.sciezkaPliku(assetId, 'obraz.png'); if (fsSync.existsSync(p)) obraz = p; } catch { /* zły id assetu */ } }
-    return { imie: m?.nazwa || mini?.nazwa || 'TeOgochi', opis: m?.opis ?? '', obraz };
+    return { imie: m?.nazwa || mini?.nazwa || 'TeOgochi', opis: m?.opis ?? '', obraz, assetId };
 }
 // ── ⚽ GOL DNIA (services/GolDnia.js) — TeOgochi rysuje i opowiada bramki z FAKTÓW meczów (Suweren 2026-10-15) ──
 // Obraz NIE z cudzych nagrań: fakty (TheSportsDB + Zwiadowca z sieci, sprawdzone wynikiem) → FLUX w stylu Katedry.
@@ -15506,6 +15515,26 @@ const MameLeon = utworzMameLeon({
     szyna: Szyna,
 });
 zamontujTrasyMameLeon(app, MameLeon, { raw: express.raw });
+
+// ── 🌙 Wieczór Tańca (services/WieczorTanca.js) — po nagraniu występu: Game Show + Zebrra Sports + Mame Leon (tancerz
+// i choreograf na kanapie) → jeden film-wieczór (Spawacz) → Kronikarz → ✓. Studia nagrywa apka (🤖 automat nagrywania).
+const WieczorTanca = utworzWieczorTanca({
+    katalog: ANTIGRAVITY_DIR,
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    choreografie: { wczytaj: (id) => Choreografie.wczytaj(id) },
+    gameShow: { wczytaj: (id) => GameShow.wczytaj(id), lista: () => GameShow.lista() },
+    zebrra: { utworz: (z) => ZebrraTaniec.utworz(z), wczytaj: (id) => ZebrraTaniec.wczytaj(id) },
+    mameLeon: { utworz: (z) => MameLeon.utworz(z), wczytaj: (id) => MameLeon.wczytaj(id) },
+    tancerz: async (mini) => { const t = await tancerzGameShow(mini); return { imie: t.imie, assetId: t.assetId ?? null }; },
+    os: (plik) => Kompozytor.dla(plik),
+    imieChoreografa: async (id) => (await MameLeon.kandydaci()).find((k) => k.id === id)?.imie ?? id,
+    spawaj: ({ klipy, wyjscie, celWedlug }) => Spawacz.spawaj({ klipy, wyjscie, opisz: Montazownia.opisz, uruchom: execFileAsync, ffmpeg: ffmpegPath, celWedlug }),
+    publikuj: (z) => PublikacjeYT.przygotuj(z),
+    opisz: (p) => Montazownia.opisz(p),
+    szyna: Szyna,
+});
+zamontujTrasyWieczoru(app, WieczorTanca);
+if (process.env.OTAKOS_WIECZOR_TANCA !== '0') WieczorTanca.startPetli();
 
 // ── 📰 Zebrra News (services/ZebrraNews.js) — dzienny serwis z publicznych nagłówków RSS, studio News w apce studio-zebrra ──
 // Tylko tytuł + opis + link ze źródeł, własne streszczenie, liczby tylko ze źródeł; obrazy FLUX symboliczne (opcja).
