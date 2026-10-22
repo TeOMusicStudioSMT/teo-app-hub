@@ -8,7 +8,7 @@
  *   w katalogu montaży projektu (Game Show, Gol Dnia, wywiady, podcasty, sceny) — stare i każde nowe, gdy tylko wyjdzie;
  *   każdy film RAZ na cel (rejestr `plik|cel` na dysku — restart nie robi dubli) → pion (services/Formaty.js):
  *   propozycja z odcinka (Gol Dnia: cały skrót, gdy się mieści, inaczej pierwszy gol), inaczej cały film ≤ limit sieci,
- *   inaczej pierwsze N s; klip 60 s służy też Reels i TikTokowi (cele po kolei od najkrótszego limitu) →
+ *   inaczej pierwsze N s; pion Shortu (≤ 3 min) służy też Reels i TikTokowi (cele po kolei od najkrótszego limitu) →
  *   Kronikarz pisze opis → wysyłka BEZ ręcznego ✓ (wprost życzenie Suwerena dla włączonych sieci):
  *     shorts → PublikacjeYouTube (zatwierdzenie od razu, kanał projektu; YouTube bez audytu i tak trzyma prywatnie — jak zawsze),
  *     tiktok → SZKIC do skrzynki aplikacji TikTok (opis Suweren wkleja tam — API szkicu opisu nie bierze),
@@ -109,7 +109,7 @@ export function utworzAutopilotFormatow(o) {
         const pr = await F.propozycje(film.plik);
         const w = wycinekDla(pr.propozycje, pr.opis?.sekundy, limit, { caly: cel === 'tiktok' });
         // klip autopilota z tym samym wycinkiem, który nie poszedł jeszcze do tej sieci → ten sam (bez drugiego ffmpeg);
-        // TikTok bierze cały film, więc 60-sekundowy pion Shortu mu nie wystarcza
+        // TikTok bierze cały film, więc krótszy pion Shortu mu nie wystarcza
         const istniejacy = (await F.wszystkie()).find((k) => k.autopilot && k.stan === 'gotowy' && path.resolve(k.zrodlo) === film.plik
             && Math.abs(k.od - w.od) < 0.05 && Math.abs(k.do - w.do) < 0.05 && (k.sekundy ?? Infinity) <= limit + 0.05 && wolnyDla(k.publikacje?.[siec]));
         if (istniejacy) return istniejacy;

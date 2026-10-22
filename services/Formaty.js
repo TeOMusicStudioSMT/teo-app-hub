@@ -12,12 +12,12 @@
  * w kolejności `kwestieOdcinka` → każdy gol osobno (przed + okrzyk + po) i cały skrót. Studio Zebrra (nagranie 3D)
  * granic kwestii nie zapisuje — tam od–do ręcznie, bez zgadywania.
  * WYNIK: `produkcje/<projekt>/formaty/<nazwa>_<układ>_<id>.mp4`.
- * CELE (długość): YouTube Shorts ≤ 60 s (YouTube od 2024 przyjmuje Shorts do 3 min, ale ≤ 60 s pion jest Shortem zawsze),
- * Instagram Reels ≤ 90 s (Reels z API mogą być dłuższe, 90 s = pewny Reel w zakładce), TikTok ≤ 10 min (konkretny limit
+ * CELE (długość; Suweren 2026-10-22: Shorts i Reels do 3 min): YouTube Shorts ≤ 180 s (pion do 3 min = Short; dłuższy niż
+ * 60 s z roszczeniem Content ID YouTube blokuje — dlatego tylko własne odcinki), Instagram Reels ≤ 180 s, TikTok ≤ 10 min (konkretny limit
  * twórcy podaje TikTok). Za długi klip = cel `ok: false` z powodem, nie przycinamy po cichu.
  *
  * PUBLIKACJA — zawsze ✓ Suwerena przed wysyłką:
- *   youtube   → services/PublikacjeYouTube.js (Kronikarz → ✓ w Izbie → Impresariat); pion ≤ 60 s = Short, opis niesie #Shorts;
+ *   youtube   → services/PublikacjeYouTube.js (Kronikarz → ✓ w Izbie → Impresariat); pion ≤ 180 s = Short, opis niesie #Shorts;
  *   tiktok    → services/KontaSieci.js: szkic do skrzynki konta TikTok (opis Suweren wkleja w aplikacji — API szkicu go nie bierze);
  *   instagram → services/KontaSieci.js: Reel PUBLICZNY od razu po ✓ (API nie ma szkiców).
  * Opis do TikTok/Instagram pisze Kronikarz (ten sam format TYTUŁ/OPIS/TAGI), Suweren poprawia przed ✓.
@@ -39,8 +39,8 @@ export const SZER = 1080, WYS = 1920, FPS = 30;
 // TikTok przyjmuje filmy do 10 min (Suweren 2026-10-22: „tańce potrzebują więcej czasu”) — wycinek do tej długości
 export const MAX_KLIPU = 600;
 export const CELE = {
-    shorts: { nazwa: 'YouTube Shorts', siec: 'youtube', max: 60 },
-    reels: { nazwa: 'Instagram Reels', siec: 'instagram', max: 90 },
+    shorts: { nazwa: 'YouTube Shorts', siec: 'youtube', max: 180 },
+    reels: { nazwa: 'Instagram Reels', siec: 'instagram', max: 180 },
     tiktok: { nazwa: 'TikTok', siec: 'tiktok', max: 600 },
 };
 export const SIECI_PUBLIKACJI = { youtube: 'shorts', tiktok: 'tiktok', instagram: 'reels' };

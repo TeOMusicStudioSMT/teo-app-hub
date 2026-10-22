@@ -50,7 +50,8 @@ test('czyste: program z nazwy, cele długości, filtry układów, propozycje gol
     assert.equal(programZPliku('gol_A-B_studio_zebra+lew_en_0a1b2c3d.mp4').id, 'studio-zebrra');
     assert.equal(programZPliku('gol_A-B_pilkarka_pl_0a1b2c3d.mp4').id, 'gol-dnia');
     assert.equal(programZPliku('wywiad_x_en_abc123def.mp4').id, 'wywiad');
-    assert.deepEqual(celeKlipu(75), { shorts: { ok: false, powod: '75 s > 60 s — skróć wycinek' }, reels: { ok: true }, tiktok: { ok: true } });
+    assert.deepEqual(celeKlipu(75), { shorts: { ok: true }, reels: { ok: true }, tiktok: { ok: true } });
+    assert.deepEqual(celeKlipu(200), { shorts: { ok: false, powod: '200 s > 180 s — skróć wycinek' }, reels: { ok: false, powod: '200 s > 180 s — skróć wycinek' }, tiktok: { ok: true } });
     assert.match(filtrUkladu('srodek', { kadrX: 0.2 }), /crop=1080:1920:\(iw-1080\)\*0\.200/);
     assert.throws(() => filtrUkladu('kwadrat'), /Nieznany układ/);
     const p = propozycjeGolDnia(ODCINEK('g-00000000', 'x', []), [1, 1.5, 1, 2, 1, 1, 1, 1.5]);
@@ -276,7 +277,7 @@ test('trasy: stan sieci bez sekretów, zdalnie bez klucza 401, powrót OAuth wpu
         const lista = await (await fetch(`${baza}/api/formaty`)).json();
         assert.equal(lista.success, true);
         assert.deepEqual(lista.klipy, []);
-        assert.equal(lista.cele.shorts.max, 60);
+        assert.equal(lista.cele.shorts.max, 180);
         const zr = await (await fetch(`${baza}/api/formaty/zrodla`)).json();
         assert.equal(zr.zrodla.length, 2);
         const zdalnie = await fetch(`${baza}/api/formaty`, { headers: { 'cf-connecting-ip': '8.8.8.8', 'x-forwarded-for': '8.8.8.8' } });
