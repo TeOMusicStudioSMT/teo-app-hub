@@ -396,6 +396,21 @@ export function nazwaPublikacji(s, studio = false) {
  *   mow?: (o: { tekst: string, narrator: string, jezyk: string }) => Promise<{ audio: Buffer, ext: string }>, opisz?: (p: string) => Promise<{ sekundy: number|null }>,
  *   publikuj?: Function, ffmpeg?: string, szyna?: any, teraz?: () => number }} o
  */
+/**
+ * 🔑 Klucze TheSportsDB po kolei (2026-10-22: darmowy „3” zaczął oddawać HTTP 403, darmowy testowy to teraz „123”):
+ * `OTAKOS_THESPORTSDB_KLUCZ` (Premium) → 123 → 3; 401/403 = następny klucz, inny błąd = od razu do wołającego.
+ */
+export const KLUCZE_THESPORTSDB = () => [...new Set([process.env.OTAKOS_THESPORTSDB_KLUCZ, '123', '3'].filter(Boolean))];
+export async function zTheSportsDb(fetchFn, u, ms = 20_000) {
+    let ostatni = null;
+    for (const klucz of KLUCZE_THESPORTSDB()) {
+        const r = await fetchFn(`https://www.thesportsdb.com/api/v1/json/${klucz}/${u}`, { signal: AbortSignal.timeout(ms) });
+        if (r.status !== 401 && r.status !== 403) return Object.assign(r, { klucz });
+        ostatni = r;
+    }
+    return ostatni;
+}
+
 export function utworzGolDnia(o) {
     const cfg = { ffmpeg: 'ffmpeg', fetch: (...a) => globalThis.fetch(...a), teraz: () => Date.now(), modelDla: async () => null, opisz: async () => ({ sekundy: null }), ...o };
     const KAT = path.join(cfg.katalog, 'gol-dnia');
@@ -435,8 +450,7 @@ export function utworzGolDnia(o) {
     async function mecze(liga) {
         const id = Number(liga) || (await ustawienia()).liga;
         if (!LIGI[id]) throw new Error('Nieznana liga.');
-        const klucz = process.env.OTAKOS_THESPORTSDB_KLUCZ || '3';
-        const pobierz = async (u) => { const r = await cfg.fetch(`https://www.thesportsdb.com/api/v1/json/${klucz}/${u}`, { signal: AbortSignal.timeout(20_000) }); if (!r.ok) throw new Error(`TheSportsDB HTTP ${r.status}`); return (await r.json()).events ?? []; };
+        const pobierz = async (u) => { const r = await zTheSportsDb(cfg.fetch, u); if (!r.ok) throw new Error(`TheSportsDB HTTP ${r.status}`); return (await r.json()).events ?? []; };
         const ostatnie = await pobierz(`eventspastleague.php?id=${id}`);
         const wszystkie = [...ostatnie];
         const runda = Number(ostatnie[0]?.intRound), sezon = ostatnie[0]?.strSeason;
@@ -450,14 +464,15 @@ export function utworzGolDnia(o) {
     /** ⏱️ Fakty z osi zdarzeń TheSportsDB — pierwsze źródło (bez modelu); niepełna oś = powód, wtedy zwiad w sieci. */
     async function faktyZOsi(mecz) {
         if (!/^\d+$/.test(String(mecz.id ?? ''))) return { powod: 'mecz spoza TheSportsDB' };
-        const klucz = process.env.OTAKOS_THESPORTSDB_KLUCZ || '3';
+        let klucz = null;
         try {
-            const r = await cfg.fetch(`https://www.thesportsdb.com/api/v1/json/${klucz}/lookuptimeline.php?id=${encodeURIComponent(mecz.id)}`, { signal: AbortSignal.timeout(20_000) });
+            const r = await zTheSportsDb(cfg.fetch, `lookuptimeline.php?id=${encodeURIComponent(mecz.id)}`);
+            klucz = r.klucz ?? null;
             if (!r.ok) return { powod: `HTTP ${r.status}` };
             const gole = goleZOsi((await r.json())?.timeline, mecz);
             if (!gole) return { powod: 'brak osi zdarzeń' };
             const zly = sprawdzGole(gole, mecz.wynik);
-            if (zly) return { powod: `oś niepełna (${zly}${klucz === '3' ? '; darmowy klucz oddaje najwyżej 5 zdarzeń meczu' : ''})` };
+            if (zly) return { powod: `oś niepełna (${zly}${['3', '123'].includes(klucz) ? '; darmowy klucz oddaje najwyżej 5 zdarzeń meczu' : ''})` };
             return { gole, zrodla: [`https://www.thesportsdb.com/event/${mecz.id}`], dostawca: 'TheSportsDB (oś zdarzeń)' };
         } catch (e) { return { powod: String(e.message || e).slice(0, 120) }; }
     }
@@ -613,11 +628,10 @@ export function utworzGolDnia(o) {
     /** Barwy obu drużyn (TheSportsDB po id drużyny, tylko przy zgodnej nazwie; inaczej z nazwy) — zapisane w meczu. */
     async function barwyMeczu(m) {
         if (m.barwy?.gospodarze && m.barwy?.goscie) return m.barwy;
-        const klucz = process.env.OTAKOS_THESPORTSDB_KLUCZ || '3';
         const druzyna = async (idD, nazwa) => {
             if (idD) {
                 try {
-                    const r = await cfg.fetch(`https://www.thesportsdb.com/api/v1/json/${klucz}/lookupteam.php?id=${encodeURIComponent(idD)}`, { signal: AbortSignal.timeout(15_000) });
+                    const r = await zTheSportsDb(cfg.fetch, `lookupteam.php?id=${encodeURIComponent(idD)}`, 15_000);
                     const c = r.ok ? barwyZDruzyny((await r.json())?.teams?.[0], nazwa) : null;
                     if (c) return { barwy: c, zrodlo: 'thesportsdb' };
                 } catch { /* sieć — barwy z nazwy */ }
