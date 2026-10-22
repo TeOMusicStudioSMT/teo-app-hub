@@ -71,7 +71,7 @@ export const KsiegarniaSkili: React.FC = () => {
       {openShelf && (
         <div className="space-y-1 mb-2 max-h-44 overflow-auto pr-1">
           {skille.filter(s => s.shelf === openShelf).map(s => (
-            <div key={s.slug} className="rounded border border-zinc-800/70 bg-black/30 p-1.5">
+            <div key={s.slug} className="rounded-sm border border-zinc-800/70 bg-black/30 p-1.5">
               <div className="text-[10px] font-bold text-rose-200">{s.id} {s.difficulty && <span className="text-[8px] text-zinc-500">· {s.difficulty}</span>}</div>
               <div className="text-[9px] text-zinc-400 leading-snug">{s.desc}</div>
             </div>
@@ -83,13 +83,13 @@ export const KsiegarniaSkili: React.FC = () => {
       <div className="flex gap-1.5">
         <input value={task} onChange={e => setTask(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') askJadziunia(); }}
           placeholder="Opisz zadanie — Jadziunia dobierze skille (np. teleport bota z efektem cząsteczek)…"
-          className="flex-1 bg-black/40 border border-rose-500/20 rounded px-2 py-1.5 text-[11px] text-rose-100 outline-none focus:border-rose-500" />
+          className="flex-1 bg-black/40 border border-rose-500/20 rounded-sm px-2 py-1.5 text-[11px] text-rose-100 outline-hidden focus:border-rose-500" />
         <button onClick={askJadziunia} disabled={busy}
-          className="px-3 py-1.5 rounded border border-rose-500/50 bg-rose-950/30 text-rose-300 text-[11px] font-bold hover:bg-rose-900/50 disabled:opacity-50">
+          className="px-3 py-1.5 rounded-sm border border-rose-500/50 bg-rose-950/30 text-rose-300 text-[11px] font-bold hover:bg-rose-900/50 disabled:opacity-50">
           {busy ? '⟳…' : '📚 Jadziunia, dobierz'}
         </button>
       </div>
-      {pick && <div className="text-[11px] text-rose-100/85 bg-black/40 border border-rose-900/50 rounded p-2 mt-1.5 whitespace-pre-wrap max-h-52 overflow-auto">{pick}</div>}
+      {pick && <div className="text-[11px] text-rose-100/85 bg-black/40 border border-rose-900/50 rounded-sm p-2 mt-1.5 whitespace-pre-wrap max-h-52 overflow-auto">{pick}</div>}
       <div className="text-[8px] text-zinc-600 mt-1">Księgozbiór rośnie: dodawaj <code className="text-rose-400">TeO_Skille/&lt;półka&gt;/&lt;skill&gt;/SKILL.md</code>. Skille zgodne z Claude Code (Kurka).</div>
     </div>
   );

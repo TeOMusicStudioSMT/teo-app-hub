@@ -104,7 +104,7 @@ export const WorkPalace: React.FC = () => {
                                     {rozmowa && <MessageSquare size={10} className="inline mr-1" />}
                                     {z.rodzaj}
                                 </span>
-                                <span className="text-slate-300 whitespace-pre-wrap break-words">{z.tresc}</span>
+                                <span className="text-slate-300 whitespace-pre-wrap wrap-break-word">{z.tresc}</span>
                             </motion.div>
                         );
                     })}

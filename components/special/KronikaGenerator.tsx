@@ -45,15 +45,15 @@ export const KronikaGenerator: React.FC = () => {
       <div className="p-4 rounded-xl border border-cyan-500/25 bg-gray-900/70 space-y-2">
         <div className="text-[10px] tracking-widest text-cyan-500/60 font-mono">∴ ŻYWY KRONIKARZ 0.00G ∴</div>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Tytuł wpisu (opcjonalnie)"
-          className="w-full bg-black/40 border border-cyan-500/20 rounded px-3 py-1.5 text-sm text-white outline-none focus:border-cyan-500 font-mono" />
+          className="w-full bg-black/40 border border-cyan-500/20 rounded-sm px-3 py-1.5 text-sm text-white outline-hidden focus:border-cyan-500 font-mono" />
         <textarea value={narrative} onChange={e => setNarrative(e.target.value)} rows={4}
           placeholder="Wklej rozmowę / podcast / intencję — Kronikarz przemieli to w żywy wpis..."
-          className="w-full bg-black/40 border border-cyan-500/20 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-cyan-500 resize-y" />
+          className="w-full bg-black/40 border border-cyan-500/20 rounded-sm px-3 py-2 text-sm text-gray-200 outline-hidden focus:border-cyan-500 resize-y" />
         <input value={videoUrl} onChange={e => setVideoUrl(e.target.value)} placeholder="Ścieżka/URL wideo (opcjonalnie)"
-          className="w-full bg-black/40 border border-cyan-500/20 rounded px-3 py-1.5 text-xs text-gray-300 outline-none focus:border-cyan-500 font-mono" />
+          className="w-full bg-black/40 border border-cyan-500/20 rounded-sm px-3 py-1.5 text-xs text-gray-300 outline-hidden focus:border-cyan-500 font-mono" />
         <div className="flex items-center gap-3">
           <button onClick={forge} disabled={busy}
-            className="px-5 py-2 rounded border border-fuchsia-500/50 bg-fuchsia-950/30 text-fuchsia-300 text-sm font-bold hover:bg-fuchsia-900/50 disabled:opacity-50 font-mono">
+            className="px-5 py-2 rounded-sm border border-fuchsia-500/50 bg-fuchsia-950/30 text-fuchsia-300 text-sm font-bold hover:bg-fuchsia-900/50 disabled:opacity-50 font-mono">
             {busy ? '⟳ Czaruję...' : '✨ WYCZARUJ ŻYWY WPIS'}
           </button>
           {status && <span className="text-xs text-gray-400 font-mono">{status}</span>}

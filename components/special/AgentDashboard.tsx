@@ -151,7 +151,7 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onApply, onReject }) 
                     <h3 className="text-sm font-mono text-cyan-300 truncate">{task.title}</h3>
                     <p className="text-xs text-gray-400 mt-1 leading-relaxed">{task.description}</p>
                 </div>
-                <span className={`flex-shrink-0 text-[9px] px-2 py-1 rounded font-bold tracking-widest ${style.badge} ${isNew ? 'animate-pulse' : ''}`}>
+                <span className={`shrink-0 text-[9px] px-2 py-1 rounded-sm font-bold tracking-widest ${style.badge} ${isNew ? 'animate-pulse' : ''}`}>
                     {task.priority}
                 </span>
             </div>
@@ -196,7 +196,7 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onApply, onReject }) 
                 </p>
             )}
             {task.status === 'FAILED' && (
-                <div className="mt-2 rounded p-2" style={{ background: 'rgba(180,0,0,0.12)', border: '1px solid rgba(255,50,50,0.2)' }}>
+                <div className="mt-2 rounded-sm p-2" style={{ background: 'rgba(180,0,0,0.12)', border: '1px solid rgba(255,50,50,0.2)' }}>
                     <p className="text-[9px] text-red-400 font-mono uppercase tracking-widest mb-1">
                         💀 BŁĄD MECHANIKA
                     </p>
@@ -232,7 +232,7 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onApply, onReject }) 
 
                     {/* 🧪 Werdykt weryfikacji kompilacji (autonomiczny loop testowy) */}
                     <div className="px-3 pt-2">
-                        <span className="text-[8px] font-mono px-2 py-0.5 rounded"
+                        <span className="text-[8px] font-mono px-2 py-0.5 rounded-sm"
                             style={
                                 task.planOnly
                                     ? { background: 'rgba(148,163,184,0.12)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.3)' }
@@ -264,7 +264,7 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onApply, onReject }) 
                         <button
                             onClick={togglePatch}
                             disabled={patchLoading}
-                            className="px-3 py-1.5 text-[10px] font-mono bg-slate-900/80 hover:bg-slate-800 transition rounded flex items-center gap-1"
+                            className="px-3 py-1.5 text-[10px] font-mono bg-slate-900/80 hover:bg-slate-800 transition rounded-sm flex items-center gap-1"
                             style={{ border: '1px solid rgba(16,185,129,0.2)', color: '#6ee7b7' }}
                         >
                             {patchLoading ? (
@@ -276,7 +276,7 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onApply, onReject }) 
                         <button
                             onClick={handleApply}
                             disabled={applying || !!applyResult?.success}
-                            className="flex-1 px-3 py-1.5 text-[11px] font-bold font-mono transition rounded flex items-center justify-center gap-2"
+                            className="flex-1 px-3 py-1.5 text-[11px] font-bold font-mono transition rounded-sm flex items-center justify-center gap-2"
                             style={{
                                 border: applyResult?.success
                                     ? '1px solid rgba(16,185,129,0.3)'
@@ -307,7 +307,7 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onApply, onReject }) 
                         <button
                             onClick={handleReject}
                             disabled={rejecting || !!applyResult?.success}
-                            className="px-3 py-1.5 text-[10px] font-mono transition rounded"
+                            className="px-3 py-1.5 text-[10px] font-mono transition rounded-sm"
                             style={{
                                 border: '1px solid rgba(239,68,68,0.3)',
                                 background: 'rgba(30,0,0,0.6)',
@@ -358,7 +358,7 @@ const TaskCard = React.memo<TaskCardProps>(({ task, isNew, onApply, onReject }) 
                                 className="overflow-hidden mt-2"
                             >
                                 <pre
-                                    className="text-[9px] font-mono text-slate-300 bg-black/60 rounded p-3 overflow-x-auto max-h-[260px] overflow-y-auto leading-relaxed whitespace-pre-wrap break-words"
+                                    className="text-[9px] font-mono text-slate-300 bg-black/60 rounded-sm p-3 overflow-x-auto max-h-[260px] overflow-y-auto leading-relaxed whitespace-pre-wrap wrap-break-word"
                                     style={{ border: '1px solid rgba(0,229,255,0.1)' }}
                                 >
                                     {patchContent}

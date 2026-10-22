@@ -21,10 +21,10 @@ export const MobilePocketBadge: React.FC = () => {
           : 'Brak WebGPU w tej przeglądarce — użyj Chrome (Android) dla trybu JusT na VRAM telefonu.'}
       </div>
       <div className="flex gap-2 mt-2 text-[9px]">
-        <span className={`px-1.5 py-0.5 rounded border ${webgpu ? 'border-emerald-500/40 text-emerald-300' : 'border-zinc-700 text-zinc-500'}`}>
+        <span className={`px-1.5 py-0.5 rounded-sm border ${webgpu ? 'border-emerald-500/40 text-emerald-300' : 'border-zinc-700 text-zinc-500'}`}>
           {webgpu ? '⚡ VRAM/WebGPU ✓' : '⚡ WebGPU —'}
         </span>
-        <span className={`px-1.5 py-0.5 rounded border ${nfc ? 'border-fuchsia-500/40 text-fuchsia-300' : 'border-zinc-700 text-zinc-500'}`}>
+        <span className={`px-1.5 py-0.5 rounded-sm border ${nfc ? 'border-fuchsia-500/40 text-fuchsia-300' : 'border-zinc-700 text-zinc-500'}`}>
           {nfc ? '💍 NFC Pierścień ✓' : '💍 NFC —'}
         </span>
       </div>

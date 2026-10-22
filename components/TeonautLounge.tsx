@@ -283,7 +283,7 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                         initial={{ opacity: 0, scale: 0.7, y: 20 }}
                         animate={{ opacity: 1, scale: 1,   y: 0  }}
                         transition={{ delay: 0.6, duration: 0.4, ease: 'backOut' }}
-                        className="fixed bottom-10 right-6 z-[3000]"
+                        className="fixed bottom-10 right-6 z-3000"
                     >
                         <motion.button
                             onClick={() => setIsVoiceModuleOpen(prev => !prev)}
@@ -328,7 +328,7 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                     <motion.div 
                         initial={{ opacity: 0, y: 50 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[3000]"
+                        className="fixed bottom-10 left-1/2 -translate-x-1/2 z-3000"
                     >
                         <button 
                             onClick={() => setIsHudVisible(true)}

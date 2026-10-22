@@ -64,7 +64,7 @@ export const ProtectiveModeModal: React.FC = () => {
                 <div className="relative w-40 h-40 mx-auto my-8 flex items-center justify-center">
                     <div className="absolute inset-0 bg-amber-500/10 rounded-full animate-[pulse_4s_ease-in-out_infinite]"></div>
                     <div 
-                        className="w-16 h-16 bg-amber-400 rounded-full transition-transform duration-[4000ms] ease-in-out"
+                        className="w-16 h-16 bg-amber-400 rounded-full transition-transform duration-4000 ease-in-out"
                         style={{ animation: isResonating ? `breathe ${BREATH_DURATION_S}s ease-in-out forwards` : 'none' }}
                     ></div>
                     <p className="absolute text-3xl font-mono text-white">{countdown > 0 ? countdown : '✔'}</p>

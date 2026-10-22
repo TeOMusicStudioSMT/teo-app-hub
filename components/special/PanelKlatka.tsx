@@ -147,7 +147,7 @@ export const PanelKlatka: React.FC = () => {
                         value={wybrany}
                         onChange={e => setWybrany(e.target.value)}
                         disabled={!material.length}
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm text-slate-200 outline-none focus:border-cyan-500 disabled:opacity-50"
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm text-slate-200 outline-hidden focus:border-cyan-500 disabled:opacity-50"
                     >
                         {material.length
                             ? material.map(m => <option key={m} value={m}>{m}</option>)
@@ -160,7 +160,7 @@ export const PanelKlatka: React.FC = () => {
                     <select
                         value={typ}
                         onChange={e => setTyp(e.target.value as TypSpawu)}
-                        className="mt-1 rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm text-slate-200 outline-none focus:border-cyan-500"
+                        className="mt-1 rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm text-slate-200 outline-hidden focus:border-cyan-500"
                     >
                         <option value="YT">YT</option>
                         <option value="Podcat">Podcat</option>

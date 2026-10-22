@@ -49,7 +49,7 @@ export const GlosTeogochi: React.FC<{ id: string; imie: string; onTest: (tekst: 
             </div>
             <div className="flex flex-col sm:flex-row gap-3 items-center">
                 <select value={wartosc} onChange={(e) => void zmien(e.target.value)}
-                    className="w-full sm:w-80 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-xs text-slate-200 outline-none focus:border-fuchsia-500">
+                    className="w-full sm:w-80 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-xs text-slate-200 outline-hidden focus:border-fuchsia-500">
                     <option value="">Piper (domyślny, lokalny)</option>
                     {!!glosy?.katedra.length && (
                         <optgroup label="Profile Katedry (jak aktorzy)">

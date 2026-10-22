@@ -69,7 +69,7 @@ export const AssistantLogCard: React.FC = () => {
                             <p className={`font-bold ${msg.role === 'user' ? 'text-cyan-300' : 'text-violet-300'}`}>
                                 {msg.role === 'user' ? 'You' : 'NAP'}
                             </p>
-                            <p className="text-slate-200 whitespace-pre-wrap break-words">{msg.text}</p>
+                            <p className="text-slate-200 whitespace-pre-wrap wrap-break-word">{msg.text}</p>
                         </div>
                     ))
                 )}

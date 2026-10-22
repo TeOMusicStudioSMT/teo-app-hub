@@ -102,11 +102,11 @@ const KartyRol: React.FC = () => {
                             <div className="flex flex-wrap items-center gap-2 text-[11px]">
                                 <span className="font-bold" style={{ color: kolor(otwarta.gatunek) }}>{otwarta.imie}</span>
                                 <span className="text-slate-500">{otwarta.dziedzina}</span>
-                                <span className={`px-1.5 py-0.5 rounded font-mono text-[9px] ${otwarta.wlasna ? 'bg-amber-900/40 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>{otwarta.wlasna ? 'karta własna' : 'kanon z repo'}</span>
+                                <span className={`px-1.5 py-0.5 rounded-sm font-mono text-[9px] ${otwarta.wlasna ? 'bg-amber-900/40 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>{otwarta.wlasna ? 'karta własna' : 'kanon z repo'}</span>
                                 {otwarta.zrodlo && <span className="text-slate-600 truncate max-w-[50%]" title={otwarta.zrodlo}>{otwarta.zrodlo}</span>}
                             </div>
                             <textarea value={edycja} onChange={e => setEdycja(e.target.value)} spellCheck={false} rows={18}
-                                className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-[12px] font-mono text-slate-200 outline-none focus:border-fuchsia-500/50 leading-relaxed" />
+                                className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-[12px] font-mono text-slate-200 outline-hidden focus:border-fuchsia-500/50 leading-relaxed" />
                             <div className="flex flex-wrap gap-2">
                                 <button onClick={zapisz} disabled={pracuje || !zmieniona} className="px-3 py-1.5 rounded-lg text-[11px] font-mono bg-fuchsia-700/70 hover:bg-fuchsia-600 text-white disabled:opacity-40 flex items-center gap-1.5">
                                     {pracuje ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Zapisz jako własną

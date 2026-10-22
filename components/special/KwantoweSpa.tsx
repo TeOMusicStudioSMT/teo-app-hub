@@ -22,7 +22,7 @@ export const KwantoweSpa: React.FC = () => {
         <div className="w-full max-w-5xl mx-auto h-[600px] rounded-3xl overflow-hidden relative flex items-center justify-center shadow-[0_0_80px_rgba(236,72,153,0.15)]">
 
             {/* Tło - Kaskadowy, spokojny gradient zamiast ciężkich animacji */}
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-purple-900/40 to-slate-950" />
+            <div className="absolute inset-0 bg-linear-to-br from-indigo-950 via-purple-900/40 to-slate-950" />
 
             {/* Subtelna, powolna aura (niskie zużycie GPU) */}
             <motion.div
@@ -31,13 +31,13 @@ export const KwantoweSpa: React.FC = () => {
                 className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(236,72,153,0.1)_0%,transparent_60%)]"
             />
 
-            <div className="relative z-10 flex flex-col items-center text-center p-8 backdrop-blur-sm bg-indigo-950/30 border border-pink-500/20 rounded-2xl">
+            <div className="relative z-10 flex flex-col items-center text-center p-8 backdrop-blur-xs bg-indigo-950/30 border border-pink-500/20 rounded-2xl">
 
                 <div className="w-24 h-24 mb-6 rounded-full border-4 border-pink-500/30 flex items-center justify-center bg-pink-900/20 shadow-[0_0_30px_rgba(236,72,153,0.3)]">
                     <Sparkles size={40} className="text-pink-400" />
                 </div>
 
-                <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-purple-400 mb-2 tracking-widest font-serif">
+                <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-linear-to-r from-pink-300 to-purple-400 mb-2 tracking-widest font-serif">
                     KWANTOWE SPA
                 </h1>
                 <p className="text-indigo-200 text-sm tracking-widest mb-8 uppercase">

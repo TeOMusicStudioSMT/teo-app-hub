@@ -55,10 +55,10 @@ const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onEmailLogi
             >
                 <div className="relative bg-slate-900/40 backdrop-blur-xl border border-cyan-500/30 rounded-3xl p-8 shadow-[0_0_30px_rgba(6,182,212,0.3)]">
                     {/* Holographic glow effect */}
-                    <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 pointer-events-none"></div>
+                    <div className="absolute inset-0 rounded-3xl bg-linear-to-br from-cyan-500/10 via-transparent to-purple-500/10 pointer-events-none"></div>
 
                     <div className="relative z-10">
-                        <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-purple-400 mb-6 text-center">
+                        <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-linear-to-r from-cyan-300 to-purple-400 mb-6 text-center">
                             {isSignup ? 'Create New Node' : 'Initialize Session'}
                         </h2>
 
@@ -71,7 +71,7 @@ const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onEmailLogi
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full bg-slate-900/60 backdrop-blur-md border border-cyan-500/30 rounded-lg px-4 py-3 text-cyan-100 placeholder-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 outline-none transition-all"
+                                    className="w-full bg-slate-900/60 backdrop-blur-md border border-cyan-500/30 rounded-lg px-4 py-3 text-cyan-100 placeholder-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 outline-hidden transition-all"
                                     placeholder="your@email.com"
                                     required
                                 />
@@ -85,7 +85,7 @@ const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onEmailLogi
                                     type="password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full bg-slate-900/60 backdrop-blur-md border border-cyan-500/30 rounded-lg px-4 py-3 text-cyan-100 placeholder-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 outline-none transition-all"
+                                    className="w-full bg-slate-900/60 backdrop-blur-md border border-cyan-500/30 rounded-lg px-4 py-3 text-cyan-100 placeholder-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 outline-hidden transition-all"
                                     placeholder="••••••••"
                                     required
                                     minLength={6}
@@ -95,7 +95,7 @@ const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onEmailLogi
                             <button
                                 type="submit"
                                 disabled={isLoading}
-                                className="w-full bg-gradient-to-r from-cyan-500 to-purple-500 hover:from-cyan-400 hover:to-purple-400 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/50"
+                                className="w-full bg-linear-to-r from-cyan-500 to-purple-500 hover:from-cyan-400 hover:to-purple-400 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/50"
                             >
                                 {isLoading ? 'Processing...' : isSignup ? 'Create New Node' : 'Initialize Session'}
                             </button>
@@ -150,7 +150,7 @@ const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onEmailLogi
                 >
                     <div className="flex items-center justify-center space-x-4">
                         <FaGoogle className="text-3xl text-cyan-300 group-hover:text-cyan-200 transition-colors" />
-                        <span className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-purple-400">
+                        <span className="text-xl font-bold text-transparent bg-clip-text bg-linear-to-r from-cyan-300 to-purple-400">
                             Continue with Google
                         </span>
                     </div>
@@ -181,7 +181,7 @@ const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onEmailLogi
                 >
                     <div className="flex items-center justify-center space-x-4">
                         <MdEmail className="text-3xl text-purple-300 group-hover:text-purple-200 transition-colors" />
-                        <span className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-300 to-pink-400">
+                        <span className="text-xl font-bold text-transparent bg-clip-text bg-linear-to-r from-purple-300 to-pink-400">
                             Continue with Email
                         </span>
                     </div>
@@ -197,7 +197,7 @@ const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onEmailLogi
                 >
                     <div className="flex items-center justify-center space-x-4">
                         <FaWallet className="text-3xl text-amber-300 group-hover:text-amber-200 transition-colors" />
-                        <span className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-400">
+                        <span className="text-xl font-bold text-transparent bg-clip-text bg-linear-to-r from-amber-300 to-yellow-400">
                             Initialize via Wallet
                         </span>
                     </div>
@@ -227,10 +227,10 @@ const EventHorizon: React.FC<EventHorizonProps> = ({ onLoginRequest, onEmailLogi
                 <div className="absolute inset-2 rounded-full border border-purple-500/40 opacity-70 animate-[spin_15s_linear_infinite_reverse]" />
 
                 {/* Quantum Shield Pulse Integration */}
-                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-900/20 to-purple-900/20 blur-xl animate-pulse" />
+                <div className="absolute inset-0 rounded-full bg-linear-to-br from-cyan-900/20 to-purple-900/20 blur-xl animate-pulse" />
 
                 {/* Core */}
-                <div className="w-20 h-20 rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 blur-md animate-pulse shadow-[0_0_30px_rgba(168,85,247,0.6)]" />
+                <div className="w-20 h-20 rounded-full bg-linear-to-r from-cyan-400 to-purple-500 blur-md animate-pulse shadow-[0_0_30px_rgba(168,85,247,0.6)]" />
 
                 {/* Subtle hint text that appears on hover */}
                 <motion.div

@@ -66,23 +66,23 @@ export const VoiceClone: React.FC = () => {
       <div className="flex gap-2 flex-wrap items-center">
         {!recording ? (
           <button onClick={startRec} disabled={busy}
-            className="px-4 py-1.5 rounded border border-rose-500/50 bg-rose-950/30 text-rose-300 text-xs font-bold hover:bg-rose-900/50 disabled:opacity-50">
+            className="px-4 py-1.5 rounded-sm border border-rose-500/50 bg-rose-950/30 text-rose-300 text-xs font-bold hover:bg-rose-900/50 disabled:opacity-50">
             ● NAGRAJ PRÓBKĘ (12s)
           </button>
         ) : (
           <button onClick={stopRec}
-            className="px-4 py-1.5 rounded border border-rose-400 bg-rose-900/50 text-rose-200 text-xs font-bold animate-pulse">
+            className="px-4 py-1.5 rounded-sm border border-rose-400 bg-rose-900/50 text-rose-200 text-xs font-bold animate-pulse">
             ■ STOP (nagrywam...)
           </button>
         )}
         <button onClick={test} disabled={busy}
-          className="px-4 py-1.5 rounded border border-fuchsia-500/50 bg-fuchsia-950/30 text-fuchsia-300 text-xs font-bold hover:bg-fuchsia-900/50 disabled:opacity-50">
+          className="px-4 py-1.5 rounded-sm border border-fuchsia-500/50 bg-fuchsia-950/30 text-fuchsia-300 text-xs font-bold hover:bg-fuchsia-900/50 disabled:opacity-50">
           🔊 TEST MOWY
         </button>
       </div>
 
       <input value={testText} onChange={e => setTestText(e.target.value)}
-        className="w-full mt-2 bg-black/40 border border-fuchsia-500/20 rounded px-2 py-1 text-[11px] text-slate-200 outline-none focus:border-fuchsia-500" />
+        className="w-full mt-2 bg-black/40 border border-fuchsia-500/20 rounded-sm px-2 py-1 text-[11px] text-slate-200 outline-hidden focus:border-fuchsia-500" />
       {msg && <div className="text-[10px] text-slate-400 mt-2">{msg}</div>}
     </div>
   );

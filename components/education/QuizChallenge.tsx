@@ -98,7 +98,7 @@ export const QuizChallenge: React.FC<QuizChallengeProps> = ({ quiz, onComplete, 
             </div>
 
             {/* Question */}
-            <div className="min-h-[6rem]">
+            <div className="min-h-24">
                  <p className="text-lg text-white font-semibold">{currentQuestion.question}</p>
             </div>
 

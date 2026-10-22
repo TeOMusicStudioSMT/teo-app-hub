@@ -129,16 +129,16 @@ export const CreativeZoneCard: React.FC<CreativeZoneCardProps> = ({ onVisualAssi
                 </div>
 
                 {tryb === 'glowny' ? (
-                    <div className="mt-10 flex-grow">
+                    <div className="mt-10 grow">
                         <GlownyCzat zrodlo="creative-zone" zadanie={doGlownego} obrazy={obrazyDoGlownego} className="h-full" />
                     </div>
                 ) : (<>
 
                 {/* SŁOWO DNIA (Responsywne + Break Words) */}
-                <div className="flex-grow flex flex-col items-center justify-center space-y-6 my-6">
+                <div className="grow flex flex-col items-center justify-center space-y-6 my-6">
                     <motion.div whileHover={{ scale: 1.05 }} onClick={() => setPrompt(wordOfDay)} className="cursor-pointer relative group z-10 w-full text-center">
                         <motion.h1
-                            className="text-4xl md:text-6xl lg:text-8xl font-black tracking-tighter transition-all duration-1000 break-words w-full"
+                            className="text-4xl md:text-6xl lg:text-8xl font-black tracking-tighter transition-all duration-1000 wrap-break-word w-full"
                             animate={{
                                 textShadow: isIgnited ? "0 0 30px #22d3ee" : "0 0 0px rgba(0,0,0,0)",
                                 color: isIgnited ? "#22d3ee" : "#ffffff"
@@ -170,7 +170,7 @@ export const CreativeZoneCard: React.FC<CreativeZoneCardProps> = ({ onVisualAssi
                     onDrop={(e) => { const f = Array.from(e.dataTransfer?.files ?? []); if (f.length) { e.preventDefault(); obrazyDoGlownegoZ(f); } }}>
 
                     {/* IKONY (Zmniejszone i wyśrodkowane) */}
-                    <div className="flex flex-row md:flex-col gap-4 justify-center items-center opacity-70 flex-shrink-0">
+                    <div className="flex flex-row md:flex-col gap-4 justify-center items-center opacity-70 shrink-0">
                         <div className="cursor-pointer hover:text-cyan-400 p-1 w-8 h-8 flex items-center justify-center" onClick={() => fileInputRef.current?.click()} title="Zrzut ekranu → Główny (albo wklej Ctrl+V / upuść)">
                             <div className="w-5 h-5">
                                 <PaperClipIcon />
@@ -192,10 +192,10 @@ export const CreativeZoneCard: React.FC<CreativeZoneCardProps> = ({ onVisualAssi
                         onChange={(e) => setPrompt(e.target.value)}
                         onPaste={(e) => { const o = obrazyZ(e.clipboardData); if (o.length) { e.preventDefault(); obrazyDoGlownegoZ(o); } }}
                         placeholder={isListening ? "Słucham..." : `Zasiej myśl w trybie ${globalMode}...`}
-                        className="flex-grow bg-transparent border-none focus:ring-0 text-white placeholder-slate-600 resize-none text-lg md:text-xl font-light py-2 min-h-[80px]"
+                        className="grow bg-transparent border-none focus:ring-0 text-white placeholder-slate-600 resize-none text-lg md:text-xl font-light py-2 min-h-[80px]"
                     />
 
-                    <div className="flex flex-row md:flex-col gap-3 justify-center items-center flex-shrink-0">
+                    <div className="flex flex-row md:flex-col gap-3 justify-center items-center shrink-0">
                         <button onClick={startListening} className="p-3 bg-white/5 rounded-full hover:bg-white/10 transition-all">
                             <MicIcon active={isListening} />
                         </button>

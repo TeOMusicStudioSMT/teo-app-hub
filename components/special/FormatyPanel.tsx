@@ -47,17 +47,17 @@ function OpisNaTelefon({ opis }: { opis: string }) {
     return (
         <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-                <button onClick={() => setPokaz((x) => !x)} className="rounded border border-fuchsia-500/50 px-1.5 text-fuchsia-200">📱 opis na telefon (QR)</button>
-                <button onClick={kopiuj} className="rounded border border-slate-600 px-1.5 text-slate-200">📋 kopiuj</button>
+                <button onClick={() => setPokaz((x) => !x)} className="rounded-sm border border-fuchsia-500/50 px-1.5 text-fuchsia-200">📱 opis na telefon (QR)</button>
+                <button onClick={kopiuj} className="rounded-sm border border-slate-600 px-1.5 text-slate-200">📋 kopiuj</button>
             </div>
             {pokaz && (
                 <div className="flex flex-wrap items-start gap-2">
-                    {qr ? <img src={qr} alt="QR z opisem" className="h-[130px] w-[130px] rounded bg-white" /> : <span className="text-rose-300">{bladQr ? `QR: ${bladQr} — użyj 📋` : '…'}</span>}
+                    {qr ? <img src={qr} alt="QR z opisem" className="h-[130px] w-[130px] rounded-sm bg-white" /> : <span className="text-rose-300">{bladQr ? `QR: ${bladQr} — użyj 📋` : '…'}</span>}
                     <div className="min-w-0 flex-1">
                         <p className="text-slate-500">{link?.url
                             ? 'Aparat telefonu → kod → otwórz link → „📋 Kopiuj opis”, potem w TikTok: szkic → wklej opis. Link ważny 6 h.'
                             : `Aparat telefonu → kod → „Kopiuj tekst” (QR z samym tekstem${link?.powod ? ` — ${link.powod}` : ''}), potem w TikTok: szkic → wklej opis.`}</p>
-                        <pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-1 text-slate-300">{opis}</pre>
+                        <pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded-sm bg-black/40 p-1 text-slate-300">{opis}</pre>
                     </div>
                 </div>
             )}
@@ -107,7 +107,7 @@ const KontoSieci: React.FC<{ siec: 'tiktok' | 'instagram'; s: StanSieci | undefi
     };
     const wolaj = async (co: 'domyslne' | 'rozlacz', cialo: object) => { try { await zMostu(co === 'domyslne' ? `/api/impresario/${siec}/domyslne` : `/api/impresario/${siec}/rozlacz`, { method: 'POST', body: JSON.stringify(cialo) }); onZmiana(); } catch (e) { toast.error(blad(e)); } };
     return (
-        <div className="rounded border border-slate-700/60 p-2">
+        <div className="rounded-sm border border-slate-700/60 p-2">
             <div className="flex flex-wrap items-center gap-2">
                 <b className="text-slate-200">{siec === 'tiktok' ? '🎵' : '📸'} {nazwa}</b>
                 <span className={s?.polaczony ? 'text-emerald-300' : 'text-amber-300'}>{s?.polaczony ? `połączony (${s.tryb === 'szkic' ? 'szkice do skrzynki' : 'Reel publiczny po ✓'})` : (s?.powod ?? 'niepodłączone')}</span>
@@ -121,16 +121,16 @@ const KontoSieci: React.FC<{ siec: 'tiktok' | 'instagram'; s: StanSieci | undefi
                     <button onClick={() => confirm(`Rozłączyć ${k.nazwa}? Token zniknie z Katedry.`) && void wolaj('rozlacz', { kontoId: k.id })} className="text-slate-600 hover:text-rose-300">rozłącz</button>
                 </div>
             ))}
-            {s?.klient && <button onClick={() => window.open(`${MOST}/api/impresario/${siec}/polacz`, '_blank')} className="mt-1 rounded border border-cyan-500/40 px-2 py-0.5 text-[10px] text-cyan-200 hover:bg-cyan-900/30">{s.polaczony ? '➕ Dodaj konto' : `🔗 Połącz z ${nazwa}`}</button>}
+            {s?.klient && <button onClick={() => window.open(`${MOST}/api/impresario/${siec}/polacz`, '_blank')} className="mt-1 rounded-sm border border-cyan-500/40 px-2 py-0.5 text-[10px] text-cyan-200 hover:bg-cyan-900/30">{s.polaczony ? '➕ Dodaj konto' : `🔗 Połącz z ${nazwa}`}</button>}
             {kroki && (
                 <div className="mt-2 space-y-1 text-[10px] text-slate-400">
                     <ol className="list-decimal space-y-0.5 pl-4">{(s?.instrukcja ?? []).map((x, i) => <li key={i}>{x}</li>)}</ol>
                     <p>Klucze aplikacji trzymam w <button onClick={otworzSkarbiec} className="text-amber-200 underline">🔐 Skarbcu 0.00G</button> (usługa „{nazwa}”){s?.klucze === 'impresariat' ? ' — most sprzed restartu trzyma je jeszcze w skarbcu Impresariatu' : ''}; tokeny kont — w skarbcu Impresariatu, obok kanałów YouTube.</p>
                     <div className="flex flex-wrap gap-1 pt-1">
-                        <input value={a} onChange={(e) => setA(e.target.value)} placeholder={siec === 'tiktok' ? 'Client key' : 'App ID'} className="w-36 rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />
-                        <input value={b} onChange={(e) => setB(e.target.value)} type="password" placeholder={siec === 'tiktok' ? 'Client secret' : 'App secret'} className="w-36 rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />
-                        {siec === 'instagram' && <input value={c} onChange={(e) => setC(e.target.value)} placeholder="Configuration ID (opcja)" className="w-40 rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />}
-                        <button disabled={!a || !b} onClick={() => void zapisz()} className="rounded border border-slate-600 px-2 text-slate-200 disabled:opacity-40">💾 zapisz klucze</button>
+                        <input value={a} onChange={(e) => setA(e.target.value)} placeholder={siec === 'tiktok' ? 'Client key' : 'App ID'} className="w-36 rounded-sm border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />
+                        <input value={b} onChange={(e) => setB(e.target.value)} type="password" placeholder={siec === 'tiktok' ? 'Client secret' : 'App secret'} className="w-36 rounded-sm border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />
+                        {siec === 'instagram' && <input value={c} onChange={(e) => setC(e.target.value)} placeholder="Configuration ID (opcja)" className="w-40 rounded-sm border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />}
+                        <button disabled={!a || !b} onClick={() => void zapisz()} className="rounded-sm border border-slate-600 px-2 text-slate-200 disabled:opacity-40">💾 zapisz klucze</button>
                     </div>
                 </div>
             )}
@@ -193,28 +193,28 @@ export const FormatyPanel: React.FC = () => {
                 <span className={sieci.youtube?.polaczony ? 'text-emerald-300' : 'text-amber-300'}>📺 YouTube: {sieci.youtube?.polaczony ? `${(sieci.youtube.kanaly ?? []).length} kanał(y)` : 'niepołączony (wyżej „Połącz z YouTube”)'}</span>
                 {(['tiktok', 'instagram'] as const).map((sn) => { const st = sieci[sn]; const n = sn === 'tiktok' ? '🎵 TikTok' : '📸 Instagram'; return (
                     <span key={sn} className={st?.polaczony ? 'text-emerald-300' : 'text-slate-400'}>{n}: {st?.polaczony ? `połączony (${(st.konta ?? []).map((k) => k.nazwa).join(', ')})` : 'niepodłączone'}
-                        {st?.klient && !st.polaczony && <button onClick={() => window.open(`${MOST}/api/impresario/${sn}/polacz`, '_blank')} className="ml-1.5 rounded border border-cyan-500/50 px-1.5 text-cyan-200 hover:bg-cyan-900/30">🔗 Połącz z {sn === 'tiktok' ? 'TikTok' : 'Instagramem'}</button>}
+                        {st?.klient && !st.polaczony && <button onClick={() => window.open(`${MOST}/api/impresario/${sn}/polacz`, '_blank')} className="ml-1.5 rounded-sm border border-cyan-500/50 px-1.5 text-cyan-200 hover:bg-cyan-900/30">🔗 Połącz z {sn === 'tiktok' ? 'TikTok' : 'Instagramem'}</button>}
                         {!st?.klient && <button onClick={otworzSkarbiec} className="ml-1.5 text-amber-200 underline">klucze → Skarbiec</button>}
                     </span>
                 ); })}
             </div>
 
             {auto && (
-                <div className="mb-2 rounded border border-cyan-500/25 bg-cyan-950/10 p-2">
+                <div className="mb-2 rounded-sm border border-cyan-500/25 bg-cyan-950/10 p-2">
                     <div className="flex flex-wrap items-center gap-2">
                         <b className="text-cyan-200">🤖 Autopilot</b>
                         <span className="text-[10px] text-slate-400">wysłane odcinki ({auto.filmow}{auto.pozaMontazem ? `, ${auto.pozaMontazem} spoza montażu pominięte` : ''}) → pion → wysyłka sama, raz na sieć · pionów: {auto.przerobione}{auto.trwa ? ' · ⏳ pracuje' : ''}</span>
-                        <button disabled={auto.trwa} onClick={() => void wolaj('/api/formaty/autopilot/teraz', {}, 'Autopilot ruszył — przerabia i wysyła zaległe (minuty).')} className="ml-auto rounded border border-cyan-500/40 px-2 text-[10px] text-cyan-200 disabled:opacity-40">▶ przerób zaległe teraz</button>
+                        <button disabled={auto.trwa} onClick={() => void wolaj('/api/formaty/autopilot/teraz', {}, 'Autopilot ruszył — przerabia i wysyła zaległe (minuty).')} className="ml-auto rounded-sm border border-cyan-500/40 px-2 text-[10px] text-cyan-200 disabled:opacity-40">▶ przerób zaległe teraz</button>
                         <button onClick={() => setAutoPokaz((x) => !x)} className="text-[10px] text-slate-400">{autoPokaz ? 'zwiń' : 'błędy'}</button>
                     </div>
                     <div className="mt-1 grid gap-1 md:grid-cols-3">
                         {CELE_AUTO.map((c) => { const x = auto.cele[c]; if (!x) return null; return (
-                            <div key={c} className={`rounded border p-1.5 text-[10px] ${x.wlaczony ? 'border-emerald-500/40' : 'border-slate-700/60'}`}>
+                            <div key={c} className={`rounded-sm border p-1.5 text-[10px] ${x.wlaczony ? 'border-emerald-500/40' : 'border-slate-700/60'}`}>
                                 <div className="flex items-center gap-1.5 text-slate-200">
                                     <label className="flex items-center gap-1.5"><input type="checkbox" checked={x.wlaczony} onChange={(e) => { if (e.target.checked && !confirm(`Włączyć autopilota ${x.nazwa}? ${x.uwaga} Wysyłka pójdzie BEZ Twojego ✓ (do ${x.limit} na dobę).`)) return; void wolaj('/api/formaty/autopilot', { wlaczone: { [c]: e.target.checked } }, e.target.checked ? `${x.nazwa}: autopilot włączony.` : `${x.nazwa}: autopilot wyłączony.`, 'PUT'); }} />
                                     <b>{x.nazwa}</b></label><span className="text-slate-500">≤ {x.maxSekund} s</span>
                                     <span className="ml-auto text-slate-500">na dobę</span>
-                                    <select value={x.limit} onChange={(e) => void wolaj('/api/formaty/autopilot', { limit: { [c]: Number(e.target.value) } }, `${x.nazwa}: limit ${e.target.value} na dobę.`, 'PUT')} className="rounded bg-black/60 px-1 text-slate-200">
+                                    <select value={x.limit} onChange={(e) => void wolaj('/api/formaty/autopilot', { limit: { [c]: Number(e.target.value) } }, `${x.nazwa}: limit ${e.target.value} na dobę.`, 'PUT')} className="rounded-sm bg-black/60 px-1 text-slate-200">
                                         {Array.from({ length: x.maxLimit + 1 }, (_, n) => <option key={n} value={n}>{n}</option>)}
                                     </select>
                                 </div>
@@ -247,41 +247,41 @@ export const FormatyPanel: React.FC = () => {
                         <KontoSieci siec="tiktok" s={sieci.tiktok} onZmiana={odswiez} />
                         <KontoSieci siec="instagram" s={sieci.instagram} onZmiana={odswiez} />
                     </div>
-                    <select value={plik} onChange={(e) => setPlik(e.target.value)} className="w-full rounded border border-slate-700 bg-black/60 px-1.5 py-1 text-slate-200">
+                    <select value={plik} onChange={(e) => setPlik(e.target.value)} className="w-full rounded-sm border border-slate-700 bg-black/60 px-1.5 py-1 text-slate-200">
                         <option value="">— wybierz odcinek z katalogów montaży —</option>
                         {programy.map((p) => <optgroup key={p} label={p}>{zrodla.filter((z) => z.program.nazwa === p).map((z) => <option key={z.plik} value={z.plik}>{z.projekt} · {z.nazwa}</option>)}</optgroup>)}
                     </select>
                     {pr && (
                         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                             <div>
-                                <video src={`${MOST}/api/formaty/zrodlo?plik=${encodeURIComponent(pr.plik)}`} controls className="w-full rounded bg-black" onTimeUpdate={(e) => setTeraz((e.target as HTMLVideoElement).currentTime)} />
+                                <video src={`${MOST}/api/formaty/zrodlo?plik=${encodeURIComponent(pr.plik)}`} controls className="w-full rounded-sm bg-black" onTimeUpdate={(e) => setTeraz((e.target as HTMLVideoElement).currentTime)} />
                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
                                     <span>{pr.program.nazwa} · {sek(pr.opis?.sekundy)} · teraz {sek(teraz)}</span>
-                                    <button onClick={() => setOd(Math.round(teraz * 10) / 10)} className="rounded border border-slate-600 px-1.5 text-slate-200">od = teraz</button>
-                                    <button onClick={() => setDoS(Math.round(teraz * 10) / 10)} className="rounded border border-slate-600 px-1.5 text-slate-200">do = teraz</button>
+                                    <button onClick={() => setOd(Math.round(teraz * 10) / 10)} className="rounded-sm border border-slate-600 px-1.5 text-slate-200">od = teraz</button>
+                                    <button onClick={() => setDoS(Math.round(teraz * 10) / 10)} className="rounded-sm border border-slate-600 px-1.5 text-slate-200">do = teraz</button>
                                 </div>
                                 {pr.uwaga && <p className="mt-1 text-[10px] text-amber-300">{pr.uwaga}</p>}
                             </div>
                             <div className="space-y-2">
                                 <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
-                                    Układ: <select value={uklad} onChange={(e) => setUklad(e.target.value)} className="rounded border border-slate-700 bg-black/60 px-1 text-slate-200">{Object.entries(s?.uklady ?? {}).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>
+                                    Układ: <select value={uklad} onChange={(e) => setUklad(e.target.value)} className="rounded-sm border border-slate-700 bg-black/60 px-1 text-slate-200">{Object.entries(s?.uklady ?? {}).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>
                                     {uklad === 'srodek' && <label className="flex items-center gap-1">kadr ←→ <input type="range" min={0} max={1} step={0.05} value={kadrX} onChange={(e) => setKadrX(Number(e.target.value))} /></label>}
-                                    Napisy: <select value={napisy} onChange={(e) => setNapisy(e.target.value)} className="rounded border border-slate-700 bg-black/60 px-1 text-slate-200">
+                                    Napisy: <select value={napisy} onChange={(e) => setNapisy(e.target.value)} className="rounded-sm border border-slate-700 bg-black/60 px-1 text-slate-200">
                                         {Object.entries(s?.napisy ?? {}).map(([k, n]) => <option key={k} value={k} disabled={k === 'z-kwestii' && !pr.kwestie}>{n}{k === 'z-kwestii' && !pr.kwestie ? ' (brak kwestii z czasem)' : ''}</option>)}
                                     </select>
                                 </div>
-                                <input value={tytul} onChange={(e) => setTytul(e.target.value)} placeholder="napis u góry pionu (opcja; propozycja ma własny)" className="w-full rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />
+                                <input value={tytul} onChange={(e) => setTytul(e.target.value)} placeholder="napis u góry pionu (opcja; propozycja ma własny)" className="w-full rounded-sm border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />
                                 {pr.propozycje.map((p) => (
-                                    <div key={p.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-800 px-2 py-1">
+                                    <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-sm border border-slate-800 px-2 py-1">
                                         <span className="text-slate-200">{p.nazwa}</span><span className="text-slate-500">{sek(p.od)}–{sek(p.do)} ({sek(p.do - p.od)})</span>
                                         {Object.entries(p.cele).map(([c, v]) => <span key={c} title={v.powod} className={v.ok ? 'text-emerald-400' : 'text-slate-600 line-through'}>{s?.cele[c]?.nazwa ?? c}</span>)}
-                                        <button onClick={() => void zrob({ propozycja: p.id, ...(tytul ? {} : { tytul: p.tytul }) })} className="ml-auto rounded border border-fuchsia-500/40 px-2 text-fuchsia-200 hover:bg-fuchsia-900/30">✂️ zrób pion</button>
+                                        <button onClick={() => void zrob({ propozycja: p.id, ...(tytul ? {} : { tytul: p.tytul }) })} className="ml-auto rounded-sm border border-fuchsia-500/40 px-2 text-fuchsia-200 hover:bg-fuchsia-900/30">✂️ zrób pion</button>
                                     </div>
                                 ))}
-                                <div className="flex flex-wrap items-center gap-2 rounded border border-slate-800 px-2 py-1 text-slate-400">
-                                    wycinek: <input type="number" step={0.1} value={od} onChange={(e) => setOd(Number(e.target.value))} className="w-16 rounded bg-black/60 px-1 text-slate-200" />–
-                                    <input type="number" step={0.1} value={doS} onChange={(e) => setDoS(Number(e.target.value))} className="w-16 rounded bg-black/60 px-1 text-slate-200" /> s ({sek(doS - od)})
-                                    <button disabled={napisy === 'z-kwestii'} title={napisy === 'z-kwestii' ? 'napisy z kwestii mają czasy z propozycji — wybierz propozycję' : ''} onClick={() => void zrob({ od, do: doS, nazwa: `${sek(od)}–${sek(doS)}` })} className="ml-auto rounded border border-fuchsia-500/40 px-2 text-fuchsia-200 hover:bg-fuchsia-900/30 disabled:opacity-40">✂️ zrób wycinek</button>
+                                <div className="flex flex-wrap items-center gap-2 rounded-sm border border-slate-800 px-2 py-1 text-slate-400">
+                                    wycinek: <input type="number" step={0.1} value={od} onChange={(e) => setOd(Number(e.target.value))} className="w-16 rounded-sm bg-black/60 px-1 text-slate-200" />–
+                                    <input type="number" step={0.1} value={doS} onChange={(e) => setDoS(Number(e.target.value))} className="w-16 rounded-sm bg-black/60 px-1 text-slate-200" /> s ({sek(doS - od)})
+                                    <button disabled={napisy === 'z-kwestii'} title={napisy === 'z-kwestii' ? 'napisy z kwestii mają czasy z propozycji — wybierz propozycję' : ''} onClick={() => void zrob({ od, do: doS, nazwa: `${sek(od)}–${sek(doS)}` })} className="ml-auto rounded-sm border border-fuchsia-500/40 px-2 text-fuchsia-200 hover:bg-fuchsia-900/30 disabled:opacity-40">✂️ zrób wycinek</button>
                                 </div>
                             </div>
                         </div>
@@ -292,10 +292,10 @@ export const FormatyPanel: React.FC = () => {
             {(s?.klipy ?? []).length === 0 && !problem && <p className="text-[10px] text-slate-500">Jeszcze żadnego klipu pionowego.</p>}
             <div className="space-y-2">
                 {(s?.klipy ?? []).slice(0, 12).map((k) => (
-                    <div key={k.id} className="flex gap-2 rounded border border-slate-800 p-2">
+                    <div key={k.id} className="flex gap-2 rounded-sm border border-slate-800 p-2">
                         {k.stan === 'gotowy' && k.plik
-                            ? <video src={`${MOST}/api/formaty/${k.id}/plik`} controls preload="metadata" className="h-40 w-[90px] shrink-0 rounded bg-black object-contain" />
-                            : <div className="flex h-40 w-[90px] shrink-0 items-center justify-center rounded bg-black/50 text-[10px] text-slate-500">{STAN_KLIPU[k.stan] ?? k.stan}</div>}
+                            ? <video src={`${MOST}/api/formaty/${k.id}/plik`} controls preload="metadata" className="h-40 w-[90px] shrink-0 rounded-sm bg-black object-contain" />
+                            : <div className="flex h-40 w-[90px] shrink-0 items-center justify-center rounded-sm bg-black/50 text-[10px] text-slate-500">{STAN_KLIPU[k.stan] ?? k.stan}</div>}
                         <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
                                 <b className="text-slate-200">{k.nazwa}</b><span className="text-slate-500">{k.program.nazwa} · {k.nazwaZrodla}</span>
@@ -313,7 +313,7 @@ export const FormatyPanel: React.FC = () => {
                                         {!p || ['odrzucona', 'blad'].includes(p.etap) && siec === 'youtube' ? (
                                             <>
                                                 {p && <span className="text-rose-300">{ETAP[p.etap]} {p.blad ?? ''}</span>}
-                                                <button disabled={!c?.ok} title={c?.powod} onClick={() => void wolaj(`/api/formaty/${k.id}/publikuj`, { siec }, siec === 'youtube' ? 'Short czeka na ✓ w Publikacjach YouTube (Izba).' : 'Kronikarz napisał opis — czeka na Twoje ✓.')} className="rounded border border-slate-600 px-1.5 text-slate-200 disabled:opacity-40">→ do ✓</button>
+                                                <button disabled={!c?.ok} title={c?.powod} onClick={() => void wolaj(`/api/formaty/${k.id}/publikuj`, { siec }, siec === 'youtube' ? 'Short czeka na ✓ w Publikacjach YouTube (Izba).' : 'Kronikarz napisał opis — czeka na Twoje ✓.')} className="rounded-sm border border-slate-600 px-1.5 text-slate-200 disabled:opacity-40">→ do ✓</button>
                                                 {!c?.ok && <span className="text-slate-500">{c?.powod}</span>}
                                             </>
                                         ) : siec === 'youtube' ? (
@@ -325,15 +325,15 @@ export const FormatyPanel: React.FC = () => {
                                                 {p.uwaga && <p className="text-amber-200">{p.uwaga}</p>}
                                                 {['do_akceptacji', 'blad'].includes(p.etap) && (
                                                     <>
-                                                        <textarea value={opisy[`${k.id}:${siec}`] ?? p.opis ?? ''} onChange={(e) => setOpisy((o) => ({ ...o, [`${k.id}:${siec}`]: e.target.value }))} rows={3} className="w-full rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />
+                                                        <textarea value={opisy[`${k.id}:${siec}`] ?? p.opis ?? ''} onChange={(e) => setOpisy((o) => ({ ...o, [`${k.id}:${siec}`]: e.target.value }))} rows={3} className="w-full rounded-sm border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200" />
                                                         <div className="flex flex-wrap items-center gap-2">
                                                             {(sieci[siec]?.konta ?? []).length > 1 && (
-                                                                <select value={p.kontoId} onChange={(e) => void wolaj(`/api/formaty/${k.id}/publikacja/${siec}/zmien`, { kontoId: e.target.value }, 'Konto zmienione.')} className="rounded border border-slate-700 bg-black/60 px-1 text-slate-200">
+                                                                <select value={p.kontoId} onChange={(e) => void wolaj(`/api/formaty/${k.id}/publikacja/${siec}/zmien`, { kontoId: e.target.value }, 'Konto zmienione.')} className="rounded-sm border border-slate-700 bg-black/60 px-1 text-slate-200">
                                                                     {(sieci[siec]?.konta ?? []).map((x) => <option key={x.id} value={x.id}>{x.nazwa}</option>)}
                                                                 </select>
                                                             )}
-                                                            {opisy[`${k.id}:${siec}`] !== undefined && opisy[`${k.id}:${siec}`] !== p.opis && <button onClick={() => void wolaj(`/api/formaty/${k.id}/publikacja/${siec}/zmien`, { opis: opisy[`${k.id}:${siec}`] }, 'Opis zapisany.')} className="rounded border border-slate-600 px-1.5 text-slate-200">💾 opis</button>}
-                                                            {p.etap === 'do_akceptacji' && <button onClick={() => confirm(siec === 'instagram' ? `Opublikować Reel PUBLICZNIE na ${p.kontoNazwa}? Instagram nie ma szkiców.` : `Wysłać szkic do skrzynki TikTok (${p.kontoNazwa})? Opis wkleisz w aplikacji.`) && void wolaj(`/api/formaty/${k.id}/publikacja/${siec}/zatwierdz`, {}, siec === 'instagram' ? 'Wysyłam Reel — przetwarzanie trwa minuty.' : 'Szkic poszedł do TikTok.')} className="rounded border border-emerald-500/50 px-2 text-emerald-200">✓ wyślij</button>}
+                                                            {opisy[`${k.id}:${siec}`] !== undefined && opisy[`${k.id}:${siec}`] !== p.opis && <button onClick={() => void wolaj(`/api/formaty/${k.id}/publikacja/${siec}/zmien`, { opis: opisy[`${k.id}:${siec}`] }, 'Opis zapisany.')} className="rounded-sm border border-slate-600 px-1.5 text-slate-200">💾 opis</button>}
+                                                            {p.etap === 'do_akceptacji' && <button onClick={() => confirm(siec === 'instagram' ? `Opublikować Reel PUBLICZNIE na ${p.kontoNazwa}? Instagram nie ma szkiców.` : `Wysłać szkic do skrzynki TikTok (${p.kontoNazwa})? Opis wkleisz w aplikacji.`) && void wolaj(`/api/formaty/${k.id}/publikacja/${siec}/zatwierdz`, {}, siec === 'instagram' ? 'Wysyłam Reel — przetwarzanie trwa minuty.' : 'Szkic poszedł do TikTok.')} className="rounded-sm border border-emerald-500/50 px-2 text-emerald-200">✓ wyślij</button>}
                                                             <button onClick={() => void wolaj(`/api/formaty/${k.id}/publikacja/${siec}/odrzuc`, {}, 'Odrzucone.')} className="text-slate-500 hover:text-rose-300">✕</button>
                                                             {siec === 'tiktok' && <span className="text-slate-500">API szkicu nie bierze opisu — przeniesiesz go kodem QR niżej.</span>}
                                                         </div>

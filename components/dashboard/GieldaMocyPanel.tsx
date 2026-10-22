@@ -55,8 +55,8 @@ export const GieldaMocyPanel: React.FC = () => {
     const Model: React.FC<{ m: string; od: string }> = ({ m, od }) => {
         const mam = stan?.modele.some((x) => x === m || x === `${m}:latest` || x.replace(/:latest$/, '') === m);
         return mam
-            ? <span title="Ta Katedra ma ten model" className="rounded border border-emerald-500/40 px-1 font-mono text-[10px] text-emerald-300">✓ {m}</span>
-            : <button onClick={() => void doZwiadowcy(m, od)} title="Nie masz go — dodaj do kandydatów Zwiadowcy" className="rounded border border-slate-600 px-1 font-mono text-[10px] text-slate-300 hover:border-sky-400 hover:text-sky-200">🔭 {m}</button>;
+            ? <span title="Ta Katedra ma ten model" className="rounded-sm border border-emerald-500/40 px-1 font-mono text-[10px] text-emerald-300">✓ {m}</span>
+            : <button onClick={() => void doZwiadowcy(m, od)} title="Nie masz go — dodaj do kandydatów Zwiadowcy" className="rounded-sm border border-slate-600 px-1 font-mono text-[10px] text-slate-300 hover:border-sky-400 hover:text-sky-200">🔭 {m}</button>;
     };
 
     if (blad) return <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-3 text-[11px] text-amber-200">⚡ {blad}</div>;
@@ -67,14 +67,14 @@ export const GieldaMocyPanel: React.FC = () => {
         <details className="rounded-lg border border-yellow-500/25 p-2" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open && !siec) void sieci(); }}>
             <summary className="cursor-pointer text-[10px] uppercase tracking-widest text-yellow-300">⚡ Giełda Master Flow (TeOkoP GRV) {stan.publiczna ? `· udostępniam ${stan.publiczna.vramGB} GB` : '· nie udostępniam'}</summary>
             <div className="mt-2 flex flex-col gap-2 text-[11px]">
-                <p className="rounded border border-yellow-500/20 bg-yellow-950/20 p-2 text-[10px] leading-relaxed text-yellow-100/80">
+                <p className="rounded-sm border border-yellow-500/20 bg-yellow-950/20 p-2 text-[10px] leading-relaxed text-yellow-100/80">
                     Etap 1 = <b>ogłoszenia</b>: oferty mocy i zlecenia (zadanie albo cały projekt z Game Studio). Oferta i zlecenia jadą w Twojej wizytówce do rejestru otakos.wtf (widać ją, gdy Katedra jest online i nick zatwierdzony). Katedra <b>nie wykonuje jeszcze cudzych zadań i nie przelewa GRV</b> — to etap 2.
                 </p>
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_1fr]">
                     <label className="text-slate-400">Karta</label>
                     <div className="flex items-center gap-2">
-                        <input value={form.gpu} maxLength={80} onChange={(e) => setForm({ ...form, gpu: e.target.value })} placeholder="np. RTX 4090" className="flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
-                        <input type="number" min={1} max={512} value={form.vramGB} onChange={(e) => setForm({ ...form, vramGB: Number(e.target.value) })} className="w-20 rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
+                        <input value={form.gpu} maxLength={80} onChange={(e) => setForm({ ...form, gpu: e.target.value })} placeholder="np. RTX 4090" className="flex-1 rounded-sm border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
+                        <input type="number" min={1} max={512} value={form.vramGB} onChange={(e) => setForm({ ...form, vramGB: Number(e.target.value) })} className="w-20 rounded-sm border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
                         <span className="text-slate-500">GB VRAM</span>
                     </div>
                     {stan.wykryte && <><span /><span className="text-[10px] text-slate-500">wykryto (nvidia-smi): {stan.wykryte.nazwa} · {stan.wykryte.vramGB} GB</span></>}
@@ -82,21 +82,21 @@ export const GieldaMocyPanel: React.FC = () => {
                     <div className="flex flex-wrap gap-1">
                         {stan.modele.length === 0 && <span className="text-[10px] text-amber-300">Ollama nie podała modeli — bez modelu nie ma czego udostępnić.</span>}
                         {stan.modele.map((m) => (
-                            <button key={m} onClick={() => przelacz(m)} className={`rounded border px-1.5 py-0.5 font-mono text-[10px] ${form.modele.includes(m) ? 'border-yellow-400/60 bg-yellow-500/20 text-yellow-100' : 'border-slate-700 text-slate-400'}`}>{m}</button>
+                            <button key={m} onClick={() => przelacz(m)} className={`rounded-sm border px-1.5 py-0.5 font-mono text-[10px] ${form.modele.includes(m) ? 'border-yellow-400/60 bg-yellow-500/20 text-yellow-100' : 'border-slate-700 text-slate-400'}`}>{m}</button>
                         ))}
                     </div>
                     <label className="text-slate-400">Cena</label>
                     <div className="flex items-center gap-2">
-                        <input type="number" min={0} step={0.1} value={form.cenaGRV} onChange={(e) => setForm({ ...form, cenaGRV: Number(e.target.value) })} className="w-24 rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
+                        <input type="number" min={0} step={0.1} value={form.cenaGRV} onChange={(e) => setForm({ ...form, cenaGRV: Number(e.target.value) })} className="w-24 rounded-sm border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
                         <span className="text-slate-500">GRV / {stan.jednostka}</span>
                     </div>
                     <label className="text-slate-400">Kiedy</label>
-                    <input value={form.godziny} maxLength={60} onChange={(e) => setForm({ ...form, godziny: e.target.value })} className="rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
+                    <input value={form.godziny} maxLength={60} onChange={(e) => setForm({ ...form, godziny: e.target.value })} className="rounded-sm border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
                     <label className="text-slate-400">Opis</label>
-                    <input value={form.opis} maxLength={300} onChange={(e) => setForm({ ...form, opis: e.target.value })} placeholder="np. dobre do polskich tekstów, długi kontekst" className="rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
+                    <input value={form.opis} maxLength={300} onChange={(e) => setForm({ ...form, opis: e.target.value })} placeholder="np. dobre do polskich tekstów, długi kontekst" className="rounded-sm border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                    <button onClick={() => void zapisz({})} className="rounded bg-yellow-500/25 px-3 py-1 font-bold text-yellow-100">Zapisz ofertę</button>
+                    <button onClick={() => void zapisz({})} className="rounded-sm bg-yellow-500/25 px-3 py-1 font-bold text-yellow-100">Zapisz ofertę</button>
                     <label className="ml-auto flex items-center gap-1.5 text-slate-300">
                         <input type="checkbox" checked={form.udostepniam} onChange={(e) => void zapisz({ udostepniam: e.target.checked })} />
                         Udostępniam moc w sieci
@@ -115,7 +115,7 @@ export const GieldaMocyPanel: React.FC = () => {
                             {siec.oferty.length === 0 && <div className="mt-1 text-[10px] text-slate-500">Nikt jeszcze nie ogłosił mocy.</div>}
                             <ul className="mt-1 flex flex-col gap-1">
                                 {siec.oferty.map((k) => (
-                                    <li key={k.nick} className="rounded border border-slate-800 bg-black/30 p-1.5">
+                                    <li key={k.nick} className="rounded-sm border border-slate-800 bg-black/30 p-1.5">
                                         <div className="flex flex-wrap items-baseline gap-2">
                                             <b className="font-mono text-yellow-200">{k.nick}</b>
                                             <span className="text-slate-400">{k.moc.gpu || 'GPU'} · {k.moc.vramGB} GB</span>
@@ -130,7 +130,7 @@ export const GieldaMocyPanel: React.FC = () => {
                             {!siec.zlecenia?.length && <div className="mt-1 text-[10px] text-slate-500">Nikt nie ogłosił zlecenia.</div>}
                             <ul className="mt-1 flex flex-col gap-1">
                                 {(siec.zlecenia ?? []).map((z) => (
-                                    <li key={`${z.nick}-${z.id}`} className="rounded border border-slate-800 bg-black/30 p-1.5">
+                                    <li key={`${z.nick}-${z.id}`} className="rounded-sm border border-slate-800 bg-black/30 p-1.5">
                                         <div className="flex flex-wrap items-baseline gap-2">
                                             <b className="font-mono text-sky-200">{z.nick}</b>
                                             <span className="text-slate-300">{z.rodzaj === 'projekt' ? '📦 projekt' : '🧩 zadanie'}: {z.tytul}</span>
@@ -151,7 +151,7 @@ export const GieldaMocyPanel: React.FC = () => {
                     {!stan.zlecenia?.filter((z) => z.stan === 'ogloszone').length && <div className="mt-1 text-[10px] text-slate-500">Brak ogłoszonych zleceń.</div>}
                     <ul className="mt-1 flex flex-col gap-1">
                         {(stan.zlecenia ?? []).filter((z) => z.stan === 'ogloszone').map((z) => (
-                            <li key={z.id} className="flex flex-wrap items-baseline gap-2 rounded border border-slate-800 bg-black/30 p-1.5">
+                            <li key={z.id} className="flex flex-wrap items-baseline gap-2 rounded-sm border border-slate-800 bg-black/30 p-1.5">
                                 <span className="text-slate-300">{z.rodzaj === 'projekt' ? '📦' : '🧩'} {z.tytul}</span>
                                 {z.modele.length > 0 && <span className="font-mono text-[10px] text-slate-500">{z.modele.join(' · ')}</span>}
                                 {z.budzetGRV > 0 && <span className="text-yellow-300">{z.budzetGRV} GRV</span>}

@@ -86,14 +86,14 @@ Wymiar:  0.00G (suwerenny, lokalny)
         <div className="text-[11px] text-indigo-300/80 tracking-wider mb-2">📜 GENERATOR SUWERENNEJ LICENCJI</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
           <input value={work} onChange={e => setWork(e.target.value)} placeholder="Nazwa Dzieła"
-            className="bg-black/40 border border-indigo-500/20 rounded px-2.5 py-1.5 text-xs text-indigo-100 outline-none focus:border-indigo-500" />
+            className="bg-black/40 border border-indigo-500/20 rounded-sm px-2.5 py-1.5 text-xs text-indigo-100 outline-hidden focus:border-indigo-500" />
           <select value={type} onChange={e => setType(e.target.value)}
-            className="bg-black/40 border border-indigo-500/20 rounded px-2.5 py-1.5 text-xs text-indigo-100 outline-none focus:border-indigo-500 cursor-pointer">
+            className="bg-black/40 border border-indigo-500/20 rounded-sm px-2.5 py-1.5 text-xs text-indigo-100 outline-hidden focus:border-indigo-500 cursor-pointer">
             {WORK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         <input value={author} onChange={e => setAuthor(e.target.value)} placeholder="Autor / Suweren"
-          className="w-full bg-black/40 border border-indigo-500/20 rounded px-2.5 py-1.5 text-xs text-indigo-100 outline-none focus:border-indigo-500 mb-2" />
+          className="w-full bg-black/40 border border-indigo-500/20 rounded-sm px-2.5 py-1.5 text-xs text-indigo-100 outline-hidden focus:border-indigo-500 mb-2" />
         <button onClick={generate}
           className="w-full py-2 rounded-lg border border-indigo-500/50 bg-indigo-950/40 text-indigo-300 text-xs font-bold hover:bg-indigo-900/50 transition-colors">
           ⚖️ Wygeneruj i zapieczętuj licencję
@@ -103,8 +103,8 @@ Wymiar:  0.00G (suwerenny, lokalny)
           <div className="mt-3">
             <pre className="text-[10px] text-indigo-100/90 bg-black/50 border border-indigo-900/50 rounded-lg p-3 whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed">{license}</pre>
             <div className="flex gap-2 mt-2">
-              <button onClick={copy} className="px-3 py-1 rounded border border-indigo-500/40 text-indigo-300 text-[11px] font-bold hover:bg-indigo-950/40">📋 Kopiuj</button>
-              <button onClick={download} className="px-3 py-1 rounded border border-emerald-500/40 text-emerald-300 text-[11px] font-bold hover:bg-emerald-950/40">⬇ Pobierz .txt</button>
+              <button onClick={copy} className="px-3 py-1 rounded-sm border border-indigo-500/40 text-indigo-300 text-[11px] font-bold hover:bg-indigo-950/40">📋 Kopiuj</button>
+              <button onClick={download} className="px-3 py-1 rounded-sm border border-emerald-500/40 text-emerald-300 text-[11px] font-bold hover:bg-emerald-950/40">⬇ Pobierz .txt</button>
             </div>
           </div>
         )}

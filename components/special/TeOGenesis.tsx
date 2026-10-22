@@ -79,7 +79,7 @@ const TeOGenesis: React.FC<TeOGenesisProps> = ({ onEnter, isPioneer }) => {
                         <Zap className="w-8 h-8 text-yellow-400" />
                     </div>
                     
-                    <h1 className="text-5xl font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    <h1 className="text-5xl font-bold bg-linear-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                         TeO GENESIS
                     </h1>
                     
@@ -109,7 +109,7 @@ const TeOGenesis: React.FC<TeOGenesisProps> = ({ onEnter, isPioneer }) => {
                         onClick={handleEnter}
                         className="
                             group relative px-8 py-4 
-                            bg-gradient-to-r from-cyan-500 to-purple-500 
+                            bg-linear-to-r from-cyan-500 to-purple-500 
                             hover:from-cyan-400 hover:to-purple-400
                             rounded-xl font-bold text-white
                             transition-all duration-300
@@ -130,7 +130,7 @@ const TeOGenesis: React.FC<TeOGenesisProps> = ({ onEnter, isPioneer }) => {
             </div>
 
             {/* Bottom Decoration */}
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-50" />
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-linear-to-r from-transparent via-cyan-500 to-transparent opacity-50" />
         </div>
     );
 };

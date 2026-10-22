@@ -30,7 +30,7 @@ export const TeoLab: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
             {/* Pasek hubu */}
             <div className="flex items-center justify-between mb-3 px-1">
                 <div className="flex items-center gap-2">
-                    <span className="text-sm font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-lime-300 to-emerald-400">🧪 TEO LAB</span>
+                    <span className="text-sm font-black tracking-widest text-transparent bg-clip-text bg-linear-to-r from-lime-300 to-emerald-400">🧪 TEO LAB</span>
                     <div className="flex gap-1.5">
                         {TABS.map(t => (
                             <button key={t.key} onClick={() => setTab(t.key)}

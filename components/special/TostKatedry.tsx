@@ -78,7 +78,7 @@ export const TostKatedry: React.FC = () => {
                         <div className="flex-1 space-y-2 overflow-y-auto p-4" style={{ maxHeight: 520 }}>
                             {watek.map((m) => (
                                 <div key={m.id} className={`max-w-[80%] rounded-lg px-3 py-2 ${m.kierunek === 'wychodzaca' ? 'ml-auto bg-green-900/40 text-green-100' : 'bg-slate-900/80 text-slate-200'}`}>
-                                    <div className="whitespace-pre-wrap break-words" data-bez-tlumaczenia>{m.tekst}</div>
+                                    <div className="whitespace-pre-wrap wrap-break-word" data-bez-tlumaczenia>{m.tekst}</div>
                                     <div className="mt-1 text-[9px] text-green-800">
                                         {godz(m.czas)}
                                         {m.kierunek === 'wychodzaca' && (m.stan === 'dostarczona' ? ' · ✓ dostarczona' : m.stan === 'niedostarczona' ? ` · ✕ niedostarczona${m.blad ? ` (${m.blad})` : ''}` : ` · ⏳ czeka${m.blad ? ` (${m.blad})` : ''}`)}
@@ -91,8 +91,8 @@ export const TostKatedry: React.FC = () => {
                         <div className="flex gap-2 border-t border-green-900/40 p-3">
                             <textarea value={tekst} onChange={(e) => setTekst(e.target.value)} rows={2} maxLength={4000}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void wyslij(); } }}
-                                placeholder={`Do ${z}… (Enter = wyślij)`} className="flex-1 resize-none rounded border border-green-900/60 bg-black/50 px-2 py-1 text-green-100 outline-none focus:border-green-500" />
-                            <button onClick={() => void wyslij()} disabled={wysyla || !tekst.trim()} className="rounded bg-green-600/80 px-4 font-bold text-black disabled:opacity-40">{wysyla ? '…' : 'Wyślij'}</button>
+                                placeholder={`Do ${z}… (Enter = wyślij)`} className="flex-1 resize-none rounded-sm border border-green-900/60 bg-black/50 px-2 py-1 text-green-100 outline-hidden focus:border-green-500" />
+                            <button onClick={() => void wyslij()} disabled={wysyla || !tekst.trim()} className="rounded-sm bg-green-600/80 px-4 font-bold text-black disabled:opacity-40">{wysyla ? '…' : 'Wyślij'}</button>
                         </div>
                     </>
                 )}

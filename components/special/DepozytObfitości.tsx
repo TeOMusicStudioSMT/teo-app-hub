@@ -85,7 +85,7 @@ export const DepozytObfitości: React.FC<DepozytObfitościProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-md overflow-hidden"
+                className="fixed inset-0 z-200 flex items-center justify-center bg-black/90 backdrop-blur-md overflow-hidden"
                 onClick={onClose}
             >
                 {/* 🌟 Gwiezdny Pył */}
@@ -104,7 +104,7 @@ export const DepozytObfitości: React.FC<DepozytObfitościProps> = ({
                             repeat: Infinity,
                             ease: "easeOut",
                         }}
-                        className="absolute rounded-full bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-200"
+                        className="absolute rounded-full bg-linear-to-r from-amber-200 via-yellow-400 to-amber-200"
                         style={{
                             left: `${p.x}%`,
                             top: `${p.y}%`,
@@ -134,7 +134,7 @@ export const DepozytObfitości: React.FC<DepozytObfitościProps> = ({
                             repeat: Infinity,
                             ease: "easeInOut",
                         }}
-                        className="absolute inset-0 -m-8 rounded-full bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-400 blur-xl"
+                        className="absolute inset-0 -m-8 rounded-full bg-linear-to-r from-amber-400 via-yellow-500 to-amber-400 blur-xl"
                     />
 
                     {/* Główna karta */}
@@ -142,10 +142,10 @@ export const DepozytObfitości: React.FC<DepozytObfitościProps> = ({
                         initial={{ scale: 0.8, y: 50 }}
                         animate={{ scale: 1, y: 0 }}
                         transition={{ delay: 0.3, duration: 0.5 }}
-                        className="relative w-[90vw] max-w-lg bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-2 border-amber-500/50 rounded-3xl p-8 shadow-[0_0_60px_rgba(251,191,36,0.3)] overflow-hidden"
+                        className="relative w-[90vw] max-w-lg bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 border-2 border-amber-500/50 rounded-3xl p-8 shadow-[0_0_60px_rgba(251,191,36,0.3)] overflow-hidden"
                     >
                         {/* Tło z poświatą */}
-                        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent rounded-3xl" />
+                        <div className="absolute inset-0 bg-linear-to-br from-amber-500/5 to-transparent rounded-3xl" />
 
                         <div className="relative z-10 text-center">
                             {/* Nagłówek */}
@@ -155,7 +155,7 @@ export const DepozytObfitości: React.FC<DepozytObfitościProps> = ({
                                 transition={{ delay: 0.5 }}
                             >
                                 <div className="text-6xl mb-4">👑</div>
-                                <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-300 bg-clip-text text-transparent mb-2">
+                                <h1 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-amber-300 via-yellow-400 to-amber-300 bg-clip-text text-transparent mb-2">
                                     DEPOZYT OBFITOŚCI
                                 </h1>
                                 <p className="text-amber-400/80 text-sm uppercase tracking-[0.3em]">
@@ -168,7 +168,7 @@ export const DepozytObfitości: React.FC<DepozytObfitościProps> = ({
                                 initial={{ scaleX: 0 }}
                                 animate={{ scaleX: 1 }}
                                 transition={{ delay: 0.7, duration: 0.5 }}
-                                className="my-6 h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent"
+                                className="my-6 h-px bg-linear-to-r from-transparent via-amber-500/50 to-transparent"
                             />
 
                             {/* Treść listu */}
@@ -198,7 +198,7 @@ export const DepozytObfitości: React.FC<DepozytObfitościProps> = ({
                                         <div className="text-xs text-slate-500 uppercase tracking-widest mb-2">
                                             Twój Depozyt
                                         </div>
-                                        <div className="text-5xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-300 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]">
+                                        <div className="text-5xl md:text-6xl font-bold text-transparent bg-clip-text bg-linear-to-r from-amber-300 via-yellow-400 to-amber-300 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]">
                                             {formatGRV(grvAnimated)} <span className="text-2xl">GRV</span>
                                         </div>
                                     </motion.div>
@@ -219,7 +219,7 @@ export const DepozytObfitości: React.FC<DepozytObfitościProps> = ({
                                         animate={{ opacity: 1 }}
                                         transition={{ delay: 1 }}
                                         onClick={onClose}
-                                        className="mt-8 px-8 py-3 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 rounded-full text-white font-semibold shadow-[0_0_20px_rgba(251,191,36,0.4)] hover:shadow-[0_0_30px_rgba(251,191,36,0.6)] transition-all"
+                                        className="mt-8 px-8 py-3 bg-linear-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 rounded-full text-white font-semibold shadow-[0_0_20px_rgba(251,191,36,0.4)] hover:shadow-[0_0_30px_rgba(251,191,36,0.6)] transition-all"
                                     >
                                         ✨ Przyjmuję Depozyt
                                     </motion.button>

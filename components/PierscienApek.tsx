@@ -101,7 +101,7 @@ export const PierscienApek: React.FC = () => {
         <>
             {/* Warstwy apek — tylko wczytane; aktywna na wierzchu, reszta schowana za krawędzią. */}
             {s.apki.length > 0 && (
-                <div className="fixed inset-0 z-[9000] overflow-hidden" style={{ pointerEvents: s.aktywna ? 'auto' : 'none' }}>
+                <div className="fixed inset-0 z-9000 overflow-hidden" style={{ pointerEvents: s.aktywna ? 'auto' : 'none' }}>
                     {s.apki.filter((a) => a.wczytana).map((a) => {
                         const widac = a.id === s.aktywna;
                         return (
@@ -117,16 +117,16 @@ export const PierscienApek: React.FC = () => {
             )}
 
             {/* Koło przełączania — LEWA krawędź, nad wszystkim. */}
-            <nav aria-label="Otwarte apki Katedry" className="fixed left-2 top-1/2 z-[9600] flex -translate-y-1/2 flex-col items-center gap-2 rounded-full border border-white/10 bg-black/55 p-1.5 backdrop-blur-md">
+            <nav aria-label="Otwarte apki Katedry" className="fixed left-2 top-1/2 z-9600 flex -translate-y-1/2 flex-col items-center gap-2 rounded-full border border-white/10 bg-black/55 p-1.5 backdrop-blur-md">
                 <Kolko znak="🏛️" tytul="Hub Katedry" kolor="#eab308" aktywne={!s.aktywna} onClick={pokazHub} />
                 {s.apki.map((a) => (
                     <div key={a.id} className="group relative">
                         <Kolko znak={a.znak} tytul={a.tytul} kolor={a.kolor} aktywne={a.id === s.aktywna} uspiona={!a.wczytana} onClick={() => pokazApke(a.id)} />
                         <div className="pointer-events-none absolute left-full top-1/2 ml-2 flex -translate-y-1/2 items-center gap-1 whitespace-nowrap rounded-lg border border-white/10 bg-black/85 px-2 py-1 text-[11px] text-white/90 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100">
                             <span>{a.tytul}{!a.wczytana ? ' · śpi' : ''}</span>
-                            <button title="Przeładuj (np. gdy studio wstało później niż okno)" onClick={() => przeladujApke(a.id)} className="rounded px-1 text-white/60 hover:bg-white/10 hover:text-white">↻</button>
-                            <button title="Otwórz w osobnej karcie" onClick={() => { window.open(a.url, '_blank', 'noopener'); zamknijApke(a.id); }} className="rounded px-1 text-white/60 hover:bg-white/10 hover:text-white">↗</button>
-                            <button title="Zamknij apkę" onClick={() => zamknijApke(a.id)} className="rounded px-1 text-rose-300/80 hover:bg-rose-500/20 hover:text-rose-200">✕</button>
+                            <button title="Przeładuj (np. gdy studio wstało później niż okno)" onClick={() => przeladujApke(a.id)} className="rounded-sm px-1 text-white/60 hover:bg-white/10 hover:text-white">↻</button>
+                            <button title="Otwórz w osobnej karcie" onClick={() => { window.open(a.url, '_blank', 'noopener'); zamknijApke(a.id); }} className="rounded-sm px-1 text-white/60 hover:bg-white/10 hover:text-white">↗</button>
+                            <button title="Zamknij apkę" onClick={() => zamknijApke(a.id)} className="rounded-sm px-1 text-rose-300/80 hover:bg-rose-500/20 hover:text-rose-200">✕</button>
                         </div>
                     </div>
                 ))}
@@ -142,7 +142,7 @@ export const PierscienApek: React.FC = () => {
                 </div>
             </nav>
             {(praca || blad) && (
-                <div className="fixed bottom-6 left-16 z-[9600] max-w-sm rounded-lg border border-white/10 bg-black/85 px-3 py-2 text-xs text-white/90">
+                <div className="fixed bottom-6 left-16 z-9600 max-w-sm rounded-lg border border-white/10 bg-black/85 px-3 py-2 text-xs text-white/90">
                     {praca ? `Budzę ${NARZEDZIA.find((n) => n.id === praca)?.tytul ?? praca}… (pierwszy start chwilę trwa)` : blad}
                     {blad && <button onClick={() => setBlad(null)} className="ml-2 text-white/50">✕</button>}
                 </div>

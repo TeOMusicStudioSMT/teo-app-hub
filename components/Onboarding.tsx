@@ -34,7 +34,7 @@ export const Onboarding: React.FC<{ onDone: () => void }> = ({ onDone }) => {
   const next = () => (step < STEPS.length - 1 ? setStep(step + 1) : finish());
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+    <div className="fixed inset-0 z-200 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
       <div className="max-w-lg w-full rounded-2xl border border-emerald-500/30 bg-[#05080d]/95 p-6 shadow-[0_0_60px_rgba(16,185,129,0.2)] font-mono">
         <div className="flex justify-between items-center mb-3">
           <div className="text-[10px] tracking-[0.3em] text-emerald-500/60">∴ PIERWSZE WEJŚCIE · 0.00G ∴</div>
@@ -55,9 +55,9 @@ export const Onboarding: React.FC<{ onDone: () => void }> = ({ onDone }) => {
           </div>
           <div className="flex gap-2">
             <button onClick={() => speak(s.say)} title="Powtórz głosem"
-              className="px-3 py-1.5 rounded border border-fuchsia-500/40 text-fuchsia-300 text-xs hover:bg-fuchsia-950/40">🔊</button>
+              className="px-3 py-1.5 rounded-sm border border-fuchsia-500/40 text-fuchsia-300 text-xs hover:bg-fuchsia-950/40">🔊</button>
             <button onClick={next}
-              className="px-5 py-1.5 rounded border border-emerald-500/50 bg-emerald-950/40 text-emerald-300 text-xs font-bold hover:bg-emerald-900/50">
+              className="px-5 py-1.5 rounded-sm border border-emerald-500/50 bg-emerald-950/40 text-emerald-300 text-xs font-bold hover:bg-emerald-900/50">
               {step < STEPS.length - 1 ? 'Dalej →' : '✦ WEJDŹ DO KATEDRY'}
             </button>
           </div>

@@ -53,7 +53,7 @@ export default function JajoMistrzaPanel() {
     const postep = e.nastepny ? Math.min(100, Math.round((e.punkty / e.nastepny.od) * 100)) : 100;
 
     return (
-        <div className="mb-6 rounded-2xl border border-yellow-400/30 bg-gradient-to-br from-yellow-500/5 to-slate-900/40 p-4">
+        <div className="mb-6 rounded-2xl border border-yellow-400/30 bg-linear-to-br from-yellow-500/5 to-slate-900/40 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
                     <span className={`text-4xl ${e.nazwa === 'drży' ? 'animate-pulse' : ''}`}>{IKONA[e.nazwa] ?? '🥚'}</span>
@@ -68,7 +68,7 @@ export default function JajoMistrzaPanel() {
                 </div>
             </div>
             <div className="mt-3">
-                <div className="h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full bg-gradient-to-r from-yellow-500 to-amber-300 transition-all" style={{ width: `${postep}%` }} /></div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full bg-linear-to-r from-yellow-500 to-amber-300 transition-all" style={{ width: `${postep}%` }} /></div>
                 <p className="mt-1 text-[10px] text-slate-500">{e.punkty} pkt (poprawka = 2, decyzja = 1){e.nastepny ? ` · do „${e.nastepny.nazwa}” brakuje ${e.nastepny.brakuje}` : ' · wykluty'} · {stan.poprawki} poprawek, {stan.decyzje} decyzji</p>
             </div>
             {komunikat && <p className="mt-2 text-[11px] text-yellow-100/90">{komunikat}</p>}

@@ -97,13 +97,13 @@ export const WalletConnect: React.FC = () => {
             </div>
 
             <div className="flex gap-2 flex-wrap mb-2">
-                <button onClick={connectMetaMask} className="px-3 py-1.5 rounded border border-amber-500/50 bg-amber-950/30 text-amber-300 text-[11px] font-bold hover:bg-amber-900/40">🦊 Połącz MetaMask</button>
-                <button onClick={refresh} disabled={busy} className="px-3 py-1.5 rounded border border-emerald-500/50 bg-emerald-950/30 text-emerald-300 text-[11px] font-bold hover:bg-emerald-900/40 disabled:opacity-50">{busy ? '⟳...' : '🔄 Odśwież salda'}</button>
+                <button onClick={connectMetaMask} className="px-3 py-1.5 rounded-sm border border-amber-500/50 bg-amber-950/30 text-amber-300 text-[11px] font-bold hover:bg-amber-900/40">🦊 Połącz MetaMask</button>
+                <button onClick={refresh} disabled={busy} className="px-3 py-1.5 rounded-sm border border-emerald-500/50 bg-emerald-950/30 text-emerald-300 text-[11px] font-bold hover:bg-emerald-900/40 disabled:opacity-50">{busy ? '⟳...' : '🔄 Odśwież salda'}</button>
             </div>
             <div className="flex gap-2 mb-3">
                 <input value={manual} onChange={e => setManual(e.target.value)} placeholder="lub wklej adres 0x..."
-                    className="flex-1 bg-black/40 border border-zinc-700 rounded px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-emerald-500" />
-                <button onClick={() => { addAddr(manual); setManual(''); }} className="px-3 rounded border border-zinc-600 text-zinc-300 text-[11px] hover:border-emerald-500">+ Dodaj</button>
+                    className="flex-1 bg-black/40 border border-zinc-700 rounded-sm px-2 py-1 text-[11px] text-zinc-200 outline-hidden focus:border-emerald-500" />
+                <button onClick={() => { addAddr(manual); setManual(''); }} className="px-3 rounded-sm border border-zinc-600 text-zinc-300 text-[11px] hover:border-emerald-500">+ Dodaj</button>
             </div>
 
             {addresses.length > 0 && (
@@ -120,7 +120,7 @@ export const WalletConnect: React.FC = () => {
             {assets && assets.length > 0 && (
                 <div className="space-y-1.5">
                     {assets.map(a => (
-                        <div key={a.chain} className="flex items-center justify-between bg-black/30 rounded px-3 py-1.5 text-[12px]">
+                        <div key={a.chain} className="flex items-center justify-between bg-black/30 rounded-sm px-3 py-1.5 text-[12px]">
                             <span className="text-zinc-200 font-bold">{a.symbol} <span className="text-zinc-500 font-normal text-[10px]">{a.name}</span></span>
                             <span className="text-zinc-400">{a.balance.toFixed(4)}</span>
                             <span className="text-emerald-400 font-bold">{fEUR(a.value)}</span>
@@ -134,7 +134,7 @@ export const WalletConnect: React.FC = () => {
                 <div className="space-y-1.5 mt-2">
                     <div className="text-[9px] tracking-widest text-emerald-500/60 mt-3">∴ TOKENY ERC-20 ∴</div>
                     {tokeny.map(t => (
-                        <div key={`${t.chain}-${t.kontrakt}`} className="flex items-center justify-between bg-black/30 rounded px-3 py-1.5 text-[12px]">
+                        <div key={`${t.chain}-${t.kontrakt}`} className="flex items-center justify-between bg-black/30 rounded-sm px-3 py-1.5 text-[12px]">
                             <span className="text-zinc-200 font-bold">
                                 {t.symbol} <span className="text-zinc-500 font-normal text-[10px]">{t.name}</span>
                             </span>
@@ -149,7 +149,7 @@ export const WalletConnect: React.FC = () => {
 
             {/* Uczciwość zasięgu: mówimy, ILE sprawdziliśmy i czego NIE widać. */}
             {widocznosc && (
-                <div className={`text-[9px] mt-3 leading-relaxed p-2 rounded border ${widocznosc.problemy.length ? 'text-amber-300/90 border-amber-500/30 bg-amber-950/20' : 'text-zinc-500 border-zinc-700/40'}`}>
+                <div className={`text-[9px] mt-3 leading-relaxed p-2 rounded-sm border ${widocznosc.problemy.length ? 'text-amber-300/90 border-amber-500/30 bg-amber-950/20' : 'text-zinc-500 border-zinc-700/40'}`}>
                     Sprawdzono {widocznosc.sprawdzonychKontraktow} kontraktów, znaleziono {widocznosc.znalezionychTokenow}.
                     {' '}{widocznosc.uwaga}
                 </div>
@@ -158,14 +158,14 @@ export const WalletConnect: React.FC = () => {
             {/* Dołożenie tokenu spoza listy — zamyka lukę „mam coś egzotycznego". */}
             <div className="flex gap-2 mt-2">
                 <select value={nowySiec} onChange={e => setNowySiec(e.target.value)}
-                    className="bg-black/40 border border-zinc-700 rounded px-2 py-1 text-[10px] text-zinc-300 outline-none">
+                    className="bg-black/40 border border-zinc-700 rounded-sm px-2 py-1 text-[10px] text-zinc-300 outline-hidden">
                     <option value="eth">Ethereum</option>
                     <option value="polygon">Polygon</option>
                     <option value="bsc">BNB Chain</option>
                 </select>
                 <input value={nowyToken} onChange={e => setNowyToken(e.target.value)} placeholder="adres kontraktu tokenu 0x…"
-                    className="flex-1 min-w-0 bg-black/40 border border-zinc-700 rounded px-2 py-1 text-[10px] text-zinc-200 outline-none focus:border-emerald-500" />
-                <button onClick={dodajToken} className="px-3 rounded border border-zinc-600 text-zinc-300 text-[10px] hover:border-emerald-500">+ Token</button>
+                    className="flex-1 min-w-0 bg-black/40 border border-zinc-700 rounded-sm px-2 py-1 text-[10px] text-zinc-200 outline-hidden focus:border-emerald-500" />
+                <button onClick={dodajToken} className="px-3 rounded-sm border border-zinc-600 text-zinc-300 text-[10px] hover:border-emerald-500">+ Token</button>
             </div>
             {dodatkowe.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-1.5">

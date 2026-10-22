@@ -77,13 +77,13 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
       </div>
 
       {/* ── Language Switcher ── */}
-      <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-1 bg-slate-900/75 backdrop-blur-md border border-white/10 rounded-full px-1 py-1 shadow-[0_4px_24px_rgba(0,0,0,0.5)]">
+      <div className="fixed top-5 left-1/2 -translate-x-1/2 z-110 flex items-center gap-1 bg-slate-900/75 backdrop-blur-md border border-white/10 rounded-full px-1 py-1 shadow-[0_4px_24px_rgba(0,0,0,0.5)]">
         {(['pl', 'en'] as Lang[]).map(l => (
           <button
             key={l}
             onClick={() => handleLangSwitch(l)}
             className={`w-10 h-7 rounded-full text-[10px] font-bold tracking-[0.15em] uppercase transition-all duration-300 ${lang === l
-              ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-[0_0_14px_rgba(6,182,212,0.55)]'
+              ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-[0_0_14px_rgba(6,182,212,0.55)]'
               : 'text-slate-500 hover:text-slate-300'
               }`}
           >
@@ -96,7 +96,7 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
       {onClose && (
         <button
           onClick={onClose}
-          className="fixed top-5 right-5 z-[110] w-10 h-10 rounded-full bg-slate-900/75 backdrop-blur-md border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:border-cyan-500/50 hover:bg-cyan-950/60 transition-all duration-300 hover:shadow-[0_0_18px_rgba(6,182,212,0.35)] group"
+          className="fixed top-5 right-5 z-110 w-10 h-10 rounded-full bg-slate-900/75 backdrop-blur-md border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:border-cyan-500/50 hover:bg-cyan-950/60 transition-all duration-300 hover:shadow-[0_0_18px_rgba(6,182,212,0.35)] group"
           title="Zamknij Dziennik"
         >
           <span className="text-lg group-hover:rotate-90 transition-transform duration-300 leading-none">✕</span>
@@ -107,17 +107,17 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
       {!isCreatorOpen && (
         <header className="relative z-10 shrink-0 pt-20 pb-8 flex flex-col items-center text-center px-6">
           <div className="inline-block relative group mb-3">
-            <div className="absolute -inset-2 bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-600 rounded-xl blur-xl opacity-[0.18] group-hover:opacity-35 transition-all duration-1000" />
-            <h1 className="relative text-4xl md:text-6xl font-black bg-clip-text text-transparent bg-gradient-to-b from-white via-slate-200 to-slate-500 tracking-tighter leading-none">
+            <div className="absolute -inset-2 bg-linear-to-r from-cyan-500 via-blue-500 to-violet-600 rounded-xl blur-xl opacity-[0.18] group-hover:opacity-35 transition-all duration-1000" />
+            <h1 className="relative text-4xl md:text-6xl font-black bg-clip-text text-transparent bg-linear-to-b from-white via-slate-200 to-slate-500 tracking-tighter leading-none">
               {lang === 'pl' ? 'Dziennik Pokładowy' : "Captain's Log"}
             </h1>
           </div>
           <div className="flex items-center gap-3 text-cyan-400/60 font-mono text-[10px] tracking-[0.25em] uppercase">
-            <span className="h-px w-10 bg-gradient-to-r from-transparent to-cyan-500/40" />
+            <span className="h-px w-10 bg-linear-to-r from-transparent to-cyan-500/40" />
             {lang === 'pl' ? 'Rada Kwantowego Kolektywu' : 'Quantum Collective Council'}
             <span className="text-cyan-400/25">·</span>
             WPIS 0.00G
-            <span className="h-px w-10 bg-gradient-to-l from-transparent to-cyan-500/40" />
+            <span className="h-px w-10 bg-linear-to-l from-transparent to-cyan-500/40" />
           </div>
 
           {/* 📺 ArtOfSoul TV & 🧠 Skanuj Podświadomość Buttons */}
@@ -131,7 +131,7 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
             </button>
           </div>
           {/* Delikatna linia separatora */}
-          <div className="mt-6 h-px w-full max-w-xl bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
+          <div className="mt-6 h-px w-full max-w-xl bg-linear-to-r from-transparent via-cyan-500/20 to-transparent" />
         </header>
       )}
 
@@ -140,7 +140,7 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
         className="
           relative z-10
           flex-1 overflow-y-auto overflow-x-hidden
-          [scrollbar-width:thin]
+          scrollbar-thin
           [scrollbar-color:rgba(34,211,238,0.25)_transparent]
           [&::-webkit-scrollbar]:w-[5px]
           [&::-webkit-scrollbar-track]:bg-transparent
@@ -156,7 +156,7 @@ const QuantumJournal: React.FC<QuantumJournalProps> = ({ onClose }) => {
               onClick={() => setIsCreatorOpen(!isCreatorOpen)}
               className={`
                 relative px-8 py-4 rounded-xl font-bold text-lg tracking-widest uppercase transition-all duration-500
-                bg-gradient-to-r from-[#c9953a] via-[#a78bfa] to-[#c9953a] bg-[length:200%_auto]
+                bg-linear-to-r from-[#c9953a] via-[#a78bfa] to-[#c9953a] bg-size-[200%_auto]
                 hover:bg-right text-white shadow-[0_0_30px_rgba(201,149,58,0.3)]
                 border border-white/20 active:scale-95 group
                 ${isCreatorOpen ? 'ring-2 ring-amber-500/50' : ''}

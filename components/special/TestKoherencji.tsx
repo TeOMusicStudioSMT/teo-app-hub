@@ -52,7 +52,7 @@ export const TestKoherencji: React.FC = () => {
     };
 
     return (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-[#020617]">
+        <div className="fixed inset-0 z-10000 flex items-center justify-center p-4 bg-[#020617]">
             {/* Ambient Background Elements */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-fuchsia-600/10 rounded-full blur-[120px] animate-pulse" />
@@ -88,7 +88,7 @@ export const TestKoherencji: React.FC = () => {
                                         onClick={() => handleAnswer(i)}
                                         className="group relative w-full text-left p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-fuchsia-500/50 transition-all duration-300 overflow-hidden"
                                     >
-                                        <div className="absolute inset-0 bg-gradient-to-r from-fuchsia-600/0 to-fuchsia-600/0 group-hover:from-fuchsia-600/5 group-hover:to-transparent transition-all" />
+                                        <div className="absolute inset-0 bg-linear-to-r from-fuchsia-600/0 to-fuchsia-600/0 group-hover:from-fuchsia-600/5 group-hover:to-transparent transition-all" />
                                         <span className="relative z-10 text-slate-300 group-hover:text-white transition-colors">{opt}</span>
                                     </button>
                                 ))}

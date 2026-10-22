@@ -125,7 +125,7 @@ const KartaGatunku: React.FC<{
                     <div className="flex items-center gap-2">
                         <span className="font-bold text-slate-100">{(stanGatunku(gat.id).name || '').trim() || gat.imie}</span>
                         {aktywny && (
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: gat.kolor, color: '#0a0f1c' }}>
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm" style={{ background: gat.kolor, color: '#0a0f1c' }}>
                                 DYŻUR
                             </span>
                         )}
@@ -162,7 +162,7 @@ const KartaGatunku: React.FC<{
                     <select
                         value={rdzen}
                         onChange={(e) => { setRdzen(e.target.value); ustawModelGatunku(gat.id, e.target.value); }}
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200 outline-none focus:border-slate-500"
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200 outline-hidden focus:border-slate-500"
                     >
                         <option value="">jak Katedra (globalny)</option>
                         {modele.map(m => <option key={m} value={m}>{m}</option>)}

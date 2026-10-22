@@ -135,7 +135,7 @@ export const QuantumCompass: React.FC<{ onOtworz?: (widok: string) => void }> = 
                     const priority = priorities[quiz.id];
                     return (
                         <div key={quiz.id} className={cn("p-4 bg-slate-800/60 rounded-xl border border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors duration-500", progress?.completed && 'bg-slate-800/80 border-slate-600')}>
-                            <div className="flex-grow">
+                            <div className="grow">
                                 <div className="flex items-center gap-3">
                                     <AnimatePresence>
                                         {progress?.completed && (
@@ -143,7 +143,7 @@ export const QuantumCompass: React.FC<{ onOtworz?: (widok: string) => void }> = 
                                                 initial={{ scale: 0, opacity: 0 }}
                                                 animate={{ scale: 1, opacity: 1 }}
                                                 transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                                                className="w-5 h-5 text-green-400 flex-shrink-0"
+                                                className="w-5 h-5 text-green-400 shrink-0"
                                             >
                                                 <FaCheckCircle />
                                             </motion.div>
@@ -180,7 +180,7 @@ export const QuantumCompass: React.FC<{ onOtworz?: (widok: string) => void }> = 
                                 <div className="mt-3 pt-3 border-t border-slate-700/50 flex flex-col gap-3">
                                     {/* Due Date Section */}
                                     <div className="flex items-center gap-3 text-sm">
-                                        <div className="w-5 h-5 text-slate-400 flex-shrink-0"><CalendarIcon /></div>
+                                        <div className="w-5 h-5 text-slate-400 shrink-0"><CalendarIcon /></div>
                                         {dueDate ? (
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <p className="text-cyan-300 font-semibold">Termin: {formatDate(dueDate)}</p>
@@ -211,7 +211,7 @@ export const QuantumCompass: React.FC<{ onOtworz?: (widok: string) => void }> = 
                                     </div>
                                     {/* Priority Section */}
                                     <div className="flex items-center gap-3 text-sm">
-                                        <div className="w-5 h-5 text-slate-400 flex-shrink-0"><FlagIcon /></div>
+                                        <div className="w-5 h-5 text-slate-400 shrink-0"><FlagIcon /></div>
                                         <div className="flex items-center gap-2">
                                             {(Object.keys(priorityConfig) as Priority[]).map((p) => (
                                                 <button
@@ -229,7 +229,7 @@ export const QuantumCompass: React.FC<{ onOtworz?: (widok: string) => void }> = 
                                     </div>
                                 </div>
                             </div>
-                            <div className="w-full sm:w-auto flex-shrink-0">
+                            <div className="w-full sm:w-auto shrink-0">
                                 {progress?.completed ? (
                                     <button 
                                         onClick={() => setSelectedQuiz(quiz)}

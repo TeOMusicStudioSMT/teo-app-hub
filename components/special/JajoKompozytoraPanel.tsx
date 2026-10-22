@@ -48,7 +48,7 @@ function Edytor({ os, onZapisz, onAnuluj }: { os: Os; onZapisz: (d: { sekcje: Se
     const [prompt, setPrompt] = useState(os.prompt);
     const [tytul, setTytul] = useState(os.tytul);
     const zmien = (i: number, d: Partial<Sekcja>) => setSekcje((l) => l.map((s, k) => (k === i ? { ...s, ...d } : s)));
-    const pole = 'rounded bg-black/40 px-1 py-0.5 text-[11px] text-slate-200 border border-slate-700';
+    const pole = 'rounded-sm bg-black/40 px-1 py-0.5 text-[11px] text-slate-200 border border-slate-700';
     return (
         <div className="mt-2 space-y-1 rounded-lg border border-purple-500/30 bg-black/30 p-2">
             <input className={`${pole} w-full`} value={tytul} onChange={(e) => setTytul(e.target.value)} />
@@ -66,7 +66,7 @@ function Edytor({ os, onZapisz, onAnuluj }: { os: Os; onZapisz: (d: { sekcje: Se
             <button className="text-[11px] text-purple-300" onClick={() => { const ost = sekcje.at(-1); setSekcje((l) => [...l, { typ: 'outro', nazwa: 'Outro', od: ost?.do ?? 0, do: os.takty, energia: 0.3, ruch: '', muzyka: '', swiatla: { scena: 'napis', kolor: '#f59e0b', opis: '' } }]); }}>＋ sekcja</button>
             <textarea className={`${pole} w-full`} rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} title="prompt dla generatora muzyki (po angielsku)" />
             <p className="text-[10px] text-slate-500">Takty 0–{os.takty}. Most sprawdzi oś tak samo jak u modelu — zła = błąd wprost. Zapis = para „model → Ty” dla Kuźni.</p>
-            <div className="flex gap-2"><button className="rounded border border-purple-400/50 px-2 py-1 text-[11px] text-purple-200" onClick={() => onZapisz({ sekcje, prompt, tytul })}>💾 Zapisz poprawkę</button><button className="text-[11px] text-slate-400" onClick={onAnuluj}>anuluj</button></div>
+            <div className="flex gap-2"><button className="rounded-sm border border-purple-400/50 px-2 py-1 text-[11px] text-purple-200" onClick={() => onZapisz({ sekcje, prompt, tytul })}>💾 Zapisz poprawkę</button><button className="text-[11px] text-slate-400" onClick={onAnuluj}>anuluj</button></div>
         </div>
     );
 }
@@ -105,7 +105,7 @@ export default function JajoKompozytoraPanel() {
     const pole = 'rounded-lg bg-black/40 px-2 py-1 text-xs text-slate-200 border border-slate-700';
 
     return (
-        <div className="mb-6 rounded-2xl border border-purple-400/30 bg-gradient-to-br from-purple-600/10 to-slate-900/40 p-4">
+        <div className="mb-6 rounded-2xl border border-purple-400/30 bg-linear-to-br from-purple-600/10 to-slate-900/40 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
                     <img src="/kompozytor/jajo-kompozytora.jpg" alt="JaJo Kompozytor" className={`h-14 w-14 rounded-xl border border-purple-400/40 ${e.nazwa === 'drży' ? 'animate-pulse' : ''}`} />
@@ -117,7 +117,7 @@ export default function JajoKompozytoraPanel() {
                 <button onClick={() => void akcja('kurs', async () => { const k = await zMostu<{ pary: number; sft: number; katalog: string | null }>('/api/kompozytor/kurs', { method: 'POST', body: '{}' }); return k.pary || k.sft ? `⚒️ ${k.pary} par „model → Ty” i ${k.sft} przyjętych osi → ${k.katalog}` : '⚒️ Nie ma jeszcze poprawek ani przyjętych osi.'; })} disabled={!!trwa} className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700/40 disabled:opacity-40">⚒️ Dane do Kuźni</button>
             </div>
             <div className="mt-3">
-                <div className="h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full bg-gradient-to-r from-purple-600 to-fuchsia-400 transition-all" style={{ width: `${postep}%` }} /></div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full bg-linear-to-r from-purple-600 to-fuchsia-400 transition-all" style={{ width: `${postep}%` }} /></div>
                 <p className="mt-1 text-[10px] text-slate-500">{e.punkty} pkt (poprawiona oś = 2, przyjęta/odrzucona = 1){e.nastepny ? ` · do „${e.nastepny.nazwa}” brakuje ${e.nastepny.brakuje}` : ' · wykluty'} · {stan.poprawki} poprawek, {stan.decyzje} decyzji</p>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -139,10 +139,10 @@ export default function JajoKompozytoraPanel() {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <span><b className="text-purple-200">{o.tytul}</b> <span className="text-slate-500">· {o.bpm} BPM · {o.takty} taktów · {STAN[o.stan]}{o.poprawiona ? ' · ✎ poprawiona' : ''}{o.utwor ? ` · ♪ ${o.utwor.tytul}` : ''}{o.zamowienie && !o.utwor ? ` · 🎤 zamówienie: ${o.zamowienie.stan ?? 'czeka'}${o.zamowienie.blad ? ` (${o.zamowienie.blad})` : ''}` : ''}</span></span>
                             <span className="flex gap-1">
-                                {o.stan !== 'przyjeta' && <button disabled={!!trwa} className="rounded border border-emerald-500/40 px-2 text-emerald-300" onClick={() => void akcja('d', async () => { await zMostu(`/api/kompozytor/os/${o.id}/przyjmij`, { method: 'POST', body: '{}' }); return `✅ „${o.tytul}” przyjęta.`; })}>✓</button>}
-                                {o.stan !== 'odrzucona' && <button disabled={!!trwa} className="rounded border border-red-500/40 px-2 text-red-300" onClick={() => void akcja('d', async () => { await zMostu(`/api/kompozytor/os/${o.id}/odrzuc`, { method: 'POST', body: '{}' }); return `✖ „${o.tytul}” odrzucona.`; })}>✖</button>}
-                                <button className="rounded border border-slate-600 px-2 text-slate-300" onClick={() => setEdycja(edycja === o.id ? null : o.id)}>✎</button>
-                                {!o.utwor && !o.zamowienie && o.stan !== 'odrzucona' && <button disabled={!!trwa} className="rounded border border-fuchsia-500/40 px-2 text-fuchsia-200" title="Zamów utwór u Joanny z promptem Kompozytora (generator na GPU)" onClick={() => void akcja('z', async () => { await zMostu(`/api/kompozytor/os/${o.id}/zamow`, { method: 'POST', body: '{}' }); return '🎤 Zamówione u Joanny — utwór powstaje w tle (Bazylika Dźwięku), potem sam przypnie się do osi.'; })}>🎤 Zamów</button>}
+                                {o.stan !== 'przyjeta' && <button disabled={!!trwa} className="rounded-sm border border-emerald-500/40 px-2 text-emerald-300" onClick={() => void akcja('d', async () => { await zMostu(`/api/kompozytor/os/${o.id}/przyjmij`, { method: 'POST', body: '{}' }); return `✅ „${o.tytul}” przyjęta.`; })}>✓</button>}
+                                {o.stan !== 'odrzucona' && <button disabled={!!trwa} className="rounded-sm border border-red-500/40 px-2 text-red-300" onClick={() => void akcja('d', async () => { await zMostu(`/api/kompozytor/os/${o.id}/odrzuc`, { method: 'POST', body: '{}' }); return `✖ „${o.tytul}” odrzucona.`; })}>✖</button>}
+                                <button className="rounded-sm border border-slate-600 px-2 text-slate-300" onClick={() => setEdycja(edycja === o.id ? null : o.id)}>✎</button>
+                                {!o.utwor && !o.zamowienie && o.stan !== 'odrzucona' && <button disabled={!!trwa} className="rounded-sm border border-fuchsia-500/40 px-2 text-fuchsia-200" title="Zamów utwór u Joanny z promptem Kompozytora (generator na GPU)" onClick={() => void akcja('z', async () => { await zMostu(`/api/kompozytor/os/${o.id}/zamow`, { method: 'POST', body: '{}' }); return '🎤 Zamówione u Joanny — utwór powstaje w tle (Bazylika Dźwięku), potem sam przypnie się do osi.'; })}>🎤 Zamów</button>}
                                 <button className="px-1 text-slate-500" onClick={() => { if (confirm('Usunąć tę oś?')) void akcja('u', async () => { await zMostu(`/api/kompozytor/os/${o.id}`, { method: 'DELETE' }); return '🗑 Usunięta.'; }); }}>🗑</button>
                             </span>
                         </div>

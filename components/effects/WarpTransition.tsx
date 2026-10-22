@@ -10,7 +10,7 @@ export const WarpTransition: React.FC<WarpTransitionProps> = ({ isActive }) => {
         <AnimatePresence>
             {isActive && (
                 <motion.div
-                    className="fixed inset-0 z-[9999] bg-black flex items-center justify-center overflow-hidden pointer-events-auto"
+                    className="fixed inset-0 z-9999 bg-black flex items-center justify-center overflow-hidden pointer-events-auto"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -35,7 +35,7 @@ export const WarpTransition: React.FC<WarpTransitionProps> = ({ isActive }) => {
                             }}
                         >
                             <motion.div
-                                className="bg-gradient-to-t from-transparent via-blue-200 to-white rounded-full"
+                                className="bg-linear-to-t from-transparent via-blue-200 to-white rounded-full"
                                 style={{
                                     width: Math.random() > 0.7 ? '3px' : '1px',
                                     height: '40px', // Base length

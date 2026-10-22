@@ -46,7 +46,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ item, mo
                 {/* Image Section */}
                 <div className="w-full md:w-1/2 h-48 md:h-auto bg-slate-800 relative">
                     <img src={item.imageUrl} alt={item.itemName} className="w-full h-full object-cover" />
-                    <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-full text-xs text-white font-mono border border-white/20">
+                    <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-xs px-3 py-1 rounded-full text-xs text-white font-mono border border-white/20">
                         {type}
                     </div>
                 </div>
@@ -61,7 +61,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ item, mo
                         <button onClick={onClose} className="text-slate-500 hover:text-white text-2xl leading-none">&times;</button>
                     </div>
 
-                    <div className="space-y-6 flex-grow overflow-y-auto pr-2">
+                    <div className="space-y-6 grow overflow-y-auto pr-2">
                         <div>
                             <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-2">Origin Story</h3>
                             <p className="text-slate-400 text-sm leading-relaxed">
@@ -129,7 +129,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ item, mo
                                 )}
                                 <button 
                                     onClick={handleAcquire}
-                                    className="flex-grow capsule-button capsule-green py-3 flex items-center justify-center gap-2 shadow-lg shadow-green-900/20"
+                                    className="grow capsule-button capsule-green py-3 flex items-center justify-center gap-2 shadow-lg shadow-green-900/20"
                                 >
                                     {confirmMode ? 'Confirm Quantum Transfer' : 'Acquire Resource'}
                                 </button>

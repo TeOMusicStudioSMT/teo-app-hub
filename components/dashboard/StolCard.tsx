@@ -163,7 +163,7 @@ export const StolCard: React.FC = () => {
                         {urzadzenia.length ? urzadzenia.map((u) => (
                             <div key={u.skrot} className="flex items-center justify-between gap-2 py-1 border-b border-white/5">
                                 <span className="truncate">📱 {u.nazwa} <span className="text-slate-500 text-xs">· ostatnio: {kiedy(u.ostatniKontakt)}</span></span>
-                                <button onClick={() => odlacz(u.skrot)} className="p-1 rounded hover:bg-white/10 text-slate-400" title="Odłącz"><Unplug className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => odlacz(u.skrot)} className="p-1 rounded-sm hover:bg-white/10 text-slate-400" title="Odłącz"><Unplug className="w-3.5 h-3.5" /></button>
                             </div>
                         )) : <div className="text-xs text-slate-500">Żaden telefon nie jest sparowany.</div>}
                     </div>

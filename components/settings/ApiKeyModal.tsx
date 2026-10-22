@@ -89,7 +89,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+                        className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
                         onClick={!isSyncing ? handleCancel : undefined}
                     >
                         <motion.div
@@ -97,10 +97,10 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
                             transition={{ type: 'spring', duration: 0.5 }}
-                            className="relative max-w-md w-full bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl shadow-[0_0_40px_rgba(6,182,212,0.3)] p-6 md:p-8 overflow-hidden"
+                            className="relative max-w-md w-full bg-linear-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl shadow-[0_0_40px_rgba(6,182,212,0.3)] p-6 md:p-8 overflow-hidden"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-purple-500/10 rounded-2xl blur-xl" />
+                            <div className="absolute inset-0 bg-linear-to-br from-cyan-500/10 to-purple-500/10 rounded-2xl blur-xl" />
 
                             <div className="relative z-10">
                                 <div className="flex items-center gap-3 mb-6">
@@ -134,7 +134,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
                                             { label: 'Groq', prefix: 'gsk_...', color: 'text-green-400 border-green-400/30 bg-green-400/5' },
                                             { label: 'OpenAI', prefix: 'sk-...', color: 'text-blue-400 border-blue-400/30 bg-blue-400/5' },
                                         ].map(p => (
-                                            <span key={p.label} className={`text-xs px-2 py-0.5 rounded border font-mono ${p.color}`}>
+                                            <span key={p.label} className={`text-xs px-2 py-0.5 rounded-sm border font-mono ${p.color}`}>
                                                 {p.label}: {p.prefix}
                                             </span>
                                         ))}
@@ -150,7 +150,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
                                                 value={inputValue}
                                                 onChange={(e) => setInputValue(e.target.value)}
                                                 placeholder="AIza... / sk-ant-... / gsk_... / sk-..."
-                                                className="w-full px-4 py-3 pr-12 bg-slate-800/50 border border-cyan-500/30 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 transition-all"
+                                                className="w-full px-4 py-3 pr-12 bg-slate-800/50 border border-cyan-500/30 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-hidden focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 transition-all"
                                             />
                                             <button
                                                 type="button"
@@ -182,7 +182,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose }) => 
                                         <button
                                             onClick={handleSave}
                                             disabled={!inputValue.trim()}
-                                            className="flex-1 px-4 py-3 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 rounded-lg text-white font-semibold shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:shadow-[0_0_30px_rgba(6,182,212,0.6)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="flex-1 px-4 py-3 bg-linear-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 rounded-lg text-white font-semibold shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:shadow-[0_0_30px_rgba(6,182,212,0.6)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             Save & Reboot
                                         </button>

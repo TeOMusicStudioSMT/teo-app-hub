@@ -12,7 +12,7 @@ const PrideSpace: React.FC<{ entryId: string }> = ({ entryId }) => {
     return (
         <div className="bg-black/40 rounded-2xl border border-white/5 h-[400px] overflow-hidden flex flex-col relative group/mirror">
             {/* Mirror Surface Aesthetic */}
-            <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none" />
+            <div className="absolute inset-0 bg-linear-to-b from-white/5 to-transparent pointer-events-none" />
 
             {/* Chat Area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
@@ -41,7 +41,7 @@ const PrideSpace: React.FC<{ entryId: string }> = ({ entryId }) => {
             </div>
 
             {/* Glass Pane Divider */}
-            <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            <div className="h-px w-full bg-linear-to-r from-transparent via-white/10 to-transparent" />
 
             {/* Simulation Footer */}
             <div className="p-3 bg-white/5 backdrop-blur-md flex items-center justify-between">

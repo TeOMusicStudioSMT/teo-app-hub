@@ -255,13 +255,13 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
         <KwantowyTunel />
         <div className="bg-[#05080d] border border-fuchsia-500/25 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.6)] font-sans text-slate-200">
             {/* HEADER */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-fuchsia-500/20 bg-gradient-to-r from-[#140518] to-[#0a0814]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-fuchsia-500/20 bg-linear-to-r from-[#140518] to-[#0a0814]">
                 <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-xl bg-black border border-fuchsia-500/40 flex items-center justify-center">
                         <Mic size={22} className="text-fuchsia-400" />
                     </div>
                     <div>
-                        <h2 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 to-cyan-400">PODCAST TWIN</h2>
+                        <h2 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-linear-to-r from-fuchsia-300 to-cyan-400">PODCAST TWIN</h2>
                         <p className="text-[10px] text-slate-500 tracking-wider">
                             Spectrum · Rozczytelnia agentów · {turns.length > 0 ? <span className="text-fuchsia-400/70">💾 {turns.length} tur w pamięci</span> : 'NotebookLM-style'}
                         </p>
@@ -286,7 +286,7 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
                     onChange={e => setTopic(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && generate()}
                     placeholder="Temat odcinka..."
-                    className="flex-1 min-w-[220px] bg-black/60 border border-fuchsia-700/30 focus:border-fuchsia-500/60 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
+                    className="flex-1 min-w-[220px] bg-black/60 border border-fuchsia-700/30 focus:border-fuchsia-500/60 rounded-xl px-3 py-2 text-xs text-slate-200 outline-hidden"
                 />
                 <button onClick={generate} disabled={busy || !topic.trim()}
                     className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-fuchsia-700/70 hover:bg-fuchsia-600 text-white border border-fuchsia-400/40 disabled:opacity-40 transition-all">
@@ -347,7 +347,7 @@ export const NotebookTwinPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
                     <div className="flex flex-wrap items-center gap-2">
                         <label className="text-slate-400 flex items-center gap-1">rund
                             <input type="number" min={1} max={5} value={rundyDalej} onChange={(e) => setRundyDalej(Math.min(5, Math.max(1, Number(e.target.value) || 1)))}
-                                className="w-12 bg-black/60 border border-violet-700/40 rounded px-1 py-0.5 text-slate-200" />
+                                className="w-12 bg-black/60 border border-violet-700/40 rounded-sm px-1 py-0.5 text-slate-200" />
                         </label>
                         <button onClick={odeslijNaRundy} disabled={odsylam || turWRozmowie === 0 || warsztat.stan === 'trwa'}
                             title="Stado dostanie tę rozmowę jako uwagi Suwerena do kolejnych rund (i Sędzia sprawdzi, czy je uwzględniło)"

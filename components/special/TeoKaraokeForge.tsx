@@ -197,7 +197,7 @@ export function TeoKaraokeForge({ onClose }: { onClose: () => void }) {
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="fixed inset-0 z-[1000000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-xl pointer-events-auto"
+      className="fixed inset-0 z-1000000 flex items-center justify-center p-6 bg-black/80 backdrop-blur-xl pointer-events-auto"
       onClick={onClose} // Pozwól zamykać klikając w tło
     >
       <div 
@@ -238,7 +238,7 @@ export function TeoKaraokeForge({ onClose }: { onClose: () => void }) {
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
               placeholder="Wklej tekst piosenki tutaj... jedna linia = jeden wers."
-              className="flex-1 bg-black/40 border border-white/5 rounded-xl p-4 text-sm text-slate-300 font-mono outline-none focus:border-emerald-500/40 transition-colors resize-none placeholder:text-slate-700"
+              className="flex-1 bg-black/40 border border-white/5 rounded-xl p-4 text-sm text-slate-300 font-mono outline-hidden focus:border-emerald-500/40 transition-colors resize-none placeholder:text-slate-700"
             />
             <div className="mt-4 flex items-center justify-between text-[10px] text-slate-500 font-mono">
               <span>LINII: {parsedLines.length}</span>
@@ -262,7 +262,7 @@ export function TeoKaraokeForge({ onClose }: { onClose: () => void }) {
           </div>
 
           {/* Right: Syncing Station */}
-          <div className="w-[60%] flex flex-col p-6 bg-emerald-500/[0.02]">
+          <div className="w-[60%] flex flex-col p-6 bg-emerald-500/2">
             <label className="text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-widest flex items-center gap-2">
               <span className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse" />
               Stacja Synchronizacji
@@ -300,20 +300,20 @@ export function TeoKaraokeForge({ onClose }: { onClose: () => void }) {
                         <div className="flex gap-1">
                           <button 
                             onClick={(e) => { e.stopPropagation(); adjustTime(idx, -0.1); }}
-                            className="text-[9px] bg-white/5 hover:bg-white/10 px-1 rounded text-slate-500 hover:text-red-400"
+                            className="text-[9px] bg-white/5 hover:bg-white/10 px-1 rounded-sm text-slate-500 hover:text-red-400"
                           >
                             -0.1s
                           </button>
                           <button 
                             onClick={(e) => { e.stopPropagation(); adjustTime(idx, 0.1); }}
-                            className="text-[9px] bg-white/5 hover:bg-white/10 px-1 rounded text-slate-500 hover:text-emerald-400"
+                            className="text-[9px] bg-white/5 hover:bg-white/10 px-1 rounded-sm text-slate-500 hover:text-emerald-400"
                           >
                             +0.1s
                           </button>
                         </div>
                       )}
 
-                      <div className={`flex-1 text-sm font-medium whitespace-normal break-words leading-relaxed ${isActive ? 'text-white' : 'text-slate-400'}`}>
+                      <div className={`flex-1 text-sm font-medium whitespace-normal wrap-break-word leading-relaxed ${isActive ? 'text-white' : 'text-slate-400'}`}>
                         {line}
                       </div>
 
@@ -344,7 +344,7 @@ export function TeoKaraokeForge({ onClose }: { onClose: () => void }) {
                        <button
                          key={rate}
                          onClick={() => radio.setPlaybackRate(rate)}
-                         className={`text-[10px] px-2 py-1 rounded border transition-all ${radio.playbackRate === rate ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'border-white/10 text-slate-500 hover:text-white'}`}
+                         className={`text-[10px] px-2 py-1 rounded-sm border transition-all ${radio.playbackRate === rate ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'border-white/10 text-slate-500 hover:text-white'}`}
                        >
                          {rate}x
                        </button>

@@ -403,7 +403,7 @@ const TostTeO: React.FC = () => {
         >
             {/* ══ Nagłówek ══ */}
             <div
-                className="flex items-center justify-between px-5 py-3 flex-shrink-0"
+                className="flex items-center justify-between px-5 py-3 shrink-0"
                 style={{
                     borderBottom: '1px solid rgba(34,197,94,0.2)',
                     background:   'rgba(0, 10, 4, 0.95)',
@@ -414,7 +414,7 @@ const TostTeO: React.FC = () => {
                     <motion.div
                         animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
                         transition={{ repeat: Infinity, duration: 2 }}
-                        className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-green-400"
+                        className="w-2.5 h-2.5 rounded-full shrink-0 bg-green-400"
                     />
                     <div>
                         <span
@@ -433,7 +433,7 @@ const TostTeO: React.FC = () => {
                     {/* Przycisk Szmaragdowego Terminalu */}
                     <button
                         onClick={() => setShowTerminal(v => !v)}
-                        className="text-[8px] font-mono px-2 py-1 rounded border transition-all tracking-widest uppercase"
+                        className="text-[8px] font-mono px-2 py-1 rounded-sm border transition-all tracking-widest uppercase"
                         style={{
                             background: showTerminal ? 'rgba(34,197,94,0.12)' : 'transparent',
                             border:     showTerminal ? '1px solid rgba(34,197,94,0.4)' : '1px solid transparent',
@@ -450,7 +450,7 @@ const TostTeO: React.FC = () => {
                     <button
                         onClick={handleClear}
                         disabled={clearing || (messages.length === 0 && remoteMessages.length === 0)}
-                        className="text-[8px] font-mono text-slate-700 hover:text-red-500 transition-colors px-2 py-1 rounded border border-transparent hover:border-red-800/40 disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="text-[8px] font-mono text-slate-700 hover:text-red-500 transition-colors px-2 py-1 rounded-sm border border-transparent hover:border-red-800/40 disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                         {clearing ? '...' : '🗑 CLEAR'}
                     </button>
@@ -466,7 +466,7 @@ const TostTeO: React.FC = () => {
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.3, ease: 'easeInOut' }}
-                        className="flex-shrink-0 overflow-hidden"
+                        className="shrink-0 overflow-hidden"
                         style={{ borderBottom: '1px solid rgba(34,197,94,0.15)' }}
                     >
                         {/* Główny panel terminalu */}
@@ -501,7 +501,7 @@ const TostTeO: React.FC = () => {
                                                 <button
                                                     onClick={handleP2PInit}
                                                     disabled={p2pLoading}
-                                                    className="text-[9px] font-mono font-bold uppercase tracking-widest py-1.5 rounded transition-all disabled:opacity-50"
+                                                    className="text-[9px] font-mono font-bold uppercase tracking-widest py-1.5 rounded-sm transition-all disabled:opacity-50"
                                                     style={{
                                                         background: 'rgba(34,197,94,0.12)',
                                                         border:     '1px solid rgba(34,197,94,0.35)',
@@ -516,7 +516,7 @@ const TostTeO: React.FC = () => {
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-[7px] text-green-900 font-mono shrink-0 tracking-wider">TWÓJ TOKEN:</span>
                                                     <div
-                                                        className="flex-1 text-center font-bold font-mono px-2 py-1 rounded tracking-[0.2em] text-[11px]"
+                                                        className="flex-1 text-center font-bold font-mono px-2 py-1 rounded-sm tracking-[0.2em] text-[11px]"
                                                         style={{
                                                             background: 'rgba(0,20,8,0.9)',
                                                             border:     '1px solid rgba(34,197,94,0.5)',
@@ -528,7 +528,7 @@ const TostTeO: React.FC = () => {
                                                     </div>
                                                     <button
                                                         onClick={copyToken}
-                                                        className="shrink-0 text-[8px] px-2 py-1 rounded font-mono transition-all"
+                                                        className="shrink-0 text-[8px] px-2 py-1 rounded-sm font-mono transition-all"
                                                         style={{
                                                             background: tokenCopied ? 'rgba(34,197,94,0.3)' : 'rgba(34,197,94,0.1)',
                                                             border:     '1px solid rgba(34,197,94,0.35)',
@@ -547,7 +547,7 @@ const TostTeO: React.FC = () => {
                                                     value={peerTokenInput}
                                                     onChange={e => setPeerTokenInput(e.target.value.toUpperCase())}
                                                     placeholder="WKLEJ TOKEN RÓWIEŚNIKA..."
-                                                    className="flex-1 text-[9px] font-mono px-2 py-1 rounded outline-none tracking-widest"
+                                                    className="flex-1 text-[9px] font-mono px-2 py-1 rounded-sm outline-hidden tracking-widest"
                                                     style={{
                                                         background: 'rgba(0,12,5,0.85)',
                                                         border:     '1px solid rgba(34,197,94,0.2)',
@@ -560,7 +560,7 @@ const TostTeO: React.FC = () => {
                                                 <button
                                                     onClick={handleP2PConnect}
                                                     disabled={!peerTokenInput.trim() || p2pLoading}
-                                                    className="text-[9px] font-mono font-bold px-3 py-1 rounded transition-all disabled:opacity-40"
+                                                    className="text-[9px] font-mono font-bold px-3 py-1 rounded-sm transition-all disabled:opacity-40"
                                                     style={{
                                                         background: 'rgba(34,197,94,0.8)',
                                                         color:      '#000',
@@ -595,7 +595,7 @@ const TostTeO: React.FC = () => {
                                         </p>
                                         <button
                                             onClick={handleP2PDisconnect}
-                                            className="text-[8px] font-mono px-3 py-1 rounded transition-colors mt-1"
+                                            className="text-[8px] font-mono px-3 py-1 rounded-sm transition-colors mt-1"
                                             style={{
                                                 color:  '#ef4444',
                                                 border: '1px solid rgba(239,68,68,0.3)',
@@ -729,7 +729,7 @@ const TostTeO: React.FC = () => {
                                             <img
                                                 src={msg.image}
                                                 alt="transmisja"
-                                                className="max-w-full rounded mb-2"
+                                                className="max-w-full rounded-sm mb-2"
                                                 style={{ border: '1px solid rgba(21,128,61,0.4)' }}
                                             />
                                         )}
@@ -761,7 +761,7 @@ const TostTeO: React.FC = () => {
 
             {/* ══ Obszar inputu ══ */}
             <div
-                className="flex-shrink-0 px-4 py-3"
+                className="shrink-0 px-4 py-3"
                 style={{
                     borderTop:  '1px solid rgba(34,197,94,0.15)',
                     background: 'rgba(0, 8, 3, 0.95)',
@@ -780,7 +780,7 @@ const TostTeO: React.FC = () => {
                                 <img
                                     src={previewUrl}
                                     alt="preview"
-                                    className="h-14 rounded"
+                                    className="h-14 rounded-sm"
                                     style={{ border: '1px solid rgba(34,197,94,0.4)' }}
                                 />
                                 <button
@@ -805,11 +805,11 @@ const TostTeO: React.FC = () => {
                         ref={fileRef}
                         onChange={handleFileSelect}
                     />
-                    <div className="flex-shrink-0 flex flex-col items-center gap-0.5">
+                    <div className="shrink-0 flex flex-col items-center gap-0.5">
                         <button
                             onClick={() => fileRef.current?.click()}
                             disabled={isWashing}
-                            className="p-2 rounded transition-colors disabled:opacity-60"
+                            className="p-2 rounded-sm transition-colors disabled:opacity-60"
                             style={{
                                 background: 'transparent',
                                 border:     '1px solid rgba(34,197,94,0.3)',
@@ -858,7 +858,7 @@ const TostTeO: React.FC = () => {
                         }
                         rows={1}
                         disabled={isSending}
-                        className="flex-1 resize-none text-xs rounded px-3 py-2 outline-none transition-colors font-mono disabled:opacity-50"
+                        className="flex-1 resize-none text-xs rounded-sm px-3 py-2 outline-hidden transition-colors font-mono disabled:opacity-50"
                         style={{
                             background: 'rgba(0, 12, 5, 0.8)',
                             border:     '1px solid rgba(34,197,94,0.2)',
@@ -875,7 +875,7 @@ const TostTeO: React.FC = () => {
                         disabled={isSending || isWashing || (!inputText.trim() && !cleanBase64)}
                         whileHover={{ scale: isSending ? 1 : 1.03 }}
                         whileTap={{ scale: 0.97 }}
-                        className="flex-shrink-0 px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="shrink-0 px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                         style={{
                             background: isSending ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.85)',
                             color:      isSending ? '#22c55e' : '#000',

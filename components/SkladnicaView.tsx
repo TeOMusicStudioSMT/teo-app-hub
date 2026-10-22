@@ -36,7 +36,7 @@ const ilePlikow = (n: number) => `${n} ${n === 1 ? 'plik' : n % 10 >= 2 && n % 1
 const blad = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const btn = 'rounded-lg border px-3 py-1.5 text-xs font-bold disabled:opacity-40';
-const pole = 'w-full rounded-lg border border-slate-700 bg-black/60 px-3 py-1.5 text-xs text-slate-100 focus:border-cyan-400 focus:outline-none';
+const pole = 'w-full rounded-lg border border-slate-700 bg-black/60 px-3 py-1.5 text-xs text-slate-100 focus:border-cyan-400 focus:outline-hidden';
 
 const Miniatura: React.FC<{ plik?: Plik | null; duza?: boolean }> = ({ plik, duza }) => {
     const kl = duza ? 'h-48 w-full' : 'h-28 w-full';
@@ -189,7 +189,7 @@ export const SkladnicaView: React.FC = () => {
                         {r.ikona} {r.etykieta} ({assety.filter((a) => a.rodzaj === k).length})
                     </button>
                 ))}
-                <input className={`${pole} ml-auto !w-56`} placeholder="Szukaj (nazwa, tag)…" value={szukaj} onChange={(e) => setSzukaj(e.target.value)} />
+                <input className={`${pole} ml-auto w-56!`} placeholder="Szukaj (nazwa, tag)…" value={szukaj} onChange={(e) => setSzukaj(e.target.value)} />
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
@@ -227,7 +227,7 @@ export const SkladnicaView: React.FC = () => {
                             {wybrany.rodzaj === 'postacie' && (
                                 <div className="flex gap-2">
                                     <input className={pole} value={edycja.rola} onChange={(e) => setEdycja({ ...edycja, rola: e.target.value })} placeholder="Rola" />
-                                    <input type="color" className="h-8 w-10 shrink-0 cursor-pointer rounded bg-transparent" value={edycja.kolor} onChange={(e) => setEdycja({ ...edycja, kolor: e.target.value })} title="Kolor postaci" />
+                                    <input type="color" className="h-8 w-10 shrink-0 cursor-pointer rounded-sm bg-transparent" value={edycja.kolor} onChange={(e) => setEdycja({ ...edycja, kolor: e.target.value })} title="Kolor postaci" />
                                     <select className={pole} value={edycja.glos} onChange={(e) => setEdycja({ ...edycja, glos: e.target.value })} title="Głos postaci">
                                         <option value="">— głos —</option>
                                         {(glosy?.katedra ?? []).map((g) => <option key={g.id} value={`k:${g.id}`}>🗣️ {g.nazwa}</option>)}
@@ -286,7 +286,7 @@ export const SkladnicaView: React.FC = () => {
                         <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
                             <span className="text-xs font-bold text-amber-200">＋ Nowy asset</span>
                             <div className="flex gap-2">
-                                <select className={`${pole} !w-36`} value={nowy.rodzaj} onChange={(e) => setNowy({ ...nowy, rodzaj: e.target.value as Rodzaj })}>
+                                <select className={`${pole} w-36!`} value={nowy.rodzaj} onChange={(e) => setNowy({ ...nowy, rodzaj: e.target.value as Rodzaj })}>
                                     {Object.entries(rodzaje).map(([k, r]) => <option key={k} value={k}>{r.ikona} {r.etykieta}</option>)}
                                 </select>
                                 <input className={pole} value={nowy.nazwa} onChange={(e) => setNowy({ ...nowy, nazwa: e.target.value })} placeholder="Nazwa (np. Aria Thorne)" onKeyDown={(e) => { if (e.key === 'Enter' && nowy.nazwa.trim()) void utworz(); }} />

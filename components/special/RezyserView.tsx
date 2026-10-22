@@ -160,13 +160,13 @@ export const RezyserView: React.FC = () => {
       <input value={story.meta.title}
         onChange={e => setStory(s => ({ ...s, meta: { ...s.meta, title: e.target.value } }))}
         placeholder="Tytuł filmu…"
-        className="w-full bg-black/40 border border-amber-500/20 rounded px-2.5 py-1.5 text-[12px] text-amber-100 outline-none focus:border-amber-500 mb-1.5" />
+        className="w-full bg-black/40 border border-amber-500/20 rounded-sm px-2.5 py-1.5 text-[12px] text-amber-100 outline-hidden focus:border-amber-500 mb-1.5" />
 
       {/* 🌍 Prompt Startowy Świata — modyfikatory przed wykuciem */}
       <input value={story.meta.worldPrompt || ''}
         onChange={e => setStory(s => ({ ...s, meta: { ...s.meta, worldPrompt: e.target.value } }))}
         placeholder="🌍 Prompt Startowy Świata (np. piasek na czarny bazalt, neony Rose Gold)…"
-        className="w-full bg-black/30 border border-emerald-700/30 rounded px-2.5 py-1.5 text-[11px] text-emerald-100/90 outline-none focus:border-emerald-500 mb-2" />
+        className="w-full bg-black/30 border border-emerald-700/30 rounded-sm px-2.5 py-1.5 text-[11px] text-emerald-100/90 outline-hidden focus:border-emerald-500 mb-2" />
 
       {/* Sceny */}
       <div className="space-y-2.5">
@@ -175,7 +175,7 @@ export const RezyserView: React.FC = () => {
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-[10px] text-amber-500/60">#{i + 1}</span>
               <input value={sc.name} onChange={e => setScene(sc.id, { name: e.target.value })}
-                className="flex-1 bg-transparent border-b border-amber-900/40 text-[12px] text-amber-200 outline-none focus:border-amber-500" />
+                className="flex-1 bg-transparent border-b border-amber-900/40 text-[12px] text-amber-200 outline-hidden focus:border-amber-500" />
               <button onClick={() => moveScene(i, -1)} disabled={i === 0} title="w górę"
                 className="text-[10px] text-amber-400/60 hover:text-amber-300 disabled:opacity-20">▲</button>
               <button onClick={() => moveScene(i, 1)} disabled={i === story.scenes.length - 1} title="w dół"
@@ -221,23 +221,23 @@ export const RezyserView: React.FC = () => {
                 <div key={sh.id} className="flex items-center gap-1.5 text-[10px]">
                   <span className="text-cyan-500/60 w-6">{j + 1}.</span>
                   <select value={sh.kind} onChange={e => setShot(sc.id, sh.id, { kind: e.target.value as ShotKind })}
-                    className="bg-black/50 border border-cyan-900/50 rounded px-1 py-0.5 text-cyan-200 outline-none">
+                    className="bg-black/50 border border-cyan-900/50 rounded-sm px-1 py-0.5 text-cyan-200 outline-hidden">
                     {KINDS.map(k => <option key={k.id} value={k.id}>{k.label}</option>)}
                   </select>
                   <input type="number" min={1} max={60} value={sh.durationS}
                     onChange={e => setShot(sc.id, sh.id, { durationS: Math.max(1, +e.target.value || 1) })}
-                    className="w-12 bg-black/50 border border-cyan-900/50 rounded px-1 py-0.5 text-cyan-200 outline-none" />
+                    className="w-12 bg-black/50 border border-cyan-900/50 rounded-sm px-1 py-0.5 text-cyan-200 outline-hidden" />
                   <span className="text-zinc-600">s</span>
                   <input value={sh.caption || ''} onChange={e => setShot(sc.id, sh.id, { caption: e.target.value })}
                     placeholder="podpis na ekranie…"
-                    className="flex-1 bg-black/40 border border-cyan-900/40 rounded px-1.5 py-0.5 text-cyan-100/90 outline-none focus:border-cyan-600" />
+                    className="flex-1 bg-black/40 border border-cyan-900/40 rounded-sm px-1.5 py-0.5 text-cyan-100/90 outline-hidden focus:border-cyan-600" />
                   <button onClick={() => removeShot(sc.id, sh.id)} disabled={sc.shots.length <= 1}
                     className="text-rose-400/60 hover:text-rose-300 disabled:opacity-30">✕</button>
                 </div>
               ))}
             </div>
             <button onClick={() => setStory(s => addShot(s, sc.id))}
-              className="text-[10px] mt-1.5 px-2 py-0.5 rounded border border-cyan-700/50 text-cyan-300 hover:bg-cyan-950/40">+ ujęcie</button>
+              className="text-[10px] mt-1.5 px-2 py-0.5 rounded-sm border border-cyan-700/50 text-cyan-300 hover:bg-cyan-950/40">+ ujęcie</button>
           </div>
         ))}
       </div>
@@ -261,9 +261,9 @@ export const RezyserView: React.FC = () => {
           <div className="text-[10px] text-cyan-300/80 mb-1">📋 Wklej manifest filmu (JSON od Klaudiusza) → Wczytaj</div>
           <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={4}
             placeholder='{ "meta": {...}, "scenes": [...] }'
-            className="w-full bg-black/40 border border-cyan-500/20 rounded px-2 py-1.5 text-[10px] text-cyan-100 font-mono outline-none focus:border-cyan-500 resize-y" />
+            className="w-full bg-black/40 border border-cyan-500/20 rounded-sm px-2 py-1.5 text-[10px] text-cyan-100 font-mono outline-hidden focus:border-cyan-500 resize-y" />
           <button onClick={importStory}
-            className="mt-1 px-3 py-1 rounded border border-cyan-500/50 bg-cyan-950/30 text-cyan-300 text-[10px] font-bold hover:bg-cyan-900/50">Wczytaj film</button>
+            className="mt-1 px-3 py-1 rounded-sm border border-cyan-500/50 bg-cyan-950/30 text-cyan-300 text-[10px] font-bold hover:bg-cyan-900/50">Wczytaj film</button>
         </div>
       )}
       {/* 🔌 Generator modów (Etap II) — Ollama pisze wtyczkę wg kontraktu */}
@@ -271,15 +271,15 @@ export const RezyserView: React.FC = () => {
         <div className="text-[10px] text-violet-300/80 tracking-wider mb-1.5">🔌 STWÓRZ MOD (Agent pisze wtyczkę do generatora)</div>
         <div className="flex gap-1.5 mb-1.5">
           <input value={modName} onChange={e => setModName(e.target.value)} placeholder="nazwa moda (np. mgla_swietlik)"
-            className="w-44 bg-black/40 border border-violet-500/20 rounded px-2 py-1 text-[10px] text-violet-100 outline-none focus:border-violet-500" />
+            className="w-44 bg-black/40 border border-violet-500/20 rounded-sm px-2 py-1 text-[10px] text-violet-100 outline-hidden focus:border-violet-500" />
           <button onClick={generateMod} disabled={modBusy}
-            className="flex-1 px-3 py-1 rounded border border-violet-500/50 bg-violet-950/30 text-violet-300 text-[10px] font-bold hover:bg-violet-900/50 disabled:opacity-50">
+            className="flex-1 px-3 py-1 rounded-sm border border-violet-500/50 bg-violet-950/30 text-violet-300 text-[10px] font-bold hover:bg-violet-900/50 disabled:opacity-50">
             {modBusy ? '⟳ mózg pisze mod…' : '🔌 Wygeneruj mod'}
           </button>
         </div>
         <textarea value={modPrompt} onChange={e => setModPrompt(e.target.value)} rows={2}
           placeholder="Opisz mod: co ma dodać do sceny? Np. rój świetlików: 20 małych żółtych świateł lewitujących losowo nad sceną."
-          className="w-full bg-black/40 border border-violet-500/20 rounded px-2 py-1.5 text-[10px] text-violet-100 outline-none focus:border-violet-500 resize-y" />
+          className="w-full bg-black/40 border border-violet-500/20 rounded-sm px-2 py-1.5 text-[10px] text-violet-100 outline-hidden focus:border-violet-500 resize-y" />
         <div className="text-[8px] text-zinc-600 mt-1">Mod ląduje w <code className="text-violet-400">forge_plugins/</code> i pojawia się wyżej jako 🔌 do wpięcia w scenę.</div>
 
         {/* 🏷️ Wystaw mod w Marketplace za GRV */}
@@ -287,14 +287,14 @@ export const RezyserView: React.FC = () => {
           <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-violet-900/40">
             <span className="text-[9px] text-amber-400/70">🏷️ wystaw:</span>
             <select value={pubId || plugins[0]?.id} onChange={e => setPubId(e.target.value)}
-              className="bg-black/50 border border-amber-900/50 rounded px-1 py-0.5 text-[10px] text-amber-200 outline-none max-w-[40%]">
+              className="bg-black/50 border border-amber-900/50 rounded-sm px-1 py-0.5 text-[10px] text-amber-200 outline-hidden max-w-[40%]">
               {plugins.map(p => <option key={p.id} value={p.id}>{p.id}</option>)}
             </select>
             <input type="number" min={0} value={pubPrice} onChange={e => setPubPrice(e.target.value)} title="cena GRV"
-              className="w-16 bg-black/50 border border-amber-900/50 rounded px-1 py-0.5 text-[10px] text-amber-200 outline-none" />
+              className="w-16 bg-black/50 border border-amber-900/50 rounded-sm px-1 py-0.5 text-[10px] text-amber-200 outline-hidden" />
             <span className="text-[9px] text-zinc-600">GRV</span>
             <button onClick={publishMod} disabled={pubBusy}
-              className="px-2.5 py-0.5 rounded border border-amber-500/50 bg-amber-950/30 text-amber-300 text-[10px] font-bold hover:bg-amber-900/50 disabled:opacity-50">
+              className="px-2.5 py-0.5 rounded-sm border border-amber-500/50 bg-amber-950/30 text-amber-300 text-[10px] font-bold hover:bg-amber-900/50 disabled:opacity-50">
               {pubBusy ? '⟳…' : 'do Marketplace'}
             </button>
           </div>

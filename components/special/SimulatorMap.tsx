@@ -83,13 +83,13 @@ export const SimulatorMap: React.FC<{ onClose?: () => void }> = ({ onClose }) =>
     return (
         <div className="w-full max-w-4xl mx-auto bg-[#04080a] border border-emerald-500/25 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.6)] font-sans text-slate-200">
             {/* HEADER */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-emerald-500/20 bg-gradient-to-r from-[#05140a] to-[#0a1005]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-emerald-500/20 bg-linear-to-r from-[#05140a] to-[#0a1005]">
                 <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-xl bg-black border border-emerald-500/40 flex items-center justify-center">
                         <Sprout size={22} className="text-emerald-400" />
                     </div>
                     <div>
-                        <h2 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 to-lime-400">AGRO-ROBOTICS SIMULATOR</h2>
+                        <h2 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-linear-to-r from-emerald-300 to-lime-400">AGRO-ROBOTICS SIMULATOR</h2>
                         <p className="text-[10px] text-slate-500 tracking-wider">Parser trójfazowy · Factory + HAL · Waypoint XYZ</p>
                     </div>
                 </div>
@@ -122,7 +122,7 @@ export const SimulatorMap: React.FC<{ onClose?: () => void }> = ({ onClose }) =>
                         onChange={e => setScript(e.target.value)}
                         spellCheck={false}
                         rows={9}
-                        className="bg-black/60 border border-emerald-700/30 focus:border-emerald-500/60 rounded-xl p-3 text-xs font-mono text-emerald-200 outline-none resize-none"
+                        className="bg-black/60 border border-emerald-700/30 focus:border-emerald-500/60 rounded-xl p-3 text-xs font-mono text-emerald-200 outline-hidden resize-none"
                     />
                     <p className="text-[9px] text-slate-600 leading-relaxed">
                         Komendy: <span className="text-emerald-500">move(North/South/East/West)</span>, plant('A'), spray('B'), measure(N), wait(s)

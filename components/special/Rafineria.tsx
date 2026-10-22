@@ -162,7 +162,7 @@ export const Rafineria: React.FC = () => {
 
             {/* ── Nagłówek z opisem ─────────────────────────────────── */}
             <div className="flex items-center gap-3 mb-1">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-600/30 to-red-700/20 border border-orange-500/40 flex items-center justify-center shadow-[0_0_20px_rgba(249,115,22,0.2)]">
+                <div className="w-10 h-10 rounded-xl bg-linear-to-br from-orange-600/30 to-red-700/20 border border-orange-500/40 flex items-center justify-center shadow-[0_0_20px_rgba(249,115,22,0.2)]">
                     <Flame className="w-5 h-5 text-orange-400" />
                 </div>
                 <div>
@@ -190,13 +190,13 @@ export const Rafineria: React.FC = () => {
                         }}
                     >
                         {/* Poświata tła */}
-                        <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-orange-600/5 to-red-800/5 pointer-events-none" />
+                        <div className="absolute inset-0 rounded-2xl bg-linear-to-b from-orange-600/5 to-red-800/5 pointer-events-none" />
 
                         <div className="flex flex-col items-center gap-4 px-6 py-10 z-10 relative">
                             {/* Ikona */}
                             <motion.div
                                 animate={isDragOver ? { scale: 1.15, y: -4 } : { scale: 1, y: 0 }}
-                                className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-600/20 to-red-700/15 border border-orange-500/30 flex items-center justify-center shadow-[0_0_30px_rgba(249,115,22,0.15)]"
+                                className="w-16 h-16 rounded-2xl bg-linear-to-br from-orange-600/20 to-red-700/15 border border-orange-500/30 flex items-center justify-center shadow-[0_0_30px_rgba(249,115,22,0.15)]"
                             >
                                 {isDragOver ? (
                                     <UploadCloud className="w-8 h-8 text-orange-300" />
@@ -244,7 +244,7 @@ export const Rafineria: React.FC = () => {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="rounded-2xl bg-gradient-to-br from-orange-950/50 to-red-950/40 border border-orange-500/30 p-6"
+                        className="rounded-2xl bg-linear-to-br from-orange-950/50 to-red-950/40 border border-orange-500/30 p-6"
                     >
                         <div className="flex items-center gap-3 mb-4">
                             <motion.div
@@ -264,7 +264,7 @@ export const Rafineria: React.FC = () => {
                         {/* Pasek postępu uploadu */}
                         <div className="w-full h-2 rounded-full bg-slate-800/80 overflow-hidden">
                             <motion.div
-                                className="h-full rounded-full bg-gradient-to-r from-orange-600 to-red-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]"
+                                className="h-full rounded-full bg-linear-to-r from-orange-600 to-red-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]"
                                 animate={{ width: `${state.progress}%` }}
                                 transition={{ duration: 0.3 }}
                             />
@@ -283,7 +283,7 @@ export const Rafineria: React.FC = () => {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="rounded-2xl bg-gradient-to-br from-red-950/60 to-orange-950/40 border border-red-500/30 p-6"
+                        className="rounded-2xl bg-linear-to-br from-red-950/60 to-orange-950/40 border border-red-500/30 p-6"
                     >
                         <div className="flex flex-col items-center gap-5 py-2">
                             {/* Animowane piece */}
@@ -324,7 +324,7 @@ export const Rafineria: React.FC = () => {
                             {/* Animowany pasek "nieokreślony" */}
                             <div className="w-full h-1.5 rounded-full bg-slate-800/80 overflow-hidden">
                                 <motion.div
-                                    className="h-full w-1/3 rounded-full bg-gradient-to-r from-orange-600 via-red-500 to-orange-600"
+                                    className="h-full w-1/3 rounded-full bg-linear-to-r from-orange-600 via-red-500 to-orange-600"
                                     animate={{ x: ['0%', '200%', '0%'] }}
                                     transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                                     style={{ transformOrigin: 'left' }}
@@ -348,7 +348,7 @@ export const Rafineria: React.FC = () => {
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0 }}
-                        className="rounded-2xl bg-gradient-to-br from-emerald-950/50 to-green-950/40 border border-emerald-500/30 p-6"
+                        className="rounded-2xl bg-linear-to-br from-emerald-950/50 to-green-950/40 border border-emerald-500/30 p-6"
                     >
                         <div className="flex flex-col items-center gap-4 py-2 text-center">
                             <motion.div

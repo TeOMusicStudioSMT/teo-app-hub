@@ -45,7 +45,7 @@ export const Economis: React.FC = () => {
         <div className="text-[10px] text-emerald-400/70 mb-1">📚 KATALOG WIEDZY (_OtakOs_Aula/economis/) — {docs.length} dok.</div>
         {docs.length === 0 ? <div className="text-[11px] text-zinc-500">Brak (lub most offline).</div> : (
           <div className="flex flex-wrap gap-1.5">
-            {docs.map(d => <span key={d.name} className="px-2 py-0.5 rounded bg-emerald-950/30 border border-emerald-500/20 text-[10px] text-emerald-300">📄 {d.name}</span>)}
+            {docs.map(d => <span key={d.name} className="px-2 py-0.5 rounded-sm bg-emerald-950/30 border border-emerald-500/20 text-[10px] text-emerald-300">📄 {d.name}</span>)}
           </div>
         )}
       </div>
@@ -53,9 +53,9 @@ export const Economis: React.FC = () => {
       {/* Temat + zwołanie Rady */}
       <div className="flex gap-2 flex-wrap mb-3">
         <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="temat dyskusji..."
-          className="flex-1 min-w-[200px] bg-black/40 border border-emerald-500/20 rounded px-2 py-1.5 text-xs text-emerald-100 outline-none focus:border-emerald-500" />
+          className="flex-1 min-w-[200px] bg-black/40 border border-emerald-500/20 rounded-sm px-2 py-1.5 text-xs text-emerald-100 outline-hidden focus:border-emerald-500" />
         <button onClick={discuss} disabled={busy}
-          className="px-4 py-1.5 rounded border border-emerald-500/50 bg-emerald-950/40 text-emerald-300 text-xs font-bold hover:bg-emerald-900/50 disabled:opacity-50">
+          className="px-4 py-1.5 rounded-sm border border-emerald-500/50 bg-emerald-950/40 text-emerald-300 text-xs font-bold hover:bg-emerald-900/50 disabled:opacity-50">
           {busy ? '⟳ Obrady...' : '🔮 ZWOŁAJ RADĘ ECONOMIS'}
         </button>
       </div>

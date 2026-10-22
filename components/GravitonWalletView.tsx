@@ -83,7 +83,7 @@ export const GravitonWalletView: React.FC = () => {
                         <p className={cn('text-2xl font-bold my-2 border-b-2 pb-2', tierStyles[wallet.frequencyTier] || tierStyles.Low)}>{wallet.frequencyTier}</p>
                         <p className="text-sm text-slate-400 uppercase tracking-widest mt-3">Saldo</p>
                         <p className="text-4xl font-bold text-white">{wallet.balance === SALDO_NIESKONCZONE ? SALDO_NIESKONCZONE : (wallet.balance ? parseFloat(wallet.balance).toLocaleString() : '...')} <span className="text-lg text-amber-400">GRV</span></p>
-                        {wallet.isGenesisNode && <span className="inline-block mt-2 px-2 py-0.5 bg-amber-900/30 border border-amber-500/50 rounded text-[10px] text-amber-400 uppercase font-bold tracking-wider">Węzeł Genezy</span>}
+                        {wallet.isGenesisNode && <span className="inline-block mt-2 px-2 py-0.5 bg-amber-900/30 border border-amber-500/50 rounded-sm text-[10px] text-amber-400 uppercase font-bold tracking-wider">Węzeł Genezy</span>}
                     </div>
                 </DashboardCard>
 
@@ -94,7 +94,7 @@ export const GravitonWalletView: React.FC = () => {
                                 <div className="flex gap-1.5 mb-3">
                                     {crypto.modes.map(m => (
                                         <button key={m} onClick={() => switchMode(m)} disabled={busy}
-                                            className={cn('flex-1 px-2 py-1 rounded border text-[10px] font-bold transition-colors',
+                                            className={cn('flex-1 px-2 py-1 rounded-sm border text-[10px] font-bold transition-colors',
                                                 crypto.mode === m ? 'border-emerald-500 text-emerald-300 bg-emerald-950/40' : 'border-slate-700 text-slate-400 hover:border-slate-500')}>
                                             {MODE_LABEL[m]}
                                         </button>
@@ -106,13 +106,13 @@ export const GravitonWalletView: React.FC = () => {
                                     <div className="flex justify-between"><span>Symetria:</span><span className="text-emerald-400">AES-256-GCM</span></div>
                                     <div className="flex justify-between"><span>PQC:</span><span className={crypto.pqcAvailable ? 'text-emerald-400' : 'text-rose-400'}>{crypto.pqcAvailable ? 'NIST gotowe ⚛️' : 'brak'}</span></div>
                                 </div>
-                                <button onClick={runSelfTest} disabled={busy} className="mt-3 w-full px-2 py-1.5 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-950/40 text-[11px] font-bold transition-colors disabled:opacity-50">
+                                <button onClick={runSelfTest} disabled={busy} className="mt-3 w-full px-2 py-1.5 rounded-sm border border-emerald-500/40 text-emerald-300 hover:bg-emerald-950/40 text-[11px] font-bold transition-colors disabled:opacity-50">
                                     {busy ? '⟳ ...' : '🔬 SELF-TEST KRYPTO'}
                                 </button>
                                 {selftest && (
                                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 grid grid-cols-2 gap-1 text-[10px]">
                                         {[['AES-256-GCM', selftest.aes256gcm], ['ML-KEM-768', selftest.mlkem768], ['ML-DSA-65', selftest.mldsa65], ['RAZEM', selftest.allPass]].map(([k, v]) => (
-                                            <div key={k as string} className="flex justify-between bg-black/30 rounded px-2 py-0.5">
+                                            <div key={k as string} className="flex justify-between bg-black/30 rounded-sm px-2 py-0.5">
                                                 <span className="text-slate-400">{k}</span><span className={v ? 'text-emerald-400' : 'text-rose-400'}>{v ? '✓' : '✗'}</span>
                                             </div>
                                         ))}

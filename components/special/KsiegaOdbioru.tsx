@@ -102,13 +102,13 @@ export const KsiegaOdbioru: React.FC = () => {
     return (
         <div className="w-full max-w-3xl mx-auto bg-[#0a0705] border border-amber-500/25 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.6)] font-sans text-slate-200">
             {/* HEADER */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-amber-500/20 bg-gradient-to-r from-[#140d03] to-[#0a0705]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-amber-500/20 bg-linear-to-r from-[#140d03] to-[#0a0705]">
                 <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-xl bg-black border border-amber-500/40 flex items-center justify-center">
                         <BookMarked size={22} className="text-amber-400" />
                     </div>
                     <div>
-                        <h2 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-orange-400">KSIĘGA ODBIORU · KOOM</h2>
+                        <h2 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-linear-to-r from-amber-300 to-orange-400">KSIĘGA ODBIORU · KOOM</h2>
                         <p className="text-[10px] text-slate-500 tracking-wider">Plany z Rozczytelni → zadania Mechanika · {plans.length} w księdze</p>
                     </div>
                 </div>
@@ -122,7 +122,7 @@ export const KsiegaOdbioru: React.FC = () => {
             <div className="px-6 py-3 flex gap-2 border-b border-slate-800">
                 <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => e.key === 'Enter' && addSuggestion()}
                     placeholder="Zostaw własną sugestię planu..."
-                    className="flex-1 bg-black/50 border border-amber-700/30 focus:border-amber-500/60 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none" />
+                    className="flex-1 bg-black/50 border border-amber-700/30 focus:border-amber-500/60 rounded-lg px-3 py-2 text-xs text-slate-200 outline-hidden" />
                 <button onClick={addSuggestion} disabled={!draft.trim()}
                     className="px-3 py-2 rounded-lg text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 text-amber-300 disabled:opacity-40">
                     <Plus size={14} />
@@ -138,7 +138,7 @@ export const KsiegaOdbioru: React.FC = () => {
                 ) : plans.map(plan => (
                     <div key={plan.id} className="rounded-xl border border-amber-900/30 bg-black/30 p-3">
                         <div className="flex items-start gap-2">
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 mt-0.5"
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm shrink-0 mt-0.5"
                                 style={{ color: SOURCE_COLOR[plan.source] || '#94a3b8', border: `1px solid ${SOURCE_COLOR[plan.source] || '#94a3b8'}55` }}>
                                 {plan.source}
                             </span>

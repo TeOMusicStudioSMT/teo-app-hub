@@ -119,7 +119,7 @@ export const DelegatCard: React.FC = () => {
                     {tunel?.stan === 'dziala' && tunel.adres && (
                         <div className="w-full text-[10px] font-mono text-cyan-300/90 flex items-center gap-1.5">
                             <span className="truncate flex-1" title={tunel.adres}>🛰️ {tunel.adres.replace(/^https:\/\//, '')}</span>
-                            <button onClick={zgasTunel} disabled={tunelPracuje} title="Zamknij tunel" className="p-1 rounded hover:bg-white/10 text-slate-400"><Square className="w-3 h-3" /></button>
+                            <button onClick={zgasTunel} disabled={tunelPracuje} title="Zamknij tunel" className="p-1 rounded-sm hover:bg-white/10 text-slate-400"><Square className="w-3 h-3" /></button>
                         </div>
                     )}
                     {tunel?.stan !== 'dziala' && adres && tunelReczny && (

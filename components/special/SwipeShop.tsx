@@ -26,11 +26,11 @@ const SwipeShop: React.FC<{ items: Artifact[] }> = ({ items }) => {
                 {items.map((item) => (
                     <div
                         key={item.id}
-                        className="flex-shrink-0 w-[280px] snap-center group/card"
+                        className="shrink-0 w-[280px] snap-center group/card"
                     >
-                        <div className="bg-gradient-to-b from-white/10 to-transparent border border-white/10 rounded-2xl p-6 transition-all duration-500 hover:border-cyan-500/40 relative overflow-hidden">
+                        <div className="bg-linear-to-b from-white/10 to-transparent border border-white/10 rounded-2xl p-6 transition-all duration-500 hover:border-cyan-500/40 relative overflow-hidden">
                             {/* Scanline Effect */}
-                            <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/0 via-cyan-500/5 to-cyan-500/0 h-1/2 top-0 -translate-y-full group-hover/card:animate-[scan_2s_linear_infinite]" />
+                            <div className="absolute inset-0 bg-linear-to-b from-cyan-500/0 via-cyan-500/5 to-cyan-500/0 h-1/2 top-0 -translate-y-full group-hover/card:animate-[scan_2s_linear_infinite]" />
 
                             <div className="h-40 flex items-center justify-center mb-6 relative">
                                 <div className="absolute inset-0 bg-cyan-500/10 blur-3xl rounded-full opacity-0 group-hover/card:opacity-100 transition-opacity" />
@@ -54,7 +54,7 @@ const SwipeShop: React.FC<{ items: Artifact[] }> = ({ items }) => {
                 ))}
 
                 {/* Placeholder for more */}
-                <div className="flex-shrink-0 w-[280px] snap-center flex items-center justify-center border-2 border-dashed border-white/5 rounded-2xl group/more cursor-pointer hover:bg-white/5 transition-colors">
+                <div className="shrink-0 w-[280px] snap-center flex items-center justify-center border-2 border-dashed border-white/5 rounded-2xl group/more cursor-pointer hover:bg-white/5 transition-colors">
                     <div className="text-center space-y-2 opacity-30 group-hover:opacity-100 transition-opacity">
                         <svg className="w-12 h-12 mx-auto text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />

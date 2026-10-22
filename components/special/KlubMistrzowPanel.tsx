@@ -86,9 +86,9 @@ export default function KlubMistrzowPanel() {
             {stan.nick && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
                     <span className="text-slate-400">Ogłoś turniej:</span>
-                    <select value={dziedzina} onChange={(e) => setDziedzina(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-1 py-0.5">{Object.entries(DZIEDZINY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-                    <select value={dni} onChange={(e) => setDni(Number(e.target.value))} className="rounded border border-slate-700 bg-black/40 px-1 py-0.5">{[1, 2, 3, 5, 7].map((n) => <option key={n} value={n}>{n} {n === 1 ? 'dzień' : 'dni'}</option>)}</select>
-                    <input value={opis} onChange={(e) => setOpis(e.target.value)} maxLength={200} placeholder="zapowiedź (opcjonalnie)" className="min-w-0 flex-1 rounded border border-slate-700 bg-black/40 px-2 py-0.5 outline-none" />
+                    <select value={dziedzina} onChange={(e) => setDziedzina(e.target.value)} className="rounded-sm border border-slate-700 bg-black/40 px-1 py-0.5">{Object.entries(DZIEDZINY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+                    <select value={dni} onChange={(e) => setDni(Number(e.target.value))} className="rounded-sm border border-slate-700 bg-black/40 px-1 py-0.5">{[1, 2, 3, 5, 7].map((n) => <option key={n} value={n}>{n} {n === 1 ? 'dzień' : 'dni'}</option>)}</select>
+                    <input value={opis} onChange={(e) => setOpis(e.target.value)} maxLength={200} placeholder="zapowiedź (opcjonalnie)" className="min-w-0 flex-1 rounded-sm border border-slate-700 bg-black/40 px-2 py-0.5 outline-hidden" />
                     <button onClick={() => void oglos()} disabled={trwa} className="rounded-lg border border-amber-400/50 px-2 py-0.5 text-amber-200 hover:bg-amber-400/10 disabled:opacity-40">🏛️ Ogłoś</button>
                 </div>
             )}

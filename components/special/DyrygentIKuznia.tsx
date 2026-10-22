@@ -130,7 +130,7 @@ export const DyrygentPanel: React.FC = () => {
                 <h3 className="text-sm font-bold text-sky-200">🎼 Dyrygent — modele do zadań</h3>
                 <label className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400" title="Dyrygent to TeOgochi — wybierz mu model z katalogu (większy = lepszy dobór, wolniej)">
                     Dyrygent gra na:
-                    <select value={dyrygent} onChange={(e) => void ustawModelDyrygenta(e.target.value)} className="rounded border border-slate-700 bg-black/50 px-1.5 py-0.5 text-[10px] text-sky-200">
+                    <select value={dyrygent} onChange={(e) => void ustawModelDyrygenta(e.target.value)} className="rounded-sm border border-slate-700 bg-black/50 px-1.5 py-0.5 text-[10px] text-sky-200">
                         {dyrygent && !modele?.some((m) => m.nazwa === dyrygent) && <option value={dyrygent}>{dyrygent}</option>}
                         {[...(modele ?? [])].sort((a, b) => (b.rozmiarGB ?? 0) - (a.rozmiarGB ?? 0)).map((m) => (
                             <option key={m.nazwa} value={m.nazwa}>{m.nazwa}{m.rozmiarGB ? ` · ${m.rozmiarGB} GB` : ''}{/:cloud$|-cloud$/.test(m.nazwa) ? ' · ☁ chmura' : ''}</option>
@@ -147,7 +147,7 @@ export const DyrygentPanel: React.FC = () => {
                         <div className="flex flex-wrap items-center gap-2">
                             <span className="font-mono text-slate-200">{m.nazwa}</span>
                             <span className="text-slate-500">{[m.parametry, m.rozmiarGB ? `${m.rozmiarGB} GB` : null].filter(Boolean).join(' · ')}</span>
-                            {m.wlasny && <span className="rounded bg-orange-500/20 px-1.5 text-orange-200">⚒️ własny: {m.wlasny}</span>}
+                            {m.wlasny && <span className="rounded-sm bg-orange-500/20 px-1.5 text-orange-200">⚒️ własny: {m.wlasny}</span>}
                             {m.agenci.length > 0 && <span className="text-emerald-300">gra: {m.agenci.join(', ')}</span>}
                             <span className="ml-auto text-slate-400">{m.praca.wkladow ? `${m.praca.wkladow} wkładów${m.praca.srednia != null ? ` · Sędzia ${m.praca.srednia}/10` : ''}` : 'jeszcze nie pracował w stadzie'}</span>
                             <button onClick={() => { setEdycja(m.nazwa); setOpis(m.karta?.opis ?? ''); }} className="text-slate-500 hover:text-sky-300" title="Karta modelu: do czego go używać">✎</button>
@@ -155,8 +155,8 @@ export const DyrygentPanel: React.FC = () => {
                         {m.karta?.opis && edycja !== m.nazwa && <div className="text-slate-500">{m.karta.opis}</div>}
                         {edycja === m.nazwa && (
                             <div className="mt-1 flex gap-1.5">
-                                <input value={opis} onChange={(e) => setOpis(e.target.value)} placeholder="np. mocny w kodzie i scalaniu, wolny" className="flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
-                                <button onClick={() => zapiszKarte(m.nazwa)} className="rounded bg-sky-600/40 px-2 text-sky-100">Zapisz</button>
+                                <input value={opis} onChange={(e) => setOpis(e.target.value)} placeholder="np. mocny w kodzie i scalaniu, wolny" className="flex-1 rounded-sm border border-slate-700 bg-black/40 px-2 py-1 text-slate-200" />
+                                <button onClick={() => zapiszKarte(m.nazwa)} className="rounded-sm bg-sky-600/40 px-2 text-sky-100">Zapisz</button>
                             </div>
                         )}
                     </div>
@@ -176,7 +176,7 @@ export const DyrygentPanel: React.FC = () => {
                     {propozycja.partytura && <div className="text-violet-200/90">📜 Podpowiedź z partytury: „{propozycja.partytura.nazwa}” ({propozycja.partytura.zrodlo === 'wykonanie' ? `genialne wykonanie ${propozycja.partytura.ocena}/10` : propozycja.partytura.zrodlo === 'reczna' ? 'Twoja' : 'wzorcowa'}, {propozycja.partytura.metoda} {propozycja.partytura.podobienstwo})</div>}
                     {propozycja.przydzial.map((p) => <div key={p.agent}><b className="text-slate-200">{p.agent}</b> → <span className="font-mono text-sky-200">{p.model}</span> <span className="text-slate-500">{p.powod}</span></div>)}
                     {propozycja.odrzucone.map((p, i) => <div key={i} className="text-amber-300/80">✕ {p.agent} → {p.model}: {p.powod}</div>)}
-                    <button onClick={zastosuj} disabled={zajety || !propozycja.przydzial.length} className="mt-1 rounded bg-emerald-700/50 px-3 py-1 text-emerald-100 disabled:opacity-40">Zastosuj na stałe (silniki TeOgochi)</button>
+                    <button onClick={zastosuj} disabled={zajety || !propozycja.przydzial.length} className="mt-1 rounded-sm bg-emerald-700/50 px-3 py-1 text-emerald-100 disabled:opacity-40">Zastosuj na stałe (silniki TeOgochi)</button>
                     <div className="text-slate-500">Albo tylko dla jednego projektu: w Świecie przy nowym projekcie zaznacz „🎼 Dyrygent dobierze modele". Na Stole Dyrygent dobiera modele sam, zanim stado ruszy.</div>
                 </div>
             )}
@@ -202,7 +202,7 @@ export const DyrygentPanel: React.FC = () => {
                 <div className="flex items-center gap-2 border-t border-slate-800/60 pt-1.5">
                     <span className="font-bold text-sky-200">🛡️ Straż modeli</span>
                     <span className="text-slate-500">{straz ? (straz.blad ? `⚠ ${straz.blad}` : straz.kiedy ? `ostatnio ${new Date(straz.kiedy).toLocaleTimeString('pl-PL')}` : 'pierwsze sprawdzenie minutę po starcie mostu') : '—'}</span>
-                    <button onClick={() => void sprawdzStraz()} className="ml-auto rounded bg-sky-800/50 px-2 py-0.5 text-sky-100">Sprawdź teraz</button>
+                    <button onClick={() => void sprawdzStraz()} className="ml-auto rounded-sm bg-sky-800/50 px-2 py-0.5 text-sky-100">Sprawdź teraz</button>
                 </div>
                 {straz && Object.entries(straz.zastepstwa).map(([agent, z]) => <div key={agent} className="text-amber-200/90">{agent}: {z.oryginal} zniknął z Ollamy → gra na {z.zastepca} (wróci sam)</div>)}
             </div>
@@ -211,13 +211,13 @@ export const DyrygentPanel: React.FC = () => {
             <div className="space-y-2 rounded-lg border border-sky-700/30 bg-black/20 p-2">
                 <div className="text-[11px] font-bold text-sky-200">🎯 Do celu — modele i silniki</div>
                 <div className="flex flex-wrap gap-1.5">
-                    <select value={cel} onChange={(e) => setCel(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
+                    <select value={cel} onChange={(e) => setCel(e.target.value)} className="rounded-sm border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
                         {CELE_DYRYGENTA.map((c) => <option key={c.id} value={c.id}>{c.nazwa}</option>)}
                     </select>
                     <input value={zadanieCelu} onChange={(e) => setZadanieCelu(e.target.value)} placeholder="co robimy (opcjonalnie — potrzebne do doboru modeli)"
-                        className="min-w-[12rem] flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />
+                        className="min-w-48 flex-1 rounded-sm border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />
                     <label className="flex items-center gap-1 text-[10px] text-slate-400"><input type="checkbox" checked={zModelami} onChange={(e) => setZModelami(e.target.checked)} /> dobierz też modele</label>
-                    <button onClick={() => void doCelu()} disabled={zajetyCel || (zModelami && zadanieCelu.trim().length < 5)} className="rounded bg-sky-700/60 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40">{zajetyCel ? '🎼…' : '🎯 Sprawdź'}</button>
+                    <button onClick={() => void doCelu()} disabled={zajetyCel || (zModelami && zadanieCelu.trim().length < 5)} className="rounded-sm bg-sky-700/60 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40">{zajetyCel ? '🎼…' : '🎯 Sprawdź'}</button>
                 </div>
                 {wynikCelu && (
                     <div className="space-y-1.5 text-[11px]">
@@ -225,7 +225,7 @@ export const DyrygentPanel: React.FC = () => {
                             {wynikCelu.moznaRuszyc ? `✓ ${wynikCelu.etykieta}: wszystko, co potrzebne, jest gotowe.` : `⚠ ${wynikCelu.etykieta}: brakuje — ${wynikCelu.brakuje.map((r) => NAZWA_RODZAJU[r] ?? r).join(', ')}.`}
                         </div>
                         {Object.entries(wynikCelu.rodzaje).map(([r, v]) => (
-                            <div key={r} className="rounded bg-black/30 px-2 py-1">
+                            <div key={r} className="rounded-sm bg-black/30 px-2 py-1">
                                 <div className="font-bold text-slate-200">{NAZWA_RODZAJU[r] ?? r} <span className="font-normal text-slate-500">{v.potrzebny ? '· potrzebny' : '· pomocny'}</span></div>
                                 {v.gotowe.map((x) => <div key={x.id} className="text-emerald-300">✓ {x.nazwa} <span className="text-slate-500">{x.modul}{x.licencja ? ` · ${x.licencja}` : ''}</span></div>)}
                                 {v.niegotowe.map((x) => <div key={x.id} className={x.nieWiadomo ? 'text-slate-400' : 'text-rose-300/80'}>{x.nieWiadomo ? '❔' : '✕'} {x.nazwa}: <span className="text-slate-500">{x.powod}</span></div>)}
@@ -237,7 +237,7 @@ export const DyrygentPanel: React.FC = () => {
                         ))}
                         {wynikCelu.modeleUwaga && <div className="text-amber-300/80">{wynikCelu.modeleUwaga}</div>}
                         {wynikCelu.modele && (
-                            <div className="rounded border border-sky-700/40 p-1.5">
+                            <div className="rounded-sm border border-sky-700/40 p-1.5">
                                 <div className="text-slate-400">Modele ({wynikCelu.modele.model}):</div>
                                 {wynikCelu.modele.przydzial.map((p) => <div key={p.agent}><b className="text-slate-200">{p.agent}</b> → <span className="font-mono text-sky-200">{p.model}</span> <span className="text-slate-500">{p.powod}</span></div>)}
                                 {wynikCelu.modele.odrzucone.map((p, i) => <div key={i} className="text-amber-300/80">✕ {p.agent} → {p.model}: {p.powod}</div>)}
@@ -302,12 +302,12 @@ export const KuzniaSoupPanel: React.FC = () => {
             </p>
             <SrodowiskoKuzni doktor={doktor} onZadanie={(id) => setZadanie({ id, s: { stan: 'trwa', etap: 'instalacja' } })} zajete={zadanie?.s.stan === 'trwa'} />
             <div className="flex flex-wrap gap-1.5">
-                <select value={agent} onChange={(e) => setAgent(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
+                <select value={agent} onChange={(e) => setAgent(e.target.value)} className="rounded-sm border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
                     <option value="">— TeOgochi —</option>
                     {stado.map((g) => <option key={g.id} value={g.id}>{g.forma} {g.imie}</option>)}
                 </select>
                 <input value={baza} onChange={(e) => setBaza(e.target.value)} placeholder="model bazowy HF, np. Qwen/Qwen2.5-3B-Instruct"
-                    className="flex-1 min-w-[220px] rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />
+                    className="flex-1 min-w-[220px] rounded-sm border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />
             </div>
             {podglad && (
                 <div className="text-[11px] text-slate-300">
@@ -316,10 +316,10 @@ export const KuzniaSoupPanel: React.FC = () => {
                 </div>
             )}
             <div className="flex gap-1.5">
-                <button onClick={() => akcja('przygotuj')} disabled={zajety || !agent || !baza.trim() || !podglad?.wystarczy} className="rounded bg-slate-700/60 px-3 py-1.5 text-xs text-slate-100 disabled:opacity-40">Przygotuj dane + soup.yaml</button>
+                <button onClick={() => akcja('przygotuj')} disabled={zajety || !agent || !baza.trim() || !podglad?.wystarczy} className="rounded-sm bg-slate-700/60 px-3 py-1.5 text-xs text-slate-100 disabled:opacity-40">Przygotuj dane + soup.yaml</button>
                 <button onClick={() => akcja('wykuj')} disabled={zajety || !agent || !baza.trim() || !podglad?.wystarczy || !doktor?.jest || zadanie?.s.stan === 'trwa'}
                     title="Godziny na karcie graficznej — na noc lepiej przez Nocną Zmianę (robota „Kuźnia Soup”)"
-                    className="rounded bg-orange-500 px-3 py-1.5 text-xs font-bold text-slate-900 disabled:opacity-40">⚒️ Wykuj teraz</button>
+                    className="rounded-sm bg-orange-500 px-3 py-1.5 text-xs font-bold text-slate-900 disabled:opacity-40">⚒️ Wykuj teraz</button>
             </div>
             {zadanie && (
                 <div className="rounded-lg bg-black/30 p-2 text-[11px]">
@@ -414,14 +414,14 @@ export const KuzniaColabPanel: React.FC = () => {
                 klucze z Kibla i ścieżki z dysku Katedra zamazuje przed wklejeniem. Notatnik nie był uruchamiany przez Katedrę — pierwszy przebieg w Colabie to próba.
             </p>
             <div className="flex flex-wrap gap-1.5">
-                <select value={agent} onChange={(e) => setAgent(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
+                <select value={agent} onChange={(e) => setAgent(e.target.value)} className="rounded-sm border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
                     <option value="mistrz">🥚 Mistrz — styl Suwerena (JaJo)</option>
                     {stado.map((g) => <option key={g.id} value={g.id}>{g.forma} {g.imie}</option>)}
                 </select>
-                <select value={baza} onChange={(e) => setBaza(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
+                <select value={baza} onChange={(e) => setBaza(e.target.value)} className="rounded-sm border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
                     {(stan?.bazy ?? []).map((b) => <option key={b.id} value={b.id}>{b.nazwa}</option>)}
                 </select>
-                <select value={metoda} onChange={(e) => setMetoda(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
+                <select value={metoda} onChange={(e) => setMetoda(e.target.value)} className="rounded-sm border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
                     {(wybranaBaza?.metody ?? []).map((m) => <option key={m} value={m}>{stan?.metody[m] ?? m}</option>)}
                 </select>
             </div>
@@ -434,8 +434,8 @@ export const KuzniaColabPanel: React.FC = () => {
                 </div>
             )}
             <div className="flex flex-wrap gap-1.5">
-                <button onClick={pobierz} disabled={zajety || !stan?.wystarczy} className="rounded bg-violet-500 px-3 py-1.5 text-xs font-bold text-slate-900 disabled:opacity-40">⬇️ Pobierz notatnik</button>
-                <button onClick={wczytaj} disabled={zajety || !stan} title="Plik GGUF z Colaba w _OtakOs_AI/models/ → Ollama" className="rounded bg-slate-700/60 px-3 py-1.5 text-xs text-slate-100 disabled:opacity-40">📥 Wczytaj wykuty GGUF</button>
+                <button onClick={pobierz} disabled={zajety || !stan?.wystarczy} className="rounded-sm bg-violet-500 px-3 py-1.5 text-xs font-bold text-slate-900 disabled:opacity-40">⬇️ Pobierz notatnik</button>
+                <button onClick={wczytaj} disabled={zajety || !stan} title="Plik GGUF z Colaba w _OtakOs_AI/models/ → Ollama" className="rounded-sm bg-slate-700/60 px-3 py-1.5 text-xs text-slate-100 disabled:opacity-40">📥 Wczytaj wykuty GGUF</button>
             </div>
             <ol className="list-decimal space-y-0.5 pl-5 text-[11px] text-slate-400">
                 <li>Pobierz notatnik → colab.research.google.com → Plik → Prześlij notatnik; typ środowiska A100 (albo H100).</li>
@@ -475,10 +475,10 @@ const SrodowiskoKuzni: React.FC<{ doktor: Doktor | null; onZadanie: (id: string)
             <div>{doktor.jest ? `Soup: ${doktor.wersja} · ${doktor.zrodlo}${doktor.gpu === 'cuda' ? ' · karta graficzna: CUDA ✓' : doktor.gpu === 'cpu' ? ' · karta graficzna: NIE' : ''}` : 'Soup: brak'}</div>
             {ostrzezenia.map((o) => <div key={o}>⚠️ {o}</div>)}
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                <select value={cuda} onChange={(e) => setCuda(e.target.value)} className="rounded border border-slate-700 bg-black/40 px-1.5 py-1 text-slate-200" title="Koło PyTorch: auto = z nvidia-smi (jak soup doctor)">
+                <select value={cuda} onChange={(e) => setCuda(e.target.value)} className="rounded-sm border border-slate-700 bg-black/40 px-1.5 py-1 text-slate-200" title="Koło PyTorch: auto = z nvidia-smi (jak soup doctor)">
                     {['auto', 'cu128', 'cu126', 'cu124', 'cu121', 'cu130', 'cpu'].map((k) => <option key={k} value={k}>{k === 'auto' ? 'CUDA: auto (ze sterownika)' : k === 'cpu' ? 'bez CUDA (procesor)' : k}</option>)}
                 </select>
-                <button onClick={instaluj} disabled={instaluje || zajete} className="rounded bg-orange-600/70 px-3 py-1 font-bold text-white disabled:opacity-40">
+                <button onClick={instaluj} disabled={instaluje || zajete} className="rounded-sm bg-orange-600/70 px-3 py-1 font-bold text-white disabled:opacity-40">
                     {doktor.wKatedrze ? 'Aktualizuj środowisko w Katedrze' : 'Zainstaluj w Katedrze'}
                 </button>
                 <span className="text-slate-500">→ {doktor.srodowisko} (Python 3.12 + PyTorch + soup-cli[train])</span>
@@ -569,7 +569,7 @@ export const ZwiadowcaPanel: React.FC = () => {
                 W dziedzinach (muzyka, głos, wideo, obraz, 3D, mowa) szuka <b>silników</b> z licencją wprost (✅ wolno zarabiać / ⛔ tylko niekomercyjnie) — ich „Przyjmij” to tylko „do zainstalowania” w bazie Dyrygenta.
             </p>
             <div className="flex flex-wrap gap-1.5">
-                <select value={dziedzina} onChange={(e) => setDziedzina(e.target.value)} title="Modele GGUF dla Ollamy albo silniki z HuggingFace dla Dyrygenta" className="rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
+                <select value={dziedzina} onChange={(e) => setDziedzina(e.target.value)} title="Modele GGUF dla Ollamy albo silniki z HuggingFace dla Dyrygenta" className="rounded-sm border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200">
                     <option value="llm">🧠 modele językowe (GGUF)</option>
                     <option value="kod">💻 kod i apki (GGUF)</option>
                     <option value="muzyka">🎵 muzyka i dźwięk</option>
@@ -580,16 +580,16 @@ export const ZwiadowcaPanel: React.FC = () => {
                     <option value="mowa">📝 mowa → tekst</option>
                 </select>
                 {dziedzina === 'llm' && <input value={zapytania} onChange={(e) => setZapytania(e.target.value)} placeholder="słowa (domyślnie: polish, bielik, qwen3, gemma, coder, llama)"
-                    className="min-w-[16rem] flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />}
-                <button onClick={szukaj} disabled={trwa} className="rounded bg-teal-700/70 px-3 py-1.5 text-xs font-bold text-teal-50 hover:bg-teal-600 disabled:opacity-50">
+                    className="min-w-[16rem] flex-1 rounded-sm border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />}
+                <button onClick={szukaj} disabled={trwa} className="rounded-sm bg-teal-700/70 px-3 py-1.5 text-xs font-bold text-teal-50 hover:bg-teal-600 disabled:opacity-50">
                     {trwa ? `⟳ ${etap ?? 'zwiad…'}` : '🔭 Szukaj teraz'}
                 </button>
             </div>
             <div className="flex flex-wrap gap-1.5">
                 <input value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') zLinku(); }}
                     placeholder="albo wklej link: huggingface.co/… · hf.co/… · pirateface.co/…"
-                    className="min-w-[16rem] flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />
-                <button onClick={zLinku} disabled={!link.trim() || pracuje === 'link'} className="rounded border border-teal-600/60 px-3 py-1.5 text-xs font-bold text-teal-200 hover:bg-teal-900/40 disabled:opacity-50">
+                    className="min-w-[16rem] flex-1 rounded-sm border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200" />
+                <button onClick={zLinku} disabled={!link.trim() || pracuje === 'link'} className="rounded-sm border border-teal-600/60 px-3 py-1.5 text-xs font-bold text-teal-200 hover:bg-teal-900/40 disabled:opacity-50">
                     {pracuje === 'link' ? '⟳ sprawdzam…' : '🔗 Sprawdź link'}
                 </button>
             </div>
@@ -603,7 +603,7 @@ export const ZwiadowcaPanel: React.FC = () => {
                                 <a href={k.url ?? `https://huggingface.co/${k.repo}`} target="_blank" rel="noreferrer" className="font-bold text-teal-200 hover:underline">{k.repo}</a>
                                 {k.zweryfikowane === false && (
                                     <span title="Źródło spoza HuggingFace, którego Katedra nie zna — sprawdź kartę modelu i licencję przed przyjęciem. Pobierany jest tylko plik GGUF."
-                                        className="rounded border border-amber-500/50 bg-amber-950/40 px-1.5 text-[9px] font-bold text-amber-300">🏴‍☠️ {k.zrodlo} · niezweryfikowane</span>
+                                        className="rounded-sm border border-amber-500/50 bg-amber-950/40 px-1.5 text-[9px] font-bold text-amber-300">🏴‍☠️ {k.zrodlo} · niezweryfikowane</span>
                                 )}
                             </span>
                             <span className="text-slate-400">{k.rodzaj === 'silnik' ? `${NAZWA_RODZAJU[k.dziedzina ?? ''] ?? k.dziedzina} · ${licencjaZnacznik({ licencja: k.licencja ?? null, komercyjna: k.komercyjna ?? null })}` : `${k.kwant} · ${k.gb} GB`}{k.pobrania != null ? ` · ⬇ ${k.pobrania.toLocaleString('pl-PL')}` : ''}{k.polubienia != null ? ` · ♥ ${k.polubienia}` : ''}</span>
@@ -616,8 +616,8 @@ export const ZwiadowcaPanel: React.FC = () => {
                                 : (k.stan as string) === 'przyjety'
                                 ? <span className="text-sky-300">🎼 do zainstalowania — w bazie Dyrygenta</span>
                                 : <>
-                                    <button onClick={() => decyzja(k, 'akceptuj')} disabled={pracuje === k.id} className="rounded bg-emerald-700/70 px-2 py-0.5 font-bold text-emerald-50 hover:bg-emerald-600 disabled:opacity-50">{k.stan === 'blad' ? '↻ Ponów' : '✓ Przyjmij'}</button>
-                                    <button onClick={() => decyzja(k, 'odrzuc')} disabled={pracuje === k.id} className="rounded border border-slate-600 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:opacity-50">✕ Odrzuć</button>
+                                    <button onClick={() => decyzja(k, 'akceptuj')} disabled={pracuje === k.id} className="rounded-sm bg-emerald-700/70 px-2 py-0.5 font-bold text-emerald-50 hover:bg-emerald-600 disabled:opacity-50">{k.stan === 'blad' ? '↻ Ponów' : '✓ Przyjmij'}</button>
+                                    <button onClick={() => decyzja(k, 'odrzuc')} disabled={pracuje === k.id} className="rounded-sm border border-slate-600 px-2 py-0.5 text-slate-300 hover:bg-slate-800 disabled:opacity-50">✕ Odrzuć</button>
                                   </>}
                             <span className="ml-auto font-mono text-[10px] text-slate-500">{k.rodzaj === 'silnik' ? 'silnik — instalacja ręczna' : k.ollama}</span>
                         </div>
@@ -675,9 +675,9 @@ export const PorzadkiPanel: React.FC = () => {
                 resztki treningu Kuźni i cache pip. <b>Twoich dzieł (muzyka, rendery, projekty) i baz HF Kuźni nie rusza nigdy.</b> Usuwa tylko zaznaczone.
             </p>
             <div className="flex flex-wrap gap-1.5">
-                <button onClick={wczytaj} disabled={pracuje} className="rounded bg-slate-700/70 px-3 py-1.5 text-xs font-bold text-slate-100 hover:bg-slate-600 disabled:opacity-50">{pracuje ? '⟳ …' : '🔍 Przejrzyj dysk'}</button>
+                <button onClick={wczytaj} disabled={pracuje} className="rounded-sm bg-slate-700/70 px-3 py-1.5 text-xs font-bold text-slate-100 hover:bg-slate-600 disabled:opacity-50">{pracuje ? '⟳ …' : '🔍 Przejrzyj dysk'}</button>
                 {!!wybrane.length && (
-                    <button onClick={usun} disabled={pracuje} className="rounded bg-rose-700/70 px-3 py-1.5 text-xs font-bold text-rose-50 hover:bg-rose-600 disabled:opacity-50">🗑️ Usuń zaznaczone ({ileGB} GB)</button>
+                    <button onClick={usun} disabled={pracuje} className="rounded-sm bg-rose-700/70 px-3 py-1.5 text-xs font-bold text-rose-50 hover:bg-rose-600 disabled:opacity-50">🗑️ Usuń zaznaczone ({ileGB} GB)</button>
                 )}
             </div>
             {pozycje && !pozycje.length && <div className="text-[11px] text-emerald-300/80">✅ Nic zbędnego, o czym Katedra wie.</div>}
@@ -728,7 +728,7 @@ export const PromocjePanel: React.FC = () => {
             <h3 className="text-sm font-bold text-amber-200">🏷️ Zwiadowca promocji — kody rabatowe usług</h3>
             <p className="text-[10px] text-slate-500">Szuka w sieci przez Claude (web search, ~$0,01 za wyszukanie + tokeny) albo Gemini (Google Search, cennik Google) — klucz z Kibla, „🔗 Udostępnij mostowi”{klucze ? ` · most ma: ${[klucze.anthropic && 'Claude', klucze.gemini && 'Gemini'].filter(Boolean).join(', ') || 'żadnego klucza'}` : ''}. Pokazuje tylko to, co ma źródło. Kod sprawdzasz sam przy płatności.</p>
             <div className="flex gap-2">
-                <input value={usluga} onChange={(e) => setUsluga(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !trwa) void szukaj(); }} placeholder="usługa, np. Meshy, ElevenLabs, RunPod" className="flex-1 rounded-lg border border-slate-700 bg-black/40 px-2 py-1 text-xs outline-none" />
+                <input value={usluga} onChange={(e) => setUsluga(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !trwa) void szukaj(); }} placeholder="usługa, np. Meshy, ElevenLabs, RunPod" className="flex-1 rounded-lg border border-slate-700 bg-black/40 px-2 py-1 text-xs outline-hidden" />
                 <select value={dostawca} onChange={(e) => setDostawca(e.target.value as DostawcaPromocji)} title="Kto szuka w sieci" className="rounded-lg border border-slate-700 bg-black/40 px-1 text-xs">
                     <option value="auto">☁️ auto</option><option value="anthropic">Claude</option><option value="gemini">Gemini</option>
                 </select>
@@ -740,7 +740,7 @@ export const PromocjePanel: React.FC = () => {
                     {z.znalezione.length === 0 && <div className="text-[11px] text-slate-400">Nic ze źródłem. {z.podsumowanie}</div>}
                     {z.znalezione.map((n, i) => (
                         <div key={i} className="text-[11px] text-slate-300">
-                            {n.kod && <code className="mr-1 rounded bg-amber-500/20 px-1 text-amber-200">{n.kod}</code>}{n.rabat && <b className="mr-1 text-emerald-300">{n.rabat}</b>}{n.opis}
+                            {n.kod && <code className="mr-1 rounded-sm bg-amber-500/20 px-1 text-amber-200">{n.kod}</code>}{n.rabat && <b className="mr-1 text-emerald-300">{n.rabat}</b>}{n.opis}
                             <span className="text-[10px] text-slate-500"> · {n.pewnosc === 'oficjalne' ? '✅ oficjalne' : n.pewnosc === 'forum' ? '💬 forum' : '🧾 agregator'}{n.data || n.wiekStrony ? ` · ${n.data ?? n.wiekStrony}` : ''}{n.uwagi ? ` · ${n.uwagi}` : ''} · <a href={n.zrodlo} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">{n.tytulZrodla ?? 'źródło'}</a>{n.potwierdzone === 'domena' ? ' · potwierdzone domeną' : ''}</span>
                         </div>
                     ))}
@@ -775,7 +775,7 @@ export const ModeleZadanPanel: React.FC = () => {
                         <b className="text-slate-200">{z.nazwa}</b><span className="text-slate-500">{z.opis} · potrzebuje: {z.potrzeba.join(' + ')}</span>
                     </div>
                     {z.blad ? <p className="text-amber-300">⚠ {z.blad}</p> : <p className="text-emerald-300">→ {z.wybrany} <span className="text-slate-500">({ZRODLO[z.zrodlo ?? ''] ?? z.zrodlo}) · użyć: {z.uzyc}</span></p>}
-                    <select value={z.reczny ?? ''} onChange={(e) => void ustaw(id, e.target.value)} className="rounded border border-slate-700 bg-black/40 px-1 py-0.5 text-[11px]">
+                    <select value={z.reczny ?? ''} onChange={(e) => void ustaw(id, e.target.value)} className="rounded-sm border border-slate-700 bg-black/40 px-1 py-0.5 text-[11px]">
                         <option value="">automatycznie (fakty → dane)</option>
                         {z.kandydaci.map((k) => <option key={k.model} value={k.model}>{k.model} · {k.gb} GB</option>)}
                     </select>

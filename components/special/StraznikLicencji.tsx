@@ -33,11 +33,11 @@ export const StraznikLicencji: React.FC = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
         <input value={project} onChange={e => setProject(e.target.value)} placeholder="Nazwa projektu / gry"
-          className="bg-black/40 border border-rose-500/20 rounded px-2.5 py-1.5 text-xs text-rose-100 outline-none focus:border-rose-500" />
+          className="bg-black/40 border border-rose-500/20 rounded-sm px-2.5 py-1.5 text-xs text-rose-100 outline-hidden focus:border-rose-500" />
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] text-zinc-500">przychód:</span>
           <input value={revStr} onChange={e => setRevStr(e.target.value)} type="number" min={0} placeholder="0"
-            className="flex-1 bg-black/40 border border-rose-500/20 rounded px-2.5 py-1.5 text-xs text-rose-100 outline-none focus:border-rose-500" />
+            className="flex-1 bg-black/40 border border-rose-500/20 rounded-sm px-2.5 py-1.5 text-xs text-rose-100 outline-hidden focus:border-rose-500" />
           <span className="text-[10px] text-zinc-500">USD</span>
         </div>
       </div>

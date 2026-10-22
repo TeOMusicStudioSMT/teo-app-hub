@@ -53,7 +53,7 @@ export const Secretariat: React.FC<SecretariatProps> = ({ onVerified, onCancel, 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
+            className="fixed inset-0 z-100 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
         >
             <div className="w-full max-w-2xl bg-slate-950 border border-cyan-500/30 rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,255,255,0.1)] flex flex-col max-h-[80vh]">
                 {/* Header */}
@@ -66,7 +66,7 @@ export const Secretariat: React.FC<SecretariatProps> = ({ onVerified, onCancel, 
                     </div>
                     <div className="text-right">
                         <span className={cn(
-                            "px-2 py-1 rounded text-[10px] font-bold font-mono border",
+                            "px-2 py-1 rounded-sm text-[10px] font-bold font-mono border",
                             status === 'granted' ? "border-emerald-500 text-emerald-400 bg-emerald-500/10" :
                                 status === 'denied' ? "border-rose-500 text-rose-400 bg-rose-500/10" :
                                     status === 'verifying' ? "border-amber-500 text-amber-400 animate-pulse" : "border-slate-700 text-slate-500"
@@ -79,7 +79,7 @@ export const Secretariat: React.FC<SecretariatProps> = ({ onVerified, onCancel, 
                 {/* Terminal Area */}
                 <div
                     ref={scrollRef}
-                    className="flex-grow p-6 font-mono text-sm overflow-y-auto bg-black/40 custom-scrollbar"
+                    className="grow p-6 font-mono text-sm overflow-y-auto bg-black/40 custom-scrollbar"
                 >
                     <AnimatePresence>
                         {logs.map((log, i) => (

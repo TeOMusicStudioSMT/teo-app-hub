@@ -97,7 +97,7 @@ export const NetworkOfLoci: React.FC = () => {
 
                 {/* Wskaźnik mówi prawdę: zielono TYLKO gdy Most naprawdę odpowiedział. */}
                 <div className={cn(
-                    'flex items-center gap-2 text-xs font-mono px-2 py-1 rounded border',
+                    'flex items-center gap-2 text-xs font-mono px-2 py-1 rounded-sm border',
                     stan.most === null ? 'text-slate-400 bg-slate-900/40 border-slate-600/40'
                         : stan.most ? 'text-green-400 bg-green-900/20 border-green-500/30'
                             : 'text-amber-400 bg-amber-900/20 border-amber-500/30',
@@ -109,7 +109,7 @@ export const NetworkOfLoci: React.FC = () => {
             </div>
 
             <div className="relative h-[400px] w-full bg-slate-900/40 backdrop-blur-xl rounded-2xl border border-slate-700/50 overflow-hidden flex items-center justify-center shadow-2xl shadow-black/50">
-                <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(56,189,248,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(56,189,248,0.03)_1px,transparent_1px)] bg-[size:40px_40px]" />
+                <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(56,189,248,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(56,189,248,0.03)_1px,transparent_1px)] bg-size-[40px_40px]" />
 
                 {stan.most === false && (
                     <div className="absolute inset-0 z-40 flex items-center justify-center p-8">
@@ -226,7 +226,7 @@ export const NetworkOfLoci: React.FC = () => {
 
             {/* 🫁 ODDECH — praca własna zamieniona w GRV, z rytmem doby */}
             {stan.most && stan.oddech && (
-                <div className="mt-3 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.05] p-3">
+                <div className="mt-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
                     <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
                         <span className="text-[10px] tracking-[0.2em] text-emerald-300 uppercase">
                             🫁 Oddech · {stan.oddech.ruchow} ruchów + {stan.oddech.wynikow} wyników = {stan.oddech.trwalych} trwałych

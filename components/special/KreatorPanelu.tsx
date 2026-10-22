@@ -118,7 +118,7 @@ export const KreatorPanelu: React.FC<Props> = ({ gat, onGotowe, onAnuluj }) => {
                     <input
                         value={szukaj} onChange={e => setSzukaj(e.target.value)}
                         placeholder="szukaj domeny…"
-                        className="w-full rounded-lg border border-slate-700 bg-black/40 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                        className="w-full rounded-lg border border-slate-700 bg-black/40 px-3 py-2 text-sm outline-hidden focus:border-slate-500"
                     />
                     <div className="grid gap-1.5 sm:grid-cols-3 lg:grid-cols-4 max-h-64 overflow-y-auto pr-1">
                         {widoczne.map(d => (
@@ -162,7 +162,7 @@ export const KreatorPanelu: React.FC<Props> = ({ gat, onGotowe, onAnuluj }) => {
                                         borderColor: zazn ? gat.kolor : 'rgba(148,163,184,0.15)',
                                         background: zazn ? `${gat.kolor}14` : 'rgba(0,0,0,0.3)',
                                     }}>
-                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0"
+                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm shrink-0"
                                         style={{ background: n.metoda === 'GET' ? '#1e293b' : '#422006', color: n.metoda === 'GET' ? '#94a3b8' : '#fbbf24' }}>
                                         {n.metoda}
                                     </span>
@@ -201,7 +201,7 @@ export const KreatorPanelu: React.FC<Props> = ({ gat, onGotowe, onAnuluj }) => {
                                     <input
                                         value={jajo?.formy[e] ?? ''}
                                         onChange={ev => setJajo(j => j ? { ...j, formy: { ...j.formy, [e]: ev.target.value } } : j)}
-                                        className="w-12 rounded border border-slate-700 bg-black/50 py-1 text-center text-2xl outline-none focus:border-slate-500"
+                                        className="w-12 rounded-sm border border-slate-700 bg-black/50 py-1 text-center text-2xl outline-hidden focus:border-slate-500"
                                     />
                                 ) : (
                                     <div className="text-3xl leading-none">{jajo?.formy[e] ?? '…'}</div>
@@ -213,7 +213,7 @@ export const KreatorPanelu: React.FC<Props> = ({ gat, onGotowe, onAnuluj }) => {
                             {wlasne && (
                                 <input type="color" value={jajo?.kolor ?? '#a855f7'}
                                     onChange={ev => setJajo(j => j ? { ...j, kolor: ev.target.value } : j)}
-                                    className="h-8 w-10 rounded border border-slate-700 bg-transparent" />
+                                    className="h-8 w-10 rounded-sm border border-slate-700 bg-transparent" />
                             )}
                             <button onClick={() => { setWlasne(false); void losujJajo().then(setJajo); }}
                                 disabled={zajety}
@@ -253,7 +253,7 @@ export const KreatorPanelu: React.FC<Props> = ({ gat, onGotowe, onAnuluj }) => {
                     <div className="flex items-center gap-2 flex-wrap">
                         <label className="text-[11px] font-mono text-slate-500">cena GRV</label>
                         <input value={cena} onChange={e => setCena(e.target.value)}
-                            className="w-24 rounded-lg border border-slate-700 bg-black/40 px-2 py-1.5 text-sm outline-none focus:border-slate-500" />
+                            className="w-24 rounded-lg border border-slate-700 bg-black/40 px-2 py-1.5 text-sm outline-hidden focus:border-slate-500" />
                         <button onClick={doMarketu} disabled={zajety || !!panel.ofertaId}
                             className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-bold text-slate-900 disabled:opacity-40"
                             style={{ background: gat.kolor }}>

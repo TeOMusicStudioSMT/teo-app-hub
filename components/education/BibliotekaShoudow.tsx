@@ -35,7 +35,7 @@ function ZPrzypisami({ tekst, onPrzypis, wybrany }: { tekst: string; onPrzypis: 
                 if (!m) return <React.Fragment key={i}>{c}</React.Fragment>;
                 const n = Number(m[1]);
                 return (
-                    <button key={i} onClick={() => onPrzypis(n)} className={`mx-0.5 rounded px-1 text-[11px] font-bold align-super ${wybrany === n ? 'bg-amber-400 text-black' : 'bg-cyan-800/70 text-cyan-200 hover:bg-cyan-600'}`}>{n}</button>
+                    <button key={i} onClick={() => onPrzypis(n)} className={`mx-0.5 rounded-sm px-1 text-[11px] font-bold align-super ${wybrany === n ? 'bg-amber-400 text-black' : 'bg-cyan-800/70 text-cyan-200 hover:bg-cyan-600'}`}>{n}</button>
                 );
             })}
         </p>
@@ -103,7 +103,7 @@ export const BibliotekaShoudow: React.FC = () => {
                     <div className="mt-2 text-xs text-slate-300">
                         {pracuje ? (
                             <>
-                                <div className="h-2 overflow-hidden rounded bg-slate-900"><div className="h-full bg-amber-400" style={{ width: `${((p.zrobione ?? 0) / Math.max(1, p.plikow ?? 1)) * 100}%` }} /></div>
+                                <div className="h-2 overflow-hidden rounded-sm bg-slate-900"><div className="h-full bg-amber-400" style={{ width: `${((p.zrobione ?? 0) / Math.max(1, p.plikow ?? 1)) * 100}%` }} /></div>
                                 <div className="mt-1">{p.etap === 'czeka' ? `⏸ czeka na kartę: ${p.powod}` : `⏳ ${p.zrobione}/${p.plikow} · ${p.kawalkow} kawałków${p.eta ? ` · ~${Math.ceil(p.eta / 60)} min` : ''}`}</div>
                                 {p.biezacy && <div className="truncate text-slate-500" data-bez-tlumaczenia>{p.biezacy}</div>}
                             </>
@@ -119,7 +119,7 @@ export const BibliotekaShoudow: React.FC = () => {
                         : <button onClick={indeksuj} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-black hover:bg-amber-500">▶ Indeksuj {stan?.zaindeksowanych ? '(tylko nowe i zmienione)' : ''}</button>}
                     {stan && (
                         <label className="flex items-center gap-1 text-xs text-slate-300">Model odpowiedzi:
-                            <select value={stan.modelOdpowiedzi ?? ''} onChange={(e) => ustawModel(e.target.value)} className="rounded bg-slate-900 px-2 py-1 text-xs text-white">
+                            <select value={stan.modelOdpowiedzi ?? ''} onChange={(e) => ustawModel(e.target.value)} className="rounded-sm bg-slate-900 px-2 py-1 text-xs text-white">
                                 <option value="">domyślny Katedry (gemma4:12B)</option>
                                 {stan.modele.map((m) => <option key={m} value={m}>{m}</option>)}
                             </select>
@@ -134,11 +134,11 @@ export const BibliotekaShoudow: React.FC = () => {
                     rows={2} placeholder="Zapytaj Shoudy… (po polsku albo po angielsku; Ctrl+Enter)"
                     className="w-full rounded-lg bg-slate-900 p-2 text-sm text-white placeholder:text-slate-500" />
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                    <select multiple value={serie} onChange={(e) => setSerie([...e.target.selectedOptions].map((o) => o.value))} className="h-16 min-w-[12rem] rounded bg-slate-900 p-1 text-xs text-white" title="Serie (Ctrl = kilka; nic = wszystkie)">
+                    <select multiple value={serie} onChange={(e) => setSerie([...e.target.selectedOptions].map((o) => o.value))} className="h-16 min-w-48 rounded-sm bg-slate-900 p-1 text-xs text-white" title="Serie (Ctrl = kilka; nic = wszystkie)">
                         {stan?.serie.map((s) => <option key={s.seria} value={s.seria}>{s.seria}{s.lata ? ` (${s.lata})` : ''}</option>)}
                     </select>
-                    <label>lata <input value={rokOd} onChange={(e) => setRokOd(e.target.value.replace(/\D/g, ''))} placeholder="od" className="w-14 rounded bg-slate-900 px-1 py-1" /> – <input value={rokDo} onChange={(e) => setRokDo(e.target.value.replace(/\D/g, ''))} placeholder="do" className="w-14 rounded bg-slate-900 px-1 py-1" /></label>
-                    <select value={qa} onChange={(e) => setQa(e.target.value as typeof qa)} className="rounded bg-slate-900 px-2 py-1">
+                    <label>lata <input value={rokOd} onChange={(e) => setRokOd(e.target.value.replace(/\D/g, ''))} placeholder="od" className="w-14 rounded-sm bg-slate-900 px-1 py-1" /> – <input value={rokDo} onChange={(e) => setRokDo(e.target.value.replace(/\D/g, ''))} placeholder="do" className="w-14 rounded-sm bg-slate-900 px-1 py-1" /></label>
+                    <select value={qa} onChange={(e) => setQa(e.target.value as typeof qa)} className="rounded-sm bg-slate-900 px-2 py-1">
                         <option value="wszystko">Shoudy i Q&A</option><option value="bez">bez Q&A</option><option value="tylko">tylko Q&A</option>
                     </select>
                     {!!serie.length && <button onClick={() => setSerie([])} className="text-slate-400 underline">wszystkie serie</button>}

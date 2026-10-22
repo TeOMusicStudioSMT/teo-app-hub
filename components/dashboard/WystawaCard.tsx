@@ -80,8 +80,8 @@ export const WystawaCard: React.FC = () => {
 
                         {/* ── Suno ── */}
                         <div className="flex gap-1.5">
-                            <input value={suno} onChange={(e) => setSuno(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void dodajSuno(); }} placeholder="link Suno: https://suno.com/song/… albo /playlist/…" className="flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1 font-mono text-[10px] text-slate-200" />
-                            <button onClick={() => void dodajSuno()} className="rounded bg-fuchsia-500/30 px-2 text-fuchsia-100">+ Suno</button>
+                            <input value={suno} onChange={(e) => setSuno(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void dodajSuno(); }} placeholder="link Suno: https://suno.com/song/… albo /playlist/…" className="flex-1 rounded-sm border border-slate-700 bg-black/40 px-2 py-1 font-mono text-[10px] text-slate-200" />
+                            <button onClick={() => void dodajSuno()} className="rounded-sm bg-fuchsia-500/30 px-2 text-fuchsia-100">+ Suno</button>
                         </div>
                         {k.suno.length > 0 && (
                             <ul className="space-y-0.5">
@@ -102,9 +102,9 @@ export const WystawaCard: React.FC = () => {
                                     <span className="w-44 truncate text-slate-200" title={f.tytul}>{f.tytul}</span>
                                     <span className="text-slate-600">{Math.round(f.bajtow / 1e6)} MB{f.muzyka ? ' · 🎵' : ''}</span>
                                     <span className={`font-mono ${f.youtube ? 'text-red-300' : 'text-amber-300'}`}>{f.youtube ? 'YouTube' : 'tylko u gospodarza'}</span>
-                                    <input value={yt[f.id] ?? f.youtube?.url ?? ''} onChange={(e) => setYt((y) => ({ ...y, [f.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') void ustawYt(f.id); }} placeholder="link YouTube po wgraniu" className="min-w-40 flex-1 rounded border border-slate-800 bg-black/40 px-1.5 py-0.5 font-mono text-[10px] text-slate-300" />
+                                    <input value={yt[f.id] ?? f.youtube?.url ?? ''} onChange={(e) => setYt((y) => ({ ...y, [f.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') void ustawYt(f.id); }} placeholder="link YouTube po wgraniu" className="min-w-40 flex-1 rounded-sm border border-slate-800 bg-black/40 px-1.5 py-0.5 font-mono text-[10px] text-slate-300" />
                                     <button onClick={() => void ustawYt(f.id)} className="text-red-300 hover:text-red-200" title="zapisz link YouTube"><Youtube size={12} /></button>
-                                    {!f.youtube && <button onClick={async () => { const t = toast.loading('Kronikarz pisze tytuł i opis…'); try { toast.success(await przygotujZWystawy(f.id), { id: t, duration: 8000 }); } catch (e) { toast.error(e instanceof Error ? e.message : String(e), { id: t, duration: 8000 }); } }} className="rounded bg-red-600/30 px-1.5 py-0.5 text-[9px] text-red-100 hover:bg-red-600/50" title="Kronikarz przygotuje publikację — wyślesz po ✓ (Impresariat albo Izba w StoL)">📺 na YouTube</button>}
+                                    {!f.youtube && <button onClick={async () => { const t = toast.loading('Kronikarz pisze tytuł i opis…'); try { toast.success(await przygotujZWystawy(f.id), { id: t, duration: 8000 }); } catch (e) { toast.error(e instanceof Error ? e.message : String(e), { id: t, duration: 8000 }); } }} className="rounded-sm bg-red-600/30 px-1.5 py-0.5 text-[9px] text-red-100 hover:bg-red-600/50" title="Kronikarz przygotuje publikację — wyślesz po ✓ (Impresariat albo Izba w StoL)">📺 na YouTube</button>}
                                 </div>
                             ))}
                         </div>

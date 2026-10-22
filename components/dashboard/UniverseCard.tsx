@@ -80,7 +80,7 @@ export const UniverseCard: React.FC<UniverseCardProps> = ({
             {/* Background - Deep Void / Nebula */}
             <div className="absolute inset-0 bg-black">
                 {/* Base Gradient */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${getGradient()}`} />
+                <div className={`absolute inset-0 bg-linear-to-br ${getGradient()}`} />
 
                 {/* Animated Nebula Image (Placeholder) */}
                 <motion.div
@@ -116,7 +116,7 @@ export const UniverseCard: React.FC<UniverseCardProps> = ({
                     className="flex flex-col items-center"
                 >
                     {isLocked ? (
-                        <div className="mb-4 p-3 bg-white/5 rounded-full backdrop-blur-sm border border-white/10">
+                        <div className="mb-4 p-3 bg-white/5 rounded-full backdrop-blur-xs border border-white/10">
                             <FiLock className="w-8 h-8 text-gray-400" />
                         </div>
                     ) : icon && (
@@ -126,7 +126,7 @@ export const UniverseCard: React.FC<UniverseCardProps> = ({
                     )}
 
                     <h2
-                        className={`text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r ${getTextColor()} mb-2 tracking-wider font-display`}
+                        className={`text-3xl font-bold text-transparent bg-clip-text bg-linear-to-r ${getTextColor()} mb-2 tracking-wider font-display`}
                         style={{ textShadow: !isLocked ? '0 0 30px rgba(168, 85, 247, 0.6)' : 'none' }}
                     >
                         {title}

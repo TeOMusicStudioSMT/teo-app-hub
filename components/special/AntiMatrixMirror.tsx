@@ -169,7 +169,7 @@ export const AntiMatrixMirror: React.FC = () => {
           <div className="space-y-1.5">
             {noise.map((it, i) => (
               <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}
-                className={`rounded px-2.5 py-1.5 border ${it.gem ? 'border-amber-400/50 bg-amber-950/20' : 'border-zinc-800/70 bg-black/30'}`}>
+                className={`rounded-sm px-2.5 py-1.5 border ${it.gem ? 'border-amber-400/50 bg-amber-950/20' : 'border-zinc-800/70 bg-black/30'}`}>
                 <div className={`text-[12px] ${it.gem ? 'text-amber-200 font-bold' : 'text-zinc-300'}`}>
                   {it.gem ? '💎' : '🗑️'} {it.phrase}
                 </div>

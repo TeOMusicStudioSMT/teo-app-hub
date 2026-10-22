@@ -206,7 +206,7 @@ export const PanelBilans: React.FC = () => {
                             type="text" value={haslo} onChange={e => setHaslo(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && awansNaFilara()}
                             placeholder="hasło kręgu"
-                            className="flex-1 min-w-0 rounded-lg border border-slate-700 bg-black/40 px-3 py-2 text-sm outline-none focus:border-purple-500"
+                            className="flex-1 min-w-0 rounded-lg border border-slate-700 bg-black/40 px-3 py-2 text-sm outline-hidden focus:border-purple-500"
                         />
                         <button onClick={awansNaFilara} disabled={zajety || !haslo.trim()}
                             className="rounded-lg bg-purple-500 px-4 py-2 text-sm font-bold text-slate-900 disabled:opacity-40">
@@ -226,7 +226,7 @@ export const PanelBilans: React.FC = () => {
                         <div key={k.id} className="rounded-lg border border-slate-700/60 bg-black/30 p-3">
                             <div className="flex items-baseline justify-between gap-2">
                                 <span className="text-sm font-bold text-slate-200">{k.wezel}</span>
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm"
                                     style={{ color: BARWA[k.ranga ?? 'basic'], background: `${BARWA[k.ranga ?? 'basic']}1a` }}>
                                     {k.rola === 'zarzadca' ? 'zarządca' : ETYKIETA[k.ranga ?? 'basic'] ?? 'basic'}
                                 </span>
@@ -257,7 +257,7 @@ export const PanelBilans: React.FC = () => {
                 {klucze.length > 0 && (
                     <div className="space-y-1 mb-2">
                         {klucze.map(k => (
-                            <div key={k.klucz} className="flex items-center justify-between gap-2 rounded bg-black/40 px-2 py-1.5">
+                            <div key={k.klucz} className="flex items-center justify-between gap-2 rounded-sm bg-black/40 px-2 py-1.5">
                                 <code className={`text-[11px] font-mono truncate ${k.uzytyPrzez ? 'text-slate-600 line-through' : 'text-amber-200'}`}>
                                     {k.klucz}
                                 </code>
@@ -280,7 +280,7 @@ export const PanelBilans: React.FC = () => {
                             type="text" value={kluczDoUzycia} onChange={e => setKluczDoUzycia(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && uzyjKlucza()}
                             placeholder="FOUNDER-XXXX-XXXX-XXXX"
-                            className="flex-1 min-w-0 rounded-lg border border-slate-700 bg-black/40 px-3 py-2 text-sm font-mono outline-none focus:border-amber-500"
+                            className="flex-1 min-w-0 rounded-lg border border-slate-700 bg-black/40 px-3 py-2 text-sm font-mono outline-hidden focus:border-amber-500"
                         />
                         <button onClick={uzyjKlucza} disabled={zajety || !kluczDoUzycia.trim()}
                             className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-slate-900 disabled:opacity-40">
@@ -345,7 +345,7 @@ export const PanelBilans: React.FC = () => {
                                                     </span>
                                                 ) : q.doOdbioru ? (
                                                     <button onClick={() => odbierz(q)} disabled={zajety}
-                                                        className="rounded px-2.5 py-1 text-[10px] font-bold text-slate-900 shrink-0 disabled:opacity-40"
+                                                        className="rounded-sm px-2.5 py-1 text-[10px] font-bold text-slate-900 shrink-0 disabled:opacity-40"
                                                         style={{ background: BARWA[sz] }}>
                                                         Odbierz {q.nagroda.toLocaleString('pl-PL')} GRV
                                                     </button>

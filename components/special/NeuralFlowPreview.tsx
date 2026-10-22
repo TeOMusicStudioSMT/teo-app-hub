@@ -176,7 +176,7 @@ const NeuralFlowPreview: React.FC<NeuralFlowPreviewProps> = ({
                 <select
                     value={entityId}
                     onChange={e => { setEntityId(e.target.value); setSelected(null); }}
-                    className="text-[9px] font-mono px-2 py-1 rounded outline-none cursor-pointer"
+                    className="text-[9px] font-mono px-2 py-1 rounded-sm outline-hidden cursor-pointer"
                     style={{
                         background: 'rgba(0,8,20,0.9)',
                         border:     `1px solid ${entity.theme}40`,
@@ -301,7 +301,7 @@ const NeuralFlowPreview: React.FC<NeuralFlowPreviewProps> = ({
                                             WĘZEŁ DANYCH:
                                         </span>
                                         <code
-                                            className="text-[9px] truncate px-1.5 py-0.5 rounded"
+                                            className="text-[9px] truncate px-1.5 py-0.5 rounded-sm"
                                             style={{ background: 'rgba(255,255,255,0.05)', color: '#e2e8f0' }}
                                             title={selectedNode.dataPath}
                                         >
@@ -309,7 +309,7 @@ const NeuralFlowPreview: React.FC<NeuralFlowPreviewProps> = ({
                                         </code>
                                         <button
                                             onClick={() => copyPath(selectedNode.dataPath)}
-                                            className="text-[9px] shrink-0 px-2 py-0.5 rounded transition-all"
+                                            className="text-[9px] shrink-0 px-2 py-0.5 rounded-sm transition-all"
                                             style={{
                                                 border: `1px solid ${entity.theme}55`,
                                                 color:  pathCopied ? '#4ade80' : entity.theme,

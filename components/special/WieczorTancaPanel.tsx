@@ -46,19 +46,19 @@ export const WieczorTancaPanel: React.FC = () => {
             {u && (
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-1"><input type="checkbox" checked={u.auto} onChange={(e) => void wolaj('/api/wieczor-tanca/ustawienia', 'PUT', { auto: e.target.checked }, e.target.checked ? 'Wieczór rusza sam po każdym nagraniu występu' : 'Wieczór wyłączony')} /> rusza sam po nagraniu występu</label>
-                    <select value={u.jezyk} onChange={(e) => void wolaj('/api/wieczor-tanca/ustawienia', 'PUT', { jezyk: e.target.value }, 'Język wieczoru zmieniony')} className="rounded bg-slate-900 px-1">
+                    <select value={u.jezyk} onChange={(e) => void wolaj('/api/wieczor-tanca/ustawienia', 'PUT', { jezyk: e.target.value }, 'Język wieczoru zmieniony')} className="rounded-sm bg-slate-900 px-1">
                         <option value="en">🇬🇧 English</option><option value="pl">🇵🇱 polski</option>
                     </select>
                     <span className="text-slate-400">choreograf na kanapie: <b>{u.choreograf}</b> · prowadzą: {[u.narrator, ...u.wspolprowadzacy].join(' + ')}</span>
                 </div>
             )}
             <div className="mb-2 flex flex-wrap gap-2">
-                <button className="rounded border border-emerald-500/40 px-2 py-1 text-emerald-200" onClick={() => otworzApke({ id: 'studio-zebrra', tytul: 'Studio Zebrra Sports', url: `${MOST}/apki/studio-zebrra/`, znak: '🦓', kolor: '#22c55e' })}>🦓 Studio Zebrra Sports (🤖 automat)</button>
-                <button className="rounded border border-fuchsia-500/40 px-2 py-1 text-fuchsia-200" onClick={() => otworzApke({ id: 'mame-leon', tytul: 'Mame Leon Show', url: `${MOST}/apki/studio-zebrra/mame-leon.html`, znak: '🦎', kolor: '#e879f9' })}>🦎 Mame Leon (🤖 automat)</button>
+                <button className="rounded-sm border border-emerald-500/40 px-2 py-1 text-emerald-200" onClick={() => otworzApke({ id: 'studio-zebrra', tytul: 'Studio Zebrra Sports', url: `${MOST}/apki/studio-zebrra/`, znak: '🦓', kolor: '#22c55e' })}>🦓 Studio Zebrra Sports (🤖 automat)</button>
+                <button className="rounded-sm border border-fuchsia-500/40 px-2 py-1 text-fuchsia-200" onClick={() => otworzApke({ id: 'mame-leon', tytul: 'Mame Leon Show', url: `${MOST}/apki/studio-zebrra/mame-leon.html`, znak: '🦎', kolor: '#e879f9' })}>🦎 Mame Leon (🤖 automat)</button>
             </div>
             <div className="mb-2 text-slate-500">Studia nagrywają same, gdy w ich karcie zaznaczysz „🤖 Automat nagrywania — 🌙 Wieczór Tańca” i karta zostanie otwarta (Pierścień trzyma ją w tle).</div>
             {(s?.wieczory ?? []).slice(0, 8).map((w) => (
-                <div key={w.id} className="mb-2 rounded border border-slate-700 p-2">
+                <div key={w.id} className="mb-2 rounded-sm border border-slate-700 p-2">
                     <div><b>{w.tancerz}</b> · „{w.choreografia.utwor}” · {w.choreografia.ocena ?? '—'}/100 · {w.jezyk} · <span className="text-indigo-200">{STAN[w.stan] ?? w.stan}</span></div>
                     <div className="mt-1 flex flex-wrap gap-3">
                         {(s?.czesci ?? []).map((k) => {
@@ -69,10 +69,10 @@ export const WieczorTancaPanel: React.FC = () => {
                     {w.powod && w.stan === 'czeka' && <div className="mt-1 text-slate-400">{w.powod}</div>}
                     <div className="mt-1 flex flex-wrap gap-2">
                         {['czeka', 'sklejony', 'do_akceptacji'].includes(w.stan) && (s?.czesci ?? []).filter((k) => w.czesci[k]?.stan === 'blad').map((k) => (
-                            <button key={k} className="rounded border border-slate-600 px-2" onClick={() => void wolaj(`/api/wieczor-tanca/${w.id}/sklej`, 'POST', { pomin: [k] }, `Sklejone bez: ${s?.nazwy[k]}`)}>🧩 sklej bez {s?.nazwy[k]}</button>
+                            <button key={k} className="rounded-sm border border-slate-600 px-2" onClick={() => void wolaj(`/api/wieczor-tanca/${w.id}/sklej`, 'POST', { pomin: [k] }, `Sklejone bez: ${s?.nazwy[k]}`)}>🧩 sklej bez {s?.nazwy[k]}</button>
                         ))}
-                        {w.stan === 'czeka' && <button className="rounded border border-slate-600 px-2" onClick={() => void wolaj(`/api/wieczor-tanca/${w.id}/sklej`, 'POST', {}, 'Wieczór sklejony')}>🧩 sklej teraz</button>}
-                        <button className="rounded border border-slate-700 px-2 text-slate-400" onClick={() => { if (confirm('Usunąć ten wieczór? (odcinki Game Show, Zebrra i Mame Leon zostają osobno)')) void wolaj(`/api/wieczor-tanca/${w.id}`, 'DELETE', {}, 'Wieczór usunięty'); }}>🗑</button>
+                        {w.stan === 'czeka' && <button className="rounded-sm border border-slate-600 px-2" onClick={() => void wolaj(`/api/wieczor-tanca/${w.id}/sklej`, 'POST', {}, 'Wieczór sklejony')}>🧩 sklej teraz</button>}
+                        <button className="rounded-sm border border-slate-700 px-2 text-slate-400" onClick={() => { if (confirm('Usunąć ten wieczór? (odcinki Game Show, Zebrra i Mame Leon zostają osobno)')) void wolaj(`/api/wieczor-tanca/${w.id}`, 'DELETE', {}, 'Wieczór usunięty'); }}>🗑</button>
                     </div>
                 </div>
             ))}

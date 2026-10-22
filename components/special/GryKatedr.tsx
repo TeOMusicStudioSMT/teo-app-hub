@@ -119,11 +119,11 @@ export default function GryKatedr() {
                             <div className="text-[10px] text-zinc-500">{g.udostepniona ? `udostępniona ${g.udostepniona.wersja} · paczka ${Math.round(g.udostepniona.bajtow / MB)} MB${g.udostepniona.lekka ? ` · 📱 telefon: cała gra z lekkimi bryłami ${Math.round(g.udostepniona.lekka / MB)} MB` : ''} · ${g.udostepniona.cenaGRV} GRV` : 'tylko w tej Katedrze'}</div>
                         </div>
                         <input value={ceny[g.id] ?? String(g.udostepniona?.cenaGRV ?? 333)} onChange={(e) => setCeny({ ...ceny, [g.id]: e.target.value.replace(/\D/g, '') })} title="Cena w GRV — płatność przelewem między Katedrami z pokwitowaniami"
-                            className="w-20 rounded border border-zinc-700 bg-black/50 px-2 py-1 text-xs text-amber-200" />
-                        <button disabled={!!praca || !stan?.nick} onClick={() => void udostepnij(g)} className="rounded border border-emerald-500/50 px-3 py-1 text-xs font-bold text-emerald-300 hover:bg-emerald-950/40 disabled:opacity-40">
+                            className="w-20 rounded-sm border border-zinc-700 bg-black/50 px-2 py-1 text-xs text-amber-200" />
+                        <button disabled={!!praca || !stan?.nick} onClick={() => void udostepnij(g)} className="rounded-sm border border-emerald-500/50 px-3 py-1 text-xs font-bold text-emerald-300 hover:bg-emerald-950/40 disabled:opacity-40">
                             {praca === g.id ? '⏳' : g.udostepniona ? '↻ Nowa paczka' : '🏝️ Udostępnij grę'}
                         </button>
-                        {g.udostepniona && <button disabled={!!praca} onClick={() => void wycofaj(g)} className="rounded border border-rose-500/40 px-3 py-1 text-xs text-rose-300 hover:bg-rose-950/40 disabled:opacity-40">✕ Wycofaj</button>}
+                        {g.udostepniona && <button disabled={!!praca} onClick={() => void wycofaj(g)} className="rounded-sm border border-rose-500/40 px-3 py-1 text-xs text-rose-300 hover:bg-rose-950/40 disabled:opacity-40">✕ Wycofaj</button>}
                     </div>
                 ))}
             </section>
@@ -134,8 +134,8 @@ export default function GryKatedr() {
                     {zainstalowane.map((g) => (
                         <div key={g.id} className="flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-black/30 p-3">
                             <div className="min-w-0 flex-1"><div className="truncate font-bold text-emerald-200">{g.nazwa}</div><div className="text-[10px] text-zinc-500">od „{g.zainstalowana!.nick}” · {g.zainstalowana!.wersja}</div></div>
-                            <button disabled={!!praca} onClick={() => void pokazOferte(g.zainstalowana!.nick, { id: g.zainstalowana!.gra })} title="Sprawdź nową wersję — pobiera tylko zmienione pliki (podpisana lista)" className="rounded border border-sky-500/50 px-3 py-1 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-40">↻ Aktualizuj</button>
-                            <button onClick={() => zagraj(g)} className="rounded border border-emerald-500/50 px-3 py-1 text-xs font-bold text-emerald-300 hover:bg-emerald-950/40">▶ Zagraj</button>
+                            <button disabled={!!praca} onClick={() => void pokazOferte(g.zainstalowana!.nick, { id: g.zainstalowana!.gra })} title="Sprawdź nową wersję — pobiera tylko zmienione pliki (podpisana lista)" className="rounded-sm border border-sky-500/50 px-3 py-1 text-xs text-sky-300 hover:bg-sky-950/40 disabled:opacity-40">↻ Aktualizuj</button>
+                            <button onClick={() => zagraj(g)} className="rounded-sm border border-emerald-500/50 px-3 py-1 text-xs font-bold text-emerald-300 hover:bg-emerald-950/40">▶ Zagraj</button>
                         </div>
                     ))}
                 </section>
@@ -148,7 +148,7 @@ export default function GryKatedr() {
                 {siec?.map((k) => k.gry.map((g) => (
                     <div key={`${k.nick}/${g.id}`} className="flex items-center gap-2 rounded-lg border border-zinc-800/70 bg-black/30 p-3">
                         <div className="min-w-0 flex-1"><div className="truncate font-bold text-sky-200">{g.nazwa}</div><div className="text-[10px] text-zinc-500">Katedra „{k.nick}” · {g.wersja} · {Math.round(g.bajtow / MB)} MB</div></div>
-                        <button disabled={!!praca} onClick={() => void pokazOferte(k.nick, g)} className="rounded border border-sky-500/50 px-3 py-1 text-xs font-bold text-sky-300 hover:bg-sky-950/40 disabled:opacity-40">
+                        <button disabled={!!praca} onClick={() => void pokazOferte(k.nick, g)} className="rounded-sm border border-sky-500/50 px-3 py-1 text-xs font-bold text-sky-300 hover:bg-sky-950/40 disabled:opacity-40">
                             {praca === `${k.nick}/${g.id}` ? '⏳' : '💳 Kup i zainstaluj'}
                         </button>
                     </div>
@@ -162,10 +162,10 @@ export default function GryKatedr() {
                         : oferta.zaplacone ? <p className="text-emerald-300">Już zapłacone (pokwitowanie w rozliczeniach) — instalacja bez płacenia.</p>
                         : <p className="text-zinc-300">Cena: <b className="text-amber-300">{oferta.cenaGRV} GRV</b>. Twoja księga odłoży kwotę, Katedra „{oferta.autor}” dopisze ją u siebie i odeśle pokwitowanie podpisane swoim kluczem — dopiero wtedy paczka. Odrzucone = zwrot; zerwane łącze = GRV czekają, „↻ Ponów” w rozliczeniach.</p>}
                     <div className="flex gap-2">
-                        {oferta.cenaGRV != null && <button disabled={!!praca} onClick={() => void kup(oferta)} className="rounded border border-emerald-500/60 bg-emerald-900/40 px-3 py-1 font-bold text-emerald-200 disabled:opacity-40">
+                        {oferta.cenaGRV != null && <button disabled={!!praca} onClick={() => void kup(oferta)} className="rounded-sm border border-emerald-500/60 bg-emerald-900/40 px-3 py-1 font-bold text-emerald-200 disabled:opacity-40">
                             {praca ? '⏳' : oferta.cenaGRV > 0 && !oferta.zaplacone ? `💳 Zapłać ${oferta.cenaGRV} GRV i zainstaluj` : '📥 Zainstaluj'}
                         </button>}
-                        <button disabled={!!praca} onClick={() => setOferta(null)} className="rounded border border-zinc-600 px-3 py-1 text-zinc-300">Anuluj</button>
+                        <button disabled={!!praca} onClick={() => setOferta(null)} className="rounded-sm border border-zinc-600 px-3 py-1 text-zinc-300">Anuluj</button>
                     </div>
                 </div>
             )}
@@ -175,7 +175,7 @@ export default function GryKatedr() {
                     {rozl.zakupy.map((z) => (
                         <div key={z.id} className="flex items-center gap-2 text-[11px] text-zinc-300">
                             <span className="flex-1">↗ {z.kwota} GRV → „{z.do}” za {z.gra} · <b className={z.stan === 'potwierdzona' ? 'text-emerald-300' : z.stan === 'zwrot' ? 'text-zinc-400' : 'text-amber-300'}>{z.stan === 'potwierdzona' ? 'pokwitowane' : z.stan === 'zwrot' ? 'zwrot' : 'czeka'}</b>{z.blad ? <span className="text-zinc-500"> — {z.blad}</span> : null}</span>
-                            {z.stan === 'wyslana' && <button disabled={!!praca} onClick={() => void ponow(z.id)} className="rounded border border-amber-500/50 px-2 text-amber-200">↻ Ponów</button>}
+                            {z.stan === 'wyslana' && <button disabled={!!praca} onClick={() => void ponow(z.id)} className="rounded-sm border border-amber-500/50 px-2 text-amber-200">↻ Ponów</button>}
                         </div>
                     ))}
                     {rozl.sprzedaz.map((z) => <div key={z.id} className="text-[11px] text-zinc-300">↙ {z.kwota} GRV od „{z.od}” za {z.gra} · <b className="text-emerald-300">dopisane, pokwitowanie wysłane</b> <span className="text-zinc-500">{new Date(z.kiedy).toLocaleString('pl-PL')}</span></div>)}

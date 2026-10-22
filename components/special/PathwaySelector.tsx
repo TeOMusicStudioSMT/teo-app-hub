@@ -46,7 +46,7 @@ const PathwaySelector: React.FC<PathwaySelectorProps> = ({ onSelectPath }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center p-8 relative overflow-hidden">
+    <div className="min-h-screen bg-linear-to-b from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center p-8 relative overflow-hidden">
       {/* Tło - mgławica */}
       <div className="absolute inset-0 opacity-30">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500 rounded-full blur-3xl animate-pulse" />
@@ -60,7 +60,7 @@ const PathwaySelector: React.FC<PathwaySelectorProps> = ({ onSelectPath }) => {
         transition={{ duration: 1 }}
         className="relative z-10 text-center mb-16"
       >
-        <h1 className="text-5xl md:text-7xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-200 mb-4">
+        <h1 className="text-5xl md:text-7xl font-bold text-transparent bg-clip-text bg-linear-to-r from-amber-200 via-yellow-400 to-amber-200 mb-4">
           WYBIERZ ŚCIEŻKĘ
         </h1>
         <p className="text-slate-400 text-xl md:text-2xl font-light">
@@ -121,7 +121,7 @@ const PathwaySelector: React.FC<PathwaySelectorProps> = ({ onSelectPath }) => {
                   initial={{ scale: 0, opacity: 0 }}
                   animate={{ scale: 3, opacity: [0, 0.8, 0] }}
                   transition={{ duration: 2, ease: "easeOut" }}
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-gradient-to-r from-violet-500 to-purple-500 rounded-full blur-3xl"
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-linear-to-r from-violet-500 to-purple-500 rounded-full blur-3xl"
                 />
                 <motion.div
                   initial={{ y: 0, opacity: 0 }}
@@ -141,7 +141,7 @@ const PathwaySelector: React.FC<PathwaySelectorProps> = ({ onSelectPath }) => {
                   initial={{ scale: 0, opacity: 0 }}
                   animate={{ scale: 3, opacity: [0, 0.8, 0] }}
                   transition={{ duration: 2, ease: "easeOut" }}
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-gradient-to-r from-amber-500 to-orange-500 rounded-full blur-3xl"
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-linear-to-r from-amber-500 to-orange-500 rounded-full blur-3xl"
                 />
                 <motion.div
                   initial={{ y: 0, opacity: 0 }}
@@ -206,7 +206,7 @@ const PathwayCard: React.FC<PathwayCardProps> = ({
       disabled={isAnimating}
       className={`
         relative group p-8 md:p-12 rounded-3xl 
-        bg-gradient-to-br ${gradient}
+        bg-linear-to-br ${gradient}
         border-2 border-slate-700/50
         transition-all duration-500
         ${isSelected ? 'scale-105' : ''}
@@ -218,7 +218,7 @@ const PathwayCard: React.FC<PathwayCardProps> = ({
       }}
     >
       {/* Inner glow */}
-      <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      <div className="absolute inset-0 rounded-3xl bg-linear-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
       {/* Ikona */}
       <div className="text-white mb-6 flex justify-center">

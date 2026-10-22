@@ -1365,7 +1365,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
             className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all shadow-lg ${
               isBroadcasting
                 ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/50 animate-pulse'
-                : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black shadow-cyan-500/30'
+                : 'bg-linear-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black shadow-cyan-500/30'
             }`}
           >
             {isBroadcasting ? '● LIVE RTMP' : 'START BROADCAST'}
@@ -1420,27 +1420,27 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
               {/* VU meter — z tego reżyser czyta, kto mówi */}
               <div className="absolute left-0 right-0 bottom-0 h-1.5 bg-black/60">
                 <div
-                  className="h-full bg-gradient-to-r from-emerald-400 via-yellow-300 to-red-500 transition-[width] duration-100"
+                  className="h-full bg-linear-to-r from-emerald-400 via-yellow-300 to-red-500 transition-[width] duration-100"
                   style={{ width: `${levelOf(slot.id)}%` }}
                 />
               </div>
 
               <div className="absolute top-1 left-1 flex items-center gap-1">
-                <span className="bg-black/70 px-1.5 py-0.5 rounded text-[9px] font-mono border border-white/10">{slot.tag}</span>
-                {micSlot === slot.id && <span className="bg-emerald-500/80 text-black px-1.5 py-0.5 rounded text-[9px] font-mono">MIC</span>}
+                <span className="bg-black/70 px-1.5 py-0.5 rounded-sm text-[9px] font-mono border border-white/10">{slot.tag}</span>
+                {micSlot === slot.id && <span className="bg-emerald-500/80 text-black px-1.5 py-0.5 rounded-sm text-[9px] font-mono">MIC</span>}
               </div>
 
               <div className="absolute top-1 right-1 flex gap-1">
                 <button
                   onClick={(e) => { e.stopPropagation(); setMicSlot(slot.id); }}
                   title="Ten wejście zostaje mikrofonem anteny"
-                  className="bg-black/70 hover:bg-emerald-600/70 px-1.5 py-0.5 rounded text-[9px] font-mono border border-white/10"
+                  className="bg-black/70 hover:bg-emerald-600/70 px-1.5 py-0.5 rounded-sm text-[9px] font-mono border border-white/10"
                 >
                   🎙
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); if (camActive[slot.id]) stopCam(slot.id); else void startCam(slot.id); }}
-                  className="bg-black/70 hover:bg-cyan-600/70 px-1.5 py-0.5 rounded text-[9px] font-mono border border-white/10"
+                  className="bg-black/70 hover:bg-cyan-600/70 px-1.5 py-0.5 rounded-sm text-[9px] font-mono border border-white/10"
                 >
                   {camActive[slot.id] ? '■' : '▶'}
                 </button>
@@ -1459,7 +1459,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
             <span className="mt-1 text-[9px] font-mono tracking-widest text-cyan-300">AI ORB</span>
             <div className="absolute left-0 right-0 bottom-0 h-1.5 bg-black/60">
               <div
-                className="h-full bg-gradient-to-r from-violet-400 via-fuchsia-400 to-red-500 transition-[width] duration-100"
+                className="h-full bg-linear-to-r from-violet-400 via-fuchsia-400 to-red-500 transition-[width] duration-100"
                 style={{ width: `${levelOf('ORB')}%` }}
               />
             </div>
@@ -1485,7 +1485,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
           <span className="text-[10px] font-mono tracking-widest text-gray-400">🎛️ PRZYPISANIE KAMER</span>
           <button
             onClick={() => void refreshDevices()}
-            className="px-2.5 py-1 rounded text-[10px] font-mono bg-white/5 border border-white/10 hover:bg-white/10"
+            className="px-2.5 py-1 rounded-sm text-[10px] font-mono bg-white/5 border border-white/10 hover:bg-white/10"
           >
             ODŚWIEŻ ({devices.length})
           </button>
@@ -1501,7 +1501,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
                   setCamDevice((prev) => ({ ...prev, [slot.id]: id }));
                   if (camActive[slot.id]) { stopCam(slot.id); void startCam(slot.id, id); }
                 }}
-                className="flex-1 min-w-0 bg-black/50 border border-cyan-700/30 rounded-md px-2 py-1 text-[10px] text-slate-300 outline-none"
+                className="flex-1 min-w-0 bg-black/50 border border-cyan-700/30 rounded-md px-2 py-1 text-[10px] text-slate-300 outline-hidden"
               >
                 <option value="">— domyślne urządzenie —</option>
                 {devices.map((d, i) => (
@@ -1564,12 +1564,12 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
             onChange={(e) => setOrbPrompt(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && askOrb(orbPrompt)}
             placeholder="Zapytaj AI Orba na antenie — wnioski lecą prosto do Księgi Odbioru..."
-            className="flex-1 bg-black/50 border border-cyan-700/30 focus:border-cyan-500/60 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none"
+            className="flex-1 bg-black/50 border border-cyan-700/30 focus:border-cyan-500/60 rounded-lg px-3 py-2 text-xs text-slate-200 outline-hidden"
           />
           <button
             onClick={() => askOrb(orbPrompt)}
             disabled={orbBusy || !orbPrompt.trim()}
-            className="px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest bg-gradient-to-r from-cyan-500 to-blue-600 text-black disabled:opacity-40 transition-all"
+            className="px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest bg-linear-to-r from-cyan-500 to-blue-600 text-black disabled:opacity-40 transition-all"
           >
             {orbBusy ? 'MYŚLI...' : 'ZAPYTAJ ORB'}
           </button>
@@ -1597,7 +1597,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
             </span>
             <button
               onClick={() => void refreshVoice()}
-              className="px-2 py-0.5 rounded text-[10px] font-mono bg-white/5 border border-white/10 hover:bg-white/10"
+              className="px-2 py-0.5 rounded-sm text-[10px] font-mono bg-white/5 border border-white/10 hover:bg-white/10"
             >
               ODŚWIEŻ
             </button>
@@ -1621,7 +1621,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
               value={voiceId}
               onChange={(e) => setVoiceId(e.target.value)}
               title="Aktywny profil głosowy AI Orba"
-              className="bg-black/50 border border-violet-700/40 rounded-md px-2 py-1.5 text-[11px] text-slate-200 outline-none"
+              className="bg-black/50 border border-violet-700/40 rounded-md px-2 py-1.5 text-[11px] text-slate-200 outline-hidden"
             >
               <option value={SONIC_VOICE_ID}>🎚️ Domyślny SONIC — bezpieczny profil</option>
               <option value="ISKRA">🔥 ISKRA — wysoki, żywy</option>
@@ -1660,7 +1660,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
           />
           {sampling && (
             <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-violet-400 to-fuchsia-400 transition-all" style={{ width: `${sampleProgress}%` }} />
+              <div className="h-full bg-linear-to-r from-violet-400 to-fuchsia-400 transition-all" style={{ width: `${sampleProgress}%` }} />
             </div>
           )}
 
@@ -1689,7 +1689,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
             value={episodeTitle}
             onChange={(e) => setEpisodeTitle(e.target.value)}
             placeholder="Tytuł odcinka (nazwa pliku)"
-            className="bg-black/50 border border-amber-700/30 focus:border-amber-500/60 rounded-lg px-3 py-2 text-[11px] text-slate-200 outline-none w-56"
+            className="bg-black/50 border border-amber-700/30 focus:border-amber-500/60 rounded-lg px-3 py-2 text-[11px] text-slate-200 outline-hidden w-56"
           />
 
           <button
@@ -1723,7 +1723,7 @@ export const PodcastCore: React.FC<PodcastCoreProps> = ({
             value={rtmpKeyInput}
             onChange={(e) => setRtmpKeyInput(e.target.value)}
             placeholder="Klucz transmisji YouTube (zostaje na Moście)"
-            className="flex-1 min-w-[200px] bg-black/50 border border-cyan-700/30 focus:border-cyan-500/60 rounded-lg px-3 py-1.5 text-[11px] text-slate-200 outline-none"
+            className="flex-1 min-w-[200px] bg-black/50 border border-cyan-700/30 focus:border-cyan-500/60 rounded-lg px-3 py-1.5 text-[11px] text-slate-200 outline-hidden"
           />
           <button
             onClick={() => void saveRtmpKey()}

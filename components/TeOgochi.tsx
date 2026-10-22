@@ -76,7 +76,7 @@ export const TeOgochi: React.FC = () => {
     }, [radio.isPlaying, radio.currentLyric, radio.currentTrack]);
 
     return (
-        <div className="flex items-start gap-3 px-4 py-3 bg-slate-900/60 border border-purple-500/20 rounded-xl backdrop-blur-sm">
+        <div className="flex items-start gap-3 px-4 py-3 bg-slate-900/60 border border-purple-500/20 rounded-xl backdrop-blur-xs">
             <motion.div
                 animate={{ y: [0, -4, 0] }}
                 transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}

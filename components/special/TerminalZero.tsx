@@ -434,10 +434,10 @@ export const TerminalZero: React.FC = () => {
                     
                     {/* Źródło Mocy */}
                     <div className="flex items-center gap-1 bg-black p-1 rounded-lg border border-slate-700 hidden sm:flex">
-                        <button onClick={() => setComputePower('LOCAL')} className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-bold transition-all ${computePower === 'LOCAL' ? 'bg-emerald-900/50 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'text-slate-500 hover:text-slate-400'}`}>
+                        <button onClick={() => setComputePower('LOCAL')} className={`flex items-center gap-1 px-2 py-1 rounded-sm text-[9px] font-bold transition-all ${computePower === 'LOCAL' ? 'bg-emerald-900/50 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'text-slate-500 hover:text-slate-400'}`}>
                             <Cpu size={12} /> LOKAL
                         </button>
-                        <button onClick={() => setComputePower('CLOUD_MAGISTRALA')} className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-bold transition-all ${computePower === 'CLOUD_MAGISTRALA' ? 'bg-fuchsia-900/50 text-fuchsia-400 shadow-[0_0_10px_rgba(217,70,239,0.3)]' : 'text-slate-500 hover:text-slate-400'}`}>
+                        <button onClick={() => setComputePower('CLOUD_MAGISTRALA')} className={`flex items-center gap-1 px-2 py-1 rounded-sm text-[9px] font-bold transition-all ${computePower === 'CLOUD_MAGISTRALA' ? 'bg-fuchsia-900/50 text-fuchsia-400 shadow-[0_0_10px_rgba(217,70,239,0.3)]' : 'text-slate-500 hover:text-slate-400'}`}>
                             <Cloud size={12} /> MAGISTRALA
                         </button>
                     </div>
@@ -450,7 +450,7 @@ export const TerminalZero: React.FC = () => {
                     {/* Aktywny Model */}
                     <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700">
                         <Server size={14} className="text-emerald-400 hidden md:block" />
-                        <button onClick={otworzMozg} title="Model ustawia się w jednym miejscu: TeO-Sim → Mózg Katedry" className="bg-transparent text-[10px] md:text-xs text-emerald-300 outline-none max-w-32 truncate cursor-pointer hover:text-emerald-200">🧠 {activeModel || '—'}</button>
+                        <button onClick={otworzMozg} title="Model ustawia się w jednym miejscu: TeO-Sim → Mózg Katedry" className="bg-transparent text-[10px] md:text-xs text-emerald-300 outline-hidden max-w-32 truncate cursor-pointer hover:text-emerald-200">🧠 {activeModel || '—'}</button>
                         <button onClick={fetchModels} className="text-slate-500 hover:text-cyan-400" title="Odśwież Listę Modeli"><RefreshCw size={14} /></button>
                     </div>
                     
@@ -485,7 +485,7 @@ export const TerminalZero: React.FC = () => {
                                 <div className="bg-black/40 p-3 rounded-xl border border-slate-800 shrink-0">
                                     <h3 className="text-[10px] font-bold text-fuchsia-400 mb-2 flex items-center gap-2"><DownloadCloud size={14} /> PULL - POBIERZ MODEL</h3>
                                     <div className="flex gap-2">
-                                        <input type="text" value={modelToPull} onChange={(e) => setModelToPull(e.target.value)} placeholder="np. qwen2.5-coder:7b" className="flex-1 bg-black border border-slate-700 rounded-lg px-2 py-1.5 text-[10px] text-white outline-none focus:border-fuchsia-500" onKeyDown={(e) => e.key === 'Enter' && pullModel()} />
+                                        <input type="text" value={modelToPull} onChange={(e) => setModelToPull(e.target.value)} placeholder="np. qwen2.5-coder:7b" className="flex-1 bg-black border border-slate-700 rounded-lg px-2 py-1.5 text-[10px] text-white outline-hidden focus:border-fuchsia-500" onKeyDown={(e) => e.key === 'Enter' && pullModel()} />
                                         <button onClick={pullModel} disabled={isPulling || !modelToPull.trim()} className="bg-fuchsia-900/40 hover:bg-fuchsia-800/60 text-fuchsia-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"><Zap size={14} /></button>
                                     </div>
                                 </div>
@@ -495,7 +495,7 @@ export const TerminalZero: React.FC = () => {
                                     <h3 className="text-[10px] font-bold text-slate-500 mb-2 flex items-center gap-2"><Database size={14} /> BAZA LOKALNA</h3>
                                     <div className="space-y-1.5 overflow-y-auto custom-scrollbar pr-1">
                                         {availableModels.map(m => (
-                                            <div key={m} onClick={() => { setActiveModel(m); localStorage.setItem('otakos_active_model', m); addSystemMessage(`🔌 Podłączono do rdzenia: ${m}`, 'system'); }} className={`text-[9px] p-1.5 rounded border cursor-pointer transition-colors ${m === activeModel ? 'bg-cyan-900/20 border-cyan-500/50 text-cyan-300 font-bold' : 'bg-black/50 border-slate-800 text-slate-400 hover:border-slate-600'}`}>{m}</div>
+                                            <div key={m} onClick={() => { setActiveModel(m); localStorage.setItem('otakos_active_model', m); addSystemMessage(`🔌 Podłączono do rdzenia: ${m}`, 'system'); }} className={`text-[9px] p-1.5 rounded-sm border cursor-pointer transition-colors ${m === activeModel ? 'bg-cyan-900/20 border-cyan-500/50 text-cyan-300 font-bold' : 'bg-black/50 border-slate-800 text-slate-400 hover:border-slate-600'}`}>{m}</div>
                                         ))}
                                     </div>
                                 </div>
@@ -504,11 +504,11 @@ export const TerminalZero: React.FC = () => {
                                 <div className="bg-black/40 p-3 rounded-xl border border-amber-500/20 flex-1 flex flex-col min-h-[220px]">
                                     <h3 className="text-[10px] font-bold text-amber-500 mb-2 flex items-center gap-2"><Wrench size={14} /> KUŹNIA DUSZ (Modelfile)</h3>
                                     <div className="flex flex-col gap-2 flex-1">
-                                        <select value={baseModelForForge} onChange={(e) => setBaseModelForForge(e.target.value)} className="bg-black border border-slate-700 rounded-lg px-2 py-1.5 text-[9px] text-white outline-none shrink-0">
+                                        <select value={baseModelForForge} onChange={(e) => setBaseModelForForge(e.target.value)} className="bg-black border border-slate-700 rounded-lg px-2 py-1.5 text-[9px] text-white outline-hidden shrink-0">
                                             {availableModels?.map?.(m => <option key={m} value={m}>{m}</option>)}
                                         </select>
-                                        <input type="text" value={newModelName} onChange={(e) => setNewModelName(e.target.value)} placeholder="Nazwa Agenta (np. mistrz_kodu)" className="bg-black border border-slate-700 rounded-lg px-2 py-1.5 text-[10px] text-white outline-none focus:border-amber-500 shrink-0" />
-                                        <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} placeholder="Instrukcja systemowa (Dusza)..." className="flex-1 min-h-[60px] bg-black border border-slate-700 rounded-lg px-2 py-1.5 text-[9px] text-white outline-none focus:border-amber-500 resize-none custom-scrollbar" />
+                                        <input type="text" value={newModelName} onChange={(e) => setNewModelName(e.target.value)} placeholder="Nazwa Agenta (np. mistrz_kodu)" className="bg-black border border-slate-700 rounded-lg px-2 py-1.5 text-[10px] text-white outline-hidden focus:border-amber-500 shrink-0" />
+                                        <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} placeholder="Instrukcja systemowa (Dusza)..." className="flex-1 min-h-[60px] bg-black border border-slate-700 rounded-lg px-2 py-1.5 text-[9px] text-white outline-hidden focus:border-amber-500 resize-none custom-scrollbar" />
                                         <button onClick={forgeModel} disabled={isForging || !newModelName} className="py-2 mt-auto bg-amber-900/40 hover:bg-amber-800/60 text-amber-400 border border-amber-500/30 rounded-lg text-[9px] font-bold transition-colors shrink-0 disabled:opacity-50">
                                             ROZPOCZNIJ KUCIE
                                         </button>
@@ -524,7 +524,7 @@ export const TerminalZero: React.FC = () => {
                                             value={filePathToAttach} 
                                             onChange={(e) => setFilePathToAttach(e.target.value)} 
                                             placeholder="Ścieżka do pliku (kontekst)" 
-                                            className="flex-1 bg-black border border-slate-700 rounded-lg px-2 py-1.5 text-[9px] text-white outline-none focus:border-cyan-500" 
+                                            className="flex-1 bg-black border border-slate-700 rounded-lg px-2 py-1.5 text-[9px] text-white outline-hidden focus:border-cyan-500" 
                                             onKeyDown={(e) => e.key === 'Enter' && loadFileToContext()} 
                                         />
                                         <button 
@@ -539,7 +539,7 @@ export const TerminalZero: React.FC = () => {
                                     {/* Lista załączonych plików */}
                                     <div className="space-y-1 max-h-[100px] overflow-y-auto custom-scrollbar">
                                         {attachedFiles.map((file, idx) => (
-                                            <div key={idx} className="flex justify-between items-center bg-cyan-950/20 border border-cyan-900/40 px-2 py-1 rounded text-[8px] text-cyan-200">
+                                            <div key={idx} className="flex justify-between items-center bg-cyan-950/20 border border-cyan-900/40 px-2 py-1 rounded-sm text-[8px] text-cyan-200">
                                                 <span className="truncate max-w-[160px]">{file.path}</span>
                                                 <button onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== idx))} className="text-slate-500 hover:text-red-400"><X size={10} /></button>
                                             </div>
@@ -671,7 +671,7 @@ export const TerminalZero: React.FC = () => {
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
                                     placeholder="np. Napisz skrypt w Pythonie analizujący..." 
-                                    className="w-full bg-black/60 border border-slate-700 rounded-xl p-4 text-sm text-amber-100 outline-none focus:border-amber-500 focus:shadow-[0_0_15px_rgba(245,158,11,0.2)] transition-all font-mono resize-none min-h-[100px] custom-scrollbar"
+                                    className="w-full bg-black/60 border border-slate-700 rounded-xl p-4 text-sm text-amber-100 outline-hidden focus:border-amber-500 focus:shadow-[0_0_15px_rgba(245,158,11,0.2)] transition-all font-mono resize-none min-h-[100px] custom-scrollbar"
                                 />
                                 <div className="flex justify-end gap-3">
                                     <button 
@@ -704,7 +704,7 @@ export const TerminalZero: React.FC = () => {
                                         activeSkill === 'CODE' ? "Opisz skrypt do wygenerowania..." :
                                         "Wpisz polecenie..."
                                     }
-                                    className="flex-1 bg-black/60 border border-slate-700 rounded-xl px-4 py-3 text-sm text-cyan-100 outline-none focus:border-cyan-500 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all font-mono resize-none custom-scrollbar"
+                                    className="flex-1 bg-black/60 border border-slate-700 rounded-xl px-4 py-3 text-sm text-cyan-100 outline-hidden focus:border-cyan-500 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all font-mono resize-none custom-scrollbar"
                                 />
                                 <button 
                                     onClick={() => sendMessage()} 
@@ -737,7 +737,7 @@ export const TerminalZero: React.FC = () => {
                             </div>
                             <div ref={logsRef} className="flex-1 p-3 overflow-y-auto custom-scrollbar bg-black/40 min-w-[280px]">
                                 {messages.filter(m => m.role === 'system' || m.role === 'wiesio').map(msg => (
-                                    <div key={msg.id} className={`border-l-2 pl-2 break-words mb-3 pb-2 border-b border-slate-800/50 ${msg.role === 'wiesio' ? 'border-l-emerald-500' : 'border-l-amber-500'}`}>
+                                    <div key={msg.id} className={`border-l-2 pl-2 wrap-break-word mb-3 pb-2 border-b border-slate-800/50 ${msg.role === 'wiesio' ? 'border-l-emerald-500' : 'border-l-amber-500'}`}>
                                         <div className="text-[8px] text-slate-600 font-mono mb-1">{msg.role.toUpperCase()} • {msg.timestamp}</div>
                                         <div className={`text-[9px] font-mono leading-relaxed ${msg.role === 'wiesio' ? 'text-emerald-200/90' : 'text-amber-200/80'}`}>{msg.content}</div>
                                     </div>

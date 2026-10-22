@@ -103,7 +103,7 @@ export const DigitalSelfAvatar: React.FC<DigitalSelfAvatarProps> = ({ form, colo
                 transition={{ duration: 0.5 }}
             >
                 <img src={customImageUrl} alt="Avatar" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                <div className="absolute inset-0 bg-linear-to-t from-black/50 to-transparent" />
             </motion.div>
         );
     }

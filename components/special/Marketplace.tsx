@@ -121,7 +121,7 @@ export const Marketplace: React.FC = () => {
           {nextBurn && (
             <div className="text-[10px] text-orange-400/80 mt-1 flex items-center gap-2">
               🔥 Spalanie za {Math.max(0, Math.ceil((nextBurn - Date.now()) / 86400000))} dni
-              <button onClick={burnNow} className="px-2 py-0.5 rounded border border-orange-500/40 text-orange-300 hover:bg-orange-950/40 text-[9px] font-bold">Spal teraz</button>
+              <button onClick={burnNow} className="px-2 py-0.5 rounded-sm border border-orange-500/40 text-orange-300 hover:bg-orange-950/40 text-[9px] font-bold">Spal teraz</button>
             </div>
           )}
         </div>
@@ -141,16 +141,16 @@ export const Marketplace: React.FC = () => {
       {tab === 'mini' ? <SklepMini /> : tab === 'gry' ? <GryKatedr /> : tab === 'merch' ? <PracowniaMerchu /> : tab === 'create' ? (
         <div className="space-y-2 max-w-md">
           <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Nazwa produktu"
-            className="w-full bg-black/40 border border-amber-500/20 rounded px-2 py-1.5 text-sm text-amber-100 outline-none focus:border-amber-500" />
+            className="w-full bg-black/40 border border-amber-500/20 rounded-sm px-2 py-1.5 text-sm text-amber-100 outline-hidden focus:border-amber-500" />
           <input value={form.desc} onChange={e => setForm({ ...form, desc: e.target.value })} placeholder="Opis"
-            className="w-full bg-black/40 border border-amber-500/20 rounded px-2 py-1.5 text-xs text-amber-100/80 outline-none focus:border-amber-500" />
+            className="w-full bg-black/40 border border-amber-500/20 rounded-sm px-2 py-1.5 text-xs text-amber-100/80 outline-hidden focus:border-amber-500" />
           <div className="flex gap-2">
             <input value={form.module} onChange={e => setForm({ ...form, module: e.target.value })} placeholder="moduł"
-              className="flex-1 bg-black/40 border border-amber-500/20 rounded px-2 py-1.5 text-xs text-amber-100/80 outline-none" />
+              className="flex-1 bg-black/40 border border-amber-500/20 rounded-sm px-2 py-1.5 text-xs text-amber-100/80 outline-hidden" />
             <input value={form.priceGrv} onChange={e => setForm({ ...form, priceGrv: e.target.value })} placeholder="cena GRV" type="number"
-              className="w-28 bg-black/40 border border-amber-500/20 rounded px-2 py-1.5 text-xs text-amber-100/80 outline-none" />
+              className="w-28 bg-black/40 border border-amber-500/20 rounded-sm px-2 py-1.5 text-xs text-amber-100/80 outline-hidden" />
           </div>
-          <button onClick={create} className="px-4 py-1.5 rounded border border-amber-500/50 bg-amber-950/40 text-amber-300 text-xs font-bold hover:bg-amber-900/50">➕ WYSTAW ZA GRV</button>
+          <button onClick={create} className="px-4 py-1.5 rounded-sm border border-amber-500/50 bg-amber-950/40 text-amber-300 text-xs font-bold hover:bg-amber-900/50">➕ WYSTAW ZA GRV</button>
         </div>
       ) : (
         <div className="space-y-2">
@@ -170,18 +170,18 @@ export const Marketplace: React.FC = () => {
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-xs text-amber-400 font-bold">▲ {p.votes}</span>
                 <button onClick={() => vote(p.id)} title="Zagłosuj"
-                  className="px-3 py-1 rounded border border-emerald-500/40 text-emerald-300 text-xs font-bold hover:bg-emerald-950/40">
+                  className="px-3 py-1 rounded-sm border border-emerald-500/40 text-emerald-300 text-xs font-bold hover:bg-emerald-950/40">
                   {tab === 'vote' ? '🗳️ Głosuj' : '▲'}
                 </button>
                 {tab !== 'vote' && p.payload?.platnosc === 'reczna' ? (
                   // 🏝️ paczka gry innej Katedry: przelewu GRV między Katedrami jeszcze nie ma — bez udawanego „Kup”
                   <button onClick={() => setTab('gry')} title="Płatność: ręczne potwierdzenie między Suwerenami (przelew GRV między Katedrami = etap 4)"
-                    className="px-3 py-1 rounded border border-sky-500/50 text-sky-300 text-xs font-bold hover:bg-sky-950/40">🏝️ Gra · płatność ręczna</button>
+                    className="px-3 py-1 rounded-sm border border-sky-500/50 text-sky-300 text-xs font-bold hover:bg-sky-950/40">🏝️ Gra · płatność ręczna</button>
                 ) : tab !== 'vote' && (
                   owned.includes(p.id)
-                    ? <span className="px-3 py-1 rounded border border-emerald-500/40 text-emerald-300 text-xs font-bold">✓ Masz</span>
+                    ? <span className="px-3 py-1 rounded-sm border border-emerald-500/40 text-emerald-300 text-xs font-bold">✓ Masz</span>
                     : <button onClick={() => buy(p)} title={effPrice(p) > 0 ? `Kup za ${effPrice(p)} GRV` : 'Pobierz za darmo'}
-                        className="px-3 py-1 rounded border border-amber-500/50 bg-amber-950/40 text-amber-300 text-xs font-bold hover:bg-amber-900/50">
+                        className="px-3 py-1 rounded-sm border border-amber-500/50 bg-amber-950/40 text-amber-300 text-xs font-bold hover:bg-amber-900/50">
                         {effPrice(p) > 0 ? '🛒 Kup' : '⬇ Pobierz'}
                       </button>
                 )}

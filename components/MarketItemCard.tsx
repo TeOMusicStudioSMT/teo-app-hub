@@ -102,18 +102,18 @@ export const MarketItemCard: React.FC<{ item: MarketListing }> = ({ item }) => {
                 onClick={() => setShowDetails(true)}
                 className="bg-slate-800/50 backdrop-blur-md rounded-2xl p-4 border border-slate-700/50 hover:border-cyan-500/30 hover:bg-slate-800/70 transition-all flex flex-col sm:flex-row gap-4 group relative overflow-hidden cursor-pointer"
             >
-                <img src={item.imageUrl} alt={item.itemName} className="w-full sm:w-24 h-24 object-cover rounded-lg flex-shrink-0" />
+                <img src={item.imageUrl} alt={item.itemName} className="w-full sm:w-24 h-24 object-cover rounded-lg shrink-0" />
                 
-                <div className="flex flex-col flex-grow">
+                <div className="flex flex-col grow">
                     <div className="flex justify-between items-start">
                         <h4 className="font-bold text-white group-hover:text-cyan-300 transition-colors">{item.itemName}</h4>
-                        <div className={`text-[10px] font-mono px-1.5 py-0.5 rounded border flex items-center gap-1 ${isFluxing ? 'text-cyan-300 border-cyan-500/50 bg-cyan-900/20' : 'text-slate-500 border-slate-700'}`}>
+                        <div className={`text-[10px] font-mono px-1.5 py-0.5 rounded-sm border flex items-center gap-1 ${isFluxing ? 'text-cyan-300 border-cyan-500/50 bg-cyan-900/20' : 'text-slate-500 border-slate-700'}`}>
                             <div className={`w-1.5 h-1.5 rounded-full ${isFluxing ? 'bg-cyan-400 animate-ping' : 'bg-slate-600'}`}></div>
                             Flux
                         </div>
                     </div>
 
-                    <p className="text-xs text-slate-400 flex-grow my-1">{item.description}</p>
+                    <p className="text-xs text-slate-400 grow my-1">{item.description}</p>
                     
                     <div className="flex justify-between items-end mt-2">
                         <div className="flex flex-col">

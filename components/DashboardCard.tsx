@@ -28,7 +28,7 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ title, icon, children, cl
                 </div>
                 {extra && <div className="flex items-center">{extra}</div>}
             </div>
-            <div className="flex-grow text-slate-300">
+            <div className="grow text-slate-300">
                 {children}
             </div>
         </div>

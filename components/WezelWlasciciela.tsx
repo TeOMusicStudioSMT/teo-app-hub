@@ -49,7 +49,7 @@ export const WezelWlasciciela: React.FC<{ onGotowe?: (w: WezelKsiegi) => void }>
 
   if (stan === 'laduje') return <p className="text-xs text-zinc-500">…</p>;
   if (stan === 'brak-mostu') return <p className="text-xs text-amber-300">⚠ Most (127.0.0.1:3001) milczy — księga GRV żyje w moście. Odpal Katedrę — imię wpiszesz potem w Domu TeOgochi → Bilans (🪪 Twoje imię w tej Katedrze).</p>;
-  const pole = 'w-full rounded border border-zinc-700 bg-black/60 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500';
+  const pole = 'w-full rounded-sm border border-zinc-700 bg-black/60 px-3 py-2 text-sm text-zinc-100 outline-hidden focus:border-emerald-500';
   return (
     <div className="space-y-2">
       {wlasciciel && <p className="text-[11px] text-zinc-400">Węzeł w księdze: <code className="text-zinc-300">{wlasciciel.id}</code> · {String(wlasciciel.grv === 'INFINITE' ? '∞' : Number(wlasciciel.grv).toLocaleString('pl-PL'))} GRV — nazwę zmienisz w każdej chwili, klucz i saldo zostają.</p>}
@@ -58,7 +58,7 @@ export const WezelWlasciciela: React.FC<{ onGotowe?: (w: WezelKsiegi) => void }>
       {blad && <p className="text-xs text-red-300">⚠ {blad}</p>}
       {info && <p className="text-xs text-emerald-300">{info}</p>}
       <button onClick={() => void (wlasciciel ? zmien() : zaloz())} disabled={praca || imie.trim().length < 2 || (!!wlasciciel && imie.trim() === wlasciciel.nazwa)}
-        className="rounded border border-amber-500/50 bg-amber-950/40 px-4 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-900/50 disabled:opacity-40">
+        className="rounded-sm border border-amber-500/50 bg-amber-950/40 px-4 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-900/50 disabled:opacity-40">
         {praca ? '…' : wlasciciel ? '✎ Zmień nazwę' : '🗝️ Załóż mój węzeł'}
       </button>
     </div>

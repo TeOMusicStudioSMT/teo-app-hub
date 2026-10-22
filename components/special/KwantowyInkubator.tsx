@@ -394,7 +394,7 @@ ${session.insight.slice(0, 600)}...
     const currentTrack = SKILL_TRACKS.find(s => s.id === selectedSkill)!;
 
     return (
-        <div className="w-full max-w-6xl mx-auto p-6 bg-gradient-to-br from-slate-950 to-slate-900 rounded-3xl border border-purple-500/20 shadow-[0_0_40px_rgba(168,85,247,0.1)] text-slate-200 font-mono">
+        <div className="w-full max-w-6xl mx-auto p-6 bg-linear-to-br from-slate-950 to-slate-900 rounded-3xl border border-purple-500/20 shadow-[0_0_40px_rgba(168,85,247,0.1)] text-slate-200 font-mono">
 
             {/* 🥚 JaJo Mistrza — uczy się stylu Suwerena z jego prawdziwych poprawek */}
             <JajoMistrzaPanel />
@@ -478,7 +478,7 @@ ${session.insight.slice(0, 600)}...
                                             {agent.masteredSkills.slice(-3).map(s => {
                                                 const t = SKILL_TRACKS.find(x => x.id === s);
                                                 return t ? (
-                                                    <span key={s} className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: `${t.color}20`, color: t.color }}>
+                                                    <span key={s} className="text-[9px] px-1.5 py-0.5 rounded-sm" style={{ background: `${t.color}20`, color: t.color }}>
                                                         {t.emoji}
                                                     </span>
                                                 ) : null;
@@ -541,7 +541,7 @@ ${session.insight.slice(0, 600)}...
                                     value={customPrompt}
                                     onChange={e => setCustomPrompt(e.target.value)}
                                     placeholder="Wpisz własne zadanie szkoleniowe..."
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-cyan-300 placeholder-slate-600 resize-none focus:outline-none focus:border-purple-500/60"
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-cyan-300 placeholder-slate-600 resize-none focus:outline-hidden focus:border-purple-500/60"
                                     rows={3}
                                 />
                             )}
@@ -574,7 +574,7 @@ ${session.insight.slice(0, 600)}...
                                 <select
                                     value={selectedModel}
                                     onChange={e => setSelectedModel(e.target.value)}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-cyan-300 focus:outline-none focus:border-purple-500/60"
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-cyan-300 focus:outline-hidden focus:border-purple-500/60"
                                 >
                                     <option value="auto">🤖 AUTO (z Rdzenia Wiesi)</option>
                                     {availableModels.map(m => (
@@ -598,7 +598,7 @@ ${session.insight.slice(0, 600)}...
                                 className={`w-full py-3 rounded-xl font-bold tracking-widest text-sm transition-all ${
                                     isTraining
                                         ? 'bg-purple-900/40 text-purple-400 border border-purple-500/30 cursor-wait'
-                                        : 'bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white shadow-[0_0_20px_rgba(168,85,247,0.3)]'
+                                        : 'bg-linear-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white shadow-[0_0_20px_rgba(168,85,247,0.3)]'
                                 }`}
                             >
                                 {isTraining ? '⏳ TRENING W TOKU...' : '▶ ROZPOCZNIJ TRENING'}

@@ -98,7 +98,7 @@ export const TaskSkinPicker: React.FC<Props> = ({
 
               {/* odznaka sprzedaży */}
               {skin.forSale && (
-                <span className="absolute top-1 left-1 text-[8px] px-1 rounded bg-emerald-600/80 text-white">GRV</span>
+                <span className="absolute top-1 left-1 text-[8px] px-1 rounded-sm bg-emerald-600/80 text-white">GRV</span>
               )}
 
               {/* akcje custom */}
@@ -145,13 +145,13 @@ export const TaskSkinPicker: React.FC<Props> = ({
         {showCreator && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-9999 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4"
             onClick={() => setShowCreator(false)}
           >
             <motion.div
               initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md rounded-2xl border border-purple-500/30 bg-gradient-to-br from-slate-900 to-slate-950 p-5 space-y-3"
+              className="w-full max-w-md rounded-2xl border border-purple-500/30 bg-linear-to-br from-slate-900 to-slate-950 p-5 space-y-3"
             >
               <h3 className="text-sm font-bold text-purple-200 tracking-wide flex items-center gap-2">
                 🎴 Nowa Skórka Zadania
@@ -160,13 +160,13 @@ export const TaskSkinPicker: React.FC<Props> = ({
               <div className="flex gap-2">
                 <input
                   value={icon} onChange={e => setIcon(e.target.value.slice(0, 2))}
-                  className="w-14 text-center text-xl bg-black/40 border border-white/10 rounded-lg px-2 py-2 outline-none"
+                  className="w-14 text-center text-xl bg-black/40 border border-white/10 rounded-lg px-2 py-2 outline-hidden"
                   title="Emoji-godło"
                 />
                 <input
                   value={name} onChange={e => setName(e.target.value)}
                   placeholder="Nazwa skórki..."
-                  className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-purple-500"
+                  className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-hidden focus:border-purple-500"
                 />
                 <input
                   type="color" value={color} onChange={e => setColor(e.target.value)}
@@ -178,14 +178,14 @@ export const TaskSkinPicker: React.FC<Props> = ({
               <input
                 value={desc} onChange={e => setDesc(e.target.value)}
                 placeholder="Krótki opis domeny (opcjonalnie)"
-                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-300 outline-none focus:border-purple-500"
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-300 outline-hidden focus:border-purple-500"
               />
 
               <textarea
                 value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)}
                 placeholder="Dusza skórki (system-prompt) — np. 'Jesteś Mistrzem Pixel-Artu Katedry...'"
                 rows={4}
-                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono outline-none focus:border-purple-500 resize-y"
+                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono outline-hidden focus:border-purple-500 resize-y"
               />
 
               <div className="flex gap-2 pt-1">

@@ -140,7 +140,7 @@ export const Biblioteka: React.FC = () => {
                 "
             >
                 {/* Subtelna poświata w tle */}
-                <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-amber-500/5 to-transparent pointer-events-none" />
+                <div className="absolute inset-0 rounded-2xl bg-linear-to-b from-amber-500/5 to-transparent pointer-events-none" />
 
                 {/* Ikona główna */}
                 <AnimatePresence mode="wait">
@@ -175,7 +175,7 @@ export const Biblioteka: React.FC = () => {
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0 }}
-                            className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-500/15 to-orange-500/10 border border-amber-400/25 flex items-center justify-center group-hover:border-amber-400/50 transition-colors duration-300"
+                            className="w-16 h-16 rounded-full bg-linear-to-br from-amber-500/15 to-orange-500/10 border border-amber-400/25 flex items-center justify-center group-hover:border-amber-400/50 transition-colors duration-300"
                         >
                             <BookOpen className="w-7 h-7 text-amber-400 group-hover:text-amber-300 transition-colors duration-300" />
                         </motion.div>
@@ -247,7 +247,7 @@ export const Biblioteka: React.FC = () => {
                                     initial={{ opacity: 0, x: -8 }}
                                     animate={{ opacity: 1, x: 0 }}
                                     transition={{ delay: i * 0.05 }}
-                                    className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.06] transition-colors group/recent"
+                                    className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/3 border border-white/5 hover:bg-white/6 transition-colors group/recent"
                                 >
                                     <ScrollText className="w-3.5 h-3.5 text-amber-500/60 shrink-0" />
                                     <span className="flex-1 text-xs text-slate-400 truncate group-hover/recent:text-slate-300 transition-colors">

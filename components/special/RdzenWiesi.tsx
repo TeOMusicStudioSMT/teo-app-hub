@@ -171,7 +171,7 @@ export const WiesioCore: React.FC = () => {
                                     <select
                                         value={activeModel}
                                         onChange={handleModelChange}
-                                        className="w-full bg-slate-900 border border-cyan-500/30 text-cyan-100 text-sm rounded-lg p-2.5 outline-none focus:border-cyan-400 transition-colors cursor-pointer font-mono"
+                                        className="w-full bg-slate-900 border border-cyan-500/30 text-cyan-100 text-sm rounded-lg p-2.5 outline-hidden focus:border-cyan-400 transition-colors cursor-pointer font-mono"
                                     >
                                         {models.map(m => (
                                             <option key={m.name} value={m.name}>
@@ -180,7 +180,7 @@ export const WiesioCore: React.FC = () => {
                                         ))}
                                     </select>
                                 ) : (
-                                    <div className="text-red-400 text-xs bg-red-900/20 p-2.5 rounded border border-red-500/20 font-mono">
+                                    <div className="text-red-400 text-xs bg-red-900/20 p-2.5 rounded-sm border border-red-500/20 font-mono">
                                         ⚠ Brak połączenia z Ollamą. Sprawdź, czy serwis działa na porcie 11434.
                                     </div>
                                 )}
@@ -200,7 +200,7 @@ export const WiesioCore: React.FC = () => {
                                         value={modelToDownload}
                                         onChange={(e) => setModelToDownload(e.target.value)}
                                         placeholder="np. llama3, qwen2.5-coder:7b"
-                                        className="flex-1 bg-slate-900 border border-teal-500/30 text-teal-100 text-xs rounded-lg p-2.5 outline-none focus:border-teal-400 placeholder:text-slate-600 font-mono"
+                                        className="flex-1 bg-slate-900 border border-teal-500/30 text-teal-100 text-xs rounded-lg p-2.5 outline-hidden focus:border-teal-400 placeholder:text-slate-600 font-mono"
                                         onKeyDown={(e) => e.key === 'Enter' && pullNewModel()}
                                     />
                                     <button

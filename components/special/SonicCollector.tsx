@@ -126,7 +126,7 @@ export const SonicCollector: React.FC = () => {
               {/* obwiednia energii */}
               <div className="flex items-end gap-0.5 h-8 mb-1.5">
                 {v.envelope.map((e, j) => (
-                  <div key={j} className="flex-1 bg-gradient-to-t from-cyan-600 to-cyan-300 rounded-sm" style={{ height: `${Math.max(6, (e / maxEnv) * 100)}%` }} />
+                  <div key={j} className="flex-1 bg-linear-to-t from-cyan-600 to-cyan-300 rounded-xs" style={{ height: `${Math.max(6, (e / maxEnv) * 100)}%` }} />
                 ))}
               </div>
               <div className="flex gap-3 text-[9px] text-zinc-500">
@@ -138,7 +138,7 @@ export const SonicCollector: React.FC = () => {
                 {v.tagged ? (
                   <span className="text-[9px] text-emerald-400" title={`Pieczęć: ${v.tagged.sig}`}>🏷️ Prawa zatwierdzone (Etap 2) · {v.tagged.owner}</span>
                 ) : (
-                  <button onClick={() => tagVector(i)} className="text-[9px] px-2 py-0.5 rounded border border-indigo-500/40 text-indigo-300 hover:bg-indigo-950/40 font-bold transition-colors">🏷️ Zatwierdź prawa (Etap 2)</button>
+                  <button onClick={() => tagVector(i)} className="text-[9px] px-2 py-0.5 rounded-sm border border-indigo-500/40 text-indigo-300 hover:bg-indigo-950/40 font-bold transition-colors">🏷️ Zatwierdź prawa (Etap 2)</button>
                 )}
               </div>
             </motion.div>

@@ -291,7 +291,7 @@ const ImpresarioDashboard: React.FC = () => {
                                         <motion.div
                                             animate={isConn ? { scale: [1, 1.3, 1], opacity: [1, 0.6, 1] } : {}}
                                             transition={{ repeat: Infinity, duration: 2 }}
-                                            className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isConn ? 'bg-green-400' : 'bg-red-600'}`}
+                                            className={`w-2.5 h-2.5 rounded-full shrink-0 ${isConn ? 'bg-green-400' : 'bg-red-600'}`}
                                         />
                                         <span className="text-[9px] font-mono font-bold tracking-widest">
                                             {meta.icon} {meta.label}
@@ -408,7 +408,7 @@ const ImpresarioDashboard: React.FC = () => {
                                                         className="flex gap-3 items-start"
                                                     >
                                                         <span
-                                                            className="flex-shrink-0 w-6 h-6 rounded flex items-center justify-center text-[8px] font-mono font-bold text-cyan-400"
+                                                            className="shrink-0 w-6 h-6 rounded-sm flex items-center justify-center text-[8px] font-mono font-bold text-cyan-400"
                                                             style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.2)' }}
                                                         >
                                                             {step.n}
@@ -452,7 +452,7 @@ const ImpresarioDashboard: React.FC = () => {
                                                                 onChange={e => setYtKeyForm(prev => ({ ...prev, [field.key]: e.target.value }))}
                                                                 placeholder={field.placeholder}
                                                                 spellCheck={false}
-                                                                className="w-full bg-black/60 border border-slate-800 focus:border-cyan-600/60 text-white text-[10px] font-mono rounded px-2.5 py-1.5 outline-none transition-colors placeholder-slate-700"
+                                                                className="w-full bg-black/60 border border-slate-800 focus:border-cyan-600/60 text-white text-[10px] font-mono rounded-sm px-2.5 py-1.5 outline-hidden transition-colors placeholder-slate-700"
                                                             />
                                                         </div>
                                                     ))}
@@ -477,7 +477,7 @@ const ImpresarioDashboard: React.FC = () => {
                                                                 initial={{ opacity: 0, y: -3 }}
                                                                 animate={{ opacity: 1, y: 0 }}
                                                                 exit={{ opacity: 0 }}
-                                                                className={`text-[8px] font-mono rounded px-2 py-1 ${ytKeyMsg.ok ? 'text-green-400 bg-green-900/20' : 'text-orange-400 bg-orange-900/20'}`}
+                                                                className={`text-[8px] font-mono rounded-sm px-2 py-1 ${ytKeyMsg.ok ? 'text-green-400 bg-green-900/20' : 'text-orange-400 bg-orange-900/20'}`}
                                                             >
                                                                 {ytKeyMsg.text}
                                                             </motion.p>
@@ -544,7 +544,7 @@ const ImpresarioDashboard: React.FC = () => {
                                     value={formTitle}
                                     onChange={e => setFormTitle(e.target.value)}
                                     placeholder="np. Echoes of the Void"
-                                    className="w-full bg-black/60 border border-slate-700 focus:border-cyan-500 text-white text-xs font-mono rounded px-3 py-2 outline-none transition-colors placeholder-slate-600"
+                                    className="w-full bg-black/60 border border-slate-700 focus:border-cyan-500 text-white text-xs font-mono rounded-sm px-3 py-2 outline-hidden transition-colors placeholder-slate-600"
                                     required
                                 />
                             </div>
@@ -559,7 +559,7 @@ const ImpresarioDashboard: React.FC = () => {
                                     value={formAlbum}
                                     onChange={e => setFormAlbum(e.target.value)}
                                     placeholder="np. Cycles"
-                                    className="w-full bg-black/60 border border-slate-700 focus:border-cyan-500 text-white text-xs font-mono rounded px-3 py-2 outline-none transition-colors placeholder-slate-600"
+                                    className="w-full bg-black/60 border border-slate-700 focus:border-cyan-500 text-white text-xs font-mono rounded-sm px-3 py-2 outline-hidden transition-colors placeholder-slate-600"
                                 />
                             </div>
 
@@ -573,7 +573,7 @@ const ImpresarioDashboard: React.FC = () => {
                                     value={formFilePath}
                                     onChange={e => setFormFilePath(e.target.value)}
                                     placeholder="np. C:\muzyka\moj_utwór.wav lub /home/teo/tracks/song.mp4"
-                                    className="w-full bg-black/60 border border-slate-700 focus:border-yellow-500/70 text-white text-xs font-mono rounded px-3 py-2 outline-none transition-colors placeholder-slate-600"
+                                    className="w-full bg-black/60 border border-slate-700 focus:border-yellow-500/70 text-white text-xs font-mono rounded-sm px-3 py-2 outline-hidden transition-colors placeholder-slate-600"
                                     required
                                     spellCheck={false}
                                 />
@@ -632,7 +632,7 @@ const ImpresarioDashboard: React.FC = () => {
                                         initial={{ opacity: 0, y: -4 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0 }}
-                                        className={`text-[9px] font-mono rounded px-2 py-1 ${submitMsg.ok ? 'text-green-400 bg-green-900/20' : 'text-orange-400 bg-orange-900/20'}`}
+                                        className={`text-[9px] font-mono rounded-sm px-2 py-1 ${submitMsg.ok ? 'text-green-400 bg-green-900/20' : 'text-orange-400 bg-orange-900/20'}`}
                                     >
                                         {submitMsg.text}
                                     </motion.p>
@@ -709,7 +709,7 @@ const ImpresarioDashboard: React.FC = () => {
                                                                 </p>
                                                             )}
                                                         </div>
-                                                        <span className={`flex-shrink-0 text-[8px] font-mono font-bold uppercase tracking-widest ${meta.color}`}>
+                                                        <span className={`shrink-0 text-[8px] font-mono font-bold uppercase tracking-widest ${meta.color}`}>
                                                             {meta.label}
                                                         </span>
                                                     </div>
@@ -719,7 +719,7 @@ const ImpresarioDashboard: React.FC = () => {
                                                         {job.platforms.map(p => (
                                                             <span
                                                                 key={p}
-                                                                className="text-[7px] font-mono px-1.5 py-0.5 rounded"
+                                                                className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm"
                                                                 style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)' }}
                                                             >
                                                                 {PLATFORM_META[p]?.icon} {p}
@@ -764,7 +764,7 @@ const ImpresarioDashboard: React.FC = () => {
                                                     {/* Log błędu */}
                                                     {job.error && (
                                                         <div
-                                                            className="mt-2 rounded px-2 py-1.5"
+                                                            className="mt-2 rounded-sm px-2 py-1.5"
                                                             style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)' }}
                                                         >
                                                             <p className="text-[8px] font-mono text-red-400 leading-relaxed break-all">
@@ -776,7 +776,7 @@ const ImpresarioDashboard: React.FC = () => {
                                                     {/* Log sukcesu / wyniki */}
                                                     {job.status === 'COMPLETE' && (job.note || job.exportPath || job.youtubeUrl) && (
                                                         <div
-                                                            className="mt-2 rounded px-2 py-1.5 space-y-0.5"
+                                                            className="mt-2 rounded-sm px-2 py-1.5 space-y-0.5"
                                                             style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.18)' }}
                                                         >
                                                             {job.note && (

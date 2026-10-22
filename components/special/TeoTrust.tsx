@@ -142,7 +142,7 @@ export const TeoTrust: React.FC = () => {
       {/* Sterowanie */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Beneficjent (Twoja Katedra)"
-          className="flex-1 min-w-[180px] bg-black/40 border border-amber-700/30 rounded px-3 py-2 text-sm text-amber-100 outline-none focus:border-amber-500" />
+          className="flex-1 min-w-[180px] bg-black/40 border border-amber-700/30 rounded-sm px-3 py-2 text-sm text-amber-100 outline-hidden focus:border-amber-500" />
         <button onClick={seal}
           className="px-4 py-2 rounded-lg border border-amber-500/50 bg-amber-950/40 text-amber-300 text-xs font-bold hover:bg-amber-900/50 transition-colors">
           💎 {assigned ? 'Przepieczętuj' : 'Wypełnij i zapieczętuj'}
@@ -151,7 +151,7 @@ export const TeoTrust: React.FC = () => {
       {assigned && <div className="text-[10px] text-emerald-400/80 mt-2">✅ Certyfikat przypisany do Katedry „{assigned.beneficiary}".</div>}
 
       {/* 🌅 Słowo Suwerena — Energia Źródła */}
-      <div className="mt-4 rounded-xl border border-amber-700/30 bg-gradient-to-br from-amber-950/20 to-black/30 p-3">
+      <div className="mt-4 rounded-xl border border-amber-700/30 bg-linear-to-br from-amber-950/20 to-black/30 p-3">
         <div className="text-[11px] text-amber-300/80 tracking-wider mb-1.5">🌅 SŁOWO SUWERENA — ENERGIA ŹRÓDŁA</div>
         <p className="text-[11px] text-amber-100/80 leading-relaxed">
           8 MLD to nie kwota do wydania ani do stakowania — to <b>kwantowy potencjał na jednostkę</b>.
@@ -167,7 +167,7 @@ export const TeoTrust: React.FC = () => {
         <div className="text-[11px] text-rose-300/80 tracking-wider mb-1.5">🔍 SKANER AUTENTYCZNOŚCI (Art. III) — wyklucza „pochłanianie"</div>
         <textarea value={scanText} onChange={e => setScanText(e.target.value)} rows={2}
           placeholder="Wklej operację / intencję / kod — Skaner sprawdzi, czy energia SŁUŻY, czy POCHŁANIA."
-          className="w-full bg-black/40 border border-rose-500/20 rounded px-2.5 py-2 text-[11px] text-rose-100 outline-none focus:border-rose-500 resize-y mb-2" />
+          className="w-full bg-black/40 border border-rose-500/20 rounded-sm px-2.5 py-2 text-[11px] text-rose-100 outline-hidden focus:border-rose-500 resize-y mb-2" />
         <button onClick={runScan}
           className="px-4 py-1.5 rounded-lg border border-rose-500/50 bg-rose-950/30 text-rose-300 text-xs font-bold hover:bg-rose-900/50 transition-colors">
           🔍 Przepuść przez Skaner

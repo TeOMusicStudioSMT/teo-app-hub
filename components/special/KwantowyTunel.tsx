@@ -112,7 +112,7 @@ export const KwantowyTunel: React.FC<{ compact?: boolean; dispatchBase?: string 
                     onKeyDown={e => e.key === 'Enter' && save()}
                     placeholder="https://cos-tam.trycloudflare.com"
                     spellCheck={false}
-                    className="flex-1 bg-black/60 border border-cyan-700/30 focus:border-cyan-500/60 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
+                    className="flex-1 bg-black/60 border border-cyan-700/30 focus:border-cyan-500/60 rounded-xl px-3 py-2 text-xs text-slate-200 outline-hidden"
                 />
                 <button onClick={save}
                     className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-cyan-700/70 hover:bg-cyan-600 text-white border border-cyan-400/40 transition-all">

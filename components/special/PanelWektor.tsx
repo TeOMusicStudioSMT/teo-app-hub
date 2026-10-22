@@ -157,7 +157,7 @@ export const PanelWektor: React.FC = () => {
                             value={wezel} onChange={e => setWezel(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && wyjasnij()}
                             placeholder="np. TeoArcadeForge"
-                            className="flex-1 min-w-0 rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm outline-none focus:border-cyan-500"
+                            className="flex-1 min-w-0 rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm outline-hidden focus:border-cyan-500"
                         />
                         <button onClick={wyjasnij} disabled={zajety}
                             className="rounded-lg border border-cyan-500/50 px-3 text-cyan-300 disabled:opacity-40">
@@ -170,9 +170,9 @@ export const PanelWektor: React.FC = () => {
                     <span className="text-[11px] font-mono text-slate-500">najkrótsza droga</span>
                     <div className="mt-1 flex gap-2">
                         <input value={odA} onChange={e => setOdA(e.target.value)} placeholder="od"
-                            className="w-full min-w-0 rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm outline-none focus:border-cyan-500" />
+                            className="w-full min-w-0 rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm outline-hidden focus:border-cyan-500" />
                         <input value={doB} onChange={e => setDoB(e.target.value)} placeholder="do"
-                            className="w-full min-w-0 rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm outline-none focus:border-cyan-500" />
+                            className="w-full min-w-0 rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm outline-hidden focus:border-cyan-500" />
                         <button onClick={droga} disabled={zajety}
                             className="rounded-lg border border-cyan-500/50 px-3 text-cyan-300 disabled:opacity-40">
                             <Route size={15} />

@@ -50,8 +50,8 @@ const glosNaWartosc = (g: Glos | null | undefined) => (g?.voicestudio ? `vs:${g.
 const wartoscNaGlos = (v: string): Glos | null => (v.startsWith('vs:') ? { voicestudio: v.slice(3) } : v.startsWith('k:') ? { profil: v.slice(2) } : null);
 const PRALKA_OPIS = ['domyślna temperatura modelu', 'spokojnie, przewidywalnie', 'stonowanie', 'rozważnie', 'pewnie', 'zwykle', 'żywo', 'odważnie', 'iskrząco', 'szalona wena'];
 
-const pole = 'rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-200';
-const guzik = 'rounded border px-2 py-1 disabled:opacity-40';
+const pole = 'rounded-sm border border-slate-700 bg-black/40 px-2 py-1 text-slate-200';
+const guzik = 'rounded-sm border px-2 py-1 disabled:opacity-40';
 
 export const StudioPodcastuPanel: React.FC = () => {
     const [studia, setStudia] = useState<SkrotStudia[]>([]);
@@ -218,7 +218,7 @@ export const StudioPodcastuPanel: React.FC = () => {
                         <p className="text-[10px] text-emerald-300">🗣️ Silnik klonu Katedry: {silnik.silnik.powod}</p>
                     )}
                     {silnik && !klonDziala && (
-                        <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-amber-100">
+                        <div className="rounded-sm border border-amber-500/40 bg-amber-500/10 p-2 text-amber-100">
                             <p>⚠ Silnik klonu Katedry (:5002) nie mówi{silnik.silnik.powod ? ` — ${silnik.silnik.powod}` : ''}. Głosy „tor domyślny / Katedra” nie zabrzmią — wybierz profil VoiceStudio albo zainstaluj silnik.</p>
                             {silnik.instalacja.stan === 'trwa' ? (
                                 <p className="mt-1 text-cyan-200"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />Instaluję {silnik.instalacja.silnik}: {silnik.instalacja.etap} <span className="text-slate-400">· {silnik.instalacja.log.at(-1)}</span></p>
@@ -270,7 +270,7 @@ export const StudioPodcastuPanel: React.FC = () => {
                     )}
 
                     {stan.studio.ujecia.length === 0 ? (
-                        <p className="rounded border border-slate-700 p-2 text-slate-400">To studio nie ma jeszcze zdjęć sceny — dodaj ujęcia w „Prowadzący i scena”. Bez nich odcinek się nie nagra.</p>
+                        <p className="rounded-sm border border-slate-700 p-2 text-slate-400">To studio nie ma jeszcze zdjęć sceny — dodaj ujęcia w „Prowadzący i scena”. Bez nich odcinek się nie nagra.</p>
                     ) : (
                         <div className="flex flex-col gap-1">
                             <div className="grid grid-cols-3 gap-1.5">
@@ -280,14 +280,14 @@ export const StudioPodcastuPanel: React.FC = () => {
                                     return (
                                         <div key={u.id} className="flex flex-col gap-0.5">
                                             {r?.plik
-                                                ? <video src={`${MOST}/api/studio-podcast/plik/ruch/${u.id}?${q}&v=${encodeURIComponent(r.plik)}`} autoPlay loop muted playsInline title={`${u.nazwa} · 🧊 ${r.ruch}`} className="aspect-video w-full rounded border border-cyan-500/50 object-cover" />
-                                                : <img src={`${MOST}/api/studio-podcast/plik/ujecie/${u.id}?${q}`} alt={u.nazwa} title={u.nazwa} className="aspect-video w-full rounded border border-slate-700 object-cover" />}
+                                                ? <video src={`${MOST}/api/studio-podcast/plik/ruch/${u.id}?${q}&v=${encodeURIComponent(r.plik)}`} autoPlay loop muted playsInline title={`${u.nazwa} · 🧊 ${r.ruch}`} className="aspect-video w-full rounded-sm border border-cyan-500/50 object-cover" />
+                                                : <img src={`${MOST}/api/studio-podcast/plik/ujecie/${u.id}?${q}`} alt={u.nazwa} title={u.nazwa} className="aspect-video w-full rounded-sm border border-slate-700 object-cover" />}
                                             <div className="flex items-center gap-1 text-[10px]">
-                                                <select value={ruchUjecia[u.id] ?? r?.ruch ?? 'najazd'} disabled={r?.etap === 'robi'} onChange={(e) => setRuchUjecia({ ...ruchUjecia, [u.id]: e.target.value })} className="min-w-0 flex-1 rounded border border-slate-700 bg-black/40 px-1 py-0.5 text-slate-300">
+                                                <select value={ruchUjecia[u.id] ?? r?.ruch ?? 'najazd'} disabled={r?.etap === 'robi'} onChange={(e) => setRuchUjecia({ ...ruchUjecia, [u.id]: e.target.value })} className="min-w-0 flex-1 rounded-sm border border-slate-700 bg-black/40 px-1 py-0.5 text-slate-300">
                                                     {(stan.ruchy ?? [{ id: 'najazd', nazwa: 'Najazd', opis: '' }]).map((m) => <option key={m.id} value={m.id}>{m.nazwa}</option>)}
                                                 </select>
-                                                <button disabled={!!praca || r?.etap === 'robi'} onClick={() => void ozyw(u)} title="Mapa głębi ze zdjęcia → scena Blendera → klip z ruchem kamery" className="rounded border border-cyan-500/40 px-1.5 py-0.5 text-cyan-200 disabled:opacity-40">{r?.etap === 'robi' ? '⏳' : '🧊'}</button>
-                                                {r?.plik && r.etap !== 'robi' && <button disabled={!!praca} onClick={() => void doZdjecia(u)} title="Wróć do zdjęcia" className="rounded border border-slate-700 px-1 py-0.5 text-slate-400">↩</button>}
+                                                <button disabled={!!praca || r?.etap === 'robi'} onClick={() => void ozyw(u)} title="Mapa głębi ze zdjęcia → scena Blendera → klip z ruchem kamery" className="rounded-sm border border-cyan-500/40 px-1.5 py-0.5 text-cyan-200 disabled:opacity-40">{r?.etap === 'robi' ? '⏳' : '🧊'}</button>
+                                                {r?.plik && r.etap !== 'robi' && <button disabled={!!praca} onClick={() => void doZdjecia(u)} title="Wróć do zdjęcia" className="rounded-sm border border-slate-700 px-1 py-0.5 text-slate-400">↩</button>}
                                             </div>
                                             {etap && <span className="text-[10px] text-cyan-300">🧊 {etap}…</span>}
                                             {r?.blad && <span className="text-[10px] text-amber-300" title={r.blad}>⚠ {r.blad.slice(0, 420)}</span>}
@@ -309,7 +309,7 @@ export const StudioPodcastuPanel: React.FC = () => {
                                 <button disabled={!!praca || !w?.nagranie} onClick={klonujGlos} className={`${guzik} border-fuchsia-500/40 text-fuchsia-200`} title={klonDziala ? '' : 'Profil powstanie, ale zabrzmi dopiero przy działającym silniku klonu'}>🎙️ Sklonuj głos z nagrania</button>
                             </div>
                             {w?.blad && <p className="text-amber-300">⚠ {w.blad}</p>}
-                            {w?.plik && <video controls src={`${MOST}/api/studio-podcast/plik/wstep?${q}&v=${encodeURIComponent(w.zrobiono ?? '')}`} className="w-full rounded border border-slate-700" />}
+                            {w?.plik && <video controls src={`${MOST}/api/studio-podcast/plik/wstep?${q}&v=${encodeURIComponent(w.zrobiono ?? '')}`} className="w-full rounded-sm border border-slate-700" />}
 
                             <div className="mt-1 flex flex-col gap-2 border-t border-slate-800 pt-2">
                                 <span className="text-[10px] uppercase tracking-widest text-cyan-300">🇬🇧 Wstęp EN — do odcinków po angielsku {wEn?.plik ? `· gotowy (${wEn.sekundy?.toFixed?.(1)} s)` : '· jeszcze nie zrobiony'}</span>
@@ -320,7 +320,7 @@ export const StudioPodcastuPanel: React.FC = () => {
                                 <input value={nagranieEn} onChange={(e) => setNagranieEn(e.target.value)} placeholder="Nagranie wstępu EN (opcjonalnie) — ścieżka mp3/wav" className={pole} />
                                 <button disabled={!!praca || !!stan.postepWstepu || !w?.nagranie} onClick={zrobWstepEn} className={`${guzik} self-start border-cyan-500/40 text-cyan-200`}>{praca === 'wstep-en' ? 'zapisuję…' : '🇬🇧 Zrób wstęp EN'}</button>
                                 {wEn?.blad && <p className="text-amber-300">⚠ {wEn.blad}</p>}
-                                {wEn?.plik && <video controls src={`${MOST}/api/studio-podcast/plik/wstep/en?${q}&v=${encodeURIComponent(wEn.zrobiono ?? '')}`} className="w-full rounded border border-slate-700" />}
+                                {wEn?.plik && <video controls src={`${MOST}/api/studio-podcast/plik/wstep/en?${q}&v=${encodeURIComponent(wEn.zrobiono ?? '')}`} className="w-full rounded-sm border border-slate-700" />}
                             </div>
                         </div>
                     </details>
@@ -345,7 +345,7 @@ export const StudioPodcastuPanel: React.FC = () => {
                                     <input type="range" min={0} max={9} value={pralka} onChange={(e) => setPralka(Number(e.target.value))} className="flex-1 accent-orange-500" />
                                 </label>
                                 <div className="flex items-center gap-1">Język
-                                    {(['pl', 'en'] as const).map((j) => <button key={j} onClick={() => setJezyk(j)} className={`rounded px-2 py-0.5 font-bold ${jezyk === j ? 'bg-cyan-500/25 text-cyan-100' : 'text-slate-500'}`}>{j.toUpperCase()}</button>)}
+                                    {(['pl', 'en'] as const).map((j) => <button key={j} onClick={() => setJezyk(j)} className={`rounded-sm px-2 py-0.5 font-bold ${jezyk === j ? 'bg-cyan-500/25 text-cyan-100' : 'text-slate-500'}`}>{j.toUpperCase()}</button>)}
                                 </div>
                             </div>
                             <p className="text-[10px] text-orange-300/70">🧺 {PRALKA_OPIS[pralka]}</p>
@@ -359,7 +359,7 @@ export const StudioPodcastuPanel: React.FC = () => {
                                 </label>
                             </div>
                             {stanUst && !stanUst.gotowy && (
-                                <div className="rounded border border-pink-500/30 bg-pink-950/20 p-2 text-[10px] leading-relaxed text-pink-100/90">
+                                <div className="rounded-sm border border-pink-500/30 bg-pink-950/20 p-2 text-[10px] leading-relaxed text-pink-100/90">
                                     <p>👄 Usta aktorów: karta mówiącego rusza ustami pod jego głos — MuseTalk 1.5 (MIT, wolno komercyjnie), lokalnie, ~4 GB VRAM. {stanUst.powod}.</p>
                                     {stanUst.instalacja.stan === 'trwa'
                                         ? <p className="mt-1 text-cyan-200"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />{stanUst.instalacja.etap} <span className="text-slate-400">· {stanUst.instalacja.log.at(-1)}</span></p>
@@ -376,7 +376,7 @@ export const StudioPodcastuPanel: React.FC = () => {
                             <div className="flex items-center justify-between gap-2"><b className="text-slate-200">{o.tytul}</b><span className="text-[10px] text-slate-500">{o.goscie.map(imie).join(', ')} · {(o.jezyk ?? 'pl').toUpperCase()} · {style.find((s) => s.id === o.styl)?.nazwa ?? 'domyślny'}{o.pralka ? ` · 🧺${o.pralka}` : ''} · rund {o.rundy ?? 1} · {o.kwestie.length} kwestii · {o.etap}</span></div>
                             {o.etap === 'nagrywa' && <p className="mt-1 text-cyan-300"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />{o.postep ? `${o.postep.etap} (${o.postep.zrobione}/${o.postep.wszystkich})` : 'nagrywam…'}</p>}
                             {o.etap === 'blad' && <p className="mt-1 text-amber-300">⚠ {o.blad}</p>}
-                            {o.etap === 'gotowy' && o.plik && <video controls src={`${MOST}/api/studio-podcast/plik/odcinek/${o.id}?${q}`} className="mt-1 w-full rounded border border-slate-700" />}
+                            {o.etap === 'gotowy' && o.plik && <video controls src={`${MOST}/api/studio-podcast/plik/odcinek/${o.id}?${q}`} className="mt-1 w-full rounded-sm border border-slate-700" />}
                             {o.etap === 'gotowy' && <p className="mt-1 text-[10px] text-emerald-300">✓ {o.sekundy?.toFixed(1)} s · w montażach projektu studia — stamtąd „📺 do publikacji”.{o.usta ? ` · 👄 usta: ${o.usta.ok} kwestii` : ''}</p>}
                             {o.usta && o.usta.bledy.length > 0 && <p className="mt-1 text-[10px] text-amber-300" title={o.usta.bledy.join('\n')}>⚠ Usta nie wyszły w {o.usta.bledy.length} kwestii (tam karta bez ruchu): {o.usta.bledy[0]}</p>}
                             {o.etap === 'gotowy' && <button disabled={!!praca} onClick={() => nagraj(o)} className={`${guzik} mt-1 border-cyan-500/40 text-cyan-200`} title="Nagraj jeszcze raz z obecnymi opcjami (np. z ustami) — gotowe głosy idą ze schowka">🎥 Nagraj ponownie</button>}
@@ -384,7 +384,7 @@ export const StudioPodcastuPanel: React.FC = () => {
                                 <>
                                     <textarea value={edycja[o.id] ?? tekstKwestii(o.kwestie)} rows={Math.min(14, o.kwestie.length + 1)} onChange={(e) => setEdycja((x) => ({ ...x, [o.id]: e.target.value }))} className={`mt-1 w-full font-mono text-[10px] ${pole}`} />
                                     <p className="text-[10px] text-slate-500">Format „id: kwestia” (id: prowadzacy albo id aktora). Poprawki zapiszą się przy nagrywaniu i dogrywce.</p>
-                                    {o.goscieFilm && <video controls src={`${MOST}/api/studio-podcast/plik/goscie/${o.id}?${q}&v=${encodeURIComponent(o.goscieFilm)}`} className="mt-1 w-full rounded border border-slate-700" />}
+                                    {o.goscieFilm && <video controls src={`${MOST}/api/studio-podcast/plik/goscie/${o.id}?${q}&v=${encodeURIComponent(o.goscieFilm)}`} className="mt-1 w-full rounded-sm border border-slate-700" />}
                                     <div className="mt-1 flex flex-wrap items-center gap-2">
                                         <select value={rundy[o.id] ?? 1} onChange={(e) => setRundy((r) => ({ ...r, [o.id]: Number(e.target.value) }))} className={pole} title="Ile rund dopisać">{[1, 2, 3].map((n) => <option key={n} value={n}>+{n} {n === 1 ? 'runda' : 'rundy'}</option>)}</select>
                                         <button disabled={!!praca || (o.rundy ?? 1) >= 6} onClick={() => dogrywka(o)} className={`${guzik} border-orange-500/40 text-orange-200`} title="Dopisuje dalszy ciąg rozmowy obecnym stylem i Pralką (limit 6 rund)"><Repeat className="mr-1 inline h-3 w-3" />{praca === `d-${o.id}` ? 'dopisuję…' : 'Dogrywka'}</button>

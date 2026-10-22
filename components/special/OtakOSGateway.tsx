@@ -257,7 +257,7 @@ export default function OtakOSGateway({ onInitiate }: OtakOSGatewayProps) {
             Wejdź suwerennie · bez chmury
           </button>
         ) : (
-          <div className="mt-6 w-[22rem] max-w-[90vw] rounded-xl border border-emerald-500/25 bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="mt-6 w-88 max-w-[90vw] rounded-xl border border-emerald-500/25 bg-slate-950/80 p-4 backdrop-blur-xs">
             <p className="text-[10px] tracking-[0.2em] uppercase text-emerald-500/70 mb-3">
               kim jesteś przy tej klawiaturze
             </p>

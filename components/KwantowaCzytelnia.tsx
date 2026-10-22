@@ -96,7 +96,7 @@ const MediaPanel = memo(() => {
                 className="w-80 xl:w-96 bg-black/60 border-l border-purple-500/20 backdrop-blur-xl flex flex-col overflow-y-auto relative"
                 style={{ scrollbarWidth: 'thin', scrollbarColor: '#8b5cf6 transparent' }}
             >
-                <div className="absolute top-0 right-0 w-full h-48 bg-gradient-to-b from-blue-600/10 to-transparent pointer-events-none" />
+                <div className="absolute top-0 right-0 w-full h-48 bg-linear-to-b from-blue-600/10 to-transparent pointer-events-none" />
 
                 {/* Nagłówek panelu */}
                 <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-purple-500/30 shrink-0">
@@ -173,7 +173,7 @@ const MediaPanel = memo(() => {
                         {veoSrc ? (
                             <div className="relative rounded-xl overflow-hidden border border-indigo-500/30 bg-black">
                                 <video src={veoSrc} autoPlay loop muted playsInline className="w-full object-contain max-h-48" />
-                                <div className="absolute top-1.5 left-2 flex items-center gap-1 bg-black/50 rounded px-1.5 py-0.5">
+                                <div className="absolute top-1.5 left-2 flex items-center gap-1 bg-black/50 rounded-sm px-1.5 py-0.5">
                                     <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
                                     <span className="text-[8px] text-indigo-300 font-sans font-bold uppercase tracking-wider">LIVE</span>
                                 </div>
@@ -196,7 +196,7 @@ const MediaPanel = memo(() => {
                     </div>
 
                     {/* ══ ECHO AKASZY ════════════════════════════ */}
-                    <div className="rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-950/30 to-black/40 overflow-hidden">
+                    <div className="rounded-xl border border-cyan-500/20 bg-linear-to-br from-cyan-950/30 to-black/40 overflow-hidden">
                         <div className="flex items-center gap-2.5 px-4 py-3 border-b border-cyan-500/15">
                             <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center shrink-0">
                                 <FileAudio className="w-3.5 h-3.5 text-cyan-400" />
@@ -253,7 +253,7 @@ const MediaPanel = memo(() => {
                             <div className="border border-white/5 rounded-xl overflow-hidden">
                                 <button
                                     onClick={() => setNotesOpen(p => !p)}
-                                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-white/3 hover:bg-white/6 transition-colors"
                                 >
                                     <div className="flex items-center gap-2">
                                         <NotebookPen className="w-3.5 h-3.5 text-cyan-400/70" />
@@ -267,7 +267,7 @@ const MediaPanel = memo(() => {
                                             value={notes} onChange={e => setNotes(e.target.value)}
                                             placeholder="Wklej tutaj notatki, analizę lub transkrypt z NotebookLM…"
                                             rows={7}
-                                            className="w-full mt-3 p-3 rounded-lg text-xs font-sans bg-slate-900/60 border border-slate-700/40 text-slate-300 placeholder-slate-600 focus:outline-none focus:border-cyan-500/40 resize-none leading-relaxed transition-colors duration-200"
+                                            className="w-full mt-3 p-3 rounded-lg text-xs font-sans bg-slate-900/60 border border-slate-700/40 text-slate-300 placeholder-slate-600 focus:outline-hidden focus:border-cyan-500/40 resize-none leading-relaxed transition-colors duration-200"
                                             style={{ scrollbarWidth: 'thin', scrollbarColor: '#0e7490 transparent' }}
                                         />
                                         {notes && (
@@ -305,7 +305,7 @@ const MediaPanel = memo(() => {
             {/* ══ FULLSCREEN MODAL — Nano Banana ═══════════════════════ */}
             {nanaFull && nanaSrc && (
                 <div
-                    className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-md flex items-center justify-center"
+                    className="fixed inset-0 z-9999 bg-black/90 backdrop-blur-md flex items-center justify-center"
                     onClick={() => setNanaFull(false)}
                 >
                     <button
@@ -369,7 +369,7 @@ const KwantowaCzytelnia: React.FC<KwantowaCzytelniaProps> = ({ text, onClose }) 
         keywords.forEach(word => {
             const regex = new RegExp(`\\b${word}\\b`, 'g');
             out = out.replace(regex,
-                `<span class="font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-orange-400 drop-shadow-[0_0_8px_rgba(236,72,153,0.8)]">${word}</span>`
+                `<span class="font-bold text-transparent bg-clip-text bg-linear-to-r from-pink-400 to-orange-400 drop-shadow-[0_0_8px_rgba(236,72,153,0.8)]">${word}</span>`
             );
         });
         return out;
@@ -490,7 +490,7 @@ const KwantowaCzytelnia: React.FC<KwantowaCzytelniaProps> = ({ text, onClose }) 
 
     // ─────────────────────────────────────────────────────────
     return (
-        <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-gradient-to-br from-slate-950 via-purple-950/90 to-black text-gray-200 font-serif selection:bg-pink-500/30">
+        <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-linear-to-br from-slate-950 via-purple-950/90 to-black text-gray-200 font-serif selection:bg-pink-500/30">
 
             {/* ══ GÓRNY PASEK KONTROLNY ══════════════════════════════ */}
             <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 bg-black/50 border-b border-purple-500/20 backdrop-blur-xl z-50">
@@ -499,7 +499,7 @@ const KwantowaCzytelnia: React.FC<KwantowaCzytelniaProps> = ({ text, onClose }) 
                 <button onClick={handleClose} className="p-2 rounded-full bg-white/5 border border-white/10 hover:bg-red-600/30 hover:border-red-500/50 transition-all shrink-0" title="Zamknij">
                     <X className="w-4 h-4" />
                 </button>
-                <div className="w-[1px] h-5 bg-purple-500/20 shrink-0" />
+                <div className="w-px h-5 bg-purple-500/20 shrink-0" />
 
                 {/* Suwak Tempa */}
                 <div className="flex items-center gap-2 flex-1 max-w-[240px]">
@@ -511,7 +511,7 @@ const KwantowaCzytelnia: React.FC<KwantowaCzytelniaProps> = ({ text, onClose }) 
                         </div>
                         <input type="range" min={20} max={150} step={5} value={typewriterSpeed}
                             onChange={e => setTypewriterSpeed(Number(e.target.value))}
-                            className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-gradient-to-r from-purple-700/40 to-purple-400/40
+                            className="w-full h-1.5 appearance-none rounded-full cursor-pointer bg-linear-to-r from-purple-700/40 to-purple-400/40
                                 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
                                 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-400
                                 [&::-webkit-slider-thumb]:shadow-[0_0_6px_rgba(168,85,247,0.8)] [&::-webkit-slider-thumb]:cursor-pointer
@@ -520,7 +520,7 @@ const KwantowaCzytelnia: React.FC<KwantowaCzytelniaProps> = ({ text, onClose }) 
                         />
                     </div>
                 </div>
-                <div className="w-[1px] h-5 bg-purple-500/20 shrink-0" />
+                <div className="w-px h-5 bg-purple-500/20 shrink-0" />
 
                 {/* TTS Toggle */}
                 <button
@@ -530,7 +530,7 @@ const KwantowaCzytelnia: React.FC<KwantowaCzytelniaProps> = ({ text, onClose }) 
                 >
                     {isTtsEnabled ? <><Volume2 className="w-3.5 h-3.5" />Lektor: Wł</> : <><VolumeX className="w-3.5 h-3.5" />Lektor: Wył</>}
                 </button>
-                <div className="w-[1px] h-5 bg-purple-500/20 shrink-0" />
+                <div className="w-px h-5 bg-purple-500/20 shrink-0" />
 
                 {/* REC */}
                 {isRecording ? (
@@ -560,7 +560,7 @@ const KwantowaCzytelnia: React.FC<KwantowaCzytelniaProps> = ({ text, onClose }) 
 
                     {/* ── PRZYCISK START — nakładka przed rozpoczęciem ── */}
                     {!hasStarted && (
-                        <div className="absolute inset-0 z-20 flex items-center justify-center bg-gradient-to-b from-black/60 via-black/30 to-black/60 backdrop-blur-[2px]">
+                        <div className="absolute inset-0 z-20 flex items-center justify-center bg-linear-to-b from-black/60 via-black/30 to-black/60 backdrop-blur-[2px]">
                             <div className="flex flex-col items-center gap-6 text-center px-8">
                                 <div className="flex flex-col items-center gap-3 opacity-70">
                                     <Sparkles className="w-8 h-8 text-orange-400 animate-pulse" />
@@ -572,7 +572,7 @@ const KwantowaCzytelnia: React.FC<KwantowaCzytelniaProps> = ({ text, onClose }) 
                                     onClick={() => setHasStarted(true)}
                                     className="
                                         group relative flex items-center gap-3 px-10 py-4 rounded-2xl font-sans font-bold text-lg
-                                        bg-gradient-to-r from-purple-700/60 via-pink-700/50 to-orange-700/50
+                                        bg-linear-to-r from-purple-700/60 via-pink-700/50 to-orange-700/50
                                         border border-purple-400/40
                                         hover:from-purple-600/80 hover:via-pink-600/70 hover:to-orange-600/60
                                         hover:border-purple-300/60
@@ -583,7 +583,7 @@ const KwantowaCzytelnia: React.FC<KwantowaCzytelniaProps> = ({ text, onClose }) 
                                     "
                                 >
                                     {/* Glow ring */}
-                                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 group-hover:from-purple-500/20 group-hover:to-pink-500/20 transition-all duration-300" />
+                                    <div className="absolute inset-0 rounded-2xl bg-linear-to-r from-purple-500/10 to-pink-500/10 group-hover:from-purple-500/20 group-hover:to-pink-500/20 transition-all duration-300" />
                                     <span className="text-2xl">▶</span>
                                     <span>ROZPOCZNIJ MANIFESTACJĘ</span>
                                     {isTtsEnabled && <Volume2 className="w-5 h-5 text-purple-300 opacity-70" />}
@@ -607,7 +607,7 @@ const KwantowaCzytelnia: React.FC<KwantowaCzytelniaProps> = ({ text, onClose }) 
                             <div className="flex flex-col items-center justify-center mb-16 opacity-80">
                                 <Sparkles className="w-8 h-8 text-orange-400 mb-4 animate-pulse" />
                                 <h1 className="text-sm tracking-[0.3em] uppercase text-purple-300 font-sans">Kroniki Wymiaru 0.00G</h1>
-                                <div className="w-24 h-[1px] bg-gradient-to-r from-transparent via-purple-500 to-transparent mt-4" />
+                                <div className="w-24 h-px bg-linear-to-r from-transparent via-purple-500 to-transparent mt-4" />
                             </div>
                             <div
                                 className="text-xl leading-[2.5] text-gray-300 tracking-wide"
@@ -615,7 +615,7 @@ const KwantowaCzytelnia: React.FC<KwantowaCzytelniaProps> = ({ text, onClose }) 
                             />
                             {hasStarted && !isTyping && displayedText && (
                                 <div className="mt-16 text-center opacity-50 flex flex-col items-center">
-                                    <div className="w-12 h-[1px] bg-purple-500 mb-4" />
+                                    <div className="w-12 h-px bg-purple-500 mb-4" />
                                     <p className="italic font-sans text-sm">Koniec zapisu myśli...</p>
                                 </div>
                             )}

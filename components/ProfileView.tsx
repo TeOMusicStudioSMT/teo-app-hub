@@ -80,7 +80,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
 
                 <div className="w-full max-w-md text-left space-y-4 my-6">
                     {/* Neural Link Configuration Section */}
-                    <div className="bg-gradient-to-br from-cyan-900/20 to-purple-900/20 p-4 rounded-lg border border-cyan-500/30">
+                    <div className="bg-linear-to-br from-cyan-900/20 to-purple-900/20 p-4 rounded-lg border border-cyan-500/30">
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                                 <FiKey className="text-cyan-300 text-lg" />
@@ -109,7 +109,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
                             onClick={() => setApiKeyModalOpen(true)}
                             className={`w-full px-4 py-2 rounded-lg font-semibold text-sm transition-all ${isApiKeyConfigured
                                 ? 'bg-slate-700/50 hover:bg-slate-700 border border-cyan-500/30 text-cyan-300 hover:shadow-[0_0_10px_rgba(6,182,212,0.3)]'
-                                : 'bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:shadow-[0_0_20px_rgba(6,182,212,0.6)]'
+                                : 'bg-linear-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] hover:shadow-[0_0_20px_rgba(6,182,212,0.6)]'
                                 }`}
                         >
                             {isApiKeyConfigured ? 'Update API Key' : 'Configure API Key'}

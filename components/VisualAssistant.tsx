@@ -245,7 +245,7 @@ export const VisualAssistant: React.FC<{ onClose: () => void }> = ({ onClose }) 
         >
             <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" />
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-xs" />
 
             <div className="relative z-10 flex flex-col items-center justify-between h-full w-full p-8 text-white">
                 <div className="w-full flex justify-between items-center">
@@ -255,7 +255,7 @@ export const VisualAssistant: React.FC<{ onClose: () => void }> = ({ onClose }) 
                     <button onClick={onClose} className="text-3xl p-2 hover:text-rose-400 transition-colors">&times;</button>
                 </div>
 
-                <div className="flex-grow flex items-center justify-center max-w-2xl text-center">
+                <div className="grow flex items-center justify-center max-w-2xl text-center">
                     <p className="text-2xl font-semibold drop-shadow-lg px-4">
                         {transcript || (status === 'error' ? error : "Point at an object and tell NAP what to create.")}
                     </p>

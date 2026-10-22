@@ -31,7 +31,7 @@ const wynik = (x?: number | null) => (x == null ? '—' : x < 0 ? '✖' : x.toFi
 function WersjaWiersz({ w, zwyciezca }: { w: Wersja; zwyciezca: boolean }) {
     const [tekst, setTekst] = useState(false);
     return (
-        <div className={`rounded border p-1.5 ${zwyciezca ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-slate-700 bg-black/20'}`}>
+        <div className={`rounded-sm border p-1.5 ${zwyciezca ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-slate-700 bg-black/20'}`}>
             <div className="flex flex-wrap items-center gap-2">
                 <b className="text-emerald-200">{w.lit}</b><span className="text-slate-300">{w.nazwa}</span>
                 <span className="text-slate-400">wynik {wynik(w.wynik)}</span>
@@ -86,7 +86,7 @@ export default function UprzazPanel() {
     const aktywna = uZad.find((u) => u.stan === 'aktywna');
 
     return (
-        <div className="mb-6 rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-600/10 to-slate-900/40 p-4">
+        <div className="mb-6 rounded-2xl border border-emerald-400/30 bg-linear-to-br from-emerald-600/10 to-slate-900/40 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h3 className="text-lg font-bold tracking-widest text-emerald-300">🧬 HARNESS² <span className="text-xs font-normal text-emerald-400/70">· uprząż TeOgochi po katedralnemu</span></h3>
@@ -100,8 +100,8 @@ export default function UprzazPanel() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-yellow-200">📝 Nowa uprząż {u.id} · wynik {wynik(u.wynik.start)} → {wynik(u.wynik.koniec)} · sędzia: {u.sedzia ?? '—'}</span>
                         <span className="flex gap-2">
-                            <button className="rounded border border-emerald-400/60 px-2 py-0.5 text-emerald-200" onClick={() => void akcja(async () => { await zMostu(`/api/uprzaz/${u.id}/przyjmij`, { method: 'POST', body: '{}' }); return '✅ Uprząż aktywna — następne scenariusze ją dostaną.'; })}>✓ Przyjmij</button>
-                            <button className="rounded border border-red-400/50 px-2 py-0.5 text-red-200" onClick={() => void akcja(async () => { await zMostu(`/api/uprzaz/${u.id}/odrzuc`, { method: 'POST', body: '{}' }); return '✖ Odrzucona.'; })}>✖</button>
+                            <button className="rounded-sm border border-emerald-400/60 px-2 py-0.5 text-emerald-200" onClick={() => void akcja(async () => { await zMostu(`/api/uprzaz/${u.id}/przyjmij`, { method: 'POST', body: '{}' }); return '✅ Uprząż aktywna — następne scenariusze ją dostaną.'; })}>✓ Przyjmij</button>
+                            <button className="rounded-sm border border-red-400/50 px-2 py-0.5 text-red-200" onClick={() => void akcja(async () => { await zMostu(`/api/uprzaz/${u.id}/odrzuc`, { method: 'POST', body: '{}' }); return '✖ Odrzucona.'; })}>✖</button>
                             <button className="text-cyan-300" onClick={() => void pokaz(u.przebieg)}>dowody</button>
                         </span>
                     </div>
@@ -121,10 +121,10 @@ export default function UprzazPanel() {
                         className="rounded-lg border border-emerald-400/50 px-3 py-1.5 text-xs text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-40">{robi ? `trwa: ${robi.ostatniKrok ?? '…'}` : '🧬 Propose–Probe–Compose'}</button>
                 </div>
                 <p className="mt-1 text-[10px] text-slate-500">{zadanie?.opis} · {aktywna ? <>aktywna: {aktywna.id} <button className="text-red-300" onClick={() => void akcja(async () => { await zMostu('/api/uprzaz/wycofaj', { method: 'POST', body: JSON.stringify({ zadanie: zad }) }); return '↩ Uprząż zdjęta — gołe zasady zadania.'; })}>↩ wycofaj</button></> : 'bez aktywnej uprzęży (gołe zasady zadania)'}</p>
-                {aktywna && <pre className="mt-1 whitespace-pre-wrap rounded bg-black/30 p-1.5 text-[10px] text-emerald-100/80">{aktywna.blok}</pre>}
+                {aktywna && <pre className="mt-1 whitespace-pre-wrap rounded-sm bg-black/30 p-1.5 text-[10px] text-emerald-100/80">{aktywna.blok}</pre>}
                 <div className="mt-2 flex flex-wrap gap-1 text-[10px]">
                     {stan.przebiegi.filter((p) => p.zadanie === zad).slice(0, 8).map((p) => (
-                        <button key={p.id} onClick={() => void pokaz(p.id)} className={`rounded border px-1.5 py-0.5 ${p.stan === 'blad' ? 'border-red-500/40 text-red-300' : p.stan === 'robi' ? 'border-yellow-500/40 text-yellow-200' : 'border-slate-600 text-slate-300'}`} title={p.powod ?? p.ostatniKrok ?? ''}>
+                        <button key={p.id} onClick={() => void pokaz(p.id)} className={`rounded-sm border px-1.5 py-0.5 ${p.stan === 'blad' ? 'border-red-500/40 text-red-300' : p.stan === 'robi' ? 'border-yellow-500/40 text-yellow-200' : 'border-slate-600 text-slate-300'}`} title={p.powod ?? p.ostatniKrok ?? ''}>
                             {p.id} · {p.material} · {p.stan === 'robi' ? '⏳' : p.stan === 'blad' ? '⚠' : p.propozycja ? '📝' : '·'}
                         </button>
                     ))}

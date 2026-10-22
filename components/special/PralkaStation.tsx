@@ -88,7 +88,7 @@ const StationInner: React.FC = () => {
                     {/* Przełącznik podglądu sieci */}
                     <button
                         onClick={() => setShowNetwork(v => !v)}
-                        className="text-[9px] font-mono px-2.5 py-1.5 rounded border transition-all uppercase tracking-widest"
+                        className="text-[9px] font-mono px-2.5 py-1.5 rounded-sm border transition-all uppercase tracking-widest"
                         style={{
                             borderColor: showNetwork ? 'rgba(249,115,22,0.5)' : 'rgba(100,116,139,0.3)',
                             color:       showNetwork ? '#f97316' : '#64748b',
@@ -105,7 +105,7 @@ const StationInner: React.FC = () => {
                             ? { boxShadow: ['0 0 6px rgba(168,85,247,0.4)', '0 0 18px rgba(168,85,247,0.8)', '0 0 6px rgba(168,85,247,0.4)'] }
                             : {}}
                         transition={{ repeat: Infinity, duration: 1.6 }}
-                        className="text-[9px] font-mono font-bold px-2.5 py-1.5 rounded border uppercase tracking-widest transition-colors"
+                        className="text-[9px] font-mono font-bold px-2.5 py-1.5 rounded-sm border uppercase tracking-widest transition-colors"
                         style={{
                             borderColor: isSingularityProtocolActive ? 'rgba(168,85,247,0.6)' : 'rgba(168,85,247,0.25)',
                             color:       isSingularityProtocolActive ? '#c084fc' : '#7c5a9e',
@@ -169,7 +169,7 @@ const StationInner: React.FC = () => {
                                             </p>
                                         )}
                                         {msg.mediaUrl && (
-                                            <img src={msg.mediaUrl} alt="media" className="max-h-24 rounded mb-1.5 border border-orange-900/40" />
+                                            <img src={msg.mediaUrl} alt="media" className="max-h-24 rounded-sm mb-1.5 border border-orange-900/40" />
                                         )}
                                         <p className={`text-xs ${isPralka ? 'text-orange-100' : 'text-slate-200'}`}>
                                             {msg.content}
@@ -191,12 +191,12 @@ const StationInner: React.FC = () => {
                             onKeyDown={e => e.key === 'Enter' && handleSend()}
                             placeholder="Przekaz roastingowy..."
                             disabled={isAnalyzing}
-                            className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs text-white outline-none focus:border-orange-500 transition-colors disabled:opacity-50"
+                            className="flex-1 bg-gray-900 border border-gray-700 rounded-sm px-3 py-2 text-xs text-white outline-hidden focus:border-orange-500 transition-colors disabled:opacity-50"
                         />
                         <button
                             onClick={handleSend}
                             disabled={isAnalyzing || !draft.trim()}
-                            className="px-4 py-2 rounded text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-40"
+                            className="px-4 py-2 rounded-sm text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-40"
                             style={{ background: 'rgba(249,115,22,0.85)', color: '#000' }}
                         >
                             {isAnalyzing ? '⟳' : 'ROAST'}

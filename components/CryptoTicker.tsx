@@ -110,7 +110,7 @@ export const CryptoTicker: React.FC = () => {
                 initial={{ borderRadius: 16 }}
                 animate={{ borderRadius: marketExpanded ? 24 : 16 }}
             >
-                <div className="absolute inset-0 bg-gradient-to-r from-orange-900/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                <div className="absolute inset-0 bg-linear-to-r from-orange-900/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
                 {/* Nagłówek Karty */}
                 <div className="flex items-center justify-between mb-2">
@@ -129,7 +129,7 @@ export const CryptoTicker: React.FC = () => {
                         {MARKET_LISTS[activeCategory].names[MARKET_LISTS[activeCategory].ids[0]]}
                     </div>
                     {loading ? (
-                        <div className="h-8 w-24 bg-slate-800 animate-pulse rounded" />
+                        <div className="h-8 w-24 bg-slate-800 animate-pulse rounded-sm" />
                     ) : (
                         <FuzzyText
                             fontSize="2rem"
@@ -204,7 +204,7 @@ export const CryptoTicker: React.FC = () => {
                 initial={{ borderRadius: 16 }}
                 animate={{ borderRadius: teoExpanded ? 24 : 16 }}
             >
-                <div className="absolute inset-0 bg-gradient-to-r from-purple-900/20 to-transparent opacity-30" />
+                <div className="absolute inset-0 bg-linear-to-r from-purple-900/20 to-transparent opacity-30" />
 
                 {/* Nagłówek */}
                 <div className="flex items-center justify-between mb-2 relative z-10">
@@ -212,7 +212,7 @@ export const CryptoTicker: React.FC = () => {
                         <FiCpu />
                         <span className="text-xs font-bold tracking-widest uppercase">TeO Core / Pulse</span>
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded border border-green-500/20">
+                    <div className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded-sm border border-green-500/20">
                         <FiTrendingUp /> Stable
                     </div>
                 </div>
@@ -252,7 +252,7 @@ export const CryptoTicker: React.FC = () => {
                                             <span className="text-sm font-bold text-white">{metric.value}</span>
                                         </div>
                                     </div>
-                                    <span className="text-xs font-mono text-green-400 bg-green-900/20 px-2 py-1 rounded">
+                                    <span className="text-xs font-mono text-green-400 bg-green-900/20 px-2 py-1 rounded-sm">
                                         {metric.trend}
                                     </span>
                                 </div>

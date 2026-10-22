@@ -20,12 +20,12 @@ export const TutorialCard: React.FC<TutorialCardProps> = ({ tutorial, onOtworz }
             {tutorial.widok && onOtworz && (canAccess(tutorial.widok) ? (
                 <button
                     onClick={() => onOtworz(tutorial.widok!)}
-                    className="capsule-button capsule-cyan py-2 px-5 flex-shrink-0"
+                    className="capsule-button capsule-cyan py-2 px-5 shrink-0"
                 >
                     Otwórz →
                 </button>
             ) : (
-                <span className="text-xs text-slate-500 flex-shrink-0">🔒 Odblokujesz na Filarze {requiredPillar(tutorial.widok)}</span>
+                <span className="text-xs text-slate-500 shrink-0">🔒 Odblokujesz na Filarze {requiredPillar(tutorial.widok)}</span>
             ))}
         </div>
         <ol className="mt-3 pt-3 border-t border-slate-700/50 space-y-2 text-sm text-slate-300 list-decimal list-inside">

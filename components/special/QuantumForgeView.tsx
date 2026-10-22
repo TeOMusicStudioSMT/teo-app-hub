@@ -223,7 +223,7 @@ export const QuantumForgeView: React.FC<{
     return (
         <motion.div
             initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-            className="fixed inset-0 z-[1000000] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 pointer-events-auto"
+            className="fixed inset-0 z-1000000 bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 pointer-events-auto"
             onClick={onClose}
         >
             <div 
@@ -232,7 +232,7 @@ export const QuantumForgeView: React.FC<{
             >
 
                 {/* Header */}
-                <div className="p-6 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-purple-900/20 to-transparent">
+                <div className="p-6 border-b border-white/5 flex justify-between items-center bg-linear-to-r from-purple-900/20 to-transparent">
                     <h2 className="text-2xl font-black text-white tracking-tighter flex items-center gap-3">
                         <FiUploadCloud className="text-purple-400" />
                         QUANTUM FORGE <span className="text-xs opacity-50 font-normal self-end mb-1">UNIVERSAL TOKENIZER</span>
@@ -290,7 +290,7 @@ export const QuantumForgeView: React.FC<{
                             <input
                                 type="text" value={name} onChange={(e) => setName(e.target.value)}
                                 placeholder="Nazwij obiekt..."
-                                className="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-white mt-2 focus:border-purple-500 outline-none"
+                                className="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-white mt-2 focus:border-purple-500 outline-hidden"
                             />
                         </div>
                         <div>
@@ -322,7 +322,7 @@ export const QuantumForgeView: React.FC<{
                             <input
                                 type="number" min={0} value={hubPriceGrv} onChange={e => setHubPriceGrv(e.target.value)}
                                 disabled={!shareToHub}
-                                className="w-24 bg-black/40 border border-emerald-500/20 rounded px-2 py-1 text-xs text-emerald-200 outline-none focus:border-emerald-500 disabled:opacity-40"
+                                className="w-24 bg-black/40 border border-emerald-500/20 rounded-sm px-2 py-1 text-xs text-emerald-200 outline-hidden focus:border-emerald-500 disabled:opacity-40"
                                 title="Cena w GRV (0 = za darmo)"
                             />
                             <span className="text-[10px] text-emerald-500/70 font-mono">GRV</span>
@@ -334,7 +334,7 @@ export const QuantumForgeView: React.FC<{
                         disabled={isMinting || isUploading} // Blokada podczas uploadu
                         className={`w-full py-4 rounded-xl font-black tracking-widest text-sm uppercase transition-all flex items-center justify-center gap-3 ${(isMinting || isUploading)
                             ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-[0_0_20px_rgba(147,51,234,0.3)]'
+                            : 'bg-linear-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-[0_0_20px_rgba(147,51,234,0.3)]'
                             }`}
                     >
                         {isMinting
@@ -354,7 +354,7 @@ export const QuantumForgeView: React.FC<{
                                     <FiTerminal className="animate-pulse" />
                                     <span className="uppercase tracking-widest font-bold text-xs">SECURE CHANNEL: HUB {'<->'} FORGE</span>
                                 </div>
-                                <div className="flex-grow space-y-2 overflow-y-auto custom-scrollbar font-mono text-xs">
+                                <div className="grow space-y-2 overflow-y-auto custom-scrollbar font-mono text-xs">
                                     {jwLogs.map((log, i) => (
                                         <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
                                             className={`${log.includes('WIESŁAW') ? 'text-cyan-400' : ''} ${log.includes('JADZIA') ? 'text-pink-400' : ''} ${log.includes('SYSTEM') ? 'text-slate-500 italic' : ''}`}

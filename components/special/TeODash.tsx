@@ -670,7 +670,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               <select
                 value={videoFormat}
                 onChange={(e) => setVideoFormat(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-emerald-300 outline-none focus:border-emerald-500 cursor-pointer"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-emerald-300 outline-hidden focus:border-emerald-500 cursor-pointer"
               >
                 <option value="YT">YT (YouTube)</option>
                 <option value="Podcat">Podcat</option>
@@ -685,7 +685,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
                 <select
                   value={coreVideoName}
                   onChange={(e) => setCoreVideoName(e.target.value)}
-                  className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-emerald-300 outline-none focus:border-emerald-500 cursor-pointer"
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-emerald-300 outline-hidden focus:border-emerald-500 cursor-pointer"
                 >
                   <option value="">-- Wybierz plik --</option>
                   {videoList.map(v => (
@@ -728,18 +728,18 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
           <div className="mt-4 rounded-lg border border-slate-700/60 bg-black/20 p-3">
             <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-400"><Scissors size={12} /> Nożyce — potnij na klocki</div>
             <div className="grid grid-cols-1 md:grid-cols-[110px_1fr_90px_auto] gap-2">
-              <select value={ciecieZrodlo} onChange={(e) => setCiecieZrodlo(e.target.value as 'klocki' | 'move')} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-emerald-300 outline-none">
+              <select value={ciecieZrodlo} onChange={(e) => setCiecieZrodlo(e.target.value as 'klocki' | 'move')} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-emerald-300 outline-hidden">
                 <option value="klocki">_OtakOs_Klocki</option>
                 <option value="move">_OtakOs_Move</option>
               </select>
               <div className="flex gap-1">
-                <select value={cieciePlik} onChange={(e) => setCieciePlik(e.target.value)} className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-emerald-300 outline-none">
+                <select value={cieciePlik} onChange={(e) => setCieciePlik(e.target.value)} className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-emerald-300 outline-hidden">
                   <option value="">-- plik --</option>
                   {ciecieLista.map((p) => <option key={p.rel} value={p.rel}>{p.rel}{p.sekundy ? ` · ${p.sekundy} s` : ''}</option>)}
                 </select>
                 <button onClick={() => void odswiezCiecie()} className="p-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg border border-slate-700" title="Odśwież"><RefreshCw size={14} /></button>
               </div>
-              <label className="flex items-center gap-1 text-[10px] text-slate-400">co <input type="number" min={1} max={600} value={ciecieSek} onChange={(e) => setCiecieSek(Number(e.target.value) || 10)} className="w-14 bg-slate-900 border border-slate-700 rounded px-1 py-1.5 text-xs text-emerald-300 text-center" /> s</label>
+              <label className="flex items-center gap-1 text-[10px] text-slate-400">co <input type="number" min={1} max={600} value={ciecieSek} onChange={(e) => setCiecieSek(Number(e.target.value) || 10)} className="w-14 bg-slate-900 border border-slate-700 rounded-sm px-1 py-1.5 text-xs text-emerald-300 text-center" /> s</label>
               <button onClick={() => void potnij()} disabled={tnie || !cieciePlik} className="bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-300 border border-emerald-500/50 rounded-lg px-4 py-2 text-xs font-bold disabled:opacity-40 flex items-center gap-1">
                 {tnie ? <RefreshCw size={12} className="animate-spin" /> : <Scissors size={12} />} {tnie ? 'tnę…' : 'Potnij'}
               </button>

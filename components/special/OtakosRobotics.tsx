@@ -77,7 +77,7 @@ export const OtakosRobotics: React.FC = () => {
 
         {/* Pasek pracy */}
         <div className="h-2 rounded-full bg-black/50 overflow-hidden mb-3">
-          <motion.div className="h-full bg-gradient-to-r from-lime-500 to-emerald-400" animate={{ width: `${progress}%` }} transition={{ ease: 'linear' }} />
+          <motion.div className="h-full bg-linear-to-r from-lime-500 to-emerald-400" animate={{ width: `${progress}%` }} transition={{ ease: 'linear' }} />
         </div>
 
         <button onClick={sendToField} disabled={working}

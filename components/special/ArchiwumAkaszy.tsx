@@ -180,7 +180,7 @@ export const ArchiwumAkaszy: React.FC = () => {
                     value={pathInput} 
                     onChange={(e) => setPathInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && loadDirectory(pathInput)}
-                    className="flex-1 bg-black border border-slate-700 rounded-lg px-3 py-2 text-xs text-fuchsia-100 outline-none focus:border-fuchsia-500 font-bold tracking-wide"
+                    className="flex-1 bg-black border border-slate-700 rounded-lg px-3 py-2 text-xs text-fuchsia-100 outline-hidden focus:border-fuchsia-500 font-bold tracking-wide"
                 />
                 <button onClick={() => loadDirectory(currentPath)} disabled={isLoading} className="p-2 bg-fuchsia-900/30 hover:bg-fuchsia-900/60 text-fuchsia-400 rounded-lg transition-colors border border-fuchsia-500/30" title="Odśwież">
                     <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
@@ -251,13 +251,13 @@ export const ArchiwumAkaszy: React.FC = () => {
                                     )}
                                     {isEditing ? (
                                         <>
-                                            <button onClick={() => setIsEditing(false)} className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-[9px] font-bold rounded text-slate-300 transition-colors">ANULUJ</button>
-                                            <button onClick={saveEditedFile} disabled={isSaving} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-[9px] font-bold rounded text-black transition-colors flex items-center gap-1">
+                                            <button onClick={() => setIsEditing(false)} className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-[9px] font-bold rounded-sm text-slate-300 transition-colors">ANULUJ</button>
+                                            <button onClick={saveEditedFile} disabled={isSaving} className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-[9px] font-bold rounded-sm text-black transition-colors flex items-center gap-1">
                                                 {isSaving ? <RefreshCw size={12} className="animate-spin"/> : null} ZAPISZ
                                             </button>
                                         </>
                                     ) : (
-                                        <button onClick={() => setIsEditing(true)} className="px-2 py-1 bg-cyan-900/40 hover:bg-cyan-900/60 border border-cyan-500/50 text-[9px] font-bold rounded text-cyan-300 transition-colors uppercase">Edytuj</button>
+                                        <button onClick={() => setIsEditing(true)} className="px-2 py-1 bg-cyan-900/40 hover:bg-cyan-900/60 border border-cyan-500/50 text-[9px] font-bold rounded-sm text-cyan-300 transition-colors uppercase">Edytuj</button>
                                     )}
                                     <button onClick={() => setSelectedFileContent(null)} className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 ml-1 transition-colors border border-transparent hover:border-slate-700">
                                         <X size={16} />
@@ -276,11 +276,11 @@ export const ArchiwumAkaszy: React.FC = () => {
                                     <textarea 
                                         value={editedContent}
                                         onChange={(e) => setEditedContent(e.target.value)}
-                                        className="flex-1 w-full bg-transparent text-[11px] text-slate-200 font-mono resize-none outline-none custom-scrollbar leading-relaxed"
+                                        className="flex-1 w-full bg-transparent text-[11px] text-slate-200 font-mono resize-none outline-hidden custom-scrollbar leading-relaxed"
                                         spellCheck={false}
                                     />
                                 ) : (
-                                    <pre className="text-[11px] text-slate-300 font-mono whitespace-pre-wrap break-words leading-relaxed">
+                                    <pre className="text-[11px] text-slate-300 font-mono whitespace-pre-wrap wrap-break-word leading-relaxed">
                                         {selectedFileContent}
                                     </pre>
                                 )}

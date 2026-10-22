@@ -122,7 +122,7 @@ export const KuzniaModeli: React.FC = () => {
             <header className="space-y-1">
                 <h2 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
                     <Hammer size={22} className="text-orange-400" />
-                    <span className="bg-gradient-to-r from-orange-300 to-amber-500 bg-clip-text text-transparent">
+                    <span className="bg-linear-to-r from-orange-300 to-amber-500 bg-clip-text text-transparent">
                         Kuźnia Modeli
                     </span>
                 </h2>
@@ -150,7 +150,7 @@ export const KuzniaModeli: React.FC = () => {
             )}
 
             {/* ── ŚCIEŻKA ZADANIA ────────────────────────────────────────────── */}
-            <div className="rounded-2xl border border-orange-500/20 bg-gradient-to-b from-orange-950/20 to-transparent p-4">
+            <div className="rounded-2xl border border-orange-500/20 bg-linear-to-b from-orange-950/20 to-transparent p-4">
                 <div className="text-[10px] font-mono uppercase tracking-[0.25em] text-orange-500/60 mb-3">
                     ścieżka zadania
                 </div>
@@ -253,7 +253,7 @@ export const KuzniaModeli: React.FC = () => {
                                         <div className="min-w-0 flex-1">
                                             <div className="text-sm font-bold text-slate-100 break-all leading-snug">{m.plik}</div>
                                             <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm"
                                                     style={{ color: BARWA_RODZAJU[m.rodzaj], background: `${BARWA_RODZAJU[m.rodzaj]}1a` }}>
                                                     {m.rodzaj}
                                                 </span>
@@ -277,7 +277,7 @@ export const KuzniaModeli: React.FC = () => {
                                                 value={nazwa}
                                                 onChange={e => setNazwa(e.target.value)}
                                                 placeholder={m.proponowanaNazwa}
-                                                className="flex-1 min-w-0 rounded-lg border border-slate-700 bg-black/40 px-3 py-2 text-xs font-mono outline-none focus:border-orange-500"
+                                                className="flex-1 min-w-0 rounded-lg border border-slate-700 bg-black/40 px-3 py-2 text-xs font-mono outline-hidden focus:border-orange-500"
                                             />
                                             <button
                                                 onClick={() => wykuj(m)}

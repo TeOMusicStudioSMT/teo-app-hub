@@ -81,7 +81,7 @@ const MediaInput: React.FC = () => {
                 autoPlay
                 muted
                 playsInline
-                className="w-full h-32 object-cover bg-black rounded mb-4 transition-opacity"
+                className="w-full h-32 object-cover bg-black rounded-sm mb-4 transition-opacity"
                 style={{ opacity: policy.canSendMedia && cameraOn ? 1 : 0.3 }}
             />
 

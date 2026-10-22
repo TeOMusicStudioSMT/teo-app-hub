@@ -490,7 +490,7 @@ Wygeneruj od 1 do 3 zadań.`;
                         <Users size={24} className="text-fuchsia-400" />
                     </div>
                     <div>
-                        <h2 className="text-2xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 to-cyan-500">SYMPOZJUM ŚWIADOMOŚCI</h2>
+                        <h2 className="text-2xl font-black tracking-widest text-transparent bg-clip-text bg-linear-to-r from-fuchsia-400 to-cyan-500">SYMPOZJUM ŚWIADOMOŚCI</h2>
                         <p className="text-xs text-slate-500 tracking-widest">Kwantowy Stół Narad • Konsylium Multi-Agentowe • Pamięć Akaszy v2.0</p>
                     </div>
                 </div>
@@ -533,7 +533,7 @@ Wygeneruj od 1 do 3 zadań.`;
                                 onChange={(e) => { setTopic(e.target.value); localStorage.setItem('otakos_current_topic', e.target.value); }}
                                 disabled={isDebating}
                                 placeholder="np. Analiza potencjału stworzenia nowej gry karcianej opartej na astronomii..."
-                                className="w-full bg-black/50 border border-slate-700 rounded-xl pl-4 pr-10 py-3 text-sm text-white focus:border-fuchsia-500 outline-none transition-colors disabled:opacity-50"
+                                className="w-full bg-black/50 border border-slate-700 rounded-xl pl-4 pr-10 py-3 text-sm text-white focus:border-fuchsia-500 outline-hidden transition-colors disabled:opacity-50"
                             />
                             {topic && !isDebating && (
                                 <button 
@@ -550,7 +550,7 @@ Wygeneruj od 1 do 3 zadań.`;
                             disabled={isDebating || !topic.trim()}
                             className={`px-8 rounded-xl font-bold tracking-widest transition-all flex items-center gap-2 ${isDebating
                                     ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                                    : 'bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white shadow-[0_0_20px_rgba(192,38,211,0.4)]'
+                                    : 'bg-linear-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white shadow-[0_0_20px_rgba(192,38,211,0.4)]'
                                 }`}
                         >
                             {isDebating ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2 }}><BrainCircuit size={18} /></motion.div> : <Play size={18} />}
@@ -770,7 +770,7 @@ Wygeneruj od 1 do 3 zadań.`;
                         <h4 className="text-emerald-400 font-bold text-xs mb-2">WYGENEROWANO ZADANIA OPERACYJNE:</h4>
                         <div className="flex flex-col gap-2 mb-4">
                             {finalPlan.tasks && finalPlan.tasks.map((task: any, idx: number) => (
-                                <div key={idx} className="bg-black/50 p-2 rounded border border-emerald-900 text-[10px] text-emerald-200">
+                                <div key={idx} className="bg-black/50 p-2 rounded-sm border border-emerald-900 text-[10px] text-emerald-200">
                                     <strong>{task.title}</strong>: {task.command.substring(0, 80)}...
                                 </div>
                             ))}
@@ -788,7 +788,7 @@ Wygeneruj od 1 do 3 zadań.`;
                                 toast.success("Zadania przetransferowane do Terminala 0.00G!", { icon: '🚀' });
                                 setFinalPlan(null);
                             }} 
-                            className="w-full bg-emerald-600 hover:bg-emerald-500 text-black py-2 rounded font-bold transition-colors"
+                            className="w-full bg-emerald-600 hover:bg-emerald-500 text-black py-2 rounded-sm font-bold transition-colors"
                         >
                             🚀 PRZEKAŻ ZADANIA DO TERMINALA 0.00G
                         </button>
@@ -828,7 +828,7 @@ Wygeneruj od 1 do 3 zadań.`;
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     placeholder="🔍 PRZESZUKAJ AKASZĘ... (Temat, treść, data)"
-                                    className="w-full bg-black/80 border border-fuchsia-500/30 rounded-xl px-4 py-3 text-xs text-fuchsia-100 outline-none focus:border-fuchsia-500 transition-all font-bold tracking-widest uppercase"
+                                    className="w-full bg-black/80 border border-fuchsia-500/30 rounded-xl px-4 py-3 text-xs text-fuchsia-100 outline-hidden focus:border-fuchsia-500 transition-all font-bold tracking-widest uppercase"
                                 />
                             </div>
 
@@ -854,7 +854,7 @@ Wygeneruj od 1 do 3 zadań.`;
                                                 <div className="flex items-center gap-3">
                                                     <button 
                                                         onClick={() => handleAbsorbKnowledge(crystal.topic, crystal.fullTranscript || "")}
-                                                        className="px-2 py-1 bg-fuchsia-900/50 hover:bg-fuchsia-600 border border-fuchsia-500/50 rounded text-fuchsia-100 transition-all"
+                                                        className="px-2 py-1 bg-fuchsia-900/50 hover:bg-fuchsia-600 border border-fuchsia-500/50 rounded-sm text-fuchsia-100 transition-all"
                                                         title="Dodaj ten kryształ jako żeton kontekstowy"
                                                     >
                                                         WESSIJ WIEDZĘ

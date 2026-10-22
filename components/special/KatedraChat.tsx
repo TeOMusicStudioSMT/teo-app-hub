@@ -331,7 +331,7 @@ const DarkSelect: React.FC<{
         onChange={e => onChange(e.target.value)}
         style={{ colorScheme: 'dark', color }}
         className="bg-slate-800 text-xs px-2 py-1 rounded border border-slate-600
-                   outline-none hover:border-purple-400 transition-colors cursor-pointer
+                   outline-hidden hover:border-purple-400 transition-colors cursor-pointer
                    max-w-[200px] truncate"
     >
         {!options.find(o => o.value === value) && (
@@ -1702,7 +1702,7 @@ ${String(d.tresc || '').slice(0, 4000)}
     // RENDER
     // ══════════════════════════════════════════════════════════════
     return (
-        <div className={`flex flex-col h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 ${przeciaga ? 'ring-2 ring-inset ring-cyan-400/70' : ''}`}
+        <div className={`flex flex-col h-screen bg-linear-to-br from-slate-900 via-purple-900 to-slate-900 ${przeciaga ? 'ring-2 ring-inset ring-cyan-400/70' : ''}`}
             onDragOver={(e) => { if (Array.from(e.dataTransfer?.types ?? []).includes('Files')) { e.preventDefault(); setPrzeciaga(true); } }}
             onDragLeave={(e) => { if (e.currentTarget === e.target) setPrzeciaga(false); }}
             onDrop={handleDrop}>
@@ -1713,7 +1713,7 @@ ${String(d.tresc || '').slice(0, 4000)}
 
                     {/* Logo + model info */}
                     <div className="flex items-center gap-3 min-w-0">
-                        <Brain className="text-purple-400 flex-shrink-0" size={22} />
+                        <Brain className="text-purple-400 shrink-0" size={22} />
                         <div className="min-w-0">
                             <h1 className="text-base font-bold text-purple-100 leading-tight">
                                 Katedra OtakOS
@@ -1725,7 +1725,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                     </div>
 
                     {/* Akcje */}
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
                         <OdpalKurka task={[...messages].reverse().find(m => m.sender === 'human')?.content} />
                         <button onClick={() => setShowSettings(s => !s)}
                             title="Ustawienia modeli"
@@ -1802,7 +1802,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                     {/* Źródło */}
                     <div className="flex items-center gap-1">
                         <span className="text-xs text-slate-500 mr-1">Źródło:</span>
-                        <div className="flex rounded border border-slate-600 overflow-hidden text-xs">
+                        <div className="flex rounded-sm border border-slate-600 overflow-hidden text-xs">
                             <button onClick={() => setSourceMode('ollama')}
                                 className={`px-2.5 py-1 flex items-center gap-1 transition-colors ${
                                     sourceMode === 'ollama'
@@ -1833,7 +1833,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                             <Users size={12} className="text-amber-400" />
                             <span className="text-xs text-slate-400">Adamus:</span>
                             <span className="text-xs font-mono text-amber-300">{heavyModel}</span>
-                            <button onClick={otworzMozg} title="Modele ustawia się w jednym miejscu: TeO-Sim → Mózg Katedry" className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/30">🧠 zmień w Mózgu</button>
+                            <button onClick={otworzMozg} title="Modele ustawia się w jednym miejscu: TeO-Sim → Mózg Katedry" className="flex items-center gap-1 px-2 py-1 text-xs rounded-sm border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/30">🧠 zmień w Mózgu</button>
                         </div>
 
                         {/* 🧬 DiffusionGemma — placeholder silnika (nieaktywny, pulsuje fioletowo) */}
@@ -1864,7 +1864,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                             <Users size={12} className="text-amber-400" />
                             <span className="text-xs text-slate-400">Adamus (☁️):</span>
                             <span className="text-xs font-mono text-amber-300">{cloudHeavyModel}</span>
-                            <button onClick={otworzMozg} title="Modele ustawia się w jednym miejscu: TeO-Sim → Mózg Katedry" className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/30">🧠 zmień w Mózgu</button>
+                            <button onClick={otworzMozg} title="Modele ustawia się w jednym miejscu: TeO-Sim → Mózg Katedry" className="flex items-center gap-1 px-2 py-1 text-xs rounded-sm border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/30">🧠 zmień w Mózgu</button>
                         </div>
                     </>)}
 
@@ -1923,7 +1923,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                                 key={h.id}
                                 onClick={() => otworzSesje(h.id)}
                                 title={`${h.ile} wiadomości · ${new Date(h.zmieniona).toLocaleString('pl-PL')}`}
-                                className="shrink-0 max-w-[13rem] rounded-lg border px-2.5 py-1 text-left transition-colors"
+                                className="shrink-0 max-w-52 rounded-lg border px-2.5 py-1 text-left transition-colors"
                                 style={{
                                     borderColor: teraz ? 'rgba(168,85,247,0.6)' : 'rgba(148,163,184,0.18)',
                                     background: teraz ? 'rgba(168,85,247,0.12)' : 'rgba(0,0,0,0.25)',
@@ -1988,7 +1988,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                                         <span className="ml-2 text-purple-300 animate-pulse">▊</span>
                                     )}
                                 </span>
-                                <span className="text-xs opacity-40 flex-shrink-0">
+                                <span className="text-xs opacity-40 shrink-0">
                                     {msg.timestamp.toLocaleTimeString()}
                                 </span>
                             </div>
@@ -2005,7 +2005,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                                     {msg.attachments.map((att, i) => (
                                         att.type === 'image' && att.url ? (
                                             <img key={i} src={att.url} alt={att.name}
-                                                className="rounded border border-purple-500/30 max-w-[160px] max-h-[120px] object-cover cursor-pointer hover:opacity-90"
+                                                className="rounded-sm border border-purple-500/30 max-w-[160px] max-h-[120px] object-cover cursor-pointer hover:opacity-90"
                                                 title={`${att.name} · ${Math.round(att.size/1024)}KB`} />
                                         ) : (
                                             <div key={i} className="flex items-center gap-1 text-xs opacity-60">
@@ -2031,7 +2031,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                                     {messages[messages.length - 1]?.id === msg.id && (
                                         <button onClick={() => handleContinue(msg)}
                                             disabled={isLoading}
-                                            className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 font-semibold transition-all duration-200 hover:shadow-[0_0_8px_rgba(192,132,252,0.6)] px-1.5 py-0.5 rounded border border-purple-500/30 hover:border-purple-400 bg-purple-950/20 active:scale-95 disabled:opacity-30 disabled:pointer-events-none">
+                                            className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 font-semibold transition-all duration-200 hover:shadow-[0_0_8px_rgba(192,132,252,0.6)] px-1.5 py-0.5 rounded-sm border border-purple-500/30 hover:border-purple-400 bg-purple-950/20 active:scale-95 disabled:opacity-30 disabled:pointer-events-none">
                                             <Play size={11} /> Dokończ... :)
                                         </button>
                                     )}
@@ -2048,7 +2048,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                             className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5
                                        bg-purple-700/90 hover:bg-purple-600 active:bg-purple-800
                                        text-white text-xs rounded-full shadow-lg
-                                       border border-purple-400/40 backdrop-blur-sm
+                                       border border-purple-400/40 backdrop-blur-xs
                                        transition-colors animate-pulse">
                             ⬇ Nowe wiadomości
                         </button>
@@ -2068,7 +2068,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                     <button
                         onClick={() => setIsTemplateModalOpen(true)}
                         title="📝 Szablon Rady — Wygeneruj manifest zadania"
-                        className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2
+                        className="shrink-0 flex items-center gap-1.5 px-3 py-2
                                    bg-emerald-900/60 hover:bg-emerald-800/80
                                    border border-emerald-500/40 hover:border-emerald-400/70
                                    rounded-lg text-emerald-300 hover:text-emerald-200
@@ -2094,7 +2094,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                         disabled={isLoading}
                         className="flex-1 px-4 py-2 bg-slate-700 border border-purple-500/30
                                    rounded-lg text-purple-100 placeholder-purple-400/50
-                                   focus:outline-none focus:border-purple-400 transition-colors
+                                   focus:outline-hidden focus:border-purple-400 transition-colors
                                    disabled:opacity-50 text-sm"
                     />
 
@@ -2148,7 +2148,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                                                       'bg-slate-700 border-slate-500/40 text-slate-200'}`}>
                                     {/* Miniaturka */}
                                     <img src={att.base64} alt="" width={28} height={28}
-                                        className="rounded object-cover flex-shrink-0" />
+                                        className="rounded-sm object-cover shrink-0" />
                                     {/* Info */}
                                     <div className="flex flex-col leading-tight">
                                         <span>{att.width}×{att.height}px</span>
@@ -2190,7 +2190,7 @@ ${String(d.tresc || '').slice(0, 4000)}
             {/* ── MODAL: SZABLON RADY ─────────────────────────────── */}
             {isTemplateModalOpen && (
                 <div
-                    className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center
+                    className="absolute inset-0 bg-black/80 backdrop-blur-xs flex items-center
                                justify-center z-50 p-4"
                     onClick={() => setIsTemplateModalOpen(false)}
                 >
@@ -2232,7 +2232,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                                 className="w-full px-3 py-2 bg-slate-800 border border-slate-600
                                            focus:border-emerald-500/70 rounded-lg text-slate-200
                                            placeholder-slate-500 text-sm resize-none
-                                           focus:outline-none transition-colors"
+                                           focus:outline-hidden transition-colors"
                             />
                             <p className="text-xs text-slate-600">Co chcesz zamanifestować / zbudować?</p>
                         </div>
@@ -2271,7 +2271,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                                 rows={3}
                                 readOnly={isAutoContextLoading}
                                 className={`w-full px-3 py-2 bg-slate-800 rounded-lg text-sm resize-none
-                                           focus:outline-none transition-colors
+                                           focus:outline-hidden transition-colors
                                            ${isAutoContextLoading
                                                ? 'border border-violet-500/50 text-violet-300/60 italic cursor-wait'
                                                : 'border border-slate-600 focus:border-cyan-500/70 text-slate-200 placeholder-slate-500'
@@ -2342,7 +2342,7 @@ ${String(d.tresc || '').slice(0, 4000)}
                     </div>
                     {chatMemory.slice(-5).map(mem => (
                         <div key={mem.id}
-                            className="text-xs text-purple-300 mb-1 p-2 bg-slate-700/50 rounded">
+                            className="text-xs text-purple-300 mb-1 p-2 bg-slate-700/50 rounded-sm">
                             <div className="font-medium">{mem.title}</div>
                             <div className="opacity-60 truncate">{mem.summary}</div>
                             {mem.tags.length > 0 && (

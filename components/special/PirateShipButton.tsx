@@ -18,11 +18,11 @@ const PirateShipButton: React.FC<PirateShipButtonProps> = ({ url }) => {
                 className="group relative flex items-center justify-center sm:justify-start gap-0 sm:gap-4 w-16 h-16 sm:w-auto sm:h-auto sm:px-10 sm:py-5 bg-[#020617] backdrop-blur-2xl border border-cyan-500/30 rounded-full overflow-hidden transition-all duration-500 hover:shadow-[0_0_30px_rgba(34,211,238,0.5)] hover:border-cyan-300/60 active:scale-95 no-underline shadow-2xl"
             >
                 {/* Deep Ocean Layer (Base) */}
-                <div className="absolute inset-0 bg-gradient-to-b from-blue-950 to-black z-0" />
+                <div className="absolute inset-0 bg-linear-to-b from-blue-950 to-black z-0" />
 
                 {/* --- WAVE SYSTEMS --- */}
                 {/* Wave Layer 1 (Back/Slow) */}
-                <div className="absolute inset-0 z-0 pointer-events-none translate-y-full group-hover:translate-y-[35%] transition-transform duration-[800ms] ease-out opacity-40">
+                <div className="absolute inset-0 z-0 pointer-events-none translate-y-full group-hover:translate-y-[35%] transition-transform duration-800 ease-out opacity-40">
                     <div className="absolute top-0 left-0 w-[400%] h-full flex animate-wave-slow">
                         <WaveSVG color="fill-cyan-500" opacity="0.4" />
                         <WaveSVG color="fill-cyan-500" opacity="0.4" />
@@ -30,7 +30,7 @@ const PirateShipButton: React.FC<PirateShipButtonProps> = ({ url }) => {
                 </div>
 
                 {/* Wave Layer 2 (Front/Fast) */}
-                <div className="absolute inset-0 z-0 pointer-events-none translate-y-full group-hover:translate-y-[15%] transition-transform duration-[1200ms] ease-out opacity-60">
+                <div className="absolute inset-0 z-0 pointer-events-none translate-y-full group-hover:translate-y-[15%] transition-transform duration-1200 ease-out opacity-60">
                     <div className="absolute top-0 left-0 w-[400%] h-full flex animate-wave-fast">
                         <WaveSVG color="fill-cyan-300" opacity="0.6" />
                         <WaveSVG color="fill-cyan-300" opacity="0.6" />
@@ -48,7 +48,7 @@ const PirateShipButton: React.FC<PirateShipButtonProps> = ({ url }) => {
                 </span>
 
                 {/* --- GLASS REFLECTION --- */}
-                <div className="absolute inset-0 z-30 bg-gradient-to-tr from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none" />
+                <div className="absolute inset-0 z-30 bg-linear-to-tr from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none" />
 
                 {/* --- MOBILE PULSE (Aura for the artifact) --- */}
                 <div className="absolute inset-0 sm:hidden rounded-full border-4 border-cyan-500/20 animate-pulse z-10" />

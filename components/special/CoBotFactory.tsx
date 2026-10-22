@@ -167,7 +167,7 @@ export const CoBotFactory: React.FC<CoBotFactoryProps> = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs"
         onClick={onClose}
       >
         <motion.div
@@ -180,7 +180,7 @@ export const CoBotFactory: React.FC<CoBotFactoryProps> = ({
           {/* Header */}
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h2 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
+              <h2 className="text-3xl font-bold bg-linear-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
                 🏭 The Workshop
               </h2>
               <p className="text-slate-400">Stwórz swoje "Ja w innej formie"</p>
@@ -200,7 +200,7 @@ export const CoBotFactory: React.FC<CoBotFactoryProps> = ({
                 key={s}
                 className={`h-2 flex-1 rounded-full transition-all ${
                   step === s 
-                    ? 'bg-gradient-to-r from-cyan-500 to-purple-500' 
+                    ? 'bg-linear-to-r from-cyan-500 to-purple-500' 
                     : ['aroma', 'personality', 'naming', 'birth'].indexOf(step) > i
                       ? 'bg-green-500'
                       : 'bg-slate-700'
@@ -279,7 +279,7 @@ export const CoBotFactory: React.FC<CoBotFactoryProps> = ({
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
                 placeholder="np. Echo, Echo-7, Mrok..."
-                className="w-full p-4 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none text-lg"
+                className="w-full p-4 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-hidden text-lg"
                 autoFocus
               />
               <p className="mt-3 text-sm text-slate-400">
@@ -289,7 +289,7 @@ export const CoBotFactory: React.FC<CoBotFactoryProps> = ({
               <button
                 onClick={handleCreate}
                 disabled={!customName.trim() || isCreating}
-                className="mt-6 w-full py-4 bg-gradient-to-r from-cyan-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 disabled:from-slate-700 disabled:to-slate-700 rounded-xl font-bold text-white transition-all disabled:cursor-not-allowed"
+                className="mt-6 w-full py-4 bg-linear-to-r from-cyan-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 disabled:from-slate-700 disabled:to-slate-700 rounded-xl font-bold text-white transition-all disabled:cursor-not-allowed"
               >
                 {isCreating ? (
                   <span className="flex items-center justify-center gap-2">
@@ -357,7 +357,7 @@ export const CoBotDashboard: React.FC = () => {
         </div>
         <button
           onClick={() => setIsFactoryOpen(true)}
-          className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 rounded-xl font-semibold flex items-center gap-2 transition-all"
+          className="px-4 py-2 bg-linear-to-r from-cyan-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 rounded-xl font-semibold flex items-center gap-2 transition-all"
         >
           <PlusCircleIcon className="w-5 h-5" /> Nowy Co-Bot
         </button>
@@ -387,7 +387,7 @@ export const CoBotDashboard: React.FC = () => {
             >
               <div className="flex justify-between items-start mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-xl">
+                  <div className="w-10 h-10 bg-linear-to-br from-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-xl">
                     {AROMA_OPTIONS.find(a => a.id === bot.aroma)?.icon || '🤖'}
                   </div>
                   <div>

@@ -1,6 +1,37 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss' source(none);
+@import './wyglad-tailwind3.css';
+
+/* Te same źródła klas co `content` w dawnym tailwind.config.js (Tailwind 3). Bez `source(none)`
+   v4 skanowałby całe repo (lib/, src/, scripts/…) i dokładał klasy, których Hub dotąd nie miał. */
+@source './index.html';
+@source './components/**/*.{js,ts,jsx,tsx}';
+@source './hooks/**/*.{js,ts,jsx,tsx}';
+@source './services/**/*.{js,ts,jsx,tsx}';
+@source './store/**/*.{js,ts,jsx,tsx}';
+@source './App.tsx';
+@source './index.tsx';
+
+@theme {
+  --animate-spin-slow: spin 3s linear infinite;
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
 
 /* Fix na Scroll Hijacking - Neutralizacja Wstrząsów Grawitacyjnych */
 html, body {

@@ -101,13 +101,13 @@ export const ModuleSieci: React.FC<{ onClose?: () => void }> = ({ onClose }) => 
     return (
         <div className="w-full max-w-4xl mx-auto bg-[#04070d] border border-cyan-500/20 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.6)] font-sans text-slate-200">
             {/* HEADER */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-cyan-500/20 bg-gradient-to-r from-[#06121a] to-[#0a0a14]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-cyan-500/20 bg-linear-to-r from-[#06121a] to-[#0a0a14]">
                 <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-xl bg-black border border-cyan-500/40 flex items-center justify-center">
                         <Network size={22} className="text-cyan-400" />
                     </div>
                     <div>
-                        <h2 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-violet-400">MAPA SIECI MODUŁÓW</h2>
+                        <h2 className="text-lg font-black tracking-widest text-transparent bg-clip-text bg-linear-to-r from-cyan-300 to-violet-400">MAPA SIECI MODUŁÓW</h2>
                         <p className="text-[10px] text-slate-500 tracking-wider">Lazy Drill-Down · warstwa: <span style={{ color: levelColor }}>{current.level.toUpperCase()}</span></p>
                     </div>
                 </div>
@@ -128,7 +128,7 @@ export const ModuleSieci: React.FC<{ onClose?: () => void }> = ({ onClose }) => 
                     <React.Fragment key={i}>
                         {i > 0 && <ChevronRight size={11} className="text-slate-600" />}
                         <button onClick={() => jumpTo(i)}
-                            className={`px-2 py-0.5 rounded ${i === crumbs.length - 1 ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-500 hover:text-slate-300'}`}>
+                            className={`px-2 py-0.5 rounded-sm ${i === crumbs.length - 1 ? 'text-cyan-300 bg-cyan-500/10' : 'text-slate-500 hover:text-slate-300'}`}>
                             {c.label}
                         </button>
                     </React.Fragment>

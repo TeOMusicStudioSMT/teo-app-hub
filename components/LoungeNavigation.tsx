@@ -156,7 +156,7 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
     };
 
     return (
-        <nav className="relative z-[100] mb-6 w-full max-w-5xl mx-auto flex items-center justify-center gap-1 md:gap-1.5 p-2 bg-slate-900/60 border border-slate-700/50 rounded-full backdrop-blur-lg">
+        <nav className="relative z-100 mb-6 w-full max-w-5xl mx-auto flex items-center justify-center gap-1 md:gap-1.5 p-2 bg-slate-900/60 border border-slate-700/50 rounded-full backdrop-blur-lg">
 
             {/* ── Godło FILARU ──────────────────────────────────────── */}
             <div title={`${tier.name.pl} · ${tier.title.pl}`}
@@ -242,7 +242,7 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
                             exit={{   opacity: 0, y: -10, scale: 0.95 }}
                             transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
                             className={cn(
-                                'absolute right-0 top-full mt-2 z-[110]',
+                                'absolute right-0 top-full mt-2 z-110',
                                 'w-64 rounded-2xl p-2',
                                 'bg-slate-950/90 backdrop-blur-2xl',
                                 'border border-slate-700/60',
@@ -280,7 +280,7 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
                                         'text-sm font-medium transition-all duration-200 text-left',
                                         locked ? 'opacity-40 cursor-not-allowed text-slate-500' :
                                         activeView === item.id
-                                            ? `bg-gradient-to-r ${theme.tw.bg} text-slate-900 shadow-md`
+                                            ? `bg-linear-to-r ${theme.tw.bg} text-slate-900 shadow-md`
                                             : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
                                     )}
                                 >
@@ -342,7 +342,7 @@ export const LoungeNavigation: React.FC<LoungeNavigationProps> = ({
                             </motion.button>
 
                             {/* Dekoracyjny gradient u dołu panelu */}
-                            <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b-2xl bg-gradient-to-r from-transparent via-slate-600/40 to-transparent" />
+                            <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b-2xl bg-linear-to-r from-transparent via-slate-600/40 to-transparent" />
                         </motion.div>
                     )}
                 </AnimatePresence>

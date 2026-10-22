@@ -59,7 +59,7 @@ const TheVeil: React.FC = () => {
             </div>
 
             {/* 2. Wynik Walidacji/Interpretacji */}
-            <div className="bg-black/30 p-3 rounded mb-2 border border-cyan-700/50">
+            <div className="bg-black/30 p-3 rounded-sm mb-2 border border-cyan-700/50">
                 <p className="text-sm text-gray-200 italic">
                     {isAnalyzing ? '⟳ ' : ''}{analysisOutput.message}
                 </p>

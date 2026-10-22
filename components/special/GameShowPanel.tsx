@@ -65,11 +65,11 @@ export const GameShowPanel: React.FC = () => {
             {s && (
                 <>
                     <label className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">Język odcinków:
-                        <select value={s.ustawienia?.jezyk ?? 'en'} onChange={(ev) => void wolaj('/api/game-show/ustawienia', 'PUT', { jezyk: ev.target.value }, ev.target.value === 'en' ? 'Nowe odcinki po angielsku (wstęp, wywiad, opis).' : 'Nowe odcinki po polsku.')} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
+                        <select value={s.ustawienia?.jezyk ?? 'en'} onChange={(ev) => void wolaj('/api/game-show/ustawienia', 'PUT', { jezyk: ev.target.value }, ev.target.value === 'en' ? 'Nowe odcinki po angielsku (wstęp, wywiad, opis).' : 'Nowe odcinki po polsku.')} className="rounded-sm border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
                             {Object.entries(s.jezyki ?? { en: 'English', pl: 'polski' }).map(([k, n]) => <option key={k} value={k}>{FLAGA[k] ?? ''} {n}</option>)}
                         </select>
                         <span className="ml-2">Intro:</span>
-                        <select value={s.ustawienia?.silnikIntro ?? 'flux'} onChange={(ev) => void wolaj('/api/game-show/ustawienia', 'PUT', { silnikIntro: ev.target.value }, ev.target.value === 'flux' ? 'Intro nowych odcinków: kadr FLUX + ruch kamery.' : 'Intro nowych odcinków: Wan 2.2 (długo na 6 GB).')} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
+                        <select value={s.ustawienia?.silnikIntro ?? 'flux'} onChange={(ev) => void wolaj('/api/game-show/ustawienia', 'PUT', { silnikIntro: ev.target.value }, ev.target.value === 'flux' ? 'Intro nowych odcinków: kadr FLUX + ruch kamery.' : 'Intro nowych odcinków: Wan 2.2 (długo na 6 GB).')} className="rounded-sm border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
                             {Object.entries(s.silnikiIntro ?? { flux: 'FLUX', wan: 'Wan 2.2' }).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
                         </select>
                     </label>
@@ -81,12 +81,12 @@ export const GameShowPanel: React.FC = () => {
                                 <button onClick={() => confirm('Odpiąć tę playlistę? Odcinki z jej kanału przestaną być na nią dopisywane.') && void wolaj('/api/game-show/ustawienia', 'PUT', { playlistaUsun: pl.id }, 'Playlista odpięta.')} className="text-slate-600 hover:text-rose-300">odepnij</button>
                             </div>))}
                         <div className="ml-2 mt-1 flex flex-wrap items-center gap-2">
-                            <input value={playlista} onChange={(ev) => setPlaylista(ev.target.value)} placeholder="➕ link do playlisty YouTube (…/playlist?list=PL…)" className="min-w-[260px] rounded border border-slate-700 bg-black/40 px-1.5 py-0.5 text-slate-200" />
-                            <button disabled={!playlista.trim()} onClick={() => void wolaj('/api/game-show/ustawienia', 'PUT', { playlista: playlista.trim() }, 'Playlista dodana — most rozpoznał jej kanał.').then(() => setPlaylista(''))} className="rounded bg-amber-600/30 px-2 py-0.5 text-amber-100">dodaj</button>
+                            <input value={playlista} onChange={(ev) => setPlaylista(ev.target.value)} placeholder="➕ link do playlisty YouTube (…/playlist?list=PL…)" className="min-w-[260px] rounded-sm border border-slate-700 bg-black/40 px-1.5 py-0.5 text-slate-200" />
+                            <button disabled={!playlista.trim()} onClick={() => void wolaj('/api/game-show/ustawienia', 'PUT', { playlista: playlista.trim() }, 'Playlista dodana — most rozpoznał jej kanał.').then(() => setPlaylista(''))} className="rounded-sm bg-amber-600/30 px-2 py-0.5 text-amber-100">dodaj</button>
                         </div>
                     </div>
                     <label className="mb-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">Kanał programu:
-                        <select value={s.kanal.zapamietany ?? ''} onChange={(ev) => void wolaj('/api/game-show/kanal', 'PUT', { kanalId: ev.target.value || null }, ev.target.value ? 'Kanał programu ustawiony — odcinki pójdą tam same.' : 'Kanał programu zapomniany — odcinki idą na domyślny.')} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
+                        <select value={s.kanal.zapamietany ?? ''} onChange={(ev) => void wolaj('/api/game-show/kanal', 'PUT', { kanalId: ev.target.value || null }, ev.target.value ? 'Kanał programu ustawiony — odcinki pójdą tam same.' : 'Kanał programu zapomniany — odcinki idą na domyślny.')} className="rounded-sm border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
                             <option value="">— domyślny kanał Katedry —</option>
                             {kanaly.map((k) => <option key={k.id} value={k.id}>{k.nazwa || k.id}</option>)}
                         </select>
@@ -100,30 +100,30 @@ export const GameShowPanel: React.FC = () => {
                         })}
                         <span className="text-slate-500">(kopie z tym samym tytułem i opisem, każdy kanał ma własny dobowy limit YouTube)</span>
                     </div>
-                    <div className="mb-2 rounded border border-white/5 bg-black/20 p-2 text-[10px] text-slate-400">
+                    <div className="mb-2 rounded-sm border border-white/5 bg-black/20 p-2 text-[10px] text-slate-400">
                         <div className="flex flex-wrap items-center gap-2">🎵 Album Suno do tańca:
                             {album?.album
                                 ? <><a href={`https://suno.com/album/${album.album}`} target="_blank" rel="noreferrer" className="text-amber-200 underline">{album.nazwa || album.album}</a>
                                     <span className="text-slate-500">→ biblioteka „{album.katalog ?? '…'}” (choreografia i wszystkie tryby Tanecznego Starcia)</span>
-                                    <button disabled={synchro} onClick={async () => { setSynchro(true); try { setAlbum((await zMostu<{ album: AlbumSunoStan }>('/api/suno-album/synchronizuj', { method: 'POST', body: '{}' })).album); } catch (e) { toast.error(String(e instanceof Error ? e.message : e)); } finally { setSynchro(false); } }} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-100">{synchro ? '⏳' : '↻ synchronizuj'}</button></>
-                                : <><input value={albumLink} onChange={(ev) => setAlbumLink(ev.target.value)} placeholder="https://suno.com/album/…" className="min-w-[260px] rounded border border-slate-700 bg-black/40 px-1.5 py-0.5 text-slate-200" />
-                                    <button disabled={!albumLink.trim()} onClick={() => void wolaj('/api/suno-album', 'PUT', { album: albumLink.trim() }, 'Album Suno podpięty — utwory idą do biblioteki.').then(() => setAlbumLink(''))} className="rounded bg-amber-600/30 px-2 py-0.5 text-amber-100">podepnij</button></>}
+                                    <button disabled={synchro} onClick={async () => { setSynchro(true); try { setAlbum((await zMostu<{ album: AlbumSunoStan }>('/api/suno-album/synchronizuj', { method: 'POST', body: '{}' })).album); } catch (e) { toast.error(String(e instanceof Error ? e.message : e)); } finally { setSynchro(false); } }} className="rounded-sm bg-slate-700/60 px-2 py-0.5 text-slate-100">{synchro ? '⏳' : '↻ synchronizuj'}</button></>
+                                : <><input value={albumLink} onChange={(ev) => setAlbumLink(ev.target.value)} placeholder="https://suno.com/album/…" className="min-w-[260px] rounded-sm border border-slate-700 bg-black/40 px-1.5 py-0.5 text-slate-200" />
+                                    <button disabled={!albumLink.trim()} onClick={() => void wolaj('/api/suno-album', 'PUT', { album: albumLink.trim() }, 'Album Suno podpięty — utwory idą do biblioteki.').then(() => setAlbumLink(''))} className="rounded-sm bg-amber-600/30 px-2 py-0.5 text-amber-100">podepnij</button></>}
                         </div>
                         {album?.blad && <div className="text-amber-300">⚠ {album.blad}</div>}
                         {(album?.utwory ?? []).map((u) => <div key={u.id} title={u.powod ?? u.plik ?? ''} className={u.stan === 'prywatny' ? 'text-amber-300' : 'text-slate-400'}>{ZNAK_SUNO[u.stan] ?? u.stan} {u.tytul}{u.sekundy ? ` · ${Math.floor(u.sekundy / 60)}:${String(u.sekundy % 60).padStart(2, '0')}` : ''}{u.bpm ? ` · ${u.bpm} BPM` : ''}{u.powod ? ` — ${u.powod}` : ''}</div>)}
                     </div>
                     {pokaz && (
-                        <div className="mb-2 rounded border border-white/5 bg-black/30 p-2 text-[10px] text-slate-400">
+                        <div className="mb-2 rounded-sm border border-white/5 bg-black/30 p-2 text-[10px] text-slate-400">
                             <b className="text-slate-300">Dedykowany kanał (zakładasz Ty — API YouTube nie zakłada kanałów):</b>
                             <ol className="mt-1 list-none space-y-0.5">{s.instrukcja.map((l) => <li key={l}>{l}</li>)}</ol>
-                            <button onClick={() => void wolaj('/api/game-show/stol', 'POST', {}, 'Karta „TeO Game Show — zarządzanie kanałem” leży na Stole.')} className="mt-2 rounded bg-amber-600/30 px-2 py-1 text-amber-100">🏛️ Karta zarządzania kanałem na Stół</button>
+                            <button onClick={() => void wolaj('/api/game-show/stol', 'POST', {}, 'Karta „TeO Game Show — zarządzanie kanałem” leży na Stole.')} className="mt-2 rounded-sm bg-amber-600/30 px-2 py-1 text-amber-100">🏛️ Karta zarządzania kanałem na Stół</button>
                             <div className="mt-2 text-slate-300">Inne sieci:</div>
                             <ul>{s.inneSieci.map((x) => <li key={x.siec}>✕ <b>{x.siec}</b> — {x.stan}: {x.powod}</li>)}</ul>
                         </div>
                     )}
                     {!s.odcinki.length && <p className="text-[10px] text-slate-500">Pusto. Nagraj występ w Tanecznym Starciu (🩰 Choreografia → 🎥 Nagraj) — odcinek złoży się sam.</p>}
                     {s.odcinki.slice(0, 12).map((o) => (
-                        <div key={o.id} className="mb-2 rounded border border-white/5 bg-black/30 p-2">
+                        <div key={o.id} className="mb-2 rounded-sm border border-white/5 bg-black/30 p-2">
                             <div className="flex flex-wrap items-center gap-2">
                                 <span title={o.jezyk ?? 'pl'}>{FLAGA[o.jezyk ?? 'pl']}</span>
                                 <b className="text-slate-200">{o.tancerz.imie}</b>
@@ -137,12 +137,12 @@ export const GameShowPanel: React.FC = () => {
                             {o.uwagi?.length > 0 && <div className="mt-1 text-[10px] text-slate-500">uwagi: {o.uwagi.join(' · ')}</div>}
                             {o.publikacja?.tytul && <div className="mt-1 text-[10px] text-slate-400">✍️ „{o.publikacja.tytul}”{o.publikacja.kanalNazwa ? ` → ${o.publikacja.kanalNazwa}` : ''}</div>}
                             <div className="mt-1 flex gap-2">
-                                {['blad', 'do_akceptacji'].includes(o.stan) && Object.keys(FLAGA).filter((j) => j !== (o.jezyk ?? 'pl')).map((j) => <button key={j} onClick={() => confirm(`Przerobić odcinek na ${j === 'en' ? 'angielski' : 'polski'}? Intro zostaje, plansze, wywiad i opis Kronikarza powstaną od nowa, a obecna publikacja (jeśli czeka na ✓) pójdzie do odrzuconych.`) && void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { jezyk: j }, 'Przerabiam odcinek — intro zostaje.')} className="rounded bg-sky-700/40 px-2 py-0.5 text-sky-100">{FLAGA[j]} przerób {j === 'en' ? 'po angielsku' : 'po polsku'}</button>)}
-                                {o.stan === 'do_akceptacji' && !o.klockiDoklejone && !((o.etapy.sklejanie as Etap & { klocki?: { start: number; end: number } })?.klocki?.start || (o.etapy.sklejanie as Etap & { klocki?: { start: number; end: number } })?.klocki?.end) && <button onClick={() => void wolaj(`/api/game-show/${o.id}/klocki`, 'POST', {}, 'Klocki Start/End doklejone — publikacja czeka na ✓ z nowym plikiem.')} className="rounded bg-violet-700/40 px-2 py-0.5 text-violet-100">🧱 doklej klocki Dance</button>}
+                                {['blad', 'do_akceptacji'].includes(o.stan) && Object.keys(FLAGA).filter((j) => j !== (o.jezyk ?? 'pl')).map((j) => <button key={j} onClick={() => confirm(`Przerobić odcinek na ${j === 'en' ? 'angielski' : 'polski'}? Intro zostaje, plansze, wywiad i opis Kronikarza powstaną od nowa, a obecna publikacja (jeśli czeka na ✓) pójdzie do odrzuconych.`) && void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { jezyk: j }, 'Przerabiam odcinek — intro zostaje.')} className="rounded-sm bg-sky-700/40 px-2 py-0.5 text-sky-100">{FLAGA[j]} przerób {j === 'en' ? 'po angielsku' : 'po polsku'}</button>)}
+                                {o.stan === 'do_akceptacji' && !o.klockiDoklejone && !((o.etapy.sklejanie as Etap & { klocki?: { start: number; end: number } })?.klocki?.start || (o.etapy.sklejanie as Etap & { klocki?: { start: number; end: number } })?.klocki?.end) && <button onClick={() => void wolaj(`/api/game-show/${o.id}/klocki`, 'POST', {}, 'Klocki Start/End doklejone — publikacja czeka na ✓ z nowym plikiem.')} className="rounded-sm bg-violet-700/40 px-2 py-0.5 text-violet-100">🧱 doklej klocki Dance</button>}
                                 {o.klockiDoklejone && <span className="text-[10px] text-violet-300">🧱 {[...o.klockiDoklejone.start, ...o.klockiDoklejone.end].join(' + ')}</span>}
-                                {o.stan === 'blad' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', {}, 'Ponawiam od etapu, który stanął.')} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-100">↻ Ponów</button>}
-                                {o.stan === 'blad' && o.etapy.intro?.stan === 'blad' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { bezIntro: true }, 'Składam odcinek bez intro.')} className="rounded bg-slate-700/60 px-2 py-0.5 text-slate-100">bez intro</button>}
-                                {o.stan === 'blad' && o.etapy.intro?.stan === 'blad' && (o.silnikIntro ?? 'flux') !== 'flux' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { silnikIntro: 'flux' }, 'Ponawiam intro na FLUX.')} className="rounded bg-amber-700/40 px-2 py-0.5 text-amber-100">↻ intro na FLUX</button>}
+                                {o.stan === 'blad' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', {}, 'Ponawiam od etapu, który stanął.')} className="rounded-sm bg-slate-700/60 px-2 py-0.5 text-slate-100">↻ Ponów</button>}
+                                {o.stan === 'blad' && o.etapy.intro?.stan === 'blad' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { bezIntro: true }, 'Składam odcinek bez intro.')} className="rounded-sm bg-slate-700/60 px-2 py-0.5 text-slate-100">bez intro</button>}
+                                {o.stan === 'blad' && o.etapy.intro?.stan === 'blad' && (o.silnikIntro ?? 'flux') !== 'flux' && <button onClick={() => void wolaj(`/api/game-show/${o.id}/ponow`, 'POST', { silnikIntro: 'flux' }, 'Ponawiam intro na FLUX.')} className="rounded-sm bg-amber-700/40 px-2 py-0.5 text-amber-100">↻ intro na FLUX</button>}
                                 {!['robi', 'w_kolejce'].includes(o.stan) && <button onClick={() => confirm('Usunąć odcinek (pliki robocze)? Gotowy film w montażach i publikacja zostają.') && void wolaj(`/api/game-show/${o.id}`, 'DELETE', {}, 'Usunięty.')} className="ml-auto text-[10px] text-slate-600 hover:text-rose-300">✕</button>}
                             </div>
                         </div>

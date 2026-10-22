@@ -37,14 +37,14 @@ const Narzedzie_: React.FC<{ n: Narzedzie; kolor: string }> = ({ n, kolor }) => 
     return (
         <div className="rounded-lg border border-slate-700/60 bg-black/30 p-2.5 space-y-2">
             <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0"
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm shrink-0"
                     style={{ background: n.metoda === 'GET' ? '#1e293b' : '#422006', color: n.metoda === 'GET' ? '#94a3b8' : '#fbbf24' }}>
                     {n.metoda}
                 </span>
                 <code className="text-[11px] text-slate-300 truncate flex-1">{n.sciezka}</code>
                 <button onClick={odpal} disabled={zajety || brakuje}
                     title={brakuje ? 'Uzupełnij parametry trasy' : 'Wywołaj'}
-                    className="flex items-center gap-1 rounded px-2 py-1 text-[10px] font-bold text-slate-900 shrink-0 disabled:opacity-40"
+                    className="flex items-center gap-1 rounded-sm px-2 py-1 text-[10px] font-bold text-slate-900 shrink-0 disabled:opacity-40"
                     style={{ background: kolor }}>
                     <Play size={10} /> {zajety ? '…' : 'Odpal'}
                 </button>
@@ -56,19 +56,19 @@ const Narzedzie_: React.FC<{ n: Narzedzie; kolor: string }> = ({ n, kolor }) => 
                         <input key={p} value={parametry[p] ?? ''}
                             onChange={e => setParametry(s => ({ ...s, [p]: e.target.value }))}
                             placeholder={`:${p}`}
-                            className="min-w-0 flex-1 rounded border border-slate-700 bg-black/50 px-2 py-1 text-[11px] font-mono outline-none focus:border-slate-500" />
+                            className="min-w-0 flex-1 rounded-sm border border-slate-700 bg-black/50 px-2 py-1 text-[11px] font-mono outline-hidden focus:border-slate-500" />
                     ))}
                 </div>
             )}
 
             {zCialem && (
                 <textarea value={cialo} onChange={e => setCialo(e.target.value)} rows={2}
-                    className="w-full rounded border border-slate-700 bg-black/50 px-2 py-1 text-[11px] font-mono outline-none focus:border-slate-500"
+                    className="w-full rounded-sm border border-slate-700 bg-black/50 px-2 py-1 text-[11px] font-mono outline-hidden focus:border-slate-500"
                     placeholder='{"klucz": "wartość"}' />
             )}
 
             {wynik && (
-                <div className="rounded bg-black/50 p-2">
+                <div className="rounded-sm bg-black/50 p-2">
                     <div className="text-[10px] font-mono mb-1" style={{ color: udane ? '#34d399' : '#fbbf24' }}>
                         HTTP {wynik.status || '—'}
                     </div>

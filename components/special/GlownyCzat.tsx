@@ -146,7 +146,7 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                     {!operatorStaly && (
-                        <div className="flex overflow-hidden rounded border border-slate-700 text-[11px]" role="tablist" aria-label="Operator">
+                        <div className="flex overflow-hidden rounded-sm border border-slate-700 text-[11px]" role="tablist" aria-label="Operator">
                             {(Object.keys(OPERATORZY) as Operator[]).map((op) => (
                                 <button key={op} role="tab" onClick={() => zmienOperatora(op)} aria-selected={operator === op} disabled={!!sesja?.trwa}
                                     title={`${OPERATORZY[op].imie} — ${OPERATORZY[op].opis}`}
@@ -160,19 +160,19 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                     {stan && (operator === 'argo' ? stan.status !== 'offline' : !stan.chmura) && (
                         <select value={model} onChange={(e) => wybierzModel(e.target.value)}
                             title={`Model ${operator === 'argo' ? 'Argo BoBa (Gemini z Twojego konta)' : 'Głównego (Ollama)'}. Zmiana działa od następnej wiadomości — także w trwającej rozmowie.`}
-                            className={`max-w-[11rem] rounded border bg-black/50 px-1.5 py-0.5 text-[11px] ${operator === 'glowny' && malyModel(modelTeraz) ? 'border-amber-500/70 text-amber-200' : 'border-slate-700'}`}>
+                            className={`max-w-44 rounded-sm border bg-black/50 px-1.5 py-0.5 text-[11px] ${operator === 'glowny' && malyModel(modelTeraz) ? 'border-amber-500/70 text-amber-200' : 'border-slate-700'}`}>
                             <option value="">domyślny ({stan.model})</option>
                             {listaModeli.map((m) => <option key={m} value={m}>{operator === 'glowny' && malyModel(m) ? '⚠ ' : ''}{m}</option>)}
                         </select>
                     )}
                     {!kompaktowy && sesje.length > 0 && (
                         <select value={sesja?.id ?? ''} onChange={(e) => (e.target.value ? otworz(e.target.value) : setSesja(null))}
-                            className="max-w-[14rem] rounded border border-slate-700 bg-black/50 px-1.5 py-0.5 text-[11px]">
+                            className="max-w-56 rounded-sm border border-slate-700 bg-black/50 px-1.5 py-0.5 text-[11px]">
                             <option value="">+ nowa rozmowa</option>
                             {sesje.map((s) => <option key={s.id} value={s.id}>{s.czeka ? '✋ ' : s.trwa ? '⟳ ' : ''}{s.tytul.slice(0, 40)}</option>)}
                         </select>
                     )}
-                    {sesja && <button onClick={() => setSesja(null)} className="rounded border border-slate-600 px-1.5 py-0.5 text-[11px] hover:bg-slate-800">+ nowa</button>}
+                    {sesja && <button onClick={() => setSesja(null)} className="rounded-sm border border-slate-600 px-1.5 py-0.5 text-[11px] hover:bg-slate-800">+ nowa</button>}
                 </div>
             </div>
             {stan === null && <div className="text-[11px] text-rose-300">⚠ Most offline (:3001) albo bez tras {TRASY[operator].stan.replace(/\/stan$/, '')} (starszy most — zrestartuj go) — {O.imie} działa przez most Katedry.</div>}
@@ -182,7 +182,7 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
             )}
 
             {/* Rozmowa to treść (Suweren ↔ Główny), nie interfejs — Tłumacz ekranu jej nie rusza. */}
-            <div data-bez-tlumaczenia className={`space-y-1.5 overflow-y-auto pr-1 ${kompaktowy ? 'max-h-64' : 'max-h-[28rem]'}`}>
+            <div data-bez-tlumaczenia className={`space-y-1.5 overflow-y-auto pr-1 ${kompaktowy ? 'max-h-64' : 'max-h-112'}`}>
                 {!sesja && <div className="text-[11px] text-slate-400">{operator === 'argo'
                     ? 'Napisz zadanie — Argo BoB czyta Katedrę i Game Studio sam, a każdą zmianę pliku (po Tarczy Prawdy) i diagnostykę (rewizor, testy, tsc) pokazuje Ci do ✓.'
                     : 'Napisz zadanie — Główny czyta i zmienia pliki Katedry sam, zleca pracę TeOgochi, a o polecenia (instalacje, git, usuwanie…) prosi Cię z wyjaśnieniem.'}</div>}
@@ -192,13 +192,13 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                             {w.tresc}
                             {!!w.zalaczniki?.length && <div className="mt-1 flex flex-wrap gap-1">{w.zalaczniki.map((z) => (
                                 <a key={z} href={`${MOST}/api/glowny/zalacznik/${encodeURIComponent(z)}`} target="_blank" rel="noreferrer">
-                                    <img src={`${MOST}/api/glowny/zalacznik/${encodeURIComponent(z)}`} alt={z} className="h-14 rounded border border-sky-700/60 object-cover" />
+                                    <img src={`${MOST}/api/glowny/zalacznik/${encodeURIComponent(z)}`} alt={z} className="h-14 rounded-sm border border-sky-700/60 object-cover" />
                                 </a>))}</div>}
                         </div>);
                     if (w.kto === 'glowny') return <div key={i} className={`mr-8 whitespace-pre-wrap rounded-lg px-2 py-1.5 ${O.dymek}`}>{w.tresc}</div>;
                     if (w.kto === 'narzedzie') return <div key={i} className="text-[10px] text-slate-500">🔧 {w.narzedzie}{w.opis ? ` — ${w.opis}` : ''}</div>;
                     if (w.kto === 'decyzja') return <div key={i} className="text-[10px] text-slate-400">{w.tresc}</div>;
-                    if (w.kto === 'blad') return <div key={i} className="rounded border border-rose-600/50 bg-rose-950/40 px-2 py-1 text-rose-200">⚠ {w.tresc}</div>;
+                    if (w.kto === 'blad') return <div key={i} className="rounded-sm border border-rose-600/50 bg-rose-950/40 px-2 py-1 text-rose-200">⚠ {w.tresc}</div>;
                     if (w.kto === 'prosba' && w.prosba) {
                         const p = sesja.prosby.find((x) => x.id === w.prosba!.id) ?? w.prosba;
                         return (
@@ -206,11 +206,11 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                                 <div className="font-bold">✋ {O.imie} prosi o zgodę · ryzyko {p.ryzykoSlownie}</div>
                                 <div className="mt-0.5">🗣️ <b>O co mu chodzi:</b> {p.coRobi}</div>
                                 {p.dlaczego && <div className="mt-0.5 text-slate-300">💭 <b>Po co (jego słowami):</b> {p.dlaczego}</div>}
-                                <div className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-all rounded bg-black/50 px-1.5 py-1 font-mono text-[10px] text-slate-300">{p.narzedzie}: {p.polecenie}</div>
+                                <div className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-all rounded-sm bg-black/50 px-1.5 py-1 font-mono text-[10px] text-slate-300">{p.narzedzie}: {p.polecenie}</div>
                                 {p.stan === 'czeka'
                                     ? <div className="mt-1.5 flex gap-1.5">
-                                        <button onClick={() => decyduj(p, true)} className="rounded bg-emerald-700/80 px-2 py-0.5 font-bold text-emerald-50 hover:bg-emerald-600">✓ Zgoda</button>
-                                        <button onClick={() => decyduj(p, false)} className="rounded border border-slate-500 px-2 py-0.5 hover:bg-slate-800">✕ Nie</button>
+                                        <button onClick={() => decyduj(p, true)} className="rounded-sm bg-emerald-700/80 px-2 py-0.5 font-bold text-emerald-50 hover:bg-emerald-600">✓ Zgoda</button>
+                                        <button onClick={() => decyduj(p, false)} className="rounded-sm border border-slate-500 px-2 py-0.5 hover:bg-slate-800">✕ Nie</button>
                                       </div>
                                     : <div className="mt-1 text-[10px] text-slate-400">{p.stan === 'zgoda' ? '✓ zgodziłeś się' : '✕ odmówiłeś'}</div>}
                             </div>
@@ -226,7 +226,7 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                 <div className="flex flex-wrap items-center gap-1.5">
                     {zalaczniki.map((z) => (
                         <div key={z} className="relative">
-                            <img src={`${MOST}/api/glowny/zalacznik/${encodeURIComponent(z)}`} alt={z} className="h-12 rounded border border-slate-600 object-cover" />
+                            <img src={`${MOST}/api/glowny/zalacznik/${encodeURIComponent(z)}`} alt={z} className="h-12 rounded-sm border border-slate-600 object-cover" />
                             <button onClick={() => setZalaczniki((x) => x.filter((y) => y !== z))} title="Usuń z wiadomości"
                                 className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-black/80 text-[9px] leading-4 text-slate-200 hover:bg-rose-700">✕</button>
                         </div>))}
@@ -237,15 +237,15 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                 <input ref={plikRef} type="file" accept="image/*" multiple hidden onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ''; wgraj(f); }} />
                 <button onClick={() => plikRef.current?.click()} title="Dołącz zrzut ekranu (albo wklej Ctrl+V / upuść tutaj)"
                     disabled={!!sesja?.trwa || czeka.length > 0}
-                    className="self-end rounded border border-slate-600 px-2 py-1.5 hover:bg-slate-800 disabled:opacity-40">🖼️</button>
+                    className="self-end rounded-sm border border-slate-600 px-2 py-1.5 hover:bg-slate-800 disabled:opacity-40">🖼️</button>
                 <textarea value={tekst} onChange={(e) => setTekst(e.target.value)} rows={kompaktowy ? 2 : 3}
                     onPaste={(e) => { const o = obrazyZ(e.clipboardData); if (o.length) { e.preventDefault(); wgraj(o); } }}
                     onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) wyslij(); }}
                     placeholder={czeka.length ? 'Najpierw zdecyduj o prośbie powyżej (✓ / ✕)…' : sesja ? 'Dalej… (Ctrl+Enter · Ctrl+V wkleja zrzut)' : `Zadanie dla ${O.dopelniacz}… (Ctrl+Enter · zrzut ekranu: Ctrl+V albo upuść)`}
                     disabled={!!sesja?.trwa || czeka.length > 0}
-                    className="flex-1 resize-none rounded border border-slate-700 bg-black/50 px-2 py-1.5 text-xs disabled:opacity-50" />
+                    className="flex-1 resize-none rounded-sm border border-slate-700 bg-black/50 px-2 py-1.5 text-xs disabled:opacity-50" />
                 <button onClick={wyslij} disabled={(!tekst.trim() && !zalaczniki.length) || wgrywa > 0 || wysyla || !!sesja?.trwa || czeka.length > 0}
-                    className={`self-end rounded px-3 py-1.5 font-bold text-amber-50 disabled:opacity-40 ${O.przycisk}`}>{wysyla ? '⟳' : `${O.znak} Wyślij`}</button>
+                    className={`self-end rounded-sm px-3 py-1.5 font-bold text-amber-50 disabled:opacity-40 ${O.przycisk}`}>{wysyla ? '⟳' : `${O.znak} Wyślij`}</button>
             </div>
         </div>
     );

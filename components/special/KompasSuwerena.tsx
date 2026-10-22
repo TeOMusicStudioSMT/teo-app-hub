@@ -64,7 +64,7 @@ export const KompasSuwerena: React.FC = () => {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[12px] font-bold" style={{ color: here ? t.color : '#cbd5e1' }}>{t.name.pl} · {t.title.pl}</span>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: `${t.color}1f`, color: t.color }}>{e.law}</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-sm" style={{ background: `${t.color}1f`, color: t.color }}>{e.law}</span>
                   {here && <span className="text-[9px] text-violet-300">← jesteś tu</span>}
                 </div>
                 <div className="text-[11px] text-zinc-400 leading-relaxed mt-0.5">{e.note}</div>

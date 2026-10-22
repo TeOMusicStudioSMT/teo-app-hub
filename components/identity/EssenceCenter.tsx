@@ -32,7 +32,7 @@ export const EssenceCenter: React.FC = () => {
                 {/* Outer Rotating Field (Restored Orb Visuals) */}
                 <div className="absolute inset-0 rounded-full border-2 border-cyan-500/30 shadow-[0_0_50px_rgba(6,182,212,0.4)] animate-[spin_10s_linear_infinite]" />
                 <div className="absolute inset-2 rounded-full border border-purple-500/40 opacity-70 animate-[spin_15s_linear_infinite_reverse]" />
-                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-900/20 to-purple-900/20 blur-xl animate-pulse" />
+                <div className="absolute inset-0 rounded-full bg-linear-to-br from-cyan-900/20 to-purple-900/20 blur-xl animate-pulse" />
 
                 {/* Avatar Core */}
                 <div className="relative z-10">

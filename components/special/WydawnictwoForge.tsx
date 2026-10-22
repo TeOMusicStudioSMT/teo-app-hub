@@ -204,7 +204,7 @@ ${zarysSceny}
   // ═══════════════════════════════════════════════════════════════
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-950 via-indigo-950 to-black text-white p-6">
+    <div className="min-h-screen bg-linear-to-br from-purple-950 via-indigo-950 to-black text-white p-6">
       {/* Header */}
       <div className="max-w-7xl mx-auto mb-8">
         <div className="flex items-center gap-4 mb-4">
@@ -213,7 +213,7 @@ ${zarysSceny}
             <Sparkles className="w-6 h-6 text-yellow-300 absolute -top-1 -right-1" />
           </div>
           <div>
-            <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange-400 via-pink-500 to-purple-600">
+            <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-linear-to-r from-orange-400 via-pink-500 to-purple-600">
               Kuźnia Wydawnictwa 0.00G
             </h1>
             <p className="text-gray-400 text-sm">Warsztat Autonomicznej Kreacji Literackiej</p>
@@ -221,7 +221,7 @@ ${zarysSceny}
         </div>
 
         {/* Lorebook Preview */}
-        <div className="bg-purple-900/30 border border-purple-500/30 rounded-lg p-4 backdrop-blur-sm">
+        <div className="bg-purple-900/30 border border-purple-500/30 rounded-lg p-4 backdrop-blur-xs">
           <button
             onClick={() => setShowLorebook(!showLorebook)}
             className="flex items-center gap-2 text-purple-300 hover:text-purple-100 transition-colors"
@@ -251,7 +251,7 @@ ${zarysSceny}
       {/* ── PĘTLA WYDAWNICZA — Alert z notatkami z Czytelni ─────── */}
       {kuzniaAlertOpen && kuzniaNotes && (
         <div className="max-w-7xl mx-auto mb-6">
-          <div className="bg-gradient-to-r from-cyan-950/60 to-indigo-950/60 border border-cyan-500/40 rounded-xl p-4 backdrop-blur-sm shadow-[0_0_20px_rgba(6,182,212,0.2)]">
+          <div className="bg-linear-to-r from-cyan-950/60 to-indigo-950/60 border border-cyan-500/40 rounded-xl p-4 backdrop-blur-xs shadow-[0_0_20px_rgba(6,182,212,0.2)]">
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center shrink-0 mt-0.5">
                 <ScrollText className="w-4 h-4 text-cyan-400" />
@@ -314,7 +314,7 @@ ${zarysSceny}
       <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-6">
         {/* Input Panel */}
         <div className="space-y-4">
-          <div className="bg-gradient-to-br from-indigo-900/40 to-purple-900/40 border border-indigo-500/30 rounded-xl p-6 backdrop-blur-sm shadow-2xl">
+          <div className="bg-linear-to-br from-indigo-900/40 to-purple-900/40 border border-indigo-500/30 rounded-xl p-6 backdrop-blur-xs shadow-2xl">
             <div className="flex items-center gap-2 mb-4">
               <Wand2 className="w-6 h-6 text-pink-400" />
               <h2 className="text-2xl font-bold text-pink-300">Panel Kreacji</h2>
@@ -329,7 +329,7 @@ ${zarysSceny}
                 value={scenaZarys}
                 onChange={(e) => setScenaZarys(e.target.value)}
                 placeholder="Opisz scenę, którą chcesz stworzyć... (np. 'Bohater po raz pierwszy uświadamia sobie, że jego myśli wpływają na strukturę rzeczywistości wokół niego')"
-                className="w-full h-40 bg-black/40 border border-purple-500/30 rounded-lg p-4 text-white placeholder-gray-500 focus:outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 transition-all resize-none"
+                className="w-full h-40 bg-black/40 border border-purple-500/30 rounded-lg p-4 text-white placeholder-gray-500 focus:outline-hidden focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 transition-all resize-none"
               />
             </div>
 
@@ -375,7 +375,7 @@ ${zarysSceny}
             <button
               onClick={inicjujKreacje}
               disabled={isGenerating || !scenaZarys.trim()}
-              className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-lg transition-all transform hover:scale-105 active:scale-95 shadow-xl flex items-center justify-center gap-3"
+              className="w-full bg-linear-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-lg transition-all transform hover:scale-105 active:scale-95 shadow-xl flex items-center justify-center gap-3"
             >
               {isGenerating ? (
                 <>
@@ -394,7 +394,7 @@ ${zarysSceny}
 
         {/* Output Panel */}
         <div className="space-y-4">
-          <div className="bg-gradient-to-br from-purple-900/40 to-pink-900/40 border border-purple-500/30 rounded-xl p-6 backdrop-blur-sm shadow-2xl min-h-[500px]">
+          <div className="bg-linear-to-br from-purple-900/40 to-pink-900/40 border border-purple-500/30 rounded-xl p-6 backdrop-blur-xs shadow-2xl min-h-[500px]">
             <div className="flex items-center gap-2 mb-4">
               <Heart className="w-6 h-6 text-pink-400" />
               <h2 className="text-2xl font-bold text-pink-300">Manifest Kreacji</h2>
@@ -468,7 +468,7 @@ ${zarysSceny}
                     // Powiadom główny system — Czytelnia nasłuchuje tego eventu
                     window.dispatchEvent(new Event('story_ready'));
                   }}
-                  className="w-full bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600
+                  className="w-full bg-linear-to-r from-indigo-600 via-purple-600 to-pink-600
                              hover:from-indigo-500 hover:via-purple-500 hover:to-pink-500
                              text-white font-bold py-3 px-4 rounded-lg transition-all
                              shadow-[0_0_20px_rgba(139,92,246,0.4)] hover:shadow-[0_0_30px_rgba(139,92,246,0.6)]

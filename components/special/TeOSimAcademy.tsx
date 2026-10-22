@@ -1228,7 +1228,7 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
       </AnimatePresence>
 
       {/* 🔮 ARCHITEKTURA SZKLANA - LEWITUJĄCA KONSOLA INTENCJI */}
-      <div className={`fixed inset-x-0 bottom-0 z-[9990] flex justify-center pb-24 pointer-events-none transition-all duration-700 cubic-bezier(0.4, 0, 0.2, 1) ${
+      <div className={`fixed inset-x-0 bottom-0 z-9990 flex justify-center pb-24 pointer-events-none transition-all duration-700 cubic-bezier(0.4, 0, 0.2, 1) ${
           isConsoleOpen 
           ? 'opacity-100 translate-y-0' 
           : 'opacity-0 translate-y-24'
@@ -1238,7 +1238,7 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
           <div className="w-full max-w-5xl max-h-[85vh] overflow-y-auto scrollbar-thin scrollbar-thumb-fuchsia-700 scrollbar-track-transparent bg-gray-950/40 backdrop-blur-xl border border-fuchsia-500/20 rounded-t-3xl shadow-[0_-10px_40px_rgba(217,70,239,0.15)] p-6 pointer-events-auto relative flex flex-col">
               
               {/* Neonowy akcent u góry (Bajer) */}
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-fuchsia-500 to-transparent opacity-50 animate-pulse"></div>
+              <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-transparent via-fuchsia-500 to-transparent opacity-50 animate-pulse"></div>
 
               {/* 🏛️ RDZEŃ STEROWANIA - PORT DYPLOMATYCZNY & KONSOLA INTENCJI */}
               <div className="flex flex-col gap-4">
@@ -1337,7 +1337,7 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
                       <div className="flex items-center gap-4">
                         <button 
                           onClick={handleSaveKronika} 
-                          className="text-[10px] bg-indigo-900/50 hover:bg-indigo-800 text-indigo-300 px-3 py-1 rounded border border-indigo-700/50 transition-colors font-mono tracking-tighter"
+                          className="text-[10px] bg-indigo-900/50 hover:bg-indigo-800 text-indigo-300 px-3 py-1 rounded-sm border border-indigo-700/50 transition-colors font-mono tracking-tighter"
                           title="Wyślij sesję do Archiwisty Wiesława (Dysk F:)"
                         >
                           📜 ZAPISZ KRONIKĘ
@@ -1390,7 +1390,7 @@ Jeśli teza mówi o świetle, sferze, rozbłyśnięciu — dodaj [ACTION:ACTIVAT
       {/* 🔮 PRZYCISK AKTYWACYJNY RADY */}
       <button 
           onClick={() => setIsConsoleOpen(!isConsoleOpen)}
-          className="fixed bottom-6 right-6 z-[9995] bg-fuchsia-900/60 hover:bg-fuchsia-700 text-white rounded-full p-4 shadow-[0_0_20px_rgba(217,70,239,0.5)] transition-all hover:scale-110 border border-fuchsia-400/30"
+          className="fixed bottom-6 right-6 z-9995 bg-fuchsia-900/60 hover:bg-fuchsia-700 text-white rounded-full p-4 shadow-[0_0_20px_rgba(217,70,239,0.5)] transition-all hover:scale-110 border border-fuchsia-400/30"
       >
           💬 {isConsoleOpen ? 'Ukryj Konsolę' : 'Wywołaj Radę'}
       </button>

@@ -88,7 +88,7 @@ export const UsernameClaimModal: React.FC = () => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-[fade-in_0.3s]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs animate-[fade-in_0.3s]">
 
             {/* Kontener Modala */}
             <div className="claim-modal-container max-w-lg w-full m-4 relative">
@@ -120,7 +120,7 @@ export const UsernameClaimModal: React.FC = () => {
                                         value={username}
                                         onChange={(e) => setUsername(e.target.value.toLowerCase())}
                                         placeholder="your.essence"
-                                        className="w-full bg-slate-950/50 border border-slate-700 rounded-xl py-3 pl-9 pr-4 text-white focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 outline-none transition-all placeholder:text-slate-700 font-mono"
+                                        className="w-full bg-slate-950/50 border border-slate-700 rounded-xl py-3 pl-9 pr-4 text-white focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 outline-hidden transition-all placeholder:text-slate-700 font-mono"
                                     />
                                 </div>
                                 {usernameError && <p className="text-rose-400 text-xs px-2">{usernameError}</p>}
@@ -133,7 +133,7 @@ export const UsernameClaimModal: React.FC = () => {
                                     value={assistantDomain}
                                     onChange={(e) => setAssistantDomain(e.target.value)}
                                     placeholder="e.g., Napus, HAL, Buddy"
-                                    className="w-full bg-slate-950/50 border border-slate-700 rounded-xl py-3 px-4 text-white focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 outline-none transition-all placeholder:text-slate-700"
+                                    className="w-full bg-slate-950/50 border border-slate-700 rounded-xl py-3 px-4 text-white focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 outline-hidden transition-all placeholder:text-slate-700"
                                 />
                                 {domainError && <p className="text-rose-400 text-xs px-2">{domainError}</p>}
                             </div>
@@ -150,7 +150,7 @@ export const UsernameClaimModal: React.FC = () => {
                                             onClick={() => setResonanceColor(key)}
                                             className={cn(
                                                 'p-2 rounded-lg text-white font-bold text-[10px] uppercase transition-all transform',
-                                                'bg-gradient-to-br border border-white/10', RESONANCE_THEMES[key].gradient,
+                                                'bg-linear-to-br border border-white/10', RESONANCE_THEMES[key].gradient,
                                                 resonanceColor === key ? 'scale-105 shadow-md ring-1 ring-white' : 'hover:scale-105 opacity-60 hover:opacity-100'
                                             )}
                                         >
@@ -163,7 +163,7 @@ export const UsernameClaimModal: React.FC = () => {
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center">
                                     <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Pulse</label>
-                                    <span className="text-[10px] font-mono text-cyan-300 bg-cyan-900/20 px-2 py-0.5 rounded">
+                                    <span className="text-[10px] font-mono text-cyan-300 bg-cyan-900/20 px-2 py-0.5 rounded-sm">
                                         {pulseLabels[pulseIntensity]}
                                     </span>
                                 </div>

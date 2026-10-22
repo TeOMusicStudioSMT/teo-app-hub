@@ -50,7 +50,7 @@ export const PolaczYouTube: React.FC<{ onZmiana?: () => void }> = ({ onZmiana })
                 {!kanaly.length && !s.blad && <span className="text-slate-400">{s.klient ? 'klient OAuth zapisany — zostało kliknąć „Połącz”' : 'najpierw klient OAuth z Google Cloud (instrukcja wyżej)'}</span>}
                 <span className="ml-auto flex gap-2">
                     <button disabled={!s.klient} onClick={polacz}
-                        className={`rounded px-3 py-1 font-bold ${s.klient ? 'bg-red-600/60 text-white hover:bg-red-600/80' : 'bg-slate-800 text-slate-500'}`}>
+                        className={`rounded-sm px-3 py-1 font-bold ${s.klient ? 'bg-red-600/60 text-white hover:bg-red-600/80' : 'bg-slate-800 text-slate-500'}`}>
                         {kanaly.length ? '➕ Dodaj kanał' : '🔗 Połącz z YouTube'}
                     </button>
                 </span>
@@ -58,7 +58,7 @@ export const PolaczYouTube: React.FC<{ onZmiana?: () => void }> = ({ onZmiana })
             {kanaly.length > 0 && (
                 <div className="mt-2 flex flex-col gap-1">
                     {kanaly.map((k) => (
-                        <div key={k.id} className="flex flex-wrap items-center gap-2 rounded bg-black/30 px-2 py-1">
+                        <div key={k.id} className="flex flex-wrap items-center gap-2 rounded-sm bg-black/30 px-2 py-1">
                             <button onClick={() => k.id !== s.domyslny && void wyslij('/api/impresario/youtube/domyslny', { kanalId: k.id })} title={k.id === s.domyslny ? 'kanał domyślny' : 'ustaw jako domyślny'} className={k.id === s.domyslny ? 'text-amber-300' : 'text-slate-600 hover:text-amber-200'}>{k.id === s.domyslny ? '⭐' : '☆'}</button>
                             <a href={k.adres} target="_blank" rel="noreferrer" className="font-bold text-slate-100 underline">{k.nazwa || k.id}</a>
                             {k.id === s.domyslny && <span className="text-[9px] text-slate-500">domyślny</span>}
@@ -123,7 +123,7 @@ export const PublikacjeYouTubePanel: React.FC = () => {
                 const e = edycja[p.id];
                 const doAkc = p.etap === 'do_akceptacji' || p.etap === 'blad';
                 return (
-                    <div key={p.id} className="mb-2 rounded border border-white/5 bg-black/30 p-2">
+                    <div key={p.id} className="mb-2 rounded-sm border border-white/5 bg-black/30 p-2">
                         <div className="flex flex-wrap items-center gap-2">
                             <span className="text-slate-400">{ETAP[p.etap] ?? p.etap}</span>
                             <span className="truncate text-[10px] text-slate-600" title={p.nazwa}>{p.nazwa}</span>
@@ -137,7 +137,7 @@ export const PublikacjeYouTubePanel: React.FC = () => {
                             {p.playlista.stan === 'blad' && <button onClick={() => void zMostu(`/api/youtube/publikacje/${p.id}/playlista`, { method: 'POST', body: '{}' }).then(odswiez).catch((e) => toast.error(String(e instanceof Error ? e.message : e)))} className="ml-2 underline">↻ ponów</button>}</div>}
                         {kanaly.length > 1 && p.tytul && p.etap !== 'odrzucona' && (
                             <label className="mt-1 flex items-center gap-2 text-[10px] text-slate-500">➕ także na kanał:
-                                <select value="" onChange={(ev) => ev.target.value && void zMostu(`/api/youtube/publikacje/${p.id}/na-kanal`, { method: 'POST', body: JSON.stringify({ kanalId: ev.target.value }) }).then(() => { toast.success('Kopia czeka na Twoje ✓ (osobna wysyłka na ten kanał).'); return odswiez(); }).catch((e) => toast.error(String(e instanceof Error ? e.message : e)))} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-300">
+                                <select value="" onChange={(ev) => ev.target.value && void zMostu(`/api/youtube/publikacje/${p.id}/na-kanal`, { method: 'POST', body: JSON.stringify({ kanalId: ev.target.value }) }).then(() => { toast.success('Kopia czeka na Twoje ✓ (osobna wysyłka na ten kanał).'); return odswiez(); }).catch((e) => toast.error(String(e instanceof Error ? e.message : e)))} className="rounded-sm border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-300">
                                     <option value="">— wybierz —</option>
                                     {kanaly.filter((k) => k.id !== p.kanalId).map((k) => <option key={k.id} value={k.id}>{k.nazwa || k.id}</option>)}
                                 </select>
@@ -145,21 +145,21 @@ export const PublikacjeYouTubePanel: React.FC = () => {
                         )}
                         {doAkc && (
                             <div className="mt-2 flex flex-col gap-1.5">
-                                <input value={e?.tytul ?? p.tytul ?? ''} maxLength={100} onChange={(ev) => setEdycja((x) => ({ ...x, [p.id]: { tytul: ev.target.value, opis: x[p.id]?.opis ?? p.opis ?? '', tagi: x[p.id]?.tagi ?? (p.tagi ?? []).join(', ') } }))} placeholder="tytuł" className="rounded border border-slate-700 bg-black/40 px-2 py-1 font-bold text-slate-100" />
-                                <textarea value={e?.opis ?? p.opis ?? ''} rows={4} onChange={(ev) => setEdycja((x) => ({ ...x, [p.id]: { tytul: x[p.id]?.tytul ?? p.tytul ?? '', opis: ev.target.value, tagi: x[p.id]?.tagi ?? (p.tagi ?? []).join(', ') } }))} placeholder="opis" className="rounded border border-slate-700 bg-black/40 px-2 py-1 text-slate-300" />
-                                <input value={e?.tagi ?? (p.tagi ?? []).join(', ')} onChange={(ev) => setEdycja((x) => ({ ...x, [p.id]: { tytul: x[p.id]?.tytul ?? p.tytul ?? '', opis: x[p.id]?.opis ?? p.opis ?? '', tagi: ev.target.value } }))} placeholder="tagi, po przecinku" className="rounded border border-slate-700 bg-black/40 px-2 py-1 font-mono text-[10px] text-slate-400" />
+                                <input value={e?.tytul ?? p.tytul ?? ''} maxLength={100} onChange={(ev) => setEdycja((x) => ({ ...x, [p.id]: { tytul: ev.target.value, opis: x[p.id]?.opis ?? p.opis ?? '', tagi: x[p.id]?.tagi ?? (p.tagi ?? []).join(', ') } }))} placeholder="tytuł" className="rounded-sm border border-slate-700 bg-black/40 px-2 py-1 font-bold text-slate-100" />
+                                <textarea value={e?.opis ?? p.opis ?? ''} rows={4} onChange={(ev) => setEdycja((x) => ({ ...x, [p.id]: { tytul: x[p.id]?.tytul ?? p.tytul ?? '', opis: ev.target.value, tagi: x[p.id]?.tagi ?? (p.tagi ?? []).join(', ') } }))} placeholder="opis" className="rounded-sm border border-slate-700 bg-black/40 px-2 py-1 text-slate-300" />
+                                <input value={e?.tagi ?? (p.tagi ?? []).join(', ')} onChange={(ev) => setEdycja((x) => ({ ...x, [p.id]: { tytul: x[p.id]?.tytul ?? p.tytul ?? '', opis: x[p.id]?.opis ?? p.opis ?? '', tagi: ev.target.value } }))} placeholder="tagi, po przecinku" className="rounded-sm border border-slate-700 bg-black/40 px-2 py-1 font-mono text-[10px] text-slate-400" />
                                 {kanaly.length > 0 && (
                                     <label className="flex items-center gap-2 text-[10px] text-slate-400">kanał:
-                                        <select value={p.kanalId ?? ''} onChange={(ev) => void zmienKanal(p, ev.target.value)} className="rounded border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
+                                        <select value={p.kanalId ?? ''} onChange={(ev) => void zmienKanal(p, ev.target.value)} className="rounded-sm border border-slate-700 bg-black/60 px-1.5 py-0.5 text-slate-200">
                                             {!p.kanalId && <option value="">— domyślny —</option>}
                                             {kanaly.map((k) => <option key={k.id} value={k.id}>{k.nazwa || k.id}</option>)}
                                         </select>
                                     </label>
                                 )}
                                 <div className="flex gap-2">
-                                    <button disabled={pracuje === p.id} onClick={() => void akcja(p, 'zatwierdz')} className="rounded bg-emerald-600/50 px-3 py-1 font-bold text-emerald-50">✓ Wyślij na YouTube</button>
-                                    {e && <button disabled={pracuje === p.id} onClick={() => void akcja(p, 'zmien')} className="rounded bg-slate-700/60 px-2 py-1 text-slate-200">zapisz poprawki</button>}
-                                    <button disabled={pracuje === p.id} onClick={() => void akcja(p, 'odrzuc')} className="ml-auto rounded bg-rose-600/30 px-2 py-1 text-rose-100">✕</button>
+                                    <button disabled={pracuje === p.id} onClick={() => void akcja(p, 'zatwierdz')} className="rounded-sm bg-emerald-600/50 px-3 py-1 font-bold text-emerald-50">✓ Wyślij na YouTube</button>
+                                    {e && <button disabled={pracuje === p.id} onClick={() => void akcja(p, 'zmien')} className="rounded-sm bg-slate-700/60 px-2 py-1 text-slate-200">zapisz poprawki</button>}
+                                    <button disabled={pracuje === p.id} onClick={() => void akcja(p, 'odrzuc')} className="ml-auto rounded-sm bg-rose-600/30 px-2 py-1 text-rose-100">✕</button>
                                 </div>
                             </div>
                         )}

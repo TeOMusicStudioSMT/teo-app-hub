@@ -1007,7 +1007,7 @@ export function KatedraOrbita({
                     Świadomie schowane: Orbita jest tłem, nie kolejnym panelem
                     zasłaniającym obraz. Widać je dopiero, gdy Suweren ich szuka. */}
                 {ustawienia && (
-                    <div className="absolute right-3 top-3 z-40 w-72 rounded-xl border border-white/10 bg-slate-950/90 p-3 backdrop-blur-sm space-y-3">
+                    <div className="absolute right-3 top-3 z-40 w-72 rounded-xl border border-white/10 bg-slate-950/90 p-3 backdrop-blur-xs space-y-3">
                         <div className="flex items-center justify-between">
                             <span className="text-[11px] font-mono text-slate-300">🌑 Mózg Orbity</span>
                             <button onClick={() => setUstawienia(false)} className="text-slate-500 hover:text-white text-xs">✕</button>
@@ -1018,7 +1018,7 @@ export function KatedraOrbita({
                             <select
                                 value={silnik}
                                 onChange={(e) => { const v = e.target.value as SilnikOrbity; setSilnik(v); ustawSilnikOrbity(v); }}
-                                className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200 outline-none focus:border-slate-500"
+                                className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-1.5 text-xs text-slate-200 outline-hidden focus:border-slate-500"
                             >
                                 <option value="ollama">Lokalna Ollama (nic nie wychodzi z maszyny)</option>
                                 <option value="chmura" disabled={!chmura.gotowa}>
@@ -1054,7 +1054,7 @@ export function KatedraOrbita({
                             <input
                                 value={domena}
                                 onChange={(e) => { setDomena(e.target.value); ustawDomeneSfery(e.target.value); }}
-                                className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-slate-500"
+                                className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-1.5 text-xs font-mono text-slate-200 outline-hidden focus:border-slate-500"
                             />
                         </label>
 
@@ -1087,7 +1087,7 @@ export function KatedraOrbita({
                             exit={{ opacity: 0, y: -8 }}
                             onClick={mistrz.zamknij}
                             title="Kliknij — następna wieść albo zamknij"
-                            className="absolute left-1/2 top-6 z-30 max-w-[70%] -translate-x-1/2 rounded-xl px-3 py-2 text-left backdrop-blur-sm"
+                            className="absolute left-1/2 top-6 z-30 max-w-[70%] -translate-x-1/2 rounded-xl px-3 py-2 text-left backdrop-blur-xs"
                             style={{ background: 'rgba(24,18,4,0.78)', border: '1px solid rgba(245,197,66,0.45)' }}
                         >
                             <div className="text-[10px] font-mono text-yellow-400/90">📯 {mistrz.wiesc.skad} · {new Date(mistrz.wiesc.kiedy).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</div>
@@ -1104,7 +1104,7 @@ export function KatedraOrbita({
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: 8 }}
                             className="absolute left-1/2 bottom-4 -translate-x-1/2 z-30 pointer-events-none
-                                       max-w-[80%] rounded-xl px-3 py-2 text-center backdrop-blur-sm"
+                                       max-w-[80%] rounded-xl px-3 py-2 text-center backdrop-blur-xs"
                             style={{ background: 'rgba(8,6,16,0.72)', border: `1px solid ${rozmowa.kompan.kolor}55` }}
                         >
                             <div className="text-[10px] font-mono" style={{ color: rozmowa.kompan.kolor }}>

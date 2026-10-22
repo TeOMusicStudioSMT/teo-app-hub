@@ -303,7 +303,7 @@ export const AutoPanicSentinel: React.FC = () => {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 40, scale: 0.96 }}
                     transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-                    className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] pointer-events-auto"
+                    className="fixed bottom-6 left-1/2 -translate-x-1/2 z-9998 pointer-events-auto"
                 >
                     <div
                         className="auto-panic-pulse flex items-center gap-3 px-4 py-3 rounded-xl font-mono
@@ -336,7 +336,7 @@ export const AutoPanicSentinel: React.FC = () => {
                             <button
                                 onClick={handleApprove}
                                 disabled={panic.state === 'applying'}
-                                className="flex-shrink-0 px-3 py-1.5 text-[11px] font-bold rounded-lg
+                                className="shrink-0 px-3 py-1.5 text-[11px] font-bold rounded-lg
                                            bg-emerald-600/80 hover:bg-emerald-500 text-black
                                            border border-emerald-400/60 transition-colors
                                            disabled:opacity-60 disabled:cursor-wait
@@ -351,7 +351,7 @@ export const AutoPanicSentinel: React.FC = () => {
                         <button
                             onClick={dismiss}
                             title="Ukryj"
-                            className="flex-shrink-0 text-emerald-700 hover:text-emerald-400 transition-colors text-sm px-1"
+                            className="shrink-0 text-emerald-700 hover:text-emerald-400 transition-colors text-sm px-1"
                         >
                             ✕
                         </button>

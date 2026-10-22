@@ -22,7 +22,7 @@ export const RadaPodstawowa: React.FC<RadaPodstawowaProps> = ({ onClose }) => {
 
             <div className="flex justify-between items-center mb-10 relative">
                 <div>
-                    <h2 className="text-3xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent tracking-tight">
+                    <h2 className="text-3xl font-bold bg-linear-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent tracking-tight">
                         🏛️ RADA PODSTAWOWA
                     </h2>
                     <p className="text-slate-400 mt-1 italic">"Siedem Archetypów, Jedna Świadomość"</p>

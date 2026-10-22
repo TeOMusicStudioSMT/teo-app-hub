@@ -107,7 +107,7 @@ export const PanelKodeks: React.FC = () => {
                     value={model}
                     onChange={e => zmienModel(e.target.value)}
                     disabled={zajety || !modele.length}
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm text-slate-200 outline-none focus:border-emerald-500 disabled:opacity-50"
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-black/40 px-2 py-2 text-sm text-slate-200 outline-hidden focus:border-emerald-500 disabled:opacity-50"
                 >
                     {!modele.includes(model) && model && <option value={model}>{model}</option>}
                     {modele.map(m => <option key={m} value={m}>{m}</option>)}

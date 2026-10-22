@@ -91,13 +91,13 @@ export const PamiecHelper: React.FC = () => {
             <span className={okForUE ? 'text-emerald-400' : 'text-orange-400'}>{okForUE ? '✅ wystarczy na UE' : '⚠ za mało na UE — zwolnij'}</span>
           </div>
           <div className="h-2 rounded-full bg-black/50 overflow-hidden mb-2">
-            <div className="h-full bg-gradient-to-r from-orange-600 to-rose-500" style={{ width: `${Math.min(100, (mem.usedGB / mem.totalGB) * 100)}%` }} />
+            <div className="h-full bg-linear-to-r from-orange-600 to-rose-500" style={{ width: `${Math.min(100, (mem.usedGB / mem.totalGB) * 100)}%` }} />
           </div>
 
           <div className="max-h-36 overflow-y-auto space-y-0.5 mb-2">
             {procs.map((p) => (
               <label key={p.pid} title={p.uwaga || (p.chroniony ? 'Chroniony — tego Katedra nie zamyka.' : '')}
-                className={`flex items-center justify-between gap-2 text-[10px] rounded px-1 py-0.5 ${p.chroniony ? 'text-zinc-500 cursor-not-allowed' : 'text-zinc-300 cursor-pointer hover:bg-white/5'}`}>
+                className={`flex items-center justify-between gap-2 text-[10px] rounded-sm px-1 py-0.5 ${p.chroniony ? 'text-zinc-500 cursor-not-allowed' : 'text-zinc-300 cursor-pointer hover:bg-white/5'}`}>
                 <span className="flex items-center gap-1.5 truncate">
                   <input type="checkbox" disabled={p.chroniony} checked={!!sel[p.pid]} onChange={() => toggle(p.pid)} className="accent-orange-500 w-3 h-3" />
                   {BROWSERS.test(p.name) ? '🌐' : p.chroniony ? '🔒' : '▪'} {p.name}
@@ -105,7 +105,7 @@ export const PamiecHelper: React.FC = () => {
                   {p.opis && <span className="text-orange-300/70 truncate">— {p.opis}{p.skrypt ? ` (${p.skrypt})` : ''}</span>}
                 </span>
                 <span className="flex items-center gap-1.5 shrink-0">
-                  {p.zamknij && ZAMKNIJ[p.zamknij] && <span title={p.uwaga} className={`rounded border px-1 text-[9px] ${ZAMKNIJ[p.zamknij].klasa}`}>{ZAMKNIJ[p.zamknij].znak} {ZAMKNIJ[p.zamknij].tekst}</span>}
+                  {p.zamknij && ZAMKNIJ[p.zamknij] && <span title={p.uwaga} className={`rounded-sm border px-1 text-[9px] ${ZAMKNIJ[p.zamknij].klasa}`}>{ZAMKNIJ[p.zamknij].znak} {ZAMKNIJ[p.zamknij].tekst}</span>}
                   <span className="text-zinc-500">{p.mb} MB</span>
                 </span>
               </label>
@@ -113,8 +113,8 @@ export const PamiecHelper: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button onClick={pickBrowsers} className="text-[10px] px-2 py-1 rounded border border-orange-500/40 text-orange-300 hover:bg-orange-950/40">🌐 Zaznacz przeglądarki</button>
-            <button onClick={free} disabled={busy} className="text-[10px] px-2 py-1 rounded border border-rose-500/50 bg-rose-950/30 text-rose-300 font-bold hover:bg-rose-900/50 disabled:opacity-50">
+            <button onClick={pickBrowsers} className="text-[10px] px-2 py-1 rounded-sm border border-orange-500/40 text-orange-300 hover:bg-orange-950/40">🌐 Zaznacz przeglądarki</button>
+            <button onClick={free} disabled={busy} className="text-[10px] px-2 py-1 rounded-sm border border-rose-500/50 bg-rose-950/30 text-rose-300 font-bold hover:bg-rose-900/50 disabled:opacity-50">
               {busy ? '⟳ …' : '🧹 Zwolnij zaznaczone'}
             </button>
           </div>
@@ -126,14 +126,14 @@ export const PamiecHelper: React.FC = () => {
                     <span className="text-zinc-400">🎛️ karta {karta.nazwa}: wolne <b className={(karta.wolneMiB ?? 0) >= 2500 ? 'text-emerald-400' : 'text-orange-400'}>{karta.wolneMiB} MiB</b> / {karta.razemMiB} MiB</span>
                   </div>
                   <div className="h-2 rounded-full bg-black/50 overflow-hidden mb-1.5">
-                    <div className="h-full bg-gradient-to-r from-sky-600 to-violet-500" style={{ width: `${Math.min(100, ((karta.zajeteMiB ?? 0) / (karta.razemMiB || 1)) * 100)}%` }} />
+                    <div className="h-full bg-linear-to-r from-sky-600 to-violet-500" style={{ width: `${Math.min(100, ((karta.zajeteMiB ?? 0) / (karta.razemMiB || 1)) * 100)}%` }} />
                   </div>
                   {(karta.trzymaja ?? []).map((t, i) => (
                     <div key={i} title={t.uwaga ?? ''} className="flex items-center justify-between gap-2 text-[10px] text-zinc-300 px-1">
                       <span className="truncate">▪ {t.kto} <span className="text-sky-300/70">— {t.co}</span>{t.uwaga && <span className="text-zinc-500"> · {t.uwaga}</span>}</span>
                       <span className="flex items-center gap-1.5 shrink-0">
                         <span className="text-zinc-500">{t.vramMiB ? `${t.vramMiB} MiB` : 'nic na karcie'}</span>
-                        {!!t.vramMiB && t.zwolnij && <button onClick={() => zwolnijKarte(t.zwolnij!)} disabled={busy} className="text-[9px] px-1.5 rounded border border-sky-500/40 text-sky-300 hover:bg-sky-950/40 disabled:opacity-50">zwolnij</button>}
+                        {!!t.vramMiB && t.zwolnij && <button onClick={() => zwolnijKarte(t.zwolnij!)} disabled={busy} className="text-[9px] px-1.5 rounded-sm border border-sky-500/40 text-sky-300 hover:bg-sky-950/40 disabled:opacity-50">zwolnij</button>}
                       </span>
                     </div>
                   ))}
@@ -142,7 +142,7 @@ export const PamiecHelper: React.FC = () => {
                       na karcie: {karta.procesy.map((p) => `${p.program}${p.vramMiB != null ? ` ${p.vramMiB} MiB` : ''}`).join(', ')}
                     </div>
                   )}
-                  <button onClick={() => zwolnijKarte('wszystko')} disabled={busy} className="mt-1.5 text-[10px] px-2 py-1 rounded border border-sky-500/50 bg-sky-950/30 text-sky-300 font-bold hover:bg-sky-900/50 disabled:opacity-50">
+                  <button onClick={() => zwolnijKarte('wszystko')} disabled={busy} className="mt-1.5 text-[10px] px-2 py-1 rounded-sm border border-sky-500/50 bg-sky-950/30 text-sky-300 font-bold hover:bg-sky-900/50 disabled:opacity-50">
                     {busy ? '⟳ …' : '🎛️ Zwolnij kartę (głos, Ollama, VoiceStudio)'}
                   </button>
                 </>

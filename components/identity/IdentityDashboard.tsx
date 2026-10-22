@@ -44,7 +44,7 @@ export const IdentityDashboard: React.FC = () => {
                                 sizeClass="w-28 h-28"
                             />
                         </div>
-                        <div className="flex-grow w-full">
+                        <div className="grow w-full">
                             <DetailItem label="Username" value={
                                 <div className="flex items-center gap-2">
                                     <span>{identity.username ? `@${identity.username}` : 'Not Claimed'}</span>

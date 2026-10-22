@@ -11,7 +11,7 @@ import { getModelLokalny, nasluchujZmian } from '../lib/router/trybPracy';
 
 // --- Quantum Shield Mock Component ---
 const QuantumShieldControl = () => (
-    <div className="bg-slate-900/50 p-4 rounded border border-emerald-500/30 relative overflow-hidden">
+    <div className="bg-slate-900/50 p-4 rounded-sm border border-emerald-500/30 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500 animate-pulse" />
         <h3 className="text-emerald-400 font-bold mb-2 flex items-center gap-2">
             <ShieldCheckIcon className="w-5 h-5" /> QUANTUM SHIELD ACTIVE
@@ -68,18 +68,18 @@ const OfflineBrainControl = () => {
             <div className="p-6 space-y-4">
                 <MobilePocketBadge />
                 {/* 🧠 Modele wybiera się w JEDNYM miejscu: TeO-Sim → Mózg Katedry (most + Hub). Tu tylko podgląd. */}
-                <div className="flex items-center justify-between gap-2 p-3 rounded border border-emerald-500/30 bg-emerald-950/20">
+                <div className="flex items-center justify-between gap-2 p-3 rounded-sm border border-emerald-500/30 bg-emerald-950/20">
                     <span className="text-xs text-slate-300">🧠 Rdzeń: <b className="text-emerald-300">{czytajModel('lokalny', 'gemma4:e2b')}</b></span>
-                    <button onClick={otworzMozg} className="flex items-center gap-1 px-2 py-1 text-xs rounded border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/30">🧠 Mózg Katedry</button>
+                    <button onClick={otworzMozg} className="flex items-center gap-1 px-2 py-1 text-xs rounded-sm border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/30">🧠 Mózg Katedry</button>
                 </div>
                 {/* Status Ollamy + pobieranie modelu — zostaje, bo dotyczy maszyny, nie wyboru. */}
-                <div className={`flex items-center gap-2 p-3 rounded ${online ? 'text-emerald-400 bg-emerald-900/20' : 'text-amber-400 bg-amber-900/20'}`}>
+                <div className={`flex items-center gap-2 p-3 rounded-sm ${online ? 'text-emerald-400 bg-emerald-900/20' : 'text-amber-400 bg-amber-900/20'}`}>
                     <div className={`w-2 h-2 rounded-full animate-pulse ${online ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                     <span className="font-mono text-sm">{online ? `RDZEŃ ONLINE${has ? ' · Gemma OK' : ' · brak modelu'}` : 'RDZEŃ OFFLINE (uruchom Ollama / pobierz)'}</span>
                 </div>
                 {(!online || !has) && (
                     <button onClick={pull} disabled={pulling}
-                        className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                        className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50">
                         <SignalIcon className="w-4 h-4" /> {pulling ? 'Pobieranie...' : `⬇️ Pobierz ${active} (na USB)`}
                     </button>
                 )}
@@ -97,8 +97,8 @@ const DashboardTab = () => (
     </div>
 );
 
-const DronesTab = () => <div className="p-10 text-center text-slate-600 border border-slate-800 border-dashed rounded">DRONE FLEET OFFLINE</div>;
-const IntelTab = () => <div className="p-10 text-center text-slate-600 border border-slate-800 border-dashed rounded">RECON DATA EMPTY</div>;
+const DronesTab = () => <div className="p-10 text-center text-slate-600 border border-slate-800 border-dashed rounded-sm">DRONE FLEET OFFLINE</div>;
+const IntelTab = () => <div className="p-10 text-center text-slate-600 border border-slate-800 border-dashed rounded-sm">RECON DATA EMPTY</div>;
 
 export const FieldControlView: React.FC = () => {
     const { identity, isLoading } = useEssenceIdentity();
@@ -153,7 +153,7 @@ export const FieldControlView: React.FC = () => {
                         {activeTab === 'intel' && <IntelTab />}
                         {/* Placeholders for others */}
                         {(activeTab === 'comms' || activeTab === 'supply') && (
-                            <div className="p-10 text-center text-slate-600 border border-slate-800 border-dashed rounded uppercase">
+                            <div className="p-10 text-center text-slate-600 border border-slate-800 border-dashed rounded-sm uppercase">
                                 {activeTab} MODULE INITIALIZING...
                             </div>
                         )}

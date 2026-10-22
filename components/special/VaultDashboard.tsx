@@ -152,13 +152,13 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
         <div className="w-full max-w-6xl mx-auto h-[88vh] bg-[#04070d] border border-emerald-500/20 rounded-3xl overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.6)] flex flex-col font-sans text-slate-200">
 
             {/* ── HEADER ── */}
-            <div className="relative px-6 py-5 border-b border-emerald-500/20 bg-gradient-to-r from-[#0a0f08] via-[#0d0a05] to-[#0a0f08] flex items-center justify-between shrink-0">
+            <div className="relative px-6 py-5 border-b border-emerald-500/20 bg-linear-to-r from-[#0a0f08] via-[#0d0a05] to-[#0a0f08] flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-4">
                     <div className="vault-glow w-14 h-14 rounded-2xl bg-black border border-amber-500/40 flex items-center justify-center">
                         <Lock size={26} className="text-amber-400" />
                     </div>
                     <div>
-                        <h2 className="text-2xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-emerald-400">
+                        <h2 className="text-2xl font-black tracking-widest text-transparent bg-clip-text bg-linear-to-r from-amber-300 to-emerald-400">
                             SKARBIEC 0.00G
                         </h2>
                         <p className="text-[11px] text-slate-500 tracking-wider flex items-center gap-2">
@@ -205,7 +205,7 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
                                     <motion.div
                                         key={svc.id}
                                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                                        className={`relative rounded-2xl p-4 border bg-gradient-to-br from-[#080c12] to-black overflow-hidden
+                                        className={`relative rounded-2xl p-4 border bg-linear-to-br from-[#080c12] to-black overflow-hidden
                                             ${svc.connected ? 'vault-card-live border-emerald-500/40' : 'border-slate-700/60'}`}
                                     >
                                         {/* Status dot */}
@@ -224,7 +224,7 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
                                             </div>
                                             <div className="min-w-0">
                                                 <div className="text-sm font-bold text-slate-100 truncate">{svc.label}</div>
-                                                <span className={`inline-block mt-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded border tracking-wider ${badge.cls}`}>
+                                                <span className={`inline-block mt-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded-sm border tracking-wider ${badge.cls}`}>
                                                     <Shield size={8} className="inline mr-0.5 -mt-0.5" />{badge.label}
                                                 </span>
                                             </div>
@@ -252,7 +252,7 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
                                                                 value={drafts[k] || ''}
                                                                 onChange={e => setDrafts(d => ({ ...d, [k]: e.target.value }))}
                                                                 placeholder={f.configured ? 'Nadpisz klucz...' : 'Wklej klucz...'}
-                                                                className="flex-1 min-w-0 bg-black/60 border border-slate-700 focus:border-amber-500/60 rounded-lg px-2 py-1.5 text-[11px] text-amber-100 outline-none font-mono"
+                                                                className="flex-1 min-w-0 bg-black/60 border border-slate-700 focus:border-amber-500/60 rounded-lg px-2 py-1.5 text-[11px] text-amber-100 outline-hidden font-mono"
                                                             />
                                                             <button onClick={() => setReveal(r => ({ ...r, [k]: !r[k] }))}
                                                                 className="p-1.5 text-slate-500 hover:text-slate-300" title="Pokaż/ukryj">
@@ -284,7 +284,7 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
                 </section>
 
                 {/* ── PRALKA ŚWIADOMOŚCI / MENEDŻER AI ── */}
-                <section className="rounded-2xl border border-amber-500/25 bg-gradient-to-br from-[#0a0703] to-black p-5">
+                <section className="rounded-2xl border border-amber-500/25 bg-linear-to-br from-[#0a0703] to-black p-5">
                     <h3 className="text-xs font-bold text-amber-400 tracking-[0.2em] uppercase mb-1 flex items-center gap-2">
                         <Gauge size={14} /> Menedżer AI · Pralka Świadomości
                     </h3>
@@ -298,11 +298,11 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
                         onChange={e => setProfile(e.target.value)}
                         placeholder="Opisz swoje pasje, kompetencje, narzędzia (np. produkcja muzyki, klonowanie głosu, automatyzacja, kod TS/React)..."
                         rows={3}
-                        className="w-full bg-black/50 border border-slate-700 focus:border-amber-500/60 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-600 outline-none resize-none"
+                        className="w-full bg-black/50 border border-slate-700 focus:border-amber-500/60 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-600 outline-hidden resize-none"
                     />
                     <div className="flex justify-end mt-3">
                         <button onClick={runScout} disabled={scanning || !profile.trim()}
-                            className="px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-gradient-to-r from-amber-600/70 to-emerald-600/70 hover:from-amber-500 hover:to-emerald-500 text-black border border-amber-400/40 disabled:opacity-40 transition-all shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                            className="px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-linear-to-r from-amber-600/70 to-emerald-600/70 hover:from-amber-500 hover:to-emerald-500 text-black border border-amber-400/40 disabled:opacity-40 transition-all shadow-[0_0_15px_rgba(245,158,11,0.2)]">
                             {scanning ? <><RefreshCw size={14} className="animate-spin" /> Pralka wiruje...</> : <><Zap size={14} /> Uruchom Pralkę Świadomości</>}
                         </button>
                     </div>

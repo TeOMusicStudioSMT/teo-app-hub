@@ -241,7 +241,7 @@ export const TeogochiPanel: React.FC<TeogochiPanelProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 z-[4000] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-[fade-in_0.2s_ease-out]">
+        <div className="fixed inset-0 z-4000 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-[fade-in_0.2s_ease-out]">
             <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -370,7 +370,7 @@ export const TeogochiPanel: React.FC<TeogochiPanelProps> = ({
                                 <div className="md:col-span-2 p-4 rounded-2xl bg-slate-800/40 border border-white/5 space-y-3">
                                     <div className="flex justify-between items-center">
                                         <span className="text-xs font-mono text-slate-400">MISJA GATUNKU</span>
-                                        <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-900 border border-white/10" style={{ color: gatunek.kolor }}>
+                                        <span className="text-xs font-mono px-2 py-0.5 rounded-sm bg-slate-900 border border-white/10" style={{ color: gatunek.kolor }}>
                                             {nastroj}
                                         </span>
                                     </div>
@@ -470,7 +470,7 @@ export const TeogochiPanel: React.FC<TeogochiPanelProps> = ({
                                             ustawModelGatunku(gatunek.id, v);
                                             void powiedz(`Mój rdzeń został przestawiony na: ${v || 'globalny model Katedry'}.`);
                                         }}
-                                        className="w-full sm:w-80 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-xs text-slate-200 outline-none focus:border-purple-500"
+                                        className="w-full sm:w-80 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-xs text-slate-200 outline-hidden focus:border-purple-500"
                                     >
                                         <option value="">jak Katedra (globalny rdzeń)</option>
                                         {modeleOllama.map(m => (

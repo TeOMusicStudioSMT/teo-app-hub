@@ -94,7 +94,7 @@ export const ModeSelector: React.FC = () => {
                                     setActiveModel(e.target.value);
                                     toast.success(`Zsynchronizowano globalny rdzeń: ${e.target.value}`);
                                 }}
-                                className="w-full bg-slate-950/80 border border-cyan-500/30 text-cyan-300 text-[11px] font-mono rounded-xl p-2.5 outline-none focus:border-cyan-400 transition-all duration-300 cursor-pointer"
+                                className="w-full bg-slate-950/80 border border-cyan-500/30 text-cyan-300 text-[11px] font-mono rounded-xl p-2.5 outline-hidden focus:border-cyan-400 transition-all duration-300 cursor-pointer"
                             >
                                 {models.map(m => (
                                     <option key={m} value={m} className="bg-slate-950 text-cyan-300 font-mono">
@@ -116,7 +116,7 @@ export const ModeSelector: React.FC = () => {
                 {/* 💎 ZŁOTA KLEPKA - Włącznik Ollamy */}
                 <button 
                     onClick={handleOllamaLaunch}
-                    className="w-full mt-2 px-4 py-3 rounded-xl transition-all duration-700 uppercase text-[10px] font-black tracking-widest bg-gradient-to-r from-emerald-500/10 to-teal-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 hover:shadow-[0_0_30px_rgba(16,185,129,0.3)] hover:scale-[1.02]"
+                    className="w-full mt-2 px-4 py-3 rounded-xl transition-all duration-700 uppercase text-[10px] font-black tracking-widest bg-linear-to-r from-emerald-500/10 to-teal-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 hover:shadow-[0_0_30px_rgba(16,185,129,0.3)] hover:scale-[1.02]"
                 >
                     🚀 Odpal Lokalnego Ducha (Ollama)
                 </button>

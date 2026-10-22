@@ -64,7 +64,7 @@ export const ArtOfSoulCinema: React.FC<CinemaProps> = ({ isOpen, onClose }) => {
 
     return (
         // Z-INDEX [9999] FIX: Tytanowa tarcza, nic z tła już nie prześwituje!
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
             <div className="relative w-full max-w-6xl aspect-video bg-gray-900 border border-indigo-500/40 rounded-2xl shadow-[0_0_40px_rgba(99,102,241,0.25)] flex flex-col overflow-hidden">
                 
                 {/* Pasek Nawigacji Kina */}
@@ -134,7 +134,7 @@ export const ArtOfSoulCinema: React.FC<CinemaProps> = ({ isOpen, onClose }) => {
                                         <h3 className="text-fuchsia-400 font-bold tracking-wider">📜 PIECZĘĆ ALCHEMIKA</h3>
                                         <button 
                                             onClick={handleFlush} 
-                                            className="text-red-400 hover:text-red-300 text-xs flex items-center gap-1 transition-all bg-red-900/20 px-2 py-1 rounded border border-red-500/30"
+                                            className="text-red-400 hover:text-red-300 text-xs flex items-center gap-1 transition-all bg-red-900/20 px-2 py-1 rounded-sm border border-red-500/30"
                                         >
                                             🚽 Spłucz Ujęcie
                                         </button>

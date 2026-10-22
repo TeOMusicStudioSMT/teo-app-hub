@@ -73,7 +73,7 @@ export const IdentityCard: React.FC<IdentityCardProps> = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        "p-6 bg-gradient-to-br from-slate-800 to-slate-900 border border-amber-500/30 rounded-2xl",
+        "p-6 bg-linear-to-br from-slate-800 to-slate-900 border border-amber-500/30 rounded-2xl",
         "shadow-lg shadow-amber-500/10",
         className
       )}
@@ -83,7 +83,7 @@ export const IdentityCard: React.FC<IdentityCardProps> = ({
         <div className="flex items-center gap-3">
           <div className="text-5xl">{card.signature}</div>
           <div>
-            <h3 className="text-xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">
+            <h3 className="text-xl font-bold bg-linear-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">
               {card.name}
             </h3>
             <p className="text-sm text-amber-400">{card.title}</p>

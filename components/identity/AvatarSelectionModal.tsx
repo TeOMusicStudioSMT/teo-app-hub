@@ -140,7 +140,7 @@ export const AvatarSelectionModal: React.FC = () => {
             <div className="bg-slate-900/90 border border-slate-700 rounded-2xl max-w-2xl w-full m-4 overflow-hidden flex flex-col max-h-[90vh] shadow-[0_0_50px_rgba(6,182,212,0.15)]">
 
                 {/* Header */}
-                <div className="p-8 pb-4 bg-gradient-to-b from-slate-800/50 to-transparent">
+                <div className="p-8 pb-4 bg-linear-to-b from-slate-800/50 to-transparent">
                     <h2 className="text-2xl font-bold text-cyan-300 mb-2 drop-shadow-md">Digital Self Configuration</h2>
                     <p className="text-slate-400">Choose how your Essence manifests in the HUB.</p>
 
@@ -170,7 +170,7 @@ export const AvatarSelectionModal: React.FC = () => {
                 </div>
 
                 {/* Content */}
-                <div className="p-8 pt-4 overflow-y-auto flex-grow scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                <div className="p-8 pt-4 overflow-y-auto grow scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
 
                     {activeTab === 'presets' && (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-[fade-in_0.3s]">
@@ -207,7 +207,7 @@ export const AvatarSelectionModal: React.FC = () => {
                                         value={aiPrompt}
                                         onChange={(e) => setAiPrompt(e.target.value)}
                                         placeholder="Describe your aura (e.g. Cosmic Cat with Laser Eyes)"
-                                        className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-4 text-white focus:border-purple-400 focus:ring-1 focus:ring-purple-400/50 outline-none transition-all placeholder-slate-600"
+                                        className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-4 text-white focus:border-purple-400 focus:ring-1 focus:ring-purple-400/50 outline-hidden transition-all placeholder-slate-600"
                                         onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
                                     />
                                     <button
@@ -246,7 +246,7 @@ export const AvatarSelectionModal: React.FC = () => {
                         disabled={isSaving || (activeTab === 'presets' && !selectedForm) || (activeTab === 'generate' && !generatedUrl)}
                         className={cn(
                             "px-8 py-3 rounded-xl font-bold shadow-lg transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100",
-                            activeTab === 'generate' ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-purple-500/20" : "bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-cyan-500/20"
+                            activeTab === 'generate' ? "bg-linear-to-r from-purple-600 to-pink-600 text-white shadow-purple-500/20" : "bg-linear-to-r from-cyan-600 to-blue-600 text-white shadow-cyan-500/20"
                         )}
                     >
                         {isSaving ? 'Synchronizing...' : 'Confirm Identity'}

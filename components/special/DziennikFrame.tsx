@@ -74,7 +74,7 @@ export const DziennikFrame: React.FC = () => {
             <div className="flex flex-wrap gap-1.5 mb-3 max-h-24 overflow-y-auto">
               {podcasts.map(p => (
                 <button key={p} onClick={() => transcribe(p)} disabled={busy}
-                  className="px-2 py-0.5 rounded border border-fuchsia-500/30 text-fuchsia-300 text-[10px] hover:bg-fuchsia-950/40 disabled:opacity-50">
+                  className="px-2 py-0.5 rounded-sm border border-fuchsia-500/30 text-fuchsia-300 text-[10px] hover:bg-fuchsia-950/40 disabled:opacity-50">
                   {p}
                 </button>
               ))}
@@ -85,15 +85,15 @@ export const DziennikFrame: React.FC = () => {
         <div className="text-[9px] text-slate-400 mb-1">LUB WKLEJ TRANSKRYPCJĘ / ROZMOWĘ:</div>
         <textarea value={transcript} onChange={e => setTranscript(e.target.value)} rows={3}
           placeholder="Wklej tekst rozmowy/podcastu..."
-          className="w-full bg-black/40 border border-cyan-500/20 rounded px-2 py-1.5 text-[11px] text-slate-200 outline-none focus:border-cyan-500 resize-y" />
+          className="w-full bg-black/40 border border-cyan-500/20 rounded-sm px-2 py-1.5 text-[11px] text-slate-200 outline-hidden focus:border-cyan-500 resize-y" />
         <div className="flex gap-2 mt-2 items-center flex-wrap">
           <button onClick={() => forge({ transcript }, 'wklejka')} disabled={busy || transcript.trim().length < 30}
-            className="px-4 py-1.5 rounded border border-cyan-500/50 bg-cyan-950/40 text-cyan-300 text-[11px] font-bold hover:bg-cyan-900/50 disabled:opacity-40">
+            className="px-4 py-1.5 rounded-sm border border-cyan-500/50 bg-cyan-950/40 text-cyan-300 text-[11px] font-bold hover:bg-cyan-900/50 disabled:opacity-40">
             {busy ? '⟳ Przemiał...' : '🔮 PRZEMIEL W DZIENNIK'}
           </button>
           {dzienniki.length > 0 && (
             <select onChange={e => e.target.value && setSrc('/dzienniki/' + e.target.value + '?t=' + Date.now())}
-              className="bg-black/40 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-300">
+              className="bg-black/40 border border-slate-700 rounded-sm px-2 py-1 text-[11px] text-slate-300">
               <option value="">📚 Gotowe dzienniki ({dzienniki.length})...</option>
               {dzienniki.map(d => <option key={d} value={d}>{d}</option>)}
             </select>

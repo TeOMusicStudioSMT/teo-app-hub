@@ -39,7 +39,7 @@ export const AntresolaPanel: React.FC = () => {
   const flick = { animation: 'otFlick 4.5s infinite' } as React.CSSProperties;
   const MenuBtn = ({ icon, label, v, desc }: any) => (
     <button onClick={() => setView(v)}
-      className="w-full flex items-start gap-3 px-3 py-2.5 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] hover:border-cyan-400/40 transition-colors text-left">
+      className="w-full flex items-start gap-3 px-3 py-2.5 rounded-xl border border-white/10 bg-white/3 hover:bg-white/[0.07] hover:border-cyan-400/40 transition-colors text-left">
       <span style={{ fontSize: 20 }}>{icon}</span>
       <span className="min-w-0">
         <span className="block text-[13px] font-bold text-cyan-100">{label}</span>
@@ -94,9 +94,9 @@ export const AntresolaPanel: React.FC = () => {
             ))}
             <div className="rounded-lg border border-cyan-900/40 bg-black/20 p-2.5 mt-2 space-y-1.5">
               <div className="text-[10px] text-cyan-400/70">➕ Połącz wyspę (parowanie p2p)</div>
-              <input value={form.id} onChange={e => setForm({ ...form, id: e.target.value })} placeholder="id wyspy" className="w-full bg-black/40 border border-cyan-500/20 rounded px-2 py-1 text-[11px] text-cyan-100 outline-none focus:border-cyan-500" />
-              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="nazwa" className="w-full bg-black/40 border border-cyan-500/20 rounded px-2 py-1 text-[11px] text-cyan-100 outline-none focus:border-cyan-500" />
-              <button onClick={connect} className="text-[10px] px-3 py-1 rounded border border-cyan-500/50 bg-cyan-950/30 text-cyan-300 font-bold hover:bg-cyan-900/50">🏝️ Połącz</button>
+              <input value={form.id} onChange={e => setForm({ ...form, id: e.target.value })} placeholder="id wyspy" className="w-full bg-black/40 border border-cyan-500/20 rounded-sm px-2 py-1 text-[11px] text-cyan-100 outline-hidden focus:border-cyan-500" />
+              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="nazwa" className="w-full bg-black/40 border border-cyan-500/20 rounded-sm px-2 py-1 text-[11px] text-cyan-100 outline-hidden focus:border-cyan-500" />
+              <button onClick={connect} className="text-[10px] px-3 py-1 rounded-sm border border-cyan-500/50 bg-cyan-950/30 text-cyan-300 font-bold hover:bg-cyan-900/50">🏝️ Połącz</button>
             </div>
           </div>
         )}

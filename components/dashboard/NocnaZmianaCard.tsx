@@ -176,7 +176,7 @@ export const NocnaZmianaCard: React.FC = () => {
                                     <div className="min-w-0">
                                         <span className={`font-mono ${KOLOR_STANU[z.stan]}`}>{z.stan}</span>
                                         <span className="ml-2 text-slate-200">{stan.roboty.find((r) => r.rodzaj === z.rodzaj)?.opis ?? z.rodzaj}</span>
-                                        {(z.powtorzenia ?? 1) > 1 && <span className="ml-2 rounded bg-indigo-500/20 px-1 font-mono text-[10px] text-indigo-200" title="przebiegi zrobione / zaplanowane">×{z.wykonane ?? 0}/{z.powtorzenia}</span>}
+                                        {(z.powtorzenia ?? 1) > 1 && <span className="ml-2 rounded-sm bg-indigo-500/20 px-1 font-mono text-[10px] text-indigo-200" title="przebiegi zrobione / zaplanowane">×{z.wykonane ?? 0}/{z.powtorzenia}</span>}
                                         {Object.keys(z.parametry ?? {}).length > 0 && <span className="ml-2 text-[10px] text-slate-500">{JSON.stringify(z.parametry)}</span>}
                                         {z.blad && <div className="text-[10px] text-red-300">{z.blad}</div>}
                                     </div>
@@ -191,14 +191,14 @@ export const NocnaZmianaCard: React.FC = () => {
                         {/* ── Dodaj z białej listy ── */}
                         <div className="flex flex-col gap-1.5 rounded-lg border border-slate-700/50 p-2">
                             <div className="flex gap-1.5">
-                                <select value={rodzaj} onChange={(e) => { setRodzaj(e.target.value); setParametry({}); }} className="flex-1 rounded border border-slate-700 bg-black/40 px-2 py-1 text-[11px] text-slate-200">
+                                <select value={rodzaj} onChange={(e) => { setRodzaj(e.target.value); setParametry({}); }} className="flex-1 rounded-sm border border-slate-700 bg-black/40 px-2 py-1 text-[11px] text-slate-200">
                                     <option value="">— robota z białej listy —</option>
                                     {stan.roboty.map((r) => <option key={r.rodzaj} value={r.rodzaj}>{r.opis}</option>)}
                                 </select>
                                 <label className="flex items-center gap-1 text-[10px] text-slate-500" title="Ile razy powtórzyć — każdy przebieg po otwarciu bram; błąd przerywa serię">
-                                    ×<input type="number" min={1} max={stan.prog.maxPowtorzen ?? 20} value={powtorzenia} onChange={(e) => setPowtorzenia(e.target.value)} className="w-11 rounded border border-slate-700 bg-black/40 px-1 py-1 text-[11px] text-slate-200" />
+                                    ×<input type="number" min={1} max={stan.prog.maxPowtorzen ?? 20} value={powtorzenia} onChange={(e) => setPowtorzenia(e.target.value)} className="w-11 rounded-sm border border-slate-700 bg-black/40 px-1 py-1 text-[11px] text-slate-200" />
                                 </label>
-                                <button onClick={dodaj} disabled={!rodzaj || zajety} className="rounded bg-indigo-500/30 px-2 text-indigo-200 disabled:opacity-40" title="Dodaj do kolejki"><Plus size={14} /></button>
+                                <button onClick={dodaj} disabled={!rodzaj || zajety} className="rounded-sm bg-indigo-500/30 px-2 text-indigo-200 disabled:opacity-40" title="Dodaj do kolejki"><Plus size={14} /></button>
                             </div>
                             {wybrana && (wybrana.opisPol?.length ?? 0) > 0 && (
                                 <PolaRoboty opisy={wybrana.opisPol!} wartosci={parametry} onChange={(k, v) => setParametry((p) => ({ ...p, [k]: v }))} />
@@ -277,7 +277,7 @@ const PolaRoboty: React.FC<{ opisy: OpisPola[]; wartosci: Record<string, string>
     return (
         <div className="grid grid-cols-2 gap-1.5">
             {opisy.map((o) => {
-                const wspolne = 'rounded border border-slate-700 bg-black/40 px-2 py-1 text-[11px] text-slate-200';
+                const wspolne = 'rounded-sm border border-slate-700 bg-black/40 px-2 py-1 text-[11px] text-slate-200';
                 const et = <span className="text-[9px] uppercase tracking-wider text-slate-500">{o.etykieta}{o.wymagane && <span className="text-amber-300"> *</span>}</span>;
                 if (o.wybor === 'opcje') return (
                     <label key={o.nazwa} className="flex flex-col gap-0.5">{et}

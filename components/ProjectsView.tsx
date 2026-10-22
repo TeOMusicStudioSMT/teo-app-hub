@@ -142,7 +142,7 @@ export const ProjectsView: React.FC = () => {
         finally { setZajety(false); }
     };
 
-    const pole = 'w-full bg-black/40 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-200 outline-none focus:border-cyan-500';
+    const pole = 'w-full bg-black/40 border border-slate-600 rounded-sm px-2 py-1.5 text-sm text-slate-200 outline-hidden focus:border-cyan-500';
 
     return (
         <div className="space-y-8">
@@ -159,7 +159,7 @@ export const ProjectsView: React.FC = () => {
             {/* ── WROTA ── */}
             <div>
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="h-8 w-1 bg-gradient-to-b from-purple-500 to-blue-500 rounded-full" />
+                    <div className="h-8 w-1 bg-linear-to-b from-purple-500 to-blue-500 rounded-full" />
                     <h3 className="text-xl font-bold text-white tracking-wide">Wrota</h3>
                     <span className="text-xs text-slate-500">otwarte — bez progów</span>
                 </div>
@@ -223,7 +223,7 @@ export const ProjectsView: React.FC = () => {
                         </div>
                     )}
 
-                    <div className="pr-2 overflow-y-auto max-h-[26rem]">
+                    <div className="pr-2 overflow-y-auto max-h-104">
                         {moduly.map(m => (
                             <div key={m.id} className="flex items-center justify-between p-3 border-b border-slate-700/50 gap-3">
                                 <div className="flex items-center flex-1 min-w-0 gap-3">
@@ -293,7 +293,7 @@ export const ProjectsView: React.FC = () => {
                         <div key={w.id} className="bg-slate-900/40 backdrop-blur-lg border border-slate-700/50 rounded-2xl p-4 flex flex-col">
                             <div className="text-3xl mb-2">{w.ikona}</div>
                             <h4 className="text-lg font-bold text-white mb-1">{w.nazwa}</h4>
-                            <p className="text-slate-400 text-sm mb-4 flex-grow">{w.opis || '—'}</p>
+                            <p className="text-slate-400 text-sm mb-4 grow">{w.opis || '—'}</p>
                             <div className="mb-3">
                                 <div className="flex justify-between items-end mb-1 text-xs">
                                     <span className="text-slate-300 font-semibold">

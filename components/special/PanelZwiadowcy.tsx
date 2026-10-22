@@ -326,7 +326,7 @@ export const PanelZwiadowcy: React.FC = () => {
                                 value={usluga}
                                 onChange={(e) => setUsluga(e.target.value)}
                                 placeholder="np. Kraken Germany, Meshy..."
-                                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 text-xs text-white outline-none focus:border-amber-500"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 text-xs text-white outline-hidden focus:border-amber-500"
                             />
                         </div>
                         <div className="sm:col-span-5">
@@ -336,7 +336,7 @@ export const PanelZwiadowcy: React.FC = () => {
                                 onChange={(e) => setKontekst(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !trwa) void uruchomZwiad(); }}
                                 placeholder="np. Kod zaproszenia DE Niemcy, referral bonus EUR..."
-                                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-amber-500"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 text-xs text-slate-200 outline-hidden focus:border-amber-500"
                             />
                         </div>
                         <div className="sm:col-span-4 flex items-end gap-1.5">
@@ -454,12 +454,12 @@ export const PanelZwiadowcy: React.FC = () => {
                                                                                     <button
                                                                                         onClick={() => kopiujKod(n.kod!)}
                                                                                         title="Kliknij, aby skopiować kod do schowka"
-                                                                                        className="px-2 py-0.5 rounded bg-amber-500/25 border border-amber-400/60 text-amber-200 font-mono text-xs font-bold hover:bg-amber-500/40 transition cursor-pointer"
+                                                                                        className="px-2 py-0.5 rounded-sm bg-amber-500/25 border border-amber-400/60 text-amber-200 font-mono text-xs font-bold hover:bg-amber-500/40 transition cursor-pointer"
                                                                                     >
                                                                                         🔑 {n.kod} 📋
                                                                                     </button>
                                                                                 ) : (
-                                                                                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono text-[10px]">
+                                                                                    <span className="px-1.5 py-0.5 rounded-sm bg-slate-800 text-slate-400 font-mono text-[10px]">
                                                                                          wątek / link
                                                                                     </span>
                                                                                 )}
@@ -483,7 +483,7 @@ export const PanelZwiadowcy: React.FC = () => {
                                                                                 href={n.zrodlo}
                                                                                 target="_blank"
                                                                                 rel="noreferrer"
-                                                                                className="px-2.5 py-1 rounded border border-sky-500/40 bg-sky-950/30 text-[10px] font-mono text-sky-300 hover:bg-sky-900/50"
+                                                                                className="px-2.5 py-1 rounded-sm border border-sky-500/40 bg-sky-950/30 text-[10px] font-mono text-sky-300 hover:bg-sky-900/50"
                                                                             >
                                                                                 🌐 {n.tytulZrodla ? n.tytulZrodla.slice(0, 22) : 'Otwórz źródło'} ↗
                                                                             </a>

@@ -92,13 +92,13 @@ const MonolithCard: React.FC<MonolithCardProps> = ({ entry, isExpanded, onToggle
           group relative overflow-hidden rounded-2xl border transition-all duration-500
           ${isExpanded
                         ? 'cursor-default bg-[#0a0f1e]/95 border-slate-700/50 shadow-[0_0_60px_rgba(6,182,212,0.08)] backdrop-blur-3xl p-8 md:p-12 overflow-y-auto max-h-[85vh] custom-scrollbar'
-                        : 'cursor-pointer bg-white/[0.04] border-white/[0.08] hover:border-cyan-500/40 hover:bg-white/[0.07] shadow-lg p-6 h-full'}
+                        : 'cursor-pointer bg-white/4 border-white/8 hover:border-cyan-500/40 hover:bg-white/[0.07] shadow-lg p-6 h-full'}
         `}
             >
                 {/* Collapsed glow overlays */}
                 {!isExpanded && (
                     <>
-                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-tr from-cyan-500/10 via-transparent to-violet-500/10 pointer-events-none rounded-2xl" />
+                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-linear-to-tr from-cyan-500/10 via-transparent to-violet-500/10 pointer-events-none rounded-2xl" />
                         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none rounded-2xl"
                             style={{ background: 'radial-gradient(circle at 50% 0%, rgba(34,211,238,0.06) 0%, transparent 70%)' }} />
                     </>
@@ -111,7 +111,7 @@ const MonolithCard: React.FC<MonolithCardProps> = ({ entry, isExpanded, onToggle
                             ENTRY_{entry.id}&nbsp;·&nbsp;{entry.date}
                         </span>
                         <h3 className={`font-bold leading-tight transition-all duration-500 ${isExpanded
-                                ? 'text-3xl md:text-4xl mt-2 mb-3 bg-clip-text text-transparent bg-gradient-to-br from-white via-slate-100 to-slate-400'
+                                ? 'text-3xl md:text-4xl mt-2 mb-3 bg-clip-text text-transparent bg-linear-to-br from-white via-slate-100 to-slate-400'
                                 : 'text-base md:text-lg text-white leading-snug'
                             }`}>
                             {entry.title}
@@ -157,7 +157,7 @@ const MonolithCard: React.FC<MonolithCardProps> = ({ entry, isExpanded, onToggle
 
                         {/* Multimedia */}
                         {(youtubeSrc || entry.audioUrl || entry.photonPayloadUrl) && (
-                            <div className="space-y-5 bg-white/[0.03] p-6 rounded-2xl border border-white/[0.07]">
+                            <div className="space-y-5 bg-white/3 p-6 rounded-2xl border border-white/[0.07]">
                                 <p className="text-slate-500 font-mono text-[9px] uppercase tracking-[0.35em]">
                                     {t('multimedia', lang)}
                                 </p>
@@ -200,7 +200,7 @@ const MonolithCard: React.FC<MonolithCardProps> = ({ entry, isExpanded, onToggle
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                             <div className="space-y-7">
                                 {/* Status */}
-                                <div className="relative p-5 rounded-xl overflow-hidden bg-cyan-500/[0.04] border border-cyan-500/20">
+                                <div className="relative p-5 rounded-xl overflow-hidden bg-cyan-500/4 border border-cyan-500/20">
                                     <div className="absolute inset-0 pointer-events-none"
                                         style={{ background: 'radial-gradient(circle at 0% 50%, rgba(34,211,238,0.07) 0%, transparent 60%)' }} />
                                     <h4 className="relative text-cyan-400 font-mono text-[9px] uppercase tracking-[0.35em] mb-3 flex items-center gap-2">
@@ -217,7 +217,7 @@ const MonolithCard: React.FC<MonolithCardProps> = ({ entry, isExpanded, onToggle
                                     </h4>
                                     <div className="flex flex-wrap gap-2">
                                         {entry.achievements.map((ach, idx) => (
-                                            <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium text-white/80 border border-white/[0.08] bg-white/[0.04] hover:border-cyan-500/40 hover:bg-cyan-500/[0.07] transition-all duration-200">
+                                            <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium text-white/80 border border-white/8 bg-white/4 hover:border-cyan-500/40 hover:bg-cyan-500/[0.07] transition-all duration-200">
                                                 <span className="text-[9px] text-cyan-400/60">✦</span> {ach}
                                             </span>
                                         ))}
@@ -236,7 +236,7 @@ const MonolithCard: React.FC<MonolithCardProps> = ({ entry, isExpanded, onToggle
 
                         {/* Swipe Shop */}
                         {entry.artifacts?.length > 0 && (
-                            <div className="pt-10 border-t border-white/[0.06]">
+                            <div className="pt-10 border-t border-white/6">
                                 <h4 className="text-center text-slate-600 font-mono text-[9px] uppercase tracking-[0.5em] mb-8">
                                     {t('shop', lang)} ($GRV)
                                 </h4>

@@ -775,7 +775,7 @@ const App: React.FC = () => {
                                 )}
 
                                 {/* 🌀 Field Resonance Indicator - Vibe Pulse */}
-                                <div className="fixed top-1/2 -translate-y-1/2 right-3 z-[1500] pointer-events-auto cursor-pointer flex flex-col items-center gap-2"
+                                <div className="fixed top-1/2 -translate-y-1/2 right-3 z-1500 pointer-events-auto cursor-pointer flex flex-col items-center gap-2"
                                     onClick={() => { setTeoSimStart('koherencja'); setShowTeoSim(true); }}
                                     title={koherencja ? `🫀 Koherencja Katedry ${koherencja.procent}%${koherencja.braki ? ` — ${koherencja.braki} do naprawy` : ''} (klik — szczegóły)` : '🫀 Koherencja Katedry — most milczy'}>
                                     <motion.div
@@ -788,7 +788,7 @@ const App: React.FC = () => {
                                                 height: `${koherencja?.procent ?? 0}%`,
                                                 boxShadow: (koherencja?.procent ?? 0) > 0 ? `0 0 15px rgba(34,211,238,${0.2 + (koherencja?.procent ?? 0) / 200})` : 'none'
                                             }}
-                                            className={`w-full rounded-full bg-gradient-to-t ${!koherencja ? 'from-slate-600 to-slate-500' : koherencja.procent >= 90 ? 'from-cyan-500 via-emerald-400 to-teal-300' : koherencja.procent >= 70 ? 'from-amber-500 via-yellow-400 to-amber-300' : 'from-rose-600 via-red-500 to-orange-400'}`}
+                                            className={`w-full rounded-full bg-linear-to-t ${!koherencja ? 'from-slate-600 to-slate-500' : koherencja.procent >= 90 ? 'from-cyan-500 via-emerald-400 to-teal-300' : koherencja.procent >= 70 ? 'from-amber-500 via-yellow-400 to-amber-300' : 'from-rose-600 via-red-500 to-orange-400'}`}
                                             transition={{ type: "spring", stiffness: 50, damping: 20 }}
                                         />
                                     </motion.div>
@@ -802,11 +802,11 @@ const App: React.FC = () => {
                                 </div>
 
                                 {/* 🛰️ Quantum Navigation - Scentralizowany Panel Boczny */}
-                                <div className="fixed bottom-10 right-6 flex flex-col items-center gap-6 z-[2000] pointer-events-none">
+                                <div className="fixed bottom-10 right-6 flex flex-col items-center gap-6 z-2000 pointer-events-none">
                                     <div className="pointer-events-auto">
                                         <button
                                             onClick={() => setShowJournal(true)}
-                                            className="w-14 h-14 rounded-full flex flex-col items-center justify-center bg-gradient-to-br from-cyan-400 to-blue-600 border-2 border-cyan-300/50 shadow-[0_0_20px_rgba(6,182,212,0.6)] cursor-pointer hover:scale-110 transition-all duration-300 group relative"
+                                            className="w-14 h-14 rounded-full flex flex-col items-center justify-center bg-linear-to-br from-cyan-400 to-blue-600 border-2 border-cyan-300/50 shadow-[0_0_20px_rgba(6,182,212,0.6)] cursor-pointer hover:scale-110 transition-all duration-300 group relative"
                                             title="WPIS (Dziennik)"
                                         >
                                             <div className="w-6 h-6 text-white group-hover:animate-pulse">
@@ -821,7 +821,7 @@ const App: React.FC = () => {
                                     <div className="pointer-events-auto">
                                         <button
                                             onClick={() => setShowScenography(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-emerald-500 to-teal-700 border-2 border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-linear-to-br from-emerald-500 to-teal-700 border-2 border-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] cursor-pointer hover:scale-110 transition-transform"
                                             title="🎭 Scenografia Katedry"
                                         >
                                             🎭
@@ -830,7 +830,7 @@ const App: React.FC = () => {
                                     <div className="pointer-events-auto">
                                         <button
                                             onClick={() => setShowCrewClub(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-amber-400 to-amber-600 border-2 border-amber-300/50 shadow-[0_0_15px_rgba(251,191,36,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-linear-to-br from-amber-400 to-amber-600 border-2 border-amber-300/50 shadow-[0_0_15px_rgba(251,191,36,0.5)] cursor-pointer hover:scale-110 transition-transform"
                                             title="🏆 Klub Mistrzów"
                                         >
                                             👑
@@ -839,7 +839,7 @@ const App: React.FC = () => {
                                     <div className="pointer-events-auto">
                                         <button
                                             onClick={() => setShowKibel(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-cyan-600 to-cyan-800 border-2 border-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-linear-to-br from-cyan-600 to-cyan-800 border-2 border-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.5)] cursor-pointer hover:scale-110 transition-transform"
                                             title="🔐 TeO-Kibel"
                                         >
                                             🌀
@@ -849,7 +849,7 @@ const App: React.FC = () => {
                                     <div className="pointer-events-auto">
                                         <button
                                             onClick={() => setShowPodcast(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-fuchsia-500 to-cyan-700 border-2 border-fuchsia-300/50 shadow-[0_0_15px_rgba(232,121,249,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-linear-to-br from-fuchsia-500 to-cyan-700 border-2 border-fuchsia-300/50 shadow-[0_0_15px_rgba(232,121,249,0.5)] cursor-pointer hover:scale-110 transition-transform"
                                             title="🎙️ Podcast Twin"
                                         >
                                             🎙️
@@ -858,7 +858,7 @@ const App: React.FC = () => {
                                     <div className="pointer-events-auto">
                                         <button
                                             onClick={() => { setTeoSimStart('mozg'); setShowTeoSim(true); }}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-green-500 to-emerald-800 border-2 border-green-300/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-linear-to-br from-green-500 to-emerald-800 border-2 border-green-300/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] cursor-pointer hover:scale-110 transition-transform"
                                             title="🧠 TeO-Sim: Mózg Katedry — modele, Koherencja, Oczy Suwerena, Impresario, MCP, Skarbiec"
                                         >
                                             🧠
@@ -868,7 +868,7 @@ const App: React.FC = () => {
                                     <div className="pointer-events-auto">
                                         <button
                                             onClick={() => setShowLab(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-gradient-to-br from-lime-500 to-emerald-800 border-2 border-lime-300/50 shadow-[0_0_15px_rgba(132,204,22,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                                            className="w-12 h-12 rounded-full flex items-center justify-center text-xl bg-linear-to-br from-lime-500 to-emerald-800 border-2 border-lime-300/50 shadow-[0_0_15px_rgba(132,204,22,0.5)] cursor-pointer hover:scale-110 transition-transform"
                                             title="🧪 TeO Lab — Symulatory & Pipeline'y"
                                         >
                                             🧪
@@ -878,7 +878,7 @@ const App: React.FC = () => {
                                     <div className="pointer-events-auto">
                                         <button
                                             onClick={() => setShowTost(true)}
-                                            className="w-12 h-12 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-300 via-amber-500 to-emerald-700 border-2 border-amber-200/70 shadow-[0_0_20px_rgba(251,191,36,0.55)] cursor-pointer hover:scale-110 transition-all duration-300 relative group"
+                                            className="w-12 h-12 rounded-full flex items-center justify-center bg-linear-to-br from-amber-300 via-amber-500 to-emerald-700 border-2 border-amber-200/70 shadow-[0_0_20px_rgba(251,191,36,0.55)] cursor-pointer hover:scale-110 transition-all duration-300 relative group"
                                             title="💬 TOST — rozmowy z TeO i z innymi Katedrami (szyfrowane)"
                                         >
                                             <TostIkona rozmiar={26} />
@@ -899,7 +899,7 @@ const App: React.FC = () => {
                                         >
                                             <button
                                                 onClick={() => setShowRada(true)}
-                                                className="w-16 h-16 rounded-full flex items-center justify-center text-3xl bg-gradient-to-tr from-amber-400 via-orange-500 to-red-600 border-2 border-amber-300 shadow-[0_0_30px_rgba(245,158,11,0.8)] cursor-pointer hover:scale-125 transition-transform group relative"
+                                                className="w-16 h-16 rounded-full flex items-center justify-center text-3xl bg-linear-to-tr from-amber-400 via-orange-500 to-red-600 border-2 border-amber-300 shadow-[0_0_30px_rgba(245,158,11,0.8)] cursor-pointer hover:scale-125 transition-transform group relative"
                                                 title="🏛️ Rada Podstawowa - Odblokowano!"
                                             >
                                                 🏛️
@@ -915,7 +915,7 @@ const App: React.FC = () => {
                                     {showKibel && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-[2002] p-4"
+                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-2002 p-4"
                                             onClick={() => setShowKibel(false)}
                                         >
                                             <motion.div
@@ -931,7 +931,7 @@ const App: React.FC = () => {
                                     {showWniosekO && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[2003]"
+                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-2003"
                                             onClick={() => setShowWniosekO(false)}
                                         >
                                             <motion.div onClick={(e) => e.stopPropagation()}>
@@ -942,7 +942,7 @@ const App: React.FC = () => {
                                     {showScenography && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/85 flex items-center justify-center z-[2003]"
+                                            className="fixed inset-0 bg-black/85 flex items-center justify-center z-2003"
                                             onClick={() => setShowScenography(false)}
                                         >
                                             <motion.div onClick={(e) => e.stopPropagation()}>
@@ -954,7 +954,7 @@ const App: React.FC = () => {
                                     {showCrewClub && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/95 flex items-center justify-center z-[2004]"
+                                            className="fixed inset-0 bg-black/95 flex items-center justify-center z-2004"
                                         >
                                             <TeODash onClose={() => setShowCrewClub(false)} />
                                         </motion.div>
@@ -962,7 +962,7 @@ const App: React.FC = () => {
                                     {showRada && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/95 flex items-center justify-center z-[2010]"
+                                            className="fixed inset-0 bg-black/95 flex items-center justify-center z-2010"
                                             onClick={() => setShowRada(false)}
                                         >
                                             <motion.div
@@ -982,7 +982,7 @@ const App: React.FC = () => {
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, y: 100 }}
                                             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                                            className="fixed inset-0 z-[3000] bg-black"
+                                            className="fixed inset-0 z-3000 bg-black"
                                         >
                                             <QuantumJournal onClose={() => setShowJournal(false)} />
                                         </motion.div>
@@ -990,7 +990,7 @@ const App: React.FC = () => {
                                     {showPodcast && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-[3001] p-4"
+                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-3001 p-4"
                                             onClick={() => setShowPodcast(false)}
                                         >
                                             <motion.div
@@ -1005,7 +1005,7 @@ const App: React.FC = () => {
                                     {showTeoSim && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-[3001] p-4"
+                                            className="fixed inset-0 bg-black/90 flex items-center justify-center z-3001 p-4"
                                             onClick={() => setShowTeoSim(false)}
                                         >
                                             <motion.div
@@ -1023,7 +1023,7 @@ const App: React.FC = () => {
                                     {showLab && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-[3001] p-4"
+                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-3001 p-4"
                                             onClick={() => setShowLab(false)}
                                         >
                                             <motion.div
@@ -1038,7 +1038,7 @@ const App: React.FC = () => {
                                     {showTost && (
                                         <motion.div
                                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-[3005] p-4 md:p-8"
+                                            className="fixed inset-0 bg-black/90 flex justify-center overflow-y-auto z-3005 p-4 md:p-8"
                                             onClick={() => setShowTost(false)}
                                         >
                                             <motion.div
@@ -1103,7 +1103,7 @@ const App: React.FC = () => {
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.97 }}
                         transition={{ duration: 0.6, ease: 'easeInOut' }}
-                        className="fixed inset-0 z-[9999]"
+                        className="fixed inset-0 z-9999"
                     >
                         <KwantowaCzytelnia
                             text={activeStory}

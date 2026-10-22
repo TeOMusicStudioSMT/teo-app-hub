@@ -334,7 +334,7 @@ Napisz "ZAKTUALIZOWANA SYNTEZA W.I.D.O.K:" a następnie podaj 2-3 zdania głębo
                             <Eye size={24} className="text-cyan-400" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-fuchsia-500">W.I.D.O.K.</h2>
+                            <h2 className="text-xl font-black tracking-widest text-transparent bg-clip-text bg-linear-to-r from-cyan-400 to-fuchsia-500">W.I.D.O.K.</h2>
                             <p className="text-[10px] text-slate-500 tracking-widest">Identyfikacja Danych i Surowców</p>
                         </div>
                     </div>
@@ -365,7 +365,7 @@ Napisz "ZAKTUALIZOWANA SYNTEZA W.I.D.O.K:" a następnie podaj 2-3 zdania głębo
                                 value={urlInput} 
                                 onChange={(e) => setUrlInput(e.target.value)} 
                                 placeholder="Wklej link YouTube / URL..."
-                                className="w-40 bg-[#0a0f16] border-none rounded-lg px-2 py-1 text-xs text-white focus:ring-1 focus:ring-cyan-500 outline-none"
+                                className="w-40 bg-[#0a0f16] border-none rounded-lg px-2 py-1 text-xs text-white focus:ring-1 focus:ring-cyan-500 outline-hidden"
                             />
                             <button 
                                 onClick={handleUrlFetch} 
@@ -390,14 +390,14 @@ Napisz "ZAKTUALIZOWANA SYNTEZA W.I.D.O.K:" a następnie podaj 2-3 zdania głębo
                             value={seedTopic} 
                             onChange={(e) => setSeedTopic(e.target.value)} 
                             placeholder="Cel (np. Wyciągnij strukturę klas)..."
-                            className="flex-1 min-w-[200px] bg-[#0a0f16] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-cyan-500 outline-none"
+                            className="flex-1 min-w-[200px] bg-[#0a0f16] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:border-cyan-500 outline-hidden"
                         />
                     </div>
 
                     {/* Sekcja Akcji (Prawa strona) */}
                     <div className="flex items-center gap-3 shrink-0">
                         {uploadedFileName && (
-                            <span className="text-[9px] text-emerald-400 bg-emerald-900/20 px-2 py-1 rounded border border-emerald-500/30 truncate max-w-[150px]" title={uploadedFileName}>
+                            <span className="text-[9px] text-emerald-400 bg-emerald-900/20 px-2 py-1 rounded-sm border border-emerald-500/30 truncate max-w-[150px]" title={uploadedFileName}>
                                 🗃️ {uploadedFileName}
                             </span>
                         )}
@@ -442,7 +442,7 @@ Napisz "ZAKTUALIZOWANA SYNTEZA W.I.D.O.K:" a następnie podaj 2-3 zdania głębo
                                         <span className="text-[9px] opacity-70">{r.date.split(',')[0]}</span>
                                     </div>
                                     <div className="text-[10px] truncate opacity-80">{r.baseReport.substring(0, 40)}...</div>
-                                    {r.finalSynthesis && <div className="mt-2 text-[8px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded inline-block">PERSPEKTYWA SUWERENA ✓</div>}
+                                    {r.finalSynthesis && <div className="mt-2 text-[8px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-sm inline-block">PERSPEKTYWA SUWERENA ✓</div>}
                                 </div>
                             ))
                         )}
@@ -480,7 +480,7 @@ Napisz "ZAKTUALIZOWANA SYNTEZA W.I.D.O.K:" a następnie podaj 2-3 zdania głębo
                                         <textarea
                                             value={suwerenInput} onChange={(e) => setSuwerenInput(e.target.value)}
                                             placeholder="Napisz swoją perspektywę... Jak ten raport ma się do Twoich celów? Czego maszyna nie zauważyła?"
-                                            className="w-full h-24 bg-black/50 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-100 placeholder-amber-900/50 focus:border-amber-500 outline-none resize-none relative z-10"
+                                            className="w-full h-24 bg-black/50 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-100 placeholder-amber-900/50 focus:border-amber-500 outline-hidden resize-none relative z-10"
                                         />
                                         <div className="flex justify-end mt-3 relative z-10">
                                             <button
@@ -496,7 +496,7 @@ Napisz "ZAKTUALIZOWANA SYNTEZA W.I.D.O.K:" a następnie podaj 2-3 zdania głębo
 
                                 {/* 3. ZAKTUALIZOWANA SYNTEZA W.I.D.O.K. (Po reakcji Suwerena) */}
                                 {activeReport.finalSynthesis && (
-                                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-gradient-to-br from-[#10051a] to-black border border-fuchsia-500/50 rounded-2xl p-6 shadow-[0_0_40px_rgba(217,70,239,0.15)] relative">
+                                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-linear-to-br from-[#10051a] to-black border border-fuchsia-500/50 rounded-2xl p-6 shadow-[0_0_40px_rgba(217,70,239,0.15)] relative">
 
                                         <div className="mb-4 pb-4 border-b border-fuchsia-500/20">
                                             <h4 className="text-[10px] font-bold text-fuchsia-500/50 tracking-widest mb-1">TWOJE SŁOWA WPROWADZONE DO MATRYCY:</h4>
