@@ -36,7 +36,8 @@ import { SCIEZKI_ZWROTU } from './KontaSieci.js';
 
 const uruchom = promisify(execFile);
 export const SZER = 1080, WYS = 1920, FPS = 30;
-export const MAX_KLIPU = 180;
+// TikTok przyjmuje filmy do 10 min (Suweren 2026-10-22: „tańce potrzebują więcej czasu”) — wycinek do tej długości
+export const MAX_KLIPU = 600;
 export const CELE = {
     shorts: { nazwa: 'YouTube Shorts', siec: 'youtube', max: 60 },
     reels: { nazwa: 'Instagram Reels', siec: 'instagram', max: 90 },
@@ -301,7 +302,7 @@ export function utworzFormaty(o) {
         }
         const od = Number(z.od ?? p?.od ?? 0), dok = Number(z.do ?? p?.do);
         if (!Number.isFinite(od) || !Number.isFinite(dok) || od < 0 || dok <= od) throw new Error('Podaj wycinek: od < do (sekundy).');
-        if (dok - od > MAX_KLIPU) throw new Error(`Klip najwyżej ${MAX_KLIPU} s (TikTok/Reels/Shorts to krótkie formy) — skróć wycinek.`);
+        if (dok - od > MAX_KLIPU) throw new Error(`Klip najwyżej ${MAX_KLIPU} s (tyle przyjmuje TikTok; Shorts i Reels krócej) — skróć wycinek.`);
         const uklad = z.uklad ?? 'rozmyte';
         if (!UKLADY[uklad]) throw new Error('Układ: rozmyte, letterbox albo srodek.');
         const napisy = z.napisy ?? 'zachowane';
@@ -451,7 +452,7 @@ export function utworzFormaty(o) {
             try {
                 if (siec === 'tiktok') {
                     const w = await cfg.tiktok.wyslijSzkic(k.plik, p.kontoId);
-                    Object.assign(p, { publishId: w.publishId, etap: 'wysylanie', uwaga: 'TikTok przetwarza — potem szkic w skrzynce aplikacji (opis wklej z pola obok).' });
+                    Object.assign(p, { publishId: w.publishId, etap: 'wysylanie', uwaga: 'TikTok przetwarza — potem szkic w skrzynce aplikacji. Opis: 📱 QR obok (aparat telefonu → kopiuj) albo 📋.' });
                     nadaj(`klip „${k.nazwa}” poszedł do skrzynki TikTok (${p.kontoNazwa})`);
                 } else {
                     const w = await cfg.instagram.opublikujReel(k.plik, { opis: p.opis, kontoId: p.kontoId, postep: (e) => { p.postep = e; } });

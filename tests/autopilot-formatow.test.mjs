@@ -57,6 +57,10 @@ test('wycinek: skrót, gdy się mieści → pierwszy pasujący gol → cały fil
     assert.deepEqual(wycinekDla(pr, 75, 60), { propozycja: 'gol-1', od: 1, do: 20, tytul: 'G1' });
     assert.deepEqual(wycinekDla([], 42.3, 60), { propozycja: null, od: 0, do: 42.3, tytul: '' });
     assert.deepEqual(wycinekDla([], 300, 60), { propozycja: null, od: 0, do: 60, tytul: '' });
+    // TikTok (do 10 min): cały taniec zamiast skrótu; za długi — jak dotąd
+    assert.deepEqual(wycinekDla(pr, 420.5, 600, { caly: true }), { propozycja: null, od: 0, do: 420.5, tytul: '' });
+    assert.deepEqual(wycinekDla(pr, 75, 600, { caly: true }), { propozycja: null, od: 0, do: 75, tytul: '' });
+    assert.deepEqual(wycinekDla([], 900, 600, { caly: true }), { propozycja: null, od: 0, do: 600, tytul: '' });
 });
 
 test('autopilot: wysłane filmy → piony → Shorts i TikTok same, Reels czeka na konto; raz na sieć, też po restarcie', async () => {

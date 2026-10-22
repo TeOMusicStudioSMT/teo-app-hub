@@ -5,6 +5,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import QRCode from 'qrcode';
 import { ZDARZENIE_TEOSIM } from '../../lib/koherencja';
 
 const MOST = 'http://127.0.0.1:3001';
@@ -15,6 +16,41 @@ async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
     return d as T;
 }
 const blad = (e: unknown) => String(e instanceof Error ? e.message : e);
+
+/**
+ * 📱 Opis szkicu TikTok na telefon (Suweren 2026-10-22: „muszę iść na YT, skopiować opis i wkleić na TikToka”).
+ * API szkicu nie przyjmuje opisu (Direct Post z opisem — dopiero po audycie TikToka), więc opis Kronikarza idzie
+ * kodem QR: aparat telefonu → „kopiuj tekst” → wklej w szkicu. Lokalnie, bez chmury.
+ */
+function OpisNaTelefon({ opis }: { opis: string }) {
+    const [qr, setQr] = useState<string | null>(null);
+    const [pokaz, setPokaz] = useState(false);
+    const [bladQr, setBladQr] = useState<string | null>(null);
+    useEffect(() => {
+        if (!pokaz || !opis) return;
+        QRCode.toDataURL(opis, { margin: 1, width: 260, errorCorrectionLevel: 'L', color: { dark: '#0b1220', light: '#f8fafc' } })
+            .then((u) => { setQr(u); setBladQr(null); }).catch((e) => { setQr(null); setBladQr(blad(e)); });
+    }, [pokaz, opis]);
+    if (!opis) return null;
+    const kopiuj = () => navigator.clipboard.writeText(opis).then(() => toast.success('Opis w schowku.'), () => toast.error('Schowek niedostępny — zaznacz tekst ręcznie.'));
+    return (
+        <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => setPokaz((x) => !x)} className="rounded border border-fuchsia-500/50 px-1.5 text-fuchsia-200">📱 opis na telefon (QR)</button>
+                <button onClick={kopiuj} className="rounded border border-slate-600 px-1.5 text-slate-200">📋 kopiuj</button>
+            </div>
+            {pokaz && (
+                <div className="flex flex-wrap items-start gap-2">
+                    {qr ? <img src={qr} alt="QR z opisem" className="h-[130px] w-[130px] rounded bg-white" /> : <span className="text-rose-300">{bladQr ? `QR: ${bladQr} — użyj 📋` : '…'}</span>}
+                    <div className="min-w-0 flex-1">
+                        <p className="text-slate-500">Aparat telefonu → kod → „Kopiuj tekst”, potem w TikTok: powiadomienie / szkic → wklej opis.</p>
+                        <pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-1 text-slate-300">{opis}</pre>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
 
 interface Zrodlo { plik: string; nazwa: string; projekt: string; program: { id: string; nazwa: string }; jezyk: string; zmieniono: string }
 interface Cel { ok: boolean; powod?: string }
@@ -284,10 +320,11 @@ export const FormatyPanel: React.FC = () => {
                                                             {opisy[`${k.id}:${siec}`] !== undefined && opisy[`${k.id}:${siec}`] !== p.opis && <button onClick={() => void wolaj(`/api/formaty/${k.id}/publikacja/${siec}/zmien`, { opis: opisy[`${k.id}:${siec}`] }, 'Opis zapisany.')} className="rounded border border-slate-600 px-1.5 text-slate-200">💾 opis</button>}
                                                             {p.etap === 'do_akceptacji' && <button onClick={() => confirm(siec === 'instagram' ? `Opublikować Reel PUBLICZNIE na ${p.kontoNazwa}? Instagram nie ma szkiców.` : `Wysłać szkic do skrzynki TikTok (${p.kontoNazwa})? Opis wkleisz w aplikacji.`) && void wolaj(`/api/formaty/${k.id}/publikacja/${siec}/zatwierdz`, {}, siec === 'instagram' ? 'Wysyłam Reel — przetwarzanie trwa minuty.' : 'Szkic poszedł do TikTok.')} className="rounded border border-emerald-500/50 px-2 text-emerald-200">✓ wyślij</button>}
                                                             <button onClick={() => void wolaj(`/api/formaty/${k.id}/publikacja/${siec}/odrzuc`, {}, 'Odrzucone.')} className="text-slate-500 hover:text-rose-300">✕</button>
-                                                            {siec === 'tiktok' && <span className="text-slate-500">API szkicu nie bierze opisu — skopiuj go do aplikacji TikTok.</span>}
+                                                            {siec === 'tiktok' && <span className="text-slate-500">API szkicu nie bierze opisu — przeniesiesz go kodem QR niżej.</span>}
                                                         </div>
                                                     </>
                                                 )}
+                                                {siec === 'tiktok' && p.etap !== 'odrzucona' && <OpisNaTelefon opis={opisy[`${k.id}:${siec}`] ?? p.opis ?? ''} />}
                                                 {p.etap === 'blad' && <button onClick={() => void wolaj(`/api/formaty/${k.id}/publikacja/${siec}/zmien`, { opis: opisy[`${k.id}:${siec}`] ?? p.opis ?? '' }, 'Znów czeka na Twoje ✓.')} className="text-amber-200">↻ wróć do ✓</button>}
                                                 {p.etap === 'odrzucona' && <button onClick={() => void wolaj(`/api/formaty/${k.id}/publikuj`, { siec }, 'Znów do ✓.')} className="text-slate-400">↻ ponownie do ✓</button>}
                                             </div>

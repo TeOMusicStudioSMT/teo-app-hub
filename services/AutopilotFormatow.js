@@ -33,12 +33,16 @@ export const MAX_PROB = 3;
 const ETAPY_WYSLANE = ['opublikowana', 'prywatna'];
 export const UWAGI = {
     shorts: 'Short idzie na kanał projektu (jak odcinek). YouTube bez audytu API trzyma go jako prywatny — widoczność zmieniasz w YouTube Studio.',
-    tiktok: 'TikTok dostaje SZKIC do skrzynki aplikacji — otwórz powiadomienie, wklej opis (jest w klipie), ustaw prywatność i opublikuj.',
+    tiktok: 'TikTok dostaje SZKIC do skrzynki aplikacji, cały film do 10 min — otwórz powiadomienie, wklej opis (📱 QR przy klipie), ustaw prywatność i opublikuj.',
     reels: 'Instagram publikuje Reel PUBLICZNIE od razu — API nie ma szkiców.',
 };
 
-/** Wycinek dla celu: propozycja z odcinka (skrót → pierwszy pasujący) → cały film ≤ limit → pierwsze `limit` s. */
-export function wycinekDla(propozycje, sekundy, limit) {
+/**
+ * Wycinek dla celu: propozycja z odcinka (skrót → pierwszy pasujący) → cały film ≤ limit → pierwsze `limit` s.
+ * `caly` (TikTok, do 10 min): cały film, gdy się mieści — taniec nie jest ucięty do skrótu.
+ */
+export function wycinekDla(propozycje, sekundy, limit, { caly = false } = {}) {
+    if (caly && Number(sekundy) > 0 && Number(sekundy) <= limit + 0.05) return { propozycja: null, od: 0, do: Math.round(Number(sekundy) * 100) / 100, tytul: '' };
     const pasuje = (p) => p.do - p.od <= limit + 0.05;
     const p = (propozycje ?? []).find((x) => x.id === 'skrot' && pasuje(x)) ?? (propozycje ?? []).find((x) => x.id !== 'skrot' && pasuje(x));
     if (p) return { propozycja: p.id, od: p.od, do: p.do, tytul: p.tytul ?? '' };
@@ -102,11 +106,13 @@ export function utworzAutopilotFormatow(o) {
     async function klipDla(film, cel) {
         const limit = CELE[cel].max;
         const siec = SIEC_CELU[cel];
-        // klip autopilota z tego filmu, który mieści się w limicie i nie poszedł jeszcze do tej sieci → ten sam (bez drugiego ffmpeg)
-        const istniejacy = (await F.wszystkie()).find((k) => k.autopilot && k.stan === 'gotowy' && path.resolve(k.zrodlo) === film.plik && (k.sekundy ?? Infinity) <= limit + 0.05 && wolnyDla(k.publikacje?.[siec]));
-        if (istniejacy) return istniejacy;
         const pr = await F.propozycje(film.plik);
-        const w = wycinekDla(pr.propozycje, pr.opis?.sekundy, limit);
+        const w = wycinekDla(pr.propozycje, pr.opis?.sekundy, limit, { caly: cel === 'tiktok' });
+        // klip autopilota z tym samym wycinkiem, który nie poszedł jeszcze do tej sieci → ten sam (bez drugiego ffmpeg);
+        // TikTok bierze cały film, więc 60-sekundowy pion Shortu mu nie wystarcza
+        const istniejacy = (await F.wszystkie()).find((k) => k.autopilot && k.stan === 'gotowy' && path.resolve(k.zrodlo) === film.plik
+            && Math.abs(k.od - w.od) < 0.05 && Math.abs(k.do - w.do) < 0.05 && (k.sekundy ?? Infinity) <= limit + 0.05 && wolnyDla(k.publikacje?.[siec]));
+        if (istniejacy) return istniejacy;
         const k = await F.utworz({ plik: film.plik, ...w, nazwa: w.propozycja ? undefined : `${film.tytul}`.slice(0, 100), uklad: 'rozmyte', napisy: 'zachowane', autopilot: true });
         const gotowy = await F.gotowy(k.id);
         if (gotowy.stan !== 'gotowy') throw new Error(`Przeróbka: ${gotowy.powod ?? 'nie wyszła'}`);
