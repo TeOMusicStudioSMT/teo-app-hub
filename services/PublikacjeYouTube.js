@@ -64,7 +64,7 @@ export function czyTaneczna(plik, zrodlo) {
 /** Tytuł z prefiksem na początku; „TeO Game Show:” dopisane przez model zdejmowane, żeby nie było dwa razy; ≤ 100 znaków YouTube. */
 export function zPrefiksemTanca(tytul) {
     const reszta = String(tytul ?? '').replace(/^\s*(?:🎪\s*)?TeO\s*Game\s*Show\s*(?:🎪)?\s*[:|—–-]?\s*/i, '').trim();
-    return (reszta ? `${PREFIKS_TANCA} ${reszta}` : PREFIKS_TANCA).slice(0, 100);
+    return (reszta ? `${PREFIKS_TANCA}: ${reszta}` : PREFIKS_TANCA).slice(0, 100);   // dwukropek jak w ręcznych poprawkach Suwerena
 }
 
 /** Odpowiedź Kronikarza → { tytul, opis, tagi }; rzuca, gdy model nie trzymał formatu. */

@@ -7,9 +7,9 @@ import path from 'node:path';
 import { utworzPublikacje, czyTaneczna, zPrefiksemTanca, PREFIKS_TANCA } from '../services/PublikacjeYouTube.js';
 
 test('prefiks na początku, bez dubla „TeO Game Show”, ≤ 100 znaków', () => {
-    assert.equal(zPrefiksemTanca('Tribal Rhythm with Nu'), `${PREFIKS_TANCA} Tribal Rhythm with Nu`);
-    assert.equal(zPrefiksemTanca('TeO Game Show: Nu wins'), `${PREFIKS_TANCA} Nu wins`);
-    assert.equal(zPrefiksemTanca(`${PREFIKS_TANCA} Nu`), `${PREFIKS_TANCA} Nu`);
+    assert.equal(zPrefiksemTanca('Tribal Rhythm with Nu'), `${PREFIKS_TANCA}: Tribal Rhythm with Nu`);
+    assert.equal(zPrefiksemTanca('TeO Game Show: Nu wins'), `${PREFIKS_TANCA}: Nu wins`);
+    assert.equal(zPrefiksemTanca(`${PREFIKS_TANCA}: Nu`), `${PREFIKS_TANCA}: Nu`);
     assert.ok(zPrefiksemTanca('x'.repeat(200)).length <= 100);
 });
 
@@ -29,7 +29,7 @@ test('Kronikarz bez prefiksu → publikacja taneczna dostaje go od kodu, inna ni
     const P = utworzPublikacje({ katalog: dir, teraz: () => Date.now(), pisz: async () => ({ tekst: 'TYTUŁ: Nu dances\nOPIS: Opis otakos.wtf\nTAGI: a, b', silnik: 'atrapa' }),
         kanaly: async () => ({ domyslny: null, kanaly: [] }) });
     const t = await P.przygotuj({ plik: await film('gameshow_Nu_en_1.mp4'), nazwa: 'x', zrodlo: { projekt: 'teo-game-show' } });
-    assert.equal(t.tytul, `${PREFIKS_TANCA} Nu dances`);
+    assert.equal(t.tytul, `${PREFIKS_TANCA}: Nu dances`);
     const g = await P.przygotuj({ plik: await film('gol_a-b_en_1.mp4'), nazwa: 'y', zrodlo: { projekt: 'gol-dnia' } });
     assert.equal(g.tytul, 'Nu dances');
 });
