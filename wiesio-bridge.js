@@ -221,6 +221,7 @@ import * as Laboratorium from './services/Laboratorium.js';
 import * as Delegat from './services/Delegat.js';
 import * as Artemis from './services/Artemis.js';
 import * as Tunel from './services/Tunel.js';
+import { utworzSchowekOpisow, zamontujTrasyOpisu } from './services/OpisNaTelefon.js';
 import * as Stado from './services/Stado.js';
 import * as AppStudio from './services/AppStudio.js';
 import { utworzKluczeMostu, utworzListyModeli } from './services/ModeleChmury.js';
@@ -15697,6 +15698,8 @@ const AutopilotFormatow = utworzAutopilotFormatow({
     szyna: Szyna,
 });
 AutopilotFormatow.uruchom();
+// 📱📋 Opis szkicu TikTok na telefon: QR = link do strony z „Kopiuj” (przez tunel), nie czysty tekst
+zamontujTrasyOpisu(app, utworzSchowekOpisow(), { adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; } });
 zamontujTrasyFormatow(app, Formaty, { tiktok: KontoTikTok, instagram: KontoInstagram, youtubeStan: () => KontoYouTube.stan(), szyna: Szyna, autopilot: AutopilotFormatow });
 
 // ── 💬 Sceny dialogowe filmu (services/ScenyDialogowe.js) ──

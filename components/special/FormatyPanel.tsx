@@ -26,10 +26,21 @@ function OpisNaTelefon({ opis }: { opis: string }) {
     const [qr, setQr] = useState<string | null>(null);
     const [pokaz, setPokaz] = useState(false);
     const [bladQr, setBladQr] = useState<string | null>(null);
+    const [link, setLink] = useState<{ url: string | null; powod: string | null } | null>(null);
     useEffect(() => {
         if (!pokaz || !opis) return;
-        QRCode.toDataURL(opis, { margin: 1, width: 260, errorCorrectionLevel: 'L', color: { dark: '#0b1220', light: '#f8fafc' } })
-            .then((u) => { setQr(u); setBladQr(null); }).catch((e) => { setQr(null); setBladQr(blad(e)); });
+        let zywy = true;
+        // 2026-10-22: aparat oddawał czysty tekst przeglądarce (Brave → Leo AI) — QR niesie LINK do strony z „📋 Kopiuj”
+        // (przez tunel, 6 h); bez tunelu zostaje QR z samym tekstem.
+        zMostu<{ url: string | null; powod: string | null }>('/api/formaty/opis-link', { method: 'POST', body: JSON.stringify({ tekst: opis }) })
+            .catch((e) => ({ url: null, powod: blad(e) }))
+            .then(async (l) => {
+                if (!zywy) return;
+                setLink(l);
+                const u = await QRCode.toDataURL(l.url ?? opis, { margin: 1, width: 260, errorCorrectionLevel: l.url ? 'M' : 'L', color: { dark: '#0b1220', light: '#f8fafc' } });
+                if (zywy) { setQr(u); setBladQr(null); }
+            }).catch((e) => { if (zywy) { setQr(null); setBladQr(blad(e)); } });
+        return () => { zywy = false; };
     }, [pokaz, opis]);
     if (!opis) return null;
     const kopiuj = () => navigator.clipboard.writeText(opis).then(() => toast.success('Opis w schowku.'), () => toast.error('Schowek niedostępny — zaznacz tekst ręcznie.'));
@@ -43,7 +54,9 @@ function OpisNaTelefon({ opis }: { opis: string }) {
                 <div className="flex flex-wrap items-start gap-2">
                     {qr ? <img src={qr} alt="QR z opisem" className="h-[130px] w-[130px] rounded bg-white" /> : <span className="text-rose-300">{bladQr ? `QR: ${bladQr} — użyj 📋` : '…'}</span>}
                     <div className="min-w-0 flex-1">
-                        <p className="text-slate-500">Aparat telefonu → kod → „Kopiuj tekst”, potem w TikTok: powiadomienie / szkic → wklej opis.</p>
+                        <p className="text-slate-500">{link?.url
+                            ? 'Aparat telefonu → kod → otwórz link → „📋 Kopiuj opis”, potem w TikTok: szkic → wklej opis. Link ważny 6 h.'
+                            : `Aparat telefonu → kod → „Kopiuj tekst” (QR z samym tekstem${link?.powod ? ` — ${link.powod}` : ''}), potem w TikTok: szkic → wklej opis.`}</p>
                         <pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-1 text-slate-300">{opis}</pre>
                     </div>
                 </div>
