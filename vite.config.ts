@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 // Odczyt credentials z .env w czasie build/run
-const envPath = path.resolve(__dirname, '.env');
+const envPath = path.resolve(import.meta.dirname, '.env');
 let envVars: Record<string, string> = {};
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, 'utf-8');
@@ -67,16 +67,20 @@ export default defineConfig({
   assetsInclude: ['**/*.bin'],
   build: {
     chunkSizeWarningLimit: 1000,
-    rollupOptions: {
+    // Vite 8 = Rolldown: obiektowe `manualChunks` z Rollupa już nie istnieje — te same paczki
+    // wydzielamy grupami `codeSplitting` (test na ścieżce modułu w node_modules).
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
-          'vendor-motion': ['framer-motion'],
-          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
-          'vendor-ui': ['lucide-react', 'recharts'],
-          'vendor-ai': ['@google/generative-ai', '@google/genai'],
-          'vendor-state': ['jotai', 'zustand'],
-          'vendor-util': ['ethers', 'uuid'],
+        codeSplitting: {
+          groups: [
+            { name: 'vendor-react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+            { name: 'vendor-motion', test: /node_modules[\\/](framer-motion|motion-dom|motion-utils)[\\/]/ },
+            { name: 'vendor-firebase', test: /node_modules[\\/](firebase|@firebase)[\\/]/ },
+            { name: 'vendor-ui', test: /node_modules[\\/](lucide-react|recharts|recharts-scale|victory-vendor|d3-[a-z-]+)[\\/]/ },
+            { name: 'vendor-ai', test: /node_modules[\\/]@google[\\/](generative-ai|genai)[\\/]/ },
+            { name: 'vendor-state', test: /node_modules[\\/](jotai|zustand)[\\/]/ },
+            { name: 'vendor-util', test: /node_modules[\\/](ethers|@adraffy|uuid)[\\/]/ },
+          ],
         },
       },
     },
