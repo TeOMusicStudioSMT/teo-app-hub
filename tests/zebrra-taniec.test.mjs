@@ -128,3 +128,11 @@ test('trasy na prawdziwym ffmpeg: odcinek z choreografii → scenariusz (1. wers
         } finally { serwer.close(); }
     } finally { await fs.rm(kat, { recursive: true, force: true }); }
 });
+
+test('liczby z tytułu utworu z ułamkiem („T 8.1”) są faktami', async () => {
+    const { liczbyFaktow } = await import('../services/ZebrraTaniec.js');
+    const { liczbyPozaFaktami } = await import('../services/OdcinkiStudia.js');
+    const w = { ocena: { wynik: 78, takt: 58, energia: 94, roznorodnosc: 90 }, utwor: { tytul: 'T 8.1  Tribal Cathedral (Exotic Resonance)', bpm: 126 }, frazy: 61, ruchow: 35, tancerz: 'Nu', ruchy: ['Hip Hop Dance 2'] };
+    assert.deepEqual(liczbyPozaFaktami('Nu tańczy do T 8.1, 126 BPM, ruch Hip Hop Dance 2, 78/100.', liczbyFaktow([w])), []);
+    assert.deepEqual(liczbyPozaFaktami('ocena 79', liczbyFaktow([w])), ['79']);
+});

@@ -58,9 +58,11 @@ export function faktyWystepu(c, { turnieje = [], gameShow = null, klip = null } 
 
 /** Wszystkie liczby, które scenariusz może wypowiedzieć (wynik, procenty, BPM, frazy, ruchy, liczba występów, skala 100). */
 export function liczbyFaktow(wystepy) {
+    // liczby z nazw jak w sprawdzarce (z ułamkiem i bez): „T 8.1 Tribal Cathedral” daje 8.1, 8 i 1 (2026-10-22: „8.1” odrzucało scenariusz)
+    const zNazwy = (t) => [...String(t ?? '').matchAll(/\d+(?:[.,]\d+)?/g)].flatMap((m) => [m[0].replace(',', '.'), ...m[0].split(/[.,]/)]);
     const out = [100, wystepy.length];
     wystepy.forEach((w, i) => out.push(i + 1, w.ocena.wynik, w.ocena.takt, w.ocena.energia, w.ocena.roznorodnosc, w.utwor.bpm, w.frazy, w.fraza ?? 0, w.ruchow,
-        ...String(w.utwor.tytul).match(/\d+/g) ?? [], ...String(w.tancerz).match(/\d+/g) ?? [], ...w.ruchy.flatMap((r) => r.match(/\d+/g) ?? [])));
+        ...zNazwy(w.utwor.tytul), ...zNazwy(w.tancerz), ...w.ruchy.flatMap(zNazwy)));
     return out;
 }
 
