@@ -249,6 +249,7 @@ import { utworzWywiady, prowadzacyZObsady } from './services/WywiadAktorow.js';
 import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
+import { utworzPadyJamu, zamontujTrasyPadow } from './services/PadyJamu.js';
 import { utworzAranz, zamontujTrasyAranzu } from './services/AranzJoanny.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzGlebie } from './services/GlebiaKadru.js';
@@ -8606,6 +8607,9 @@ const JamZJoanna = utworzJam({
     pisz: async ({ system, prompt }) => { const w = await piszModelem(Mozg.modelRoli('joanna'), system, prompt, { temperatura: 0.7, json: true }); return { tekst: w.tekst, model: w.silnik }; },
     szyna: Szyna,
 });
+// 🥁 Pady z dźwiękiem (services/PadyJamu.js): zestawy padów jamu, każdy dźwięk przez ffmpeg do wav w _OtakOs_Muzyka/Jam z Joanną/Pady/.
+// Przed zamontowaniem tras jamu — `/api/jam/pady` nie może wpaść w inne `/api/jam/:…`.
+zamontujTrasyPadow(app, utworzPadyJamu({ katalogMuzyki: MUSIC_DIR, ffmpeg: ffmpegPath, szyna: Szyna }));
 zamontujTrasyJamu(app, JamZJoanna);
 // 🎼 Joanna aranżuje szkic (services/AranzJoanny.js): plan utworu z jamu na modelu `joanna` (zamknięte listy), demo z apki,
 // pełne brzmienie przez Warsztat (ACE-Step remiks) → _OtakOs_Muzyka/Aranże Joanny/ + oś dla Kompozytora.

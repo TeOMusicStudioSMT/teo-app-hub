@@ -114,6 +114,8 @@ export function utworzJam({ katalogMuzyki, ffmpeg, pisz, szyna, teraz = () => ne
             sekundy: Math.max(0, Math.round((Number(meta.sekundy) || 0) * 10) / 10),
             strategie: (Array.isArray(meta.strategie) ? meta.strategie : []).filter((s) => STRATEGIE.includes(s)).slice(0, 200),
             urzadzenie: String(meta.urzadzenie ?? '').slice(0, 80) || null,
+            // 🥁 zestaw padów, który grał (services/PadyJamu.js) — Aranż i Warsztat mają ten sam kontekst
+            zestawPadow: /^[a-z0-9][a-z0-9-]{0,39}$/.test(String(meta.zestawPadow ?? '')) ? String(meta.zestawPadow) : null,
             audio: rel(mp3), midi: rel(plikMid),
         };
         await fs.writeFile(path.join(katalog, `${baza}.json`), JSON.stringify(karta, null, 2), 'utf8');
