@@ -10750,10 +10750,28 @@ async function piszModelem(model, system, prompt, opcje = {}) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         // think:false — qwen3.x bez tego oddaje pustą treść (zmierzone przy /api/ollama/pisz).
         // `opcje.json` (🏛️⚡ Kompozytor) → format:'json' Ollamy: model musi oddać poprawny JSON.
-        body: JSON.stringify({ model: silnik, system, prompt, stream: false, think: false, ...(options ? { options } : {}), ...(opcje?.json ? { format: 'json' } : {}) }),
+        // stream: true (2026-10-22, Wieczór Tańca „Nu”: Zebrra 2× „fetch failed”) — przy stream:false fetch Node'a czeka na
+        // nagłówki najwyżej 300 s (undici headersTimeout), a na zatłoczonej karcie 6 GB model pisze dłużej. Ze strumieniem
+        // limit dotyczy tylko ciszy między kawałkami, nie całego pisania. Tryb Katedry (chmura) też oddaje NDJSON.
+        body: JSON.stringify({ model: silnik, system, prompt, stream: true, think: false, ...(options ? { options } : {}), ...(opcje?.json ? { format: 'json' } : {}) }),
     });
     if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
-    return { tekst: String((await r.json()).response || '').trim(), silnik };
+    let tekst = '', reszta = '';
+    const czytaj = (linia) => {
+        if (!linia.trim()) return;
+        const j = JSON.parse(linia);
+        if (j.error) throw new Error(`Ollama: ${j.error}`);
+        tekst += j.response || '';
+    };
+    const dekoder = new TextDecoder();
+    for await (const kawalek of r.body) {
+        reszta += dekoder.decode(kawalek, { stream: true });
+        const linie = reszta.split('\n');
+        reszta = linie.pop();
+        linie.forEach(czytaj);
+    }
+    czytaj(reszta + dekoder.decode());
+    return { tekst: tekst.trim(), silnik };
 }
 
 /**
