@@ -197,12 +197,14 @@ export const FormatyPanel: React.FC = () => {
                     <div className="mt-1 grid gap-1 md:grid-cols-3">
                         {CELE_AUTO.map((c) => { const x = auto.cele[c]; if (!x) return null; return (
                             <div key={c} className={`rounded border p-1.5 text-[10px] ${x.wlaczony ? 'border-emerald-500/40' : 'border-slate-700/60'}`}>
-                                <label className="flex items-center gap-1.5 text-slate-200">
-                                    <input type="checkbox" checked={x.wlaczony} onChange={(e) => { if (e.target.checked && !confirm(`Włączyć autopilota ${x.nazwa}? ${x.uwaga} Wysyłka pójdzie BEZ Twojego ✓ (do ${x.limit} na dobę).`)) return; void wolaj('/api/formaty/autopilot', { wlaczone: { [c]: e.target.checked } }, e.target.checked ? `${x.nazwa}: autopilot włączony.` : `${x.nazwa}: autopilot wyłączony.`, 'PUT'); }} />
-                                    <b>{x.nazwa}</b><span className="text-slate-500">≤ {x.maxSekund} s</span>
+                                <div className="flex items-center gap-1.5 text-slate-200">
+                                    <label className="flex items-center gap-1.5"><input type="checkbox" checked={x.wlaczony} onChange={(e) => { if (e.target.checked && !confirm(`Włączyć autopilota ${x.nazwa}? ${x.uwaga} Wysyłka pójdzie BEZ Twojego ✓ (do ${x.limit} na dobę).`)) return; void wolaj('/api/formaty/autopilot', { wlaczone: { [c]: e.target.checked } }, e.target.checked ? `${x.nazwa}: autopilot włączony.` : `${x.nazwa}: autopilot wyłączony.`, 'PUT'); }} />
+                                    <b>{x.nazwa}</b></label><span className="text-slate-500">≤ {x.maxSekund} s</span>
                                     <span className="ml-auto text-slate-500">na dobę</span>
-                                    <input type="number" min={0} max={x.maxLimit} value={x.limit} onChange={(e) => void wolaj('/api/formaty/autopilot', { limit: { [c]: Number(e.target.value) } }, 'Limit zapisany.', 'PUT')} className="w-10 rounded bg-black/60 px-1 text-slate-200" />
-                                </label>
+                                    <select value={x.limit} onChange={(e) => void wolaj('/api/formaty/autopilot', { limit: { [c]: Number(e.target.value) } }, `${x.nazwa}: limit ${e.target.value} na dobę.`, 'PUT')} className="rounded bg-black/60 px-1 text-slate-200">
+                                        {Array.from({ length: x.maxLimit + 1 }, (_, n) => <option key={n} value={n}>{n}</option>)}
+                                    </select>
+                                </div>
                                 <div className="text-slate-400">do zrobienia {x.doZrobienia} · wysłane {x.wyslane} · dziś {x.dzisiaj}/{x.limit}{x.porzucone ? ` · porzucone ${x.porzucone}` : ''}</div>
                                 {!x.konto.polaczony && <div className="text-amber-300">⏸ {x.konto.powod ?? 'konto niepodłączone'} — czeka</div>}
                                 {auto.ostatniPrzebieg?.cele?.[c]?.czeka && x.konto.polaczony && <div className="text-amber-200">⏸ {auto.ostatniPrzebieg.cele[c].czeka}</div>}
