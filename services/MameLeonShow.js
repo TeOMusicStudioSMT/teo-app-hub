@@ -316,7 +316,7 @@ export function utworzMameLeon(o) {
         Object.assign(s, { plik: cel, nagrano: czas(), sekundy: (await cfg.opisz(cel).catch(() => null))?.sekundy ?? null, stan: 'nagrany', publikacja: null, powod: null });
         if (cfg.publikuj) {
             try {
-                const p = await cfg.publikuj({ plik: cel, nazwa: nazwaPublikacji(s), jezyk: s.jezyk, kontekst: kontekstKronikarza(s), zrodlo: { projekt: PROJEKT, mameLeon: s.id } });
+                const p = await cfg.publikuj({ plik: cel, nazwa: nazwaPublikacji(s), jezyk: s.jezyk, kontekst: kontekstKronikarza(s), zrodlo: { projekt: PROJEKT, mameLeon: s.id, ...(s.wieczor ? { wieczorTanca: s.wieczor } : {}) } });
                 s.publikacja = { id: p.id ?? null, etap: p.etap ?? null };
                 s.stan = 'do_akceptacji';
             } catch (e) { s.powod = `publikacja: ${e.message}`; }

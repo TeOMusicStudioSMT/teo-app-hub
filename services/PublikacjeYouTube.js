@@ -50,6 +50,23 @@ export const systemKronikarza = (jezyk = 'pl') => [
 ].join('\n');
 export const SYSTEM_KRONIKARZA = systemKronikarza('pl');
 
+/**
+ * 🎪 Znak programu w tytule (Suweren 2026-10-22: „Kronikarz ma dawać na początku tytułu produkcji tanecznych i automatycznych
+ * „🎪 TeO Game Show🎪”… dawałem mu w prompcie, nie zajarzył”) — dokleja KOD, nie model: Game Show, 🌙 Wieczór Tańca,
+ * 🩰 taniec w Zebrra Sports, 🦎 Mame Leon z wieczoru, nagrania Tanecznego Starcia i ich Shorty. Poprawka tytułu w ✎ zostaje Suwerena.
+ */
+export const PREFIKS_TANCA = '🎪 TeO Game Show🎪';
+const PROJEKTY_TANCA = new Set(['teo-game-show', 'wieczor-tanca', 'taneczne-starcie']);
+export function czyTaneczna(plik, zrodlo) {
+    if (PROJEKTY_TANCA.has(zrodlo?.projekt) || zrodlo?.taniec || zrodlo?.wieczorTanca) return true;
+    return /^(gameshow|wieczor|zebrra_taniec|taniec)_/i.test(path.basename(String(plik ?? '')));
+}
+/** Tytuł z prefiksem na początku; „TeO Game Show:” dopisane przez model zdejmowane, żeby nie było dwa razy; ≤ 100 znaków YouTube. */
+export function zPrefiksemTanca(tytul) {
+    const reszta = String(tytul ?? '').replace(/^\s*(?:🎪\s*)?TeO\s*Game\s*Show\s*(?:🎪)?\s*[:|—–-]?\s*/i, '').trim();
+    return (reszta ? `${PREFIKS_TANCA} ${reszta}` : PREFIKS_TANCA).slice(0, 100);
+}
+
 /** Odpowiedź Kronikarza → { tytul, opis, tagi }; rzuca, gdy model nie trzymał formatu. */
 export function odczytajMetadane(tekst) {
     const t = String(tekst ?? '').replace(/\r/g, '');
@@ -144,6 +161,7 @@ export function utworzPublikacje(o) {
             const prompt = `Film: ${p.nazwa}\nPlik: ${path.basename(p.plik)}\n${z.kontekst ? `\nMateriał o filmie (jedyne źródło faktów):\n${String(z.kontekst).slice(0, 6000)}` : '\nBrak dodatkowego materiału — opieraj się na nazwie, nie zmyślaj szczegółów fabuły.'}`;
             const { tekst, silnik } = await cfg.pisz(systemKronikarza(p.jezyk), prompt);
             const meta = odczytajMetadane(tekst);
+            if (czyTaneczna(p.plik, p.zrodlo)) meta.tytul = zPrefiksemTanca(meta.tytul);
             if (!/otakos\.wtf/i.test(meta.opis)) {
                 meta.opis = `${meta.opis}\n\n${stopkaEkosystemu(p.jezyk, p.zrodlo)}`.slice(0, 4800);
             }
@@ -318,4 +336,4 @@ export function utworzPublikacje(o) {
     return { przygotuj, zmien, zatwierdz, odrzuc, sprawdz, wszystkie, ustawKanalProjektu, kanalProjektu, naKanal, naPlayliste, ponowPlayliste };
 }
 
-export default { utworzPublikacje, odczytajMetadane, SYSTEM_KRONIKARZA, ETAPY };
+export default { utworzPublikacje, odczytajMetadane, SYSTEM_KRONIKARZA, ETAPY, PREFIKS_TANCA, czyTaneczna, zPrefiksemTanca };
