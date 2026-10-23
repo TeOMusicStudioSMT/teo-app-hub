@@ -1173,7 +1173,8 @@ app.post('/api/ollama', async (req, res) => {
  * z osobna to trzy implementacje tego samego — lepiej jedna trasa.
  */
 app.post('/api/ollama/pisz', async (req, res) => {
-    const { model, system, prompt } = req.body ?? {};
+    // json: true = Ollama `format: 'json'` (kotek-architekt Teterhii wybiera parametry budowli z list — gra/budowle.ts)
+    const { model, system, prompt, json } = req.body ?? {};
     if (!prompt?.trim()) return res.status(400).json({ success: false, message: 'Brak "prompt".' });
     const silnik = model || process.env.OTAKOS_MODEL || 'gemma4:e2b';
     try {
@@ -1183,7 +1184,7 @@ app.post('/api/ollama/pisz', async (req, res) => {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
             // ⚠️ think:false — modele qwen3.x bez tego przepalają budżet na myślenie i oddają
             // PUSTĄ treść (zmierzone: eval_count 60, response ""). Gemma to ignoruje.
-            body: JSON.stringify({ model: silnik, system, prompt, stream: false, think: false }),
+            body: JSON.stringify({ model: silnik, system, prompt, stream: false, think: false, ...(json === true ? { format: 'json' } : {}) }),
         });
         clearTimeout(t);
         if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`);
