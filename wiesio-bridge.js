@@ -121,6 +121,7 @@ import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei, odpowiedzGeminiZwiad
 import { utworzZebrraTaniec, zamontujTrasyZebrraTanca, PROJEKT as PROJEKT_ZEBRRA_SPORTS } from './services/ZebrraTaniec.js';
 import { utworzMameLeon, zamontujTrasyMameLeon } from './services/MameLeonShow.js';
 import { utworzWieczorTanca, zamontujTrasyWieczoru } from './services/WieczorTanca.js';
+import { utworzPorannyBrief, zamontujTrasyBriefu } from './services/PorannyBrief.js';
 import { utworzZebrraNews, zamontujTrasyZebrraNews, PROJEKT as PROJEKT_ZEBRRA_NEWS } from './services/ZebrraNews.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
@@ -15708,6 +15709,20 @@ AutopilotFormatow.uruchom();
 zamontujTrasyOpisu(app, utworzSchowekOpisow(), { adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; } });
 zamontujTrasyFormatow(app, Formaty, { tiktok: KontoTikTok, instagram: KontoInstagram, youtubeStan: () => KontoYouTube.stan(), szyna: Szyna, autopilot: AutopilotFormatow });
 
+// ☀️ Poranny brief Katedry (services/PorannyBrief.js) — raz dziennie fakty z tras Huba → kanał Mistrza (Orbita) + Hub → Rdzeń → ☀️
+const PorannyBrief = utworzPorannyBrief({
+    katalog: ANTIGRAVITY_DIR,
+    pobierz: async (trasa) => {
+        const r = await fetch(`http://127.0.0.1:${PORT}${trasa}`, { signal: AbortSignal.timeout(20_000) });
+        const d = await r.json().catch(() => null);
+        if (!r.ok || d?.success === false) throw new Error(d?.message || `HTTP ${r.status}`);
+        return d;
+    },
+    wiesc: (w) => Jajo.wiesc(w),
+    szyna: Szyna,
+});
+zamontujTrasyBriefu(app, PorannyBrief);
+PorannyBrief.uruchom();
 // ── 💬 Sceny dialogowe filmu (services/ScenyDialogowe.js) ──
 // Silnik Studia Podcastu bez studia: postacie z obsady rozmawiają na tle kadrów projektu → montaże projektu (Montażownia).
 const Sceny = utworzSceny({

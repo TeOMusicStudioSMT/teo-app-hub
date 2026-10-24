@@ -16,6 +16,7 @@
  *   node scripts/glowny/katedra.mjs wideo przytnij <plik> <od_s> [do_s]   (nowy plik obok — oryginał zostaje)
  *   node scripts/glowny/katedra.mjs wideo potnij <plik> <sekundy>         (klocki po N s w podkatalogu)
  *   node scripts/glowny/katedra.mjs biblioteka <pytanie…>                 (📚 Shoudy: odpowiedź z przypisami, prywatne)
+ *   node scripts/glowny/katedra.mjs brief                                 (☀️ Poranny brief: co czeka, co wyszło, co do sprawdzenia)
  */
 const MOST = process.env.OTAKOS_MOST || 'http://127.0.0.1:3001';
 
@@ -50,6 +51,7 @@ const MOCE = `MOCE KATEDRY (most :3001) — przez ten skrypt, bez pytania:
   zapytaj <TeOgochi> <zadanie>         stado: muzyka, kod (kodeks), gry (pionek), modele (zwiadowca)…
   nocna <robota> [JSON]                Nocna Zmiana (długie roboty w nocy)
   stan / stol / pamiec                 fakty o projektach, Stole, RAM
+  brief                                ☀️ Poranny brief Katedry (dzisiejszy albo ostatni): ✓ czeka, 24 h, do sprawdzenia
   biblioteka <pytanie>                 📚 Biblioteka Shoudów (prywatna, © Crimson Circle): odpowiedź tylko z fragmentów, z przypisami
 <plik> = ścieżka względna w _OtakOs_Klocki, „move:<plik>" albo pełna ścieżka wewnątrz tych katalogów.
 Inne moduły (ComfyUI, Assety3D, Marketplace, muzyka) — przez TeOgochi (zapytaj) albo trasy z CLAUDE.md (curl = prośba do Suwerena).`;
@@ -108,6 +110,12 @@ export const POLECENIA = {
         const uzyte = new Set(d.sprawdzenie?.uzyte ?? []);
         return [d.odpowiedz, '', `Źródła (zdań ze źródłem ${d.sprawdzenie?.zZrodlem ?? 0}/${d.sprawdzenie?.zdan ?? 0}, model ${d.model ?? '—'}):`,
             ...d.fragmenty.filter((f) => uzyte.has(f.n)).map((f) => `[${f.n}] ${f.etykieta}, s. ${f.strona} — ${f.plik}`)].join('\n');
+    },
+    async brief() {
+        const d = await most('/api/brief');
+        const b = d.brief;
+        if (!b) return `Dziś jeszcze nie było briefu (przyjdzie o ${d.ustawienia?.godzina ?? 7}:00) — Suweren złoży go w Hubie: ••• → Rdzeń → ☀️ Poranny brief.`;
+        return [`${b.zapowiedz.replace(/ Pełny brief:.*$/, '')} (${b.dzien})`, ...b.sekcje.flatMap((s) => ['', s.tytul, ...s.linie.map((l) => `- ${l.tekst}`)])].join('\n');
     },
     async pamiec() {
         const d = await most('/api/system/memory');

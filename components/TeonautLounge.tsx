@@ -40,6 +40,7 @@ import { logLoungeActivity, registerConsciousnessActivity, initializeSphereIdent
 import { Mic, MicOff } from 'lucide-react';
 import { SwiatKlockowView, TelefonView } from './SwiatITelefon';
 import { AktualizacjaView, AktualizacjaBaner } from './AktualizacjaKatedry';
+import { PorannyBriefView, PorannyBriefBaner } from './PorannyBrief';
 import { SkladnicaView } from './SkladnicaView';
 
 type BehavioralDataProps = {
@@ -60,7 +61,7 @@ interface TeonautLoungeProps {
     onOpenCrewClub?: () => void;
 }
 
-type View = 'kuznia' | 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'mcp-skillboard' | 'twoje-biznesy' | 'swiat' | 'telefon' | 'skladnica' | 'aktualizacja';
+type View = 'kuznia' | 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'mcp-skillboard' | 'twoje-biznesy' | 'swiat' | 'telefon' | 'skladnica' | 'aktualizacja' | 'brief';
 
 export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionToggle, onFavoriteToggle, onLogout, onTriggerAnomaly, behavioralData, onVisualAssistantOpen, onOpenCrewClub }) => {
     const [activeView, setActiveView] = useState<View>('dashboard');
@@ -229,6 +230,7 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
 
                 {/* 🔄 Nowsza Katedra (Aktualizator) — pasek tylko, gdy jest co aktualizować */}
                 {isHudVisible && activeView !== 'aktualizacja' && <AktualizacjaBaner onOtworz={() => setActiveView('aktualizacja')} />}
+                {isHudVisible && activeView !== 'brief' && <PorannyBriefBaner onOtworz={() => setActiveView('brief')} />}
 
                 <AnimatePresence mode="wait">
                     {isHudVisible && (
@@ -271,6 +273,7 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                             {activeView === 'swiat' && <SwiatKlockowView />}
                             {activeView === 'telefon' && <TelefonView />}
                             {activeView === 'aktualizacja' && <AktualizacjaView />}
+                            {activeView === 'brief' && <PorannyBriefView />}
                             {activeView === 'skladnica' && <SkladnicaView />}
                             {activeView === 'profile' && <ProfileView onLogout={onLogout} />}
                         </motion.div>
