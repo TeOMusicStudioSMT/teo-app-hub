@@ -252,6 +252,7 @@ import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
 import { utworzPadyJamu, zamontujTrasyPadow } from './services/PadyJamu.js';
 import { utworzAranz, zamontujTrasyAranzu } from './services/AranzJoanny.js';
+import { utworzProdukcje } from './services/ProdukcjaSoundcraft.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzGlebie } from './services/GlebiaKadru.js';
 import { utworzUsta } from './services/UstaAktorow.js';
@@ -8628,6 +8629,14 @@ const AranzJoanny = utworzAranz({
         return c;
     },
     kompozytor: Kompozytor,
+    // 🎚️ produkcja w SoundCraft (soundcraft-cli z _OtakOs_AI/soundcraft/<wersja>/ albo OTAKOS_SOUNDCRAFT): miks z listy, −14 LUFS, stemy
+    produkcja: utworzProdukcje({
+        katalogMuzyki: MUSIC_DIR,
+        katalog: path.join(ANTIGRAVITY_DIR, 'aranze-joanny'),
+        katalogAI: AI_DIR,
+        ffmpeg: ffmpegPath,
+        pisz: async ({ system, prompt }) => { const w = await piszModelem(Mozg.modelRoli('joanna'), system, prompt, { temperatura: 0.4, json: true }); return { tekst: w.tekst, model: w.silnik }; },
+    }),
     szyna: Szyna,
 });
 zamontujTrasyAranzu(app, AranzJoanny);

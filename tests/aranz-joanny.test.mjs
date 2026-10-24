@@ -58,7 +58,7 @@ test('oczyscPlan: listy zamknięte, synonimy, motywy z analizy, granice', () => 
     assert.deepEqual(o.sekcje.map((s) => [s.typ, s.od, s.do]), [['intro', 0, 4], ['staccato', 4, 12], ['drop', 12, 20], ['outro', 20, 24]]);
 });
 
-async function przygotuj({ zStraza = false, odpowiedzi } = {}) {
+async function przygotuj({ zStraza = false, odpowiedzi, produkcja = null } = {}) {
     const korzen = await fs.mkdtemp(path.join(os.tmpdir(), 'aranz-'));
     const katalogMuzyki = path.join(korzen, 'muzyka');
     await fs.mkdir(path.join(katalogMuzyki, 'Jam z Joanną'), { recursive: true });
@@ -73,7 +73,7 @@ async function przygotuj({ zStraza = false, odpowiedzi } = {}) {
         stanZadania: (id) => zadania.get(id) ?? null,
     };
     const kompozytor = utworzKompozytora({ katalog: path.join(korzen, 'kompozytor'), pisz: async () => ({ tekst: '{}' }) });
-    const A = utworzAranz({ katalogMuzyki, katalog: path.join(korzen, 'wymiar'), ffmpeg: ffmpegPath, pisz, warsztat, comfy: async () => ({ online: true }), kompozytor });
+    const A = utworzAranz({ katalogMuzyki, katalog: path.join(korzen, 'wymiar'), ffmpeg: ffmpegPath, pisz, warsztat, comfy: async () => ({ online: true }), kompozytor, produkcja });
     const app = express();
     app.use(express.json({ limit: '50mb' }));
     if (zStraza) app.use(strazMostu({ klucz: () => 'k'.repeat(48), zaufane: [] }));
@@ -160,5 +160,39 @@ test('plan: dwa razy zła odpowiedź = błąd wprost; Straż: tylko maszyna', as
         assert.match((await r.json()).message, /co najmniej 2 sekcji/);
         assert.equal((await fetch(`${T.url}/api/aranz`, { headers: { origin: 'https://zla-strona.example' } })).status, 401);
         assert.equal((await fetch(`${T.url}/api/aranz`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '1.2.3.4', 'x-teo-klucz': 'k'.repeat(48) }, body: '{}' })).status, 403);
+    } finally { await T.zamknij(); }
+});
+
+test('🎚️ produkcja SoundCraft przez trasy: zestaw padów z karty jamu, wynik w aranżu, sesja, stan przed /:id', async () => {
+
+    const wywolania = [];
+    const produkcja = {
+        stan: async () => ({ dostepny: true, wersja: 'SoundCraft CLI 0.12.1' }),
+        produkuj: async (a, o) => { wywolania.push({ a, o }); return { plik: `Aranże Joanny/${o.baza} (produkcja).mp3`, wav: 'x', sesja: 'C:/s/aranz.scraft', stemy: ['a.wav'], lufs: -14, truePeak: -1.2, miks: o.miks ?? 'klubowy', miksZrodlo: 'suweren', komentarz: '' }; },
+        otworz: async (sesja) => ({ otwarte: true, sesja }),
+    };
+    const T = await przygotuj({ odpowiedzi: [JSON.stringify(PLAN)], produkcja });
+    try {
+        // karta jamu z zestawem padów + zestaw z próbką
+        await fs.writeFile(path.join(T.katalogMuzyki, 'Jam z Joanną', 'jam.json'), JSON.stringify({ zestawPadow: 'bity' }));
+        const kat = path.join(T.katalogMuzyki, 'Jam z Joanną', 'Pady', 'bity');
+        await fs.mkdir(kat, { recursive: true });
+        await fs.writeFile(path.join(kat, 'zestaw.json'), JSON.stringify({ nazwa: 'Bity', pady: [{ plik: 'pad-1-abcdef12.wav', od: 0 }, { plik: '../zly.wav' }] }));
+        assert.equal((await T.j('GET', '/api/aranz/soundcraft')).soundcraft.dostepny, true);
+        let d = await T.j('POST', '/api/aranz', { jam: 'Jam z Joanną/jam.mid', analiza: ANALIZA });
+        const id = d.aranz.id;
+        assert.equal((await T.j('POST', `/api/aranz/${id}/otworz-sesje`)).status, 424, 'bez produkcji nie ma sesji');
+        d = await T.j('POST', `/api/aranz/${id}/produkcja`, { miks: 'kosmiczny', uwagi: 'nocą' });
+        assert.equal(d.success, true, d.message);
+        const w = wywolania[0];
+        assert.equal(w.o.miks, 'kosmiczny');
+        assert.equal(w.o.zestaw.id, 'bity');
+        assert.equal(w.o.zestaw.pady[0].plik, 'pad-1-abcdef12.wav');
+        assert.equal(w.o.zestaw.pady[1].plik, null, 'plik spoza zestawu odrzucony');
+        assert.equal(d.aranz.produkcja.lufs, -14);
+        assert.equal(d.aranz.produkcja.zestawPadow, 'bity');
+        assert.ok(!('wav' in d.aranz.produkcja), 'ścieżka roboczego wav nie idzie do Huba');
+        assert.match((await T.j('GET', `/api/aranz/${id}`)).aranz.produkcjaUrl, /\(produkcja\)\.mp3$/);
+        assert.equal((await T.j('POST', `/api/aranz/${id}/otworz-sesje`)).sesja, 'C:/s/aranz.scraft');
     } finally { await T.zamknij(); }
 });

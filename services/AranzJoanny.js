@@ -143,7 +143,7 @@ export function osZPlanu(plan, bpm) {
  *   warsztat?: { przerob: Function, stanZadania: Function }, comfy?: () => Promise<{online: boolean, message?: string}>,
  *   kompozytor?: { zFormy?: Function } | null, szyna?: any, teraz?: () => Date }} cfg
  */
-export function utworzAranz({ katalogMuzyki, katalog, ffmpeg, pisz, warsztat = null, comfy = null, kompozytor = null, szyna = null, teraz = () => new Date() }) {
+export function utworzAranz({ katalogMuzyki, katalog, ffmpeg, pisz, warsztat = null, comfy = null, kompozytor = null, produkcja = null, szyna = null, teraz = () => new Date() }) {
     const KAT = path.join(katalog, 'aranze');
     const PLIK_OBS = path.join(katalog, 'obserwacje.jsonl');
     const katMuzyki = path.join(katalogMuzyki, KATALOG);
@@ -284,7 +284,43 @@ export function utworzAranz({ katalogMuzyki, katalog, ffmpeg, pisz, warsztat = n
         });
     }
 
-    const zUrl = (a) => ({ ...a, demoUrl: a.demo ? url(a.demo.mp3) : null, midUrl: a.demo ? url(a.demo.mid) : null, utworUrl: a.brzmienie?.plik ? url(a.brzmienie.plik) : null });
+    /** Zestaw padów, który grał w jamie aranżu (karta jamu `zestawPadow` → Pady/<id>/zestaw.json) — dla perkusji z próbek. */
+    async function zestawJamu(a) {
+        if (!a.jam) return null;
+        try {
+            const karta = JSON.parse(await fs.readFile(path.join(katalogMuzyki, a.jam.replace(/\.mid$/i, '.json')), 'utf8'));
+            if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(String(karta.zestawPadow ?? ''))) return null;
+            const kat = path.join(katalogMuzyki, 'Jam z Joanną', 'Pady', karta.zestawPadow);
+            const z = JSON.parse(await fs.readFile(path.join(kat, 'zestaw.json'), 'utf8'));
+            const pady = (Array.isArray(z.pady) ? z.pady : []).map((p) => (p && /^pad-\d{1,2}-[0-9a-f]{6,16}\.wav$/.test(String(p.plik)) ? p : { ...p, plik: null }));
+            return { id: karta.zestawPadow, katalog: kat, pady };
+        } catch { return null; }
+    }
+
+    /** 🎚️ Produkcja w SoundCraft (services/ProdukcjaSoundcraft.js): miks z listy, −14 LUFS, stemy, sesja .scraft. */
+    async function produkuj(id, { miks, uwagi } = {}) {
+        if (!produkcja) throw new Error('Most nie ma produkcji SoundCraft.');
+        const a = await wczytaj(id);
+        if (a.stan === 'odrzucony') throw new Error('Aranż odrzucony — najpierw nowy plan albo poprawka.');
+        const zestaw = await zestawJamu(a);
+        const p = await produkcja.produkuj(a, { miks, uwagi, zestaw, baza: baza(a) });
+        return poKolei(async () => {
+            const b = await wczytaj(id);
+            b.produkcja = { ...p, wav: undefined, zestawPadow: zestaw?.id ?? null };
+            const os = await osDla(b, p.plik);
+            if (os) b.osie = [...(b.osie ?? []).filter((x) => x.plik !== p.plik), { plik: p.plik, os }];
+            void szyna?.nadaj?.({ agent: 'Joanna', rodzaj: 'praca', tresc: `🎚️ „${b.plan.tytul}” wyprodukowany w SoundCraft — miks ${p.miks}, ${p.lufs} LUFS, ${p.stemy.length} stemów` })?.catch?.(() => {});
+            return zapisz(b);
+        });
+    }
+    async function otworzSesje(id) {
+        if (!produkcja) throw new Error('Most nie ma produkcji SoundCraft.');
+        const a = await wczytaj(id);
+        if (!a.produkcja?.sesja) throw new Error('Ten aranż nie ma jeszcze sesji SoundCraft — najpierw 🎚️ produkcja.');
+        return produkcja.otworz(a.produkcja.sesja);
+    }
+
+    const zUrl = (a) => ({ ...a, demoUrl: a.demo ? url(a.demo.mp3) : null, midUrl: a.demo ? url(a.demo.mid) : null, utworUrl: a.brzmienie?.plik ? url(a.brzmienie.plik) : null, produkcjaUrl: a.produkcja?.plik ? url(a.produkcja.plik) : null });
     async function jeden(id) { return zUrl(await odswiez(await wczytaj(id))); }
     async function lista() {
         const out = [];
@@ -293,19 +329,23 @@ export function utworzAranz({ katalogMuzyki, katalog, ffmpeg, pisz, warsztat = n
     }
     async function usun(id) { await fs.rm(plik(id)); return true; }
 
-    return { planuj, popraw, decyzja, zapiszDemo, brzmienie, jeden, lista, usun };
+    return { planuj, popraw, decyzja, zapiszDemo, brzmienie, produkuj, otworzSesje, stanProdukcji: () => (produkcja ? produkcja.stan() : Promise.resolve({ dostepny: false, powod: 'Most nie ma produkcji SoundCraft.' })), jeden, lista, usun };
 }
 
 export function zamontujTrasyAranzu(app, A) {
     const odp = (res, p, kod = 400) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(/Nie ma takiego/.test(e.message) ? 404 : kod).json({ success: false, message: e.message }));
     app.get('/api/aranz', (_req, res) => odp(res, A.lista().then((aranze) => ({ aranze, sekcje: SEKCJE, instrumenty: INSTRUMENTY, progresje: PROGRESJE, katalog: KATALOG })), 500));
     app.post('/api/aranz', (req, res) => odp(res, A.planuj(req.body ?? {}).then((aranz) => ({ aranz }))));
+    // 🎚️ stan SoundCraft — przed /:id
+    app.get('/api/aranz/soundcraft', (_req, res) => odp(res, A.stanProdukcji().then((soundcraft) => ({ soundcraft })), 500));
     app.get('/api/aranz/:id', (req, res) => odp(res, A.jeden(req.params.id).then((aranz) => ({ aranz }))));
     app.put('/api/aranz/:id', (req, res) => odp(res, A.popraw(req.params.id, req.body?.plan).then((aranz) => ({ aranz }))));
     app.post('/api/aranz/:id/przyjmij', (req, res) => odp(res, A.decyzja(req.params.id, 'przyjmij').then((aranz) => ({ aranz }))));
     app.post('/api/aranz/:id/odrzuc', (req, res) => odp(res, A.decyzja(req.params.id, 'odrzuc').then((aranz) => ({ aranz }))));
     app.post('/api/aranz/:id/demo', (req, res) => odp(res, A.zapiszDemo(req.params.id, req.body ?? {}).then((aranz) => ({ aranz }))));
     app.post('/api/aranz/:id/brzmienie', (req, res) => odp(res, A.brzmienie(req.params.id, req.body ?? {}).then((aranz) => ({ aranz })), 424));
+    app.post('/api/aranz/:id/produkcja', (req, res) => odp(res, A.produkuj(req.params.id, req.body ?? {}).then((aranz) => ({ aranz })), 424));
+    app.post('/api/aranz/:id/otworz-sesje', (req, res) => odp(res, A.otworzSesje(req.params.id), 424));
     app.delete('/api/aranz/:id', (req, res) => odp(res, A.usun(req.params.id).then((usuniety) => ({ usuniety }))));
     return A;
 }
