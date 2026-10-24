@@ -389,6 +389,9 @@ export function utworzFormaty(o) {
             if (auto && p.etap === 'blad') throw new Error(`Short: ${p.blad ?? 'Kronikarz nie przygotował opisu'}`);
             return k;
         }
+        // jeden film = jeden szkic w sieci (Suweren 2026-10-24: dwa szkice tego samego tańca z dwóch pionów zapchały skrzynkę TikToka)
+        const brat = (await wczytaj()).find((x) => x.id !== k.id && x.zrodlo === k.zrodlo && ['przygotowuje', 'do_akceptacji', 'wysylanie', 'w_skrzynce', 'opublikowana'].includes(x.publikacje?.[siec]?.etap));
+        if (brat) throw new Error(`Ten film już poszedł do ${siec === 'tiktok' ? 'TikToka' : 'Instagrama'} jako klip „${brat.nazwa}” (${brat.publikacje[siec].etap}) — drugi szkic byłby dublem. Odrzuć tamten, jeśli chcesz wysłać ten.`);
         const st = await wymagajKonta(siec);
         const konto = st.konta.find((x) => x.id === kontoId) ?? st.konta.find((x) => x.id === st.domyslny) ?? st.konta[0];
         const p = { etap: 'przygotowuje', kontoId: konto.id, kontoNazwa: konto.nazwa, utworzono: czas(), opis: '', ...(auto ? { auto: true } : {}) };
@@ -472,6 +475,13 @@ export function utworzFormaty(o) {
         const l = await wczytaj();
         let zmiana = false;
         const yt = cfg.youtube && l.some((k) => k.publikacje?.youtube) ? await cfg.youtube.wszystkie().catch(() => []) : [];
+        // TikTok: 6 zapytań/min na token — najwyżej 3 sprawdzenia na przebieg, najdawniej sprawdzane pierwsze,
+        // szkic w skrzynce nie częściej niż co 15 min (2026-10-24: przy kilkunastu szkicach przebieg dostawał „za dużo zapytań”)
+        const doSprawdzenia = new Set(l.filter((k) => {
+            const t = k.publikacje?.tiktok;
+            if (!t?.publishId || !['wysylanie', 'w_skrzynce'].includes(t.etap)) return false;
+            return t.etap === 'wysylanie' || !t.sprawdzono || Date.now() - Date.parse(t.sprawdzono) > 15 * 60_000;
+        }).sort((a, b) => (a.publikacje.tiktok.sprawdzono ?? '').localeCompare(b.publikacje.tiktok.sprawdzono ?? '')).slice(0, 3).map((k) => k.id));
         for (const k of l) {
             const y = k.publikacje?.youtube;
             if (y?.publikacjaId) {
@@ -480,10 +490,12 @@ export function utworzFormaty(o) {
                 if (JSON.stringify(nowy) !== JSON.stringify(y)) { k.publikacje.youtube = nowy; zmiana = true; }
             }
             const t = k.publikacje?.tiktok;
-            if (t?.publishId && ['wysylanie', 'w_skrzynce'].includes(t.etap) && cfg.tiktok && !wRobocie.has(`${k.id}:tiktok`)) {
+            if (doSprawdzenia.has(k.id) && cfg.tiktok && !wRobocie.has(`${k.id}:tiktok`)) {
+                t.sprawdzono = new Date().toISOString(); zmiana = true;
                 try {
                     const s = await cfg.tiktok.stanWysylki(t.publishId, t.kontoId);
                     const etap = s.status === 'FAILED' ? 'blad' : s.status === 'PUBLISH_COMPLETE' ? 'opublikowana' : s.status === 'SEND_TO_USER_INBOX' ? 'w_skrzynce' : t.etap;
+                    if (/Nie sprawdziłem stanu/.test(t.uwaga ?? '')) t.uwaga = etap === 'w_skrzynce' ? 'Szkic w skrzynce aplikacji TikTok — otwórz powiadomienie, wklej opis, ustaw prywatność, opublikuj.' : null;
                     if (etap !== t.etap) { Object.assign(t, { etap, blad: etap === 'blad' ? `TikTok: ${s.powod ?? 'wysyłka nieudana'}` : null, uwaga: etap === 'w_skrzynce' ? 'Szkic w skrzynce aplikacji TikTok — otwórz powiadomienie, wklej opis, ustaw prywatność, opublikuj.' : t.uwaga }); zmiana = true; }
                 } catch (e) { t.uwaga = `Nie sprawdziłem stanu: ${e.message}`; }
             }

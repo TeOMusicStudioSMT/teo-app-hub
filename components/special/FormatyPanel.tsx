@@ -76,7 +76,7 @@ interface Klip {
 }
 interface Konto { id: string; nazwa: string; strona?: string | null; blad?: string | null }
 interface StanSieci { siec: string; klient?: boolean; klucze?: string; polaczony: boolean; konta?: Konto[]; kanaly?: Konto[]; domyslny?: string | null; powod?: string | null; instrukcja?: string[]; zwrot?: string; tryb?: string; blad?: string | null }
-interface CelAuto { nazwa: string; siec: string; wlaczony: boolean; limit: number; maxLimit: number; maxSekund: number; doZrobienia: number; wyslane: number; porzucone: number; dzisiaj: number; konto: { polaczony: boolean; powod: string | null }; uwaga: string }
+interface CelAuto { nazwa: string; siec: string; wlaczony: boolean; limit: number; maxLimit: number; maxSekund: number; doZrobienia: number; wyslane: number; porzucone: number; dzisiaj: number; konto: { polaczony: boolean; powod: string | null }; uwaga: string; tylkoTaniec?: boolean; pauza?: { do: string; powod: string } | null }
 interface Autopilot {
     cele: Record<string, CelAuto>; filmow: number; pozaMontazem: number; przerobione: number; trwa: boolean; petla: boolean;
     bledy: { kiedy: string; cel: string; film: string; powod: string }[]; porzucone: { plik: string; cel: string; film?: string; powod?: string; stan: string }[];
@@ -218,9 +218,11 @@ export const FormatyPanel: React.FC = () => {
                                         {Array.from({ length: x.maxLimit + 1 }, (_, n) => <option key={n} value={n}>{n}</option>)}
                                     </select>
                                 </div>
+                                <label className="flex items-center gap-1 text-slate-300"><input type="checkbox" checked={!!x.tylkoTaniec} onChange={(e) => void wolaj('/api/formaty/autopilot', { tylkoTaniec: { [c]: e.target.checked } }, e.target.checked ? `${x.nazwa}: tylko taniec.` : `${x.nazwa}: wszystkie programy.`, 'PUT')} />🩰 tylko taniec (Game Show, Wieczór, Zebrra taniec)</label>
                                 <div className="text-slate-400">do zrobienia {x.doZrobienia} · wysłane {x.wyslane} · dziś {x.dzisiaj}/{x.limit}{x.porzucone ? ` · porzucone ${x.porzucone}` : ''}</div>
                                 {!x.konto.polaczony && <div className="text-amber-300">⏸ {x.konto.powod ?? 'konto niepodłączone'} — czeka</div>}
-                                {auto.ostatniPrzebieg?.cele?.[c]?.czeka && x.konto.polaczony && <div className="text-amber-200">⏸ {auto.ostatniPrzebieg.cele[c].czeka}</div>}
+                                {x.pauza && <div className="text-amber-300">⏸ {x.pauza.powod} — do {new Date(x.pauza.do).toLocaleTimeString('pl-PL')}</div>}
+                                {!x.pauza && auto.ostatniPrzebieg?.cele?.[c]?.czeka && x.konto.polaczony && <div className="text-amber-200">⏸ {auto.ostatniPrzebieg.cele[c].czeka}</div>}
                                 <div className="text-slate-500">{x.uwaga}</div>
                             </div>
                         ); })}

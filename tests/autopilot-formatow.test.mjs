@@ -78,7 +78,7 @@ test('autopilot: wysłane filmy → piony → Shorts i TikTok same, Reels czeka 
         assert.equal((await A.przebieg()).cele.length, 0);
         assert.equal(s.wyslane.length, 0);
 
-        await A.ustaw({ wlaczone: { shorts: true, tiktok: true, reels: true } });
+        await A.ustaw({ wlaczone: { shorts: true, tiktok: true, reels: true }, tylkoTaniec: { tiktok: false } });
         const w = await A.przebieg();
         assert.deepEqual([w.cele.shorts.wyslane, w.cele.tiktok.wyslane, w.cele.reels.wyslane], [2, 2, 0]);
         assert.match(w.cele.reels.czeka, /niepodłączone/);
@@ -111,7 +111,7 @@ test('autopilot: limit dnia, bez opisu Kronikarza nic nie wychodzi (3 próby →
         const F = utworzFormaty({ katalog: e.kat, katalogMontazy: async (p) => path.join(e.kat, 'produkcje', p, 'montaz'), opisz, ffmpeg: ffmpegPath, ...s });
         const A = utworzAutopilotFormatow({ katalog: e.kat, formaty: F, publikacje: opublikowane(e), stanSieci: s.stanSieci, odstepTikTokMs: 0 });
         await assert.rejects(A.ustaw({ limit: { tiktok: 6 } }), /TikTok trzyma najwyżej 5/);
-        await A.ustaw({ wlaczone: { shorts: true, tiktok: true }, limit: { shorts: 1 } });
+        await A.ustaw({ wlaczone: { shorts: true, tiktok: true }, limit: { shorts: 1 }, tylkoTaniec: { tiktok: false } });
         const w = await A.przebieg();
         assert.equal(w.cele.shorts.wyslane, 1);
         assert.match(w.cele.shorts.czeka, /limit dnia \(1\)/);
@@ -137,6 +137,39 @@ test('autopilot: limit dnia, bez opisu Kronikarza nic nie wychodzi (3 próby →
         const B = utworzAutopilotFormatow({ katalog: e.kat, formaty: F, publikacje: opublikowane(e), stanSieci: s.stanSieci });
         const p = (await B.stan()).porzucone.find((x) => x.cel === 'reels');
         assert.match(p.powod, /przerwane restartem/);
+    } finally { await fs.rm(e.kat, { recursive: true, force: true }); }
+});
+
+test('TikTok: domyślnie tylko taniec; pełna skrzynka = pauza celu bez straty prób; ten sam film drugim klipem = odmowa, nie dubel', async () => {
+    const e = await srodowisko();
+    try {
+        const s = sieci();
+        let pelna = true;
+        const wyslij = s.tiktok.wyslijSzkic;
+        s.tiktok.wyslijSzkic = async (p) => { if (pelna) throw new Error('TikTok: w skrzynce czeka już 5 szkiców z ostatniej doby — dokończ je w aplikacji TikTok i spróbuj później.'); return wyslij(p); };
+        const F = utworzFormaty({ katalog: e.kat, katalogMontazy: async (p) => path.join(e.kat, 'produkcje', p, 'montaz'), opisz, ffmpeg: ffmpegPath, ...s });
+        let teraz = Date.parse('2026-10-24T10:00:00Z');
+        const A = utworzAutopilotFormatow({ katalog: e.kat, formaty: F, publikacje: opublikowane(e), stanSieci: s.stanSieci, odstepTikTokMs: 0, teraz: () => teraz });
+        await A.ustaw({ wlaczone: { tiktok: true } });
+        let st = await A.stan();
+        assert.equal(st.cele.tiktok.tylkoTaniec, true);
+        assert.equal(st.cele.tiktok.doZrobienia, 1, 'podcast nie idzie na TikTok — tylko Game Show');
+        const w = await A.przebieg();
+        assert.match(w.cele.tiktok.czeka, /skrzynka TikTok pełna/);
+        st = await A.stan();
+        assert.equal(st.cele.tiktok.porzucone, 0, 'pełna skrzynka nie zjada prób filmu');
+        assert.equal(st.cele.tiktok.doZrobienia, 1);
+        assert.ok(st.cele.tiktok.pauza, 'cel pauzuje');
+        pelna = false;
+        assert.match((await A.przebieg()).cele.tiktok.czeka, /pełna/, 'w pauzie nawet nie pyta TikToka');
+        teraz += 3 * 3600_000 + 1000;
+        const w3 = await A.przebieg();
+        assert.equal(w3.cele.tiktok.wyslane, 1);
+        // ręcznie drugi pion tego samego filmu → odmowa zamiast drugiego szkicu
+        const drugi = await F.utworz({ plik: e.show, od: 0, do: 2, uklad: 'letterbox' });
+        await F.gotowy(drugi.id);
+        await assert.rejects(F.doPublikacji(drugi.id, 'tiktok'), /już poszedł do TikToka/);
+        assert.equal(s.wyslane.filter((x) => x[0] === 'tiktok').length, 1, 'jeden szkic na film');
     } finally { await fs.rm(e.kat, { recursive: true, force: true }); }
 });
 
