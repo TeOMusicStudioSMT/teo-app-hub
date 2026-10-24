@@ -254,6 +254,7 @@ import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
 import { utworzPadyJamu, zamontujTrasyPadow } from './services/PadyJamu.js';
 import { utworzAranz, zamontujTrasyAranzu } from './services/AranzJoanny.js';
 import { utworzProdukcje } from './services/ProdukcjaSoundcraft.js';
+import { utworzMaster, zamontujTrasyMasteru } from './services/MasterSoundcraft.js';
 import { utworzStudia, STYLE_WYWIADU } from './services/StudioPodcastu.js';
 import { utworzGlebie } from './services/GlebiaKadru.js';
 import { utworzUsta } from './services/UstaAktorow.js';
@@ -8641,6 +8642,9 @@ const AranzJoanny = utworzAranz({
     szyna: Szyna,
 });
 zamontujTrasyAranzu(app, AranzJoanny);
+// 🎛️ mastering DOWOLNEGO utworu biblioteki (services/MasterSoundcraft.js): łańcuch z listy w soundcraft-cli, cel LUFS łańcucha,
+// `<tytuł> (master).mp3` + karta obok oryginału (oryginał nietknięty).
+zamontujTrasyMasteru(app, utworzMaster({ katalogMuzyki: MUSIC_DIR, katalog: path.join(ANTIGRAVITY_DIR, 'master'), katalogAI: AI_DIR, ffmpeg: ffmpegPath, szyna: Szyna }));
 app.get('/api/suno-album', (_req, res) => ytOdp(res, AlbumSuno.stan().then((album) => ({ album })), 500));
 app.put('/api/suno-album', (req, res) => ytOdp(res, AlbumSuno.ustaw(req.body?.album || null).then((album) => ({ album }))));
 app.post('/api/suno-album/synchronizuj', (_req, res) => ytOdp(res, AlbumSuno.synchronizuj().then((album) => ({ album }))));
@@ -15705,10 +15709,6 @@ const AutopilotFormatow = utworzAutopilotFormatow({
     szyna: Szyna,
 });
 AutopilotFormatow.uruchom();
-// 📱📋 Opis szkicu TikTok na telefon: QR = link do strony z „Kopiuj” (przez tunel), nie czysty tekst
-zamontujTrasyOpisu(app, utworzSchowekOpisow(), { adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; } });
-zamontujTrasyFormatow(app, Formaty, { tiktok: KontoTikTok, instagram: KontoInstagram, youtubeStan: () => KontoYouTube.stan(), szyna: Szyna, autopilot: AutopilotFormatow });
-
 // ☀️ Poranny brief Katedry (services/PorannyBrief.js) — raz dziennie fakty z tras Huba → kanał Mistrza (Orbita) + Hub → Rdzeń → ☀️
 const PorannyBrief = utworzPorannyBrief({
     katalog: ANTIGRAVITY_DIR,
@@ -15723,6 +15723,10 @@ const PorannyBrief = utworzPorannyBrief({
 });
 zamontujTrasyBriefu(app, PorannyBrief);
 PorannyBrief.uruchom();
+// 📱📋 Opis szkicu TikTok na telefon: QR = link do strony z „Kopiuj” (przez tunel), nie czysty tekst
+zamontujTrasyOpisu(app, utworzSchowekOpisow(), { adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; } });
+zamontujTrasyFormatow(app, Formaty, { tiktok: KontoTikTok, instagram: KontoInstagram, youtubeStan: () => KontoYouTube.stan(), szyna: Szyna, autopilot: AutopilotFormatow });
+
 // ── 💬 Sceny dialogowe filmu (services/ScenyDialogowe.js) ──
 // Silnik Studia Podcastu bez studia: postacie z obsady rozmawiają na tle kadrów projektu → montaże projektu (Montażownia).
 const Sceny = utworzSceny({

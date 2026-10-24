@@ -218,7 +218,7 @@ export function odczytajMiks(tekst) {
     } catch { return null; }
 }
 
-const wykonaj = (plik, args, opcje = {}) => new Promise((ok, zle) => execFile(plik, args, { windowsHide: true, timeout: 10 * 60_000, maxBuffer: 64 * 1024 * 1024, ...opcje }, (e, out, err) => (e ? zle(new Error(String(err || e.message).trim().split('\n').slice(-3).join(' | ').slice(0, 500))) : ok({ out: String(out), err: String(err) }))));
+export const wykonaj = (plik, args, opcje = {}) => new Promise((ok, zle) => execFile(plik, args, { windowsHide: true, timeout: 10 * 60_000, maxBuffer: 64 * 1024 * 1024, ...opcje }, (e, out, err) => (e ? zle(new Error(String(err || e.message).trim().split('\n').slice(-3).join(' | ').slice(0, 500))) : ok({ out: String(out), err: String(err) }))));
 
 /** soundcraft-cli: `OTAKOS_SOUNDCRAFT` (plik albo katalog) → najnowszy w `_OtakOs_AI/soundcraft/<wersja>/…`. */
 export function znajdzCli(katalogAI, env = process.env) {

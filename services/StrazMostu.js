@@ -91,6 +91,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/klub-mistrzow',   // 🏛️ Klub Mistrzów: ogłaszanie eventów globalnych i zwiad po sieci — decyzje przy Katedrze
     '/api/mistrz-gry',   // 🎲 Mistrz Gry Teterhii: orzeczenia na Jev/modelu (koszt) i kronika — gra z mostu Katedry (gość zdalny = etap MRPG)
     '/api/aranz',   // 🎼 Joanna aranżuje szkic: model Joanny, pliki biblioteki, ACE-Step na karcie — tylko przy Katedrze
+    '/api/master',   // 🎛️ mastering utworu biblioteki w SoundCraft: pisze master obok oryginału w _OtakOs_Muzyka — tylko przy Katedrze
     '/api/jam',   // 🎹 Jam z Joanną: model Joanny i zapis nagrania do biblioteki muzyki — tylko przy Katedrze
     '/api/baza-wiedzy',   // 📚 Baza Wiedzy: prywatne materiały Suwerena (Shoudy © Crimson Circle IP) — tylko przy maszynie, nigdy przez tunel
     '/api/uprzaz',   // 🧬 Harness²: przebiegi na modelu Katedry, ✓ uprzęży zmienia prompty TeOgochi — tylko przy Katedrze
