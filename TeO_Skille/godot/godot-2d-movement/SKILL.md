@@ -1,23 +1,17 @@
 ---
 name: godot-2d-movement
 description: >
-  Implement 2D kinematic character movement in Godot 4.x with CharacterBody2D and
+  Implement 2D kinematic character movement in Godot 4.7 with CharacterBody2D and
   move_and_slide(): platformer run/jump with gravity, top-down 8-direction motion,
   slope handling, and reading collisions. Use when coding a 2D player or enemy
   controller, a platformer or top-down character, or fixing move_and_slide()/
   is_on_floor() behavior in a .tscn with a CharacterBody2D.
-license: Apache-2.0
-compatibility: Godot 4.3+
-metadata:
-  engine: godot
-  category: godot
-  difficulty: intermediate
 ---
 
 # Godot 2D Movement (4.x)
 
 Build responsive 2D character controllers with `CharacterBody2D` and the argument-less
-`move_and_slide()`. Targets **Godot 4.3+**.
+`move_and_slide()`. Targets **Godot 4.7**.
 
 ## When to use
 
@@ -75,6 +69,10 @@ func _physics_process(delta: float) -> void:
 
     move_and_slide()   # 4.x: no arguments; uses and updates `velocity`
 ```
+
+A fixed `gravity` export keeps tuning simple. To follow the project setting
+(*Physics > 2D > Default Gravity*) and any `Area2D` gravity overrides instead, use
+`velocity += get_gravity() * delta`, as the built-in CharacterBody2D script template does.
 
 ### 2. Top-down 8-direction movement
 
@@ -139,8 +137,8 @@ func _physics_process(delta: float) -> void:
 - **Sinking through floors** usually means the collision shape is missing/zero-sized, the
   floor body is on a layer this body's mask doesn't include, or you moved the body via
   `position +=` instead of velocity + `move_and_slide()`.
-- **Slope slipping while idle:** keep `floor_stop_on_slope = true` (default) and set a
-  `floor_snap_length` so the body sticks to downward slopes.
+- **Slope slipping while idle:** keep `floor_stop_on_slope = true` (default) and raise
+  `floor_snap_length` (default 1 px) so the body sticks to downward slopes.
 
 ## References
 

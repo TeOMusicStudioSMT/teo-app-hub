@@ -6,19 +6,13 @@ description: >
   Blueprints or C++. Use when building particle effects, NS_/NE_ assets, spawning a Niagara
   system at runtime, setting User parameters, or when the user mentions Niagara, VFX, or a
   particle system in Unreal.
-license: Apache-2.0
-compatibility: Unreal Engine 5.4+ (Niagara is the current VFX system; Cascade is legacy)
-metadata:
-  engine: unreal
-  category: unreal
-  difficulty: advanced
 ---
 
 # Unreal Niagara VFX
 
 Build and control real-time visual effects in UE5 with Niagara: understand the
 System/Emitter/Module hierarchy, expose parameters you can drive from gameplay, and spawn
-effects at runtime. Targets **UE 5.4+**. (Niagara replaces the legacy Cascade system.)
+effects at runtime. Targets **UE 5.8**. (Niagara replaces the legacy Cascade system.)
 
 ## When to use
 
@@ -102,8 +96,13 @@ On the returned component:
 
 - **Trying to set a System/Emitter/Particle parameter from gameplay** — it won't take. Expose
   it in the **User** namespace; only User parameters are settable via the component.
-- **Using Cascade tutorials** — Cascade is legacy/deprecated. Niagara is the current system; the
-  emitter/module workflow differs.
+- **Using Cascade tutorials** — Cascade is deprecated and no longer developed. Niagara is the
+  current system; the emitter/module workflow differs. For existing Cascade assets, the
+  **Cascade To Niagara Converter** plugin gives a starting point to port from.
+- **Crash on the spawned component** — `SpawnSystemAtLocation`/`SpawnSystemAttached` can return
+  `nullptr` (no system asset, or the effect was culled before spawning by its scalability
+  settings). Null-check the result before setting parameters. Both functions are marked unsafe
+  during actor construction, so spawn from `BeginPlay` or later, not the Construction Script.
 - **Effect disappears or doesn't cull right** — fixed/incorrect bounds, especially for **GPU
   Compute** emitters which need explicit Fixed Bounds. Set bounds on the emitter/system.
 - **Looping effect never stops** — spawned with `bAutoDestroy = false` and never

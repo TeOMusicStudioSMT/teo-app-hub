@@ -3,12 +3,6 @@ name: tower-defense
 description: >
   Build a tower defense: enemies pathing along lanes, wave spawning, towers that auto-target and fire,
   an economy, and lives. Use for a tower-defense/wave-defense game, or balancing waves and economy.
-license: Apache-2.0
-compatibility: Engine-agnostic design patterns; snippets are pseudocode (port to your engine)
-metadata:
-  engine: none
-  category: genres
-  difficulty: intermediate
 ---
 
 # Tower Defense
@@ -25,7 +19,7 @@ balance levers (DPS vs. HP vs. income) that decide whether a TD is tense or triv
   if too many enemies leak through.
 - Use when designing wave composition/pacing, tower targeting priorities, or the gold economy.
 
-**When *not* to use:** the player directly controls a shooter → `fps-shooter`. Free-form base
+**When _not_ to use:** the player directly controls a shooter → `fps-shooter`. Free-form base
 building with needs → `survival-crafting`. For the pathfinding algorithm itself, use `game-ai`.
 
 ## Core loop
@@ -47,16 +41,16 @@ and can I afford the answer?
 
 ## Design knobs
 
-| Knob | Effect | Notes |
-|------|--------|-------|
-| Enemy HP growth/wave | upgrade pressure | Geometric ~1.1–1.2× (refs). |
-| Income vs. HP curves | difficulty | Player should *almost* afford each wave. |
-| Tower DPS / range / cost | tower identity | Cheap+wide vs. expensive+tall. |
-| Targeting priority | optimal placement | Changes play more than raw stats. |
-| Enemy variety | counters one-build wins | Fast / armored / flying / swarm / boss. |
-| Leak penalty | stakes | Cost lives *and* lost bounty. |
-| Upgrade vs. build economy | strategy depth | Diminishing upgrade returns. |
-| Wave pacing | tension curve | Spike → breather → spike, not monotonic. |
+| Knob                      | Effect                  | Notes                                    |
+| ------------------------- | ----------------------- | ---------------------------------------- |
+| Enemy HP growth/wave      | upgrade pressure        | Geometric ~1.1–1.2× (refs).              |
+| Income vs. HP curves      | difficulty              | Player should _almost_ afford each wave. |
+| Tower DPS / range / cost  | tower identity          | Cheap+wide vs. expensive+tall.           |
+| Targeting priority        | optimal placement       | Changes play more than raw stats.        |
+| Enemy variety             | counters one-build wins | Fast / armored / flying / swarm / boss.  |
+| Leak penalty              | stakes                  | Cost lives _and_ lost bounty.            |
+| Upgrade vs. build economy | strategy depth          | Diminishing upgrade returns.             |
+| Wave pacing               | tension curve           | Spike → breather → spike, not monotonic. |
 
 ## Patterns
 
@@ -81,9 +75,11 @@ def run_wave(wave):
 def acquire_target(tower, enemies, mode="first"):
     in_range = [e for e in enemies if distance(tower.pos, e.pos) <= tower.range]
     if not in_range: return None
-    if mode == "first":    return max(in_range, key=lambda e: e.progress)
+    if mode == "first":    return max(in_range, key=lambda e: e.progress)   # furthest along path (stop leaks)
+    if mode == "last":     return min(in_range, key=lambda e: e.progress)   # least progress (guard the entrance)
     if mode == "closest":  return min(in_range, key=lambda e: distance(tower.pos, e.pos))
-    if mode == "strongest":return max(in_range, key=lambda e: e.hp)
+    if mode == "strongest":return max(in_range, key=lambda e: e.hp)         # burn down tanks first
+    if mode == "weakest":  return min(in_range, key=lambda e: e.hp)         # secure kills / last-hit bounty
     return in_range[0]
 ```
 
@@ -104,7 +100,10 @@ damage_dealt  = tower_dps * time_in_range
 - **One dominant tower/strategy** → no decisions. Add enemy types that hard-counter builds
   (armored vs. rapid-fire, flying vs. ground-only) and diminishing upgrade returns.
 - **Maze TD that can fully block the goal** → enemies get stuck/softlock. Forbid placements
-  that sever the path; recompute paths when towers change (refs).
+  that sever the path for the spawn or for any enemy already walking; recompute paths when
+  towers change (refs §1).
+- **Fast enemies slow down at corners or skip waypoints** → per-step movement stops at each
+  waypoint or overshoots it. Carry the leftover distance to the next waypoint (refs §1).
 - **No next-wave telegraph** → specials feel random and unfair. Preview upcoming composition.
 - **Per-frame movement unscaled by `dt`** → speed varies with frame rate. Scale steering by `dt`.
 - **Leaks only cost lives, not gold** → leaking is sometimes optimal. Make leaks lose bounty too.

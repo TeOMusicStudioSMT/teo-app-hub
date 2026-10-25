@@ -6,18 +6,12 @@ description: >
   the module Build.cs. Use when writing or debugging UE C++, deriving from AActor/ACharacter/
   AGameModeBase, exposing properties to the editor or Blueprints, or when the user mentions
   Unreal C++, UCLASS, GENERATED_BODY, GameMode, ACharacter, or .Build.cs.
-license: Apache-2.0
-compatibility: Unreal Engine 5.4+ (docs verified against current UE5); C++17 toolchain
-metadata:
-  engine: unreal
-  category: unreal
-  difficulty: advanced
 ---
 
 # Unreal C++ Gameplay
 
 Write correct UE5 gameplay C++: the reflection macros that connect C++ to the editor and
-Blueprints, the Gameplay Framework class roles, and module dependencies. Targets **UE 5.4+**.
+Blueprints, the Gameplay Framework class roles, and module dependencies. Targets **UE 5.8**.
 
 ## When to use
 
@@ -46,8 +40,11 @@ the C++ class/reflection foundation those build on.
    `UActorComponent` is reusable behaviour.
 6. **Add module dependencies** to `*.Build.cs` (e.g. `EnhancedInput`) or unresolved-symbol
    link errors follow.
-7. **Verify** by compiling (Live Coding `Ctrl+Alt+F11` for function bodies; full rebuild for
-   header/UPROPERTY changes) and checking the class/properties appear in the editor.
+7. **Verify** by compiling (Live Coding `Ctrl+Alt+F11` from the editor, or a full build from
+   the IDE with the editor closed) and checking the class/properties appear in the editor. For
+   automation tests, run headless with
+   `UnrealEditor-Cmd <Project>.uproject -ExecCmds="Automation RunTest MyGame;Quit"`
+   (`RunTest` takes a test name, a dotted prefix, or `Group:<name>`).
 
 ## Patterns
 
@@ -127,8 +124,10 @@ PublicDependencyModuleNames.AddRange(new string[]
   thing inside the class body.
 - **Raw `UObject*` without `UPROPERTY`** — the garbage collector doesn't see it and may destroy
   it out from under you. Track every UObject pointer with `UPROPERTY` (use `TObjectPtr` in UE5).
-- **Header/UPROPERTY edits with Live Coding** — Live Coding handles function bodies, but
-  changes to `UCLASS`/`UPROPERTY`/headers need a full editor restart + rebuild.
+- **Header/UPROPERTY edits with Live Coding** — function-body edits are reliable. Structural
+  changes (new functions, new `UPROPERTY`s) rely on Object Reinstancing, which is on by default
+  but less stable; code that caches pointers to reinstanced objects must refresh them. If the
+  editor or Blueprints misbehave after such a change, close the editor and build from the IDE.
 - **Wrong class prefix** — naming an Actor `UFoo` (or a component `AFoo`) breaks UHT; match the
   prefix to the base type.
 - **Unresolved external symbol at link** — the module providing the API isn't in `Build.cs`
@@ -138,7 +137,8 @@ PublicDependencyModuleNames.AddRange(new string[]
 ## References
 
 - For `UActorComponent` creation/attachment, the `UPROPERTY` garbage-collection ownership rules
-  (`TObjectPtr`, `TArray<TObjectPtr<>>`, `AddToRoot`), and a replication primer, read
+  (`TObjectPtr`, `TArray<TObjectPtr<>>`, `TWeakObjectPtr`, holding UObjects from plain C++
+  classes), and a replication primer, read
   `references/components-and-gc.md`.
 - Primary docs: "Unreal Engine CPP Quick Start" and "Gameplay Framework"
   (`https://dev.epicgames.com/documentation/en-us/unreal-engine/gameplay-framework-in-unreal-engine`).

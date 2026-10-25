@@ -1,24 +1,18 @@
 ---
 name: unity-csharp-scripting
 description: >
-  Write Unity 6 C# gameplay scripts: the MonoBehaviour lifecycle
+  Write Unity 6.3 LTS C# gameplay scripts: the MonoBehaviour lifecycle
   (Awake/OnEnable/Start/Update/FixedUpdate/LateUpdate), GameObject and component
   access, coroutines, and Inspector serialization. Use when creating or editing .cs
   scripts in a Unity project, or when the user mentions MonoBehaviour, Start/Update,
   GetComponent, SerializeField, coroutines, or "Unity script".
-license: Apache-2.0
-compatibility: Unity 6 (6000.0 LTS); also valid for 2022 LTS
-metadata:
-  engine: unity
-  category: unity
-  difficulty: beginner
 ---
 
 # Unity C# Scripting (MonoBehaviour)
 
 Write correct, idiomatic gameplay scripts in Unity 6. Get the lifecycle, component
 access, serialization, and coroutines right so behaviour is deterministic and the
-Inspector stays useful. Targets **Unity 6 (6000.0 LTS)**, C# / .NET Standard 2.1.
+Inspector stays useful. Targets **Unity 6.3 LTS (6000.3)**, C# / .NET Standard 2.1.
 
 ## When to use
 
@@ -48,6 +42,16 @@ plumbing*, not those subsystems.
    start them with `StartCoroutine` and stop them deterministically.
 6. **Verify in Play mode**: check the Console for null-reference exceptions, confirm values
    in the Inspector update as expected, and watch the Profiler if `Update` is hot.
+7. **Check `.meta` files before you finish.** When you create, move, rename or delete
+   scripts or assets outside the Editor, always move a file together with its `.meta`
+   (a new `.meta` means a new GUID and broken references). Then run
+   `python scripts/check_unity_project.py <project-dir>` (`--json` for machine-readable
+   output), fix every `ERROR` (duplicate or malformed GUIDs, files moved without their
+   `.meta`, missing script references) and re-run until it exits 0. A missing `.meta` on a
+   brand-new file is only a warning; Unity creates it on the next import. Run the script
+   path relative to this skill directory, or resolve the installed skill path first. It
+   needs Python 3.10+ and nothing else, reads only text-serialized assets, and does not
+   replace opening the project in Unity.
 
 ## Patterns
 
@@ -125,17 +129,28 @@ private System.Collections.IEnumerator FlashThenHide()
 - **`gameObject.tag == "Enemy"`** allocates a string and is slower; use
   `gameObject.CompareTag("Enemy")`.
 - **Coroutines stop when the GameObject is disabled** — a disabled object's coroutines are
-  killed; re-`StartCoroutine` in `OnEnable` if it must survive toggling.
+  killed; re-`StartCoroutine` in `OnEnable` if it must survive toggling. Setting only the
+  script's `enabled = false` does *not* stop them.
+- **Obsolete warnings on `FindObjectOfType` / `FindObjectsOfType`** — Unity 6 replaced them.
+  Use `FindFirstObjectByType` (old behaviour), `FindAnyObjectByType` (faster, any match) or
+  `FindObjectsByType(FindObjectsSortMode.None)`; all are slow, so cache the result.
+- **An `async` method keeps running after its object is destroyed** — `await` is not tied to
+  the GameObject the way a coroutine is. Pass `destroyCancellationToken` to the
+  `Awaitable` waits (they then throw `OperationCanceledException`), and never await the same
+  `Awaitable` instance twice: instances are pooled.
 - **`Update` never runs before `Start`, but the *first* `Update` can run on the same
   frame as `Start`** — guard against not-yet-initialised fields if you split setup oddly.
 
 ## References
 
-- For the full event-execution-order table and advanced coroutine patterns (custom
-  `CustomYieldInstruction`, stopping by handle, `WaitUntil`/`WaitWhile`), read
-  `references/lifecycle-and-coroutines.md`.
+- For the full event-execution-order table, advanced coroutine patterns (custom
+  `CustomYieldInstruction`, stopping by handle, `WaitUntil`/`WaitWhile`) and the `Awaitable`
+  equivalents of coroutine waits, read `references/lifecycle-and-coroutines.md`.
+- `scripts/check_unity_project.py` — read-only `.meta`/GUID and missing-script checker;
+  `--help` lists every check and the exit codes.
 - Primary docs: Unity Manual "Event function execution order"
-  (`https://docs.unity3d.com/Manual/execution-order.html`) and `ScriptReference/MonoBehaviour`.
+  (`https://docs.unity3d.com/Manual/execution-order.html`), `ScriptReference/MonoBehaviour`,
+  and the Manual page "Asynchronous programming with the Awaitable class".
 
 ## Related skills
 

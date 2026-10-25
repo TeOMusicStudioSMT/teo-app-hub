@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { utworzJevLokalny, cosinus, softmax } from '../services/JevLokalny.js';
-import { utworzPartytury, skilleZKatalogu, zWykonania, WZORCOWE } from '../services/Partytury.js';
+import { utworzPartytury, skilleZKatalogu, zWykonania, WZORCOWE, opisSkilla } from '../services/Partytury.js';
 import { utworzStrazModeli } from '../services/StrazModeli.js';
 import * as Dyrygent from '../services/Dyrygent.js';
 
@@ -116,4 +116,12 @@ test('straż modeli (auto 3): zniknął → zastępca wg roli (najbliższy rozmi
     widzi = [];
     await S.sprawdz();
     assert.match((await S.stan()).blad, /nie podała żadnego modelu/, 'Ollama śpi — nic nie ruszamy');
+});
+
+test('opisSkilla: opis w linii, blok „>”, blok bez znacznika — bez pola po nim (upstream 2026-10-24)', () => {
+    assert.equal(opisSkilla('---\nname: a\ndescription: Plan assets. Use for sprites.\n---\n# A'), 'Plan assets. Use for sprites.');
+    assert.equal(opisSkilla('---\nname: b\ndescription: >\n  Create VFX in Unreal\n  with Niagara.\n---\n# B\nlicense: x'), 'Create VFX in Unreal with Niagara.');
+    assert.equal(opisSkilla('---\nname: c\ndescription:\n  Godot 4\n  scenes.\nmetadata:\n  engine: godot\n---'), 'Godot 4 scenes.');
+    assert.equal(opisSkilla('---\nname: d\ndescription: "W cudzysłowie"\n---'), 'W cudzysłowie');
+    assert.equal(opisSkilla('bez frontmattera'), '');
 });

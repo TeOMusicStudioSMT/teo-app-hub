@@ -1,23 +1,17 @@
 ---
 name: godot-gdscript
 description: >
-  Write idiomatic GDScript for Godot 4.x: static typing, the node lifecycle
+  Write idiomatic GDScript for Godot 4.7: static typing, the node lifecycle
   (_ready/_process/_physics_process), @export/@onready/@tool annotations,
   signals, and await for asynchronous flow. Use when editing .gd scripts in a
   Godot project (project.godot), writing or debugging GDScript, or porting 3.x
-  GDScript to 4.x (func signatures, yield -> await, export -> @export).
-license: Apache-2.0
-compatibility: Godot 4.3+ (GDScript 2.0)
-metadata:
-  engine: godot
-  category: godot
-  difficulty: beginner
+  GDScript to 4.x (function signatures, yield to await, export to @export).
 ---
 
 # Godot GDScript (4.x)
 
 Write correct, statically typed GDScript and use the node lifecycle and signal
-system the way the engine intends. Targets **Godot 4.3+** (GDScript 2.0).
+system the way the engine intends. Targets **Godot 4.7** (GDScript 2.0).
 
 ## When to use
 
@@ -75,7 +69,7 @@ signal health_changed(current: int, maximum: int)   # typed signal params
 var health := 100
 
 func take_damage(amount: int) -> void:
-    health = max(health - amount, 0)
+    health = maxi(health - amount, 0)    # maxi/maxf are typed; max() returns Variant
     health_changed.emit(health, 100)     # 4.x: emit as a method on the signal
 
 func _ready() -> void:
@@ -122,6 +116,11 @@ func get_first_name(d: Dictionary) -> String:
   `_physics_process(delta)`; using `_process` makes motion frame-rate dependent.
 - **`class_name` must be unique** project-wide and is required to use the type name in
   other scripts or as an Inspector type.
+- **An override stops parsing after upgrading to 4.7** → since 4.7 an overriding method
+  inherits the parent's typed return, so every path must `return` a value (add
+  `return null` at the end if needed). Also new in 4.7: setting one element of a packed
+  array property (`points[0] = v`) no longer calls that property's setter; reassign the
+  whole array if the setter must run.
 
 ## References
 

@@ -5,19 +5,13 @@ description: >
   (Selector/Sequence), tasks, decorators, services, and running the tree from an AIController.
   Use when creating enemy/NPC AI, BT_/BB_ assets, custom BTTask or BTService nodes, or when
   the user mentions Behavior Tree, Blackboard, AIController, BTTask, decorator, or service.
-license: Apache-2.0
-compatibility: Unreal Engine 5.4+ (AIModule; Behavior Tree + Blackboard; NavMesh for movement)
-metadata:
-  engine: unreal
-  category: unreal
-  difficulty: advanced
 ---
 
 # Unreal Behavior Trees
 
 Author NPC decision-making in UE5 with Behavior Trees driven by a Blackboard: structure the
 tree with composites, gate branches with decorators, keep state current with services, and run
-it from an AIController. Targets **UE 5.4+**.
+it from an AIController. Targets **UE 5.8**.
 
 ## When to use
 
@@ -30,6 +24,13 @@ it from an AIController. Targets **UE 5.4+**.
 **When *not* to use:** the *concept* of AI (FSM vs BT vs steering, cross-engine) →
 `game-ai`. Pure navigation/pathing math is engine navmesh (BT's `MoveTo` uses it). Simple
 one-off logic may be cheaper as a small state machine than a full tree.
+
+**Behavior Tree or StateTree?** UE 5.8 ships both, and Behavior Trees are not deprecated.
+StateTree is Epic's general-purpose hierarchical state machine: it combines BT-style
+selection with explicit States and Transitions. If the project already uses StateTree
+assets, or the AI is naturally a set of modes with clear transitions (patrol → alert →
+combat), check with the user before adding a Behavior Tree next to it. Keep using Behavior
+Trees where the project already has `BT_`/`BB_` assets.
 
 ## Core workflow
 
@@ -101,6 +102,9 @@ void AEnemyAIController::SetTarget(AActor* Target)
   None; set it to Self/Lower Priority/Both so the tree re-evaluates when the key changes.
 - **A task hangs the tree** — a custom task returned `InProgress` and never calls
   `FinishLatentTask`. Always complete latent tasks.
+- **AI behaves strangely only when several NPCs share a tree** — a custom task stores run state
+  in member variables. Task nodes are shared by every AI using the asset unless instanced; keep
+  per-AI state in node memory (see the reference).
 - **Blackboard key typos** — `SetValueAsObject("Taget", ...)` silently does nothing; match the
   key name and type exactly, or use a cached `FBlackboardKeySelector`.
 - **Sequence vs Selector confusion** — Sequence = AND (stops on first failure); Selector = OR
@@ -109,7 +113,8 @@ void AEnemyAIController::SetTarget(AActor* Target)
 ## References
 
 - For a **custom C++ `UBTTaskNode`** (instant and latent `ExecuteTask` returning `EBTNodeResult`,
-  with a `FBlackboardKeySelector`), read `references/custom-bttask.md`.
+  per-AI node memory, `AbortTask`, and a `FBlackboardKeySelector`), read
+  `references/custom-bttask.md`.
 - Primary docs: "Behavior Trees in Unreal Engine"
   (`https://dev.epicgames.com/documentation/en-us/unreal-engine/behavior-trees-in-unreal-engine`).
 

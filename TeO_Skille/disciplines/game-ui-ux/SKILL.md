@@ -7,12 +7,6 @@ description: >
   neutral patterns that pair with the detected engine's UI skill. Use when the user mentions
   HUD, health bar, main menu, pause menu, settings screen, UI layout, anchors, UI scaling,
   aspect ratio, safe area, controller/keyboard menu navigation, or wiring UI to game state.
-license: Apache-2.0
-compatibility: Engine-agnostic UI/UX patterns; snippets in GDScript (Godot 4.x Control) and C# (Unity 6 uGUI/UI Toolkit). Pairs with godot-ui-control, Unity UI, and game-feel.
-metadata:
-  engine: none
-  category: disciplines
-  difficulty: intermediate
 ---
 
 # Game UI/UX
@@ -62,52 +56,60 @@ rebinding screens). For card/board layout specifics, the `card-game` genre compo
 ### 1. Anchors + containers, not absolute coordinates
 
 ```gdscript
-# Godot 4.x. Anchor a HUD label to the TOP-LEFT; let a container flow a row of hearts.
+# Godot 4.7. Anchor a HUD label to the TOP-LEFT; let a container flow a row of hearts.
 func _ready() -> void:
     $Score.set_anchors_preset(Control.PRESET_TOP_LEFT)   # sticks to the corner at any size
     # An HBoxContainer auto-lays-out children left-to-right; never position hearts by hand.
     for i in lives:
         $Hearts.add_child(make_heart())                   # HBoxContainer spaces them for you
-# Unity 6 uGUI: set RectTransform anchors to the corner; use a HorizontalLayoutGroup.
+# Unity 6.3 LTS uGUI: set RectTransform anchors to the corner; use a HorizontalLayoutGroup.
 # RIGHT: anchors + layout groups. WRONG: rect.anchoredPosition = new Vector2(640, 360) (1080p-only).
 ```
 
 ### 2. Scale to a reference resolution (one UI, many screens)
 
 ```text
-# Godot 4.x — Project Settings > Display > Window > Stretch:
+# Godot 4.7 — Project Settings > Display > Window > Stretch:
 #   Mode = "canvas_items", Aspect = "expand", reference size e.g. 1920x1080.
 #   UI scales to the window; "expand" reveals extra space you anchor HUD corners into.
-# Unity 6 — Canvas > CanvasScaler:
+# Unity 6.3 LTS — Canvas > CanvasScaler:
 #   UI Scale Mode = "Scale With Screen Size", Reference Resolution = 1920x1080,
 #   Match = 0.5 (blend width/height) — pick 1.0 if your HUD is height-critical.
+# Unity 6.3 LTS — UI Toolkit: the same three settings live on the PanelSettings asset
+#   (Scale Mode = Scale With Screen Size, Reference Resolution, Screen Match Mode/Match).
 ```
 
 ### 3. Safe-area inset for notches / overscan
 
 ```gdscript
-# Godot 4.x. Inset a margin container to the OS-reported safe rect (phones, TVs).
+# Godot 4.7. Inset a MarginContainer to the OS safe rect. Only Android and iOS report a real
+# safe area; elsewhere Godot returns the screen's usable rect, so desktop margins are ~0.
 func _apply_safe_area() -> void:
-    var safe: Rect2i = DisplayServer.get_display_safe_area()
-    var win := DisplayServer.window_get_size()
-    $Margin.add_theme_constant_override("margin_left", safe.position.x)
-    $Margin.add_theme_constant_override("margin_top",  safe.position.y)
-    $Margin.add_theme_constant_override("margin_right", win.x - safe.end.x)
-    $Margin.add_theme_constant_override("margin_bottom", win.y - safe.end.y)
-# Unity 6: read Screen.safeArea (Rect in pixels) and set a panel's anchorMin/anchorMax to
+    var safe := Rect2(DisplayServer.get_display_safe_area())           # screen pixels
+    var win := Rect2(Rect2i(DisplayServer.window_get_position(), DisplayServer.window_get_size()))
+    var inner := safe.intersection(win)
+    var to_ui := get_viewport_rect().size / win.size    # window pixels -> UI units under stretch
+    $Margin.add_theme_constant_override("margin_left", int((inner.position.x - win.position.x) * to_ui.x))
+    $Margin.add_theme_constant_override("margin_top", int((inner.position.y - win.position.y) * to_ui.y))
+    $Margin.add_theme_constant_override("margin_right", int((win.end.x - inner.end.x) * to_ui.x))
+    $Margin.add_theme_constant_override("margin_bottom", int((win.end.y - inner.end.y) * to_ui.y))
+# Unity 6.3 LTS: read Screen.safeArea (Rect in pixels) and set a panel's anchorMin/anchorMax to
 # safeArea.position / (position+size) normalized by Screen.width/height.
 ```
 
 ### 4. Gamepad/keyboard focus (UI is unusable on a controller without it)
 
 ```gdscript
-# Godot 4.x. Give each screen a default focus and wire neighbors so a stick/d-pad walks it.
+# Godot 4.7. Give each screen a default focus; Godot guesses neighbors from layout, so set
+# them only where its guess is wrong (grids, wrap-around, skipping a disabled row).
 func _on_screen_shown() -> void:
     $PlayButton.grab_focus()                               # always focus SOMETHING on open
-$PlayButton.focus_neighbor_bottom = $SettingsButton.get_path()
-$SettingsButton.focus_neighbor_top = $PlayButton.get_path()
-# Unity 6: EventSystem.SetSelectedGameObject(playButton) on enable; set each Selectable's
-# Navigation (Explicit or Automatic). RIGHT: a control is focused on open. WRONG: nothing
+    $PlayButton.focus_neighbor_bottom = $SettingsButton.get_path()
+    $SettingsButton.focus_neighbor_top = $PlayButton.get_path()
+# Unity 6.3 LTS uGUI: EventSystem.SetSelectedGameObject(playButton) on enable; set each Selectable's
+# Navigation (Explicit or Automatic). With the Input System package, the EventSystem needs an
+# InputSystemUIInputModule, not the old StandaloneInputModule. UI Toolkit: call Focus() on the
+# first focusable element. RIGHT: a control is focused on open. WRONG: nothing
 # selected → the gamepad does nothing and the player is stuck.
 ```
 
@@ -117,8 +119,8 @@ $SettingsButton.focus_neighbor_top = $PlayButton.get_path()
 # RIGHT: HUD reacts to a signal; it updates only when health actually changes.
 func _ready() -> void:
     player.health_changed.connect(_on_health_changed)     # emitted by gameplay
-func _on_health_changed(current: int, max: int) -> void:
-    $HealthBar.value = float(current) / max
+func _on_health_changed(current: int, max_health: int) -> void:
+    $HealthBar.value = float(current) / max_health
 # WRONG: func _process(dt): $HealthBar.value = player.hp / player.max_hp  # polls every frame,
 # couples UI to the player's internals, and runs work even when nothing changed.
 ```
@@ -135,12 +137,20 @@ func _on_health_changed(current: int, max: int) -> void:
 - **Polling game state in `_process`/`Update`.** Couples UI to internals and wastes work. Push
   updates via signals/events.
 - **Tiny fixed font sizes.** Unreadable on a TV-at-distance or a small phone. Scale text with the
-  UI and offer a text-size option.
+  UI and offer a text-size option. Xbox Accessibility Guideline 101 sets floors of 26 px at 1080p
+  on console/TV and 18 px at 1080p on PC, and asks for scaling up to 200% without losing content.
 - **Menu flow as boolean flags** (`isPaused`, `inSettings`, …) becomes unmanageable. Use a
   screen stack with push/pop.
 - **Hardcoded English strings baked into layout.** Translations overflow buttons. Externalize
   strings and let containers size to content (see `references/`).
 - **Mouse-only or focus-only.** Support both; switching input device should not strand the user.
+- **Unity uGUI menu ignores the gamepad or throws on start** after switching Active Input
+  Handling to the Input System: the scene still has a `StandaloneInputModule`. Replace it with
+  `InputSystemUIInputModule` (the Inspector offers a one-click swap). UI Toolkit in Unity 6 reads
+  the project-wide UI actions directly and needs no module.
+- **A corner-anchored uGUI element grows off-screen** when its size changes (longer translated
+  text, a bigger text-size setting): its pivot was left at (0.5, 0.5), so it grows in every
+  direction. Set the pivot to the anchored corner or edge as well.
 
 ## References
 

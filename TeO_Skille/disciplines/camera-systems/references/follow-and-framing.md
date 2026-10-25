@@ -2,7 +2,7 @@
 
 Detail the `camera-systems` body defers here: the smoothing math, a full 2D rig, 3D orbit/first-
 person specifics, multi-target framing, cinematic blends, and the per-engine rig mapping.
-Snippets target **Godot 4.x** and **Unity 6 / Cinemachine 3**.
+Snippets target **Godot 4.7** and **Unity 6.3 LTS / Cinemachine 3**.
 
 ## 1. Why `1 - exp(-rate*dt)` (frame-rate-independent smoothing)
 
@@ -32,7 +32,7 @@ Order of operations each frame, after the target moves:
    `[min + halfView, max - halfView]` per axis (clamp the view, not the center).
 
 ```gdscript
-# Godot 4.x: clamp the VIEW, accounting for zoom and viewport size.
+# Godot 4.7: clamp the VIEW, accounting for zoom and viewport size.
 func _clamp_to_level(center: Vector2) -> Vector2:
     var half := get_viewport_rect().size * 0.5 / zoom
     return Vector2(
@@ -52,7 +52,7 @@ Tunables: deadzone `32–64 px`, look-ahead `40–120 px` eased over `0.2–0.4 
   camera position and shortens to the first hit so the camera never clips through walls.
 - **Pitch clamp:** ~`[-80°, +45°]` so the camera can't flip or bury into the floor.
 - **Sensitivity & invert:** expose look sensitivity and invert-Y (see `input-systems`).
-- **Cinemachine 3 (Unity 6):** a `CinemachineCamera` (namespace `Unity.Cinemachine`) with an
+- **Cinemachine 3 (Unity 6.3 LTS):** a `CinemachineCamera` (namespace `Unity.Cinemachine`) with an
   **Orbital Follow** component and a **Cinemachine Deoccluder** (collision); the
   `CinemachineBrain` on the `Camera` blends between cameras. This replaces the v2
   `CinemachineVirtualCamera` / `CinemachineCollider` names.
@@ -61,15 +61,16 @@ Tunables: deadzone `32–64 px`, look-ahead `40–120 px` eased over `0.2–0.4 
 
 - Yaw rotates the body (so movement aligns with view); pitch rotates only the camera head.
 - Clamp pitch; never let roll accumulate.
-- Mouse: use relative motion + capture the cursor (`Input.mouse_mode = MOUSE_MODE_CAPTURED`).
+- Mouse: capture the cursor (`Input.mouse_mode = Input.MOUSE_MODE_CAPTURED`) and read
+  `InputEventMouseMotion.screen_relative`, which is not scaled by the stretch settings.
 - Stick: apply a response curve + deadzone (see `input-systems`) and frame-rate-scaled turn rate.
 
 ## 5. Multi-target / group framing
 
 - Compute the bounding box of all targets; place the camera at the box center.
 - **2D:** set zoom so the box (plus padding) fits the viewport; clamp zoom min/max.
-- **3D:** dolly the camera back / adjust FOV to fit the box; Cinemachine has a Group Framing /
-  Target Group component for this.
+- **3D:** dolly the camera back / adjust FOV to fit the box. In Cinemachine 3, point the camera's
+  Tracking Target at a `CinemachineTargetGroup` and add `CinemachineGroupFraming`.
 - **Split-screen:** one camera per player rendering to a viewport rectangle; budget the extra
   render cost (`performance-optimization`).
 
@@ -82,10 +83,18 @@ Tunables: deadzone `32–64 px`, look-ahead `40–120 px` eased over `0.2–0.4 
 
 ## 7. Per-engine rig summary
 
-| Need | Godot 4.x | Unity 6 |
+Unity column: Cinemachine 3.1 (3.1.7 is the current release, June 2026), namespace
+`Unity.Cinemachine`. The v2 components (`CinemachineVirtualCamera`, `CinemachineCollider`,
+`CinemachineFramingTransposer`) are marked deprecated in 3.x and point to `CinemachineCamera`,
+`CinemachineDeoccluder` and `CinemachinePositionComposer`; do not use them in new code.
+`CinemachineDeoccluder` keeps the target in line of sight; `CinemachineDecollider` only pulls the
+camera out of geometry it intersects.
+
+| Need | Godot 4.7 | Unity 6.3 LTS |
 |------|-----------|---------|
-| 2D follow + smoothing + limits | `Camera2D` (`position_smoothing_*`, `limit_*`, `drag_*`) | Cinemachine `CinemachineCamera` (2D) + Confiner2D |
-| 3D follow/orbit | pivot + `SpringArm3D` + `Camera3D` | `CinemachineCamera` + Orbital Follow + Deoccluder |
-| Shake | additive `offset` from `game-feel` | `CinemachineBasicMultiChannelPerlin` |
+| 2D follow + smoothing + limits | `Camera2D` (`position_smoothing_*`, `limit_*`, `drag_*`) | `CinemachineCamera` + `CinemachinePositionComposer` (Damping, Dead Zone, Lookahead) + `CinemachineConfiner2D` |
+| 3D follow/orbit | pivot + `SpringArm3D` + `Camera3D` | `CinemachineCamera` + `CinemachineOrbitalFollow` + `CinemachineDeoccluder` (or `CinemachineDecollider`) |
+| Shake | additive `offset` from `game-feel` | `CinemachineBasicMultiChannelPerlin` (noise); `CinemachineImpulseSource` + `CinemachineImpulseListener` (impacts) |
 | Bounds | `limit_*` / manual clamp | `CinemachineConfiner2D/3D` |
+| Group framing | manual bounding box + zoom | `CinemachineTargetGroup` + `CinemachineGroupFraming` |
 | Addon option | `PhantomCamera` (declarative 2D/3D rigs) | built-in Cinemachine |

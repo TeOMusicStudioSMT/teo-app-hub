@@ -8,19 +8,13 @@ description: >
   three.js materials, MeshStandardMaterial, lights, shadows, envMap, or PBR. For
   renderer/loop setup use threejs-scene-setup; for loading models use
   threejs-gltf-loading.
-license: Apache-2.0
-compatibility: three.js r165+ (verified against r184; physically based lighting)
-metadata:
-  engine: threejs
-  category: web-engines
-  difficulty: intermediate
 ---
 
 # three.js Materials & Lighting
 
 Make three.js surfaces look right: pick the correct material, light the scene,
-enable shadows, and add image-based lighting. Patterns target **r165+**, verified
-against **r184** (lighting is physically based by default since r155).
+enable shadows, and add image-based lighting. Patterns target **r186**, verified
+against **r186** (lighting is physically based by default since r155).
 
 ## When to use
 
@@ -91,7 +85,7 @@ const logo = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
 
 ```js
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;     // softer edges
+renderer.shadowMap.type = THREE.PCFShadowMap;         // soft by default since r182
 
 const sun = new THREE.DirectionalLight(0xffffff, 3);
 sun.position.set(8, 12, 6);
@@ -127,14 +121,15 @@ const brick = new THREE.MeshStandardMaterial({
 ### 5. Image-based lighting from an HDR environment
 
 ```js
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'; // RGBELoader before r180
 
-new RGBELoader().load('assets/studio.hdr', (hdr) => {
+new HDRLoader().load('assets/studio.hdr', (hdr) => {
   hdr.mapping = THREE.EquirectangularReflectionMapping;
   scene.environment = hdr;     // lights + reflects all PBR materials
   scene.background = hdr;       // optional: show it as the backdrop
 });
-// Optional cinematic tone curve:
+// Optional tone curve (default is NoToneMapping). AgXToneMapping and
+// NeutralToneMapping are the other common choices.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 ```
@@ -157,7 +152,14 @@ renderer.toneMappingExposure = 1.0;
   `light.shadow.normalBias`.
 - **Colors look washed out / too bright** → color (albedo) textures need
   `texture.colorSpace = THREE.SRGBColorSpace`; normal/roughness/metalness maps must
-  stay linear (leave them as `NoColorSpace`).
+  stay linear (leave them as `NoColorSpace`). `GLTFLoader` already tags glTF
+  textures correctly, so this applies to textures you load yourself.
+- **Looks right on its own but dark/flat once post-processing is added** → tone
+  mapping and the sRGB output conversion only run when rendering straight to the
+  canvas; end the `EffectComposer` chain with `OutputPass`.
+- **Environment lighting too strong or too weak** → scale it with
+  `scene.environmentIntensity` (r163+); `material.envMapIntensity` only affects a
+  material's own `envMap`.
 - **PointLight shadows tank performance** → a point light renders the scene 6 times
   (cube map). Prefer one shadow-casting `DirectionalLight`; use cheaper fakes
   elsewhere.
@@ -165,9 +167,9 @@ renderer.toneMappingExposure = 1.0;
 ## References
 
 - For the material cheat-sheet (which `Mesh*Material` for which look), light types
-  and their parameters/units, transparency vs `alphaTest` ordering, and the
-  `PMREMGenerator`/`RoomEnvironment` route to IBL without an HDR file, read
-  `references/materials-lights-table.md`.
+  and their parameters/units, transparency vs `alphaTest` ordering, the
+  `PMREMGenerator`/`RoomEnvironment` route to IBL without an HDR file, and tone
+  mapping with post-processing, read `references/materials-lights-table.md`.
 
 ## Related skills
 

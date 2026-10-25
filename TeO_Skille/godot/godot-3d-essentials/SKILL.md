@@ -1,23 +1,17 @@
 ---
 name: godot-3d-essentials
 description: >
-  Set up a Godot 4.x 3D scene: Node3D transforms, Camera3D, lighting
+  Set up a Godot 4.7 3D scene: Node3D transforms, Camera3D, lighting
   (DirectionalLight3D/OmniLight3D), WorldEnvironment for sky/ambient/tonemap/post,
   MeshInstance3D materials, and GridMap for tile-based 3D levels. Use when building
   a 3D scene in a Godot project, placing cameras/lights, configuring environment and
   post-processing, or working with Node3D/.tscn 3D content and GridMap.
-license: Apache-2.0
-compatibility: Godot 4.3+
-metadata:
-  engine: godot
-  category: godot
-  difficulty: intermediate
 ---
 
 # Godot 3D Essentials (4.x)
 
 Assemble a working 3D scene: transforms, camera, lights, environment/post, materials, and
-`GridMap` blockouts. Targets **Godot 4.3+**.
+`GridMap` blockouts. Targets **Godot 4.7**.
 
 ## When to use
 
@@ -36,7 +30,8 @@ template → the `fps-shooter` genre skill.
 2. **Add a `Camera3D`.** Mark it `current` (or call `make_current()`); set `fov`, `near`,
    `far`. Parent it to a rig/pivot for orbit or follow cameras.
 3. **Light the scene.** A `DirectionalLight3D` is the sun; `OmniLight3D`/`SpotLight3D` are
-   local. Enable shadows per light. Without lights and ambient, surfaces render black.
+   local; `AreaLight3D` (4.7+) is a rectangular panel light that costs more than omni/spot.
+   Enable shadows per light. Without lights and ambient, surfaces render black.
 4. **Add a `WorldEnvironment`** with an `Environment` resource: background (sky/color),
    ambient light, tonemap, and post (glow, SSAO, fog, adjustments).
 5. **Give meshes materials** (`StandardMaterial3D` or a `ShaderMaterial`) on
@@ -120,8 +115,10 @@ func build_floor(width: int, depth: int, item_id: int) -> void:
   parent gives surprising results. `look_at` uses global coordinates.
 - **Scaling physics/lights.** Non-uniform `scale` on a `Node3D` distorts child collisions
   and lights; prefer scaling the mesh asset or using uniform scale.
-- **Forgetting `from`/`up` in `look_at`.** `look_at(target, up)` — a target equal to the
-  node's position, or an `up` parallel to the look direction, produces NaNs/flips.
+- **`look_at` does nothing and prints an error** → the target equals the node's position, the
+  `up` vector is parallel to the look direction (e.g. looking straight down with
+  `Vector3.UP`), or the node is not in the tree yet. Keep an offset, pass a different `up`, or
+  use `look_at_from_position()` before the node enters the tree.
 - **GridMap with no `MeshLibrary`** places nothing. Create a `MeshLibrary` (from scenes)
   and assign it; `set_cell_item(cell, -1)` clears a cell.
 - **HDR/glow too strong** → check `tonemap_mode` and glow thresholds; raw emissive values

@@ -6,12 +6,6 @@ description: >
   scroll, dissolve, outline, fresnel rim, vignette) in GLSL with HLSL
   equivalents. Use when the user mentions shaders, fragment/pixel shader, vertex
   shader, UV, GLSL, HLSL, or effects like dissolve, outline, or rim light.
-license: Apache-2.0
-compatibility: Concepts engine-agnostic; examples in GLSL-style (Godot gdshader / OpenGL) with HLSL (Unity/Unreal) equivalents noted. Pairs with godot-shaders.
-metadata:
-  engine: none
-  category: disciplines
-  difficulty: advanced
 ---
 
 # Shader programming (cross-engine)
@@ -47,18 +41,27 @@ the engine's renderer settings.
 3. **Drive effects with UVs and time.** UVs are `0..1` texture coordinates;
    offset, scale, or distort them, and animate with a `time` uniform.
 4. **Work per pixel, branch-light.** Prefer `mix`, `step`, `smoothstep`, and
-   `clamp` over `if` where possible; GPUs run pixels in lockstep and dislike
-   divergent branches.
+   `clamp` over `if` where possible; GPUs run pixels in lockstep, so a branch
+   whose condition differs between neighbouring pixels runs both sides. A branch
+   on a uniform (same for the whole draw) is cheap.
 5. **Pass data via uniforms** (constant per draw) and **varyings** (interpolated
    vertex→fragment). Keep texture samples few; they dominate cost.
-6. **Verify visually and on target hardware.** Shaders that look right on desktop
+6. **Validate source before visual testing when the tools are already available.** For
+   GLSL, run `glslangValidator path/to/shader.frag` with the matching stage suffix;
+   for WGSL, run `naga path/to/shader.wgsl`. Check Godot `.gdshader` files by
+   opening the project in Godot, which has no standalone validator for them.
+7. **Verify visually and on target hardware.** Shaders that look right on desktop
    can break on mobile (precision, missing features). Test where it ships.
 
 ## Patterns
 
-GLSL-style fragment snippets (close to Godot's `canvas_item`/`spatial`
-shaders and OpenGL). See `references/effects.md` for the HLSL equivalents and
-the full outline/fresnel/vignette shaders.
+GLSL fragment snippets for desktop `#version 330` (each passes
+`glslangValidator` with that header; close to Godot's `canvas_item`/`spatial`
+shaders). For GLSL ES 3.00 — WebGL2, three.js `ShaderMaterial`, PixiJS filters —
+add `precision highp float;` and set uniform defaults from code: ES rejects
+`uniform float edge = 0.05;` with "cannot initialize this type of qualifier"
+(Godot's shading language accepts it). See `references/effects.md` for the HLSL
+equivalents and the full outline/fresnel/vignette shaders.
 
 ### 1. Fragment basics: sample, tint, and combine
 
@@ -104,16 +107,19 @@ out vec4 frag;
 void main() {
     vec4 c = texture(tex, uv);
     float n = texture(noise_tex, uv).r;
-    if (n < amount) discard;                 // cut away dissolved pixels
-    float e = smoothstep(amount, amount + edge, n);  // 0 at the edge -> 1 inside
-    frag = mix(edge_color, c, e);            // HLSL: lerp(edge_color, c, e)
+    float cut = amount * (1.0 + edge) - edge;  // edge band starts below 0 -> none at amount 0
+    if (n <= cut) discard;                     // cut away dissolved pixels (all of them at 1)
+    float e = smoothstep(cut, cut + edge, n);  // 0 at the edge -> 1 inside; keep edge > 0
+    frag = mix(edge_color, c, e);              // HLSL: lerp(edge_color, c, e)
 }
+// WRONG: thresholding at `amount` directly — at amount 0 every pixel with
+// n < edge is still tinted, so the "fully visible" sprite shows glowing specks.
 ```
 
 ### 4. Fresnel rim light (3D) — brighten glancing angles
 
 ```glsl
-// Rim = 1 where the surface faces away from the camera (silhouette glow).
+// Rim = 1 where the surface is edge-on to the camera (silhouette glow).
 in vec3 world_normal;        // normalized, world space (from the vertex stage)
 in vec3 view_dir;            // normalized, surface -> camera, world space
 uniform float power = 3.0;
@@ -139,10 +145,17 @@ void main() {
   `mix`; reserve `if`/`discard` for genuinely cheap early-outs.
 - **`discard` defeats early-Z** and can hurt performance on tiled mobile GPUs;
   prefer alpha blending where you can.
+- **Reversed `smoothstep` edges.** The GLSL spec leaves `smoothstep(e0, e1, x)`
+  undefined when `e0 >= e1`, so `smoothstep(1.0, 0.5, d)` may work on one GPU
+  and not another. Write `1.0 - smoothstep(0.5, 1.0, d)`.
 - **Precision on mobile**: `highp` vs `mediump` matters; large UVs or time values
   in low precision shimmer. Use adequate precision for coordinates and time.
 - **Assuming GLSL == HLSL.** `mix`↔`lerp`, `fract`↔`frac`, `texture()`↔`.Sample()`,
-  `vec2`↔`float2`, column- vs row-major matrices. See the reference mapping.
+  `vec2`↔`float2`, `M * v`↔`mul(M, v)`, `mod`↔`fmod` (different for negatives).
+  See the reference mapping.
+- **A GLSL `ShaderMaterial` that renders nothing in three.js** under
+  `WebGPURenderer`: that renderer only runs node materials (TSL), on its WebGPU
+  and WebGL 2 backends alike. Keep `WebGLRenderer` for raw GLSL or port to TSL.
 
 ## References
 

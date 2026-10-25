@@ -6,19 +6,13 @@ description: >
   communication (Cast, Interfaces, Event Dispatchers). Use when working in Blueprints, wiring
   an event graph, deciding how Blueprints talk to each other, or when the user mentions
   Blueprint, BP, event graph, construction script, or a Blueprint .uasset.
-license: Apache-2.0
-compatibility: Unreal Engine 5.4+ (docs verified against current UE5; Blueprint VM)
-metadata:
-  engine: unreal
-  category: unreal
-  difficulty: beginner
 ---
 
 # Unreal Blueprints (Visual Scripting)
 
 Structure gameplay logic in Unreal Engine 5 Blueprints: pick the right graph, expose data
 cleanly, and choose a communication method that doesn't create hard-reference spaghetti.
-Targets **UE 5.4+**. (Blueprints are node graphs; the snippets below describe node flows.)
+Targets **UE 5.8**. (Blueprints are node graphs; the snippets below describe node flows.)
 
 ## When to use
 
@@ -112,6 +106,9 @@ TakeDamage -> Set Health -> Call 'OnHealthChanged' (Health)   // broadcast
   spawn via Spawn node, also mark "Expose on Spawn".
 - **Interface call did nothing** — the target doesn't implement the interface; use "Does
   Implement Interface" before calling, or use the Message version which is safe on non-implementers.
+- **Local variable picks up an unexpected default value** — it shares its name with a member
+  variable, and one can inherit the other's default. UE 5.8 refuses such names for new local
+  variables, but older Blueprints keep existing collisions; rename one of the two by hand.
 
 ## References
 

@@ -7,20 +7,14 @@ description: >
   motion. Use when building or debugging a Bevy game in Rust — when the user
   mentions Bevy, ECS, App::new, add_systems, Query, Commands, components/systems,
   or a Cargo.toml depending on bevy.
-license: Apache-2.0
-compatibility: Bevy 0.16+ (Rust; pin Cargo.toml — APIs shift each minor release)
-metadata:
-  engine: bevy
-  category: other-engines
-  difficulty: advanced
 ---
 
 # Bevy ECS
 
 Structure a Bevy game in Rust around the Entity Component System: the `App` and
 plugins, components and resources, systems with queries, scheduling, and
-frame-rate-independent updates. Pins **Bevy 0.16+** (code targets 0.16; Bevy's API
-shifts each minor release — match your `Cargo.toml`).
+frame-rate-independent updates. New examples target **Bevy 0.20**. If the project
+already pins another release, keep that release and use its matching migration guide.
 
 ## When to use
 
@@ -36,15 +30,16 @@ procedural algorithms, pair with `game-ai` / `procedural-gen`.
 
 ## Core workflow
 
-1. **Pin the version.** Bevy's API changes every minor release. Set
-   `bevy = "0.16"` (or your target) in `Cargo.toml` and treat the matching docs as
-   truth. Enable `dynamic_linking` in dev for faster iterative builds.
+1. **Detect and pin the version.** Read `Cargo.toml` and `Cargo.lock` first. For a
+   new project use `bevy = "0.20"`; never silently migrate an existing project
+   across a Bevy minor release. Treat the matching docs and migration guides as truth.
 2. **Build the `App`.** `App::new().add_plugins(DefaultPlugins)` gives windowing,
    input, rendering, time, etc. Register systems into schedules: `Startup` (once)
    and `Update` (every frame).
 3. **Model data as components, globals as resources.** `#[derive(Component)]` for
    per-entity data; `#[derive(Resource)]` for one-of-a-kind data (score, settings,
-   the `Time` clock).
+   the `Time` clock). Since 0.19 `Resource` extends `Component` and each resource is
+   stored on its own entity, so do not derive both.
 4. **Write systems as plain functions.** Parameters declare data access: `Query<...>`
    for entities, `Res<T>`/`ResMut<T>` for resources, `Commands` for deferred
    spawn/despawn. Systems run in parallel when their accesses don't conflict.
@@ -60,9 +55,7 @@ procedural algorithms, pair with `game-ai` / `procedural-gen`.
 ```toml
 # Cargo.toml — pin the version; the API differs across minor releases.
 [dependencies]
-bevy = "0.16"
-# Dev-only: faster recompiles. (Add the matching dynamic linking setup per the book.)
-# bevy = { version = "0.16", features = ["dynamic_linking"] }
+bevy = "0.20"
 ```
 
 ```rust
@@ -177,9 +170,10 @@ impl Plugin for GameplayPlugin {
   `elapsed_secs()`) in 0.16. Using the old name fails to compile.
 - **Movement speed scales with frame rate** → multiply per-frame changes by
   `time.delta_secs()`. Never assume a fixed frame time.
-- **Panic: "conflicting accesses" / "&mut T and &mut T"** → two `Query`s in one
-  system both write the same component, or one reads while another writes overlapping
-  entities. Make them disjoint with `With`/`Without`, or use `ParamSet`.
+- **Panic `error[B0001]`: "... accesses component(s) Transform in a way that conflicts
+  with a previous system parameter"** → two `Query`s in one system both write the same
+  component, or one reads while another writes overlapping entities. Make them disjoint
+  with `With`/`Without`, or use `ParamSet`.
 - **`Camera2dBundle`/`SpriteBundle` not found** → bundles were deprecated in 0.15 and
   removed in 0.16.
   Spawn the components directly (`Camera2d`, `Sprite`, `Transform`); required
@@ -191,15 +185,44 @@ impl Plugin for GameplayPlugin {
   not the one that spawned it.
 - **System order assumed but not enforced** → systems run in parallel by default.
   If `B` must follow `A`, add `(A, B).chain()` or an explicit ordering constraint.
-- **Copy-pasting older Bevy snippets** → APIs shift between minor versions (e.g.
-  the buffered-event API was reworked after 0.16). Verify against the docs for
-  *your* pinned version; don't mix versions.
+  To find order dependencies that only work by accident, shuffle the schedule in tests
+  with `ScheduleBuildSettings::shuffle_seed` (0.20, `debug` feature; see the reference).
+- **"conflicting implementations of trait `Component`" after deriving both `Resource`
+  and `Component`** → since 0.19 `Resource` extends `Component`; derive `Resource` alone.
+- **"Despawn everything" panics, or `Query<EntityMut>` next to a `Res<T>` panics with
+  `error[B0002]` (or `B0001`, depending on parameter order)** → since 0.19 every
+  resource lives on an entity tagged `IsResource`,
+  so `Query<Entity>`/`EntityRef`/`EntityMut` match those entities too. Query your own
+  marker component, or add `Without<IsResource>` (`use bevy::ecs::resource::IsResource`).
+- **`On<Add, Player>` fails with "struct takes 1 generic argument but 2 generic
+  arguments were supplied"** → 0.20 moved the component into the lifecycle event:
+  write `On<Add<Player>>` (likewise `Insert<T>`, `Discard<T>`, `Remove<T>`, `Despawn<T>`).
+- **`Pointer<Click>` / `Pointer<Press>` not found in a picking observer** → 0.20
+  flattened pointer events: observe `On<PointerClick>` / `On<PointerPress>`, and read
+  `click.pointer.position` (a `Vec2`) instead of the old `pointer_location`.
+- **`OnExit`/`OnEnter` run again when "switching" to the current state** →
+  `NextState::set` always runs the transition schedules. Use `set_if_different` to skip
+  same-state transitions (renamed from `set_if_neq` in 0.20; calling `set_if_neq` on a
+  `ResMut<NextState<_>>` picks up the unrelated change-detection method and fails with
+  "can't compare `NextState`").
+- **"`text` does not live long enough" from `Name::new(text.as_str())`** → since 0.20
+  `Name` takes a `&'static str` literal or an owned `String`, not a borrowed `&str`;
+  pass `Name::new(text.clone())` or `Name::new(format!("Enemy {id}"))`.
+- **Overlapping sprites swap draw order after upgrading to 0.20** → sprites now render
+  through the `Mesh2d` backend, and draw order at equal `z` was never guaranteed. Give
+  sprites that can overlap distinct `Transform` z values.
+- **Copy-pasting older Bevy snippets** → APIs shift between minor versions. The
+  buffered event system became the message system: `EventReader`/`EventWriter`/
+  `add_event` no longer exist, so use `#[derive(Message)]`, `MessageReader`/
+  `MessageWriter`, and `app.add_message::<T>()`. Verify against the docs and migration
+  guide for *your* pinned version; don't mix versions.
 
 ## References
 
-- For schedules and `SystemSet` ordering, `States`/`OnEnter`/`OnExit`, change
-  detection, `Commands` lifecycle and sync points, `ParamSet` for conflicting
-  queries, and a version note on the events/observers API, read
+- For schedules and `SystemSet` ordering (including 0.20 weak ordering and schedule
+  shuffling), `States`/`OnEnter`/`OnExit` and state-scoped despawning, change
+  detection, `Commands` lifecycle and sync points, `ParamSet` and resource-entity
+  conflicts, `iter_many` results, and messages/observers in 0.20 syntax, read
   `references/queries-and-scheduling.md`.
 
 ## Related skills

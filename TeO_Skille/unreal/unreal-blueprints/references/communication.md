@@ -1,4 +1,4 @@
-# Blueprint communication: Cast vs Interface vs Event Dispatcher (UE 5.4+)
+# Blueprint communication: Cast vs Interface vs Event Dispatcher (UE 5.8)
 
 Depth for `unreal-blueprints`. The three ways Blueprints talk to each other, when to use each,
 and the gotchas. Verified against the Blueprints Visual Scripting and Blueprint Communications
@@ -77,4 +77,5 @@ HandleHealth(NewHealth) -> Set Progress Bar Percent = NewHealth / MaxHealth
   value once listeners are known.
 - Interface functions with return values are implemented as functions (not events) on the
   implementer; pure interface calls can't have exec pins.
-- Casting a soft reference forces a synchronous load; prefer `Async Load Asset` for soft refs.
+- A soft reference resolves to None until its asset is loaded. **Load Asset Blocking** loads it
+  synchronously and hitches; prefer **Async Load Asset** and continue from its Completed pin.

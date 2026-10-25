@@ -6,11 +6,18 @@ Bibliotekarka **Jadziunia** dobiera skille do zadania (UI: Game Forge → „�
 ## Skąd
 Zawendorowane z **awesome-gamedev-agent-skills**
 (https://github.com/gamedev-skills/awesome-gamedev-agent-skills), licencja **Apache-2.0**
-(LICENSE + NOTICE zachowane obok). 66 skili w formacie `SKILL.md` — **zgodne z Claude Code** (Kurka).
+(LICENSE + NOTICE zachowane obok). **77 skili** w formacie `SKILL.md` — **zgodne z Claude Code** (Kurka).
+
+**Odświeżone 2026-10-25** (upstream z 2026-10-24, „re-check every version baseline”): 66 starych zaktualizowanych
+(nowe wersje silników, np. UE 5.8), 11 nowych: `router` (dobiera skill do zadania — jak Jadziunia, po angielsku),
+`disciplines/create-game-assets`, `disciplines/ai-behavior-trees-utility-ai`, `ebitengine/ebitengine-game`,
+`godot/godot-gdscript-headless-testing`, `other-engines/defold-core`, `other-engines/roblox-*` (5).
+Uwaga: nowe nagłówki nie mają już `metadata` (silnik/trudność) — półka mówi, z jakiego silnika. Część skili
+niesie skrypty (Python, Go) i pliki pomocnicze — to materiał dla agenta, Katedra ich nie uruchamia.
 
 ## Układ (półki)
-`TeO_Skille/<półka>/<skill>/SKILL.md` — półki: `unreal`, `unity`, `godot`, `web-engines`,
-`other-engines`, `disciplines`, `genres`, `workflows`.
+`TeO_Skille/<półka>/<skill>/SKILL.md` — półki: `unreal`, `unity`, `godot`, `web-engines`, `ebitengine`,
+`other-engines`, `disciplines`, `genres`, `workflows`; `router/SKILL.md` leży osobno (półka „router”).
 
 ## Jak to działa
 - Most: `GET /api/skille/list` (parsuje frontmatter → katalog po półkach), `POST /api/skille/pick {task}`

@@ -3,12 +3,6 @@ name: rpg
 description: >
   Build an RPG: stats and leveling, inventory and equipment, quests, branching dialogue, save/load,
   and combat. Use for an RPG/JRPG, or designing stat, inventory, quest, or combat systems.
-license: Apache-2.0
-compatibility: Engine-agnostic design patterns; snippets are pseudocode (port to your engine)
-metadata:
-  engine: none
-  category: genres
-  difficulty: advanced
 ---
 
 # RPG
@@ -96,12 +90,13 @@ def gain_xp(actor, amount):
 # Pseudocode. Game events advance matching objectives; completion grants rewards.
 def on_event(kind, data):
     for q in active_quests:
+        if q.state != "active": continue
         for obj in q.objectives:
             if obj.event == kind and matches(obj, data) and not obj.done:
-                obj.count += 1
+                obj.count = min(obj.count + 1, obj.needed)
                 if obj.count >= obj.needed: obj.done = True
         if all(o.done for o in q.objectives):
-            q.state = "complete"                # turn-in grants xp/gold/items
+            q.state = "complete"                # turn-in grants xp/gold/items once
 ```
 
 ## Pitfalls / failure modes
@@ -111,6 +106,8 @@ def on_event(kind, data):
 - **Storing derived stats as truth** → desync after a stat change. Recompute from base.
 - **Runaway XP/damage numbers** → either an exponential curve with no cap or a subtractive
   formula at huge values. Pick a curve and a formula family deliberately (refs).
+- **Stacked buffs explode** → percent modifiers multiplied together. Sum percents within a layer
+  unless a rule says otherwise (refs §1).
 - **Content as code** → every item/quest hardcoded. Define items, enemies, and quests as
   **data** (`godot-resources` / `unity-scriptableobjects`).
 - **Save format with no version field** → old saves break on update. Add a `version` and a

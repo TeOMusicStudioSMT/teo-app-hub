@@ -65,6 +65,22 @@ export const WZORCOWE = [
 ];
 
 /** Skille z TeO_Skille: <grupa>/<skill> + opis z frontmatter SKILL.md (pierwsze 200 znaków). */
+/**
+ * Opis z frontmattera SKILL.md: `description: tekst` albo blok (`>`, `|`, pusto + wcięte linie).
+ * Upstream (2026-10-24) zdjął `metadata:` po opisie — dawny wzorzec „aż do następnego pola” łapał wtedy samo „>”.
+ */
+export function opisSkilla(t) {
+    const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(t ?? ''))?.[1] ?? String(t ?? '');
+    const linie = fm.split(/\r?\n/);
+    const i = linie.findIndex((l) => /^description:/i.test(l));
+    if (i < 0) return '';
+    const wartosc = linie[i].replace(/^description:\s*/i, '').trim();
+    if (wartosc && !/^[>|][+-]?$/.test(wartosc)) return wartosc.replace(/^["']|["']$/g, '').replace(/\s+/g, ' ').trim();
+    const blok = [];
+    for (const l of linie.slice(i + 1)) { if (/^\s+\S/.test(l)) blok.push(l.trim()); else if (l.trim() === '') continue; else break; }
+    return blok.join(' ').replace(/\s+/g, ' ').trim();
+}
+
 export async function skilleZKatalogu(katalog) {
     const out = [];
     for (const g of await fs.readdir(katalog, { withFileTypes: true }).catch(() => [])) {
@@ -73,8 +89,7 @@ export async function skilleZKatalogu(katalog) {
             if (!s.isDirectory()) continue;
             const t = await fs.readFile(path.join(katalog, g.name, s.name, 'SKILL.md'), 'utf8').catch(() => null);
             if (t === null) continue;
-            const m = /description:\s*>?\s*\n?([\s\S]*?)\n[a-z_]+:/i.exec(t) ?? /description:\s*(.+)/i.exec(t);
-            out.push({ id: `${g.name}/${s.name}`, grupa: g.name, opis: (m?.[1] ?? '').replace(/\s+/g, ' ').trim().slice(0, 200) });
+            out.push({ id: `${g.name}/${s.name}`, grupa: g.name, opis: opisSkilla(t).slice(0, 200) });
         }
     }
     return out;
