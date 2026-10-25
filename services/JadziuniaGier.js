@@ -27,6 +27,8 @@ export const MAX_ZNAKOW_SKILLA = 5000;
 export const MAX_ZNAKOW = 8000;
 /** Próg względny: ile odchyleń standardowych ponad średnią kosinusów kandydatów dla danego zadania. */
 export const PROG_Z = 2.0;
+/** Premia do z-score za każde pojęcie słownika trafione w nazwie/opisie skilla (najwyżej 3). */
+export const PREMIA_POJECIA = 0.35;
 
 /** Skille gatunków i warsztatu — tylko, gdy zadanie o nich mówi. */
 export const WARUNKI = {
@@ -56,7 +58,7 @@ export const POJECIA = [
     [/zapis|zapisz|wczyt|save|localstorage|postęp/i, ['save', 'persistence', 'serialization']],
     [/interfejs|hud|menu|panel|okno|przycisk|ui\b/i, ['ui', 'hud', 'menu', 'interface']],
     [/poziom|mapa|teren|wysp|biom|krain/i, ['level', 'design', 'procedural', 'terrain']],
-    [/proceduraln|losow|ziarn|generat/i, ['procedural', 'generation', 'seed', 'random']],
+    [/proceduraln|losow|ziarn|generuj teren|generowan[aiy]+ (świat|swiat|teren|map|poziom)/i, ['procedural', 'generation', 'seed', 'random']],
     [/sterowan|klawisz|joystick|dotyk|mysz|wejści/i, ['input', 'controls', 'touch']],
     [/fizyk|kolizj|skok|grawit/i, ['physics', 'collision', 'jump']],
     [/dialog|rozmow|kwesti|narrac/i, ['dialogue', 'narrative', 'branching']],
@@ -89,14 +91,14 @@ export function polkaPasuje(s, cel = '') {
 }
 
 /** Zapasowy ranking bez wektorów: pojęcia z zadania (PL → EN) ∩ słowa nazwy i opisu skilla. */
-export function rankingSlownikowy(cel, skille) {
+export function rankingSlownikowy(cel, skille, minTrafien = 2) {
     const pojecia = new Set(POJECIA.filter(([w]) => w.test(cel)).flatMap(([, en]) => en.flatMap((x) => slowa(x))));
     for (const w of slowa(cel)) pojecia.add(w);   // angielskie słowa wprost z zadania (three, gltf, hud…)
     return skille.map((s) => {
         const tekst = new Set(slowa(`${s.nazwa.replace(/-/g, ' ')} ${s.opis}`));
         const trafione = [...pojecia].filter((p) => tekst.has(p));
         return { ...s, wynik: trafione.length, trafione };
-    }).filter((s) => s.wynik >= 2).sort((a, b) => b.wynik - a.wynik || a.nazwa.localeCompare(b.nazwa));
+    }).filter((s) => s.wynik >= minTrafien).sort((a, b) => b.wynik - a.wynik || a.nazwa.localeCompare(b.nazwa));
 }
 
 /** Kosinusy → z-score względem kandydatów tego zadania (`wynik`, `cos`). */
@@ -204,7 +206,11 @@ export function utworzJadziunieGier({ katalog, katalogWektorow = null, osadz = n
             const [q] = await osadz([`task: search result | query: ${zadanie.slice(0, 2000)}`]);
             if (!Array.isArray(q)) throw new Error('Ollama nie oddała wektora zadania');
             const oceny = kandydaci.filter((s) => w[s.klucz]).map((s) => ({ ...s, cos: cosinus(q, w[s.klucz]) }));
-            ranking = zWzgledne(oceny).filter((s) => s.wynik >= progZ).sort((a, b) => b.wynik - a.wynik);
+            // premia słownikowa: wektor potrafi pójść za rzeczownikiem („Zapis Księgi” → dialogi), a pojęcia trzymają
+            // czynność („zapis”, „localStorage” → save) — +PREMIA_POJECIA za każde trafione pojęcie, najwyżej 3
+            const pojecia = new Map(rankingSlownikowy(zadanie, kandydaci, 1).map((s) => [s.id, s.wynik]));
+            ranking = zWzgledne(oceny).map((s) => ({ ...s, wynik: +(s.wynik + PREMIA_POJECIA * Math.min(3, pojecia.get(s.id) ?? 0)).toFixed(2) }))
+                .filter((s) => s.wynik >= progZ).sort((a, b) => b.wynik - a.wynik);
         } catch (e) {
             blad = e.message; metoda = 'slownik';
             ranking = rankingSlownikowy(zadanie, kandydaci);
