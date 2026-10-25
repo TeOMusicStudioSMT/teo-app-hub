@@ -296,7 +296,20 @@ export const PanelZwiadowcy: React.FC = () => {
                 </summary>
 
                 <div className="mt-4 space-y-3 border-t border-white/10 pt-3">
-                    {/* Szybkie presety (1-klik) */}
+                    {/* 💛 Kod polecający twórcy Katedry (Suweren 2026-10-25: „możliwość uhonorowania mojej pracy… mogą dać
+                        jakiemuś Jonowi Doe albo mi”) — dobrowolny, opisany wprost; Katedra nic za niego nie zmienia ani nie nalicza. */}
+                    <div className="rounded-xl border border-purple-500/40 bg-purple-950/20 px-3 py-2 space-y-1.5">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <span className="text-xs text-purple-200">💛 <b>Kod polecający twórcy Katedry na Krakenie</b> — dobrowolnie, jako podziękowanie</span>
+                            <button onClick={() => kopiujKod('243k3wj3')} className="px-3 py-1 rounded-lg bg-amber-500/25 border border-amber-400 text-amber-200 font-mono text-xs font-bold hover:bg-amber-500/40 cursor-pointer">🔑 243k3wj3 📋</button>
+                        </div>
+                        <p className="text-[11px] leading-snug text-purple-200/80">
+                            To kod polecający Mistrza Arkadiusza (TeO), który zbudował Katedrę OtakOS. Jeśli zakładasz konto na Krakenie i chcesz
+                            uhonorować jego pracę, możesz wpisać ten kod przy rejestracji. Nie musisz — możesz podać kod kogoś innego albo żaden.
+                            Nagrody za polecenie przyznaje Kraken na swoich zasadach (sprawdź je przy rejestracji); Katedra niczego za kod nie
+                            nalicza, nie zbiera Twoich danych i niczego nie zmienia w Twoim koncie.
+                        </p>
+                    </div>
                     <div>
                         <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">
                             ⚡ Szybki cel zwiadu (kliknij, aby załadować kontekst):
