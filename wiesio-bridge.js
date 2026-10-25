@@ -122,6 +122,7 @@ import { utworzZebrraTaniec, zamontujTrasyZebrraTanca, PROJEKT as PROJEKT_ZEBRRA
 import { utworzMameLeon, zamontujTrasyMameLeon } from './services/MameLeonShow.js';
 import { utworzWieczorTanca, zamontujTrasyWieczoru } from './services/WieczorTanca.js';
 import { utworzPorannyBrief, zamontujTrasyBriefu } from './services/PorannyBrief.js';
+import { utworzJadziunieGier, zamontujTrasyJadziuni } from './services/JadziuniaGier.js';
 import { utworzZebrraNews, zamontujTrasyZebrraNews, PROJEKT as PROJEKT_ZEBRRA_NEWS } from './services/ZebrraNews.js';
 import * as TeoSim         from './services/TeoSim.js';
 import * as Wideo          from './services/Wideo.js';
@@ -8210,6 +8211,18 @@ AppStudio.skonfiguruj({
 });
 // Chrome puppeteera ładujemy leniwie — przy pierwszym teście, nie przy starcie mostu.
 AppStudio.skonfiguruj({ podpowiedz: (o) => Jajo.podpowiedzKodeksowi(o) });   // 💡 JaJo Mistrza: rada od 3. rundy (services/JajoMistrza.js)
+// 📚 Jadziunia w Game Studio (services/JadziuniaGier.js): skille z TeO_Skille do każdego zadania gry — wektory z Ollamy, zapas słownikiem
+const JadziuniaGier = utworzJadziunieGier({
+    katalog: path.join(__dirname, 'TeO_Skille'),
+    katalogWektorow: path.join(ANTIGRAVITY_DIR, 'jadziunia-gier'),
+    osadz: async (teksty) => {
+        const r = await fetch(`${OLLAMA_BASE}/api/embed`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: MODEL_WEKTOROW, input: teksty, keep_alive: '2m' }), signal: AbortSignal.timeout(60_000) });
+        if (!r.ok) throw new Error(`Ollama /api/embed HTTP ${r.status}`);
+        return (await r.json()).embeddings;
+    },
+});
+AppStudio.skonfiguruj({ skille: (cel) => JadziuniaGier.dlaKodeksa(cel) });
+zamontujTrasyJadziuni(app, JadziuniaGier);
 import('puppeteer').then((m) => AppStudio.skonfiguruj({ puppeteer: m.default })).catch((e) => console.warn(`[AppStudio] puppeteer niedostępny: ${e.message}`));
 
 app.get('/api/appstudio/silniki', async (_req, res) => {

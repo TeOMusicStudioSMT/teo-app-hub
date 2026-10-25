@@ -999,6 +999,14 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
         };
         const blokPoprzednikow = blokDziedzictwa(dziedzictwo);
         if (blokPoprzednikow) krok('stan', `🧬 dziedzictwo: ${dziedzictwo.pliki?.length ?? 0} plik(ów) najdalszej próby (${dziedzictwo.model}, etap ${dziedzictwo.etap ?? '—'}) i ${dziedzictwo.bledy?.length ?? 0} błędów poprzedników`);
+        // 📚 Jadziunia (services/JadziuniaGier.js): 0–2 skille z Księgarni do TEGO zadania gry — rady rzemiosła w prompcie każdej rundy
+        let blokJadziuni = '';
+        if (typProjektu === 'gra' && cfg.skille) {
+            const j = await Promise.resolve(cfg.skille(cel)).catch((e) => ({ blok: '', skille: [], opis: `📚 Jadziunia milczy (${e.message}) — Kodeks pisze bez rad` }));
+            blokJadziuni = j?.blok ?? '';
+            z.skille = j?.skille ?? [];
+            if (j?.opis) krok('stan', j.opis);
+        }
         try {
             // moduły martwe JUŻ przed zadaniem (np. przygotowany moduł, którego podpięcie to osobne zadanie planu — 2026-10-12
             // src/gra/bestiariusz.ts karał rundy Sceny Tańca): sędzia nie liczy ich tej rundzie, chyba że runda je zmieniła
@@ -1027,7 +1035,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 // Mapa projektu (services/WikiProjektu.js) — Suweren 2026-09-24: „nie mogą się odnaleźć".
                 // Kilkanaście linii: co jest w którym module, kto kogo używa, gdzie w main.ts podpiąć.
                 const mapa = await WikiProjektu.skrot(dir).catch(() => '');
-                const prompt = `PROJEKT: ${projektId}\n${mapa ? mapa + '\n\n' : ''}\nOBECNE PLIKI:\n${kontekstPlikow(obecne, cel)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${podzial}${runda === 1 ? blokPoprzednikow : ''}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}${radaMistrza}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
+                const prompt = `PROJEKT: ${projektId}\n${mapa ? mapa + '\n\n' : ''}\nOBECNE PLIKI:\n${kontekstPlikow(obecne, cel)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${blokJadziuni}${podzial}${runda === 1 ? blokPoprzednikow : ''}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}${radaMistrza}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
                 // ComfyUI po renderze trzyma modele w karcie (zmierzone: ~2 GB po TRELLIS.2) — Ollama
                 // dostaje resztkę i liczy prompt na CPU. Prosimy o zwolnienie, jeśli ComfyUI nie liczy.
                 if (runda === 1 && cfg.zwolnijComfy) await cfg.zwolnijComfy().catch(() => {});
