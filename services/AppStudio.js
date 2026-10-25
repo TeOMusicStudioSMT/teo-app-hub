@@ -1015,6 +1015,10 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 if (przerwanie.signal.aborted) { feedback = 'przerwane przez Suwerena'; break; }
                 if (oddaneWRundzie && feedback) { rundyOdrzucone.push({ runda: runda - 1, pliki: oddaneWRundzie, powod: feedback.slice(0, 1500) }); oddaneWRundzie = null; }
                 z.rundy = runda; biezacaRunda = runda;
+                // „z ostrzeżeniami" zachowujemy TYLKO, gdy build przeszedł w OSTATNIEJ rundzie. Dawniej flaga zostawała
+                // z wcześniejszej rundy, a ostatnia (odrzucona przez Recenzenta, martwy moduł…) i tak szła do commitu —
+                // Obrona Rytmu 2026-10-25: c3f4d0b nadpisał stan.ts (bez try/catch kroków, pusta ścieżka w __gra).
+                ostatniBuildOk = false;
                 // 💡 JaJo Mistrza (Suweren 2026-10-09: „niech JaJo daje im podpowiedzi… tak jak ja teraz”): od 3. rundy
                 // (≥ 2 odrzucone) rada z wszystkich prób tego zadania — też poprzednich modeli łańcucha.
                 let radaMistrza = '';
