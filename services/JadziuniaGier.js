@@ -39,7 +39,7 @@ export const WARUNKI = {
     roguelike: /roguelike|loch|permadeath|run\b/i,
     'card-game': /kart[ay]? |talia|card/i,
     puzzle: /zagadk|puzzle|łamigłów|lamiglow/i,
-    'tower-defense': /tower|obrona wież|wieże obronne/i,
+    'tower-defense': /tower|obron|wieże obronne|fal[aęiy] wrog|fal[aęiy] zgrzyt/i,
     'visual-novel': /visual novel|powieść wizualn|powiesc wizualn/i,
     'game-jam': /game ?jam/i,
     'itch-publish': /itch/i,
