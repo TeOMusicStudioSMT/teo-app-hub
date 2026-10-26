@@ -461,6 +461,7 @@ export async function silniki() {
 // mieści się obok wag (część i tak leży w RAM na 6 GB VRAM); koszt: wolniejszy prompt-eval.
 const NUM_CTX = 32768;
 const DUZY_PLIK_LINII = 300;   // powyżej — Kodeks ma wydzielać moduły zamiast rosnąć w jednym pliku
+const DUZY_PLIK_CHRONIONY = 400;   // 🛡️ istniejący plik powyżej tylu linii, oddany okrojony o > 20% — most go nie zapisuje
 
 export async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naKawalek = null, sygnal = null }) {
     if (/^claude:/.test(model)) return piszAnthropic({ system, prompt, model: model.slice(7), timeoutMs: Math.min(timeoutMs, 10 * 60_000) });
@@ -1095,17 +1096,27 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 // a zadanie melduje sukces. Tak „zrobił się" respawn wrogów w nocy 2026-09-23.
                 let zmienione = 0;
                 const doRecenzji = [];   // stara/nowa treść każdego zmienionego pliku — dla Recenzenta
+                const pominieteDuze = [];   // 🛡️ duże pliki oddane okrojone — nie zapisujemy ich (reszta rundy idzie dalej)
                 for (const p of nowe) {
                     const pelna = path.join(dir, p.sciezka);
                     const stara = await fs.readFile(pelna, 'utf8').catch(() => null);
                     if (stara !== null && stara.replace(/\r\n/g, '\n').trimEnd() === p.tresc.replace(/\r\n/g, '\n').trimEnd()) continue;
+                    // 🛡️ DUŻY PLIK OKROJONY (Teterhia 2026-10-26: Qwen/gemma/SPA oddawały 636-liniowy main.ts bez połowy importów,
+                    // choć zadanie mówiło „NIE oddawaj”): plik > DUZY_PLIK_CHRONIONY linii, który traci > 20% linii, nie wchodzi.
+                    const linieStare = stara === null ? 0 : stara.split('\n').length;
+                    if (linieStare > DUZY_PLIK_CHRONIONY && p.tresc.split('\n').length < linieStare * 0.8) {
+                        pominieteDuze.push(`${p.sciezka} (${linieStare} → ${p.tresc.split('\n').length} linii)`);
+                        continue;
+                    }
                     await fs.mkdir(path.dirname(pelna), { recursive: true });
                     await fs.writeFile(pelna, p.tresc, 'utf8');
                     doRecenzji.push({ sciezka: p.sciezka, stara, nowa: p.tresc });
                     zmienione++;
                 }
+                const ostrzezenieDuze = pominieteDuze.length ? `Pominąłem okrojone duże pliki: ${pominieteDuze.join(', ')} — takich plików NIE oddawaj (całe stare działanie musi zostać); nowe moduły podpinaj w małym pliku (src/moduly.ts, jeśli jest).` : '';
+                if (pominieteDuze.length) krok('stan', `🛡️ ${ostrzezenieDuze}`);
                 if (!zmienione) {
-                    feedback = `Oddałeś ${nowe.length} plik(ów) IDENTYCZNYCH z tym, co już jest w projekcie — nic się nie zmieniło i zadanie nadal nie jest zrobione. Napisz KOD, który realizuje zadanie, i oddaj zmienione pliki.`;
+                    feedback = ostrzezenieDuze || `Oddałeś ${nowe.length} plik(ów) IDENTYCZNYCH z tym, co już jest w projekcie — nic się nie zmieniło i zadanie nadal nie jest zrobione. Napisz KOD, który realizuje zadanie, i oddaj zmienione pliki.`;
                     krok('blad', `runda ${runda}: pliki bez żadnej zmiany (${nowe.map((p) => p.sciezka).join(', ')}) — to nie jest wykonane zadanie`);
                     continue;
                 }
