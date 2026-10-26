@@ -688,6 +688,16 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
                 if (wynik?.ok) break;
                 dziedzictwo = scalDziedzictwo(dziedzictwo, wynik?.dziedzictwo, wynik?.powod);
             }
+            // 🛁 SPA: cały łańcuch poległ → jedno spokojne podejście głównego modelu w czystym kontekście (AppStudio.blokSpa).
+            // Wynik idzie na szynę — po kilku produkcjach będzie wiadomo, czy SPA naprawdę pomaga (OTAKOS_KODEKS_SPA=0 wyłącza).
+            if (!wynik?.ok && !prod.przerwij && process.env.OTAKOS_KODEKS_SPA !== '0' && cfg.spa !== false) {
+                const przeszkoda = dziedzictwo?.bledy?.at(-1) ?? String(wynik?.powod || '');
+                krok(`🛁 SPA: ${lancuch.length > 1 ? 'wszystkie modele poległy' : `${modelZadania} poległ`} — ${prod.model} dostaje spokojne podejście w czystym kontekście (bez ściany błędów i cudzych plików)`);
+                modelZadania = prod.model;
+                wynik = await sprobuj(modelZadania, { spa: true, przeszkoda, rada: dziedzictwo?.rada ?? null });
+                krok(wynik?.ok ? '🛁 SPA pomogło — zadanie zrobione po odpoczynku' : `🛁 SPA nie pomogło: ${String(wynik?.powod || '').slice(0, 160)}`);
+                await cfg.szyna?.nadaj?.({ agent: 'Kodeks', rodzaj: 'praca', tresc: `🛁 SPA na „${projektId}”: ${wynik?.ok ? 'pomogło' : 'nie pomogło'} — ${zd.tresc.slice(0, 120)}`, dane: { projekt: projektId, spa: !!wynik?.ok } }).catch(() => {});
+            }
             if (wynik?.ok && modelZadania !== prod.model) { krok(`⇢ dalej prowadzi ${modelZadania} (zrobił zadanie, na którym ${prod.model} padł)`); prod.model = modelZadania; }
             const g2 = await wczytaj(projektId);
             const zd2 = g2.kamienie.find((k) => k.id === kamien.id)?.zadania.find((z) => z.id === zadanie.id);

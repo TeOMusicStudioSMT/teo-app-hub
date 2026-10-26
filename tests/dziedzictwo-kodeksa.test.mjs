@@ -59,3 +59,13 @@ test('💡 JaJo w dziedzictwie: wszystkie odrzucone rundy z modelem idą dalej, 
     assert.match(blok, /POPRZEDNIE PRÓBY TEGO ZADANIA \(sonnet → gemini\)/);
     assert.match(blokDziedzictwa({ rada: 'sama rada' }), /sama rada/);
 });
+
+test('🛁 SPA: spokojny blok bez ściany błędów i bez cudzych plików', async () => {
+    const { blokDziedzictwa } = await import('../services/AppStudio.js');
+    const b = blokDziedzictwa({ spa: true, przeszkoda: 'tsc: TS2304 Cannot find name THREE', rada: 'Zaimportuj three.' });
+    assert.match(b, /SPOKOJNIE/);
+    assert.match(b, /TS2304/);
+    assert.match(b, /Zaimportuj three/);
+    assert.doesNotMatch(b, /=== PLIK:/);
+    assert.doesNotMatch(b, /NIE PRZESZŁY/);
+});

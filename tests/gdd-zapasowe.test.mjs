@@ -25,7 +25,7 @@ async function koniec(id) { for (let i = 0; i < 200; i++) { const p = Gdd.produk
 function atrapaStudia(dobre) {
     const zadania = new Map(); const wywolania = [];
     return { wywolania, appStudio: {
-        async buduj(_p, { model }) { const id = `t${zadania.size}`; wywolania.push(model); zadania.set(id, { stan: dobre.has(model) ? 'gotowe' : 'blad', wynik: dobre.has(model) ? { ok: true, rundy: 1, sekundy: 1 } : { ok: false, powod: 'Oddałeś 2 pliki IDENTYCZNE' } }); return { id }; },
+        async buduj(_p, { model, dziedzictwo }) { const id = `t${zadania.size}`; const m = dziedzictwo?.spa ? `${model}+spa` : model; wywolania.push(m); zadania.set(id, { stan: dobre.has(m) ? 'gotowe' : 'blad', wynik: dobre.has(m) ? { ok: true, rundy: 1, sekundy: 1 } : { ok: false, powod: 'Oddałeś 2 pliki IDENTYCZNE' } }); return { id }; },
         zadanie: (id) => zadania.get(id),
     } };
 }
@@ -53,7 +53,8 @@ test('wszystkie modele padły → stop, zadanie z błędem, reszta czeka; bez za
     await Gdd.realizuj('gra', { model: 'm1', zapasowe: ['m2'] });
     const p = await koniec('gra');
     assert.equal(p.stan, 'blad');
-    assert.deepEqual(a.wywolania, ['m1', 'm2']);
+    assert.deepEqual(a.wywolania, ['m1', 'm2', 'm1+spa'], 'po łańcuchu jedno spokojne podejście głównego modelu');
+    assert.ok(p.kroki.some((k) => /🛁 SPA nie pomogło/.test(k.tekst)));
     assert.ok(p.kroki.some((k) => /na wszystkich 2 modelach/.test(k.tekst)));
     const g = JSON.parse(await fs.readFile(path.join(kat, 'gra', 'gdd.json'), 'utf8'));
     assert.deepEqual(g.kamienie[0].zadania.map((z) => z.stan), ['blad', 'czeka']);
@@ -82,4 +83,15 @@ test('☁️ produkcja: Sonnet pada → Gemini z mostu robi zadanie, Ling nietkn
     assert.equal(p.stan, 'gotowe');
     assert.deepEqual(a.wywolania, ['claude:claude-sonnet-5-5', 'gemini:gemini-3.8-flash']);
     Gdd.skonfiguruj({ modeleChmury: undefined });
+});
+
+test('🛁 SPA: łańcuch poległ, spokojne podejście głównego modelu robi zadanie', async () => {
+    const kat = await projekt(1);
+    const a = atrapaStudia(new Set(['m1+spa']));
+    Gdd.skonfiguruj({ katalog: kat, appStudio: a.appStudio, odstepSondazuMs: 1, szyna: null });
+    await Gdd.realizuj('gra', { model: 'm1', zapasowe: ['m2'] });
+    const p = await koniec('gra');
+    assert.equal(p.stan, 'gotowe');
+    assert.deepEqual(a.wywolania, ['m1', 'm2', 'm1+spa']);
+    assert.ok(p.kroki.some((k) => /🛁 SPA pomogło/.test(k.tekst)));
 });

@@ -948,6 +948,7 @@ const MAX_DZIEDZICTWA = 32_000;
 /** Blok promptu z prób poprzednich modeli łańcucha: ich najdalej posunięte pliki + wszystkie różne błędy (Suweren 2026-10-09:
  *  „niech korzystają z błędów poprzedników… dwa pierwsze strzały to przeważnie gotowe skrypty”). */
 export function blokDziedzictwa(d) {
+    if (d?.spa) return blokSpa(d);
     if (!d || (!d.pliki?.length && !d.bledy?.length && !d.rada)) return '';
     let budzet = MAX_DZIEDZICTWA;
     const pliki = [];
@@ -955,6 +956,18 @@ export function blokDziedzictwa(d) {
     return (d.rada ? `\n${d.rada}\n` : '') + `\nPOPRZEDNIE PRÓBY TEGO ZADANIA (${(d.modele ?? [d.model]).filter(Boolean).join(' → ') || 'inne modele'}) NIE PRZESZŁY. Nie zaczynaj od zera — ich kod bywał prawie gotowy.\n` +
         (d.bledy?.length ? `BŁĘDY, NA KTÓRYCH POLEGLI (nie powtarzaj żadnego):\n${d.bledy.map((b, i) => `${i + 1}. ${b}`).join('\n')}\n` : '') +
         (pliki.length ? `NAJDALEJ POSUNIĘTA PRÓBA (${d.model}, odpadła na etapie: ${d.etap}) — pliki, które oddała (w projekcie ich NIE ma, został stan sprzed próby). Weź je za punkt wyjścia, popraw wskazany błąd i oddaj w całości:\n${pliki.map((p) => `=== PLIK: ${p.sciezka} ===\n${p.tresc}\n=== KONIEC ===`).join('\n')}${pliki.length < d.pliki.length ? `\n(pominięto ${d.pliki.length - pliki.length} plik(ów) — za długie)` : ''}\n` : '');
+}
+
+/** 🛁 SPA (Suweren 2026-10-26: „po 4 nieudanych próbach przymusowe SPA… poodychają, odpuszczą… może Aha przyjdzie”):
+ *  po porażce całego łańcucha model dostaje JESZCZE jedno podejście w CZYSTYM kontekście — bez ściany błędów i bez
+ *  32 tys. znaków cudzych plików (małe modele toną w takim prompcie), tylko spokojne słowo, jedna przeszkoda i jedna
+ *  wskazówka, jak zrobić to lekko. To nie terapia modelu (on nie czuje stresu) — to odciążenie kontekstu. */
+export function blokSpa(d) {
+    const przeszkoda = String(d.przeszkoda || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+    return `\n🛁 SPOKOJNIE — TO NOWE PODEJŚCIE. Poprzednie próby nie wyszły i to jest w porządku; zostaw je za sobą. Nie musisz niczego udowadniać ani przepisywać na nowo.\n` +
+        (przeszkoda ? `Jedna rzecz, o którą się wcześniej potknięto: ${przeszkoda}\n` : '') +
+        (d.rada ? `${String(d.rada).slice(0, 800)}\n` : '') +
+        `Zrób to LEKKO: najmniejsza zmiana, która spełnia zadanie. Najlepiej NOWY plik src/<nazwa>.ts, który korzysta z gotowych funkcji, i jedna linia importu w main.ts. Istniejących plików nie przepisuj — jeśli musisz, dopisz pojedynczą linię i oddaj plik w CAŁOŚCI, z całą dawną treścią.\n`;
 }
 
 export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, blokKlockow, dziedzictwo = null } = {}, naKrok = () => {}) {
