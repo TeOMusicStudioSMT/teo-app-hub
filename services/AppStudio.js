@@ -967,7 +967,7 @@ export function blokSpa(d) {
     return `\n🛁 SPOKOJNIE — TO NOWE PODEJŚCIE. Poprzednie próby nie wyszły i to jest w porządku; zostaw je za sobą. Nie musisz niczego udowadniać ani przepisywać na nowo.\n` +
         (przeszkoda ? `Jedna rzecz, o którą się wcześniej potknięto: ${przeszkoda}\n` : '') +
         (d.rada ? `${String(d.rada).slice(0, 800)}\n` : '') +
-        `Zrób to LEKKO: najmniejsza zmiana, która spełnia zadanie. Najlepiej NOWY plik src/<nazwa>.ts, który korzysta z gotowych funkcji, i jedna linia importu w main.ts. Istniejących plików nie przepisuj — jeśli musisz, dopisz pojedynczą linię i oddaj plik w CAŁOŚCI, z całą dawną treścią.\n`;
+        `Zrób to LEKKO: najmniejsza zmiana, która spełnia zadanie. Najlepiej NOWY plik src/<nazwa>.ts, który korzysta z gotowych funkcji, i jedna linia importu w MAŁYM pliku, który ładuje moduły (src/moduly.ts, jeśli jest; inaczej main.ts). Dużego pliku (setki linii) nie oddawaj. Istniejących plików nie przepisuj — jeśli musisz, dopisz pojedynczą linię i oddaj plik w CAŁOŚCI, z całą dawną treścią.\n`;
 }
 
 export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, blokKlockow, dziedzictwo = null } = {}, naKrok = () => {}) {
