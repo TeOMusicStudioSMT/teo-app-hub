@@ -1106,9 +1106,25 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 // 2026-09-22 (wrogowie.ts napisany, nigdzie nie podpięty; Suweren: „nie widzę tych
                 // efektów"). Sprawdzamy to deterministycznie, zanim ucieszymy się z „GOTOWE".
                 const ruszone = new Set(nowe.map((p) => p.sciezka));
-                const martwe = (await modulyBezImportu(dir)).filter((m) => !martweNaStarcie.has(m.plik) || ruszone.has(m.plik));
+                let martwe = (await modulyBezImportu(dir)).filter((m) => !martweNaStarcie.has(m.plik) || ruszone.has(m.plik));
+                // 🧩 REJESTR MODUŁÓW (src/moduly.ts — Teterhia 2026-10-26: małe modele, by dopisać import, oddawały cały
+                // 600-liniowy main.ts i gubiły importy kilkunastu modułów; nawet SPA): NOWY plik tej rundy, którego nikt nie
+                // importuje, most sam dopisuje do rejestru — deterministycznie, zamiast kolejnej rundy tego samego błędu.
+                const rejestr = path.join(dir, 'src', 'moduly.ts');
+                const noweMartwe = martwe.filter((m) => doRecenzji.some((p) => p.sciezka === m.plik && p.stara === null));
+                if (noweMartwe.length && fsSync.existsSync(rejestr)) {
+                    const stary = await fs.readFile(rejestr, 'utf8');
+                    const linie = noweMartwe.map((m) => `import './${m.plik.replace(/^src\//, '').replace(/\.tsx?$/, '')}';`).filter((l) => !stary.includes(l));
+                    if (linie.length) {
+                        await fs.writeFile(rejestr, stary.replace(/\n?export \{\};\s*$/, '').trimEnd() + '\n' + linie.join('\n') + '\nexport {};\n', 'utf8');
+                        krok('stan', `🧩 rejestr modułów: dopisano do src/moduly.ts — ${linie.join(' ')}`);
+                        doRecenzji.push({ sciezka: 'src/moduly.ts', stara: stary, nowa: await fs.readFile(rejestr, 'utf8') });
+                        martwe = (await modulyBezImportu(dir)).filter((m) => !martweNaStarcie.has(m.plik) || ruszone.has(m.plik));
+                    }
+                }
                 if (martwe.length) {
-                    feedback = `Dodałeś ${martwe.map((m) => m.plik).join(', ')}, ale ŻADEN plik projektu tego nie importuje — ten kod nigdy się nie wykona i w grze nic nie widać. Podepnij go tam, gdzie ma działać (zwykle src/main.ts: import + wywołanie w pętli gry), i oddaj też ten plik.`;
+                    const gdzie = fsSync.existsSync(rejestr) ? 'src/moduly.ts (rejestr modułów — jedna linia `import \'./nazwa\';`; NIE oddawaj main.ts)' : 'src/main.ts: import + wywołanie w pętli gry';
+                    feedback = `Dodałeś ${martwe.map((m) => m.plik).join(', ')}, ale ŻADEN plik projektu tego nie importuje — ten kod nigdy się nie wykona i w grze nic nie widać. Podepnij go tam, gdzie ma działać (zwykle ${gdzie}), i oddaj też ten plik.`;
                     krok('blad', `martwy moduł: ${martwe.map((m) => m.plik).join(', ')} — nikt nie importuje, wymuszam podpięcie`);
                     zapamietaj('martwy-modul'); continue;
                 }
