@@ -649,6 +649,15 @@ async function zrzucNieudaneIPrzywroc(dir, id) {
  * z punktów wejścia — moduł podpięty w innym module (src/gra/rytm.ts → ../trybTestu) był „martwy” i każdy model
  * łańcucha przegrywał w kółko na zadaniu 8.1 (2026-10-09). Importy względne, też `import './x'` i dynamiczne, z .ts/.js.
  */
+/** Czy moduł SAM coś robi po imporcie (wywołanie na najwyższym poziomie: `naKopniecie(…)`, `dodajKrok(…)`, `void start()`…).
+ *  Rejestr modułów dopisuje tylko takie — plik z samymi eksportami podpięty „na efekt” nic nie robi (Teterhia 2026-10-26:
+ *  gemma oddała atrapę Biblioteki z samymi funkcjami, rejestr ją podpiął i sędziowie przepuścili zadanie). */
+export function maEfektUboczny(tresc) {
+    const kod = String(tresc).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const SLOWA = /^(?:export|import|function|async|class|interface|type|const|let|var|enum|declare|if|for|while|switch|return)\b/;
+    return kod.split('\n').some((l) => /^(?:void\s+|await\s+)?[A-Za-z_$][\w$.]*\s*(?:<[^>]*>)?\(/.test(l) && !SLOWA.test(l));
+}
+
 export function martweZGrafu(wszystkie, kandydaci) {
     const bezRozszerzenia = (s) => s.replace(/\.(tsx?|jsx?|mjs)$/, '').replace(/\/index$/, '');
     const wgSciezki = new Map(kandydaci.map((k) => [bezRozszerzenia(k.sciezka), k]));
@@ -1113,7 +1122,8 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 const rejestr = path.join(dir, 'src', 'moduly.ts');
                 // „nowy” = powstał w TYM zadaniu (git go jeszcze nie śledzi) — także napisany w poprzedniej rundzie i poprawiany teraz
                 const nieSledzone = new Set((await git(dir, ['ls-files', '--others', '--exclude-standard', '--', 'src']).catch(() => '')).split('\n').map((s) => s.trim()).filter(Boolean));
-                const noweMartwe = martwe.filter((m) => nieSledzone.has(m.plik));
+                const noweMartwe = [];
+                for (const m of martwe) if (nieSledzone.has(m.plik) && maEfektUboczny(await fs.readFile(path.join(dir, m.plik), 'utf8').catch(() => ''))) noweMartwe.push(m);
                 if (noweMartwe.length && fsSync.existsSync(rejestr)) {
                     const stary = await fs.readFile(rejestr, 'utf8');
                     const linie = noweMartwe.map((m) => `import './${m.plik.replace(/^src\//, '').replace(/\.tsx?$/, '')}';`).filter((l) => !stary.includes(l));

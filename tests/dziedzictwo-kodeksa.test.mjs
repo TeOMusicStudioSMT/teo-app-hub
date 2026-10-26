@@ -69,3 +69,19 @@ test('🛁 SPA: spokojny blok bez ściany błędów i bez cudzych plików', asyn
     assert.doesNotMatch(b, /=== PLIK:/);
     assert.doesNotMatch(b, /NIE PRZESZŁY/);
 });
+
+test('🧩 rejestr modułów: podpina tylko moduł, który sam coś robi po imporcie', async () => {
+    const { maEfektUboczny } = await import('../services/AppStudio.js');
+    const fs = await import('node:fs');
+    const gra = new URL('../../_OtakOs_Apki/teterhia-wieczna-saga/src/', import.meta.url);
+    // samo-podpinający się moduł (wywołanie na najwyższym poziomie)
+    assert.equal(maEfektUboczny("import { naKopniecie } from './tworczosc';\nnaKopniecie((k) => {\n  return 'x';\n});\n"), true);
+    assert.equal(maEfektUboczny("void start();\n"), true);
+    // atrapa z samymi eksportami (Teterhia 2026-10-26) i wywołania w komentarzu albo w funkcji — nie
+    assert.equal(maEfektUboczny("/** naKopniecie(x) w opisie */\nexport function czyKolizja(a) {\n  return policz(a);\n}\nexport const X = 1;\n"), false);
+    assert.equal(maEfektUboczny("// dodajKrok(f)\nexport interface A { b: number }\n"), false);
+    if (fs.existsSync(new URL('jajaZakopane.ts', gra))) {
+        assert.equal(maEfektUboczny(fs.readFileSync(new URL('jajaZakopane.ts', gra), 'utf8')), true);
+        assert.equal(maEfektUboczny(fs.readFileSync(new URL('gra/jajaZakopane.ts', gra), 'utf8')), false);
+    }
+});
