@@ -1111,7 +1111,9 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 // 600-liniowy main.ts i gubiły importy kilkunastu modułów; nawet SPA): NOWY plik tej rundy, którego nikt nie
                 // importuje, most sam dopisuje do rejestru — deterministycznie, zamiast kolejnej rundy tego samego błędu.
                 const rejestr = path.join(dir, 'src', 'moduly.ts');
-                const noweMartwe = martwe.filter((m) => doRecenzji.some((p) => p.sciezka === m.plik && p.stara === null));
+                // „nowy” = powstał w TYM zadaniu (git go jeszcze nie śledzi) — także napisany w poprzedniej rundzie i poprawiany teraz
+                const nieSledzone = new Set((await git(dir, ['ls-files', '--others', '--exclude-standard', '--', 'src']).catch(() => '')).split('\n').map((s) => s.trim()).filter(Boolean));
+                const noweMartwe = martwe.filter((m) => nieSledzone.has(m.plik));
                 if (noweMartwe.length && fsSync.existsSync(rejestr)) {
                     const stary = await fs.readFile(rejestr, 'utf8');
                     const linie = noweMartwe.map((m) => `import './${m.plik.replace(/^src\//, '').replace(/\.tsx?$/, '')}';`).filter((l) => !stary.includes(l));
