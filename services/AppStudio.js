@@ -1103,6 +1103,14 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                     if (stara !== null && stara.replace(/\r\n/g, '\n').trimEnd() === p.tresc.replace(/\r\n/g, '\n').trimEnd()) continue;
                     // 🛡️ DUŻY PLIK OKROJONY (Teterhia 2026-10-26: Qwen/gemma/SPA oddawały 636-liniowy main.ts bez połowy importów,
                     // choć zadanie mówiło „NIE oddawaj”): plik > DUZY_PLIK_CHRONIONY linii, który traci > 20% linii, nie wchodzi.
+                    // 🧩 REJESTR MODUŁÓW tylko rośnie: dawne importy zostają zawsze, nowe z rundy się dopisują (Teterhia 2026-10-26:
+                    // SPA przepisało src/moduly.ts od nowa i zgubiło Bibliotekę i Jaja)
+                    if (p.sciezka === 'src/moduly.ts' && stara !== null) {
+                        const importy = (t) => t.split('\n').map((l) => l.trim()).filter((l) => /^import\s+['"]\.\//.test(l));
+                        const dopisane = importy(p.tresc).filter((l) => !importy(stara).includes(l));
+                        p.tresc = dopisane.length ? stara.replace(/\n?export \{\};\s*$/, '').trimEnd() + '\n' + dopisane.join('\n') + '\nexport {};\n' : stara;
+                        if (p.tresc === stara) continue;
+                    }
                     const linieStare = stara === null ? 0 : stara.split('\n').length;
                     if (linieStare > DUZY_PLIK_CHRONIONY && p.tresc.split('\n').length < linieStare * 0.8) {
                         pominieteDuze.push(`${p.sciezka} (${linieStare} → ${p.tresc.split('\n').length} linii)`);
