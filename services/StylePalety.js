@@ -40,6 +40,13 @@ export function znajdzStyl(style, id) {
     return style.find((s) => s.id.toLowerCase() === czysty) ?? null;
 }
 
-export const sufiksStylu = (styl) => `, ${styl.medium}${KONIEC_PROMPTU}`;
+/**
+ * Opis medium ze skilla mówi o NARZĘDZIACH („one loaded soft brush of sumi ink…”) — FLUX malował wtedy same pędzle
+ * w kadrze (na żywo 2026-10-29). Dlatego: nazwa stylu jako wygląd dzieła, medium w nawiasie jako faktura,
+ * i wprost „bez narzędzi i rąk w kadrze”.
+ */
+export const sufiksStylu = (styl) =>
+    `, a finished ${styl.nazwa} artwork (look and texture of: ${styl.medium}), only the finished picture is visible, `
+    + `no brushes, no pens, no art tools, no hands in the frame${KONIEC_PROMPTU}`;
 
 export default { styleZIndeksu, wczytajStyle, listaDlaKronikarza, znajdzStyl, sufiksStylu, PLIK_INDEKSU };

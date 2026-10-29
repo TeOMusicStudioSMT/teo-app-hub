@@ -22,7 +22,8 @@ test('spis stylów ze skilla: 32 style w Katedrze, wiersze tabeli → id, nazwa,
     if (wKatedrze.length) assert.equal(wKatedrze.length, 32);   // skill leży w TeO_Skille/sztuka/anidoodle
     assert.equal(znajdzStyl(s, '`SUMIE`.')?.id, 'sumiE');
     assert.equal(znajdzStyl(s, 'watercolor'), null);
-    assert.match(sufiksStylu(s[1]), /carved cherry blocks, hand-made illustration, no text/);
+    assert.ok(sufiksStylu(s[1]).startsWith(', a finished Ukiyo-e colour woodblock artwork (look and texture of: pigment printed'));
+    assert.match(sufiksStylu(s[1]), /only the finished picture is visible, no brushes, no pens, no art tools, no hands/);
 });
 
 test('Kronikarz: trzecia linia STYL nie wpada do słowa ani do opisu kadru', () => {
@@ -53,7 +54,7 @@ test('stado: styl z listy → Paleta maluje jego medium; nazwa stylu idzie do ś
     const { wpis, prompty, systemy, publiczne } = await przebieg('SŁOWO: Mgła otula staw jak oddech.\nOBRAZ: a quiet pond veiled in mist\nSTYL: woodcut');
     assert.match(systemy[0], /woodcut — Ukiyo-e/);
     assert.deepEqual(wpis.stado[1].styl, { id: 'woodcut', nazwa: 'Ukiyo-e colour woodblock' });
-    assert.match(prompty[0], /^a quiet pond veiled in mist, pigment printed by baren/);
+    assert.match(prompty[0], /^a quiet pond veiled in mist, a finished Ukiyo-e colour woodblock artwork/);
     assert.equal(publiczne[0].ilustracja.styl, 'Ukiyo-e colour woodblock');
 });
 
