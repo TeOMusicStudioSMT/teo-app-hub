@@ -42,8 +42,10 @@ export const STYL_ILUSTRACJI = ', illuminated manuscript illustration on aged pa
 /** „SŁOWO: … / OBRAZ: …” → { slowo, obraz } albo null. */
 export function odczytajSlowo(tekst) {
     const t = String(tekst ?? '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/\*\*/g, '');
-    const slowo = t.match(/S[ŁL]OWO\s*:\s*([\s\S]*?)(?=\n\s*OBRAZ\s*:|$)/i)?.[1]?.replace(/\s+/g, ' ').trim();
-    const obraz = t.match(/OBRAZ\s*:\s*([\s\S]+)/i)?.[1]?.split('\n')[0]?.trim();
+    // etykieta obrazu bywa po angielsku i w tej samej linii („… duszę. Image: a gentle flow…”) — nie może wejść do słowa
+    const ETYKIETA_OBRAZU = /(?:^|\s)(?:OBRAZ|IMAGE|PICTURE|KADR)\s*:/i;
+    const slowo = t.match(/S[ŁL]OWO\s*:\s*([\s\S]*)/i)?.[1]?.split(ETYKIETA_OBRAZU)[0]?.replace(/\s+/g, ' ').trim();
+    const obraz = t.match(/(?:OBRAZ|IMAGE|PICTURE|KADR)\s*:\s*([\s\S]+)/i)?.[1]?.split('\n')[0]?.trim();
     if (!slowo || slowo.length < 10) return null;
     return { slowo: slowo.slice(0, 900), obraz: obraz && obraz.length >= 10 ? obraz.slice(0, 600) : null };
 }
