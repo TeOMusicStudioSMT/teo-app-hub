@@ -164,7 +164,8 @@ export function utworzZywaKsiege(cfg = {}) {
             await zmien(id, (x) => { Object.assign(dodatek(x, 'ilustracja'), { stan: 'robi', powod: null }); });
             try {
                 if (!cfg.rysuj) throw new Error('most nie podał rysowania (FLUX)');
-                const prompt = `${il.prompt || `a symbolic scene inspired by these words: ${w.tekst.slice(0, 300)}`}${STYL_ILUSTRACJI}`;
+                // bez opisu Kronikarza NIE wklejamy słów Suwerena — FLUX pisał je na pergaminie jako krzaki (na żywo 2026-10-29)
+                const prompt = `${il.prompt || 'a symbolic scene of warm morning light, a winding path and old roots, a quiet hopeful mood'}${STYL_ILUSTRACJI}`;
                 let zrodlo = null;
                 for (let proba = 0; ; proba++) {
                     try { zrodlo = await cfg.rysuj({ prompt, prefiks: `katedra/zywa-ksiega/${id}` }); break; }
