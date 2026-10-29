@@ -233,7 +233,29 @@ export function utworzZywaKsiege(cfg = {}) {
 
     const stan = () => ({ pracuje, kolejka: [...kolejka] });
 
-    return { lista, czytaj, dodaj, ponowStado, nagranie, rysunek, ustaw, usun, plik, stan, sprzatnijDuchy, katalog };
+    /** 🌍 Dla świata (wizytówka → otakos.wtf): TYLKO wpisy `publiczny`, tylko gotowe dodatki stada, bez ścieżek i modeli. */
+    async function publiczne({ ile = 30 } = {}) {
+        return (await lista()).filter((w) => w.publiczny).slice(0, ile).map((w) => {
+            const slowo = w.stado.find((s) => s.rodzaj === 'slowo' && s.stan === 'gotowe');
+            const il = w.stado.find((s) => s.rodzaj === 'ilustracja' && s.stan === 'gotowe' && s.plik);
+            const v = encodeURIComponent(w.zmieniony ?? w.kiedy);
+            return {
+                id: w.id, kiedy: w.kiedy, tekst: w.tekst,
+                slowo: slowo ? { kto: slowo.kto, tekst: slowo.tekst } : null,
+                ilustracja: il ? { kto: il.kto, url: `/wizytowka/ksiega/${w.id}/${il.plik}?v=${v}` } : null,
+                nagranie: w.nagranie ? { url: `/wizytowka/ksiega/${w.id}/${w.nagranie.plik}?v=${v}`, sekundy: w.nagranie.sekundy } : null,
+                rysunki: w.rysunki.map((r) => ({ id: r.id, kto: r.kto, tytul: r.tytul, klatki: r.klatki })),
+            };
+        });
+    }
+    /** Plik dla świata — tylko z wpisu publicznego. */
+    async function plikPubliczny(id, nazwa) {
+        const w = await czytaj(id);
+        if (!w.publiczny) throw new Error('Nie ma takiego pliku we wpisie.');
+        return plik(id, nazwa);
+    }
+
+    return { lista, czytaj, dodaj, ponowStado, nagranie, rysunek, ustaw, usun, plik, stan, sprzatnijDuchy, publiczne, plikPubliczny, katalog };
 }
 
 /** Trasy (Straż: `/api/zywa-ksiega` tylko maszyna). `raw` = express.raw z mostu (nagranie). */
@@ -252,6 +274,13 @@ export function zamontujTrasyZywejKsiegi(app, K, { raw } = {}) {
     });
     app.get('/api/zywa-ksiega/:id/plik/:plik', async (req, res) => {
         try { res.sendFile(await K.plik(req.params.id, req.params.plik)); } catch (e) { blad(res, e, 404); }
+    });
+    // 🌍 PUBLICZNIE (Straż: SCIEZKA_KSIEGI, tylko GET/HEAD): wpisy „dla świata” i ich pliki — strona otakos.wtf czyta z tunelu
+    app.get('/wizytowka/ksiega', async (_req, res) => {
+        try { res.set('Cache-Control', 'public, max-age=60').json({ success: true, wpisy: await K.publiczne() }); } catch (e) { blad(res, e, 500); }
+    });
+    app.get('/wizytowka/ksiega/:id/:plik', async (req, res) => {
+        try { res.set('Cache-Control', 'public, max-age=3600').sendFile(await K.plikPubliczny(req.params.id, req.params.plik)); } catch (e) { blad(res, e, 404); }
     });
 }
 

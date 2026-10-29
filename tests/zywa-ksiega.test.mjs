@@ -130,3 +130,29 @@ test('trasy: nagranie twarzy (prawdziwy webm → mp4), rysunek, publiczny, usuni
         assert.equal(fs.readdirSync(path.join(kat, 'zywa-ksiega', '_kosz')).length, 1, 'usunięte leży w koszu');
     } finally { srv.close(); }
 });
+
+test('🌍 dla świata: tylko wpisy publiczne i gotowe dodatki; plik prywatnego = 404; Straż wpuszcza tylko odczyt', async () => {
+    const { czyWizytowka } = await import('../services/StrazMostu.js');
+    const kat = tmp(); const a = atrapy(kat);
+    const K = utworzZywaKsiege(a.cfg);
+    const jawny = await K.dodaj({ tekst: 'Dla świata.' });
+    const tajny = await K.dodaj({ tekst: 'Tylko dla mnie.', publiczny: false });
+    await czekaj(async () => (await K.lista()).every((w) => w.stado.every((s) => s.stan === 'gotowe')));
+    const app = express(); zamontujTrasyZywejKsiegi(app, K, { raw: express.raw });
+    const srv = app.listen(0); const url = `http://127.0.0.1:${srv.address().port}`;
+    try {
+        const d = await (await fetch(`${url}/wizytowka/ksiega`)).json();
+        assert.deepEqual(d.wpisy.map((w) => w.tekst), ['Dla świata.']);
+        assert.match(d.wpisy[0].slowo.tekst, /poranne światło/);
+        assert.equal(JSON.stringify(d).includes('model-'), false, 'bez nazw modeli i ścieżek z dysku');
+        assert.equal((await fetch(url + d.wpisy[0].ilustracja.url)).status, 200);
+        assert.equal((await fetch(`${url}/wizytowka/ksiega/${tajny.id}/ilustracja.png`)).status, 404);
+        assert.equal((await fetch(`${url}/wizytowka/ksiega/${jawny.id}/wpis.json`)).status, 404);
+    } finally { srv.close(); }
+    const req = (method, p) => ({ method, path: p });
+    assert.ok(czyWizytowka(req('GET', '/wizytowka/ksiega')));
+    assert.ok(czyWizytowka(req('GET', `/wizytowka/ksiega/${jawny.id}/nagranie.mp4`)));
+    assert.ok(!czyWizytowka(req('POST', '/wizytowka/ksiega')));
+    assert.ok(!czyWizytowka(req('GET', `/wizytowka/ksiega/${jawny.id}/wpis.json`)));
+    assert.ok(!czyWizytowka(req('GET', '/api/zywa-ksiega')));
+});

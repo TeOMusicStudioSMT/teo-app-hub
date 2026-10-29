@@ -151,6 +151,8 @@ export const SCIEZKA_ZAKUPU = /^\/wizytowka\/sklep\/pk-[0-9a-f]{8}\/kup$/;
 export const SCIEZKA_SKLEPU = /^\/wizytowka\/sklep\/(pk-[0-9a-f]{8}\/okladka\.png|odbior|pobierz)$/;
 /** 📱📋 Opis na telefon (services/OpisNaTelefon.js): strona z przyciskiem „Kopiuj” pod losowym tokenem, ważna 6 h, tylko odczyt. */
 export const SCIEZKA_OPISU = /^\/wizytowka\/opis\/[0-9a-f]{24}$/;
+/** 📖 Żywa Księga dla świata (services/ZywaKsiega.js): lista wpisów „dla świata” i ich ilustracje/nagrania — tylko odczyt. */
+export const SCIEZKA_KSIEGI = /^\/wizytowka\/ksiega(\/k-\d{8}-[0-9a-f]{6}\/(ilustracja\.png|nagranie\.mp4))?$/;
 export const SCIEZKA_RINGU = /^\/wizytowka\/ring(\/r-[a-z0-9]{6,16}(\/wyjdz)?)?$/;
 export function czyWizytowka(req) {
     // 💬 Skrzynka TOST (services/TostSiec.js): inne Katedry wrzucają tu koperty — szyfrowane, podpisane,
@@ -167,6 +169,7 @@ export function czyWizytowka(req) {
     const p = String(req.path || '');
     if (SCIEZKA_SKLEPU.test(p)) return true;
     if (SCIEZKA_OPISU.test(p)) return true;
+    if (SCIEZKA_KSIEGI.test(p)) return true;
     if (p.startsWith(PREFIKS_GIER) && !p.includes('..') && !p.includes('\\')) return true;
     return SCIEZKI_WIZYTOWKI.dokladne.has(p) || SCIEZKI_WIZYTOWKI.prefiksy.some((x) => p.startsWith(x) && !p.slice(x.length).includes('/'));
 }
