@@ -5484,7 +5484,7 @@ app.post('/api/glowny/sesja/:id/przerwij', async (req, res) => res.json({ succes
 // Ten sam kształt sesji co Główny — Hub pokazuje obu w GlownyCzat. Tylko maszyna (Straż: /api/argo/).
 const ArgoBob = utworzArgoBoba({
     katalog: path.join(ANTIGRAVITY_DIR, 'argo-bob'),
-    korzenie: { katedra: process.cwd(), tgs: path.join(process.cwd(), '..', 'TeO_Games_Studio') },
+    korzenie: { katedra: process.cwd(), tgs: path.join(process.cwd(), '..', 'TeO_Games_Studio'), teo: path.join(process.cwd(), '..', 'teo-center') },
     klucz: () => getGeminiKey(),
     modele: async () => { const k = await getGeminiKey(); return k ? (await listyModeliChmury('gemini', k)).modele.map((m) => m.model) : []; },
     tarcza: AlignmentShield.getInstance(),

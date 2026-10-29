@@ -38,12 +38,12 @@ export const DIAGNOSTYKA = {
     'rewizor-zywy': { polecenie: 'npm run rewizor -- --zywy', repo: ['katedra'], opis: 'Rewizor z sondą żywego mostu' },
     testy: { polecenie: 'npm test', repo: ['katedra', 'tgs'], opis: 'Wszystkie testy' },
     'test-plik': { polecenie: 'node --test {plik}', repo: ['katedra'], opis: 'Jeden plik testów (tests/<nazwa>.test.mjs)' },
-    tsc: { polecenie: 'npx tsc --noEmit -p .', repo: ['katedra', 'tgs'], opis: 'Sprawdzenie typów TypeScript' },
-    build: { polecenie: 'npm run build', repo: ['katedra', 'tgs'], opis: 'Build (Vite)' },
+    tsc: { polecenie: 'npx tsc --noEmit -p .', repo: ['katedra', 'tgs', 'teo'], opis: 'Sprawdzenie typów TypeScript' },
+    build: { polecenie: 'npm run build', repo: ['katedra', 'tgs', 'teo'], opis: 'Build (Vite)' },
     mapa: { polecenie: 'npm run mapa', repo: ['katedra'], opis: 'Mapa Katedry: ekran → API → serwis' },
 };
 
-const repoParam = { type: 'string', enum: ['katedra', 'tgs'], description: 'katedra = TeO_Genesis (most, Hub, serwisy); tgs = TeO_Games_Studio (Game Studio). Domyślnie katedra.' };
+const repoParam = { type: 'string', enum: ['katedra', 'tgs', 'teo'], description: 'katedra = TeO_Genesis (most, Hub, serwisy); tgs = TeO_Games_Studio (Game Studio); teo = teo-center (strona teo.center Suwerena). Domyślnie katedra.' };
 export const NARZEDZIA = [
     { name: 'lista_plikow', description: 'Lista plików i katalogów (bez node_modules/.git). Bez pytania Suwerena.',
         parameters: { type: 'object', properties: { repo: repoParam, sciezka: { type: 'string', description: 'Katalog względny, np. "services" albo "." ' } } } },
@@ -74,7 +74,7 @@ export function promptTozsamosci(szablon, suweren) {
 /** Ścieżka w repo: bez wyjścia poza korzeń i bez sekretów. */
 export function rozwiaz(korzenie, repo = 'katedra', sciezka = '.') {
     const korzen = korzenie[repo || 'katedra'];
-    if (!korzen) throw new Error(`Nieznane repo „${repo}” (katedra | tgs).`);
+    if (!korzen) throw new Error(`Nieznane repo „${repo}” (katedra | tgs | teo).`);
     const s = String(sciezka ?? '.').trim().replace(/^["']|["']$/g, '') || '.';
     const abs = path.resolve(korzen, s);
     const rel = path.relative(korzen, abs);
@@ -167,7 +167,7 @@ export function uruchomDomyslnie(polecenie, cwd, { limitMs = 10 * 60_000 } = {})
 }
 
 /**
- * @param {{ katalog: string, korzenie: {katedra: string, tgs?: string}, klucz: () => Promise<string|null>,
+ * @param {{ katalog: string, korzenie: {katedra: string, tgs?: string, teo?: string}, klucz: () => Promise<string|null>,
  *   model?: () => string, modele?: () => Promise<string[]>, tarcza?: { inspectZJev: Function }, szyna?: any,
  *   suweren?: () => string|null, fetch?: Function, uruchom?: Function, zalacznik?: (plik: string) => string|null,
  *   maxKrokow?: number }} o
