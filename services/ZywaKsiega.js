@@ -4,8 +4,9 @@
  * (`_OtakOs_Components/zywa_ksi_ga_multimedialny_dziennik.tsx`) stał na Firestore Canvasa, nagranie się nie zapisywało,
  * a „media od Stada” dokładał ręcznie każdy gość — tu wszystko jest naprawdę i lokalnie.
  *
- * Wpis = katalog `<katalog>/zywa-ksiega/<id>/` {wpis.json, nagranie.mp4?, ilustracja.png?}:
- *  - Iskra Suwerena (tekst ≤ 4000) + opcjonalne nagranie twarzy (webm/mp4 → ffmpeg → mp4) + rysunki AniDoodle Suwerena;
+ * Wpis = katalog `<katalog>/zywa-ksiega/<id>/` {wpis.json, zdjecie.jpg?, nagranie.mp4?, ilustracja.png?}:
+ *  - Iskra Suwerena (tekst ≤ 4000) + opcjonalne zdjęcie (dowolny obraz → ffmpeg → JPEG ≤ 2048 px BEZ metadanych —
+ *    EXIF z GPS i aparatem nie wychodzi do świata) + nagranie twarzy (webm/mp4 → ffmpeg → mp4) + rysunki AniDoodle Suwerena;
  *  - stado dotwarza samo, po kolei, jeden wpis naraz: SŁOWO (Kronikarz, model przydziału — odpowiedź na Iskrę, nic nie
  *    dopowiada) i ILUSTRACJA (Paleta, FLUX przez ComfyUI — symboliczny obraz w stylu iluminowanego rękopisu, opis kadru
  *    pisze Kronikarz w tym samym zapytaniu). Każdy dodatek ma autora, stan (czeka/robi/gotowe/blad) i powód.
@@ -16,11 +17,18 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { execFile } from 'child_process';
 import { nagranieDoMp4 } from './OdcinkiStudia.js';
 
 export const MAX_TEKSTU = 4000;
 export const MAX_RYSUNKU = 300_000;   // JSON klatek AniDoodle
 export const MAX_RYSUNKOW = 6;
+export const MAX_ZDJECIA = 25 * 1024 * 1024;
+export const BOK_ZDJECIA = 2048;
+/** ffmpeg: obraz → JPEG, dłuższy bok ≤ BOK_ZDJECIA (nie powiększa), bez metadanych. Orientację EXIF ffmpeg stosuje sam. */
+export const argumentyZdjecia = (we, wy) => ['-hide_banner', '-loglevel', 'error', '-y', '-i', we, '-frames:v', '1',
+    '-vf', `scale='min(${BOK_ZDJECIA},iw)':'min(${BOK_ZDJECIA},ih)':force_original_aspect_ratio=decrease,format=yuvj420p`,
+    '-map_metadata', '-1', '-q:v', '3', wy];
 const ID = /^k-\d{8}-[0-9a-f]{6}$/;
 
 export const SYSTEM_SLOWA = 'Jesteś Kronikarzem stada TeOgochi Katedry OtakOS. Suweren zostawił rano w Żywej Księdze kilka słów z przepływu. '
@@ -103,7 +111,7 @@ export function utworzZywaKsiege(cfg = {}) {
         const id = `k-${dzisiaj()}-${crypto.randomBytes(3).toString('hex')}`;
         const w = {
             id, kiedy: new Date().toISOString(), tekst: t, publiczny: publiczny !== false,
-            nagranie: null, rysunki: [],
+            zdjecie: null, nagranie: null, rysunki: [],
             stado: [
                 { rodzaj: 'slowo', kto: 'kronikarz', stan: 'czeka', tekst: null, powod: null },
                 { rodzaj: 'ilustracja', kto: 'paleta', stan: 'czeka', plik: null, prompt: null, powod: null },
@@ -198,6 +206,27 @@ export function utworzZywaKsiege(cfg = {}) {
         return zmien(id, (x) => { x.nagranie = { plik: 'nagranie.mp4', kiedy: new Date().toISOString(), sekundy: opis?.sekundy ?? null }; });
     }
 
+    async function zdjecie(id, { bufor, typ }) {
+        await czytaj(id);
+        if (!Buffer.isBuffer(bufor) || !bufor.length) throw new Error('Nie dostałem zdjęcia.');
+        if (bufor.length > MAX_ZDJECIA) throw new Error(`Zdjęcie może mieć do ${MAX_ZDJECIA / 1024 / 1024} MB.`);
+        if (typ && !/^image\//.test(typ)) throw new Error('To nie jest obraz.');
+        const praca = path.join(dir(id), 'praca'); await fs.mkdir(praca, { recursive: true });
+        const we = path.join(praca, 'zdjecie-we'), tymczasowy = path.join(dir(id), 'zdjecie-nowe.jpg');
+        await fs.writeFile(we, bufor);
+        try {
+            await new Promise((ok, zle) => execFile(cfg.ffmpeg ?? 'ffmpeg', argumentyZdjecia(we, tymczasowy), { windowsHide: true, timeout: 60_000 },
+                (e, _o, err) => (e ? zle(new Error(`ffmpeg nie przeczytał zdjęcia: ${String(err || e.message).trim().split(/\r?\n/).pop()}`)) : ok())));
+            await fs.rename(tymczasowy, path.join(dir(id), 'zdjecie.jpg'));   // stare zostaje, dopóki nowe nie jest gotowe
+        } finally { await fs.rm(praca, { recursive: true, force: true }).catch(() => {}); await fs.rm(tymczasowy, { force: true }).catch(() => {}); }
+        return zmien(id, (x) => { x.zdjecie = { plik: 'zdjecie.jpg', kiedy: new Date().toISOString() }; });
+    }
+
+    const usunZdjecie = (id) => zmien(id, async (x) => {
+        x.zdjecie = null;
+        await fs.rm(path.join(dir(id), 'zdjecie.jpg'), { force: true });
+    });
+
     async function rysunek(id, { rysunek: r, tytul }) {
         const czysty = oczyscRysunek(r);
         if (JSON.stringify(czysty).length > MAX_RYSUNKU) throw new Error('Rysunek jest za duży — mniej kresek albo klatek.');
@@ -226,7 +255,7 @@ export function utworzZywaKsiege(cfg = {}) {
     /** Ścieżka pliku wpisu — tylko pliki, które wpis wskazuje (nie wpis.json, nic spoza katalogu). */
     async function plik(id, nazwa) {
         const w = await czytaj(id);
-        const dozwolone = [w.nagranie?.plik, ...w.stado.map((s) => s.plik)].filter(Boolean);
+        const dozwolone = [w.zdjecie?.plik, w.nagranie?.plik, ...w.stado.map((s) => s.plik)].filter(Boolean);
         if (!dozwolone.includes(nazwa)) throw new Error('Nie ma takiego pliku we wpisie.');
         return path.join(dir(id), nazwa);
     }
@@ -243,6 +272,7 @@ export function utworzZywaKsiege(cfg = {}) {
                 id: w.id, kiedy: w.kiedy, tekst: w.tekst,
                 slowo: slowo ? { kto: slowo.kto, tekst: slowo.tekst } : null,
                 ilustracja: il ? { kto: il.kto, url: `/wizytowka/ksiega/${w.id}/${il.plik}?v=${v}` } : null,
+                zdjecie: w.zdjecie ? { url: `/wizytowka/ksiega/${w.id}/${w.zdjecie.plik}?v=${encodeURIComponent(w.zdjecie.kiedy)}` } : null,
                 nagranie: w.nagranie ? { url: `/wizytowka/ksiega/${w.id}/${w.nagranie.plik}?v=${v}`, sekundy: w.nagranie.sekundy } : null,
                 rysunki: w.rysunki.map((r) => ({ id: r.id, kto: r.kto, tytul: r.tytul, klatki: r.klatki })),
             };
@@ -255,7 +285,7 @@ export function utworzZywaKsiege(cfg = {}) {
         return plik(id, nazwa);
     }
 
-    return { lista, czytaj, dodaj, ponowStado, nagranie, rysunek, ustaw, usun, plik, stan, sprzatnijDuchy, publiczne, plikPubliczny, katalog };
+    return { lista, czytaj, dodaj, ponowStado, zdjecie, usunZdjecie, nagranie, rysunek, ustaw, usun, plik, stan, sprzatnijDuchy, publiczne, plikPubliczny, katalog };
 }
 
 /** Trasy (Straż: `/api/zywa-ksiega` tylko maszyna). `raw` = express.raw z mostu (nagranie). */
@@ -272,6 +302,11 @@ export function zamontujTrasyZywejKsiegi(app, K, { raw } = {}) {
     app.post('/api/zywa-ksiega/:id/nagranie', surowe, async (req, res) => {
         try { res.json({ success: true, wpis: await K.nagranie(req.params.id, { bufor: req.body, typ: String(req.headers['content-type'] || '').split(';')[0] }) }); } catch (e) { blad(res, e); }
     });
+    const obraz = raw ? raw({ type: () => true, limit: '26mb' }) : (_q, _r, n) => n();
+    app.post('/api/zywa-ksiega/:id/zdjecie', obraz, async (req, res) => {
+        try { res.json({ success: true, wpis: await K.zdjecie(req.params.id, { bufor: req.body, typ: String(req.headers['content-type'] || '').split(';')[0] }) }); } catch (e) { blad(res, e); }
+    });
+    app.delete('/api/zywa-ksiega/:id/zdjecie', async (req, res) => { try { res.json({ success: true, wpis: await K.usunZdjecie(req.params.id) }); } catch (e) { blad(res, e); } });
     app.get('/api/zywa-ksiega/:id/plik/:plik', async (req, res) => {
         try { res.sendFile(await K.plik(req.params.id, req.params.plik)); } catch (e) { blad(res, e, 404); }
     });

@@ -152,7 +152,7 @@ export const SCIEZKA_SKLEPU = /^\/wizytowka\/sklep\/(pk-[0-9a-f]{8}\/okladka\.pn
 /** 📱📋 Opis na telefon (services/OpisNaTelefon.js): strona z przyciskiem „Kopiuj” pod losowym tokenem, ważna 6 h, tylko odczyt. */
 export const SCIEZKA_OPISU = /^\/wizytowka\/opis\/[0-9a-f]{24}$/;
 /** 📖 Żywa Księga dla świata (services/ZywaKsiega.js): lista wpisów „dla świata” i ich ilustracje/nagrania — tylko odczyt. */
-export const SCIEZKA_KSIEGI = /^\/wizytowka\/ksiega(\/k-\d{8}-[0-9a-f]{6}\/(ilustracja\.png|nagranie\.mp4))?$/;
+export const SCIEZKA_KSIEGI = /^\/wizytowka\/ksiega(\/k-\d{8}-[0-9a-f]{6}\/(zdjecie\.jpg|ilustracja\.png|nagranie\.mp4))?$/;
 export const SCIEZKA_RINGU = /^\/wizytowka\/ring(\/r-[a-z0-9]{6,16}(\/wyjdz)?)?$/;
 export function czyWizytowka(req) {
     // 💬 Skrzynka TOST (services/TostSiec.js): inne Katedry wrzucają tu koperty — szyfrowane, podpisane,

@@ -14,7 +14,7 @@ const MOST = 'http://127.0.0.1:3001';
 interface Kreska { kolor: string; grubosc: number; punkty: [number, number][] }
 interface Rysunek { id: string; kto: string; tytul: string | null; kiedy: string; klatki: Kreska[][] }
 interface Dodatek { rodzaj: 'slowo' | 'ilustracja'; kto: string; stan: 'czeka' | 'robi' | 'gotowe' | 'blad'; tekst?: string | null; plik?: string | null; powod?: string | null; model?: string | null }
-interface Wpis { id: string; kiedy: string; tekst: string; publiczny: boolean; nagranie: { plik: string; kiedy: string; sekundy: number | null } | null; rysunki: Rysunek[]; stado: Dodatek[] }
+interface Wpis { id: string; kiedy: string; tekst: string; publiczny: boolean; zdjecie?: { plik: string; kiedy: string } | null; nagranie: { plik: string; kiedy: string; sekundy: number | null } | null; rysunki: Rysunek[]; stado: Dodatek[] }
 
 const KTO: Record<string, string> = { kronikarz: '📜 Kronikarz', paleta: '🎨 Paleta', suweren: '👑 Suweren' };
 const ATRAMENTY = [{ kolor: '#2c1810', nazwa: 'Sepia' }, { kolor: '#b45309', nazwa: 'Złoty ochra' }, { kolor: '#991b1b', nazwa: 'Karmin' }, { kolor: '#0e7490', nazwa: 'Cyjan' }];
@@ -27,7 +27,24 @@ async function zMostu<T>(sciezka: string, init?: RequestInit & { surowe?: boolea
     if (!r.ok || d?.success === false) throw new Error(d?.message || `Most odpowiedział HTTP ${r.status}`);
     return d as T;
 }
-const plikUrl = (w: Wpis, plik: string) => `${MOST}/api/zywa-ksiega/${w.id}/plik/${plik}?v=${encodeURIComponent(w.nagranie?.kiedy ?? w.kiedy)}`;
+const plikUrl = (w: Wpis, plik: string) => `${MOST}/api/zywa-ksiega/${w.id}/plik/${plik}?v=${encodeURIComponent((plik === w.zdjecie?.plik ? w.zdjecie?.kiedy : w.nagranie?.kiedy) ?? w.kiedy)}`;
+const wyslijZdjecie = (id: string, plik: File) => zMostu(`/api/zywa-ksiega/${id}/zdjecie`, { method: 'POST', body: plik, surowe: true, headers: { 'Content-Type': plik.type || 'image/jpeg' } });
+
+/** 📷 Wybór zdjęcia: plik albo upuszczenie; most robi z niego JPEG bez metadanych (GPS nie wychodzi). */
+function WyborZdjecia({ plik, ustaw }: { plik: File | null; ustaw: (f: File | null) => void }) {
+    const url = React.useMemo(() => (plik ? URL.createObjectURL(plik) : null), [plik]);
+    useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+    const wez = (f?: File | null) => { if (f && f.type.startsWith('image/')) ustaw(f); };
+    return (
+        <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); wez(e.dataTransfer.files?.[0]); }}
+            className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-amber-700/50 bg-black/30 p-2 text-xs text-amber-200/80">
+            <input type="file" accept="image/*" className="hidden" onChange={(e) => wez(e.target.files?.[0])} />
+            {url ? <img src={url} alt="Wybrane zdjęcie" className="h-16 w-16 rounded-lg object-cover" /> : <span className="text-2xl">📷</span>}
+            <span>{plik ? `${plik.name} · ${(plik.size / 1024 / 1024).toFixed(1)} MB` : 'Zdjęcie do wpisu — kliknij albo upuść (EXIF i GPS zostaną zdjęte)'}</span>
+            {plik && <button onClick={(e) => { e.preventDefault(); ustaw(null); }} className="ml-auto text-rose-300">✕</button>}
+        </label>
+    );
+}
 
 // ── pergamin i kreska ────────────────────────────────────────────────────────
 function pergamin(ctx: CanvasRenderingContext2D, w: number, h: number) {
@@ -255,6 +272,8 @@ function KartaWpisu({ w, odswiez, ustawBlad }: { w: Wpis; odswiez: () => void; u
     const [rysuje, setRysuje] = useState(false);
     const [dogrywa, setDogrywa] = useState(false);
     const [wysyla, setWysyla] = useState(false);
+    const [fotka, setFotka] = useState<File | null>(null);
+    const [zdjeciem, setZdjeciem] = useState(false);
     const glosnosc = useRef(0);
     const n = useNagrywarka(glosnosc);
     const slowo = w.stado.find((s) => s.rodzaj === 'slowo');
@@ -267,10 +286,12 @@ function KartaWpisu({ w, odswiez, ustawBlad }: { w: Wpis; odswiez: () => void; u
             <div className="rounded-xl bg-[#f3e4c4] p-4 text-[#2c1810]">
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-[#7a5230]">
                     <span>📅 {new Date(w.kiedy).toLocaleString('pl-PL', { dateStyle: 'full', timeStyle: 'short' })}</span>
-                    <button onClick={() => akcja(() => zMostu(`/api/zywa-ksiega/${w.id}`, { method: 'PUT', body: JSON.stringify({ publiczny: !w.publiczny }) }))} className="rounded-sm border border-[#b08a5a] px-1.5" title="Publiczny odczyt dla świata ruszy w kroku 3 (wizytówka, otakos.wtf)">{w.publiczny ? '🌍 dla świata' : '🔒 tylko ja'}</button>
+                    <button onClick={() => akcja(() => zMostu(`/api/zywa-ksiega/${w.id}`, { method: 'PUT', body: JSON.stringify({ publiczny: !w.publiczny }) }))} className="rounded-sm border border-[#b08a5a] px-1.5" title="🌍 = widać na otakos.wtf (przez tunel Katedry), 🔒 = tylko w tej Katedrze">{w.publiczny ? '🌍 dla świata' : '🔒 tylko ja'}</button>
                     <button onClick={() => { if (confirm('Wpis pójdzie do kosza Księgi (_kosz) — usunąć?')) void akcja(() => zMostu(`/api/zywa-ksiega/${w.id}`, { method: 'DELETE' })); }} className="ml-auto text-[#a0522d] hover:text-rose-700">🗑</button>
                 </div>
+                {w.zdjecie && <img src={plikUrl(w, w.zdjecie.plik)} alt="Zdjęcie Suwerena" className="float-right mb-2 ml-3 max-h-64 w-auto max-w-[45%] rounded-lg border-2 border-[#5c3a21] object-cover shadow-md" />}
                 <p className="whitespace-pre-wrap font-serif text-lg leading-relaxed">{w.tekst}</p>
+                <div className="clear-both" />
                 {w.nagranie && <video src={plikUrl(w, w.nagranie.plik)} controls className="mt-3 max-h-80 w-full rounded-lg border-2 border-[#5c3a21] bg-black" />}
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <div className="rounded-lg border border-[#c4a168] bg-[#efdcb4] p-3 text-sm">
@@ -288,12 +309,20 @@ function KartaWpisu({ w, odswiez, ustawBlad }: { w: Wpis; odswiez: () => void; u
                 <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
                     {w.stado.some((s) => s.stan === 'blad') && <button onClick={() => akcja(() => zMostu(`/api/zywa-ksiega/${w.id}/stado`, { method: 'POST' }))} className="rounded-sm border border-[#8b5a2b] px-2 py-0.5">↻ stado jeszcze raz</button>}
                     <button onClick={() => setRysuje(!rysuje)} className="rounded-sm border border-[#8b5a2b] px-2 py-0.5">✒️ dorysuj na pergaminie</button>
+                    <button onClick={() => setZdjeciem(!zdjeciem)} className="rounded-sm border border-[#8b5a2b] px-2 py-0.5">📷 {w.zdjecie ? 'zmień zdjęcie' : 'dodaj zdjęcie'}</button>
+                    {w.zdjecie && <button onClick={() => { if (confirm('Zdjąć zdjęcie z wpisu?')) void akcja(() => zMostu(`/api/zywa-ksiega/${w.id}/zdjecie`, { method: 'DELETE' })); }} className="rounded-sm border border-[#8b5a2b] px-2 py-0.5">✕ zdjęcie</button>}
                     <button onClick={() => setDogrywa(!dogrywa)} className="rounded-sm border border-[#8b5a2b] px-2 py-0.5">🎥 {w.nagranie ? 'nagraj ponownie' : 'dograj nagranie'}</button>
                 </div>
             </div>
             {rysuje && <div className="p-2"><PlotnoRysunku onAnuluj={() => setRysuje(false)} onZapisz={async (klatki, tytul) => {
                 await akcja(() => zMostu(`/api/zywa-ksiega/${w.id}/rysunek`, { method: 'POST', body: JSON.stringify({ tytul, rysunek: { klatki } }) })); setRysuje(false);
             }} /></div>}
+            {zdjeciem && <div className="space-y-2 p-2">
+                <WyborZdjecia plik={fotka} ustaw={setFotka} />
+                {fotka && <button disabled={wysyla} onClick={async () => {
+                    setWysyla(true); await akcja(() => wyslijZdjecie(w.id, fotka)); setWysyla(false); setZdjeciem(false); setFotka(null);
+                }} className="rounded-sm bg-amber-500 px-3 py-1 text-xs font-bold text-slate-950">{wysyla ? 'zapisuję zdjęcie…' : '💾 dołóż zdjęcie do wpisu'}</button>}
+            </div>}
             {dogrywa && <div className="space-y-2 p-2">
                 <PanelNagrania n={n} glosnosc={glosnosc} znakow={0} />
                 {n.nagranie && <button disabled={wysyla} onClick={async () => {
@@ -312,6 +341,7 @@ export default function ZywaKsiega() {
     const [publiczny, setPubliczny] = useState(true);
     const [zapisuje, setZapisuje] = useState('');
     const [blad, setBlad] = useState('');
+    const [fotka, setFotka] = useState<File | null>(null);
     const glosnosc = useRef(0);
     const n = useNagrywarka(glosnosc);
 
@@ -329,11 +359,12 @@ export default function ZywaKsiega() {
         try {
             setZapisuje('zapisuję Iskrę…');
             const { wpis } = await zMostu<{ wpis: Wpis }>('/api/zywa-ksiega', { method: 'POST', body: JSON.stringify({ tekst, publiczny }) });
+            if (fotka) { setZapisuje('zapisuję zdjęcie…'); await wyslijZdjecie(wpis.id, fotka); }
             if (n.nagranie) {
                 setZapisuje('zapisuję nagranie (ffmpeg)…');
                 await zMostu(`/api/zywa-ksiega/${wpis.id}/nagranie`, { method: 'POST', body: n.nagranie, surowe: true, headers: { 'Content-Type': 'video/webm' } });
             }
-            setTekst(''); n.odrzuc(); await odswiez();
+            setTekst(''); setFotka(null); n.odrzuc(); await odswiez();
         } catch (e) { setBlad((e as Error).message); } finally { setZapisuje(''); }
     };
 
@@ -348,12 +379,13 @@ export default function ZywaKsiega() {
                 <div className="text-sm font-bold text-amber-200">✨ Wrzutnia Iskry</div>
                 <textarea value={tekst} onChange={(e) => setTekst(e.target.value)} maxLength={4000} rows={4} placeholder="Parę słów z przepływu…"
                     className="w-full rounded-xl border border-amber-700/40 bg-black/40 p-3 font-serif text-base text-amber-50 placeholder:text-amber-200/30" />
+                <WyborZdjecia plik={fotka} ustaw={setFotka} />
                 <PanelNagrania n={n} glosnosc={glosnosc} znakow={tekst.length} />
                 <div className="flex flex-wrap items-center gap-3">
-                    <label className="flex items-center gap-1 text-xs text-amber-200/80"><input type="checkbox" checked={publiczny} onChange={(e) => setPubliczny(e.target.checked)} /> 🌍 dla świata (krok 3: wizytówka i otakos.wtf)</label>
+                    <label className="flex items-center gap-1 text-xs text-amber-200/80"><input type="checkbox" checked={publiczny} onChange={(e) => setPubliczny(e.target.checked)} /> 🌍 dla świata (otakos.wtf)</label>
                     <button disabled={!tekst.trim() || !!zapisuje || n.stan === 'nagrywa'} onClick={zostaw}
                         className="ml-auto rounded-xl bg-gradient-to-r from-amber-500 to-amber-300 px-4 py-2 text-sm font-bold text-slate-950 disabled:opacity-40">
-                        {zapisuje || `📖 Zostaw Iskrę w Księdze${n.nagranie ? ' (z nagraniem)' : ''}`}
+                        {zapisuje || `📖 Zostaw Iskrę w Księdze${[fotka && 'zdjęcie', n.nagranie && 'nagranie'].filter(Boolean).length ? ` (z: ${[fotka && 'zdjęcie', n.nagranie && 'nagranie'].filter(Boolean).join(', ')})` : ''}`}
                     </button>
                 </div>
                 {blad && <div className="text-xs text-rose-300">⚠ {blad}</div>}

@@ -156,3 +156,34 @@ test('🌍 dla świata: tylko wpisy publiczne i gotowe dodatki; plik prywatnego 
     assert.ok(!czyWizytowka(req('GET', `/wizytowka/ksiega/${jawny.id}/wpis.json`)));
     assert.ok(!czyWizytowka(req('GET', '/api/zywa-ksiega')));
 });
+
+test('zdjęcie we wpisie: obraz → JPEG ≤ 2048 px bez metadanych, trasa HTTP, publicznie tylko z wpisu „dla świata”', async () => {
+    const kat = tmp(); const a = atrapy(kat);
+    const K = utworzZywaKsiege(a.cfg);
+    const app = express(); app.use(express.json()); zamontujTrasyZywejKsiegi(app, K, { raw: express.raw });
+    const srv = app.listen(0); const url = `http://127.0.0.1:${srv.address().port}`;
+    try {
+        const w = await K.dodaj({ tekst: 'Moje zdjęcie z facjatą.' });
+        const we = path.join(kat, 'duze.png');
+        execFileSync(ffmpegPath, ['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=teal:s=3000x1500', '-frames:v', '1', '-metadata', 'comment=GPS 52.1 4.3', we]);
+        const r = await fetch(`${url}/api/zywa-ksiega/${w.id}/zdjecie`, { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: fs.readFileSync(we) });
+        const j = await r.json();
+        assert.equal(j.success, true, j.message);
+        assert.equal(j.wpis.zdjecie.plik, 'zdjecie.jpg');
+        const jpg = path.join(kat, 'zywa-ksiega', w.id, 'zdjecie.jpg');
+        const info = (() => { try { execFileSync(ffmpegPath, ['-hide_banner', '-i', jpg]); } catch (e) { return String(e.stderr); } })();
+        assert.match(info, /mjpeg.*2048x1024/);
+        assert.doesNotMatch(info, /GPS/);
+        assert.equal(fs.existsSync(path.join(kat, 'zywa-ksiega', w.id, 'praca')), false);
+        const zle = await fetch(`${url}/api/zywa-ksiega/${w.id}/zdjecie`, { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: Buffer.from('to nie obraz') });
+        assert.equal(zle.status, 400);
+        assert.equal((await K.czytaj(w.id)).zdjecie.plik, 'zdjecie.jpg');   // stare zostaje
+        const pub = await (await fetch(`${url}/wizytowka/ksiega`)).json();
+        assert.ok(pub.wpisy[0].zdjecie.url.startsWith(`/wizytowka/ksiega/${w.id}/zdjecie.jpg?v=`), pub.wpisy[0].zdjecie.url);
+        assert.equal((await fetch(`${url}/wizytowka/ksiega/${w.id}/zdjecie.jpg`)).status, 200);
+        await K.ustaw(w.id, { publiczny: false });
+        assert.equal((await fetch(`${url}/wizytowka/ksiega/${w.id}/zdjecie.jpg`)).status, 404);
+        assert.equal((await (await fetch(`${url}/api/zywa-ksiega/${w.id}/zdjecie`, { method: 'DELETE' })).json()).wpis.zdjecie, null);
+        assert.equal(fs.existsSync(jpg), false);
+    } finally { srv.close(); }
+});
