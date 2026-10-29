@@ -1123,6 +1123,16 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 } });
                 const nowe = wylowPliki(odp.tekst);
                 if (!nowe.length) {
+                    // 🔎 diagnoza (2026-10-29: Qwen przy pełnej prośbie produkcji oddawał 4× „bez bloków PLIK”, przy małej —
+                    // poprawnie): surowa odpowiedź i koniec prośby do _OtakOs_Wymiar/kodeks/bez-plikow/ (≤ 10 ostatnich)
+                    if (cfg.katalogDiagnozy) {
+                        const k = path.join(cfg.katalogDiagnozy, 'bez-plikow');
+                        await fs.mkdir(k, { recursive: true }).catch(() => {});
+                        await fs.writeFile(path.join(k, `${new Date().toISOString().replace(/[:.]/g, '-')}-${projektId}-r${runda}.txt`),
+                            `MODEL: ${z.model}\nTOKENY: ${odp.tokeny} / okno ${odp.numCtx}\nPROŚBA: ${prompt.length} znaków + system ${systemKodeksa.length}\n\n===== KONIEC PROŚBY (ostatnie 4000 znaków) =====\n${prompt.slice(-4000)}\n\n===== ODPOWIEDŹ MODELU =====\n${odp.tekst}`).catch(() => {});
+                        const stare = (await fs.readdir(k).catch(() => [])).sort().slice(0, -10);
+                        for (const s of stare) await fs.rm(path.join(k, s), { force: true }).catch(() => {});
+                    }
                     // chmura mówi wprost, czy ucięła odpowiedź (limit WYJŚCIA); lokalna Ollama — okno kontekstu num_ctx
                     const sufit = typeof odp.obciete === 'boolean' ? odp.obciete : odp.tokeny >= (odp.numCtx ?? NUM_CTX) - 64;
                     feedback = sufit && typeof odp.obciete === 'boolean'

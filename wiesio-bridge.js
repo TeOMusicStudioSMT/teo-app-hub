@@ -8219,6 +8219,7 @@ AppStudio.skonfiguruj({
 });
 // Chrome puppeteera ładujemy leniwie — przy pierwszym teście, nie przy starcie mostu.
 AppStudio.skonfiguruj({ podpowiedz: (o) => Jajo.podpowiedzKodeksowi(o) });   // 💡 JaJo Mistrza: rada od 3. rundy (services/JajoMistrza.js)
+AppStudio.skonfiguruj({ katalogDiagnozy: path.join(ANTIGRAVITY_DIR, 'kodeks') });   // 🔎 odpowiedzi „bez bloków PLIK” do wglądu
 // 📚 Jadziunia w Game Studio (services/JadziuniaGier.js): skille z TeO_Skille do każdego zadania gry — wektory z Ollamy, zapas słownikiem
 const JadziuniaGier = utworzJadziunieGier({
     katalog: path.join(__dirname, 'TeO_Skille'),
