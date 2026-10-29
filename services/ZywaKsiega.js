@@ -70,7 +70,8 @@ export function wciazPoPolsku(tekst) {
     const t = ` ${String(tekst ?? '').toLowerCase()} `;
     const litery = (t.match(/\p{L}/gu) ?? []).length || 1;
     const diakrytyki = (t.match(/[ąćęłńóśźż]/g) ?? []).length;
-    const slowka = (t.match(/[\s,.;:!?„"(](i|w|z|na|się|jest|nie|to|że|do|od|po|czy|ale|lecz|jak|kto|niech|tego|iż)(?=[\s,.;:!?”")])/g) ?? []).length;
+    // tylko słówka JEDNOZNACZNIE polskie — „i”, „to”, „do”, „na”, „no” są też angielskie (fałszywy alarm na żywo 2026-10-29)
+    const slowka = (t.match(/[\s,.;:!?„"(](się|jest|nie|że|czy|ale|lecz|jak|kto|niech|tego|iż|oraz|jestem|który|która|bo|już|tylko|jeszcze|gdy)(?=[\s,.;:!?”")])/g) ?? []).length;
     return diakrytyki / litery > 0.03 || slowka >= 3;
 }
 

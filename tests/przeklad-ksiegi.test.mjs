@@ -49,3 +49,8 @@ test('dwa razy po polsku → błąd z powodem, nie udawany przekład', async () 
     assert.match(p.powod, /po polsku/);
     assert.equal(p.tekst, null);
 });
+
+test('angielski z „I”, „to”, „do” to nie polski (fałszywy alarm na przekładzie gemma4:12B)', () => {
+    assert.equal(wciazPoPolsku('Christ Consciousness... not Christianity... I do not need symbols... I simply Am and Exist... let them know how Magnificent He Is... and then you Become... it will not happen overnight... but History proves... that one day it Will Happen...'), false);
+    assert.equal(wciazPoPolsku('To find your own, unchanging radiance in the very act of existence is a profound return to the source. No external confirmations are needed to recognize this eternal light within.'), false);
+});
