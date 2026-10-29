@@ -30,10 +30,10 @@ function atrapy(kat, { slowo = 'SŁOWO: Twoje słowa niosą poranne światło. S
 }
 
 test('odczyt słowa stada i rysunku AniDoodle', () => {
-    assert.deepEqual(odczytajSlowo('<think>x</think>**SŁOWO:** Ciepłe słowa\nna dwa wiersze.\nOBRAZ: a calm forest of light and stars'), { slowo: 'Ciepłe słowa na dwa wiersze.', obraz: 'a calm forest of light and stars' });
+    assert.deepEqual(odczytajSlowo('<think>x</think>**SŁOWO:** Ciepłe słowa\nna dwa wiersze.\nOBRAZ: a calm forest of light and stars'), { slowo: 'Ciepłe słowa na dwa wiersze.', obraz: 'a calm forest of light and stars', styl: null });
     assert.equal(odczytajSlowo('bez formatu'), null);
     // na żywo 2026-10-29: etykieta po angielsku w tej samej linii wpadała do słowa
-    assert.deepEqual(odczytajSlowo('SŁOWO: Wspólne ciepło koi duszę. Image: A gentle flow of light.'), { slowo: 'Wspólne ciepło koi duszę.', obraz: 'A gentle flow of light.' });
+    assert.deepEqual(odczytajSlowo('SŁOWO: Wspólne ciepło koi duszę. Image: A gentle flow of light.'), { slowo: 'Wspólne ciepło koi duszę.', obraz: 'A gentle flow of light.', styl: null });
     assert.equal(odczytajSlowo('SŁOWO: Obraz świata jest jasny dla nas.').slowo, 'Obraz świata jest jasny dla nas.');
     assert.equal(odczytajSlowo('SŁOWO: Dosyć długie zdanie bez obrazu.').obraz, null);
     const r = oczyscRysunek({ klatki: [[{ kolor: '#aa0000', grubosc: 99, punkty: [[0.1, 0.1], [0.5, 0.5], [2, 2]] }, { punkty: [[0.3, 0.3]] }], [], [], []] });

@@ -19,6 +19,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { nagranieDoMp4 } from './OdcinkiStudia.js';
+import { listaDlaKronikarza, znajdzStyl, sufiksStylu } from './StylePalety.js';
 
 export const MAX_TEKSTU = 4000;
 export const MAX_RYSUNKU = 300_000;   // JSON klatek AniDoodle
@@ -39,15 +40,28 @@ export const SYSTEM_SLOWA = 'Jesteś Kronikarzem stada TeOgochi Katedry OtakOS. 
 export const STYL_ILUSTRACJI = ', illuminated manuscript illustration on aged parchment, ink line and gold leaf, warm amber and deep cyan, '
     + 'soft glow, hand-drawn, no text, no letters, no watermark';
 
-/** „SŁOWO: … / OBRAZ: …” → { slowo, obraz } albo null. */
+/**
+ * 🎨 Z listą stylów anidoodle (services/StylePalety.js) Kronikarz dopisuje trzecią linię „STYL: <id>” — sposób robienia
+ * znaku, który pasuje do nastroju Iskry. Bez listy = dawne dwie linie i stały styl Palety.
+ */
+export function systemSlowa(listaStylow = '') {
+    if (!listaStylow) return SYSTEM_SLOWA;
+    return SYSTEM_SLOWA.replace('FORMAT (dokładnie dwie linie):', 'Na koniec wybierz JEDEN styl ilustracji z listy — ten, którego medium najlepiej oddaje nastrój słów '
+        + '(wpisz samo id z listy):\n' + listaStylow + '\nFORMAT (dokładnie trzy linie):')
+        + '\nSTYL: <id z listy>';
+}
+
+/** „SŁOWO: … / OBRAZ: … / STYL: …” → { slowo, obraz, styl } albo null (styl = surowe id; listę sprawdza StylePalety). */
 export function odczytajSlowo(tekst) {
     const t = String(tekst ?? '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/\*\*/g, '');
-    // etykieta obrazu bywa po angielsku i w tej samej linii („… duszę. Image: a gentle flow…”) — nie może wejść do słowa
-    const ETYKIETA_OBRAZU = /(?:^|\s)(?:OBRAZ|IMAGE|PICTURE|KADR)\s*:/i;
+    // etykiety bywają po angielsku i w tej samej linii („… duszę. Image: a gentle flow…”) — nie mogą wejść do słowa ani opisu
+    const ETYKIETA_OBRAZU = /(?:^|\s)(?:OBRAZ|IMAGE|PICTURE|KADR|STYL|STYLE)\s*:/i;
+    const ETYKIETA_STYLU = /(?:^|\s)(?:STYL|STYLE)\s*:/i;
     const slowo = t.match(/S[ŁL]OWO\s*:\s*([\s\S]*)/i)?.[1]?.split(ETYKIETA_OBRAZU)[0]?.replace(/\s+/g, ' ').trim();
-    const obraz = t.match(/(?:OBRAZ|IMAGE|PICTURE|KADR)\s*:\s*([\s\S]+)/i)?.[1]?.split('\n')[0]?.trim();
+    const obraz = t.match(/(?:OBRAZ|IMAGE|PICTURE|KADR)\s*:\s*([\s\S]+)/i)?.[1]?.split('\n')[0]?.split(ETYKIETA_STYLU)[0]?.trim();
+    const styl = t.match(/(?:^|\s)(?:STYL|STYLE)\s*:\s*([^\n]+)/i)?.[1]?.trim() || null;
     if (!slowo || slowo.length < 10) return null;
-    return { slowo: slowo.slice(0, 900), obraz: obraz && obraz.length >= 10 ? obraz.slice(0, 600) : null };
+    return { slowo: slowo.slice(0, 900), obraz: obraz && obraz.length >= 10 ? obraz.slice(0, 600) : null, styl: styl ? styl.slice(0, 60) : null };
 }
 
 /** Rysunek AniDoodle: { klatki: [[{ kolor, grubosc, punkty: [[x,y]…] }…]] } — współrzędne 0–1, 1–3 klatki. */
@@ -67,6 +81,20 @@ export function oczyscRysunek(r) {
 const dzisiaj = (d = new Date()) => d.toISOString().slice(0, 10).replace(/-/g, '');
 /** `piszModelem` mostu oddaje { tekst, silnik } — przyjmujemy też goły napis. */
 const tekstOdpowiedzi = (r) => (typeof r === 'string' ? r : r?.tekst ?? '');
+/**
+ * Podmiana pliku na Windowsie pada (EPERM/EBUSY/EACCES), gdy ktoś go akurat czyta — Hub i StoL odświeżają Księgę
+ * co kilka sekund, a stado w tym czasie zapisuje. Krótkie ponowienia zamiast utraconego zapisu (złapane w testach 2026-10-29).
+ */
+export async function podmien(z, na, prob = 8) {
+    for (let i = 0; ; i++) {
+        try { return await fs.rename(z, na); }
+        catch (e) {
+            if (i >= prob || !['EPERM', 'EBUSY', 'EACCES'].includes(e.code)) throw e;
+            await new Promise((r) => setTimeout(r, 15 * (i + 1)));
+        }
+    }
+}
+
 /** ComfyUI budzony przez most mówi „wstaje” — to nie porażka, tylko chwila czekania. */
 export const COMFY_WSTAJE = /wstaje|budz|startu|starting|not ready/i;
 
@@ -74,6 +102,9 @@ export function utworzZywaKsiege(cfg = {}) {
     const katalog = path.join(cfg.katalog ?? path.join(process.cwd(), '_OtakOs_Wymiar'), 'zywa-ksiega');
     const kosz = path.join(katalog, '_kosz');
     const dir = (id) => path.join(katalog, id);
+    // 🎨 style Palety ze skilla anidoodle (cfg.style = StylePalety.wczytajStyle()); pusta lista = dawny jeden styl
+    const style = Array.isArray(cfg.style) ? cfg.style : [];
+    const SYSTEM = systemSlowa(listaDlaKronikarza(style));
     const plikWpisu = (id) => path.join(dir(id), 'wpis.json');
     const kolejka = [];
     let pracuje = false;
@@ -90,7 +121,7 @@ export function utworzZywaKsiege(cfg = {}) {
             await f(w);
             w.zmieniony = new Date().toISOString();
             await fs.writeFile(`${plikWpisu(id)}.tmp`, JSON.stringify(w, null, 2), 'utf8');
-            await fs.rename(`${plikWpisu(id)}.tmp`, plikWpisu(id));
+            await podmien(`${plikWpisu(id)}.tmp`, plikWpisu(id));
             return w;
         });
         zapis = krok.catch(() => {});
@@ -147,12 +178,15 @@ export function utworzZywaKsiege(cfg = {}) {
             try {
                 if (!cfg.chat) throw new Error('most nie podał modelu stada');
                 const model = await cfg.modelDla?.('kronikarz');
-                let s = odczytajSlowo(tekstOdpowiedzi(await cfg.chat(model, SYSTEM_SLOWA, `SŁOWA SUWERENA:\n${w.tekst}`)));
-                if (!s) s = odczytajSlowo(tekstOdpowiedzi(await cfg.chat(model, SYSTEM_SLOWA, `SŁOWA SUWERENA:\n${w.tekst}\n\nPoprzednio format był zły. Dokładnie dwie linie: „SŁOWO: …” i „OBRAZ: …”.`)));
+                let s = odczytajSlowo(tekstOdpowiedzi(await cfg.chat(model, SYSTEM, `SŁOWA SUWERENA:\n${w.tekst}`)));
+                if (!s) s = odczytajSlowo(tekstOdpowiedzi(await cfg.chat(model, SYSTEM, `SŁOWA SUWERENA:\n${w.tekst}\n\nPoprzednio format był zły. Linie: „SŁOWO: …”, „OBRAZ: …”${style.length ? ' i „STYL: <id z listy>”' : ''}.`)));
                 if (!s) throw new Error('Kronikarz nie oddał formatu SŁOWO/OBRAZ (dwie próby)');
                 w = await zmien(id, (x) => {
                     Object.assign(dodatek(x, 'slowo'), { stan: 'gotowe', tekst: s.slowo, model: model ?? null });
                     if (s.obraz) dodatek(x, 'ilustracja').prompt = s.obraz;
+                    // styl spoza listy (albo bez listy) = dawny styl; nazwę widać w Hubie, StoL-u i na otakos.wtf
+                    const st = znajdzStyl(style, s.styl);
+                    dodatek(x, 'ilustracja').styl = st ? { id: st.id, nazwa: st.nazwa } : null;
                 });
             } catch (e) {
                 w = await zmien(id, (x) => { Object.assign(dodatek(x, 'slowo'), { stan: 'blad', powod: String(e.message || e).slice(0, 300) }); });
@@ -165,7 +199,8 @@ export function utworzZywaKsiege(cfg = {}) {
             try {
                 if (!cfg.rysuj) throw new Error('most nie podał rysowania (FLUX)');
                 // bez opisu Kronikarza NIE wklejamy słów Suwerena — FLUX pisał je na pergaminie jako krzaki (na żywo 2026-10-29)
-                const prompt = `${il.prompt || 'a symbolic scene of warm morning light, a winding path and old roots, a quiet hopeful mood'}${STYL_ILUSTRACJI}`;
+                const st = il.styl ? style.find((x) => x.id === il.styl.id) : null;
+                const prompt = `${il.prompt || 'a symbolic scene of warm morning light, a winding path and old roots, a quiet hopeful mood'}${st ? sufiksStylu(st) : STYL_ILUSTRACJI}`;
                 let zrodlo = null;
                 for (let proba = 0; ; proba++) {
                     try { zrodlo = await cfg.rysuj({ prompt, prefiks: `katedra/zywa-ksiega/${id}` }); break; }
@@ -274,7 +309,7 @@ export function utworzZywaKsiege(cfg = {}) {
             return {
                 id: w.id, kiedy: w.kiedy, tekst: w.tekst,
                 slowo: slowo ? { kto: slowo.kto, tekst: slowo.tekst } : null,
-                ilustracja: il ? { kto: il.kto, url: `/wizytowka/ksiega/${w.id}/${il.plik}?v=${v}` } : null,
+                ilustracja: il ? { kto: il.kto, styl: il.styl?.nazwa ?? null, url: `/wizytowka/ksiega/${w.id}/${il.plik}?v=${v}` } : null,
                 zdjecie: w.zdjecie ? { url: `/wizytowka/ksiega/${w.id}/${w.zdjecie.plik}?v=${encodeURIComponent(w.zdjecie.kiedy)}` } : null,
                 nagranie: w.nagranie ? { url: `/wizytowka/ksiega/${w.id}/${w.nagranie.plik}?v=${v}`, sekundy: w.nagranie.sekundy } : null,
                 rysunki: w.rysunki.map((r) => ({ id: r.id, kto: r.kto, tytul: r.tytul, klatki: r.klatki })),

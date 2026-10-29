@@ -29,3 +29,11 @@ niesie skrypty (Python, Go) i pliki pomocnicze — to materiał dla agenta, Kate
 ## Mapa na nasze etapy 2 Wyspy
 niagara+blueprints → choreografia bota; enhanced-input → pierścień/portale; behavior-trees → strażnicy;
 survival-crafting+save-systems → Stocznia; procedural-gen → rozrzut bazy; unreal-packaging → granie .exe.
+
+## 🎨 Półka `sztuka` (2026-10-29)
+`sztuka/anidoodle` — skill **anidoodle** (https://github.com/alexgreensh/anidoodle, Apache-2.0, Alex Greenshpun;
+LICENSE, NOTICE i `PROVENANCE-KATEDRA.md` w katalogu skilla): obrazy, filmy rysujące się same, animacje i lekcje
+rysunku w 32 stylach, wszystko pisane kodem. Silnik (`engine/`, Node + three.js + Playwright/Chromium) to robota dla
+agenta piszącego kod (Główny / Claude Code) — Katedra go sama nie uruchamia i nic nie doinstalowuje.
+Stado bierze z niego wiedzę: `references/styles/INDEX.md` → Paleta w Żywej Księdze maluje w stylu wybranym przez
+Kronikarza (`services/StylePalety.js`). Jadziunia gier tej półki nie widzi (tylko półki gier).

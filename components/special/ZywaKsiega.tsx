@@ -13,7 +13,7 @@ const MOST = 'http://127.0.0.1:3001';
 
 interface Kreska { kolor: string; grubosc: number; punkty: [number, number][] }
 interface Rysunek { id: string; kto: string; tytul: string | null; kiedy: string; klatki: Kreska[][] }
-interface Dodatek { rodzaj: 'slowo' | 'ilustracja'; kto: string; stan: 'czeka' | 'robi' | 'gotowe' | 'blad'; tekst?: string | null; plik?: string | null; powod?: string | null; model?: string | null }
+interface Dodatek { rodzaj: 'slowo' | 'ilustracja'; kto: string; stan: 'czeka' | 'robi' | 'gotowe' | 'blad'; tekst?: string | null; plik?: string | null; powod?: string | null; model?: string | null; styl?: { id: string; nazwa: string } | null }
 interface Wpis { id: string; kiedy: string; tekst: string; publiczny: boolean; zdjecie?: { plik: string; kiedy: string } | null; nagranie: { plik: string; kiedy: string; sekundy: number | null } | null; rysunki: Rysunek[]; stado: Dodatek[] }
 
 const KTO: Record<string, string> = { kronikarz: '📜 Kronikarz', paleta: '🎨 Paleta', suweren: '👑 Suweren' };
@@ -299,7 +299,7 @@ function KartaWpisu({ w, odswiez, ustawBlad }: { w: Wpis; odswiez: () => void; u
                         {slowo?.stan === 'gotowe' ? <p className="font-serif italic">{slowo.tekst}</p> : <div className="text-[11px]">{stanDodatku(slowo)}</div>}
                     </div>
                     <div className="overflow-hidden rounded-lg border border-[#c4a168] bg-[#efdcb4]">
-                        <div className="px-3 pt-2 text-[11px] font-bold text-[#7a5230]">{KTO.paleta} maluje</div>
+                        <div className="px-3 pt-2 text-[11px] font-bold text-[#7a5230]">{KTO.paleta} maluje{il?.styl ? <span className="font-normal" title="styl ze skilla anidoodle (Apache-2.0)"> · {il.styl.nazwa}</span> : null}</div>
                         {il?.stan === 'gotowe' && il.plik ? <img src={plikUrl(w, il.plik)} alt="Ilustracja stada" className="mt-1 w-full" /> : <div className="p-3 text-[11px]">{stanDodatku(il)}</div>}
                     </div>
                 </div>

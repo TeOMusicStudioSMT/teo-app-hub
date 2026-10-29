@@ -118,6 +118,7 @@ import * as Tlumacz        from './services/Tlumacz.js';
 import * as Glowny         from './services/Glowny.js';
 import { utworzArgoBoba }   from './services/ArgoBob.js';
 import { utworzZywaKsiege, zamontujTrasyZywejKsiegi } from './services/ZywaKsiega.js';
+import { wczytajStyle } from './services/StylePalety.js';
 import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei, odpowiedzGeminiZwiadu, SZUKAJ_W_GOOGLE } from './services/GolDnia.js';
 import { utworzZebrraTaniec, zamontujTrasyZebrraTanca, PROJEKT as PROJEKT_ZEBRRA_SPORTS } from './services/ZebrraTaniec.js';
 import { utworzMameLeon, zamontujTrasyMameLeon } from './services/MameLeonShow.js';
@@ -15452,6 +15453,7 @@ const GolDnia = utworzGolDnia({
 // 📖 Żywa Księga: Iskra Suwerena (słowa + nagranie twarzy) → stado dotwarza słowo (Kronikarz) i ilustrację (Paleta, FLUX)
 const ZywaKsiega = utworzZywaKsiege({
     katalog: ANTIGRAVITY_DIR,
+    style: wczytajStyle(__dirname),   // 🎨 32 style anidoodle (TeO_Skille/sztuka) — Kronikarz wybiera, Paleta maluje
     chat: (model, system, user) => piszModelem(model, system, user),
     modelDla: (id) => ModeleAgentow.modelDla(id),
     rysuj: async ({ prompt, prefiks }) => {
