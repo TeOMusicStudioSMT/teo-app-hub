@@ -55,6 +55,10 @@ export function oczyscRysunek(r) {
 }
 
 const dzisiaj = (d = new Date()) => d.toISOString().slice(0, 10).replace(/-/g, '');
+/** `piszModelem` mostu oddaje { tekst, silnik } — przyjmujemy też goły napis. */
+const tekstOdpowiedzi = (r) => (typeof r === 'string' ? r : r?.tekst ?? '');
+/** ComfyUI budzony przez most mówi „wstaje” — to nie porażka, tylko chwila czekania. */
+export const COMFY_WSTAJE = /wstaje|budz|startu|starting|not ready/i;
 
 export function utworzZywaKsiege(cfg = {}) {
     const katalog = path.join(cfg.katalog ?? path.join(process.cwd(), '_OtakOs_Wymiar'), 'zywa-ksiega');
@@ -133,8 +137,8 @@ export function utworzZywaKsiege(cfg = {}) {
             try {
                 if (!cfg.chat) throw new Error('most nie podał modelu stada');
                 const model = await cfg.modelDla?.('kronikarz');
-                let s = odczytajSlowo(await cfg.chat(model, SYSTEM_SLOWA, `SŁOWA SUWERENA:\n${w.tekst}`));
-                if (!s) s = odczytajSlowo(await cfg.chat(model, SYSTEM_SLOWA, `SŁOWA SUWERENA:\n${w.tekst}\n\nPoprzednio format był zły. Dokładnie dwie linie: „SŁOWO: …” i „OBRAZ: …”.`));
+                let s = odczytajSlowo(tekstOdpowiedzi(await cfg.chat(model, SYSTEM_SLOWA, `SŁOWA SUWERENA:\n${w.tekst}`)));
+                if (!s) s = odczytajSlowo(tekstOdpowiedzi(await cfg.chat(model, SYSTEM_SLOWA, `SŁOWA SUWERENA:\n${w.tekst}\n\nPoprzednio format był zły. Dokładnie dwie linie: „SŁOWO: …” i „OBRAZ: …”.`)));
                 if (!s) throw new Error('Kronikarz nie oddał formatu SŁOWO/OBRAZ (dwie próby)');
                 w = await zmien(id, (x) => {
                     Object.assign(dodatek(x, 'slowo'), { stan: 'gotowe', tekst: s.slowo, model: model ?? null });
@@ -151,7 +155,14 @@ export function utworzZywaKsiege(cfg = {}) {
             try {
                 if (!cfg.rysuj) throw new Error('most nie podał rysowania (FLUX)');
                 const prompt = `${il.prompt || `a symbolic scene inspired by these words: ${w.tekst.slice(0, 300)}`}${STYL_ILUSTRACJI}`;
-                const zrodlo = await cfg.rysuj({ prompt, prefiks: `katedra/zywa-ksiega/${id}` });
+                let zrodlo = null;
+                for (let proba = 0; ; proba++) {
+                    try { zrodlo = await cfg.rysuj({ prompt, prefiks: `katedra/zywa-ksiega/${id}` }); break; }
+                    catch (e) {
+                        if (!COMFY_WSTAJE.test(String(e.message)) || proba >= (cfg.probComfy ?? 6)) throw e;
+                        await new Promise((r) => setTimeout(r, cfg.czekajComfyMs ?? 30_000));
+                    }
+                }
                 if (!zrodlo || !fsSync.existsSync(zrodlo)) throw new Error('FLUX nie oddał pliku');
                 await fs.copyFile(zrodlo, path.join(dir(id), 'ilustracja.png'));
                 await zmien(id, (x) => { Object.assign(dodatek(x, 'ilustracja'), { stan: 'gotowe', plik: 'ilustracja.png', promptUzyty: prompt }); });

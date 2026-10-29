@@ -22,7 +22,8 @@ function atrapy(kat, { slowo = 'SŁOWO: Twoje słowa niosą poranne światło. S
         cfg: {
             katalog: kat, ffmpeg: ffmpegPath,
             modelDla: async (id) => `model-${id}`,
-            chat: async (model, system, user) => { wolania.chat.push({ model, system, user }); return typeof slowo === 'function' ? slowo(wolania.chat.length) : slowo; },
+            // jak piszModelem mostu: { tekst, silnik } (2026-10-29: goły napis w atrapie ukrył, że Księga czytała obiekt jako tekst)
+            chat: async (model, system, user) => { wolania.chat.push({ model, system, user }); return { tekst: typeof slowo === 'function' ? slowo(wolania.chat.length) : slowo, silnik: model }; },
             rysuj: async ({ prompt, prefiks }) => { wolania.rysuj.push({ prompt, prefiks }); return png; },
         },
     };
@@ -77,6 +78,16 @@ test('zły format Kronikarza → jedna poprawka; FLUX padł → błąd z powodem
     assert.equal(a.wolania.chat.length, 2, 'gotowe słowo nie liczy się drugi raz');
     assert.match(a.wolania.rysuj[0].prompt, /lantern/);
     await assert.rejects(K.ponowStado(w.id), /skończyło/);
+});
+
+test('ComfyUI dopiero wstaje → Paleta czeka i rysuje, zamiast od razu się poddać', async () => {
+    const kat = tmp(); const a = atrapy(kat);
+    let razy = 0; const rysuj = a.cfg.rysuj;
+    a.cfg.rysuj = async (o) => { if (++razy < 3) throw new Error('ComfyUI właśnie wstaje (~30 s od startu). Spróbuj ponownie za chwilę.'); return rysuj(o); };
+    const K = utworzZywaKsiege({ ...a.cfg, czekajComfyMs: 5 });
+    const w = await K.dodaj({ tekst: 'Ranek z budzącym się ComfyUI.' });
+    await czekaj(async () => (await K.czytaj(w.id)).stado[1].stan === 'gotowe');
+    assert.equal(razy, 3);
 });
 
 test('duch po restarcie: „robi” bez pracy → błąd z powodem', async () => {
