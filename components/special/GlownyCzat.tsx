@@ -33,6 +33,9 @@ const KLUCZ_OPERATORA = 'otakos_operator';
 const czytajOperatora = (): Operator => { try { return localStorage.getItem(KLUCZ_OPERATORA) === 'argo' ? 'argo' : 'glowny'; } catch { return 'glowny'; } };
 /** Małe modele (≤ 4B, „e2b/e4b") gubią się w narzędziach Claude Code — mówimy to przy wyborze, nie po porażce. */
 export const malyModel = (m: string) => /(^|[:\-_])(e[24]b|[0-4](\.\d+)?b)(\b|[-_:]|$)/i.test(m);
+/** Zgnieciony kwant (< 3 bity: IQ1/IQ2/Q2/ternarne) — duży model wciśnięty w kartę gubi format i narzędzia (2026-10-29: gemma-4-26B Q2_K → „kodem null bez wyniku”). */
+export const zgniecionyModel = (m: string) => /:(IQ1|IQ2|Q1|Q2|TQ)[_A-Z0-9]*$/i.test(m);
+const slabyModel = (m: string) => malyModel(m) || zgniecionyModel(m);
 const czytajModel = (op: Operator) => { try { return localStorage.getItem(OPERATORZY[op].kluczModelu) || ''; } catch { return ''; } };
 
 const KOLOR_RYZYKA: Record<string, string> = { niskie: 'border-emerald-500/50 bg-emerald-950/30', srednie: 'border-amber-500/50 bg-amber-950/30', wysokie: 'border-rose-500/60 bg-rose-950/40', nieznane: 'border-slate-500/50 bg-slate-900/50' };
@@ -160,9 +163,9 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
                     {stan && (operator === 'argo' ? stan.status !== 'offline' : !stan.chmura) && (
                         <select value={model} onChange={(e) => wybierzModel(e.target.value)}
                             title={`Model ${operator === 'argo' ? 'Argo BoBa (Gemini z Twojego konta)' : 'Głównego (Ollama)'}. Zmiana działa od następnej wiadomości — także w trwającej rozmowie.`}
-                            className={`max-w-44 rounded-sm border bg-black/50 px-1.5 py-0.5 text-[11px] ${operator === 'glowny' && malyModel(modelTeraz) ? 'border-amber-500/70 text-amber-200' : 'border-slate-700'}`}>
+                            className={`max-w-44 rounded-sm border bg-black/50 px-1.5 py-0.5 text-[11px] ${operator === 'glowny' && slabyModel(modelTeraz) ? 'border-amber-500/70 text-amber-200' : 'border-slate-700'}`}>
                             <option value="">domyślny ({stan.model})</option>
-                            {listaModeli.map((m) => <option key={m} value={m}>{operator === 'glowny' && malyModel(m) ? '⚠ ' : ''}{m}</option>)}
+                            {listaModeli.map((m) => <option key={m} value={m}>{operator === 'glowny' && slabyModel(m) ? '⚠ ' : ''}{m}</option>)}
                         </select>
                     )}
                     {!kompaktowy && sesje.length > 0 && (
@@ -179,6 +182,9 @@ export const GlownyCzat: React.FC<{ zrodlo?: string; zadanie?: string; obrazy?: 
             {operator === 'argo' && stan?.status === 'offline' && <div className="text-[11px] text-rose-300">⚠ Argo BoB offline: {stan.powod}</div>}
             {operator === 'glowny' && stan && !stan.chmura && malyModel(modelTeraz) && (
                 <div className="text-[10px] text-amber-300/90">⚠ {modelTeraz} to mały model — Claude Code potrzebuje mocnego w narzędziach (np. qwen3-coder, gpt-oss:20b, gemma4 26B/31B). Mały często mówi „nie mam narzędzia”, choć Katedra je ma.</div>
+            )}
+            {operator === 'glowny' && stan && !stan.chmura && !malyModel(modelTeraz) && zgniecionyModel(modelTeraz) && (
+                <div className="text-[10px] text-amber-300/90">⚠ {modelTeraz} to zgnieciony kwant (poniżej 3 bitów na wagę) — gubi format i narzędzia, a duży rozmiar dławi kartę. Lepszy model w Q4_K_M (np. Qwen3-Coder-30B-A3B).</div>
             )}
 
             {/* Rozmowa to treść (Suweren ↔ Główny), nie interfejs — Tłumacz ekranu jej nie rusza. */}

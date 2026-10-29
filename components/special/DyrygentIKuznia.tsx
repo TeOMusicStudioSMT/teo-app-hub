@@ -495,6 +495,8 @@ interface Kandydat {
     id: string; repo: string; kwant: string; gb: number; pobrania: number | null; polubienia: number | null;
     opinia: string | null; stan: 'nowy' | 'pobiera' | 'pobrany' | 'odrzucony' | 'blad'; blad?: string | null; postep?: string | null; ollama: string;
     zrodlo?: string; zweryfikowane?: boolean; url?: string;
+    /** MoE większy niż karta — część warstw w RAM (uwaga mówi ile) */
+    moe?: boolean; uwaga?: string;
     /** 🎼 silnik (wideo, muzyka, głos…) — nie GGUF; „Przyjmij” = do zainstalowania, nic się nie pobiera */
     rodzaj?: 'silnik'; dziedzina?: string; licencja?: string | null; komercyjna?: boolean | null;
 }
@@ -505,7 +507,7 @@ interface Kandydat {
  */
 export const ZwiadowcaPanel: React.FC = () => {
     const [lista, setLista] = useState<Kandydat[]>([]);
-    const [ostatni, setOstatni] = useState<{ kiedy: string; nowych: number } | null>(null);
+    const [ostatni, setOstatni] = useState<{ kiedy: string; nowych: number; pominiete?: { repo: string; powod: string }[] } | null>(null);
     const [vram, setVram] = useState<number | null>(null);
     const [trwa, setTrwa] = useState(false);
     const [etap, setEtap] = useState<string | null>(null);
@@ -516,7 +518,7 @@ export const ZwiadowcaPanel: React.FC = () => {
 
     const wczytaj = useCallback(async () => {
         try {
-            const d = await zMostu<{ kandydaci: Kandydat[]; ostatniZwiad: { kiedy: string; nowych: number } | null; trwa: boolean; vramGB: number }>('/api/zwiadowca/kandydaci');
+            const d = await zMostu<{ kandydaci: Kandydat[]; ostatniZwiad: { kiedy: string; nowych: number; pominiete?: { repo: string; powod: string }[] } | null; trwa: boolean; vramGB: number }>('/api/zwiadowca/kandydaci');
             setLista(d.kandydaci); setOstatni(d.ostatniZwiad); setTrwa(d.trwa); setVram(d.vramGB);
             if (d.trwa) { const s = await zMostu<{ etap: string | null }>('/api/zwiadowca/sondaz'); setEtap(s.etap); } else setEtap(null);
         } catch { /* most offline — panel pokaże pustą listę */ }
@@ -593,7 +595,13 @@ export const ZwiadowcaPanel: React.FC = () => {
                     {pracuje === 'link' ? '⟳ sprawdzam…' : '🔗 Sprawdź link'}
                 </button>
             </div>
-            {ostatni && <div className="text-[10px] text-slate-500">Ostatni zwiad: {new Date(ostatni.kiedy).toLocaleString('pl-PL')} · nowych: {ostatni.nowych}</div>}
+            {ostatni && <div className="text-[10px] text-slate-500">Ostatni zwiad: {new Date(ostatni.kiedy).toLocaleString('pl-PL')} · nowych: {ostatni.nowych}{ostatni.pominiete?.length ? ` · pominięte: ${ostatni.pominiete.length}` : ''}</div>}
+            {!!ostatni?.pominiete?.length && (
+                <details className="text-[10px] text-slate-500">
+                    <summary className="cursor-pointer">🙈 Widziane, ale nie zaproponowane (powody)</summary>
+                    {ostatni.pominiete.map((p) => <div key={p.repo} className="pl-3"><a href={`https://huggingface.co/${p.repo}`} target="_blank" rel="noreferrer" className="hover:underline">{p.repo}</a> — {p.powod}</div>)}
+                </details>
+            )}
             {!widoczne.length && !trwa && <div className="text-[11px] text-slate-500">Brak kandydatów — uruchom zwiad (albo daj go Nocnej Zmianie: robota „zwiadowca-hf").</div>}
             <div className="space-y-1.5">
                 {widoczne.map((k) => (
@@ -608,6 +616,7 @@ export const ZwiadowcaPanel: React.FC = () => {
                             </span>
                             <span className="text-slate-400">{k.rodzaj === 'silnik' ? `${NAZWA_RODZAJU[k.dziedzina ?? ''] ?? k.dziedzina} · ${licencjaZnacznik({ licencja: k.licencja ?? null, komercyjna: k.komercyjna ?? null })}` : `${k.kwant} · ${k.gb} GB`}{k.pobrania != null ? ` · ⬇ ${k.pobrania.toLocaleString('pl-PL')}` : ''}{k.polubienia != null ? ` · ♥ ${k.polubienia}` : ''}</span>
                         </div>
+                        {k.uwaga && <div className="mt-0.5 text-amber-300/90">🧩 {k.uwaga}</div>}
                         {k.opinia && <div className="mt-0.5 text-slate-300">🔭 {k.opinia}</div>}
                         {k.stan === 'blad' && <div className="mt-0.5 text-rose-300">✕ {k.blad}</div>}
                         <div className="mt-1 flex items-center gap-2">

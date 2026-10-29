@@ -88,6 +88,49 @@ test('Zwiadowca: zwiad → nowy kandydat z opinią i meldunek na szynie; już po
     assert.match(szyna.at(-1).tresc, /bez nowych modeli/);
 });
 
+test('Zwiadowca: MoE większy niż karta (Flint, -A3B) → kandydat z budżetem karta + pół RAM; za duży gęsty → pominięty Z POWODEM', async () => {
+    assert.ok(Zwiadowca.czyMoE('unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF'));
+    assert.ok(Zwiadowca.czyMoE('AtomicChat/Flint-GGUF', 'flint'));
+    assert.ok(!Zwiadowca.czyMoE('AtomicChat/Flint-GGUF'), 'bez architektury nazwa nie zdradza MoE');
+    assert.ok(!Zwiadowca.czyMoE('a/Llama-70B-GGUF', 'llama'));
+    assert.equal(Zwiadowca.limitMoE(6, 40), 25.4);
+    const flint = [{ path: 'Flint-AD-IQ2_XXS.gguf', size: 13.3e9 }, { path: 'Flint-AD-IQ3_S.gguf', size: 19.1e9 }, { path: 'Flint-AD-IQ4_XS.gguf', size: 24.5e9 }, { path: 'Flint-AD-Q8_0.gguf', size: 42.9e9 }];
+    const r = Zwiadowca.wybierzPlikZPowodem(flint, 6);
+    assert.equal(r.wybor, null);
+    assert.deepEqual(r.najmniejszy, { kwant: 'IQ3_S', gb: 19.1 }, 'najmniejszy NIEzgnieciony — do powodu');
+    assert.equal(Zwiadowca.wybierzPlik(flint, 6, { limitGB: 25.4 }).kwant, 'IQ4_XS');
+
+    const szyna = [];
+    Zwiadowca.skonfiguruj({
+        katalog: tmp(), zrodla: ['hf'], vramGB: 6, ramGB: 40, wlaczony: true, pisz: null,
+        szyna: { nadaj: async (z) => { szyna.push(z); } },
+        fetch: async (url) => {
+            if (url.endsWith('/api/tags')) return json({ models: [] });
+            if (url.includes('/api/models?search=')) return json([{ id: 'AtomicChat/Flint-GGUF', downloads: 5000 }, { id: 'gesty/Model-70B-GGUF', downloads: 10 }]);
+            if (url.includes('/api/models/AtomicChat/Flint-GGUF/tree/main')) return json(flint);
+            if (url.endsWith('/api/models/AtomicChat/Flint-GGUF')) return json({ gguf: { architecture: 'flint' } });
+            if (url.includes('/api/models/gesty/Model-70B-GGUF/tree/main')) return json([{ path: 'Model-70B-Q4_K_M.gguf', size: 42e9 }, { path: 'Model-70B-IQ2_XXS.gguf', size: 5e9 }]);
+            if (url.endsWith('/api/models/gesty/Model-70B-GGUF')) return json({ gguf: { architecture: 'llama' } });
+            return json({}, 404);
+        },
+    });
+    await Zwiadowca.zwiad({ zapytania: ['coder'] });
+    await czekaj(() => Zwiadowca.sondaz().stan !== 'trwa');
+    assert.equal(Zwiadowca.sondaz().stan, 'gotowe', Zwiadowca.sondaz().blad ?? '');
+    const { kandydaci, ostatniZwiad } = await Zwiadowca.kandydaci();
+    assert.deepEqual(kandydaci.map((k) => [k.repo, k.kwant, k.gb, k.moe]), [['AtomicChat/Flint-GGUF', 'IQ4_XS', 24.5, true]]);
+    assert.match(kandydaci[0].uwaga, /MoE \(flint\): 24\.5 GB > karta 6 GB — część warstw w RAM \(40 GB\)/);
+    assert.deepEqual(ostatniZwiad.pominiete.map((p) => p.repo), ['gesty/Model-70B-GGUF']);
+    assert.match(ostatniZwiad.pominiete[0].powod, /najmniejszy rozsądny plik Q4_K_M 42 GB > karta 6 GB \(mieszczą się tylko zgniecione IQ2_XXS\)/);
+    assert.match(Zwiadowca.sondaz().podsumowanie, /pominięte 1/);
+
+    // link do tego samego repo też przechodzi budżetem MoE (wcześniej: „nie mieści się w karcie”)
+    Zwiadowca.skonfiguruj({ katalog: tmp() });
+    const k = await Zwiadowca.zLinku('https://huggingface.co/AtomicChat/Flint-GGUF');
+    assert.equal(k.kwant ?? k.kandydat?.kwant, 'IQ4_XS');
+    Zwiadowca.skonfiguruj({ vramGB: 12 });   // konfiguracja jest wspólna dla kolejnych testów
+});
+
 test('Zwiadowca: akceptacja → ollama pull hf.co/…, karta modelu dla Dyrygenta; odrzucony znika z listy', async () => {
     const s = siec({ pull: [{ status: 'pulling manifest' }, { status: 'pulling abc', total: 100, completed: 50 }, { status: 'success' }] });
     const karty = [];

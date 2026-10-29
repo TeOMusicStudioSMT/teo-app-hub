@@ -25,6 +25,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import os from 'os';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 
@@ -38,6 +39,8 @@ let cfg = {
     fetch: (...a) => globalThis.fetch(...a),
     /** Ile GB VRAM ma karta (model ma się zmieścić z zapasem ~10%). */
     vramGB: Number(process.env.OTAKOS_VRAM_GB) || 12,
+    /** RAM komputera (GB) — model MoE może część warstw trzymać w RAM (aktywnych parametrów jest mało, więc chodzi znośnie). */
+    ramGB: Number(process.env.OTAKOS_RAM_GB) || Math.round(os.totalmem() / 1e9),
     zapytania: (process.env.OTAKOS_ZWIADOWCA_SZUKAJ || 'polish,bielik,qwen3,gemma,coder,llama').split(',').map((s) => s.trim()).filter(Boolean),
     /** ({ system, prompt }) → tekst — model Zwiadowcy; null = bez opinii */
     pisz: null,
@@ -114,7 +117,7 @@ async function zapisz(d) {
 
 /** Kwantyzacja z nazwy pliku GGUF: „Qwen3-8B-Q4_K_M.gguf" → "Q4_K_M". */
 export function kwant(nazwaPliku) {
-    const m = String(nazwaPliku).match(/(?:^|[-_.])((?:IQ|Q)\d(?:_[0-9A-Z]{1,2}){0,2}|BF16|F16|F32)(?=[-_.]|\.gguf$)/i);
+    const m = String(nazwaPliku).match(/(?:^|[-_.])((?:IQ|Q)\d(?:_[0-9A-Z]{1,3}){0,2}|BF16|F16|F32)(?=[-_.]|\.gguf$)/i);
     return m ? m[1].toUpperCase() : null;
 }
 
@@ -136,7 +139,7 @@ export const POWOD_ZGNIECIONY = 'poniżej 3 bitów na wagę (IQ1/IQ2/Q2/ternarne
 export function wybierzPlik(pliki, vramGB, opcje = {}) { return wybierzPlikZPowodem(pliki, vramGB, opcje).wybor; }
 
 /** Jak wybierzPlik, ale mówi też, które mieszczące się kwantyzacje odrzucono jako zgniecione. */
-export function wybierzPlikZPowodem(pliki, vramGB, { jedenPlik = false } = {}) {
+export function wybierzPlikZPowodem(pliki, vramGB, { jedenPlik = false, limitGB = null } = {}) {
     const grupy = new Map();
     for (const p of pliki ?? []) {
         const nazwa = String(p.path ?? p.nazwa ?? '');
@@ -148,7 +151,7 @@ export function wybierzPlikZPowodem(pliki, vramGB, { jedenPlik = false } = {}) {
         g.bajty += bajty; g.czesci++;
         grupy.set(k, g);
     }
-    const limit = vramGB * 0.9 * 1e9;
+    const limit = (limitGB ?? vramGB * 0.9) * 1e9;
     // Spoza HF kujemy jeden plik przez `ollama create` — modeli dzielonych na części tak nie złożymy.
     const mieszczace = [...grupy.values()].filter((g) => g.bajty > 0 && g.bajty <= limit && (!jedenPlik || g.czesci === 1));
     const pasujace = mieszczace.filter((g) => !zgniecionyKwant(g.kwant));
@@ -157,8 +160,28 @@ export function wybierzPlikZPowodem(pliki, vramGB, { jedenPlik = false } = {}) {
         return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
     const w = pasujace[0];
-    return { wybor: w ? { kwant: w.kwant, gb: Math.round(w.bajty / 1e8) / 10, plik: w.plik } : null, zgniecione: mieszczace.filter((g) => zgniecionyKwant(g.kwant)).map((g) => g.kwant) };
+    const wszystkie = [...grupy.values()].filter((g) => g.bajty > 0);
+    const najmniejszy = wszystkie.filter((g) => !zgniecionyKwant(g.kwant)).sort((a, b) => a.bajty - b.bajty)[0];
+    return {
+        wybor: w ? { kwant: w.kwant, gb: Math.round(w.bajty / 1e8) / 10, plik: w.plik } : null,
+        zgniecione: mieszczace.filter((g) => zgniecionyKwant(g.kwant)).map((g) => g.kwant),
+        /** najmniejszy NIEzgnieciony plik (do powodu „za duży”) */
+        najmniejszy: najmniejszy ? { kwant: najmniejszy.kwant, gb: Math.round(najmniejszy.bajty / 1e8) / 10 } : null,
+    };
 }
+
+/**
+ * MoE (mixture-of-experts): na token liczy się tylko mała część wag (Qwen3-Coder-30B-A3B, Flint 40B ≈ 2,5B aktywnych),
+ * więc Ollama znośnie trzyma resztę w RAM. Suweren 2026-10-29: Zwiadowca „nic nie znajdował” — Flint-GGUF był, ale
+ * najmniejszy rozsądny plik (19 GB) nie mieścił się w samym VRAM i zwiad go przemilczał. Rozpoznanie: nazwa (-A3B, MoE)
+ * albo architektura GGUF z karty HF (qwen3moe, flint, mixtral…).
+ */
+export function czyMoE(repo, architektura = null) {
+    return /(^|[-_.])A\d+(\.\d+)?B([-_.]|$)|(^|[-_.])moe([-_.]|$)/i.test(String(repo ?? '').split('/').pop())
+        || /moe|^flint|^mixtral|^deepseek2|^gpt-?oss|^laguna|^llama4/i.test(String(architektura ?? ''));
+}
+/** Budżet MoE: karta (≤ 90%) + połowa RAM (druga połowa zostaje systemowi, mostowi, ComfyUI). */
+export const limitMoE = (vramGB, ramGB) => Math.round((vramGB * 0.9 + ramGB * 0.5) * 10) / 10;
 
 /**
  * Format wag w repo — Ollama (i Kuźnia Modeli) bierze tylko GGUF. Reszta to wagi „pod innych operatorów":
@@ -301,25 +324,45 @@ export async function zwiad({ zapytania = cfg.zapytania, naZapytanie = 8, opinii
             // Żadne źródło nie odpowiedziało = nie wiemy nic. Meldunek „bez nowych modeli" byłby nieprawdą.
             if (z.bledyZrodel.length === zr.length) throw new Error(z.bledyZrodel.join('; '));
             const nowi = [];
+            const pominiete = [];   // repo z GGUF, które zwiad widział, ale nie zaproponował — z powodem (dawniej cisza)
             for (const { zrodlo, repo: id, meta } of repo.values()) {
                 z.etap = `pliki: ${id}`;
                 const pliki = await hfJson(`/api/models/${id}/tree/main`, zrodlo).catch(() => null);
-                const w = pliki && wybierzPlik(pliki, cfg.vramGB, { jedenPlik: zrodlo !== 'hf' });
-                if (!w) continue;
-                nowi.push(nowyKandydat({ zrodlo, repo: id, meta, w }));
+                if (!pliki) { pominiete.push({ repo: id, powod: 'nie oddał listy plików' }); continue; }
+                const jedenPlik = zrodlo !== 'hf';
+                const r = wybierzPlikZPowodem(pliki, cfg.vramGB, { jedenPlik });
+                if (r.wybor) { nowi.push(nowyKandydat({ zrodlo, repo: id, meta, w: r.wybor })); continue; }
+                const arch = await hfJson(`/api/models/${id}`, zrodlo).then((x) => x?.gguf?.architecture ?? null).catch(() => null);
+                if (czyMoE(id, arch)) {
+                    const limit = limitMoE(cfg.vramGB, cfg.ramGB);
+                    const rm = wybierzPlikZPowodem(pliki, cfg.vramGB, { jedenPlik, limitGB: limit });
+                    if (rm.wybor) {
+                        const k = nowyKandydat({ zrodlo, repo: id, meta, w: rm.wybor });
+                        k.moe = true;
+                        k.uwaga = `MoE${arch ? ` (${arch})` : ''}: ${rm.wybor.gb} GB > karta ${cfg.vramGB} GB — część warstw w RAM (${cfg.ramGB} GB), wolniej niż w całości na karcie`;
+                        nowi.push(k);
+                        continue;
+                    }
+                    pominiete.push({ repo: id, powod: `MoE, ale najmniejszy rozsądny plik ${r.najmniejszy ? `${r.najmniejszy.kwant} ${r.najmniejszy.gb} GB` : '—'} > ${limit} GB (karta + połowa RAM)` });
+                    continue;
+                }
+                pominiete.push({ repo: id, powod: r.zgniecione.length && !r.najmniejszy ? `mieszczą się tylko ${r.zgniecione.join(', ')} — zgniecione`
+                    : r.najmniejszy ? `najmniejszy rozsądny plik ${r.najmniejszy.kwant} ${r.najmniejszy.gb} GB > karta ${cfg.vramGB} GB${r.zgniecione.length ? ` (mieszczą się tylko zgniecione ${r.zgniecione.join(', ')})` : ''}`
+                        : jedenPlik ? 'brak GGUF w jednym pliku' : 'brak plików GGUF z rozpoznaną kwantyzacją' });
             }
+            z.pominiete = pominiete;
             nowi.sort((a, b) => (b.pobrania ?? 0) - (a.pobrania ?? 0));
             for (const k of nowi.slice(0, opinii)) { z.etap = `czytam kartę: ${k.repo}`; k.opinia = await opinia(k.repo, k.zrodlo); }
             const swiezy = await czytaj();   // w międzyczasie Suweren mógł coś zaakceptować
             swiezy.kandydaci = [...nowi, ...swiezy.kandydaci].slice(0, 200);
-            swiezy.ostatniZwiad = { kiedy: new Date().toISOString(), zapytania: lista, zrodla: zr, nowych: nowi.length, bledyZrodel: z.bledyZrodel };
+            swiezy.ostatniZwiad = { kiedy: new Date().toISOString(), zapytania: lista, zrodla: zr, nowych: nowi.length, bledyZrodel: z.bledyZrodel, pominiete: pominiete.slice(0, 30) };
             await zapisz(swiezy);
             z.znaleziono = nowi.length;
             z.stan = 'gotowe';
             const niezw = nowi.filter((k) => !k.zweryfikowane).length;
             await nadaj((nowi.length
                 ? `${nowi.length} nowych modeli czeka na akceptację (np. ${nowi.slice(0, 3).map((k) => `${k.repo} ${k.kwant} ${k.gb} GB`).join(', ')})${niezw ? ` — w tym ${niezw} z NIEZWERYFIKOWANEGO źródła` : ''} — Dyrygent widzi je w katalogu jako kandydatów`
-                : 'zwiad bez nowych modeli mieszczących się w karcie graficznej') + (z.bledyZrodel.length ? `. Nie odpowiedziało: ${z.bledyZrodel.join('; ')}` : ''), { kandydaci: nowi.map((k) => k.id) });
+                : `zwiad bez nowych modeli mieszczących się w karcie graficznej${pominiete.length ? ` (widziałem ${pominiete.length} za dużych/nieprzydatnych, np. ${pominiete.slice(0, 2).map((p) => `${p.repo}: ${p.powod}`).join('; ')})` : ''}`) + (z.bledyZrodel.length ? `. Nie odpowiedziało: ${z.bledyZrodel.join('; ')}` : ''), { kandydaci: nowi.map((k) => k.id) });
         } catch (e) {
             z.stan = 'blad'; z.blad = String(e.message || e).slice(0, 300);
             await nadaj(`zwiad przerwany: ${z.blad}`);
@@ -410,13 +453,17 @@ export async function zLinku(link) {
     const pliki = await hfJson(`/api/models/${l.repo}/tree/main`, l.zrodlo);
     if (!Array.isArray(pliki)) throw new Error(`${ZRODLA[l.zrodlo].nazwa} nie oddał listy plików ${l.repo} (inne API niż HuggingFace?)`);
     let w;
+    // MoE: budżet karta + połowa RAM (jak w zwiadzie) — architekturę mówi karta repo na HF
+    const moe = czyMoE(l.repo, await hfJson(`/api/models/${l.repo}`, l.zrodlo).then((x) => x?.gguf?.architecture ?? null).catch(() => null));
+    const limitGB = moe ? limitMoE(cfg.vramGB, cfg.ramGB) : null;
+    const gdzie = moe ? `${limitGB} GB (MoE: karta ${cfg.vramGB} GB + połowa RAM)` : `karcie (${cfg.vramGB} GB VRAM)`;
     if (l.plik) {
         const p = pliki.find((x) => String(x.path) === l.plik);
         if (!p) throw new Error(`W ${l.repo} nie ma pliku ${l.plik}.`);
-        const r = wybierzPlikZPowodem([p], cfg.vramGB, { jedenPlik });
+        const r = wybierzPlikZPowodem([p], cfg.vramGB, { jedenPlik, limitGB });
         w = r.wybor;
         if (!w && r.zgniecione.length) throw new Error(`${l.plik}: ${r.zgniecione[0]} — ${POWOD_ZGNIECIONY}.`);
-        if (!w) throw new Error(`${l.plik} nie mieści się w karcie (${cfg.vramGB} GB VRAM) albo to nie jest GGUF.`);
+        if (!w) throw new Error(`${l.plik} nie mieści się w ${gdzie} albo to nie jest GGUF.`);
     } else {
         const f = formatRepo(l.repo, pliki);
         if (f.format !== 'gguf') {
@@ -432,12 +479,13 @@ export async function zLinku(link) {
             throw e;
         }
         const wszystkie = l.kwant ? pliki.filter((p) => kwant(path.basename(String(p.path ?? ''))) === l.kwant) : pliki;
-        const r = wybierzPlikZPowodem(wszystkie, cfg.vramGB, { jedenPlik });
+        const r = wybierzPlikZPowodem(wszystkie, cfg.vramGB, { jedenPlik, limitGB });
         w = r.wybor;
         if (!w && r.zgniecione.length) throw new Error(`W ${l.repo} na kartę ${cfg.vramGB} GB mieszczą się tylko ${r.zgniecione.join(', ')} — ${POWOD_ZGNIECIONY}.`);
-        if (!w) throw new Error(`W ${l.repo} nie ma pliku GGUF, który zmieści się w karcie (${cfg.vramGB} GB VRAM)${jedenPlik ? ' jako jeden plik' : ''}.`);
+        if (!w) throw new Error(`W ${l.repo} nie ma pliku GGUF, który zmieści się w ${gdzie}${jedenPlik ? ' jako jeden plik' : ''}${r.najmniejszy ? ` — najmniejszy rozsądny: ${r.najmniejszy.kwant} ${r.najmniejszy.gb} GB` : ''}.`);
     }
     const k = nowyKandydat({ zrodlo: l.zrodlo, repo: l.repo, meta: { zapytanie: 'link' }, w });
+    if (moe && w.gb > cfg.vramGB * 0.9) { k.moe = true; k.uwaga = `MoE: ${w.gb} GB > karta ${cfg.vramGB} GB — część warstw w RAM (${cfg.ramGB} GB), wolniej niż w całości na karcie`; }
     k.opinia = await opinia(l.repo, l.zrodlo);
     const d = await czytaj();
     const byl = d.kandydaci.find((x) => x.id === k.id);
@@ -454,7 +502,7 @@ export function sondaz() {
     const pobiera = [...pobierania.values()].find((p) => p.stan === 'trwa');
     return {
         stan: biezacy.stan, etap: biezacy.etap, blad: biezacy.blad,
-        podsumowanie: biezacy.stan === 'gotowe' ? `znaleziono ${biezacy.znaleziono} nowych modeli` : null,
+        podsumowanie: biezacy.stan === 'gotowe' ? `znaleziono ${biezacy.znaleziono} nowych modeli${biezacy.pominiete?.length ? ` · pominięte ${biezacy.pominiete.length} (powody pod listą)` : ''}` : null,
         pobiera: pobiera ? { repo: pobiera.repo, postep: pobiera.postep } : null,
     };
 }
@@ -612,4 +660,4 @@ export async function akceptuj(id) {
     return { id, repo: k.repo, ollama: k.ollama };
 }
 
-export default { skonfiguruj, zwiad, zwiadDziedziny, DZIEDZINY, licencjaZTagow, czyKomercyjna, zLinku, zModeluSieci, formatRepo, rdzenNazwy, sondaz, kandydaci, akceptuj, odrzuc, kwant, wybierzPlik, wybierzPlikZPowodem, zgniecionyKwant, nazwaOllamy, nazwaWykutego, wOllamie, czytajLink, ZRODLA };
+export default { skonfiguruj, czyMoE, limitMoE, zwiad, zwiadDziedziny, DZIEDZINY, licencjaZTagow, czyKomercyjna, zLinku, zModeluSieci, formatRepo, rdzenNazwy, sondaz, kandydaci, akceptuj, odrzuc, kwant, wybierzPlik, wybierzPlikZPowodem, zgniecionyKwant, nazwaOllamy, nazwaWykutego, wOllamie, czytajLink, ZRODLA };
