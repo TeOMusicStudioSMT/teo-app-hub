@@ -51,7 +51,22 @@ let cfg = {
     mcpStudio: path.join(process.cwd(), 'scripts', 'mcp', 'game-studio.mjs'),
     /** 🎲 Unity MCP (CoplayDev/unity-mcp): wpis serwera albo null — most daje go tylko z OTAKOS_UNITY_MCP i pakietem w projekcie */
     unityMcp: () => null,
+    /** 🌐 Wix MCP (oficjalny serwer Wix): wpis albo null — most daje go, gdy Suweren włączył (`_OtakOs_Wymiar/wix-mcp.json`) */
+    wixMcp: () => null,
 };
+
+/**
+ * 🌐 Wix MCP (Suweren 2026-10-29: „podłączyć moją stronę do Katedry… dać Stadu możliwość zarządzania nią”).
+ * Oficjalny zdalny serwer Wix przez `@wix/mcp-remote` (Node ≥ 19.9). Logowanie OAuth kontem Wix Suwerena w przeglądarce
+ * przy pierwszym użyciu — klucze nie przechodzą przez Katedrę (`~/.mcp-auth`). ŻADNE narzędzie Wix nie jest na liście
+ * „bez pytania”: każde wywołanie = prośba ✓ z Tłumaczem. Na teo.center stoi żywy sklep Shopify — przebudowa na kopii.
+ */
+export const SERWER_WIX = 'wix';
+export const ADRES_WIX_MCP = 'https://mcp.wix.com/sse';
+export function wpisWixMcp(platforma = process.platform) {
+    const npx = ['-y', '@wix/mcp-remote', ADRES_WIX_MCP];
+    return platforma === 'win32' ? { type: 'stdio', command: 'cmd', args: ['/c', 'npx', ...npx] } : { type: 'stdio', command: 'npx', args: npx };
+}
 export function skonfiguruj(o) { cfg = { ...cfg, ...o }; }
 
 /** Narzędzia, których Główny używa bez pytania: czytanie i edycja plików Katedry, skille, polecenia stada. */
@@ -65,6 +80,8 @@ export function serweryMcp() {
     if (cfg.mcpStudio && cfg.istnieje(cfg.mcpStudio)) s[SERWER_STUDIA] = { type: 'stdio', command: process.execPath, args: [cfg.mcpStudio] };
     const u = cfg.unityMcp?.();
     if (u && typeof u === 'object') s.unityMCP = u;
+    const w = cfg.wixMcp?.();
+    if (w && typeof w === 'object') s[SERWER_WIX] = w;
     return s;
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -126,6 +143,15 @@ export function tlumacz(narzedzie, wejscie = {}) {
         const n = NARZEDZIA_STUDIA.find((x) => x.nazwa === mcp[2]);
         const ryzyko = /meshy|unity_buduj/.test(mcp[2]) ? 'wysokie' : 'srednie';
         return { coRobi: `🎮 Game Studio (MCP): ${n?.opis ?? mcp[2]}`, ryzyko, ryzykoSlownie: RYZYKO_SLOWNIE[ryzyko], dlaczego, polecenie: JSON.stringify(wejscie).slice(0, 400), klucz: narzedzie };
+    }
+    if (mcp && mcp[1] === SERWER_WIX) {
+        // Odczyt dokumentacji/listy = średnie; wywołanie API strony albo zmiana = wysokie (żywa strona i sklep)
+        const czyta = /^(search|read|list|get|describe)/i.test(mcp[2]) && !/manage|call|create|update|delete|publish|install/i.test(mcp[2]);
+        const ryzyko = czyta ? 'srednie' : 'wysokie';
+        const coRobi = czyta
+            ? `🌐 Wix (MCP): ${mcp[2]} — odczyt z Wix (dokumentacja albo dane konta), niczego nie zmienia.`
+            : `🌐 Wix (MCP): ${mcp[2]} — działa na Twojej stronie Wix przez API. Może ZMIENIĆ żywą stronę (teo.center, sklep) — sprawdź, na której stronie i co dokładnie.`;
+        return { coRobi, ryzyko, ryzykoSlownie: RYZYKO_SLOWNIE[ryzyko], dlaczego, polecenie: JSON.stringify(wejscie).slice(0, 600), klucz: narzedzie };
     }
     if (narzedzie !== 'Bash') {
         const cel = wejscie?.file_path ?? wejscie?.url ?? wejscie?.path ?? null;
@@ -205,7 +231,7 @@ MOCE KATEDRY (też bez pytania, przez ten sam skrypt) — ZANIM powiesz „nie m
   wideo przytnij <plik> <od_s> [do_s]             — przycięcie ffmpeg (nowy plik obok, oryginał zostaje); plik: względny albo pełna ścieżka
   wideo potnij <plik> <sekundy>                   — Nożyce: pocięcie na równe klocki po N s
 GAME STUDIO (MCP, narzędzia mcp__katedra-game-studio__*): gry Katedry (three.js) — gs_gry, gs_gdd, gs_klocki, gs_assety, gs_test_gry (zrzut + window.__gra); PRZED zmianą kodu gry gs_waliduj. Ciężkie (gs_buduj, gs_narysuj, gs_bryla_z_obrazu, Meshy, Unity) Straż zamienia w prośbę do Suwerena; po ✓ wołasz z zgoda: true.
-OBRAZY: gdy wiadomość ma „Załączone obrazy", otwórz każdy narzędziem Read (to zrzuty ekranu od Suwerena).
+${serweryMcp()[SERWER_WIX] ? 'WIX (MCP, narzędzia mcp__wix__*): strona Suwerena na Wix (teo.center) — działa na niej ŻYWY sklep Shopify i odwiedzają ją ludzie. Najpierw CZYTAJ (strony, teksty, gdzie wpięty sklep). Przebudowa tylko na KOPII strony (Suweren duplikuje ją w Wix); zmiana żywej strony tylko na wyraźne słowo Suwerena. Każde narzędzie Wix to prośba ✓ — w „description” napisz, na KTÓREJ stronie i CO zmieni.\n' : ''}OBRAZY: gdy wiadomość ma „Załączone obrazy", otwórz każdy narzędziem Read (to zrzuty ekranu od Suwerena).
 SKILLE: ${cfg.katalogi.filter((k) => cfg.istnieje(k)).map((k) => path.basename(k)).join(', ') || '(brak)'} — katalogi z SKILL.md; czytaj właściwy, gdy zadanie pasuje.
 Nie udawaj: mów, co zrobiłeś, a czego nie. Na końcu krótko: co zrobione, co czeka na Suwerena.`;
 

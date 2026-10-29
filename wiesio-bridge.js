@@ -5435,6 +5435,12 @@ Glowny.skonfiguruj({
     suweren: () => (grvLedger ? nazwaWezla(grvLedger, grvLedger.wlasciciel) : null),
     // 🎲 Unity MCP dla Głównego: wpis serwera (JSON, przepisany z tego, co zapisało okno pakietu) i pakiet w projekcie _OtakOs_Unity
     unityMcp: () => { try { return process.env.OTAKOS_UNITY_MCP && Unity.stan().mcp.wProjektach.length ? JSON.parse(process.env.OTAKOS_UNITY_MCP) : null; } catch { return null; } },
+    // 🌐 Wix MCP: włącza Suweren (`_OtakOs_Wymiar/wix-mcp.json` {"wlaczony": true} albo OTAKOS_WIX_MCP=1/0); każde narzędzie Wix = prośba ✓
+    wixMcp: () => {
+        if (process.env.OTAKOS_WIX_MCP === '0') return null;
+        if (process.env.OTAKOS_WIX_MCP === '1') return Glowny.wpisWixMcp();
+        try { return JSON.parse(fsSync.readFileSync(path.join(ANTIGRAVITY_DIR, 'wix-mcp.json'), 'utf8'))?.wlaczony === true ? Glowny.wpisWixMcp() : null; } catch { return null; }
+    },
 });
 app.get('/api/glowny/stan', (_req, res) => res.json({ success: true, ...Glowny.stan() }));
 app.get('/api/glowny/sesje', async (_req, res) => res.json({ success: true, sesje: await Glowny.lista() }));
