@@ -467,7 +467,9 @@ const NUM_CTX = 32768;
  * polski + kod to ~2 znaki na token, nie 2,5. Dlatego okno = co najmniej 2× prośba, a sama prośba ma budżet.
  */
 export const ZNAKOW_NA_TOKEN = 2;
-export const NUM_CTX_MAX = Number(process.env.OTAKOS_KODEKS_CTX_MAX) || 65536;
+// 32k, nie 64k: zmierzone 2026-10-29 na RTX 3060 6 GB — Qwen3-Coder 30B z oknem 64k zjechał z 7,5 do 1,35 tok/s
+// (KV w RAM), 2 h na ~1400 tokenów. Lepiej mniejsza prośba (budżet = połowa okna) niż większe okno.
+export const NUM_CTX_MAX = Number(process.env.OTAKOS_KODEKS_CTX_MAX) || 32768;
 export function oknoKontekstu(znakow, max = NUM_CTX_MAX) {
     const tok = Math.ceil(Math.max(0, znakow) / ZNAKOW_NA_TOKEN);
     const potrzeba = Math.max(8192, tok + 8192 + 1024, 2 * tok + 1024);
@@ -1087,11 +1089,24 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 const kartaKodeksa = await Persony.karta('kodeks').catch(() => null);
                 const regulyKodeksa = typProjektu === 'gra' ? SYSTEM_KODEKSA_GRY : SYSTEM_KODEKSA;
                 const systemKodeksa = kartaKodeksa ? `${kartaKodeksa.tresc}\n\n${regulyKodeksa}` : regulyKodeksa;
-                const reszta = `ZADANIE SUWERENA:\n${cel}\n${blokAssetow}${blokJadziuni}${podzial}${runda === 1 ? blokPoprzednikow : ''}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}${radaMistrza}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
-                const naglowek = `PROJEKT: ${projektId}\n${mapa ? mapa + '\n\n' : ''}\nOBECNE PLIKI:\n`;
-                // ✂️ budżet: lokalna Ollama obcina prośbę od połowy okna — pliki dostają to, co zostaje po zasadach i zadaniu
-                const budzet = /^(claude|gemini):/.test(z.model) ? MAX_KONTEKST_ZNAKOW
-                    : Math.max(8000, Math.min(MAX_KONTEKST_ZNAKOW, MAX_PROSBY_ZNAKOW - systemKodeksa.length - naglowek.length - reszta.length - 500));
+                const lokalny = !/^(claude|gemini):/.test(z.model);
+                const zlozReszte = ({ poprzednicy = blokPoprzednikow, jadziunia = blokJadziuni } = {}) => `ZADANIE SUWERENA:\n${cel}\n${blokAssetow}${jadziunia}${podzial}${runda === 1 ? poprzednicy : ''}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}${radaMistrza}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
+                const zlozNaglowek = (zMapa = true) => `PROJEKT: ${projektId}\n${zMapa && mapa ? mapa + '\n\n' : ''}\nOBECNE PLIKI:\n`;
+                // ✂️ budżet: lokalna Ollama obcina prośbę od połowy okna. Najpierw oszczędzamy na dodatkach
+                // (dziedzictwo poprzedników → rady skilli → mapa), dopiero potem pliki idą jako szkic.
+                const MIN_PLIKOW = 8000;
+                const wolne = (r, n) => MAX_PROSBY_ZNAKOW - systemKodeksa.length - n.length - r.length - 500;
+                let poprzednicy = blokPoprzednikow, jadziunia = blokJadziuni;
+                let reszta = zlozReszte(), naglowek = zlozNaglowek();
+                const brakuje = () => (lokalny ? MIN_PLIKOW - wolne(reszta, naglowek) : 0);
+                if (brakuje() > 0 && poprzednicy) {
+                    poprzednicy = poprzednicy.slice(0, Math.max(1500, poprzednicy.length - brakuje())) + '\n[…dziedzictwo skrócone — budżet prośby…]\n';
+                    reszta = zlozReszte({ poprzednicy, jadziunia });
+                }
+                if (brakuje() > 0 && jadziunia) { jadziunia = ''; reszta = zlozReszte({ poprzednicy, jadziunia }); }
+                if (brakuje() > 0) naglowek = zlozNaglowek(false);
+                if (brakuje() > 0) krok('stan', `✂️ prośba nadal większa niż połowa okna ${NUM_CTX_MAX} — Ollama utnie jej początek`);
+                const budzet = lokalny ? Math.max(MIN_PLIKOW, Math.min(MAX_KONTEKST_ZNAKOW, wolne(reszta, naglowek))) : MAX_KONTEKST_ZNAKOW;
                 const prompt = `${naglowek}${kontekstPlikow(obecne, cel, budzet)}\n${reszta}`;
                 // ComfyUI po renderze trzyma modele w karcie (zmierzone: ~2 GB po TRELLIS.2) — Ollama
                 // dostaje resztkę i liczy prompt na CPU. Prosimy o zwolnienie, jeśli ComfyUI nie liczy.
