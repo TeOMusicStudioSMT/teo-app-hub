@@ -460,6 +460,21 @@ export async function silniki() {
 // 16384 i model oddawał ucięty bełkot bez bloków PLIK (3 rundy stracone). KV-cache 32k dla 9B
 // mieści się obok wag (część i tak leży w RAM na 6 GB VRAM); koszt: wolniejszy prompt-eval.
 const NUM_CTX = 32768;
+/**
+ * ✂️ Ollama (zmierzone 0.40.13, 2026-10-29) OBCINA prośbę dłuższą niż POŁOWA num_ctx, zostawiając z początku kilka
+ * tokenów — zasady Kodeksa i początek zadania znikały bez słowa (w dziennikach Ollamy 103× „truncating input prompt
+ * limit=16386 prompt=~40000 keep=4”: Teterhia od tygodni szła do Qwena urwana; Flint i SPA też). Do tego tekst
+ * polski + kod to ~2 znaki na token, nie 2,5. Dlatego okno = co najmniej 2× prośba, a sama prośba ma budżet.
+ */
+export const ZNAKOW_NA_TOKEN = 2;
+export const NUM_CTX_MAX = Number(process.env.OTAKOS_KODEKS_CTX_MAX) || 65536;
+export function oknoKontekstu(znakow, max = NUM_CTX_MAX) {
+    const tok = Math.ceil(Math.max(0, znakow) / ZNAKOW_NA_TOKEN);
+    const potrzeba = Math.max(8192, tok + 8192 + 1024, 2 * tok + 1024);
+    return { tokenow: tok, numCtx: Math.min(max, Math.ceil(potrzeba / 2048) * 2048), obcieta: 2 * tok + 1024 > max };
+}
+/** Ile znaków (system + prośba) zmieści się bez obcinania przy NUM_CTX_MAX. */
+export const MAX_PROSBY_ZNAKOW = (NUM_CTX_MAX / 2 - 1024) * ZNAKOW_NA_TOKEN;
 const DUZY_PLIK_LINII = 300;   // powyżej — Kodeks ma wydzielać moduły zamiast rosnąć w jednym pliku
 const DUZY_PLIK_CHRONIONY = 400;   // 🛡️ istniejący plik powyżej tylu linii, oddany okrojony o > 20% — most go nie zapisuje
 
@@ -474,8 +489,9 @@ export async function pisz({ system, prompt, model, timeoutMs = 20 * 60_000, naK
     // Okno kontekstu POD MIARĘ, nie na sztywno: przy 32k KV-cache 9B zajmuje ~4,8 GB VRAM i
     // prawie całe wagi lądują w RAM-ie — prompt 7k tokenów liczył się 20 min bez jednego znaku
     // (zmierzone 2026-09-22). Bierzemy tyle, ile prompt + 8k odpowiedzi, zaokrąglone do 2k.
-    const szacunekTokenow = Math.ceil((String(system).length + String(prompt).length) / 2.5) + 8192 + 1024;
-    const numCtx = Math.min(NUM_CTX, Math.max(8192, Math.ceil(szacunekTokenow / 2048) * 2048));
+    const okno = oknoKontekstu(String(system).length + String(prompt).length);
+    const numCtx = okno.numCtx;
+    if (okno.obcieta) console.warn(`[Kodeks] ✂️ prośba ~${okno.tokenow} tokenów — więcej niż połowa okna ${numCtx}; Ollama ją obetnie (początek przepadnie).`);
     const body = JSON.stringify({ model, system, prompt, stream: true, think: false, options: { temperature: 0.2, num_ctx: numCtx, num_predict: 8192 } });
     return new Promise((resolve, reject) => {
         let tekst = '', tokeny = 0, bufor = '', zakonczone = false;
@@ -927,20 +943,23 @@ function szkicModulu(tresc) {
  * jako szkic — nagłówek i lista eksportów. Zmierzone 2026-09-23: ARPG urósł do 50 kB w dziewięciu
  * modułach, prompt szedł w 18 tys. tokenów i 9B nie kończył rundy w 45 min („Ollama nie zdążyła").
  */
-function kontekstPlikow(lista, cel = '') {
+function kontekstPlikow(lista, cel = '', max = MAX_KONTEKST_ZNAKOW) {
     const pelny = (p) => `=== PLIK: ${p.sciezka} ===\n${p.tresc.trimEnd()}\n=== KONIEC ===\n\n`;
     let calosc = lista.map(pelny).join('');
-    if (calosc.length <= PROG_SKROTU_ZNAKOW) return calosc;
+    if (calosc.length <= Math.min(PROG_SKROTU_ZNAKOW, max)) return calosc;
 
     const wTresci = String(cel).toLowerCase();
-    const wazny = (p) => /(^|\/)(main|global)\.(ts|tsx|d\.ts)$/.test(p.sciezka) || wTresci.includes(path.basename(p.sciezka).replace(/\.tsx?$/, '').toLowerCase());
-    calosc = '';
-    for (const p of lista) {
-        calosc += wazny(p) || !/\.tsx?$/.test(p.sciezka)
-            ? pelny(p)
-            : `=== SZKIC PLIKU: ${p.sciezka} (pełnej treści nie dostajesz — NIE zmieniaj go) ===\n${szkicModulu(p.tresc)}\n=== KONIEC ===\n\n`;
+    const wZadaniu = (p) => wTresci.includes(path.basename(p.sciezka).replace(/\.tsx?$/, '').toLowerCase());
+    const szkic = (p) => `=== SZKIC PLIKU: ${p.sciezka} (pełnej treści nie dostajesz — NIE zmieniaj go) ===\n${szkicModulu(p.tresc)}\n=== KONIEC ===\n\n`;
+    const zloz = (wazny, inne) => lista.map((p) => (wazny(p) ? pelny(p) : /\.tsx?$/.test(p.sciezka) ? szkic(p) : inne(p))).join('');
+    // 1. main/global i moduły z zadania w całości, reszta TS jako szkic, pliki nie-TS w całości (jak dotąd)
+    calosc = zloz((p) => /(^|\/)(main|global)\.(ts|tsx|d\.ts)$/.test(p.sciezka) || wZadaniu(p), pelny);
+    // 2. nadal za dużo (budżet prośby — Ollama obcina od połowy okna): w całości TYLKO pliki nazwane w zadaniu,
+    //    main.ts też jako szkic, duże pliki nie-TS jako sama wzmianka
+    if (calosc.length > max) {
+        calosc = zloz(wZadaniu, (p) => (p.tresc.length <= 3000 ? pelny(p) : `=== PLIK ${p.sciezka}: ${p.tresc.length} znaków — pominięty (budżet prośby) ===\n\n`));
     }
-    return calosc.length > MAX_KONTEKST_ZNAKOW ? calosc.slice(0, MAX_KONTEKST_ZNAKOW) + '\n[…ucięto — projekt za duży na jeden prompt…]' : calosc;
+    return calosc.length > max ? calosc.slice(0, max) + '\n[…ucięto — projekt za duży na jeden prompt…]' : calosc;
 }
 
 /**
@@ -1065,7 +1084,15 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 // Mapa projektu (services/WikiProjektu.js) — Suweren 2026-09-24: „nie mogą się odnaleźć".
                 // Kilkanaście linii: co jest w którym module, kto kogo używa, gdzie w main.ts podpiąć.
                 const mapa = await WikiProjektu.skrot(dir).catch(() => '');
-                const prompt = `PROJEKT: ${projektId}\n${mapa ? mapa + '\n\n' : ''}\nOBECNE PLIKI:\n${kontekstPlikow(obecne, cel)}\nZADANIE SUWERENA:\n${cel}\n${blokAssetow}${blokJadziuni}${podzial}${runda === 1 ? blokPoprzednikow : ''}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}${radaMistrza}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
+                const kartaKodeksa = await Persony.karta('kodeks').catch(() => null);
+                const regulyKodeksa = typProjektu === 'gra' ? SYSTEM_KODEKSA_GRY : SYSTEM_KODEKSA;
+                const systemKodeksa = kartaKodeksa ? `${kartaKodeksa.tresc}\n\n${regulyKodeksa}` : regulyKodeksa;
+                const reszta = `ZADANIE SUWERENA:\n${cel}\n${blokAssetow}${blokJadziuni}${podzial}${runda === 1 ? blokPoprzednikow : ''}${feedback ? `\nBŁĘDY Z POPRZEDNIEJ RUNDY (${runda - 1}) — POPRAW JE:\n${feedback}\n${eskalacja}${radaMistrza}` : ''}\nOddaj pliki, które tworzysz lub zmieniasz, w blokach === PLIK: … === / === KONIEC ===.`;
+                const naglowek = `PROJEKT: ${projektId}\n${mapa ? mapa + '\n\n' : ''}\nOBECNE PLIKI:\n`;
+                // ✂️ budżet: lokalna Ollama obcina prośbę od połowy okna — pliki dostają to, co zostaje po zasadach i zadaniu
+                const budzet = /^(claude|gemini):/.test(z.model) ? MAX_KONTEKST_ZNAKOW
+                    : Math.max(8000, Math.min(MAX_KONTEKST_ZNAKOW, MAX_PROSBY_ZNAKOW - systemKodeksa.length - naglowek.length - reszta.length - 500));
+                const prompt = `${naglowek}${kontekstPlikow(obecne, cel, budzet)}\n${reszta}`;
                 // ComfyUI po renderze trzyma modele w karcie (zmierzone: ~2 GB po TRELLIS.2) — Ollama
                 // dostaje resztkę i liczy prompt na CPU. Prosimy o zwolnienie, jeśli ComfyUI nie liczy.
                 if (runda === 1 && cfg.zwolnijComfy) await cfg.zwolnijComfy().catch(() => {});
@@ -1075,9 +1102,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 // a przepisanie czterech plików ARPG to ~21 tys. znaków. Zmierzone 2026-09-22: runda
                 // urwana na 20 010 znakach po 1200 s - brakowało minuty. Widełki 15-45 min.
                 const limitRundy = Math.min(60, Math.max(15, Math.ceil(prompt.length / 25 / 60 * 1.6))) * 60_000;
-                const kartaKodeksa = await Persony.karta('kodeks').catch(() => null);
-                const regulyKodeksa = typProjektu === 'gra' ? SYSTEM_KODEKSA_GRY : SYSTEM_KODEKSA;
-                const odp = await pisz({ system: kartaKodeksa ? `${kartaKodeksa.tresc}\n\n${regulyKodeksa}` : regulyKodeksa, prompt, model: z.model, timeoutMs: limitRundy, sygnal: przerwanie.signal, naKawalek: (n) => {
+                const odp = await pisz({ system: systemKodeksa, prompt, model: z.model, timeoutMs: limitRundy, sygnal: przerwanie.signal, naKawalek: (n) => {
                     // meldunek co ~2000 znaków — żeby front widział, że model żyje, bez zalewania szyny
                     if (n - ostatniMeldunek >= 2000) { ostatniMeldunek = n; kPisze.znakow = n; naKrok({ typ: 'postep', tekst: `Kodeks napisał ${n} znaków…`, znakow: n, kiedy: new Date().toISOString() }); }
                 } });

@@ -10772,7 +10772,14 @@ app.post('/api/post/muzyka', async (req, res) => {
 async function piszModelem(model, system, prompt, opcje = {}) {
     const silnik = model || Mozg.modelRoli('joanna');
     // `opcje.temperatura` (np. z Pralki w Studiu Podcastu) → options.temperature Ollamy; bez niej domyślna modelu.
-    const options = Number.isFinite(Number(opcje?.temperatura)) ? { temperature: Math.min(2, Math.max(0, Number(opcje.temperatura))) } : undefined;
+    let options = Number.isFinite(Number(opcje?.temperatura)) ? { temperature: Math.min(2, Math.max(0, Number(opcje.temperatura))) } : undefined;
+    // ✂️ Ollama obcina prośbę dłuższą niż połowa okna (domyślne 32 768 → 16 386 tokenów, początek przepada).
+    // Większe okno TYLKO gdy prośba się nie mieści — zmiana num_ctx = przeładowanie modelu (AppStudio.oknoKontekstu).
+    const okno = AppStudio.oknoKontekstu(String(system ?? '').length + String(prompt ?? '').length);
+    if (okno.numCtx > 32768) {
+        options = { ...(options ?? {}), num_ctx: okno.numCtx };
+        console.log(`[Model] 🪟 ${silnik}: prośba ~${okno.tokenow} tokenów → okno ${okno.numCtx}${okno.obcieta ? ' (i tak za duża — Ollama obetnie)' : ''}`);
+    }
     const r = await fetch(`${OLLAMA_BASE}/api/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         // think:false — qwen3.x bez tego oddaje pustą treść (zmierzone przy /api/ollama/pisz).
