@@ -62,6 +62,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/zebrra-taniec',   // 🩰 Taniec w Zebrra Sports: model, głos, nagranie, publikacja — tylko przy maszynie
     '/api/wieczor-tanca',   // 🌙 Wieczór Tańca: zakłada odcinki programów, skleja film, publikacja — tylko przy maszynie
     '/api/mame-leon',   // 🦎 Mame Leon Show: model, głos, nagranie, publikacja — tylko przy maszynie
+    '/api/zywa-ksiega',   // 📖 Żywa Księga: wpisy Suwerena, nagranie twarzy, stado (model, FLUX) — tylko przy maszynie (publiczny odczyt = wizytówka, krok 3)
     '/api/zebrra-news',   // 📰 Zebrra News: nagłówki z sieci, model, FLUX, głos, nagranie, publikacja — tylko przy maszynie
     '/api/game-show',   // 🎪 odcinki TeO Game Show (GPU, ffmpeg) i kanał programu — przy maszynie; ✓ publikacji zostaje w Izbie
     '/api/suno-album',   // 🎵 album Suno pobiera pliki do biblioteki muzyki — przy maszynie

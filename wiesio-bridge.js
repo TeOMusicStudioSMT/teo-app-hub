@@ -117,6 +117,7 @@ import * as Aktualizator   from './services/Aktualizator.js';
 import * as Tlumacz        from './services/Tlumacz.js';
 import * as Glowny         from './services/Glowny.js';
 import { utworzArgoBoba }   from './services/ArgoBob.js';
+import { utworzZywaKsiege, zamontujTrasyZywejKsiegi } from './services/ZywaKsiega.js';
 import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei, odpowiedzGeminiZwiadu, SZUKAJ_W_GOOGLE } from './services/GolDnia.js';
 import { utworzZebrraTaniec, zamontujTrasyZebrraTanca, PROJEKT as PROJEKT_ZEBRRA_SPORTS } from './services/ZebrraTaniec.js';
 import { utworzMameLeon, zamontujTrasyMameLeon } from './services/MameLeonShow.js';
@@ -15448,6 +15449,22 @@ const GolDnia = utworzGolDnia({
     szyna: Szyna,
 });
 // raw = nagranie ze Studia Zebrra Football (apka _OtakOs_Apki/studio-zebrra) → mp4 odcinka
+// 📖 Żywa Księga: Iskra Suwerena (słowa + nagranie twarzy) → stado dotwarza słowo (Kronikarz) i ilustrację (Paleta, FLUX)
+const ZywaKsiega = utworzZywaKsiege({
+    katalog: ANTIGRAVITY_DIR,
+    chat: (model, system, user) => piszModelem(model, system, user),
+    modelDla: (id) => ModeleAgentow.modelDla(id),
+    rysuj: async ({ prompt, prefiks }) => {
+        const przed = await stanWideoZBudzeniem('Żywa Księga');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        return Assety3D.kadrFilmu({ prompt, referencje: [], prefiks, szer: 1024, wys: 1024 });
+    },
+    opisz: (p) => Montazownia.opisz(p),
+    ffmpeg: ffmpegPath,
+    szyna: Szyna,
+});
+ZywaKsiega.sprzatnijDuchy().catch((e) => console.warn('[Żywa Księga] duchy:', e.message));
+zamontujTrasyZywejKsiegi(app, ZywaKsiega, { raw: express.raw });
 zamontujTrasyGolDnia(app, GolDnia, { kanalProjektu: (p) => PublikacjeYT.kanalProjektu(p), ustawKanalProjektu: (p, k) => PublikacjeYT.ustawKanalProjektu(p, k), raw: express.raw });
 
 const GameShow = utworzGameShow({

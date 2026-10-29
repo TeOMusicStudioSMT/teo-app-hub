@@ -52,7 +52,8 @@ type View =
     | 'telefon'
     | 'skladnica'
     | 'aktualizacja'
-    | 'brief';
+    | 'brief'
+    | 'zywa-ksiega';
 
 interface LoungeNavigationProps {
     activeView: View;
@@ -99,6 +100,7 @@ const GRUPY: { id: GrupaMenu; nazwa: string }[] = [
 
 const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string; grupa: GrupaMenu }[] = [
     // ── Świat i telefon — stado TeOgochi poza Dashboardem (2026-09-25: „nie mogę znaleźć Stołu") ──
+    { id: 'zywa-ksiega',   label: '📖 Żywa Księga', icon: <span className="text-base">📖</span>, desc: 'Twoja Iskra rano (słowa + nagranie twarzy) — stado dotwarza słowo i ilustrację', grupa: 'swiat' },
     { id: 'swiat',         label: '🧱 Świat klocków', icon: <span className="text-base">🧱</span>, desc: 'Płytki TeOgochi z prawdziwych dzieł, projekty stada, film klockowy', grupa: 'swiat' },
     { id: 'telefon',       label: '📱 StoL i Delegat', icon: <span className="text-base">📱</span>, desc: 'Parowanie telefonu (StoL) i Delegat Mobilny przez tunel', grupa: 'swiat' },
     { id: 'skladnica',     label: '📦 Składnica',    icon: <span className="text-base">📦</span>, desc: 'Wspólne postacie, sceny, rekwizyty, kreacje i bryły dla wszystkich modułów', grupa: 'swiat' },
