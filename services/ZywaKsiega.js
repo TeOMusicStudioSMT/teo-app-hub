@@ -51,6 +51,25 @@ export function systemSlowa(listaStylow = '') {
         + '\nSTYL: <id z listy>';
 }
 
+/**
+ * 🌍 Przekład dla świata (Suweren 2026-10-29: „na otakos jest język EN… nie tłumaczy Żywej Księgi”). Kronikarz przekłada
+ * WIERNIE: słowa Suwerena z jego wielokropkami, wersalikami i emoji — to jego głos, nie redakcja. Tłumacz interfejsu
+ * (services/Tlumacz.js) robi krótkie napisy przycisków do 600 znaków — tu potrzebny jest przekład całej Iskry.
+ */
+export const SYSTEM_PRZEKLADU = 'Jesteś Kronikarzem stada TeOgochi. Przekładasz wpis Żywej Księgi na angielski dla gości otakos.wtf. '
+    + 'Przekład WIERNY i ludzki: zachowaj wielokropki, wersaliki, emoji, nazwy własne i rytm autora; niczego nie dopisuj, nie wygładzaj, '
+    + 'nie komentuj. Gdy fragment jest już po angielsku — oddaj go bez zmian.\n'
+    + 'FORMAT (dokładnie tak, znaczniki w osobnych liniach):\n=== TEKST ===\n<przekład słów Suwerena>\n=== SŁOWO ===\n<przekład odpowiedzi Kronikarza albo pusto>';
+
+/** „=== TEKST === … === SŁOWO === …” → { tekst, slowo } albo null. */
+export function odczytajPrzeklad(odp) {
+    const t = String(odp ?? '').replace(/<think>[\s\S]*?<\/think>/gi, '');
+    const m = t.match(/===\s*TEKST\s*===\s*([\s\S]*?)(?:===\s*S[ŁL]OWO\s*===\s*([\s\S]*))?$/i);
+    const tekst = m?.[1]?.trim();
+    if (!tekst || tekst.length < 2) return null;
+    return { tekst: tekst.slice(0, MAX_TEKSTU), slowo: m[2]?.trim().slice(0, 900) || null };
+}
+
 /** „SŁOWO: … / OBRAZ: … / STYL: …” → { slowo, obraz, styl } albo null (styl = surowe id; listę sprawdza StylePalety). */
 export function odczytajSlowo(tekst) {
     const t = String(tekst ?? '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/\*\*/g, '');
@@ -128,6 +147,7 @@ export function utworzZywaKsiege(cfg = {}) {
         return krok;
     }
     const dodatek = (w, rodzaj) => w.stado.find((s) => s.rodzaj === rodzaj);
+    const nowyPrzeklad = () => ({ rodzaj: 'przeklad', kto: 'kronikarz', stan: 'czeka', jezyk: 'en', tekst: null, slowo: null, powod: null });
 
     async function lista() {
         let nazwy = [];
@@ -148,6 +168,7 @@ export function utworzZywaKsiege(cfg = {}) {
             stado: [
                 { rodzaj: 'slowo', kto: 'kronikarz', stan: 'czeka', tekst: null, powod: null },
                 { rodzaj: 'ilustracja', kto: 'paleta', stan: 'czeka', plik: null, prompt: null, powod: null },
+                nowyPrzeklad(),
             ],
         };
         await fs.mkdir(dir(id), { recursive: true });
@@ -216,6 +237,23 @@ export function utworzZywaKsiege(cfg = {}) {
                 await zmien(id, (x) => { Object.assign(dodatek(x, 'ilustracja'), { stan: 'blad', powod: String(e.message || e).slice(0, 300) }); });
             }
         }
+        // 3. 🌍 Przekład na angielski (Kronikarz) — dla gości otakos.wtf w języku EN; oryginał zostaje nietknięty
+        w = await czytaj(id);
+        if (['czeka', 'blad'].includes(dodatek(w, 'przeklad')?.stan)) {
+            await zmien(id, (x) => { Object.assign(dodatek(x, 'przeklad'), { stan: 'robi', powod: null }); });
+            try {
+                if (!cfg.chat) throw new Error('most nie podał modelu stada');
+                const model = await cfg.modelDla?.('kronikarz');
+                const slowo = dodatek(w, 'slowo');
+                const wejscie = `SŁOWA SUWERENA:\n${w.tekst}\n\nODPOWIEDŹ KRONIKARZA:\n${slowo?.stan === 'gotowe' ? slowo.tekst : '(brak)'}`;
+                let p = odczytajPrzeklad(tekstOdpowiedzi(await cfg.chat(model, SYSTEM_PRZEKLADU, wejscie)));
+                if (!p) p = odczytajPrzeklad(tekstOdpowiedzi(await cfg.chat(model, SYSTEM_PRZEKLADU, `${wejscie}\n\nPoprzednio format był zły. Zacznij od linii „=== TEKST ===”.`)));
+                if (!p) throw new Error('Kronikarz nie oddał przekładu w formacie (dwie próby)');
+                await zmien(id, (x) => { Object.assign(dodatek(x, 'przeklad'), { stan: 'gotowe', jezyk: 'en', tekst: p.tekst, slowo: slowo?.stan === 'gotowe' ? p.slowo : null, model: model ?? null }); });
+            } catch (e) {
+                await zmien(id, (x) => { Object.assign(dodatek(x, 'przeklad'), { stan: 'blad', powod: String(e.message || e).slice(0, 300) }); });
+            }
+        }
     }
 
     /** Duchy po restarcie: „robi” bez pracy w pamięci = błąd z powodem. */
@@ -227,6 +265,8 @@ export function utworzZywaKsiege(cfg = {}) {
     }
 
     async function ponowStado(id) {
+        // wpisy sprzed przekładu dostają brakujący dodatek — ↻ dokłada go zamiast „stado skończyło”
+        if (!dodatek(await czytaj(id), 'przeklad')) await zmien(id, (x) => { if (!dodatek(x, 'przeklad')) x.stado.push(nowyPrzeklad()); });
         const w = await czytaj(id);
         if (!w.stado.some((s) => s.stan === 'blad' || s.stan === 'czeka')) throw new Error('Stado skończyło już ten wpis.');
         zlecStado(id);
@@ -309,6 +349,7 @@ export function utworzZywaKsiege(cfg = {}) {
             return {
                 id: w.id, kiedy: w.kiedy, tekst: w.tekst,
                 slowo: slowo ? { kto: slowo.kto, tekst: slowo.tekst } : null,
+                przeklad: (() => { const p = w.stado.find((s) => s.rodzaj === 'przeklad' && s.stan === 'gotowe' && s.tekst); return p ? { [p.jezyk || 'en']: { tekst: p.tekst, slowo: p.slowo ?? null } } : null; })(),
                 ilustracja: il ? { kto: il.kto, styl: il.styl?.nazwa ?? null, url: `/wizytowka/ksiega/${w.id}/${il.plik}?v=${v}` } : null,
                 zdjecie: w.zdjecie ? { url: `/wizytowka/ksiega/${w.id}/${w.zdjecie.plik}?v=${encodeURIComponent(w.zdjecie.kiedy)}` } : null,
                 nagranie: w.nagranie ? { url: `/wizytowka/ksiega/${w.id}/${w.nagranie.plik}?v=${v}`, sekundy: w.nagranie.sekundy } : null,

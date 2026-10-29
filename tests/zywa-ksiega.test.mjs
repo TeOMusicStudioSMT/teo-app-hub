@@ -7,14 +7,14 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import express from 'express';
 import ffmpegPath from 'ffmpeg-static';
-import { utworzZywaKsiege, zamontujTrasyZywejKsiegi, odczytajSlowo, oczyscRysunek } from '../services/ZywaKsiega.js';
+import { utworzZywaKsiege, zamontujTrasyZywejKsiegi, odczytajSlowo, oczyscRysunek, odczytajPrzeklad, SYSTEM_PRZEKLADU } from '../services/ZywaKsiega.js';
 import { SCIEZKI_TYLKO_LOKALNE, czyDlaSparowanych } from '../services/StrazMostu.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ksiega-'));
 const czekaj = async (f) => { for (let i = 0; i < 500 && !(await f()); i++) await new Promise((r) => setTimeout(r, 10)); };
 
 function atrapy(kat, { slowo = 'SŁOWO: Twoje słowa niosą poranne światło. Stado czuje ten spokój.\nOBRAZ: a golden sunrise over a quiet sea with a glowing open book' } = {}) {
-    const wolania = { chat: [], rysuj: [] };
+    const wolania = { chat: [], rysuj: [], przeklad: [] };
     const png = path.join(kat, 'comfy-out.png');
     execFileSync(ffmpegPath, ['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=gold:s=64x64', '-frames:v', '1', png]);
     return {
@@ -23,7 +23,10 @@ function atrapy(kat, { slowo = 'SŁOWO: Twoje słowa niosą poranne światło. S
             katalog: kat, ffmpeg: ffmpegPath,
             modelDla: async (id) => `model-${id}`,
             // jak piszModelem mostu: { tekst, silnik } (2026-10-29: goły napis w atrapie ukrył, że Księga czytała obiekt jako tekst)
-            chat: async (model, system, user) => { wolania.chat.push({ model, system, user }); return { tekst: typeof slowo === 'function' ? slowo(wolania.chat.length) : slowo, silnik: model }; },
+            chat: async (model, system, user) => {
+                // 🌍 przekład to osobna rozmowa Kronikarza — liczona osobno, żeby testy słowa liczyły tylko słowo
+                if (system === SYSTEM_PRZEKLADU) { wolania.przeklad.push({ model, user }); return { tekst: '=== TEKST ===\nI am. Today I flow lightly.\n=== SŁOWO ===\nYour words carry the morning light.', silnik: model }; }
+                wolania.chat.push({ model, system, user }); return { tekst: typeof slowo === 'function' ? slowo(wolania.chat.length) : slowo, silnik: model }; },
             rysuj: async ({ prompt, prefiks }) => { wolania.rysuj.push({ prompt, prefiks }); return png; },
         },
     };
@@ -49,7 +52,13 @@ test('Iskra → stado: Kronikarz pisze słowo i opis kadru, Paleta rysuje FLUX-e
     assert.match(w.id, /^k-\d{8}-[0-9a-f]{6}$/);
     await czekaj(async () => (await K.czytaj(w.id)).stado.every((s) => s.stan === 'gotowe' || s.stan === 'blad'));
     const g = await K.czytaj(w.id);
-    assert.deepEqual(g.stado.map((s) => [s.rodzaj, s.kto, s.stan]), [['slowo', 'kronikarz', 'gotowe'], ['ilustracja', 'paleta', 'gotowe']]);
+    assert.deepEqual(g.stado.map((s) => [s.rodzaj, s.kto, s.stan]), [['slowo', 'kronikarz', 'gotowe'], ['ilustracja', 'paleta', 'gotowe'], ['przeklad', 'kronikarz', 'gotowe']]);
+    // 🌍 przekład: słowa Suwerena i odpowiedź Kronikarza idą do przekładu; świat dostaje je pod kluczem języka
+    assert.match(a.wolania.przeklad[0].user, /Dziś płynę lekko[\s\S]*ODPOWIEDŹ KRONIKARZA:\nTwoje słowa niosą poranne światło/);
+    assert.deepEqual(g.stado[2].tekst, 'I am. Today I flow lightly.');
+    assert.equal((await K.publiczne())[0].przeklad.en.slowo, 'Your words carry the morning light.');
+    assert.deepEqual(odczytajPrzeklad('=== TEKST ===\nOnly text'), { tekst: 'Only text', slowo: null });
+    assert.equal(odczytajPrzeklad('bez znaczników'), null);
     assert.match(g.stado[0].tekst, /poranne światło/);
     assert.equal(a.wolania.chat[0].model, 'model-kronikarz');
     assert.match(a.wolania.chat[0].user, /Dziś płynę lekko/);
