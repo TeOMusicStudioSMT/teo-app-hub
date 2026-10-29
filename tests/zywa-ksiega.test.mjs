@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import express from 'express';
 import ffmpegPath from 'ffmpeg-static';
 import { utworzZywaKsiege, zamontujTrasyZywejKsiegi, odczytajSlowo, oczyscRysunek } from '../services/ZywaKsiega.js';
-import { SCIEZKI_TYLKO_LOKALNE } from '../services/StrazMostu.js';
+import { SCIEZKI_TYLKO_LOKALNE, czyDlaSparowanych } from '../services/StrazMostu.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ksiega-'));
 const czekaj = async (f) => { for (let i = 0; i < 500 && !(await f()); i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -188,5 +188,38 @@ test('zdjęcie we wpisie: obraz → JPEG ≤ 2048 px bez metadanych, trasa HTTP,
         assert.equal((await fetch(`${url}/wizytowka/ksiega/${w.id}/zdjecie.jpg`)).status, 404);
         assert.equal((await (await fetch(`${url}/api/zywa-ksiega/${w.id}/zdjecie`, { method: 'DELETE' })).json()).wpis.zdjecie, null);
         assert.equal(fs.existsSync(jpg), false);
+    } finally { srv.close(); }
+});
+
+test('📱 StoL: Straż wpuszcza trasy Księgi dla sparowanych, trasa żąda tokenu (przed ciałem), wpisu z telefonu nie usunie', async () => {
+    assert.equal(czyDlaSparowanych('/api/zywa-ksiega'), true);
+    assert.equal(czyDlaSparowanych('/api/zywa-ksiega/k-20261029-087b8c/zdjecie'), true);
+    assert.equal(czyDlaSparowanych('/api/zywa-ksiega/k-20261029-087b8c/plik/ilustracja.png'), true);
+    assert.equal(czyDlaSparowanych('/api/zywa-ksiega/k-20261029-087b8c/plik/wpis.json'), false);
+    assert.equal(czyDlaSparowanych('/api/zywa-ksiega/../stado.json'), false);
+    assert.equal(czyDlaSparowanych('/api/stado/projekt/nowy'), true);
+
+    const kat = tmp(); const a = atrapy(kat);
+    const K = utworzZywaKsiege(a.cfg);
+    const app = express(); app.use(express.json());
+    app.use((req, _res, next) => { req.lokalny = req.get('x-test-zdalny') !== '1'; next(); });
+    const dostep = async (req, res) => {
+        if (req.lokalny && req.get('X-Stado-Token') === undefined) return true;
+        if (req.get('X-Stado-Token') === 'dobry') return true;
+        res.status(401).json({ success: false, message: 'Brak sparowania.' }); return false;
+    };
+    zamontujTrasyZywejKsiegi(app, K, { raw: express.raw, dostep });
+    const srv = app.listen(0); const url = `http://127.0.0.1:${srv.address().port}`;
+    try {
+        const tel = { 'x-test-zdalny': '1', 'X-Stado-Token': 'dobry' };
+        assert.equal((await fetch(`${url}/api/zywa-ksiega`, { headers: { 'x-test-zdalny': '1' } })).status, 401);
+        const nowy = await (await fetch(`${url}/api/zywa-ksiega`, { method: 'POST', headers: { ...tel, 'Content-Type': 'application/json' }, body: JSON.stringify({ tekst: 'Iskra z telefonu.' }) })).json();
+        assert.equal(nowy.success, true);
+        const bez = await fetch(`${url}/api/zywa-ksiega/${nowy.wpis.id}/zdjecie`, { method: 'POST', headers: { 'x-test-zdalny': '1', 'Content-Type': 'image/png' }, body: Buffer.alloc(1000) });
+        assert.equal(bez.status, 401);
+        const usun = await fetch(`${url}/api/zywa-ksiega/${nowy.wpis.id}`, { method: 'DELETE', headers: tel });
+        assert.equal(usun.status, 403);
+        assert.equal((await fetch(`${url}/api/zywa-ksiega/${nowy.wpis.id}`, { method: 'PUT', headers: { ...tel, 'Content-Type': 'application/json' }, body: JSON.stringify({ publiczny: false }) })).status, 200);
+        assert.equal((await fetch(`${url}/api/zywa-ksiega/${nowy.wpis.id}`, { method: 'DELETE' })).status, 200);   // przy maszynie wolno
     } finally { srv.close(); }
 });

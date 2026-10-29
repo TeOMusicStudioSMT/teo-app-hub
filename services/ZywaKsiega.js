@@ -292,8 +292,19 @@ export function utworzZywaKsiege(cfg = {}) {
 }
 
 /** Trasy (Straż: `/api/zywa-ksiega` tylko maszyna). `raw` = express.raw z mostu (nagranie). */
-export function zamontujTrasyZywejKsiegi(app, K, { raw } = {}) {
+export function zamontujTrasyZywejKsiegi(app, K, { raw, dostep } = {}) {
     const blad = (res, e, kod = 400) => res.status(kod).json({ success: false, message: e.message });
+    // 📱 StoL: `dostep(req, res)` (most: dostepStada) — maszyna bez tokenu, telefon tylko z tokenem parowania.
+    // Przed parserem surowego ciała: niesparowany nie wyśle 300 MB, zanim usłyszy „nie”.
+    app.use('/api/zywa-ksiega', async (req, res, next) => {
+        try {
+            if (dostep && !(await dostep(req, res))) return;   // dostep odpowiedział już 401
+            if (req.method === 'DELETE' && /^\/k-[^/]+\/?$/.test(req.path) && req.lokalny === false) {
+                return res.status(403).json({ success: false, message: 'Wpis usuwa się przy Katedrze — z telefonu możesz go ukryć (🔒).' });
+            }
+            next();
+        } catch (e) { blad(res, e, 500); }
+    });
     app.get('/api/zywa-ksiega', async (_req, res) => { try { res.json({ success: true, wpisy: await K.lista(), stado: K.stan() }); } catch (e) { blad(res, e, 500); } });
     app.post('/api/zywa-ksiega', async (req, res) => { try { res.json({ success: true, wpis: await K.dodaj(req.body ?? {}) }); } catch (e) { blad(res, e); } });
     app.get('/api/zywa-ksiega/:id', async (req, res) => { try { res.json({ success: true, wpis: await K.czytaj(req.params.id) }); } catch (e) { blad(res, e, 404); } });

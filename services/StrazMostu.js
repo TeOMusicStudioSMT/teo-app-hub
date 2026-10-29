@@ -191,6 +191,13 @@ export function czyZwrotYouTube(req) {
 }
 
 export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy', '/api/system/free']);
+/**
+ * 📖 Żywa Księga z telefonu (Suweren 2026-10-29: „rób Księgę w StoL… dogrywanie z telefonu”): wpisy, zdjęcie,
+ * nagranie, rysunek, ↻ stado i pliki wpisu — trasy same żądają tokenu parowania (dostepStada), usunięcie wpisu
+ * zostaje przy maszynie.
+ */
+export const WZOR_KSIEGI_DLA_SPAROWANYCH = /^\/api\/zywa-ksiega(\/k-\d{8}-[0-9a-f]{6}(\/(zdjecie|nagranie|rysunek|stado|plik\/(zdjecie\.jpg|ilustracja\.png|nagranie\.mp4)))?)?$/;
+export const czyDlaSparowanych = (sciezka) => SCIEZKI_DLA_SPAROWANYCH.has(sciezka) || WZOR_KSIEGI_DLA_SPAROWANYCH.test(sciezka);
 
 /**
  * Publiczne strony Suwerena, które w JEGO przeglądarce czytają żywe dane z mostu
@@ -338,7 +345,7 @@ export function strazMostu({ klucz, pelnyTunel = false, zaufane = null }) {
         // Pełny tunel (OTAKOS_TUNEL_PELNY=1) dotyczy tylko tunelu z kluczem — nie stron publicznych.
         if (!pelnyTunel || req.zrodlo === 'publiczne') {
             const sciezkaZakazana = SCIEZKI_TYLKO_LOKALNE.some(p => req.path.startsWith(p))
-                && !(req.zrodlo !== 'publiczne' && SCIEZKI_DLA_SPAROWANYCH.has(req.path));
+                && !(req.zrodlo !== 'publiczne' && czyDlaSparowanych(req.path));
             if (sciezkaZakazana) {
                 console.warn(`[Straż] ⛔ Ścieżka tylko lokalna, żądanie zdalne odrzucone: ${req.path}`);
                 return res.status(403).json({

@@ -15464,7 +15464,7 @@ const ZywaKsiega = utworzZywaKsiege({
     szyna: Szyna,
 });
 ZywaKsiega.sprzatnijDuchy().catch((e) => console.warn('[Żywa Księga] duchy:', e.message));
-zamontujTrasyZywejKsiegi(app, ZywaKsiega, { raw: express.raw });
+zamontujTrasyZywejKsiegi(app, ZywaKsiega, { raw: express.raw, dostep: async (req, res) => (await dostepStada(req, res)) !== null });   // 📱 StoL z tokenem parowania
 zamontujTrasyGolDnia(app, GolDnia, { kanalProjektu: (p) => PublikacjeYT.kanalProjektu(p), ustawKanalProjektu: (p, k) => PublikacjeYT.ustawKanalProjektu(p, k), raw: express.raw });
 
 const GameShow = utworzGameShow({
