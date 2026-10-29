@@ -3,10 +3,23 @@
     "katedra-game-studio": {
       "type": "stdio",
       "command": "node",
-      "args": ["scripts/mcp/game-studio.mjs"],
+      "args": [
+        "scripts/mcp/game-studio.mjs"
+      ],
       "env": {
         "OTAKOS_MOST": "http://127.0.0.1:3001"
       }
+    },
+    "wix": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@wix/mcp-remote",
+        "https://mcp.wix.com/sse"
+      ]
     }
   }
 }
