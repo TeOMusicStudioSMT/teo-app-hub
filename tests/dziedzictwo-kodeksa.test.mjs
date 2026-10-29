@@ -63,11 +63,14 @@ test('💡 JaJo w dziedzictwie: wszystkie odrzucone rundy z modelem idą dalej, 
 test('🛁 SPA: spokojny blok bez ściany błędów i bez cudzych plików', async () => {
     const { blokDziedzictwa } = await import('../services/AppStudio.js');
     const b = blokDziedzictwa({ spa: true, przeszkoda: 'tsc: TS2304 Cannot find name THREE', rada: 'Zaimportuj three.' });
-    assert.match(b, /SPOKOJNIE/);
+    assert.match(b, /WRACASZ Z KĄPIELI/);
     assert.match(b, /TS2304/);
     assert.match(b, /Zaimportuj three/);
     assert.doesNotMatch(b, /=== PLIK:/);
     assert.doesNotMatch(b, /NIE PRZESZŁY/);
+    assert.doesNotMatch(b, /sam zobaczyłeś/, 'bez Aha — bez bloku Aha');
+    const zAha = blokDziedzictwa({ spa: true, przeszkoda: 'x', aha: 'Wystarczy jeden nowy plik ze słuchaczem.' });
+    assert.match(zAha, /W kąpieli sam zobaczyłeś[^]*jeden nowy plik ze słuchaczem[^]*najmniejszy ruch/);
 });
 
 test('🧩 rejestr modułów: podpina tylko moduł, który sam coś robi po imporcie', async () => {

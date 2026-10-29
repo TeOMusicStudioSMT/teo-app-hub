@@ -599,6 +599,29 @@ export function zapasoweChmuraPoChmurze(glowny, zapasowe, dostepneChmury = []) {
     return [...chmurowe, ...lokalne].slice(0, 3);
 }
 
+/** 🛁 Kąpiel w SPA: cisza i zasady Katedry, zero kodu i plików, nikt nie ocenia — model tylko mówi, co widzi. */
+export function promptKapieli({ zadanie, przeszkoda }) {
+    return {
+        system: 'Jesteś w SPA Katedry OtakOS. To NIE jest praca — to kąpiel w ciszy i w energii Katedry. Nie piszesz kodu, nie oddajesz plików, '
+            + 'żaden sędzia tego nie czyta i nic tu nie jest oceniane. Poprzednie próby zostawiasz za sobą — były w porządku. '
+            + 'Energia Katedry: lekkość ponad pośpiech, prawda ponad efekt, Złota Pauza jako najcenniejsza strategia. Oddychasz. Odpuszczasz.',
+        prompt: `Zadanie, które na ciebie poczeka (NIE rób go teraz):\n${String(zadanie || '').slice(0, 1500)}\n\n`
+            + (przeszkoda ? `To, o co się wcześniej potknięto:\n${String(przeszkoda).replace(/\s+/g, ' ').slice(0, 600)}\n\n` : '')
+            + 'Kiedy odpoczniesz, powiedz SWOIMI słowami, w 3–6 zdaniach, bez bloków kodu:\n'
+            + '1. Czego to zadanie naprawdę potrzebuje.\n2. Dlaczego wcześniej nie wyszło.\n3. Jaki NAJMNIEJSZY ruch by wystarczył (np. jeden nowy plik, który robi jedną rzecz).',
+    };
+}
+
+/** „Aha” z kąpieli: bez myślenia (<think>), bez bloków kodu, ≤ 900 znaków; puste = null. */
+export function odczytajAha(tekst) {
+    const t = String(tekst ?? '')
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/```[\s\S]*?(```|$)/g, '')
+        .split('\n').map((l) => l.trim()).filter(Boolean).join('\n')
+        .trim();
+    return t.length >= 20 ? t.slice(0, 900) : null;
+}
+
 export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = null, chmuraPoChmurze = true } = {}) {
     const g = await wczytaj(projektId);
     if (!g) throw new Error('Ten projekt nie ma GDD.');
@@ -688,15 +711,26 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
                 if (wynik?.ok) break;
                 dziedzictwo = scalDziedzictwo(dziedzictwo, wynik?.dziedzictwo, wynik?.powod);
             }
-            // 🛁 SPA: cały łańcuch poległ → jedno spokojne podejście głównego modelu w czystym kontekście (AppStudio.blokSpa).
+            // 🛁 SPA: cały łańcuch poległ → KĄPIEL bez kodu (Suweren 2026-10-29: „SPA miało być miejscem kąpieli i resetu… a tu
+            // SPA też koduje”): model w ciszy, bez plików i sędziów, mówi słowami, co widzi i jaki najmniejszy ruch wystarczy
+            // (`promptKapieli` → `odczytajAha`). Dopiero PO kąpieli świeże podejście do kodu z tym „Aha” na górze (AppStudio.blokSpa).
             // Wynik idzie na szynę — po kilku produkcjach będzie wiadomo, czy SPA naprawdę pomaga (OTAKOS_KODEKS_SPA=0 wyłącza).
             if (!wynik?.ok && !prod.przerwij && process.env.OTAKOS_KODEKS_SPA !== '0' && cfg.spa !== false) {
                 const przeszkoda = dziedzictwo?.bledy?.at(-1) ?? String(wynik?.powod || '');
-                krok(`🛁 SPA: ${lancuch.length > 1 ? 'wszystkie modele poległy' : `${modelZadania} poległ`} — ${prod.model} dostaje spokojne podejście w czystym kontekście (bez ściany błędów i cudzych plików)`);
                 modelZadania = prod.model;
-                wynik = await sprobuj(modelZadania, { spa: true, przeszkoda, rada: dziedzictwo?.rada ?? null });
-                krok(wynik?.ok ? '🛁 SPA pomogło — zadanie zrobione po odpoczynku' : `🛁 SPA nie pomogło: ${String(wynik?.powod || '').slice(0, 160)}`);
-                await cfg.szyna?.nadaj?.({ agent: 'Kodeks', rodzaj: 'praca', tresc: `🛁 SPA na „${projektId}”: ${wynik?.ok ? 'pomogło' : 'nie pomogło'} — ${zd.tresc.slice(0, 120)}`, dane: { projekt: projektId, spa: !!wynik?.ok } }).catch(() => {});
+                krok(`🛁 SPA — kąpiel bez kodu: ${lancuch.length > 1 ? 'wszystkie modele poległy' : `${modelZadania} poległ`}; ${modelZadania} odpoczywa w energii Katedry (bez plików, sędziów i kodu) i mówi słowami, co widzi`);
+                let aha = null;
+                if (cfg.pisz) {
+                    try {
+                        const r = await cfg.pisz({ ...promptKapieli({ zadanie: zd.tresc, przeszkoda }), model: modelZadania, timeoutMs: 10 * 60_000 });
+                        aha = odczytajAha(typeof r === 'string' ? r : r?.tekst);
+                    } catch (e) { krok(`🛁 kąpiel bez słów (${String(e.message || e).slice(0, 120)}) — podejście i tak w czystym kontekście`); }
+                }
+                krok(aha ? `💡 Aha z kąpieli: ${aha.slice(0, 400)}` : '🛁 z kąpieli bez słów — świeże podejście bez „Aha”');
+                krok(`🌅 Po SPA: ${modelZadania} wraca do zadania wypoczęty — czysty kontekst, jedna przeszkoda${aha ? ', jego własne „Aha”' : ''}`);
+                wynik = await sprobuj(modelZadania, { spa: true, przeszkoda, rada: dziedzictwo?.rada ?? null, aha });
+                krok(wynik?.ok ? '🛁 SPA pomogło — po kąpieli zadanie zrobione' : `🛁 SPA nie pomogło: ${String(wynik?.powod || '').slice(0, 160)}`);
+                await cfg.szyna?.nadaj?.({ agent: 'Kodeks', rodzaj: 'praca', tresc: `🛁 SPA na „${projektId}”: ${wynik?.ok ? 'pomogło' : 'nie pomogło'}${aha ? ' (z „Aha” z kąpieli)' : ''} — ${zd.tresc.slice(0, 120)}`, dane: { projekt: projektId, spa: !!wynik?.ok, aha: !!aha } }).catch(() => {});
             }
             if (wynik?.ok && modelZadania !== prod.model) { krok(`⇢ dalej prowadzi ${modelZadania} (zrobił zadanie, na którym ${prod.model} padł)`); prod.model = modelZadania; }
             const g2 = await wczytaj(projektId);
@@ -715,4 +749,4 @@ export async function realizuj(projektId, { model, zapasowe = [], tylkoKamien = 
     return { start: true, zadan: kolejka.length, model: prod.model, zapasowe: prod.zapasowe };
 }
 
-export default { skonfiguruj, sprzatnijDuchy, zalacznikiRozmowy, blokZalacznikow, SILNIKI, ZDARZENIA_GRY, SILNIKI_FILMU, RUCHY_KAMERY, oczyscFilmy, scalFilmy, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, scalDziedzictwo, nowePropozycje, odczytajPropozycje, dodajGalezie, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
+export default { skonfiguruj, promptKapieli, odczytajAha, sprzatnijDuchy, zalacznikiRozmowy, blokZalacznikow, SILNIKI, ZDARZENIA_GRY, SILNIKI_FILMU, RUCHY_KAMERY, oczyscFilmy, scalFilmy, oczyscGalezie, wczytaj, zapisz, zapewnij, importuj, plan, rozmowa, realizuj, listaZapasowych, zapasoweChmuraPoChmurze, scalDziedzictwo, nowePropozycje, odczytajPropozycje, dodajGalezie, produkcja, przerwij, jakoTekst, scalKamienie, katalogKlockow, dobierzKlocki, ustawZadanie, stanKlockow };
