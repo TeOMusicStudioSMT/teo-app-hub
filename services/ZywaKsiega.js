@@ -61,6 +61,19 @@ export const SYSTEM_PRZEKLADU = 'Jesteś Kronikarzem stada TeOgochi. Przekładas
     + 'nie komentuj. Gdy fragment jest już po angielsku — oddaj go bez zmian.\n'
     + 'FORMAT (dokładnie tak, znaczniki w osobnych liniach):\n=== TEKST ===\n<przekład słów Suwerena>\n=== SŁOWO ===\n<przekład odpowiedzi Kronikarza albo pusto>';
 
+/**
+ * „Przekład”, który nadal jest po polsku (na żywo 2026-10-29: teogochi_yay oddał słowa Suwerena bez zmian, a swoje
+ * przełożył). Nazwy własne w nawiasie — np. „(Świadomość Chrystusowa)” — nie przeszkadzają: liczymy GĘSTOŚĆ polskich
+ * liter i polskie słówka funkcyjne, nie samą obecność.
+ */
+export function wciazPoPolsku(tekst) {
+    const t = ` ${String(tekst ?? '').toLowerCase()} `;
+    const litery = (t.match(/\p{L}/gu) ?? []).length || 1;
+    const diakrytyki = (t.match(/[ąćęłńóśźż]/g) ?? []).length;
+    const slowka = (t.match(/[\s,.;:!?„"(](i|w|z|na|się|jest|nie|to|że|do|od|po|czy|ale|lecz|jak|kto|niech|tego|iż)(?=[\s,.;:!?”")])/g) ?? []).length;
+    return diakrytyki / litery > 0.03 || slowka >= 3;
+}
+
 /** „=== TEKST === … === SŁOWO === …” → { tekst, slowo } albo null. */
 export function odczytajPrzeklad(odp) {
     const t = String(odp ?? '').replace(/<think>[\s\S]*?<\/think>/gi, '');
@@ -246,9 +259,14 @@ export function utworzZywaKsiege(cfg = {}) {
                 const model = await cfg.modelDla?.('kronikarz');
                 const slowo = dodatek(w, 'slowo');
                 const wejscie = `SŁOWA SUWERENA:\n${w.tekst}\n\nODPOWIEDŹ KRONIKARZA:\n${slowo?.stan === 'gotowe' ? slowo.tekst : '(brak)'}`;
+                const dobry = (x) => x && !wciazPoPolsku(x.tekst) && !(x.slowo && wciazPoPolsku(x.slowo));
                 let p = odczytajPrzeklad(tekstOdpowiedzi(await cfg.chat(model, SYSTEM_PRZEKLADU, wejscie)));
-                if (!p) p = odczytajPrzeklad(tekstOdpowiedzi(await cfg.chat(model, SYSTEM_PRZEKLADU, `${wejscie}\n\nPoprzednio format był zły. Zacznij od linii „=== TEKST ===”.`)));
+                if (!dobry(p)) {
+                    const uwaga = p ? 'Poprzednio część została PO POLSKU. Przełóż WSZYSTKO NA ANGIELSKI — także słowa Suwerena.' : 'Poprzednio format był zły. Zacznij od linii „=== TEKST ===”.';
+                    p = odczytajPrzeklad(tekstOdpowiedzi(await cfg.chat(model, SYSTEM_PRZEKLADU, `${wejscie}\n\n${uwaga}`)));
+                }
                 if (!p) throw new Error('Kronikarz nie oddał przekładu w formacie (dwie próby)');
+                if (!dobry(p)) throw new Error('Kronikarz oddał tekst nadal po polsku (dwie próby) — ↻ spróbuje jeszcze raz');
                 await zmien(id, (x) => { Object.assign(dodatek(x, 'przeklad'), { stan: 'gotowe', jezyk: 'en', tekst: p.tekst, slowo: slowo?.stan === 'gotowe' ? p.slowo : null, model: model ?? null }); });
             } catch (e) {
                 await zmien(id, (x) => { Object.assign(dodatek(x, 'przeklad'), { stan: 'blad', powod: String(e.message || e).slice(0, 300) }); });
