@@ -53,6 +53,7 @@ type View =
     | 'skladnica'
     | 'aktualizacja'
     | 'brief'
+    | 'odwiedziny'
     | 'zywa-ksiega';
 
 interface LoungeNavigationProps {
@@ -123,6 +124,7 @@ const MORE_NAV: { id: View; label: string; icon: React.ReactNode; desc: string; 
     { id: 'mcp-skillboard',label: '⚡ MCP SKILLBOARD', icon: <span className="text-base font-bold text-cyan-400">⚡</span>, desc: 'Centralny rejestr skilli i narzędzi MCP (0.00G Protocol)', grupa: 'rdzen' },
     { id: 'field-control', label: 'Field Control',  icon: <ShieldCheckIcon />, desc: 'Tarcza Pola i bezpieczeństwo', grupa: 'rdzen' },
     { id: 'brief',         label: '☀️ Poranny brief', icon: <span className="text-base">☀️</span>, desc: 'Co czeka na Twoje ✓, co wyszło przez dobę, co do sprawdzenia — fakty z mostu', grupa: 'rdzen' },
+    { id: 'odwiedziny',    label: '🌍 Odwiedziny', icon: <span className="text-base">🌍</span>, desc: 'Kto zagląda na teo.center i skąd — kraje, źródła, ostatnie wejścia (bez adresów IP)', grupa: 'rdzen' },
     { id: 'aktualizacja',  label: '🔄 Aktualizacja Katedry', icon: <span className="text-base">🔄</span>, desc: 'Nowsza Katedra z otakos.wtf albo z gita — podmiana kodu, dane zostają', grupa: 'rdzen' },
     { id: 'kancelaria',    label: 'Kancelaria 0.00G', icon: <span className="text-base">⚖️</span>, desc: 'Tarcza prawna: licencje, prawa, zgodność (Filar II)', grupa: 'rdzen' },
 ];

@@ -41,6 +41,7 @@ import { Mic, MicOff } from 'lucide-react';
 import { SwiatKlockowView, TelefonView } from './SwiatITelefon';
 import { AktualizacjaView, AktualizacjaBaner } from './AktualizacjaKatedry';
 import { PorannyBriefView, PorannyBriefBaner } from './PorannyBrief';
+import { OdwiedzinyView } from './Odwiedziny';
 import { SkladnicaView } from './SkladnicaView';
 import ZywaKsiega from './special/ZywaKsiega';
 
@@ -62,7 +63,7 @@ interface TeonautLoungeProps {
     onOpenCrewClub?: () => void;
 }
 
-type View = 'kuznia' | 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'mcp-skillboard' | 'twoje-biznesy' | 'swiat' | 'telefon' | 'skladnica' | 'aktualizacja' | 'brief' | 'zywa-ksiega';
+type View = 'kuznia' | 'dashboard' | 'projects' | 'teo-market' | 'identity' | 'academy' | 'field-control' | 'profile' | 'graviton-wallet' | 'cobots' | 'crew-club' | 'teolab' | 'robotics' | 'sonic' | 'kancelaria' | 'trust' | 'pralka' | 'kompas' | 'mcp-skillboard' | 'twoje-biznesy' | 'swiat' | 'telefon' | 'skladnica' | 'aktualizacja' | 'brief' | 'odwiedziny' | 'zywa-ksiega';
 
 export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionToggle, onFavoriteToggle, onLogout, onTriggerAnomaly, behavioralData, onVisualAssistantOpen, onOpenCrewClub }) => {
     const [activeView, setActiveView] = useState<View>('dashboard');
@@ -275,6 +276,7 @@ export const TeonautLounge: React.FC<TeonautLoungeProps> = ({ onSubscriptionTogg
                             {activeView === 'telefon' && <TelefonView />}
                             {activeView === 'aktualizacja' && <AktualizacjaView />}
                             {activeView === 'brief' && <PorannyBriefView />}
+                            {activeView === 'odwiedziny' && <OdwiedzinyView />}
                             {activeView === 'skladnica' && <SkladnicaView />}
                             {activeView === 'zywa-ksiega' && <ZywaKsiega />}
                             {activeView === 'profile' && <ProfileView onLogout={onLogout} />}
