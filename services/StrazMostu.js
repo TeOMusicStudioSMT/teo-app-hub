@@ -153,6 +153,8 @@ export const SCIEZKA_SKLEPU = /^\/wizytowka\/sklep\/(pk-[0-9a-f]{8}\/okladka\.pn
 export const SCIEZKA_OPISU = /^\/wizytowka\/opis\/[0-9a-f]{24}$/;
 /** 📖 Żywa Księga dla świata (services/ZywaKsiega.js): lista wpisów „dla świata” i ich ilustracje/nagrania — tylko odczyt. */
 export const SCIEZKA_KSIEGI = /^\/wizytowka\/ksiega(\/k-\d{8}-[0-9a-f]{6}\/(zdjecie\.jpg|ilustracja\.png|nagranie\.mp4))?$/;
+/** 🌍 Licznik wejść (services/LicznikWejsc.js): strony Suwerena zgłaszają wejście gościa — kraj z Cloudflare, bez IP. */
+export const SCIEZKA_WEJSCIA = '/wizytowka/wejscie';
 export const SCIEZKA_RINGU = /^\/wizytowka\/ring(\/r-[a-z0-9]{6,16}(\/wyjdz)?)?$/;
 export function czyWizytowka(req) {
     // 💬 Skrzynka TOST (services/TostSiec.js): inne Katedry wrzucają tu koperty — szyfrowane, podpisane,
@@ -160,6 +162,7 @@ export function czyWizytowka(req) {
     if (req.method === 'POST' && req.path === '/api/tost/skrzynka') return true;
     // 👥 Plac obecności (services/PlacObecnosci.js): gracze udostępnionej gry meldują pozycję — w pamięci mostu, bez modeli.
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_PLACU.test(String(req.path || ''))) return true;
+    if ((req.method === 'POST' || req.method === 'OPTIONS') && req.path === SCIEZKA_WEJSCIA) return true;
     // 💃🥊 Ring taneczny: pojedynki Mini-TeOgochi między Katedrami (otwarcie pokoju i tak tylko maszyna — sprawdza trasa).
     if (['GET', 'HEAD', 'POST', 'OPTIONS'].includes(req.method) && SCIEZKA_RINGU.test(String(req.path || ''))) return true;
     // 💳 Zapłata innej Katedry za grę (services/RozliczeniaKatedr.js): zlecenie podpisane jej kluczem, sprawdzane kluczem z rejestru.

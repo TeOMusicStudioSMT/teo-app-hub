@@ -118,6 +118,7 @@ import * as Tlumacz        from './services/Tlumacz.js';
 import * as Glowny         from './services/Glowny.js';
 import { utworzArgoBoba }   from './services/ArgoBob.js';
 import { utworzZywaKsiege, zamontujTrasyZywejKsiegi } from './services/ZywaKsiega.js';
+import { utworzLicznikWejsc, zamontujTrasyLicznika } from './services/LicznikWejsc.js';
 import { wczytajStyle } from './services/StylePalety.js';
 import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei, odpowiedzGeminiZwiadu, SZUKAJ_W_GOOGLE } from './services/GolDnia.js';
 import { utworzZebrraTaniec, zamontujTrasyZebrraTanca, PROJEKT as PROJEKT_ZEBRRA_SPORTS } from './services/ZebrraTaniec.js';
@@ -15481,6 +15482,9 @@ const ZywaKsiega = utworzZywaKsiege({
 });
 ZywaKsiega.sprzatnijDuchy().catch((e) => console.warn('[Żywa Księga] duchy:', e.message));
 zamontujTrasyZywejKsiegi(app, ZywaKsiega, { raw: express.raw, dostep: async (req, res) => (await dostepStada(req, res)) !== null });   // 📱 StoL z tokenem parowania
+// 🌍 Licznik wejść na strony Suwerena (teo.center…) — kraj z Cloudflare, bez IP; wieść kanałem Mistrza do Orbity
+const LicznikWejsc = utworzLicznikWejsc({ katalog: path.join(ANTIGRAVITY_DIR, 'odwiedziny'), wiesc: (w) => Jajo.wiesc(w) });
+zamontujTrasyLicznika(app, LicznikWejsc);
 zamontujTrasyGolDnia(app, GolDnia, { kanalProjektu: (p) => PublikacjeYT.kanalProjektu(p), ustawKanalProjektu: (p, k) => PublikacjeYT.ustawKanalProjektu(p, k), raw: express.raw });
 
 const GameShow = utworzGameShow({
