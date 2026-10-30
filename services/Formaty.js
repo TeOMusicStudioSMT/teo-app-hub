@@ -39,8 +39,9 @@ export const SZER = 1080, WYS = 1920, FPS = 30;
 // TikTok przyjmuje filmy do 10 min (Suweren 2026-10-22: „tańce potrzebują więcej czasu”) — wycinek do tej długości
 export const MAX_KLIPU = 600;
 export const CELE = {
-    shorts: { nazwa: 'YouTube Shorts', siec: 'youtube', max: 180 },
-    reels: { nazwa: 'Instagram Reels', siec: 'instagram', max: 180 },
+    // 178, nie 180: pion z ffmpeg wychodzi o ułamek dłuższy, a YouTube zaokrągla w górę — 180 s pokazał jako 3:01 i dał do „Filmów” (Suweren 2026-10-30)
+    shorts: { nazwa: 'YouTube Shorts', siec: 'youtube', max: 178 },
+    reels: { nazwa: 'Instagram Reels', siec: 'instagram', max: 178 },
     tiktok: { nazwa: 'TikTok', siec: 'tiktok', max: 600 },
 };
 export const SIECI_PUBLIKACJI = { youtube: 'shorts', tiktok: 'tiktok', instagram: 'reels' };
