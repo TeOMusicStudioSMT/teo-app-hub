@@ -1051,6 +1051,9 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
         const rundyBledow = [];   // 💡 dla JaJa Mistrza: każda odrzucona runda {model, powod} (bez łączenia powtórek — liczy się „ile razy”)
         let biezacaRunda = 0;
         const zapamietaj = (etap) => {
+            // „z ostrzeżeniami” zachowujemy TYLKO rundę, którą odrzuciła sama przeglądarka — 2026-10-30 Wyrwa Zgrzytu:
+            // Sędzia Zadania odrzucił (grupa nie trafiła do sceny), a runda i tak poszła do commitu.
+            if (etap !== 'przegladarka') ostatniBuildOk = false;
             rundyBledow.push({ model: z.model, powod: feedback.slice(0, 1500) });
             const sedno = feedback.replace(/\s+/g, ' ').trim().slice(0, 500);
             if (sedno && !bledyRund.some((b) => b.slice(0, 160) === sedno.slice(0, 160))) bledyRund.push(sedno);
@@ -1173,7 +1176,8 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                     // 🧩 REJESTR MODUŁÓW tylko rośnie: dawne importy zostają zawsze, nowe z rundy się dopisują (Teterhia 2026-10-26:
                     // SPA przepisało src/moduly.ts od nowa i zgubiło Bibliotekę i Jaja)
                     if (p.sciezka === 'src/moduly.ts' && stara !== null) {
-                        const importy = (t) => t.split('\n').map((l) => l.trim()).filter((l) => /^import\s+['"]\.\//.test(l));
+                        // sam `import './x';` — bez komentarza i dubli (2026-10-30: 4× import './wyrwaZgrzytu' z różnymi komentarzami)
+                        const importy = (t) => [...new Set(t.split('\n').map((l) => l.trim().match(/^import\s+['"]\.\/[^'"]+['"]/)?.[0]).filter(Boolean).map((l) => l.replace(/"/g, "'") + ';'))];
                         const dopisane = importy(p.tresc).filter((l) => !importy(stara).includes(l));
                         p.tresc = dopisane.length ? stara.replace(/\n?export \{\};\s*$/, '').trimEnd() + '\n' + dopisane.join('\n') + '\nexport {};\n' : stara;
                         if (p.tresc === stara) continue;
