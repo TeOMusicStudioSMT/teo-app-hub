@@ -193,7 +193,9 @@ export function czyZwrotYouTube(req) {
     return HOST_MASZYNY.test(String(req.get?.('host') || ''));
 }
 
-export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy', '/api/system/free']);
+export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy', '/api/system/free',
+    '/api/mistrz/wiesci',   // 📯 powiadomienia StoL (Suweren 2026-10-30): telefon tylko CZYTA kanał Mistrza — trasa żąda tokenu parowania
+]);
 /**
  * 📖 Żywa Księga z telefonu (Suweren 2026-10-29: „rób Księgę w StoL… dogrywanie z telefonu”): wpisy, zdjęcie,
  * nagranie, rysunek, ↻ stado i pliki wpisu — trasy same żądają tokenu parowania (dostepStada), usunięcie wpisu

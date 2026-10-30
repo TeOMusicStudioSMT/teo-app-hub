@@ -11747,7 +11747,7 @@ const jajoPatrzy = (p) => { Promise.resolve().then(p).catch((e) => console.warn(
 app.get('/api/mistrz', async (_req, res) => { try { res.json({ success: true, ...(await Jajo.stan()) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
 app.post('/api/mistrz/kurs', async (_req, res) => { try { res.json({ success: true, ...(await Jajo.kurs()) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 /** 📯 Kanał Mistrza: Orbita odpytuje wieści od numeru, który już widziała. */
-app.get('/api/mistrz/wiesci', async (req, res) => { try { res.json({ success: true, ...(await Jajo.wiesci({ od: req.query.od })) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
+app.get('/api/mistrz/wiesci', async (req, res) => { if (!req.lokalny && (await dostepStada(req, res)) === null) return; try { res.json({ success: true, ...(await Jajo.wiesci({ od: req.query.od })) }); } catch (e) { res.status(500).json({ success: false, message: e.message }); } });
 /** POST /api/mistrz/wiesc { tresc, skad?, glos? } — przekaz „z pola” na kanale Mistrza (maszyna: most, Główny; jutro Klub Mistrzów). */
 app.post('/api/mistrz/wiesc', async (req, res) => { try { res.json({ success: true, wiesc: await Jajo.wiesc({ tresc: req.body?.tresc, skad: req.body?.skad || 'z pola', rodzaj: 'pole', glos: req.body?.glos === true }) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
 app.post('/api/mistrz/lekcja', async (req, res) => { try { res.json({ success: true, ...(await Jajo.lekcja({ ile: req.body?.ile })) }); } catch (e) { res.status(400).json({ success: false, message: e.message }); } });
