@@ -1042,6 +1042,9 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
         // 🥚 JaJo Mistrza: pliki każdej rundy + werdykt sędziów → po zwycięstwie pary „źle → dobrze” (cfg.poRundach).
         const rundyOdrzucone = [];
         let oddaneWRundzie = null;
+        // 🧾 treść pliku sprzed ZADANIA (pierwsze spotkanie w tej produkcji): Recenzent porównuje z nią, nie z poprzednią
+        // odrzuconą rundą — 2026-10-30 Plac: Qwen przerobił WŁASNY nowy plik z rundy 1 i dostał „zniknęło: przeplacHUD”.
+        const sprzedZadania = new Map();
         // 🧬 najdalej posunięta odrzucona runda + wszystkie różne błędy → wynik.dziedzictwo dla następnego modelu łańcucha
         let najdalsza = null;
         const bledyRund = [];
@@ -1163,6 +1166,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 for (const p of nowe) {
                     const pelna = path.join(dir, p.sciezka);
                     const stara = await fs.readFile(pelna, 'utf8').catch(() => null);
+                    if (!sprzedZadania.has(p.sciezka)) sprzedZadania.set(p.sciezka, stara);
                     if (stara !== null && stara.replace(/\r\n/g, '\n').trimEnd() === p.tresc.replace(/\r\n/g, '\n').trimEnd()) continue;
                     // 🛡️ DUŻY PLIK OKROJONY (Teterhia 2026-10-26: Qwen/gemma/SPA oddawały 636-liniowy main.ts bez połowy importów,
                     // choć zadanie mówiło „NIE oddawaj”): plik > DUZY_PLIK_CHRONIONY linii, który traci > 20% linii, nie wchodzi.
@@ -1181,7 +1185,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                     }
                     await fs.mkdir(path.dirname(pelna), { recursive: true });
                     await fs.writeFile(pelna, p.tresc, 'utf8');
-                    doRecenzji.push({ sciezka: p.sciezka, stara, nowa: p.tresc });
+                    doRecenzji.push({ sciezka: p.sciezka, stara, nowa: p.tresc, bazowa: sprzedZadania.get(p.sciezka) ?? null });
                     zmienione++;
                 }
                 const ostrzezenieDuze = pominieteDuze.length ? `Pominąłem okrojone duże pliki: ${pominieteDuze.join(', ')} — takich plików NIE oddawaj (całe stare działanie musi zostać); nowe moduły podpinaj w małym pliku (src/moduly.ts, jeśli jest).` : '';
@@ -1227,7 +1231,7 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                 // Odrzucona runda wraca do stanu sprzed niej: model w następnej rundzie musi widzieć
                 // PEŁNY stary plik, inaczej nie ma skąd odtworzyć tego, co wyciął.
                 // ⚖️ + drugi głos Jev (atrapa / regresja / kod pod test) — bez klucza same reguły.
-                const rec = await Recenzent.recenzujZJev(cfg.jev, { pliki: doRecenzji, cel });
+                const rec = await Recenzent.recenzujZJev(cfg.jev, { pliki: doRecenzji.map((p) => ({ ...p, stara: p.bazowa })), cel });
                 if (!rec.ok) {
                     for (const p of doRecenzji) {
                         const pelna = path.join(dir, p.sciezka);
