@@ -219,11 +219,14 @@ export function utworzAutopilotFormatow(o) {
         return stan();
     }
 
-    /** ↻ porzucony/błąd z powrotem do kolejki (zeruje próby). */
-    async function ponow(plik, cel) {
+    /**
+     * ↻ porzucony/błąd z powrotem do kolejki (zeruje próby). `wyslany: true` = także wysłany — Suweren usunął go z sieci
+     * (2026-10-30: Shorty po 180 s YouTube dał do „Filmów”, Suweren je skasował) i autopilot ma zrobić go od nowa.
+     */
+    async function ponow(plik, cel, { wyslany = false } = {}) {
         const d = await wczytaj();
         const kl = klucz(plik, cel);
-        if (!d.rejestr[kl] || d.rejestr[kl].stan === 'wyslany') throw new Error('Tego filmu nie ma do ponowienia.');
+        if (!d.rejestr[kl] || (d.rejestr[kl].stan === 'wyslany' && !wyslany)) throw new Error('Tego filmu nie ma do ponowienia.');
         delete d.rejestr[kl];
         await zapisz();
         return stan();

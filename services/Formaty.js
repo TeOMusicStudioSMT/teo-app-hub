@@ -541,7 +541,7 @@ export function zamontujTrasyFormatow(app, F, { tiktok = null, instagram = null,
             void autopilot.przebieg({ reczny: true }).catch(() => {});   // trwa minuty (ffmpeg, wysyłki) — wynik w stanie
             return { ruszyl: true };
         })()));
-        app.post('/api/formaty/autopilot/ponow', (req, res) => odp(res, autopilot.ponow(String(req.body?.plik ?? ''), String(req.body?.cel ?? '')).then((stan) => ({ autopilot: stan }))));
+        app.post('/api/formaty/autopilot/ponow', (req, res) => odp(res, autopilot.ponow(String(req.body?.plik ?? ''), String(req.body?.cel ?? ''), { wyslany: req.body?.wyslany === true }).then((stan) => ({ autopilot: stan }))));
     }
     app.post('/api/formaty', (req, res) => odp(res, F.utworz(req.body ?? {}).then((klip) => ({ klip }))));
     app.get('/api/formaty/:id/plik', async (req, res) => { try { const p = await F.sciezkaKlipu(req.params.id); return p ? res.sendFile(p) : res.status(404).end(); } catch { return res.status(404).end(); } });
