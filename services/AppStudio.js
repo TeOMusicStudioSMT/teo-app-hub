@@ -1182,7 +1182,10 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                         p.tresc = dopisane.length ? stara.replace(/\n?export \{\};\s*$/, '').trimEnd() + '\n' + dopisane.join('\n') + '\nexport {};\n' : stara;
                         if (p.tresc === stara) continue;
                     }
-                    const linieStare = stara === null ? 0 : stara.split('\n').length;
+                    // liczone od pliku sprzed ZADANIA — plik, który model sam założył w tym zadaniu, może skracać
+                    // (2026-10-30: nowy src/oknoTost.ts 456 → 318 linii w 4. rundzie = fałszywe „okrojone”)
+                    const bazowa = sprzedZadania.get(p.sciezka);
+                    const linieStare = bazowa == null ? 0 : bazowa.split('\n').length;
                     if (linieStare > DUZY_PLIK_CHRONIONY && p.tresc.split('\n').length < linieStare * 0.8) {
                         pominieteDuze.push(`${p.sciezka} (${linieStare} → ${p.tresc.split('\n').length} linii)`);
                         continue;
