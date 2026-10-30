@@ -643,6 +643,16 @@ async function zmianyZadania(dir) {
     return tresc.slice(0, 24_000);
 }
 
+/** nieudane/<id>.rundy.json — wszystkie odrzucone rundy {runda, powod, pliki}; plików ≤ 60 k znaków na rundę. */
+export async function zapiszRundyNieudane(dir, id, rundy, { cel = '', model = '' } = {}) {
+    if (!rundy.length) return false;
+    const przytnij = (pliki) => { let zostalo = 60_000; return pliki.map((p) => { const tresc = p.tresc.slice(0, Math.max(0, zostalo)); zostalo -= tresc.length; return { sciezka: p.sciezka, tresc, uciete: tresc.length < p.tresc.length }; }); };
+    await fs.mkdir(path.join(dir, 'nieudane'), { recursive: true });
+    const tresc = { zadanie: id, cel, model, kiedy: new Date().toISOString(), rundy: rundy.map((r) => ({ runda: r.runda, powod: r.powod, pliki: przytnij(r.pliki ?? []) })) };
+    await fs.writeFile(path.join(dir, 'nieudane', `${id}.rundy.json`), JSON.stringify(tresc, null, 2), 'utf8');
+    return true;
+}
+
 async function zrzucNieudaneIPrzywroc(dir, id) {
     const diff = await git(dir, ['diff']);
     const nowe = (await git(dir, ['ls-files', '--others', '--exclude-standard', '--', 'src', 'index.html'])).split('\n').filter(Boolean);
@@ -1296,6 +1306,9 @@ PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy
                 // i wracamy do ostatniego dobrego commitu + przebudowujemy dist, żeby podgląd
                 // dalej pokazywał działającą apkę (a nie kod, który nie przechodzi tsc).
                 try {
+                    // KAŻDA odrzucona runda z powodem sędziego (diff niżej to tylko ostatnia, bez werdyktu) — 2026-10-30:
+                    // Jev uznał Księgę Wędrowca za „atrapę” p=0,85, a nie było czym tego sprawdzić.
+                    await zapiszRundyNieudane(dir, z.id, [...rundyOdrzucone, ...(oddaneWRundzie ? [{ runda: z.rundy, pliki: oddaneWRundzie, powod: feedback.slice(0, 1500) }] : [])], { cel, model: z.model }).catch(() => {});
                     await zrzucNieudaneIPrzywroc(dir, z.id);
                     const w = await weryfikujBuild(dir);
                     krok('stan', `przywrócono ostatni dobry stan projektu (${w.ok ? 'dist przebudowany' : 'build starego stanu: ' + w.etap}); nieudana próba w nieudane/${z.id}.diff`);
