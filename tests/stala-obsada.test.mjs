@@ -72,9 +72,20 @@ test('aktor → karta 6 ujęć → ✓ → wzory i kadr z aktorem', async () => 
     assert.equal(A.wolania.at(-1).referencje.length, 3);
     assert.match(A.wolania.at(-1).prompt, /Iskra na plaży o świcie/);
 
+    // 🎬 role programów: wzory tylko zatwierdzonego aktora; usunięcie aktora zwalnia jego role
+    await assert.rejects(O.przypisz('zla rola', a.id), /program:kto/);
+    await O.przypisz('gol-dnia:zebra', a.id);
+    await O.przypisz('tancerz:Kot Tancerz', a.id);
+    assert.deepEqual((await O.wzoryRoli('gol-dnia:zebra')).map((p) => path.basename(p)), ['twarz.png', 'przod.png', 'bok.png']);
+    assert.deepEqual(await O.wzoryRoli('gol-dnia:lew'), []);
+    assert.deepEqual(await O.wzoryRoli('nie rola'), []);
+
     // pliki tylko z katalogu aktora
     await assert.rejects(O.plik(a.id, '../aktor.json'), /Nie ma takiego pliku/);
     assert.ok((await O.plik(a.id, 'ujecia/twarz.png')).endsWith('twarz.png'));
+    await O.usun(a.id);
+    assert.deepEqual(await O.role(), {});
+    assert.deepEqual(await O.wzoryRoli('gol-dnia:zebra'), []);
 });
 
 test('duch po restarcie = błąd z powodem; usunięcie do kosza', async () => {

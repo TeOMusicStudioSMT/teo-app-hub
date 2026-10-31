@@ -370,7 +370,7 @@ export function utworzGameShow(o) {
                 const silnik = silnikIntro(s.silnikIntro);   // odcinki sprzed 2026-10-13 nie mają pola → FLUX
                 const prompt = silnik === 'flux' ? promptKadruIntro(s.tancerz) : promptIntro(s.tancerz);
                 const t0 = Date.now();
-                const plik = await cfg.intro({ prompt, obraz: obrazTancerza, sekundy: SEKUNDY_INTRO, silnik, ruch: RUCH_INTRO });
+                const plik = await cfg.intro({ prompt, obraz: obrazTancerza, sekundy: SEKUNDY_INTRO, silnik, ruch: RUCH_INTRO, tancerz: s.tancerz?.imie ?? null });
                 const cel = path.join(KAT, id, `intro${path.extname(plik) || '.mp4'}`);   // poza praca/ — zostaje na przeróbkę w innym języku
                 await fs.copyFile(plik, cel);
                 return { plik: cel, prompt, zObrazu: !!obrazTancerza, silnik, sekundyLiczenia: Math.round((Date.now() - t0) / 1000) };

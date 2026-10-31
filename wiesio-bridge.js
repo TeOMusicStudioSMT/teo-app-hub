@@ -121,7 +121,7 @@ import { utworzZywaKsiege, zamontujTrasyZywejKsiegi } from './services/ZywaKsieg
 import { utworzStalaObsada, zamontujTrasyStalejObsady } from './services/StalaObsada.js';
 import { utworzLicznikWejsc, zamontujTrasyLicznika } from './services/LicznikWejsc.js';
 import { wczytajStyle } from './services/StylePalety.js';
-import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei, odpowiedzGeminiZwiadu, SZUKAJ_W_GOOGLE } from './services/GolDnia.js';
+import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei, odpowiedzGeminiZwiadu, SZUKAJ_W_GOOGLE, NARRATORZY as NARRATORZY_GOLA } from './services/GolDnia.js';
 import { utworzZebrraTaniec, zamontujTrasyZebrraTanca, PROJEKT as PROJEKT_ZEBRRA_SPORTS } from './services/ZebrraTaniec.js';
 import { utworzMameLeon, zamontujTrasyMameLeon } from './services/MameLeonShow.js';
 import { utworzWieczorTanca, zamontujTrasyWieczoru } from './services/WieczorTanca.js';
@@ -15458,10 +15458,11 @@ const GolDnia = utworzGolDnia({
     zwiad: zwiadSieci,
     chat: (model, system, user) => piszModelem(model, system, user),
     modelDla: (id) => ModeleAgentow.modelDla(id),
-    rysuj: async ({ prompt, prefiks }) => {
+    rysuj: async ({ prompt, prefiks, rola = null }) => {
         const przed = await stanWideoZBudzeniem('Gol Dnia');
         if (!przed.comfy) throw new Error(przed.braki.join(' | '));
-        return Assety3D.kadrFilmu({ prompt, referencje: [], prefiks });
+        // 🎭 narrator ze Stałej Obsady (rola gol-dnia:<narrator>) — ta sama twarz w każdym odcinku; bez przypisania jak dotąd
+        return Assety3D.kadrFilmu({ prompt, referencje: rola ? await StalaObsada.wzoryRoli(rola) : [], prefiks });
     },
     // głos narratora = Głosy Stada pod jego id (pilkarka, krolik, byk, sowa); bez barwy — tor domyślny Katedry
     mow: async ({ tekst, narrator, jezyk }) => Wywiady.mowa({ tekst: tekstDoMowy(tekst), glos: await GlosyStada.glos(narrator).catch(() => null), jezyk }),
@@ -15497,12 +15498,24 @@ const StalaObsada = utworzStalaObsada({
     ffmpeg: ffmpegPath,
     kadr: (o) => Assety3D.kadrFilmu(o),
     budz: async () => {
-        const przed = await stanWideoZBudzeniem('Stała Obsada');
-        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        // ComfyUI budzony przez most wstaje ~30–90 s — karta czeka do 3 min, zamiast paść na „właśnie wstaje”
+        for (let proba = 0; ; proba++) {
+            const przed = await stanWideoZBudzeniem('Stała Obsada');
+            if (przed.comfy) return;
+            if (proba >= 18 || !/wstaje|startuje|budz/i.test(przed.braki.join(' '))) throw new Error(przed.braki.join(' | '));
+            await new Promise((r) => setTimeout(r, 10_000));
+        }
     },
 });
 StalaObsada.sprzatnijDuchy().catch((e) => console.warn('[Stała Obsada] duchy:', e.message));
-zamontujTrasyStalejObsady(app, StalaObsada);
+zamontujTrasyStalejObsady(app, StalaObsada, {
+    // role, do których program bierze wzory stałego aktora: narratorzy Gola Dnia i tancerze z odcinków TeO Game Show
+    propozycjeRol: async () => [
+        ...Object.entries(NARRATORZY_GOLA).map(([id, n]) => ({ rola: `gol-dnia:${id}`, nazwa: `⚽ ${n.imie} — intro Gola Dnia / Studia Zebrra` })),
+        ...[...new Set((await GameShow.lista().catch(() => [])).map((o) => o.tancerz?.imie).filter(Boolean))]
+            .map((imie) => ({ rola: `tancerz:${imie}`, nazwa: `🎪 ${imie} — intro TeO Game Show` })),
+    ],
+});
 // 🌍 Licznik wejść na strony Suwerena (teo.center…) — kraj z Cloudflare, bez IP; wieść kanałem Mistrza do Orbity
 const LicznikWejsc = utworzLicznikWejsc({ katalog: path.join(ANTIGRAVITY_DIR, 'odwiedziny'), wiesc: (w) => Jajo.wiesc(w) });
 zamontujTrasyLicznika(app, LicznikWejsc);
@@ -15514,13 +15527,15 @@ const GameShow = utworzGameShow({
     katalogNagran: () => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, 'taneczne-starcie'),
     choreografie: { wczytaj: (id) => Choreografie.wczytaj(id) },
     tancerz: tancerzGameShow,
-    intro: async ({ prompt, obraz, sekundy, silnik = 'flux', ruch = 'najazd' }) => {
+    intro: async ({ prompt, obraz, sekundy, silnik = 'flux', ruch = 'najazd', tancerz = null }) => {
         const przed = await stanWideoZBudzeniem('intro TeO Game Show');
         if (!przed.comfy) throw new Error(przed.braki.join(' | '));
         if (silnik === 'flux') {
             // 🎬 FLUX (Suweren 2026-10-13: „Wan 2.2 zmień na Flux”): kadr FLUX.2 klein z obrazem tancerza jako WZOREM
             // (ten sam graf co kadry Reżysera Wideo) + ruch kamery ffmpeg — minuty zamiast ~50 min Wana na 6 GB.
-            const kadr = await Assety3D.kadrFilmu({ prompt, referencje: obraz ? [obraz] : [], prefiks: 'katedra/game-show/intro' });
+            // 🎭 tancerz ze Stałej Obsady (rola tancerz:<imię>) — karta 3 wzorów zamiast jednego obrazu
+            const zObsady = tancerz ? await StalaObsada.wzoryRoli(`tancerz:${tancerz}`) : [];
+            const kadr = await Assety3D.kadrFilmu({ prompt, referencje: zObsady.length ? zObsady : obraz ? [obraz] : [], prefiks: 'katedra/game-show/intro' });
             const wyjscie = path.join(os.tmpdir(), `otakos-game-show-intro-${Date.now().toString(36)}.mp4`);
             await execFileAsync(ffmpegPath, ['-loglevel', 'error', '-y', '-loop', '1', '-i', kadr, '-vf', filtrRuchuKadru(ruch, sekundy), '-t', String(sekundy), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', wyjscie], { maxBuffer: 1 << 24, timeout: 10 * 60_000 });
             return wyjscie;

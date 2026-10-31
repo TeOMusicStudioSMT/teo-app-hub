@@ -28,6 +28,12 @@ export const SZER_KARTY = 1536, WYS_KARTY = 1024;   // 3×2 kwadraty 512 px
 const MAX_OPISU = 600, MAX_ZRODLA = 25 * 1024 * 1024;
 
 const ID = /^a-[0-9a-f]{6}$/;
+/** Rola = <program>:<kto> (litery, cyfry, spacje, myślniki; ≤ 60) — czyste. */
+export function czystaRola(rola) {
+    const r = String(rola ?? '').trim().replace(/\s+/g, ' ');
+    if (!/^[a-z0-9-]{2,20}:[\p{L}0-9 ._-]{1,40}$/u.test(r)) throw new Error('Rola ma być w postaci program:kto (np. gol-dnia:zebra).');
+    return r;
+}
 const czysty = (s, max) => String(s ?? '').replace(/[\u0000-\u001f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 
 /** Prompt karty 6 ujęć — czyste. Opis Suwerena tylko dopowiada; tożsamość niesie obraz-wzór. */
@@ -183,8 +189,32 @@ export function utworzStalaObsada({ katalog, kadr, ffmpeg = 'ffmpeg', budz = asy
         } finally { zajete = null; }
     }
 
+    // ── ROLE: stały aktor przypisany do roli programu (np. `gol-dnia:zebra`, `tancerz:Kot Tancerz`) → program bierze jego wzory
+    const plikRol = path.join(katalog, 'role.json');
+    async function role() {
+        try { return JSON.parse(await fs.readFile(plikRol, 'utf8')); } catch { return {}; }
+    }
+    async function przypisz(rola, aktorId) {
+        const r = czystaRola(rola);
+        const wszystkie = await role();
+        if (aktorId) { await czytaj(aktorId); wszystkie[r] = aktorId; } else delete wszystkie[r];
+        await fs.mkdir(katalog, { recursive: true });
+        await fs.writeFile(plikRol, JSON.stringify(wszystkie, null, 2), 'utf8');
+        return wszystkie;
+    }
+    /** Wzory roli: tylko zatwierdzony aktor; brak przypisania / karta niezatwierdzona = [] (program rysuje jak dotąd). */
+    async function wzoryRoli(rola) {
+        let r;
+        try { r = czystaRola(rola); } catch { return []; }
+        const id = (await role())[r];
+        if (!id) return [];
+        try { return (await czytaj(id)).stan === 'zatwierdzony' ? await wzory(id) : []; } catch { return []; }
+    }
+
     async function usun(id) {
         sprawdzId(id);
+        const r = await role();
+        if (Object.values(r).includes(id)) await fs.writeFile(plikRol, JSON.stringify(Object.fromEntries(Object.entries(r).filter(([, v]) => v !== id)), null, 2), 'utf8');
         const kosz = path.join(katalog, '_kosz');
         await fs.mkdir(kosz, { recursive: true });
         await fs.rename(dir(id), path.join(kosz, `${id}-${Date.now()}`));
@@ -208,12 +238,13 @@ export function utworzStalaObsada({ katalog, kadr, ffmpeg = 'ffmpeg', budz = asy
         }
     }
 
-    return { lista, czytaj, dodaj, rysujKarte, przyjmij, zmien, wzory, kadrZAktorem, usun, plik, sprzatnijDuchy, zajete: () => zajete };
+    return { lista, czytaj, dodaj, rysujKarte, przyjmij, zmien, wzory, kadrZAktorem, usun, plik, sprzatnijDuchy, role, przypisz, wzoryRoli, zajete: () => zajete };
 }
 
-export function zamontujTrasyStalejObsady(app, O) {
+export function zamontujTrasyStalejObsady(app, O, { propozycjeRol = async () => [] } = {}) {
     const odp = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(400).json({ success: false, message: e.message }));
-    app.get('/api/obsada', (_req, res) => odp(res, O.lista().then((aktorzy) => ({ aktorzy, zajete: O.zajete(), ujecia: NAZWY_UJEC }))));
+    app.get('/api/obsada', (_req, res) => odp(res, Promise.all([O.lista(), O.role(), propozycjeRol()]).then(([aktorzy, role, propozycje]) => ({ aktorzy, role, propozycjeRol: propozycje, zajete: O.zajete(), ujecia: NAZWY_UJEC }))));
+    app.put('/api/obsada/role', (req, res) => odp(res, O.przypisz(req.body?.rola, req.body?.aktor ?? null).then((role) => ({ role }))));
     app.post('/api/obsada', (req, res) => odp(res, O.dodaj(req.body ?? {}).then((aktor) => ({ aktor }))));
     app.get('/api/obsada/:id', (req, res) => odp(res, O.czytaj(req.params.id).then((aktor) => ({ aktor }))));
     app.put('/api/obsada/:id', (req, res) => odp(res, O.zmien(req.params.id, req.body ?? {}).then((aktor) => ({ aktor }))));

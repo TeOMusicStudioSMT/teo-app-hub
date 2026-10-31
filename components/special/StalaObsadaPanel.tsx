@@ -18,7 +18,7 @@ interface Aktor {
     id: string; imie: string; opis: string; stan: 'nowy' | 'rysuje' | 'do_akceptacji' | 'zatwierdzony' | 'blad'; powod: string | null;
     ujecia: Record<string, string>; wersja: number; kadry: { plik: string; scena: string }[];
 }
-interface Stan { aktorzy: Aktor[]; zajete: string | null; ujecia: Record<string, string> }
+interface Stan { aktorzy: Aktor[]; zajete: string | null; ujecia: Record<string, string>; role: Record<string, string>; propozycjeRol: { rola: string; nazwa: string }[] }
 const ZNAK: Record<Aktor['stan'], string> = { nowy: '· bez karty', rysuje: '⏳ FLUX rysuje kartę', do_akceptacji: '👀 czeka na Twoje ✓', zatwierdzony: '✓ stały aktor', blad: '⚠ błąd' };
 const plik = (a: Aktor, p: string) => `${MOST}/api/obsada/${a.id}/plik/${p}?v=${a.wersja}`;
 
@@ -128,6 +128,24 @@ export const StalaObsadaPanel: React.FC = () => {
                                         className="min-w-[220px] flex-1 rounded-sm border border-slate-700 bg-black/60 px-1.5 py-1 text-slate-200" />
                                     <button disabled={pracuje === a.id} onClick={() => void kadr(a)} className="rounded-sm bg-fuchsia-700/70 px-2 py-1 text-white disabled:opacity-50">{pracuje === a.id ? '⏳ rysuje…' : '🎬 kadr z aktorem'}</button>
                                     <span className="text-[10px] text-slate-500">w filmach gry: obsada „{a.imie}”</span>
+                                </div>
+                            )}
+                            {a.stan === 'zatwierdzony' && (
+                                <div className="mt-2 flex flex-wrap items-center gap-1 text-[10px]">
+                                    <span className="text-slate-400">Role w programach:</span>
+                                    {Object.entries(s.role ?? {}).filter(([, id]) => id === a.id).map(([rola]) => (
+                                        <span key={rola} className="rounded-full border border-fuchsia-500/40 px-2 py-0.5 text-fuchsia-200">
+                                            {s.propozycjeRol?.find((p) => p.rola === rola)?.nazwa ?? rola}
+                                            <button onClick={() => void wolaj('/api/obsada/role', 'PUT', { rola, aktor: null }, 'Rola zwolniona.')} className="ml-1 text-slate-400 hover:text-red-300">✕</button>
+                                        </span>
+                                    ))}
+                                    <select value="" onChange={(e) => { if (e.target.value) void wolaj('/api/obsada/role', 'PUT', { rola: e.target.value, aktor: a.id }, `${a.imie} gra tę rolę.`); }}
+                                        className="rounded-sm border border-slate-700 bg-black/60 px-1 py-0.5 text-slate-200">
+                                        <option value="">＋ przypisz rolę…</option>
+                                        {(s.propozycjeRol ?? []).filter((p) => s.role?.[p.rola] !== a.id).map((p) => (
+                                            <option key={p.rola} value={p.rola}>{p.nazwa}{s.role?.[p.rola] ? ' (zajęta — przejmie)' : ''}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             )}
                             {a.kadry?.length > 0 && (

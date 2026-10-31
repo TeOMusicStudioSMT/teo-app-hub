@@ -748,7 +748,7 @@ export function utworzGolDnia(o) {
                 if (!cfg.rysuj) throw new Error('Katedra nie ma silnika obrazu (FLUX w ComfyUI).');
                 const P = promptyObrazow({ mecz: s.mecz, mecze: czyKompilacja(s) ? s.mecze : null, gole: s.gole, scenariusz: s.scenariusz, narrator: s.narrator, wspolprowadzacy: wspolprowadzacyOdcinka(s) });
                 const kopiuj = async (src, nazwa) => { await fs.copyFile(src, path.join(praca, nazwa)); return nazwa; };
-                const ob = { intro: await kopiuj(await cfg.rysuj({ prompt: P.intro, prefiks: 'katedra/gol-dnia/intro' }), 'intro.png'), gole: [], wynik: null };
+                const ob = { intro: await kopiuj(await cfg.rysuj({ prompt: P.intro, prefiks: 'katedra/gol-dnia/intro', rola: `gol-dnia:${s.narrator}` }), 'intro.png'), gole: [], wynik: null };
                 for (const [i, g] of P.gole.entries()) {
                     ob.gole.push({
                         karta: await kopiuj(await cfg.rysuj({ prompt: g.karta, prefiks: 'katedra/gol-dnia/karta' }), `karta-${i + 1}.png`),
