@@ -174,13 +174,22 @@ export async function wpiszDzwiek({ film, audio, wyjscie }) {
  *           generuj: (o:{prompt:string, sekundy:number, obrazStartowy?:string}) => Promise<{ok:boolean, zlecenie?:string, powod?:string}>,
  *           dopisz?: (o:{plik:string, prompt:string, sekundy:number}) => Promise<{ok:boolean, zlecenie?:string, powod?:string}>,
  *           stan: (zlecenie:string) => Promise<{ok:boolean, gotowe?:boolean, materialy?:{nazwa:string, sciezka:string}[], blad?:object|null, wToku?:boolean}>,
- *           pisz?: Function|null, obsada?: (projekt:string) => Promise<{id:string, imie:string, opis:string, obraz:string|null}[]>,
+ *           pisz?: Function|null, obsada?: (projekt:string) => Promise<{id:string, imie:string, opis:string, obraz:string|null, referencje?:string[]}[]>,
  *           kadr?: (o:{prompt:string, referencje:string[]}) => Promise<string>, wgraj?: (sciezka:string) => Promise<string>,
  *           ruchKadru?: (o:{kadr:string, wyjscie:string, filtr:string, sekundy:number}) => Promise<void>,
  *           joanna?: ((o:{system:string, prompt:string}) => Promise<string>)|null,
  *           komponuj?: ((o:{prompt:string, sekundy:number}) => Promise<string>)|null,
  *           pamiecJoanny?: () => Promise<string>, roboczy?: string, szyna?: object|null, coMs?: number, limitMs?: number }} o
  */
+/** Wzory kadru z obsady (FLUX bierze do 3) — czyste: po kolei z każdej postaci (Stała Obsada ma twarz, przód, bok;
+ *  reszta — sam obraz), więc jeden stały aktor dostaje wszystkie trzy, a kilka postaci — każda swoją twarz. */
+export function referencjeObsady(postacie) {
+    const listy = postacie.map((o) => (o.referencje?.length ? o.referencje : [o.obraz]).filter(Boolean));
+    const out = [];
+    for (let i = 0; out.length < 3 && listy.some((l) => l[i]); i += 1) for (const l of listy) if (l[i] && out.length < 3) out.push(l[i]);
+    return out;
+}
+
 export function utworzFilmyGry({ katalogGier, gdd, generuj, dopisz = null, stan, pisz = null, obsada = async () => [], kadr = null, wgraj = null, ruchKadru = null, joanna = null, komponuj = null, pamiecJoanny = async () => '', roboczy = path.join(os.tmpdir(), 'otakos-filmy-gry'), szyna = null, coMs = 15_000, limitMs = 4 * 3600_000 }) {
     let kolejka = Promise.resolve();
     const pracuje = new Set();
@@ -273,7 +282,7 @@ export function utworzFilmyGry({ katalogGier, gdd, generuj, dopisz = null, stan,
         const obs = await obsada(projekt).catch(() => []);
         const u = await ujecie(film, g, obs);
         const zObsady = u.postacie.map((x) => obs.find((o) => o.id === x)).filter(Boolean);
-        const referencje = zObsady.map((o) => o.obraz).filter(Boolean);
+        const referencje = referencjeObsady(zObsady);
         const plikKadru = await kadr({ prompt: u.kadr, referencje });
         const nazwaKadru = `${id}-kadr.png`;
         await doGry(projekt, plikKadru, nazwaKadru);

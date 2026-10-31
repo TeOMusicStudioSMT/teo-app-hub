@@ -118,6 +118,7 @@ import * as Tlumacz        from './services/Tlumacz.js';
 import * as Glowny         from './services/Glowny.js';
 import { utworzArgoBoba }   from './services/ArgoBob.js';
 import { utworzZywaKsiege, zamontujTrasyZywejKsiegi } from './services/ZywaKsiega.js';
+import { utworzStalaObsada, zamontujTrasyStalejObsady } from './services/StalaObsada.js';
 import { utworzLicznikWejsc, zamontujTrasyLicznika } from './services/LicznikWejsc.js';
 import { wczytajStyle } from './services/StylePalety.js';
 import { utworzGolDnia, zamontujTrasyGolDnia, zwiadPoKolei, odpowiedzGeminiZwiadu, SZUKAJ_W_GOOGLE } from './services/GolDnia.js';
@@ -8439,6 +8440,14 @@ async function obsadaGry(projekt) {
         if (o.stan !== 'gotowe' || o.projekt !== projekt || !['postacie', 'mini-teogochi', 'stwory'].includes(o.galaz)) continue;
         out.push({ id: `o:${o.id}`, imie: o.opis.split(/[—:,]/)[0].trim().slice(0, 40), opis: o.opis, obraz: Assety3D.plikObrazu(o.id) });
     }
+    // 🎭 Stała Obsada Katedry: tylko zatwierdzone karty; `referencje` = twarz, przód, bok (FilmyGry bierze je zamiast samego obrazu)
+    try {
+        for (const a of await StalaObsada.lista()) {
+            if (a.stan !== 'zatwierdzony') continue;
+            const referencje = await StalaObsada.wzory(a.id);
+            if (referencje.length) out.unshift({ id: `s:${a.id}`, imie: a.imie, opis: a.opis || `stały aktor Katedry ${a.imie}`, obraz: referencje[0], referencje });
+        }
+    } catch { /* bez Stałej Obsady */ }
     void wszystkie;
     return out.filter((x) => x.obraz).slice(0, 40);
 }
@@ -15482,6 +15491,18 @@ const ZywaKsiega = utworzZywaKsiege({
 });
 ZywaKsiega.sprzatnijDuchy().catch((e) => console.warn('[Żywa Księga] duchy:', e.message));
 zamontujTrasyZywejKsiegi(app, ZywaKsiega, { raw: express.raw, dostep: async (req, res) => (await dostepStada(req, res)) !== null });   // 📱 StoL z tokenem parowania
+// 🎭 Stała Obsada Katedry: aktor z jednego obrazu → karta 6 ujęć (FLUX z wzorem) → ✓ → wzory każdego kadru z nim
+const StalaObsada = utworzStalaObsada({
+    katalog: path.join(ANTIGRAVITY_DIR, 'stala-obsada'),
+    ffmpeg: ffmpegPath,
+    kadr: (o) => Assety3D.kadrFilmu(o),
+    budz: async () => {
+        const przed = await stanWideoZBudzeniem('Stała Obsada');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+    },
+});
+StalaObsada.sprzatnijDuchy().catch((e) => console.warn('[Stała Obsada] duchy:', e.message));
+zamontujTrasyStalejObsady(app, StalaObsada);
 // 🌍 Licznik wejść na strony Suwerena (teo.center…) — kraj z Cloudflare, bez IP; wieść kanałem Mistrza do Orbity
 const LicznikWejsc = utworzLicznikWejsc({ katalog: path.join(ANTIGRAVITY_DIR, 'odwiedziny'), wiesc: (w) => Jajo.wiesc(w) });
 zamontujTrasyLicznika(app, LicznikWejsc);
