@@ -7,7 +7,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import express from 'express';
 import ffmpegPath from 'ffmpeg-static';
-import { utworzZywaKsiege, zamontujTrasyZywejKsiegi, odczytajSlowo, oczyscRysunek, odczytajPrzeklad, SYSTEM_PRZEKLADU } from '../services/ZywaKsiega.js';
+import { utworzZywaKsiege, zamontujTrasyZywejKsiegi, odczytajSlowo, oczyscRysunek, odczytajPrzeklad, SYSTEM_PRZEKLADU, zapasowyKadr } from '../services/ZywaKsiega.js';
 import { SCIEZKI_TYLKO_LOKALNE, czyDlaSparowanych } from '../services/StrazMostu.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ksiega-'));
@@ -35,6 +35,15 @@ function atrapy(kat, { slowo = 'SŁOWO: Twoje słowa niosą poranne światło. S
 test('odczyt słowa stada i rysunku AniDoodle', () => {
     assert.deepEqual(odczytajSlowo('<think>x</think>**SŁOWO:** Ciepłe słowa\nna dwa wiersze.\nOBRAZ: a calm forest of light and stars'), { slowo: 'Ciepłe słowa na dwa wiersze.', obraz: 'a calm forest of light and stars', styl: null });
     assert.equal(odczytajSlowo('bez formatu'), null);
+    // trzy linie BEZ etykiet — prawdziwa odpowiedź teogochi_yay z think:false (2026-10-31)
+    assert.deepEqual(odczytajSlowo('Dziś poranek rozbrzmiał tak, jakby światło samo zagrało melodię. Niech ten blask towarzyszy nam cały dzień.\nAn ethereal glow emanates from abstract floating islands connected by luminous pathways.\ndreamGlaze'),
+        { slowo: 'Dziś poranek rozbrzmiał tak, jakby światło samo zagrało melodię. Niech ten blask towarzyszy nam cały dzień.', obraz: 'An ethereal glow emanates from abstract floating islands connected by luminous pathways.', styl: 'dreamGlaze' });
+    assert.equal(odczytajSlowo('Czuję blask tej porannej chwili i ciepło Twoich wspomnień.\nA glowing path leading towards floating islands under a soft sky.').obraz, 'A glowing path leading towards floating islands under a soft sky.');
+    // dwie polskie linie bez opisu kadru — to nie ten format
+    assert.equal(odczytajSlowo('Pierwsza linia po polsku jest tutaj.\nDruga linia też jest po polsku, ćma.'), null);
+    // zapas: różne wpisy → różne kadry, ten sam wpis → ten sam
+    assert.equal(zapasowyKadr('k-20261031-2f4dc1'), zapasowyKadr('k-20261031-2f4dc1'));
+    assert.ok(new Set(['k-1', 'k-2', 'k-3', 'k-4', 'k-5', 'k-6'].map(zapasowyKadr)).size > 1);
     // na żywo 2026-10-29: etykieta po angielsku w tej samej linii wpadała do słowa
     assert.deepEqual(odczytajSlowo('SŁOWO: Wspólne ciepło koi duszę. Image: A gentle flow of light.'), { slowo: 'Wspólne ciepło koi duszę.', obraz: 'A gentle flow of light.', styl: null });
     assert.equal(odczytajSlowo('SŁOWO: Obraz świata jest jasny dla nas.').slowo, 'Obraz świata jest jasny dla nas.');

@@ -93,9 +93,43 @@ export function odczytajSlowo(tekst) {
     const slowo = t.match(/S[ŁL]OWO\s*:\s*([\s\S]*)/i)?.[1]?.split(ETYKIETA_OBRAZU)[0]?.replace(/\s+/g, ' ').trim();
     const obraz = t.match(/(?:OBRAZ|IMAGE|PICTURE|KADR)\s*:\s*([\s\S]+)/i)?.[1]?.split('\n')[0]?.split(ETYKIETA_STYLU)[0]?.trim();
     const styl = t.match(/(?:^|\s)(?:STYL|STYLE)\s*:\s*([^\n]+)/i)?.[1]?.trim() || null;
-    if (!slowo || slowo.length < 10) return null;
+    if (!slowo || slowo.length < 10) return bezEtykiet(t);
     return { slowo: slowo.slice(0, 900), obraz: obraz && obraz.length >= 10 ? obraz.slice(0, 600) : null, styl: styl ? styl.slice(0, 60) : null };
 }
+
+/**
+ * Trzy linie BEZ etykiet (na żywo 2026-10-31: teogochi_yay z `think: false` oddaje słowo / opis po angielsku / id stylu
+ * w osobnych liniach, ale bez „SŁOWO:”, „OBRAZ:”, „STYL:” — dwa wpisy dostały przez to błąd i ten sam zapasowy obraz).
+ * Od końca: ostatnia linia = jedno słowo (id stylu), potem linia bez polskich liter i ≥ 6 słów = opis kadru, reszta = słowo.
+ */
+function bezEtykiet(t) {
+    const linie = t.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (linie.length < 2) return null;
+    let styl = null, obraz = null;
+    if (/^[A-Za-z][A-Za-z0-9_-]{2,40}$/.test(linie.at(-1))) styl = linie.pop();
+    const ost = linie.at(-1);
+    if (linie.length >= 2 && !/[ąćęłńóśźż]/i.test(ost) && ost.split(/\s+/).length >= 6) obraz = linie.pop();
+    const slowo = linie.join(' ').replace(/\s+/g, ' ').trim();
+    if (!obraz || slowo.length < 10) return null;   // bez opisu kadru to nie jest ten format — niech zostanie błąd
+    return { slowo: slowo.slice(0, 900), obraz: obraz.slice(0, 600), styl: styl ? styl.slice(0, 60) : null };
+}
+
+/** Zapasowe kadry, gdy Kronikarz nie odda opisu — różne dla różnych wpisów (dawniej jeden = ten sam obraz za każdym razem). */
+export const ZAPASOWE_KADRY = [
+    'a symbolic scene of warm morning light, a winding path and old roots, a quiet hopeful mood',
+    'a lantern glowing on a misty shore at dawn, small boats resting, calm water reflecting soft gold',
+    'an old tree with luminous leaves under a starry sky, fireflies drifting like tiny notes',
+    'a window opening onto a sea of clouds at sunrise, a warm cup and a feather on the sill',
+    'a spiral staircase of light rising through a quiet forest, petals floating upward',
+    'a small island with a single glowing hut under an aurora, gentle waves around it',
+    'two hands of light holding a seed that sprouts into a tiny galaxy, soft warm glow',
+    'a mountain path at golden hour, a stone cairn and a ribbon of light leading to the summit',
+];
+export const zapasowyKadr = (id) => {
+    let h = 0;
+    for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return ZAPASOWE_KADRY[h % ZAPASOWE_KADRY.length];
+};
 
 /** Rysunek AniDoodle: { klatki: [[{ kolor, grubosc, punkty: [[x,y]…] }…]] } — współrzędne 0–1, 1–3 klatki. */
 export function oczyscRysunek(r) {
@@ -235,7 +269,7 @@ export function utworzZywaKsiege(cfg = {}) {
                 if (!cfg.rysuj) throw new Error('most nie podał rysowania (FLUX)');
                 // bez opisu Kronikarza NIE wklejamy słów Suwerena — FLUX pisał je na pergaminie jako krzaki (na żywo 2026-10-29)
                 const st = il.styl ? style.find((x) => x.id === il.styl.id) : null;
-                const prompt = `${il.prompt || 'a symbolic scene of warm morning light, a winding path and old roots, a quiet hopeful mood'}${st ? sufiksStylu(st) : STYL_ILUSTRACJI}`;
+                const prompt = `${il.prompt || zapasowyKadr(id)}${st ? sufiksStylu(st) : STYL_ILUSTRACJI}`;
                 let zrodlo = null;
                 for (let proba = 0; ; proba++) {
                     try { zrodlo = await cfg.rysuj({ prompt, prefiks: `katedra/zywa-ksiega/${id}` }); break; }
