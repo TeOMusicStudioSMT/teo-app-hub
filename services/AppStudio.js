@@ -850,6 +850,28 @@ export async function ocenZrzut({ cel, sciezkaZrzutu, model }) {
  * ruchu. Migawki to JSON stanu — sędzia dostaje twarde liczby (pozycja, wynik, monety), nie tekst.
  * Chrome headless bez GPU renderuje WebGL programowo (SwiftShader) — wolno, ale wystarcza.
  */
+/**
+ * 📸 Sam zrzut gry z parametrami adresu — bez klawiszy, bez kasowania innych zrzutów (🛠️ Warsztat Stada: para „teraz / po”).
+ * `zapytanie` np. `pora=dzien&przepisJson=…`; czeka na `window.__gra` (świat stoi), potem `czekajMs` na dorysowanie.
+ */
+export async function zrzutGry(id, { zapytanie = '', plik, czekajMs = 2500, szer = 960, wys = 640 } = {}) {
+    if (!cfg.puppeteer) throw new Error('puppeteer niedostępny — zrzutu gry nie zrobię.');
+    if (!/^[a-z0-9][a-z0-9_-]{0,80}$/i.test(String(id))) throw new Error('Złe id gry.');
+    if (!fsSync.existsSync(path.join(dirProjektu(id), 'dist', 'index.html'))) throw new Error('Gra nie jest zbudowana (brak dist).');
+    let przegladarka = null;
+    try {
+        przegladarka = await cfg.puppeteer.launch({ headless: true, args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+        const strona = await przegladarka.newPage();
+        await strona.setViewport({ width: szer, height: wys });
+        await strona.goto(`http://127.0.0.1:${cfg.portMostu}/apki/${id}/${zapytanie ? `?${zapytanie}` : ''}`, { waitUntil: 'load', timeout: 30_000 });
+        await strona.waitForFunction(() => !!window.__gra, { timeout: 30_000 }).catch(() => { throw new Error('gra nie wystartowała (brak window.__gra w 30 s)'); });
+        await new Promise((r) => setTimeout(r, czekajMs));
+        await fs.mkdir(path.dirname(plik), { recursive: true });
+        await strona.screenshot({ path: plik });
+        return plik;
+    } finally { try { await przegladarka?.close(); } catch { /* — */ } }
+}
+
 async function przetestujGre(id, dir, t0, cel = '') {
     const nazwaZrzutu = `zrzut-${Date.now()}.png`;
     const bledy = [];

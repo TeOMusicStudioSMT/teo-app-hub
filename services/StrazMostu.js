@@ -67,6 +67,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/game-show',   // 🎪 odcinki TeO Game Show (GPU, ffmpeg) i kanał programu — przy maszynie; ✓ publikacji zostaje w Izbie
     '/api/suno-album',   // 🎵 album Suno pobiera pliki do biblioteki muzyki — przy maszynie
     '/api/suno/',   // 🎵🔌 Suno MCP: konto Suno Suwerena (OAuth), kredyty, utwory do biblioteki — przy maszynie
+    '/api/warsztat-stada',   // 🛠️ Warsztat Stada: propozycje stada (model, puppeteer), przepis świata — przy maszynie; z telefonu decyzje idą przez Izbę zgód
     '/api/brief',   // ☀️ Poranny brief: przegląd całej Katedry (publikacje, sklep, błędy) — przy maszynie
     '/api/obsada',   // 🎭 Stała Obsada Katedry: obrazy aktorów, karty FLUX (GPU) — przy maszynie
     // Stado należy do Katedry: telefon (StoL) PATRZY — nie publikuje migawki, nie paruje

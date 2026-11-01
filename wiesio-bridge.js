@@ -258,6 +258,7 @@ import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzSunoMcp, zamontujTrasySuno } from './services/SunoMcp.js';
 import { utworzZlotaRybke, zamontujTrasyRybki } from './services/ZlotaRybka.js';
 import { utworzIzbe, zamontujTrasyIzby } from './services/IzbaZgod.js';
+import { utworzWarsztat, zamontujTrasyWarsztatu } from './services/WarsztatStada.js';
 import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
 import { utworzPadyJamu, zamontujTrasyPadow } from './services/PadyJamu.js';
 import { utworzAranz, zamontujTrasyAranzu } from './services/AranzJoanny.js';
@@ -15323,6 +15324,21 @@ Izba.zarejestruj({ id: 'rejestr', emoji: '🏛️', nazwa: 'Nowe Katedry w rejes
         id: `${o.nick}|${o.klucz}`, tytul: `Katedra „${o.nick}”`, kiedy: o.kiedy ?? null, opis: o.domena ? `stały adres: ${o.domena}` : 'adres tymczasowy (trycloudflare)',
         akcje: [{ id: 'przyjmij', etykieta: '✓ zatwierdź', zdalnie: true }, { id: 'odrzuc', etykieta: '✕ odrzuć', zdalnie: true }] })),
     decyduj: (id, akcja) => { const i = id.indexOf('|'); const w = { nick: id.slice(0, i), klucz: id.slice(i + 1) }; return akcja === 'przyjmij' ? ZarzadcaRejestru.zatwierdz(w) : ZarzadcaRejestru.odrzuc(w); } });
+// 🛠️ Warsztat Stada (services/WarsztatStada.js): TeOsimowie proponują wygląd Teterhii przepisem (etap 1: woda, Paleta) → zrzuty
+// „teraz / po” → Izba zgód → ✓ Suwerena. Tabela zakresów = plik GRY (src/gra/zakresyStylu.json), bliźniak src/gra/stylSwiata.ts.
+const GRA_WARSZTATU = process.env.OTAKOS_WARSZTAT_GRA || 'teterhia-wieczna-saga';
+const Warsztat = utworzWarsztat({ katalog: path.join(ANTIGRAVITY_DIR, 'warsztat-stada'), gra: GRA_WARSZTATU,
+    plikZakresow: path.join(APKI_DIR, GRA_WARSZTATU, 'src', 'gra', 'zakresyStylu.json'),
+    pisz: async ({ system, prompt, model }) => (await piszModelem(model, system, prompt, { json: true })).tekst,
+    model: (agent) => TrybKatedry.modelDla(ModeleAgentow.modelZPamieci(agent) || modelMechanika()),
+    karta: async (agent) => (await Persony.karta(agent))?.tresc ?? null,
+    czyWyklute: async (agent) => ((await stanDlaTelefonu()).gatunki ?? []).some((g) => g.id === agent && g.wyklute),
+    zrzut: ({ zapytanie, plik }) => AppStudio.zrzutGry(GRA_WARSZTATU, { zapytanie, plik }),
+    nagroda: (o) => nagrodaZaPrace(o),
+    jajo: { decyzja: (o) => Jajo.decyzja(o), wiesc: (o) => Jajo.wiesc(o) } });
+zamontujTrasyWarsztatu(app, Warsztat);
+Izba.zarejestruj(Warsztat.zrodloIzby);
+Warsztat.startPetli();
 zamontujTrasyIzby(app, Izba, { dostep: dostepStada });
 
 // ── 🎭 Aktorzy i wywiad o filmie (services/WywiadAktorow.js) ──
