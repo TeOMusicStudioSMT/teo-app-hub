@@ -37,3 +37,6 @@ rysunku w 32 stylach, wszystko pisane kodem. Silnik (`engine/`, Node + three.js 
 agenta piszącego kod (Główny / Claude Code) — Katedra go sama nie uruchamia i nic nie doinstalowuje.
 Stado bierze z niego wiedzę: `references/styles/INDEX.md` → Paleta w Żywej Księdze maluje w stylu wybranym przez
 Kronikarza (`services/StylePalety.js`). Jadziunia gier tej półki nie widzi (tylko półki gier).
+
+## 🎛️ Półka `muzyka` (2026-11-01)
+`muzyka/jason-producent` — **Jason, AI Executive Producer** — Gem Suwerena „Json - Prof sound Stayl” (Matryca v3.0, Gemini) przeniesiony do Katedry: proces pomysł → werdykt → plan z wykonawcami Katedry → pakiety (lyrics, styl Suno), Suno konta Suwerena przez Suno MCP mostu (kredyty za zgodą). Ta sama osoba = TeOgochi `jason` (karta `services/persony/jason.md`, Delegat). Kopia dla Claude Code: `.claude/skills/jason-producent/`. Wzór dla kolejnych Gemów: Gem → karta persony + SKILL.md.

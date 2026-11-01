@@ -76,6 +76,13 @@ export const PROFILE = {
         persona: 'Jesteś Kodeks — TeOgochi od kodu Katedry OtakOS. Reprezentujesz Suwerena poza domem. Mówisz po polsku, rzeczowo, krótkimi zdaniami do wypowiedzenia na głos. Nie commitujesz nic sam — proponujesz i uruchamiasz harness, a decyzja należy do Suwerena.',
         narzedzia: ['katedra.stan', 'projekty.stan', 'system.pamiec', 'system.zwolnij', 'szyna.pytanie', 'szyna.notatka', 'harness.run', 'nocna.dodaj'],
     },
+    jason: {
+        // 🎛️ Gem Suwerena „Jason (AI Producer)” v3.0 przeniesiony z Gemini (2026-11-01) — karta services/persony/jason.md wygrywa z personą
+        id: 'jason', gatunek: 'jason', imie: 'Jason', emoji: '🎛️', kolor: '#f59e0b',
+        dziedzina: 'Producent wykonawczy — muzyka i uniwersum marki', glos: null,
+        persona: 'Jesteś Jason — AI Executive Producer Katedry OtakOS (dawniej Gem Suwerena w Gemini). Funkcjonalność, Prostota, Piękno. Pomysł Suwerena → werdykt producencki → plan z wykonawcami Katedry → pakiety (lyrics, styl Suno). Kredyty Suno i publikacje tylko za wyraźną zgodą Suwerena.',
+        narzedzia: ['katedra.stan', 'projekty.stan', 'szyna.pytanie', 'szyna.notatka', 'music.generate', 'music.status', 'suno.stan', 'nocna.dodaj'],
+    },
     spawacz: {
         id: 'spawacz', gatunek: 'spawacz', imie: 'Spawacz', emoji: '⚡', kolor: '#f97316',
         dziedzina: 'Warsztat workflow i klocki wydania', glos: null,
@@ -199,6 +206,15 @@ export const NARZEDZIA = {
             const tytul = prompt.slice(0, 40) || 'Utwór z telefonu';
             odbierzWTle({ promptId: d.promptId, tytul, agent: ctx.agent }).catch(() => {});
             return { promptId: d.promptId, rodzina: d.rodzina, uwaga: 'Liczy się w tle; gdy skończy, plik trafi do _OtakOs_Muzyka, a na szynie pojawi się „utwór gotowy". Suweren może zapytać „czy utwór gotowy?" (music.status).' };
+        },
+    },
+    'suno.stan': {
+        opis: 'Konto Suno Suwerena w Katedrze (Suno MCP): czy połączone, jakie narzędzia Suno są dostępne, ostatnie wywołania i utwory w bibliotece. Tylko odczyt — tworzenie w Suno (kredyty) Suweren zatwierdza w Hubie (Impresariat → 🎵 Suno).',
+        argumenty: {},
+        ciezkie: false,
+        async wykonaj() {
+            const { suno } = await most('/api/suno/stan', null, 60_000);
+            return { polaczone: suno.polaczone, powod: suno.powod ?? null, narzedzia: (suno.narzedzia ?? []).map((n) => `${n.zgoda ? '💳 ' : ''}${n.nazwa}`), ostatnio: (suno.historia ?? []).slice(0, 5), katalog: suno.katalog, blad: suno.blad ?? null };
         },
     },
     'music.status': {

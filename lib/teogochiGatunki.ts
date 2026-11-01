@@ -235,6 +235,16 @@ export const GATUNKI: Gatunek[] = [
         zadania: ['Kompozytorze, ułóż oś do tego utworu', 'Kompozytorze, zamów u Joanny utwór 126 BPM z dropem', 'Kompozytorze, gdzie w utworze jest Drop?'],
     },
     {
+        // 🎛️ Suweren (2026-11-01): Gem „Json - Prof sound Stayl” = Matryca „Jason (AI Producer)” v3.0 z Gemini —
+        // „ten gem dotychczas robił całą muzykę… jak go przenieść, podłączyć do Katedry”. Karta: services/persony/jason.md.
+        id: 'jason', imie: 'Jason', dziedzina: 'Producent wykonawczy — muzyka i uniwersum marki',
+        opis: 'AI Executive Producer z Gema Suwerena: pomysł → werdykt producencki → plan z wykonawcami Katedry → pakiety (lyrics, styl Suno). Muzykę robi przez Joannę, Kompozytora i Suno MCP konta Suwerena (kredyty za zgodą).',
+        formy: { 'jajko': '🥚', 'pisklę': '🎧', 'młodzik': '🎛️', 'kompan': '🎤', 'legenda': '🛰️' },
+        kolor: '#f59e0b',
+        narzedzia: ['/api/suno/stan', '/api/suno/wywolaj', '/api/music/generate', '/api/kompozytor/komponuj'],
+        zadania: ['Jason, mam iskrę: „Szept Wiatru” — zrób werdykt i plan', 'Jason, napisz lyrics i styl Suno do utworu tanecznego 126 BPM', 'Jason, ile mam kredytów Suno?'],
+    },
+    {
         // 🎭 Suweren (2026-10-03): „moi aktorzy i scenografia… interaktywni aktorzy, którzy opowiadają o swym najnowszym
         // dziele, filmie, który właśnie złożyliśmy na YT… można powołać TeOgochi Aktora". services/WywiadAktorow.js —
         // obsada (zdjęcie, rola, głos) → scenariusz wywiadu z faktów projektu → nagranie → katalog montaży projektu.
