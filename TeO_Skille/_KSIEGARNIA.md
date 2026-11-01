@@ -40,3 +40,6 @@ Kronikarza (`services/StylePalety.js`). Jadziunia gier tej półki nie widzi (ty
 
 ## 🎛️ Półka `muzyka` (2026-11-01)
 `muzyka/jason-producent` — **Jason, AI Executive Producer** — Gem Suwerena „Json - Prof sound Stayl” (Matryca v3.0, Gemini) przeniesiony do Katedry: proces pomysł → werdykt → plan z wykonawcami Katedry → pakiety (lyrics, styl Suno), Suno konta Suwerena przez Suno MCP mostu (kredyty za zgodą). Ta sama osoba = TeOgochi `jason` (karta `services/persony/jason.md`, Delegat). Kopia dla Claude Code: `.claude/skills/jason-producent/`. Wzór dla kolejnych Gemów: Gem → karta persony + SKILL.md.
+
+## 🏛️ Półka `katedra` (2026-11-01)
+`katedra/rada-7` — **RA-DA 7** (Gem Suwerena): Bella, Flash BoB, Mistrz Adamus, ISTed, ODDI, Wiesio, Jadziunia — tryb narady jednego umysłu o siedmiu aspektach. W Hubie ta sama Rada siedzi przy Kwantowym Stole Narad (role i style z Gema). Gem „Video Maker — Specjalista ds. Spójności Historii” nie dostał osobnego skilla: jego zasady weszły do karty Reżysera (`services/persony/rezyser.md`), bo Reżyser + Stała Obsada robią to szerzej.
