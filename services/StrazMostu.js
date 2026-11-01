@@ -66,6 +66,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/zebrra-news',   // 📰 Zebrra News: nagłówki z sieci, model, FLUX, głos, nagranie, publikacja — tylko przy maszynie
     '/api/game-show',   // 🎪 odcinki TeO Game Show (GPU, ffmpeg) i kanał programu — przy maszynie; ✓ publikacji zostaje w Izbie
     '/api/suno-album',   // 🎵 album Suno pobiera pliki do biblioteki muzyki — przy maszynie
+    '/api/suno/',   // 🎵🔌 Suno MCP: konto Suno Suwerena (OAuth), kredyty, utwory do biblioteki — przy maszynie
     '/api/brief',   // ☀️ Poranny brief: przegląd całej Katedry (publikacje, sklep, błędy) — przy maszynie
     '/api/obsada',   // 🎭 Stała Obsada Katedry: obrazy aktorów, karty FLUX (GPU) — przy maszynie
     // Stado należy do Katedry: telefon (StoL) PATRZY — nie publikuje migawki, nie paruje
@@ -186,7 +187,7 @@ export function czyWizytowka(req) {
  */
 export const SCIEZKA_ZWROTU_YOUTUBE = '/api/impresario/youtube/zwrot';
 /** 📱 Te same zasady dla powrotów z TikTok (Login Kit) i Facebooka (Instagram) — services/KontaSieci.js. */
-export const SCIEZKI_ZWROTU_OAUTH = new Set([SCIEZKA_ZWROTU_YOUTUBE, '/api/impresario/tiktok/zwrot', '/api/impresario/instagram/zwrot']);
+export const SCIEZKI_ZWROTU_OAUTH = new Set([SCIEZKA_ZWROTU_YOUTUBE, '/api/impresario/tiktok/zwrot', '/api/impresario/instagram/zwrot', '/api/suno/zwrot']);
 export function czyZwrotYouTube(req) {
     if (req.method !== 'GET' || !SCIEZKI_ZWROTU_OAUTH.has(req.path)) return false;
     if (req.get?.('cf-connecting-ip') || req.get?.('x-forwarded-for') || req.get?.('cf-ray')) return false;

@@ -49,6 +49,8 @@ let cfg = {
     suweren: () => null,
     /** 🎮 MCP Game Studio (scripts/mcp/game-studio.mjs) — dołączany przez --mcp-config, gdy plik jest */
     mcpStudio: path.join(process.cwd(), 'scripts', 'mcp', 'game-studio.mjs'),
+    /** 🎵 MCP Suno Katedry (scripts/mcp/suno.mjs) — konto Suno trzyma most, tu tylko przekaźnik */
+    mcpSuno: path.join(process.cwd(), 'scripts', 'mcp', 'suno.mjs'),
     /** 🎲 Unity MCP (CoplayDev/unity-mcp): wpis serwera albo null — most daje go tylko z OTAKOS_UNITY_MCP i pakietem w projekcie */
     unityMcp: () => null,
     /** 🌐 Wix MCP (oficjalny serwer Wix): wpis albo null — most daje go, gdy Suweren włączył (`_OtakOs_Wymiar/wix-mcp.json`) */
@@ -62,6 +64,8 @@ let cfg = {
  * „bez pytania”: każde wywołanie = prośba ✓ z Tłumaczem. Na teo.center stoi żywy sklep Shopify — przebudowa na kopii.
  */
 export const SERWER_WIX = 'wix';
+/** 🎵 Suno (2026-11-01): każde narzędzie = prośba ✓ (jak Wix); tworzące/płatne dodatkowo wymagają `zgoda: true` w argumentach. */
+export const SERWER_SUNO = 'katedra-suno';
 export const ADRES_WIX_MCP = 'https://mcp.wix.com/sse';
 export function wpisWixMcp(platforma = process.platform) {
     const npx = ['-y', '@wix/mcp-remote', ADRES_WIX_MCP];
@@ -231,7 +235,7 @@ MOCE KATEDRY (też bez pytania, przez ten sam skrypt) — ZANIM powiesz „nie m
   wideo przytnij <plik> <od_s> [do_s]             — przycięcie ffmpeg (nowy plik obok, oryginał zostaje); plik: względny albo pełna ścieżka
   wideo potnij <plik> <sekundy>                   — Nożyce: pocięcie na równe klocki po N s
 GAME STUDIO (MCP, narzędzia mcp__katedra-game-studio__*): gry Katedry (three.js) — gs_gry, gs_gdd, gs_klocki, gs_assety, gs_test_gry (zrzut + window.__gra); PRZED zmianą kodu gry gs_waliduj. Ciężkie (gs_buduj, gs_narysuj, gs_bryla_z_obrazu, Meshy, Unity) Straż zamienia w prośbę do Suwerena; po ✓ wołasz z zgoda: true.
-${serweryMcp()[SERWER_WIX] ? 'WIX (MCP, narzędzia mcp__wix__*): strona Suwerena na Wix (teo.center) — działa na niej ŻYWY sklep Shopify i odwiedzają ją ludzie. Najpierw CZYTAJ (strony, teksty, gdzie wpięty sklep). Przebudowa tylko na KOPII strony (Suweren duplikuje ją w Wix); zmiana żywej strony tylko na wyraźne słowo Suwerena. Każde narzędzie Wix to prośba ✓ — w „description” napisz, na KTÓREJ stronie i CO zmieni.\n' : ''}OBRAZY: gdy wiadomość ma „Załączone obrazy", otwórz każdy narzędziem Read (to zrzuty ekranu od Suwerena).
+${serweryMcp()[SERWER_WIX] ? 'WIX (MCP, narzędzia mcp__wix__*): strona Suwerena na Wix (teo.center) — działa na niej ŻYWY sklep Shopify i odwiedzają ją ludzie. Najpierw CZYTAJ (strony, teksty, gdzie wpięty sklep). Przebudowa tylko na KOPII strony (Suweren duplikuje ją w Wix); zmiana żywej strony tylko na wyraźne słowo Suwerena. Każde narzędzie Wix to prośba ✓ — w „description” napisz, na KTÓREJ stronie i CO zmieni.\n' : ''}${serweryMcp()[SERWER_SUNO] ? 'SUNO (MCP, narzędzia mcp__katedra-suno__*): konto Suno Suwerena przez most Katedry — tworzenie, covery, przedłużenia, kredyty. Narzędzia „💳” wydają kredyty Suwerena: najpierw zapytaj go wprost, potem wywołaj z zgoda: true. Gotowe utwory most zapisuje w _OtakOs_Muzyka/Suno MCP/.\n' : ''}OBRAZY: gdy wiadomość ma „Załączone obrazy", otwórz każdy narzędziem Read (to zrzuty ekranu od Suwerena).
 SKILLE: ${cfg.katalogi.filter((k) => cfg.istnieje(k)).map((k) => path.basename(k)).join(', ') || '(brak)'} — katalogi z SKILL.md; czytaj właściwy, gdy zadanie pasuje.
 Nie udawaj: mów, co zrobiłeś, a czego nie. Na końcu krótko: co zrobione, co czeka na Suwerena.`;
 

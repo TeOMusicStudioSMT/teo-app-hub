@@ -46,6 +46,9 @@ export const SERVICE_CATALOG = {
                         opis: 'developers.tiktok.com → Manage apps → Twoja aplikacja (Desktop) → Client key i Client secret. Konto łączysz potem w Impresariacie → 📱 Formaty i sieci.' },
     instagram:        { label: 'Instagram (Meta · Facebook Login for Business)', fields: ['app_id', 'app_secret', 'config_id'], security: 'CRITICAL', glyph: '📸',
                         opis: 'developers.facebook.com → Twoja aplikacja (Business) → Settings → Basic: App ID i App secret; config_id (opcja) z Facebook Login for Business → Configurations.' },
+    // 🎵🔌 Suno MCP (2026-11-01, services/SunoMcp.js): klient zarejestrowany w locie + token odświeżania z logowania kontem Suno.
+    suno:             { label: 'Suno (MCP · konto Suwerena)', fields: ['client_id', 'refresh_token'], security: 'HIGH', glyph: '🎵',
+                        opis: 'Nie wpisuj ręcznie — Impresariat → 🎵 Suno → „🔌 Połącz z Suno” zaloguje Cię w Suno i zapisze tu token.' },
     ted_dex:          { label: 'Ted DEX (Portfel Operacyjny Base/Arbitrum/Polygon)', fields: ['private_key', 'rpc_url'], security: 'CRITICAL', glyph: '🦄' },
     // 🤖 Autopilot TeDa na BNB Chain (prywatny moduł moduly/ted, TedAutopilot.js) — klucz portfela operacyjnego; podpisuje TYLKO most, z limitami.
     ted_bsc:          { label: 'TeD Autopilot (portfel BNB Chain)',                fields: ['private_key'],            security: 'CRITICAL', glyph: '🤖' },

@@ -14,6 +14,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PolaczYouTube, PublikacjeYouTubePanel } from './YouTubeStudio';
 import { GameShowPanel } from './GameShowPanel';
+import { SunoPanel } from './SunoPanel';
 import { StalaObsadaPanel } from './StalaObsadaPanel';
 import { WieczorTancaPanel } from './WieczorTancaPanel';
 import { FormatyPanel } from './FormatyPanel';
@@ -498,6 +499,7 @@ const ImpresarioDashboard: React.FC = () => {
                         <PolaczYouTube key={ytKluczePoz} onZmiana={fetchStatus} />
                         <PublikacjeYouTubePanel />
                         <GameShowPanel />
+                        <SunoPanel />
                         <StalaObsadaPanel />
                         <WieczorTancaPanel />
                         <FormatyPanel />

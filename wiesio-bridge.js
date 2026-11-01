@@ -255,6 +255,7 @@ import { utworzAutopilotFormatow } from './services/AutopilotFormatow.js';
 import { utworzWywiady, prowadzacyZObsady } from './services/WywiadAktorow.js';
 import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
+import { utworzSunoMcp, zamontujTrasySuno } from './services/SunoMcp.js';
 import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
 import { utworzPadyJamu, zamontujTrasyPadow } from './services/PadyJamu.js';
 import { utworzAranz, zamontujTrasyAranzu } from './services/AranzJoanny.js';
@@ -8677,6 +8678,13 @@ zamontujTrasyAranzu(app, AranzJoanny);
 // 🎛️ mastering DOWOLNEGO utworu biblioteki (services/MasterSoundcraft.js): łańcuch z listy w soundcraft-cli, cel LUFS łańcucha,
 // `<tytuł> (master).mp3` + karta obok oryginału (oryginał nietknięty).
 zamontujTrasyMasteru(app, utworzMaster({ katalogMuzyki: MUSIC_DIR, katalog: path.join(ANTIGRAVITY_DIR, 'master'), katalogAI: AI_DIR, ffmpeg: ffmpegPath, szyna: Szyna }));
+// 🎵🔌 Suno MCP (services/SunoMcp.js): konto Suno Suwerena przez OAuth, narzędzia Suno dla Huba i Głównego, utwory → _OtakOs_Muzyka/Suno MCP/
+const SunoMcp = utworzSunoMcp({ katalog: ANTIGRAVITY_DIR, katalogMuzyki: MUSIC_DIR, szyna: Szyna, skarbiec: {
+    czytaj: (u, p) => sekretPrzewodu(u, p),
+    zapisz: (u, p, v) => VaultService.getInstance().setSecret(u, p, v),
+    usun: (u, p) => VaultService.getInstance().deleteSecret(u, p),
+} });
+zamontujTrasySuno(app, SunoMcp);
 app.get('/api/suno-album', (_req, res) => ytOdp(res, AlbumSuno.stan().then((album) => ({ album })), 500));
 app.put('/api/suno-album', (req, res) => ytOdp(res, AlbumSuno.ustaw(req.body?.album || null).then((album) => ({ album }))));
 app.post('/api/suno-album/synchronizuj', (_req, res) => ytOdp(res, AlbumSuno.synchronizuj().then((album) => ({ album }))));

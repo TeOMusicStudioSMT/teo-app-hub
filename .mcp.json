@@ -20,6 +20,16 @@
         "@wix/mcp-remote",
         "https://mcp.wix.com/sse"
       ]
+    },
+    "katedra-suno": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "scripts/mcp/suno.mjs"
+      ],
+      "env": {
+        "OTAKOS_MOST": "http://127.0.0.1:3001"
+      }
     }
   }
 }
