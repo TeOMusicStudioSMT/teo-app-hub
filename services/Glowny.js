@@ -84,6 +84,7 @@ export function serweryMcp() {
     if (cfg.mcpStudio && cfg.istnieje(cfg.mcpStudio)) s[SERWER_STUDIA] = { type: 'stdio', command: process.execPath, args: [cfg.mcpStudio] };
     const u = cfg.unityMcp?.();
     if (u && typeof u === 'object') s.unityMCP = u;
+    if (cfg.mcpSuno && cfg.istnieje(cfg.mcpSuno)) s[SERWER_SUNO] = { type: 'stdio', command: process.execPath, args: [cfg.mcpSuno] };
     const w = cfg.wixMcp?.();
     if (w && typeof w === 'object') s[SERWER_WIX] = w;
     return s;
