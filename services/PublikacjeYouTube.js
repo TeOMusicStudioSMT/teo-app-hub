@@ -224,10 +224,10 @@ export function utworzPublikacje(o) {
         return p;
     }
 
-    async function odrzuc(id) {
+    async function odrzuc(id, { powod = null } = {}) {
         const p = await znajdz(id);
         if (!['do_akceptacji', 'blad', 'przygotowuje', 'limit'].includes(p.etap)) throw new Error('Tej publikacji nie da się już odrzucić.');
-        Object.assign(p, { etap: 'odrzucona', odrzucono: czas() });
+        Object.assign(p, { etap: 'odrzucona', odrzucono: czas(), ...(powod ? { powodOdrzucenia: String(powod).slice(0, 500) } : {}) });
         await zapisz();
         return p;
     }

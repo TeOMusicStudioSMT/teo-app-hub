@@ -257,6 +257,7 @@ import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzSunoMcp, zamontujTrasySuno } from './services/SunoMcp.js';
 import { utworzZlotaRybke, zamontujTrasyRybki } from './services/ZlotaRybka.js';
+import { utworzIzbe, zamontujTrasyIzby } from './services/IzbaZgod.js';
 import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
 import { utworzPadyJamu, zamontujTrasyPadow } from './services/PadyJamu.js';
 import { utworzAranz, zamontujTrasyAranzu } from './services/AranzJoanny.js';
@@ -15295,12 +15296,34 @@ app.post('/api/youtube/publikacje/:id/zmien', (req, res) => ytOdp(res, (async ()
     if (przed) jajoPatrzy(() => Jajo.poprawkaPol({ zrodlo: 'youtube', obiekt: req.params.id, tytul: publikacja.tytul, przed, po: publikacja, pola: ['tytul', 'opis', 'tagi'] }));
     return { publikacja };
 })()));
-app.post('/api/youtube/publikacje/:id/zatwierdz', (req, res) => ytOdp(res, PublikacjeYT.zatwierdz(req.params.id).then((publikacja) => { jajoPatrzy(() => Jajo.decyzja({ zrodlo: 'youtube', obiekt: req.params.id, tytul: publikacja.tytul, werdykt: 'zatwierdz', opis: String(publikacja.opis ?? '').slice(0, 600) })); return { publikacja }; })));
+/** ✓/✕ publikacji YouTube — JEDNA droga dla Huba, StoL i Izby zgód (skutki w JaJu raz, z powodem). */
+async function decyzjaPublikacji(id, werdykt, { powod = null } = {}) {
+    const publikacja = werdykt === 'zatwierdz' ? await PublikacjeYT.zatwierdz(id) : await PublikacjeYT.odrzuc(id, { powod });
+    jajoPatrzy(() => Jajo.decyzja({ zrodlo: 'youtube', obiekt: id, tytul: publikacja.tytul, werdykt, opis: String(publikacja.opis ?? '').slice(0, 600), ...(powod ? { uwagi: String(powod).slice(0, 500) } : {}) }));
+    return publikacja;
+}
+app.post('/api/youtube/publikacje/:id/zatwierdz', (req, res) => ytOdp(res, decyzjaPublikacji(req.params.id, 'zatwierdz').then((publikacja) => ({ publikacja }))));
 /** { kanalId } — ➕ ten sam film na kolejny kanał (kopia z tymi samymi metadanymi, osobne ✓). */
 app.post('/api/youtube/publikacje/:id/na-kanal', (req, res) => ytOdp(res, PublikacjeYT.naKanal(req.params.id, String(req.body?.kanalId ?? '')).then((publikacja) => ({ publikacja }))));
 /** ↻ dopisz wysłany film do playlisty projektu (np. po ponownym połączeniu kanału ze zgodą na playlisty). */
 app.post('/api/youtube/publikacje/:id/playlista', (req, res) => ytOdp(res, PublikacjeYT.ponowPlayliste(req.params.id).then((publikacja) => ({ publikacja }))));
-app.post('/api/youtube/publikacje/:id/odrzuc', (req, res) => ytOdp(res, PublikacjeYT.odrzuc(req.params.id).then((publikacja) => { jajoPatrzy(() => Jajo.decyzja({ zrodlo: 'youtube', obiekt: req.params.id, tytul: publikacja.tytul, werdykt: 'odrzuc', opis: String(publikacja.opis ?? '').slice(0, 600) })); return { publikacja }; })));
+app.post('/api/youtube/publikacje/:id/odrzuc', (req, res) => ytOdp(res, decyzjaPublikacji(req.params.id, 'odrzuc', { powod: req.body?.powod }).then((publikacja) => ({ publikacja }))));
+// 📥 Izba zgód (services/IzbaZgod.js, projekt docs/designs/warsztat-stada.md): jedna lista ✓ dla StoL i Huba — moduły rejestrują
+// źródła zamiast własnych ekranów. czekajace() = odczyt bez skutków ubocznych; akcja bez `zdalnie` = tylko przy Katedrze.
+const Izba = utworzIzbe({ szyna: ({ tresc }) => Jajo.wiesc({ tresc, rodzaj: 'izba', skad: 'Izba zgód' }) });
+Izba.zarejestruj({ id: 'youtube', emoji: '📺', nazwa: 'Publikacje YouTube',
+    czekajace: async () => (await PublikacjeYT.wszystkie()).filter((p) => p.etap === 'do_akceptacji').map((p) => ({
+        id: p.id, tytul: p.tytul || path.basename(String(p.plik ?? 'film')), kiedy: p.utworzono ?? null,
+        opis: [p.kanalNazwa ? `Kanał: ${p.kanalNazwa}` : null, p.kopiaZ ? 'kopia na inny kanał' : null, String(p.opis ?? '').slice(0, 400)].filter(Boolean).join(' · '),
+        akcje: [{ id: 'przyjmij', etykieta: '✓ wyślij (niepubliczny)', zdalnie: true }, { id: 'odrzuc', etykieta: '✕ odrzuć', zdalnie: true }] })),
+    decyduj: (id, akcja, { powod }) => decyzjaPublikacji(id, akcja === 'przyjmij' ? 'zatwierdz' : 'odrzuc', { powod }).then((p) => ({ etap: p.etap })) });
+Izba.zarejestruj({ id: 'rejestr', emoji: '🏛️', nazwa: 'Nowe Katedry w rejestrze otakos.wtf',
+    // jedyne źródło czytane z sieci (rejestr otakos.wtf) — tylko odczyt; limit czasu Izby pilnuje telefonu
+    czekajace: async () => ((await ZarzadcaRejestru.przeglad()).oczekujace ?? []).map((o) => ({
+        id: `${o.nick}|${o.klucz}`, tytul: `Katedra „${o.nick}”`, kiedy: o.kiedy ?? null, opis: o.domena ? `stały adres: ${o.domena}` : 'adres tymczasowy (trycloudflare)',
+        akcje: [{ id: 'przyjmij', etykieta: '✓ zatwierdź', zdalnie: true }, { id: 'odrzuc', etykieta: '✕ odrzuć', zdalnie: true }] })),
+    decyduj: (id, akcja) => { const i = id.indexOf('|'); const w = { nick: id.slice(0, i), klucz: id.slice(i + 1) }; return akcja === 'przyjmij' ? ZarzadcaRejestru.zatwierdz(w) : ZarzadcaRejestru.odrzuc(w); } });
+zamontujTrasyIzby(app, Izba, { dostep: dostepStada });
 
 // ── 🎭 Aktorzy i wywiad o filmie (services/WywiadAktorow.js) ──
 // Obsada (postać, zdjęcie, głos) → scenariusz od modelu gatunku `aktor` z faktów projektu → głos + kadry → film
