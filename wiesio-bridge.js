@@ -256,6 +256,7 @@ import { utworzWywiady, prowadzacyZObsady } from './services/WywiadAktorow.js';
 import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzSunoMcp, zamontujTrasySuno } from './services/SunoMcp.js';
+import { utworzZlotaRybke, zamontujTrasyRybki } from './services/ZlotaRybka.js';
 import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
 import { utworzPadyJamu, zamontujTrasyPadow } from './services/PadyJamu.js';
 import { utworzAranz, zamontujTrasyAranzu } from './services/AranzJoanny.js';
@@ -8307,6 +8308,12 @@ Gdd.skonfiguruj({ katalog: path.join(process.cwd(), '..', '_OtakOs_Apki'), szyna
     // ☁️ chmura po chmurze: modele chmury z kluczem (Claude/Gemini) — zapas, gdy główny z chmury padnie
     modeleChmury: async () => (await AppStudio.silniki()).filter((m) => m.dostepny && /^(claude|gemini):/.test(m.model)).map((m) => m.model) });
 ModeleAgentow.wszystkie().catch(() => {});   // pamięć przydziału dla Studia Gier od startu
+// 🐟 Złota Rybka (services/ZlotaRybka.js, metoda google/elephant-goldfish-model): recenzja planu GDD bez rozmowy z Reżyserem —
+// widzi tylko GDD, zadania do produkcji i mapę kodu (WikiProjektu), wypisuje niejawne założenia; ✓ Suwerena podmienia treść zadania.
+const ZlotaRybka = utworzZlotaRybke({ katalog: path.join(ANTIGRAVITY_DIR, 'zlota-rybka'), gdd: Gdd, pisz: AppStudio.pisz, szyna: Szyna,
+    model: () => TrybKatedry.modelDla(ModeleAgentow.modelZPamieci('rezyser') || modelMechanika()),
+    mapa: (projekt) => WikiProjektu.skrot(path.join(APKI_DIR, projekt)) });
+zamontujTrasyRybki(app, ZlotaRybka);
 const gddUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 app.get('/api/gdd/silniki', (_req, res) => res.json({ success: true, silniki: Gdd.SILNIKI }));
 // 📜 Scenariusze Suwerena jako projekty (services/SzablonyGier.js) — „Teterhia — Wieczna Saga”: projekt gry + GDD + gałęzie świata.

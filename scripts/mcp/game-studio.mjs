@@ -72,6 +72,9 @@ export const NARZEDZIA = [
           if (cz === 'sekcje') return { tytul: g.tytul, sekcje: g.sekcje };
           return { gdd: g, produkcja: r.produkcja };
       } },
+    { nazwa: 'gs_zlota_rybka', grupa: 'projekty', opis: '🐟 Złota Rybka: recenzja planu GDD BEZ kontekstu rozmowy (GDD + zadania do produkcji + mapa kodu) — niejawne założenia, niezgodności z kodem, zadania za duże, zła kolejność. akcja "przeczytaj" uruchamia recenzję (lokalny model, minuty), "stan" pokazuje ostatnią. Treść zadań zmienia tylko Suweren (✓ w Game Studio).',
+      schemat: obiekt({ projekt: PROJEKT, akcja: S(null, 'stan | przeczytaj (domyślnie stan)', { enum: ['stan', 'przeczytaj'] }) }),
+      wykonaj: async (a, c) => { const id = encodeURIComponent(c.projekt(a)); if (a.akcja === 'przeczytaj') return (await c.most('POST', `/api/gdd/${id}/rybka`, {})).przeglad; return (await c.most('GET', `/api/gdd/${id}/rybka`)).rybka; } },
     { nazwa: 'gs_klocki', grupa: 'projekty', opis: 'Klocki gry (KlockiGry): katalog obrazów/brył projektu ze stanem (w-grze/bryla/obraz/koncept) i klocki każdego zadania planu — czego brakuje przed budową.',
       schemat: obiekt({ projekt: PROJEKT, stan: S(null, 'katalog tylko w tym stanie: w-grze | bryla | obraz | koncept (puste = sam licznik)', { enum: ['w-grze', 'bryla', 'obraz', 'koncept'] }), zadanie: S(null, 'id zadania planu — pełne klocki tylko tego zadania') }),
       wykonaj: async (a, c) => {
