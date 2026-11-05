@@ -407,7 +407,7 @@ export function utworzChoreografie({ katalog, rytm, katalogMontazy, ffmpeg = nul
     async function usun(id) { await fs.unlink(plikC(id)).catch((e) => { if (e.code === 'ENOENT') throw new Error('Nie ma takiej choreografii.'); throw e; }); return true; }
 
     /** 🎥 Film występu (webm z przeglądarki) → montaż projektu `taneczne-starcie` → mp4. */
-    async function nagranie(id, bufor, { typ = 'video/webm' } = {}) {
+    async function nagranie(id, bufor, { typ = 'video/webm', prywatny = false } = {}) {
         const c = await wczytaj(id);
         if (!Buffer.isBuffer(bufor) || bufor.length < 1024) throw new Error('Nagranie jest puste — przeglądarka nic nie oddała.');
         if (bufor.length > MAX_NAGRANIA_MB * 1024 * 1024) throw new Error(`Nagranie ma ${(bufor.length / 1048576).toFixed(0)} MB — limit to ${MAX_NAGRANIA_MB} MB (OTAKOS_TANIEC_NAGRANIE_MB).`);
@@ -433,7 +433,8 @@ export function utworzChoreografie({ katalog, rytm, katalogMontazy, ffmpeg = nul
             await fs.writeFile(plikC(id), JSON.stringify(cc, null, 2), 'utf8');
         });
         let show = null;
-        if (poNagraniu) { try { show = await poNagraniu({ choreografia: c, nagranie: wpis }); } catch (e) { show = { blad: e.message }; } }
+        // 🎟️ prywatny występ (kod kupującego) = bez TeO Game Show i Wieczoru Tańca
+        if (poNagraniu && !prywatny) { try { show = await poNagraniu({ choreografia: c, nagranie: wpis }); } catch (e) { show = { blad: e.message }; } }
         return { ...wpis, projekt: PROJEKT, ...(show ? { show } : {}) };
     }
 
@@ -491,7 +492,7 @@ export function zamontujTrasyChoreografii(app, { choreografie, raw, klub = null,
     app.post('/api/choreografie', (req, res) => odp(res, choreografie.zapisz(req.body ?? {}).then((choreografia) => ({ choreografia }))));
     app.delete('/api/choreografie/:id', (req, res) => odp(res, choreografie.usun(req.params.id).then((usunieta) => ({ usunieta }))));
     app.post('/api/choreografie/:id/nagranie', raw({ type: ['video/*', 'application/octet-stream'], limit: `${MAX_NAGRANIA_MB}mb` }), (req, res) =>
-        odp(res, choreografie.nagranie(req.params.id, req.body, { typ: String(req.get('content-type') || '') }).then((nagranie) => ({ nagranie }))));
+        odp(res, choreografie.nagranie(req.params.id, req.body, { typ: String(req.get('content-type') || ''), prywatny: req.query.prywatny === '1' }).then((nagranie) => ({ nagranie }))));
     app.get('/api/taniec/turnieje', async (req, res) => {
         try {
             let pole = klub?.ostatniZwiad?.() ?? null, blad = null;

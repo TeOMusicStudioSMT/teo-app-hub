@@ -104,6 +104,8 @@ import { utworzBazylike } from './services/BazylikaDzwieku.js';
 import { utworzKompozytora, zamontujTrasyKompozytora } from './services/JajoKompozytora.js';
 import { rodzinyZRuchem } from './services/MiniZRuchem.js';
 import { utworzChoreografie, zamontujTrasyChoreografii } from './services/Choreografie.js';
+import { utworzKodyTanca, zamontujTrasyKodowTanca } from './services/KodyTanca.js';
+import QRCode from 'qrcode';
 import { utworzFiguryTanca, zamontujTrasyFigur } from './services/FiguryTanca.js';
 import { odchudzBryle, CEL_SCIAN, MAKS_TEKSTURY } from './services/LekkieBryly.js';
 import { utworzRozliczenia } from './services/RozliczeniaKatedr.js';
@@ -11871,6 +11873,14 @@ app.get('/api/koherencja', async (_req, res) => {
         const k = policzKoherencje({ ollama: ollama ? ollama.map((m) => m.nazwa) : null, domyslny: Mozg.domyslny(), agenci, mechanik: modelMechanika(), comfy: !!comfy.online, bledyMostuDoby, bladChmuryDoby, rozmiar: rozmiarModelu });
         res.json({ success: true, ...k, kiedy: new Date().toISOString() });
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+// 💃🎟️ Automat choreografii + jednorazowe kody QR kupujących 0.00G Style (services/KodyTanca.js, docs/designs/potok-0-00g-style.md)
+const KodyTanca = utworzKodyTanca({
+    katalog: path.join(ANTIGRAVITY_DIR, 'kody-tanca'),
+    utwory: () => RytmUtworu.utwory(),
+    bestiariusz: () => Bestiariusz.wczytaj('teterhia-wieczna-saga'),
+    sciezkaNagrania: async (nazwa) => path.join(await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, 'taneczne-starcie'), path.basename(nazwa)),
+});
+zamontujTrasyKodowTanca(app, KodyTanca, { adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; }, qr: (url) => QRCode.toDataURL(url, { margin: 1, width: 360 }) });
 });
 
 /** POST /api/stado/model { agent, model } — silnik TeOgochi (pusty = domyślny). Tylko z maszyny. */

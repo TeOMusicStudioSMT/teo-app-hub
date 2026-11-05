@@ -161,6 +161,8 @@ export const SCIEZKA_OPISU = /^\/wizytowka\/opis\/[0-9a-f]{24}$/;
 export const SCIEZKA_KSIEGI = /^\/wizytowka\/ksiega(\/k-\d{8}-[0-9a-f]{6}\/(zdjecie\.jpg|ilustracja\.png|nagranie\.mp4))?$/;
 /** 🌍 Licznik wejść (services/LicznikWejsc.js): strony Suwerena zgłaszają wejście gościa — kraj z Cloudflare, bez IP. */
 export const SCIEZKA_WEJSCIA = '/wizytowka/wejscie';
+/** 💃🎟️ Kod tańca kupującego (services/KodyTanca.js): strona, stan i film (GET), zużycie kodu (POST, ≤ 5/min z adresu). */
+export const SCIEZKA_KODU_TANCA = /^\/wizytowka\/taniec\/t-[0-9a-f]{12}(\/stan|\/film\.(mp4|webm))?$/;
 export const SCIEZKA_RINGU = /^\/wizytowka\/ring(\/r-[a-z0-9]{6,16}(\/wyjdz)?)?$/;
 export function czyWizytowka(req) {
     // 💬 Skrzynka TOST (services/TostSiec.js): inne Katedry wrzucają tu koperty — szyfrowane, podpisane,
@@ -175,6 +177,8 @@ export function czyWizytowka(req) {
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_PLATNOSCI.test(String(req.path || ''))) return true;
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_ZAKUPU.test(String(req.path || ''))) return true;
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_WYPOZYCZENIA.test(String(req.path || ''))) return true;
+    if ((req.method === 'GET' || req.method === 'HEAD') && SCIEZKA_KODU_TANCA.test(String(req.path || ''))) return true;
+    if (req.method === 'POST' && /^\/wizytowka\/taniec\/t-[0-9a-f]{12}$/.test(String(req.path || ''))) return true;
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
     const p = String(req.path || '');
     if (SCIEZKA_SKLEPU.test(p)) return true;
