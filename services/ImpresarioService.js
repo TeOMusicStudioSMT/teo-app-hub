@@ -138,6 +138,8 @@ class ImpresarioService {
             widocznosc:       WIDOCZNOSCI.includes(opcje.widocznosc) ? opcje.widocznosc : 'unlisted',
             publikacjaId:     opcje.publikacjaId ?? null,
             kanalId:          typeof opcje.kanalId === 'string' ? opcje.kanalId : null,
+            // 🛍️ lokowanie produktu (YouTube: paidProductPlacementDetails.hasPaidProductPlacement) — film z produktem 0.00G Style
+            lokowanie:        opcje.lokowanie === true,
             createdAt:        new Date().toISOString(),
             last_updated:     new Date().toISOString(),
         };
@@ -527,10 +529,11 @@ class ImpresarioService {
                 privacyStatus: task.widocznosc ?? 'unlisted',
                 selfDeclaredMadeForKids: false,
             },
+            ...(task.lokowanie ? { paidProductPlacementDetails: { hasPaidProductPlacement: true } } : {}),
         };
 
         const res = await fetch(
-            'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
+            `https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status${task.lokowanie ? ',paidProductPlacementDetails' : ''}`,
             {
                 method:  'POST',
                 headers: {

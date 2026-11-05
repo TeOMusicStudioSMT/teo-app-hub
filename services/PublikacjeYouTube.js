@@ -165,6 +165,8 @@ export function utworzPublikacje(o) {
             // 🛍️ kolekcja postaci w sklepie: link dokleja KOD (nie model), gdy w filmie występuje postać z kolekcją
             const sklep = await Promise.resolve(cfg.linkSklepu?.({ plik: p.plik, nazwa: p.nazwa, zrodlo: p.zrodlo, kontekst: z.kontekst })).catch(() => null);
             if (sklep?.url && !meta.opis.includes(sklep.url)) meta.opis = `${meta.opis}\n\n${p.jezyk === 'en' ? `🛍️ ${sklep.imie} collection` : `🛍️ Kolekcja ${sklep.imie}`}: ${sklep.url}`;
+            // 🛍️ film pokazuje produkt 0.00G Style (link kolekcji albo wstawka reklamowa / program modowy) = lokowanie produktu
+            if (sklep?.url || p.zrodlo?.reklama) p.lokowanie = true;
             if (!/otakos\.wtf/i.test(meta.opis)) {
                 meta.opis = `${meta.opis}\n\n${stopkaEkosystemu(p.jezyk, p.zrodlo)}`.slice(0, 4800);
             }
@@ -203,7 +205,7 @@ export function utworzPublikacje(o) {
         const { kanaly } = await kanalyKatedry();
         if (p.kanalId && kanaly.length && !kanaly.some((x) => x.id === p.kanalId)) throw new Error(`Kanał „${p.kanalNazwa ?? p.kanalId}” nie jest już połączony — wybierz inny kanał.`);
         if (!p.kanalId) Object.assign(p, await kanalDla(p.zrodlo?.projekt));
-        const job = await cfg.impresariat.enqueuePublication(p.tytul, p.zrodlo?.projekt ?? null, ['youtube'], p.plik, { opis: p.opis, tagi: p.tagi, widocznosc: 'unlisted', publikacjaId: p.id, kanalId: p.kanalId });
+        const job = await cfg.impresariat.enqueuePublication(p.tytul, p.zrodlo?.projekt ?? null, ['youtube'], p.plik, { opis: p.opis, tagi: p.tagi, widocznosc: 'unlisted', publikacjaId: p.id, kanalId: p.kanalId, lokowanie: p.lokowanie === true });
         if (p.zrodlo?.projekt && p.kanalId && !p.kopiaZ) {   // projekt zapamiętuje kanał (kopia na drugi kanał — nie) — następny odcinek pójdzie tam sam
             const mapa = await kanalyProjektow();
             mapa[p.zrodlo.projekt] = p.kanalId;
@@ -244,7 +246,7 @@ export function utworzPublikacje(o) {
         for (const p of l) if (p.etap === 'blad' && czyLimitYouTube(p.blad) && p.jobId) doLimitu(p, Date.parse(p.zatwierdzono ?? '') || Date.now());
         for (const p of l.filter((x) => x.etap === 'limit' && Date.parse(x.ponowOd ?? 0) <= Date.now())) {
             try {
-                const job = await cfg.impresariat.enqueuePublication(p.tytul, p.zrodlo?.projekt ?? null, ['youtube'], p.plik, { opis: p.opis, tagi: p.tagi, widocznosc: 'unlisted', publikacjaId: p.id, kanalId: p.kanalId });
+                const job = await cfg.impresariat.enqueuePublication(p.tytul, p.zrodlo?.projekt ?? null, ['youtube'], p.plik, { opis: p.opis, tagi: p.tagi, widocznosc: 'unlisted', publikacjaId: p.id, kanalId: p.kanalId, lokowanie: p.lokowanie === true });
                 Object.assign(p, { etap: 'wysylanie', jobId: job.id, uwaga: `Ponowiona po limicie dnia (próba ${(p.prob ?? 1) + 1}).` });
                 nadaj(`„${p.tytul}” — minęła doba, ponawiam wysyłkę na YouTube${p.kanalNazwa ? ` (kanał „${p.kanalNazwa}”)` : ''}`);
             } catch (e) { p.uwaga = `${KOMUNIKAT_LIMITU} (ponowienie nie weszło do kolejki: ${e.message})`; }
@@ -322,7 +324,7 @@ export function utworzPublikacje(o) {
         const otwarta = l.find((x) => x.plik === zrodlo.plik && x.kanalId === k.id && !['odrzucona', 'blad'].includes(x.etap));
         if (otwarta) throw new Error(`Ten film już jest (albo czeka) na kanale „${k.nazwa}”.`);
         await fs.access(zrodlo.plik).catch(() => { throw new Error(`Nie ma już pliku: ${path.basename(zrodlo.plik)}`); });
-        const p = { id: `yt_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`, etap: 'do_akceptacji', plik: zrodlo.plik, nazwa: zrodlo.nazwa, wystawaId: null, zrodlo: zrodlo.zrodlo ?? null, kanalId: k.id, kanalNazwa: k.nazwa, utworzono: czas(), autor: zrodlo.autor ?? 'Kronikarz', jezyk: zrodlo.jezyk ?? 'pl', tytul: zrodlo.tytul, opis: zrodlo.opis, tagi: [...(zrodlo.tagi ?? [])], model: zrodlo.model ?? null, kopiaZ: zrodlo.id };
+        const p = { id: `yt_${cfg.teraz().toString(36)}${Math.random().toString(36).slice(2, 6)}`, etap: 'do_akceptacji', plik: zrodlo.plik, nazwa: zrodlo.nazwa, wystawaId: null, zrodlo: zrodlo.zrodlo ?? null, kanalId: k.id, kanalNazwa: k.nazwa, utworzono: czas(), autor: zrodlo.autor ?? 'Kronikarz', jezyk: zrodlo.jezyk ?? 'pl', tytul: zrodlo.tytul, opis: zrodlo.opis, tagi: [...(zrodlo.tagi ?? [])], model: zrodlo.model ?? null, kopiaZ: zrodlo.id, lokowanie: zrodlo.lokowanie === true };
         l.unshift(p);
         await zapisz();
         return p;
