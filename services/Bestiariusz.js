@@ -61,6 +61,8 @@ export function oczyscBestiariusz(d = {}) {
             rzadkosc: idRz.has(m?.rzadkosc) ? m.rzadkosc : rz[0].id,
             dziedzina: DZIEDZINY.includes(m?.dziedzina) ? m.dziedzina : 'takt',
             opis: tekst(m?.opis, 400),
+            // 🎵 utwór „pierwszego razu” (Suweren 2026-11-06) — plik względny w _OtakOs_Muzyka, bez „..”
+            utwor: typeof m?.utwor === 'string' && m.utwor.length <= 300 && !m.utwor.includes('..') && !/^[\\/]|^[a-z]:/i.test(m.utwor) ? m.utwor : null,
             skille: [...new Set((Array.isArray(m?.skille) ? m.skille : []).filter((x) => idS.has(x)))].slice(0, 6),
             warianty: (Array.isArray(m?.warianty) ? m.warianty : []).slice(0, 8).map((w) => ({
                 id: typeof w?.id === 'string' && ID.test(w.id) && !zajeteW.has(w.id) ? (zajeteW.add(w.id), w.id) : noweId('w', w?.nazwa, zajeteW),

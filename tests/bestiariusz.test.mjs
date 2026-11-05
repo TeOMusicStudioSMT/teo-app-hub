@@ -55,3 +55,13 @@ test('zapis do public/ i dist/ gry, odczyt czyści', async () => {
     await assert.rejects(B.zapisz('nie-ma-gry', {}), /Nie ma gry/);
     await assert.rejects(B.wczytaj('../x'), /Zły projekt/);
 });
+
+test('🎵 utwór „pierwszego razu”: ścieżka w bibliotece zostaje, wyjście poza nią odpada', () => {
+    const b = oczyscBestiariusz({ mini: [
+        { nazwa: 'Borowik', utwor: 'Bazylika/Joann1.mp3' },
+        { nazwa: 'Zły', utwor: '../sekret.mp3' },
+        { nazwa: 'Dysk', utwor: 'C:/Windows/a.mp3' },
+        { nazwa: 'Bez' },
+    ] });
+    assert.deepEqual(b.mini.map((m) => m.utwor), ['Bazylika/Joann1.mp3', null, null, null]);
+});
