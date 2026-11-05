@@ -33,9 +33,9 @@ Na końcu odpowiedz WYŁĄCZNIE JSON-em (bez nic po nim):
 {"znalezione":[{"rodzaj":"kod|promocja|program|partnerska","kod":"KOD albo null","opis":"po polsku, co daje","rabat":"np. 20% albo 20 EUR albo null","zrodlo":"https://…","data":"data ze strony albo null","pewnosc":"oficjalne|agregator|forum","uwagi":"warunki, np. tylko nowe konta DE"}],"podsumowanie":"1–2 zdania po polsku"}`;
 
 /** Ostatni obiekt JSON z listą znalezisk z tekstu modelu (też w bloku ```json, z białymi znakami po „{”). */
-export function wylowJson(t) {
+export function wylowJson(t, klucz = 'znalezione') {
     const s = String(t ?? '').replace(/```(?:json)?/gi, '');
-    const starty = [...s.matchAll(/\{\s*"znalezione"/g)].map((m) => m.index).reverse();
+    const starty = [...s.matchAll(new RegExp(`\\{\\s*"${klucz}"`, 'g'))].map((m) => m.index).reverse();
     for (const start of starty) {
         for (let k = s.lastIndexOf('}'); k > start; k = s.lastIndexOf('}', k - 1)) {
             try { return JSON.parse(s.slice(start, k + 1)); } catch { /* krócej */ }
@@ -83,16 +83,19 @@ export function zrodlaZGroundingu(meta) {
 }
 
 /** Znaleziska z JSON → sprawdzone: źródło musi być wśród wyników wyszukiwania. */
+/** Czy adres padł w wynikach wyszukiwania: dokładnie / jako podstrona ('adres') albo domeną z groundingu ('domena'). */
+export function dopasujZrodlo(adres, zrodla) {
+    let zr = zrodla.get(normUrl(adres ?? '')) ?? [...zrodla.values()].find((x) => !x.domena && normUrl(adres ?? '').startsWith(normUrl(x.url)));
+    if (zr) return { zr, potwierdzone: 'adres' };
+    const d = domenaZ(adres);
+    zr = d ? [...zrodla.values()].find((x) => x.domena && (d === x.domena || d.endsWith('.' + x.domena))) : null;
+    return { zr: zr ?? null, potwierdzone: zr ? 'domena' : null };
+}
+
 export function sprawdzZnaleziska(json, zrodla) {
     const przyjete = [], odrzucone = [];
     for (const z of Array.isArray(json?.znalezione) ? json.znalezione : []) {
-        let zr = zrodla.get(normUrl(z?.zrodlo ?? '')) ?? [...zrodla.values()].find((x) => !x.domena && normUrl(z?.zrodlo ?? '').startsWith(normUrl(x.url)));
-        let potwierdzone = zr ? 'adres' : null;
-        if (!zr) {
-            const d = domenaZ(z?.zrodlo);
-            zr = d ? [...zrodla.values()].find((x) => x.domena && (d === x.domena || d.endsWith(`.${x.domena}`))) : null;
-            if (zr) potwierdzone = 'domena';
-        }
+        const { zr, potwierdzone } = dopasujZrodlo(z?.zrodlo, zrodla);
         const wpis = {
             rodzaj: ['kod', 'promocja', 'program', 'partnerska'].includes(z?.rodzaj) ? z.rodzaj : 'promocja',
             kod: z?.kod ? String(z.kod).trim().slice(0, 60) : null,
@@ -120,7 +123,7 @@ export function sprawdzZnaleziska(json, zrodla) {
 /**
  * @param {{ klucze?: { anthropic?: Function, gemini?: Function }, klucz?: Function, katalog: string, szyna?: object|null, fetch?: Function, modelGemini?: () => Promise<string>|string, ollamaBase?: string }} o
  */
-export function utworzZwiadowcePromocji({ klucze = {}, klucz = null, katalog, szyna = null, fetch: f = globalThis.fetch, modelGemini = () => MODEL_GEMINI, ollamaBase = 'http://127.0.0.1:11434' }) {
+export function utworzZwiadowcePromocji({ klucze = {}, klucz = null, katalog, szyna = null, fetch: f = globalThis.fetch, modelGemini = () => MODEL_GEMINI, ollamaBase = 'http://127.0.0.1:11434', system = SYSTEM }) {
     const kluczDla = { anthropic: klucze.anthropic ?? klucz ?? (async () => null), gemini: klucze.gemini ?? (async () => null) };
     const plik = () => path.join(katalog, 'promocje.json');
     async function czytaj() { try { return JSON.parse(await fs.readFile(plik(), 'utf8')); } catch { return { zwiady: [] }; } }
@@ -178,7 +181,7 @@ export function utworzZwiadowcePromocji({ klucze = {}, klucz = null, katalog, sz
         const or = await f(`${ollamaBase}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model, system: SYSTEM, prompt: promptDlaOllamy, stream: false, format: 'json' }),
+            body: JSON.stringify({ model, system, prompt: promptDlaOllamy, stream: false, format: 'json' }),
             signal: AbortSignal.timeout(120_000),
         });
         if (!or.ok) throw new Error(`Ollama HTTP ${or.status} — upewnij się, że lokalny silnik Ollama działa.`);
@@ -199,7 +202,7 @@ export function utworzZwiadowcePromocji({ klucze = {}, klucz = null, katalog, sz
         const r = await f(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
             method: 'POST', signal: AbortSignal.timeout(180_000),
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': k },
-            body: JSON.stringify({ systemInstruction: { parts: [{ text: SYSTEM }] }, contents: [{ role: 'user', parts: [{ text: prosba }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.2 } }),
+            body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: prosba }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.2 } }),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(`Gemini HTTP ${r.status}: ${d?.error?.message ?? ''}`.trim());
@@ -216,8 +219,14 @@ export function utworzZwiadowcePromocji({ klucze = {}, klucz = null, katalog, sz
     async function szukaj(usluga, { kontekst = '', dostawca = 'auto' } = {}) {
         const u = String(usluga ?? '').trim().slice(0, 80);
         if (u.length < 2) throw new Error('Podaj usługę, np. „Meshy”.');
-        const wyb = await wybierz(dostawca);
         const prosba = `Usługa: ${u}${kontekst ? `\nKontekst: ${String(kontekst).slice(0, 300)}` : ''}\nDzisiaj: ${new Date().toISOString().slice(0, 10)}. Znajdź aktualne zniżki.`;
+        const { dostawca: uzytyDostawca, wynik: wynikSzukania } = await surowy(prosba, { dostawca, u });
+        return zapiszWynik(u, uzytyDostawca, wynikSzukania);
+    }
+
+    /** Samo wyszukiwanie (dla innych zwiadów z własnym `system`) → {dostawca, wynik {model, tekst, stop, zrodla, usage, bledyWyszukiwania}}. */
+    async function surowy(prosba, { dostawca = 'auto', u = '' } = {}) {
+        const wyb = await wybierz(dostawca);
 
         let uzytyDostawca = wyb.dostawca;
         let wynikSzukania;
@@ -238,7 +247,7 @@ export function utworzZwiadowcePromocji({ klucze = {}, klucz = null, katalog, sz
                 }
             }
         }
-        return zapiszWynik(u, uzytyDostawca, wynikSzukania);
+        return { dostawca: uzytyDostawca, wynik: wynikSzukania };
     }
 
     async function szukajClaude(k, prosba) {
@@ -250,7 +259,7 @@ export function utworzZwiadowcePromocji({ klucze = {}, klucz = null, katalog, sz
             const r = await f('https://api.anthropic.com/v1/messages', {
                 method: 'POST', signal: AbortSignal.timeout(180_000),
                 headers: { 'content-type': 'application/json', 'x-api-key': k, 'anthropic-version': '2023-06-01' },
-                body: JSON.stringify({ model: MODEL, max_tokens: 8000, system: SYSTEM, messages, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: MAX_WYSZUKAN }] }),
+                body: JSON.stringify({ model: MODEL, max_tokens: 8000, system, messages, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: MAX_WYSZUKAN }] }),
             });
             const d = await r.json().catch(() => ({}));
             if (!r.ok) throw new Error(`Anthropic HTTP ${r.status}: ${d?.error?.message ?? ''}`.trim());
@@ -290,7 +299,7 @@ export function utworzZwiadowcePromocji({ klucze = {}, klucz = null, katalog, sz
     }
 
     return {
-        szukaj, lista: async () => (await czytaj()).zwiady ?? [],
+        szukaj, surowy, lista: async () => (await czytaj()).zwiady ?? [],
         async dostawcy() {
             const [a, g] = await Promise.all([kluczDla.anthropic(), kluczDla.gemini()].map((p) => Promise.resolve(p).catch(() => null)));
             return { anthropic: !!a, gemini: !!g, auto: a ? 'anthropic' : g ? 'gemini' : null };

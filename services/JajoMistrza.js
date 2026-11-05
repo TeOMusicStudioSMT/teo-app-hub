@@ -48,7 +48,7 @@ export const ETAPY = [
 ];
 export const ZRODLA = {
     wywiad: 'Wywiad aktorów', podcast: 'Odcinek Studia Podcastu', scena: 'Scena dialogowa',
-    youtube: 'Publikacja YouTube', stol: 'Stół ratyfikacji', warsztat: 'Warsztat Stada',
+    youtube: 'Publikacja YouTube', stol: 'Stół ratyfikacji', warsztat: 'Warsztat Stada', dystrybucja: 'Kanały dystrybucji',
 };
 const MAX_TEKST = 2000;
 const MAX_KODU = 12_000;

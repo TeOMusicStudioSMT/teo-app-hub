@@ -717,6 +717,68 @@ export const PorzadkiPanel: React.FC = () => {
 interface Znalezisko { rodzaj: string; kod: string | null; opis: string; rabat: string | null; zrodlo: string; tytulZrodla: string | null; wiekStrony: string | null; data: string | null; pewnosc: string; uwagi: string | null; potwierdzone?: 'adres' | 'domena' | null }
 interface Zwiad { usluga: string; kiedy: string; dostawca?: 'anthropic' | 'gemini'; znalezione: Znalezisko[]; odrzucone: unknown[]; podsumowanie: string; koszt: { wyszukan: number; usdWyszukiwania: number | null }; uwaga: string }
 type DostawcaPromocji = 'auto' | 'anthropic' | 'gemini';
+interface KanalDystrybucji { nazwa: string; link: string; kategoria: string; model: string; prowizjaKoszty: string | null; wysylkaUE: boolean | null; integracje: string[]; licencjaWzory: string | null; wymagania: string | null; pewnosc: string; potwierdzone: string; powod?: string }
+interface ZwiadDystrybucji { id: string; kiedy: string; kategoria: string | null; dostawca: string; kanaly: KanalDystrybucji[]; odrzucone: KanalDystrybucji[]; podsumowanie: string; koszt: { wyszukan: number; usdWyszukiwania: number | null } }
+interface PropozycjaKanalu { id: string; stan: string; kanal: KanalDystrybucji; decyzja?: { powod: string | null } }
+
+/** 👕🔭 Zwiadowca kanałów dystrybucji (services/ZwiadowcaDystrybucji.js) — tylko kanały z linkiem z wyników; „podłącz” = Izba zgód. */
+export const DystrybucjaPanel: React.FC = () => {
+    const [zwiady, setZwiady] = useState<ZwiadDystrybucji[]>([]);
+    const [propozycje, setPropozycje] = useState<PropozycjaKanalu[]>([]);
+    const [kategoria, setKategoria] = useState('pod');
+    const [dostawca, setDostawca] = useState<DostawcaPromocji>('auto');
+    const [tylkoUE, setTylkoUE] = useState(false);
+    const [trwa, setTrwa] = useState(false);
+    const odswiez = useCallback(() => zMostu<{ zwiady: ZwiadDystrybucji[]; propozycje: PropozycjaKanalu[] }>('/api/zwiadowca/dystrybucja').then((d) => { setZwiady(d.zwiady); setPropozycje(d.propozycje); }).catch(() => {}), []);
+    useEffect(() => { void odswiez(); }, [odswiez]);
+    const szukaj = async () => {
+        setTrwa(true);
+        try {
+            const d = await zMostu<{ zwiad: ZwiadDystrybucji }>('/api/zwiadowca/dystrybucja', { method: 'POST', body: JSON.stringify({ kategoria, dostawca }) });
+            setZwiady((z) => [d.zwiad, ...z]);
+            toast.success(`👕 ${d.zwiad.kanaly.length} kanałów ze źródłami`);
+        } catch (e) { toast.error(blad(e)); } finally { setTrwa(false); }
+    };
+    const zaproponuj = async (z: ZwiadDystrybucji, k: KanalDystrybucji) => {
+        try { await zMostu('/api/zwiadowca/dystrybucja/zaproponuj', { method: 'POST', body: JSON.stringify({ zwiad: z.id, link: k.link }) }); toast.success('📥 W Izbie zgód — ✓ w StoL albo tutaj'); void odswiez(); }
+        catch (e) { toast.error(blad(e)); }
+    };
+    const z = zwiady[0];
+    const stanLinku = (link: string) => propozycje.find((p) => p.kanal.link === link)?.stan;
+    return (
+        <div className="space-y-2 rounded-xl border border-emerald-800/50 bg-black/30 p-3">
+            <h3 className="text-sm font-bold text-emerald-200">👕🔭 Zwiadowca kanałów dystrybucji — merch Teterhii i Mini</h3>
+            <p className="text-[10px] text-slate-500">Szuka w sieci (Claude albo Gemini, klucz z Kibla) druku na żądanie, marketplace'ów i sklepów twórców. Pokazuje tylko kanały, których link padł w wynikach. Nic nie zakłada i nie płaci — „📥 Zaproponuj” wysyła kanał do Izby zgód, konto zakładasz sam.</p>
+            <div className="flex flex-wrap gap-2">
+                <select value={kategoria} onChange={(e) => setKategoria(e.target.value)} className="rounded-lg border border-slate-700 bg-black/40 px-1 text-xs">
+                    <option value="pod">🖨️ POD + Shopify</option><option value="marketplace">🛒 Marketplace</option><option value="sklep-tworcow">🎮 Sklepy twórców</option>
+                </select>
+                <select value={dostawca} onChange={(e) => setDostawca(e.target.value as DostawcaPromocji)} className="rounded-lg border border-slate-700 bg-black/40 px-1 text-xs">
+                    <option value="auto">☁️ auto</option><option value="anthropic">Claude</option><option value="gemini">Gemini</option>
+                </select>
+                <label className="flex items-center gap-1 text-xs text-slate-400"><input type="checkbox" checked={tylkoUE} onChange={(e) => setTylkoUE(e.target.checked)} />🇪🇺 tylko wysyłka UE</label>
+                <button onClick={() => void szukaj()} disabled={trwa} className="rounded-lg border border-emerald-600/60 px-3 py-1 text-xs text-emerald-200 disabled:opacity-40">{trwa ? 'szukam…' : '🔭 Szukaj'}</button>
+            </div>
+            {z && <div className="space-y-1">
+                <p className="text-[10px] text-slate-500">{new Date(z.kiedy).toLocaleString()} · {z.dostawca} · {z.koszt.wyszukan} wyszukań{z.koszt.usdWyszukiwania != null ? ` (~$${z.koszt.usdWyszukiwania})` : ''} · {z.podsumowanie}</p>
+                {z.kanaly.filter((k) => !tylkoUE || k.wysylkaUE === true).map((k) => (
+                    <div key={k.link} className="rounded-lg border border-slate-800 bg-black/40 p-2 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                            <a href={k.link} target="_blank" rel="noreferrer" className="font-bold text-emerald-200 underline">{k.nazwa}</a>
+                            {stanLinku(k.link) ? <span className="text-[10px] text-slate-400">{stanLinku(k.link) === 'do_zgody' ? '📥 czeka w Izbie' : stanLinku(k.link) === 'przyjeta' ? '✅ zatwierdzony — załóż konto sam, klucz do Skarbca' : '✕ odrzucony'}</span>
+                                : <button onClick={() => void zaproponuj(z, k)} className="rounded border border-emerald-700 px-2 text-[10px] text-emerald-300">📥 Zaproponuj podłączenie</button>}
+                        </div>
+                        <p className="text-[10px] text-slate-400">{k.kategoria} · {k.model} · {k.wysylkaUE === true ? '🇪🇺 UE' : k.wysylkaUE === false ? 'bez UE' : 'UE: ?'}{k.integracje.length ? ` · ${k.integracje.join(', ')}` : ''} · {k.pewnosc}{k.potwierdzone === 'domena' ? ' (domena)' : ''}</p>
+                        {k.prowizjaKoszty && <p className="text-[10px] text-slate-500">💰 {k.prowizjaKoszty}</p>}
+                        {k.licencjaWzory && <p className="text-[10px] text-slate-500">📜 {k.licencjaWzory}</p>}
+                        {k.wymagania && <p className="text-[10px] text-slate-500">📋 {k.wymagania}</p>}
+                    </div>))}
+                {z.odrzucone.length > 0 && <details className="text-[10px] text-slate-500"><summary>🙈 odrzucone bez źródła ({z.odrzucone.length})</summary>{z.odrzucone.map((k) => <p key={k.link}>{k.nazwa} — {k.link}</p>)}</details>}
+            </div>}
+        </div>
+    );
+};
+
 export const PromocjePanel: React.FC = () => {
     const [zwiady, setZwiady] = useState<Zwiad[]>([]);
     const [usluga, setUsluga] = useState('Meshy');
@@ -796,5 +858,5 @@ export const ModeleZadanPanel: React.FC = () => {
 };
 
 export default function DyrygentIKuznia() {
-    return <div className="space-y-4"><DyrygentPanel /><ModeleZadanPanel /><ZwiadowcaPanel /><PromocjePanel /><KuzniaSoupPanel /><KuzniaColabPanel /><PorzadkiPanel /></div>;
+    return <div className="space-y-4"><DyrygentPanel /><ModeleZadanPanel /><ZwiadowcaPanel /><PromocjePanel /><DystrybucjaPanel /><KuzniaSoupPanel /><KuzniaColabPanel /><PorzadkiPanel /></div>;
 }

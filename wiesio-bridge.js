@@ -260,6 +260,7 @@ import { utworzZlotaRybke, zamontujTrasyRybki } from './services/ZlotaRybka.js';
 import { utworzIzbe, zamontujTrasyIzby } from './services/IzbaZgod.js';
 import { utworzWarsztat, zamontujTrasyWarsztatu } from './services/WarsztatStada.js';
 import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
+import { utworzZwiadowceDystrybucji, zamontujTrasyDystrybucji } from './services/ZwiadowcaDystrybucji.js';
 import { utworzPadyJamu, zamontujTrasyPadow } from './services/PadyJamu.js';
 import { utworzAranz, zamontujTrasyAranzu } from './services/AranzJoanny.js';
 import { utworzProdukcje } from './services/ProdukcjaSoundcraft.js';
@@ -15717,6 +15718,14 @@ const WieczorTanca = utworzWieczorTanca({
     publikuj: (z) => PublikacjeYT.przygotuj(z),
     opisz: (p) => Montazownia.opisz(p),
     szyna: Szyna,
+// 👕🔭 Zwiadowca kanałów dystrybucji (services/ZwiadowcaDystrybucji.js): POD/marketplace/sklepy twórców dla merchu Teterhii i Mini —
+// tylko kanały z linkiem z wyników wyszukiwania; „podłącz” = propozycja w Izbie zgód. Nic nie zakłada i nie płaci.
+const ZwiadowcaDystrybucji = utworzZwiadowceDystrybucji({ katalog: path.join(ANTIGRAVITY_DIR, 'zwiadowca'), szyna: Szyna,
+    klucze: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey() },
+    modelGemini: async () => process.env.OTAKOS_PROMOCJE_MODEL_GEMINI || ((await listyModeliChmury('gemini', await getGeminiKey())).modele.find((m) => /flash/.test(m.model)) ?? {}).model || ZWIADOWCA_PROMOCJI_GEMINI,
+    jajo: { decyzja: (o) => Jajo.decyzja(o) } });
+zamontujTrasyDystrybucji(app, ZwiadowcaDystrybucji);
+Izba.zarejestruj(ZwiadowcaDystrybucji.zrodloIzby);
 });
 zamontujTrasyWieczoru(app, WieczorTanca);
 if (process.env.OTAKOS_WIECZOR_TANCA !== '0') WieczorTanca.startPetli();
