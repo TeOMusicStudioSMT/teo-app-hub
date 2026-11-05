@@ -17,6 +17,7 @@ import { utworzStripe } from './services/Stripe.js';
 import { utworzSklepMini, zamontujTrasySklepu, BUDZET_PRODUKCJI as SKLEP_BUDZET } from './services/SklepMini.js';
 import { utworzWypozyczalnie, zamontujTrasyWypozyczalni } from './services/WypozyczalniaKsiag.js';
 import { utworzSilnikKsiag, zamontujTrasySilnikaKsiag } from './services/SilnikKsiag.js';
+import { utworzLinkiSklepu, zamontujTrasyLinkowSklepu } from './services/LinkiSklepu.js';
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
 import { utworzFilmyGry, filtrRuchuKadru } from './services/FilmyGry.js';
@@ -15575,8 +15576,12 @@ const StalaObsada = utworzStalaObsada({
         }
     },
 });
+// 🛍️ link kolekcji postaci w sklepie — Kronikarz (kod po nim) dopisuje go do opisu filmu, gdy postać w nim występuje
+const LinkiSklepu = utworzLinkiSklepu({ katalog: ANTIGRAVITY_DIR });
+zamontujTrasyLinkowSklepu(app, LinkiSklepu);
 StalaObsada.sprzatnijDuchy().catch((e) => console.warn('[Stała Obsada] duchy:', e.message));
 zamontujTrasyStalejObsady(app, StalaObsada, {
+    linkSklepu: (o) => LinkiSklepu.linkDla(o),
     // role, do których program bierze wzory stałego aktora: narratorzy Gola Dnia i tancerze z odcinków TeO Game Show
     propozycjeRol: async () => [
         ...Object.entries(NARRATORZY_GOLA).map(([id, n]) => ({ rola: `gol-dnia:${id}`, nazwa: `⚽ ${n.imie} — intro Gola Dnia / Studia Zebrra` })),

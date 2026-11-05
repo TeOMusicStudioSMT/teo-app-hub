@@ -162,6 +162,9 @@ export function utworzPublikacje(o) {
             const { tekst, silnik } = await cfg.pisz(systemKronikarza(p.jezyk), prompt);
             const meta = odczytajMetadane(tekst);
             if (czyTaneczna(p.plik, p.zrodlo)) meta.tytul = zPrefiksemTanca(meta.tytul);
+            // 🛍️ kolekcja postaci w sklepie: link dokleja KOD (nie model), gdy w filmie występuje postać z kolekcją
+            const sklep = await Promise.resolve(cfg.linkSklepu?.({ plik: p.plik, nazwa: p.nazwa, zrodlo: p.zrodlo, kontekst: z.kontekst })).catch(() => null);
+            if (sklep?.url && !meta.opis.includes(sklep.url)) meta.opis = `${meta.opis}\n\n${p.jezyk === 'en' ? `🛍️ ${sklep.imie} collection` : `🛍️ Kolekcja ${sklep.imie}`}: ${sklep.url}`;
             if (!/otakos\.wtf/i.test(meta.opis)) {
                 meta.opis = `${meta.opis}\n\n${stopkaEkosystemu(p.jezyk, p.zrodlo)}`.slice(0, 4800);
             }
