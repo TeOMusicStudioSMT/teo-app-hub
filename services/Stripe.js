@@ -127,15 +127,15 @@ export function utworzStripe({ klucz, katalog, fetch: f = globalThis.fetch, tera
      * 🛒 Sesja zakupu pakietu. Cenę podaje WOŁAJĄCY z mostu (rzadkość → cena), nie przeglądarka.
      * `powrot` = baza adresu Katedry w sieci (tunel), `anuluj` = strona, z której przyszedł kupujący.
      */
-    async function sesjaZakupu({ pakiet, kwotaCentow, waluta = 'usd', powrot, anuluj }) {
+    async function sesjaZakupu({ pakiet, kwotaCentow, waluta = 'usd', powrot, anuluj, sukces = '/wizytowka/sklep/odbior', rodzaj = 'pakiet-mini', metadane = {} }) {
         if (!/^https:\/\/[^/]+/.test(String(powrot))) throw new Error('Katedra nie ma adresu w sieci (tunel wyłączony) — zakup niemożliwy.');
         const baza = String(powrot).replace(/\/+$/, '');
         const s = await wolaj('POST', '/checkout/sessions', {
             mode: 'payment',
             line_items: [{ quantity: 1, price_data: { currency: waluta, unit_amount: kwotaCentow, product_data: { name: String(pakiet.nazwa).slice(0, 120), description: String(pakiet.opis || 'Pakiet Mini-TeOgochi').slice(0, 300) } } }],
-            success_url: `${baza}/wizytowka/sklep/odbior?sesja={CHECKOUT_SESSION_ID}`,
+            success_url: `${baza}${sukces}?sesja={CHECKOUT_SESSION_ID}`,
             cancel_url: /^https:\/\//.test(String(anuluj)) ? String(anuluj).slice(0, 500) : `${baza}/api/wizytowka`,
-            metadata: { pakiet: pakiet.id, rodzaj: 'pakiet-mini' },
+            metadata: { ...metadane, pakiet: pakiet.id, rodzaj },
         });
         if (!CHECKOUT_STRIPE.test(String(s.url))) throw new Error('Stripe nie oddał adresu płatności.');
         return { id: s.id, url: s.url };
@@ -150,13 +150,13 @@ export function utworzStripe({ klucz, katalog, fetch: f = globalThis.fetch, tera
         const s = sesje.get(id);
         if (s && s.wynik.oplacona && teraz() - s.kiedy < 5 * 60_000) return s.wynik;
         const d = await wolaj('GET', `/checkout/sessions/${encodeURIComponent(id)}`);
-        const wynik = { id, oplacona: d.payment_status === 'paid', pakiet: d.metadata?.pakiet ?? null, kwota: (Number(d.amount_total) || 0) / 100, waluta: d.currency ?? null, tryb: d.livemode ? 'live' : 'test' };
+        const wynik = { id, oplacona: d.payment_status === 'paid', pakiet: d.metadata?.pakiet ?? null, rodzaj: d.metadata?.rodzaj ?? null, powrot: d.metadata?.powrot ?? null, kwota: (Number(d.amount_total) || 0) / 100, waluta: d.currency ?? null, tryb: d.livemode ? 'live' : 'test' };
         sesje.set(id, { kiedy: teraz(), wynik });
         if (wynik.oplacona && wynik.pakiet) {
             await poKolei(async () => {
                 const plikD = await czytaj();
                 if (!plikD.sprzedaz.some((x) => x.sesja === id)) {
-                    plikD.sprzedaz.unshift({ sesja: id, pakiet: wynik.pakiet, kwota: wynik.kwota, waluta: wynik.waluta, tryb: wynik.tryb, oplacona: true, kiedy: new Date(teraz()).toISOString(), pobran: 0 });
+                    plikD.sprzedaz.unshift({ sesja: id, pakiet: wynik.pakiet, rodzaj: wynik.rodzaj, kwota: wynik.kwota, waluta: wynik.waluta, tryb: wynik.tryb, oplacona: true, kiedy: new Date(teraz()).toISOString(), pobran: 0 });
                     plikD.sprzedaz = plikD.sprzedaz.slice(0, 2000);
                     await zapisz(plikD);
                 }

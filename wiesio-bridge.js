@@ -15,6 +15,7 @@ import { utworzChmureBryl, promptStylu, oczyscStyl, ZESTAWY_AKCJI } from './serv
 import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch.js';
 import { utworzStripe } from './services/Stripe.js';
 import { utworzSklepMini, zamontujTrasySklepu, BUDZET_PRODUKCJI as SKLEP_BUDZET } from './services/SklepMini.js';
+import { utworzWypozyczalnie, zamontujTrasyWypozyczalni } from './services/WypozyczalniaKsiag.js';
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
 import { utworzFilmyGry, filtrRuchuKadru } from './services/FilmyGry.js';
@@ -9244,6 +9245,11 @@ app.get('/api/lab/stan', (req, res) => labOdp(res, Promise.resolve(Laboratorium.
 app.get('/api/lab/printy', (req, res) => labOdp(res, Laboratorium.printy()));
 app.get('/api/lab/printy/:id', (req, res) => labOdp(res, Laboratorium.print(req.params.id)));
 app.post('/api/lab/printy', (req, res) => labOdp(res, Laboratorium.syntezujPrint(req.body ?? {})));
+// 📚 Wypożyczalnia Żywych Ksiąg teostory.studio (services/WypozyczalniaKsiag.js): silnik czytnika publikuje (/api/books/*, maszyna),
+// portal czyta i wypożycza przez tunel (/wizytowka/teostory/*): demo za darmo, 48 h = Stripe Checkout, dostęp = opłacona sesja.
+const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe,
+    adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
+zamontujTrasyWypozyczalni(app, Wypozyczalnia);
 app.delete('/api/lab/printy/:id', (req, res) => labOdp(res, Laboratorium.usunPrint(req.params.id)));
 
 // ── 2. Piaskownica ──

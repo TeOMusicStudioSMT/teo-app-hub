@@ -116,7 +116,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/skladnica', // 📦 Składnica: wspólne assety (zapis, import z dysku, kosz) — tylko przy Katedrze
     '/api/gielda-mocy',   // ⚡ Giełda mocy: oferta tej Katedry ustawia się tylko przy niej
     '/api/vault/status', '/api/vault/set', '/api/vault/sekret/', '/api/vault/resetuj',   // 🔐 Skarbiec 0.00G — tylko przy Katedrze
-    '/api/stripe', '/api/sklep-mini',   // 💳🐾 płatności Stripe i Sklep Mini (zgody na kredyty Meshy, wystawianie) — tylko przy Katedrze
+    '/api/stripe', '/api/sklep-mini', '/api/books',   // 💳🐾 płatności Stripe i Sklep Mini (zgody na kredyty Meshy, wystawianie) — tylko przy Katedrze
     '/api/kibel/most', '/api/modele/chmura',   // 🔗 klucze Kibla dla mostu i modele z konta dostawcy — tylko przy Katedrze
     '/api/jev',   // ⚖️ Jev (TypeSafe) = rachunek za tokeny — tylko przy Katedrze
     '/api/koherencja',   // 🫀 Koherencja Katedry — nazwy modeli i błędy mostu, tylko przy maszynie
@@ -150,6 +150,9 @@ export const SCIEZKA_PLACU = /^\/wizytowka\/plac\/[a-z0-9-]{2,48}(\/wyjdz)?$/;
 /** 💃🥊 Ring taneczny (services/RingTaneczny.js): lista pokoi (GET), meldunki pojedynku (POST) — w pamięci mostu, bez modeli. */
 /** 🐾🛒 Sklep Mini (services/SklepMini.js): zakup = sesja Stripe zakładana przez most (cena z rzadkości liczy most). */
 export const SCIEZKA_ZAKUPU = /^\/wizytowka\/sklep\/pk-[0-9a-f]{8}\/kup$/;
+/** 📚 Wypożyczalnia Żywych Ksiąg (services/WypozyczalniaKsiag.js): portal teostory.studio — katalog, okładka, czytanie, odbiór (GET), wypożyczenie (POST). */
+export const SCIEZKA_TEOSTORY = /^\/wizytowka\/teostory(\/odbior|\/[a-z0-9][a-z0-9-]{2,63}\/(okladka|czytaj))?$/;
+export const SCIEZKA_WYPOZYCZENIA = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/wypozycz$/;
 /** Okładka wystawionego pakietu, odbiór i pobranie opłaconego (sprawdzane w Stripe). */
 export const SCIEZKA_SKLEPU = /^\/wizytowka\/sklep\/(pk-[0-9a-f]{8}\/okladka\.png|odbior|pobierz)$/;
 /** 📱📋 Opis na telefon (services/OpisNaTelefon.js): strona z przyciskiem „Kopiuj” pod losowym tokenem, ważna 6 h, tylko odczyt. */
@@ -171,9 +174,11 @@ export function czyWizytowka(req) {
     // 💳 Zapłata innej Katedry za grę (services/RozliczeniaKatedr.js): zlecenie podpisane jej kluczem, sprawdzane kluczem z rejestru.
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_PLATNOSCI.test(String(req.path || ''))) return true;
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_ZAKUPU.test(String(req.path || ''))) return true;
+    if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_WYPOZYCZENIA.test(String(req.path || ''))) return true;
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
     const p = String(req.path || '');
     if (SCIEZKA_SKLEPU.test(p)) return true;
+    if (SCIEZKA_TEOSTORY.test(p)) return true;
     if (SCIEZKA_OPISU.test(p)) return true;
     if (SCIEZKA_KSIEGI.test(p)) return true;
     if (p.startsWith(PREFIKS_GIER) && !p.includes('..') && !p.includes('\\')) return true;
