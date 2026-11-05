@@ -20,6 +20,8 @@ test('bliźniak: oczyscPrzepis mostu = oczyscPrzepis gry (ten sam zakresyStylu.j
         { warstwy: { woda: { barwa: [180, 'x', 0.3], przezroczystosc: 0.1 } } }, { warstwy: { woda: { barwa: [180, 0.5] } } },
         { warstwy: { woda: { przezroczystosc: Number.NaN, polysk: 0.33333 } } }, { warstwy: { niebo: { barwa: [1, 1, 1] } } },
         { warstwy: { woda: { autor: 'Zły Autor', wersja: -1, barwa: [200, 0.7, 0.4] } } },
+        { warstwy: { niebo: { barwa: [400, 2, 0], slonce: 9, zorza: -1, noc: 0.75, deszcz: 1 }, woda: { polysk: 0.5 } } },
+        { warstwy: { niebo: { swiatloNieba: 'x', autor: 'paleta', wersja: 2 } } },
     ];
     for (const w of wejscia) assert.deepEqual(oczyscPrzepis(w, zak), gra.oczyscPrzepis(w), JSON.stringify(w));
     // domyślna woda z przepisu = dokładnie dawna stała z kodu (195°, 0.8×nasycenie, 0.36, opacity 0.82, roughness ≈ 0.3)
@@ -28,6 +30,14 @@ test('bliźniak: oczyscPrzepis mostu = oczyscPrzepis gry (ten sam zakresyStylu.j
     assert.deepEqual([wo.s, wo.l, wo.opacity], [0.8, 0.36, 0.82]);
     assert.ok(Math.abs(wo.roughness - 0.3) < 0.005);
     assert.equal(gra.wygladWody({ wersja_schematu: 1, warstwy: { woda: { barwa: [200, 0.5, 0.3] } } }, 50).s, 0.25, 'blednięcie dalej mnoży nasycenie');
+    // domyślne niebo = dawne stałe z kodu: 215°, 0.55·s, 0.12 + 0.1·(1 − s), słońce ×1, półkula ×1, zorza 0.35, noc 0.9
+    for (const nas of [100, 40]) {
+        const n = gra.wygladNieba(null, nas), s = nas / 100;
+        assert.equal(Math.round(n.h * 360), 215);
+        assert.ok(Math.abs(n.s - 0.55 * s) < 1e-9 && Math.abs(n.l - (0.12 + 0.1 * (1 - s))) < 1e-3, `niebo przy ${nas}`);
+        assert.deepEqual([n.slonce, n.swiatloNieba, n.zorza, n.noc], [1, 1, 0.35, 0.9]);
+    }
+    assert.equal(gra.wygladNieba({ wersja_schematu: 1, warstwy: { niebo: { slonce: 1.3, noc: 0.7 } } }, 100).slonce, 1.3);
 });
 
 function warsztat(tmp, o = {}) {

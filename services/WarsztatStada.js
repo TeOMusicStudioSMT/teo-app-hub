@@ -19,7 +19,10 @@ import path from 'path';
 import crypto from 'crypto';
 
 export const DZIEDZINY = {
-    woda: { autor: 'paleta', nazwa: 'Woda Teterhii', opis: 'wygląd wody w grze: barwa (odcień, nasycenie, jasność w HSL), przezroczystość i połysk powierzchni' },
+    woda: { autor: 'paleta', nazwa: 'Woda Teterhii', opis: 'wygląd wody w grze: barwa (odcień, nasycenie, jasność w HSL), przezroczystość i połysk powierzchni',
+        zasada: 'gracz musi dalej odróżnić wodę od lądu (nie za ciemna, nie przezroczysta jak powietrze)' },
+    niebo: { autor: 'paleta', nazwa: 'Niebo i światło Teterhii', opis: 'niebo i światło doby: barwa nieba (HSL), siła słońca, światło nieba (półkula), poświata świtu i zmierzchu, głębia nocy',
+        zasada: 'w dzień teren i gracz muszą być dobrze widoczne (nie za ciemno, nie prześwietlone), a noc ma zostać nocą — świecące oko kota i lampy mają ją przebijać' },
 };
 export const WAZNOSC_DNI = 7;
 export const XP_ZA_PRZYJECIE = 20;
@@ -35,28 +38,31 @@ function przytnij(x, [od, doo], nazwa, przyciete) {
 /** Przepis z dowolnego wejścia → tylko znane warstwy i pola, liczby w zakresach (przycięte pola wymienione). */
 export function oczyscPrzepis(wej, zakresy) {
     const przyciete = [], odrzucone = [];
-    const POLA_WODY = zakresy.warstwy.woda.pola;
-    const w = wej?.warstwy?.woda;
-    const woda = {};
-    if (w && typeof w === 'object') {
-        for (const [k, v] of Object.entries(w)) {
-            if (k === 'autor' && typeof v === 'string' && /^[a-z0-9-]{1,30}$/.test(v)) { woda.autor = v; continue; }
-            if (k === 'wersja' && typeof v === 'number' && Number.isInteger(v) && v >= 0) { woda.wersja = v; continue; }
-            const pole = POLA_WODY[k];
-            if (!pole) { odrzucone.push(`woda.${k}`); continue; }
-            if (pole.rodzaj === 'hsl') {
-                if (!Array.isArray(v) || v.length !== 3) { odrzucone.push(`woda.${k}`); continue; }
-                const h = przytnij(v[0], pole.odcien, `woda.${k}.odcien`, przyciete), s = przytnij(v[1], pole.nasycenie, `woda.${k}.nasycenie`, przyciete), l = przytnij(v[2], pole.jasnosc, `woda.${k}.jasnosc`, przyciete);
-                if (h === null || s === null || l === null) { odrzucone.push(`woda.${k}`); continue; }
-                woda[k] = [h, s, l];
-            } else {
-                const x = przytnij(v, pole.zakres, `woda.${k}`, przyciete);
-                if (x === null) { odrzucone.push(`woda.${k}`); continue; }
-                woda[k] = x;
+    const warstwy = {};
+    for (const [nazwa, { pola }] of Object.entries(zakresy.warstwy)) {
+        const w = wej?.warstwy?.[nazwa];
+        const wy = {};
+        if (w && typeof w === 'object') {
+            for (const [k, v] of Object.entries(w)) {
+                if (k === 'autor' && typeof v === 'string' && /^[a-z0-9-]{1,30}$/.test(v)) { wy.autor = v; continue; }
+                if (k === 'wersja' && typeof v === 'number' && Number.isInteger(v) && v >= 0) { wy.wersja = v; continue; }
+                const pole = pola[k];
+                if (!pole) { odrzucone.push(`${nazwa}.${k}`); continue; }
+                if (pole.rodzaj === 'hsl') {
+                    if (!Array.isArray(v) || v.length !== 3) { odrzucone.push(`${nazwa}.${k}`); continue; }
+                    const h = przytnij(v[0], pole.odcien, `${nazwa}.${k}.odcien`, przyciete), s = przytnij(v[1], pole.nasycenie, `${nazwa}.${k}.nasycenie`, przyciete), l = przytnij(v[2], pole.jasnosc, `${nazwa}.${k}.jasnosc`, przyciete);
+                    if (h === null || s === null || l === null) { odrzucone.push(`${nazwa}.${k}`); continue; }
+                    wy[k] = [h, s, l];
+                } else {
+                    const x = przytnij(v, pole.zakres, `${nazwa}.${k}`, przyciete);
+                    if (x === null) { odrzucone.push(`${nazwa}.${k}`); continue; }
+                    wy[k] = x;
+                }
             }
         }
+        if (Object.keys(wy).some((k) => k !== 'autor' && k !== 'wersja')) warstwy[nazwa] = wy;
     }
-    return { przepis: { wersja_schematu: zakresy.wersja_schematu, warstwy: Object.keys(woda).some((k) => k !== 'autor' && k !== 'wersja') ? { woda } : {} }, przyciete, odrzucone };
+    return { przepis: { wersja_schematu: zakresy.wersja_schematu, warstwy }, przyciete, odrzucone };
 }
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -74,7 +80,7 @@ Mieszkasz na wyspach Teterhii. Zaproponuj, jak ma wyglądać ${d.opis}. Nie pisz
 POLA I ZAKRESY (wartości spoza zakresu zostaną przycięte):
 ${opisPol(zakresy, dziedzina)}
 OBECNIE W GRZE: ${obecna ? JSON.stringify(obecna) : 'wartości domyślne z kodu'}
-Zasady: zmiana ma być widoczna, ale gracz musi dalej odróżnić wodę od lądu (nie za ciemna, nie przezroczysta jak powietrze). Uwaga: świat blednie, gdy gracz traci barwę — Twoja barwa to baza przy pełnej barwie.
+Zasady: zmiana ma być widoczna, ale ${d.zasada}. Uwaga: świat blednie, gdy gracz traci barwę — Twoja barwa to baza przy pełnej barwie.
 Odpowiedz WYŁĄCZNIE JSON-em: {"zmiany":{…tylko pola z listy…},"uzasadnienie":"1–2 zdania po polsku, dlaczego tak"}`;
 }
 
@@ -119,7 +125,7 @@ export function utworzWarsztat(cfg) {
 
     async function zaproponuj({ dziedzina = 'woda', model: wymuszony = null } = {}) {
         const d = DZIEDZINY[dziedzina];
-        if (!d) throw new Error(`Nieznana dziedzina „${dziedzina}” (etap 1: ${Object.keys(DZIEDZINY).join(', ')}).`);
+        if (!d) throw new Error(`Nieznana dziedzina „${dziedzina}” (znane: ${Object.keys(DZIEDZINY).join(', ')}).`);
         if (!(await cfg.czyWyklute(d.autor))) throw new Error(`TeOsim „${d.autor}” nie jest jeszcze wykluty — nie ma kto zaproponować.`);
         if ((await propozycje()).some((p) => p.dziedzina === dziedzina && ['robi', 'do_zgody'].includes(p.stan))) throw new Error('Ta dziedzina ma już propozycję czekającą na decyzję.');
         const id = `w-${crypto.randomBytes(4).toString('hex')}`;
@@ -220,7 +226,11 @@ export function utworzWarsztat(cfg) {
         const dzis = new Date(teraz()).toISOString().slice(0, 10);
         if (!u.wlaczony || u.ostatniaNoc === dzis || new Date(teraz()).getHours() < GODZINA_NOCY || new Date(teraz()).getHours() >= 7) return null;
         await zapiszAtomowo(USTAW, { ...u, ostatniaNoc: dzis });
-        const dziedzina = Object.keys(DZIEDZINY)[0];
+        // dziedziny na zmianę (dzień roku); dziedzina z czekającą propozycją jest pomijana
+        const lista = Object.keys(DZIEDZINY), od = Math.floor(teraz() / 864e5) % lista.length;
+        const czekaja = new Set((await propozycje()).filter((p) => p.stan === 'do_zgody' || p.stan === 'robi').map((p) => p.dziedzina));
+        const dziedzina = [...lista.slice(od), ...lista.slice(0, od)].find((x) => !czekaja.has(x));
+        if (!dziedzina) return { blad: 'każda dziedzina ma już propozycję czekającą na ✓' };
         try { return await zaproponuj({ dziedzina }); } catch (e) { return { blad: e.message }; }
     }
     function startPetli() {
