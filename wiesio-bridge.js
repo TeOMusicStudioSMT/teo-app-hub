@@ -105,6 +105,7 @@ import { utworzKompozytora, zamontujTrasyKompozytora } from './services/JajoKomp
 import { rodzinyZRuchem } from './services/MiniZRuchem.js';
 import { utworzChoreografie, zamontujTrasyChoreografii } from './services/Choreografie.js';
 import { utworzKodyTanca, zamontujTrasyKodowTanca } from './services/KodyTanca.js';
+import { utworzZebrraFashion, zamontujTrasyZebrraFashion } from './services/ZebrraFashion.js';
 import QRCode from 'qrcode';
 import { utworzFiguryTanca, zamontujTrasyFigur } from './services/FiguryTanca.js';
 import { odchudzBryle, CEL_SCIAN, MAKS_TEKSTURY } from './services/LekkieBryly.js';
@@ -264,8 +265,8 @@ import { utworzSunoMcp, zamontujTrasySuno } from './services/SunoMcp.js';
 import { utworzZlotaRybke, zamontujTrasyRybki } from './services/ZlotaRybka.js';
 import { utworzIzbe, zamontujTrasyIzby } from './services/IzbaZgod.js';
 import { utworzWarsztat, zamontujTrasyWarsztatu } from './services/WarsztatStada.js';
-import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
 import { utworzZwiadowceDystrybucji, zamontujTrasyDystrybucji } from './services/ZwiadowcaDystrybucji.js';
+import { utworzJam, zamontujTrasyJamu } from './services/JamZJoanna.js';
 import { utworzPadyJamu, zamontujTrasyPadow } from './services/PadyJamu.js';
 import { utworzAranz, zamontujTrasyAranzu } from './services/AranzJoanny.js';
 import { utworzProdukcje } from './services/ProdukcjaSoundcraft.js';
@@ -9127,6 +9128,12 @@ const SklepMini = utworzSklepMini({
 });
 zamontujTrasySklepu(app, { sklep: SklepMini, stripe: Stripe, adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
 Wizytowka.skonfiguruj({ sklep: SklepMini });
+// 📚 Wypożyczalnia Żywych Ksiąg teostory.studio (services/WypozyczalniaKsiag.js): silnik czytnika publikuje (/api/books/*, maszyna),
+// portal czyta i wypożycza przez tunel (/wizytowka/teostory/*): demo za darmo, 48 h = Stripe Checkout, dostęp = opłacona sesja.
+const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe,
+    obrazLokalny: (u) => SilnikKsiag.plikZAdresu(u),   // obrazy z Silnika Ksiąg kopiowane przy publikacji (gość nie widzi /api)
+    adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
+zamontujTrasyWypozyczalni(app, Wypozyczalnia);
 if (process.env.OTAKOS_SKLEP_MINI !== '0') setTimeout(() => SklepMini.startPetli(), 120_000).unref?.();
 // 💃🥊 Ring taneczny (services/RingTaneczny.js): pojedynki Mini-TeOgochi między Katedrami — walkę liczą gracze
 // (apka _OtakOs_Apki/taneczne-starcie), most trzyma w pamięci tylko karty, ziarno, start i ruchy {takt, skill}.
@@ -9249,17 +9256,6 @@ app.get('/api/lab/stan', (req, res) => labOdp(res, Promise.resolve(Laboratorium.
 app.get('/api/lab/printy', (req, res) => labOdp(res, Laboratorium.printy()));
 app.get('/api/lab/printy/:id', (req, res) => labOdp(res, Laboratorium.print(req.params.id)));
 app.post('/api/lab/printy', (req, res) => labOdp(res, Laboratorium.syntezujPrint(req.body ?? {})));
-// 📚 Wypożyczalnia Żywych Ksiąg teostory.studio (services/WypozyczalniaKsiag.js): silnik czytnika publikuje (/api/books/*, maszyna),
-// portal czyta i wypożycza przez tunel (/wizytowka/teostory/*): demo za darmo, 48 h = Stripe Checkout, dostęp = opłacona sesja.
-const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe,
-    obrazLokalny: (u) => SilnikKsiag.plikZAdresu(u),   // obrazy z Silnika Ksiąg kopiowane przy publikacji (gość nie widzi /api)
-    adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
-zamontujTrasyWypozyczalni(app, Wypozyczalnia);
-// 📚 Wypożyczalnia Żywych Ksiąg teostory.studio (services/WypozyczalniaKsiag.js): silnik czytnika publikuje (/api/books/*, maszyna),
-// portal czyta i wypożycza przez tunel (/wizytowka/teostory/*): demo za darmo, 48 h = Stripe Checkout, dostęp = opłacona sesja.
-const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe,
-    adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
-zamontujTrasyWypozyczalni(app, Wypozyczalnia);
 app.delete('/api/lab/printy/:id', (req, res) => labOdp(res, Laboratorium.usunPrint(req.params.id)));
 
 // ── 2. Piaskownica ──
@@ -11756,6 +11752,14 @@ const KlubMistrzow = utworzKlub({
     wiesc: (w) => Jajo.wiesc(w),
 });
 zamontujTrasyChoreografii(app, { choreografie: Choreografie, raw: express.raw, klub: KlubMistrzow, mistrzGry: MistrzGry });
+// 💃🎟️ Automat choreografii + jednorazowe kody QR kupujących 0.00G Style (services/KodyTanca.js, docs/designs/potok-0-00g-style.md)
+const KodyTanca = utworzKodyTanca({
+    katalog: path.join(ANTIGRAVITY_DIR, 'kody-tanca'),
+    utwory: () => RytmUtworu.utwory(),
+    bestiariusz: () => Bestiariusz.wczytaj('teterhia-wieczna-saga'),
+    sciezkaNagrania: async (nazwa) => path.join(await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, 'taneczne-starcie'), path.basename(nazwa)),
+});
+zamontujTrasyKodowTanca(app, KodyTanca, { adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; }, qr: (url) => QRCode.toDataURL(url, { margin: 1, width: 360 }) });
 // ✦ Figury taneczne (services/FiguryTanca.js): Kompozytor (model przydziału `kompozytor`) składa nowe ruchy tancerza
 // z jego klipów riga — miks po kościach, warstwy, wejście w takt — tylko z zamkniętych list; Suweren ✓/✎ (pary do Kuźni).
 const FiguryTanca = utworzFiguryTanca({
@@ -11873,14 +11877,6 @@ app.get('/api/koherencja', async (_req, res) => {
         const k = policzKoherencje({ ollama: ollama ? ollama.map((m) => m.nazwa) : null, domyslny: Mozg.domyslny(), agenci, mechanik: modelMechanika(), comfy: !!comfy.online, bledyMostuDoby, bladChmuryDoby, rozmiar: rozmiarModelu });
         res.json({ success: true, ...k, kiedy: new Date().toISOString() });
     } catch (e) { res.status(500).json({ success: false, message: e.message }); }
-// 💃🎟️ Automat choreografii + jednorazowe kody QR kupujących 0.00G Style (services/KodyTanca.js, docs/designs/potok-0-00g-style.md)
-const KodyTanca = utworzKodyTanca({
-    katalog: path.join(ANTIGRAVITY_DIR, 'kody-tanca'),
-    utwory: () => RytmUtworu.utwory(),
-    bestiariusz: () => Bestiariusz.wczytaj('teterhia-wieczna-saga'),
-    sciezkaNagrania: async (nazwa) => path.join(await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, 'taneczne-starcie'), path.basename(nazwa)),
-});
-zamontujTrasyKodowTanca(app, KodyTanca, { adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; }, qr: (url) => QRCode.toDataURL(url, { margin: 1, width: 360 }) });
 });
 
 /** POST /api/stado/model { agent, model } — silnik TeOgochi (pusty = domyślny). Tylko z maszyny. */
@@ -15212,8 +15208,12 @@ const KontoYouTube = utworzKontoYouTube({
     zapiszToken: (t, kanal) => ImpresarioService.getInstance().zapiszKontoYouTube(t, kanal),
     adresMostu: `http://127.0.0.1:${PORT}`,
 });
+// 🛍️ link kolekcji postaci w sklepie — Kronikarz (kod po nim) dopisuje go do opisu filmu, gdy postać w nim występuje
+const LinkiSklepu = utworzLinkiSklepu({ katalog: ANTIGRAVITY_DIR });
+zamontujTrasyLinkowSklepu(app, LinkiSklepu);
 const PublikacjeYT = utworzPublikacje({
     katalog: ANTIGRAVITY_DIR,
+    linkSklepu: (o) => LinkiSklepu.linkDla(o),
     pisz: async (system, prompt) => piszModelem(await ModeleAgentow.modelDla('kronikarz').catch(() => null), system, prompt),
     impresariat: ImpresarioService.getInstance(),
     statusFilmu: (id, kanalId) => KontoYouTube.statusFilmu(id, kanalId),
@@ -15363,6 +15363,35 @@ const Warsztat = utworzWarsztat({ katalog: path.join(ANTIGRAVITY_DIR, 'warsztat-
     jajo: { decyzja: (o) => Jajo.decyzja(o), wiesc: (o) => Jajo.wiesc(o) } });
 zamontujTrasyWarsztatu(app, Warsztat);
 Izba.zarejestruj(Warsztat.zrodloIzby);
+// 👕🔭 Zwiadowca kanałów dystrybucji (services/ZwiadowcaDystrybucji.js): POD/marketplace/sklepy twórców dla merchu Teterhii i Mini —
+// tylko kanały z linkiem z wyników wyszukiwania; „podłącz” = propozycja w Izbie zgód. Nic nie zakłada i nie płaci.
+const ZwiadowcaDystrybucji = utworzZwiadowceDystrybucji({ katalog: path.join(ANTIGRAVITY_DIR, 'zwiadowca'), szyna: Szyna,
+    klucze: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey() },
+    modelGemini: async () => process.env.OTAKOS_PROMOCJE_MODEL_GEMINI || ((await listyModeliChmury('gemini', await getGeminiKey())).modele.find((m) => /flash/.test(m.model)) ?? {}).model || ZWIADOWCA_PROMOCJI_GEMINI,
+    jajo: { decyzja: (o) => Jajo.decyzja(o) } });
+zamontujTrasyDystrybucji(app, ZwiadowcaDystrybucji);
+Izba.zarejestruj(ZwiadowcaDystrybucji.zrodloIzby);
+// 🐾 Sklep Mini w Izbie: propozycje Mini (✓ = produkcja Meshy za kredyty → tylko przy Katedrze), utknięte (wznów — też kredyty),
+// pakiety do wystawienia (✓ = na sprzedaż przez Stripe, bez kosztu → także z telefonu).
+Izba.zarejestruj({ id: 'sklep-mini', emoji: '🐾', nazwa: 'Sklep Mini',
+    czekajace: async () => { const { propozycje, pakiety } = await SklepMini.doZgody(); return [
+        ...propozycje.map((p) => ({ id: p.id, kiedy: p.utworzono, obrazy: p.plikObrazu ? [p.plikObrazu] : [],
+            tytul: p.stan === 'utknela' ? `Mini „${p.nazwa}” utknęła w produkcji` : `Nowe Mini „${p.nazwa}” (${p.rzadkosc}) — produkować?`,
+            opis: p.stan === 'utknela' ? `⛔ ${p.blad ?? 'krok produkcji padł'}
+Wznowienie = nowa zgoda na kredyty Meshy (do ${SKLEP_BUDZET} kr.).` : `${p.opis ?? ''}
+✓ = TRELLIS + Meshy (obraz→3D, rig, ruchy): do ${SKLEP_BUDZET} kredytów.`,
+            akcje: p.stan === 'utknela'
+                ? [{ id: 'wznow', etykieta: '↻ Wznów', potwierdz: `Wznowić produkcję? Do ${SKLEP_BUDZET} kredytów Meshy.` }, { id: 'odrzuc', etykieta: '✕ porzuć', zdalnie: true }]
+                : [{ id: 'przyjmij', etykieta: '✓ produkuj', potwierdz: `Produkcja „${p.nazwa}” wyda do ${SKLEP_BUDZET} kredytów Meshy.` }, { id: 'odrzuc', etykieta: '✕ odrzuć', zdalnie: true }] })),
+        ...pakiety.map((p) => ({ id: p.id, kiedy: p.utworzono, tytul: `Pakiet „${p.nazwa}” — wystawić na sprzedaż?`,
+            opis: `${p.rzadkosc} · ${p.cena} ${p.waluta} · ${p.klipow} ruchów, ${p.obrazow} obrazów
+${p.opis ?? ''}`,
+            akcje: [{ id: 'wystaw', etykieta: '✓ wystaw', zdalnie: true }] })),
+    ]; },
+    decyduj: (id, akcja) => akcja === 'wystaw' ? SklepMini.wystawPakiet(id, true)
+        : akcja === 'odrzuc' ? SklepMini.odrzuc(id)
+        : akcja === 'wznow' ? SklepMini.wznow(id, { zgodaKredyty: SKLEP_BUDZET })
+        : SklepMini.przyjmij(id, { zgodaKredyty: SKLEP_BUDZET }) });
 Warsztat.startPetli();
 zamontujTrasyIzby(app, Izba, { dostep: dostepStada });
 
@@ -15586,12 +15615,8 @@ const StalaObsada = utworzStalaObsada({
         }
     },
 });
-// 🛍️ link kolekcji postaci w sklepie — Kronikarz (kod po nim) dopisuje go do opisu filmu, gdy postać w nim występuje
-const LinkiSklepu = utworzLinkiSklepu({ katalog: ANTIGRAVITY_DIR });
-zamontujTrasyLinkowSklepu(app, LinkiSklepu);
 StalaObsada.sprzatnijDuchy().catch((e) => console.warn('[Stała Obsada] duchy:', e.message));
 zamontujTrasyStalejObsady(app, StalaObsada, {
-    linkSklepu: (o) => LinkiSklepu.linkDla(o),
     // role, do których program bierze wzory stałego aktora: narratorzy Gola Dnia i tancerze z odcinków TeO Game Show
     propozycjeRol: async () => [
         ...Object.entries(NARRATORZY_GOLA).map(([id, n]) => ({ rola: `gol-dnia:${id}`, nazwa: `⚽ ${n.imie} — intro Gola Dnia / Studia Zebrra` })),
@@ -15599,6 +15624,62 @@ zamontujTrasyStalejObsady(app, StalaObsada, {
             .map((imie) => ({ rola: `tancerz:${imie}`, nazwa: `🎪 ${imie} — intro TeO Game Show` })),
     ],
 });
+// 🎭 Stała Obsada w Izbie: karta 6 ujęć czeka na ✓ (bez kosztu → także z telefonu); ↻ nowa karta = FLUX na karcie → tylko przy Katedrze.
+// 📖✍️ Silnik Żywych Ksiąg (services/SilnikKsiag.js) — czytnik TeO Story Studio: Kronikarz pisze, Paleta (FLUX) rysuje wycinanki postaci
+// (wzory: Stała Obsada) i strony; Google tylko jako opcja ☁️ (/api/zywe-ksiegi/gemini kluczem mostu).
+const SilnikKsiag = utworzSilnikKsiag({ katalog: path.join(ANTIGRAVITY_DIR, 'zywe-ksiegi'),
+    pisz: async (model, system, prompt) => (await piszModelem(model, system, prompt, { json: true })).tekst,
+    model: async () => TrybKatedry.modelDla((await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()),
+    rysuj: async ({ prompt, referencje, szer, wys, prefiks }) => {
+        const przed = await stanWideoZBudzeniem('Żywe Księgi');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        return Assety3D.kadrFilmu({ prompt, referencje, szer, wys, prefiks });
+    },
+    obsada: { lista: () => StalaObsada.lista(), wzory: (id) => StalaObsada.wzory(id) },
+    autor: async () => kimJestem(await loadGrvLedger())?.wlasciciel?.nazwa ?? null });
+// 👗🦓 Zebrra Fashion (services/ZebrraFashion.js) — potok 0.00G Style, kroki 4–6: looki postaci w kolekcji (FLUX z wzorami:
+// obraz postaci + makieta Fashion), program z prowadzącym (Głosy Stada), wstawka reklamowa dla Wieczoru Tańca.
+const katalogFashion = [process.env.OTAKOS_FASHION_DIR, path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio')].filter(Boolean).find((d) => fsSync.existsSync(path.join(d, 'public', 'nadruki'))) ?? path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio');
+const ZebrraFashion = utworzZebrraFashion({
+    katalog: path.join(ANTIGRAVITY_DIR, 'zebrra-fashion'),
+    katalogFashion,
+    katalogObrazow: path.join(process.cwd(), '_OtakOs_AI', 'obrazy-gry'),
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    rysuj: async ({ prompt, referencje, prefiks, szer, wys }) => {
+        const przed = await stanWideoZBudzeniem('Zebrra Fashion');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        await Karta.przedRenderem?.('Zebrra Fashion').catch?.(() => {});
+        return Assety3D.kadrFilmu({ prompt, referencje, prefiks, szer, wys });
+    },
+    pisz: async (model, system, prompt) => (await piszModelem(model, system, prompt)).tekst,
+    model: async (narrator) => TrybKatedry.modelDla((await ModeleAgentow.modelDla(narrator).catch(() => null)) || Mozg.domyslny()),
+    narrator: (id) => { const n = NARRATORZY_GOLA[id]; return n ? { imie: n.imieEn ?? n.imie, kolor: n.kolor ?? '#f5f5f5', temperament: n.temperamentEn ?? n.temperament } : null; },
+    mow: async ({ tekst, narrator, jezyk }) => Wywiady.mowa({ tekst: tekstDoMowy(tekst), glos: await GlosyStada.glos(narrator).catch(() => null), jezyk }),
+    opisz: (pl) => Montazownia.opisz(pl),
+    ffmpeg: ffmpegPath,
+    uruchom: (c, a, o) => execFileAsync(c, a, o),
+    publikuj: (z) => PublikacjeYT.przygotuj(z),
+    sklep: async (imie) => (await LinkiSklepu.lista())[imie]?.url ?? null,
+});
+zamontujTrasyZebrraFashion(app, ZebrraFashion);
+zamontujTrasySilnikaKsiag(app, SilnikKsiag, {
+    stan: async () => ({ katedra: true, model: await ModeleAgentow.modelDla('kronikarz').catch(() => null), gemini: !!(await getGeminiKey().catch(() => null)) }),
+    gemini: async (params) => {
+        const apiKey = await getGeminiKey();
+        if (!apiKey) throw new Error('Most nie ma klucza Gemini (Kibel → 🔗 Udostępnij mostowi).');
+        const { GoogleGenAI } = await import('@google/genai');
+        const r = await new GoogleGenAI({ apiKey }).models.generateContent(params);
+        return { candidates: r?.candidates, promptFeedback: r?.promptFeedback, usageMetadata: r?.usageMetadata, modelVersion: r?.modelVersion, text: r?.text };
+    } });
+Izba.zarejestruj({ id: 'stala-obsada', emoji: '🎭', nazwa: 'Stała Obsada',
+    czekajace: async () => (await StalaObsada.lista()).filter((a) => a.stan === 'do_akceptacji').map((a) => ({
+        id: a.id, kiedy: a.utworzono ?? null, tytul: `Karta aktora „${a.imie}” — zatwierdzić?`,
+        opis: `${a.opis ? `${String(a.opis).slice(0, 300)}
+` : ''}6 ujęć (ciało przód/bok/tył, twarz przód/¾/profil). ✓ = programy biorą je jako wzory postaci.`,
+        obrazy: [path.join(ANTIGRAVITY_DIR, 'stala-obsada', a.id, 'zrodlo.png'), path.join(ANTIGRAVITY_DIR, 'stala-obsada', a.id, 'arkusz.png')].filter((p) => fsSync.existsSync(p)),
+        akcje: [{ id: 'przyjmij', etykieta: '✓ zatwierdź', zdalnie: true }, { id: 'karta', etykieta: '↻ narysuj kartę od nowa' }] })),
+    // rysowanie trwa minuty — Izba nie czeka na FLUX, tylko je zleca (stan aktora pokaże „rysuje”)
+    decyduj: async (id, akcja) => { if (akcja === 'przyjmij') return StalaObsada.przyjmij(id); void StalaObsada.rysujKarte(id).catch((e) => console.warn('[Obsada] karta:', e.message)); return { stan: 'rysuje' }; } });
 // 🌍 Licznik wejść na strony Suwerena (teo.center…) — kraj z Cloudflare, bez IP; wieść kanałem Mistrza do Orbity
 const LicznikWejsc = utworzLicznikWejsc({ katalog: path.join(ANTIGRAVITY_DIR, 'odwiedziny'), wiesc: (w) => Jajo.wiesc(w) });
 zamontujTrasyLicznika(app, LicznikWejsc);
@@ -15734,6 +15815,8 @@ zamontujTrasyMameLeon(app, MameLeon, { raw: express.raw });
 // i choreograf na kanapie) → jeden film-wieczór (Spawacz) → Kronikarz → ✓. Studia nagrywa apka (🤖 automat nagrywania).
 const WieczorTanca = utworzWieczorTanca({
     katalog: ANTIGRAVITY_DIR,
+    // 🛍️ wstawka reklamowa 0.00G Style między częściami (tancerz z kolekcją w Fashion), lokowanie produktu przy wysyłce
+    wstawka: (imie, o) => ZebrraFashion.wstawka(imie, o),
     katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
     choreografie: { wczytaj: (id) => Choreografie.wczytaj(id) },
     gameShow: { wczytaj: (id) => GameShow.wczytaj(id), lista: () => GameShow.lista() },
@@ -15746,43 +15829,6 @@ const WieczorTanca = utworzWieczorTanca({
     publikuj: (z) => PublikacjeYT.przygotuj(z),
     opisz: (p) => Montazownia.opisz(p),
     szyna: Szyna,
-// 👕🔭 Zwiadowca kanałów dystrybucji (services/ZwiadowcaDystrybucji.js): POD/marketplace/sklepy twórców dla merchu Teterhii i Mini —
-// tylko kanały z linkiem z wyników wyszukiwania; „podłącz” = propozycja w Izbie zgód. Nic nie zakłada i nie płaci.
-const ZwiadowcaDystrybucji = utworzZwiadowceDystrybucji({ katalog: path.join(ANTIGRAVITY_DIR, 'zwiadowca'), szyna: Szyna,
-    klucze: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey() },
-    modelGemini: async () => process.env.OTAKOS_PROMOCJE_MODEL_GEMINI || ((await listyModeliChmury('gemini', await getGeminiKey())).modele.find((m) => /flash/.test(m.model)) ?? {}).model || ZWIADOWCA_PROMOCJI_GEMINI,
-    jajo: { decyzja: (o) => Jajo.decyzja(o) } });
-zamontujTrasyDystrybucji(app, ZwiadowcaDystrybucji);
-Izba.zarejestruj(ZwiadowcaDystrybucji.zrodloIzby);
-// 🐾 Sklep Mini w Izbie: propozycje Mini (✓ = produkcja Meshy za kredyty → tylko przy Katedrze), utknięte (wznów — też kredyty),
-// pakiety do wystawienia (✓ = na sprzedaż przez Stripe, bez kosztu → także z telefonu).
-Izba.zarejestruj({ id: 'sklep-mini', emoji: '🐾', nazwa: 'Sklep Mini',
-    czekajace: async () => { const { propozycje, pakiety } = await SklepMini.doZgody(); return [
-        ...propozycje.map((p) => ({ id: p.id, kiedy: p.utworzono, obrazy: p.plikObrazu ? [p.plikObrazu] : [],
-            tytul: p.stan === 'utknela' ? `Mini „${p.nazwa}” utknęła w produkcji` : `Nowe Mini „${p.nazwa}” (${p.rzadkosc}) — produkować?`,
-            opis: p.stan === 'utknela' ? `⛔ ${p.blad ?? 'krok produkcji padł'}
-Wznowienie = nowa zgoda na kredyty Meshy (do ${SKLEP_BUDZET} kr.).` : `${p.opis ?? ''}
-✓ = TRELLIS + Meshy (obraz→3D, rig, ruchy): do ${SKLEP_BUDZET} kredytów.`,
-            akcje: p.stan === 'utknela'
-                ? [{ id: 'wznow', etykieta: '↻ Wznów', potwierdz: `Wznowić produkcję? Do ${SKLEP_BUDZET} kredytów Meshy.` }, { id: 'odrzuc', etykieta: '✕ porzuć', zdalnie: true }]
-                : [{ id: 'przyjmij', etykieta: '✓ produkuj', potwierdz: `Produkcja „${p.nazwa}” wyda do ${SKLEP_BUDZET} kredytów Meshy.` }, { id: 'odrzuc', etykieta: '✕ odrzuć', zdalnie: true }] })),
-        ...pakiety.map((p) => ({ id: p.id, kiedy: p.utworzono, tytul: `Pakiet „${p.nazwa}” — wystawić na sprzedaż?`,
-            opis: `${p.rzadkosc} · ${p.cena} ${p.waluta} · ${p.klipow} ruchów, ${p.obrazow} obrazów
-${p.opis ?? ''}`,
-            akcje: [{ id: 'wystaw', etykieta: '✓ wystaw', zdalnie: true }] })),
-    ]; },
-    decyduj: (id, akcja) => akcja === 'wystaw' ? SklepMini.wystawPakiet(id, true)
-        : akcja === 'odrzuc' ? SklepMini.odrzuc(id)
-        : akcja === 'wznow' ? SklepMini.wznow(id, { zgodaKredyty: SKLEP_BUDZET })
-        : SklepMini.przyjmij(id, { zgodaKredyty: SKLEP_BUDZET }) });
-// 👕🔭 Zwiadowca kanałów dystrybucji (services/ZwiadowcaDystrybucji.js): POD/marketplace/sklepy twórców dla merchu Teterhii i Mini —
-// tylko kanały z linkiem z wyników wyszukiwania; „podłącz” = propozycja w Izbie zgód. Nic nie zakłada i nie płaci.
-const ZwiadowcaDystrybucji = utworzZwiadowceDystrybucji({ katalog: path.join(ANTIGRAVITY_DIR, 'zwiadowca'), szyna: Szyna,
-    klucze: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey() },
-    modelGemini: async () => process.env.OTAKOS_PROMOCJE_MODEL_GEMINI || ((await listyModeliChmury('gemini', await getGeminiKey())).modele.find((m) => /flash/.test(m.model)) ?? {}).model || ZWIADOWCA_PROMOCJI_GEMINI,
-    jajo: { decyzja: (o) => Jajo.decyzja(o) } });
-zamontujTrasyDystrybucji(app, ZwiadowcaDystrybucji);
-Izba.zarejestruj(ZwiadowcaDystrybucji.zrodloIzby);
 });
 zamontujTrasyWieczoru(app, WieczorTanca);
 if (process.env.OTAKOS_WIECZOR_TANCA !== '0') WieczorTanca.startPetli();
@@ -16002,52 +16048,11 @@ app.post('/api/studio3d/ozyw', (req, res) => ytOdp(res, (async () => {
     const cel = projekt ? path.join((await utworzProjekt(ANTIGRAVITY_DIR, String(projekt))).sciezka, 'studia3d') : null;
     return { zadanie: Glebia.ozyw({ kadr: String(kadr ?? ''), ruch, sekundy, fov, nazwa, cel }) };
 })()));
-// 🎭 Stała Obsada w Izbie: karta 6 ujęć czeka na ✓ (bez kosztu → także z telefonu); ↻ nowa karta = FLUX na karcie → tylko przy Katedrze.
-// 📖✍️ Silnik Żywych Ksiąg (services/SilnikKsiag.js) — czytnik TeO Story Studio: Kronikarz pisze, Paleta (FLUX) rysuje wycinanki postaci
-// (wzory: Stała Obsada) i strony; Google tylko jako opcja ☁️ (/api/zywe-ksiegi/gemini kluczem mostu).
-const SilnikKsiag = utworzSilnikKsiag({ katalog: path.join(ANTIGRAVITY_DIR, 'zywe-ksiegi'),
-    pisz: async (model, system, prompt) => (await piszModelem(model, system, prompt, { json: true })).tekst,
-    model: async () => TrybKatedry.modelDla((await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()),
-    rysuj: async ({ prompt, referencje, szer, wys, prefiks }) => {
-        const przed = await stanWideoZBudzeniem('Żywe Księgi');
-        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
-        return Assety3D.kadrFilmu({ prompt, referencje, szer, wys, prefiks });
-    },
-    obsada: { lista: () => StalaObsada.lista(), wzory: (id) => StalaObsada.wzory(id) },
-    autor: async () => kimJestem(await loadGrvLedger())?.wlasciciel?.nazwa ?? null });
-zamontujTrasySilnikaKsiag(app, SilnikKsiag, {
-    stan: async () => ({ katedra: true, model: await ModeleAgentow.modelDla('kronikarz').catch(() => null), gemini: !!(await getGeminiKey().catch(() => null)) }),
-    gemini: async (params) => {
-        const apiKey = await getGeminiKey();
-        if (!apiKey) throw new Error('Most nie ma klucza Gemini (Kibel → 🔗 Udostępnij mostowi).');
-        const { GoogleGenAI } = await import('@google/genai');
-        const r = await new GoogleGenAI({ apiKey }).models.generateContent(params);
-        return { candidates: r?.candidates, promptFeedback: r?.promptFeedback, usageMetadata: r?.usageMetadata, modelVersion: r?.modelVersion, text: r?.text };
-    } });
-Izba.zarejestruj({ id: 'stala-obsada', emoji: '🎭', nazwa: 'Stała Obsada',
-    czekajace: async () => (await StalaObsada.lista()).filter((a) => a.stan === 'do_akceptacji').map((a) => ({
-        id: a.id, kiedy: a.utworzono ?? null, tytul: `Karta aktora „${a.imie}” — zatwierdzić?`,
-        opis: `${a.opis ? `${String(a.opis).slice(0, 300)}
-` : ''}6 ujęć (ciało przód/bok/tył, twarz przód/¾/profil). ✓ = programy biorą je jako wzory postaci.`,
-        obrazy: [path.join(ANTIGRAVITY_DIR, 'stala-obsada', a.id, 'zrodlo.png'), path.join(ANTIGRAVITY_DIR, 'stala-obsada', a.id, 'arkusz.png')].filter((p) => fsSync.existsSync(p)),
-        akcje: [{ id: 'przyjmij', etykieta: '✓ zatwierdź', zdalnie: true }, { id: 'karta', etykieta: '↻ narysuj kartę od nowa' }] })),
-    // rysowanie trwa minuty — Izba nie czeka na FLUX, tylko je zleca (stan aktora pokaże „rysuje”)
-    decyduj: async (id, akcja) => { if (akcja === 'przyjmij') return StalaObsada.przyjmij(id); void StalaObsada.rysujKarte(id).catch((e) => console.warn('[Obsada] karta:', e.message)); return { stan: 'rysuje' }; } });
 app.get('/api/studio3d/zadanie/:id', (req, res) => { const z = Glebia.zadanie(req.params.id); return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania (most mógł wystartować od nowa).' }); });
 
 // ── 👄 Usta aktorów (services/UstaAktorow.js, MuseTalk 1.5 — MIT) ──
 // Karta mówiącego rusza ustami pod jego kwestię. Środowisko i wagi w `_OtakOs_AI/usta` (instaluje Katedra).
 const Usta = utworzUsta({ aiDir: AI_DIR, ffmpeg: ffmpegPath });
-// 🎭 Stała Obsada w Izbie: karta 6 ujęć czeka na ✓ (bez kosztu → także z telefonu); ↻ nowa karta = FLUX na karcie → tylko przy Katedrze.
-Izba.zarejestruj({ id: 'stala-obsada', emoji: '🎭', nazwa: 'Stała Obsada',
-    czekajace: async () => (await StalaObsada.lista()).filter((a) => a.stan === 'do_akceptacji').map((a) => ({
-        id: a.id, kiedy: a.utworzono ?? null, tytul: `Karta aktora „${a.imie}” — zatwierdzić?`,
-        opis: `${a.opis ? `${String(a.opis).slice(0, 300)}
-` : ''}6 ujęć (ciało przód/bok/tył, twarz przód/¾/profil). ✓ = programy biorą je jako wzory postaci.`,
-        obrazy: [path.join(ANTIGRAVITY_DIR, 'stala-obsada', a.id, 'zrodlo.png'), path.join(ANTIGRAVITY_DIR, 'stala-obsada', a.id, 'arkusz.png')].filter((p) => fsSync.existsSync(p)),
-        akcje: [{ id: 'przyjmij', etykieta: '✓ zatwierdź', zdalnie: true }, { id: 'karta', etykieta: '↻ narysuj kartę od nowa' }] })),
-    // rysowanie trwa minuty — Izba nie czeka na FLUX, tylko je zleca (stan aktora pokaże „rysuje”)
-    decyduj: async (id, akcja) => { if (akcja === 'przyjmij') return StalaObsada.przyjmij(id); void StalaObsada.rysujKarte(id).catch((e) => console.warn('[Obsada] karta:', e.message)); return { stan: 'rysuje' }; } });
 app.get('/api/usta', (_req, res) => res.json({ success: true, ...Usta.stan() }));
 app.post('/api/usta/instaluj', (req, res) => {
     try { return res.json({ success: true, instalacja: Usta.instaluj({ cuda: String(req.body?.cuda ?? 'auto') }) }); }

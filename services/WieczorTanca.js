@@ -159,6 +159,11 @@ export function utworzWieczorTanca(o) {
         }
         if (klipy.length < 2) throw new Error('Wieczór to co najmniej dwie części.');
         // 🔒 blokada MIĘDZY PROCESAMI (2026-10-21: most Katedry i most-próbnik skleiły ten sam wieczór naraz do jednego
+        // 🛍️ wstawka reklamowa 0.00G Style (services/ZebrraFashion.js) między częściami, gdy tancerz ma kolekcję w Fashion
+        const ileCzesci = klipy.length;
+        let reklama = null;
+        if (cfg.wstawka) reklama = await cfg.wstawka(w.tancerz, { jezyk: w.jezyk }).catch((e) => { console.warn('[Wieczór Tańca] wstawka:', e.message); return null; });
+        if (reklama) for (let i = klipy.length - 1; i > 0; i--) klipy.splice(i, 0, reklama);
         // pliku — powstał uszkodzony film, który poszedł na YouTube). Plik `sklejanie.lock` w katalogu wieczoru,
         // starszy niż 30 min = po padniętym procesie, zdejmowany.
         const zamek = path.join(path.dirname(M.plikO(id)), 'sklejanie.lock');
@@ -183,12 +188,12 @@ export function utworzWieczorTanca(o) {
             Object.assign(s, { plik: cel, sklejono: czas(), sekundy: (await cfg.opisz(cel).catch(() => null))?.sekundy ?? null, stan: 'sklejony', pominiete: pomin.filter((k) => CZESCI.includes(k)) });
             if (cfg.publikuj) {
                 try {
-                    const p = await cfg.publikuj({ plik: cel, nazwa: `${NAZWA} — ${w.tancerz} · „${w.choreografia.utwor}”`, jezyk: w.jezyk, kontekst: kontekstKronikarza({ ...w, czesci: s.czesci }), zrodlo: { projekt: PROJEKT, wieczor: id } });
+                    const p = await cfg.publikuj({ plik: cel, nazwa: `${NAZWA} — ${w.tancerz} · „${w.choreografia.utwor}”`, jezyk: w.jezyk, kontekst: kontekstKronikarza({ ...w, czesci: s.czesci }) + (reklama ? `\nThe film contains short ad breaks for the 0.00G Style collection of ${w.tancerz} (the brand's own products).` : ''), zrodlo: { projekt: PROJEKT, wieczor: id, ...(reklama ? { reklama: true } : {}) } });
                     s.publikacja = { id: p.id ?? null, etap: p.etap ?? null };
                     s.stan = 'do_akceptacji';
                 } catch (e) { s.powod = `publikacja: ${e.message}`; }
             }
-            nadaj(`wieczór ${w.tancerz} sklejony (${klipy.length} części) — Kronikarz pisze opis, potem ✓ w Izbie`);
+            nadaj(`wieczór ${w.tancerz} sklejony (${ileCzesci} części${reklama ? " + wstawki 0.00G Style" : ""}) — Kronikarz pisze opis, potem ✓ w Izbie`);
         } catch (e) { Object.assign(s, { stan: 'czeka', powod: `sklejenie: ${String(e.message || e).slice(0, 400)}` }); }
         finally { sklejane.delete(id); await fs.rm(zamek, { force: true }).catch(() => {}); }
         await M.pisz(s);
