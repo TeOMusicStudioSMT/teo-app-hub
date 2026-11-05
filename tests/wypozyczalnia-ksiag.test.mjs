@@ -37,9 +37,10 @@ test('publikacja → katalog → 402 bez płatności → Stripe → odbiór 302 
         const pub = await (await fetch(`${baza}/api/books/publish`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ book: KSIEGA, cenaEur: 1.99 }) })).json();
         assert.equal(pub.wpis.id, 'kroniki-21-21');
         const kat = await (await fetch(`${baza}/wizytowka/teostory`)).json();
-        assert.equal(kat.ksiegi[0].okladka, '/wizytowka/teostory/kroniki-21-21/okladka');
+        assert.equal(kat.ksiegi[0].okladka, '/wizytowka/teostory/kroniki-21-21/obraz/obraz-1.png', 'dataURL strony → plik Wypożyczalni');
         assert.equal(kat.ksiegi[0].cenaEur, 1.99);
-        assert.equal((await fetch(`${baza}/wizytowka/teostory/kroniki-21-21/okladka`)).status, 200);
+        assert.equal((await fetch(`${baza}/wizytowka/teostory/kroniki-21-21/obraz/obraz-1.png`)).status, 200);
+        assert.ok(SCIEZKA_TEOSTORY.test('/wizytowka/teostory/kroniki-21-21/obraz/obraz-1.png'));
         assert.equal((await fetch(`${baza}/wizytowka/teostory/kroniki-21-21/czytaj`)).status, 402);
         const w = await (await fetch(`${baza}/wizytowka/teostory/kroniki-21-21/wypozycz`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ powrot: 'https://teostory.studio/' }) })).json();
         assert.match(w.url, /checkout\.stripe\.com/);

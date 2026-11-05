@@ -57,7 +57,7 @@ export function sprawdzKsiege(book, { tier = 'rental_48h', cenaEur = DOMYSLNA_CE
 /**
  * @param {{ katalog: string, stripe?: object|null, adres?: () => Promise<string|null>, teraz?: () => number }} o
  */
-export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () => null, teraz = () => Date.now() }) {
+export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () => null, obrazLokalny = () => null, teraz = () => Date.now() }) {
     const KAT = path.join(katalog, 'katalog.json'), KS = path.join(katalog, 'ksiegi'), WYP = path.join(katalog, 'wypozyczenia.json');
     let kolejka = Promise.resolve();
     const poKolei = (fn) => { const p = kolejka.then(fn); kolejka = p.catch(() => {}); return p; };
@@ -71,7 +71,34 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         if (!url) return null;
         const m = /^data:image\/(png|jpe?g|webp);base64,(.+)$/.exec(url);
         if (m) { const roz = m[1].replace('jpeg', 'jpg'); await fs.writeFile(path.join(KS, `${id}-okladka.${roz}`), Buffer.from(m[2], 'base64')); return `plik:${roz}`; }
+        if (url.startsWith(`/wizytowka/teostory/${id}/obraz/`)) return url;
         return /^https:\/\//.test(url) ? url.slice(0, 1000) : null;
+    }
+
+    /** Obrazy księgi (Silnik Ksiąg Katedry albo dataURL) → pliki Wypożyczalni + adres publiczny; obce https zostaje, reszta znika. */
+    async function przeniesObrazy(id, book) {
+        const kat = path.join(KS, id);
+        await fs.mkdir(kat, { recursive: true });
+        let n = 0;
+        const przenies = async (url) => {
+            if (typeof url !== 'string' || !url) return url;
+            const lok = obrazLokalny(url);
+            const m = /^data:image\/(png|jpe?g|webp);base64,(.+)$/.exec(url);
+            if (!lok && !m) return /^https:\/\//.test(url) ? url : undefined;
+            const nazwa = `obraz-${++n}.${lok ? path.extname(lok).slice(1) || 'png' : m[1].replace('jpeg', 'jpg')}`;
+            if (lok) await fs.copyFile(lok, path.join(kat, nazwa)); else await fs.writeFile(path.join(kat, nazwa), Buffer.from(m[2], 'base64'));
+            return `/wizytowka/teostory/${id}/obraz/${nazwa}`;
+        };
+        const pages = [];
+        for (const s of book.pages ?? []) pages.push({ ...s, imageUrl: await przenies(s?.imageUrl), plates: undefined });
+        const characters = [];
+        for (const c of book.characters ?? []) characters.push({ ...c, avatarCutoutUrl: await przenies(c?.avatarCutoutUrl) });
+        return { ...book, id, pages, characters };
+    }
+    function plikObrazu(id, nazwa) {
+        if (!ID.test(String(id)) || !/^obraz-\d{1,3}\.(png|jpg|webp)$/.test(String(nazwa))) return null;
+        const p = path.join(KS, id, nazwa);
+        return fsSync.existsSync(p) ? p : null;
     }
 
     function publikuj({ book, rentalTier = 'rental_48h', cenaEur = DOMYSLNA_CENA_EUR, pieczec = null } = {}) {
@@ -79,7 +106,8 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
             const wpis = sprawdzKsiege(book, { tier: rentalTier, cenaEur });
             const id = idKsiegi(book.id || book.title);
             await fs.mkdir(KS, { recursive: true });
-            await zapisz(path.join(KS, `${id}.json`), { ...book, id });
+            book = await przeniesObrazy(id, book);
+            await zapisz(path.join(KS, `${id}.json`), book);
             const k = await czytaj(KAT, { ksiegi: [] });
             const stary = k.ksiegi.find((x) => x.id === id);
             const nowy = { id, ...wpis, okladka: await okladka(id, book), pieczec: pieczec ? tekst(pieczec, 120) : null,
@@ -153,7 +181,7 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return { ksiega: book, dostepDo: doKiedy };
     }
 
-    return { publikuj, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
+    return { plikObrazu, publikuj, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
         wypozyczenia: async () => (await czytaj(WYP, { wypozyczenia: [] })).wypozyczenia };
 }
 
@@ -173,6 +201,12 @@ export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10 } = {}) {
     // Publiczne (portal teostory.studio przez tunel Katedry)
     const proby = new Map();
     app.get('/wizytowka/teostory', (_req, res) => { cors(res); odp(res, W.katalogPubliczny().then((ksiegi) => ({ ksiegi }))); });
+    app.get('/wizytowka/teostory/:id/obraz/:plik', async (req, res) => {
+        cors(res);
+        const k = (await W.katalogPubliczny()).find((x) => x.id === req.params.id);
+        const p = k ? W.plikObrazu(req.params.id, req.params.plik) : null;
+        return p ? res.sendFile(p) : res.status(404).end();
+    });
     app.get('/wizytowka/teostory/:id/okladka', async (req, res) => { const p = await W.plikOkladki(req.params.id); return p ? res.sendFile(p) : res.status(404).end(); });
     app.get('/wizytowka/teostory/:id/czytaj', (req, res) => { cors(res); odp(res, W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null })); });
     app.options('/wizytowka/teostory/:id/wypozycz', (_req, res) => { cors(res); res.sendStatus(204); });

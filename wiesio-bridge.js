@@ -16,6 +16,7 @@ import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch
 import { utworzStripe } from './services/Stripe.js';
 import { utworzSklepMini, zamontujTrasySklepu, BUDZET_PRODUKCJI as SKLEP_BUDZET } from './services/SklepMini.js';
 import { utworzWypozyczalnie, zamontujTrasyWypozyczalni } from './services/WypozyczalniaKsiag.js';
+import { utworzSilnikKsiag, zamontujTrasySilnikaKsiag } from './services/SilnikKsiag.js';
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
 import { utworzFilmyGry, filtrRuchuKadru } from './services/FilmyGry.js';
@@ -9248,6 +9249,12 @@ app.post('/api/lab/printy', (req, res) => labOdp(res, Laboratorium.syntezujPrint
 // 📚 Wypożyczalnia Żywych Ksiąg teostory.studio (services/WypozyczalniaKsiag.js): silnik czytnika publikuje (/api/books/*, maszyna),
 // portal czyta i wypożycza przez tunel (/wizytowka/teostory/*): demo za darmo, 48 h = Stripe Checkout, dostęp = opłacona sesja.
 const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe,
+    obrazLokalny: (u) => SilnikKsiag.plikZAdresu(u),   // obrazy z Silnika Ksiąg kopiowane przy publikacji (gość nie widzi /api)
+    adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
+zamontujTrasyWypozyczalni(app, Wypozyczalnia);
+// 📚 Wypożyczalnia Żywych Ksiąg teostory.studio (services/WypozyczalniaKsiag.js): silnik czytnika publikuje (/api/books/*, maszyna),
+// portal czyta i wypożycza przez tunel (/wizytowka/teostory/*): demo za darmo, 48 h = Stripe Checkout, dostęp = opłacona sesja.
+const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe,
     adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
 zamontujTrasyWypozyczalni(app, Wypozyczalnia);
 app.delete('/api/lab/printy/:id', (req, res) => labOdp(res, Laboratorium.usunPrint(req.params.id)));
@@ -15980,6 +15987,37 @@ app.post('/api/studio3d/ozyw', (req, res) => ytOdp(res, (async () => {
     const cel = projekt ? path.join((await utworzProjekt(ANTIGRAVITY_DIR, String(projekt))).sciezka, 'studia3d') : null;
     return { zadanie: Glebia.ozyw({ kadr: String(kadr ?? ''), ruch, sekundy, fov, nazwa, cel }) };
 })()));
+// 🎭 Stała Obsada w Izbie: karta 6 ujęć czeka na ✓ (bez kosztu → także z telefonu); ↻ nowa karta = FLUX na karcie → tylko przy Katedrze.
+// 📖✍️ Silnik Żywych Ksiąg (services/SilnikKsiag.js) — czytnik TeO Story Studio: Kronikarz pisze, Paleta (FLUX) rysuje wycinanki postaci
+// (wzory: Stała Obsada) i strony; Google tylko jako opcja ☁️ (/api/zywe-ksiegi/gemini kluczem mostu).
+const SilnikKsiag = utworzSilnikKsiag({ katalog: path.join(ANTIGRAVITY_DIR, 'zywe-ksiegi'),
+    pisz: async (model, system, prompt) => (await piszModelem(model, system, prompt, { json: true })).tekst,
+    model: async () => TrybKatedry.modelDla((await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()),
+    rysuj: async ({ prompt, referencje, szer, wys, prefiks }) => {
+        const przed = await stanWideoZBudzeniem('Żywe Księgi');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        return Assety3D.kadrFilmu({ prompt, referencje, szer, wys, prefiks });
+    },
+    obsada: { lista: () => StalaObsada.lista(), wzory: (id) => StalaObsada.wzory(id) },
+    autor: async () => kimJestem(await loadGrvLedger())?.wlasciciel?.nazwa ?? null });
+zamontujTrasySilnikaKsiag(app, SilnikKsiag, {
+    stan: async () => ({ katedra: true, model: await ModeleAgentow.modelDla('kronikarz').catch(() => null), gemini: !!(await getGeminiKey().catch(() => null)) }),
+    gemini: async (params) => {
+        const apiKey = await getGeminiKey();
+        if (!apiKey) throw new Error('Most nie ma klucza Gemini (Kibel → 🔗 Udostępnij mostowi).');
+        const { GoogleGenAI } = await import('@google/genai');
+        const r = await new GoogleGenAI({ apiKey }).models.generateContent(params);
+        return { candidates: r?.candidates, promptFeedback: r?.promptFeedback, usageMetadata: r?.usageMetadata, modelVersion: r?.modelVersion, text: r?.text };
+    } });
+Izba.zarejestruj({ id: 'stala-obsada', emoji: '🎭', nazwa: 'Stała Obsada',
+    czekajace: async () => (await StalaObsada.lista()).filter((a) => a.stan === 'do_akceptacji').map((a) => ({
+        id: a.id, kiedy: a.utworzono ?? null, tytul: `Karta aktora „${a.imie}” — zatwierdzić?`,
+        opis: `${a.opis ? `${String(a.opis).slice(0, 300)}
+` : ''}6 ujęć (ciało przód/bok/tył, twarz przód/¾/profil). ✓ = programy biorą je jako wzory postaci.`,
+        obrazy: [path.join(ANTIGRAVITY_DIR, 'stala-obsada', a.id, 'zrodlo.png'), path.join(ANTIGRAVITY_DIR, 'stala-obsada', a.id, 'arkusz.png')].filter((p) => fsSync.existsSync(p)),
+        akcje: [{ id: 'przyjmij', etykieta: '✓ zatwierdź', zdalnie: true }, { id: 'karta', etykieta: '↻ narysuj kartę od nowa' }] })),
+    // rysowanie trwa minuty — Izba nie czeka na FLUX, tylko je zleca (stan aktora pokaże „rysuje”)
+    decyduj: async (id, akcja) => { if (akcja === 'przyjmij') return StalaObsada.przyjmij(id); void StalaObsada.rysujKarte(id).catch((e) => console.warn('[Obsada] karta:', e.message)); return { stan: 'rysuje' }; } });
 app.get('/api/studio3d/zadanie/:id', (req, res) => { const z = Glebia.zadanie(req.params.id); return z ? res.json({ success: true, zadanie: z }) : res.status(404).json({ success: false, message: 'Nie ma takiego zadania (most mógł wystartować od nowa).' }); });
 
 // ── 👄 Usta aktorów (services/UstaAktorow.js, MuseTalk 1.5 — MIT) ──
