@@ -526,7 +526,15 @@ export function utworzSklepMini({ katalog, assety, chmura = null, stripe = null,
         return { ...(darowizny ? { darowizny } : {}), ...(mini.length ? { mini } : {}), tryb: st?.tryb ?? null };
     }
 
-    return { stan, plany, dzien, krok, startPetli, przyjmij, odrzuc, wznow, ustawRzadkosc, zrobPakiet, wystawPakiet, pakiet, plikPakietu, obrazPropozycji, publiczne };
+    /** 📥 Dla Izby zgód: czysty odczyt (bez planów, Stripe i sieci) — propozycje i pakiety czekające na Suwerena. */
+    async function doZgody() {
+        const s = await czytaj();
+        return {
+            propozycje: s.propozycje.filter((p) => ['czeka', 'utknela'].includes(p.stan)).map((p) => ({ ...p, plikObrazu: p.obraz ? assety.plikObrazu(p.obraz) : null })),
+            pakiety: s.pakiety.filter((p) => p.stan === 'do-akceptacji'),
+        };
+    }
+    return { stan, doZgody, plany, dzien, krok, startPetli, przyjmij, odrzuc, wznow, ustawRzadkosc, zrobPakiet, wystawPakiet, pakiet, plikPakietu, obrazPropozycji, publiczne };
 }
 
 // ── Trasy (montowane z mostu; testowalne na Expressie) ──

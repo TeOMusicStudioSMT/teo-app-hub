@@ -107,6 +107,13 @@ export function zlozBrief(dane, { teraz = Date.now(), imie = '' } = {}) {
         const prop = (sklep.propozycje ?? []).filter((p) => p.stan === 'czeka' && p.dzien === sklep.dzien?.data).length;
         if (pakiety || prop) czeka.push({ tekst: `🐾 Sklep Mini: ${[pakiety && liczba(pakiety, 'pakiet do wystawienia', 'pakiety do wystawienia', 'pakietów do wystawienia'), prop && `${liczba(prop, 'nowa propozycja', 'nowe propozycje', 'nowych propozycji')} Mini od stada`].filter(Boolean).join(', ')} (Marketplace → 🐾).` });
     }
+    // 📥 Izba zgód: sprawy z pozostałych źródeł (YouTube, Stół i Sklep Mini mają swoje linie wyżej)
+    const zIzby = (dane.izba?.pozycje ?? []).filter((x) => !['youtube', 'sklep-mini'].includes(x.zrodlo));
+    if (zIzby.length) {
+        const wg = {};
+        for (const x of zIzby) wg[`${x.emoji} ${x.nazwaZrodla ?? x.zrodlo}`] = (wg[`${x.emoji} ${x.nazwaZrodla ?? x.zrodlo}`] ?? 0) + 1;
+        czeka.push({ tekst: `📥 Izba zgód: ${Object.entries(wg).map(([k, n]) => `${k} ${n}`).join(', ')} (StoL → Izba albo Hub).` });
+    }
     const sprzedaz = dane.sprzedaz?.sprzedaz;
     if (Array.isArray(sprzedaz)) {
         const s24 = sprzedaz.filter((s) => (czasZ(s) ?? 0) >= od);
@@ -201,6 +208,7 @@ export function utworzPorannyBrief({ katalog, pobierz, wiesc = null, teraz = () 
             wez('autopilot', '/api/formaty/autopilot'),
             wez('stol', '/api/stol'),
             wez('sklep', '/api/sklep-mini'),
+            wez('izba', '/api/izba'),
             wez('sprzedaz', '/api/stripe/sprzedaz'),
             wez('nocna', '/api/nocna/stan'),
             ...PROGRAMY.map((p) => wez(p.nazwa, p.trasa, (d) => { dane.programy[p.trasa] = d; })),

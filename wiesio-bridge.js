@@ -14,7 +14,7 @@ import { utworzStrazModeli } from './services/StrazModeli.js';
 import { utworzChmureBryl, promptStylu, oczyscStyl, ZESTAWY_AKCJI } from './services/ChmuraBryl.js';
 import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch.js';
 import { utworzStripe } from './services/Stripe.js';
-import { utworzSklepMini, zamontujTrasySklepu } from './services/SklepMini.js';
+import { utworzSklepMini, zamontujTrasySklepu, BUDZET_PRODUKCJI as SKLEP_BUDZET } from './services/SklepMini.js';
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
 import { utworzFilmyGry, filtrRuchuKadru } from './services/FilmyGry.js';
@@ -15726,6 +15726,35 @@ const ZwiadowcaDystrybucji = utworzZwiadowceDystrybucji({ katalog: path.join(ANT
     jajo: { decyzja: (o) => Jajo.decyzja(o) } });
 zamontujTrasyDystrybucji(app, ZwiadowcaDystrybucji);
 Izba.zarejestruj(ZwiadowcaDystrybucji.zrodloIzby);
+// 🐾 Sklep Mini w Izbie: propozycje Mini (✓ = produkcja Meshy za kredyty → tylko przy Katedrze), utknięte (wznów — też kredyty),
+// pakiety do wystawienia (✓ = na sprzedaż przez Stripe, bez kosztu → także z telefonu).
+Izba.zarejestruj({ id: 'sklep-mini', emoji: '🐾', nazwa: 'Sklep Mini',
+    czekajace: async () => { const { propozycje, pakiety } = await SklepMini.doZgody(); return [
+        ...propozycje.map((p) => ({ id: p.id, kiedy: p.utworzono, obrazy: p.plikObrazu ? [p.plikObrazu] : [],
+            tytul: p.stan === 'utknela' ? `Mini „${p.nazwa}” utknęła w produkcji` : `Nowe Mini „${p.nazwa}” (${p.rzadkosc}) — produkować?`,
+            opis: p.stan === 'utknela' ? `⛔ ${p.blad ?? 'krok produkcji padł'}
+Wznowienie = nowa zgoda na kredyty Meshy (do ${SKLEP_BUDZET} kr.).` : `${p.opis ?? ''}
+✓ = TRELLIS + Meshy (obraz→3D, rig, ruchy): do ${SKLEP_BUDZET} kredytów.`,
+            akcje: p.stan === 'utknela'
+                ? [{ id: 'wznow', etykieta: '↻ Wznów', potwierdz: `Wznowić produkcję? Do ${SKLEP_BUDZET} kredytów Meshy.` }, { id: 'odrzuc', etykieta: '✕ porzuć', zdalnie: true }]
+                : [{ id: 'przyjmij', etykieta: '✓ produkuj', potwierdz: `Produkcja „${p.nazwa}” wyda do ${SKLEP_BUDZET} kredytów Meshy.` }, { id: 'odrzuc', etykieta: '✕ odrzuć', zdalnie: true }] })),
+        ...pakiety.map((p) => ({ id: p.id, kiedy: p.utworzono, tytul: `Pakiet „${p.nazwa}” — wystawić na sprzedaż?`,
+            opis: `${p.rzadkosc} · ${p.cena} ${p.waluta} · ${p.klipow} ruchów, ${p.obrazow} obrazów
+${p.opis ?? ''}`,
+            akcje: [{ id: 'wystaw', etykieta: '✓ wystaw', zdalnie: true }] })),
+    ]; },
+    decyduj: (id, akcja) => akcja === 'wystaw' ? SklepMini.wystawPakiet(id, true)
+        : akcja === 'odrzuc' ? SklepMini.odrzuc(id)
+        : akcja === 'wznow' ? SklepMini.wznow(id, { zgodaKredyty: SKLEP_BUDZET })
+        : SklepMini.przyjmij(id, { zgodaKredyty: SKLEP_BUDZET }) });
+// 👕🔭 Zwiadowca kanałów dystrybucji (services/ZwiadowcaDystrybucji.js): POD/marketplace/sklepy twórców dla merchu Teterhii i Mini —
+// tylko kanały z linkiem z wyników wyszukiwania; „podłącz” = propozycja w Izbie zgód. Nic nie zakłada i nie płaci.
+const ZwiadowcaDystrybucji = utworzZwiadowceDystrybucji({ katalog: path.join(ANTIGRAVITY_DIR, 'zwiadowca'), szyna: Szyna,
+    klucze: { anthropic: () => getAnthropicKey(), gemini: () => getGeminiKey() },
+    modelGemini: async () => process.env.OTAKOS_PROMOCJE_MODEL_GEMINI || ((await listyModeliChmury('gemini', await getGeminiKey())).modele.find((m) => /flash/.test(m.model)) ?? {}).model || ZWIADOWCA_PROMOCJI_GEMINI,
+    jajo: { decyzja: (o) => Jajo.decyzja(o) } });
+zamontujTrasyDystrybucji(app, ZwiadowcaDystrybucji);
+Izba.zarejestruj(ZwiadowcaDystrybucji.zrodloIzby);
 });
 zamontujTrasyWieczoru(app, WieczorTanca);
 if (process.env.OTAKOS_WIECZOR_TANCA !== '0') WieczorTanca.startPetli();
@@ -15950,6 +15979,16 @@ app.get('/api/studio3d/zadanie/:id', (req, res) => { const z = Glebia.zadanie(re
 // ── 👄 Usta aktorów (services/UstaAktorow.js, MuseTalk 1.5 — MIT) ──
 // Karta mówiącego rusza ustami pod jego kwestię. Środowisko i wagi w `_OtakOs_AI/usta` (instaluje Katedra).
 const Usta = utworzUsta({ aiDir: AI_DIR, ffmpeg: ffmpegPath });
+// 🎭 Stała Obsada w Izbie: karta 6 ujęć czeka na ✓ (bez kosztu → także z telefonu); ↻ nowa karta = FLUX na karcie → tylko przy Katedrze.
+Izba.zarejestruj({ id: 'stala-obsada', emoji: '🎭', nazwa: 'Stała Obsada',
+    czekajace: async () => (await StalaObsada.lista()).filter((a) => a.stan === 'do_akceptacji').map((a) => ({
+        id: a.id, kiedy: a.utworzono ?? null, tytul: `Karta aktora „${a.imie}” — zatwierdzić?`,
+        opis: `${a.opis ? `${String(a.opis).slice(0, 300)}
+` : ''}6 ujęć (ciało przód/bok/tył, twarz przód/¾/profil). ✓ = programy biorą je jako wzory postaci.`,
+        obrazy: [path.join(ANTIGRAVITY_DIR, 'stala-obsada', a.id, 'zrodlo.png'), path.join(ANTIGRAVITY_DIR, 'stala-obsada', a.id, 'arkusz.png')].filter((p) => fsSync.existsSync(p)),
+        akcje: [{ id: 'przyjmij', etykieta: '✓ zatwierdź', zdalnie: true }, { id: 'karta', etykieta: '↻ narysuj kartę od nowa' }] })),
+    // rysowanie trwa minuty — Izba nie czeka na FLUX, tylko je zleca (stan aktora pokaże „rysuje”)
+    decyduj: async (id, akcja) => { if (akcja === 'przyjmij') return StalaObsada.przyjmij(id); void StalaObsada.rysujKarte(id).catch((e) => console.warn('[Obsada] karta:', e.message)); return { stan: 'rysuje' }; } });
 app.get('/api/usta', (_req, res) => res.json({ success: true, ...Usta.stan() }));
 app.post('/api/usta/instaluj', (req, res) => {
     try { return res.json({ success: true, instalacja: Usta.instaluj({ cuda: String(req.body?.cuda ?? 'auto') }) }); }
