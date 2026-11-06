@@ -13,6 +13,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Radio, Users, MessageSquare } from 'lucide-react';
 import { pobierzZdarzenia, sluchajSzyny, imieAgenta, type Zdarzenie, type Pracujacy } from '../../lib/szyna';
 import { gatunekPo } from '../../lib/teogochiGatunki';
+import { FirmaPanel } from './FirmaPanel';
+import { KodyQrPanel } from './KodyQrPanel';
+
+/**
+ * 🏢 Skrzydła Cor-TeO (Suweren 2026-11-06) — filtr działów: meldunki agentów danego skrzydła + jego panele.
+ * Agent spoza mapy widać tylko w „Wszystko”.
+ */
+const SKRZYDLA: { id: string; nazwa: string; agenci: string[] }[] = [
+    { id: 'kreacja', nazwa: '🎨 Kreacja & Produkcja', agenci: ['rezyser', 'paleta', 'glosek', 'joanna', 'dyrygent', 'kompozytor', 'jason', 'wektor', 'ogrodnik', 'pionek', 'pilkarka', 'klatka', 'kodeks', 'zwiadowca'] },
+    { id: 'marketing', nazwa: '📣 Marketing & Zasięgi', agenci: ['kronikarz', 'aktor', 'latarnik'] },
+    { id: 'sprzedaz', nazwa: '💰 Sprzedaż & Sklep', agenci: ['kupiec'] },
+    { id: 'zarzad', nazwa: '⚖️ Zarząd, Księgowość & Prawo', agenci: [] },
+    { id: 'serwis', nazwa: '🛠️ Serwis & QC', agenci: ['krawcowa', 'bilans', 'mistrz', 'straznik', 'spawacz'] },
+];
+const wSkrzydle = (s: string, agent: string) => s === 'wszystko' || (SKRZYDLA.find((x) => x.id === s)?.agenci.includes(String(agent).toLowerCase()) ?? false);
 
 const BARWA_RODZAJU: Record<string, string> = {
     pytanie: '#a855f7',
@@ -30,6 +45,10 @@ export const WorkPalace: React.FC = () => {
     const [zdarzenia, setZdarzenia] = useState<Zdarzenie[]>([]);
     const [pracuja, setPracuja] = useState<Pracujacy[]>([]);
     const [zywy, setZywy] = useState(false);
+    const [skrzydlo, setSkrzydlo] = useState<string>(() => { try { return localStorage.getItem('otakos_workpalace_skrzydlo') || 'wszystko'; } catch { return 'wszystko'; } });
+    useEffect(() => { try { localStorage.setItem('otakos_workpalace_skrzydlo', skrzydlo); } catch { /* — */ } }, [skrzydlo]);
+    const widoczneZd = zdarzenia.filter((z) => wSkrzydle(skrzydlo, z.agent));
+    const widocznePr = pracuja.filter((x) => wSkrzydle(skrzydlo, x.agent));
     const dol = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -61,15 +80,25 @@ export const WorkPalace: React.FC = () => {
                 </span>
             </header>
 
+            {/* 🏢 Skrzydła Cor-TeO */}
+            <div className="flex flex-wrap gap-1.5">
+                {[{ id: 'wszystko', nazwa: '🏛️ Wszystko' }, ...SKRZYDLA].map((s) => (
+                    <button key={s.id} onClick={() => setSkrzydlo(s.id)}
+                        className={`rounded-full border px-3 py-1 text-[11px] ${skrzydlo === s.id ? 'border-purple-300 bg-purple-500/20 text-purple-100' : 'border-white/15 text-slate-400'}`}>{s.nazwa}</button>
+                ))}
+            </div>
+            {skrzydlo === 'zarzad' && <FirmaPanel />}
+            {skrzydlo === 'sprzedaz' && <KodyQrPanel />}
+
             {/* Kto ostatnio pracował */}
             <div className="flex flex-wrap gap-2">
-                {pracuja.length === 0 && (
+                {widocznePr.length === 0 && (
                     <p className="text-xs text-slate-500">
                         Nikt jeszcze nie meldował. WORKPalace pokazuje tylko to, co agenci realnie
                         wyślą na szynę — pusto znaczy „cisza", a nie „zepsute".
                     </p>
                 )}
-                {pracuja.slice(0, 8).map(p => {
+                {widocznePr.slice(0, 8).map(p => {
                     const g = gatunekPo(p.agent);
                     return (
                         <div key={p.agent}
@@ -88,7 +117,7 @@ export const WorkPalace: React.FC = () => {
             {/* Strumień zdarzeń */}
             <div className="max-h-72 overflow-y-auto rounded-lg bg-black/40 p-3 space-y-1.5">
                 <AnimatePresence initial={false}>
-                    {zdarzenia.map(z => {
+                    {widoczneZd.map(z => {
                         const g = gatunekPo(z.agent);
                         const rozmowa = z.rodzaj === 'pytanie' || z.rodzaj === 'odpowiedz';
                         return (

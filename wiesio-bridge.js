@@ -279,6 +279,7 @@ import { utworzSilniki, CELE as CELE_DYRYGENTA } from './services/Silniki.js';
 import { utworzSceny } from './services/ScenyDialogowe.js';
 import { kodDoUzycia } from './services/KodZaproszenia.js';
 import { odbierzBonus as odbierzBonusGrv } from './services/BonusGrv.js';
+import { utworzFirme, zamontujTrasyFirmy } from './services/Firma.js';
 import { utworzGlosyStada, tekstDoMowy } from './services/GlosyStada.js';
 import { genezaKsiegi, migrujKsiege, nowyKluczWezla, kimJestem, oczyscNazwe, nazwaWezla } from './services/KsiegaTozsamosc.js';
 import { utworzGielde, gpuZNvidiaSmi } from './services/GieldaMocy.js';
@@ -11773,6 +11774,9 @@ const adresKodowTanca = async () => {
     return /^https:\/\/[a-z0-9.-]+\/?$/i.test(String(z || '')) ? String(z).replace(/\/$/, '') : null;
 };
 zamontujTrasyKodowTanca(app, KodyTanca, { adresKodow: adresKodowTanca, adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; }, qr: (url) => QRCode.toDataURL(url, { margin: 1, width: 360 }), podpisz: (tekst) => Wizytowka.podpiszTekst(tekst), wystawca: async () => (await Wizytowka.profil()).nick || null });
+// 🏢 Firma Katedry (services/Firma.js): profil biznesu (🥚 Jajo Założyciela), 💰 Skarbnik z faktów Stripe + wpisów, ⚖️ Mecenas — szkice dokumentów.
+const Firma = utworzFirme({ katalog: ANTIGRAVITY_DIR, sprzedazStripe: () => Stripe.sprzedaz() });
+zamontujTrasyFirmy(app, Firma);
 // ✦ Figury taneczne (services/FiguryTanca.js): Kompozytor (model przydziału `kompozytor`) składa nowe ruchy tancerza
 // z jego klipów riga — miks po kościach, warstwy, wejście w takt — tylko z zamkniętych list; Suweren ✓/✎ (pary do Kuźni).
 const FiguryTanca = utworzFiguryTanca({
