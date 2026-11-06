@@ -59,6 +59,10 @@ export const FirmaPanel: React.FC = () => {
         try { setDok(await zMostu<{ tekst: string; braki: string[]; plik: string }>('/api/firma/mecenas', { method: 'POST', body: JSON.stringify({ dokument, jezyk }) })); }
         catch (e) { toast.error((e as Error).message); }
     };
+    const whitepaper = async () => {
+        try { setDok(await zMostu<{ tekst: string; braki: string[]; plik: string }>('/api/firma/whitepaper')); }
+        catch (e) { toast.error((e as Error).message); }
+    };
     const ust = (zm: Partial<Profil>) => p && setP({ ...p, ...zm });
 
     if (blad) return <div className="rounded bg-red-900/40 p-2 text-xs text-red-200">⚠ Firma: {blad}</div>;
@@ -90,6 +94,7 @@ export const FirmaPanel: React.FC = () => {
                         <p className="md:col-span-2 text-[11px] text-white/50">Do Impressum (zostają w tej Katedrze, wychodzą tylko w szkicach Mecenasa):</p>
                         <label className="text-xs">Właściciel (imię i nazwisko)<input value={p.wlasciciel} onChange={(e) => ust({ wlasciciel: e.target.value })} className={pole} /></label>
                         <label className="text-xs">E-mail kontaktowy<input value={p.email} onChange={(e) => ust({ email: e.target.value })} className={pole} /></label>
+                        <label className="text-xs">Telefon (opcjonalnie — drugi szybki kanał w Impressum)<input value={p.telefon} onChange={(e) => ust({ telefon: e.target.value })} placeholder="+49 …" className={pole} /></label>
                         <label className="text-xs">Ulica i numer<input value={p.adres.ulica} onChange={(e) => ust({ adres: { ...p.adres, ulica: e.target.value } })} className={pole} /></label>
                         <label className="text-xs">Kod i miasto<span className="flex gap-1"><input value={p.adres.kod} onChange={(e) => ust({ adres: { ...p.adres, kod: e.target.value } })} className="w-20 rounded bg-black/50 px-2 py-1 text-xs" /><input value={p.adres.miasto} onChange={(e) => ust({ adres: { ...p.adres, miasto: e.target.value } })} className={pole} /></span></label>
                         <div className="md:col-span-2 flex gap-2"><button onClick={() => void zapiszProfil()} className="rounded bg-amber-600 px-3 py-1 text-xs font-bold">🥚 Zapisz profil</button>
@@ -147,11 +152,12 @@ export const FirmaPanel: React.FC = () => {
                     {[['impressum', 'Impressum'], ['datenschutz', 'Datenschutz'], ['agb', 'AGB']].map(([d, n]) => ['de', 'en'].map((j) => (
                         <button key={d + j} onClick={() => void mecenas(d, j)} className="rounded border border-sky-500/40 px-2 py-1">{n} · {j}</button>
                     )))}
+                    <button onClick={() => void whitepaper()} className="rounded border border-amber-500/40 px-2 py-1 text-amber-200">📄 Whitepaper GRV</button>
                 </div>
                 {dok && (
                     <div className="mt-2">
                         {dok.braki.length > 0 && <p className="text-xs text-amber-300">⚠ Brakuje w profilu: {dok.braki.join(', ')} — w tekście stoi [FEHLT]/[MISSING].</p>}
-                        <div className="flex items-center gap-2 text-[11px] text-white/50">zapisany: _OtakOs_Wymiar/{dok.plik}<button onClick={() => { void navigator.clipboard.writeText(dok.tekst); toast.success('Skopiowano'); }} className="text-sky-300">📋 kopiuj</button></div>
+                        <div className="flex items-center gap-2 text-[11px] text-white/50">{dok.plik.startsWith('docs/') ? `plik w repo: ${dok.plik}` : `zapisany: _OtakOs_Wymiar/${dok.plik}`}<button onClick={() => { void navigator.clipboard.writeText(dok.tekst); toast.success('Skopiowano'); }} className="text-sky-300">📋 kopiuj</button></div>
                         <pre className="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap rounded bg-black/50 p-2 text-[11px] text-white/80">{dok.tekst}</pre>
                     </div>
                 )}

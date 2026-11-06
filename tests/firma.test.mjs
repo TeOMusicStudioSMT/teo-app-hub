@@ -55,3 +55,12 @@ test('Mecenas: szkic z nagłówkiem ENTWURF, braki danych wprost, plik w firma/p
 test('Straż: /api/firma tylko przy maszynie', () => {
     assert.ok(SCIEZKI_TYLKO_LOKALNE.some((p) => '/api/firma/profil'.startsWith(p)));
 });
+
+test('telefon w Impressum i Datenschutz; whitepaper czytany z docs/', async () => {
+    const { F } = await srodowisko();
+    await F.ustawProfil({ ...PROFIL_COR_TEO, telefon: '+49 123 456' });
+    assert.match((await F.mecenas('impressum', 'de')).tekst, /Telefon: \+49 123 456/);
+    assert.match((await F.mecenas('datenschutz', 'en')).tekst, /Phone: \+49 123 456/);
+    const w = await F.whitepaper();
+    assert.equal(w.plik, 'docs/whitepaper-grv.md'); assert.match(w.tekst, /GRV/);
+});
