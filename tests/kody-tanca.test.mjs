@@ -108,3 +108,23 @@ test('trasy HTTP: kupujący zużywa kod, drugi raz 409, film 404 do nagrania', a
         assert.equal(s.kod.tancerz, 'Koralik'); assert.equal(s.kod.stan, 'czeka');
     } finally { srv.close(); }
 });
+
+test('stały adres kodów wygrywa z tunelem; tunel wyłączony = adres zostaje, powód mówi prawdę', async () => {
+    const { K } = await srodowisko();
+    for (const [tunel, oczekiwanyPowod] of [['https://abc.trycloudflare.com', null], [null, /nie odpowie/]]) {
+        const app = express(); app.use(express.json());
+        zamontujTrasyKodowTanca(app, K, { adresTunelu: async () => tunel, adresKodow: async () => 'https://qr.teo.center' });
+        const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
+        try {
+            await fetch(`${baza}/api/taniec/kody`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ile: 1 }) });
+            const l = await (await fetch(`${baza}/api/taniec/kody`)).json();
+            assert.match(l.kody[0].url, /^https:\/\/qr\.teo\.center\/wizytowka\/taniec\/t-[0-9a-f]{12}$/);
+            assert.equal(l.staly, true);
+            if (oczekiwanyPowod) assert.match(l.powod, oczekiwanyPowod); else assert.equal(l.powod, null);
+        } finally { srv.close(); }
+    }
+    const app = express(); app.use(express.json());
+    zamontujTrasyKodowTanca(app, K, { adresTunelu: async () => 'https://abc.trycloudflare.com' });
+    const srv = app.listen(0);
+    try { assert.match((await (await fetch(`http://127.0.0.1:${srv.address().port}/api/taniec/kody`)).json()).powod, /tymczasowy/); } finally { srv.close(); }
+});

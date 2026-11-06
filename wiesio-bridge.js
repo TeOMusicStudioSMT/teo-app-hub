@@ -11759,7 +11759,12 @@ const KodyTanca = utworzKodyTanca({
     bestiariusz: () => Bestiariusz.wczytaj('teterhia-wieczna-saga'),
     sciezkaNagrania: async (nazwa) => path.join(await Montazownia.katalogMontazy(ANTIGRAVITY_DIR, 'taneczne-starcie'), path.basename(nazwa)),
 });
-zamontujTrasyKodowTanca(app, KodyTanca, { adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; }, qr: (url) => QRCode.toDataURL(url, { margin: 1, width: 360 }) });
+// Stały adres kodów QR: OTAKOS_KODY_ADRES → `_OtakOs_Wymiar/kody-tanca/adres.json` {adres} (główny węzeł: https://qr.teo.center); brak = adres tunelu.
+const adresKodowTanca = async () => {
+    const z = process.env.OTAKOS_KODY_ADRES || JSON.parse(await fs.readFile(path.join(ANTIGRAVITY_DIR, 'kody-tanca', 'adres.json'), 'utf8').catch(() => '{}')).adres;
+    return /^https:\/\/[a-z0-9.-]+\/?$/i.test(String(z || '')) ? String(z).replace(/\/$/, '') : null;
+};
+zamontujTrasyKodowTanca(app, KodyTanca, { adresKodow: adresKodowTanca, adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; }, qr: (url) => QRCode.toDataURL(url, { margin: 1, width: 360 }) });
 // ✦ Figury taneczne (services/FiguryTanca.js): Kompozytor (model przydziału `kompozytor`) składa nowe ruchy tancerza
 // z jego klipów riga — miks po kościach, warstwy, wejście w takt — tylko z zamkniętych list; Suweren ✓/✎ (pary do Kuźni).
 const FiguryTanca = utworzFiguryTanca({

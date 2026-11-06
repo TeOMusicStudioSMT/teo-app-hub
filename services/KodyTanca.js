@@ -173,7 +173,7 @@ stan();
 }
 
 /** Trasy: automat i kody (maszyna, Straż `/api/taniec/automat`, `/api/taniec/kody`) + strona kodu (publicznie przez tunel). */
-export function zamontujTrasyKodowTanca(app, K, { adresTunelu = async () => null, qr = null } = {}) {
+export function zamontujTrasyKodowTanca(app, K, { adresTunelu = async () => null, adresKodow = async () => null, qr = null } = {}) {
     const odp = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(400).json({ success: false, message: e.message }));
     app.get('/api/taniec/automat', (_req, res) => odp(res, K.stan().then((s) => ({ zlecenia: s.zlecenia.slice(0, 50) }))));
     app.post('/api/taniec/automat/zlec', (req, res) => odp(res, K.zlec({ mini: req.body?.mini, utwor: req.body?.utwor || null }).then((zlecenie) => ({ zlecenie }))));
@@ -182,12 +182,17 @@ export function zamontujTrasyKodowTanca(app, K, { adresTunelu = async () => null
     app.post('/api/taniec/automat/:id/blad', (req, res) => odp(res, K.blad(req.params.id, req.body?.powod).then((zlecenie) => ({ zlecenie }))));
     app.post('/api/taniec/automat/:id/ponow', (req, res) => odp(res, K.ponow(req.params.id).then((zlecenie) => ({ zlecenie }))));
     app.get('/api/taniec/kody', (_req, res) => odp(res, (async () => {
-        const s = await K.stan(); const adres = await Promise.resolve().then(adresTunelu).catch(() => null);
+        const s = await K.stan(); const tunel = await Promise.resolve().then(adresTunelu).catch(() => null);
+        // Stały adres kodów (np. https://qr.teo.center — DNS na nazwany tunel Katedry) wygrywa: QR na metce się nie zmienia.
+        const staly = await Promise.resolve().then(adresKodow).catch(() => null);
+        const adres = staly || tunel;
         const kody = await Promise.all(s.kody.slice(0, 200).map(async (k) => {
             const url = adres ? `${String(adres).replace(/\/$/, '')}/wizytowka/taniec/${k.kod}` : null;
             return { ...k, url, qr: url && qr ? await qr(url).catch(() => null) : null };
         }));
-        return { kody, tunel: !!adres, powod: adres ? null : 'Tunel nie działa — kupujący nie otworzy strony kodu. Włącz tunel (najlepiej nazwany, ze stałym adresem — QR na metce nie może się zmieniać).' };
+        const powod = !tunel ? (staly ? `Tunel nie działa — ${staly} nie odpowie, dopóki go nie włączysz.` : 'Tunel nie działa — kupujący nie otworzy strony kodu. Włącz tunel (najlepiej nazwany, ze stałym adresem — QR na metce nie może się zmieniać).')
+            : (!staly && /trycloudflare\.com/.test(tunel) ? 'Adres tunelu jest tymczasowy (trycloudflare) — QR przestanie działać po restarcie. Ustaw stały adres kodów.' : null);
+        return { kody, tunel: !!tunel, adres, staly: !!staly, powod };
     })()));
     app.post('/api/taniec/kody', (req, res) => odp(res, K.noweKody({ ile: req.body?.ile, postac: req.body?.postac || null, produkt: req.body?.produkt }).then((kody) => ({ kody }))));
     // publicznie (tunel): strona, stan, zużycie (≤ 5/min z adresu), film
