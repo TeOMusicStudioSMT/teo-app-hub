@@ -64,3 +64,14 @@ test('telefon w Impressum i Datenschutz; whitepaper czytany z docs/', async () =
     const w = await F.whitepaper();
     assert.equal(w.plik, 'docs/whitepaper-grv.md'); assert.match(w.tekst, /GRV/);
 });
+
+test('Datenschutz: sekcja usług zewnętrznych według profilu', async () => {
+    const { F } = await srodowisko();
+    await F.ustawProfil(PROFIL_COR_TEO);
+    const de = (await F.mecenas('datenschutz', 'de')).tekst;
+    for (const n of ['Cloudflare', 'Stripe', 'Shopify', 'Printful', 'YouTube']) assert.match(de, new RegExp(n));
+    await F.ustawProfil({ ...PROFIL_COR_TEO, uslugi: ['stripe', 'nieznana'] });
+    assert.deepEqual((await F.profil()).uslugi, ['stripe']);
+    const en = (await F.mecenas('datenschutz', 'en')).tekst;
+    assert.match(en, /Stripe/); assert.doesNotMatch(en, /\*\*Shopify\*\*/);
+});

@@ -15,7 +15,7 @@ async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
 
 interface Profil {
     nazwa: string; marki: string[]; branza: string; kraj: string; jurysdykcja: string; forma: string; kleinunternehmer: boolean; waluta: string;
-    domeny: string[]; wlasciciel: string; adres: { ulica: string; kod: string; miasto: string; kraj: string }; email: string; telefon: string;
+    domeny: string[]; wlasciciel: string; adres: { ulica: string; kod: string; miasto: string; kraj: string }; email: string; telefon: string; uslugi?: string[];
     progi: { poprzedniRok: number; biezacyRok: number }; zalozony: boolean;
 }
 interface Prog { kwota: number; prog: number; procent: number; stan: 'ok' | 'blisko' | 'przekroczony' }
@@ -27,6 +27,8 @@ interface Skarb {
 const BARWA = { ok: 'text-emerald-300', blisko: 'text-amber-300', przekroczony: 'text-red-300' };
 const kw = (n: number, w: string) => `${n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${w}`;
 const pole = 'w-full rounded bg-black/50 px-2 py-1 text-xs';
+
+const USLUGI: [string, string][] = [['cloudflare', 'Cloudflare'], ['stripe', 'Stripe'], ['shopify', 'Shopify'], ['printful', 'Printful / POD'], ['youtube', 'YouTube / Google']];
 
 export const FirmaPanel: React.FC = () => {
     const [p, setP] = useState<Profil | null>(null);
@@ -95,6 +97,7 @@ export const FirmaPanel: React.FC = () => {
                         <label className="text-xs">Właściciel (imię i nazwisko)<input value={p.wlasciciel} onChange={(e) => ust({ wlasciciel: e.target.value })} className={pole} /></label>
                         <label className="text-xs">E-mail kontaktowy<input value={p.email} onChange={(e) => ust({ email: e.target.value })} className={pole} /></label>
                         <label className="text-xs">Telefon (opcjonalnie — drugi szybki kanał w Impressum)<input value={p.telefon} onChange={(e) => ust({ telefon: e.target.value })} placeholder="+49 …" className={pole} /></label>
+                        <div className="md:col-span-2 flex flex-wrap items-center gap-3 text-xs"><span className="text-white/50">Usługi zewnętrzne w Datenschutz:</span>{USLUGI.map(([id, n]) => (<label key={id} className="flex items-center gap-1"><input type="checkbox" checked={(p.uslugi ?? USLUGI.map(([x]) => x)).includes(id)} onChange={(e) => { const u = p.uslugi ?? USLUGI.map(([x]) => x); ust({ uslugi: e.target.checked ? [...u, id] : u.filter((x) => x !== id) }); }} />{n}</label>))}</div>
                         <label className="text-xs">Ulica i numer<input value={p.adres.ulica} onChange={(e) => ust({ adres: { ...p.adres, ulica: e.target.value } })} className={pole} /></label>
                         <label className="text-xs">Kod i miasto<span className="flex gap-1"><input value={p.adres.kod} onChange={(e) => ust({ adres: { ...p.adres, kod: e.target.value } })} className="w-20 rounded bg-black/50 px-2 py-1 text-xs" /><input value={p.adres.miasto} onChange={(e) => ust({ adres: { ...p.adres, miasto: e.target.value } })} className={pole} /></span></label>
                         <div className="md:col-span-2 flex gap-2"><button onClick={() => void zapiszProfil()} className="rounded bg-amber-600 px-3 py-1 text-xs font-bold">🥚 Zapisz profil</button>
