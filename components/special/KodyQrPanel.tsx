@@ -16,7 +16,7 @@ async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
 
 interface Kod {
     kod: string; produkt: string; tylko: string[] | null; stan: 'wolny' | 'zuzyty' | 'gotowy' | string;
-    utworzono: string; wydrukowano?: string; url: string | null; qr: string | null;
+    utworzono: string; wydrukowano?: string; url: string | null; qr: string | null; bonusGrv?: number; bonusOdebrany?: string | null;
 }
 interface Stan { kody: Kod[]; tunel: boolean; adres: string | null; staly: boolean; powod: string | null; tancerze: { id: string; nazwa: string }[]; wszystkich: number }
 const ZNAK: Record<string, string> = { wolny: '🟢 wolny', gotowy: '🎬 taniec gotowy', zuzyty: '⏳ wybrany, nagrywa się' };
@@ -43,6 +43,7 @@ export const KodyQrPanel: React.FC = () => {
     const [ile, setIle] = useState(21);
     const [produkt, setProdukt] = useState('');
     const [postac, setPostac] = useState('');
+    const [bonusGrv, setBonusGrv] = useState(0);
     const [filtr, setFiltr] = useState<'do-druku' | 'wolne' | 'wszystkie'>('do-druku');
     const [wybrane, setWybrane] = useState<Set<string>>(new Set());
     const [pracuje, setPracuje] = useState(false);
@@ -58,7 +59,7 @@ export const KodyQrPanel: React.FC = () => {
     const nowe = async () => {
         setPracuje(true);
         try {
-            const d = await zMostu<{ kody: Kod[] }>('/api/taniec/kody', { method: 'POST', body: JSON.stringify({ ile, produkt: produkt.trim(), postac: postac || null }) });
+            const d = await zMostu<{ kody: Kod[] }>('/api/taniec/kody', { method: 'POST', body: JSON.stringify({ ile, produkt: produkt.trim(), postac: postac || null, bonusGrv }) });
             toast.success(`🎟️ ${d.kody.length} nowych kodów`); setFiltr('do-druku'); await odswiez();
         } catch (e) { toast.error((e as Error).message); } finally { setPracuje(false); }
     };
@@ -102,6 +103,11 @@ export const KodyQrPanel: React.FC = () => {
                                 {(s?.tancerze ?? []).map((t) => <option key={t.id} value={t.id}>tylko {t.nazwa}</option>)}
                             </select>
                         </label>
+                        <label className="flex flex-col text-xs" title="Kupujący widzi kod bonusu po wybraniu tancerza; GRV dopisze jego WŁASNA Katedra przy pierwszym wejściu">🎁 Bonus GRV
+                            <select value={bonusGrv} onChange={(e) => setBonusGrv(Number(e.target.value))} className="rounded bg-black/50 px-2 py-1">
+                                {[0, 1000, 2500, 5000].map((n) => <option key={n} value={n}>{n ? `+${n.toLocaleString('pl-PL')} GRV` : 'bez bonusu'}</option>)}
+                            </select>
+                        </label>
                         <button onClick={() => void nowe()} disabled={pracuje} className="rounded bg-amber-600 px-3 py-1.5 font-bold disabled:opacity-40">＋ Utwórz</button>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -123,6 +129,7 @@ export const KodyQrPanel: React.FC = () => {
                                 <span className="font-mono text-xs">{k.kod}</span>
                                 <span className="text-xs text-white/70">{ZNAK[k.stan] ?? k.stan}</span>
                                 <span className="truncate text-xs text-white/50">{k.produkt}{k.tylko ? ` · tylko: ${k.tylko.map((id) => s?.tancerze.find((t) => t.id === id)?.nazwa ?? id).join(', ')}` : ''}</span>
+                                {k.bonusGrv ? <span className="text-[10px] text-amber-300">🎁 +{k.bonusGrv.toLocaleString('pl-PL')} GRV{k.bonusOdebrany ? ' · odebrany' : ''}</span> : null}
                                 <span className="ml-auto text-[10px] text-white/40">{k.wydrukowano ? `🖨️ ${new Date(k.wydrukowano).toLocaleDateString()}` : ''}</span>
                                 {k.url && <a href={k.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-sky-300">↗</a>}
                             </label>

@@ -164,6 +164,8 @@ export const SCIEZKA_KSIEGI = /^\/wizytowka\/ksiega(\/k-\d{8}-[0-9a-f]{6}\/(zdje
 export const SCIEZKA_WEJSCIA = '/wizytowka/wejscie';
 /** 💃🎟️ Kod tańca kupującego (services/KodyTanca.js): strona, stan i film (GET), zużycie kodu (POST, ≤ 5/min z adresu). */
 export const SCIEZKA_KODU_TANCA = /^\/wizytowka\/taniec\/t-[0-9a-f]{12}(\/stan|\/film\.(mp4|webm))?$/;
+/** 🎁 Odbiór bonusu GRV z metki przez Katedrę kupującego (services/KodyTanca.js, jednorazowy, podpisany). */
+export const SCIEZKA_BONUSU_GRV = /^\/wizytowka\/grv-bonus\/b-[0-9a-f]{16}$/;
 export const SCIEZKA_RINGU = /^\/wizytowka\/ring(\/r-[a-z0-9]{6,16}(\/wyjdz)?)?$/;
 export function czyWizytowka(req) {
     // 💬 Skrzynka TOST (services/TostSiec.js): inne Katedry wrzucają tu koperty — szyfrowane, podpisane,
@@ -180,6 +182,7 @@ export function czyWizytowka(req) {
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_WYPOZYCZENIA.test(String(req.path || ''))) return true;
     if ((req.method === 'GET' || req.method === 'HEAD') && SCIEZKA_KODU_TANCA.test(String(req.path || ''))) return true;
     if (req.method === 'POST' && /^\/wizytowka\/taniec\/t-[0-9a-f]{12}$/.test(String(req.path || ''))) return true;
+    if (req.method === 'POST' && SCIEZKA_BONUSU_GRV.test(String(req.path || ''))) return true;
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
     const p = String(req.path || '');
     if (SCIEZKA_SKLEPU.test(p)) return true;

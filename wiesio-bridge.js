@@ -278,6 +278,7 @@ import { utworzSkladnice, RODZAJE as RODZAJE_SKLADNICY } from './services/Skladn
 import { utworzSilniki, CELE as CELE_DYRYGENTA } from './services/Silniki.js';
 import { utworzSceny } from './services/ScenyDialogowe.js';
 import { kodDoUzycia } from './services/KodZaproszenia.js';
+import { odbierzBonus as odbierzBonusGrv } from './services/BonusGrv.js';
 import { utworzGlosyStada, tekstDoMowy } from './services/GlosyStada.js';
 import { genezaKsiegi, migrujKsiege, nowyKluczWezla, kimJestem, oczyscNazwe, nazwaWezla } from './services/KsiegaTozsamosc.js';
 import { utworzGielde, gpuZNvidiaSmi } from './services/GieldaMocy.js';
@@ -4993,15 +4994,22 @@ app.post('/api/grv/register', async (req, res) => {
         if (!k.ok) return res.status(403).json({ success: false, code: 'KOD_ODRZUCONY', message: k.powod });
         uzytyKod = k.kod; grv = k.kod.grv;
     }
+    // 🎁 Bonus GRV z metki 0.00G (services/BonusGrv.js): tylko przy zakładaniu właściciela; zły/odebrany = nic nie zakładamy.
+    let bonus = null;
+    if (jakoWlasciciel && String(req.body?.bonus ?? '').trim()) {
+        try { bonus = await odbierzBonusGrv(req.body.bonus); }
+        catch (e) { return res.status(403).json({ success: false, code: 'BONUS_ODRZUCONY', message: e.message }); }
+        grv += bonus.kwota;
+    }
     if (!uzytyKod && tier && GRV_TIERS[tier]) {
         const used = L.pools[tier] || 0;
         if (used >= GRV_TIERS[tier].count) return res.status(409).json({ success: false, message: `Pula ${tier} wyczerpana (${GRV_TIERS[tier].count}).` });
         grv = GRV_TIERS[tier].grv; role = tier; assignedTier = tier; L.pools[tier] = used + 1;
     }
-    L.nodes[id] = { grv, role, tier: assignedTier, registeredAt: Date.now(), ...(nazwa ? { nazwa } : {}), ...(uzytyKod ? { kod: uzytyKod.id } : {}) };
+    L.nodes[id] = { grv, role, tier: assignedTier, registeredAt: Date.now(), ...(nazwa ? { nazwa } : {}), ...(uzytyKod ? { kod: uzytyKod.id } : {}), ...(bonus ? { bonus: { kod: bonus.kod, wystawca: bonus.wystawca, kwota: bonus.kwota } } : {}) };
     if (uzytyKod) L.kody = { ...(L.kody ?? {}), [uzytyKod.id]: id };
     if (jakoWlasciciel) L.wlasciciel = id;
-    await sealGrv('register', { id, grv, tier: assignedTier, ...(nazwa ? { nazwa } : {}), ...(jakoWlasciciel ? { wlasciciel: true } : {}), ...(uzytyKod ? { kod: uzytyKod.id } : {}) });
+    await sealGrv('register', { id, grv, tier: assignedTier, ...(nazwa ? { nazwa } : {}), ...(jakoWlasciciel ? { wlasciciel: true } : {}), ...(uzytyKod ? { kod: uzytyKod.id } : {}), ...(bonus ? { bonus: { kod: bonus.kod, host: bonus.host, wystawca: bonus.wystawca, kwota: bonus.kwota, czas: bonus.czas } } : {}) });
     await saveGrvLedger();
     console.log(`[GRV] ➕ Węzeł ${id}${nazwa ? ` („${nazwa}”, właściciel)` : ''}: ${grv} GRV${assignedTier ? ` (${assignedTier})` : ''}.`);
     res.json({ success: true, id, ...L.nodes[id], ...(jakoWlasciciel ? { wlasciciel: true } : {}) });
@@ -11764,7 +11772,7 @@ const adresKodowTanca = async () => {
     const z = process.env.OTAKOS_KODY_ADRES || JSON.parse(await fs.readFile(path.join(ANTIGRAVITY_DIR, 'kody-tanca', 'adres.json'), 'utf8').catch(() => '{}')).adres;
     return /^https:\/\/[a-z0-9.-]+\/?$/i.test(String(z || '')) ? String(z).replace(/\/$/, '') : null;
 };
-zamontujTrasyKodowTanca(app, KodyTanca, { adresKodow: adresKodowTanca, adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; }, qr: (url) => QRCode.toDataURL(url, { margin: 1, width: 360 }) });
+zamontujTrasyKodowTanca(app, KodyTanca, { adresKodow: adresKodowTanca, adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; }, qr: (url) => QRCode.toDataURL(url, { margin: 1, width: 360 }), podpisz: (tekst) => Wizytowka.podpiszTekst(tekst), wystawca: async () => (await Wizytowka.profil()).nick || null });
 // ✦ Figury taneczne (services/FiguryTanca.js): Kompozytor (model przydziału `kompozytor`) składa nowe ruchy tancerza
 // z jego klipów riga — miks po kościach, warstwy, wejście w takt — tylko z zamkniętych list; Suweren ✓/✎ (pary do Kuźni).
 const FiguryTanca = utworzFiguryTanca({

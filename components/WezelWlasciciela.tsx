@@ -16,6 +16,7 @@ export const WezelWlasciciela: React.FC<{ onGotowe?: (w: WezelKsiegi) => void }>
   const [wlasciciel, setWlasciciel] = useState<WezelKsiegi | null>(null);
   const [imie, setImie] = useState('');
   const [kod, setKod] = useState('');
+  const [bonus, setBonus] = useState('');
   const [praca, setPraca] = useState(false);
   const [info, setInfo] = useState('');
   const [blad, setBlad] = useState('');
@@ -31,13 +32,13 @@ export const WezelWlasciciela: React.FC<{ onGotowe?: (w: WezelKsiegi) => void }>
   const zaloz = async () => {
     setPraca(true); setBlad(''); setInfo('');
     try {
-      const r = await fetch(`${MOST}/api/grv/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wlasciciel: true, nazwa: imie.trim(), kod: kod.trim() || undefined }) });
+      const r = await fetch(`${MOST}/api/grv/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wlasciciel: true, nazwa: imie.trim(), kod: kod.trim() || undefined, bonus: bonus.trim() || undefined }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.success === false) throw new Error(d.message || `Most odpowiedział HTTP ${r.status}`);
       zapamietajWezel(d.id, d.nazwa ?? imie.trim());
       const w = { id: d.id, nazwa: d.nazwa ?? d.id, grv: d.grv, tier: d.tier ?? null };
       setWlasciciel(w); onGotowe?.(w);
-      setInfo(d.existed ? `Ta Katedra ma już właściciela: „${w.nazwa}”.` : `✓ Witaj, ${w.nazwa}! Twój węzeł: ${Number(d.grv).toLocaleString('pl-PL')} GRV${d.kod ? ' — z kodem zaproszenia 🗝️' : ''}.`);
+      setInfo(d.existed ? `Ta Katedra ma już właściciela: „${w.nazwa}”.` : `✓ Witaj, ${w.nazwa}! Twój węzeł: ${Number(d.grv).toLocaleString('pl-PL')} GRV${d.kod ? ' — z kodem zaproszenia 🗝️' : ''}${d.bonus ? ` — w tym bonus z metki 🎁 +${Number(d.bonus.kwota).toLocaleString('pl-PL')} GRV od ${d.bonus.wystawca}` : ''}.`);
     } catch (e) { setBlad(e instanceof Error ? e.message : String(e)); } finally { setPraca(false); }
   };
   const zmien = async () => {
@@ -55,6 +56,7 @@ export const WezelWlasciciela: React.FC<{ onGotowe?: (w: WezelKsiegi) => void }>
       {wlasciciel && <p className="text-[11px] text-zinc-400">Węzeł w księdze: <code className="text-zinc-300">{wlasciciel.id}</code> · {String(wlasciciel.grv === 'INFINITE' ? '∞' : Number(wlasciciel.grv).toLocaleString('pl-PL'))} GRV — nazwę zmienisz w każdej chwili, klucz i saldo zostają.</p>}
       <input value={imie} onChange={(e) => setImie(e.target.value)} placeholder="Jak masz na imię? (np. Ania, Suweren Marek)" maxLength={40} className={pole} />
       {!wlasciciel && <input value={kod} onChange={(e) => setKod(e.target.value)} placeholder="Kod zaproszenia (opcjonalnie)" maxLength={40} className={`${pole} tracking-widest text-amber-200 focus:border-amber-500`} />}
+      {!wlasciciel && <input value={bonus} onChange={(e) => setBonus(e.target.value)} placeholder="🎁 Kod bonusu GRV z metki, np. b-…@qr.teo.center (opcjonalnie)" maxLength={80} className={`${pole} font-mono text-amber-200 focus:border-amber-500`} />}
       {blad && <p className="text-xs text-red-300">⚠ {blad}</p>}
       {info && <p className="text-xs text-emerald-300">{info}</p>}
       <button onClick={() => void (wlasciciel ? zmien() : zaloz())} disabled={praca || imie.trim().length < 2 || (!!wlasciciel && imie.trim() === wlasciciel.nazwa)}

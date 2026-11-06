@@ -14,6 +14,9 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 export const WZOR_KODU = /^t-[0-9a-f]{12}$/;
+export const WZOR_BONUSU = /^b-[0-9a-f]{16}$/, MAX_BONUSU = 100_000;
+/** Treść podpisu bonusu GRV — ta sama po stronie Katedry odbiorcy (services/BonusGrv.js). */
+export const trescBonusu = ({ kod, kwota, wystawca, czas }) => ['otakos-bonus-grv', kod, kwota, wystawca, czas].join('\n');
 const MAX_ZLECEN = 300, MAX_KODOW = 2000, ROBI_MAX_MS = 45 * 60_000, MAX_PROB = 3;
 const tekst = (s, n) => String(s ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
 
@@ -102,7 +105,8 @@ export function utworzKodyTanca(cfg) {
     });
 
     // ── 🎟️ kody ──
-    const noweKody = ({ ile = 1, postac = null, produkt = '' } = {}) => poKolei(async () => {
+    const noweKody = ({ ile = 1, postac = null, produkt = '', bonusGrv = 0 } = {}) => poKolei(async () => {
+        const bonus = Math.max(0, Math.min(MAX_BONUSU, Math.round(Number(bonusGrv) || 0)));
         const n = Math.max(1, Math.min(100, Math.round(Number(ile) || 1)));
         let tylko = null;
         if (postac) {
@@ -111,7 +115,8 @@ export function utworzKodyTanca(cfg) {
             tylko = t.map((x) => x.id);
         }
         const s = await czytaj();
-        const nowe = Array.from({ length: n }, () => ({ kod: `t-${crypto.randomBytes(6).toString('hex')}`, produkt: tekst(produkt, 120), tylko, stan: 'wolny', utworzono: iso(), zlecenie: null, film: null }));
+        const nowe = Array.from({ length: n }, () => ({ kod: `t-${crypto.randomBytes(6).toString('hex')}`, produkt: tekst(produkt, 120), tylko, stan: 'wolny', utworzono: iso(), zlecenie: null, film: null,
+            ...(bonus ? { bonusGrv: bonus, bonusKod: `b-${crypto.randomBytes(8).toString('hex')}`, bonusOdebrany: null } : {}) }));
         s.kody = [...nowe, ...s.kody].slice(0, MAX_KODOW);
         await zapisz(s);
         return nowe;
@@ -126,6 +131,7 @@ export function utworzKodyTanca(cfg) {
         return {
             stan: wolny ? 'wolny' : k.stan === 'gotowy' ? 'gotowy' : z?.stan === 'blad' ? 'blad' : z?.stan === 'robi' ? 'robi' : 'czeka',
             tancerze: wolny ? (await tancerze()).filter((t) => !k.tylko || k.tylko.includes(t.id)).map(({ id, nazwa }) => ({ id, nazwa })) : null,
+            bonus: !wolny && k.bonusGrv ? { kwota: k.bonusGrv, kod: k.bonusKod, odebrany: !!k.bonusOdebrany } : null,
             tancerz: z?.mini?.nazwa ?? null, utwor: z?.utwor?.tytul ?? null, film: k.stan === 'gotowy' && k.film ? `/wizytowka/taniec/${kod}/film${path.extname(k.film)}` : null,
         };
     }
@@ -147,13 +153,28 @@ export function utworzKodyTanca(cfg) {
         const k = (await czytaj()).kody.find((x) => x.kod === kod);
         return k?.stan === 'gotowy' && k.film ? path.join(FILMY, path.basename(k.film)) : null;
     }
+    /**
+     * 🎁 Odbiór bonusu GRV z metki — RAZ. Woła go Katedra kupującego przy pierwszym wejściu (`/api/grv/register {bonus}`);
+     * dostaje kwotę podpisaną kluczem wizytówki tej Katedry. GRV dopisuje jej WŁASNA księga — tu nic nie ubywa.
+     */
+    const odbierzBonus = (bonusKod, { podpisz, wystawca }) => poKolei(async () => {
+        if (!WZOR_BONUSU.test(String(bonusKod))) throw new Error('Invalid bonus code.');
+        const s = await czytaj(); const k = s.kody.find((x) => x.bonusKod === bonusKod);
+        if (!k || !k.bonusGrv) throw new Error('Bonus code not found.');
+        if (k.stan === 'wolny') throw new Error('Scan your 0.00G code and pick a dancer first.');
+        if (k.bonusOdebrany) throw new Error('This bonus has already been claimed.');
+        const czas = iso();
+        const podpis = await podpisz(trescBonusu({ kod: bonusKod, kwota: k.bonusGrv, wystawca, czas }));
+        k.bonusOdebrany = czas; await zapisz(s);
+        return { kod: bonusKod, kwota: k.bonusGrv, wystawca, czas, podpis };
+    });
     /** 🖨️ Kody wydrukowane na metki — znacznik, żeby nie drukować dwa razy (nie zmienia stanu kodu). */
     const oznaczWydruk = (lista) => poKolei(async () => {
         const s = await czytaj(); const chce = new Set((Array.isArray(lista) ? lista : []).map(String)); let n = 0;
         for (const k of s.kody) if (chce.has(k.kod)) { k.wydrukowano = iso(); n++; }
         await zapisz(s); return n;
     });
-    return { zlec, nastepne, gotowe, blad, ponow, noweKody, kodPubliczny, uzyjKodu, sciezkaFilmu, stan: czytaj, tancerze, oznaczWydruk };
+    return { zlec, nastepne, gotowe, blad, ponow, noweKody, kodPubliczny, uzyjKodu, sciezkaFilmu, stan: czytaj, tancerze, oznaczWydruk, odbierzBonus };
 }
 
 // ── strona kupującego (po angielsku — wydanie globalne; translate="no" przy kodzie) ──
@@ -164,22 +185,24 @@ export function stronaKodu(kod) {
 h1{font:700 26px Georgia,serif;letter-spacing:.04em;margin:0 0 4px}small{opacity:.65}button{background:#1b1b24;color:inherit;border:1px solid #c9a44c;border-radius:10px;padding:12px 14px;margin:6px 6px 0 0;font:inherit;cursor:pointer}
 button:disabled{opacity:.4}video{width:100%;border-radius:12px;margin-top:12px;background:#000}#info{margin-top:14px}.blad{color:#ff8a8a}</style></head>
 <body><main><h1>0.00G Style</h1><small translate="no">${esc(kod)}</small><p>Your one-time code: pick a dancer and the Cathedral draws a random track from its library. The dance is choreographed and recorded for you alone — after that, this code always shows your private performance.</p>
-<div id="wybor"></div><div id="info"></div><video id="film" controls playsinline hidden></video></main>
+<div id="wybor"></div><div id="info"></div><div id="bonus" hidden style="margin-top:14px;padding:12px;border:1px solid #c9a44c;border-radius:12px"></div><video id="film" controls playsinline hidden></video></main>
 <script>
 const K=${JSON.stringify(kod)};const $=(i)=>document.getElementById(i);
 async function stan(){const r=await fetch('/wizytowka/taniec/'+K+'/stan',{cache:'no-store'});const d=await r.json();if(!r.ok){$('info').innerHTML='<p class="blad">'+(d.message||'Code not found.')+'</p>';return}pokaz(d.kod)}
 function pokaz(s){const w=$('wybor');w.innerHTML='';
  if(s.stan==='wolny'){w.innerHTML='<p>Choose your dancer:</p>';for(const t of s.tancerze){const b=document.createElement('button');b.textContent=t.nazwa;b.onclick=()=>uzyj(t.id,b);w.appendChild(b)}return}
+ bonus(s.bonus);
  if(s.stan==='gotowy'){$('info').innerHTML='<p>💃 '+s.tancerz+' — “'+s.utwor+'”</p>';const v=$('film');v.src=s.film;v.hidden=false;return}
  if(s.stan==='blad'){$('info').innerHTML='<p class="blad">The recording failed. The Cathedral will retry — check back later.</p>';setTimeout(stan,60000);return}
  $('info').innerHTML='<p>⏳ '+(s.tancerz||'')+' is dancing to “'+(s.utwor||'…')+'”. The Cathedral records the performance on its own machine — this can take a few minutes, or longer if the Cathedral is busy. You can close this page and come back with the same code.</p>';setTimeout(stan,20000)}
+function bonus(b){const e=$('bonus');if(!b){e.hidden=true;return}e.hidden=false;e.innerHTML=b.odebrany?'<p>🎁 Bonus +'+b.kwota.toLocaleString('en')+' GRV — already claimed.</p>':'<p>🎁 <b>Bonus: +'+b.kwota.toLocaleString('en')+' GRV</b></p><p>Your claim code:</p><p><code translate="no">'+b.kod+'</code> <button onclick="navigator.clipboard.writeText(''+b.kod+'')">📋 Copy</button></p><small>Enter it once, when you set up your own OtakOS Cathedral (first start → your name → bonus code). The GRV land in the own ledger of your Cathedral. One claim per code.</small>'}
 async function uzyj(id,b){for(const x of document.querySelectorAll('button'))x.disabled=true;const r=await fetch('/wizytowka/taniec/'+K,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mini:id})});const d=await r.json().catch(()=>({}));if(!r.ok){$('info').innerHTML='<p class="blad">'+(d.message||'Error')+'</p>';for(const x of document.querySelectorAll('button'))x.disabled=false;return}stan()}
 stan();
 </script></body></html>`;
 }
 
 /** Trasy: automat i kody (maszyna, Straż `/api/taniec/automat`, `/api/taniec/kody`) + strona kodu (publicznie przez tunel). */
-export function zamontujTrasyKodowTanca(app, K, { adresTunelu = async () => null, adresKodow = async () => null, qr = null } = {}) {
+export function zamontujTrasyKodowTanca(app, K, { adresTunelu = async () => null, adresKodow = async () => null, qr = null, podpisz = null, wystawca = async () => null } = {}) {
     const odp = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(400).json({ success: false, message: e.message }));
     app.get('/api/taniec/automat', (_req, res) => odp(res, K.stan().then((s) => ({ zlecenia: s.zlecenia.slice(0, 50) }))));
     app.post('/api/taniec/automat/zlec', (req, res) => odp(res, K.zlec({ mini: req.body?.mini, utwor: req.body?.utwor || null }).then((zlecenie) => ({ zlecenie }))));
@@ -202,7 +225,7 @@ export function zamontujTrasyKodowTanca(app, K, { adresTunelu = async () => null
         return { kody, tunel: !!tunel, adres, staly: !!staly, powod, tancerze, wszystkich: s.kody.length };
     })()));
     app.post('/api/taniec/kody/wydrukowane', (req, res) => odp(res, K.oznaczWydruk(req.body?.kody).then((oznaczone) => ({ oznaczone }))));
-    app.post('/api/taniec/kody', (req, res) => odp(res, K.noweKody({ ile: req.body?.ile, postac: req.body?.postac || null, produkt: req.body?.produkt }).then((kody) => ({ kody }))));
+    app.post('/api/taniec/kody', (req, res) => odp(res, K.noweKody({ ile: req.body?.ile, postac: req.body?.postac || null, produkt: req.body?.produkt, bonusGrv: req.body?.bonusGrv }).then((kody) => ({ kody }))));
     // publicznie (tunel): strona, stan, zużycie (≤ 5/min z adresu), film
     const proby = new Map();
     app.get(/^\/wizytowka\/taniec\/(t-[0-9a-f]{12})$/, async (req, res) => {
@@ -212,6 +235,8 @@ export function zamontujTrasyKodowTanca(app, K, { adresTunelu = async () => null
     app.get(/^\/wizytowka\/taniec\/(t-[0-9a-f]{12})\/stan$/, async (req, res) => {
         const kod = await K.kodPubliczny(req.params[0]);
         if (!kod) return res.status(404).json({ success: false, message: 'Code not found.' });
+        // kod bonusu z adresem wystawcy: „b-…@qr.teo.center” — Katedra kupującego wie, gdzie go odebrać
+        if (kod.bonus) { const a = await Promise.resolve().then(adresKodow).catch(() => null) || await Promise.resolve().then(adresTunelu).catch(() => null); kod.bonus.kod = a ? `${kod.bonus.kod}@${new URL(a).host}` : kod.bonus.kod; }
         res.set('Cache-Control', 'no-store').json({ success: true, kod });
     });
     app.post(/^\/wizytowka\/taniec\/(t-[0-9a-f]{12})$/, async (req, res) => {
@@ -220,6 +245,17 @@ export function zamontujTrasyKodowTanca(app, K, { adresTunelu = async () => null
         if (t.length >= 5) return res.status(429).json({ success: false, message: 'Too many attempts — wait a minute.' });
         proby.set(ip, [...t, Date.now()]);
         try { await K.uzyjKodu(req.params[0], String(req.body?.mini ?? '')); res.json({ success: true }); }
+        catch (e) { res.status(409).json({ success: false, message: e.message }); }
+    });
+    // 🎁 odbiór bonusu GRV przez Katedrę kupującego (publicznie, ≤ 5/min z adresu, jednorazowo)
+    app.post(/^\/wizytowka\/grv-bonus\/(b-[0-9a-f]{16})$/, async (req, res) => {
+        const ip = String(req.get?.('cf-connecting-ip') || req.ip || '');
+        const t = (proby.get('b' + ip) ?? []).filter((x) => Date.now() - x < 60_000);
+        if (t.length >= 5) return res.status(429).json({ success: false, message: 'Too many attempts — wait a minute.' });
+        proby.set('b' + ip, [...t, Date.now()]);
+        const nick = await Promise.resolve().then(wystawca).catch(() => null);
+        if (!podpisz || !nick) return res.status(503).json({ success: false, message: 'This Cathedral cannot sign bonuses (no public profile).' });
+        try { res.json({ success: true, ...(await K.odbierzBonus(req.params[0], { podpisz, wystawca: nick })) }); }
         catch (e) { res.status(409).json({ success: false, message: e.message }); }
     });
     app.get(/^\/wizytowka\/taniec\/(t-[0-9a-f]{12})\/film\.(mp4|webm)$/, async (req, res) => {
