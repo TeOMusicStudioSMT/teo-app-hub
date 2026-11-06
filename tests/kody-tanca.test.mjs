@@ -128,3 +128,19 @@ test('stały adres kodów wygrywa z tunelem; tunel wyłączony = adres zostaje, 
     const srv = app.listen(0);
     try { assert.match((await (await fetch(`http://127.0.0.1:${srv.address().port}/api/taniec/kody`)).json()).powod, /tymczasowy/); } finally { srv.close(); }
 });
+
+test('🖨️ znacznik wydruku: tylko wskazane kody, stan kodu bez zmian; lista podaje tancerzy', async () => {
+    const { K } = await srodowisko();
+    const [a, b] = await K.noweKody({ ile: 2 });
+    assert.equal(await K.oznaczWydruk([a.kod, 't-000000000000']), 1);
+    const s = await K.stan();
+    const ka = s.kody.find((k) => k.kod === a.kod), kb = s.kody.find((k) => k.kod === b.kod);
+    assert.ok(ka.wydrukowano); assert.equal(ka.stan, 'wolny'); assert.equal(kb.wydrukowano, undefined);
+    const app = express(); app.use(express.json());
+    zamontujTrasyKodowTanca(app, K, { adresKodow: async () => 'https://qr.teo.center' });
+    const srv = app.listen(0);
+    try {
+        const l = await (await fetch(`http://127.0.0.1:${srv.address().port}/api/taniec/kody`)).json();
+        assert.ok(l.tancerze.some((t) => t.nazwa === 'Koralik')); assert.equal(l.wszystkich, 2);
+    } finally { srv.close(); }
+});

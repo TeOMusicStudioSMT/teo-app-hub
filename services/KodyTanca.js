@@ -147,7 +147,13 @@ export function utworzKodyTanca(cfg) {
         const k = (await czytaj()).kody.find((x) => x.kod === kod);
         return k?.stan === 'gotowy' && k.film ? path.join(FILMY, path.basename(k.film)) : null;
     }
-    return { zlec, nastepne, gotowe, blad, ponow, noweKody, kodPubliczny, uzyjKodu, sciezkaFilmu, stan: czytaj, tancerze };
+    /** 🖨️ Kody wydrukowane na metki — znacznik, żeby nie drukować dwa razy (nie zmienia stanu kodu). */
+    const oznaczWydruk = (lista) => poKolei(async () => {
+        const s = await czytaj(); const chce = new Set((Array.isArray(lista) ? lista : []).map(String)); let n = 0;
+        for (const k of s.kody) if (chce.has(k.kod)) { k.wydrukowano = iso(); n++; }
+        await zapisz(s); return n;
+    });
+    return { zlec, nastepne, gotowe, blad, ponow, noweKody, kodPubliczny, uzyjKodu, sciezkaFilmu, stan: czytaj, tancerze, oznaczWydruk };
 }
 
 // ── strona kupującego (po angielsku — wydanie globalne; translate="no" przy kodzie) ──
@@ -192,8 +198,10 @@ export function zamontujTrasyKodowTanca(app, K, { adresTunelu = async () => null
         }));
         const powod = !tunel ? (staly ? `Tunel nie działa — ${staly} nie odpowie, dopóki go nie włączysz.` : 'Tunel nie działa — kupujący nie otworzy strony kodu. Włącz tunel (najlepiej nazwany, ze stałym adresem — QR na metce nie może się zmieniać).')
             : (!staly && /trycloudflare\.com/.test(tunel) ? 'Adres tunelu jest tymczasowy (trycloudflare) — QR przestanie działać po restarcie. Ustaw stały adres kodów.' : null);
-        return { kody, tunel: !!tunel, adres, staly: !!staly, powod };
+        const tancerze = await K.tancerze().then((l) => l.map(({ id, nazwa }) => ({ id, nazwa }))).catch(() => []);
+        return { kody, tunel: !!tunel, adres, staly: !!staly, powod, tancerze, wszystkich: s.kody.length };
     })()));
+    app.post('/api/taniec/kody/wydrukowane', (req, res) => odp(res, K.oznaczWydruk(req.body?.kody).then((oznaczone) => ({ oznaczone }))));
     app.post('/api/taniec/kody', (req, res) => odp(res, K.noweKody({ ile: req.body?.ile, postac: req.body?.postac || null, produkt: req.body?.produkt }).then((kody) => ({ kody }))));
     // publicznie (tunel): strona, stan, zużycie (≤ 5/min z adresu), film
     const proby = new Map();

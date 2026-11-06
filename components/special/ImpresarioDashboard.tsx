@@ -16,6 +16,7 @@ import { PolaczYouTube, PublikacjeYouTubePanel } from './YouTubeStudio';
 import { GameShowPanel } from './GameShowPanel';
 import { SunoPanel } from './SunoPanel';
 import { StalaObsadaPanel } from './StalaObsadaPanel';
+import { KodyQrPanel } from './KodyQrPanel';
 import { WieczorTancaPanel } from './WieczorTancaPanel';
 import { FormatyPanel } from './FormatyPanel';
 import { otworzApke } from '../../lib/pierscien';
@@ -501,6 +502,7 @@ const ImpresarioDashboard: React.FC = () => {
                         <GameShowPanel />
                         <SunoPanel />
                         <StalaObsadaPanel />
+                        <KodyQrPanel />
                         <WieczorTancaPanel />
                         <FormatyPanel />
                         {/* ⚽ Gol Dnia przeniesiony do Studia Zebrra Football jako zakładka (Suweren 2026-10-15) */}
