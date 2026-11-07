@@ -23,6 +23,8 @@ interface Pozycja { id: string; data: string; rodzaj: 'przychod' | 'koszt'; kwot
 interface Skarb {
     rok: number; waluta: string; przychody: number; koszty: number; wynik: number; inneWaluty: Record<string, number>;
     kleinunternehmer: { poprzedniRok: Prog; biezacyRok: Prog; uwaga: string } | null; zrodla: { stripe: number; reczne: number; brak: string[] }; pozycje: Pozycja[];
+    ksiegi?: { wlasne: { id: string; tytul: string; autor: string | null; katedra: string | null; tier: string; cenaEur: number; wypozyczen: number; przychod: number; waluta: string }[];
+        federacja: { id: string; tytul: string; autor: string | null; katedra: string; tier: string; cenaEur: number; stan: string }[] } | null;
 }
 const BARWA = { ok: 'text-emerald-300', blisko: 'text-amber-300', przekroczony: 'text-red-300' };
 const kw = (n: number, w: string) => `${n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${w}`;
@@ -144,6 +146,23 @@ export const FirmaPanel: React.FC = () => {
                             </div>
                         ))}
                     </div>
+                    {s.ksiegi && (s.ksiegi.wlasne.length > 0 || s.ksiegi.federacja.length > 0) && (
+                        <div className="mt-3 text-[11px]">
+                            <b className="text-amber-200">📚 Autorzy pozycji teostory.studio</b>
+                            {s.ksiegi.wlasne.map((k) => (
+                                <div key={`w-${k.id}`} className="flex gap-2 border-b border-white/5 py-0.5">
+                                    <span className="truncate">„{k.tytul}”</span><span className="text-white/60">{k.autor ?? 'autor nieznany'} · 🏛️ {k.katedra ?? 'ta Katedra'}</span>
+                                    <span className="ml-auto text-emerald-300">{k.wypozyczen} wypoż. · {kw(k.przychod, k.waluta)}</span>
+                                </div>
+                            ))}
+                            {s.ksiegi.federacja.map((k) => (
+                                <div key={`f-${k.katedra}-${k.id}`} className="flex gap-2 border-b border-white/5 py-0.5">
+                                    <span className="truncate">„{k.tytul}”</span><span className="text-white/60">{k.autor ?? 'autor nieznany'} · 🏛️ {k.katedra}</span>
+                                    <span className="ml-auto text-white/50">{k.stan} · {k.tier === 'demo' ? 'za darmo' : `${k.cenaEur} € → Stripe Katedry autora`}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
 

@@ -66,7 +66,7 @@ export function podsumujRok(pozycje, rok, waluta) {
 
 export const WHITEPAPER = 'docs/whitepaper-grv.md';
 
-export function utworzFirme({ katalog, sprzedazStripe = async () => [], teraz = () => Date.now(), whitepaper = new URL('../' + WHITEPAPER, import.meta.url) }) {
+export function utworzFirme({ katalog, sprzedazStripe = async () => [], autorstwoKsiag = async () => null, teraz = () => Date.now(), whitepaper = new URL('../' + WHITEPAPER, import.meta.url) }) {
     const KAT = path.join(katalog, 'firma'), PROFIL = path.join(KAT, 'profil-biznesu.json'), KSIEGA = path.join(KAT, 'ksiega-firmy.json'), PRAWO = path.join(KAT, 'prawo');
     const czytajJson = async (p, d) => { try { return JSON.parse(await fs.readFile(p, 'utf8')); } catch { return d; } };
     const zapisz = async (p, d) => { await fs.mkdir(path.dirname(p), { recursive: true }); const tmp = `${p}.${process.pid}.tmp`; await fs.writeFile(tmp, JSON.stringify(d, null, 2), 'utf8'); await fs.rename(tmp, p); };
@@ -107,6 +107,8 @@ export function utworzFirme({ katalog, sprzedazStripe = async () => [], teraz = 
             zrodla: { stripe: stripe.filter((s) => s.data.startsWith(String(r))).length, reczne: reczne.filter((s) => s.data.startsWith(String(r))).length,
                 brak: ['Shopify (niepodłączony — wpisz wypłaty ręcznie)', 'koszty druku i tokenów chmury (wpisz z faktur)'] },
             pozycje: wszystkie.filter((s) => s.data.startsWith(String(r))).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 300),
+            // 📚 kto jest autorem której Żywej Księgi / audiobooka (własne + zgłoszone przez inne Katedry do teostory.studio)
+            ksiegi: await Promise.resolve().then(autorstwoKsiag).catch(() => null),
         };
     }
 

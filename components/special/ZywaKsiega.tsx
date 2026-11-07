@@ -8,6 +8,7 @@
  * Sfera w czasie nagrania oddycha głośnością Twojego głosu (AnalyserNode), nie zegarem.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import WlasnyManuskrypt from './WlasnyManuskrypt';
 
 const MOST = 'http://127.0.0.1:3001';
 
@@ -335,7 +336,23 @@ function KartaWpisu({ w, odswiez, ustawBlad }: { w: Wpis; odswiez: () => void; u
     );
 }
 
+/** Dwie zakładki: Iskry Suwerena i 📥 Własny Manuskrypt (książka autora → audiobook, film, Żywa Księga). */
 export default function ZywaKsiega() {
+    const [zakladka, setZakladka] = useState<'iskry' | 'manuskrypt'>(() => { try { return localStorage.getItem('otakos_ksiega_zakladka') === 'manuskrypt' ? 'manuskrypt' : 'iskry'; } catch { return 'iskry'; } });
+    const ustaw = (z: 'iskry' | 'manuskrypt') => { setZakladka(z); try { localStorage.setItem('otakos_ksiega_zakladka', z); } catch { /* bez pamięci */ } };
+    return (
+        <div>
+            <div className="flex justify-center gap-2 pt-3">
+                {([['iskry', '📖 Iskry'], ['manuskrypt', '📥 Własny Manuskrypt']] as const).map(([id, n]) => (
+                    <button key={id} onClick={() => ustaw(id)} className={`rounded-full px-4 py-1 text-sm ${zakladka === id ? 'bg-amber-400 font-bold text-slate-950' : 'border border-amber-500/40 text-amber-200'}`}>{n}</button>
+                ))}
+            </div>
+            {zakladka === 'iskry' ? <IskryKsiegi /> : <WlasnyManuskrypt />}
+        </div>
+    );
+}
+
+function IskryKsiegi() {
     const [wpisy, setWpisy] = useState<Wpis[] | null>(null);
     const [tekst, setTekst] = useState('');
     const [publiczny, setPubliczny] = useState(true);

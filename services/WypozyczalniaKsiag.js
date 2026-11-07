@@ -89,11 +89,26 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
             if (lok) await fs.copyFile(lok, path.join(kat, nazwa)); else await fs.writeFile(path.join(kat, nazwa), Buffer.from(m[2], 'base64'));
             return `/wizytowka/teostory/${id}/obraz/${nazwa}`;
         };
+        // 🎙️ dźwięk strony (Własny Manuskrypt: lektor Głosek) → audio-N.mp3; obcy adres https zostaje, reszta znika
+        let a = 0;
+        const przeniesDzwiek = async (url) => {
+            if (typeof url !== 'string' || !url) return undefined;
+            const lok = obrazLokalny(url);
+            if (!lok || !/\.mp3$/i.test(lok)) return /^https:\/\//.test(url) ? url : undefined;
+            const nazwa = `audio-${++a}.mp3`;
+            await fs.copyFile(lok, path.join(kat, nazwa));
+            return `/wizytowka/teostory/${id}/audio/${nazwa}`;
+        };
         const pages = [];
-        for (const s of book.pages ?? []) pages.push({ ...s, imageUrl: await przenies(s?.imageUrl), plates: undefined });
+        for (const s of book.pages ?? []) pages.push({ ...s, imageUrl: await przenies(s?.imageUrl), audioUrl: await przeniesDzwiek(s?.audioUrl), plates: undefined });
         const characters = [];
         for (const c of book.characters ?? []) characters.push({ ...c, avatarCutoutUrl: await przenies(c?.avatarCutoutUrl) });
         return { ...book, id, pages, characters };
+    }
+    function plikDzwieku(id, nazwa) {
+        if (!ID.test(String(id)) || !/^audio-\d{1,3}\.mp3$/.test(String(nazwa))) return null;
+        const p = path.join(KS, id, nazwa);
+        return fsSync.existsSync(p) ? p : null;
     }
     function plikObrazu(id, nazwa) {
         if (!ID.test(String(id)) || !/^obraz-\d{1,3}\.(png|jpg|webp)$/.test(String(nazwa))) return null;
@@ -181,14 +196,14 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return { ksiega: book, dostepDo: doKiedy };
     }
 
-    return { plikObrazu, publikuj, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
+    return { plikObrazu, plikDzwieku, publikuj, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
         wypozyczenia: async () => (await czytaj(WYP, { wypozyczenia: [] })).wypozyczenia };
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /** Trasy: Hub (Straż `/api/books`: maszyna) i publiczne `/wizytowka/teostory/…` (Straż: SCIEZKA_TEOSTORY / SCIEZKA_WYPOZYCZENIA). */
-export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10 } = {}) {
+export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10, federacja = null, nick = async () => null } = {}) {
     const odp = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }));
     const cors = (res) => { res.set('Access-Control-Allow-Origin', '*'); res.set('Access-Control-Allow-Headers', 'Content-Type'); res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); };
     // Hub
@@ -200,12 +215,29 @@ export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10 } = {}) {
     app.get('/api/books/rentals', (_req, res) => odp(res, W.wypozyczenia().then((wypozyczenia) => ({ wypozyczenia }))));
     // Publiczne (portal teostory.studio przez tunel Katedry)
     const proby = new Map();
-    app.get('/wizytowka/teostory', (_req, res) => { cors(res); odp(res, W.katalogPubliczny().then((ksiegi) => ({ ksiegi }))); });
+    // 📚🏛️ katalog wydawcy = własne + przyjęte z innych Katedr (`katedra {nick, adres}`); `?tylko=moje` = tylko własne (weryfikacja wydawcy)
+    app.get('/wizytowka/teostory', (req, res) => {
+        cors(res);
+        odp(res, (async () => {
+            const wlasne = (await W.katalogPubliczny()).map((k) => ({ ...k, katedra: null }));
+            const obce = req.query.tylko === 'moje' || !federacja ? [] : await federacja().catch(() => []);
+            return { ksiegi: [...wlasne, ...obce], wydawca: { nick: await nick().catch(() => null) } };
+        })());
+    });
     app.get('/wizytowka/teostory/:id/obraz/:plik', async (req, res) => {
         cors(res);
         const k = (await W.katalogPubliczny()).find((x) => x.id === req.params.id);
         const p = k ? W.plikObrazu(req.params.id, req.params.plik) : null;
         return p ? res.sendFile(p) : res.status(404).end();
+    });
+    // 🎙️ dźwięk strony: demo za darmo, wypożyczenie = ta sama opłacona sesja co czytanie (audiobook nie wycieka za darmo)
+    app.get('/wizytowka/teostory/:id/audio/:plik', async (req, res) => {
+        cors(res);
+        try {
+            await W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null });
+            const p = W.plikDzwieku(req.params.id, req.params.plik);
+            return p ? res.sendFile(p) : res.status(404).end();
+        } catch (e) { return res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }); }
     });
     app.get('/wizytowka/teostory/:id/okladka', async (req, res) => { const p = await W.plikOkladki(req.params.id); return p ? res.sendFile(p) : res.status(404).end(); });
     app.get('/wizytowka/teostory/:id/czytaj', (req, res) => { cors(res); odp(res, W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null })); });
@@ -220,7 +252,8 @@ export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10 } = {}) {
     app.get('/wizytowka/teostory/odbior', async (req, res) => {
         try {
             const o = await W.odbierz(String(req.query.sesja ?? ''));
-            if (o.powrot) return res.redirect(302, `${o.powrot}?ksiega=${encodeURIComponent(o.ksiega)}&sesja=${encodeURIComponent(String(req.query.sesja))}`);
+            const n = await nick().catch(() => null);   // portal wydawcy rozpozna, z której Katedry wraca wypożyczenie
+            if (o.powrot) return res.redirect(302, `${o.powrot}?ksiega=${encodeURIComponent(o.ksiega)}&sesja=${encodeURIComponent(String(req.query.sesja))}${n ? `&katedra=${encodeURIComponent(n)}` : ''}`);
             return res.type('html').send(`<!doctype html><meta charset="utf-8"><title>Wypożyczone</title><body style="font-family:Georgia;background:#F6F2EA;padding:40px"><h1>📚 Wypożyczone na ${GODZIN_WYPOZYCZENIA} h</h1><p>Dostęp do: ${esc(o.do)}. Wróć do teostory.studio — księga czeka na Twojej półce.</p></body>`);
         } catch (e) { return res.status(typeof e.kod === 'number' ? e.kod : 400).type('html').send(`<!doctype html><meta charset="utf-8"><body style="font-family:Georgia;padding:40px"><h1>Nie rozpoznaję tej płatności</h1><p>${esc(e.message)}</p></body>`); }
     });

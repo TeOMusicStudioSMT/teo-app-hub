@@ -10,7 +10,7 @@
 **PL:** Cor-TeO to jednoosobowa firma (Einzelunternehmen, NRW, Kleinunternehmer wg § 19 UStG). Działa na lokalnej, wieloagentowej platformie **OtakOS** („Katedra”). Ma trzy filary handlowe:
 
 1. **0.00G Style**: odzież print-on-demand z kolekcjami 360°. Na każdej metce jest jednorazowy kod QR do prywatnego występu tanecznego postaci 3D (`qr.teo.center`).
-2. **teostory.studio**: wypożyczalnia Żywych Ksiąg, czyli interaktywnych opowieści 2.5D. Wypożyczenie na 48 h jest płatne w EUR przez Stripe.
+2. **teostory.studio**: wypożyczalnia Żywych Ksiąg, czyli interaktywnych opowieści 2.5D. Wypożyczenie na 48 h jest płatne w EUR przez Stripe. Autorzy z zewnątrz wgrywają własne książki (PDF, DOCX, TXT) z ilustracjami: Katedra robi z nich audiobook z lektorem, film i Żywą Księgę. Inne Katedry mogą zgłaszać swoje księgi do wspólnego katalogu (zgłoszenie podpisane ed25519, akceptacja wydawcy); płatność za wypożyczenie trafia do Katedry autora, a Skarbnik wydawcy zapisuje autorstwo pozycji.
 3. **WORKPalace**: pięć skrzydeł firmy, czyli agenci i panele zarządcze. Do tego **Jajo Założyciela** jako szablon profilu biznesu dla każdej Katedry.
 
 Wewnętrzną jednostką użytkową jest **GRV (Graviton)**: punkty bez wartości pieniężnej, zapisywane w księdze każdej Katedry osobno.
@@ -115,6 +115,7 @@ WORKPalace (Dom TeOgochi → WORKPalace) dzieli meldunki i panele na skrzydła. 
 | Element | Plik |
 |---|---|
 | Profil, Skarbnik, Mecenas | `services/Firma.js`, `components/special/FirmaPanel.tsx` |
+| Własny Manuskrypt, Federacja Wydawnicza teostory.studio | `services/WlasnyManuskrypt.js`, `services/FederacjaKsiag.js`, `services/WypozyczalniaKsiag.js` |
 | Księga GRV, właściciel, start 1 000 | `services/KsiegaTozsamosc.js`, `wiesio-bridge.js` (`/api/grv/register`) |
 | Kody tańca i bonus po stronie wystawcy | `services/KodyTanca.js` |
 | Odbiór bonusu po stronie kupującego | `services/BonusGrv.js` |

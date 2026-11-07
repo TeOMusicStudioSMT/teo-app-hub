@@ -17,6 +17,8 @@ import { utworzStripe } from './services/Stripe.js';
 import { utworzSklepMini, zamontujTrasySklepu, BUDZET_PRODUKCJI as SKLEP_BUDZET } from './services/SklepMini.js';
 import { utworzWypozyczalnie, zamontujTrasyWypozyczalni } from './services/WypozyczalniaKsiag.js';
 import { utworzSilnikKsiag, zamontujTrasySilnikaKsiag } from './services/SilnikKsiag.js';
+import { utworzManuskrypt, zamontujTrasyManuskryptu } from './services/WlasnyManuskrypt.js';
+import { utworzFederacje, zamontujTrasyFederacji } from './services/FederacjaKsiag.js';
 import { utworzLinkiSklepu, zamontujTrasyLinkowSklepu } from './services/LinkiSklepu.js';
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
@@ -9140,9 +9142,18 @@ Wizytowka.skonfiguruj({ sklep: SklepMini });
 // 📚 Wypożyczalnia Żywych Ksiąg teostory.studio (services/WypozyczalniaKsiag.js): silnik czytnika publikuje (/api/books/*, maszyna),
 // portal czyta i wypożycza przez tunel (/wizytowka/teostory/*): demo za darmo, 48 h = Stripe Checkout, dostęp = opłacona sesja.
 const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe,
-    obrazLokalny: (u) => SilnikKsiag.plikZAdresu(u),   // obrazy z Silnika Ksiąg kopiowane przy publikacji (gość nie widzi /api)
+    obrazLokalny: (u) => SilnikKsiag.plikZAdresu(u) ?? Manuskrypt.plikZAdresu(u),   // obrazy (i dźwięk Manuskryptu) kopiowane przy publikacji (gość nie widzi /api)
     adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
-zamontujTrasyWypozyczalni(app, Wypozyczalnia);
+// 📚🏛️ Federacja Wydawnicza (services/FederacjaKsiag.js): księgi innych Katedr w katalogu teostory.studio — zgłoszenie podpisane
+// kluczem wizytówki autora, sprawdzane kluczem z rejestru otakos.wtf, ✓ w Izbie zgód; czytanie i płatność idą do Katedry autora.
+const adresTunelu = async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; };
+const FederacjaKsiag = utworzFederacje({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), wypozyczalnia: Wypozyczalnia,
+    nick: async () => (await Wizytowka.profil()).nick || null, podpisz: (t) => Wizytowka.podpiszTekst(t), adres: adresTunelu,
+    katedra: (n) => PaczkiGier.katedraZRejestru(n),
+    plikKsiegi: (id) => { const p = path.join(ANTIGRAVITY_DIR, 'teostory', 'ksiegi', `${id}.json`); return /^[a-z0-9][a-z0-9-]{2,63}$/.test(id) && fsSync.existsSync(p) ? p : null; },
+    wydawca: process.env.OTAKOS_TEOSTORY_WYDAWCA || 'https://katedra.otakos.wtf', szyna: Szyna });
+zamontujTrasyFederacji(app, FederacjaKsiag);
+zamontujTrasyWypozyczalni(app, Wypozyczalnia, { federacja: () => FederacjaKsiag.pozycjePubliczne(), nick: async () => (await Wizytowka.profil()).nick || null });
 if (process.env.OTAKOS_SKLEP_MINI !== '0') setTimeout(() => SklepMini.startPetli(), 120_000).unref?.();
 // 💃🥊 Ring taneczny (services/RingTaneczny.js): pojedynki Mini-TeOgochi między Katedrami — walkę liczą gracze
 // (apka _OtakOs_Apki/taneczne-starcie), most trzyma w pamięci tylko karty, ziarno, start i ruchy {takt, skill}.
@@ -11775,7 +11786,7 @@ const adresKodowTanca = async () => {
 };
 zamontujTrasyKodowTanca(app, KodyTanca, { adresKodow: adresKodowTanca, adresTunelu: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' ? t.adres : null; }, qr: (url) => QRCode.toDataURL(url, { margin: 1, width: 360 }), podpisz: (tekst) => Wizytowka.podpiszTekst(tekst), wystawca: async () => (await Wizytowka.profil()).nick || null });
 // 🏢 Firma Katedry (services/Firma.js): profil biznesu (🥚 Jajo Założyciela), 💰 Skarbnik z faktów Stripe + wpisów, ⚖️ Mecenas — szkice dokumentów.
-const Firma = utworzFirme({ katalog: ANTIGRAVITY_DIR, sprzedazStripe: () => Stripe.sprzedaz() });
+const Firma = utworzFirme({ katalog: ANTIGRAVITY_DIR, sprzedazStripe: () => Stripe.sprzedaz(), autorstwoKsiag: () => FederacjaKsiag.autorstwo() });
 zamontujTrasyFirmy(app, Firma);
 // ✦ Figury taneczne (services/FiguryTanca.js): Kompozytor (model przydziału `kompozytor`) składa nowe ruchy tancerza
 // z jego klipów riga — miks po kościach, warstwy, wejście w takt — tylko z zamkniętych list; Suweren ✓/✎ (pary do Kuźni).
@@ -15388,6 +15399,9 @@ const ZwiadowcaDystrybucji = utworzZwiadowceDystrybucji({ katalog: path.join(ANT
     jajo: { decyzja: (o) => Jajo.decyzja(o) } });
 zamontujTrasyDystrybucji(app, ZwiadowcaDystrybucji);
 Izba.zarejestruj(ZwiadowcaDystrybucji.zrodloIzby);
+// 📚🏛️ Zgłoszenia ksiąg innych Katedr do teostory.studio — ✓ = wpis w katalogu (bez kosztu, więc także z telefonu).
+Izba.zarejestruj({ id: 'teostory', emoji: '📚', nazwa: 'Wydawnictwo teostory.studio', czekajace: () => FederacjaKsiag.czekajace(),
+    decyduj: (id, akcja, { powod } = {}) => { const i = id.indexOf('~'); return FederacjaKsiag.decyduj(`${id.slice(0, i)}/${id.slice(i + 1)}`, akcja, { powod }).then((d) => ({ stan: d.pozycja.stan })); } });
 // 🐾 Sklep Mini w Izbie: propozycje Mini (✓ = produkcja Meshy za kredyty → tylko przy Katedrze), utknięte (wznów — też kredyty),
 // pakiety do wystawienia (✓ = na sprzedaż przez Stripe, bez kosztu → także z telefonu).
 Izba.zarejestruj({ id: 'sklep-mini', emoji: '🐾', nazwa: 'Sklep Mini',
@@ -15654,6 +15668,23 @@ const SilnikKsiag = utworzSilnikKsiag({ katalog: path.join(ANTIGRAVITY_DIR, 'zyw
     },
     obsada: { lista: () => StalaObsada.lista(), wzory: (id) => StalaObsada.wzory(id) },
     autor: async () => kimJestem(await loadGrvLedger())?.wlasciciel?.nazwa ?? null });
+// 📥 Własny Manuskrypt (services/WlasnyManuskrypt.js): książka autora PDF/DOCX/TXT + jego ilustracje → sceny (tekst w 100%) →
+// Głosek czyta (Głosy Stada) → film na YouTube (Montażownia, ✓ w Izbie), audiobook mp3, Żywa Księga do Wypożyczalni teostory.studio.
+const Manuskrypt = utworzManuskrypt({ katalog: path.join(ANTIGRAVITY_DIR, 'manuskrypty'),
+    katalogMontazy: (projekt) => Montazownia.katalogMontazy(ANTIGRAVITY_DIR, projekt),
+    ffmpeg: ffmpegPath, uruchom: (c, a, o) => execFileAsync(c, a, o), opisz: (p) => Montazownia.opisz(p),
+    mow: async ({ tekst, glos, jezyk }) => Wywiady.mowa({ tekst: tekstDoMowy(tekst), glos: await GlosyStada.glos(glos).catch(() => null), jezyk }),
+    pisz: async (system, prompt) => (await piszModelem(TrybKatedry.modelDla((await ModeleAgentow.modelDla('paleta').catch(() => null)) || Mozg.domyslny()), system, prompt)).tekst,
+    rysuj: async ({ prompt, referencje, szer, wys, prefiks }) => {
+        const przed = await stanWideoZBudzeniem('Własny Manuskrypt');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        await Karta.przedRenderem?.('Własny Manuskrypt')?.catch?.(() => {});
+        return Assety3D.kadrFilmu({ prompt, referencje, szer, wys, prefiks });
+    },
+    publikujYT: (z) => PublikacjeYT.przygotuj(z),
+    publikujWypozyczalnia: (o) => Wypozyczalnia.publikuj(o),
+    szyna: Szyna });
+zamontujTrasyManuskryptu(app, Manuskrypt);
 // 👗🦓 Zebrra Fashion (services/ZebrraFashion.js) — potok 0.00G Style, kroki 4–6: looki postaci w kolekcji (FLUX z wzorami:
 // obraz postaci + makieta Fashion), program z prowadzącym (Głosy Stada), wstawka reklamowa dla Wieczoru Tańca.
 const katalogFashion = [process.env.OTAKOS_FASHION_DIR, path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio')].filter(Boolean).find((d) => fsSync.existsSync(path.join(d, 'public', 'nadruki'))) ?? path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio');
