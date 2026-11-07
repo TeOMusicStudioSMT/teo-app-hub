@@ -56,11 +56,15 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
         const kat = path.join(SKLEP, postac);
         let csv;
         try { csv = czytajCsv(await fs.readFile(path.join(kat, 'produkty.csv'), 'utf8')); } catch { return []; }
-        const pierwsze = new Map(), ceny = new Map();
+        const pierwsze = new Map(), ceny = new Map(), opcje = new Map();
         for (const w of csv) {
             if (!w.Handle) continue;
             if (!pierwsze.has(w.Handle) && w.Title) pierwsze.set(w.Handle, w);
             if (w['Variant Price']) ceny.set(w.Handle, w['Variant Price']);
+            // warianty z paczki Fashion (odzież: Size S–XXL, torba: jeden wariant „Default Title”)
+            const o = opcje.get(w.Handle) ?? { nazwa: w['Option1 Name'] || 'Size', wartosci: [] };
+            if (w['Option1 Value'] && !o.wartosci.includes(w['Option1 Value'])) o.wartosci.push(w['Option1 Value']);
+            opcje.set(w.Handle, o);
         }
         const out = [];
         for (const [handle, w] of pierwsze) {
@@ -73,7 +77,8 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
             const cena = Number(String(w['Variant Price'] || ceny.get(handle) || '').replace(',', '.'));
             const braki = [!makiety.includes('podglad-przod.png') && 'makieta przodu', !druk.length && 'pliki druku 300 DPI', !wymiary && 'WYMIARY-DRUKU.txt', !(cena > 0) && 'cena'].filter(Boolean);
             const strefy = druk.map((p) => { const m = /^druk-(.+?)-([\d.]+)x([\d.]+)cm-300dpi\.png$/.exec(p); return m ? { strefa: m[1], szer: Number(m[2]), wys: Number(m[3]), plik: p } : { strefa: p, plik: p }; });
-            out.push({ postac, model: handle, tytul: w.Title, opisHtml: w['Body (HTML)'], typ: w.Type, tagi: w.Tags, dostawca: w.Vendor || '0.00G Style', cenaEur: cena > 0 ? cena : null,
+            const opcja = opcje.get(handle)?.wartosci.length ? opcje.get(handle) : { nazwa: 'Size', wartosci: ROZMIARY };
+            out.push({ postac, model: handle, opcja, tytul: w.Title, opisHtml: w['Body (HTML)'], typ: w.Type, tagi: w.Tags, dostawca: w.Vendor || '0.00G Style', cenaEur: cena > 0 ? cena : null,
                 makiety, druk: strefy, wymiary, gotowy: !braki.length, braki, wyslany: fsSync.existsSync(path.join(katalog, postac, handle, '1-DO-SKLEPU-SHOPIFY', 'WKLEJ-DO-SHOPIFY.txt')) });
         }
         return out.sort((a, b) => a.model.localeCompare(b.model));
@@ -109,7 +114,7 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
             `TYP (Product type): ${x.typ}`,
             `PRODUCENT (Vendor): ${x.dostawca}`,
             `TAGI (Tags): ${x.tagi}`,
-            `WARIANTY: opcja „Size” — ${ROZMIARY.join(', ')}; SKU: ${ROZMIARY.map((r) => `${x.model.toUpperCase()}-${r}`).join(', ')}`,
+            x.opcja.nazwa === 'Size' ? `WARIANTY: opcja „Size” — ${x.opcja.wartosci.join(', ')}; SKU: ${x.opcja.wartosci.map((r) => `${x.model.toUpperCase()}-${r}`).join(', ')}` : `WARIANTY: jeden wariant (bez rozmiarów); SKU: ${x.model.toUpperCase()}`,
             'Stan magazynu: druk na żądanie — „Continue selling when out of stock” albo bez śledzenia ilości.',
             '',
             `Źródło: TeO Fashion Studio → public/nadruki/sklep/${x.postac}/${x.model}/ (QC szwalni). Przygotował Stół Produktowy Katedry ${new Date(teraz()).toISOString().slice(0, 10)}.`,
@@ -137,13 +142,13 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
         let produktow = 0;
         for (const p of postacie) for (const x of p.produkty.filter((q) => q.wyslany && q.gotowy)) {
             produktow++;
-            ROZMIARY.forEach((r, i) => linie.push(wierszCsv([x.model, i ? '' : x.tytul, i ? '' : x.opisHtml, i ? '' : x.dostawca, i ? '' : x.typ, i ? '' : x.tagi, i ? '' : 'FALSE',
-                'Size', r, `${x.model.toUpperCase()}-${r}`, x.cenaEur.toFixed(2), 'TRUE', 'TRUE', 'continue', 'manual', i ? '' : 'FALSE', i ? '' : 'draft'])));
+            x.opcja.wartosci.forEach((r, i) => linie.push(wierszCsv([x.model, i ? '' : x.tytul, i ? '' : x.opisHtml, i ? '' : x.dostawca, i ? '' : x.typ, i ? '' : x.tagi, i ? '' : 'FALSE',
+                x.opcja.nazwa, r, `${x.model.toUpperCase()}-${r.replace(/\s+/g, '-').toUpperCase()}`, x.cenaEur.toFixed(2), 'TRUE', 'TRUE', 'continue', 'manual', i ? '' : 'FALSE', i ? '' : 'draft'])));
         }
         await fs.mkdir(katalog, { recursive: true });
         const plik = path.join(katalog, 'shopify-import.csv');
         await fs.writeFile(plik, `﻿${linie.join('\n')}\n`, 'utf8');
-        return { plik: path.basename(plik), produktow, wariantow: produktow * ROZMIARY.length };
+        return { plik: path.basename(plik), produktow, wariantow: linie.length - 1 };
     }
 
     /** Wysyłka: jeden model albo cała postać (bez `model`) albo wszystko (bez `postac`). Potem CSV od nowa. */
@@ -162,20 +167,60 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
         return { wyslane, pominiete, csv: await zapiszCsv(), cel: katalog };
     }
 
+    /**
+     * 🔄 Synchronizacja (2026-11-07: w CSV były usunięte kolekcje, nie było nowych): `sklep-shopify` = dokładnie żywa paczka
+     * Fashion. Usuwa TYLKO foldery, które sam zrobił (model z `1-DO-SKLEPU-SHOPIFY/WKLEJ-DO-SHOPIFY.txt`), gdy produktu
+     * już nie ma w paczce; pusty po tym folder postaci też. Ręczne foldery Suwerena (bez znacznika) zostają.
+     */
+    async function synchronizuj() {
+        const { postacie } = await lista();
+        const zywe = new Set(postacie.flatMap((p) => p.produkty.map((x) => `${p.postac}/${x.model}`)));
+        const usuniete = [];
+        for (const d of await fs.readdir(katalog, { withFileTypes: true }).catch(() => [])) {
+            if (!d.isDirectory() || !POSTAC.test(d.name)) continue;
+            const kp = path.join(katalog, d.name);
+            for (const m of await fs.readdir(kp, { withFileTypes: true }).catch(() => [])) {
+                if (!m.isDirectory() || zywe.has(`${d.name}/${m.name}`)) continue;
+                if (!fsSync.existsSync(path.join(kp, m.name, '1-DO-SKLEPU-SHOPIFY', 'WKLEJ-DO-SHOPIFY.txt'))) continue;
+                await fs.rm(path.join(kp, m.name), { recursive: true, force: true });
+                usuniete.push(`${d.name}/${m.name}`);
+            }
+            if (!(await fs.readdir(kp).catch(() => ['x'])).length) await fs.rm(kp, { recursive: true, force: true });
+        }
+        const gotowe = postacie.some((p) => p.gotowe);
+        const w = gotowe ? await wyslij({}) : { wyslane: [], pominiete: [], csv: await zapiszCsv() };
+        return { ...w, usuniete };
+    }
+
     function plik(postac, model, nazwa) {
         if (!POSTAC.test(String(postac)) || !MODEL.test(String(model)) || !/^(podglad-(przod|tyl)|druk-[a-z0-9.-]+-300dpi)\.png$|^WYMIARY-DRUKU\.txt$/.test(String(nazwa))) return null;
         const p = path.join(SKLEP, postac, model, nazwa);
         return fsSync.existsSync(p) ? p : null;
     }
 
-    return { lista, wyslij, zapiszCsv, plik, tekstWklej };
+    return { lista, wyslij, zapiszCsv, synchronizuj, plik, tekstWklej };
 }
 
 /** Trasy (Straż `/api/stol-produktowy`: tylko maszyna). */
-export function zamontujTrasyStoluProduktowego(app, S) {
+export function zamontujTrasyStoluProduktowego(app, S, { fashion = 'http://127.0.0.1:3000', fetch: f = globalThis.fetch, poSynchronizacji = async () => null } = {}) {
     const odp = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }));
+    let wToku = Promise.resolve();
+    const poKolei = (fn) => { const p = wToku.then(fn, fn); wToku = p.catch(() => {}); return p; };
+    const synchronizuj = () => poKolei(async () => { const w = await S.synchronizuj(); return { ...w, sezonowe: await poSynchronizacji().catch((e) => ({ blad: e.message })) }; });
     app.get('/api/stol-produktowy', (_req, res) => odp(res, S.lista()));
     app.post('/api/stol-produktowy/wyslij', (req, res) => odp(res, S.wyslij(req.body ?? {})));
+    // Fashion po uszyciu / usunięciu kolekcji (tylko z tej maszyny — Straż)
+    app.post('/api/stol-produktowy/synchronizuj', (_req, res) => odp(res, synchronizuj()));
+    // 🔄 Odśwież i wyślij wszystko: Fashion buduje paczki z żywych kolekcji, potem sklep-shopify i CSV od nowa
+    app.post('/api/stol-produktowy/odswiez', (_req, res) => odp(res, (async () => {
+        let fashionWynik = null, fashionBlad = null;
+        try {
+            const r = await f(`${fashion}/api/nadruki/sklep/odswiez`, { method: 'POST', signal: AbortSignal.timeout(10 * 60_000) });
+            fashionWynik = await r.json().catch(() => null);
+            if (!r.ok) fashionBlad = fashionWynik?.error ?? `HTTP ${r.status}`;
+        } catch (e) { fashionBlad = `TeO Fashion Studio nie odpowiada (${fashion}) — wysyłam paczkę taką, jaka leży na dysku`; }
+        return { fashion: fashionWynik, fashionBlad, ...(await synchronizuj()) };
+    })()));
     app.get('/api/stol-produktowy/plik/:postac/:model/:plik', (req, res) => { const p = S.plik(req.params.postac, req.params.model, req.params.plik); return p ? res.sendFile(p) : res.status(404).end(); });
 }
 

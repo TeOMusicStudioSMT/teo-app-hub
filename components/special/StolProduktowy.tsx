@@ -12,7 +12,9 @@ interface Strefa { strefa: string; szer?: number; wys?: number; plik: string }
 interface Produkt { postac: string; model: string; tytul: string; opisHtml: string; typ: string; tagi: string; dostawca: string; cenaEur: number | null;
     makiety: string[]; druk: Strefa[]; wymiary: boolean; gotowy: boolean; braki: string[]; wyslany: boolean }
 interface Postac { postac: string; gotowe: number; wszystkie: number; wyslane: number; produkty: Produkt[] }
-interface Wynik { wyslane: { model: string; zdjec: number; plikowDruku: number }[]; pominiete: { model: string; powod: string }[]; csv: { plik: string; produktow: number; wariantow: number }; cel: string }
+interface Sezon { id: string; emoji: string; nazwa: string; tag: string; fasony: string[] | null; okno: { od: string; do: string; dniDoStartu: number } | null;
+    produktow: number; zTekstem: number; rabat: number | null; csv: string | null; przyklad: { model: string; tytul: string; opis: string } | null }
+interface Wynik { usuniete?: string[]; fashionBlad?: string | null; wyslane: { model: string; zdjec: number; plikowDruku: number }[]; pominiete: { model: string; powod: string }[]; csv: { plik: string; produktow: number; wariantow: number }; cel: string }
 
 async function zMostu<T>(sciezka: string, init?: RequestInit): Promise<T> {
     let r: Response;
@@ -32,6 +34,24 @@ export function StolProduktowy() {
     const [blad, setBlad] = useState('');
     const [wynik, setWynik] = useState<Wynik | null>(null);
     const [skopiowane, setSkopiowane] = useState('');
+    const [sezony, setSezony] = useState<Sezon[]>([]);
+    const [rabat, setRabat] = useState(20);
+    const [sezonInfo, setSezonInfo] = useState('');
+    const odswiezSezony = useCallback(async () => { try { setSezony((await zMostu<{ sezony: Sezon[] }>('/api/stol-produktowy/sezonowe')).sezony); } catch { /* most bez dropów */ } }, []);
+    useEffect(() => { void odswiezSezony(); }, [odswiezSezony]);
+    const drop = async (id: string, odNowa = false) => {
+        setPraca(id === 'black-friday' ? 'liczę ceny Black Friday…' : 'Kronikarz pisze edycję sezonową (model — może potrwać kilka minut)…'); setBlad(''); setSezonInfo('');
+        try {
+            const w = await zMostu<{ plik: string; produktow: number; bezTekstu: string[]; rabat?: number }>(`/api/stol-produktowy/sezonowe/${id}`, { method: 'POST', body: JSON.stringify({ rabat, odNowa }) });
+            setSezonInfo(`✓ ${w.plik}: ${w.produktow} produktów${w.rabat ? ` (−${w.rabat} %)` : ''}${w.bezTekstu.length ? ` · bez edycji: ${w.bezTekstu.length}` : ''}`);
+            await odswiezSezony();
+        } catch (e) { setBlad((e as Error).message); } finally { setPraca(''); }
+    };
+    const odswiezWszystko = async () => {
+        setPraca('Fashion buduje paczki z żywych kolekcji, potem sklep-shopify i CSV…'); setBlad('');
+        try { setWynik(await zMostu<Wynik>('/api/stol-produktowy/odswiez', { method: 'POST', body: '{}' })); await odswiez(); await odswiezSezony(); }
+        catch (e) { setBlad((e as Error).message); } finally { setPraca(''); }
+    };
 
     const odswiez = useCallback(async () => {
         try {
@@ -54,14 +74,16 @@ export function StolProduktowy() {
             <div className="flex flex-wrap items-center gap-2">
                 <b className="text-sm text-amber-200">🛍️ Stół Produktowy — Fashion → sklep i drukarnia</b>
                 <button onClick={() => void odswiez()} className="rounded border border-white/20 px-2 py-0.5">↻</button>
-                <button disabled={!!praca || !dane?.postacie.length} onClick={() => void wyslij({}, 'wysyłam wszystkie produkty…')}
-                    className="ml-auto rounded bg-amber-500 px-3 py-1 font-bold text-black disabled:opacity-40">📂 Wyślij WSZYSTKO do sklep-shopify + CSV</button>
+                <button disabled={!!praca} onClick={() => void odswiezWszystko()} title="Fashion buduje paczki tylko z żywych kolekcji (usunięte wypadają, nowe dochodzą), potem sklep-shopify i CSV od nowa"
+                    className="ml-auto rounded bg-amber-500 px-3 py-1 font-bold text-black disabled:opacity-40">🔄 Odśwież i wyślij wszystko</button>
             </div>
             {dane && <p className="text-[11px] text-white/50">Cel: <code>{dane.cel}</code>{dane.csv && <> · ✓ <code>shopify-import.csv</code> gotowy (Shopify → Products → Import)</>}</p>}
             {praca && <p className="text-amber-200">⏳ {praca}</p>}
             {blad && <p className="rounded bg-red-950/50 p-2 text-red-300">⚠ {blad}</p>}
             {wynik && (
                 <div className="rounded border border-emerald-500/40 bg-emerald-950/30 p-2">
+                    {wynik.fashionBlad && <div className="text-amber-300">⚠ {wynik.fashionBlad}</div>}
+                    {wynik.usuniete && wynik.usuniete.length > 0 && <div className="text-amber-200">🗑 Usunięte z sklep-shopify (kolekcji już nie ma): {wynik.usuniete.join(', ')}</div>}
                     ✓ Wysłano {wynik.wyslane.length} produkt(ów): {wynik.wyslane.reduce((s, x) => s + x.zdjec, 0)} makiet do sklepu, {wynik.wyslane.reduce((s, x) => s + x.plikowDruku, 0)} plików druku.
                     CSV: {wynik.csv.produktow} produktów ({wynik.csv.wariantow} wariantów S–XXL) → <code>{wynik.csv.plik}</code>.
                     {wynik.pominiete.length > 0 && <div className="text-amber-300">Pominięte: {wynik.pominiete.map((p) => `${p.model} (${p.powod})`).join('; ')}</div>}
@@ -88,6 +110,32 @@ export function StolProduktowy() {
                     </div>
                 </div>
             ))}
+
+            {sezony.length > 0 && (
+                <div className="space-y-1 rounded-xl border border-fuchsia-500/30 bg-black/30 p-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <b className="text-fuchsia-200">🗓️ Sezonowe dropy</b>
+                        <span className="text-[11px] text-white/50">ta sama grafika, nowa opowieść edycji (Kronikarz) i tagi → osobny CSV w <code>sklep-shopify/sezonowe/</code></span>
+                        <label className="ml-auto text-[11px]">🖤 rabat BF <input type="number" min={10} max={50} value={rabat} onChange={(e) => setRabat(Number(e.target.value))} className="w-12 rounded bg-black/50 px-1" /> %</label>
+                    </div>
+                    {sezonInfo && <div className="text-emerald-300">{sezonInfo}</div>}
+                    <div className="grid gap-1 md:grid-cols-2">
+                        {sezony.map((z) => (
+                            <div key={z.id} className="flex flex-wrap items-center gap-2 rounded bg-black/40 px-2 py-1">
+                                <span className="w-28 shrink-0">{z.emoji} {z.nazwa}</span>
+                                <span className="text-[10px] text-white/50">{z.okno ? (z.okno.dniDoStartu > 0 ? `za ${z.okno.dniDoStartu} dni (${z.okno.od})` : `trwa do ${z.okno.do}`) : ''} · {z.produktow} prod.{z.id !== 'black-friday' ? ` · edycja ${z.zTekstem}/${z.produktow}` : ''}</span>
+                                <span className="ml-auto flex gap-1">
+                                    {z.csv && <a href={`${MOST}/api/stol-produktowy/sezonowe/${z.id}/csv`} className="rounded border border-emerald-500/50 px-1" title={z.csv}>⬇ CSV</a>}
+                                    <button disabled={!!praca || !z.produktow} onClick={() => void drop(z.id)} className="rounded border border-fuchsia-500/50 px-1 disabled:opacity-40">{z.csv ? '↻' : '✨ Przygotuj'}</button>
+                                    {z.id !== 'black-friday' && z.zTekstem > 0 && <button disabled={!!praca} onClick={() => void drop(z.id, true)} title="Kronikarz pisze edycję od nowa" className="rounded border border-white/20 px-1">✍️</button>}
+                                </span>
+                                {z.przyklad && <div className="w-full truncate text-[10px] text-white/60" title={z.przyklad.opis}>„{z.przyklad.tytul}” — {z.przyklad.opis}</div>}
+                            </div>
+                        ))}
+                    </div>
+                    <p className="text-[10px] text-white/40">Black Friday = te same produkty z ceną przekreśloną (import z „nadpisz istniejące”); po promocji zaimportuj z nadpisaniem shopify-import.csv. Tagi „…_Drop” → kolekcja automatyczna w Shopify.</p>
+                </div>
+            )}
 
             {wybrany && (
                 <div className="grid gap-3 rounded-xl border border-white/10 bg-black/40 p-3 md:grid-cols-2">

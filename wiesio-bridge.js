@@ -20,6 +20,7 @@ import { utworzSilnikKsiag, zamontujTrasySilnikaKsiag } from './services/SilnikK
 import { utworzManuskrypt, zamontujTrasyManuskryptu } from './services/WlasnyManuskrypt.js';
 import { utworzFederacje, zamontujTrasyFederacji } from './services/FederacjaKsiag.js';
 import { utworzStolProduktowy, zamontujTrasyStoluProduktowego } from './services/StolProduktowy.js';
+import { utworzSezonoweDropy, zamontujTrasySezonowych } from './services/SezonoweDropy.js';
 import { utworzLinkiSklepu, zamontujTrasyLinkowSklepu } from './services/LinkiSklepu.js';
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
@@ -15692,7 +15693,17 @@ const katalogFashion = [process.env.OTAKOS_FASHION_DIR, path.resolve(process.cwd
 // 🛍️ Stół Produktowy (services/StolProduktowy.js): gotowe produkty TeO Fashion Studio → _OtakOs_Wymiar/sklep-shopify/<postać>/<model>/
 // 1-DO-SKLEPU-SHOPIFY (makiety + tekst do wklejenia) i 2-DO-DRUKARNI-300DPI (pliki stref + wymiary) + shopify-import.csv (produkty fizyczne).
 const StolProduktowy = utworzStolProduktowy({ katalogFashion, katalog: path.join(ANTIGRAVITY_DIR, 'sklep-shopify') });
-zamontujTrasyStoluProduktowego(app, StolProduktowy);
+// 🗓️ Sezonowe dropy (services/SezonoweDropy.js): edycje sezonowe żywych produktów — Kronikarz pisze tytuł i opowieść edycji,
+// Black Friday = Compare At Price; osobne CSV w sklep-shopify/sezonowe/. Wolny cykl: okazja w ciągu 30 dni bez dropu → przygotuj.
+const SezonoweDropy = utworzSezonoweDropy({ katalog: path.join(ANTIGRAVITY_DIR, 'sklep-shopify'), stol: StolProduktowy, szyna: Szyna,
+    pisz: async (system, prompt) => (await piszModelem(TrybKatedry.modelDla((await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()), system, prompt, { json: true })).tekst });
+zamontujTrasySezonowych(app, SezonoweDropy);
+zamontujTrasyStoluProduktowego(app, StolProduktowy, { fashion: process.env.OTAKOS_FASHION_URL || 'http://127.0.0.1:3000', poSynchronizacji: () => SezonoweDropy.odswiezIstniejace() });
+if (process.env.OTAKOS_SEZONOWE_AUTO !== '0') {
+    const cyklDropow = () => SezonoweDropy.cykl().then((w) => { if (w.length) console.log('[Sezonowe dropy]', JSON.stringify(w).slice(0, 300)); }).catch((e) => console.warn('[Sezonowe dropy]', e.message));
+    setTimeout(cyklDropow, 10 * 60_000).unref?.();
+    setInterval(cyklDropow, 6 * 3600_000).unref?.();
+}
 const ZebrraFashion = utworzZebrraFashion({
     katalog: path.join(ANTIGRAVITY_DIR, 'zebrra-fashion'),
     katalogFashion,
