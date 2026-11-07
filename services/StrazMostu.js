@@ -118,7 +118,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/skladnica', // 📦 Składnica: wspólne assety (zapis, import z dysku, kosz) — tylko przy Katedrze
     '/api/gielda-mocy',   // ⚡ Giełda mocy: oferta tej Katedry ustawia się tylko przy niej
     '/api/vault/status', '/api/vault/set', '/api/vault/sekret/', '/api/vault/resetuj',   // 🔐 Skarbiec 0.00G — tylko przy Katedrze
-    '/api/stripe', '/api/sklep-mini', '/api/books', '/api/zywe-ksiegi', '/api/manuskrypt', '/api/stol-produktowy', '/api/sklep-linki',   // 💳🐾 płatności Stripe i Sklep Mini (zgody na kredyty Meshy, wystawianie) — tylko przy Katedrze
+    '/api/stripe', '/api/sklep-mini', '/api/books', '/api/zywe-ksiegi', '/api/manuskrypt', '/api/stol-produktowy', '/api/sklep-linki', '/api/printful',   // 💳🐾 płatności Stripe i Sklep Mini (zgody na kredyty Meshy, wystawianie) — tylko przy Katedrze
     '/api/kibel/most', '/api/modele/chmura',   // 🔗 klucze Kibla dla mostu i modele z konta dostawcy — tylko przy Katedrze
     '/api/jev',   // ⚖️ Jev (TypeSafe) = rachunek za tokeny — tylko przy Katedrze
     '/api/koherencja',   // 🫀 Koherencja Katedry — nazwy modeli i błędy mostu, tylko przy maszynie
@@ -160,6 +160,8 @@ export const SCIEZKA_WYPOZYCZENIA = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2
 export const SCIEZKA_SKLEPU = /^\/wizytowka\/sklep\/(pk-[0-9a-f]{8}\/okladka\.png|odbior|pobierz)$/;
 /** 📱📋 Opis na telefon (services/OpisNaTelefon.js): strona z przyciskiem „Kopiuj” pod losowym tokenem, ważna 6 h, tylko odczyt. */
 export const SCIEZKA_OPISU = /^\/wizytowka\/opis\/[0-9a-f]{24}$/;
+/** 🖨️ Printful pobiera pliki druku bestsellerów (services/PrintfulSync.js): losowy token, 72 h, tylko PNG z sklep-shopify. */
+export const SCIEZKA_PRINTFUL = /^\/wizytowka\/printful\/[0-9a-f]{32}\.png$/;
 /** 📖 Żywa Księga dla świata (services/ZywaKsiega.js): lista wpisów „dla świata” i ich ilustracje/nagrania — tylko odczyt. */
 export const SCIEZKA_KSIEGI = /^\/wizytowka\/ksiega(\/k-\d{8}-[0-9a-f]{6}\/(zdjecie\.jpg|ilustracja\.png|nagranie\.mp4))?$/;
 /** 🌍 Licznik wejść (services/LicznikWejsc.js): strony Suwerena zgłaszają wejście gościa — kraj z Cloudflare, bez IP. */
@@ -191,6 +193,7 @@ export function czyWizytowka(req) {
     if (SCIEZKA_SKLEPU.test(p)) return true;
     if (SCIEZKA_TEOSTORY.test(p)) return true;
     if (SCIEZKA_OPISU.test(p)) return true;
+    if (SCIEZKA_PRINTFUL.test(p)) return true;
     if (p === '/wizytowka/marka-logo') return true;   // 🏷️ logo marki z wizytówki (jeden plik z marki Fashion)
     if (SCIEZKA_KSIEGI.test(p)) return true;
     if (p.startsWith(PREFIKS_GIER) && !p.includes('..') && !p.includes('\\')) return true;

@@ -40,6 +40,8 @@ export const SERVICE_CATALOG = {
     // 💳 Stripe (2026-10-13) — darowizny i sprzedaż pakietów Mini na otakos.wtf (services/Stripe.js). Klucz tajny
     // sk_live_… / sk_test_… albo ograniczony rk_… — nigdy do przeglądarki ani na stronę.
     stripe:           { label: 'Stripe (płatności, darowizny)', fields: ['secret_key'],  security: 'CRITICAL', glyph: '💳' },
+    printful:         { label: 'Printful (druk na żądanie, synchronizacja wariantów)', fields: ['api_token'], security: 'CRITICAL', glyph: '🖨️',
+                        opis: 'developers.printful.com → Your tokens → Create token (zakresy: sync_products, file_library, stores_list); wklejasz w Stole Produktowym' },
     // 📱 Formaty i sieci (2026-10-16, services/KontaSieci.js): klucze APLIKACJI deweloperskich — z nich most robi logowanie
     // kont. Tokeny połączonych kont leżą obok tokenów YouTube w skarbcu Impresariatu (media_secrets.json).
     tiktok:           { label: 'TikTok (Login Kit + Content Posting)', fields: ['client_key', 'client_secret'], security: 'CRITICAL', glyph: '🎵',

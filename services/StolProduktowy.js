@@ -174,7 +174,75 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
      * Fashion. Usuwa TYLKO foldery, które sam zrobił (model z `1-DO-SKLEPU-SHOPIFY/WKLEJ-DO-SHOPIFY.txt`), gdy produktu
      * już nie ma w paczce; pusty po tym folder postaci też. Ręczne foldery Suwerena (bez znacznika) zostają.
      */
+    // ── 🖨️ Bestsellery Printful + 🏷️ marka (TeO Fashion Studio rysuje: public/nadruki/bestsellery/<postać>/, public/nadruki/brand/) ──
+    const BESTSELLERY = path.join(katalogFashion, 'public', 'nadruki', 'bestsellery'), BRAND = path.join(katalogFashion, 'public', 'nadruki', 'brand');
+    const FOLDER_BS = '3-BESTSELLERY-PRINTFUL-I-ALL-OVER';
+    const czytajM = async (p) => { try { return JSON.parse(await fs.readFile(p, 'utf8')); } catch { return null; } };
+    /** Kopia tylko, gdy manifest w Fashion jest nowszy niż w sklep-shopify (pliki AOP ważą setki MB). */
+    async function kopiujBestsellery() {
+        const skopiowane = [];
+        for (const d of await fs.readdir(BESTSELLERY, { withFileTypes: true }).catch(() => [])) {
+            if (!d.isDirectory() || !POSTAC.test(d.name)) continue;
+            const zr = path.join(BESTSELLERY, d.name), cel = path.join(katalog, d.name, FOLDER_BS);
+            const m = await czytajM(path.join(zr, 'produkty.json'));
+            if (!m?.produkty?.length) continue;
+            if ((await czytajM(path.join(cel, 'produkty.json')))?.kiedy === m.kiedy) continue;
+            await fs.rm(cel, { recursive: true, force: true });
+            await fs.mkdir(cel, { recursive: true });
+            for (const p of m.produkty) {
+                if (!MODEL.test(`x-${p.klucz}`)) continue;
+                const pliki = new Set(p.warianty.flatMap((w) => Object.values(w.pliki ?? {})).map((x) => String(x).split('/')[1]));
+                await fs.mkdir(path.join(cel, p.klucz), { recursive: true });
+                for (const f of pliki) if (/^[a-z_]{3,40}-\d{2,5}x\d{2,5}\.png$/.test(f)) await fs.copyFile(path.join(zr, p.klucz, f), path.join(cel, p.klucz, f)).catch(() => {});
+            }
+            for (const f of ['CZYTAJ.txt', 'produkty.json']) await fs.copyFile(path.join(zr, f), path.join(cel, f)).catch(() => {});
+            skopiowane.push(d.name);
+        }
+        const brand = [];
+        for (const f of await fs.readdir(BRAND).catch(() => [])) {
+            if (!/^(logo-0\.00g-style[a-z-]*|baner-seo-social-1200x628(@2x)?)\.png$/.test(f)) continue;
+            const a = await fs.stat(path.join(BRAND, f)), b = await fs.stat(path.join(katalog, 'brand', f)).catch(() => null);
+            if (b && b.size === a.size && b.mtimeMs >= a.mtimeMs) continue;
+            await fs.mkdir(path.join(katalog, 'brand'), { recursive: true });
+            await fs.copyFile(path.join(BRAND, f), path.join(katalog, 'brand', f));
+            brand.push(f);
+        }
+        return { skopiowane, brand, csv: await zapiszCsvBestsellery() };
+    }
+    async function listaBestsellerow() {
+        const out = [];
+        for (const d of await fs.readdir(katalog, { withFileTypes: true }).catch(() => [])) {
+            if (!d.isDirectory() || !POSTAC.test(d.name)) continue;
+            const m = await czytajM(path.join(katalog, d.name, FOLDER_BS, 'produkty.json'));
+            if (m?.produkty) out.push({ postac: d.name, imie: m.imie, kiedy: m.kiedy, zrodloWymiarow: m.zrodloWymiarow ?? {}, produkty: m.produkty.map((p) => ({ klucz: p.klucz, tytul: p.tytul, katalogId: p.katalogId, aop: !!p.aop, wariantow: p.warianty.length, uwaga: p.uwaga ?? null })) });
+        }
+        const brand = (await fs.readdir(path.join(katalog, 'brand')).catch(() => [])).filter((f) => f.endsWith('.png'));
+        return { bestsellery: out, brand };
+    }
+    /** CSV bestsellerów: osobny plik (produkty fizyczne, szkice, SKU = klucz do synchronizacji z Printful). */
+    async function zapiszCsvBestsellery() {
+        const linie = [wierszCsv(KOLUMNY_CSV)];
+        let produktow = 0;
+        for (const d of await fs.readdir(katalog, { withFileTypes: true }).catch(() => [])) {
+            if (!d.isDirectory() || !POSTAC.test(d.name)) continue;
+            const m = await czytajM(path.join(katalog, d.name, FOLDER_BS, 'produkty.json'));
+            for (const p of m?.produkty ?? []) {
+                produktow++;
+                const handle = `${d.name}-${p.klucz}`;
+                const opis = `<p>${String(m.imie ?? d.name)} from the 0.00G Style universe — ${p.nazwaPrintful}, printed on demand.</p><p>Wearable Stories · Katedra OtakOS</p>`;
+                const pojedynczy = p.opcja === 'Title' && p.warianty.length === 1;
+                p.warianty.forEach((w, i) => linie.push(wierszCsv([handle, i ? '' : p.tytul, i ? '' : opis, i ? '' : '0.00G Style', i ? '' : p.typ, i ? '' : `0.00G Style, Printful, ${m.imie ?? d.name}, ${p.typ}${p.aop ? ', All-Over Print' : ''}`, i ? '' : 'FALSE',
+                    pojedynczy ? 'Title' : (p.opcja === 'Title' ? 'Size' : p.opcja), pojedynczy ? 'Default Title' : w.wartosc, w.sku, Number(w.cenaEur).toFixed(2), 'TRUE', 'TRUE', 'continue', 'manual', i ? '' : 'FALSE', i ? '' : 'draft'])));
+            }
+        }
+        if (!produktow) return null;
+        await fs.mkdir(katalog, { recursive: true });
+        await fs.writeFile(path.join(katalog, 'shopify-import-bestsellery.csv'), `﻿${linie.join('\n')}\n`, 'utf8');
+        return { plik: 'shopify-import-bestsellery.csv', produktow, wariantow: linie.length - 1 };
+    }
+
     async function synchronizuj() {
+        const bestsellery = await kopiujBestsellery().catch((e) => ({ blad: e.message }));
         const { postacie } = await lista();
         const zywe = new Set(postacie.flatMap((p) => p.produkty.map((x) => `${p.postac}/${x.model}`)));
         const usuniete = [];
@@ -191,7 +259,7 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
         }
         const gotowe = postacie.some((p) => p.gotowe);
         const w = gotowe ? await wyslij({}) : { wyslane: [], pominiete: [], csv: await zapiszCsv() };
-        return { ...w, usuniete };
+        return { ...w, usuniete, bestsellery };
     }
 
     // ── 🌐 sklep publicznie: adres sklepu (ustawienie) + czy produkt jest NAPRAWDĘ wystawiony (publiczne /products/<handle>.js) ──
@@ -250,7 +318,15 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
         return fsSync.existsSync(p) ? p : null;
     }
 
-    return { lista, wyslij, zapiszCsv, synchronizuj, plik, tekstWklej, ustawienia, ustawUstawienia, statusSklepu, produktyWystawy };
+    /** Podgląd pliku bestsellera / marki w Hubie (tylko z sklep-shopify, tylko PNG o znanych nazwach). */
+    function plikBestsellera(postac, produkt, nazwa) {
+        if (postac === 'brand') { if (produkt !== '-' || !/^(logo-0\.00g-style[a-z-]*|baner-seo-social-1200x628(@2x)?)\.png$/.test(String(nazwa))) return null; const p = path.join(katalog, 'brand', nazwa); return fsSync.existsSync(p) ? p : null; }
+        if (!POSTAC.test(String(postac)) || !/^[a-z0-9][a-z0-9-]{1,40}$/.test(String(produkt)) || !/^[a-z_]{3,40}-\d{2,5}x\d{2,5}\.png$/.test(String(nazwa))) return null;
+        const p = path.join(katalog, postac, FOLDER_BS, produkt, nazwa);
+        return fsSync.existsSync(p) ? p : null;
+    }
+
+    return { lista, wyslij, zapiszCsv, synchronizuj, plik, tekstWklej, ustawienia, ustawUstawienia, statusSklepu, produktyWystawy, kopiujBestsellery, listaBestsellerow, zapiszCsvBestsellery, plikBestsellera };
 }
 
 /** Trasy (Straż `/api/stol-produktowy`: tylko maszyna). */
@@ -276,6 +352,9 @@ export function zamontujTrasyStoluProduktowego(app, S, { fashion = 'http://127.0
         return { fashion: fashionWynik, fashionBlad, ...(await synchronizuj()) };
     })()));
     app.get('/api/stol-produktowy/plik/:postac/:model/:plik', (req, res) => { const p = S.plik(req.params.postac, req.params.model, req.params.plik); return p ? res.sendFile(p) : res.status(404).end(); });
+    // 🖨️ bestsellery Printful i 🏷️ marka (kopiuje synchronizacja; ten GET = stan dla Huba)
+    app.get('/api/stol-produktowy/bestsellery', (_req, res) => odp(res, S.listaBestsellerow()));
+    app.get('/api/stol-produktowy/bestseller/:postac/:produkt/:plik', (req, res) => { const p = S.plikBestsellera(req.params.postac, req.params.produkt, req.params.plik); return p ? res.sendFile(p) : res.status(404).end(); });
 }
 
 export default { utworzStolProduktowy, zamontujTrasyStoluProduktowego, czytajCsv, wierszCsv, KOLUMNY_CSV };

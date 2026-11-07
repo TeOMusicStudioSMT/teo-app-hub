@@ -238,6 +238,7 @@ import * as Delegat from './services/Delegat.js';
 import * as Artemis from './services/Artemis.js';
 import * as Tunel from './services/Tunel.js';
 import { utworzSchowekOpisow, zamontujTrasyOpisu } from './services/OpisNaTelefon.js';
+import { utworzPrintful, zamontujTrasyPrintful } from './services/PrintfulSync.js';
 import * as Stado from './services/Stado.js';
 import * as AppStudio from './services/AppStudio.js';
 import { utworzKluczeMostu, utworzListyModeli } from './services/ModeleChmury.js';
@@ -15712,6 +15713,13 @@ const SezonoweDropy = utworzSezonoweDropy({ katalog: path.join(ANTIGRAVITY_DIR, 
     pisz: async (system, prompt) => (await piszModelem(TrybKatedry.modelDla((await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()), system, prompt, { json: true })).tekst });
 zamontujTrasySezonowych(app, SezonoweDropy);
 zamontujTrasyStoluProduktowego(app, StolProduktowy, { fashion: process.env.OTAKOS_FASHION_URL || 'http://127.0.0.1:3000', poSynchronizacji: () => SezonoweDropy.odswiezIstniejace() });
+// 🖨️🔄 Printful Sync (services/PrintfulSync.js): token w Skarbcu, szablony (printfiles), synchronizacja wariantów po SKU z plikami
+// bestsellerów (Printful pobiera je z tunelu: /wizytowka/printful/<token>.png). Produkty w Shopify zakłada import CSV ze Stołu.
+const Printful = utworzPrintful({ katalog: path.join(ANTIGRAVITY_DIR, 'sklep-shopify'), wymiar: path.join(ANTIGRAVITY_DIR, 'printful'),
+    token: () => sekretPrzewodu('printful', 'api_token'),
+    zapiszToken: async (t) => { const V = VaultService.getInstance(); if (t) await V.setSecret('printful', 'api_token', t); else await V.deleteSecret('printful', 'api_token'); },
+    adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres) : null; } });
+zamontujTrasyPrintful(app, Printful);
 if (process.env.OTAKOS_SEZONOWE_AUTO !== '0') {
     const cyklDropow = () => SezonoweDropy.cykl().then((w) => { if (w.length) console.log('[Sezonowe dropy]', JSON.stringify(w).slice(0, 300)); }).catch((e) => console.warn('[Sezonowe dropy]', e.message));
     setTimeout(cyklDropow, 10 * 60_000).unref?.();

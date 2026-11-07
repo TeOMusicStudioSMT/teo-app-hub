@@ -27,6 +27,80 @@ async function zMostu<T>(sciezka: string, init?: RequestInit): Promise<T> {
 const plik = (x: Produkt, p: string) => `${MOST}/api/stol-produktowy/plik/${x.postac}/${x.model}/${p}`;
 const bezHtml = (h: string) => h.replace(/<\/p>\s*/gi, '\n\n').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').trim();
 
+interface BsProdukt { klucz: string; tytul: string; katalogId: number; aop: boolean; wariantow: number; uwaga: string | null }
+interface Bs { postac: string; imie: string; kiedy: string; zrodloWymiarow: Record<string, string>; produkty: BsProdukt[] }
+interface ZadaniePF { stan: string; krok: string | null; zrobione: { produkt: string; wariant: string; cena: number }[]; pominiete: { produkt: string; wariant: string; powod: string }[]; bledy: { produkt: string; wariant: string; powod: string }[]; powod?: string }
+interface StanPF { polaczony: boolean; powod?: string; sklep: { id: number; nazwa: string; typ?: string } | null; sklepy?: { id: number; nazwa: string; typ: string }[]; zadanie: ZadaniePF | null }
+
+/** 🖨️ Bestsellery Printful (rysuje TeO Fashion Studio → 3-BESTSELLERY-PRINTFUL-I-ALL-OVER), 🏷️ marka i 🔄 synchronizacja wariantów z Printful. */
+function PrintfulPanel() {
+    const [bs, setBs] = useState<{ bestsellery: Bs[]; brand: string[] } | null>(null);
+    const [pf, setPf] = useState<StanPF | null>(null);
+    const [produkty, setProdukty] = useState<{ produkty: { id: number; nazwa: string; wariantow: number; zsynchronizowanych: number }[]; katedra: { wariantow: number; produktow: number } } | null>(null);
+    const [token, setToken] = useState('');
+    const [blad, setBlad] = useState('');
+    const odswiez = useCallback(async () => {
+        try { setBs(await zMostu('/api/stol-produktowy/bestsellery')); } catch (e) { setBlad((e as Error).message); }
+        try { const s = await zMostu<StanPF>('/api/printful/stan'); setPf(s); if (s.polaczony) setProdukty(await zMostu('/api/printful/produkty')); } catch (e) { setBlad((e as Error).message); }
+    }, []);
+    useEffect(() => { void odswiez(); }, [odswiez]);
+    useEffect(() => {
+        if (pf?.zadanie?.stan !== 'robi') return;
+        const t = setInterval(async () => { try { const s = await zMostu<StanPF>('/api/printful/stan'); setPf(s); if (s.zadanie?.stan !== 'robi' && s.polaczony) setProdukty(await zMostu('/api/printful/produkty')); } catch { /* — */ } }, 4000);
+        return () => clearInterval(t);
+    }, [pf?.zadanie?.stan]);
+    const dzialaj = async (fn: () => Promise<unknown>) => { setBlad(''); try { await fn(); await odswiez(); } catch (e) { setBlad((e as Error).message); } };
+    const z = pf?.zadanie;
+    return (
+        <div className="space-y-2 rounded-xl border border-sky-500/30 bg-black/30 p-2">
+            <div className="flex flex-wrap items-center gap-2">
+                <b className="text-sky-200">🖨️ Bestsellery Printful i 🔄 synchronizacja</b>
+                <button onClick={() => void odswiez()} className="rounded border border-white/20 px-2 py-0.5">↻</button>
+                <span className="text-[11px] text-white/50">pliki rysuje TeO Fashion Studio → Kolekcja 360° → „🖨️ Narysuj produkty” (każda postać) i „🏷️ Logo + baner”</span>
+            </div>
+            {blad && <p className="rounded bg-red-950/50 p-1 text-red-300">⚠ {blad}</p>}
+            {bs?.brand.length ? <div className="flex flex-wrap items-center gap-2"><span className="text-white/60">🏷️ sklep-shopify/brand:</span>{bs.brand.map((f) => <a key={f} href={`${MOST}/api/stol-produktowy/bestseller/brand/-/${f}`} target="_blank" rel="noreferrer" title={f}><img src={`${MOST}/api/stol-produktowy/bestseller/brand/-/${f}`} alt={f} className="h-10 rounded bg-white/10 object-contain" /></a>)}</div>
+                : <p className="text-white/40">🏷️ Logo i baneru jeszcze nie ma w sklep-shopify/brand.</p>}
+            {bs?.bestsellery.map((b) => {
+                const dokl = Object.values(b.zrodloWymiarow).filter((x) => x === 'printful').length;
+                return (
+                    <div key={b.postac} className="rounded bg-black/40 p-1">
+                        <div className="flex flex-wrap gap-2"><b className="text-sky-100">{b.imie}</b><span className="text-white/50">{b.produkty.length} produktów · wymiary z Printful {dokl}/{b.produkty.length}{dokl < b.produkty.length ? ' (reszta orientacyjna — po tokenie narysuj ponownie)' : ''} · {b.kiedy.slice(0, 16).replace('T', ' ')}</span></div>
+                        <div className="text-[10px] text-white/60">{b.produkty.map((p) => `${p.aop ? '🌌' : ''}${p.tytul.split(' — ')[1]?.replace(' · 0.00G Style', '') ?? p.klucz} (#${p.katalogId}, ${p.wariantow} war.)`).join(' · ')}</div>
+                    </div>
+                );
+            })}
+            {bs && bs.bestsellery.length > 0 && <p className="text-[11px] text-white/60">CSV: <code>sklep-shopify/shopify-import-bestsellery.csv</code> → Shopify → Products → Import (szkice, SKU = klucz synchronizacji). Potem Printful zobaczy je jako „niezsynchronizowane”.</p>}
+            <div className="space-y-1 rounded border border-white/10 p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <span>Printful API:</span>
+                    {pf?.polaczony ? <span className="text-emerald-300">✓ połączony · sklep {pf.sklep?.nazwa ?? '—'} ({pf.sklep?.typ ?? '?'})</span> : <span className="text-amber-300">{pf?.powod ?? '…'}</span>}
+                    {pf?.polaczony && (pf.sklepy?.length ?? 0) > 1 && <select value={pf.sklep?.id ?? ''} onChange={(e) => void dzialaj(() => zMostu('/api/printful/sklep', { method: 'PUT', body: JSON.stringify({ sklep: e.target.value }) }))} className="rounded bg-black/50 px-1">{pf.sklepy!.map((s) => <option key={s.id} value={s.id}>{s.nazwa} ({s.typ})</option>)}</select>}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={pf?.polaczony ? 'nowy token (zastąpi stary)' : 'PRINTFUL_API_TOKEN z developers.printful.com'} className="w-72 rounded bg-black/50 px-1 py-0.5" autoComplete="off" />
+                    <button disabled={!token.trim()} onClick={() => void dzialaj(async () => { await zMostu('/api/printful/token', { method: 'PUT', body: JSON.stringify({ token: token.trim() }) }); setToken(''); })} className="rounded border border-sky-500/50 px-2 disabled:opacity-40">🔐 Zapisz w Skarbcu</button>
+                    {pf?.polaczony && <button onClick={() => { if (confirm('Usunąć token Printful ze Skarbca?')) void dzialaj(() => zMostu('/api/printful/token', { method: 'PUT', body: JSON.stringify({ token: null }) })); }} className="rounded border border-white/20 px-2">✕</button>}
+                </div>
+                {produkty && <>
+                    <div className="text-[11px] text-white/60">Produkty w Printful: {produkty.produkty.length} · niezsynchronizowane: {produkty.produkty.filter((p) => p.zsynchronizowanych < p.wariantow).length} · Katedra zna {produkty.katedra.wariantow} wariantów ({produkty.katedra.produktow} produktów) po SKU</div>
+                    <div className="max-h-32 overflow-y-auto">
+                        {produkty.produkty.map((p) => <div key={p.id} className="flex items-center gap-2 border-b border-white/5 py-0.5"><span className="truncate">{p.nazwa}</span><span className={`ml-auto ${p.zsynchronizowanych < p.wariantow ? 'text-amber-300' : 'text-emerald-300'}`}>{p.zsynchronizowanych}/{p.wariantow}</span>
+                            <button disabled={z?.stan === 'robi'} onClick={() => void dzialaj(() => zMostu('/api/printful/synchronizuj', { method: 'POST', body: JSON.stringify({ produkt: p.id }) }))} className="rounded border border-white/20 px-1 disabled:opacity-40" title="Pliki, wariant katalogu i cenę wyśle tylko wariantom ze SKU Katedry">🔄</button></div>)}
+                    </div>
+                    <button disabled={z?.stan === 'robi'} onClick={() => void dzialaj(() => zMostu('/api/printful/synchronizuj', { method: 'POST', body: '{}' }))} className="rounded bg-sky-500 px-3 py-1 font-bold text-black disabled:opacity-40">🔄 Synchronizuj wszystkie niezsynchronizowane (po SKU Katedry)</button>
+                </>}
+                {z && <div className={`rounded p-1 text-[11px] ${z.stan === 'blad' ? 'bg-red-950/40 text-red-300' : 'bg-sky-950/40'}`}>
+                    {z.stan === 'robi' ? `⏳ ${z.krok ?? ''}` : z.stan === 'blad' ? `⚠ ${z.powod}` : '✓ gotowe'} · wysłane {z.zrobione.length} · pominięte {z.pominiete.length} · błędy {z.bledy.length}
+                    {z.bledy.slice(0, 4).map((b, i) => <div key={i} className="text-red-300">✗ {b.produkt} / {b.wariant}: {b.powod}</div>)}
+                    {z.pominiete.slice(0, 3).map((b, i) => <div key={i} className="text-white/50">— {b.produkt} / {b.wariant}: {b.powod}</div>)}
+                </div>}
+                <p className="text-[10px] text-white/40">Printful nie zakłada przez API produktów w sklepie Shopify — zakłada je import CSV; tu każdy wariant dostaje produkt z katalogu, pliki (Printful pobiera je przez tunel Katedry, link 72 h) i cenę detaliczną w Printful. Cenę w Shopify ustawia CSV albo Ty w Shopify.</p>
+            </div>
+        </div>
+    );
+}
+
 export function StolProduktowy() {
     const [dane, setDane] = useState<{ postacie: Postac[]; cel: string; csv: string | null; sklep?: { domena: string | null; produkty?: Record<string, string>; wSklepie?: number; powod?: string } } | null>(null);
     const [domena, setDomena] = useState('');
@@ -143,6 +217,8 @@ export function StolProduktowy() {
                     <p className="text-[10px] text-white/40">Black Friday = te same produkty z ceną przekreśloną (import z „nadpisz istniejące”); po promocji zaimportuj z nadpisaniem shopify-import.csv. Tagi „…_Drop” → kolekcja automatyczna w Shopify.</p>
                 </div>
             )}
+
+            <PrintfulPanel />
 
             {wybrany && (
                 <div className="grid gap-3 rounded-xl border border-white/10 bg-black/40 p-3 md:grid-cols-2">
