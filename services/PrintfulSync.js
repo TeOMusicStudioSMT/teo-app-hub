@@ -180,7 +180,9 @@ export function utworzPrintful({ katalog, wymiar, token, zapiszToken = async () 
         (async () => {
             const mapa = await mapaSku();
             if (!mapa.size) throw blad('W sklep-shopify nie ma manifestów bestsellerów — narysuj je w TeO Fashion Studio.');
-            const lista = (await wszystkieProdukty()).filter((p) => (produkt ? String(p.id) === String(produkt) : true) && !p.is_ignored);
+            const lista = (await wszystkieProdukty()).filter((p) => (produkt ? String(p.id) === String(produkt) : true));
+            // 2026-11-07: produkty zaimportowane z Shopify Printful oznacza is_ignored: true, dopóki nikt ich nie przypisze —
+            // nie pomijamy ich; wariant ze SKU Katedry dostaje is_ignored: false razem z plikami.
             let pierwszy = true;
             const t = await trasy();
             for (const p of lista) {
@@ -189,7 +191,8 @@ export function utworzPrintful({ katalog, wymiar, token, zapiszToken = async () 
                 const d = await zapytanie(`${t.produkt}/${p.id}`);
                 for (const sv of d.sync_variants ?? []) {
                     const m = mapa.get(String(sv.sku ?? '').toUpperCase());
-                    if (!m) { z.pominiete.push({ produkt: p.name, wariant: sv.name, powod: `SKU „${sv.sku ?? '—'}” nie pochodzi ze Stołu Katedry` }); continue; }
+                    // obcy SKU: zgłaszamy tylko przy produkcie, którego Printful nie ignoruje (ignorowane = cudze/nieprzypisane, cisza)
+                    if (!m) { if (!p.is_ignored || produkt) z.pominiete.push({ produkt: p.name, wariant: sv.name, powod: `SKU „${sv.sku ?? '—'}” nie pochodzi ze Stołu Katedry` }); continue; }
                     if (sv.synced && !takzeZsynchronizowane && !produkt) continue;
                     if (!Object.keys(m.pliki).length) { z.bledy.push({ produkt: p.name, wariant: sv.name, powod: 'brak plików na dysku' }); continue; }
                     try {
@@ -198,7 +201,7 @@ export function utworzPrintful({ katalog, wymiar, token, zapiszToken = async () 
                         if (!pierwszy) await czekaj(ODSTEP_MS);
                         pierwszy = false;
                         z.krok = `${p.name} · ${m.wartosc}: wysyłam ${files.length} plik(ów)…`;
-                        await zapytanie(`${t.wariant}/${sv.id}`, { metoda: 'PUT', cialo: { variant_id: m.variantId, retail_price: m.cena.toFixed(2), files } });
+                        await zapytanie(`${t.wariant}/${sv.id}`, { metoda: 'PUT', cialo: { variant_id: m.variantId, retail_price: m.cena.toFixed(2), is_ignored: false, files } });
                         z.zrobione.push({ produkt: p.name, wariant: sv.name, variantId: m.variantId, cena: m.cena, plikow: files.length });
                     } catch (e) {
                         z.bledy.push({ produkt: p.name, wariant: sv.name, powod: e.message });

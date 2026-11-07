@@ -48,7 +48,7 @@ function atrapa() {
         if (o.headers?.Authorization !== 'Bearer tok_printful_1234567890abcdef') return { ok: false, status: 401, json: async () => ({ code: 401, error: { message: 'Unauthorized' } }) };
         if (u.pathname === '/stores') return ok([{ id: 11, name: 'Inny', type: 'native' }, { id: 22, name: 'teo-mas', type: 'shopify' }]);
         if (u.pathname === '/mockup-generator/printfiles/279') return ok({ product_id: 279, available_placements: { default: 'Front', top: 'Top' }, printfiles: [{ printfile_id: 5, width: 3000, height: 4000, dpi: 150 }], variant_printfiles: [{ variant_id: 9063, placements: { default: 5, top: 5 } }] });
-        if (u.pathname === '/sync/products') return ok([{ id: 900, name: 'Pęcherzik — Kiss-Cut Sticker', variants: 3, synced: 0 }, { id: 901, name: 'Gotowy', variants: 2, synced: 2 }]);
+        if (u.pathname === '/sync/products') return ok([{ id: 900, name: 'Pęcherzik — Kiss-Cut Sticker', variants: 3, synced: 0, is_ignored: true }, { id: 901, name: 'Gotowy', variants: 2, synced: 2 }]);
         if (u.pathname === '/sync/products/900') return ok({ sync_product: { id: 900 }, sync_variants: [
             { id: 1, name: '3x3', sku: 'pecherzik-naklejki-3-3', synced: false },
             { id: 2, name: '4x4', sku: 'PECHERZIK-NAKLEJKI-4-4', synced: false },
@@ -116,6 +116,7 @@ test('Printful: synchronizacja po SKU — wariant katalogu, cena, pliki przez tu
     assert.equal(put.length, 2, 'zsynchronizowany produkt 901 nietknięty');
     assert.deepEqual(put[0].cialo.variant_id, 10163);
     assert.equal(put[0].cialo.retail_price, '5.90');
+    assert.equal(put[0].cialo.is_ignored, false, 'zaimportowany z Shopify (ignorowany) zostaje przypisany');
     const url = put[0].cialo.files[0].url;
     assert.equal(put[0].cialo.files[0].type, 'default');
     assert.match(url, /^https:\/\/katedra\.otakos\.wtf\/wizytowka\/printful\/[0-9a-f]{32}\.png$/);
