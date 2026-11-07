@@ -137,3 +137,36 @@ test('Printful: bez tokenu — stan mówi powód, zapytania odmawiają', async (
     assert.equal((await P.stan()).polaczony, false);
     await assert.rejects(P.printfiles(279), /Brak tokenu/);
 });
+
+test('Printful: mockupy — zadanie Mockup Generatora z plikami z tunelu, JPG-i obok produktu, drugi raz pominięte', async () => {
+    const { kat, S, sklep } = await swiat();
+    await S.synchronizuj();
+    const zlecone = [];
+    const f = async (url, o = {}) => {
+        const u = new URL(url);
+        const ok = (result) => ({ ok: true, status: 200, json: async () => ({ code: 200, result }) });
+        if (u.hostname === 'cdn.test') return { ok: true, status: 200, arrayBuffer: async () => Buffer.from('ffd8ffe0', 'hex') };
+        if (u.pathname.startsWith('/mockup-generator/create-task/')) { zlecone.push({ id: u.pathname.split('/').pop(), cialo: JSON.parse(o.body) }); return ok({ task_key: `gt-${zlecone.length}`, status: 'pending' }); }
+        if (u.pathname === '/mockup-generator/task') return ok({ status: 'completed', mockups: [{ placement: 'default', mockup_url: `https://cdn.test/${u.searchParams.get('task_key')}.jpg`, extra: [{ url: 'https://cdn.test/extra.jpg' }] }] });
+        return { ok: false, status: 404, json: async () => ({ code: 404, result: 'Not found' }) };
+    };
+    const P = utworzPrintful({ katalog: sklep, wymiar: path.join(kat, 'printful'), token: async () => 'tok_printful_1234567890abcdef', adres: async () => 'https://katedra.otakos.wtf', fetch: f, czekaj: async () => {} });
+    await P.mockupy();
+    for (let i = 0; i < 50 && P.stanMockupow().stan === 'robi'; i++) await new Promise((r) => setTimeout(r, 10));
+    const z = P.stanMockupow();
+    assert.equal(z.stan, 'gotowe', z.powod);
+    assert.equal(z.zrobione.length, 2);
+    assert.deepEqual(zlecone.map((x) => x.id).sort(), ['279', '358']);
+    const plecak = zlecone.find((x) => x.id === '279').cialo;
+    assert.deepEqual(plecak.variant_ids, [9063]);
+    assert.deepEqual(plecak.files.map((x) => x.placement).sort(), ['default', 'top']);
+    assert.match(plecak.files[0].image_url, /^https:\/\/katedra\.otakos\.wtf\/wizytowka\/printful\/[0-9a-f]{32}\.png$/);
+    assert.deepEqual(plecak.files.find((x) => x.placement === 'top').position, { area_width: 4200, area_height: 1500, width: 4200, height: 1500, top: 0, left: 0 });
+    const kp = path.join(sklep, 'pecherzik', FOLDER_BESTSELLERY, 'aop-plecak');
+    assert.deepEqual((await fs.readdir(kp)).filter((x) => x.startsWith('MOCKUP')).sort(), ['MOCKUP-1.jpg', 'MOCKUP-2.jpg']);
+    await P.mockupy();
+    for (let i = 0; i < 50 && P.stanMockupow().stan === 'robi'; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(P.stanMockupow().pominiete.length, 2);
+    assert.equal(zlecone.length, 2, 'bez wymus: istniejące mockupy nie są zlecane ponownie');
+    assert.ok(S.plikBestsellera('pecherzik', 'aop-plecak', 'MOCKUP-1.jpg'));
+});

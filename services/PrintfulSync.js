@@ -214,13 +214,74 @@ export function utworzPrintful({ katalog, wymiar, token, zapiszToken = async () 
         return { zadanie: z };
     }
 
-    return { stan, ustawToken, wybierzSklep, printfiles, produkty, mapaSku, link, plikZLinku, synchronizuj, stanZadania };
+    // ── 📸 mockupy Printful (Mockup Generator) → zdjęcia produktów do Shopify (≤ 20 MB, JPG) ──
+    // 2026-11-07: pliki druku All-Over ważą 20–30 MB, Shopify przyjmuje zdjęcia ≤ 20 MB — klient ma zobaczyć produkt, nie arkusz druku.
+    let zadanieMockupow = null;
+    async function mockupy({ postac = null, wymus = false } = {}) {
+        if (zadanieMockupow?.stan === 'robi') throw blad('Mockupy już się generują.', 409);
+        if (!(await token())) throw blad('Brak tokenu Printful.', 409);
+        if (!(await adres())) throw blad('Mockup Generator pobiera pliki z publicznego adresu — włącz tunel Katedry.', 409);
+        const z = zadanieMockupow = { stan: 'robi', start: new Date(teraz()).toISOString(), krok: null, zrobione: [], pominiete: [], bledy: [] };
+        (async () => {
+            let pierwszy = true;
+            for (const d of await fs.readdir(katalog, { withFileTypes: true }).catch(() => [])) {
+                if (!d.isDirectory() || (postac && d.name !== postac)) continue;
+                const baza = path.join(katalog, d.name, FOLDER_BESTSELLERY);
+                const m = await czytajJ(path.join(baza, 'produkty.json'), null);
+                for (const p of m?.produkty ?? []) {
+                    const w = p.warianty?.[0];
+                    if (!w) continue;
+                    const kat = path.join(baza, p.klucz);
+                    if (!wymus && fsSync.existsSync(path.join(kat, 'MOCKUP-1.jpg'))) { z.pominiete.push({ produkt: p.tytul, powod: 'mockup już jest' }); continue; }
+                    try {
+                        const files = [];
+                        for (const [placement, rel] of Object.entries(w.pliki ?? {})) {
+                            const abs = path.resolve(baza, String(rel)), wym = /-(\d+)x(\d+)\.png$/.exec(abs);
+                            if (!abs.startsWith(baza + path.sep) || !wym || !fsSync.existsSync(abs)) continue;
+                            const [W, H] = [Number(wym[1]), Number(wym[2])];
+                            files.push({ placement, image_url: await link(abs), position: { area_width: W, area_height: H, width: W, height: H, top: 0, left: 0 } });
+                        }
+                        if (!files.length) { z.bledy.push({ produkt: p.tytul, powod: 'brak plików na dysku' }); continue; }
+                        if (!pierwszy) await czekaj(ODSTEP_MS);
+                        pierwszy = false;
+                        z.krok = `${p.tytul}: Printful składa mockup…`;
+                        const zad = await zapytanie(`/mockup-generator/create-task/${p.katalogId}`, { metoda: 'POST', cialo: { variant_ids: [w.variantId], format: 'jpg', files } });
+                        let wynik = null;
+                        for (let i = 0; i < 40 && !wynik; i++) {
+                            await czekaj(5000);
+                            const t = await zapytanie(`/mockup-generator/task?task_key=${encodeURIComponent(zad.task_key)}`);
+                            if (t.status === 'completed') wynik = t;
+                            else if (t.status === 'failed') throw blad(`Printful: ${t.error ?? 'mockup się nie udał'}`);
+                        }
+                        if (!wynik) throw blad('Printful nie skończył mockupu w 3 min.');
+                        const adresy = [...new Set((wynik.mockups ?? []).flatMap((x) => [x.mockup_url, ...(x.extra ?? []).map((e) => e.url)]).filter(Boolean))].slice(0, 4);
+                        for (const f of await fs.readdir(kat).catch(() => [])) if (/^MOCKUP-\d\.jpg$/.test(f)) await fs.rm(path.join(kat, f), { force: true });
+                        let n = 0;
+                        for (const u of adresy) {
+                            const r = await f(u, { signal: AbortSignal.timeout(60_000) });
+                            if (!r.ok) continue;
+                            await fs.writeFile(path.join(kat, `MOCKUP-${++n}.jpg`), Buffer.from(await r.arrayBuffer()));
+                        }
+                        z.zrobione.push({ produkt: p.tytul, mockupow: n });
+                    } catch (e) {
+                        z.bledy.push({ produkt: p.tytul, powod: e.message });
+                        if (e.kod === 401) throw e;
+                        if (e.kod === 429) await czekaj(60_000);
+                    }
+                }
+            }
+        })().then(() => { z.stan = 'gotowe'; z.krok = null; }, (e) => { z.stan = 'blad'; z.krok = null; z.powod = e.message; }).finally(() => { z.koniec = new Date(teraz()).toISOString(); });
+        return { zadanie: z };
+    }
+
+    return { stan, ustawToken, wybierzSklep, printfiles, produkty, mapaSku, link, plikZLinku, synchronizuj, stanZadania, mockupy, stanMockupow: () => zadanieMockupow };
 }
 
 /** Trasy: `/api/printful/*` (Straż: maszyna), publicznie tylko `GET /wizytowka/printful/<token>.png` (SCIEZKA_PRINTFUL). */
 export function zamontujTrasyPrintful(app, P) {
     const odp = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }));
-    app.get('/api/printful/stan', (_req, res) => odp(res, P.stan().then((s) => ({ ...s, zadanie: P.stanZadania() }))));
+    app.get('/api/printful/stan', (_req, res) => odp(res, P.stan().then((s) => ({ ...s, zadanie: P.stanZadania(), mockupy: P.stanMockupow?.() ?? null }))));
+    app.post('/api/printful/mockupy', (req, res) => odp(res, P.mockupy(req.body ?? {})));
     app.put('/api/printful/token', (req, res) => odp(res, P.ustawToken(req.body?.token ?? null)));
     app.put('/api/printful/sklep', (req, res) => odp(res, P.wybierzSklep(req.body?.sklep)));
     app.get('/api/printful/printfiles/:id', (req, res) => odp(res, P.printfiles(req.params.id)));

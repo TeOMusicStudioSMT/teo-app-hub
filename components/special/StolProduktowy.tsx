@@ -27,10 +27,10 @@ async function zMostu<T>(sciezka: string, init?: RequestInit): Promise<T> {
 const plik = (x: Produkt, p: string) => `${MOST}/api/stol-produktowy/plik/${x.postac}/${x.model}/${p}`;
 const bezHtml = (h: string) => h.replace(/<\/p>\s*/gi, '\n\n').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').trim();
 
-interface BsProdukt { klucz: string; tytul: string; katalogId: number; aop: boolean; wariantow: number; uwaga: string | null }
+interface BsProdukt { klucz: string; tytul: string; katalogId: number; aop: boolean; wariantow: number; uwaga: string | null; zdjecia?: string[] }
 interface Bs { postac: string; imie: string; kiedy: string; zrodloWymiarow: Record<string, string>; produkty: BsProdukt[] }
 interface ZadaniePF { stan: string; krok: string | null; zrobione: { produkt: string; wariant: string; cena: number }[]; pominiete: { produkt: string; wariant: string; powod: string }[]; bledy: { produkt: string; wariant: string; powod: string }[]; powod?: string }
-interface StanPF { polaczony: boolean; powod?: string; sklep: { id: number; nazwa: string; typ?: string } | null; sklepy?: { id: number; nazwa: string; typ: string }[]; zadanie: ZadaniePF | null }
+interface StanPF { polaczony: boolean; powod?: string; sklep: { id: number; nazwa: string; typ?: string } | null; sklepy?: { id: number; nazwa: string; typ: string }[]; zadanie: ZadaniePF | null; mockupy?: { stan: string; krok: string | null; zrobione: { produkt: string; mockupow: number }[]; pominiete: unknown[]; bledy: { produkt: string; powod: string }[]; powod?: string } | null }
 
 /** 🖨️ Bestsellery Printful (rysuje TeO Fashion Studio → 3-BESTSELLERY-PRINTFUL-I-ALL-OVER), 🏷️ marka i 🔄 synchronizacja wariantów z Printful. */
 function PrintfulPanel() {
@@ -45,10 +45,10 @@ function PrintfulPanel() {
     }, []);
     useEffect(() => { void odswiez(); }, [odswiez]);
     useEffect(() => {
-        if (pf?.zadanie?.stan !== 'robi') return;
+        if (pf?.zadanie?.stan !== 'robi' && pf?.mockupy?.stan !== 'robi') return;
         const t = setInterval(async () => { try { const s = await zMostu<StanPF>('/api/printful/stan'); setPf(s); if (s.zadanie?.stan !== 'robi' && s.polaczony) setProdukty(await zMostu('/api/printful/produkty')); } catch { /* — */ } }, 4000);
         return () => clearInterval(t);
-    }, [pf?.zadanie?.stan]);
+    }, [pf?.zadanie?.stan, pf?.mockupy?.stan]);
     const dzialaj = async (fn: () => Promise<unknown>) => { setBlad(''); try { await fn(); await odswiez(); } catch (e) { setBlad((e as Error).message); } };
     const z = pf?.zadanie;
     return (
@@ -66,7 +66,15 @@ function PrintfulPanel() {
                 return (
                     <div key={b.postac} className="rounded bg-black/40 p-1">
                         <div className="flex flex-wrap gap-2"><b className="text-sky-100">{b.imie}</b><span className="text-white/50">{b.produkty.length} produktów · wymiary z Printful {dokl}/{b.produkty.length}{dokl < b.produkty.length ? ' (reszta orientacyjna — po tokenie narysuj ponownie)' : ''} · {b.kiedy.slice(0, 16).replace('T', ' ')}</span></div>
-                        <div className="text-[10px] text-white/60">{b.produkty.map((p) => `${p.aop ? '🌌' : ''}${p.tytul.split(' — ')[1]?.replace(' · 0.00G Style', '') ?? p.klucz} (#${p.katalogId}, ${p.wariantow} war.)`).join(' · ')}</div>
+                        <div className="flex gap-1 overflow-x-auto pb-1">
+                            {b.produkty.map((p) => (
+                                <div key={p.klucz} className="w-24 shrink-0 text-[10px]" title={`${p.tytul} · Printful #${p.katalogId} · ${p.wariantow} war.${p.uwaga ? ` — ${p.uwaga}` : ''}`}>
+                                    {p.zdjecia?.[0] ? <img src={`${MOST}/api/stol-produktowy/bestseller/${b.postac}/${p.klucz}/${p.zdjecia[0]}`} alt="" className="aspect-square w-full rounded bg-white/10 object-cover" loading="lazy" /> : <div className="aspect-square w-full rounded bg-white/5" />}
+                                    <div className="truncate">{p.aop ? '🌌' : ''}{p.tytul.split(' — ')[1]?.replace(' · 0.00G Style', '') ?? p.klucz}</div>
+                                    <div className="flex flex-wrap gap-1">{(p.zdjecia ?? []).map((f) => <a key={f} href={`${MOST}/api/stol-produktowy/bestseller/${b.postac}/${p.klucz}/${f}`} download={`${b.postac}-${p.klucz}-${f}`} className="text-sky-300 underline" title="zdjęcie do Shopify (≤ 20 MB)">{f.startsWith('MOCKUP') ? `📸${f.slice(7, 8)}` : '🖼️'}</a>)}</div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 );
             })}
@@ -90,6 +98,12 @@ function PrintfulPanel() {
                     </div>
                     <button disabled={z?.stan === 'robi'} onClick={() => void dzialaj(() => zMostu('/api/printful/synchronizuj', { method: 'POST', body: '{}' }))} className="rounded bg-sky-500 px-3 py-1 font-bold text-black disabled:opacity-40">🔄 Synchronizuj wszystkie niezsynchronizowane (po SKU Katedry)</button>
                 </>}
+                {pf?.polaczony && <div className="flex flex-wrap items-center gap-2">
+                    <button disabled={pf.mockupy?.stan === 'robi'} onClick={() => void dzialaj(() => zMostu('/api/printful/mockupy', { method: 'POST', body: '{}' }))} className="rounded border border-sky-500/50 px-2 py-0.5 disabled:opacity-40" title="Printful Mockup Generator składa zdjęcia produktów z naszymi plikami; JPG-i lądują obok (📸) — do wgrania w Shopify (limit 20 MB)">📸 Mockupy Printful (nowe produkty)</button>
+                    <button disabled={pf.mockupy?.stan === 'robi'} onClick={() => { if (confirm('Wygenerować mockupy od nowa dla WSZYSTKICH bestsellerów?')) void dzialaj(() => zMostu('/api/printful/mockupy', { method: 'POST', body: JSON.stringify({ wymus: true }) })); }} className="rounded border border-white/20 px-2 py-0.5 disabled:opacity-40">↻ wszystkie</button>
+                    <span className="text-[10px] text-white/50">🖼️ = ZDJECIE-SKLEP.jpg (z pliku druku, od razu), 📸 = mockup Printful — oba ≤ 20 MB, do „Multimedia” w Shopify. Pliki druku (PNG) idą tylko do Printful.</span>
+                    {pf.mockupy && <span className={`text-[11px] ${pf.mockupy.stan === 'blad' ? 'text-red-300' : 'text-sky-200'}`}>{pf.mockupy.stan === 'robi' ? `⏳ ${pf.mockupy.krok ?? ''}` : pf.mockupy.stan === 'blad' ? `⚠ ${pf.mockupy.powod}` : '✓ mockupy gotowe'} · {pf.mockupy.zrobione.length} prod. · błędy {pf.mockupy.bledy.length}{pf.mockupy.bledy[0] ? ` (${pf.mockupy.bledy[0].produkt}: ${pf.mockupy.bledy[0].powod})` : ''}</span>}
+                </div>}
                 {z && <div className={`rounded p-1 text-[11px] ${z.stan === 'blad' ? 'bg-red-950/40 text-red-300' : 'bg-sky-950/40'}`}>
                     {z.stan === 'robi' ? `⏳ ${z.krok ?? ''}` : z.stan === 'blad' ? `⚠ ${z.powod}` : '✓ gotowe'} · wysłane {z.zrobione.length} · pominięte {z.pominiete.length} · błędy {z.bledy.length}
                     {z.bledy.slice(0, 4).map((b, i) => <div key={i} className="text-red-300">✗ {b.produkt} / {b.wariant}: {b.powod}</div>)}

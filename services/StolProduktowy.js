@@ -14,6 +14,10 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import ffmpegPath from 'ffmpeg-static';
+const execFileP = promisify(execFile);
 
 const POSTAC = /^[a-z0-9][a-z0-9-]{0,40}$/;
 const MODEL = /^[a-z0-9][a-z0-9-]{2,80}$/;
@@ -48,8 +52,8 @@ const zHtml = (h) => String(h ?? '').replace(/<\/p>\s*/gi, '\n\n').replace(/<br\
  * @param {{ katalogFashion: string, katalog: string, teraz?: () => number }} o
  *   katalogFashion = katalog TeO Fashion Studio, katalog = `_OtakOs_Wymiar/sklep-shopify`
  */
-export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Date.now(), fetch: fetchSklepu = null }) {
-    const cfg = { fetch: fetchSklepu };
+export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Date.now(), fetch: fetchSklepu = null, ffmpeg = ffmpegPath, wykonaj = (plik, arg) => execFileP(plik, arg, { windowsHide: true, maxBuffer: 1 << 24 }) }) {
+    const cfg = { fetch: fetchSklepu, ffmpeg, wykonaj };
     const SKLEP = path.join(katalogFashion, 'public', 'nadruki', 'sklep');
     const blad = (m, kod = 400) => Object.assign(new Error(m), { kod });
 
@@ -178,6 +182,33 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
     const BESTSELLERY = path.join(katalogFashion, 'public', 'nadruki', 'bestsellery'), BRAND = path.join(katalogFashion, 'public', 'nadruki', 'brand');
     const FOLDER_BS = '3-BESTSELLERY-PRINTFUL-I-ALL-OVER';
     const czytajM = async (p) => { try { return JSON.parse(await fs.readFile(p, 'utf8')); } catch { return null; } };
+    /**
+     * 📷 Zdjęcie do sklepu (2026-11-07: Shopify przyjmuje zdjęcia ≤ 20 MB, a pliki druku All-Over ważą 20–30 MB — to pliki dla
+     * Printful, nie dla klienta): z głównego pliku produktu `ZDJECIE-SKLEP.jpg` ≤ 2000 px, przezroczystość na białym tle.
+     * Robione raz; ponownie, gdy plik druku jest nowszy.
+     */
+    async function zdjeciaSklepu() {
+        if (!cfg.ffmpeg) return { zrobione: 0, powod: 'brak ffmpeg' };
+        let zrobione = 0;
+        for (const d of await fs.readdir(katalog, { withFileTypes: true }).catch(() => [])) {
+            if (!d.isDirectory() || !POSTAC.test(d.name)) continue;
+            const baza = path.join(katalog, d.name, FOLDER_BS);
+            const m = await czytajM(path.join(baza, 'produkty.json'));
+            for (const p of m?.produkty ?? []) {
+                const pl = p.warianty?.[0]?.pliki ?? {};
+                const rel = pl.default ?? pl.front ?? Object.values(pl)[0];
+                if (!rel) continue;
+                const zr = path.join(baza, String(rel)), cel = path.join(baza, p.klucz, 'ZDJECIE-SKLEP.jpg');
+                const [a, b] = await Promise.all([fs.stat(zr).catch(() => null), fs.stat(cel).catch(() => null)]);
+                if (!a || (b && b.mtimeMs >= a.mtimeMs)) continue;
+                await cfg.wykonaj(cfg.ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-i', zr,
+                    '-filter_complex', `[0:v]scale='min(2000,iw)':'min(2000,ih)':force_original_aspect_ratio=decrease,format=rgba[p];color=${p.klucz.startsWith('czapka') ? '0x0b0c10' : 'white'}:s=16x16[t];[t][p]scale2ref[t2][p2];[t2][p2]overlay=format=auto,format=yuvj420p`,  // haft czapki: kremowa nić — ciemne tło
+                    '-frames:v', '1', '-q:v', '3', cel]);
+                zrobione++;
+            }
+        }
+        return { zrobione };
+    }
     /** Kopia tylko, gdy manifest w Fashion jest nowszy niż w sklep-shopify (pliki AOP ważą setki MB). */
     async function kopiujBestsellery() {
         const skopiowane = [];
@@ -198,6 +229,7 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
             for (const f of ['CZYTAJ.txt', 'produkty.json']) await fs.copyFile(path.join(zr, f), path.join(cel, f)).catch(() => {});
             skopiowane.push(d.name);
         }
+        const zdjecia = await zdjeciaSklepu().catch((e) => ({ blad: e.message }));
         const brand = [];
         for (const f of await fs.readdir(BRAND).catch(() => [])) {
             if (!/^(logo-0\.00g-style[a-z-]*|baner-seo-social-1200x628(@2x)?)\.png$/.test(f)) continue;
@@ -207,14 +239,15 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
             await fs.copyFile(path.join(BRAND, f), path.join(katalog, 'brand', f));
             brand.push(f);
         }
-        return { skopiowane, brand, csv: await zapiszCsvBestsellery() };
+        return { skopiowane, brand, zdjecia, csv: await zapiszCsvBestsellery() };
     }
     async function listaBestsellerow() {
         const out = [];
         for (const d of await fs.readdir(katalog, { withFileTypes: true }).catch(() => [])) {
             if (!d.isDirectory() || !POSTAC.test(d.name)) continue;
             const m = await czytajM(path.join(katalog, d.name, FOLDER_BS, 'produkty.json'));
-            if (m?.produkty) out.push({ postac: d.name, imie: m.imie, kiedy: m.kiedy, zrodloWymiarow: m.zrodloWymiarow ?? {}, produkty: m.produkty.map((p) => ({ klucz: p.klucz, tytul: p.tytul, katalogId: p.katalogId, aop: !!p.aop, wariantow: p.warianty.length, uwaga: p.uwaga ?? null })) });
+            if (m?.produkty) out.push({ postac: d.name, imie: m.imie, kiedy: m.kiedy, zrodloWymiarow: m.zrodloWymiarow ?? {}, produkty: await Promise.all(m.produkty.map(async (p) => ({ klucz: p.klucz, tytul: p.tytul, katalogId: p.katalogId, aop: !!p.aop, wariantow: p.warianty.length, uwaga: p.uwaga ?? null,
+                zdjecia: (await fs.readdir(path.join(katalog, d.name, FOLDER_BS, p.klucz)).catch(() => [])).filter((f) => /^(ZDJECIE-SKLEP|MOCKUP-\d)\.jpg$/.test(f)).sort((a, b) => (a.startsWith('MOCKUP') ? -1 : 1) - (b.startsWith('MOCKUP') ? -1 : 1) || a.localeCompare(b)) }))) });
         }
         const brand = (await fs.readdir(path.join(katalog, 'brand')).catch(() => [])).filter((f) => f.endsWith('.png'));
         return { bestsellery: out, brand };
@@ -321,7 +354,7 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
     /** Podgląd pliku bestsellera / marki w Hubie (tylko z sklep-shopify, tylko PNG o znanych nazwach). */
     function plikBestsellera(postac, produkt, nazwa) {
         if (postac === 'brand') { if (produkt !== '-' || !/^(logo-0\.00g-style[a-z-]*|baner-seo-social-1200x628(@2x)?)\.png$/.test(String(nazwa))) return null; const p = path.join(katalog, 'brand', nazwa); return fsSync.existsSync(p) ? p : null; }
-        if (!POSTAC.test(String(postac)) || !/^[a-z0-9][a-z0-9-]{1,40}$/.test(String(produkt)) || !/^[a-z_]{3,40}-\d{2,5}x\d{2,5}\.png$/.test(String(nazwa))) return null;
+        if (!POSTAC.test(String(postac)) || !/^[a-z0-9][a-z0-9-]{1,40}$/.test(String(produkt)) || !/^([a-z_]{3,40}-\d{2,5}x\d{2,5}\.png|ZDJECIE-SKLEP\.jpg|MOCKUP-\d\.jpg)$/.test(String(nazwa))) return null;
         const p = path.join(katalog, postac, FOLDER_BS, produkt, nazwa);
         return fsSync.existsSync(p) ? p : null;
     }
