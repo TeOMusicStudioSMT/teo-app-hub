@@ -20,14 +20,16 @@ const dataUrl = (b, typ) => `data:${typ};base64,${b.toString('base64')}`;
 async function jpeg(kat, s = '320x200') { const p = path.join(kat, `t-${s}.jpg`); await uruchom(ffmpegPath, ['-y', '-f', 'lavfi', '-i', `testsrc=s=${s}`, '-frames:v', '1', p]); return fs.readFile(p); }
 async function png(kat) { const p = path.join(kat, 't.png'); await uruchom(ffmpegPath, ['-y', '-f', 'lavfi', '-i', 'color=c=teal:s=400x300', '-frames:v', '1', p]); return fs.readFile(p); }
 
-async function srodowisko({ rysuj = null, cisza = () => false } = {}) {
+async function srodowisko({ rysuj = null, cisza = () => false, laduje = 0 } = {}) {
     const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'manuskrypt-'));
     const mowy = [];
     let M = null;
     const W = utworzWypozyczalnie({ katalog: path.join(kat, 'teostory'), obrazLokalny: (u) => M.plikZAdresu(u) });
     M = utworzManuskrypt({
         katalog: path.join(kat, 'manuskrypty'), katalogMontazy: async (p) => path.join(kat, 'produkcje', p, 'montaz'), ffmpeg: ffmpegPath, uruchom: (c, a, o) => uruchom(c, a, o), opisz,
+        pauzaSilnikaMs: 10,
         mow: async ({ tekst, glos, jezyk }) => {
+            if (laduje-- > 0) throw new Error('Lokalny silnik klonu odrzucił żądanie (HTTP 503): {"blad": "model nie jest gotowy (ladowanie)"}');
             mowy.push({ tekst, glos, jezyk });
             const p = path.join(kat, `mowa-${mowy.length}.wav`);
             // atrapa: mowa ok. 12 znaków/s; `cisza()` = silnik oddaje 0,2 s ciszy (jak Chatterbox 2026-11-07)
@@ -42,7 +44,7 @@ async function srodowisko({ rysuj = null, cisza = () => false } = {}) {
     });
     return { M, W, kat, mowy };
 }
-const czekaj = async (M, id) => { for (let i = 0; i < 400; i++) { const z = await M.czytaj(id); if (['gotowe', 'blad'].includes(z.stan)) return z; await new Promise((r) => setTimeout(r, 100)); } throw new Error('za długo'); };
+const czekaj = async (M, id) => { for (let i = 0; i < 1500; i++) { const z = await M.czytaj(id); if (['gotowe', 'blad'].includes(z.stan)) return z; await new Promise((r) => setTimeout(r, 100)); } throw new Error('za długo'); };
 
 test('rodzaj pliku po zawartości; .doc odrzucony wprost', () => {
     assert.equal(rodzajPliku(Buffer.from('%PDF-1.4 x')), 'pdf');
@@ -169,6 +171,15 @@ test('głos: cisza z silnika = ponowienie, uparta cisza = błąd z powodem (nie 
     await M2.produkuj(t2.id, {});
     const g2 = await czekaj(M2, t2.id);
     assert.equal(g2.stan, 'blad'); assert.match(g2.powod, /głos sceny \d: .* \(po 3 próbach\)/);
+});
+
+test('głos: silnik ładuje model (503) — czekamy zamiast palić 3 próby', async () => {
+    const { M } = await srodowisko({ laduje: 5 });
+    const t = await M.nowy({ nazwa: 'a.txt', dane: `data:text/plain;base64,${Buffer.from(DWIE_SCENY).toString('base64')}`, prawa: true });
+    await M.produkuj(t.id, {});
+    const g = await czekaj(M, t.id);
+    assert.equal(g.stan, 'gotowe', g.powod);
+    assert.equal(g.kroki.filter((k) => k.opis.startsWith('⏳ silnik głosu')).length, 1);
 });
 
 test('Straż: /api/manuskrypt tylko przy maszynie', () => {

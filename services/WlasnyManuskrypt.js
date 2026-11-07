@@ -30,6 +30,8 @@ export const MAX_ZNAKOW_SCENY = 2000;          // dłuższa strona PDF dzieli si
 export const SLOW_NA_SCENE = 140;              // DOCX/TXT bez ilustracji: ok. tyle słów na scenę
 export const MIN_BOKU_OBRAZU = 120;
 export const PROB_GLOSU = 3;
+export const CZEKANIE_NA_SILNIK_MS = 5 * 60_000;   // silnik klonu ładuje model po starcie (HTTP 503 „ladowanie”)
+const SILNIK_LADUJE = /503|ladowanie|ładowanie|nie jest gotowy|ECONNREFUSED|fetch failed/i;
 export const CISZA_DB = -45;               // szczyt nagrania poniżej = cisza
 export const ZNAKOW_NA_SEKUNDE_MAX = 30;    // szybciej nikt nie czyta — krótsze nagranie jest urwane            // mniejsze obrazy z PDF/DOCX to ozdobniki — pomijane
 export const STYL_DOMALOWANY = ', storybook illustration, consistent with the reference illustrations, same art style and palette, no text, no letters';
@@ -462,10 +464,21 @@ export function utworzManuskrypt(cfg) {
                 // 🛟 silnik klonu potrafi oddać CISZĘ albo urwane nagranie (2026-11-07: 147 znaków → 0,2 s, −90 dB) —
                 // każde nagranie sprawdzamy (głośność + długość względem tekstu), cisza = ponowienie, po 3 próbach błąd z powodem
                 let a = null, sek = null, problem = null;
+                const czekajDo = Date.now() + CZEKANIE_NA_SILNIK_MS;
+                let czekalismy = false;
                 for (let proba = 1; proba <= PROB_GLOSU && !a; proba++) {
                     let g;
                     try { g = await cfg.mow({ tekst: k.tekst, glos, jezyk: z.jezyk }); }
-                    catch (e) { problem = e.message; continue; }
+                    catch (e) {
+                        problem = e.message;
+                        // silnik dopiero wstaje (po restarcie mostu ładuje model) — czekamy, ta próba się nie liczy
+                        if (SILNIK_LADUJE.test(problem) && Date.now() < czekajDo) {
+                            if (!czekalismy) { czekalismy = true; krok(z, '⏳ silnik głosu ładuje model — czekam (do 5 min)'); await zapisz(z); }
+                            await new Promise((r) => setTimeout(r, cfg.pauzaSilnikaMs ?? 15_000));
+                            proba--;
+                        }
+                        continue;
+                    }
                     const nazwa = `a-${String(k.nr).padStart(3, '0')}.${g.ext || 'wav'}`;
                     await fs.writeFile(path.join(praca, nazwa), g.audio);
                     sek = (await cfg.opisz(path.join(praca, nazwa)).catch(() => null))?.sekundy ?? null;
