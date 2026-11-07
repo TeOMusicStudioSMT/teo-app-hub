@@ -131,7 +131,7 @@ export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     });
     const produkty = w.produkty.filter((x) => !x.ukryty).slice(0, ileProduktow).map((x) => {
         if (x.obraz) ids.set(x.id, { plik: x.obraz, film: false });
-        return { id: x.id, rodzaj: x.rodzaj, dzial: x.dzial, tytul: x.tytul, opis: x.opis, kiedy: x.kiedy, obraz: x.obraz ? `/wizytowka/plik/${x.id}` : null };
+        return { id: x.id, rodzaj: x.rodzaj, dzial: x.dzial, tytul: x.tytul, opis: x.opis, kiedy: x.kiedy, obraz: x.obraz ? `/wizytowka/plik/${x.id}` : null, cena: x.cena ?? null, waluta: x.waluta ?? null, link: x.link ?? null };
     });
     const suno = (w.suno ?? []).map((s) => ({ typ: s.typ, id: s.id, url: s.url, tytul: s.tytul, opis: s.opis, embed: s.embed, okladka: s.okladka ?? null, sekundy: s.sekundy ?? null, utwory: (s.utwory ?? []).map((u) => ({ id: u.id, tytul: u.tytul, sekundy: u.sekundy ?? null, okladka: u.okladka ?? null, embed: u.embed, url: u.url })) }));
     publiczneId = ids;

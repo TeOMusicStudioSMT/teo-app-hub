@@ -8996,7 +8996,8 @@ app.post('/api/wideo/przytnij', async (req, res) => {
 });
 
 // ── 🖼️ WYSTAWA — katalog Katedry dla teo.center (services/Wystawa.js: „po co" i granice) ──
-Wystawa.skonfiguruj({ katalogKatedry: ANTIGRAVITY_DIR, musicDir: MUSIC_DIR, comfyDir: COMFY_DIR, ffmpeg: ffmpegPath, ffprobe: ffprobePath, execFile: execFileAsync, szyna: Szyna });
+Wystawa.skonfiguruj({ katalogKatedry: ANTIGRAVITY_DIR, musicDir: MUSIC_DIR, comfyDir: COMFY_DIR, ffmpeg: ffmpegPath, ffprobe: ffprobePath, execFile: execFileAsync, szyna: Szyna,
+    sklep: () => StolProduktowy.produktyWystawy() });   // 👕 produkty wysłane do sklepu (Stół Produktowy) — z linkiem, gdy sklep je wystawia
 const wystawaOdp = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(400).json({ success: false, message: e.message }));
 app.get('/api/wystawa', cors({ origin: '*' }), (_req, res) => wystawaOdp(res, Wystawa.zbierz()));
 app.get('/api/wystawa/kuracja', (_req, res) => wystawaOdp(res, Wystawa.kuracja()));
@@ -9004,6 +9005,7 @@ app.post('/api/wystawa/suno', (req, res) => wystawaOdp(res, Wystawa.dodajSuno(re
 app.delete('/api/wystawa/suno/:id', (req, res) => wystawaOdp(res, Wystawa.usunSuno(req.params.id)));
 app.post('/api/wystawa/youtube', (req, res) => wystawaOdp(res, Wystawa.ustawYouTube(req.body ?? {})));
 app.post('/api/wystawa/ukryj', (req, res) => wystawaOdp(res, Wystawa.ukryj(req.body ?? {})));
+app.post('/api/wystawa/usun', (req, res) => wystawaOdp(res, Wystawa.usun(req.body ?? {})));   // 🗑 z listy (plik zostaje); usuniety: false = przywróć
 app.post('/api/wystawa/opis', (req, res) => wystawaOdp(res, Wystawa.ustawOpis(req.body ?? {})));
 app.post('/api/wystawa/publikuj', (req, res) => wystawaOdp(res, Wystawa.opublikuj(req.body ?? {})));
 /**

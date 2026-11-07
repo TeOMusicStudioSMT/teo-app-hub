@@ -44,7 +44,7 @@ async function zapiszJson(p, d) { await fs.mkdir(path.dirname(p), { recursive: t
 
 export async function kuracja() {
     const k = await czytajJson(PLIK_KURACJI(), {});
-    return { suno: Array.isArray(k.suno) ? k.suno : [], youtube: k.youtube && typeof k.youtube === 'object' ? k.youtube : {}, ukryte: Array.isArray(k.ukryte) ? k.ukryte : [], opisy: k.opisy && typeof k.opisy === 'object' ? k.opisy : {}, ostatniaPublikacja: k.ostatniaPublikacja ?? null };
+    return { suno: Array.isArray(k.suno) ? k.suno : [], youtube: k.youtube && typeof k.youtube === 'object' ? k.youtube : {}, ukryte: Array.isArray(k.ukryte) ? k.ukryte : [], usuniete: Array.isArray(k.usuniete) ? k.usuniete : [], opisy: k.opisy && typeof k.opisy === 'object' ? k.opisy : {}, ostatniaPublikacja: k.ostatniaPublikacja ?? null };
 }
 async function zapiszKuracje(k) { await zapiszJson(PLIK_KURACJI(), k); return k; }
 
@@ -138,6 +138,17 @@ export async function ukryj({ id, ukryty = true }) {
     if (ukryty) k.ukryte.push(id);
     return zapiszKuracje(k);
 }
+/**
+ * 🗑 Usuń z listy (2026-11-07: „można tylko ukryć — dodaj usunięcie”): pozycja znika z Wystawy w Hubie i ze strony.
+ * Plik na dysku zostaje (to tylko lista Wystawy); `usuniety: false` = przywróć.
+ */
+export async function usun({ id, usuniety = true, tytul = '' }) {
+    const k = await kuracja();
+    k.usuniete = k.usuniete.filter((x) => x.id !== id);
+    if (usuniety) k.usuniete.push({ id: String(id).slice(0, 80), tytul: String(tytul ?? '').slice(0, 160), kiedy: teraz() });
+    return zapiszKuracje(k);
+}
+
 export async function ustawOpis({ id, tytul, opis }) {
     const k = await kuracja();
     k.opisy[id] = { ...(k.opisy[id] || {}), ...(tytul !== undefined ? { tytul: String(tytul).slice(0, 120) } : {}), ...(opis !== undefined ? { opis: String(opis).slice(0, 600) } : {}) };
@@ -204,21 +215,9 @@ async function utwory() {
 
 async function produkty() {
     const wynik = [];
-    // 👗 Fashion — wizualizacje kreacji (obrazy w wyjściu ComfyUI, pod „katedra").
-    for (const d of ['TeO_Fashion_Studio', 'OtakOs_Fashion']) {
-        const p = path.resolve(process.cwd(), '..', d, 'OtakOs_Fashion', 'wizualizacje.json');
-        const w = await czytajJson(p, null);
-        if (!w) continue;
-        const lista = Array.isArray(w) ? w : w.wizualizacje ?? [];
-        for (const x of lista.slice(0, 24)) {
-            const m = String(x.plik || '').match(/nazwa=([^&]+)(?:&pod=([^&]+))?/);
-            if (!m) continue;
-            const abs = path.join(cfg.comfyDir, 'ComfyUI', 'output', decodeURIComponent(m[2] || ''), decodeURIComponent(m[1]));
-            if (!fsSync.existsSync(abs)) continue;
-            wynik.push({ id: `moda-${id8(abs)}`, rodzaj: 'kreacja', dzial: 'TeO Fashion Studio', tytul: x.tytul || x.nazwa || x.id, opis: String(x.prompt || '').slice(0, 240), obraz: abs, kiedy: x.kiedy || null });
-        }
-        break;
-    }
+    // 👕 0.00G Style — produkty wysłane do sklepu przez Stół Produktowy (makieta, cena, link do sklepu, gdy wystawiony).
+    // Dawniej: surowe kadry FLUX z wizualizacji Fashion („kadr_01469_.png”) — nie produkty, tylko robocze obrazy.
+    if (cfg.sklep) for (const x of await cfg.sklep().catch(() => [])) wynik.push(x);
     // 🔬 Lab — projekty chipów z renderem i printy.
     const lab = path.join(cfg.katalogKatedry, 'lab');
     for (const f of (await fs.readdir(path.join(lab, 'chipy')).catch(() => [])).filter((f) => f.endsWith('.json') && !f.startsWith('analiza-'))) {
@@ -246,13 +245,15 @@ async function produkty() {
 /** Żywy katalog + kuracja. `biala` = mapa id → ścieżka, dla /wystawa/plik/:id. */
 let biala = new Map();
 export async function zbierz() {
-    const [k, f, u, p] = await Promise.all([kuracja(), filmy(), utwory(), produkty()]);
+    const [k, f0, u0, p0] = await Promise.all([kuracja(), filmy(), utwory(), produkty()]);
+    const usuniete = new Set(k.usuniete.map((x) => x.id));
+    const [f, u, p] = [f0, u0, p0].map((l) => l.filter((x) => !usuniete.has(x.id)));
     biala = new Map();
     for (const x of f) biala.set(x.id, x.plik);
     for (const x of u) biala.set(x.id, x.plik);
     for (const x of p) if (x.obraz) biala.set(x.id, x.obraz);
     const ozdob = (x) => ({ ...x, ukryty: k.ukryte.includes(x.id), tytul: k.opisy[x.id]?.tytul || x.tytul, opis: k.opisy[x.id]?.opis ?? x.opis, youtube: k.youtube[x.id] ?? null, strumien: `/wystawa/plik/${x.id}` });
-    return { filmy: f.map(ozdob), utwory: u.map(ozdob), produkty: p.map(ozdob), suno: k.suno, ostatniaPublikacja: k.ostatniaPublikacja, sciezki: { katalog: cfg.katalogKatedry, muzyka: cfg.musicDir } };
+    return { filmy: f.map(ozdob), utwory: u.map(ozdob), produkty: p.map(ozdob), suno: k.suno, usuniete: k.usuniete, ostatniaPublikacja: k.ostatniaPublikacja, sciezki: { katalog: cfg.katalogKatedry, muzyka: cfg.musicDir } };
 }
 export function sciezkaZBialej(id) { return biala.get(id) ?? null; }
 
@@ -294,7 +295,7 @@ export async function opublikuj({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     for (const p of zywy.produkty.filter((x) => !x.ukryty).slice(0, ileProduktow)) {
         let obraz = null;
         if (p.obraz) { const jpg = path.join(media, `${p.id}.jpg`); if (await plakat(p.obraz, jpg, false)) obraz = `/media/wystawa/${p.id}.jpg`; }
-        produktyPub.push({ id: p.id, rodzaj: p.rodzaj, dzial: p.dzial, tytul: p.tytul, opis: p.opis, kiedy: p.kiedy, obraz });
+        produktyPub.push({ id: p.id, rodzaj: p.rodzaj, dzial: p.dzial, tytul: p.tytul, opis: p.opis, kiedy: p.kiedy, obraz, cena: p.cena ?? null, waluta: p.waluta ?? null, link: p.link ?? null });
     }
     const katalog = { opublikowano: teraz(), filmy: filmyPub, utwory: utworyPub, suno: zywy.suno, produkty: produktyPub, uwaga: 'Filmy z `youtube` grają wszędzie; bez niego tylko u gospodarza (Most). Utwory z dysku tylko u gospodarza; Suno gra z ramki Suno.' };
     await zapiszJson(path.join(tc, 'public', 'wystawa.json'), katalog);
@@ -303,4 +304,4 @@ export async function opublikuj({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     return { plik: path.join(tc, 'public', 'wystawa.json'), media, filmy: filmyPub.length, bezYouTube: filmyPub.filter((f) => !f.youtube).length, utwory: utworyPub.length, suno: zywy.suno.length, produkty: produktyPub.length, sekundy: Math.round((Date.now() - t0) / 1000), opublikowano: katalog.opublikowano };
 }
 
-export default { skonfiguruj, kuracja, idSuno, idPlaylistySuno, idYouTube, dodajSuno, usunSuno, ustawYouTube, ukryj, ustawOpis, zbierz, sciezkaZBialej, opublikuj, plakat };
+export default { skonfiguruj, kuracja, usun, idSuno, idPlaylistySuno, idYouTube, dodajSuno, usunSuno, ustawYouTube, ukryj, ustawOpis, zbierz, sciezkaZBialej, opublikuj, plakat };

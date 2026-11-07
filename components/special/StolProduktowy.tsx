@@ -28,7 +28,8 @@ const plik = (x: Produkt, p: string) => `${MOST}/api/stol-produktowy/plik/${x.po
 const bezHtml = (h: string) => h.replace(/<\/p>\s*/gi, '\n\n').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').trim();
 
 export function StolProduktowy() {
-    const [dane, setDane] = useState<{ postacie: Postac[]; cel: string; csv: string | null } | null>(null);
+    const [dane, setDane] = useState<{ postacie: Postac[]; cel: string; csv: string | null; sklep?: { domena: string | null; produkty?: Record<string, string>; wSklepie?: number; powod?: string } } | null>(null);
+    const [domena, setDomena] = useState('');
     const [wybrany, setWybrany] = useState<Produkt | null>(null);
     const [praca, setPraca] = useState('');
     const [blad, setBlad] = useState('');
@@ -55,7 +56,8 @@ export function StolProduktowy() {
 
     const odswiez = useCallback(async () => {
         try {
-            const d = await zMostu<{ postacie: Postac[]; cel: string; csv: string | null }>('/api/stol-produktowy');
+            const d = await zMostu<{ postacie: Postac[]; cel: string; csv: string | null; sklep?: { domena: string | null } }>('/api/stol-produktowy');
+            setDomena((x) => x || d.sklep?.domena || '');
             setDane(d); setBlad('');
             setWybrany((w) => (w ? d.postacie.flatMap((p) => p.produkty).find((x) => x.model === w.model) ?? null : null));
         } catch (e) { setBlad((e as Error).message); }
@@ -76,6 +78,11 @@ export function StolProduktowy() {
                 <button onClick={() => void odswiez()} className="rounded border border-white/20 px-2 py-0.5">↻</button>
                 <button disabled={!!praca} onClick={() => void odswiezWszystko()} title="Fashion buduje paczki tylko z żywych kolekcji (usunięte wypadają, nowe dochodzą), potem sklep-shopify i CSV od nowa"
                     className="ml-auto rounded bg-amber-500 px-3 py-1 font-bold text-black disabled:opacity-40">🔄 Odśwież i wyślij wszystko</button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                🌐 Adres sklepu: <input value={domena} onChange={(e) => setDomena(e.target.value)} placeholder="np. te0shop-2w.myshopify.com" className="w-64 rounded bg-black/50 px-1 py-0.5" />
+                <button disabled={!!praca} onClick={async () => { setBlad(''); try { await zMostu('/api/stol-produktowy/ustawienia', { method: 'PUT', body: JSON.stringify({ domena: domena.trim() || null }) }); await zMostu('/api/stol-produktowy/status-sklepu', { method: 'POST', body: '{}' }); await odswiez(); } catch (e) { setBlad((e as Error).message); } }} className="rounded border border-white/20 px-2">💾 zapisz i sprawdź</button>
+                <span className="text-white/50">{dane?.sklep?.domena ? `w sklepie publicznie: ${dane.sklep.wSklepie ?? 0} — tylko te dostają link na teo.center` : 'bez adresu teo.center pokazuje produkty bez linku'}</span>
             </div>
             {dane && <p className="text-[11px] text-white/50">Cel: <code>{dane.cel}</code>{dane.csv && <> · ✓ <code>shopify-import.csv</code> gotowy (Shopify → Products → Import)</>}</p>}
             {praca && <p className="text-amber-200">⏳ {praca}</p>}
@@ -104,7 +111,7 @@ export function StolProduktowy() {
                             <button key={x.model} onClick={() => setWybrany(x)} className={`w-28 shrink-0 rounded-lg border p-1 text-left ${wybrany?.model === x.model ? 'border-amber-400 bg-amber-900/30' : 'border-white/10 bg-black/40'}`}>
                                 {x.makiety[0] ? <img src={plik(x, x.makiety[0])} alt="" className="aspect-square w-full rounded object-cover" loading="lazy" /> : <div className="aspect-square w-full rounded bg-white/5" />}
                                 <div className="mt-1 truncate text-[10px]">{x.typ}</div>
-                                <div className="text-[10px] text-white/60">{x.cenaEur != null ? `${x.cenaEur} €` : 'bez ceny'} {x.gotowy ? '✓' : '⚠'} {x.wyslany ? '📂' : ''}</div>
+                                <div className="text-[10px] text-white/60">{x.cenaEur != null ? `${x.cenaEur} €` : 'bez ceny'} {x.gotowy ? '✓' : '⚠'} {x.wyslany ? '📂' : ''} {dane?.sklep?.produkty?.[x.model] === 'w-sklepie' ? '🛍️' : ''}</div>
                             </button>
                         ))}
                     </div>

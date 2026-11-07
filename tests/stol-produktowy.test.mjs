@@ -116,3 +116,35 @@ test('sezonowe: okna dat, Black Friday z Compare At, drop świąteczny z edycją
     const stan = await D.stan();
     assert.equal(stan.sezony.find((x) => x.id === 'swieta').csv, 'sezonowe/shopify-import-swieta.csv');
 });
+
+// ── 🌐 sklep publicznie i 🖼️ Wystawa (teo.center) ──
+import * as Wystawa from '../services/Wystawa.js';
+
+test('status sklepu: link tylko dla produktu, który sklep wystawia (200 z /products/<handle>.js); bez adresu bez linków', async () => {
+    const { S } = await fashion();
+    await S.wyslij({});
+    assert.equal((await S.produktyWystawy())[0].link, null);
+    await assert.rejects(S.ustawUstawienia({ domena: 'nie adres' }), /Adres sklepu/);
+    const { domena } = await S.ustawUstawienia({ domena: 'https://sklep.example.com/' });
+    assert.equal(domena, 'sklep.example.com');
+    const pytania = [];
+    const { S: S2 } = await (async () => ({ S }))();
+    const st = await S2.statusSklepu({ wymus: true, fetch: async (u) => { pytania.push(u); return { status: u.includes('varsity') ? 200 : 404 }; } });
+    assert.deepEqual(pytania, ['https://sklep.example.com/products/borowik-varsity-jacket-black.js']);
+    assert.equal(st.wSklepie, 1);
+    const p = await S.produktyWystawy();
+    assert.equal(p[0].link, 'https://sklep.example.com/products/borowik-varsity-jacket-black');
+    assert.equal(p[0].cena, 119); assert.ok(p[0].obraz.endsWith('podglad-przod.png'));
+});
+
+test('Wystawa: usuń z listy (plik zostaje) i przywróć; produkty sklepu na Wystawie', async () => {
+    const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'wystawa-'));
+    Wystawa.skonfiguruj({ katalogKatedry: kat, musicDir: path.join(kat, 'muzyka'), comfyDir: kat, sklep: async () => [{ id: 'sklep-a', rodzaj: 'odziez', dzial: '0.00G Style · sklep', tytul: 'A', opis: '', obraz: null, kiedy: '2026-11-07', cena: 39, link: null }] });
+    assert.deepEqual((await Wystawa.zbierz()).produkty.map((x) => x.id), ['sklep-a']);
+    await Wystawa.usun({ id: 'sklep-a', tytul: 'A' });
+    let w = await Wystawa.zbierz();
+    assert.equal(w.produkty.length, 0); assert.deepEqual(w.usuniete.map((x) => x.tytul), ['A']);
+    await Wystawa.usun({ id: 'sklep-a', usuniety: false });
+    w = await Wystawa.zbierz();
+    assert.equal(w.produkty.length, 1); assert.equal(w.usuniete.length, 0);
+});

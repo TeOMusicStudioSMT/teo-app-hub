@@ -22,7 +22,7 @@ const MOST = 'http://127.0.0.1:3001';
 
 interface Film { id: string; rodzaj: string; projekt: string; tytul: string; kiedy: string; bajtow: number; muzyka: boolean | null; ukryty: boolean; youtube: { id: string; url: string } | null }
 interface Suno { typ?: 'utwor' | 'playlista'; id: string; url: string; tytul: string; embed?: string; utwory?: { id: string; tytul: string }[] }
-interface Katalog { filmy: Film[]; utwory: { id: string; tytul: string; ukryty: boolean }[]; produkty: { id: string; tytul: string; dzial: string; ukryty: boolean }[]; suno: Suno[]; ostatniaPublikacja: string | null }
+interface Katalog { filmy: Film[]; utwory: { id: string; tytul: string; ukryty: boolean }[]; produkty: { id: string; tytul: string; dzial: string; ukryty: boolean; cena?: number | null; link?: string | null; wSklepie?: boolean }[]; suno: Suno[]; usuniete?: { id: string; tytul: string; kiedy: string }[]; ostatniaPublikacja: string | null }
 
 async function zMostu<T>(s: string, init?: RequestInit): Promise<T> {
     const r = await fetch(`${MOST}${s}`, { headers: { 'Content-Type': 'application/json' }, ...init });
@@ -54,6 +54,7 @@ export const WystawaCard: React.FC = () => {
         try { await zMostu('/api/wystawa/youtube', { method: 'POST', body: JSON.stringify({ filmId, url: yt[filmId] ?? '' }) }); await odswiez(); toast.success(yt[filmId] ? 'Film gra z YouTube.' : 'Link YouTube zdjęty.'); }
         catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
     };
+    const usun = async (id: string, tytul: string, usuniety = true) => { try { await zMostu('/api/wystawa/usun', { method: 'POST', body: JSON.stringify({ id, tytul, usuniety }) }); await odswiez(); } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } };
     const ukryj = async (id: string, ukryty: boolean) => { try { await zMostu('/api/wystawa/ukryj', { method: 'POST', body: JSON.stringify({ id, ukryty }) }); await odswiez(); } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } };
     const publikuj = async () => {
         setPublikuje(true);
@@ -99,6 +100,7 @@ export const WystawaCard: React.FC = () => {
                             {filmy.map((f) => (
                                 <div key={f.id} className={`flex flex-wrap items-center gap-1.5 text-[10px] ${f.ukryty ? 'opacity-40' : ''}`}>
                                     <button onClick={() => void ukryj(f.id, !f.ukryty)} title={f.ukryty ? 'pokaż' : 'ukryj'} className="text-slate-500 hover:text-white">{f.ukryty ? <EyeOff size={11} /> : <Eye size={11} />}</button>
+                                    <button onClick={() => void usun(f.id, f.tytul)} title="usuń z listy Wystawy (plik zostaje)" className="text-slate-600 hover:text-red-400"><Trash2 size={11} /></button>
                                     <span className="w-44 truncate text-slate-200" title={f.tytul}>{f.tytul}</span>
                                     <span className="text-slate-600">{Math.round(f.bajtow / 1e6)} MB{f.muzyka ? ' · 🎵' : ''}</span>
                                     <span className={`font-mono ${f.youtube ? 'text-red-300' : 'text-amber-300'}`}>{f.youtube ? 'YouTube' : 'tylko u gospodarza'}</span>
@@ -117,19 +119,35 @@ export const WystawaCard: React.FC = () => {
                                 {k.produkty.map((p) => (
                                     <div key={p.id} className={`flex items-center gap-1.5 text-[10px] ${p.ukryty ? 'opacity-40' : ''}`}>
                                         <button onClick={() => void ukryj(p.id, !p.ukryty)} title={p.ukryty ? 'pokaż' : 'ukryj'} className="text-slate-500 hover:text-white">{p.ukryty ? <EyeOff size={11} /> : <Eye size={11} />}</button>
+                                        <button onClick={() => void usun(p.id, p.tytul)} title="usuń z listy Wystawy" className="text-slate-600 hover:text-red-400"><Trash2 size={11} /></button>
                                         <span className="text-slate-600">{p.dzial}</span>
                                         <span className="truncate text-slate-200">{p.tytul}</span>
+                                        {p.cena != null && <span className="text-slate-500">{p.cena} €</span>}
+                                        {p.link ? <a href={p.link} target="_blank" rel="noreferrer" className="text-emerald-300 hover:underline">🛍️ w sklepie</a> : p.dzial?.includes('sklep') ? <span className="text-amber-300/70" title="Link pojawi się, gdy sklep wystawi produkt publicznie (Stół Produktowy → adres sklepu)">wkrótce w sklepie</span> : null}
                                     </div>
                                 ))}
                                 {k.utwory.map((u) => (
                                     <div key={u.id} className={`flex items-center gap-1.5 text-[10px] ${u.ukryty ? 'opacity-40' : ''}`}>
                                         <button onClick={() => void ukryj(u.id, !u.ukryty)} title={u.ukryty ? 'pokaż' : 'ukryj'} className="text-slate-500 hover:text-white">{u.ukryty ? <EyeOff size={11} /> : <Eye size={11} />}</button>
+                                        <button onClick={() => void usun(u.id, u.tytul)} title="usuń z listy Wystawy (plik zostaje)" className="text-slate-600 hover:text-red-400"><Trash2 size={11} /></button>
                                         <span className="text-slate-600">🎧</span>
                                         <span className="truncate text-slate-200">{u.tytul}</span>
                                     </div>
                                 ))}
                             </div>
                         </details>
+
+                        {(k.usuniete?.length ?? 0) > 0 && (
+                            <details className="rounded-lg border border-slate-800 p-2 text-[10px]">
+                                <summary className="cursor-pointer uppercase tracking-widest text-slate-500">🗑 Usunięte z listy ({k.usuniete!.length}) — przywróć</summary>
+                                <div className="mt-1 max-h-32 space-y-0.5 overflow-y-auto">
+                                    {k.usuniete!.map((x) => (
+                                        <div key={x.id} className="flex items-center gap-2"><span className="truncate text-slate-400">{x.tytul || x.id}</span>
+                                            <button onClick={() => void usun(x.id, x.tytul, false)} className="ml-auto text-slate-400 hover:text-white">↩ przywróć</button></div>
+                                    ))}
+                                </div>
+                            </details>
+                        )}
 
                         <button onClick={() => void publikuj()} disabled={publikuje} className="flex items-center justify-center gap-2 rounded-lg bg-indigo-500/30 py-2 text-[11px] font-bold text-indigo-100 disabled:opacity-50">
                             {publikuje ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} Publikuj wystawę do teo-center

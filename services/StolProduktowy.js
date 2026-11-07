@@ -47,7 +47,8 @@ const zHtml = (h) => String(h ?? '').replace(/<\/p>\s*/gi, '\n\n').replace(/<br\
  * @param {{ katalogFashion: string, katalog: string, teraz?: () => number }} o
  *   katalogFashion = katalog TeO Fashion Studio, katalog = `_OtakOs_Wymiar/sklep-shopify`
  */
-export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Date.now() }) {
+export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Date.now(), fetch: fetchSklepu = null }) {
+    const cfg = { fetch: fetchSklepu };
     const SKLEP = path.join(katalogFashion, 'public', 'nadruki', 'sklep');
     const blad = (m, kod = 400) => Object.assign(new Error(m), { kod });
 
@@ -192,13 +193,62 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
         return { ...w, usuniete };
     }
 
+    // ── 🌐 sklep publicznie: adres sklepu (ustawienie) + czy produkt jest NAPRAWDĘ wystawiony (publiczne /products/<handle>.js) ──
+    const PLIK_UST = path.join(katalog, 'ustawienia.json'), PLIK_STATUSU = path.join(katalog, 'status-sklepu.json');
+    const czytajJ = async (p, d) => { try { return JSON.parse(await fs.readFile(p, 'utf8')); } catch { return d; } };
+    async function ustawienia() { const u = await czytajJ(PLIK_UST, {}); return { domena: typeof u.domena === 'string' && u.domena ? u.domena : null }; }
+    async function ustawUstawienia({ domena = null } = {}) {
+        let d = null;
+        if (domena) {
+            try { d = new URL(/^https?:\/\//.test(String(domena)) ? String(domena) : `https://${domena}`).hostname.toLowerCase(); } catch { d = null; }
+            if (!d || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) throw blad('Adres sklepu: np. te0shop-2w.myshopify.com albo sklep.teo.center.');
+        }
+        await fs.mkdir(katalog, { recursive: true });
+        await fs.writeFile(PLIK_UST, JSON.stringify({ domena: d }, null, 1));
+        await fs.rm(PLIK_STATUSU, { force: true });
+        return { domena: d };
+    }
+    /** Status w sklepie: 200 z /products/<handle>.js = wystawiony publicznie; szkic, hasło sklepu, brak = niedostępny. Schowek 30 min. */
+    async function statusSklepu({ wymus = false, fetch: f = cfg.fetch ?? globalThis.fetch } = {}) {
+        const { domena } = await ustawienia();
+        if (!domena) return { domena: null, produkty: {}, powod: 'nie ustawiono adresu sklepu' };
+        const st = await czytajJ(PLIK_STATUSU, { domena, kiedy: 0, produkty: {} });
+        if (!wymus && st.domena === domena && teraz() - st.kiedy < 30 * 60_000) return st;
+        const { postacie } = await lista();
+        const modele = postacie.flatMap((p) => p.produkty).filter((x) => x.wyslany).map((x) => x.model);
+        const produkty = {};
+        for (let i = 0; i < modele.length; i += 4) {
+            await Promise.all(modele.slice(i, i + 4).map(async (m) => {
+                try { const r = await f(`https://${domena}/products/${m}.js`, { redirect: 'manual', signal: AbortSignal.timeout(10_000), headers: { 'User-Agent': 'otakos-katedra' } }); produkty[m] = r.status === 200 ? 'w-sklepie' : 'niedostepny'; }
+                catch { produkty[m] = 'niedostepny'; }
+            }));
+        }
+        const wynik = { domena, kiedy: teraz(), produkty, wSklepie: Object.values(produkty).filter((x) => x === 'w-sklepie').length };
+        await fs.writeFile(PLIK_STATUSU, JSON.stringify(wynik, null, 1)).catch(() => {});
+        return wynik;
+    }
+    /** Dla Wystawy (teo.center): produkty wysłane do sklep-shopify — makieta przodu, cena, link tylko gdy sklep go wystawia. */
+    async function produktyWystawy() {
+        const { postacie } = await lista();
+        const st = await statusSklepu().catch(() => ({ produkty: {} }));
+        const out = [];
+        for (const x of postacie.flatMap((p) => p.produkty).filter((q) => q.wyslany && q.gotowy)) {
+            const obraz = path.join(katalog, x.postac, x.model, '1-DO-SKLEPU-SHOPIFY', 'podglad-przod.png');
+            const kiedy = await fs.stat(path.join(katalog, x.postac, x.model, '1-DO-SKLEPU-SHOPIFY', 'WKLEJ-DO-SHOPIFY.txt')).then((s) => s.mtime.toISOString()).catch(() => null);
+            const wSklepie = st.produkty?.[x.model] === 'w-sklepie';
+            out.push({ id: `sklep-${x.model}`, rodzaj: 'odziez', dzial: '0.00G Style · sklep', tytul: x.tytul, opis: zHtml(x.opisHtml).replace(/\s+/g, ' ').slice(0, 240),
+                obraz: fsSync.existsSync(obraz) ? obraz : null, kiedy, cena: x.cenaEur, waluta: 'EUR', link: wSklepie ? `https://${st.domena}/products/${x.model}` : null, wSklepie });
+        }
+        return out;
+    }
+
     function plik(postac, model, nazwa) {
         if (!POSTAC.test(String(postac)) || !MODEL.test(String(model)) || !/^(podglad-(przod|tyl)|druk-[a-z0-9.-]+-300dpi)\.png$|^WYMIARY-DRUKU\.txt$/.test(String(nazwa))) return null;
         const p = path.join(SKLEP, postac, model, nazwa);
         return fsSync.existsSync(p) ? p : null;
     }
 
-    return { lista, wyslij, zapiszCsv, synchronizuj, plik, tekstWklej };
+    return { lista, wyslij, zapiszCsv, synchronizuj, plik, tekstWklej, ustawienia, ustawUstawienia, statusSklepu, produktyWystawy };
 }
 
 /** Trasy (Straż `/api/stol-produktowy`: tylko maszyna). */
@@ -207,7 +257,9 @@ export function zamontujTrasyStoluProduktowego(app, S, { fashion = 'http://127.0
     let wToku = Promise.resolve();
     const poKolei = (fn) => { const p = wToku.then(fn, fn); wToku = p.catch(() => {}); return p; };
     const synchronizuj = () => poKolei(async () => { const w = await S.synchronizuj(); return { ...w, sezonowe: await poSynchronizacji().catch((e) => ({ blad: e.message })) }; });
-    app.get('/api/stol-produktowy', (_req, res) => odp(res, S.lista()));
+    app.get('/api/stol-produktowy', (_req, res) => odp(res, Promise.all([S.lista(), S.statusSklepu().catch((e) => ({ blad: e.message }))]).then(([l, sklep]) => ({ ...l, sklep }))));
+    app.put('/api/stol-produktowy/ustawienia', (req, res) => odp(res, S.ustawUstawienia(req.body ?? {})));
+    app.post('/api/stol-produktowy/status-sklepu', (_req, res) => odp(res, S.statusSklepu({ wymus: true }).then((sklep) => ({ sklep }))));
     app.post('/api/stol-produktowy/wyslij', (req, res) => odp(res, S.wyslij(req.body ?? {})));
     // Fashion po uszyciu / usunięciu kolekcji (tylko z tej maszyny — Straż)
     app.post('/api/stol-produktowy/synchronizuj', (_req, res) => odp(res, synchronizuj()));
