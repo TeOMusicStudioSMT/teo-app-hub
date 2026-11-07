@@ -18,6 +18,7 @@ import path from 'node:path';
 const POSTAC = /^[a-z0-9][a-z0-9-]{0,40}$/;
 const MODEL = /^[a-z0-9][a-z0-9-]{2,80}$/;
 export const ROZMIARY = ['S', 'M', 'L', 'XL', 'XXL'];
+export const DOMYSLNA_DOMENA = 'teo-mas.myshopify.com';
 export const KOLUMNY_CSV = ['Handle', 'Title', 'Body (HTML)', 'Vendor', 'Type', 'Tags', 'Published', 'Option1 Name', 'Option1 Value', 'Variant SKU', 'Variant Price',
     'Variant Requires Shipping', 'Variant Taxable', 'Variant Inventory Policy', 'Variant Fulfillment Service', 'Gift Card', 'Status'];
 
@@ -196,7 +197,8 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
     // ── 🌐 sklep publicznie: adres sklepu (ustawienie) + czy produkt jest NAPRAWDĘ wystawiony (publiczne /products/<handle>.js) ──
     const PLIK_UST = path.join(katalog, 'ustawienia.json'), PLIK_STATUSU = path.join(katalog, 'status-sklepu.json');
     const czytajJ = async (p, d) => { try { return JSON.parse(await fs.readFile(p, 'utf8')); } catch { return d; } };
-    async function ustawienia() { const u = await czytajJ(PLIK_UST, {}); return { domena: typeof u.domena === 'string' && u.domena ? u.domena : null }; }
+    // domyślny adres sklepu 0.00G (2026-11-07: główna domena teo-mas.myshopify.com); własny w ustawieniach wygrywa, pusty = wyłączony
+    async function ustawienia() { const u = await czytajJ(PLIK_UST, null); return { domena: u === null ? DOMYSLNA_DOMENA : (typeof u.domena === 'string' && u.domena ? u.domena : null) }; }
     async function ustawUstawienia({ domena = null } = {}) {
         let d = null;
         if (domena) {

@@ -191,6 +191,7 @@ export function czyWizytowka(req) {
     if (SCIEZKA_SKLEPU.test(p)) return true;
     if (SCIEZKA_TEOSTORY.test(p)) return true;
     if (SCIEZKA_OPISU.test(p)) return true;
+    if (p === '/wizytowka/marka-logo') return true;   // 🏷️ logo marki z wizytówki (jeden plik z marki Fashion)
     if (SCIEZKA_KSIEGI.test(p)) return true;
     if (p.startsWith(PREFIKS_GIER) && !p.includes('..') && !p.includes('\\')) return true;
     return SCIEZKI_WIZYTOWKI.dokladne.has(p) || SCIEZKI_WIZYTOWKI.prefiksy.some((x) => p.startsWith(x) && !p.slice(x.length).includes('/'));

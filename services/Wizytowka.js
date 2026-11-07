@@ -154,7 +154,9 @@ export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow 
     const gameShow = cfg.gameShow ? await cfg.gameShow.publiczne().catch(() => null) : null;
     // 💳🐾 Darowizny (Payment Link Stripe) i wystawione pakiety Mini — z dysku, bez pytania Stripe (services/SklepMini.js)
     const sklep = cfg.sklep ? await cfg.sklep.publiczne().catch(() => null) : null;
-    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(zlecenia.length ? { zlecenia } : {}), ...(mistrz ? { mistrz } : {}), ...(postac ? { postac } : {}), ...(gra ? { gra } : {}), ...(paczkiGier.length ? { paczkiGier } : {}), ...(gameShow ? { gameShow } : {}), ...(sklep ? { sklep } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
+    // 🏷️ Marka z TeO Fashion Studio (Brand): nazwa, opis, logo — teo.center pokazuje ją nad produktami
+    const marka = cfg.marka ? await cfg.marka().then((m) => (m ? { nazwa: m.nazwa, opis: m.opis, logo: m.plik ? '/wizytowka/marka-logo' : null } : null)).catch(() => null) : null;
+    return { wersja: 1, nick: p.nick, motto: p.motto, opis: p.opis, klucz: p.klucz, ...(tost ? { tost } : {}), ...(kanal ? { kanal } : {}), ...(moc ? { moc } : {}), ...(zlecenia.length ? { zlecenia } : {}), ...(mistrz ? { mistrz } : {}), ...(postac ? { postac } : {}), ...(gra ? { gra } : {}), ...(paczkiGier.length ? { paczkiGier } : {}), ...(gameShow ? { gameShow } : {}), ...(sklep ? { sklep } : {}), ...(marka ? { marka } : {}), ...(p.linki.length ? { linki: p.linki } : {}), zaktualizowano: new Date().toISOString(), wystawa: { filmy, utwory, suno, produkty } };
 }
 
 /** Ścieżka pliku wizytówki — tylko id z ostatnio zbudowanej wizytówki (nigdy ścieżka z URL-a). */

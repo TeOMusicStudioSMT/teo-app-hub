@@ -9142,7 +9142,18 @@ const SklepMini = utworzSklepMini({
     pisz: async (system, prompt) => (await piszModelem((await ModeleAgentow.modelDla('pionek').catch(() => null)) || Mozg.domyslny(), system, prompt, { temperatura: 0.9 })).tekst,
 });
 zamontujTrasySklepu(app, { sklep: SklepMini, stripe: Stripe, adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
-Wizytowka.skonfiguruj({ sklep: SklepMini });
+Wizytowka.skonfiguruj({ sklep: SklepMini, marka: () => markaFashion() });
+// 🏷️ Marka z TeO Fashion Studio (zakładka Brand, OtakOs_Fashion/marki.json): pierwsza z logo → wizytówka i teo.center.
+async function markaFashion() {
+    const kat = [process.env.OTAKOS_FASHION_DIR, path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio')].filter(Boolean).find((d) => fsSync.existsSync(path.join(d, 'OtakOs_Fashion')));
+    if (!kat) return null;
+    const j = JSON.parse(await fs.readFile(path.join(kat, 'OtakOs_Fashion', 'marki.json'), 'utf8').catch(() => '{}'));
+    const m = (Array.isArray(j) ? j : j.marki ?? []).find((x) => x?.logo);
+    if (!m) return null;
+    const plik = path.join(kat, 'OtakOs_Fashion', 'logo', path.basename(String(m.logo)));
+    return { nazwa: String(m.nazwa ?? '').slice(0, 80), opis: String(m.opis ?? '').slice(0, 300), plik: fsSync.existsSync(plik) ? plik : null };
+}
+app.get('/wizytowka/marka-logo', cors({ origin: '*' }), async (_req, res) => { const m = await markaFashion().catch(() => null); return m?.plik ? res.sendFile(m.plik) : res.status(404).end(); });
 // 📚 Wypożyczalnia Żywych Ksiąg teostory.studio (services/WypozyczalniaKsiag.js): silnik czytnika publikuje (/api/books/*, maszyna),
 // portal czyta i wypożycza przez tunel (/wizytowka/teostory/*): demo za darmo, 48 h = Stripe Checkout, dostęp = opłacona sesja.
 const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe,
