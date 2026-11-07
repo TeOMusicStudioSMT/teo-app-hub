@@ -28,7 +28,10 @@ export const MAX_ILUSTRACJI = 120;
 export const MAX_SCEN = 200;
 export const MAX_ZNAKOW_SCENY = 2000;          // dłuższa strona PDF dzieli się po zdaniach
 export const SLOW_NA_SCENE = 140;              // DOCX/TXT bez ilustracji: ok. tyle słów na scenę
-export const MIN_BOKU_OBRAZU = 120;            // mniejsze obrazy z PDF/DOCX to ozdobniki — pomijane
+export const MIN_BOKU_OBRAZU = 120;
+export const PROB_GLOSU = 3;
+export const CISZA_DB = -45;               // szczyt nagrania poniżej = cisza
+export const ZNAKOW_NA_SEKUNDE_MAX = 30;    // szybciej nikt nie czyta — krótsze nagranie jest urwane            // mniejsze obrazy z PDF/DOCX to ozdobniki — pomijane
 export const STYL_DOMALOWANY = ', storybook illustration, consistent with the reference illustrations, same art style and palette, no text, no letters';
 const ID = /^mk-[0-9a-f]{8}$/;
 const require_ = createRequire(import.meta.url);
@@ -399,6 +402,19 @@ export function utworzManuskrypt(cfg) {
         return z;
     }
 
+    /** Nagranie lektora: cisza (szczyt < −45 dB) albo krócej niż tekst przy szybkiej mowie (≈ 30 znaków/s) = problem. */
+    async function problemNagrania(plik, sek, tekst) {
+        if (!sek) return 'nagranie bez długości (puste)';
+        const min = Math.max(0.4, normalizuj(tekst).length / ZNAKOW_NA_SEKUNDE_MAX);
+        if (sek < min) return `nagranie za krótkie (${sek.toFixed(1)} s na ${normalizuj(tekst).length} znaków, oczekiwane ≥ ${min.toFixed(1)} s)`;
+        try {
+            const r = await cfg.uruchom(cfg.ffmpeg, ['-hide_banner', '-i', plik, '-af', 'volumedetect', '-f', 'null', '-'], { windowsHide: true, maxBuffer: 1 << 24 });
+            const szczyt = Number(/max_volume:\s*(-?[\d.]+|-inf) dB/.exec(`${r?.stderr ?? ''}`)?.[1]?.replace('-inf', '-200'));
+            if (Number.isFinite(szczyt) && szczyt < CISZA_DB) return `cisza w nagraniu (szczyt ${szczyt} dB)`;
+        } catch { /* bez pomiaru głośności zostaje sprawdzenie długości */ }
+        return null;
+    }
+
     async function czcionka(praca) {
         const c = CZCIONKI.find((p) => p && fsSync.existsSync(p));
         if (!c) throw new Error('Nie znalazłem czcionki do napisów.');
@@ -443,13 +459,21 @@ export function utworzManuskrypt(cfg) {
             const zapowiedz = `${z.tytul}.${z.autor ? (z.jezyk === 'en' ? ` By ${z.autor}.` : ` Autor: ${z.autor}.`) : ''}`;
             const kawalki = [{ nr: 0, tekst: zapowiedz, obraz: z.sceny.find((s) => s.obraz)?.obraz ?? null, naglowek: z.tytul }, ...z.sceny.map((s) => ({ nr: s.nr, tekst: tekstLektora(s), obraz: s.obraz, naglowek: `${z.tytul}${s.rozdzial ? ` · ${s.rozdzial}` : ''}` }))];
             for (const k of kawalki) {
-                let g;
-                try { g = await cfg.mow({ tekst: k.tekst, glos, jezyk: z.jezyk }); }
-                catch { g = await cfg.mow({ tekst: k.tekst, glos, jezyk: z.jezyk }).catch((e) => { throw new Error(`głos sceny ${k.nr}: ${e.message}`); }); }
-                const a = `a-${String(k.nr).padStart(3, '0')}.${g.ext || 'wav'}`;
-                await fs.writeFile(path.join(praca, a), g.audio);
-                const sek = (await cfg.opisz(path.join(praca, a)).catch(() => null))?.sekundy;
-                if (!sek) throw new Error(`głos sceny ${k.nr}: nagranie bez długości (puste?)`);
+                // 🛟 silnik klonu potrafi oddać CISZĘ albo urwane nagranie (2026-11-07: 147 znaków → 0,2 s, −90 dB) —
+                // każde nagranie sprawdzamy (głośność + długość względem tekstu), cisza = ponowienie, po 3 próbach błąd z powodem
+                let a = null, sek = null, problem = null;
+                for (let proba = 1; proba <= PROB_GLOSU && !a; proba++) {
+                    let g;
+                    try { g = await cfg.mow({ tekst: k.tekst, glos, jezyk: z.jezyk }); }
+                    catch (e) { problem = e.message; continue; }
+                    const nazwa = `a-${String(k.nr).padStart(3, '0')}.${g.ext || 'wav'}`;
+                    await fs.writeFile(path.join(praca, nazwa), g.audio);
+                    sek = (await cfg.opisz(path.join(praca, nazwa)).catch(() => null))?.sekundy ?? null;
+                    problem = await problemNagrania(path.join(praca, nazwa), sek, k.tekst);
+                    if (!problem) a = nazwa;
+                    else krok(z, `🛟 ${k.nr ? `scena ${k.nr}` : 'zapowiedź'}: ${problem} — próba ${proba}/${PROB_GLOSU}`);
+                }
+                if (!a) throw new Error(`głos ${k.nr ? `sceny ${k.nr}` : 'zapowiedzi'}: ${problem} (po ${PROB_GLOSU} próbach) — sprawdź silnik głosu (🎙️ Studio Podcastu → silnik klonu) albo barwę Głoska w Głosach Stada.`);
                 k.audio = a; k.sekundy = Math.round((sek + 0.7) * 100) / 100;
                 // strona czytnika: mp3 z oddechem na końcu
                 const p = `p-${String(k.nr).padStart(3, '0')}.wav`;
@@ -491,7 +515,7 @@ export function utworzManuskrypt(cfg) {
             z.ksiega = ksiegaZadania(z);
             await fs.writeFile(path.join(dir(z.id), 'ksiega.json'), JSON.stringify(z.ksiega, null, 1));
             Object.assign(z, { stan: 'gotowe', gotowe: czas(), powod: null, lektor: glos });
-            krok(z, `📖 gotowe: audiobook ${z.sekundyAudio ? `${Math.round(z.sekundyAudio / 60)} min` : ''}, film, Żywa Księga (${z.sceny.length} stron)`);
+            krok(z, `📖 gotowe: audiobook ${z.sekundyAudio ? (z.sekundyAudio >= 60 ? `${Math.round(z.sekundyAudio / 60)} min` : `${Math.round(z.sekundyAudio)} s`) : ''}, film, Żywa Księga (${z.sceny.length} stron)`);
             await zapisz(z);
             nadaj(`📥 Własny Manuskrypt „${z.tytul}” gotowy: audiobook, film i Żywa Księga.`);
             await fs.rm(praca, { recursive: true, force: true }).catch(() => {});

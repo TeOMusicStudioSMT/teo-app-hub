@@ -132,7 +132,7 @@ export default function WlasnyManuskrypt() {
                     {akt.stan === 'gotowe' && (
                         <div className="space-y-2 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-3 text-xs">
                             <div className="flex flex-wrap items-center gap-3">
-                                <a className="rounded-lg bg-emerald-700/60 px-2 py-1" href={`${MOST}/api/manuskrypt/${akt.id}/audiobook`}>🎧 Pobierz audiobook (mp3{akt.sekundyAudio ? `, ${Math.round(akt.sekundyAudio / 60)} min` : ''})</a>
+                                <a className="rounded-lg bg-emerald-700/60 px-2 py-1" href={`${MOST}/api/manuskrypt/${akt.id}/audiobook`}>🎧 Pobierz audiobook (mp3{akt.sekundyAudio ? `, ${akt.sekundyAudio >= 60 ? `${Math.round(akt.sekundyAudio / 60)} min` : `${Math.round(akt.sekundyAudio)} s`}` : ''})</a>
                                 <button disabled={!!praca} onClick={() => akcja('/youtube', {}, 'Kronikarz pisze opis filmu…')} className="rounded-lg bg-rose-700/60 px-2 py-1">📺 Film do publikacji YouTube</button>
                                 {akt.youtube && <span>📺 {akt.youtube.etap === 'do_akceptacji' ? 'czeka na ✓ w Izbie zgód' : akt.youtube.etap}</span>}
                             </div>

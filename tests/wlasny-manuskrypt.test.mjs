@@ -20,7 +20,7 @@ const dataUrl = (b, typ) => `data:${typ};base64,${b.toString('base64')}`;
 async function jpeg(kat, s = '320x200') { const p = path.join(kat, `t-${s}.jpg`); await uruchom(ffmpegPath, ['-y', '-f', 'lavfi', '-i', `testsrc=s=${s}`, '-frames:v', '1', p]); return fs.readFile(p); }
 async function png(kat) { const p = path.join(kat, 't.png'); await uruchom(ffmpegPath, ['-y', '-f', 'lavfi', '-i', 'color=c=teal:s=400x300', '-frames:v', '1', p]); return fs.readFile(p); }
 
-async function srodowisko({ rysuj = null } = {}) {
+async function srodowisko({ rysuj = null, cisza = () => false } = {}) {
     const kat = await fs.mkdtemp(path.join(os.tmpdir(), 'manuskrypt-'));
     const mowy = [];
     let M = null;
@@ -30,7 +30,9 @@ async function srodowisko({ rysuj = null } = {}) {
         mow: async ({ tekst, glos, jezyk }) => {
             mowy.push({ tekst, glos, jezyk });
             const p = path.join(kat, `mowa-${mowy.length}.wav`);
-            await uruchom(ffmpegPath, ['-y', '-f', 'lavfi', '-i', 'sine=f=440:d=1.2', '-ar', '24000', p]);
+            // atrapa: mowa ok. 12 znaków/s; `cisza()` = silnik oddaje 0,2 s ciszy (jak Chatterbox 2026-11-07)
+            const d = Math.max(1.2, tekst.length / 12).toFixed(2);
+            await uruchom(ffmpegPath, ['-y', '-f', 'lavfi', '-i', cisza(tekst) ? 'anullsrc=r=24000:cl=mono:d=0.2' : `sine=f=440:d=${d}`, ...(cisza(tekst) ? ['-t', '0.2'] : []), '-ar', '24000', p]);
             return { audio: await fs.readFile(p), ext: 'wav' };
         },
         pisz: async () => 'A small cat watching stars from a moonlit rooftop.',
@@ -151,6 +153,22 @@ test('DOCX + folder ilustracji + domalowanie: Paleta tylko tam, gdzie brak obraz
     const domalowane = g.sceny.filter((s) => s.obraz.zrodlo === 'paleta');
     assert.equal(domalowane.length, g.sceny.length - 2);
     assert.ok(wzory.every((n) => n === 2), 'FLUX dostał 2 ilustracje autora jako wzór');
+});
+
+const DWIE_SCENY = ['Pierwsza scena jest tutaj i ma kilka słów.', 'Druga scena też ma kilka słów do przeczytania.'].join('\n\n');
+test('głos: cisza z silnika = ponowienie, uparta cisza = błąd z powodem (nie „gotowe”)', async () => {
+    let raz = 0;
+    const { M } = await srodowisko({ cisza: (t) => t.includes('Druga') && raz++ < 1 });
+    const t = await M.nowy({ nazwa: 'a.txt', dane: `data:text/plain;base64,${Buffer.from(DWIE_SCENY).toString('base64')}`, prawa: true, slowNaScene: 20 });
+    await M.produkuj(t.id, {});
+    const g = await czekaj(M, t.id);
+    assert.equal(g.stan, 'gotowe', g.powod);
+    assert.ok(g.kroki.some((k) => /🛟 scena \d: (cisza|nagranie za krótkie).*próba 1\/3/.test(k.opis)));
+    const { M: M2 } = await srodowisko({ cisza: (t) => t.includes('Druga') });
+    const t2 = await M2.nowy({ nazwa: 'a.txt', dane: `data:text/plain;base64,${Buffer.from(DWIE_SCENY).toString('base64')}`, prawa: true, slowNaScene: 20 });
+    await M2.produkuj(t2.id, {});
+    const g2 = await czekaj(M2, t2.id);
+    assert.equal(g2.stan, 'blad'); assert.match(g2.powod, /głos sceny \d: .* \(po 3 próbach\)/);
 });
 
 test('Straż: /api/manuskrypt tylko przy maszynie', () => {
