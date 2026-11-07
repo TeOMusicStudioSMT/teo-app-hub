@@ -48,12 +48,12 @@ function atrapa() {
         if (o.headers?.Authorization !== 'Bearer tok_printful_1234567890abcdef') return { ok: false, status: 401, json: async () => ({ code: 401, error: { message: 'Unauthorized' } }) };
         if (u.pathname === '/stores') return ok([{ id: 11, name: 'Inny', type: 'native' }, { id: 22, name: 'teo-mas', type: 'shopify' }]);
         if (u.pathname === '/mockup-generator/printfiles/279') return ok({ product_id: 279, available_placements: { default: 'Front', top: 'Top' }, printfiles: [{ printfile_id: 5, width: 3000, height: 4000, dpi: 150 }], variant_printfiles: [{ variant_id: 9063, placements: { default: 5, top: 5 } }] });
-        if (u.pathname === '/store/products') return ok([{ id: 900, name: 'Pęcherzik — Kiss-Cut Sticker', variants: 3, synced: 0 }, { id: 901, name: 'Gotowy', variants: 2, synced: 2 }]);
-        if (u.pathname === '/store/products/900') return ok({ sync_product: { id: 900 }, sync_variants: [
+        if (u.pathname === '/sync/products') return ok([{ id: 900, name: 'Pęcherzik — Kiss-Cut Sticker', variants: 3, synced: 0 }, { id: 901, name: 'Gotowy', variants: 2, synced: 2 }]);
+        if (u.pathname === '/sync/products/900') return ok({ sync_product: { id: 900 }, sync_variants: [
             { id: 1, name: '3x3', sku: 'pecherzik-naklejki-3-3', synced: false },
             { id: 2, name: '4x4', sku: 'PECHERZIK-NAKLEJKI-4-4', synced: false },
             { id: 3, name: 'obcy', sku: 'COS-INNEGO', synced: false }] });
-        if (m === 'PUT' && u.pathname.startsWith('/store/variants/')) return ok({ id: Number(u.pathname.split('/').pop()) });
+        if (m === 'PUT' && u.pathname.startsWith('/sync/variant/')) return ok({ id: Number(u.pathname.split('/').pop()) });
         return { ok: false, status: 404, json: async () => ({ code: 404, result: 'Not found' }) };
     };
     return { f, wywolania };

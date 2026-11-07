@@ -353,7 +353,7 @@ export function zamontujTrasyStoluProduktowego(app, S, { fashion = 'http://127.0
     })()));
     app.get('/api/stol-produktowy/plik/:postac/:model/:plik', (req, res) => { const p = S.plik(req.params.postac, req.params.model, req.params.plik); return p ? res.sendFile(p) : res.status(404).end(); });
     // 🖨️ bestsellery Printful i 🏷️ marka (kopiuje synchronizacja; ten GET = stan dla Huba)
-    app.get('/api/stol-produktowy/bestsellery', (_req, res) => odp(res, S.listaBestsellerow()));
+    app.get('/api/stol-produktowy/bestsellery', (_req, res) => odp(res, S.kopiujBestsellery().catch(() => null).then(() => S.listaBestsellerow())));
     app.get('/api/stol-produktowy/bestseller/:postac/:produkt/:plik', (req, res) => { const p = S.plikBestsellera(req.params.postac, req.params.produkt, req.params.plik); return p ? res.sendFile(p) : res.status(404).end(); });
 }
 

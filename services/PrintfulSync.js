@@ -5,7 +5,7 @@
  * UCZCIWIE o tym, co API pozwala (dokumentacja developers.printful.com, 2026-11-07): dla sklepu POŁĄCZONEGO z Shopify
  * Printful NIE zakłada produktów przez API (`POST /store/products` jest tylko dla sklepów „Manual order / API”).
  * Produkt powstaje w Shopify (import `shopify-import-bestsellery.csv` ze Stołu) → Printful widzi go jako
- * „niezsynchronizowany” → TU: każdy wariant dostaje `PUT /store/variants/{id}` {variant_id z katalogu, retail_price,
+ * „niezsynchronizowany” → TU: każdy wariant dostaje `PUT /sync/variant/{id}` (sklep platformowy; „Manual order / API” = `/store/variants`) {variant_id z katalogu, retail_price,
  * files [{type: placement, url}]}. Wariant rozpoznajemy po SKU (Shopify → Printful), który pisze Stół — nic nie zgadujemy.
  * `retail_price` to cena w Printful; cenę w Shopify ustawia import CSV (albo Suweren w Shopify).
  *
@@ -143,10 +143,18 @@ export function utworzPrintful({ katalog, wymiar, token, zapiszToken = async () 
     }
 
     // ── 🛍️ produkty sklepu w Printful ──
+    // Sklep platformowy (Shopify, Etsy… — 2026-11-07 Printful: „/store/products applies only to Manual Order / API”) = Ecommerce
+    // Platform Sync API: /sync/products, /sync/products/{id}, PUT /sync/variant/{id}. Sklep „Manual order / API” = /store/….
+    async function trasy() {
+        const typ = String((await czytajJ(PLIK_UST, {})).typ ?? '').toLowerCase();
+        const api = !/^(native|api|manual)/.test(typ);   // nieznany typ = platformowy (Katedra sprzedaje przez Shopify)
+        return api ? { lista: '/sync/products', produkt: '/sync/products', wariant: '/sync/variant' } : { lista: '/store/products', produkt: '/store/products', wariant: '/store/variants' };
+    }
     async function wszystkieProdukty() {
         const out = [];
+        const t = await trasy();
         for (let offset = 0; offset < 2000; offset += 100) {
-            const r = await zapytanie(`/store/products?limit=100&offset=${offset}`);
+            const r = await zapytanie(`${t.lista}?limit=100&offset=${offset}`);
             out.push(...(r ?? []));
             if (!r || r.length < 100) break;
         }
@@ -174,10 +182,11 @@ export function utworzPrintful({ katalog, wymiar, token, zapiszToken = async () 
             if (!mapa.size) throw blad('W sklep-shopify nie ma manifestów bestsellerów — narysuj je w TeO Fashion Studio.');
             const lista = (await wszystkieProdukty()).filter((p) => (produkt ? String(p.id) === String(produkt) : true) && !p.is_ignored);
             let pierwszy = true;
+            const t = await trasy();
             for (const p of lista) {
                 if (!produkt && !takzeZsynchronizowane && p.synced >= p.variants) continue;
                 z.krok = `${p.name}: warianty…`;
-                const d = await zapytanie(`/store/products/${p.id}`);
+                const d = await zapytanie(`${t.produkt}/${p.id}`);
                 for (const sv of d.sync_variants ?? []) {
                     const m = mapa.get(String(sv.sku ?? '').toUpperCase());
                     if (!m) { z.pominiete.push({ produkt: p.name, wariant: sv.name, powod: `SKU „${sv.sku ?? '—'}” nie pochodzi ze Stołu Katedry` }); continue; }
@@ -189,7 +198,7 @@ export function utworzPrintful({ katalog, wymiar, token, zapiszToken = async () 
                         if (!pierwszy) await czekaj(ODSTEP_MS);
                         pierwszy = false;
                         z.krok = `${p.name} · ${m.wartosc}: wysyłam ${files.length} plik(ów)…`;
-                        await zapytanie(`/store/variants/${sv.id}`, { metoda: 'PUT', cialo: { variant_id: m.variantId, retail_price: m.cena.toFixed(2), files } });
+                        await zapytanie(`${t.wariant}/${sv.id}`, { metoda: 'PUT', cialo: { variant_id: m.variantId, retail_price: m.cena.toFixed(2), files } });
                         z.zrobione.push({ produkt: p.name, wariant: sv.name, variantId: m.variantId, cena: m.cena, plikow: files.length });
                     } catch (e) {
                         z.bledy.push({ produkt: p.name, wariant: sv.name, powod: e.message });
