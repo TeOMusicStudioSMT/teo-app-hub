@@ -24,6 +24,7 @@ export const FOLDER_BESTSELLERY = '3-BESTSELLERY-PRINTFUL-I-ALL-OVER';
 export const SCIEZKA_PLIKU = /^\/wizytowka\/printful\/([0-9a-f]{32})\.png$/;
 const WAZNOSC_MS = 72 * 3600_000;
 const ODSTEP_MS = 6500;
+const ODSTEP_MOCKUPOW_MS = 15_000;   // Mockup Generator: ciaśniejszy limit (429 po kilku zleceniach co 6,5 s)
 
 const blad = (m, kod = 400) => Object.assign(new Error(m), { kod });
 
@@ -242,10 +243,21 @@ export function utworzPrintful({ katalog, wymiar, token, zapiszToken = async () 
                             files.push({ placement, image_url: await link(abs), position: { area_width: W, area_height: H, width: W, height: H, top: 0, left: 0 } });
                         }
                         if (!files.length) { z.bledy.push({ produkt: p.tytul, powod: 'brak plików na dysku' }); continue; }
-                        if (!pierwszy) await czekaj(ODSTEP_MS);
+                        if (!pierwszy) await czekaj(ODSTEP_MOCKUPOW_MS);
                         pierwszy = false;
                         z.krok = `${p.tytul}: Printful składa mockup…`;
-                        const zad = await zapytanie(`/mockup-generator/create-task/${p.katalogId}`, { metoda: 'POST', cialo: { variant_ids: [w.variantId], format: 'jpg', files } });
+                        // Mockup Generator ma ciaśniejszy limit niż synchronizacja (2026-11-07: „too many requests… try again after N seconds”)
+                        // → czekamy tyle, ile mówi Printful, i ponawiamy ten sam produkt (≤ 4 razy), zamiast zapisać go jako błąd
+                        let zad = null;
+                        for (let proba = 1; !zad; proba++) {
+                            try { zad = await zapytanie(`/mockup-generator/create-task/${p.katalogId}`, { metoda: 'POST', cialo: { variant_ids: [w.variantId], format: 'jpg', files } }); }
+                            catch (e) {
+                                if (e.kod !== 429 || proba >= 4) throw e;
+                                const s = Number(/after (\d+) second/.exec(e.message)?.[1] ?? 60);
+                                z.krok = `${p.tytul}: Printful prosi o przerwę ${s} s (próba ${proba + 1}/4)…`;
+                                await czekaj((s + 2) * 1000);
+                            }
+                        }
                         let wynik = null;
                         for (let i = 0; i < 40 && !wynik; i++) {
                             await czekaj(5000);

@@ -170,3 +170,27 @@ test('Printful: mockupy — zadanie Mockup Generatora z plikami z tunelu, JPG-i 
     assert.equal(zlecone.length, 2, 'bez wymus: istniejące mockupy nie są zlecane ponownie');
     assert.ok(S.plikBestsellera('pecherzik', 'aop-plecak', 'MOCKUP-1.jpg'));
 });
+
+test('Printful: mockupy — „too many requests” = czekamy wskazane sekundy i ponawiamy ten sam produkt', async () => {
+    const { kat, S, sklep } = await swiat();
+    await S.synchronizuj();
+    let odmow = 0; const czekania = [];
+    const f = async (url, o = {}) => {
+        const u = new URL(url);
+        const ok = (result) => ({ ok: true, status: 200, json: async () => ({ code: 200, result }) });
+        if (u.hostname === 'cdn.test') return { ok: true, status: 200, arrayBuffer: async () => Buffer.from('ffd8ffe0', 'hex') };
+        if (u.pathname.startsWith('/mockup-generator/create-task/')) {
+            if (odmow < 2) { odmow++; return { ok: false, status: 429, json: async () => ({ code: 429, result: "You've recently sent too many requests. Please try again after 47 seconds." }) }; }
+            return ok({ task_key: 'gt-1', status: 'pending' });
+        }
+        if (u.pathname === '/mockup-generator/task') return ok({ status: 'completed', mockups: [{ mockup_url: 'https://cdn.test/a.jpg' }] });
+        return { ok: false, status: 404, json: async () => ({ code: 404, result: 'Not found' }) };
+    };
+    const P = utworzPrintful({ katalog: sklep, wymiar: path.join(kat, 'printful'), token: async () => 'tok_printful_1234567890abcdef', adres: async () => 'https://katedra.otakos.wtf', fetch: f, czekaj: async (ms) => { czekania.push(ms); } });
+    await P.mockupy();
+    for (let i = 0; i < 50 && P.stanMockupow().stan === 'robi'; i++) await new Promise((r) => setTimeout(r, 10));
+    const z = P.stanMockupow();
+    assert.equal(z.bledy.length, 0, JSON.stringify(z.bledy));
+    assert.equal(z.zrobione.length, 2);
+    assert.equal(czekania.filter((ms) => ms === 49_000).length, 2, 'czeka 47 s + 2 s zapasu, dwa razy');
+});
