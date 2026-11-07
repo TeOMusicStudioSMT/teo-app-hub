@@ -129,9 +129,11 @@ export function utworzPrintful({ katalog, wymiar, token, zapiszToken = async () 
         if (!baza) throw blad('Printful pobiera pliki z publicznego adresu — włącz tunel Katedry (Tunel → Start), potem synchronizuj.', 409);
         const linki = (await czytajJ(PLIK_LINKOW, {}));
         for (const [k, v] of Object.entries(linki)) if (v.wazne < teraz()) delete linki[k];
-        const istn = Object.entries(linki).find(([, v]) => v.plik === abs && v.wazne - teraz() > 24 * 3600_000);
+        // Printful używa ponownie pliku o tym samym adresie — zmieniony plik (nowszy mtime) = nowy link
+        const mtime = (await fs.stat(abs).catch(() => null))?.mtimeMs ?? 0;
+        const istn = Object.entries(linki).find(([, v]) => v.plik === abs && (v.mtime ?? 0) === mtime && v.wazne - teraz() > 24 * 3600_000);
         const tok = istn?.[0] ?? crypto.randomBytes(16).toString('hex');
-        if (!istn) linki[tok] = { plik: abs, wazne: teraz() + WAZNOSC_MS };
+        if (!istn) linki[tok] = { plik: abs, mtime, wazne: teraz() + WAZNOSC_MS };
         await zapiszJ(PLIK_LINKOW, linki);
         return `${String(baza).replace(/\/+$/, '')}/wizytowka/printful/${tok}.png`;
     }
@@ -233,7 +235,10 @@ export function utworzPrintful({ katalog, wymiar, token, zapiszToken = async () 
                     const w = p.warianty?.[0];
                     if (!w) continue;
                     const kat = path.join(baza, p.klucz);
-                    if (!wymus && fsSync.existsSync(path.join(kat, 'MOCKUP-1.jpg'))) { z.pominiete.push({ produkt: p.tytul, powod: 'mockup już jest' }); continue; }
+                    // mockup jest i żaden plik druku nie jest od niego nowszy = pomijamy (przerysowany plik = nowy mockup)
+                    const mock = fsSync.existsSync(path.join(kat, 'MOCKUP-1.jpg')) ? fsSync.statSync(path.join(kat, 'MOCKUP-1.jpg')).mtimeMs : 0;
+                    const nowszy = Object.values(w.pliki ?? {}).some((rel) => { try { return fsSync.statSync(path.resolve(baza, String(rel))).mtimeMs > mock; } catch { return false; } });
+                    if (!wymus && mock && !nowszy) { z.pominiete.push({ produkt: p.tytul, powod: 'mockup już jest' }); continue; }
                     try {
                         const files = [];
                         for (const [placement, rel] of Object.entries(w.pliki ?? {})) {

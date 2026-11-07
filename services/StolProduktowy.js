@@ -218,14 +218,24 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
             const m = await czytajM(path.join(zr, 'produkty.json'));
             if (!m?.produkty?.length) continue;
             if ((await czytajM(path.join(cel, 'produkty.json')))?.kiedy === m.kiedy) continue;
-            await fs.rm(cel, { recursive: true, force: true });
+            // BEZ kasowania folderu (2026-11-07: przerysowanie jednego produktu zjadało mockupy i zdjęcia sklepu wszystkich):
+            // kopiujemy tylko zmienione pliki druku, usuwamy pliki druku spoza manifestu i foldery produktów, których już nie ma.
             await fs.mkdir(cel, { recursive: true });
+            const klucze = new Set();
             for (const p of m.produkty) {
                 if (!MODEL.test(`x-${p.klucz}`)) continue;
+                klucze.add(p.klucz);
                 const pliki = new Set(p.warianty.flatMap((w) => Object.values(w.pliki ?? {})).map((x) => String(x).split('/')[1]));
-                await fs.mkdir(path.join(cel, p.klucz), { recursive: true });
-                for (const f of pliki) if (/^[a-z_]{3,40}-\d{2,5}x\d{2,5}\.png$/.test(f)) await fs.copyFile(path.join(zr, p.klucz, f), path.join(cel, p.klucz, f)).catch(() => {});
+                const kp = path.join(cel, p.klucz);
+                await fs.mkdir(kp, { recursive: true });
+                for (const f of pliki) {
+                    if (!/^[a-z_]{3,40}-\d{2,5}x\d{2,5}\.png$/.test(f)) continue;
+                    const [a, b] = await Promise.all([fs.stat(path.join(zr, p.klucz, f)).catch(() => null), fs.stat(path.join(kp, f)).catch(() => null)]);
+                    if (a && (!b || b.size !== a.size || b.mtimeMs < a.mtimeMs)) await fs.copyFile(path.join(zr, p.klucz, f), path.join(kp, f)).catch(() => {});
+                }
+                for (const f of await fs.readdir(kp).catch(() => [])) if (/^[a-z_]{3,40}-\d{2,5}x\d{2,5}\.png$/.test(f) && !pliki.has(f)) await fs.rm(path.join(kp, f), { force: true });
             }
+            for (const e of await fs.readdir(cel, { withFileTypes: true }).catch(() => [])) if (e.isDirectory() && !klucze.has(e.name)) await fs.rm(path.join(cel, e.name), { recursive: true, force: true });
             for (const f of ['CZYTAJ.txt', 'produkty.json']) await fs.copyFile(path.join(zr, f), path.join(cel, f)).catch(() => {});
             skopiowane.push(d.name);
         }
