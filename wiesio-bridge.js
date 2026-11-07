@@ -19,6 +19,7 @@ import { utworzWypozyczalnie, zamontujTrasyWypozyczalni } from './services/Wypoz
 import { utworzSilnikKsiag, zamontujTrasySilnikaKsiag } from './services/SilnikKsiag.js';
 import { utworzManuskrypt, zamontujTrasyManuskryptu } from './services/WlasnyManuskrypt.js';
 import { utworzFederacje, zamontujTrasyFederacji } from './services/FederacjaKsiag.js';
+import { utworzStolProduktowy, zamontujTrasyStoluProduktowego } from './services/StolProduktowy.js';
 import { utworzLinkiSklepu, zamontujTrasyLinkowSklepu } from './services/LinkiSklepu.js';
 import { utworzRytm } from './services/RytmUtworu.js';
 import { utworzModeleZadan } from './services/ModeleZadan.js';
@@ -15688,6 +15689,10 @@ zamontujTrasyManuskryptu(app, Manuskrypt);
 // 👗🦓 Zebrra Fashion (services/ZebrraFashion.js) — potok 0.00G Style, kroki 4–6: looki postaci w kolekcji (FLUX z wzorami:
 // obraz postaci + makieta Fashion), program z prowadzącym (Głosy Stada), wstawka reklamowa dla Wieczoru Tańca.
 const katalogFashion = [process.env.OTAKOS_FASHION_DIR, path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio')].filter(Boolean).find((d) => fsSync.existsSync(path.join(d, 'public', 'nadruki'))) ?? path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio');
+// 🛍️ Stół Produktowy (services/StolProduktowy.js): gotowe produkty TeO Fashion Studio → _OtakOs_Wymiar/sklep-shopify/<postać>/<model>/
+// 1-DO-SKLEPU-SHOPIFY (makiety + tekst do wklejenia) i 2-DO-DRUKARNI-300DPI (pliki stref + wymiary) + shopify-import.csv (produkty fizyczne).
+const StolProduktowy = utworzStolProduktowy({ katalogFashion, katalog: path.join(ANTIGRAVITY_DIR, 'sklep-shopify') });
+zamontujTrasyStoluProduktowego(app, StolProduktowy);
 const ZebrraFashion = utworzZebrraFashion({
     katalog: path.join(ANTIGRAVITY_DIR, 'zebrra-fashion'),
     katalogFashion,

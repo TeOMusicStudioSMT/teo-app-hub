@@ -15,6 +15,7 @@ import { pobierzZdarzenia, sluchajSzyny, imieAgenta, type Zdarzenie, type Pracuj
 import { gatunekPo } from '../../lib/teogochiGatunki';
 import { FirmaPanel } from './FirmaPanel';
 import { KodyQrPanel } from './KodyQrPanel';
+import { StolProduktowy } from './StolProduktowy';
 
 /**
  * 🏢 Skrzydła Cor-TeO (Suweren 2026-11-06) — filtr działów: meldunki agentów danego skrzydła + jego panele.
@@ -88,7 +89,7 @@ export const WorkPalace: React.FC = () => {
                 ))}
             </div>
             {skrzydlo === 'zarzad' && <FirmaPanel />}
-            {skrzydlo === 'sprzedaz' && <KodyQrPanel />}
+            {skrzydlo === 'sprzedaz' && <><StolProduktowy /><KodyQrPanel /></>}
 
             {/* Kto ostatnio pracował */}
             <div className="flex flex-wrap gap-2">
