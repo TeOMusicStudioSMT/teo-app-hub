@@ -111,7 +111,7 @@ test('Printful: synchronizacja po SKU — wariant katalogu, cena, pliki przez tu
     const z = P.stanZadania();
     assert.equal(z.stan, 'gotowe', z.powod);
     assert.equal(z.zrobione.length, 2);
-    assert.equal(z.pominiete.length, 1); assert.match(z.pominiete[0].powod, /COS-INNEGO/);
+    assert.equal(z.pominiete.length, 0, 'obcy SKU w produkcie ignorowanym przez Printful = cisza');
     const put = wywolania.filter((x) => x.m === 'PUT');
     assert.equal(put.length, 2, 'zsynchronizowany produkt 901 nietknięty');
     assert.deepEqual(put[0].cialo.variant_id, 10163);
