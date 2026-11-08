@@ -116,7 +116,7 @@ export async function ustawProfil({ nick, motto, opis, meldunek, kanal, linki } 
 // ── Publiczna wizytówka ──────────────────────────────────────────────────────
 let publiczneId = new Map();   // id → { plik, film:boolean } — tylko to, co jest w wizytówce
 
-export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow = 24 } = {}) {
+export async function publiczna({ ileFilmow = 12, ileUtworow = 12, ileProduktow = 80 } = {}) {
     const p = await profil();
     if (!p.nick) return null;
     const w = await cfg.wystawa.zbierz();

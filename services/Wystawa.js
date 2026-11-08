@@ -277,7 +277,7 @@ export async function plakat(zrodlo, cel, wideo) {
     } catch { return false; }
 }
 
-export async function opublikuj({ ileFilmow = 12, ileUtworow = 12, ileProduktow = 24 } = {}) {
+export async function opublikuj({ ileFilmow = 12, ileUtworow = 12, ileProduktow = 80 } = {}) {
     const tc = katalogTeoCenter();
     const zywy = await zbierz();
     const media = path.join(tc, 'public', 'media', 'wystawa');

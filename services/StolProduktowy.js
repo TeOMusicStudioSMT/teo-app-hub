@@ -328,7 +328,7 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
         const st = await czytajJ(PLIK_STATUSU, { domena, kiedy: 0, produkty: {} });
         if (!wymus && st.domena === domena && teraz() - st.kiedy < 30 * 60_000) return st;
         const { postacie } = await lista();
-        const modele = postacie.flatMap((p) => p.produkty).filter((x) => x.wyslany).map((x) => x.model);
+        const modele = [...postacie.flatMap((p) => p.produkty).filter((x) => x.wyslany).map((x) => x.model), ...(await bestselleryDoWystawy()).map((b) => b.handle)];
         const produkty = {};
         for (let i = 0; i < modele.length; i += 4) {
             await Promise.all(modele.slice(i, i + 4).map(async (m) => {
@@ -340,11 +340,33 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
         await fs.writeFile(PLIK_STATUSU, JSON.stringify(wynik, null, 1)).catch(() => {});
         return wynik;
     }
-    /** Dla Wystawy (teo.center): produkty wysłane do sklep-shopify — makieta przodu, cena, link tylko gdy sklep go wystawia. */
+    /** Bestsellery Printful (druk na żądanie) z mockupem albo zdjęciem sklepu — handle Shopify = `<postać>-<produkt>` (CSV bestsellerów). */
+    async function bestselleryDoWystawy() {
+        const out = [];
+        for (const d of await fs.readdir(katalog, { withFileTypes: true }).catch(() => [])) {
+            if (!d.isDirectory() || !POSTAC.test(d.name)) continue;
+            const m = await czytajM(path.join(katalog, d.name, FOLDER_BS, 'produkty.json'));
+            for (const p of m?.produkty ?? []) {
+                const kat = path.join(katalog, d.name, FOLDER_BS, p.klucz);
+                const obraz = ['MOCKUP-1.jpg', 'ZDJECIE-SKLEP.jpg'].map((f) => path.join(kat, f)).find((f) => fsSync.existsSync(f));
+                if (!obraz) continue;
+                const ceny = (p.warianty ?? []).map((w) => Number(w.cenaEur)).filter((c) => c > 0);
+                out.push({ handle: `${d.name}-${p.klucz}`, postac: d.name, imie: m.imie ?? d.name, p, obraz, kiedy: m.kiedy ?? null, cena: ceny.length ? Math.min(...ceny) : null, odCeny: new Set(ceny).size > 1 });
+            }
+        }
+        return out;
+    }
+    /** Dla Wystawy (teo.center): bestsellery Printful + produkty kolekcji wysłane do sklep-shopify — obraz, cena, link tylko gdy sklep go wystawia. */
     async function produktyWystawy() {
         const { postacie } = await lista();
         const st = await statusSklepu().catch(() => ({ produkty: {} }));
         const out = [];
+        for (const b of await bestselleryDoWystawy()) {
+            const wSklepie = st.produkty?.[b.handle] === 'w-sklepie';
+            out.push({ id: `printful-${b.handle}`, rodzaj: 'printful', dzial: '0.00G Style · druk na żądanie', tytul: b.p.tytul,
+                opis: `${b.imie} from the 0.00G Style universe — ${b.p.nazwaPrintful}, printed on demand.`,
+                obraz: b.obraz, kiedy: b.kiedy, cena: b.cena, waluta: 'EUR', link: wSklepie ? `https://${st.domena}/products/${b.handle}` : null, wSklepie });
+        }
         for (const x of postacie.flatMap((p) => p.produkty).filter((q) => q.wyslany && q.gotowy)) {
             const obraz = path.join(katalog, x.postac, x.model, '1-DO-SKLEPU-SHOPIFY', 'podglad-przod.png');
             const kiedy = await fs.stat(path.join(katalog, x.postac, x.model, '1-DO-SKLEPU-SHOPIFY', 'WKLEJ-DO-SHOPIFY.txt')).then((s) => s.mtime.toISOString()).catch(() => null);
