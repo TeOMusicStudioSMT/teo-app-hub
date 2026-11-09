@@ -62,3 +62,65 @@ test('publikacja → katalog → 402 bez płatności → Stripe → odbiór 302 
         assert.equal((await (await fetch(`${baza}/wizytowka/teostory`)).json()).ksiegi.length, 1);
     } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
 });
+
+// 🌍🎨🎵 2026-11-09: przekład PL/EN/DE, ilustracje Palety, podkład księgi, kwestie (Prolog < 20), ponowna publikacja nie gubi plików
+import { liczKwestie, sprawdzPrzekladStrony, MIN_KWESTII_PELNEJ } from '../services/WypozyczalniaKsiag.js';
+const czekaj = async (W, id) => { for (let i = 0; i < 200; i++) { const p = W.stanPracy(id); if (p && p.stan !== 'robi') return p; await new Promise((r) => setTimeout(r, 10)); } throw new Error('praca nie skończyła'); };
+
+test('przekład: strona po stronie, zła odpowiedź = jedna poprawka, katalog zna języki i tytuł przekładu', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'teostory-pr-'));
+    const prosby = [];
+    let zepsuj = 1;
+    const pisz = async (_s, prompt) => {
+        prosby.push(prompt);
+        const k = JSON.parse(prompt.split('\n\n')[0]);
+        if (k.lines?.length && zepsuj-- > 0) return JSON.stringify({ ...k, lines: [] });   // zła liczba kwestii → poprawka
+        return JSON.stringify({ chapterTitle: k.chapterTitle && `EN ${k.chapterTitle}`, imageCaption: k.imageCaption && `EN ${k.imageCaption}`, narrativeText: k.narrativeText && `EN ${k.narrativeText}`, lines: k.lines.map((l) => `EN ${l}`) });
+    };
+    const W = utworzWypozyczalnie({ katalog: tmp, pisz });
+    const book = { id: 'legende', title: 'Die Legende', subtitle: 'Hörprobe', language: 'de', pages: [
+        { chapterTitle: 'Eins', narrativeText: 'Es war einmal eine Welt.', dialogueLines: [{ speaker: 'iskra', text: 'Warum?' }], audioUrl: '/wizytowka/teostory/legende/audio/audio-1.mp3' }] };
+    const w = await W.publikuj({ book, rentalTier: 'demo' });
+    assert.equal(w.kwestii, 2); assert.equal(w.jezyk, 'de'); assert.deepEqual(w.jezyki, ['de']);
+    await assert.rejects(() => W.przeloz('legende', 'de'), /oryginału/);
+    await assert.rejects(() => W.przeloz('legende', 'fr'), /Język/);
+    await W.przeloz('legende', 'en');
+    const p = await czekaj(W, 'legende');
+    assert.equal(p.stan, 'gotowe', p.blad);
+    assert.ok(prosby.some((x) => /rejected: kwestii 0 zamiast 1/.test(x)), 'poprawka niesie powód');
+    const { ksiega } = await W.czytaj('legende');
+    assert.equal(ksiega.translations.en.pages[0].dialogueLines[0].text, 'EN Warum?');
+    assert.equal(ksiega.translations.en.title, 'EN Die Legende');
+    assert.equal(ksiega.pages[0].audioUrl, '/wizytowka/teostory/legende/audio/audio-1.mp3', 'oryginał z nagraniami nietknięty');
+    const kat = (await W.katalogPubliczny())[0];
+    assert.deepEqual(kat.jezyki, ['de', 'en']); assert.equal(kat.przeklady.en.tytul, 'EN Die Legende');
+    // ponowna publikacja oryginału: przekład, nagrania i liczba kwestii zostają
+    const w2 = await W.publikuj({ book: ksiega, rentalTier: 'demo' });
+    assert.deepEqual(w2.jezyki, ['de', 'en']);
+    assert.equal((await W.czytaj('legende')).ksiega.pages[0].audioUrl, '/wizytowka/teostory/legende/audio/audio-1.mp3');
+});
+
+test('ilustracje Palety, podkład z biblioteki, sprawdzanie przekładu i próg Prologu', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'teostory-il-'));
+    const png = path.join(tmp, 'kadr.png'); await fs.writeFile(png, 'PNG');
+    const mp3 = path.join(tmp, 'joanna.mp3'); await fs.writeFile(mp3, 'MP3');
+    const kadry = [];
+    const W = utworzWypozyczalnie({ katalog: path.join(tmp, 'kat'), rysuj: async (o) => { kadry.push(o.prompt); return png; }, muzykaLokalna: (u) => (u === 'Aranże Joanny/joanna.mp3' ? mp3 : null) });
+    await W.publikuj({ book: { id: 'teterhia', title: 'Teterhia', pages: [{ narrativeText: 'Nebel über dem Meer.', imageCaption: 'Nebel' }, { narrativeText: 'Ein Kater wartet.', imageUrl: 'https://x.example/a.png' }] }, rentalTier: 'rental_48h', cenaEur: 2.99 });
+    await W.ilustruj('teterhia');
+    assert.equal((await czekaj(W, 'teterhia')).stan, 'gotowe');
+    assert.equal(kadry.length, 1, 'tylko strona bez obrazu');
+    assert.match(kadry[0], /Nebel.*no halos, no crosses/);
+    assert.equal((await W.katalogPelny())[0].okladka, '/wizytowka/teostory/teterhia/obraz/obraz-1.png', 'pierwszy kadr = okładka');
+    assert.ok(W.plikObrazu('teterhia', 'obraz-1.png'));
+    await assert.rejects(() => W.ustawMuzyke('teterhia', { plik: '../../etc/passwd' }), /mp3/);
+    const m = await W.ustawMuzyke('teterhia', { plik: 'Aranże Joanny/joanna.mp3', tytul: 'Cienie Katedry', autor: 'Joanna' });
+    assert.equal(m.musicUrl, '/wizytowka/teostory/teterhia/audio/muzyka.mp3');
+    assert.ok(W.plikDzwieku('teterhia', 'muzyka.mp3'));
+    assert.deepEqual((await W.katalogPelny())[0].muzyka, { tytul: 'Cienie Katedry', autor: 'Joanna' });
+    const z = { chapterTitle: 'A', imageCaption: '', narrativeText: 'Ein langer Satz über die Welt.', lines: ['Hallo'] };
+    assert.throws(() => sprawdzPrzekladStrony(z, { chapterTitle: 'A', narrativeText: 'x', lines: ['Hi'] }), /długości/);
+    assert.equal(sprawdzPrzekladStrony(z, '<think>…</think>{"chapterTitle":"A","narrativeText":"A long sentence about the world.","lines":["Hello"]}').lines[0], 'Hello');
+    assert.equal(liczKwestie({ pages: [{ narrativeText: 'Eine Seite.', dialogueLines: [{ text: 'Ja' }, { text: '' }] }] }), 2);
+    assert.equal(MIN_KWESTII_PELNEJ, 20);
+});

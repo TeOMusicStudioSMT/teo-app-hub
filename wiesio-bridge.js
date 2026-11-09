@@ -9158,6 +9158,15 @@ app.get('/wizytowka/marka-logo', cors({ origin: '*' }), async (_req, res) => { c
 // 📚 Wypożyczalnia Żywych Ksiąg teostory.studio (services/WypozyczalniaKsiag.js): silnik czytnika publikuje (/api/books/*, maszyna),
 // portal czyta i wypożycza przez tunel (/wizytowka/teostory/*): demo za darmo, 48 h = Stripe Checkout, dostęp = opłacona sesja.
 const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe,
+    // 🌍 tłumacz ksiąg (model Kronikarza, JSON) i 🎨 Paleta (FLUX) — te same co Silnik Żywych Ksiąg
+    pisz: async (system, prompt) => (await piszModelem(TrybKatedry.modelDla((await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()), system, prompt, { json: true })).tekst,
+    rysuj: async ({ prompt, szer, wys }) => {
+        const przed = await stanWideoZBudzeniem('Ilustracje ksiąg teostory');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        await Karta.przedRenderem('ilustracjami ksiąg').catch(() => {});
+        return Assety3D.kadrFilmu({ prompt, szer, wys, prefiks: 'katedra/teostory/ilustracja' });
+    },
+    muzykaLokalna: (u) => { const rel = String(u ?? '').replace(/^\/?(music|_OtakOs_Muzyka)\//, ''); const p = path.resolve(MUSIC_DIR, rel); return p.startsWith(path.resolve(MUSIC_DIR) + path.sep) && fsSync.existsSync(p) ? p : null; },
     obrazLokalny: (u) => SilnikKsiag.plikZAdresu(u) ?? Manuskrypt.plikZAdresu(u),   // obrazy (i dźwięk Manuskryptu) kopiowane przy publikacji (gość nie widzi /api)
     adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
 // 📚🏛️ Federacja Wydawnicza (services/FederacjaKsiag.js): księgi innych Katedr w katalogu teostory.studio — zgłoszenie podpisane
