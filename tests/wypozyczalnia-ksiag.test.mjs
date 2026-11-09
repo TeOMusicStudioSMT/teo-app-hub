@@ -124,3 +124,29 @@ test('ilustracje Palety, podkład z biblioteki, sprawdzanie przekładu i próg P
     assert.equal(liczKwestie({ pages: [{ narrativeText: 'Eine Seite.', dialogueLines: [{ text: 'Ja' }, { text: '' }] }] }), 2);
     assert.equal(MIN_KWESTII_PELNEJ, 20);
 });
+
+// 🔁 2026-11-09: „Ponowne otwarcie wrót / Wiederkehr” — po wygaśnięciu 48 h ta sama księga za połowę (2,99 → 1,49 €)
+import { cenaPowrotu } from '../services/WypozyczalniaKsiag.js';
+import { SCIEZKA_TEOSTORY as ST, SCIEZKA_WYPOZYCZENIA as SW } from '../services/StrazMostu.js';
+test('powrót do księgi: wygasłe opłacone wypożyczenie tej księgi = 1,49 €, trwające / obce / fałszywe = pełna cena', async () => {
+    assert.equal(cenaPowrotu(2.99), 1.49); assert.equal(cenaPowrotu(1.99), 0.99); assert.equal(cenaPowrotu(0.5), 0.5);
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'teostory-pw-'));
+    let zegar = Date.parse('2026-11-09T10:00:00Z');
+    const kwoty = [];
+    const stripe = {
+        sesjaZakupu: async (o) => { kwoty.push(o.kwotaCentow); return { id: `cs_${kwoty.length}`, url: 'https://checkout.stripe.com/c/pay/x' }; },
+        sprawdzSesje: async (id) => ({ id, oplacona: id === 'cs_stara' || id === 'cs_inna', pakiet: id === 'cs_inna' ? 'inna-ksiega' : 'teterhia', rodzaj: 'ksiega-48h', powrot: null, kwota: 2.99, waluta: 'eur', tryb: 'live' }),
+    };
+    const W = utworzWypozyczalnie({ katalog: tmp, stripe, teraz: () => zegar });
+    await W.publikuj({ book: { id: 'teterhia', title: 'Teterhia', pages: [{ narrativeText: 'Nebel über dem Meer.' }] }, rentalTier: 'rental_48h', cenaEur: 2.99 });
+    assert.equal((await W.oferta('teterhia')).cenaEur, 2.99);
+    await W.odbierz('cs_stara');                                     // pierwsze czytanie: start 48 h
+    const trwa = await W.oferta('teterhia', { poprzednia: 'cs_stara' });
+    assert.equal(trwa.cenaEur, 2.99); assert.match(trwa.powod, /jeszcze trwa/);
+    zegar += 49 * 3600e3;                                            // 48 h minęło
+    const p = await W.wypozycz('teterhia', { poprzednia: 'cs_stara' });
+    assert.equal(p.cenaEur, 1.49); assert.equal(p.powrotDoKsiegi, true); assert.equal(kwoty.at(-1), 149);
+    assert.equal((await W.wypozycz('teterhia', { poprzednia: 'cs_inna' })).cenaEur, 2.99, 'wypożyczenie innej księgi nie daje rabatu');
+    assert.equal((await W.wypozycz('teterhia', { poprzednia: 'cs_falszywa' })).cenaEur, 2.99, 'nieopłacona sesja nie daje rabatu');
+    assert.ok(SW.test('/wizytowka/teostory/teterhia/oferta') && ST.test('/wizytowka/teostory/teterhia/audio/muzyka.mp3') && !ST.test('/wizytowka/teostory/teterhia/audio/inne.mp3'));
+});

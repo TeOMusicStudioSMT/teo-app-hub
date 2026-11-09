@@ -153,9 +153,9 @@ export const SCIEZKA_PLACU = /^\/wizytowka\/plac\/[a-z0-9-]{2,48}(\/wyjdz)?$/;
 /** 🐾🛒 Sklep Mini (services/SklepMini.js): zakup = sesja Stripe zakładana przez most (cena z rzadkości liczy most). */
 export const SCIEZKA_ZAKUPU = /^\/wizytowka\/sklep\/pk-[0-9a-f]{8}\/kup$/;
 /** 📚 Wypożyczalnia Żywych Ksiąg (services/WypozyczalniaKsiag.js): portal teostory.studio — katalog, okładka, czytanie, odbiór (GET), wypożyczenie (POST). */
-export const SCIEZKA_TEOSTORY = /^\/wizytowka\/teostory(\/odbior|\/[a-z0-9][a-z0-9-]{2,63}\/(okladka|czytaj|obraz\/obraz-\d{1,3}\.(png|jpg|webp)|audio\/audio-\d{1,3}\.mp3))?$/;
+export const SCIEZKA_TEOSTORY = /^\/wizytowka\/teostory(\/odbior|\/[a-z0-9][a-z0-9-]{2,63}\/(okladka|czytaj|obraz\/obraz-\d{1,3}\.(png|jpg|webp)|audio\/(audio-\d{1,4}|muzyka)\.mp3))?$/;
 export const SCIEZKA_ZGLOSZENIA_KSIEGI = /^\/wizytowka\/teostory\/zgloszenie$/;   // 📚🏛️ federacja: zgłoszenie księgi innej Katedry (podpis z rejestru)
-export const SCIEZKA_WYPOZYCZENIA = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/wypozycz$/;
+export const SCIEZKA_WYPOZYCZENIA = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/(wypozycz|oferta)$/;
 /** Okładka wystawionego pakietu, odbiór i pobranie opłaconego (sprawdzane w Stripe). */
 export const SCIEZKA_SKLEPU = /^\/wizytowka\/sklep\/(pk-[0-9a-f]{8}\/okladka\.png|odbior|pobierz)$/;
 /** 📱📋 Opis na telefon (services/OpisNaTelefon.js): strona z przyciskiem „Kopiuj” pod losowym tokenem, ważna 6 h, tylko odczyt. */

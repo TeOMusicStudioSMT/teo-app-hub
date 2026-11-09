@@ -24,6 +24,8 @@ const ID = /^[a-z0-9][a-z0-9-]{2,63}$/;
 export const JEZYKI_KSIAG = { pl: 'Polish', en: 'English', de: 'German' };
 /** Krótsza księga = „Darmowy Prolog / Hörprobe” w portalu (Suweren: za 2,99 € czytelnik dostaje pełną opowieść). */
 export const MIN_KWESTII_PELNEJ = 20;
+/** 🔁 „Ponowne otwarcie wrót / Wiederkehr”: kto miał opłacone wypożyczenie tej księgi i 48 h minęło, wraca za połowę (2,99 → 1,49 €). */
+export const cenaPowrotu = (cena) => Math.max(0.5, Math.floor(Number(cena) * 50) / 100);
 /** Styl Palety dla ilustracji ksiąg: malowany storybook, świecki (bez aureoli, krzyży, ołtarzy). */
 export const STYL_ILUSTRACJI_KSIEGI = 'painterly storybook illustration, rich gouache and oil textures, cinematic soft light, warm and deep colours, wide establishing shot, magical but secular, no text, no letters, no captions, no halos, no crosses, no religious symbols, no altars';
 const ORIGINY = (process.env.OTAKOS_TEOSTORY_ORIGINY || 'https://teostory.studio,https://www.teostory.studio').split(',').map((x) => x.trim()).filter(Boolean);
@@ -205,15 +207,38 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return fsSync.existsSync(p) ? p : null;
     }
 
-    async function wypozycz(id, { powrot = null } = {}) {
+    /**
+     * Cena dla czytelnika: pełna, a z `poprzednia` (identyfikator opłaconej wcześniej sesji TEJ księgi, której 48 h już minęło)
+     * — cena powrotu. Sesję sprawdza Stripe (opłacona, ta księga), wygaśnięcie liczymy z naszego zapisu wypożyczeń.
+     * Zła / obca / jeszcze ważna sesja = pełna cena z powodem (nie błąd — czytelnik i tak może wypożyczyć).
+     */
+    async function cenaDla(k, poprzednia) {
+        if (!poprzednia) return { cena: k.cenaEur, powrot: false };
+        try {
+            const o = await odbierz(String(poprzednia));
+            if (o.ksiega !== k.id) return { cena: k.cenaEur, powrot: false, powod: 'to wypożyczenie dotyczy innej księgi' };
+            if (Date.parse(o.do) > teraz()) return { cena: k.cenaEur, powrot: false, powod: 'poprzednie wypożyczenie jeszcze trwa' };
+            return { cena: cenaPowrotu(k.cenaEur), powrot: true };
+        } catch (e) { return { cena: k.cenaEur, powrot: false, powod: String(e.message || e).slice(0, 120) }; }
+    }
+    async function wypozycz(id, { powrot = null, poprzednia = null } = {}) {
         const k = (await katalogPelny()).find((x) => x.id === id && x.wystawiona);
         if (!k) throw Object.assign(new Error('Tej księgi nie ma w wypożyczalni.'), { kod: 404 });
         if (k.tier === 'demo') return { darmowa: true };
         if (!stripe) throw Object.assign(new Error('Katedra nie przyjmuje teraz płatności.'), { kod: 503 });
-        const s = await stripe.sesjaZakupu({ pakiet: { id: k.id, nazwa: `📚 ${k.tytul} — wypożyczenie ${GODZIN_WYPOZYCZENIA} h`, opis: k.opis || k.podtytul || 'Żywa Księga teostory.studio' },
-            kwotaCentow: Math.round(k.cenaEur * 100), waluta: 'eur', powrot: await adres(), anuluj: dozwolonyPowrot(powrot),
-            sukces: '/wizytowka/teostory/odbior', rodzaj: 'ksiega-48h', metadane: { powrot: dozwolonyPowrot(powrot) ?? '' } });
-        return { url: s.url };
+        const c = await cenaDla(k, poprzednia);
+        const s = await stripe.sesjaZakupu({ pakiet: { id: k.id, nazwa: `📚 ${k.tytul} — ${c.powrot ? 'powrót do księgi' : 'wypożyczenie'} ${GODZIN_WYPOZYCZENIA} h`, opis: k.opis || k.podtytul || 'Żywa Księga teostory.studio' },
+            kwotaCentow: Math.round(c.cena * 100), waluta: 'eur', powrot: await adres(), anuluj: dozwolonyPowrot(powrot),
+            sukces: '/wizytowka/teostory/odbior', rodzaj: 'ksiega-48h', metadane: { powrot: dozwolonyPowrot(powrot) ?? '', ...(c.powrot ? { powrotZ: String(poprzednia).slice(0, 80) } : {}) } });
+        return { url: s.url, cenaEur: c.cena, powrotDoKsiegi: c.powrot, ...(c.powod ? { powod: c.powod } : {}) };
+    }
+    /** Podgląd ceny bez zakładania płatności (portal pokazuje „1,49 € — Wiederkehr” zanim czytelnik kliknie). */
+    async function oferta(id, { poprzednia = null } = {}) {
+        const k = (await katalogPelny()).find((x) => x.id === id && x.wystawiona);
+        if (!k) throw Object.assign(new Error('Tej księgi nie ma w wypożyczalni.'), { kod: 404 });
+        if (k.tier === 'demo') return { cenaEur: 0, powrotDoKsiegi: false };
+        const c = await cenaDla(k, poprzednia);
+        return { cenaEur: c.cena, pelnaEur: k.cenaEur, powrotDoKsiegi: c.powrot, ...(c.powod ? { powod: c.powod } : {}) };
     }
 
     /** Opłacona sesja → wypożyczenie (start przy pierwszym odbiorze) → {ksiega, do, powrot}. Rzuca z powodem. */
@@ -353,7 +378,7 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return zapiszKsiege(id, async (b) => ({ ...b, musicUrl: `/wizytowka/teostory/${id}/audio/muzyka.mp3`, music: { title: tekst(tytul, 120) || path.basename(lok, '.mp3'), author: tekst(autor, 120) || null } })).then((b) => ({ musicUrl: b.musicUrl, music: b.music }));
     }
 
-    return { plikObrazu, plikDzwieku, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
+    return { plikObrazu, plikDzwieku, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, oferta, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
         wypozyczenia: async () => (await czytaj(WYP, { wypozyczenia: [] })).wypozyczenia };
 }
 
@@ -413,7 +438,16 @@ export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10, federacj
         const ip = req.ip || '?', t = Date.now(), l = (proby.get(ip) ?? []).filter((x) => t - x < 60_000);
         if (l.length >= limitNaMinute) return res.status(429).json({ success: false, message: 'Za dużo prób — spróbuj za minutę.' });
         proby.set(ip, [...l, t]);
-        return odp(res, W.wypozycz(req.params.id, { powrot: req.body?.powrot }));
+        return odp(res, W.wypozycz(req.params.id, { powrot: req.body?.powrot, poprzednia: req.body?.poprzednia ? String(req.body.poprzednia).slice(0, 200) : null }));
+    });
+    // 🔁 cena dla czytelnika (pełna albo powrót do księgi) — bez zakładania płatności
+    app.options('/wizytowka/teostory/:id/oferta', (_req, res) => { cors(res); res.sendStatus(204); });
+    app.post('/wizytowka/teostory/:id/oferta', (req, res) => {
+        cors(res);
+        const ip = req.ip || '?', t = Date.now(), l = (proby.get(`o:${ip}`) ?? []).filter((x) => t - x < 60_000);
+        if (l.length >= limitNaMinute * 3) return res.status(429).json({ success: false, message: 'Za dużo zapytań — spróbuj za minutę.' });
+        proby.set(`o:${ip}`, [...l, t]);
+        return odp(res, W.oferta(req.params.id, { poprzednia: req.body?.poprzednia ? String(req.body.poprzednia).slice(0, 200) : null }));
     });
     app.get('/wizytowka/teostory/odbior', async (req, res) => {
         try {
