@@ -33,9 +33,17 @@ async function czytaj() {
 
 async function zapisz(d) {
     await fs.mkdir(path.dirname(PLIK()), { recursive: true });
-    const tmp = `${PLIK()}.${Date.now()}.tmp`;
+    const tmp = `${PLIK()}.${process.pid}.${Date.now()}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(d, null, 2), 'utf8');
-    await fs.rename(tmp, PLIK());
+    // Windows (2026-11-09: Mechanik dwa razy zgłosił HTTP 500 z POST /api/stado/stan): podmiana pliku odbija się EPERM/EBUSY,
+    // gdy w tej chwili ktoś go czyta (Hub co minutę, Świat, StoL, skaner antywirusa) — chwila przerwy i znowu, jak w Żywej Księdze.
+    for (let i = 0; ; i++) {
+        try { await fs.rename(tmp, PLIK()); return; }
+        catch (e) {
+            if (i >= 8 || !['EPERM', 'EBUSY', 'EACCES'].includes(e.code)) { await fs.rm(tmp, { force: true }).catch(() => {}); throw e; }
+            await new Promise((r) => setTimeout(r, 15 * (i + 1)));
+        }
+    }
 }
 
 /** Tylko pola stanu TeOgochi, z liczbami jako liczby — nic obcego z przeglądarki do pliku. */
