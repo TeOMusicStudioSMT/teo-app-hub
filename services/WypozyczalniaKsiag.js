@@ -285,8 +285,16 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return wTle(id, `przekład ${jezyk}`, async (praca) => {
             const kawalki = (book.pages ?? []).map(stronaDoPrzekladu);
             praca.z = kawalki.length + 1;
-            const glowa = sprawdzPrzekladStrony({ chapterTitle: book.title ?? '', imageCaption: book.subtitle ?? '', narrativeText: '', lines: [] },
-                await pisz(system, JSON.stringify({ chapterTitle: book.title ?? '', imageCaption: book.subtitle ?? '', narrativeText: '', lines: [] })));
+            // nagłówek (tytuł → chapterTitle, podtytuł → imageCaption): kwestii nie ma, więc liczba linii nie gra roli
+            let glowa = { chapterTitle: '', imageCaption: '' };
+            for (let proba = 0; proba < 2 && !glowa.chapterTitle; proba++) {
+                try {
+                    const z = { chapterTitle: book.title ?? '', imageCaption: book.subtitle ?? '', narrativeText: '', lines: [] };
+                    const o = await pisz(system, JSON.stringify(z));
+                    const d = typeof o === 'string' ? JSON.parse(/\{[\s\S]*\}/.exec(o.replace(/<think>[\s\S]*?<\/think>/g, ''))?.[0] ?? 'null') : o;
+                    glowa = sprawdzPrzekladStrony(z, { ...d, lines: [] });
+                } catch (e) { praca.uwagi.push(`tytuł: ${String(e.message || e).slice(0, 120)}`); }
+            }
             praca.postep = 1;
             const strony = [];
             for (const k of kawalki) {

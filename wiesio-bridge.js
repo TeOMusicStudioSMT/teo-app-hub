@@ -9159,7 +9159,8 @@ app.get('/wizytowka/marka-logo', cors({ origin: '*' }), async (_req, res) => { c
 // portal czyta i wypożycza przez tunel (/wizytowka/teostory/*): demo za darmo, 48 h = Stripe Checkout, dostęp = opłacona sesja.
 const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe,
     // 🌍 tłumacz ksiąg (model Kronikarza, JSON) i 🎨 Paleta (FLUX) — te same co Silnik Żywych Ksiąg
-    pisz: async (system, prompt) => (await piszModelem(TrybKatedry.modelDla((await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()), system, prompt, { json: true })).tekst,
+    // model: OTAKOS_KSIEGI_TLUMACZ_MODEL (np. gemma4:12B — lepiej tłumaczy niż małe modele) → przydział Kronikarza
+    pisz: async (system, prompt) => (await piszModelem(TrybKatedry.modelDla(process.env.OTAKOS_KSIEGI_TLUMACZ_MODEL || (await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()), system, prompt, { json: true })).tekst,
     rysuj: async ({ prompt, szer, wys }) => {
         const przed = await stanWideoZBudzeniem('Ilustracje ksiąg teostory');
         if (!przed.comfy) throw new Error(przed.braki.join(' | '));
