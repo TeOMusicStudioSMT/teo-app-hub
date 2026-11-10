@@ -241,3 +241,24 @@ test('📱 StoL: Straż wpuszcza trasy Księgi dla sparowanych, trasa żąda tok
         assert.equal((await fetch(`${url}/api/zywa-ksiega/${nowy.wpis.id}`, { method: 'DELETE' })).status, 200);   // przy maszynie wolno
     } finally { srv.close(); }
 });
+
+test('Kronikarz padł (karta zajęta) → kadr zastępczy; ↻ ponów daje słowo → Paleta rysuje od nowa z opisu, przekład dostaje słowo', async () => {
+    const kat = tmp();
+    let padnij = true;
+    const a = atrapy(kat);
+    const chat = a.cfg.chat;
+    a.cfg.chat = async (m, s, u) => { if (padnij && s !== SYSTEM_PRZEKLADU) throw new Error('fetch failed'); return chat(m, s, u); };
+    const K = utworzZywaKsiege(a.cfg);
+    const w = await K.dodaj({ tekst: 'Galareta pojednania i kod LIBE.' });
+    await czekaj(async () => (await K.czytaj(w.id)).stado.every((s) => s.stan !== 'czeka' && s.stan !== 'robi'));
+    let g = await K.czytaj(w.id);
+    assert.equal(g.stado[0].stan, 'blad');
+    assert.equal(g.stado[1].stan, 'gotowe'); assert.equal(g.stado[1].zapasowa, true, 'kadr zastępczy jest oznaczony');
+    padnij = false;
+    await K.ponowStado(w.id);
+    await czekaj(async () => { const x = await K.czytaj(w.id); return x.stado[0].stan === 'gotowe' && x.stado[1].stan === 'gotowe' && x.stado[2].stan === 'gotowe' && a.wolania.rysuj.length === 2; });
+    g = await K.czytaj(w.id);
+    assert.match(a.wolania.rysuj[1].prompt, /golden sunrise/, 'drugi kadr z opisu Kronikarza');
+    assert.equal(g.stado[1].zapasowa, false);
+    assert.ok(g.stado[2].slowo, 'przekład ma teraz słowo Kronikarza');
+});

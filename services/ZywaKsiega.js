@@ -256,6 +256,12 @@ export function utworzZywaKsiege(cfg = {}) {
                     // styl spoza listy (albo bez listy) = dawny styl; nazwę widać w Hubie, StoL-u i na otakos.wtf
                     const st = znajdzStyl(style, s.styl);
                     dodatek(x, 'ilustracja').styl = st ? { id: st.id, nazwa: st.nazwa } : null;
+                    // 2026-11-10: ilustracja z kadru ZASTĘPCZEGO (Kronikarz wcześniej padł — karta zajęta) nie pasuje do wpisu;
+                    // teraz jest prawdziwy opis, więc Paleta rysuje od nowa, a przekład dostaje też słowo Kronikarza
+                    const il = dodatek(x, 'ilustracja');
+                    if (il.stan === 'gotowe' && (il.zapasowa || !il.prompt)) Object.assign(il, { stan: 'czeka', powod: 'nowy opis Kronikarza — rysuję od nowa' });
+                    const pr = dodatek(x, 'przeklad');
+                    if (pr?.stan === 'gotowe' && !pr.slowo) Object.assign(pr, { stan: 'czeka', powod: null });
                 });
             } catch (e) {
                 w = await zmien(id, (x) => { Object.assign(dodatek(x, 'slowo'), { stan: 'blad', powod: String(e.message || e).slice(0, 300) }); });
@@ -280,7 +286,7 @@ export function utworzZywaKsiege(cfg = {}) {
                 }
                 if (!zrodlo || !fsSync.existsSync(zrodlo)) throw new Error('FLUX nie oddał pliku');
                 await fs.copyFile(zrodlo, path.join(dir(id), 'ilustracja.png'));
-                await zmien(id, (x) => { Object.assign(dodatek(x, 'ilustracja'), { stan: 'gotowe', plik: 'ilustracja.png', promptUzyty: prompt }); });
+                await zmien(id, (x) => { Object.assign(dodatek(x, 'ilustracja'), { stan: 'gotowe', plik: 'ilustracja.png', promptUzyty: prompt, zapasowa: !il.prompt }); });
             } catch (e) {
                 await zmien(id, (x) => { Object.assign(dodatek(x, 'ilustracja'), { stan: 'blad', powod: String(e.message || e).slice(0, 300) }); });
             }
