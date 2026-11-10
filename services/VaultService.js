@@ -46,6 +46,8 @@ export const SERVICE_CATALOG = {
     // kont. Tokeny połączonych kont leżą obok tokenów YouTube w skarbcu Impresariatu (media_secrets.json).
     tiktok:           { label: 'TikTok (Login Kit + Content Posting)', fields: ['client_key', 'client_secret'], security: 'CRITICAL', glyph: '🎵',
                         opis: 'developers.tiktok.com → Manage apps → Twoja aplikacja (Desktop) → Client key i Client secret. Konto łączysz potem w Impresariacie → 📱 Formaty i sieci.' },
+    spotify:          { label: 'Spotify Web API (Client Credentials)', fields: ['client_id', 'client_secret'], security: 'HIGH', glyph: '🎧',
+                        opis: 'developer.spotify.com → Dashboard → Create app → Settings: Client ID i Client secret. Katedra tylko CZYTA publiczne profile artystów (Elara, Kael) — nic nie publikuje.' },
     instagram:        { label: 'Instagram (Meta · Facebook Login for Business)', fields: ['app_id', 'app_secret', 'config_id'], security: 'CRITICAL', glyph: '📸',
                         opis: 'developers.facebook.com → Twoja aplikacja (Business) → Settings → Basic: App ID i App secret; config_id (opcja) z Facebook Login for Business → Configurations.' },
     // 🎵🔌 Suno MCP (2026-11-01, services/SunoMcp.js): klient zarejestrowany w locie + token odświeżania z logowania kontem Suno.

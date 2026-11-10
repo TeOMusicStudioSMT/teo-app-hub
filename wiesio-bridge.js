@@ -16,6 +16,7 @@ import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch
 import { utworzStripe } from './services/Stripe.js';
 import { utworzSklepMini, zamontujTrasySklepu, BUDZET_PRODUKCJI as SKLEP_BUDZET } from './services/SklepMini.js';
 import { utworzWypozyczalnie, zamontujTrasyWypozyczalni } from './services/WypozyczalniaKsiag.js';
+import { utworzSpotify, zamontujTrasySpotify } from './services/SpotifyArtysci.js';
 import { utworzSilnikKsiag, zamontujTrasySilnikaKsiag } from './services/SilnikKsiag.js';
 import { utworzManuskrypt, zamontujTrasyManuskryptu } from './services/WlasnyManuskrypt.js';
 import { utworzFederacje, zamontujTrasyFederacji } from './services/FederacjaKsiag.js';
@@ -9179,6 +9180,8 @@ const FederacjaKsiag = utworzFederacje({ katalog: path.join(ANTIGRAVITY_DIR, 'te
     plikKsiegi: (id) => { const p = path.join(ANTIGRAVITY_DIR, 'teostory', 'ksiegi', `${id}.json`); return /^[a-z0-9][a-z0-9-]{2,63}$/.test(id) && fsSync.existsSync(p) ? p : null; },
     wydawca: process.env.OTAKOS_TEOSTORY_WYDAWCA || 'https://katedra.otakos.wtf', szyna: Szyna });
 zamontujTrasyFederacji(app, FederacjaKsiag);
+// 🎧 Spotify — profile artystów Katedry (Elara, Kael) przez Web API, klucze ze Skarbca (services/SpotifyArtysci.js)
+zamontujTrasySpotify(app, utworzSpotify({ klucze: async () => ({ client_id: await sekretPrzewodu('spotify', 'client_id'), client_secret: await sekretPrzewodu('spotify', 'client_secret') }) }));
 zamontujTrasyWypozyczalni(app, Wypozyczalnia, { federacja: () => FederacjaKsiag.pozycjePubliczne(), nick: async () => (await Wizytowka.profil()).nick || null });
 if (process.env.OTAKOS_SKLEP_MINI !== '0') setTimeout(() => SklepMini.startPetli(), 120_000).unref?.();
 // 💃🥊 Ring taneczny (services/RingTaneczny.js): pojedynki Mini-TeOgochi między Katedrami — walkę liczą gracze

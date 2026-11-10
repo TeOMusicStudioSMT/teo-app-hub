@@ -83,7 +83,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     // Publikacje (/api/youtube/publikacje*) telefon może zatwierdzać z kluczem (Izba Akceptacji).
     '/api/impresario/youtube/', '/api/impresario/secrets/',
     // 📱 Formaty i sieci: ffmpeg na maszynie, konta TikTok/Instagram (klucze aplikacji, OAuth) i ✓ wysyłki do sieci — tylko przy maszynie
-    '/api/formaty', '/api/impresario/tiktok/', '/api/impresario/instagram/',
+    '/api/formaty', '/api/impresario/tiktok/', '/api/impresario/instagram/', '/api/impresario/spotify/',
     '/api/pliki/upusc',   // zapis upuszczonego pliku do katalogu projektu — tylko przy maszynie   // trening modeli trwa godziny na karcie graficznej i pisze po dysku — tylko przy maszynie
     '/api/zwiadowca/szukaj', '/api/zwiadowca/kandydat/', '/api/zwiadowca/link', '/api/zwiadowca/promocje', '/api/zwiadowca/dystrybucja',   // zwiad i pobieranie modeli (GB na dysk) — decyzja przy maszynie
     '/api/porzadki/usun',   // kasowanie plików i modeli — tylko przy maszynie

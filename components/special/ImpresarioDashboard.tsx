@@ -38,6 +38,12 @@ const PLATFORM_META: Record<string, { label: string; icon: string; accent: strin
         accent: 'border-green-500/60',
         glow:   'rgba(34,197,94,0.15)',
     },
+    tiktok: {
+        label:  'TikTok',
+        icon:   '🎬',
+        accent: 'border-pink-500/60',
+        glow:   'rgba(236,72,153,0.15)',
+    },
     soundcloud: {
         label:  'SoundCloud',
         icon:   '🌊',
@@ -92,6 +98,16 @@ const ImpresarioDashboard: React.FC = () => {
 
     // ── State ─────────────────────────────────────────────────────────────────
     const [vault,        setVault]        = useState<VaultData>({});
+    // 🎬 TikTok (prawdziwy OAuth Login Kit + Content Posting — services/KontaSieci.js) i 🎧 Spotify (profile artystów, Web API)
+    const [tiktok, setTiktok] = useState<{ polaczony?: boolean; klient?: boolean; konta?: { nazwa: string }[]; powod?: string } | null>(null);
+    const [artysci, setArtysci] = useState<{ klucz: string; nazwa?: string; obserwujacy?: number | null; popularnosc?: number | null; gatunki?: string[]; obraz?: string | null; url?: string; blad?: string }[] | null>(null);
+    const [spotifyBlad, setSpotifyBlad] = useState<string | null>(null);
+    useEffect(() => { fetch(`${BRIDGE_URL}/api/impresario/tiktok/stan`).then((r) => r.json()).then(setTiktok).catch(() => {}); }, []);
+    const sprawdzSpotify = async () => {
+        setSpotifyBlad(null);
+        try { const d = await (await fetch(`${BRIDGE_URL}/api/impresario/spotify/artysci`)).json(); if (d.success) setArtysci(d.artysci); else setSpotifyBlad(d.message); }
+        catch (e: any) { setSpotifyBlad(String(e?.message || e)); }
+    };
     const [queue,        setQueue]        = useState<QueueJob[]>([]);
     const [statusLoaded, setStatusLoaded] = useState(false);
     const [vaultUpdating, setVaultUpdating] = useState<string | null>(null);
@@ -274,9 +290,9 @@ const ImpresarioDashboard: React.FC = () => {
                         A. Kontrola Stacji API
                     </h2>
 
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                         {Object.entries(PLATFORM_META).map(([key, meta]) => {
-                            const isConn    = vault[key]?.connected ?? false;
+                            const isConn    = key === 'tiktok' ? !!tiktok?.polaczony : key === 'spotify' ? !!artysci?.some((a) => !a.blad) : vault[key]?.connected ?? false;
                             const isUpdating = vaultUpdating === key;
 
                             return (
@@ -312,7 +328,8 @@ const ImpresarioDashboard: React.FC = () => {
                                     </p>
 
                                     <button
-                                        onClick={() => togglePlatform(key)}
+                                        onClick={() => key === 'tiktok' ? window.open(`${BRIDGE_URL}/api/impresario/tiktok/polacz`, '_blank')
+                                            : key === 'spotify' ? sprawdzSpotify() : togglePlatform(key)}
                                         disabled={!!vaultUpdating}
                                         className={`w-full py-1.5 text-[9px] font-mono uppercase tracking-widest rounded transition-all duration-200
                                             ${isConn
@@ -322,12 +339,38 @@ const ImpresarioDashboard: React.FC = () => {
                                             ${vaultUpdating ? 'opacity-50 cursor-not-allowed' : ''}
                                         `}
                                     >
-                                        {isUpdating ? '...' : isConn ? '⏏ Odłącz' : '⚡ Połącz'}
+                                        {isUpdating ? '...' : key === 'tiktok' ? (isConn ? '➕ Dodaj konto' : '⚡ Połącz (OAuth)') : key === 'spotify' ? '🔍 Sprawdź artystów' : isConn ? '⏏ Odłącz' : '⚡ Połącz'}
                                     </button>
+                                    {key === 'tiktok' && (
+                                        <p className="mt-2 text-[8px] font-mono text-slate-500">
+                                            {tiktok?.konta?.length ? `konta: ${tiktok.konta.map((k) => k.nazwa).join(', ')}` : tiktok?.powod || 'klucze: Skarbiec → tiktok'} · wysyłka rolek: 📱 Formaty i sieci
+                                        </p>
+                                    )}
                                 </motion.div>
                             );
                         })}
                     </div>
+
+                    {/* ══ 🎧 Spotify: profile artystów Katedry (Web API, tylko odczyt) ══ */}
+                    {(artysci || spotifyBlad) && (
+                        <div className="mt-4 rounded-lg border border-green-600/40 bg-black/40 p-3 text-[10px] font-mono">
+                            <div className="text-green-400 font-bold mb-2">🎧 SPOTIFY · ARTYŚCI KATEDRY</div>
+                            {spotifyBlad && <p className="text-red-400">{spotifyBlad}</p>}
+                            <div className="grid sm:grid-cols-2 gap-3">
+                                {artysci?.map((a) => (
+                                    <a key={a.klucz} href={a.url} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded border border-white/10 p-2 hover:border-green-500/50">
+                                        {a.obraz ? <img src={a.obraz} alt="" className="w-12 h-12 rounded-full object-cover" /> : <div className="w-12 h-12 rounded-full bg-slate-800" />}
+                                        <div>
+                                            <div className="text-slate-100 font-bold uppercase">{a.nazwa ?? a.klucz}</div>
+                                            {a.blad ? <div className="text-red-400">Spotify: {a.blad}</div> : (
+                                                <div className="text-slate-400">👥 {a.obserwujacy ?? '—'} · popularność {a.popularnosc ?? '—'}/100{a.gatunki?.length ? ` · ${a.gatunki.slice(0, 3).join(', ')}` : ''}</div>
+                                            )}
+                                        </div>
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* ══ Instrukcja Konfiguracji YouTube V0 ══ */}
                     {!(vault['youtube']?.connected) && (
