@@ -100,7 +100,7 @@ const ImpresarioDashboard: React.FC = () => {
     const [vault,        setVault]        = useState<VaultData>({});
     // 🎬 TikTok (prawdziwy OAuth Login Kit + Content Posting — services/KontaSieci.js) i 🎧 Spotify (profile artystów, Web API)
     const [tiktok, setTiktok] = useState<{ polaczony?: boolean; klient?: boolean; konta?: { nazwa: string }[]; powod?: string } | null>(null);
-    const [artysci, setArtysci] = useState<{ klucz: string; nazwa?: string; obserwujacy?: number | null; popularnosc?: number | null; gatunki?: string[]; obraz?: string | null; url?: string; blad?: string }[] | null>(null);
+    const [artysci, setArtysci] = useState<{ klucz: string; nazwa?: string; obserwujacy?: number | null; popularnosc?: number | null; gatunki?: string[]; obraz?: string | null; url?: string; blad?: string; poprawioneId?: string }[] | null>(null);
     const [spotifyBlad, setSpotifyBlad] = useState<string | null>(null);
     useEffect(() => { fetch(`${BRIDGE_URL}/api/impresario/tiktok/stan`).then((r) => r.json()).then(setTiktok).catch(() => {}); }, []);
     const sprawdzSpotify = async () => {
@@ -365,6 +365,7 @@ const ImpresarioDashboard: React.FC = () => {
                                             {a.blad ? <div className="text-red-400">Spotify: {a.blad}</div> : (
                                                 <div className="text-slate-400">👥 {a.obserwujacy ?? '—'} · popularność {a.popularnosc ?? '—'}/100{a.gatunki?.length ? ` · ${a.gatunki.slice(0, 3).join(', ')}` : ''}</div>
                                             )}
+                                            {a.poprawioneId && <div className="text-amber-400">znaleziony wyszukaniem — właściwe ID: {a.poprawioneId}</div>}
                                         </div>
                                     </a>
                                 ))}

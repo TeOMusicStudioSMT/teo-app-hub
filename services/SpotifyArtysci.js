@@ -5,8 +5,9 @@
  * muzyka trafia na Spotify przez dystrybutora (paczka DistroKid w kolejce Impresariatu).
  */
 export const ARTYSCI = [
-    { klucz: 'elara', id: '1v1bnmU5f11bCJA26D53z5' },
-    { klucz: 'kael', id: '5MsSriliBvzqoMuwKmmtMr' },
+    // id bywa przepisane z literówką (I/1/l, J) — gdy Spotify odda 404, szukamy po nazwie i znaku rozpoznawczym (utwór)
+    { klucz: 'elara', id: '1v1bnmU5f1TbCIA26D53z5', nazwa: 'ELARA', utwor: 'Raindrops' },
+    { klucz: 'kael', id: '5MsSriliBvzqoMuwKmmtMr', nazwa: 'KAEL', utwor: null },
 ];
 
 /** Profil artysty z odpowiedzi Spotify → pola, które pokazuje Impresariat. */
@@ -33,13 +34,38 @@ export function utworzSpotify({ klucze, fetch: f = fetch, teraz = () => Date.now
         token = { wartosc: d.access_token, do: teraz() + (Number(d.expires_in) || 3600) * 1000 };
         return token.wartosc;
     }
+    const pobierz = async (t, url) => { const r = await f(url, { headers: { Authorization: `Bearer ${t}` } }); return { r, d: r.ok ? await r.json() : null }; };
+    /**
+     * Zapas, gdy id nie istnieje (404/400 — literówka): /v1/search po nazwie; dokładna nazwa, a przy kilku — ten,
+     * który ma w najpopularniejszych utworach znak rozpoznawczy (np. „Raindrops”). Nic pewnego = null (zostaje błąd).
+     */
+    async function znajdz(t, { nazwa, utwor }) {
+        if (!nazwa) return null;
+        const { d } = await pobierz(t, `https://api.spotify.com/v1/search?type=artist&limit=10&q=${encodeURIComponent(nazwa)}`);
+        const takiSam = (d?.artists?.items ?? []).filter((a) => String(a.name).toLowerCase() === nazwa.toLowerCase());
+        if (!utwor) return takiSam.length === 1 ? takiSam[0] : null;
+        for (const a of takiSam) {
+            const { d: top } = await pobierz(t, `https://api.spotify.com/v1/artists/${a.id}/top-tracks?market=DE`);
+            if ((top?.tracks ?? []).some((x) => String(x.name).toLowerCase().includes(utwor.toLowerCase()))) return a;
+        }
+        // utworu nie ma w najpopularniejszych — szukamy samego utworu i bierzemy artystę o tej nazwie
+        const { d: s } = await pobierz(t, `https://api.spotify.com/v1/search?type=track&limit=10&q=${encodeURIComponent(`${utwor} ${nazwa}`)}`);
+        const tr = (s?.tracks?.items ?? []).find((x) => x.artists?.some((a) => String(a.name).toLowerCase() === nazwa.toLowerCase()));
+        const id = tr?.artists.find((a) => String(a.name).toLowerCase() === nazwa.toLowerCase())?.id;
+        return id ? (await pobierz(t, `https://api.spotify.com/v1/artists/${id}`)).d : takiSam.length === 1 ? takiSam[0] : null;
+    }
     /** Profile wszystkich artystów Katedry; artysta, którego Spotify nie oddał, ma `blad` (reszta działa). */
     async function artysci() {
         const t = await dostep();
-        return Promise.all(ARTYSCI.map(async ({ klucz, id }) => {
-            const r = await f(`https://api.spotify.com/v1/artists/${id}`, { headers: { Authorization: `Bearer ${t}` } });
-            if (!r.ok) return { klucz, id, blad: `HTTP ${r.status}` };
-            return { klucz, ...profilArtysty(await r.json()) };
+        return Promise.all(ARTYSCI.map(async (art) => {
+            const { klucz, id } = art;
+            const { r, d } = await pobierz(t, `https://api.spotify.com/v1/artists/${id}`);
+            if (r.ok) return { klucz, ...profilArtysty(d) };
+            if (r.status === 404 || r.status === 400) {
+                const a = await znajdz(t, art).catch(() => null);
+                if (a) return { klucz, ...profilArtysty(a), poprawioneId: a.id !== id ? a.id : undefined };
+            }
+            return { klucz, id, blad: `HTTP ${r.status}${art.nazwa ? ` (wyszukanie „${art.nazwa}” nic pewnego nie dało)` : ''}` };
         }));
     }
     return { artysci };
