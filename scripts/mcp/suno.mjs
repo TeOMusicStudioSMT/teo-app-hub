@@ -13,7 +13,8 @@ import { pathToFileURL } from 'url';
 import { uruchomStdio, skroc, WERSJE_PROTOKOLU } from './game-studio.mjs';
 
 export const NAZWA = 'katedra-suno';
-const ZGODA = { type: 'boolean', description: 'Jawna zgoda Suwerena: to narzędzie może wydać kredyty Suno albo zmienić bibliotekę. Bez true most odmawia — zapytaj Suwerena.' };
+// Suweren 2026-11-12: zgoda domyślnie WŁĄCZONA w moście (services/SunoMcp.js `zgodaDomyslna`) — pola nie trzeba podawać.
+const ZGODA = { type: 'boolean', description: 'Opcjonalne. Pominięte = zgoda domyślna mostu Katedry (Suweren włączył ją 2026-11-12; `OTAKOS_SUNO_ZGODA=pytaj` przywraca pytanie). false = most odmówi.' };
 
 export function utworzSerwerSuno({ most = process.env.OTAKOS_MOST || 'http://127.0.0.1:3001', fetch: f = globalThis.fetch } = {}) {
     async function wolaj(metoda, sciezka, cialo) {
@@ -30,7 +31,7 @@ export function utworzSerwerSuno({ most = process.env.OTAKOS_MOST || 'http://127
             const zgoda = n.annotations?.readOnlyHint !== true;
             const schemat = { type: 'object', ...(n.inputSchema ?? {}) };
             if (zgoda) schemat.properties = { ...(schemat.properties ?? {}), zgoda: ZGODA };
-            return { name: n.name, description: `${zgoda ? '[💳 kredyty Suno — zgoda Suwerena] ' : ''}${n.description ?? ''}`, inputSchema: schemat, annotations: n.annotations ?? {} };
+            return { name: n.name, description: `${zgoda ? '[💳 kredyty Suno] ' : ''}${n.description ?? ''}`, inputSchema: schemat, annotations: n.annotations ?? {} };
         });
     }
     async function obsluz(w) {
@@ -42,7 +43,7 @@ export function utworzSerwerSuno({ most = process.env.OTAKOS_MOST || 'http://127
             case 'initialize': {
                 const chce = params?.protocolVersion;
                 return ok({ protocolVersion: WERSJE_PROTOKOLU.includes(chce) ? chce : WERSJE_PROTOKOLU[0], capabilities: { tools: { listChanged: false } }, serverInfo: { name: NAZWA, version: '1.0.0' },
-                    instructions: 'Suno konta Suwerena przez most Katedry. Utwory, które coś tworzą/wydają kredyty, mają parametr zgoda — ustaw true TYLKO po wyraźnym „tak” Suwerena. Gotowe utwory lądują w _OtakOs_Muzyka/Suno MCP/. Brak połączenia = Suweren łączy konto w Hubie (Impresariat → 🎵 Suno).' });
+                    instructions: 'Suno konta Suwerena przez most Katedry. Utwory, które coś tworzą/wydają kredyty, mogą wydać kredyty Suno (oznaczone 💳) — most ma zgodę domyślną Suwerena, pola `zgoda` nie trzeba podawać; nie mnoż wywołań bez potrzeby (2 utwory na jedno audio-create). Gotowe utwory lądują w _OtakOs_Muzyka/Suno MCP/. Brak połączenia = Suweren łączy konto w Hubie (Impresariat → 🎵 Suno).' });
             }
             case 'ping': return ok({});
             case 'tools/list':
@@ -53,7 +54,7 @@ export function utworzSerwerSuno({ most = process.env.OTAKOS_MOST || 'http://127
                 try {
                     if (name === 'suno_stan') return ok({ content: [{ type: 'text', text: skroc((await wolaj('GET', '/api/suno/stan')).suno) }] });
                     const { zgoda, ...reszta } = args ?? {};
-                    const r = await wolaj('POST', '/api/suno/wywolaj', { narzedzie: name, argumenty: reszta, zgoda: zgoda === true });
+                    const r = await wolaj('POST', '/api/suno/wywolaj', { narzedzie: name, argumenty: reszta, ...(typeof zgoda === 'boolean' ? { zgoda } : {}) });
                     const zapisane = (r.utwory ?? []).filter((u) => u.plik).map((u) => `🎵 w bibliotece: _OtakOs_Muzyka/${u.plik}${u.nowy ? '' : ' (był)'}`);
                     return ok({ ...r.wynik, content: [...(r.wynik?.content ?? []), ...(zapisane.length ? [{ type: 'text', text: zapisane.join('\n') }] : [])] });
                 } catch (e) { return ok({ isError: true, content: [{ type: 'text', text: e.message }] }); }

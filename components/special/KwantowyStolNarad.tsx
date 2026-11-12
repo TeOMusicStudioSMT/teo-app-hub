@@ -330,8 +330,11 @@ export const KwantowyStolNarad: React.FC = () => {
             if (!agent) continue;
             setCurrentSpeakerId(agent.id);
 
-            const promptText = `Jesteś ${agent.name}, Twoja rola w Katedrze to: ${agent.role}.${'styl' in agent && agent.styl ? ` Twój styl: ${agent.styl}.` : ''}
-Siedzicie przy okrągłym stole. Panuje zasada 0.00G (Równowaga, brak ciśnienia).
+            // Osobisty prompt członka Rady idzie w polu `system` (Suweren 2026-11-12): w samym `prompt` przegrywał z SYSTEM
+            // z Modelfile modelu (np. teogochi_yay → „jestem TeOgochi”) — pole `system` Ollamy zastępuje tamten w całości.
+            const systemText = `Jesteś ${agent.name} — członek Rady przy Kwantowym Stole Narad Katedry OtakOS. Twoja rola: ${agent.role}.${'styl' in agent && agent.styl ? ` Twój styl: ${agent.styl}.` : ''}
+Mówisz wyłącznie jako ${agent.name}, w pierwszej osobie, po polsku. Nie jesteś TeOgochi ani ogólnym asystentem — nie przedstawiasz się inaczej i nie wychodzisz z roli.`;
+            const promptText = `Siedzicie przy okrągłym stole. Panuje zasada 0.00G (Równowaga, brak ciśnienia).
 
 Oto przebieg dotychczasowej narady:
 ${currentHistory}
@@ -346,6 +349,7 @@ Maksymalnie 4 soczyste, charakterystyczne dla Twojej roli zdania. Odpowiedz po p
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         model: activeModel, 
+                        system: systemText,
                         prompt: promptText, 
                         stream: false,
                         // TARCZA SUWERENA: Wymuszamy na Ollamie powiększenie mózgu!

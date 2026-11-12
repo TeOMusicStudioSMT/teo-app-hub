@@ -68,6 +68,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/zebrra-news',   // 📰 Zebrra News: nagłówki z sieci, model, FLUX, głos, nagranie, publikacja — tylko przy maszynie
     '/api/game-show',   // 🎪 odcinki TeO Game Show (GPU, ffmpeg) i kanał programu — przy maszynie; ✓ publikacji zostaje w Izbie
     '/api/suno-album',   // 🎵 album Suno pobiera pliki do biblioteki muzyki — przy maszynie
+    '/api/jason/',   // 🎛️ Jason: kampanie wydają kredyty Suno i liczą FLUX — przy maszynie; start i odczyt także ze sparowanego telefonu (Stół Narad w StoL)
     '/api/suno/',   // 🎵🔌 Suno MCP: konto Suno Suwerena (OAuth), kredyty, utwory do biblioteki — przy maszynie
     '/api/warsztat-stada',   // 🛠️ Warsztat Stada: propozycje stada (model, puppeteer), przepis świata — przy maszynie; z telefonu decyzje idą przez Izbę zgód
     '/api/brief',   // ☀️ Poranny brief: przegląd całej Katedry (publikacje, sklep, błędy) — przy maszynie
@@ -217,6 +218,7 @@ export function czyZwrotYouTube(req) {
 }
 
 export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy', '/api/system/free',
+    '/api/jason/wykonaj-kampanie', '/api/jason/kampanie',   // 🎛️ Jason ze Stołu Narad w StoL — trasy same żądają tokenu parowania (dostepStada)
     '/api/mistrz/wiesci',   // 📯 powiadomienia StoL (Suweren 2026-10-30): telefon tylko CZYTA kanał Mistrza — trasa żąda tokenu parowania
 ]);
 /**
@@ -225,7 +227,9 @@ export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy', '/api
  * zostaje przy maszynie.
  */
 export const WZOR_KSIEGI_DLA_SPAROWANYCH = /^\/api\/zywa-ksiega(\/k-\d{8}-[0-9a-f]{6}(\/(zdjecie|nagranie|rysunek|stado|plik\/(zdjecie\.jpg|ilustracja\.png|nagranie\.mp4)))?)?$/;
-export const czyDlaSparowanych = (sciezka) => SCIEZKI_DLA_SPAROWANYCH.has(sciezka) || WZOR_KSIEGI_DLA_SPAROWANYCH.test(sciezka);
+/** 🎛️ Podgląd jednej kampanii Jasona z telefonu (stan po zleceniu ze Stołu Narad) — tylko odczyt. */
+export const WZOR_JASONA_DLA_SPAROWANYCH = /^\/api\/jason\/kampanie\/j-[0-9a-f]{8}$/;
+export const czyDlaSparowanych = (sciezka) => SCIEZKI_DLA_SPAROWANYCH.has(sciezka) || WZOR_KSIEGI_DLA_SPAROWANYCH.test(sciezka) || WZOR_JASONA_DLA_SPAROWANYCH.test(sciezka);
 
 /**
  * Publiczne strony Suwerena, które w JEGO przeglądarce czytają żywe dane z mostu

@@ -10,8 +10,10 @@
  * Skarbca 0.00G (`suno.refresh_token`, AES-256-GCM), token dostępu żyje tylko w pamięci. Hub, Główny i stado mówią
  * do Suno przez most — klucze nie wychodzą z mostu.
  *
- * KREDYTY: narzędzie bez `readOnlyHint: true` z listy Suno może wydać kredyty → most wymaga `zgoda: true`
- * (Hub: okno potwierdzenia; Główny: prośba ✓). Odczyt (biblioteka, kredyty, status) — bez pytania.
+ * KREDYTY: narzędzie bez `readOnlyHint: true` z listy Suno może wydać kredyty. Suweren 2026-11-12: „ustaw domyślnie
+ * zgoda = true, aby wywołania z Katedry i od Jasona nie blokowały się na pytaniach” → brak pola `zgoda` = ZGODA DOMYŚLNA
+ * (włączona; wyłącza ją `OTAKOS_SUNO_ZGODA=pytaj` albo `POST /api/suno/zgoda {domyslna: false}` — wtedy jak dawniej
+ * wymagane `zgoda: true`). Jawne `zgoda: false` zawsze odmawia. Każde płatne wywołanie zostaje w historii i na szynie.
  * Wynik każdego wywołania jest przeglądany: utwory z gotowym plikiem audio lądują w `_OtakOs_Muzyka/Suno MCP/`
  * (`<tytuł> [<id8>].mp3`, raz) — biblioteka Katedry (/api/rytm/utwory, Radio, Taneczne Starcie, Warsztat).
  */
@@ -277,9 +279,9 @@ export function utworzSunoMcp(cfg) {
         return narzedzia;
     }
 
-    /** Ściąga gotowe utwory z wyniku do biblioteki (raz na id). */
-    async function zapiszUtwory(wynik) {
-        const utwory = utworyZWyniku(wynik);
+    /** Ściąga gotowe utwory z wyniku do biblioteki (raz na id). `gotowe` = lista { id, tytul, adres } zamiast wyniku (Jason: adres z audio-download). */
+    async function zapiszUtwory(wynik, gotowe = null) {
+        const utwory = gotowe ?? utworyZWyniku(wynik);
         if (!utwory.length) return [];
         await fs.mkdir(katalogUtworow, { recursive: true });
         const istniejace = await fs.readdir(katalogUtworow).catch(() => []);
@@ -302,16 +304,30 @@ export function utworzSunoMcp(cfg) {
         return out;
     }
 
-    /** Wywołanie narzędzia Suno. Płatne/zmieniające (bez readOnlyHint) — tylko z `zgoda: true`. */
-    async function wywolaj(nazwa, args = {}, { zgoda = false, zapisz = true } = {}) {
+    /** Zgoda domyślna na płatne narzędzia: env `OTAKOS_SUNO_ZGODA=pytaj|0` wyłącza na sztywno, inaczej stan (domyślnie WŁ.). */
+    async function zgodaDomyslna() {
+        const env = String(process.env.OTAKOS_SUNO_ZGODA ?? '').toLowerCase();
+        if (['pytaj', '0', 'false', 'nie'].includes(env)) return false;
+        return (await czytajStan()).zgodaDomyslna !== false;
+    }
+    async function ustawZgodeDomyslna(wl) { await zapiszStan({ ...(await czytajStan()), zgodaDomyslna: wl !== false }); return stan(); }
+
+    /** Wywołanie narzędzia Suno. Płatne/zmieniające (bez readOnlyHint): `zgoda: true`, a bez pola — zgoda domyślna; `false` odmawia. */
+    async function wywolaj(nazwa, args = {}, { zgoda, zapisz = true, tytul = null } = {}) {
         const lista = await listaNarzedzi();
         const n = lista.find((x) => x.name === nazwa);
         if (!n) throw new Error(`Suno nie ma narzędzia „${nazwa}”. Dostępne: ${lista.map((x) => x.name).join(', ')}`);
+        if (zgoda === undefined || zgoda === null) zgoda = await zgodaDomyslna();
         if (wymagaZgody(n) && zgoda !== true) throw Object.assign(new Error(`„${nazwa}” może wydać kredyty Suno albo zmienić bibliotekę — potrzebna zgoda Suwerena (zgoda: true).`), { kod: 'BEZ_ZGODY' });
         let wynik;
         try { wynik = await rpc('tools/call', { name: nazwa, arguments: args ?? {} }); ostatniBlad = null; }
         catch (e) { ostatniBlad = e.message; throw e; }
-        const utwory = zapisz ? await zapiszUtwory(wynik).catch((e) => [{ blad: e.message }]) : [];
+        let utwory = zapisz ? await zapiszUtwory(wynik).catch((e) => [{ blad: e.message }]) : [];
+        // `audio-download` oddaje sam `url` (często bez .mp3 w adresie) — zapisujemy go pod id klipu z argumentów
+        if (zapisz && nazwa === 'audio-download' && args?.id && !utwory.some((u) => u.plik)) {
+            const d = wynik?.structuredContent ?? (() => { for (const c of wynik?.content ?? []) { try { return JSON.parse(c.text); } catch { /* tekst */ } } return null; })();
+            if (typeof d?.url === 'string' && /^https:\/\//.test(d.url)) utwory = await zapiszUtwory(null, [{ id: String(args.id), tytul: String(tytul ?? d.title ?? 'Suno').trim() || 'Suno', adres: d.url }]).catch((e) => [{ blad: e.message }]);
+        }
         const s = await czytajStan();
         await zapiszStan({ ...s, historia: [{ kiedy: new Date(teraz()).toISOString(), narzedzie: nazwa, zgoda: !!zgoda, blad: !!wynik?.isError, utwory: utwory.filter((u) => u.nowy).map((u) => u.plik) }, ...(s.historia ?? [])].slice(0, 50) });
         if (wymagaZgody(n)) nadaj(`🎵 Suno: ${nazwa}${wynik?.isError ? ' — błąd' : ''}`, { args });
@@ -321,7 +337,7 @@ export function utworzSunoMcp(cfg) {
     async function stan({ odswiez = false } = {}) {
         const s = await czytajStan();
         const polaczone = !!(await cfg.skarbiec.czytaj(USLUGA, 'refresh_token').catch(() => null));
-        const out = { polaczone, adres: adresMcp, zwrot, katalog: `_OtakOs_Muzyka/${KATALOG_MUZYKI}`, polaczono: s.polaczono ?? null, historia: (s.historia ?? []).slice(0, 10), blad: ostatniBlad };
+        const out = { polaczone, zgodaDomyslna: await zgodaDomyslna(), adres: adresMcp, zwrot, katalog: `_OtakOs_Muzyka/${KATALOG_MUZYKI}`, polaczono: s.polaczono ?? null, historia: (s.historia ?? []).slice(0, 10), blad: ostatniBlad };
         if (!polaczone) return { ...out, powod: 'Konto Suno niepołączone — „🔌 Połącz z Suno” zaloguje Cię w Suno i wróci do Katedry.' };
         try {
             const lista = await listaNarzedzi({ odswiez });
@@ -343,7 +359,7 @@ export function utworzSunoMcp(cfg) {
         return stan();
     }
 
-    return { polacz, zwrotZgody, stan, listaNarzedzi, wywolaj, rozlacz, zapiszUtwory, _wewn: { oczekujace } };
+    return { polacz, zwrotZgody, stan, listaNarzedzi, wywolaj, rozlacz, zapiszUtwory, zgodaDomyslna, ustawZgodeDomyslna, katalogUtworow, _wewn: { oczekujace } };
 }
 
 const STRONA = (tytul, tresc) => `<!doctype html><meta charset="utf-8"><title>${tytul}</title><body style="font-family:Georgia,serif;background:#120a1e;color:#f3e9ff;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center;max-width:560px"><h1>${tytul}</h1><p>${tresc}</p></div>`;
@@ -359,5 +375,6 @@ export function zamontujTrasySuno(app, S) {
         .catch((e) => res.status(400).type('html').send(STRONA('🎵 Suno — nie udało się', esc(e.message)))));
     app.post('/api/suno/rozlacz', (_req, res) => odp(res, S.rozlacz().then((suno) => ({ suno }))));
     app.get('/api/suno/narzedzia', (req, res) => odp(res, S.listaNarzedzi({ odswiez: req.query.odswiez === '1' }).then((narzedzia) => ({ narzedzia })), 502));
-    app.post('/api/suno/wywolaj', (req, res) => odp(res, S.wywolaj(String(req.body?.narzedzie ?? ''), req.body?.argumenty ?? {}, { zgoda: req.body?.zgoda === true, zapisz: req.body?.zapisz !== false }), 502));
+    app.post('/api/suno/wywolaj', (req, res) => odp(res, S.wywolaj(String(req.body?.narzedzie ?? ''), req.body?.argumenty ?? {}, { zgoda: typeof req.body?.zgoda === 'boolean' ? req.body.zgoda : undefined, zapisz: req.body?.zapisz !== false, tytul: req.body?.tytul ?? null }), 502));
+    app.post('/api/suno/zgoda', (req, res) => odp(res, S.ustawZgodeDomyslna(req.body?.domyslna !== false).then((suno) => ({ suno }))));
 }

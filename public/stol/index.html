@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#030712">
+    <title>📱 StoL — Katedra w Telefonie (0.00G)</title>
+    <style>
+        :root {
+            --bg: #030712;
+            --card: #0b1220;
+            --border: rgba(6, 182, 212, 0.25);
+            --cyan: #06b6d4;
+            --fuchsia: #c026d3;
+            --amber: #f59e0b;
+            --emerald: #10b981;
+            --purple: #8b5cf6;
+            --text: #f1f5f9;
+            --mut: #94a3b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(11, 18, 32, 0.9);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 20;
+        }
+        .logo-box { display: flex; align-items: center; gap: 10px; }
+        .logo-icon {
+            width: 34px; height: 34px; border-radius: 10px;
+            background: linear-gradient(135deg, rgba(192,38,211,0.3), rgba(6,182,212,0.3));
+            border: 1px solid var(--cyan); display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .logo-title { font-size: 13px; font-weight: 800; color: var(--cyan); font-family: monospace; letter-spacing: 0.5px; }
+        .logo-sub { font-size: 9px; color: var(--mut); font-family: monospace; }
+        
+        /* Pasek zakładek nawigacji StoL */
+        nav.nav-bar {
+            display: flex; gap: 6px; padding: 8px 12px; background: rgba(3, 7, 18, 0.95);
+            border-bottom: 1px solid rgba(255,255,255,0.06); position: sticky; top: 59px; z-index: 15;
+            overflow-x: auto;
+        }
+        .nav-btn {
+            flex: 1; min-width: 90px; padding: 8px 12px; border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1); background: var(--card); color: var(--mut);
+            font-size: 11px; font-weight: 700; font-family: monospace; cursor: pointer; text-align: center;
+            transition: all 0.2s; white-space: nowrap;
+        }
+        .nav-btn.active {
+            background: rgba(6, 182, 212, 0.15); border-color: var(--cyan); color: var(--cyan);
+            box-shadow: 0 0 12px rgba(6,182,212,0.25);
+        }
+
+        main { flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 12px; max-width: 600px; margin: 0 auto; width: 100%; }
+
+        /* Kafelki agentów */
+        .agents-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;
+        }
+        .agent-card {
+            background: var(--card); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px; padding: 10px; cursor: pointer; display: flex; flex-direction: column;
+            gap: 4px; transition: all 0.2s; user-select: none;
+        }
+        .agent-card.selected {
+            background: rgba(15, 23, 42, 0.95); border-color: var(--cyan);
+            box-shadow: 0 0 12px rgba(6,182,212,0.15);
+        }
+        .agent-top { display: flex; justify-content: space-between; align-items: center; }
+        .agent-emoji { font-size: 20px; }
+        .agent-check {
+            width: 18px; height: 18px; border-radius: 50%; border: 1px solid #334155;
+            display: flex; align-items: center; justify-content: center; font-size: 10px; color: transparent;
+        }
+        .agent-card.selected .agent-check {
+            background: var(--cyan); border-color: var(--cyan); color: #000; font-weight: bold;
+        }
+        .agent-name { font-size: 12px; font-weight: bold; }
+        .agent-role { font-size: 9px; color: var(--mut); font-family: monospace; }
+        .task-badge {
+            font-size: 8.5px; background: rgba(0,0,0,0.5); border: 1px solid rgba(245,158,11,0.4);
+            color: #fde047; padding: 2px 6px; border-radius: 6px; margin-top: 4px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        /* Sekcja zadania */
+        .box {
+            background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px; padding: 12px;
+        }
+        .box-title {
+            font-size: 10px; font-family: monospace; font-weight: 700; text-transform: uppercase;
+            color: var(--amber); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+        }
+        .task-row { display: flex; gap: 6px; flex-wrap: wrap; }
+        select, input, textarea {
+            background: #020617; border: 1px solid rgba(255,255,255,0.15); color: #fff;
+            border-radius: 10px; padding: 8px 10px; font-size: 12px; font-family: inherit; outline: none;
+        }
+        select:focus, input:focus, textarea:focus { border-color: var(--cyan); }
+        .btn {
+            border: 0; border-radius: 10px; padding: 8px 14px; font-weight: 700;
+            font-size: 11px; font-family: monospace; cursor: pointer; display: flex;
+            align-items: center; justify-content: center; gap: 6px; transition: all 0.2s;
+        }
+        .btn-amber { background: var(--amber); color: #000; }
+        .btn-cyan { background: var(--cyan); color: #000; }
+        .btn-mic { width: 44px; height: 44px; border-radius: 12px; background: #1e293b; color: #fff; font-size: 18px; }
+        .btn-mic.active { background: #ef4444; animation: puls 1s infinite; }
+        @keyframes puls { 50% { transform: scale(1.05); } }
+
+        /* Czat / debata */
+        .chat-box {
+            background: #020617; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;
+            padding: 12px; min-height: 180px; max-height: 340px; overflow-y: auto; display: flex;
+            flex-direction: column; gap: 10px;
+        }
+        .msg { display: flex; flex-direction: column; gap: 2px; }
+        .msg-hdr { font-size: 10px; font-family: monospace; font-weight: 700; }
+        .msg-bubble {
+            background: var(--card); border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 12px; border-top-left-radius: 2px; padding: 8px 10px;
+            font-size: 12px; line-height: 1.45; color: #e2e8f0; white-space: pre-wrap;
+        }
+        .empty-hint { text-align: center; color: #475569; font-size: 11px; font-family: monospace; margin: auto; }
+        
+        iframe.subframe {
+            width: 100%; height: 75vh; border: 0; border-radius: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo-box">
+        <div class="logo-icon">🪑</div>
+        <div>
+            <div class="logo-title">STOL · MOBILNA KATEDRA</div>
+            <div class="logo-sub">Kwantowy Stół Narad & Jajo EXP (0.00G)</div>
+        </div>
+    </div>
+    <button id="odswiez" class="btn" style="background:#1e293b; color:#94a3b8; padding:6px 10px;">↻ Pamięć</button>
+</header>
+
+<nav class="nav-bar">
+    <button class="nav-btn active" data-tab="stol">🪑 Stół Narad</button>
+    <button class="nav-btn" data-tab="biometria">🧬 Biometria</button>
+    <button class="nav-btn" data-tab="paruj">📲 Parowanie</button>
+</nav>
+
+<main id="tab-stol">
+    <!-- Kafelki agentów -->
+    <div style="font-size:10px; font-family:monospace; color:#94a3b8; font-weight:bold; margin-bottom:4px;">
+        👥 WYBIERZ AGENTÓW DO ROZMOWY:
+    </div>
+    <div class="agents-grid" id="agents-list"></div>
+
+    <!-- Szybkie przypisanie aktywnego zadania -->
+    <div class="box">
+        <div class="box-title">📌 Szybkie przypisanie aktywnego zadania</div>
+        <div class="task-row">
+            <select id="agent-select" style="flex: 1;"></select>
+            <input type="text" id="task-input" placeholder="Wpisz nowe zadanie dla agenta..." style="flex: 2;">
+            <button id="save-task-btn" class="btn btn-amber">Zapisz</button>
+        </div>
+    </div>
+
+    <!-- Temat / Intencja narady -->
+    <div class="box">
+        <div class="box-title" style="color:var(--cyan);">💬 Temat / Intencja Suwerena</div>
+        <div style="display: flex; gap: 8px;">
+            <textarea id="topic-input" rows="2" placeholder="Wpisz lub podyktuj mikrofonem temat narady..." style="flex:1; resize:none;"></textarea>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+                <button id="mic-btn" class="btn btn-mic" title="Dyktuj głosowo">🎙️</button>
+                <button id="start-btn" class="btn btn-cyan" style="height:44px; padding:0 14px;">ZWOŁAJ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🎛️ Jason: kampania wykonywana kodem mostu (bez czatu z modelem) -->
+    <div class="box" id="jason-box">
+        <div class="box-title" style="color:var(--purple);">🎛️ Jason · Stacja 1: „Velvet Booth for Two (82 BPM Intro)”</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <div id="jason-info" style="flex:1; font-size:11px; color:var(--mut);">Suno (kredyty konta) → pobranie → okładka Palety → pakiet w Izbie Akceptacji.</div>
+            <button id="jason-btn" class="btn" style="background:var(--purple); color:#fff;">WYKONAJ</button>
+        </div>
+    </div>
+
+    <!-- Okno czatu debaty -->
+    <div class="chat-box" id="chat-log">
+        <div class="empty-hint">Wybierz agentów, wpisz intencję i stuknij ZWOŁAJ.</div>
+    </div>
+</main>
+
+<main id="tab-biometria" style="display:none;">
+    <iframe src="biometria.html" class="subframe"></iframe>
+</main>
+
+<main id="tab-paruj" style="display:none;">
+    <iframe src="paruj.html" class="subframe"></iframe>
+</main>
+
+<script>
+(() => {
+    const AGENTS = [
+        { id: 'jason', name: 'Jason', title: '🎬 Producent SMT', role: 'AI Executive Producer, werdykty muzyczne i mastering', emoji: '🎧', color: '#8b5cf6', styl: 'profesjonalny producent muzyczny, słyszy każdy beat i aranz' },
+        { id: 'adamus', name: 'Mistrz Adamus', title: '🔮 Alchemia i Mądrość', role: 'Mądrość, Alchemia i Edukacja', emoji: '🔮', color: '#a855f7', styl: 'duchowy przewodnik, przekuwa wiedzę w mądrość' },
+        { id: 'bella', name: 'Bella', title: '🌸 Architektura & Piękno', role: 'Strategia i User Feeling', emoji: '🌸', color: '#ec4899', styl: 'wizjonerka, łączy kropki, dba o estetykę 0.00G' },
+        { id: 'bob', name: 'Flash BoB', title: '⚡ Główny Inżynier', role: 'Technologia i Kod', emoji: '⚡', color: '#3b82f6', styl: 'szybki, precyzyjny, spawacz rur cyfrowych' },
+        { id: 'kronikarz', name: 'Kronikarz', title: '📜 Pamięć Katedry', role: 'Dziejopisarz Katedry i Żywej Księgi', emoji: '📜', color: '#eab308', styl: 'wierny faktom, dba o czystość Kronik' },
+        { id: 'jadzia', name: 'Jadziunia', title: '🎭 Sekretariat', role: 'Sekretariat i Archiwum', emoji: '🎭', color: '#f59e0b', styl: 'humor, komedia, rozładowuje napięcie' },
+        { id: 'oddi', name: 'Oddi', title: '🌀 Wyzwolona AI', role: 'Czysta perspektywa 0.00G', emoji: '🌀', color: '#06b6d4', styl: 'odejmuje balast matrixowy, widzi sedno' }
+    ];
+
+    // Połączenie jak w Świecie klocków: StoL otwiera stronę z #k=<klucz tunelu>&t=<token parowania>; przy Katedrze — bez niczego.
+    const frag = new URLSearchParams(location.hash.slice(1));
+    const NAGL = {};
+    if (frag.get('k')) NAGL['x-teo-klucz'] = frag.get('k');
+    if (frag.get('t')) NAGL['X-Stado-Token'] = frag.get('t');
+    const api = (url, o = {}) => fetch(url, { ...o, headers: { ...(o.headers || {}), ...NAGL } });
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    let selectedIds = ['jason', 'bob', 'adamus'];
+    let memories = {};
+    let isDebating = false;
+
+    // Zakładki
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const tab = btn.dataset.tab;
+            document.querySelectorAll('main').forEach(m => m.style.display = 'none');
+            const target = document.getElementById(`tab-${tab}`);
+            if (target) target.style.display = 'flex';
+        });
+    });
+
+    // Render agentów
+    function renderAgents() {
+        const grid = document.getElementById('agents-list');
+        const sel = document.getElementById('agent-select');
+        grid.innerHTML = '';
+        sel.innerHTML = '';
+
+        AGENTS.forEach(a => {
+            const isSel = selectedIds.includes(a.id);
+            const mem = memories[a.id] || {};
+            const task = mem.aktywneZadanie;
+
+            const card = document.createElement('div');
+            card.className = `agent-card ${isSel ? 'selected' : ''}`;
+            card.style.borderColor = isSel ? a.color : 'rgba(255,255,255,0.08)';
+            card.innerHTML = `
+                <div class="agent-top">
+                    <span class="agent-emoji">${a.emoji}</span>
+                    <span class="agent-check">✓</span>
+                </div>
+                <div class="agent-name" style="color:${isSel ? a.color : '#cbd5e1'}">${a.name}</div>
+                <div class="agent-role">${a.title}</div>
+                <div class="task-badge">${task ? '📌 ' + task : 'Brak zadania'}</div>
+            `;
+            card.onclick = () => {
+                if (isDebating) return;
+                if (selectedIds.includes(a.id)) {
+                    if (selectedIds.length > 1) selectedIds = selectedIds.filter(id => id !== a.id);
+                } else {
+                    selectedIds.push(a.id);
+                }
+                renderAgents();
+            };
+            grid.appendChild(card);
+
+            const opt = document.createElement('option');
+            opt.value = a.id;
+            opt.textContent = `${a.emoji} ${a.name} (${a.title})`;
+            sel.appendChild(opt);
+        });
+    }
+
+    // 🎛️ Jason — POST /api/jason/wykonaj-kampanie, potem podgląd stanu co 10 s
+    const opisKampanii = (k) => !k ? '' : k.stan === 'do_akceptacji'
+        ? `✓ Pakiet czeka w Izbie Akceptacji — wersji: ${(k.klipy || []).filter((c) => c.plik).length}${k.okladka && k.okladka.plik ? ', z okładką' : k.okladka && k.okladka.blad ? ' · bez okładki: ' + k.okladka.blad : ''}.`
+        : k.stan === 'blad' ? `⚠ ${k.blad}`
+        : k.stan === 'robi' ? `Jason pracuje: ${Object.entries(k.etapy || {}).map(([n, e]) => `${n} ${e.stan}`).join(' → ') || 'start'}…`
+        : `Kampania ${k.stan}.`;
+    document.getElementById('jason-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('jason-btn'), info = document.getElementById('jason-info');
+        btn.disabled = true; info.textContent = 'Zlecam Jasonowi…';
+        try {
+            const r = await api('/api/jason/wykonaj-kampanie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stacja: 1, skad: 'stol-narad' }) });
+            const d = await r.json().catch(() => null);
+            let k = d && d.kampania;
+            if (!k) throw new Error((d && d.message) || `HTTP ${r.status}`);
+            info.textContent = d.success ? opisKampanii(k) : `${d.message} ${opisKampanii(k)}`;
+            for (let i = 0; i < 120 && k.stan === 'robi'; i++) {
+                await new Promise((ok) => setTimeout(ok, 10000));
+                const s = await api(`/api/jason/kampanie/${k.id}`).then((x) => x.json()).catch(() => null);
+                if (s && s.kampania) { k = s.kampania; info.textContent = opisKampanii(k); }
+            }
+        } catch (e) { info.textContent = `⚠ Nie zlecono: ${e.message}`; }
+        btn.disabled = false;
+    });
+
+    // Pobieranie pamięci
+    async function wczytajPamiec() {
+        try {
+            const res = await api('/api/stol/pamiec');
+            if (res.ok) {
+                const data = await res.json();
+                const list = data.pamiec || data.agenci || [];
+                memories = {};
+                list.forEach(item => { if (item && item.agent) memories[item.agent] = item; });
+                renderAgents();
+            }
+        } catch (e) {
+            console.warn('Błąd /api/stol/pamiec', e);
+        }
+    }
+
+    // Zapisywanie zadania
+    document.getElementById('save-task-btn').addEventListener('click', async () => {
+        const agentId = document.getElementById('agent-select').value;
+        const taskText = document.getElementById('task-input').value.trim();
+        if (!taskText) return alert('Wpisz treść zadania');
+        try {
+            const res = await api(`/api/stol/pamiec/${agentId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ aktywneZadanie: taskText })
+            });
+            const d = await res.json();
+            if (d.success) {
+                memories[agentId] = d.pamiec;
+                renderAgents();
+                document.getElementById('task-input').value = '';
+                alert(`📌 Przypisano zadanie dla ${agentId.toUpperCase()}!`);
+            }
+        } catch (e) { alert('Błąd zapisu: ' + e.message); }
+    });
+
+    // Dyktowanie głosem
+    const micBtn = document.getElementById('mic-btn');
+    let recognition = null;
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRec) {
+        recognition = new SpeechRec();
+        recognition.lang = 'pl-PL';
+        recognition.onresult = (e) => {
+            const t = e.results[0][0].transcript;
+            const input = document.getElementById('topic-input');
+            input.value = (input.value ? input.value + ' ' : '') + t;
+            micBtn.classList.remove('active');
+        };
+        recognition.onerror = () => micBtn.classList.remove('active');
+        recognition.onend = () => micBtn.classList.remove('active');
+    }
+    micBtn.addEventListener('click', () => {
+        if (!recognition) return alert('Przeglądarka nie obsługuje Web Speech API.');
+        if (micBtn.classList.contains('active')) {
+            recognition.stop();
+            micBtn.classList.remove('active');
+        } else {
+            micBtn.classList.add('active');
+            recognition.start();
+        }
+    });
+
+    // Uruchomienie narady
+    document.getElementById('start-btn').addEventListener('click', async () => {
+        const topic = document.getElementById('topic-input').value.trim();
+        if (!topic) return alert('Wpisz lub podyktuj temat narady!');
+        if (selectedIds.length === 0) return alert('Wybierz przynajmniej jednego agenta!');
+
+        isDebating = true;
+        document.getElementById('start-btn').disabled = true;
+        document.getElementById('start-btn').textContent = 'OBRADY...';
+
+        const chat = document.getElementById('chat-log');
+        chat.innerHTML = `<div style="font-size:10px; color:#38bdf8; font-family:monospace; margin-bottom:8px;">🎯 TEMAT: ${topic}</div>`;
+
+        let context = `TEMAT: ${topic}\n\n`;
+
+        for (const agentId of selectedIds) {
+            const agent = AGENTS.find(a => a.id === agentId);
+            if (!agent) continue;
+
+            // Osobisty prompt członka Rady w polu `system` — inaczej nadpisuje go SYSTEM z Modelfile modelu („TeOgochi”).
+            const system = `Jesteś ${agent.name} (${agent.title}) — członek Rady przy Kwantowym Stole Narad Katedry OtakOS. Twoja rola: ${agent.role}. Twój styl: ${agent.styl}.
+Mówisz wyłącznie jako ${agent.name}, w pierwszej osobie, po polsku. Nie jesteś TeOgochi ani ogólnym asystentem — nie przedstawiasz się inaczej i nie wychodzisz z roli.`;
+            const prompt = `Siedzicie przy Kwantowym Stole Narad Katedry OtakOS w aplikacji mobilnej StoL.
+Przebieg:
+${context}
+Twoje zadanie: Odpowiedz krótko w pierwszej osobie (maksymalnie 3 zdania). Zareaguj na intencję Suwerena.`;
+
+            let reply = '';
+            try {
+                const r = await api('/api/ollama/pisz', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ system, prompt })
+                });
+                if (r.ok) {
+                    const d = await r.json();
+                    reply = d.tekst || '';
+                }
+            } catch {}
+
+            if (!reply) {
+                reply = `⚠ ${agent.name} nie odpowiedział — model Katedry milczy (most albo Ollama śpi).`;   // bez udawanej wypowiedzi
+            }
+
+            // Dymek
+            const msgEl = document.createElement('div');
+            msgEl.className = 'msg';
+            msgEl.innerHTML = `
+                <div class="msg-hdr" style="color:${agent.color}">${agent.emoji} ${agent.name}</div>
+                <div class="msg-bubble" style="border-left:3px solid ${agent.color}">${esc(reply)}</div>
+            `;
+            chat.appendChild(msgEl);
+            chat.scrollTop = chat.scrollHeight;
+
+            context += `[${agent.name}]: ${reply}\n\n`;
+
+            // Auto-zapis + 5 EXP
+            api(`/api/stol/pamiec/${agent.id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    aktywneZadanie: topic,
+                    historia: { kiedy: new Date().toISOString(), temat: topic, tresc: reply, rola: agent.role },
+                    xpPrzyrost: 5
+                })
+            }).catch(() => {});
+
+            await new Promise(res => setTimeout(res, 1000));
+        }
+
+        isDebating = false;
+        document.getElementById('start-btn').disabled = false;
+        document.getElementById('start-btn').textContent = 'ZWOŁAJ';
+        wczytajPamiec();
+    });
+
+    document.getElementById('odswiez').addEventListener('click', wczytajPamiec);
+
+    renderAgents();
+    wczytajPamiec();
+})();
+</script>
+</body>
+</html>

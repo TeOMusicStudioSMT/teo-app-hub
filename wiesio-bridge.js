@@ -268,6 +268,7 @@ import { utworzWywiady, prowadzacyZObsady } from './services/WywiadAktorow.js';
 import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzSunoMcp, zamontujTrasySuno } from './services/SunoMcp.js';
+import { utworzJasona, zamontujTrasyJasona } from './services/JasonOrchestrator.js';
 import { utworzZlotaRybke, zamontujTrasyRybki } from './services/ZlotaRybka.js';
 import { utworzIzbe, zamontujTrasyIzby } from './services/IzbaZgod.js';
 import { utworzWarsztat, zamontujTrasyWarsztatu } from './services/WarsztatStada.js';
@@ -8716,6 +8717,20 @@ const SunoMcp = utworzSunoMcp({ katalog: ANTIGRAVITY_DIR, katalogMuzyki: MUSIC_D
     usun: (u, p) => VaultService.getInstance().deleteSecret(u, p),
 } });
 zamontujTrasySuno(app, SunoMcp);
+// 🎛️ Jason — autonomiczny orkiestrator kampanii (services/JasonOrchestrator.js, Suweren 2026-11-12): bez czatu i modelu —
+// Suno MCP (workspace → audio-create → czekanie → pobranie) → okładka Palety (FLUX) → pakiet „Do akcept.” w Izbie zgód (StoL).
+// POST /api/jason/wykonaj-kampanie {album?, stacja?: 1 | {tytul, opis | lyrics+styl}, artysci?, okladka?: {prompt} | false}
+// — ze Stołu Narad (Hub, StoL) i z TeO Music Studio; maszyna albo sparowany telefon. ✓/✕ pakietu: Izba Akceptacji.
+const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
+    wiesc: (tresc) => Jajo.wiesc({ tresc, rodzaj: 'jason', skad: 'Jason' }),
+    decyzja: (d) => jajoPatrzy(() => Jajo.decyzja(d)),
+    okladka: async ({ prompt }) => {
+        const przed = await stanWideoZBudzeniem('Okładka kampanii Jasona');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        await Karta.przedRenderem('okładką kampanii Jasona').catch(() => {});
+        return Assety3D.kadrFilmu({ prompt, szer: 1024, wys: 1024, prefiks: 'katedra/jason/okladka' });
+    } });
+zamontujTrasyJasona(app, Jason, { dostep: dostepStada });
 app.get('/api/suno-album', (_req, res) => ytOdp(res, AlbumSuno.stan().then((album) => ({ album })), 500));
 app.put('/api/suno-album', (req, res) => ytOdp(res, AlbumSuno.ustaw(req.body?.album || null).then((album) => ({ album }))));
 app.post('/api/suno-album/synchronizuj', (_req, res) => ytOdp(res, AlbumSuno.synchronizuj().then((album) => ({ album }))));
@@ -11731,7 +11746,8 @@ app.get('/api/stol', async (req, res) => {
     if (!(await dostepStada(req, res))) return;
     res.json({ success: true, karty: await Stol.lista(), zrodla: Stol.ZRODLA });
 });
-app.get('/api/stol/:id', async (req, res) => {
+app.get('/api/stol/:id', async (req, res, next) => {
+    if (req.params.id === 'pamiec') return next();   // 🗂️ /api/stol/pamiec (Stół Narad) jest zarejestrowane niżej — bez tego trasa karty zjadała je jako id i oddawała 404
     if (!(await dostepStada(req, res))) return;
     const k = await Stol.karta(req.params.id);
     if (!k) return res.status(404).json({ success: false, message: 'Nie ma takiej karty na stole.' });
@@ -15420,6 +15436,7 @@ const Warsztat = utworzWarsztat({ katalog: path.join(ANTIGRAVITY_DIR, 'warsztat-
     jajo: { decyzja: (o) => Jajo.decyzja(o), wiesc: (o) => Jajo.wiesc(o) } });
 zamontujTrasyWarsztatu(app, Warsztat);
 Izba.zarejestruj(Warsztat.zrodloIzby);
+Izba.zarejestruj(Jason.zrodloIzby);   // 🎛️ pakiety kampanii Jasona (utwór Suno + okładka) — ✓/✕ także z telefonu
 // 👕🔭 Zwiadowca kanałów dystrybucji (services/ZwiadowcaDystrybucji.js): POD/marketplace/sklepy twórców dla merchu Teterhii i Mini —
 // tylko kanały z linkiem z wyników wyszukiwania; „podłącz” = propozycja w Izbie zgód. Nic nie zakłada i nie płaci.
 const ZwiadowcaDystrybucji = utworzZwiadowceDystrybucji({ katalog: path.join(ANTIGRAVITY_DIR, 'zwiadowca'), szyna: Szyna,

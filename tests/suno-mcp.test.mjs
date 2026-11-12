@@ -98,11 +98,17 @@ test('Suno MCP: połączenie OAuth (PKCE) → narzędzia → zgoda na kredyty �
 
         r = await (await post('/api/suno/wywolaj', { narzedzie: 'get_credits' })).json();
         assert.match(r.wynik.content[0].text, /2500/);
-        // płatne bez zgody → 403, Suno nie dostaje wywołania
+        // jawne „nie” → 403, Suno nie dostaje wywołania; wyłączona zgoda domyślna → brak pola też odmawia
         const przed = a.st.wywolania.length;
+        assert.equal((await post('/api/suno/wywolaj', { narzedzie: 'create_song', argumenty: { prompt: 'x' }, zgoda: false })).status, 403);
+        r = await (await post('/api/suno/zgoda', { domyslna: false })).json();
+        assert.equal(r.suno.zgodaDomyslna, false);
         assert.equal((await post('/api/suno/wywolaj', { narzedzie: 'create_song', argumenty: { prompt: 'x' } })).status, 403);
         assert.equal(a.st.wywolania.length, przed);
-        r = await (await post('/api/suno/wywolaj', { narzedzie: 'create_song', argumenty: { prompt: 'x' }, zgoda: true })).json();
+        // zgoda domyślna (Suweren 2026-11-12) → brak pola przechodzi
+        r = await (await post('/api/suno/zgoda', { domyslna: true })).json();
+        assert.equal(r.suno.zgodaDomyslna, true);
+        r = await (await post('/api/suno/wywolaj', { narzedzie: 'create_song', argumenty: { prompt: 'x' } })).json();
         assert.equal(r.utwory[0].plik, 'Suno MCP/Diabełek Groove [abcd1234].mp3');
         assert.equal((await fs.stat(path.join(tmp, 'muzyka', 'Suno MCP', 'Diabełek Groove [abcd1234].mp3'))).size, 20_000);
         r = await (await post('/api/suno/wywolaj', { narzedzie: 'create_song', argumenty: {}, zgoda: true })).json();
