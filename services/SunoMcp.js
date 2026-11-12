@@ -43,7 +43,11 @@ export async function fetchH2(adres, opcje = {}) {
         const sesja = http2.connect(u.origin, { ALPNProtocols: ['h2'] });
         let skonczone = false;
         const koniec = (e, w) => { if (skonczone) return; skonczone = true; sesja.close(); e ? nie(e) : ok(w); };
-        sesja.on('error', (e) => (e.code === 'ERR_HTTP2_ERROR' || /ALPN|protocol/i.test(e.message) ? globalThis.fetch(adres, opcje).then((w) => koniec(null, w), (x) => koniec(x)) : koniec(e)));
+        // serwer bez HTTP/2 (np. S3 z plikiem utworu, 2026-11-12: „Protocol error” przy pobraniu wersji) → zwykły fetch;
+        // błąd potrafi przyjść sesją ALBO strumieniem żądania — obie drogi muszą się wycofać tak samo
+        const bezH2 = (e) => e?.code === 'ERR_HTTP2_ERROR' || /ALPN|protocol/i.test(e?.message ?? '');
+        const zwykly = (e) => (bezH2(e) ? globalThis.fetch(adres, opcje).then((w) => koniec(null, w), (x) => koniec(x)) : koniec(e));
+        sesja.on('error', zwykly);
         opcje.signal?.addEventListener?.('abort', () => { sesja.destroy(); koniec(new Error('przekroczony czas')); });
         const naglowki = { ':method': opcje.method ?? 'GET', ':path': `${u.pathname}${u.search}` };
         for (const [k, v] of Object.entries(opcje.headers ?? {})) naglowki[k.toLowerCase()] = v;
@@ -53,7 +57,7 @@ export async function fetchH2(adres, opcje = {}) {
         let odp = null;
         q.on('response', (h) => { odp = h; });
         q.on('data', (c) => kawalki.push(c));
-        q.on('error', (e) => koniec(e));
+        q.on('error', (e) => { if (!skonczone && bezH2(e)) { skonczone = true; sesja.destroy(); globalThis.fetch(adres, opcje).then(ok, nie); } else koniec(e); });
         q.on('end', () => {
             const status = Number(odp?.[':status'] ?? 0);
             if ([301, 302, 303, 307, 308].includes(status) && odp.location && opcje.redirect !== 'manual') {
