@@ -77,6 +77,16 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     const otworzFolder = async () => {
         try { const d = await api(`/api/jason/kampanie/${k!.id}/otworz-folder`, {}); setInfo(d.success ? '' : `⚠ ${d.message}`); } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
     };
+    const distrokid = /^https:\/\/([a-z0-9-]+\.)*distrokid\.com\//i.test(dystrybutor ?? '');
+    const [skopiowano, setSkopiowano] = useState('');
+    const kopiuj = async (tekst: string, co: string) => {
+        try { await navigator.clipboard.writeText(tekst); setSkopiowano(co); setTimeout(() => setSkopiowano(''), 2500); }
+        catch { setInfo('⚠ Przeglądarka nie pozwoliła skopiować do schowka.'); }
+    };
+    const kopiujTekst = async () => {
+        try { const d = await api(`/api/jason/kampanie/${k!.id}/tekst`); if (d.success) await kopiuj(d.tekst, 'czysty tekst'); else setInfo(`⚠ ${d.message}`); }
+        catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
+    };
     const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
 
     // 🎚️ zmiana stacji: pokaż jej ostatnią nieodrzuconą kampanię (albo pusty panel gotowy do zlecenia)
@@ -172,11 +182,15 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                         <button onClick={otworzFolder} className="rounded bg-emerald-600 px-2.5 py-1 font-bold text-white hover:bg-emerald-500">📂 Otwórz folder</button>
                         {dystrybutor
-                            ? <a href={dystrybutor} target="_blank" rel="noreferrer" className="rounded bg-violet-600 px-2.5 py-1 font-bold text-white hover:bg-violet-500">🌐 Panel dystrybutora</a>
+                            ? <a href={dystrybutor} target="_blank" rel="noreferrer" className="rounded bg-violet-600 px-2.5 py-1 font-bold text-white hover:bg-violet-500">{distrokid ? '🌐 Otwórz DistroKid (Upload)' : '🌐 Panel dystrybutora'}</a>
                             : <>
                                 <input value={adres} onChange={(e) => setAdres(e.target.value)} placeholder="https://… adres panelu Twojego dystrybutora" className="min-w-[14rem] flex-1 rounded border border-violet-500/40 bg-slate-950 px-2 py-1 text-violet-100" />
                                 <button onClick={zapiszDystrybutora} disabled={!adres.trim()} className="rounded bg-violet-600 px-2.5 py-1 font-bold text-white hover:bg-violet-500 disabled:opacity-50">zapisz</button>
                             </>}
+                        <button onClick={() => kopiuj(k.stacja.tytul, 'tytuł')} title={k.stacja.tytul} className="rounded border border-emerald-400/50 px-2 py-1 text-emerald-100 hover:bg-emerald-800/40">📋 Kopiuj tytuł</button>
+                        {k.spotify.pliki.includes('lyrics_clean.txt') && <button onClick={kopiujTekst} title="Zawartość lyrics_clean.txt — bez [Verse…] i (Kael:)" className="rounded border border-emerald-400/50 px-2 py-1 text-emerald-100 hover:bg-emerald-800/40">📋 Kopiuj czysty tekst (Lyrics)</button>}
+                        {skopiowano && <span className="text-emerald-300">✓ skopiowano: {skopiowano}</span>}
+                        {distrokid && <a href="https://distrokid.com/mymusic/" target="_blank" rel="noreferrer" className="underline text-emerald-200/70">moje wydania</a>}
                         {dystrybutor && <button onClick={() => { setAdres(dystrybutor); setDystrybutor(null); }} className="underline text-emerald-200/70">zmień adres</button>}
                         <button onClick={() => wykonaj(`/api/jason/kampanie/${k.id}/przygotuj-spotify`, {}, 'Składam paczkę od nowa…')} disabled={trwa} className="underline text-emerald-200/70">↻ złóż od nowa</button>
                     </div>

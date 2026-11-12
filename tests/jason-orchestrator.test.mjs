@@ -270,8 +270,15 @@ test('🚀 paczka Spotify: master.wav 44,1/16/stereo, okładka 3000×3000, czyst
         assert.equal((await post(`/api/jason/kampanie/${id}/otworz-folder`)).success, true);
         assert.deepEqual(otwarte, [kat]);
         const put = (b) => fetch(`${baza}/api/jason/ustawienia`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.json());
+        // domyślnie DistroKid (formularz nowego wydania), dopóki Suweren nie wpisze innego
+        assert.deepEqual((await fetch(`${baza}/api/jason/ustawienia`).then((r) => r.json())).ustawienia, { dystrybutor: 'https://distrokid.com/new/', domyslny: true });
+        // 📋 czysty tekst do schowka = plik z paczki
+        const t = await fetch(`${baza}/api/jason/kampanie/${id}/tekst`).then((r) => r.json());
+        assert.equal(t.tytul, 'Velvet Booth for Two (82 BPM Intro)');
+        assert.equal(`${t.tekst}\n`, tekstCzysty);
         assert.equal((await put({ dystrybutor: 'javascript:alert(1)' })).success, false);
-        assert.equal((await put({ dystrybutor: 'https://dystrybutor.example/panel' })).ustawienia.dystrybutor, 'https://dystrybutor.example/panel');
+        assert.deepEqual((await put({ dystrybutor: 'https://dystrybutor.example/panel' })).ustawienia, { dystrybutor: 'https://dystrybutor.example/panel', domyslny: false });
+        assert.equal((await put({ dystrybutor: '' })).ustawienia.dystrybutor, 'https://distrokid.com/new/', 'pusty adres = powrót do DistroKid');
     } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
 });
 

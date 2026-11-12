@@ -579,8 +579,8 @@ Twoje zadanie: Odpowiedz krótko, treściwie (maksymalnie 3 zdania), w swoim uni
                 <label className="text-[10px] font-mono uppercase font-bold text-cyan-400 tracking-wider flex items-center gap-1.5 mb-2">
                     <MessageSquare size={12} /> Temat / Intencja narady ze smartfona
                 </label>
-                <div className="flex gap-2">
-                    <div className="relative flex-1">
+                <div className="flex flex-wrap gap-2">
+                    <div className="relative flex-1 min-w-[min(260px,100%)]">
                         <textarea
                             value={topic}
                             onChange={(e) => setTopic(e.target.value)}
@@ -617,8 +617,9 @@ Twoje zadanie: Odpowiedz krótko, treściwie (maksymalnie 3 zdania), w swoim uni
                             <span>{isDebating ? 'OBRADY...' : 'ZWOŁAJ'}</span>
                         </button>
                     </div>
-                    {selectedAgentIds.includes('jason') && <JasonKampania bridgeUrl={bridgeUrl} kompakt />}
                 </div>
+                {/* 🎛️ panel Jasona — osobny blok pod wierszem pola (w wierszu flex zgniatał pole tekstowe do paska) */}
+                {selectedAgentIds.includes('jason') && <div className="w-full"><JasonKampania bridgeUrl={bridgeUrl} kompakt /></div>}
             </div>
 
             {/* ── OKNO ROZMOWY / CZAT POD KCIUK ── */}

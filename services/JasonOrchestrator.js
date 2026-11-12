@@ -37,6 +37,9 @@ export const KLIMAT_OKLADKI = 'Cinematic cozy interior photograph inside a late-
     + 'warm amber table lamp between two porcelain coffee cups, raindrops on the glass window beside them with blurry city bokeh lights outside in the night, '
     + '35mm film grain, intimate mood, strictly no text, no letters, no neon words, no signage.';
 
+/** Dystrybutor Suwerena na Spotify (2026-11-12): DistroKid — formularz nowego wydania; adres do zmiany w ustawieniach. */
+export const DYSTRYBUTOR_DOMYSLNY = 'https://distrokid.com/new/';
+
 export const ALBUM = 'Zero Gravity Heart (0.00G Sessions)';
 
 /** Stacje albumu — tekst i styl Suwerena (2026-11-12); do nadpisania w żądaniu (`stacja: { tytul, opis | lyrics, styl, … }`). */
@@ -482,7 +485,11 @@ export function utworzJasona(cfg) {
     }
     // ── 🚀 Paczka wydawnicza pod dystrybucję na Spotify ──
     const plikUstawien = path.join(cfg.katalog, 'jason', 'ustawienia.json');
-    async function ustawienia() { try { const u = JSON.parse(await fs.readFile(plikUstawien, 'utf8')); return { dystrybutor: typeof u?.dystrybutor === 'string' ? u.dystrybutor : null }; } catch { return { dystrybutor: null }; } }
+    async function ustawienia() {
+        let wlasny = null;
+        try { const u = JSON.parse(await fs.readFile(plikUstawien, 'utf8')); if (typeof u?.dystrybutor === 'string' && u.dystrybutor) wlasny = u.dystrybutor; } catch { /* brak pliku = domyślny */ }
+        return { dystrybutor: wlasny ?? DYSTRYBUTOR_DOMYSLNY, domyslny: !wlasny };
+    }
     async function ustawDystrybutora(adres) {
         const a = String(adres ?? '').trim();
         if (a && !/^https:\/\/[^\s]{4,300}$/.test(a)) throw new Error('Adres panelu dystrybutora musi zaczynać się od https://');
@@ -715,6 +722,15 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     app.get('/api/jason/kampanie/:id/spotify/okladka', async (req, res) => {
         const k = await J.kampania(req.params.id), p = J.sciezkaWydania(k);
         return p && k.spotify?.okladka ? res.sendFile(path.join(p, k.spotify.okladka.plik)) : res.status(404).json({ success: false, message: 'Ta paczka nie ma okładki.' });
+    });
+    // 📋 czysty tekst do wklejenia u dystrybutora: plik z paczki, a bez paczki — tekst stacji bez tagów
+    app.get('/api/jason/kampanie/:id/tekst', async (req, res) => {
+        const k = await J.kampania(req.params.id);
+        if (!k) return res.status(404).json({ success: false, message: 'Nie ma takiej kampanii.' });
+        const p = J.sciezkaWydania(k);
+        const zPaczki = p && k.spotify?.pliki?.includes('lyrics_clean.txt') ? await fs.readFile(path.join(p, 'lyrics_clean.txt'), 'utf8').catch(() => null) : null;
+        const tekst = (zPaczki ?? czystyTekst(k.stacja.lyrics)).trim();
+        return tekst ? res.json({ success: true, tekst, tytul: k.stacja.tytul }) : res.status(404).json({ success: false, message: 'Ta kampania nie ma tekstu (utwór z opisu albo instrumentalny).' });
     });
     app.get('/api/jason/ustawienia', async (_req, res) => res.json({ success: true, ustawienia: await J.ustawienia() }));
     app.put('/api/jason/ustawienia', async (req, res) => { try { res.json({ success: true, ustawienia: await J.ustawDystrybutora(req.body?.dystrybutor) }); } catch (e) { blad(res, e); } });

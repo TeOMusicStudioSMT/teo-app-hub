@@ -616,7 +616,7 @@ Wygeneruj od 1 do 3 zadań.`;
                 </div>
 
                 {/* 🎛️ Jason: kampania kodem mostu — Suno → okładka → odsłuch → pobranie JEDNEJ wersji */}
-                <JasonKampania />
+                <div className="w-full"><JasonKampania /></div>
 
                 {/* 🧠 Podpowiedź z Akaszy */}
                 <AnimatePresence>
