@@ -18,7 +18,7 @@
  * 🎨 OKŁADKA OD NOWA: `przerysujOkladke(id)` działa także dla przyjętej kampanii (FLUX w tle, stara zostaje do udanej
  * zamiany) i od razu podmienia `cover_3000x3000.jpg` w paczce Spotify. 🎤 Stacje niosą własną personę (Stacja 2 = Elara).
  *
- * ➕ STACJE: wbudowane `STACJE` 1–5 (album „Zero Gravity Heart”, sztafeta głosów Kael ↔ Elara) + własne z interfejsu
+ * ➕ STACJE: wbudowane `STACJE` 1–10 (pełne LP „Zero Gravity Heart”, sztafeta głosów Kael ↔ Elara) + własne z interfejsu
  * (`dodajStacje` → `_OtakOs_Wymiar/jason/stacje.json`, numer nadaje kod) — nowy utwór bez edycji tego pliku.
  *
  * 🚀 PACZKA SPOTIFY (Suweren 2026-11-12): po ✓ i pobraniu wersji `przygotujSpotify(id)` składa folder wydawniczy
@@ -184,6 +184,158 @@ export const STACJE = {
             'Stay until dawn...',
             'The door is always open...',
             'At StarLight Diner... 0.00G...',
+        ].join('\n'),
+    },
+    // pełne LP — 10 utworów (Suweren 2026-11-12): dalsza sztafeta 6 Elara, 7 Kael, 8 Elara, 9 Kael, 10 Elara (finał, w opisie obok Kaela)
+    6: {
+        nr: 6, tytul: 'Velvet Static (Elara Solo)', bpm: 83, artysci: ['Elara'], glos: 'ELARA (S.M.T)', gatunek: 'R&B/Soul', jezyk: 'EN',
+        styl: 'sensual neo-soul, late night lounge, 83 bpm, silky breathy female vocal, warm Rhodes chords, deep analog sub-bass, soft rimshot groove, vinyl crackle warmth',
+        lyrics: [
+            '[Intro - Warm Rhodes chords, soft vinyl crackle, deep sub-bass groove at 83 BPM]',
+            '[Verse 1]',
+            'Turn the radio down to a golden hum',
+            'Watching what the quiet night has now become',
+            'Static in the air is turning into silk',
+            'Moonlight in the glass like a drop of milk',
+            '[Chorus]',
+            'Wrapped in velvet static, floating next to you',
+            'Every hidden color shining softly through',
+            "We don't need a compass when the stars align",
+            'Your frequency is locked inside of mine',
+            '[Verse 2]',
+            'Every little worry melts into the floor',
+            'Nothing left to chase outside the diner door',
+            'Just the gentle voltage of your fingertips',
+            'And the unspoken promise on your lips',
+            '[Chorus]',
+            'Wrapped in velvet static, floating next to you',
+            'Every hidden color shining softly through',
+            "We don't need a compass when the stars align",
+            'Your frequency is locked inside of mine',
+            '[Outro - Breathy female whisper over fading Rhodes]',
+            'Velvet static...',
+            'Zero point zero G...',
+        ].join('\n'),
+    },
+    7: {
+        nr: 7, tytul: 'Neon Rain on Chrome (Kael Solo)', bpm: 85, artysci: ['Kael'], glos: 'KAEL (S.M.T.)', gatunek: 'R&B/Soul', jezyk: 'EN',
+        styl: 'smooth nocturnal soul-jazz, 85 bpm, deep warm baritone male vocal, smoky tenor saxophone solo, upright double bass, Fender Rhodes, brushed snare, late night city vibe',
+        lyrics: [
+            '[Intro - Smoky tenor saxophone melody over upright bass and brushed drums at 85 BPM]',
+            '[Verse 1]',
+            'Neon rain is dancing on the window chrome',
+            'This little corner booth feels like our only home',
+            'Headlights passing by like comets in the mist',
+            "Every quiet second shouldn't be missed",
+            '[Chorus]',
+            'Let the city shimmer in the afterglow',
+            'There is nowhere else that we would rather go',
+            'Drifting on a current only we can feel',
+            'In a world of illusions, only this is real',
+            '[Verse 2]',
+            'Your reflection smiling in the amber glass',
+            'Letting all the noise of the century pass',
+            'One more slow rotation of the midnight reel',
+            'Nothing left to hide and nothing to conceal',
+            '[Chorus]',
+            'Let the city shimmer in the afterglow',
+            'There is nowhere else that we would rather go',
+            'Drifting on a current only we can feel',
+            'In a world of illusions, only this is real',
+            '[Outro - Tenor saxophone fadeout with warm baritone whisper]',
+            'Neon rain on chrome...',
+            'Stay with me...',
+        ].join('\n'),
+    },
+    8: {
+        nr: 8, tytul: 'Two Shadows One Flame (Elara Solo)', bpm: 78, artysci: ['Elara'], glos: 'ELARA (S.M.T)', gatunek: 'R&B/Soul', jezyk: 'EN',
+        styl: 'intimate cinematic R&B ballad, 78 bpm, silky emotional female vocal, warm cello and Rhodes piano, minimal heartbeat kick, close-mic whisper, lush analog reverb',
+        lyrics: [
+            '[Intro - Warm solo cello and soft Fender Rhodes chords at 78 BPM]',
+            '[Verse 1]',
+            'The candle on the table casts a gentle ring',
+            'Listening to the song that only silence sings',
+            'Two shadows on the wall are merging into one',
+            'Long before the rising of the morning sun',
+            '[Chorus]',
+            'Two shadows, one flame, burning soft and slow',
+            'In the deepest sanctuary that we know',
+            'Weightless in the warmth of an endless embrace',
+            'Lost inside the beauty of this quiet space',
+            '[Verse 2]',
+            'No gravity to pull us back to yesterday',
+            'Every heavy cloud has gently drifted away',
+            'Just the honest truth inside your open eyes',
+            'Underneath the shelter of the velvet skies',
+            '[Chorus]',
+            'Two shadows, one flame, burning soft and slow',
+            'In the deepest sanctuary that we know',
+            'Weightless in the warmth of an endless embrace',
+            'Lost inside the beauty of this quiet space',
+            '[Outro - Close-mic whispered vocal and fading cello]',
+            'Two shadows... one flame...',
+            'Zero gravity heart...',
+        ].join('\n'),
+    },
+    9: {
+        nr: 9, tytul: 'Last Call in Zero-G (Kael Solo)', bpm: 82, artysci: ['Kael'], glos: 'KAEL (S.M.T.)', gatunek: 'R&B/Soul', jezyk: 'EN',
+        styl: 'late night bluesy neo-soul, 82 bpm, deep warm baritone male vocal, tremolo electric guitar, warm organ pad, upright bass, brushed drums, intimate analog tape feel',
+        lyrics: [
+            '[Intro - Tremolo electric guitar chords, warm Hammond organ pad and bass at 82 BPM]',
+            '[Verse 1]',
+            'The bartender turns the key inside the lock',
+            'Nobody is looking at the diner clock',
+            'Last call in a world where time has lost its name',
+            'And nothing in our lives will ever be the same',
+            '[Chorus]',
+            'Pour a little stardust in the final cup',
+            'We are floating higher, never coming down or up',
+            'Right here at the center of eternity',
+            'Last call in the middle of zero-G',
+            '[Verse 2]',
+            'The chairs are on the tables in the quiet hall',
+            'Except for this red booth against the wooden wall',
+            'Where you and I are anchored in a timeless sea',
+            'Breathing in the rhythm of what used to be',
+            '[Chorus]',
+            'Pour a little stardust in the final cup',
+            'We are floating higher, never coming down or up',
+            'Right here at the center of eternity',
+            'Last call in the middle of zero-G',
+            '[Outro - Tremolo guitar and deep baritone whisper]',
+            'Last call in zero-G...',
+            'Just you and me...',
+        ].join('\n'),
+    },
+    10: {
+        nr: 10, tytul: 'Infinite Horizon (0.00G Finale)', bpm: 75, artysci: ['Elara', 'Kael'], glos: 'ELARA (S.M.T)', gatunek: 'R&B/Soul', jezyk: 'EN',
+        styl: 'ethereal neo-soul album finale, 75 bpm, silky breathy female vocal, warm acoustic piano, lush ambient strings, upright bass, golden sunrise atmosphere, vinyl warmth',
+        lyrics: [
+            '[Intro - Warm acoustic piano and lush ambient strings at 75 BPM]',
+            '[Verse 1]',
+            'First ray of the morning touches silver glass',
+            'Night is bowing softly as the shadows pass',
+            'We step outside together into open air',
+            'Carrying the stillness that we found in there',
+            '[Chorus]',
+            'Into the infinite horizon, wide and free',
+            'Living in the state of zero point zero G',
+            'Every single step is lighter than a dream',
+            'Floating down the middle of a golden stream',
+            '[Verse 2]',
+            'No more walls between the spirit and the ground',
+            'In the sweetest harmony we ever found',
+            'The diner lights behind us softly fade away',
+            'As we walk together into brand new day',
+            '[Chorus]',
+            'Into the infinite horizon, wide and free',
+            'Living in the state of zero point zero G',
+            'Every single step is lighter than a dream',
+            'Floating down the middle of a golden stream',
+            '[Outro - Silky whisper fading into warm sunrise chord]',
+            'Infinite horizon...',
+            'Zero gravity heart...',
+            'We are... what we are...',
         ].join('\n'),
     },
 };
@@ -398,7 +550,16 @@ export function utworzJasona(cfg) {
 
     // ── ➕ Stacje dopisane z interfejsu (obok wbudowanych STACJE) — `_OtakOs_Wymiar/jason/stacje.json` ──
     const plikStacji = path.join(cfg.katalog, 'jason', 'stacje.json');
-    async function stacjeWlasne() { try { const d = JSON.parse(await fs.readFile(plikStacji, 'utf8')); return Array.isArray(d?.stacje) ? d.stacje.filter((x) => x && Number(x.nr) > 0 && x.tytul) : []; } catch { return []; } }
+    async function stacjeWlasne() {
+        let l; try { const d = JSON.parse(await fs.readFile(plikStacji, 'utf8')); l = Array.isArray(d?.stacje) ? d.stacje.filter((x) => x && Number(x.nr) > 0 && x.tytul) : []; } catch { return []; }
+        // album urósł w kodzie (np. 5 → 10 stacji) i numer własnej stacji zajęła wbudowana → własna dostaje pierwszy wolny za nimi
+        if (l.some((x) => STACJE[Number(x.nr)])) {
+            let wolny = Math.max(...Object.keys(STACJE).map(Number), ...l.filter((x) => !STACJE[Number(x.nr)]).map((x) => Number(x.nr)));
+            l = l.map((x) => (STACJE[Number(x.nr)] ? { ...x, nrPoprzedni: Number(x.nr), nr: ++wolny } : x));
+            await zapiszStacje(l).catch(() => {});
+        }
+        return l;
+    }
     async function zapiszStacje(l) {
         await fs.mkdir(path.dirname(plikStacji), { recursive: true });
         const tmp = `${plikStacji}.${process.pid}.tmp`;
