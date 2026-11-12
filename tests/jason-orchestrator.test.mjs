@@ -56,7 +56,8 @@ test('czyste: zlecenie, argumenty Suno, klipy, workspace, stany, głosy', () => 
     assert.deepEqual(z.artysci, ['Elara', 'Kael']);
     assert.equal(z.album, 'Zero Gravity Heart (0.00G Sessions)');
     assert.equal(z.album, ALBUM);
-    assert.match(z.okladka.prompt, /StarLight Diner/);
+    assert.match(z.okladka.prompt, /inside a late-night retro diner/);
+    assert.match(z.okladka.prompt, /strictly no text, no letters, no neon words, no signage/);
     // Stacja 1 = tekst i styl Suwerena → tryb własny Suno: lyrics + style, BEZ description (mieszanie = 400)
     const s1 = argumentyUtworu({ id: 'j-00000000', ...z, workspace: { id: 'ws-1' } });
     assert.match(s1.lyrics, /^\[Intro - Warm Fender Rhodes chords/);
@@ -241,7 +242,7 @@ test('🚀 paczka Spotify: master.wav 44,1/16/stereo, okładka 3000×3000, czyst
         assert.equal((await post(`/api/jason/kampanie/${id}/przygotuj-spotify`)).success, false, 'przed pobraniem — odmowa');
         await J.rozstrzygnij(id, 'pobierz-1', {});
         // Izba: przyjęta bez paczki czeka z przyciskiem Spotify
-        assert.deepEqual((await J.zrodloIzby.czekajace())[0].akcje.map((a) => a.id), ['spotify', 'bez-spotify']);
+        assert.deepEqual((await J.zrodloIzby.czekajace())[0].akcje.map((a) => [a.id, a.zdalnie]), [['spotify', true], ['okladka', false], ['bez-spotify', true]]);
         const przed = ile(suno, 'audio-download');
         const d = await post(`/api/jason/kampanie/${id}/przygotuj-spotify`);
         assert.equal(d.success, true, d.message);
@@ -311,4 +312,113 @@ test('🚀 paczka Spotify: bezstratny WAV z Suno, gdy nie kosztuje; `requires_cr
 test('czyste: tekst bez tagów, folder wydania', () => {
     assert.equal(czystyTekst('[Verse 1 - Kael: deep]\nLine one [ad-lib]\n\n[Chorus]\n(Elara:) Two (ooh)'), 'Line one\n\nTwo (ooh)');
     assert.equal(folderWydania({ album: 'A: B?', stacja: { nr: 3, tytul: 'T/x.' } }), 'Spotify_Releases/A B/03_T x');
+});
+
+test('🎨 przerysowanie okładki przyjętej kampanii: nowy prompt, stara zostaje do udanej zamiany, paczka Spotify dostaje nowy cover', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jason-okl-'));
+    const uruchom = promisify(execFile);
+    const muzyka = path.join(tmp, 'muzyka');
+    const suno = atrapaSuno(tmp);
+    suno.zapiszUtwory = async (_w, gotowe) => Promise.all(gotowe.map(async (u) => {
+        const plik = `Suno MCP/x [${u.id.slice(0, 8)}].mp3`;
+        await fs.mkdir(path.join(muzyka, 'Suno MCP'), { recursive: true });
+        await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', path.join(muzyka, plik)]);
+        return { ...u, plik, nowy: true };
+    }));
+    const prompty = []; let pada = false;
+    const J = utworzJasona({ katalog: tmp, suno, przerwaPobraniaMs: 5, katalogMuzyki: muzyka, ffmpeg: ffmpegPath, uruchom,
+        okladka: async ({ prompt }) => {
+            prompty.push(prompt);
+            if (pada) throw new Error('ComfyUI śpi');
+            const p = path.join(tmp, `flux-${prompty.length}.png`);
+            await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `color=c=${prompty.length === 1 ? 'red' : 'blue'}:s=64x64`, '-frames:v', '1', p]);
+            return p;
+        } });
+    const app = express(); app.use(express.json());
+    zamontujTrasyJasona(app, J);
+    const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
+    const post = (s, b) => fetch(baza + s, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b ?? {}) }).then((r) => r.json());
+    try {
+        // kampania ze STARYM promptem (jak prawdziwa Stacja 1 sprzed zmiany)
+        const { id } = await J.wykonaj({ okladka: { prompt: 'StarLight Diner at night, neon sign' } });
+        await J._czekaj(id);
+        await J.rozstrzygnij(id, 'pobierz-1', {});
+        await J.przygotujSpotify(id);
+        const kat = J.sciezkaWydania(await J.kampania(id));
+        const coverPrzed = await fs.readFile(path.join(kat, 'cover_3000x3000.jpg'));
+        const tworzenPrzed = ile(suno, 'audio-create'), pobranPrzed = ile(suno, 'audio-download');
+
+        const d = await post(`/api/jason/kampanie/${id}/przerysuj-okladke`);
+        assert.equal(d.success, true, d.message);
+        assert.equal(d.kampania.okladka.rysuje, true);
+        assert.equal((await post(`/api/jason/kampanie/${id}/przerysuj-okladke`)).success, false, 'druga prośba w trakcie — odmowa');
+        await J._czekajOkladki(id);
+        const k = await J.kampania(id);
+        assert.equal(k.stan, 'przyjeta');
+        assert.equal(k.okladka.rysuje, undefined);
+        assert.equal(k.okladka.wersja, 2);
+        assert.match(prompty[1], /inside a late-night retro diner/, 'przerysowanie bierze NOWY prompt, nie stary z kampanii');
+        assert.doesNotMatch(prompty[1], /StarLight/);
+        const coverPo = await fs.readFile(path.join(kat, 'cover_3000x3000.jpg'));
+        assert.deepEqual(wymiaryJpeg(coverPo), { wys: 3000, szer: 3000 });
+        assert.notDeepEqual(coverPo, coverPrzed, 'paczka dostała nową okładkę');
+        assert.ok(k.spotify.okladkaZmieniona);
+        await fs.access(path.join(tmp, 'jason', 'kampanie', id, 'okladka-poprzednia.png'));
+        assert.equal(ile(suno, 'audio-create'), tworzenPrzed); assert.equal(ile(suno, 'audio-download'), pobranPrzed);
+
+        // FLUX padł → poprzednia okładka i cover zostają, powód wprost
+        pada = true;
+        await J.przerysujOkladke(id, { prompt: 'własny opis bez napisów' });
+        await J._czekajOkladki(id);
+        const k2 = await J.kampania(id);
+        assert.equal(k2.okladka.blad, 'ComfyUI śpi');
+        assert.equal(k2.okladka.wersja, 2);
+        assert.equal(prompty[2], 'własny opis bez napisów');
+        assert.deepEqual(await fs.readFile(path.join(kat, 'cover_3000x3000.jpg')), coverPo);
+    } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
+});
+
+test('🎤 Stacja 2: „Closer Than Gravity (Elara Solo)” z personą ELARA (S.M.T) — głos stacji wskazany wprost; brak głosu = stop przed kredytami', async () => {
+    const z = oczyscZlecenie({ stacja: 2 });
+    assert.equal(z.stacja.tytul, 'Closer Than Gravity (Elara Solo)');
+    assert.equal(z.album, ALBUM);
+    assert.deepEqual(z.artysci, ['Elara']);
+    assert.deepEqual(z.glos, { zadany: 'ELARA (S.M.T)', auto: false });
+    assert.equal(oczyscZlecenie({ stacja: 2, glos: 'Kael' }).glos.zadany, 'Kael');
+    assert.equal(oczyscZlecenie({ stacja: 2, glos: 'brak' }).glos, null);
+    assert.equal(oczyscZlecenie({ stacja: 1 }).glos, null, 'Stacja 1 (duet) dalej bez persony');
+    const a = argumentyUtworu({ id: 'j-00000002', ...z, glos: { id: 'v-elara' } });
+    assert.match(a.style, /^sensual neo-soul, atmospheric dream-pop, 82 bpm, silky breathy female vocal/);
+    assert.match(a.lyrics, /^\[Intro - Soft Rhodes chords/);
+    assert.match(a.lyrics, /Pull me closer than gravity can hold/);
+    assert.match(a.lyrics, /Zero point zero G\.\.\.$/);
+    assert.equal(a.voice_id, 'v-elara'); assert.equal(a.description, undefined);
+    assert.match(czystyTekst(STACJE[2].lyrics), /^Raindrops tracing silver lines upon the glass/);
+    assert.doesNotMatch(czystyTekst(STACJE[2].lyrics), /[\[\]]/);
+
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jason-s2-'));
+    try {
+        const suno = atrapaSuno(tmp);
+        const J = utworzJasona({ katalog: tmp, suno, przerwaPobraniaMs: 5 });
+        const { id } = await J.wykonaj({ stacja: 2, okladka: false });
+        await J._czekaj(id);
+        const k = await J.kampania(id);
+        assert.equal(k.stan, 'do_akceptacji');
+        assert.deepEqual({ id: k.glos.id, nazwa: k.glos.nazwa }, { id: 'v-elara', nazwa: 'ELARA (S.M.T)' });
+        assert.equal(suno.wywolania.find((w) => w.nazwa === 'audio-create').args.voice_id, 'v-elara');
+        // Stacja 1 w toku nie blokuje Stacji 2 i odwrotnie (inna stacja = inna kampania)
+        assert.equal((await J.wykonaj({ stacja: 1, okladka: false })).stacja.nr, 1);
+
+        // konto bez głosu Elary → stop PRZED audio-create
+        const bez = atrapaSuno(tmp);
+        const stare = bez.wywolaj.bind(bez);
+        bez.wywolaj = async (n, a2, o) => (n === 'voices-list' ? { wynik: tekst({ voices: [{ id: 'v-bella', name: 'Bella' }] }), utwory: [] } : stare(n, a2, o));
+        const J2 = utworzJasona({ katalog: path.join(tmp, 'b'), suno: bez });
+        const r = await J2.wykonaj({ stacja: 2, okladka: false });
+        await J2._czekaj(r.id);
+        const k2 = await J2.kampania(r.id);
+        assert.equal(k2.stan, 'blad');
+        assert.match(k2.blad, /nie ma głosu „ELARA \(S\.M\.T\)”/);
+        assert.equal(ile(bez, 'audio-create'), 0);
+    } finally { await fs.rm(tmp, { recursive: true, force: true }); }
 });

@@ -195,7 +195,12 @@
 
     <!-- 🎛️ Jason: kampania wykonywana kodem mostu (bez czatu z modelem) -->
     <div class="box" id="jason-box">
-        <div class="box-title" style="color:var(--purple);">🎛️ Jason · Stacja 1: „Velvet Booth for Two (82 BPM Intro)”</div>
+        <div class="box-title" style="color:var(--purple);">🎛️ Jason ·
+            <select id="jason-stacja" style="background:#0b0c10; color:inherit; border:1px solid var(--purple); border-radius:8px; padding:2px 6px; max-width:100%;">
+                <option value="1">Stacja 1: Velvet Booth for Two (82 BPM Intro)</option>
+                <option value="2">Stacja 2: Closer Than Gravity (Elara Solo) · głos ELARA (S.M.T)</option>
+            </select>
+        </div>
         <div style="display:flex; gap:8px; align-items:center;">
             <div id="jason-info" style="flex:1; font-size:11px; color:var(--mut);">Suno (kredyty konta, 2 wersje) → okładka Palety → odsłuch w Izbie Akceptacji; pobierasz jedną wybraną wersję.</div>
             <button id="jason-btn" class="btn" style="background:var(--purple); color:#fff;">WYKONAJ</button>
@@ -304,7 +309,7 @@
         const btn = document.getElementById('jason-btn'), info = document.getElementById('jason-info');
         btn.disabled = true; info.textContent = 'Zlecam Jasonowi…';
         try {
-            const r = await api('/api/jason/wykonaj-kampanie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stacja: 1, skad: 'stol-narad' }) });
+            const r = await api('/api/jason/wykonaj-kampanie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stacja: Number(document.getElementById('jason-stacja').value) || 1, skad: 'stol-narad' }) });
             const d = await r.json().catch(() => null);
             let k = d && d.kampania;
             if (!k) throw new Error((d && d.message) || `HTTP ${r.status}`);

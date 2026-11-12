@@ -15,6 +15,9 @@
  * żadnego zapisu z wyniku) — dopiero „✓ Pobierz wersję N” w Izbie woła `audio-download` dla tej jednej wersji
  * (z `confirm`, bo kliknięcie Suwerena jest zgodą) i zapisuje ją do `_OtakOs_Muzyka/Suno MCP/`.
  *
+ * 🎨 OKŁADKA OD NOWA: `przerysujOkladke(id)` działa także dla przyjętej kampanii (FLUX w tle, stara zostaje do udanej
+ * zamiany) i od razu podmienia `cover_3000x3000.jpg` w paczce Spotify. 🎤 Stacje niosą własną personę (Stacja 2 = Elara).
+ *
  * 🚀 PACZKA SPOTIFY (Suweren 2026-11-12): po ✓ i pobraniu wersji `przygotujSpotify(id)` składa folder wydawniczy
  * `_OtakOs_Muzyka/Spotify_Releases/<album>/<NN>_<tytuł>/`: `master.wav` (44,1 kHz, 16 bit, stereo), `original.mp3`,
  * `cover_3000x3000.jpg`, `lyrics_clean.txt`, `spotify_metadata.json`. Master: najpierw bezstratny WAV z Suno
@@ -29,9 +32,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 
-export const KLIMAT_OKLADKI = 'StarLight Diner at night: a retro 1950s American roadside diner glowing with neon under a sky full of stars, '
-    + 'a red velvet booth for two by the window, silhouettes of a woman and a man sharing a quiet moment over two cups, warm amber lamp light, '
-    + 'teal and magenta neon reflections on chrome and wet asphalt, cinematic, painterly album cover art, square composition, no text, no letters, no logos';
+// Suweren 2026-11-12: dawny prompt („StarLight Diner… neon”) dał bełkotliwy szyld i kanapę na chodniku PRZED barem → czyste wnętrze, żadnych napisów.
+export const KLIMAT_OKLADKI = 'Cinematic cozy interior photograph inside a late-night retro diner, a woman and a man sitting across from each other in a deep red velvet booth inside the room, '
+    + 'warm amber table lamp between two porcelain coffee cups, raindrops on the glass window beside them with blurry city bokeh lights outside in the night, '
+    + '35mm film grain, intimate mood, strictly no text, no letters, no neon words, no signage.';
 
 export const ALBUM = 'Zero Gravity Heart (0.00G Sessions)';
 
@@ -57,6 +61,41 @@ export const STACJE = {
             '[Bridge - Mellow electric guitar solo over deep heartbeat bass and Rhodes]',
             '[Outro - Whispered duet, fading warm analog tape]',
             '(Kael:) Stay right here... (Elara:) Nothing left to fear... Zero gravity heart...',
+        ].join('\n'),
+    },
+    // 🎤 głosy artystów wymieniają się co utwór: Stacja 2 = oficjalna persona Elary (My Voices: „ELARA (S.M.T)”)
+    2: {
+        nr: 2, tytul: 'Closer Than Gravity (Elara Solo)', bpm: 82, artysci: ['Elara'], glos: 'ELARA (S.M.T)', gatunek: 'R&B/Soul', jezyk: 'EN',
+        styl: 'sensual neo-soul, atmospheric dream-pop, 82 bpm, silky breathy female vocal, warm Rhodes chords, deep sub-bass pulse, minimal finger snaps, late night intimacy, vinyl warmth',
+        lyrics: [
+            '[Intro - Soft Rhodes chords, slow heartbeat sub-bass at 82 BPM, breathy female sigh]',
+            '[Verse 1]',
+            'Raindrops tracing silver lines upon the glass',
+            'Watching all the heavy hours slowly pass',
+            'Your hand is resting just an inch away from mine',
+            'We crossed the border of the ordinary time',
+            '[Pre-Chorus]',
+            'No need to speak when every shadow knows your name',
+            'Two quiet frequencies inside a single flame',
+            '[Chorus]',
+            'Pull me closer than gravity can hold',
+            'In the amber light where nothing’s bought or sold',
+            'Every breath is floating at zero point zero G',
+            'Just the rhythm of your heart inside of me',
+            '[Verse 2]',
+            'The city sleeps beneath a blanket made of mist',
+            'Every little moment that we almost missed',
+            'Now it’s shining in the corner of your eyes',
+            'No more distance, no more alibis',
+            '[Chorus]',
+            'Pull me closer than gravity can hold',
+            'In the amber light where nothing’s bought or sold',
+            'Every breath is floating at zero point zero G',
+            'Just the rhythm of your heart inside of me',
+            '[Outro - Intimate close-mic whisper over fading warm chords]',
+            'Closer than gravity...',
+            'Stay right here with me...',
+            'Zero point zero G...',
         ].join('\n'),
     },
 };
@@ -131,11 +170,13 @@ export function oczyscZlecenie(z = {}) {
     // 🎤 persona: `glos` = nazwa albo id z My Voices; false / 'brak' = bez persony. Bez pola: jeden artysta → jego głos,
     // duet → BEZ persony (Suno przyjmuje jeden `voice_id` na utwór — zaśpiewałby obie partie; decyzja Suwerena).
     const bezGlosu = z.glos === false || /^(brak|nie|none|false)$/i.test(String(z.glos ?? '').trim());
-    const zadany = bezGlosu ? null : tn(z.glos, 80) || (artysci.length === 1 ? artysci[0] : null);
+    // Persona przypisana do stacji (Stacja 2 = „ELARA (S.M.T)”) jest wskazaniem WPROST: brak takiego głosu na koncie = stop przed kredytami.
+    const glosStacji = tn(wzor.glos ?? baza.glos, 80);
+    const zadany = bezGlosu ? null : tn(z.glos, 80) || glosStacji || (artysci.length === 1 ? artysci[0] : null);
     return {
         album: tn(z.album, 100) || ALBUM, stacja, artysci,
         okladka: z.okladka === false ? null : { prompt: tn(z.okladka?.prompt, 1800) || KLIMAT_OKLADKI },
-        glos: zadany ? { zadany, auto: !tn(z.glos, 80) } : null, zlecil: tn(z.zlecil, 60) || 'Suweren', skad: tn(z.skad, 40) || 'hub',
+        glos: zadany ? { zadany, auto: !tn(z.glos, 80) && !glosStacji } : null, zlecil: tn(z.zlecil, 60) || 'Suweren', skad: tn(z.skad, 40) || 'hub',
     };
 }
 
@@ -212,6 +253,7 @@ export function argumentyUtworu(k) {
 export function utworzJasona(cfg) {
     const katalog = path.join(cfg.katalog, 'jason', 'kampanie');
     const wRobocie = new Map();          // id → Promise (żywa praca)
+    const rysowane = new Map();          // id → Promise (🎨 przerysowanie okładki)
     let kolejka = Promise.resolve();     // jedna kampania naraz (konto Suno, FLUX)
     const wiesc = (t) => { try { Promise.resolve(cfg.wiesc?.(t)).catch(() => {}); } catch { /* kanał opcjonalny */ } };
     const plik = (id) => path.join(katalog, `${id}.json`);
@@ -230,6 +272,10 @@ export function utworzJasona(cfg) {
         let k; try { k = JSON.parse(await fs.readFile(plik(id), 'utf8')); } catch { return null; }
         if (k.stan === 'robi' && !wRobocie.has(k.id)) {   // 👻 duch po restarcie mostu
             k.stan = 'blad'; k.blad = 'Praca przerwana (restart mostu). ↻ wznowi od miejsca przerwania — utwór nie zostanie stworzony drugi raz.';
+            await zapisz(k);
+        }
+        if (k.okladka?.rysuje && !rysowane.has(k.id)) {   // 👻 rysowanie okładki przerwane restartem
+            delete k.okladka.rysuje; k.okladka.blad = 'Rysowanie okładki przerwane (restart mostu) — 🎨 przerysuj jeszcze raz.';
             await zapisz(k);
         }
         return k;
@@ -466,6 +512,76 @@ export function utworzJasona(cfg) {
         return 'Suno wciąż przygotowuje WAV';
     }
 
+    const UWAGA_COVER = 'Okładka: obraz FLUX powiększony do 3000×3000 (Lanczos, JPEG najwyższej jakości) — powiększenie nie dodaje szczegółów, których nie było w oryginale.';
+    const UWAGA_BEZ_COVER = 'Bez okładki — kampania jej nie ma (Paleta nie narysowała). Dystrybutor wymaga okładki 3000×3000.';
+    /** cover_3000x3000.jpg z okładki kampanii (przycięcie do kwadratu, Lanczos) — null, gdy kampania nie ma okładki. */
+    async function coverWydania(k, kat) {
+        const zOkladki = sciezkaOkladki(k);
+        if (!zOkladki || !(await fs.access(zOkladki).then(() => true, () => false))) return null;
+        const cel = path.join(kat, 'cover_3000x3000.jpg'), rob = path.join(kat, '.cover-nowy.jpg');
+        await cfg.uruchom(cfg.ffmpeg, ['-loglevel', 'error', '-y', '-i', zOkladki, '-vf', "crop='min(iw,ih)':'min(iw,ih)',scale=3000:3000:flags=lanczos", '-frames:v', '1', '-q:v', '1', '-pix_fmt', 'yuvj444p', rob], { maxBuffer: 1 << 24, timeout: 10 * 60_000, windowsHide: true });
+        const w = wymiaryJpeg(await fs.readFile(rob));
+        if (w?.szer !== 3000 || w?.wys !== 3000) { await fs.rm(rob, { force: true }); throw new Error(`Okładka nie wyszła 3000×3000 (${JSON.stringify(w)}).`); }
+        await fs.rm(cel, { force: true }); await fs.rename(rob, cel);   // stara okładka paczki zostaje do udanej zamiany
+        return { plik: 'cover_3000x3000.jpg', szer: 3000, wys: 3000 };
+    }
+
+    /**
+     * 🎨 Przerysowanie okładki — także dla PRZYJĘTEJ kampanii (FLUX potrafi dorysować bełkotliwy szyld mimo zakazu).
+     * Wraca od razu, rysuje w tle (`okladka.rysuje`); stara okładka zostaje do udanej zamiany (kopia `okladka-poprzednia.*`).
+     * Kampania z paczką Spotify dostaje od razu nowy `cover_3000x3000.jpg` i poprawione metadane.
+     */
+    async function przerysujOkladke(id, { prompt = '' } = {}) {
+        const k = await wczytaj(id);
+        if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
+        if (!cfg.okladka) throw new Error('Katedra nie ma podłączonej Palety (FLUX).');
+        if (k.stan === 'odrzucona') throw new Error('Kampania jest odrzucona.');
+        if (k.stan === 'robi' || wRobocie.has(k.id)) throw new Error('Ta kampania właśnie pracuje — okładkę przerysujesz, gdy skończy.');
+        if (rysowane.has(k.id)) throw new Error('Okładka tej kampanii właśnie się rysuje.');
+        if (budowane.has(k.id)) throw new Error('Paczka Spotify właśnie się składa — poczekaj chwilę.');
+        k.okladka = { ...(k.okladka ?? {}), prompt: tn(prompt, 1800) || KLIMAT_OKLADKI, rysuje: true };
+        delete k.okladka.blad;
+        rysowane.set(k.id, Promise.resolve());   // przed zapisem „rysuje” — odczyt nie weźmie jej za ducha
+        await zapisz(k);
+        const praca = (kolejka = kolejka.then(() => rysujOkladke(k.id, k.okladka.prompt)).catch(() => {})).finally(() => rysowane.delete(k.id));
+        rysowane.set(k.id, praca);
+        return k;
+    }
+    async function rysujOkladke(id, prompt) {
+        const k = await wczytaj(id);
+        if (!k) return;
+        k.okladka = { ...(k.okladka ?? {}), prompt, rysuje: true };   // praca mogła ruszyć, zanim zapis prośby doszedł na dysk
+        try {
+            const w = await cfg.okladka({ prompt: k.okladka.prompt, kampania: k });
+            const zrodlo = typeof w === 'string' ? w : w?.sciezka ?? w?.plik;
+            if (!zrodlo) throw new Error('Paleta nie oddała pliku.');
+            const kat = path.join(katalog, k.id);
+            await fs.mkdir(kat, { recursive: true });
+            const stara = sciezkaOkladki(k);
+            if (stara && await fs.access(stara).then(() => true, () => false)) await fs.copyFile(stara, path.join(kat, `okladka-poprzednia${path.extname(stara)}`));
+            const cel = path.join(kat, `okladka${path.extname(zrodlo) || '.png'}`);
+            await fs.copyFile(zrodlo, cel);
+            if (stara && stara !== cel) await fs.rm(stara, { force: true });
+            k.okladka.plik = path.basename(cel); k.okladka.wersja = (Number(k.okladka.wersja) || 1) + 1; delete k.okladka.blad;
+            const katWydania = sciezkaWydania(k);
+            if (k.spotify && katWydania && cfg.ffmpeg && cfg.uruchom) {   // 🚀 paczka Spotify dostaje nową okładkę od razu
+                k.spotify.okladka = await coverWydania(k, katWydania);
+                if (!k.spotify.pliki.includes('cover_3000x3000.jpg')) k.spotify.pliki.splice(Math.max(0, k.spotify.pliki.indexOf('master.wav') + 1), 0, 'cover_3000x3000.jpg');
+                k.spotify.uwagi = [UWAGA_COVER, ...k.spotify.uwagi.filter((u) => u !== UWAGA_COVER && u !== UWAGA_BEZ_COVER)];
+                k.spotify.okladkaZmieniona = new Date().toISOString();
+                const pm = path.join(katWydania, 'spotify_metadata.json');
+                try { const m = JSON.parse(await fs.readFile(pm, 'utf8')); m.files = { ...(m.files ?? {}), cover: 'cover_3000x3000.jpg' }; await fs.writeFile(pm, JSON.stringify(m, null, 2), 'utf8'); } catch { /* metadane odtworzy „↻ złóż od nowa” */ }
+            }
+            delete k.okladka.rysuje;
+            await zapisz(k);
+            wiesc(`🎨 Jason: nowa okładka „${k.stacja.tytul}”${k.spotify ? ' — podmieniona też w paczce Spotify (cover_3000x3000.jpg)' : ''}. Obejrzyj ją, zanim wyślesz do dystrybutora.`);
+        } catch (e) {
+            delete k.okladka.rysuje; k.okladka.blad = tn(e.message, 300);
+            await zapisz(k);
+            wiesc(`🎨 Jason: okładka „${k.stacja.tytul}” nie wyszła (${k.okladka.blad}). Poprzednia zostaje.`);
+        }
+    }
+
     const budowane = new Set();
     async function przygotujSpotify(id) {
         const k = await wczytaj(id);
@@ -473,6 +589,7 @@ export function utworzJasona(cfg) {
         if (k.stan !== 'przyjeta' || !k.wybrana?.plik) throw new Error('Paczkę Spotify składam po ✓ i pobraniu wersji — ta kampania nie ma jeszcze pobranego utworu.');
         if (!cfg.katalogMuzyki || !cfg.ffmpeg || !cfg.uruchom) throw new Error('Most nie ma podłączonego ffmpeg ani katalogu muzyki dla Jasona.');
         if (budowane.has(k.id)) throw new Error('Ta paczka właśnie się składa.');
+        if (rysowane.has(k.id)) throw new Error('Okładka właśnie się rysuje — złóż paczkę, gdy będzie gotowa.');
         const mp3 = path.join(cfg.katalogMuzyki, ...k.wybrana.plik.split('/'));
         await fs.access(mp3).catch(() => { throw new Error(`Nie ma pobranego pliku: _OtakOs_Muzyka/${k.wybrana.plik}`); });
         budowane.add(k.id);
@@ -498,16 +615,9 @@ export function utworzJasona(cfg) {
             pliki.push('master.wav');
 
             // cover_3000x3000.jpg
-            let okladka = null;
-            const zOkladki = sciezkaOkladki(k);
-            if (zOkladki && await fs.access(zOkladki).then(() => true, () => false)) {
-                const cel = path.join(kat, 'cover_3000x3000.jpg');
-                await ff(['-i', zOkladki, '-vf', "crop='min(iw,ih)':'min(iw,ih)',scale=3000:3000:flags=lanczos", '-frames:v', '1', '-q:v', '1', '-pix_fmt', 'yuvj444p', cel]);
-                const w = wymiaryJpeg(await fs.readFile(cel));
-                if (w?.szer !== 3000 || w?.wys !== 3000) throw new Error(`Okładka nie wyszła 3000×3000 (${JSON.stringify(w)}).`);
-                okladka = { plik: 'cover_3000x3000.jpg', szer: 3000, wys: 3000 }; pliki.push(okladka.plik);
-                uwagi.push('Okładka: obraz FLUX powiększony do 3000×3000 (Lanczos, JPEG najwyższej jakości) — powiększenie nie dodaje szczegółów, których nie było w oryginale.');
-            } else uwagi.push('Bez okładki — kampania jej nie ma (Paleta nie narysowała). Dystrybutor wymaga okładki 3000×3000.');
+            const okladka = await coverWydania(k, kat);
+            if (okladka) { pliki.push(okladka.plik); uwagi.push(UWAGA_COVER); }
+            else uwagi.push(UWAGA_BEZ_COVER);
 
             // lyrics_clean.txt
             const tekst = czystyTekst(k.stacja.lyrics);
@@ -551,9 +661,10 @@ export function utworzJasona(cfg) {
         czekajace: async () => (await lista()).filter((k) => k.stan === 'do_akceptacji' || (k.stan === 'przyjeta' && k.wybrana?.plik && !k.spotify && !k.spotifyPominiete)).map((k) => (k.stan === 'przyjeta' ? {
             id: k.id, kiedy: k.decyzja?.kiedy ?? k.utworzono,
             tytul: `${k.album} · Stacja ${k.stacja.nr}: ${k.stacja.tytul} — do wydania`,
-            opis: `Wersja ${k.wybrana.wersja} pobrana (_OtakOs_Muzyka/${k.wybrana.plik}). Jason złoży paczkę wydawniczą: master.wav 44,1 kHz/16 bit, okładka 3000×3000, czysty tekst, metadane. Nic nie kosztuje i nic nie wychodzi z Katedry — do Spotify wgrywasz ją sam w panelu dystrybutora.`,
+            opis: `${k.okladka?.rysuje ? '🎨 Okładka właśnie się rysuje. ' : k.okladka?.blad ? `⚠ Okładka: ${k.okladka.blad} ` : ''}Wersja ${k.wybrana.wersja} pobrana (_OtakOs_Muzyka/${k.wybrana.plik}). Jason złoży paczkę wydawniczą: master.wav 44,1 kHz/16 bit, okładka 3000×3000, czysty tekst, metadane. Nic nie kosztuje i nic nie wychodzi z Katedry — do Spotify wgrywasz ją sam w panelu dystrybutora.`,
             obrazy: sciezkaOkladki(k) ? [sciezkaOkladki(k)] : [],
-            akcje: [{ id: 'spotify', etykieta: '🚀 Przygotuj i wyślij na Spotify', zdalnie: true }, { id: 'bez-spotify', etykieta: '✕ Bez paczki Spotify', zdalnie: true }],
+            // 🎨 = FLUX na karcie Katedry → tylko przy maszynie (jak inne decyzje z GPU); zlecana bez czekania
+            akcje: [{ id: 'spotify', etykieta: '🚀 Przygotuj i wyślij na Spotify', zdalnie: true }, ...(cfg.okladka && !k.okladka?.rysuje ? [{ id: 'okladka', etykieta: '🎨 Przerysuj okładkę', zdalnie: false }] : []), { id: 'bez-spotify', etykieta: '✕ Bez paczki Spotify', zdalnie: true }],
         } : {
             id: k.id, kiedy: k.gotowe ?? k.utworzono,
             tytul: `${k.album} · Stacja ${k.stacja.nr}: ${k.stacja.tytul}`,
@@ -564,10 +675,10 @@ export function utworzJasona(cfg) {
             akcje: [...k.klipy.map((c, i) => (c.status === 'complete' ? { id: `pobierz-${i + 1}`, etykieta: `✓ Pobierz wersję ${i + 1} (${czasUtworu(c.sekundy)})`, zdalnie: true, potwierdz: 'Pobranie zużyje 1 z miesięcznych pobrań Suno z prawami komercyjnymi. Pobrać tę wersję?' } : null)).filter(Boolean),
                 { id: 'odrzuc', etykieta: '✕ Odrzuć (bez pobierania)', zdalnie: true }],
         })),
-        decyduj: (id, akcja, { powod } = {}) => (akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
+        decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przygotujSpotify, pominSpotify, otworzFolder, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
@@ -579,7 +690,7 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     });
     app.get('/api/jason/kampanie', async (req, res) => {
         const d = await dostep(req, res); if (!d) return;
-        res.json({ success: true, kampanie: await J.lista(), stacje: Object.values(STACJE).map(({ nr, tytul, bpm, artysci }) => ({ nr, tytul, bpm, artysci })) });
+        res.json({ success: true, kampanie: await J.lista(), stacje: Object.values(STACJE).map(({ nr, tytul, bpm, artysci, glos }) => ({ nr, tytul, bpm, artysci, glos: glos ?? null })) });
     });
     app.get('/api/jason/kampanie/:id', async (req, res) => {
         const d = await dostep(req, res); if (!d) return;
@@ -596,6 +707,8 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     for (const [trasa, akcja] of [['przyjmij', 'przyjmij'], ['pobierz', 'przyjmij'], ['odrzuc', 'odrzuc']]) {
         app.post(`/api/jason/kampanie/:id/${trasa}`, async (req, res) => { try { res.json({ success: true, kampania: await J.rozstrzygnij(req.params.id, akcja, { powod: req.body?.powod, wersja: req.body?.wersja ?? null }) }); } catch (e) { blad(res, e); } });
     }
+    // 🎨 nowa okładka (FLUX w tle) — też dla przyjętej kampanii; paczka Spotify dostaje ją od razu. {prompt?} = własny opis
+    app.post('/api/jason/kampanie/:id/przerysuj-okladke', async (req, res) => { try { res.json({ success: true, kampania: await J.przerysujOkladke(req.params.id, { prompt: req.body?.prompt }) }); } catch (e) { blad(res, e); } });
     // 🚀 paczka wydawnicza pod Spotify (tylko maszyna — Straż): master.wav, okładka 3000×3000, czysty tekst, metadane
     app.post('/api/jason/kampanie/:id/przygotuj-spotify', async (req, res) => { try { res.json({ success: true, kampania: await J.przygotujSpotify(req.params.id), ustawienia: await J.ustawienia() }); } catch (e) { blad(res, e); } });
     app.post('/api/jason/kampanie/:id/otworz-folder', async (req, res) => { try { res.json({ success: true, folder: await J.otworzFolder(req.params.id) }); } catch (e) { blad(res, e); } });

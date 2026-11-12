@@ -12,9 +12,10 @@ type Klip = { id: string; status: string; plik?: string | null; sekundy?: number
 type Kampania = {
     id: string; album: string; stan: string; blad?: string; uwagi?: string[];
     stacja: { nr: number; tytul: string }; klipy: Klip[]; glos?: { nazwa?: string } | null;
-    okladka?: { plik?: string; blad?: string } | null; etapy?: Record<string, { stan: string }>; wybrana?: { wersja: number; plik: string };
+    okladka?: { plik?: string; blad?: string; rysuje?: boolean; wersja?: number } | null; etapy?: Record<string, { stan: string }>; wybrana?: { wersja: number; plik: string };
     spotify?: { folder: string; pliki: string[]; uwagi: string[]; okladka?: { plik: string } | null; master: { hz: number; bity: number; kanaly: number; zrodlo: string; sekundy: number; bajtow: number } } | null;
 };
+type Stacja = { nr: number; tytul: string; artysci?: string[]; glos?: string | null };
 const czas = (s?: number | null) => (s && s > 0 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '?:??');
 
 export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; skad?: string }> = ({ bridgeUrl = 'http://127.0.0.1:3001', kompakt = false, skad = 'stol-narad' }) => {
@@ -24,6 +25,8 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     const [glos, setGlos] = useState('');
     const [glosy, setGlosy] = useState<{ id: string; name: string }[]>([]);
     const [dystrybutor, setDystrybutor] = useState<string | null>(null);
+    const [nr, setNr] = useState(1);
+    const [stacje, setStacje] = useState<Stacja[]>([]);
     const [adres, setAdres] = useState('');
 
     const api = useCallback(async (sciezka: string, cialo?: unknown) => {
@@ -36,7 +39,7 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     // start: ostatnia otwarta kampania (pracuje / czeka na wybór wersji / stanęła) + persony głosowe konta Suno
     useEffect(() => {
         let zywy = true;
-        api('/api/jason/kampanie').then((d) => { const o = (d.kampanie ?? []).find((x: Kampania) => x.stan !== 'odrzucona'); if (zywy && o) setK(o); }).catch(() => {});
+        api('/api/jason/kampanie').then((d) => { const o = (d.kampanie ?? []).find((x: Kampania) => x.stan !== 'odrzucona'); if (!zywy) return; setStacje(d.stacje ?? []); if (o) { setK(o); setNr(o.stacja.nr); } }).catch(() => {});
         api('/api/jason/ustawienia').then((d) => { if (zywy && d.success) setDystrybutor(d.ustawienia?.dystrybutor ?? null); }).catch(() => {});
         api('/api/jason/glosy').then((d) => { if (zywy && d.success) setGlosy(d.glosy ?? []); }).catch(() => {});
         return () => { zywy = false; };
@@ -44,10 +47,10 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
 
     // podgląd pracy co 10 s, dopóki Jason pracuje
     useEffect(() => {
-        if (k?.stan !== 'robi') return;
+        if (k?.stan !== 'robi' && !k?.okladka?.rysuje) return;
         const t = setInterval(() => { api(`/api/jason/kampanie/${k.id}`).then((d) => { if (d.kampania) setK(d.kampania); }).catch(() => {}); }, 10000);
         return () => clearInterval(t);
-    }, [k?.id, k?.stan, api]);
+    }, [k?.id, k?.stan, k?.okladka?.rysuje, api]);
 
     const wykonaj = async (sciezka: string, cialo: unknown, poCzym: string) => {
         setTrwa(true); setInfo(poCzym);
@@ -58,7 +61,7 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
         } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
         setTrwa(false);
     };
-    const zlec = () => wykonaj('/api/jason/wykonaj-kampanie', { stacja: 1, skad, ...(glos ? { glos } : {}) }, 'Zlecam Jasonowi…');
+    const zlec = () => wykonaj('/api/jason/wykonaj-kampanie', { stacja: nr, skad, ...(glos ? { glos } : {}) }, 'Zlecam Jasonowi…');
     const pobierz = (nr: number, c: Klip) => {
         if (!window.confirm(`Pobrać wersję ${nr} (${czas(c.sekundy)})?\n\nTo zużyje 1 z miesięcznych pobrań Suno z prawami komercyjnymi. Druga wersja zostaje w Suno.`)) return;
         void wykonaj(`/api/jason/kampanie/${k!.id}/pobierz`, { wersja: nr }, `Pobieram wersję ${nr}…`);
@@ -76,6 +79,17 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     };
     const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
 
+    // 🎚️ zmiana stacji: pokaż jej ostatnią nieodrzuconą kampanię (albo pusty panel gotowy do zlecenia)
+    const wybierzStacje = (n: number) => {
+        setNr(n); setGlos(''); setInfo(''); setK(null);
+        api('/api/jason/kampanie').then((d) => setK((d.kampanie ?? []).find((x: Kampania) => x.stan !== 'odrzucona' && x.stacja.nr === n) ?? null)).catch(() => {});
+    };
+    const stacja = stacje.find((x) => x.nr === nr);
+    const przerysuj = () => {
+        if (!window.confirm('Narysować okładkę od nowa?\n\nPaleta (FLUX) zajmie kartę na około minutę. Poprzednia okładka zostaje, dopóki nowa nie wyjdzie; paczka Spotify dostanie nową od razu.')) return;
+        void wykonaj(`/api/jason/kampanie/${k!.id}/przerysuj-okladke`, {}, 'Zlecam Palecie nową okładkę…');
+    };
+
     const pracuje = k?.stan === 'robi';
     const opis = !k ? '' : pracuje ? `Jason pracuje: ${Object.entries(k.etapy ?? {}).map(([n, e]) => `${n} ${e.stan}`).join(' → ') || 'start'}…`
         : k.stan === 'blad' ? `⚠ ${k.blad}`
@@ -86,12 +100,18 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     return (
         <div className={`rounded-xl border border-violet-500/40 bg-violet-950/30 font-mono text-violet-200 ${kompakt ? 'mt-2 p-2 text-[11px]' : 'mt-3 px-4 py-2.5 text-xs'}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <span>🎛️ Jason · „Zero Gravity Heart (0.00G Sessions)” · Stacja 1: Velvet Booth for Two (82 BPM Intro)</span>
+                <span className="flex flex-wrap items-center gap-2">🎛️ Jason · „Zero Gravity Heart (0.00G Sessions)” ·
+                    {stacje.length > 1
+                        ? <select value={nr} onChange={(e) => wybierzStacje(Number(e.target.value))} disabled={trwa || pracuje} className="rounded-lg border border-violet-500/40 bg-slate-950 px-2 py-1 text-violet-100">
+                            {stacje.map((x) => <option key={x.nr} value={x.nr}>Stacja {x.nr}: {x.tytul}</option>)}
+                        </select>
+                        : <span>Stacja {nr}: {stacja?.tytul ?? k?.stacja.tytul ?? 'Velvet Booth for Two (82 BPM Intro)'}</span>}
+                </span>
                 <div className="flex shrink-0 items-center gap-2">
                     <select value={glos} onChange={(e) => setGlos(e.target.value)} disabled={trwa || pracuje}
                         title="Persona głosowa z My Voices w Suno. Suno przyjmuje JEDEN głos na utwór — w duecie zaśpiewa on obie partie."
                         className="rounded-lg border border-violet-500/40 bg-slate-950 px-2 py-1.5 text-violet-100">
-                        <option value="">🎤 duet bez persony</option>
+                        <option value="">{stacja?.glos ? `🎤 ${stacja.glos} (persona stacji)` : (stacja?.artysci?.length ?? 2) > 1 ? '🎤 duet bez persony' : '🎤 głos artysty stacji'}</option>
                         {glosy.map((g) => <option key={g.id} value={g.id}>🎤 {g.name}</option>)}
                     </select>
                     <button onClick={zlec} disabled={trwa || pracuje}
@@ -121,6 +141,15 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                     {(k.uwagi ?? []).map((u, i) => <div key={i} className="text-amber-200/80">ℹ {u}</div>)}
                 </div>
             )}
+            {k && k.stan === 'przyjeta' && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-violet-300/90">
+                    {k.okladka?.plik && <a href={`${bridgeUrl}/api/jason/kampanie/${k.id}/okladka?v=${k.okladka.wersja ?? 1}`} target="_blank" rel="noreferrer" className="underline">🖼️ okładka Palety{k.okladka.wersja ? ` (wersja ${k.okladka.wersja})` : ''}</a>}
+                    {k.okladka?.rysuje
+                        ? <span>🎨 Paleta rysuje nową okładkę…</span>
+                        : <button onClick={przerysuj} disabled={trwa} title="FLUX, czyste wnętrze baru bez napisów i szyldów. Poprzednia okładka zostaje do udanej zamiany." className="rounded border border-violet-400/50 px-2 py-0.5 text-violet-100 hover:bg-violet-800/40 disabled:opacity-50">🎨 Przerysuj okładkę</button>}
+                    {k.okladka?.blad && <span className="text-amber-300">⚠ {k.okladka.blad}</span>}
+                </div>
+            )}
             {k && k.stan === 'przyjeta' && !k.spotify && (
                 <button onClick={() => wykonaj(`/api/jason/kampanie/${k.id}/przygotuj-spotify`, {}, 'Składam paczkę wydawniczą (master.wav, okładka, tekst, metadane)…')} disabled={trwa}
                     title="Składa folder wydawniczy na dysku. Nic nie kosztuje i nic nie wychodzi z Katedry — do Spotify wgrywasz paczkę sam w panelu dystrybutora."
@@ -129,7 +158,7 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
             {k && k.stan === 'przyjeta' && k.spotify && (
                 <div className="mt-2 rounded-lg border border-emerald-500/40 bg-emerald-950/30 p-2.5 text-emerald-100">
                     <div className="flex flex-wrap items-start gap-3">
-                        {k.spotify.okladka && <img src={`${bridgeUrl}/api/jason/kampanie/${k.id}/spotify/okladka`} alt="okładka 3000×3000" className="h-24 w-24 rounded-md object-cover" />}
+                        {k.spotify.okladka && <img src={`${bridgeUrl}/api/jason/kampanie/${k.id}/spotify/okladka?v=${k.okladka?.wersja ?? 1}`} alt="okładka 3000×3000" className="h-24 w-24 rounded-md object-cover" />}
                         <div className="min-w-0 flex-1">
                             <div className="font-bold">🚀 Karta wydawnicza · {k.stacja.tytul}</div>
                             <div className="break-all text-emerald-200/80">📂 _OtakOs_Muzyka/{k.spotify.folder}</div>
