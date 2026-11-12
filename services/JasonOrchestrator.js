@@ -4,11 +4,16 @@
  *
  * BEZ czatu i BEZ modelu językowego: kroki wykonuje kod, wprost na narzędziach Suno MCP mostu (services/SunoMcp.js).
  *   1. workspace  — `workspaces-list` → istniejący o nazwie albumu albo `workspaces-create` (padło = kampania idzie dalej bez)
- *   2. utwor      — `audio-create` (tryb prosty `description` albo własny `lyrics`+`style`), `idempotency_key` = id kampanii
- *   3. czekanie   — `audio-wait {ids, until: complete}` w pętli (każde ~50 s)
- *   4. pobranie   — plik z wyniku (SunoMcp sam zapisuje gotowe audio), inaczej `audio-download` (+ `confirm`, gdy trzeba kredytu)
+ *   2. glos       — persona z `voices-list` (My Voices: „KAEL (S.M.T.)”, „ELARA (S.M.T)”) → `voice_id`; Suno bierze JEDEN głos na utwór
+ *   3. utwor      — `audio-create` (tryb prosty `description` albo własny `lyrics`+`style`), `idempotency_key` = id kampanii
+ *   4. czekanie   — `audio-wait {ids, until: complete}` w pętli; z wyniku tylko metadane: długość i link do odsłuchu (suno.com/song/…)
  *   5. okladka    — Paleta: FLUX przez `cfg.okladka({ prompt })` (padło = pakiet bez okładki, z powodem; ↻ ponawia sam ten krok)
- *   6. pakiet     — stan `do_akceptacji` → 📥 Izba zgód (źródło `jason`) → StoL „Izba Akceptacji”: ✓ / ✕ zdalnie
+ *   6. pakiet     — stan `do_akceptacji` → 📥 Izba zgód (źródło `jason`) → StoL „Izba Akceptacji”: odsłuch, potem JEDNA wersja
+ *
+ * POBRANIA (Suweren 2026-11-12, po pierwszej prawdziwej kampanii): plan Suno Pro ma 20 pobrań z prawami komercyjnymi na
+ * miesiąc, a dwa pobrania naraz kończą się `rate_limited`. Dlatego potok NICZEGO nie pobiera (żadnego `audio-download`,
+ * żadnego zapisu z wyniku) — dopiero „✓ Pobierz wersję N” w Izbie woła `audio-download` dla tej jednej wersji
+ * (z `confirm`, bo kliknięcie Suwerena jest zgodą) i zapisuje ją do `_OtakOs_Muzyka/Suno MCP/`.
  *
  * KREDYTY: jedno `audio-create` = 2 utwory z konta Suno Suwerena. Ponowienie NIGDY nie tworzy utworu drugi raz, gdy
  * kampania ma już `klipy` — wznawia od czekania. Duch po restarcie mostu = błąd z powodem (↻ wznawia).
@@ -79,10 +84,27 @@ export function znajdzWorkspace(d, nazwa) {
     return hit;
 }
 
-/** Stany klipów z `audio-wait`: [{ id, status }] (odpowiedź z `clips` albo pojedynczy klip). */
+/** Stany klipów z `audio-wait`: [{ id, status, sekundy, odsluch }] (odpowiedź z `clips` albo pojedynczy klip). */
 export function stanyKlipow(d) {
     const lista = Array.isArray(d?.clips) && d.clips.length ? d.clips : d?.id ? [d] : [];
-    return lista.map((c) => ({ id: String(c.id ?? ''), status: String(c.status ?? (c.error ? 'error' : '')), tytul: c.title ?? null, blad: c.error ? tn(typeof c.error === 'string' ? c.error : c.error?.message ?? JSON.stringify(c.error), 200) : null }));
+    return lista.map((c) => ({
+        id: String(c.id ?? ''), status: String(c.status ?? (c.error ? 'error' : '')), tytul: c.title ?? null,
+        sekundy: Number(c.metadata?.duration ?? c.duration) > 0 ? Math.round(Number(c.metadata?.duration ?? c.duration)) : null,
+        odsluch: typeof c.song_url === 'string' && /^https:\/\//.test(c.song_url) ? c.song_url : null,
+        blad: c.error ? tn(typeof c.error === 'string' ? c.error : c.error?.message ?? JSON.stringify(c.error), 200) : null,
+    }));
+}
+export const linkOdsluchu = (id) => `https://suno.com/song/${encodeURIComponent(id)}`;
+export const czasUtworu = (s) => (Number(s) > 0 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '?:??');
+
+/** Persona głosowa z listy `voices-list`: id wprost albo nazwa („Kael” → „KAEL (S.M.T.)”) — porównanie po literach i cyfrach. */
+export function dopasujGlos(lista, zadany) {
+    const n = (x) => String(x ?? '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '');
+    const cel = n(zadany);
+    if (!cel) return null;
+    const glosy = (Array.isArray(lista) ? lista : []).filter((g) => g && typeof g.id === 'string');
+    const g = glosy.find((x) => x.id === String(zadany).trim()) ?? glosy.find((x) => n(x.name) === cel) ?? glosy.find((x) => n(x.name).startsWith(cel));
+    return g ? { id: g.id, nazwa: String(g.name ?? '') } : null;
 }
 
 /** Zlecenie → kampania (bez skutków ubocznych). Rzuca przy brakach. */
@@ -98,10 +120,14 @@ export function oczyscZlecenie(z = {}) {
     if (!stacja.tytul) throw new Error('Stacja bez tytułu.');
     if (!stacja.lyrics && !stacja.opis && !stacja.instrumental) throw new Error('Stacja potrzebuje opisu (tryb prosty) albo tekstu ze stylem (tryb własny).');
     const artysci = (Array.isArray(z.artysci) && z.artysci.length ? z.artysci : wzor.artysci ?? baza.artysci ?? []).map((a) => tn(a, 60)).filter(Boolean).slice(0, 6);
+    // 🎤 persona: `glos` = nazwa albo id z My Voices; false / 'brak' = bez persony. Bez pola: jeden artysta → jego głos,
+    // duet → BEZ persony (Suno przyjmuje jeden `voice_id` na utwór — zaśpiewałby obie partie; decyzja Suwerena).
+    const bezGlosu = z.glos === false || /^(brak|nie|none|false)$/i.test(String(z.glos ?? '').trim());
+    const zadany = bezGlosu ? null : tn(z.glos, 80) || (artysci.length === 1 ? artysci[0] : null);
     return {
         album: tn(z.album, 100) || ALBUM, stacja, artysci,
         okladka: z.okladka === false ? null : { prompt: tn(z.okladka?.prompt, 1800) || KLIMAT_OKLADKI },
-        kredytPobrania: z.kredytPobrania !== false, zlecil: tn(z.zlecil, 60) || 'Suweren', skad: tn(z.skad, 40) || 'hub',
+        glos: zadany ? { zadany, auto: !tn(z.glos, 80) } : null, zlecil: tn(z.zlecil, 60) || 'Suweren', skad: tn(z.skad, 40) || 'hub',
     };
 }
 
@@ -115,6 +141,7 @@ export function argumentyUtworu(k) {
     if (s.instrumental) a.instrumental = true;
     if (s.sekundy) a.duration = s.sekundy;
     if (k.workspace?.id) a.workspace_id = k.workspace.id;
+    if (k.glos?.id) a.voice_id = k.glos.id;
     return a;
 }
 
@@ -174,6 +201,27 @@ export function utworzJasona(cfg) {
         }
     }
 
+    async function listaGlosow() {
+        const out = [];
+        for (const collection of ['own', 'loved']) {
+            const d = daneWyniku((await cfg.suno.wywolaj('voices-list', { collection, limit: 100 }, { zapisz: false })).wynik);
+            for (const g of Array.isArray(d.voices) ? d.voices : []) if (g?.id && !out.some((x) => x.id === g.id)) out.push({ id: String(g.id), name: String(g.name ?? ''), kolekcja: collection });
+        }
+        return out;
+    }
+    async function krokGlos(k) {
+        if (!k.glos?.zadany || k.glos.id || k.klipy?.length) return;
+        await etap(k, 'glos', 'robi');
+        let g = null, powod = '';
+        try { g = dopasujGlos(await listaGlosow(), k.glos.zadany); if (!g) powod = `na koncie Suno nie ma głosu „${k.glos.zadany}” (My Voices)`; }
+        catch (e) { powod = tn(e.message, 200); }
+        if (g) { Object.assign(k.glos, g); await etap(k, 'glos', 'gotowe', { nazwa: g.nazwa }); return; }
+        // wskazany wprost → stop PRZED wydaniem kredytów (utwór obcym głosem to zmarnowane 2 wersje); dobrany sam → dalej bez persony
+        if (!k.glos.auto) { await etap(k, 'glos', 'blad', { powod }); throw new Error(`Persona głosowa: ${powod}. Nic nie zostało stworzone.`); }
+        k.uwagi.push(`Bez persony głosowej: ${powod}.`); k.glos = null;
+        await etap(k, 'glos', 'pominiety', { powod });
+    }
+
     async function krokUtwor(k) {
         if (k.klipy?.length) return;   // 💳 nigdy drugi raz
         await etap(k, 'utwor', 'robi');
@@ -187,51 +235,47 @@ export function utworzJasona(cfg) {
 
     async function krokCzekanie(k) {
         const koniec = (c) => ['complete', 'error'].includes(c.status);
-        if (k.klipy.every(koniec)) return;
+        const pelne = () => k.klipy.every(koniec) && k.klipy.every((c) => c.status === 'error' || c.sekundy);
+        if (pelne()) return;
         await etap(k, 'czekanie', 'robi');
-        for (let i = 0; i < (cfg.czekanMax ?? 20) && !k.klipy.every(koniec); i++) {
-            const r = await cfg.suno.wywolaj('audio-wait', { ids: k.klipy.map((c) => c.id), until: 'complete' });
+        for (let i = 0; i < (cfg.czekanMax ?? 20) && !pelne(); i++) {
+            // zapisz: false — z wyniku czekania NIC nie ląduje na dysku (limit pobrań komercyjnych)
+            const r = await cfg.suno.wywolaj('audio-wait', { ids: k.klipy.map((c) => c.id), until: 'complete' }, { zapisz: false });
             for (const s of stanyKlipow(daneWyniku(r.wynik))) {
                 const c = k.klipy.find((x) => x.id === s.id);
-                if (c) Object.assign(c, { status: s.status || c.status, ...(s.tytul ? { tytul: s.tytul } : {}), ...(s.blad ? { blad: s.blad } : {}) });
+                if (c) Object.assign(c, { status: s.status || c.status, ...(s.tytul ? { tytul: s.tytul } : {}), ...(s.sekundy ? { sekundy: s.sekundy } : {}), ...(s.odsluch ? { odsluch: s.odsluch } : {}), ...(s.blad ? { blad: s.blad } : {}) });
             }
-            for (const u of r.utwory ?? []) { const c = k.klipy.find((x) => x.id === u.id); if (c && u.plik) c.plik = u.plik; }
             await zapisz(k);
-            if (!k.klipy.every(koniec) && cfg.przerwaMs) await new Promise((ok) => setTimeout(ok, cfg.przerwaMs));
+            if (k.klipy.every(koniec)) break;   // długości może nie być w odpowiedzi — nie kręcimy się po nią w kółko
+            if (cfg.przerwaMs) await new Promise((ok) => setTimeout(ok, cfg.przerwaMs));
         }
+        for (const c of k.klipy) if (!c.odsluch) c.odsluch = linkOdsluchu(c.id);
         if (!k.klipy.some((c) => c.status === 'complete')) throw new Error(k.klipy.every((c) => c.status === 'error') ? `Suno nie zrobił utworu: ${k.klipy.map((c) => c.blad).filter(Boolean).join(' | ') || 'błąd bez opisu'}` : 'Suno wciąż liczy utwór — ↻ wznowi czekanie (bez nowych kredytów).');
         await etap(k, 'czekanie', 'gotowe');
     }
 
-    async function krokPobranie(k) {
-        const brak = () => k.klipy.filter((c) => c.status === 'complete' && !c.plik);
-        if (!brak().length) return;
-        await etap(k, 'pobranie', 'robi');
-        for (const c of brak()) {
-            try {
-                let d = {};
-                for (let i = 0, confirm = false; i < 6; i++) {
-                    const r = await cfg.suno.wywolaj('audio-download', { id: c.id, format: 'mp3', ...(confirm ? { confirm: true } : {}) }, { zapisz: false });
-                    d = daneWyniku(r.wynik);
-                    if (r.wynik?.isError) throw new Error(tekstWyniku(r.wynik) || 'audio-download: błąd');
-                    if (d.status === 'requires_credit' && !confirm) {
-                        if (!k.kredytPobrania) throw new Error('pobranie wymaga kredytu pobrania Suno, a kampania ma kredytPobrania: false');
-                        confirm = true; c.kredytPobrania = true; continue;
-                    }
-                    if (d.status === 'processing' && !d.url) continue;
-                    break;
-                }
-                if (typeof d.url !== 'string' || !/^https:\/\//.test(d.url)) throw new Error(`Suno nie oddał adresu pliku (${tn(d.status ?? d.reason ?? 'brak', 80)})`);
-                const [u] = await cfg.suno.zapiszUtwory(null, [{ id: c.id, tytul: c.tytul ?? k.stacja.tytul, adres: d.url }]);
-                if (!u?.plik) throw new Error(u?.blad ?? 'zapis się nie udał');
-                c.plik = u.plik; delete c.bladPobrania;
-            } catch (e) { c.bladPobrania = tn(e.message, 300); }
-            await zapisz(k);
+    /** ⬇ Pobranie JEDNEJ wersji — tylko na decyzję Suwerena. `rate_limited` = chwila przerwy i jeszcze raz (do 3 prób). */
+    async function pobierzKlip(k, c) {
+        let d = {}, confirm = false;
+        for (let i = 0; i < 8; i++) {
+            const r = await cfg.suno.wywolaj('audio-download', { id: c.id, format: 'mp3', ...(confirm ? { confirm: true } : {}) }, { zapisz: false });
+            d = daneWyniku(r.wynik);
+            const tekst = r.wynik?.isError ? tekstWyniku(r.wynik) || 'audio-download: błąd' : '';
+            if (/rate_limited/.test(tekst) || d.code === 'rate_limited') {
+                if (i >= 3) throw new Error('Suno ogranicza tempo pobrań (rate_limited) — spróbuj za minutę.');
+                await new Promise((ok) => setTimeout(ok, cfg.przerwaPobraniaMs ?? Math.max(3000, (Number(d.retry_after_seconds) || 1) * 1500)));
+                continue;
+            }
+            if (tekst) throw new Error(tekst);
+            if (d.status === 'requires_credit' && !confirm) { confirm = true; c.kredytPobrania = true; continue; }   // klik Suwerena = zgoda na to jedno pobranie
+            if (d.status === 'processing' && !d.url) continue;
+            break;
         }
-        if (!k.klipy.some((c) => c.plik)) throw new Error(`Utwór jest w Suno, ale nie dał się pobrać: ${k.klipy.map((c) => c.bladPobrania).filter(Boolean).join(' | ')}`);
-        const niepobrane = brak();
-        if (niepobrane.length) k.uwagi.push(`${niepobrane.length} z ${k.klipy.length} wersji nie pobrano (${niepobrane.map((c) => c.bladPobrania).join(' | ')}).`);
-        await etap(k, 'pobranie', 'gotowe');
+        if (typeof d.url !== 'string' || !/^https:\/\//.test(d.url)) throw new Error(`Suno nie oddał adresu pliku (${tn(d.status ?? d.reason ?? 'brak', 80)})`);
+        const [u] = await cfg.suno.zapiszUtwory(null, [{ id: c.id, tytul: c.tytul ?? k.stacja.tytul, adres: d.url }]);
+        if (!u?.plik) throw new Error(u?.blad ?? 'zapis się nie udał');
+        c.plik = u.plik; delete c.bladPobrania;
+        return u.plik;
     }
 
     async function krokOkladka(k) {
@@ -258,10 +302,10 @@ export function utworzJasona(cfg) {
         if (!k) return;
         k.stan = 'robi'; delete k.blad; await zapisz(k);
         try {
-            await krokWorkspace(k); await krokUtwor(k); await krokCzekanie(k); await krokPobranie(k); await krokOkladka(k);
+            await krokWorkspace(k); await krokGlos(k); await krokUtwor(k); await krokCzekanie(k); await krokOkladka(k);
             k.stan = 'do_akceptacji'; k.gotowe = new Date().toISOString();
             await etap(k, 'pakiet', 'gotowe');
-            wiesc(`🎛️ Jason: pakiet „${k.stacja.tytul}” czeka na Twoje ✓ (Izba Akceptacji)${k.okladka?.blad ? ' — bez okładki' : ''}.`);
+            wiesc(`🎛️ Jason: „${k.stacja.tytul}” — ${k.klipy.filter((c) => c.status === 'complete').length} wersje do odsłuchu w Izbie Akceptacji${k.okladka?.blad ? ' (bez okładki)' : ''}. Nic nie pobrano — wybierz jedną.`);
         } catch (e) {
             k.stan = 'blad'; k.blad = tn(e.message, 500); await zapisz(k);
             wiesc(`🎛️ Jason: kampania „${k.stacja.tytul}” stanęła — ${tn(e.message, 160)}`);
@@ -290,22 +334,44 @@ export function utworzJasona(cfg) {
         if (wRobocie.has(k.id)) throw new Error('Ta kampania właśnie pracuje.');
         if (['przyjeta', 'odrzucona'].includes(k.stan)) throw new Error(`Kampania jest już ${k.stan}.`);
         if (okladka && k.okladka) { delete k.okladka.plik; delete k.okladka.blad; }
+        delete k.etapy.pobranie; delete k.kredytPobrania;
+        for (const c of k.klipy ?? []) { delete c.bladPobrania; if (!c.plik) delete c.kredytPobrania; }
         k.stan = 'robi';
         wRobocie.set(k.id, Promise.resolve());
         await zapisz(k);
         rusz(k.id);
         return k;
     }
-    async function rozstrzygnij(id, akcja, { powod = '', kto = null } = {}) {
+    const pobierane = new Set();
+    /** ✓ = pobranie WSKAZANEJ wersji (`pobierz-N` albo `przyjmij` + `wersja`: numer od 1 lub id klipu); ✕ = odrzucenie bez pobierania. */
+    async function rozstrzygnij(id, akcja, { powod = '', kto = null, wersja = null } = {}) {
         const k = await wczytaj(id);
         if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
         if (k.stan !== 'do_akceptacji') throw new Error(`Kampania nie czeka na decyzję (stan: ${k.stan}).`);
-        if (!['przyjmij', 'odrzuc'].includes(akcja)) throw new Error(`Nie znam akcji „${akcja}”.`);
-        k.stan = akcja === 'przyjmij' ? 'przyjeta' : 'odrzucona';
-        k.decyzja = { werdykt: akcja, powod: tn(powod, 300), kto: kto ?? 'Suweren', kiedy: new Date().toISOString() };
+        const m = /^pobierz-(\d{1,2})$/.exec(String(akcja));
+        if (!m && !['przyjmij', 'odrzuc'].includes(akcja)) throw new Error(`Nie znam akcji „${akcja}”.`);
+        let wybrana = null;
+        if (akcja !== 'odrzuc') {
+            const gotowe = k.klipy.filter((c) => c.status === 'complete');
+            const w = m ? Number(m[1]) : wersja;
+            wybrana = w == null || w === '' ? (gotowe.length === 1 ? gotowe[0] : null) : /^\d{1,2}$/.test(String(w)) ? k.klipy[Number(w) - 1] : k.klipy.find((c) => c.id === String(w));
+            if (!wybrana || wybrana.status !== 'complete') throw new Error(`Wskaż wersję do pobrania (1–${k.klipy.length}) — pobieram tylko jedną, każda schodzi z miesięcznego limitu pobrań Suno.`);
+            if (!wybrana.plik) {
+                if (pobierane.has(k.id)) throw new Error('Ta kampania właśnie pobiera wersję — poczekaj chwilę.');
+                pobierane.add(k.id);
+                try { await pobierzKlip(k, wybrana); }
+                catch (e) { wybrana.bladPobrania = tn(e.message, 300); await zapisz(k); throw new Error(`Nie pobrano wersji ${k.klipy.indexOf(wybrana) + 1}: ${wybrana.bladPobrania} Kampania dalej czeka w Izbie.`); }
+                finally { pobierane.delete(k.id); }
+            }
+            k.wybrana = { id: wybrana.id, wersja: k.klipy.indexOf(wybrana) + 1, plik: wybrana.plik };
+        }
+        k.stan = akcja === 'odrzuc' ? 'odrzucona' : 'przyjeta';
+        k.decyzja = { werdykt: akcja === 'odrzuc' ? 'odrzuc' : 'przyjmij', powod: tn(powod, 300), kto: kto ?? 'Suweren', kiedy: new Date().toISOString() };
         await zapisz(k);
-        try { cfg.decyzja?.({ zrodlo: 'jason', obiekt: k.id, tytul: `${k.album} · ${k.stacja.tytul}`, werdykt: akcja, opis: k.decyzja.powod }); } catch { /* JaJo opcjonalne */ }
-        wiesc(`🎛️ Jason: „${k.stacja.tytul}” — ${akcja === 'przyjmij' ? '✓ przyjęte' : '✕ odrzucone'}${k.decyzja.powod ? ` (${k.decyzja.powod})` : ''}. Pliki zostają w bibliotece.`);
+        try { cfg.decyzja?.({ zrodlo: 'jason', obiekt: k.id, tytul: `${k.album} · ${k.stacja.tytul}`, werdykt: k.decyzja.werdykt, opis: [k.wybrana ? `wersja ${k.wybrana.wersja}` : '', k.decyzja.powod].filter(Boolean).join(' · ') }); } catch { /* JaJo opcjonalne */ }
+        wiesc(k.wybrana
+            ? `🎛️ Jason: „${k.stacja.tytul}” — ✓ wersja ${k.wybrana.wersja} pobrana do _OtakOs_Muzyka/${k.wybrana.plik}.`
+            : `🎛️ Jason: „${k.stacja.tytul}” — ✕ odrzucone${k.decyzja.powod ? ` (${k.decyzja.powod})` : ''}. Nic nie pobrano; wersje zostają w Suno.`);
         return k;
     }
     const sciezkaOkladki = (k) => (k?.okladka?.plik ? path.join(katalog, k.id, k.okladka.plik) : null);
@@ -316,15 +382,17 @@ export function utworzJasona(cfg) {
         czekajace: async () => (await lista()).filter((k) => k.stan === 'do_akceptacji').map((k) => ({
             id: k.id, kiedy: k.gotowe ?? k.utworzono,
             tytul: `${k.album} · Stacja ${k.stacja.nr}: ${k.stacja.tytul}`,
-            opis: [`${k.artysci.join(' & ') || 'Suno'} — wersji w _OtakOs_Muzyka: ${k.klipy.filter((c) => c.plik).length} (${k.klipy.filter((c) => c.plik).map((c) => c.plik).join(', ')}).`,
+            opis: [`${k.artysci.join(' & ') || 'Suno'}${k.glos?.nazwa ? ` · głos: ${k.glos.nazwa}` : ''}. NIC nie pobrano — odsłuchaj w Suno i pobierz jedną:`,
+                ...k.klipy.map((c, i) => (c.status === 'complete' ? `Wersja ${i + 1} (${czasUtworu(c.sekundy)}): ${c.odsluch ?? linkOdsluchu(c.id)}` : `Wersja ${i + 1}: błąd Suno`)),
                 k.okladka?.plik ? 'Okładka: Paleta (FLUX).' : k.okladka ? `Bez okładki: ${k.okladka.blad ?? 'pominięta'}.` : '', ...k.uwagi].filter(Boolean).join(' '),
             obrazy: sciezkaOkladki(k) ? [sciezkaOkladki(k)] : [],
-            akcje: [{ id: 'przyjmij', etykieta: '✓ Przyjmij pakiet', zdalnie: true }, { id: 'odrzuc', etykieta: '✕ Odrzuć', zdalnie: true }],
+            akcje: [...k.klipy.map((c, i) => (c.status === 'complete' ? { id: `pobierz-${i + 1}`, etykieta: `✓ Pobierz wersję ${i + 1} (${czasUtworu(c.sekundy)})`, zdalnie: true, potwierdz: 'Pobranie zużyje 1 z miesięcznych pobrań Suno z prawami komercyjnymi. Pobrać tę wersję?' } : null)).filter(Boolean),
+                { id: 'odrzuc', etykieta: '✕ Odrzuć (bez pobierania)', zdalnie: true }],
         })),
         decyduj: (id, akcja, { powod } = {}) => rozstrzygnij(id, akcja, { powod }),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, lista, kampania: wczytaj, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
@@ -349,7 +417,10 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
         return p ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Ta kampania nie ma okładki.' });
     });
     app.post('/api/jason/kampanie/:id/ponow', async (req, res) => { try { res.json({ success: true, kampania: await J.ponow(req.params.id, { okladka: req.body?.okladka === true }) }); } catch (e) { blad(res, e); } });
-    for (const akcja of ['przyjmij', 'odrzuc']) {
-        app.post(`/api/jason/kampanie/:id/${akcja}`, async (req, res) => { try { res.json({ success: true, kampania: await J.rozstrzygnij(req.params.id, akcja, { powod: req.body?.powod }) }); } catch (e) { blad(res, e); } });
+    // ✓ przyjmij / pobierz {wersja: 1|2|id klipu} = pobranie tej JEDNEJ wersji; odrzuc = bez pobierania
+    for (const [trasa, akcja] of [['przyjmij', 'przyjmij'], ['pobierz', 'przyjmij'], ['odrzuc', 'odrzuc']]) {
+        app.post(`/api/jason/kampanie/:id/${trasa}`, async (req, res) => { try { res.json({ success: true, kampania: await J.rozstrzygnij(req.params.id, akcja, { powod: req.body?.powod, wersja: req.body?.wersja ?? null }) }); } catch (e) { blad(res, e); } });
     }
+    // 🎤 persony głosowe konta Suno (My Voices + ulubione) — do wyboru w Hubie i Music Studio
+    app.get('/api/jason/glosy', async (_req, res) => { try { res.json({ success: true, glosy: await J.glosy() }); } catch (e) { res.status(e.kod === 'NIEPOLACZONE' ? 409 : 502).json({ success: false, message: e.message }); } });
 }

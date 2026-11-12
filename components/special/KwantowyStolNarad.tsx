@@ -5,6 +5,7 @@
  * * v2.0 - Protokół Ouroboros: Głęboka Pamięć Akaszy + Autostrada W.I.D.O.K.
  */
 
+import { JasonKampania } from './JasonKampania';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, BrainCircuit, Users, BookOpen, SquareSquare, Zap, RefreshCw, Database, Plus, X, Bot, Layers, FileText } from 'lucide-react';
@@ -125,37 +126,6 @@ export const KwantowyStolNarad: React.FC = () => {
     // Zmienne Skarbca
     const [showCrystals, setShowCrystals] = useState(false);
 
-    // 🎛️ Jason — kampania wykonywana kodem mostu (POST /api/jason/wykonaj-kampanie), bez czatu z modelem
-    const [kampaniaTrwa, setKampaniaTrwa] = useState(false);
-    const [kampaniaInfo, setKampaniaInfo] = useState('');
-    const opisKampanii = (k: any): string => {
-        if (!k) return '';
-        if (k.stan === 'do_akceptacji') return `✓ Pakiet czeka w Izbie Akceptacji — wersji: ${(k.klipy || []).filter((c: any) => c.plik).length}${k.okladka?.plik ? ', z okładką' : k.okladka?.blad ? ` · bez okładki: ${k.okladka.blad}` : ''}.`;
-        if (k.stan === 'blad') return `⚠ ${k.blad}`;
-        if (k.stan === 'robi') return `Jason pracuje: ${Object.entries(k.etapy || {}).map(([n, e]: [string, any]) => `${n} ${e.stan}`).join(' → ') || 'start'}…`;
-        return `Kampania ${k.stan}.`;
-    };
-    const zlecKampanieJasonowi = async () => {
-        setKampaniaTrwa(true);
-        setKampaniaInfo('Zlecam Jasonowi…');
-        try {
-            const r = await fetch('http://127.0.0.1:3001/api/jason/wykonaj-kampanie', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ stacja: 1, skad: 'stol-narad' })
-            });
-            const d = await r.json().catch(() => null);
-            let k = d?.kampania;
-            if (!k) throw new Error(d?.message || `HTTP ${r.status}`);
-            setKampaniaInfo(d.success ? opisKampanii(k) : `${d.message} ${opisKampanii(k)}`);
-            for (let i = 0; i < 120 && k.stan === 'robi'; i++) {   // do 20 min: Suno + FLUX
-                await new Promise((ok) => setTimeout(ok, 10000));
-                const s = await fetch(`http://127.0.0.1:3001/api/jason/kampanie/${k.id}`).then((x) => x.json()).catch(() => null);
-                if (s?.kampania) { k = s.kampania; setKampaniaInfo(opisKampanii(k)); }
-            }
-        } catch (e: any) {
-            setKampaniaInfo(`⚠ Nie zlecono: ${e?.message || e}`);
-        } finally { setKampaniaTrwa(false); }
-    };
     const [crystalArchive, setCrystalArchive] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -645,20 +615,8 @@ Wygeneruj od 1 do 3 zadań.`;
                     </div>
                 </div>
 
-                {/* 🎛️ Jason: kampania wykonywana kodem mostu — Suno → okładka → Izba Akceptacji */}
-                <div className="mt-3 rounded-xl border border-violet-500/40 bg-violet-950/30 px-4 py-2.5 text-xs font-mono text-violet-200">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                        <span>🎛️ Jason · „Zero Gravity Heart (0.00G Sessions)” · Stacja 1: Velvet Booth for Two (82 BPM Intro) — Suno (kredyty konta, 2 wersje) → okładka Palety → Izba Akceptacji</span>
-                        <button
-                            onClick={zlecKampanieJasonowi}
-                            disabled={kampaniaTrwa}
-                            className="shrink-0 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-bold tracking-wider disabled:opacity-50"
-                        >
-                            {kampaniaTrwa ? 'JASON PRACUJE…' : 'WYKONAJ KAMPANIĘ'}
-                        </button>
-                    </div>
-                    {kampaniaInfo && <div className="mt-1.5 text-violet-300/90">{kampaniaInfo}</div>}
-                </div>
+                {/* 🎛️ Jason: kampania kodem mostu — Suno → okładka → odsłuch → pobranie JEDNEJ wersji */}
+                <JasonKampania />
 
                 {/* 🧠 Podpowiedź z Akaszy */}
                 <AnimatePresence>

@@ -197,7 +197,7 @@
     <div class="box" id="jason-box">
         <div class="box-title" style="color:var(--purple);">🎛️ Jason · Stacja 1: „Velvet Booth for Two (82 BPM Intro)”</div>
         <div style="display:flex; gap:8px; align-items:center;">
-            <div id="jason-info" style="flex:1; font-size:11px; color:var(--mut);">Suno (kredyty konta) → pobranie → okładka Palety → pakiet w Izbie Akceptacji.</div>
+            <div id="jason-info" style="flex:1; font-size:11px; color:var(--mut);">Suno (kredyty konta, 2 wersje) → okładka Palety → odsłuch w Izbie Akceptacji; pobierasz jedną wybraną wersję.</div>
             <button id="jason-btn" class="btn" style="background:var(--purple); color:#fff;">WYKONAJ</button>
         </div>
     </div>
@@ -296,7 +296,7 @@
 
     // 🎛️ Jason — POST /api/jason/wykonaj-kampanie, potem podgląd stanu co 10 s
     const opisKampanii = (k) => !k ? '' : k.stan === 'do_akceptacji'
-        ? `✓ Pakiet czeka w Izbie Akceptacji — wersji: ${(k.klipy || []).filter((c) => c.plik).length}${k.okladka && k.okladka.plik ? ', z okładką' : k.okladka && k.okladka.blad ? ' · bez okładki: ' + k.okladka.blad : ''}.`
+        ? `✓ Gotowe do odsłuchu — wersji: ${(k.klipy || []).filter((c) => c.status === 'complete').length}${k.okladka && k.okladka.plik ? ', z okładką' : k.okladka && k.okladka.blad ? ' · bez okładki: ' + k.okladka.blad : ''}. Nic nie pobrano: odsłuchaj i wybierz JEDNĄ wersję w zakładce Izba Akceptacji.`
         : k.stan === 'blad' ? `⚠ ${k.blad}`
         : k.stan === 'robi' ? `Jason pracuje: ${Object.entries(k.etapy || {}).map(([n, e]) => `${n} ${e.stan}`).join(' → ') || 'start'}…`
         : `Kampania ${k.stan}.`;

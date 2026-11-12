@@ -9,6 +9,7 @@
  * - Szybkie pole przypisywania aktywnego zadania dla wybranego agenta
  */
 
+import { JasonKampania } from './JasonKampania';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -148,37 +149,6 @@ export const StolMobilny: React.FC<StolMobilnyProps> = ({
 
     const chatScrollRef = useRef<HTMLDivElement>(null);
 
-    // 🎛️ Jason — kampania wykonywana kodem mostu (POST /api/jason/wykonaj-kampanie), bez czatu z modelem
-    const [kampaniaTrwa, setKampaniaTrwa] = useState(false);
-    const [kampaniaInfo, setKampaniaInfo] = useState('');
-    const opisKampanii = (k: any): string => {
-        if (!k) return '';
-        if (k.stan === 'do_akceptacji') return `✓ Pakiet czeka w Izbie Akceptacji — wersji: ${(k.klipy || []).filter((c: any) => c.plik).length}${k.okladka?.plik ? ', z okładką' : k.okladka?.blad ? ` · bez okładki: ${k.okladka.blad}` : ''}.`;
-        if (k.stan === 'blad') return `⚠ ${k.blad}`;
-        if (k.stan === 'robi') return `Jason pracuje: ${Object.entries(k.etapy || {}).map(([n, e]: [string, any]) => `${n} ${e.stan}`).join(' → ') || 'start'}…`;
-        return `Kampania ${k.stan}.`;
-    };
-    const zlecKampanieJasonowi = async () => {
-        setKampaniaTrwa(true);
-        setKampaniaInfo('Zlecam Jasonowi…');
-        try {
-            const r = await fetch(`${bridgeUrl}/api/jason/wykonaj-kampanie`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ stacja: 1, skad: 'stol-narad' })
-            });
-            const d = await r.json().catch(() => null);
-            let k = d?.kampania;
-            if (!k) throw new Error(d?.message || `HTTP ${r.status}`);
-            setKampaniaInfo(d.success ? opisKampanii(k) : `${d.message} ${opisKampanii(k)}`);
-            for (let i = 0; i < 120 && k.stan === 'robi'; i++) {   // do 20 min: Suno + FLUX
-                await new Promise((ok) => setTimeout(ok, 10000));
-                const s = await fetch(`${bridgeUrl}/api/jason/kampanie/${k.id}`).then((x) => x.json()).catch(() => null);
-                if (s?.kampania) { k = s.kampania; setKampaniaInfo(opisKampanii(k)); }
-            }
-        } catch (e: any) {
-            setKampaniaInfo(`⚠ Nie zlecono: ${e?.message || e}`);
-        } finally { setKampaniaTrwa(false); }
-    };
 
     // ── Pobieranie pamięci stołu z mostu ──────────────────────────────
     const fetchMemories = useCallback(async () => {
@@ -647,21 +617,7 @@ Twoje zadanie: Odpowiedz krótko, treściwie (maksymalnie 3 zdania), w swoim uni
                             <span>{isDebating ? 'OBRADY...' : 'ZWOŁAJ'}</span>
                         </button>
                     </div>
-                    {selectedAgentIds.includes('jason') && (
-                        <div className="mt-2 rounded-xl border border-violet-500/40 bg-violet-950/30 p-2 text-[11px] font-mono text-violet-200">
-                            <div className="flex items-center justify-between gap-2">
-                                <span>🎛️ Jason · „Zero Gravity Heart” · Stacja 1: „Velvet Booth for Two (82 BPM Intro)” — Suno (kredyty konta) → okładka → Izba Akceptacji</span>
-                                <button
-                                    onClick={zlecKampanieJasonowi}
-                                    disabled={kampaniaTrwa}
-                                    className="shrink-0 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-bold disabled:opacity-50"
-                                >
-                                    {kampaniaTrwa ? 'PRACUJE…' : 'WYKONAJ KAMPANIĘ'}
-                                </button>
-                            </div>
-                            {kampaniaInfo && <div className="mt-1 text-violet-300/90">{kampaniaInfo}</div>}
-                        </div>
-                    )}
+                    {selectedAgentIds.includes('jason') && <JasonKampania bridgeUrl={bridgeUrl} kompakt />}
                 </div>
             </div>
 
