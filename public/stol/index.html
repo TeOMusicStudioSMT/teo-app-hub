@@ -198,12 +198,21 @@
         <div class="box-title" style="color:var(--purple);">🎛️ Jason ·
             <select id="jason-stacja" style="background:#0b0c10; color:inherit; border:1px solid var(--purple); border-radius:8px; padding:4px 6px; display:block; width:100%; box-sizing:border-box; margin-top:6px; text-transform:none;">
                 <option value="1">Stacja 1: Velvet Booth for Two (82 BPM Intro)</option>
-                <option value="2">Stacja 2: Closer Than Gravity (Elara Solo) · głos ELARA (S.M.T)</option>
             </select>
+            <button id="stacja-nowa-btn" class="btn" style="margin-top:6px; background:transparent; border:1px solid var(--purple); color:var(--purple); padding:4px 10px; font-size:11px;">+ Nowa stacja</button>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
             <div id="jason-info" style="flex:1; font-size:11px; color:var(--mut);">Suno (kredyty konta, 2 wersje) → okładka Palety → odsłuch w Izbie Akceptacji; pobierasz jedną wybraną wersję.</div>
             <button id="jason-btn" class="btn" style="background:var(--purple); color:#fff;">WYKONAJ</button>
+        </div>
+        <!-- ➕ nowa stacja: wpis na liście w moście, nic nie kosztuje -->
+        <div id="stacja-form" style="display:none; margin-top:8px; flex-direction:column; gap:6px;">
+            <input type="text" id="st-tytul" placeholder="Tytuł utworu">
+            <select id="st-glos"><option value="">🎤 bez persony</option></select>
+            <input type="text" id="st-artysci" placeholder="Artyści, po przecinku (puste = z persony)">
+            <input type="text" id="st-styl" placeholder="Styl / tagi Suno, np. neo-soul, 82 bpm…">
+            <textarea id="st-tekst" rows="6" placeholder="Tekst utworu z tagami sekcji: [Verse 1] … [Chorus] …" style="resize:vertical;"></textarea>
+            <button id="st-zapisz" class="btn" style="background:var(--purple); color:#fff;">💾 Zapisz stację</button>
         </div>
     </div>
 
@@ -305,6 +314,39 @@
         : k.stan === 'blad' ? `⚠ ${k.blad}`
         : k.stan === 'robi' ? `Jason pracuje: ${Object.entries(k.etapy || {}).map(([n, e]) => `${n} ${e.stan}`).join(' → ') || 'start'}…`
         : `Kampania ${k.stan}.`;
+    // 🎚️ lista stacji z mostu (wbudowane + dopisane) i ➕ formularz nowej
+    const selStacji = document.getElementById('jason-stacja');
+    function pokazStacje(stacje, wybrana) {
+        if (!Array.isArray(stacje) || !stacje.length) return;
+        selStacji.innerHTML = '';
+        for (const x of stacje) { const o = document.createElement('option'); o.value = x.nr; o.textContent = `Stacja ${x.nr}: ${x.tytul}${x.glos ? ' · głos ' + x.glos : ''}`; selStacji.appendChild(o); }
+        if (wybrana) selStacji.value = String(wybrana);
+    }
+    api('/api/jason/stacje').then((r) => r.json()).then((d) => { if (d && d.success) pokazStacje(d.stacje); }).catch(() => {});
+    document.getElementById('stacja-nowa-btn').addEventListener('click', async () => {
+        const form = document.getElementById('stacja-form'), otwarty = form.style.display !== 'none';
+        form.style.display = otwarty ? 'none' : 'flex';
+        document.getElementById('stacja-nowa-btn').textContent = otwarty ? '+ Nowa stacja' : '✕ zwiń';
+        const sel = document.getElementById('st-glos');
+        if (!otwarty && sel.options.length === 1) {   // persony konta Suno — lista z mostu
+            try { const d = await api('/api/jason/glosy').then((r) => r.json()); for (const g of (d && d.glosy) || []) { const o = document.createElement('option'); o.value = g.name; o.textContent = '🎤 ' + g.name; sel.appendChild(o); } } catch (e) { /* bez listy: zostaje „bez persony” */ }
+        }
+    });
+    document.getElementById('st-zapisz').addEventListener('click', async () => {
+        const w = (id) => document.getElementById(id).value, info = document.getElementById('jason-info'), btn = document.getElementById('st-zapisz');
+        btn.disabled = true;
+        try {
+            const r = await api('/api/jason/stacje', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tytul: w('st-tytul'), glos: w('st-glos') || 'brak', artysci: w('st-artysci'), styl: w('st-styl'), tekst: w('st-tekst') }) });
+            const d = await r.json().catch(() => null);
+            if (!d || !d.success) throw new Error((d && d.message) || `HTTP ${r.status}`);
+            pokazStacje(d.stacje, d.stacja.nr);
+            for (const id of ['st-tytul', 'st-artysci', 'st-styl', 'st-tekst']) document.getElementById(id).value = '';
+            document.getElementById('stacja-form').style.display = 'none';
+            document.getElementById('stacja-nowa-btn').textContent = '+ Nowa stacja';
+            info.textContent = `✓ Dodano Stację ${d.stacja.nr}: ${d.stacja.tytul}. „WYKONAJ” stworzy utwór.`;
+        } catch (e) { info.textContent = `⚠ Stacja niezapisana: ${e.message}`; }
+        btn.disabled = false;
+    });
     document.getElementById('jason-btn').addEventListener('click', async () => {
         const btn = document.getElementById('jason-btn'), info = document.getElementById('jason-info');
         btn.disabled = true; info.textContent = 'Zlecam Jasonowi…';

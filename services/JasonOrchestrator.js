@@ -18,6 +18,9 @@
  * 🎨 OKŁADKA OD NOWA: `przerysujOkladke(id)` działa także dla przyjętej kampanii (FLUX w tle, stara zostaje do udanej
  * zamiany) i od razu podmienia `cover_3000x3000.jpg` w paczce Spotify. 🎤 Stacje niosą własną personę (Stacja 2 = Elara).
  *
+ * ➕ STACJE: wbudowane `STACJE` 1–5 (album „Zero Gravity Heart”, sztafeta głosów Kael ↔ Elara) + własne z interfejsu
+ * (`dodajStacje` → `_OtakOs_Wymiar/jason/stacje.json`, numer nadaje kod) — nowy utwór bez edycji tego pliku.
+ *
  * 🚀 PACZKA SPOTIFY (Suweren 2026-11-12): po ✓ i pobraniu wersji `przygotujSpotify(id)` składa folder wydawniczy
  * `_OtakOs_Muzyka/Spotify_Releases/<album>/<NN>_<tytuł>/`: `master.wav` (44,1 kHz, 16 bit, stereo), `original.mp3`,
  * `cover_3000x3000.jpg`, `lyrics_clean.txt`, `spotify_metadata.json`. Master: najpierw bezstratny WAV z Suno
@@ -101,6 +104,88 @@ export const STACJE = {
             'Zero point zero G...',
         ].join('\n'),
     },
+    // sztafeta głosów Kael ↔ Elara (Suweren 2026-11-12): 3 Kael, 4 Elara, 5 Kael (outro albumu, w opisie obok Elary)
+    3: {
+        nr: 3, tytul: 'Amber Light on Your Skin (Kael Solo)', bpm: 84, artysci: ['Kael'], glos: 'KAEL (S.M.T.)', gatunek: 'R&B/Soul', jezyk: 'EN',
+        styl: 'sensual neo-soul groove, late night analog lounge, 84 bpm, deep warm baritone male vocal, fretless bass, mellow electric guitar licks, Fender Rhodes piano, brushed drums, vinyl warmth',
+        lyrics: [
+            '[Intro - Fretless bass groove at 84 BPM, mellow electric guitar lick, warm Rhodes chords]',
+            '[Verse 1]',
+            'Pour another cup of midnight in your hand',
+            'No one left to rush us through this quiet land',
+            'Amber light is falling softly on your skin',
+            'Tracing every place where the new world begins',
+            '[Chorus]',
+            "We don't need the noise outside the velvet door",
+            'Everything we searched for is right here on the floor',
+            'Slow it down to eighty-four, let the night unwind',
+            'Leave the weight of yesterday a million miles behind',
+            '[Verse 2]',
+            'I can hear the static melting in your sigh',
+            'Underneath the ceiling of a painted sky',
+            'Every single second worth its weight in gold',
+            'The sweetest little secret that was never told',
+            '[Chorus]',
+            "We don't need the noise outside the velvet door",
+            'Everything we searched for is right here on the floor',
+            'Slow it down to eighty-four, let the night unwind',
+            'Leave the weight of yesterday a million miles behind',
+            '[Outro - Deep baritone whisper over fading fretless bass and Rhodes]',
+            'Amber light on your skin...',
+            'Stay right here... zero point zero G...',
+        ].join('\n'),
+    },
+    4: {
+        nr: 4, tytul: 'Midnight Espresso (11:11) (Elara Solo)', bpm: 80, artysci: ['Elara'], glos: 'ELARA (S.M.T)', gatunek: 'R&B/Soul', jezyk: 'EN',
+        styl: 'cinematic sensual soul, velvet dream-pop, 80 bpm, silky intimate female vocal, lush analog synth pads, warm Fender Rhodes, deep heartbeat bass, late night diner atmosphere',
+        lyrics: [
+            '[Intro - Lush analog synth pad, soft Rhodes chords at 80 BPM, breathy female vocal]',
+            '[Verse 1]',
+            'Steam is rising slowly from a porcelain cup',
+            'The world outside is spinning, but we gave it up',
+            'Eleven-eleven glowing on the diner wall',
+            'In this quiet sanctuary we have it all',
+            '[Chorus]',
+            'Taste of midnight espresso on your lips',
+            'Every heavy shadow gently slips',
+            'Suspended in the silence, crystalline and free',
+            'Nothing left between the stars and you and me',
+            '[Verse 2]',
+            'Fingers intertwined across the wooden grain',
+            'Listening to the rhythm of the silver rain',
+            'Every spoken whisper turns from gas to gold',
+            'In the warmest story that was ever told',
+            '[Chorus]',
+            'Taste of midnight espresso on your lips',
+            'Every heavy shadow gently slips',
+            'Suspended in the silence, crystalline and free',
+            'Nothing left between the stars and you and me',
+            '[Outro - Silky close-mic whisper]',
+            'Eleven-eleven...',
+            'Zero gravity heart...',
+        ].join('\n'),
+    },
+    5: {
+        nr: 5, tytul: 'Stay Until Dawn (0.00G Outro)', bpm: 76, artysci: ['Kael', 'Elara'], glos: 'KAEL (S.M.T.)', gatunek: 'R&B/Soul', jezyk: 'EN',
+        styl: 'intimate acoustic soul outro, 76 bpm, warm baritone male vocal, solo Fender Rhodes and soft fingerpicked acoustic guitar, warm tape saturation, peaceful late-night afterglow',
+        lyrics: [
+            '[Intro - Solo Fender Rhodes and soft acoustic guitar fingerpicking at 76 BPM]',
+            '[Verse 1]',
+            'The neon sign is dimming as the sky turns blue',
+            'Just an empty street and a booth for two',
+            'All the words we needed have already been said',
+            'While the morning light is painted overhead',
+            '[Chorus]',
+            'Stay until the dawn breaks through the window pane',
+            'After all the thunder and the quiet rain',
+            'In the zero gravity of who we really are',
+            'Every single heartbeat is a guiding star',
+            '[Outro - Warm baritone whisper fading with final piano chord]',
+            'Stay until dawn...',
+            'The door is always open...',
+            'At StarLight Diner... 0.00G...',
+        ].join('\n'),
+    },
 };
 
 const tn = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -145,6 +230,27 @@ export function stanyKlipow(d) {
 }
 export const linkOdsluchu = (id) => `https://suno.com/song/${encodeURIComponent(id)}`;
 export const czasUtworu = (s) => (Number(s) > 0 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '?:??');
+
+/** Imię artysty z nazwy persony: „KAEL (S.M.T.)” → „Kael”. */
+export function artystaZGlosu(glos) {
+    const n = String(glos ?? '').replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+    return n ? n.split(' ').map((w) => (w === w.toUpperCase() ? w[0] + w.slice(1).toLowerCase() : w)).join(' ') : '';
+}
+/** Stacja dopisana z interfejsu (bez numeru — nadaje go `dodajStacje`). Rzuca przy brakach. */
+export function oczyscStacje(z = {}) {
+    const tytul = tn(z.tytul, 200), styl = tn(z.styl, 900), opis = tn(z.opis, 2800);
+    const lyrics = String(z.lyrics ?? z.tekst ?? '').replace(/\r\n/g, '\n').trim().slice(0, 4900);
+    const glos = /^(brak|nie|none)$/i.test(tn(z.glos, 80)) ? '' : tn(z.glos, 80);
+    if (!tytul) throw new Error('Stacja potrzebuje tytułu.');
+    if (!lyrics && !opis && z.instrumental !== true) throw new Error('Stacja potrzebuje tekstu utworu (albo opisu dla trybu prostego Suno).');
+    if (z.instrumental === true && !styl && !opis) throw new Error('Utwór instrumentalny potrzebuje stylu albo opisu.');
+    let artysci = (Array.isArray(z.artysci) ? z.artysci : String(z.artysci ?? z.artysta ?? '').split(/[,;&]/)).map((a) => tn(a, 60)).filter(Boolean).slice(0, 6);
+    if (!artysci.length && glos) artysci = [artystaZGlosu(glos)].filter(Boolean);
+    if (!artysci.length) throw new Error('Podaj artystę albo wybierz personę głosową.');
+    const bpm = Number(z.bpm) || Number((/(\d{2,3})\s*bpm/i.exec(styl) ?? [])[1]) || null;
+    return { tytul, bpm: bpm && bpm >= 40 && bpm <= 240 ? Math.round(bpm) : null, artysci, glos: glos || null, gatunek: tn(z.gatunek, 60) || null, jezyk: tn(z.jezyk, 10).toUpperCase() || null,
+        styl, ...(lyrics ? { lyrics } : { opis }), ...(z.instrumental === true ? { instrumental: true } : {}) };
+}
 
 /** Persona głosowa z listy `voices-list`: id wprost albo nazwa („Kael” → „KAEL (S.M.T.)”) — porównanie po literach i cyfrach. */
 export function dopasujGlos(lista, zadany) {
@@ -290,6 +396,37 @@ export function utworzJasona(cfg) {
     }
     const etap = async (k, nazwa, stan, dane = {}) => { k.etapy[nazwa] = { stan, ...dane, kiedy: new Date().toISOString() }; await zapisz(k); };
 
+    // ── ➕ Stacje dopisane z interfejsu (obok wbudowanych STACJE) — `_OtakOs_Wymiar/jason/stacje.json` ──
+    const plikStacji = path.join(cfg.katalog, 'jason', 'stacje.json');
+    async function stacjeWlasne() { try { const d = JSON.parse(await fs.readFile(plikStacji, 'utf8')); return Array.isArray(d?.stacje) ? d.stacje.filter((x) => x && Number(x.nr) > 0 && x.tytul) : []; } catch { return []; } }
+    async function zapiszStacje(l) {
+        await fs.mkdir(path.dirname(plikStacji), { recursive: true });
+        const tmp = `${plikStacji}.${process.pid}.tmp`;
+        await fs.writeFile(tmp, JSON.stringify({ stacje: l }, null, 2));
+        await fs.rename(tmp, plikStacji).catch(async () => { await fs.copyFile(tmp, plikStacji); await fs.rm(tmp, { force: true }); });
+    }
+    /** Wszystkie stacje: wbudowane + własne (`wlasna: true`), po numerze. */
+    async function stacje() { return [...Object.values(STACJE), ...(await stacjeWlasne()).map((x) => ({ ...x, wlasna: true }))].sort((a, b) => a.nr - b.nr); }
+    let kolejkaStacji = Promise.resolve();
+    const poKoleiStacje = (fn) => { const p = kolejkaStacji.then(fn, fn); kolejkaStacji = p.catch(() => {}); return p; };
+    const dodajStacje = (z) => poKoleiStacje(async () => {
+        const nowa = oczyscStacje(z);
+        const wl = await stacjeWlasne(), wszystkie = [...Object.values(STACJE), ...wl];
+        if (wszystkie.some((x) => String(x.tytul).toLowerCase() === nowa.tytul.toLowerCase())) throw new Error(`Stacja „${nowa.tytul}” już jest na liście.`);
+        const nr = Math.max(...wszystkie.map((x) => Number(x.nr))) + 1;
+        if (nr > 99) throw new Error('Album ma już 99 stacji.');
+        const stacja = { nr, ...nowa, dodano: new Date().toISOString() };
+        await zapiszStacje([...wl, stacja]);
+        return { ...stacja, wlasna: true };
+    });
+    const usunStacje = (nr) => poKoleiStacje(async () => {
+        const wl = await stacjeWlasne();
+        if (STACJE[Number(nr)]) throw new Error('Stacji wbudowanej w kod nie da się usunąć z interfejsu.');
+        if (!wl.some((x) => Number(x.nr) === Number(nr))) throw Object.assign(new Error('Nie ma takiej stacji.'), { kod: 404 });
+        await zapiszStacje(wl.filter((x) => Number(x.nr) !== Number(nr)));   // kampanie tej stacji zostają — niosą własną kopię tekstu
+        return stacje();
+    });
+
     async function krokWorkspace(k) {
         if (k.workspace?.id || k.etapy.workspace?.stan === 'pominiety') return;
         await etap(k, 'workspace', 'robi');
@@ -428,6 +565,9 @@ export function utworzJasona(cfg) {
 
     /** Nowa kampania — wraca od razu, praca idzie w tle. Ta sama stacja albumu w toku / do ✓ = odmowa (kredyty). */
     async function wykonaj(zlecenie) {
+        // numer spoza wbudowanych = stacja dopisana z interfejsu
+        const numer = zlecenie && typeof zlecenie.stacja !== 'object' ? Number(zlecenie.stacja ?? 1) : null;
+        if (numer && !STACJE[numer]) { const wl = (await stacjeWlasne()).find((x) => Number(x.nr) === numer); if (wl) zlecenie = { ...zlecenie, stacja: wl }; }
         const z = oczyscZlecenie(zlecenie);
         const otwarta = (await lista()).find((k) => k.album === z.album && k.stacja.tytul === z.stacja.tytul && ['robi', 'do_akceptacji', 'blad'].includes(k.stan));
         if (otwarta && zlecenie?.nowa !== true) throw Object.assign(new Error(`Kampania „${z.stacja.tytul}” już jest (${otwarta.stan}) — ${otwarta.stan === 'blad' ? 'wznów ją (↻)' : otwarta.stan === 'robi' ? 'poczekaj, aż skończy' : 'rozstrzygnij ją w Izbie'} albo wyślij nowa: true.`), { kod: 'JUZ_JEST', kampania: otwarta });
@@ -685,7 +825,7 @@ export function utworzJasona(cfg) {
         decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
@@ -697,7 +837,7 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     });
     app.get('/api/jason/kampanie', async (req, res) => {
         const d = await dostep(req, res); if (!d) return;
-        res.json({ success: true, kampanie: await J.lista(), stacje: Object.values(STACJE).map(({ nr, tytul, bpm, artysci, glos }) => ({ nr, tytul, bpm, artysci, glos: glos ?? null })) });
+        res.json({ success: true, kampanie: await J.lista(), stacje: (await J.stacje()).map(({ nr, tytul, bpm, artysci, glos, wlasna }) => ({ nr, tytul, bpm: bpm ?? null, artysci, glos: glos ?? null, wlasna: wlasna === true })) });
     });
     app.get('/api/jason/kampanie/:id', async (req, res) => {
         const d = await dostep(req, res); if (!d) return;
@@ -735,5 +875,12 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     app.get('/api/jason/ustawienia', async (_req, res) => res.json({ success: true, ustawienia: await J.ustawienia() }));
     app.put('/api/jason/ustawienia', async (req, res) => { try { res.json({ success: true, ustawienia: await J.ustawDystrybutora(req.body?.dystrybutor) }); } catch (e) { blad(res, e); } });
     // 🎤 persony głosowe konta Suno (My Voices + ulubione) — do wyboru w Hubie i Music Studio
-    app.get('/api/jason/glosy', async (_req, res) => { try { res.json({ success: true, glosy: await J.glosy() }); } catch (e) { res.status(e.kod === 'NIEPOLACZONE' ? 409 : 502).json({ success: false, message: e.message }); } });
+    // ➕ nowa stacja z interfejsu (nic nie kosztuje — to tylko wpis na liście); maszyna albo sparowany telefon
+    app.get('/api/jason/stacje', async (req, res) => { const d = await dostep(req, res); if (!d) return; res.json({ success: true, stacje: await J.stacje() }); });
+    app.post('/api/jason/stacje', async (req, res) => {
+        const d = await dostep(req, res); if (!d) return;
+        try { res.json({ success: true, stacja: await J.dodajStacje(req.body ?? {}), stacje: await J.stacje() }); } catch (e) { blad(res, e); }
+    });
+    app.delete('/api/jason/stacje/:nr', async (req, res) => { try { res.json({ success: true, stacje: await J.usunStacje(req.params.nr) }); } catch (e) { blad(res, e); } });
+    app.get('/api/jason/glosy', async (req, res) => { const d = await dostep(req, res); if (!d) return; try { res.json({ success: true, glosy: await J.glosy() }); } catch (e) { res.status(e.kod === 'NIEPOLACZONE' ? 409 : 502).json({ success: false, message: e.message }); } });
 }

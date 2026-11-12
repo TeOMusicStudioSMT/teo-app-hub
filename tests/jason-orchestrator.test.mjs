@@ -9,6 +9,7 @@ import express from 'express';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import ffmpegPath from 'ffmpeg-static';
+import { oczyscStacje, artystaZGlosu } from '../services/JasonOrchestrator.js';
 import { czystyTekst, naglowekWav, wymiaryJpeg, folderWydania } from '../services/JasonOrchestrator.js';
 import { utworzJasona, zamontujTrasyJasona, oczyscZlecenie, argumentyUtworu, klipyZWyniku, znajdzWorkspace, stanyKlipow, dopasujGlos, czasUtworu, STACJE, ALBUM } from '../services/JasonOrchestrator.js';
 
@@ -428,4 +429,64 @@ test('🎤 Stacja 2: „Closer Than Gravity (Elara Solo)” z personą ELARA (S.
         assert.match(k2.blad, /nie ma głosu „ELARA \(S\.M\.T\)”/);
         assert.equal(ile(bez, 'audio-create'), 0);
     } finally { await fs.rm(tmp, { recursive: true, force: true }); }
+});
+
+test('🎤 album: stacje 3–5 w sztafecie głosów Kael ↔ Elara (tytuły, style, teksty, persony wprost)', () => {
+    const oczekiwane = [[3, 'Amber Light on Your Skin (Kael Solo)', 84, ['Kael'], 'KAEL (S.M.T.)'], [4, 'Midnight Espresso (11:11) (Elara Solo)', 80, ['Elara'], 'ELARA (S.M.T)'], [5, 'Stay Until Dawn (0.00G Outro)', 76, ['Kael', 'Elara'], 'KAEL (S.M.T.)']];
+    for (const [nr, tytul, bpm, artysci, glos] of oczekiwane) {
+        const z = oczyscZlecenie({ stacja: nr });
+        assert.equal(z.stacja.tytul, tytul); assert.equal(z.stacja.bpm, bpm); assert.equal(z.album, ALBUM);
+        assert.deepEqual(z.artysci, artysci);
+        assert.deepEqual(z.glos, { zadany: glos, auto: false });
+        assert.match(z.stacja.styl, new RegExp(`${bpm} bpm`));
+        assert.match(z.stacja.lyrics, /^\[Intro - /);
+        assert.equal(dopasujGlos(GLOSY, glos).id, nr === 4 ? 'v-elara' : 'v-kael');
+        assert.doesNotMatch(czystyTekst(z.stacja.lyrics), /[\[\]]/);
+    }
+    assert.match(STACJE[3].lyrics, /We don't need the noise outside the velvet door/);
+    assert.match(STACJE[3].lyrics, /Stay right here\.\.\. zero point zero G\.\.\.$/);
+    assert.match(STACJE[4].lyrics, /Taste of midnight espresso on your lips/);
+    assert.match(STACJE[5].lyrics, /At StarLight Diner\.\.\. 0\.00G\.\.\.$/);
+    assert.deepEqual(Object.keys(STACJE), ['1', '2', '3', '4', '5']);
+});
+
+test('➕ nowa stacja z interfejsu: zapis na dysku, numer z kodu, kampania z niej, bez dubli; wbudowanej nie da się usunąć (trasy HTTP)', async () => {
+    assert.equal(artystaZGlosu('KAEL (S.M.T.)'), 'Kael');
+    assert.equal(artystaZGlosu('ELARA (S.M.T)'), 'Elara');
+    assert.deepEqual(oczyscStacje({ tytul: 'X', glos: 'KAEL (S.M.T.)', styl: 'soul, 92 BPM', tekst: 'la la' }), { tytul: 'X', bpm: 92, artysci: ['Kael'], glos: 'KAEL (S.M.T.)', gatunek: null, jezyk: null, styl: 'soul, 92 BPM', lyrics: 'la la' });
+    assert.throws(() => oczyscStacje({ tytul: 'X', artysci: 'A' }), /tekstu utworu/);
+    assert.throws(() => oczyscStacje({ tytul: 'X', tekst: 'la' }), /artystę albo wybierz personę/);
+    assert.throws(() => oczyscStacje({ tekst: 'la', artysci: 'A' }), /tytułu/);
+
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jason-st-'));
+    const suno = atrapaSuno(tmp);
+    const J = utworzJasona({ katalog: tmp, suno, przerwaPobraniaMs: 5 });
+    const app = express(); app.use(express.json());
+    zamontujTrasyJasona(app, J);
+    const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
+    const zadaj = (m, s, b) => fetch(baza + s, { method: m, headers: { 'Content-Type': 'application/json' }, ...(b ? { body: JSON.stringify(b) } : {}) }).then((r) => r.json());
+    try {
+        const d = await zadaj('POST', '/api/jason/stacje', { tytul: 'Paper Moon Refill', glos: 'ELARA (S.M.T)', styl: 'neo-soul, 78 bpm', tekst: '[Verse 1]\nOne more cup before the dawn' });
+        assert.equal(d.success, true, d.message);
+        assert.equal(d.stacja.nr, 6); assert.equal(d.stacja.wlasna, true); assert.deepEqual(d.stacja.artysci, ['Elara']); assert.equal(d.stacja.bpm, 78);
+        assert.equal(JSON.parse(await fs.readFile(path.join(tmp, 'jason', 'stacje.json'), 'utf8')).stacje[0].tytul, 'Paper Moon Refill');
+        assert.equal((await zadaj('POST', '/api/jason/stacje', { tytul: 'paper moon refill', artysci: 'Kael', tekst: 'x' })).success, false, 'dubel tytułu');
+        assert.equal((await zadaj('POST', '/api/jason/stacje', { tytul: 'Closer Than Gravity (Elara Solo)', artysci: 'Elara', tekst: 'x' })).success, false, 'dubel wbudowanej');
+        const lista = (await zadaj('GET', '/api/jason/kampanie')).stacje;
+        assert.deepEqual(lista.map((x) => [x.nr, x.wlasna]), [[1, false], [2, false], [3, false], [4, false], [5, false], [6, true]]);
+        assert.equal(lista[5].glos, 'ELARA (S.M.T)');
+
+        // kampania z własnej stacji: jej tekst, styl i persona
+        const r = await zadaj('POST', '/api/jason/wykonaj-kampanie', { stacja: 6, okladka: false });
+        assert.equal(r.success, true, r.message);
+        await J._czekaj(r.kampania.id);
+        const k = await J.kampania(r.kampania.id);
+        assert.equal(k.stan, 'do_akceptacji'); assert.equal(k.stacja.nr, 6); assert.equal(k.stacja.tytul, 'Paper Moon Refill');
+        const a = suno.wywolania.find((w) => w.nazwa === 'audio-create').args;
+        assert.equal(a.voice_id, 'v-elara'); assert.equal(a.style, 'neo-soul, 78 bpm'); assert.match(a.lyrics, /One more cup before the dawn/);
+
+        assert.equal((await zadaj('DELETE', '/api/jason/stacje/2')).success, false, 'wbudowana zostaje');
+        assert.deepEqual((await zadaj('DELETE', '/api/jason/stacje/6')).stacje.map((x) => x.nr), [1, 2, 3, 4, 5]);
+        assert.equal((await zadaj('POST', '/api/jason/wykonaj-kampanie', { stacja: 6, okladka: false })).success, false, 'usuniętej stacji nie da się zlecić');
+    } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
 });

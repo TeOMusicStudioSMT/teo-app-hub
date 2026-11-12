@@ -27,6 +27,9 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     const [dystrybutor, setDystrybutor] = useState<string | null>(null);
     const [nr, setNr] = useState(1);
     const [stacje, setStacje] = useState<Stacja[]>([]);
+    const [nowa, setNowa] = useState(false);
+    const PUSTA = { tytul: '', glos: '', artysci: '', styl: '', tekst: '' };
+    const [f, setF] = useState(PUSTA);
     const [adres, setAdres] = useState('');
 
     const api = useCallback(async (sciezka: string, cialo?: unknown) => {
@@ -95,6 +98,16 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
         api('/api/jason/kampanie').then((d) => setK((d.kampanie ?? []).find((x: Kampania) => x.stan !== 'odrzucona' && x.stacja.nr === n) ?? null)).catch(() => {});
     };
     const stacja = stacje.find((x) => x.nr === nr);
+    // ➕ nowa stacja: wpis na liście w moście (_OtakOs_Wymiar/jason/stacje.json) — nic nie kosztuje, utworu jeszcze nie tworzy
+    const zapiszStacje = async () => {
+        setTrwa(true);
+        try {
+            const d = await api('/api/jason/stacje', { tytul: f.tytul, glos: f.glos || 'brak', artysci: f.artysci, styl: f.styl, tekst: f.tekst });
+            if (d.success) { setStacje(d.stacje ?? []); setNowa(false); setF(PUSTA); wybierzStacje(d.stacja.nr); setInfo(`✓ Dodano Stację ${d.stacja.nr}: ${d.stacja.tytul}. „WYKONAJ KAMPANIĘ” stworzy utwór.`); }
+            else setInfo(`⚠ ${d.message}`);
+        } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
+        setTrwa(false);
+    };
     const przerysuj = () => {
         if (!window.confirm('Narysować okładkę od nowa?\n\nPaleta (FLUX) zajmie kartę na około minutę. Poprzednia okładka zostaje, dopóki nowa nie wyjdzie; paczka Spotify dostanie nową od razu.')) return;
         void wykonaj(`/api/jason/kampanie/${k!.id}/przerysuj-okladke`, {}, 'Zlecam Palecie nową okładkę…');
@@ -116,6 +129,7 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                             {stacje.map((x) => <option key={x.nr} value={x.nr}>Stacja {x.nr}: {x.tytul}</option>)}
                         </select>
                         : <span>Stacja {nr}: {stacja?.tytul ?? k?.stacja.tytul ?? 'Velvet Booth for Two (82 BPM Intro)'}</span>}
+                    <button onClick={() => setNowa((x) => !x)} disabled={trwa || pracuje} title="Dopisz kolejny utwór albumu bez edycji kodu" className="rounded-lg border border-violet-400/50 px-2 py-1 text-violet-100 hover:bg-violet-800/40 disabled:opacity-50">{nowa ? '✕ zwiń' : '+ Nowa stacja'}</button>
                 </span>
                 <div className="flex shrink-0 items-center gap-2">
                     <select value={glos} onChange={(e) => setGlos(e.target.value)} disabled={trwa || pracuje}
@@ -131,6 +145,24 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                     </button>
                 </div>
             </div>
+            {nowa && (
+                <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-violet-500/30 bg-slate-950/40 p-2">
+                    <div className="flex flex-wrap gap-1.5">
+                        <input value={f.tytul} onChange={(e) => setF({ ...f, tytul: e.target.value })} placeholder="Tytuł utworu" className="min-w-[12rem] flex-[2] rounded border border-violet-500/40 bg-slate-950 px-2 py-1 text-violet-100" />
+                        <select value={f.glos} onChange={(e) => setF({ ...f, glos: e.target.value })} title="Persona z My Voices w Suno — jeden głos na utwór" className="min-w-[9rem] flex-1 rounded border border-violet-500/40 bg-slate-950 px-2 py-1 text-violet-100">
+                            <option value="">🎤 bez persony</option>
+                            {glosy.map((g) => <option key={g.id} value={g.name}>🎤 {g.name}</option>)}
+                        </select>
+                        <input value={f.artysci} onChange={(e) => setF({ ...f, artysci: e.target.value })} placeholder={f.glos ? 'Artyści (puste = z persony)' : 'Artyści, po przecinku'} className="min-w-[9rem] flex-1 rounded border border-violet-500/40 bg-slate-950 px-2 py-1 text-violet-100" />
+                    </div>
+                    <input value={f.styl} onChange={(e) => setF({ ...f, styl: e.target.value })} placeholder="Styl / tagi Suno, np. sensual neo-soul, 82 bpm, warm Rhodes…" className="w-full rounded border border-violet-500/40 bg-slate-950 px-2 py-1 text-violet-100" />
+                    <textarea value={f.tekst} onChange={(e) => setF({ ...f, tekst: e.target.value })} rows={6} placeholder={'Tekst utworu z tagami sekcji:\n[Verse 1]\n…\n[Chorus]\n…'} className="w-full resize-y rounded border border-violet-500/40 bg-slate-950 px-2 py-1 text-violet-100" />
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button onClick={zapiszStacje} disabled={trwa || !f.tytul.trim() || !f.tekst.trim() || (!f.glos && !f.artysci.trim())} className="rounded bg-violet-600 px-3 py-1 font-bold text-white hover:bg-violet-500 disabled:opacity-50">💾 Zapisz stację</button>
+                        <span className="text-violet-300/70">Zapis niczego nie kosztuje — utwór powstaje dopiero po „WYKONAJ KAMPANIĘ”.</span>
+                    </div>
+                </div>
+            )}
             {(info || opis) && <div className="mt-1.5 text-violet-300/90">{info || opis}{k?.glos?.nazwa ? ` · głos: ${k.glos.nazwa}` : ''}</div>}
             {k && k.stan === 'do_akceptacji' && (
                 <div className="mt-2 flex flex-col gap-1.5">

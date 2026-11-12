@@ -218,7 +218,8 @@ export function czyZwrotYouTube(req) {
 }
 
 export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy', '/api/system/free',
-    '/api/jason/wykonaj-kampanie', '/api/jason/kampanie',   // 🎛️ Jason ze Stołu Narad w StoL — trasy same żądają tokenu parowania (dostepStada)
+    '/api/jason/wykonaj-kampanie', '/api/jason/kampanie', '/api/jason/stacje', '/api/jason/glosy',   // ➕ nowa stacja i lista person ze strony Stołu w StoL
+      // 🎛️ Jason ze Stołu Narad w StoL — trasy same żądają tokenu parowania (dostepStada)
     '/api/mistrz/wiesci',   // 📯 powiadomienia StoL (Suweren 2026-10-30): telefon tylko CZYTA kanał Mistrza — trasa żąda tokenu parowania
 ]);
 /**
