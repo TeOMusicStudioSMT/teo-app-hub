@@ -58,6 +58,8 @@ export const RODZAJE = {
     // Minuta rozmowy na żywo. Klucz niesie numer minuty, więc każda płaci raz,
     // a limit dobowy pilnuje reszty — to wciąż TA SAMA ścieżka emisji.
     'biznes.minuta':      { klasa: 'RUCH',  opis: 'minuta rozmowy na żywo' },
+    // ── RUCH: Biometria i Koherencja Suwerena 0.00G ──
+    'biometria.puls':     { klasa: 'RUCH',  opis: 'oddech i koherencja pulsu Suwerena (PEAQ PSR-100)' },
     // ── WYNIK ──
     'montaz.edl':         { klasa: 'WYNIK', opis: 'domknięty montaż (EDL)' },
     'render.wideo':       { klasa: 'WYNIK', opis: 'wyrenderowany plik wideo (ffmpeg)' },

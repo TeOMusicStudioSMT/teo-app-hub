@@ -85,8 +85,7 @@ export function serweryMcp() {
     const u = cfg.unityMcp?.();
     if (u && typeof u === 'object') s.unityMCP = u;
     if (cfg.mcpSuno && cfg.istnieje(cfg.mcpSuno)) s[SERWER_SUNO] = { type: 'stdio', command: process.execPath, args: [cfg.mcpSuno] };
-    const w = cfg.wixMcp?.();
-    if (w && typeof w === 'object') s[SERWER_WIX] = w;
+    // Martwy/zawieszający Wix MCP został odcięty
     return s;
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -243,8 +242,10 @@ Nie udawaj: mów, co zrobiłeś, a czego nie. Na końcu krótko: co zrobione, co
 /** Argumenty `claude -p` (bez powłoki — każdy element osobno). */
 export function argumenty({ tekst, sesjaId, wznow, pozwolenia = [], model }) {
     // Tekst zaczynający się od „-" parser argumentów wziąłby za flagę — dokładamy spację.
+    const czystePozwolenia = (pozwolenia || []).filter((p) => !String(p).startsWith('mcp__wix__'));
     const a = ['-p', String(tekst).replace(/^-/, ' -'), '--output-format', 'stream-json', '--verbose', '--permission-mode', 'dontAsk', '--setting-sources', 'project',
-        '--max-turns', String(cfg.maxTur), '--model', model, '--allowedTools', ...BEZ_PYTANIA, ...pozwolenia];
+        '--max-turns', String(cfg.maxTur), '--model', model, '--allowedTools', ...BEZ_PYTANIA, ...czystePozwolenia,
+        '--disallowedTools', 'mcp__wix__*'];
     const serwery = serweryMcp();
     if (serwery[SERWER_STUDIA]) a.splice(a.indexOf('--allowedTools') + 1, 0, ...MCP_BEZ_PYTANIA);
     if (Object.keys(serwery).length) a.push('--mcp-config', JSON.stringify({ mcpServers: serwery }));
@@ -289,7 +290,7 @@ export function sluchaj(id, fn) {
 function tura(s, tekst, { wznow }) {
     const model = s.model;
     const { program, przed } = znajdzClaude();
-    const args = [...przed, ...argumenty({ tekst, sesjaId: s.id, wznow, pozwolenia: s.pozwolenia.filter((x) => !x.startsWith('plik:')), model })];
+    const args = [...przed, ...argumenty({ tekst, sesjaId: s.id, wznow, pozwolenia: s.pozwolenia.filter((x) => !x.startsWith('plik:') && !x.startsWith('mcp__wix__')), model })];
     s.trwa = true; s.blad = null;
     nadaj(s, { typ: 'stan', trwa: true });
     let p;

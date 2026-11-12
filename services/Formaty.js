@@ -520,7 +520,85 @@ export function utworzFormaty(o) {
  */
 export function zamontujTrasyFormatow(app, F, { tiktok = null, instagram = null, youtubeStan = null, szyna = null, autopilot = null } = {}) {
     const odp = (res, p, kod = 400) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(kod).json({ success: false, message: e.message }));
-    const strona = (res, siec, kolor, tekst) => res.type('html').send(`<meta charset="utf-8"><title>${siec} · Katedra</title><body style="font-family:sans-serif;background:#0b1020;color:${kolor};padding:2rem;font-size:18px">${String(tekst).replace(/</g, '&lt;')}<p style="color:#64748b;font-size:14px">Możesz zamknąć to okno i wrócić do Katedry.</p></body>`);
+    const strona = (res, siec, kolor, tekst, wskazowka = '') => res.type('html').send(`<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${siec} · Katedra OtakOS</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0b1020;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px;
+    color: #f8fafc;
+  }
+  .card {
+    max-width: 520px;
+    width: 100%;
+    margin: auto;
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 16px;
+    padding: 32px 28px;
+    text-align: center;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  }
+  .badge {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    background: ${kolor === '#86efac' ? '#064e3b' : '#7f1d1d'};
+    color: ${kolor};
+  }
+  .msg {
+    font-size: 17px;
+    line-height: 1.5;
+    font-weight: 500;
+    color: ${kolor};
+    word-break: break-word;
+    margin-bottom: 18px;
+    text-align: center;
+  }
+  .hint {
+    background: #1e293b;
+    border-left: 4px solid #f59e0b;
+    padding: 12px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #cbd5e1;
+    text-align: left;
+    line-height: 1.45;
+    margin-bottom: 20px;
+  }
+  .footer {
+    color: #64748b;
+    font-size: 14px;
+    margin: 0;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">${siec} OAuth</div>
+    <div class="msg">${String(tekst).replace(/</g, '&lt;')}</div>
+    ${wskazowka ? `<div class="hint"><strong>Diagnostyka Katedry:</strong> ${String(wskazowka).replace(/</g, '&lt;')}</div>` : ''}
+    <p class="footer">Możesz bezpiecznie zamknąć to okno i wrócić do Katedry.</p>
+  </div>
+</body>
+</html>`);
 
     app.get('/api/formaty', (_req, res) => odp(res, (async () => ({ klipy: await F.wszystkie(), cele: CELE, uklady: UKLADY, napisy: NAPISY, maxKlipu: MAX_KLIPU }))()));
     app.get('/api/formaty/zrodla', (_req, res) => odp(res, F.zrodla().then((zrodla) => ({ zrodla })), 500));
@@ -559,7 +637,10 @@ export function zamontujTrasyFormatow(app, F, { tiktok = null, instagram = null,
         app.get(`/api/impresario/${siec}/stan`, (_req, res) => odp(res, K.stan(), 500));
         app.post(`/api/impresario/${siec}/klient`, (req, res) => odp(res, K.zapiszKlienta(req.body ?? {}).then((stan) => ({ stan }))));
         app.get(`/api/impresario/${siec}/polacz`, async (_req, res) => {
-            try { return res.redirect(302, await K.adresZgody()); } catch (e) { return strona(res, nazwa, '#fca5a5', `📱 ${e.message}`); }
+            try { return res.redirect(302, await K.adresZgody()); } catch (e) {
+                if (typeof K.zapiszBladPolaczenia === 'function') await K.zapiszBladPolaczenia(e.message).catch(() => {});
+                return strona(res, nazwa, '#fca5a5', `📱 ${e.message}`, 'Upewnij się, że Client Key i Client Secret są poprawnie zapisane w Skarbcu Katedry.');
+            }
         });
         app.get(SCIEZKI_ZWROTU[siec], async (req, res) => {
             try {
@@ -567,7 +648,13 @@ export function zamontujTrasyFormatow(app, F, { tiktok = null, instagram = null,
                 const ile = w.konta?.map((x) => x.nazwa).join(', ') ?? w.konto?.nazwa ?? '';
                 await szyna?.nadaj?.({ agent: 'Impresario', rodzaj: 'praca', tresc: `📱 ${nazwa} połączony${ile ? `: ${ile}` : ''}` })?.catch?.(() => {});
                 return strona(res, nazwa, '#86efac', `✓ ${nazwa} połączony${ile ? `: ${ile}` : ''}.`);
-            } catch (e) { return strona(res, nazwa, '#fca5a5', `⚠ ${e.message}`); }
+            } catch (e) {
+                if (typeof K.zapiszBladPolaczenia === 'function') await K.zapiszBladPolaczenia(e.message).catch(() => {});
+                const wskazowka = siec === 'tiktok'
+                    ? 'Jeśli Twoja aplikacja w TikTok Developer Portal nie przeszła jeszcze audytu (App Review), upewnij się, że przełączyłeś klucze na Sandbox lub dodałeś swoje konto jako uprawnionego target usera w portalu deweloperskim.'
+                    : 'Sprawdź konfigurację Facebook Login for Business i uprawnienia aplikacji w portalu deweloperskim Meta.';
+                return strona(res, nazwa, '#fca5a5', `⚠ ${e.message}`, wskazowka);
+            }
         });
         app.post(`/api/impresario/${siec}/domyslne`, (req, res) => odp(res, K.ustawDomyslne(String(req.body?.kontoId ?? '')).then((konta) => ({ konta }))));
         app.post(`/api/impresario/${siec}/rozlacz`, (req, res) => odp(res, K.rozlacz(typeof req.body?.kontoId === 'string' ? req.body.kontoId : null).then((konta) => ({ konta }))));

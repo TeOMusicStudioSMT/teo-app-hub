@@ -157,12 +157,25 @@ export const FormatyPanel: React.FC = () => {
     const [autoPokaz, setAutoPokaz] = useState(false);
 
     const odswiez = useCallback(async () => {
+        if (typeof document !== 'undefined' && document.hidden) return;
         try { setS(await zMostu<Stan>('/api/formaty')); setProblem(null); }
         catch (e) { setProblem(/HTTP 404/.test(blad(e)) ? 'Most sprzed restartu — zrestartuj Katedrę, żeby włączyć dział formatów.' : blad(e)); }
         try { const w = await zMostu<Record<string, StanSieci>>('/api/formaty/sieci'); setSieci(w); } catch { /* most sprzed restartu */ }
         try { setAuto((await zMostu<{ autopilot: Autopilot }>('/api/formaty/autopilot')).autopilot); } catch { setAuto(null); }
     }, []);
-    useEffect(() => { void odswiez(); const t = setInterval(odswiez, 15_000); return () => clearInterval(t); }, [odswiez]);
+    useEffect(() => {
+        void odswiez();
+        const t = setInterval(() => {
+            if (typeof document !== 'undefined' && document.hidden) return;
+            void odswiez();
+        }, 15_000);
+        const handleVis = () => { if (!document.hidden) void odswiez(); };
+        document.addEventListener('visibilitychange', handleVis);
+        return () => {
+            clearInterval(t);
+            document.removeEventListener('visibilitychange', handleVis);
+        };
+    }, [odswiez]);
     useEffect(() => { if (pokaz) zMostu<{ zrodla: Zrodlo[] }>('/api/formaty/zrodla').then((w) => setZrodla(w.zrodla)).catch(() => {}); }, [pokaz]);
     useEffect(() => {
         if (!plik) { setPr(null); return; }

@@ -650,7 +650,7 @@ Twoje zadanie: Odpowiedz krótko, treściwie (maksymalnie 3 zdania), w swoim uni
                     {selectedAgentIds.includes('jason') && (
                         <div className="mt-2 rounded-xl border border-violet-500/40 bg-violet-950/30 p-2 text-[11px] font-mono text-violet-200">
                             <div className="flex items-center justify-between gap-2">
-                                <span>🎛️ Jason · Stacja 1: „Velvet Booth for Two (82 BPM Intro)” — Suno (kredyty konta) → okładka → Izba Akceptacji</span>
+                                <span>🎛️ Jason · „Zero Gravity Heart” · Stacja 1: „Velvet Booth for Two (82 BPM Intro)” — Suno (kredyty konta) → okładka → Izba Akceptacji</span>
                                 <button
                                     onClick={zlecKampanieJasonowi}
                                     disabled={kampaniaTrwa}

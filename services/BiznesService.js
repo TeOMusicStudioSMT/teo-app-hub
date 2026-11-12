@@ -46,6 +46,7 @@ export const AKCJE_SLUZBY = {
     'oferta.wygenerowana': { oddech: 'biznes.oferta', opis: 'wygenerowana oferta' },
     'rozmowa.domknieta': { oddech: 'biznes.rozmowa', opis: 'domknięta rozmowa AI' },
     'zamowienie.zlozone': { oddech: 'biznes.zamowienie', opis: 'złożone zamówienie' },
+    'biometria.puls': { oddech: 'biometria.puls', opis: 'oddech i koherencja pulsu Suwerena (PEAQ PSR-100)' },
 };
 
 function sciezka(katalog) { return path.join(katalog, NAZWA_PLIKU); }

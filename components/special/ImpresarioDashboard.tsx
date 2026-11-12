@@ -99,14 +99,78 @@ const ImpresarioDashboard: React.FC = () => {
     // ── State ─────────────────────────────────────────────────────────────────
     const [vault,        setVault]        = useState<VaultData>({});
     // 🎬 TikTok (prawdziwy OAuth Login Kit + Content Posting — services/KontaSieci.js) i 🎧 Spotify (profile artystów, Web API)
-    const [tiktok, setTiktok] = useState<{ polaczony?: boolean; klient?: boolean; konta?: { nazwa: string }[]; powod?: string } | null>(null);
+    const [tiktok, setTiktok] = useState<{ polaczony?: boolean; klient?: boolean; konta?: { id: string; nazwa: string; polaczono?: string; blad?: string | null }[]; domyslny?: string; powod?: string; ostatniBlad?: { komunikat: string; kiedy: string } | null } | null>(null);
     const [artysci, setArtysci] = useState<{ klucz: string; nazwa?: string; obserwujacy?: number | null; popularnosc?: number | null; gatunki?: string[]; obraz?: string | null; url?: string; blad?: string; poprawioneId?: string }[] | null>(null);
     const [spotifyBlad, setSpotifyBlad] = useState<string | null>(null);
-    useEffect(() => { fetch(`${BRIDGE_URL}/api/impresario/tiktok/stan`).then((r) => r.json()).then(setTiktok).catch(() => {}); }, []);
+
+    const fetchTiktokStatus = useCallback(async () => {
+        try {
+            const r = await fetch(`${BRIDGE_URL}/api/impresario/tiktok/stan`);
+            const d = await r.json();
+            setTiktok(d);
+        } catch {}
+    }, []);
+
+    useEffect(() => {
+        fetchTiktokStatus();
+    }, [fetchTiktokStatus]);
+
+    const handleRozlaczTikTok = async (kontoId: string, nazwa: string) => {
+        if (!window.confirm(`Rozłączyć konto TikTok „${nazwa}”? Jego token zniknie z Katedry.`)) return;
+        try {
+            const res = await fetch(`${BRIDGE_URL}/api/impresario/tiktok/rozlacz`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kontoId }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                await fetchTiktokStatus();
+            }
+        } catch (e) {
+            console.error('Błąd rozłączania TikToka:', e);
+        }
+    };
     const sprawdzSpotify = async () => {
         setSpotifyBlad(null);
         try { const d = await (await fetch(`${BRIDGE_URL}/api/impresario/spotify/artysci`)).json(); if (d.success) setArtysci(d.artysci); else setSpotifyBlad(d.message); }
         catch (e: any) { setSpotifyBlad(String(e?.message || e)); }
+    };
+
+    // 🎧 Spotify Wrapped 2026 (Elara & Kael)
+    const [wrappedStan, setWrappedStan] = useState<{ elara: string | null; kael: string | null } | null>(null);
+    const [wrappedGenerowanie, setWrappedGenerowanie] = useState(false);
+    const [wrappedLog, setWrappedLog] = useState<string | null>(null);
+
+    const sprawdzWrapped = useCallback(async () => {
+        try {
+            const r = await fetch(`${BRIDGE_URL}/api/impresario/spotify/wrapped2026/stan`);
+            const d = await r.json();
+            if (d.success) setWrappedStan({ elara: d.elara, kael: d.kael });
+        } catch {}
+    }, []);
+
+    useEffect(() => {
+        sprawdzWrapped();
+    }, [sprawdzWrapped]);
+
+    const handleGenerujWrapped = async () => {
+        setWrappedGenerowanie(true);
+        setWrappedLog('Rozpoczynam montaż Spotify Wrapped 2026 (Elara & Kael)...');
+        try {
+            const res = await fetch(`${BRIDGE_URL}/api/impresario/spotify/wrapped2026`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                setWrappedStan({ elara: data.elara, kael: data.kael });
+                setWrappedLog('✅ Zmontowano 2 pionowe klipy 9:16 (1080x1920) w _OtakOs_Build/wrapped2026/');
+            } else {
+                setWrappedLog(`❌ Błąd generowania: ${data.message || 'Nieznany powód'}`);
+            }
+        } catch (e: any) {
+            setWrappedLog(`❌ Błąd połączenia: ${e.message}`);
+        } finally {
+            setWrappedGenerowanie(false);
+        }
     };
     const [queue,        setQueue]        = useState<QueueJob[]>([]);
     const [statusLoaded, setStatusLoaded] = useState(false);
@@ -132,6 +196,7 @@ const ImpresarioDashboard: React.FC = () => {
 
     // ── Fetch status ──────────────────────────────────────────────────────────
     const fetchStatus = useCallback(async () => {
+        if (typeof document !== 'undefined' && document.hidden) return;
         try {
             const res  = await fetch(`${BRIDGE_URL}/api/impresario/status`);
             if (!res.ok) return;
@@ -146,8 +211,20 @@ const ImpresarioDashboard: React.FC = () => {
 
     useEffect(() => {
         fetchStatus();
-        pollRef.current = setInterval(fetchStatus, 5_000);
-        return () => { if (pollRef.current) clearInterval(pollRef.current); };
+        pollRef.current = setInterval(() => {
+            if (typeof document !== 'undefined' && document.hidden) return;
+            fetchStatus();
+        }, 5_000);
+
+        const handleVisibilityChange = () => {
+            if (!document.hidden) fetchStatus();
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            if (pollRef.current) clearInterval(pollRef.current);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
     }, [fetchStatus]);
 
     // ── Toggle połączenia platformy ────────────────────────────────────────────
@@ -342,22 +419,106 @@ const ImpresarioDashboard: React.FC = () => {
                                         {isUpdating ? '...' : key === 'tiktok' ? (isConn ? '➕ Dodaj konto' : '⚡ Połącz (OAuth)') : key === 'spotify' ? '🔍 Sprawdź artystów' : isConn ? '⏏ Odłącz' : '⚡ Połącz'}
                                     </button>
                                     {key === 'tiktok' && (
-                                        <p className="mt-2 text-[8px] font-mono text-slate-500">
-                                            {tiktok?.konta?.length ? `konta: ${tiktok.konta.map((k) => k.nazwa).join(', ')}` : tiktok?.powod || 'klucze: Skarbiec → tiktok'} · wysyłka rolek: 📱 Formaty i sieci
-                                        </p>
+                                        <div className="mt-2 space-y-1.5 text-[8px] font-mono">
+                                            {tiktok?.konta && tiktok.konta.length > 0 ? (
+                                                <div className="space-y-1">
+                                                    {tiktok.konta.map((k) => (
+                                                        <div key={k.id} className="flex items-center justify-between gap-1 rounded bg-black/60 border border-pink-900/50 px-2 py-1">
+                                                            <div className="truncate flex items-center gap-1.5">
+                                                                <span className="text-pink-300 font-bold truncate">{k.nazwa || k.id}</span>
+                                                                {k.id === tiktok.domyslny && (
+                                                                    <span className="text-[7px] text-pink-400 bg-pink-950/80 px-1 rounded border border-pink-700/40">domyślne</span>
+                                                                )}
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleRozlaczTikTok(k.id, k.nazwa || k.id);
+                                                                }}
+                                                                className="shrink-0 text-slate-500 hover:text-red-300 underline transition-colors cursor-pointer"
+                                                                title={`Rozłącz konto „${k.nazwa || k.id}”`}
+                                                            >
+                                                                rozłącz
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <>
+                                                <p className="text-slate-500">
+                                                    {tiktok?.powod || 'klucze: Skarbiec → tiktok'} · wysyłka rolek: 📱 Formaty i sieci
+                                                </p>
+                                                {tiktok?.ostatniBlad && (
+                                                    <p className="text-yellow-400 mt-1 text-[9px]">
+                                                        ⚠ Ostatni błąd ({new Date(tiktok.ostatniBlad.kiedy).toLocaleString('pl-PL')}): {tiktok.ostatniBlad.komunikat}
+                                                        {/sandbox|audit|review/i.test(tiktok.ostatniBlad.komunikat) && (
+                                                            <span className="block text-yellow-500/70 mt-0.5">→ Może być konieczne przełączenie kluczy na Sandbox w TikTok Developer Portal do czasu audytu aplikacji.</span>
+                                                        )}
+                                                    </p>
+                                                )}
+                                                </>
+                                            )}
+                                        </div>
                                     )}
                                 </motion.div>
                             );
                         })}
                     </div>
 
-                    {/* ══ 🎧 Spotify: profile artystów Katedry (Web API, tylko odczyt) ══ */}
-                    {(artysci || spotifyBlad) && (
-                        <div className="mt-4 rounded-lg border border-green-600/40 bg-black/40 p-3 text-[10px] font-mono">
-                            <div className="text-green-400 font-bold mb-2">🎧 SPOTIFY · ARTYŚCI KATEDRY</div>
-                            {spotifyBlad && <p className="text-red-400">{spotifyBlad}</p>}
-                            <div className="grid sm:grid-cols-2 gap-3">
-                                {artysci?.map((a) => (
+                    {/* ══ 🎧 Spotify: profile artystów & Wrapped 2026 ══ */}
+                    <div className="mt-4 rounded-lg border border-green-600/40 bg-black/40 p-3 text-[10px] font-mono">
+                        <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                            <div className="text-green-400 font-bold flex items-center gap-2">
+                                <span>🎧 SPOTIFY · KATEDRA 2026</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={sprawdzSpotify}
+                                    className="px-2 py-1 rounded bg-slate-900 border border-green-500/40 hover:border-green-400 text-green-300 text-[9px] uppercase tracking-wider transition-colors cursor-pointer"
+                                >
+                                    🔍 Sprawdź artystów
+                                </button>
+                                <button
+                                    onClick={handleGenerujWrapped}
+                                    disabled={wrappedGenerowanie}
+                                    className={`px-3 py-1 rounded border text-[9px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                                        wrappedGenerowanie
+                                            ? 'bg-slate-800 border-slate-600 text-slate-400 cursor-not-allowed'
+                                            : 'bg-green-600/30 hover:bg-green-600/50 border-green-400 text-green-200 shadow-[0_0_12px_rgba(34,197,94,0.3)]'
+                                    }`}
+                                >
+                                    {wrappedGenerowanie ? '⏳ GENEROWANIE WRAPPED...' : '🎬 Generuj Spotify Wrapped 2026 (Elara & Kael)'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {wrappedLog && (
+                            <div className="mb-2 p-2 rounded bg-black/60 border border-slate-700 text-slate-300 text-[9px]">
+                                {wrappedLog}
+                            </div>
+                        )}
+
+                        {wrappedStan && (wrappedStan.elara || wrappedStan.kael) && (
+                            <div className="mb-3 p-2 rounded bg-green-950/30 border border-green-500/30 flex flex-wrap gap-3 items-center">
+                                <span className="text-green-400 font-bold">✨ Gotowe klipy Wrapped 9:16:</span>
+                                {wrappedStan.elara && (
+                                    <span className="text-slate-300">
+                                        👩 Elara: <code className="text-green-300 text-[8px] bg-black/50 px-1 py-0.5 rounded">_OtakOs_Build/wrapped2026/elara_wrapped_2026.mp4</code>
+                                    </span>
+                                )}
+                                {wrappedStan.kael && (
+                                    <span className="text-slate-300">
+                                        🧑 Kael: <code className="text-green-300 text-[8px] bg-black/50 px-1 py-0.5 rounded">_OtakOs_Build/wrapped2026/kael_wrapped_2026.mp4</code>
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {spotifyBlad && <p className="text-red-400 mb-2">{spotifyBlad}</p>}
+                        {artysci && (
+                            <div className="grid sm:grid-cols-2 gap-3 mt-2">
+                                {artysci.map((a) => (
                                     <a key={a.klucz} href={a.url} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded border border-white/10 p-2 hover:border-green-500/50">
                                         {a.obraz ? <img src={a.obraz} alt="" className="w-12 h-12 rounded-full object-cover" /> : <div className="w-12 h-12 rounded-full bg-slate-800" />}
                                         <div>
@@ -370,8 +531,8 @@ const ImpresarioDashboard: React.FC = () => {
                                     </a>
                                 ))}
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
 
                     {/* ══ Instrukcja Konfiguracji YouTube V0 ══ */}
                     {!(vault['youtube']?.connected) && (

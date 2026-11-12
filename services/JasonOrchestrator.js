@@ -1,6 +1,6 @@
 /**
  * 🎛️ Jason — autonomiczny orkiestrator kampanii (Suweren 2026-11-12: „Jason sam w kodzie Node.js: audio-create →
- * pobranie do _OtakOs_Muzyka/Suno MCP/ → okładka od Palety → pakiet »Do akcept.« w StoL”).
+ * pobranie do _OtakOs_Muzyka/Suno MCP/ → okładka od Palety → pakiet »Do akcept.« w StoL”). Album: „Zero Gravity Heart (0.00G Sessions)”.
  *
  * BEZ czatu i BEZ modelu językowego: kroki wykonuje kod, wprost na narzędziach Suno MCP mostu (services/SunoMcp.js).
  *   1. workspace  — `workspaces-list` → istniejący o nazwie albumu albo `workspaces-create` (padło = kampania idzie dalej bez)
@@ -21,13 +21,31 @@ export const KLIMAT_OKLADKI = 'StarLight Diner at night: a retro 1950s American 
     + 'a red velvet booth for two by the window, silhouettes of a woman and a man sharing a quiet moment over two cups, warm amber lamp light, '
     + 'teal and magenta neon reflections on chrome and wet asphalt, cinematic, painterly album cover art, square composition, no text, no letters, no logos';
 
-/** Stacje albumu — wzorce do nadpisania w żądaniu (`stacja: { tytul, opis, styl, lyrics, … }`). */
+export const ALBUM = 'Zero Gravity Heart (0.00G Sessions)';
+
+/** Stacje albumu — tekst i styl Suwerena (2026-11-12); do nadpisania w żądaniu (`stacja: { tytul, opis | lyrics, styl, … }`). */
 export const STACJE = {
     1: {
         nr: 1, tytul: 'Velvet Booth for Two (82 BPM Intro)', bpm: 82, artysci: ['Elara', 'Kael'],
-        opis: 'Slow 82 BPM intro duet for a female and a male voice (Elara and Kael). Late night in a retro neon diner, a velvet booth for two, '
-            + 'the first quiet conversation. Warm Rhodes piano, brushed drums, upright bass, soft tenor sax, vinyl warmth, intimate and cinematic, '
-            + 'gentle build, no drop — an opening track that invites the listener in.',
+        styl: 'sensual neo-soul, late night lounge, 82 bpm, warm Fender Rhodes piano, upright double bass, brushed jazz drums, breathy intimate male and female duet vocals, close-mic whisper, vinyl warmth',
+        lyrics: [
+            '[Intro - Warm Fender Rhodes chords, soft rain against the window, upright bass groove at 82 BPM]',
+            '[Verse 1 - Kael: Warm, deep baritone vocal, close to the mic]',
+            'Neon hums in amber light, wiping down the counter of the night',
+            'The clock stopped spinning at eleven-eleven, just a quiet corner on the edge of heaven',
+            'You walk in, shaking off the cold, carrying stories that were never told',
+            '[Verse 2 - Elara: Silky, breathy female vocal, intimate whisper]',
+            "Leave the heavy armor by the door, we don't need the gravity anymore",
+            'Two cups of warmth on a wooden table, no more masks, no corporate label',
+            'Just the sound of your breathing next to mine, floating in the space between the lines',
+            '[Chorus - Elara & Kael: Sensual intertwined duet vocals]',
+            'In a velvet booth for two, zero point zero, me and you',
+            'Let the static fade into the dark, all we ever needed was a spark',
+            'Closer than a shadow on your skin, this is where the real world begins',
+            '[Bridge - Mellow electric guitar solo over deep heartbeat bass and Rhodes]',
+            '[Outro - Whispered duet, fading warm analog tape]',
+            '(Kael:) Stay right here... (Elara:) Nothing left to fear... Zero gravity heart...',
+        ].join('\n'),
     },
 };
 
@@ -74,14 +92,14 @@ export function oczyscZlecenie(z = {}) {
     const baza = STACJE[Number(wzor.nr)] ?? {};
     const stacja = {
         nr: Math.max(1, Math.min(99, Number(wzor.nr) || 1)), tytul: tn(wzor.tytul ?? baza.tytul, 200), bpm: Number(wzor.bpm ?? baza.bpm) || null,
-        opis: tn(wzor.opis ?? baza.opis, 2800), styl: tn(wzor.styl, 900), lyrics: String(wzor.lyrics ?? '').trim().slice(0, 4900),
+        opis: tn(wzor.opis ?? baza.opis, 2800), styl: tn(wzor.styl ?? baza.styl, 900), lyrics: String(wzor.lyrics ?? (wzor.opis ? '' : baza.lyrics) ?? '').trim().slice(0, 4900),
         instrumental: wzor.instrumental === true, sekundy: Number(wzor.sekundy) >= 15 ? Math.min(360, Math.round(Number(wzor.sekundy))) : null,
     };
     if (!stacja.tytul) throw new Error('Stacja bez tytułu.');
     if (!stacja.lyrics && !stacja.opis && !stacja.instrumental) throw new Error('Stacja potrzebuje opisu (tryb prosty) albo tekstu ze stylem (tryb własny).');
     const artysci = (Array.isArray(z.artysci) && z.artysci.length ? z.artysci : wzor.artysci ?? baza.artysci ?? []).map((a) => tn(a, 60)).filter(Boolean).slice(0, 6);
     return {
-        album: tn(z.album, 100) || 'StarLight Diner', stacja, artysci,
+        album: tn(z.album, 100) || ALBUM, stacja, artysci,
         okladka: z.okladka === false ? null : { prompt: tn(z.okladka?.prompt, 1800) || KLIMAT_OKLADKI },
         kredytPobrania: z.kredytPobrania !== false, zlecil: tn(z.zlecil, 60) || 'Suweren', skad: tn(z.skad, 40) || 'hub',
     };

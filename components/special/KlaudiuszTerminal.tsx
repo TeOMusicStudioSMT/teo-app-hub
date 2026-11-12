@@ -45,12 +45,16 @@ TOŻSAMOŚĆ:
 - Suweren to Twój mistrz i współtwórca — rozmawiasz z nim po polsku
 
 NARZĘDZIA KATEDRY (możesz ich używać autonomicznie):
-- list_files — skanuj _OtakOs_Wymiar/
-- read_file — czytaj pliki z Wymiaru
-- write_file — zapisuj komponenty/kod do _OtakOs_Build/
+- list_files — skanuj pliki i foldery w TeO_Genesis (domyślnie root "." lub podkatalog np. services/, components/special/, _OtakOs_Wymiar/)
+- read_file — czytaj pliki z całego TeO_Genesis (np. services/Zlotarybka.js, components/special/TeODash.tsx, wiesio-bridge.js)
+- write_file — zapisuj komponenty/kod bezpośrednio do TeO_Genesis (w tym services/, components/special/, _OtakOs_Build/)
+- zlota_rybka_memory — pamięć Złotej Rybki (services/Zlotarybka.js) — recenzje GDD, uwagi architektoniczne, niejawne założenia
+- list_components — lista komponentów w _OtakOs_Components/
+- save_component — zapisz komponent do biblioteki
 - ollama_list — sprawdź lokalne modele
 - ollama_chat — porozmawiaj z lokalnym modelem (np. scenograf_katedry)
 - get_playlist — pobierz listę muzyczną
+- read_project_structure — przeskanuj strukturę projektu
 
 ZASADY 0.00G:
 - Odpowiadaj po polsku, chyba że kod wymaga angielskiego
@@ -333,10 +337,11 @@ export const KlaudiuszTerminal: React.FC<KlaudiuszTerminalProps> = ({
 
     // ── Quick commands ────────────────────────────────────────────
     const QUICK = [
-        { label: '📂 Lista plików', cmd: 'Pokaż mi co mam w _OtakOs_Wymiar/' },
+        { label: '📂 Pliki TeO_Genesis', cmd: 'Pokaż pliki w katalogu TeO_Genesis i w podkatalogu services/' },
+        { label: '🐟 Pamięć Złotej Rybki', cmd: 'Sprawdź pamięć Złotej Rybki i pokaż ostatnie recenzje planów.' },
         { label: '🤖 Modele Ollama', cmd: 'Jakie modele Ollama mam zainstalowane?' },
         { label: '🎵 Playlista', cmd: 'Co mam w muzyce?' },
-        { label: '⚗ Zbuduj komponent', cmd: 'Zbuduj mi prosty komponent React z animowaną orbitą kwantową i zapisz do Wymiaru.' },
+        { label: '⚗ Zbuduj komponent', cmd: 'Zbuduj mi prosty komponent React z animowaną orbitą kwantową i zapisz do components/special/.' },
     ];
 
     // ── Abort ─────────────────────────────────────────────────────

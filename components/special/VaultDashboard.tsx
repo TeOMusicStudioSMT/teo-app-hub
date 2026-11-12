@@ -14,7 +14,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Lock, Shield, ShieldCheck, Trash2, Flame, Github, Cpu, Mic, Brain, Sparkles, Key,
-    RefreshCw, Check, X, Eye, EyeOff, TrendingUp, AlertTriangle, Zap, Gauge, Globe,
+    RefreshCw, Check, X, Eye, EyeOff, TrendingUp, AlertTriangle, Zap, Gauge, Globe, ShoppingBag,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -41,6 +41,32 @@ const ICONS: Record<string, React.ComponentType<{ size?: number | string; classN
     apilayer_gateway: Globe,
     anthropic:        Brain,
     gemini:           Sparkles,
+    shopify:          ShoppingBag,
+};
+
+const FIELD_LABELS: Record<string, string> = {
+    'shopify.client_id': 'client_id (ID klienta)',
+    'shopify.client_secret': 'client_secret (Klucz tajny klienta)',
+    'shopify.access_token': 'access_token (Admin/Storefront API Token)',
+    'shopify.shop_domain': 'shop_domain (domena sklepu)',
+};
+
+const DEFAULT_SHOPIFY_SERVICE: VaultStatus = {
+    id: 'shopify',
+    label: 'TeO ShoP (Shopify Engine)',
+    opis: 'm8ivqt-zw.myshopify.com (API 2026-10)',
+    glyph: '🛍️',
+    security: 'CRITICAL',
+    connected: false,
+    configuredCount: 1,
+    totalFields: 4,
+    fields: [
+        { field: 'client_id', configured: false, masked: null },
+        { field: 'client_secret', configured: false, masked: null },
+        { field: 'access_token', configured: false, masked: null },
+        { field: 'shop_domain', configured: true, masked: 'm8ivqt-zw.myshopify.com' },
+    ],
+    updatedAt: null,
 };
 
 const SECURITY_BADGE: Record<string, { label: string; cls: string }> = {
@@ -65,9 +91,16 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
         try {
             const res  = await fetch(`${BRIDGE}/api/vault/status`);
             const data = await res.json();
-            if (data.success) setServices(data.services);
+            if (data.success && Array.isArray(data.services)) {
+                let svcs: VaultStatus[] = data.services;
+                if (!svcs.some(s => s.id === 'shopify')) {
+                    svcs = [DEFAULT_SHOPIFY_SERVICE, ...svcs];
+                }
+                setServices(svcs);
+            }
         } catch {
             toast.error('Skarbiec offline — czy Wiesio działa? (:3001)');
+            setServices(prev => prev.length ? prev : [DEFAULT_SHOPIFY_SERVICE]);
         } finally {
             setLoading(false);
         }
@@ -77,7 +110,7 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
 
     const saveSecret = useCallback(async (service: string, field: string) => {
         const k = `${service}.${field}`;
-        const value = (drafts[k] || '').trim();
+        let value = (drafts[k] ?? (service === 'shopify' && field === 'shop_domain' ? 'm8ivqt-zw.myshopify.com' : '')).trim();
         if (!value) return;
         setSavingKey(k);
         try {
@@ -236,10 +269,16 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
                                         <div className="space-y-2">
                                             {svc.fields.map(f => {
                                                 const k = `${svc.id}.${f.field}`;
+                                                const isShopDomain = svc.id === 'shopify' && f.field === 'shop_domain';
+                                                const labelText = FIELD_LABELS[k] || f.field;
+                                                const isVisible = Boolean(reveal[k] || isShopDomain);
+                                                const currentVal = drafts[k] !== undefined
+                                                    ? drafts[k]
+                                                    : (isShopDomain && !f.configured ? 'm8ivqt-zw.myshopify.com' : '');
                                                 return (
                                                     <div key={f.field}>
                                                         <div className="flex items-center justify-between mb-1">
-                                                            <span className="text-[10px] text-slate-500 font-mono">{f.field}</span>
+                                                            <span className="text-[10px] text-slate-400 font-mono">{labelText}</span>
                                                             {f.configured && (
                                                                 <span className="text-[9px] text-emerald-500 font-mono flex items-center gap-1">
                                                                     <Check size={9} /> {f.masked}
@@ -248,18 +287,18 @@ export const VaultDashboard: React.FC<{ onClose?: () => void }> = ({ onClose }) 
                                                         </div>
                                                         <div className="flex items-center gap-1.5">
                                                             <input
-                                                                type={reveal[k] ? 'text' : 'password'}
-                                                                value={drafts[k] || ''}
+                                                                type={isVisible ? 'text' : 'password'}
+                                                                value={currentVal}
                                                                 onChange={e => setDrafts(d => ({ ...d, [k]: e.target.value }))}
-                                                                placeholder={f.configured ? 'Nadpisz klucz...' : 'Wklej klucz...'}
+                                                                placeholder={f.configured ? 'Nadpisz klucz...' : (isShopDomain ? 'm8ivqt-zw.myshopify.com' : 'Wklej klucz...')}
                                                                 className="flex-1 min-w-0 bg-black/60 border border-slate-700 focus:border-amber-500/60 rounded-lg px-2 py-1.5 text-[11px] text-amber-100 outline-hidden font-mono"
                                                             />
                                                             <button onClick={() => setReveal(r => ({ ...r, [k]: !r[k] }))}
                                                                 className="p-1.5 text-slate-500 hover:text-slate-300" title="Pokaż/ukryj">
-                                                                {reveal[k] ? <EyeOff size={13} /> : <Eye size={13} />}
+                                                                {isVisible ? <EyeOff size={13} /> : <Eye size={13} />}
                                                             </button>
                                                             <button onClick={() => saveSecret(svc.id, f.field)}
-                                                                disabled={savingKey === k || !(drafts[k] || '').trim()}
+                                                                disabled={savingKey === k || !(currentVal).trim()}
                                                                 className="p-1.5 rounded-lg bg-emerald-700/60 hover:bg-emerald-600 text-emerald-100 border border-emerald-500/40 disabled:opacity-30 transition-colors"
                                                                 title="Zapisz w skarbcu">
                                                                 {savingKey === k ? <RefreshCw size={13} className="animate-spin" /> : <Lock size={13} />}

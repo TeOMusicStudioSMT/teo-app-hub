@@ -57,6 +57,14 @@ export const SERVICE_CATALOG = {
     // 🤖 Autopilot TeDa na BNB Chain (prywatny moduł moduly/ted, TedAutopilot.js) — klucz portfela operacyjnego; podpisuje TYLKO most, z limitami.
     ted_bsc:          { label: 'TeD Autopilot (portfel BNB Chain)',                fields: ['private_key'],            security: 'CRITICAL', glyph: '🤖' },
     kraken:           { label: 'Kraken Pro (Giełda EUR · BaFin DE Spot API)',        fields: ['api_key', 'api_secret'],  security: 'CRITICAL', glyph: '🐙' },
+    // 🛍️ Shopify Engine (TeO ShoP) — sklep internetowy, katalog produktów, webhooki zamówień
+    shopify:          {
+        label: 'TeO ShoP (Shopify Engine)',
+        opis: 'm8ivqt-zw.myshopify.com (API 2026-10)',
+        fields: ['client_id', 'client_secret', 'access_token', 'shop_domain'],
+        security: 'CRITICAL',
+        glyph: '🛍️',
+    },
 };
 
 class VaultServiceClass {
@@ -133,7 +141,10 @@ class VaultServiceClass {
     /** Pobierz surowy sekret — WYŁĄCZNIE do użytku backendu (np. push Git). */
     async getSecret(service, field) {
         const vault = await this._readVault();
-        return vault.services?.[service]?.fields?.[field] ?? null;
+        const val = vault.services?.[service]?.fields?.[field];
+        if (val !== undefined && val !== null && val !== '') return val;
+        if (service === 'shopify' && field === 'shop_domain') return 'm8ivqt-zw.myshopify.com';
+        return null;
     }
 
     async deleteSecret(service, field) {
@@ -182,19 +193,26 @@ class VaultServiceClass {
             const meta   = SERVICE_CATALOG[id] || { label: id, fields: [], security: 'STANDARD', glyph: '🔑' };
             const stored = vault.services?.[id]?.fields || {};
             const fieldNames = meta.fields.length ? meta.fields : Object.keys(stored);
-            const fields = fieldNames.map(f => ({
-                field:      f,
-                configured: !!stored[f],
-                masked:     this._mask(stored[f]),
-            }));
+            const fields = fieldNames.map(f => {
+                const isShopDomain = id === 'shopify' && f === 'shop_domain';
+                const hasVal = Boolean(stored[f]);
+                return {
+                    field:      f,
+                    configured: hasVal || isShopDomain,
+                    masked:     hasVal ? this._mask(stored[f]) : (isShopDomain ? 'm8ivqt-zw.myshopify.com' : null),
+                };
+            });
             const configuredCount = fields.filter(f => f.configured).length;
+            const connected = id === 'shopify'
+                ? Boolean(stored.access_token || (stored.client_id && stored.client_secret))
+                : configuredCount > 0;
             out.push({
                 id,
                 label:          meta.label,
                 opis:           meta.opis ?? null,
                 glyph:          meta.glyph,
                 security:       meta.security,
-                connected:      configuredCount > 0,
+                connected,
                 configuredCount,
                 totalFields:    fields.length || 1,
                 fields,

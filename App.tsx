@@ -52,6 +52,7 @@ import { TestKoherencji } from './components/special/TestKoherencji';
 import KwantowaCzytelnia from './components/KwantowaCzytelnia';
 import AutoPanicSentinel from './components/special/AutoPanicSentinel';
 import PierscienApek from './components/PierscienApek';
+import PierscienPeaqModal from './components/PierscienPeaqModal';
 import NotebookTwinPanel from './components/special/NotebookTwinPanel';
 import SimulationDashboard from './components/special/SimulationDashboard';
 import { zsynchronizujMozg, ZDARZENIE_OTWORZ as ZDARZENIE_OTWORZ_MOZG } from './lib/mozgKatedry';
@@ -98,6 +99,12 @@ const App: React.FC = () => {
     const riskLevel = identity?.coherence.riskLevel || 'LOW';
     const [isVisualAssistantOpen, setVisualAssistantOpen] = useState(false);
     const [isApiKeyModalOpen, setApiKeyModalOpen] = useState(false);
+    const [isRingModalOpen, setIsRingModalOpen] = useState(false);
+    useEffect(() => {
+        const naOtworzPierscien = () => setIsRingModalOpen(true);
+        window.addEventListener('otakos:open-peaq-ring', naOtworzPierscien);
+        return () => window.removeEventListener('otakos:open-peaq-ring', naOtworzPierscien);
+    }, []);
     const [showRada, setShowRada] = useState(false);
     const { resonance, isRadaUnlocked } = useResonance();
     const autoConnectWallet = useSetAtom(autoConnectWalletAtom);
@@ -686,6 +693,7 @@ const App: React.FC = () => {
                                             onLogout={handleLogout}
                                             onToggleLounge={handleToggleLounge}
                                             onOpenSettings={() => setApiKeyModalOpen(true)}
+                                            onOpenRing={() => setIsRingModalOpen(true)}
                                         />
                                         <main className="w-full h-full">
                                             <AnimatePresence mode="wait">
@@ -723,6 +731,7 @@ const App: React.FC = () => {
                                             onLogout={handleLogout}
                                             onToggleLounge={handleToggleLounge}
                                             onOpenSettings={() => setApiKeyModalOpen(true)}
+                                            onOpenRing={() => setIsRingModalOpen(true)}
                                         />
 
                                         <main className="w-full h-full">
@@ -1072,6 +1081,7 @@ const App: React.FC = () => {
                                 {user && <AvatarSelectionModal />}
                                 <ProtectiveModeModal />
                                 <ApiKeyModal isOpen={isApiKeyModalOpen} onClose={() => setApiKeyModalOpen(false)} />
+                                <PierscienPeaqModal isOpen={isRingModalOpen} onClose={() => setIsRingModalOpen(false)} />
                                 {anomaly && <QuantumGuardianAlert message={anomaly} onClose={() => setAnomaly(null)} />}
 
                                 <Toaster

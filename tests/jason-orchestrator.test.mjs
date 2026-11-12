@@ -6,7 +6,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import express from 'express';
-import { utworzJasona, zamontujTrasyJasona, oczyscZlecenie, argumentyUtworu, klipyZWyniku, znajdzWorkspace, stanyKlipow, STACJE } from '../services/JasonOrchestrator.js';
+import { utworzJasona, zamontujTrasyJasona, oczyscZlecenie, argumentyUtworu, klipyZWyniku, znajdzWorkspace, stanyKlipow, STACJE, ALBUM } from '../services/JasonOrchestrator.js';
 
 const tekst = (o) => ({ content: [{ type: 'text', text: JSON.stringify(o) }] });
 
@@ -42,19 +42,29 @@ test('czyste: zlecenie, argumenty Suno, klipy, workspace, stany', () => {
     const z = oczyscZlecenie({});
     assert.equal(z.stacja.tytul, STACJE[1].tytul);
     assert.deepEqual(z.artysci, ['Elara', 'Kael']);
-    assert.equal(z.album, 'StarLight Diner');
+    assert.equal(z.album, 'Zero Gravity Heart (0.00G Sessions)');
+    assert.equal(z.album, ALBUM);
     assert.match(z.okladka.prompt, /StarLight Diner/);
-    // tryb prosty: description bez style/lyrics; tryb własny: lyrics + style bez description
-    const prosty = argumentyUtworu({ id: 'j-00000000', ...z, workspace: { id: 'ws-1' } });
-    assert.ok(prosty.description && !prosty.style && !prosty.lyrics);
-    assert.equal(prosty.workspace_id, 'ws-1');
-    assert.equal(prosty.idempotency_key, 'j-00000000');
+    // Stacja 1 = tekst i styl Suwerena → tryb własny Suno: lyrics + style, BEZ description (mieszanie = 400)
+    const s1 = argumentyUtworu({ id: 'j-00000000', ...z, workspace: { id: 'ws-1' } });
+    assert.match(s1.lyrics, /^\[Intro - Warm Fender Rhodes chords/);
+    assert.match(s1.lyrics, /In a velvet booth for two, zero point zero, me and you/);
+    assert.match(s1.lyrics, /Zero gravity heart\.\.\.$/);
+    assert.equal(s1.lyrics.split('\n').length, 16);
+    assert.match(s1.style, /^sensual neo-soul, late night lounge, 82 bpm/);
+    assert.equal(s1.description, undefined);
+    assert.equal(s1.title, 'Velvet Booth for Two (82 BPM Intro)');
+    assert.equal(s1.workspace_id, 'ws-1');
+    assert.equal(s1.idempotency_key, 'j-00000000');
+    // tryb prosty: sam opis → description bez style/lyrics (własny opis stacji 1 nie ciągnie tekstu wzorca)
+    const prosty = argumentyUtworu({ id: 'j-2', ...oczyscZlecenie({ stacja: { nr: 1, tytul: 'Inna', opis: 'slow jazz duet' } }) });
+    assert.ok(prosty.description && !prosty.lyrics && !prosty.style);
     const wlasny = argumentyUtworu({ id: 'j-1', ...oczyscZlecenie({ stacja: { nr: 2, tytul: 'X', lyrics: '[Verse] la', styl: 'soul, 82 bpm' } }) });
     assert.ok(wlasny.lyrics && wlasny.style && !wlasny.description);
     assert.throws(() => oczyscZlecenie({ stacja: 7 }), /Nie znam stacji/);
     assert.throws(() => oczyscZlecenie({ stacja: { tytul: 'Bez treści' } }), /opisu/);
     assert.deepEqual(klipyZWyniku({ clip_ids: ['a', 'b'], id: 'a' }), ['a', 'b']);
-    assert.equal(znajdzWorkspace({ data: { items: [{ id: 'w9', name: ' starlight diner ' }] } }, 'StarLight Diner'), 'w9');
+    assert.equal(znajdzWorkspace({ data: { items: [{ id: 'w9', name: ' zero gravity heart (0.00g sessions) ' }] } }, ALBUM), 'w9');
     assert.deepEqual(stanyKlipow({ id: 'a', status: 'complete' }).map((s) => s.status), ['complete']);
 });
 
@@ -78,7 +88,7 @@ test('kampania: workspace → audio-create → czekanie → pobranie → okładk
         await J._czekaj(id);
         const k = (await (await fetch(`${baza}/api/jason/kampanie/${id}`)).json()).kampania;
         assert.equal(k.stan, 'do_akceptacji', k.blad);
-        assert.deepEqual(k.workspace, { id: 'ws-1', nazwa: 'StarLight Diner', nowy: true });
+        assert.deepEqual(k.workspace, { id: 'ws-1', nazwa: ALBUM, nowy: true });
         assert.equal(suno.wywolania.filter((w) => w.nazwa === 'audio-create').length, 1);
         assert.equal(suno.wywolania.find((w) => w.nazwa === 'audio-create').args.workspace_id, 'ws-1');
         // pierwsza wersja przyszła z czekania, drugą Jason dociągnął przez audio-download

@@ -36,6 +36,7 @@ import * as Recenzent from './RecenzentKodeksa.js';
 import { utworzListyModeli } from './ModeleChmury.js';
 import { zgniecionyKwant, POWOD_ZGNIECIONY } from './ZwiadowcaHF.js';
 import { malyModel } from './BledyModeli.js';
+import QuantumForgeService from './QuantumForgeService.js';
 
 const run = promisify(execFile);
 
@@ -1213,7 +1214,14 @@ export async function buduj(projektId, { zadanie: tresc, model, rundy = RUND, bl
                         continue;
                     }
                     await fs.mkdir(path.dirname(pelna), { recursive: true });
-                    await fs.writeFile(pelna, p.tresc, 'utf8');
+                    const isCodeFile = /\.(tsx?|jsx?)$/i.test(p.sciezka) && !p.sciezka.includes('vite.config');
+                    const trescDoZapisu = isCodeFile
+                        ? QuantumForgeService.injectOriginGuard(p.tresc, {
+                              name: `${projektId}/${p.sciezka}`,
+                              isTs: /\.(tsx?)$/i.test(p.sciezka),
+                          })
+                        : p.tresc;
+                    await fs.writeFile(pelna, trescDoZapisu, 'utf8');
                     doRecenzji.push({ sciezka: p.sciezka, stara, nowa: p.tresc, bazowa: sprzedZadania.get(p.sciezka) ?? null });
                     zmienione++;
                 }
@@ -1348,6 +1356,20 @@ PRZEJRZYJ PO KOLEI (zmierzone przyczyny takich błędów): (1) JEDNOSTKI — czy
                 } catch (e) { krok('blad', `nie udało się przywrócić projektu: ${e.message}`); }
             }
             if (ok) {
+                // ⚛️ Auto-mint w Graviton Registry z Pieczęcią Suwerena (Anti-Scalp)
+                QuantumForgeService.mintAsset({
+                    name: p.nazwa || projektId,
+                    type: 'CODE',
+                    stabilityClass: 'STABLE',
+                    content: cel,
+                    metadata: {
+                        projektId,
+                        zadanieId: z.id,
+                        rundy: z.rundy,
+                        model: z.model,
+                    },
+                }).catch(e => console.warn('[AppStudio] ⚠️ Auto-mint warning:', e.message));
+
                 await git(dir, ['add', '-A']);
                 try { await git(dir, ['-c', 'user.name=Kodeks', '-c', 'user.email=kodeks@katedra.local', 'commit', '-q', '-m', `Kodeks: ${cel.slice(0, 200)}`]); commit = await git(dir, ['rev-parse', '--short', 'HEAD']); } catch { /* nic do commitowania */ }
             }

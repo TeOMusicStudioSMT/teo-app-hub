@@ -4,6 +4,7 @@ import { FiHome, FiPower, FiSettings } from 'react-icons/fi';
 import { useAtom } from 'jotai';
 import { aiModeAtom } from '../store/settings';
 import { pobierzTryb, ustawTryb, opisTrybu, type StanTrybu } from '../lib/trybKatedry';
+import { peaqRingService, type PeaqRingState } from '../services/peaqRingService';
 import { motion } from 'framer-motion';
 
 interface HeaderProps {
@@ -14,12 +15,17 @@ interface HeaderProps {
     onLogout: () => void;
     onToggleLounge: () => void;
     onOpenSettings?: () => void;
+    onOpenRing?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ isVisible, isAuthenticated, isLoungeOpen, onLogin, onLogout, onToggleLounge, onOpenSettings }) => {
+const Header: React.FC<HeaderProps> = ({ isVisible, isAuthenticated, isLoungeOpen, onLogin, onLogout, onToggleLounge, onOpenSettings, onOpenRing }) => {
     const title = isAuthenticated && isLoungeOpen ? "TEONAUT LOUNGE" : "HUB";
     const [logoError, setLogoError] = useState(false);
     const [aiMode, setAiMode] = useAtom(aiModeAtom);
+    const [ringState, setRingState] = useState<PeaqRingState>(() => peaqRingService.getState());
+    useEffect(() => {
+        return peaqRingService.subscribe(setRingState);
+    }, []);
     // ☁️/🏠 Tryb Katedry: most jest źródłem prawdy (lib/trybKatedry.ts) — przełącznik zmienia CAŁĄ Katedrę.
     const [tryb, setTryb] = useState<StanTrybu | null>(null);
     useEffect(() => {
@@ -101,6 +107,50 @@ const Header: React.FC<HeaderProps> = ({ isVisible, isAuthenticated, isLoungeOpe
                 </div>
             </div>
             <div className="flex items-center gap-2 md:gap-3">
+                {/* 💍 Pierścień Suwerena (PEAQ PSR-100) — Biometria & WebBLE 0.00G */}
+                <button
+                    onClick={() => {
+                        if (onOpenRing) onOpenRing();
+                        else window.dispatchEvent(new CustomEvent('otakos:open-peaq-ring'));
+                    }}
+                    className={`h-10 md:h-12 px-3 rounded-full backdrop-blur-md border flex items-center justify-center gap-1.5 transition-all duration-300 font-mono text-xs ${
+                        ringState.connected
+                            ? ringState.isRelayed
+                                ? 'bg-blue-950/40 border-blue-500/50 text-blue-200 hover:bg-blue-900/50 hover:shadow-[0_0_15px_rgba(59,130,246,0.4)]'
+                                : ringState.isSimulated
+                                    ? 'bg-amber-950/40 border-amber-500/50 text-amber-200 hover:bg-amber-900/50 hover:shadow-[0_0_15px_rgba(245,158,11,0.4)]'
+                                    : 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200 hover:bg-emerald-900/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.4)]'
+                            : 'bg-slate-800/50 border-cyan-500/30 text-cyan-200 hover:bg-cyan-900/40 hover:border-cyan-400'
+                    }`}
+                    title="💍 Pierścień Suwerena — PEAQ 0.00G (WebBluetooth & Stół Mobilny)"
+                    aria-label="Pierścień Suwerena"
+                >
+                    <span className={`text-base ${ringState.connected ? 'animate-pulse' : ''}`}>
+                        {ringState.isRelayed ? '📱' : '💍'}
+                    </span>
+                    <span className="hidden sm:inline font-bold">
+                        {ringState.bpm > 0 ? (
+                            <>
+                                <span className="text-rose-400 font-extrabold">{ringState.bpm}</span>
+                                <span className="text-[10px] text-slate-400 ml-0.5">BPM</span>
+                            </>
+                        ) : (
+                            'PEAQ'
+                        )}
+                    </span>
+                    {ringState.connected && (
+                        <div
+                            className={`w-1.5 h-1.5 rounded-full ${
+                                ringState.isRelayed
+                                    ? 'bg-blue-400'
+                                    : ringState.isSimulated
+                                        ? 'bg-amber-400'
+                                        : 'bg-emerald-400'
+                            } animate-ping`}
+                        />
+                    )}
+                </button>
+
                 {/* 🚪 Do Bramy — zawsze (także przy wejściu suwerennym, bez konta Google): wyjście to decyzja, nie przypadek */}
                 <button
                     onClick={() => window.dispatchEvent(new Event('otakos:do-bramy'))}

@@ -21,6 +21,7 @@ import { utworzSilnikKsiag, zamontujTrasySilnikaKsiag } from './services/SilnikK
 import { utworzManuskrypt, zamontujTrasyManuskryptu } from './services/WlasnyManuskrypt.js';
 import { utworzFederacje, zamontujTrasyFederacji } from './services/FederacjaKsiag.js';
 import { utworzStolProduktowy, zamontujTrasyStoluProduktowego } from './services/StolProduktowy.js';
+import * as StolPamiec from './services/StolPamiec.js';
 import { utworzSezonoweDropy, zamontujTrasySezonowych } from './services/SezonoweDropy.js';
 import { utworzLinkiSklepu, zamontujTrasyLinkowSklepu } from './services/LinkiSklepu.js';
 import { utworzRytm } from './services/RytmUtworu.js';
@@ -52,6 +53,9 @@ const __dirname = path.dirname(__filename);
 // BRIDGE: Aby obsłużyć biblioteki CommonJS w środowisku ESM (jak youtube-transcript 1.0.6)
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
+
+// 🎬 Spotify Wrapped 2026 (Elara & Kael)
+import { generujWrapped2026 } from './services/SpotifyWrappedGen.js';
 
 // ── ARCHIWISTA WIEDZY (KnowledgeGraphService) ────────────────────────────────
 import KnowledgeGraphService from './services/KnowledgeGraphService.js';
@@ -150,6 +154,7 @@ import ImpresarioService     from './services/ImpresarioService.js';
 import TostService           from './services/TostService.js';
 import LaundryService        from './services/LaundryService.js';
 import VaultService          from './services/VaultService.js';
+import QuantumForgeService from './services/QuantumForgeService.js';
 import ProfileScoutService   from './services/ProfileScoutService.js';
 import {
     AKCJE_SLUZBY as BIZNES_AKCJE,
@@ -330,6 +335,11 @@ import {
 import {
     ocenPrace, zapiszWdech, stanOddechu, rejestrTrwalych,
 } from './services/OddechService.js';
+import BiometriaService, {
+    zarejestrujOdczyt as biometriaZarejestruj,
+    stanBiometrii,
+    wczytaj as biometriaWczytaj,
+} from './services/BiometriaService.js';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
@@ -392,6 +402,37 @@ function normalizeOllamaBase(h) {
     return b.replace(/\/+$/, '');
 }
 const OLLAMA_BASE = normalizeOllamaBase(process.env.OLLAMA_HOST);
+
+// ⚡ CACHE DLA OLLAMY (/api/tags) — TTL 5 minut (300 000 ms), koniec mielenia dysku co 8 sekund!
+let ollamaTagsCache = { czas: 0, dane: null };
+const OLLAMA_TAGS_TTL_MS = 300_000;
+
+export async function pobierzOllamaTagsCached({ wymus = false } = {}) {
+    const teraz = Date.now();
+    if (!wymus && ollamaTagsCache.dane && (teraz - ollamaTagsCache.czas < OLLAMA_TAGS_TTL_MS)) {
+        return ollamaTagsCache.dane;
+    }
+    const resp = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) throw new Error(`Ollama HTTP ${resp.status}`);
+    const dane = await resp.json();
+    ollamaTagsCache = { czas: Date.now(), dane };
+    return dane;
+}
+
+// 🩺 Lekki healthcheck Ollamy (nie mieli dysku, sprawdza /api/ps lub /)
+export async function czyOllamaZywa(timeoutMs = 1500) {
+    try {
+        const c = new AbortController(); const t = setTimeout(() => c.abort(), timeoutMs);
+        const r = await fetch(`${OLLAMA_BASE}/api/ps`, { signal: c.signal }); clearTimeout(t);
+        return r.ok;
+    } catch {
+        try {
+            const c2 = new AbortController(); const t2 = setTimeout(() => c2.abort(), timeoutMs);
+            const r2 = await fetch(`${OLLAMA_BASE}/`, { signal: c2.signal }); clearTimeout(t2);
+            return r2.ok;
+        } catch { return false; }
+    }
+}
 
 /**
  * 🧠 Domyślny rdzeń narracyjny — głos Joanny, Kronika, Dziennik, teledysk, storyboard.
@@ -917,18 +958,67 @@ async function getGeminiKey(reqApiKey) {
 const KATEDRA_TOOLS = [
     {
         name: 'list_files',
-        description: 'Lista plików w _OtakOs_Wymiar/',
-        input_schema: { type: 'object', properties: {}, required: [] },
+        description: 'Lista plików i folderów w katalogu projektu TeO_Genesis (domyślnie katalog główny "." lub podany podkatalog np. "services", "components/special", "_OtakOs_Wymiar")',
+        input_schema: {
+            type: 'object',
+            properties: {
+                dir: { type: 'string', description: 'Ścieżka do katalogu relatywna do TeO_Genesis (domyślnie ".")' },
+                path: { type: 'string', description: 'Alias do dir' },
+            },
+            required: []
+        },
     },
     {
         name: 'read_file',
-        description: 'Odczytaj plik z _OtakOs_Wymiar/',
-        input_schema: { type: 'object', properties: { filename: { type: 'string' } }, required: ['filename'] },
+        description: 'Odczytaj zawartość pliku z katalogu TeO_Genesis (w tym services/, components/special/, _OtakOs_Wymiar/). Domyślnie zwraca maks. 200 linii z informacją o łącznej liczbie linii.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                filename: { type: 'string', description: 'Ścieżka do pliku relatywna do TeO_Genesis (np. services/Zlotarybka.js, components/special/TeODash.tsx)' },
+                path: { type: 'string', description: 'Alias do filename' },
+                startLine: { type: 'integer', description: 'Opcjonalna linia początkowa (1-indexed)' },
+                endLine: { type: 'integer', description: 'Opcjonalna linia końcowa (1-indexed)' }
+            },
+            required: ['filename']
+        },
+    },
+    {
+        name: 'patch_file',
+        description: 'Podmień wskazany fragment tekstu w istniejącym pliku bez konieczności przepisywania całego pliku',
+        input_schema: {
+            type: 'object',
+            properties: {
+                path: { type: 'string', description: 'Ścieżka do pliku relatywna do TeO_Genesis (lub filename)' },
+                filename: { type: 'string', description: 'Alias do path' },
+                oldText: { type: 'string', description: 'Dokładny fragment tekstu do zastąpienia' },
+                newText: { type: 'string', description: 'Nowy fragment tekstu' }
+            },
+            required: ['oldText', 'newText']
+        },
     },
     {
         name: 'write_file',
-        description: 'Zapisz plik do _OtakOs_Build/',
-        input_schema: { type: 'object', properties: { filename: { type: 'string' }, content: { type: 'string' } }, required: ['filename', 'content'] },
+        description: 'Zapisz plik w katalogu projektu TeO_Genesis (w tym services/, components/special/, _OtakOs_Build/)',
+        input_schema: {
+            type: 'object',
+            properties: {
+                filename: { type: 'string', description: 'Ścieżka do pliku relatywna do TeO_Genesis (np. services/Nowy.js, components/special/Nowy.tsx lub _OtakOs_Build/kod.js)' },
+                path: { type: 'string', description: 'Alias do filename' },
+                content: { type: 'string', description: 'Pełna treść pliku do zapisania' }
+            },
+            required: ['filename', 'content']
+        },
+    },
+    {
+        name: 'zlota_rybka_memory',
+        description: 'Dostęp do pamięci Złotej Rybki (services/Zlotarybka.js) — recenzje planów GDD, niejawne założenia, uwagi architektoniczne i stan audytu projektów gier i aplikacji',
+        input_schema: {
+            type: 'object',
+            properties: {
+                projekt: { type: 'string', description: 'Identyfikator projektu gry/aplikacji (opcjonalny, brak = lista wszystkich)' },
+            },
+            required: []
+        },
     },
     {
         name: 'list_components',
@@ -990,24 +1080,144 @@ async function executeTool(toolName, toolInput) {
     switch (toolName) {
         case 'list_files': {
             try {
-                const entries = await fs.readdir(ANTIGRAVITY_DIR, { withFileTypes: true });
-                return { success: true, files: entries.map(e => ({ name: e.name, type: e.isDirectory() ? 'dir' : 'file' })) };
+                const subDir = toolInput?.dir || toolInput?.path || '.';
+                const rootDir = path.resolve(__dirname);
+                const targetDir = path.resolve(rootDir, subDir);
+                const safeDir = targetDir.startsWith(rootDir) ? targetDir : rootDir;
+                const entries = await fs.readdir(safeDir, { withFileTypes: true });
+                return {
+                    success: true,
+                    directory: path.relative(rootDir, safeDir).replace(/\\/g, '/') || '.',
+                    files: entries.map(e => ({
+                        name: e.name,
+                        type: e.isDirectory() ? 'dir' : 'file',
+                        path: path.relative(rootDir, path.join(safeDir, e.name)).replace(/\\/g, '/')
+                    }))
+                };
             } catch (e) { return { success: false, error: e.message }; }
         }
 
         case 'read_file': {
             try {
-                const content = await fs.readFile(path.join(ANTIGRAVITY_DIR, toolInput.filename), 'utf8');
-                return { success: true, content };
+                const reqFile = toolInput?.filename || toolInput?.path;
+                if (!reqFile) return { success: false, error: 'Brak filename' };
+                const rootDir = path.resolve(__dirname);
+                let targetPath = path.resolve(rootDir, reqFile);
+                if (!fsSync.existsSync(targetPath)) {
+                    const fallbackPath = path.resolve(ANTIGRAVITY_DIR, reqFile);
+                    if (fsSync.existsSync(fallbackPath)) {
+                        targetPath = fallbackPath;
+                    }
+                }
+                const content = await fs.readFile(targetPath, 'utf8');
+                const allLines = content.split('\n');
+                const totalLines = allLines.length;
+
+                let startLine = Number.isInteger(toolInput?.startLine) && toolInput.startLine > 0 ? toolInput.startLine : 1;
+                let endLine = Number.isInteger(toolInput?.endLine) && toolInput.endLine >= startLine ? toolInput.endLine : (startLine + 199);
+
+                // Domyślny bezpiecznik tokenów: maks. 200 linii w jednej odpowiedzi
+                if (endLine - startLine + 1 > 200) {
+                    endLine = startLine + 199;
+                }
+                if (endLine > totalLines) {
+                    endLine = totalLines;
+                }
+
+                const slicedLines = allLines.slice(startLine - 1, endLine);
+                const slicedContent = slicedLines.join('\n');
+                const isTruncated = (startLine > 1) || (endLine < totalLines);
+
+                return {
+                    success: true,
+                    filename: reqFile,
+                    path: path.relative(rootDir, targetPath).replace(/\\/g, '/'),
+                    content: slicedContent,
+                    startLine,
+                    endLine,
+                    totalLines,
+                    isTruncated,
+                    info: isTruncated
+                        ? `Zwrócono linie ${startLine}-${endLine} z ${totalLines} (limit maks. 200 linii). Użyj startLine/endLine aby czytać kolejne fragmenty.`
+                        : `Zwrócono cały plik (${totalLines} linii).`
+                };
+            } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'patch_file': {
+            try {
+                const reqFile = toolInput?.path || toolInput?.filename;
+                if (!reqFile) return { success: false, error: 'Brak ścieżki (path lub filename)' };
+                const { oldText, newText } = toolInput || {};
+                if (typeof oldText !== 'string' || typeof newText !== 'string') {
+                    return { success: false, error: 'Brak parametrów oldText lub newText' };
+                }
+                const rootDir = path.resolve(__dirname);
+                let fp = path.resolve(rootDir, reqFile);
+                if (!fp.startsWith(rootDir)) {
+                    fp = path.resolve(rootDir, path.basename(reqFile));
+                }
+                if (!fsSync.existsSync(fp)) {
+                    return { success: false, error: `Plik nie istnieje: ${reqFile}` };
+                }
+                const original = await fs.readFile(fp, 'utf8');
+                if (!original.includes(oldText)) {
+                    return { success: false, error: 'Fragment oldText nie został odnaleziony w pliku' };
+                }
+                const occurrences = original.split(oldText).length - 1;
+                const updated = original.replace(oldText, newText);
+                await fs.writeFile(fp, updated, 'utf8');
+                console.log(`[Wiesio-Bridge] 🩹 patch_file zaktualizowano: ${fp} (wystąpień: ${occurrences})`);
+                return {
+                    success: true,
+                    path: path.relative(rootDir, fp).replace(/\\/g, '/'),
+                    filename: reqFile,
+                    occurrencesReplaced: 1,
+                    totalOccurrences: occurrences
+                };
             } catch (e) { return { success: false, error: e.message }; }
         }
 
         case 'write_file': {
             try {
-                const fp = path.join(BUILD_DIR, toolInput.filename);
+                const reqFile = toolInput?.filename || toolInput?.path;
+                if (!reqFile) return { success: false, error: 'Brak filename' };
+                const rootDir = path.resolve(__dirname);
+                let fp = path.resolve(rootDir, reqFile);
+                if (!fp.startsWith(rootDir)) {
+                    fp = path.resolve(rootDir, path.basename(reqFile));
+                }
+                await fs.mkdir(path.dirname(fp), { recursive: true });
                 await fs.writeFile(fp, toolInput.content, 'utf8');
-                return { success: true, path: fp, filename: toolInput.filename };
+                console.log(`[Wiesio-Bridge] ✍️ write_file zapisano: ${fp}`);
+                return { success: true, path: path.relative(rootDir, fp).replace(/\\/g, '/'), filename: reqFile };
             } catch (e) { return { success: false, error: e.message }; }
+        }
+
+        case 'zlota_rybka_memory': {
+            try {
+                const rybkaDir = path.join(ANTIGRAVITY_DIR, 'zlota-rybka');
+                if (toolInput?.projekt) {
+                    if (typeof ZlotaRybka !== 'undefined' && ZlotaRybka?.stan) {
+                        const st = await ZlotaRybka.stan(toolInput.projekt);
+                        return { success: true, stan: st };
+                    }
+                    const plikProj = path.join(rybkaDir, `${toolInput.projekt}.json`);
+                    const data = JSON.parse(await fs.readFile(plikProj, 'utf8'));
+                    return { success: true, stan: data };
+                }
+                const files = await fs.readdir(rybkaDir).catch(() => []);
+                const przeglady = [];
+                for (const f of files.filter(x => x.endsWith('.json'))) {
+                    try {
+                        const content = JSON.parse(await fs.readFile(path.join(rybkaDir, f), 'utf8'));
+                        przeglady.push(content);
+                    } catch {}
+                }
+                return { success: true, projekty: przeglady, count: przeglady.length };
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
         }
 
         case 'list_components': {
@@ -1231,9 +1441,8 @@ app.post('/api/ollama/pisz', async (req, res) => {
 
 app.get('/api/ollama/models', async (req, res) => {
     try {
-        const resp = await fetch(`${OLLAMA_BASE}/api/tags`);
-        if (!resp.ok) return res.json({ models: [], error: `Ollama HTTP ${resp.status}` });
-        const data = await resp.json();
+        const wymus = req.query.wymus === '1' || req.query.fresh === '1';
+        const data = await pobierzOllamaTagsCached({ wymus });
         const models = (data.models || []).map(m => m.name);
         res.json({ models });
     } catch (e) {
@@ -1380,7 +1589,7 @@ app.post('/api/claude', async (req, res) => {
     // 🛡️ Samoczyszczenie VRAM przed alokacją kontekstu modelu
     executeTacosGuard();
 
-    const { messages, system, model = 'claude-sonnet-4-20250514', useTools = true, apiKey: reqApiKey, agent } = req.body;
+    const { messages, system, model = 'claude-sonnet-5-5', useTools = true, apiKey: reqApiKey, agent } = req.body;
     if (!messages?.length) return res.status(400).json({ error: 'Brak messages' });
 
     const apiKey = await getAnthropicKey(reqApiKey);
@@ -1689,10 +1898,17 @@ app.post('/api/bridge/execute', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Brak filename' });
         }
         try {
-            const filePath = path.join(ANTIGRAVITY_DIR, filename);
+            const rootDir = path.resolve(__dirname);
+            let filePath = path.resolve(rootDir, filename);
+            if (!fsSync.existsSync(filePath)) {
+                const fallbackPath = path.resolve(ANTIGRAVITY_DIR, filename);
+                if (fsSync.existsSync(fallbackPath)) {
+                    filePath = fallbackPath;
+                }
+            }
             const fileContent = await fs.readFile(filePath, 'utf8');
             console.log(`[Wiesio-Bridge] 📖 Odczytano: ${filePath}`);
-            return res.json({ success: true, filename, content: fileContent, timestamp: Date.now() });
+            return res.json({ success: true, filename, path: path.relative(rootDir, filePath).replace(/\\/g, '/'), content: fileContent, timestamp: Date.now() });
         } catch (e) {
             if (e.code === 'ENOENT') {
                 return res.status(404).json({ success: false, message: `Plik "${filename}" nie istnieje.`, code: 'FILE_NOT_FOUND' });
@@ -1701,7 +1917,7 @@ app.post('/api/bridge/execute', async (req, res) => {
         }
     }
 
-    // ── LIST_DIRECTORY (Obsługa _OtakOs_Wymiar / _OtakOs_Move) ───────────────────────
+    // ── LIST_DIRECTORY (Obsługa _OtakOs_Wymiar / _OtakOs_Move / TeO_Genesis) ───────────────────────
     if (action === 'LIST_DIRECTORY') {
         try {
             let scanDir = ANTIGRAVITY_DIR;
@@ -1713,6 +1929,11 @@ app.post('/api/bridge/execute', async (req, res) => {
             } else if (payload.target === 'SONIC') {
                 scanDir = SONIC_DIR;
                 filterExtensions = ['.json'];
+            } else if (payload.target === 'ROOT' || payload.target === 'TEO_GENESIS' || payload.dir || payload.path) {
+                const reqDir = payload.dir || payload.path || '.';
+                const rootDir = path.resolve(__dirname);
+                const resolved = path.resolve(rootDir, reqDir);
+                scanDir = resolved.startsWith(rootDir) ? resolved : rootDir;
             }
 
             const entries = await fs.readdir(scanDir, { withFileTypes: true });
@@ -3370,6 +3591,60 @@ app.post('/api/rafineria/convert', rafineriaUpload.single('video'), async (req, 
 //  Przyjmuje tablicę węzłów, dołącza do pliku graviton_nodes.json
 //  w wymiarze AntiGravity i odsyła listę nadanych ID.
 // ══════════════════════════════════════════════════════════════════
+// ── ⚛️ QUANTUM FORGE & GRAVITON REGISTRY (0.00G ANTI-SCALP) ──
+app.post('/api/forge/mint', async (req, res) => {
+    try {
+        const { name, type, stabilityClass, filePath, content, metadata } = req.body || {};
+        if (!name && !filePath && !content) {
+            return res.status(400).json({ success: false, message: 'Wymagana nazwa dzieła (name), filePath lub content.' });
+        }
+        const asset = await QuantumForgeService.mintAsset({
+            name,
+            type: type || 'CODE',
+            stabilityClass: stabilityClass || 'STABLE',
+            filePath,
+            content,
+            metadata: metadata || {},
+        });
+        return res.json({
+            success: true,
+            asset,
+            message: 'Pieczęć Suwerena została nadana, obiekt zarejestrowany w Graviton Registry.',
+        });
+    } catch (err) {
+        console.error('[Wiesio-Forge] ❌ Błąd mintAsset:', err);
+        return res.status(500).json({ success: false, message: `Błąd Forge Mint: ${err.message}` });
+    }
+});
+
+app.get('/api/forge/registry', async (req, res) => {
+    try {
+        const registry = await QuantumForgeService.getRegistry();
+        return res.json({
+            success: true,
+            count: registry.length,
+            registry,
+        });
+    } catch (err) {
+        console.error('[Wiesio-Forge] ❌ Błąd pobierania rejestru:', err);
+        return res.status(500).json({ success: false, message: `Błąd pobierania rejestru: ${err.message}` });
+    }
+});
+
+app.post('/api/forge/verify', async (req, res) => {
+    try {
+        const { hash, filePath, content, grvTokenId } = req.body || {};
+        const result = await QuantumForgeService.verifyAsset({ hash, filePath, content, grvTokenId });
+        return res.json({
+            success: true,
+            ...result,
+        });
+    } catch (err) {
+        console.error('[Wiesio-Forge] ❌ Błąd weryfikacji dzieła:', err);
+        return res.status(500).json({ success: false, message: `Błąd weryfikacji: ${err.message}` });
+    }
+});
+
 app.post('/api/graviton/mint', async (req, res) => {
     const { nodes } = req.body;
 
@@ -3389,6 +3664,21 @@ app.post('/api/graviton/mint', async (req, res) => {
 
         const updated = [...existing, ...nodes];
         await fs.writeFile(NODES_FILE, JSON.stringify(updated, null, 2), 'utf8');
+
+        // [QuantumForge Sync]
+        for (const n of nodes) {
+            try {
+                await QuantumForgeService.mintAsset({
+                    name: n.name || n.fileName || n.id,
+                    type: n.type || 'CODE',
+                    stabilityClass: n.stability || 'STABLE',
+                    content: n.content || n.url || '',
+                    metadata: { legacyId: n.id, mode: n.mode, author: n.author },
+                });
+            } catch (errSync) {
+                console.warn('[Wiesio-Forge] Ostrzeżenie synchronizacji węzła:', errSync.message);
+            }
+        }
 
         console.log(`\n[Wiesio-Forge] ⚛️  Zmintowano ${nodes.length} węzłów. Archiwum: ${updated.length} łącznie.`);
         nodes.forEach(n => console.log(`   · ${n.id}  (${n.type}/${n.stability})  ${n.fileName}`));
@@ -4608,6 +4898,53 @@ app.get('/api/grv/oddech/:wezel', async (req, res) => {
 });
 
 /** Rejestr Zasobów Trwałych — punkt 3: to, co przetrwało. */
+// ── 💍 BIOMETRIA SUWERENA — PEAQ SMART RING PSR 100-SILVER 10 (0.00G) ──
+/** POST /api/biometrics/pulse — odbiera { bpm, spo2, battery, deviceName } z pierścienia PEAQ. */
+app.post('/api/biometrics/pulse', async (req, res) => {
+    try {
+        const { bpm, spo2, battery, deviceName, source } = req.body ?? {};
+        const biometria = await biometriaZarejestruj(ANTIGRAVITY_DIR, { bpm, spo2, battery, deviceName, source });
+        return res.json({ success: true, biometria });
+    } catch (e) {
+        return res.status(400).json({ success: false, message: e.message });
+    }
+});
+
+/** GET /api/biometrics/status — zwraca aktualny puls Suwerena, SpO2, stan baterii, koherencję 0.00G. */
+app.get('/api/biometrics/status', async (req, res) => {
+    try {
+        const biometria = await stanBiometrii(ANTIGRAVITY_DIR);
+        return res.json({ success: true, biometria });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/** POST /api/biometrics/przekuj-grv — przekuwa aktywny puls i oddech Suwerena w nagrodę GRV. */
+app.post('/api/biometrics/przekuj-grv', async (req, res) => {
+    try {
+        const biometria = await stanBiometrii(ANTIGRAVITY_DIR);
+        if (!biometria.bpm || biometria.bpm <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Brak aktywnego pulsu z pierścienia PEAQ. Załóż pierścień lub włącz tryb kalibracji.',
+            });
+        }
+        const minutaKlucz = `puls:${new Date().toISOString().slice(0, 16)}`;
+        const oddech = await oddechZaPrace('biometria.puls', minutaKlucz, {
+            nazwa: `Puls ${biometria.bpm} BPM (Koherencja: ${(biometria.koherencja * 100).toFixed(0)}%)`,
+            sciezka: 'PEAQ Smart Ring PSR-100',
+        });
+        return res.json({
+            success: true,
+            biometria,
+            oddech,
+        });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
 app.get('/api/grv/trwale', async (req, res) => {
     try {
         const wezel = String(req.query.wezel || '') || null;
@@ -6254,12 +6591,12 @@ app.get('/api/katedra/raport', async (req, res) => {
 // ── 🧠 MODELE LOKALNE — status + realny pull (Gemma 4 / Gemma diffusion) ──────
 app.get('/api/models/status', async (req, res) => {
     try {
-        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 2000);
-        const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: ctrl.signal }); clearTimeout(t);
-        const d = await r.json().catch(() => ({}));
+        const wymus = req.query.wymus === '1';
+        const d = await pobierzOllamaTagsCached({ wymus }).catch(() => ({}));
         const models = Array.isArray(d.models) ? d.models.map(m => m.name) : [];
         const has = (n) => models.some(m => m.toLowerCase().startsWith(n));
-        res.json({ success: true, online: true, models, active: process.env.OTAKOS_MODEL || 'gemma4', hasGemma4: has('gemma4') || has('gemma3'), hasDiffusion: has('gemma') });
+        const online = await czyOllamaZywa(1500);
+        res.json({ success: true, online, models, active: process.env.OTAKOS_MODEL || 'gemma4', hasGemma4: has('gemma4') || has('gemma3'), hasDiffusion: has('gemma') });
     } catch { res.json({ success: true, online: false, models: [], hasGemma4: false }); }
 });
 app.post('/api/models/pull', (req, res) => {
@@ -7930,8 +8267,8 @@ app.get('/api/rezyserzy', async (_req, res) => {
         try { wideo = await Wideo.stanWideo(COMFY_BASE); } catch { /* ComfyUI śpi — panel to pokaże */ }
         let llm = [];
         try {
-            const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(8000) });
-            llm = ((await r.json())?.models ?? []).map((m) => m.name);
+            const d = await pobierzOllamaTagsCached();
+            llm = (d?.models ?? []).map((m) => m.name);
         } catch { /* Ollama śpi */ }
         return res.json({
             success: true, rezyserzy, domyslne: Rezyserzy.DOMYSLNE,
@@ -8140,7 +8477,7 @@ Dyrygent.skonfiguruj({
     jevLokalny: JevLokalny,   // bez klucza Jev — embeddingi lokalnie (gdy model wstaje)
     partytury: PartyturyDyrygenta,
     katalogWymiar: ANTIGRAVITY_DIR,
-    tagi: async () => (await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(8000) })).json(),
+    tagi: async () => pobierzOllamaTagsCached(),
     projekty: () => ProjektStada.lista(),
     modeleAgentow: () => ModeleAgentow.wszystkie(),
     ustawModel: (agent, model) => ModeleAgentow.ustaw(agent, model),
@@ -8153,7 +8490,7 @@ const StrazModeliDyrygenta = utworzStrazModeli({
     plik: path.join(ANTIGRAVITY_DIR, 'zastepstwa-modeli.json'),
     modeleAgentow: () => ModeleAgentow.wszystkie(),
     ustaw: (agent, model) => ModeleAgentow.ustaw(agent, model),
-    tagi: async () => (await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(8000) })).json(),
+    tagi: async () => pobierzOllamaTagsCached(),
     katalog: () => Dyrygent.katalog(),
     zastepca: (kat, agent, oryginal) => Dyrygent.zastepcaDlaAgenta(kat, agent, oryginal),
     szyna: Szyna,
@@ -9064,7 +9401,7 @@ const KanalYT = utworzKanalYouTube();
 // ⚡ Giełda mocy (services/GieldaMocy.js) — etap 1: oferta Katedry w wizytówce, oferty innych z rejestru otakos.wtf.
 const GieldaMocy = utworzGielde({
     katalog: ANTIGRAVITY_DIR,
-    modeleOllamy: async () => ((await (await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(5000) })).json())?.models ?? []).map((m) => m.name).filter(Boolean),
+    modeleOllamy: async () => ((await pobierzOllamaTagsCached().catch(() => ({})))?.models ?? []).map((m) => m.name).filter(Boolean),
     gpu: async () => gpuZNvidiaSmi((await execFileAsync('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], { windowsHide: true, timeout: 5000 })).stdout),
     rejestr: (process.env.OTAKOS_REJESTR_URL || 'https://otakos.wtf/api/katedry').replace(/\/meldunek$/, ''),
 });
@@ -11889,6 +12226,29 @@ for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc],
     });
 }
 
+// ── 🗂️ PAMIĘĆ STOŁU NARAD (services/StolPamiec.js) ──────────────────────────────────────────────
+/** GET /api/stol/pamiec — lista pamięci wszystkich agentów przy Okrągłym Stole. */
+app.get('/api/stol/pamiec', async (_req, res) => {
+    try {
+        const lista = await StolPamiec.lista();
+        res.json({ success: true, agenci: lista, pamiec: lista });
+    }
+    catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+/** GET /api/stol/pamiec/:agent — pamięć konkretnego agenta. */
+app.get('/api/stol/pamiec/:agent', async (req, res) => {
+    try { res.json({ success: true, pamiec: await StolPamiec.pobierz(req.params.agent) }); }
+    catch (e) { res.status(e.status || 500).json({ success: false, message: e.message }); }
+});
+/** POST /api/stol/pamiec/:agent { aktywneZadanie?, historia?, xpPrzyrost? } — zapis + opcjonalny EXP. */
+app.post('/api/stol/pamiec/:agent', async (req, res) => {
+    try {
+        const { aktywneZadanie, historia, xpPrzyrost } = req.body ?? {};
+        const pamiec = await StolPamiec.zapisz(req.params.agent, { aktywneZadanie, historia, xpPrzyrost });
+        res.json({ success: true, pamiec });
+    } catch (e) { res.status(e.status || 500).json({ success: false, message: e.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 🧠 MÓZG KATEDRY — jedno miejsce na modele (services/MozgKatedry.js). Hub: TeO-Sim → 🧠 Mózg Katedry.
 // GET: domyślne Katedry, przydział TeOgochi (+ zastępstwa Straży), Kodeks (Mechanik), zadania, tryb, modele Ollamy.
@@ -11896,8 +12256,7 @@ for (const [akcja, fn] of [['przyjmij', Stol.przyjmij], ['odrzuc', Stol.odrzuc],
 // ═══════════════════════════════════════════════════════════════════════════
 async function modeleOllamyMozgu() {
     try {
-        const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(5000) });
-        const d = await r.json();
+        const d = await pobierzOllamaTagsCached();
         return (d.models ?? []).map((m) => ({ nazwa: m.name, gb: Math.round((m.size ?? 0) / 1e8) / 10, parametry: m.details?.parameter_size ?? '', kwant: m.details?.quantization_level ?? '' }));
     } catch { return null; }
 }
@@ -13057,6 +13416,263 @@ app.post('/api/business/dial', async (req, res) => {
     } catch (e) {
         return res.status(e instanceof BladTelefonii ? e.status : 500)
             .json({ success: false, wykonane: false, przewod: 'twilio-conduit', message: e.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  🛍️ SHOPIFY ENGINE (TeO ShoP) — sklep internetowy, katalog produktów, webhook
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/business/shopify/status
+ * Sprawdza czy klucze "shopify" są w VaultService i zwraca status połączenia ze sklepem.
+ */
+app.get('/api/business/shopify/status', async (req, res) => {
+    try {
+        const vault = VaultService.getInstance();
+        const [clientId, clientSecret, accessToken, storedDomain] = await Promise.all([
+            vault.getSecret('shopify', 'client_id'),
+            vault.getSecret('shopify', 'client_secret'),
+            vault.getSecret('shopify', 'access_token'),
+            vault.getSecret('shopify', 'shop_domain'),
+        ]);
+
+        const shopDomain = storedDomain || 'm8ivqt-zw.myshopify.com';
+        const hasToken = Boolean(accessToken);
+        const hasClientKeys = Boolean(clientId && clientSecret);
+        const configured = hasToken || hasClientKeys;
+
+        if (!hasToken) {
+            return res.json({
+                success: true,
+                connected: false,
+                configured,
+                shopDomain,
+                apiVersion: '2026-10',
+                keys: {
+                    client_id: Boolean(clientId),
+                    client_secret: Boolean(clientSecret),
+                    access_token: false,
+                    shop_domain: Boolean(storedDomain),
+                },
+                message: configured
+                    ? 'Klucze klienta obecne w Skarbcu, ale brak access_token do bezpośredniego API.'
+                    : 'Brak kluczy dostawcy "shopify" w Skarbcu 0.00G.',
+            });
+        }
+
+        // Testuj bezpośrednie połączenie z Shopify Admin API (2026-10)
+        try {
+            const probeUrl = `https://${shopDomain}/admin/api/2026-10/shop.json`;
+            const probeRes = await fetch(probeUrl, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Shopify-Access-Token': accessToken,
+                },
+                signal: AbortSignal.timeout(6000),
+            });
+
+            if (probeRes.ok) {
+                const data = await probeRes.json();
+                return res.json({
+                    success: true,
+                    connected: true,
+                    configured: true,
+                    shopDomain,
+                    apiVersion: '2026-10',
+                    shop: data.shop ?? { domain: shopDomain },
+                    message: 'Połączenie ze sklepem Shopify aktywne (200 OK).',
+                });
+            } else {
+                return res.json({
+                    success: true,
+                    connected: false,
+                    configured: true,
+                    shopDomain,
+                    apiVersion: '2026-10',
+                    httpStatus: probeRes.status,
+                    message: `Shopify API zwróciło status ${probeRes.status} (${probeRes.statusText}). Sprawdź uprawnienia access_token.`,
+                });
+            }
+        } catch (probeErr) {
+            return res.json({
+                success: true,
+                connected: false,
+                configured: true,
+                shopDomain,
+                apiVersion: '2026-10',
+                offline: true,
+                error: probeErr.message,
+                message: `Błąd sieciowy podczas sprawdzania sklepu: ${probeErr.message}`,
+            });
+        }
+    } catch (e) {
+        console.error('[Shopify Status] ❌ Błąd:', e.message);
+        return res.status(500).json({ success: false, message: e.message });
+    }
+});
+
+/**
+ * GET /api/business/shopify/products
+ * Pobiera listę produktów ze sklepu m8ivqt-zw.myshopify.com używając kluczy ze Skarbca 0.00G.
+ */
+app.get('/api/business/shopify/products', async (req, res) => {
+    try {
+        const vault = VaultService.getInstance();
+        const [accessToken, storedDomain] = await Promise.all([
+            vault.getSecret('shopify', 'access_token'),
+            vault.getSecret('shopify', 'shop_domain'),
+        ]);
+
+        const shopDomain = storedDomain || 'm8ivqt-zw.myshopify.com';
+
+        if (!accessToken) {
+            return res.status(400).json({
+                success: false,
+                connected: false,
+                configured: false,
+                shopDomain,
+                message: 'Brak klucza access_token dla dostawcy "shopify" w Skarbcu 0.00G. Wpisz go w panelu Skarbiec 0.00G.',
+            });
+        }
+
+        const url = `https://${shopDomain}/admin/api/2026-10/products.json`;
+        const response = await fetch(url, {
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Access-Token': accessToken,
+            },
+            signal: AbortSignal.timeout(10000),
+        });
+
+        if (!response.ok) {
+            const errText = await response.text().catch(() => '');
+            return res.status(response.status).json({
+                success: false,
+                shopDomain,
+                status: response.status,
+                message: `Shopify API zwróciło błąd (${response.status}): ${errText || response.statusText}`,
+            });
+        }
+
+        const data = await response.json();
+        const products = Array.isArray(data.products) ? data.products : [];
+
+        return res.json({
+            success: true,
+            shopDomain,
+            apiVersion: '2026-10',
+            count: products.length,
+            products,
+        });
+    } catch (e) {
+        console.error('[Shopify Products] ❌ Błąd:', e.message);
+        return res.status(500).json({
+            success: false,
+            message: `Nie udało się pobrać produktów ze sklepu Shopify: ${e.message}`,
+        });
+    }
+});
+
+/**
+ * POST /api/business/shopify/webhook
+ * Odbiera webhook zamówienia z Shopify i dopisuje zdarzenie do istniejącego rejestru /api/business/ledger.
+ */
+app.post('/api/business/shopify/webhook', async (req, res) => {
+    try {
+        const payload = req.body ?? {};
+        const topic = req.headers['x-shopify-topic'] || 'orders/create';
+        const shopHeader = req.headers['x-shopify-shop-domain'] || 'm8ivqt-zw.myshopify.com';
+
+        // Opcjonalna weryfikacja HMAC jeśli przesłano nagłówek i secret jest w Vault
+        const hmacHeader = req.headers['x-shopify-hmac-sha256'];
+        if (hmacHeader) {
+            const clientSecret = await VaultService.getInstance().getSecret('shopify', 'client_secret');
+            if (clientSecret) {
+                const calculatedHmac = crypto.createHmac('sha256', clientSecret)
+                    .update(JSON.stringify(payload), 'utf8')
+                    .digest('base64');
+                if (calculatedHmac !== hmacHeader) {
+                    console.warn('[Shopify Webhook] ⚠️ Niezgodność HMAC SHA256 (sprawdź client_secret).');
+                }
+            }
+        }
+
+        // Identyfikacja zamówienia
+        const orderId = payload.id || payload.order_number || payload.name || `zam-${Date.now().toString(36)}`;
+        const orderName = payload.name || (payload.order_number ? `#${payload.order_number}` : `Zamówienie ${orderId}`);
+        const total = payload.total_price || payload.current_total_price || payload.total_price_set?.shop_money?.amount || '0.00';
+        const currency = payload.currency || payload.total_price_set?.shop_money?.currency_code || 'PLN';
+
+        // Klient
+        const cust = payload.customer;
+        const customerName = cust ? [cust.first_name, cust.last_name].filter(Boolean).join(' ') : null;
+        const customer = customerName || cust?.email || payload.email || 'Klient Shopify';
+
+        // Pozycje
+        const items = Array.isArray(payload.line_items)
+            ? payload.line_items.map(i => `${i.title || i.name} (x${i.quantity || 1})`).join(', ')
+            : '';
+
+        // Znajdź istniejący biznes o rodzaju 'sklep' lub nazwie zawierającej 'shop'
+        let biznesId = 'shopify';
+        try {
+            const stan = await biznesStan(ANTIGRAVITY_DIR);
+            const pasujacy = stan?.biznesy?.find(b =>
+                b.rodzaj === 'sklep' ||
+                (b.url && b.url.toLowerCase().includes('shopify')) ||
+                (b.nazwa && b.nazwa.toLowerCase().includes('shop'))
+            );
+            if (pasujacy) biznesId = pasujacy.id;
+        } catch {}
+
+        const akcja = 'zamowienie.zlozone';
+        const klucz = `biznes:${biznesId}:${akcja}:shopify:${orderId}`;
+        const opis = `Zamówienie Shopify ${orderName} (${total} ${currency})${items ? ` · ${items}` : ''}`.slice(0, 300);
+
+        // Nalicz Oddech/GRV za służbę (jeśli system oddechu dostępny)
+        let oddech = null;
+        try {
+            const def = BIZNES_AKCJE[akcja];
+            if (def?.oddech) {
+                oddech = await oddechZaPrace(def.oddech, klucz, null, null);
+            }
+        } catch (err) {
+            console.warn('[Shopify Webhook] Oddech niedostępny dla zamówienia:', err.message);
+        }
+
+        const przyznane = Boolean(oddech?.przyznane);
+        const grv = przyznane ? (oddech.grv || 0) : 0;
+        const powod = oddech ? (oddech.powod ?? null) : 'Shopify Webhook (zamówienie złożone)';
+
+        // Zapisz zdarzenie w księdze zdarzeń BiznesService (zwracane przez GET /api/business/ledger)
+        const zdarzenie = await biznesZapiszZdarzenie(ANTIGRAVITY_DIR, {
+            biznesId,
+            akcja,
+            klucz,
+            opis,
+            klient: customer,
+            grv,
+            przyznane,
+            powod,
+        });
+
+        console.log(`[Shopify Webhook] 🛍️ Zarejestrowano zamówienie ${orderName} (${total} ${currency}) dla biznesu "${biznesId}".`);
+
+        return res.json({
+            success: true,
+            received: true,
+            topic,
+            shopDomain: shopHeader,
+            orderId,
+            orderName,
+            biznesId,
+            zdarzenie,
+            oddech: oddech ?? { przyznane: false, powod },
+        });
+    } catch (e) {
+        console.error('[Shopify Webhook] ❌ Błąd zapisu webhooka:', e.message);
+        return res.status(500).json({ success: false, message: e.message });
     }
 });
 
@@ -14870,10 +15486,11 @@ const MapaAgi = utworzMapeAgi({
         bridge: () => ({ status: 'online', load: 0.4, powod: 'most odpowiada (:3001)' }),
         ollama: async () => {
             try {
-                const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(1500) });
-                const d = r.ok ? await r.json().catch(() => ({})) : {};
-                const n = Array.isArray(d.models) ? d.models.length : 0;
-                return r.ok ? { status: 'online', load: Math.min(1, 0.3 + n * 0.05), powod: `${n} modeli w Ollamie` } : { status: 'offline', powod: `Ollama HTTP ${r.status}` };
+                const online = await czyOllamaZywa(1500);
+                if (!online) return { status: 'offline', powod: 'Ollama nie odpowiada (:11434)' };
+                const d = ollamaTagsCache.dane || await pobierzOllamaTagsCached().catch(() => ({}));
+                const n = Array.isArray(d?.models) ? d.models.length : 0;
+                return { status: 'online', load: Math.min(1, 0.3 + n * 0.05), powod: `${n} modeli w Ollamie` };
             } catch { return { status: 'offline', powod: 'Ollama nie odpowiada (:11434)' }; }
         },
         mechanik: async () => {
@@ -15232,6 +15849,61 @@ app.post('/api/impresario/export/spotify/:id', async (req, res) => {
         console.error('[Impresario-API] ❌ POST export/spotify:', err.message);
         return res.status(500).json({ success: false, message: err.message });
     }
+});
+
+/**
+ * POST /api/impresario/spotify/wrapped2026
+ * Odpala generujWrapped2026 i zwraca wynik (lub streamuje postęp jako JSON lines).
+ */
+app.post('/api/impresario/spotify/wrapped2026', async (req, res) => {
+    const stream = req.headers.accept === 'application/x-ndjson';
+    const logi = [];
+    const postep = (msg) => {
+        logi.push(msg);
+        if (stream && !res.headersSent) {
+            res.write(JSON.stringify({ log: msg }) + '\n');
+        }
+    };
+
+    if (stream) {
+        res.setHeader('Content-Type', 'application/x-ndjson');
+        res.setHeader('Transfer-Encoding', 'chunked');
+    }
+
+    try {
+        const wynik = await generujWrapped2026({ postep });
+        const odpowiedz = { success: true, elara: wynik.elara, kael: wynik.kael, logi };
+        if (stream) {
+            res.write(JSON.stringify(odpowiedz) + '\n');
+            res.end();
+        } else {
+            return res.json(odpowiedz);
+        }
+    } catch (err) {
+        console.error('[Wrapped2026] ❌', err.message);
+        const odpowiedz = { success: false, message: err.message, logi };
+        if (stream) {
+            res.write(JSON.stringify(odpowiedz) + '\n');
+            res.end();
+        } else {
+            return res.status(500).json(odpowiedz);
+        }
+    }
+});
+
+/**
+ * GET /api/impresario/spotify/wrapped2026/stan
+ * Sprawdza czy pliki MP4 Wrapped 2026 istnieją.
+ */
+app.get('/api/impresario/spotify/wrapped2026/stan', async (req, res) => {
+    const OUTPUT_DIR = path.join(__dirname, '_OtakOs_Build', 'wrapped2026');
+    const sprawdz = async (plik) => {
+        try { await fs.access(plik); return true; } catch { return false; }
+    };
+    const elaraPath = path.join(OUTPUT_DIR, 'elara_wrapped_2026.mp4');
+    const kaelPath  = path.join(OUTPUT_DIR, 'kael_wrapped_2026.mp4');
+    const [elara, kael] = await Promise.all([sprawdz(elaraPath), sprawdz(kaelPath)]);
+    return res.json({ success: true, elara: elara ? elaraPath : null, kael: kael ? kaelPath : null });
 });
 
 /**
@@ -16028,8 +16700,8 @@ const BazaWiedzy = utworzBazeWiedzy({
 });
 zamontujTrasyBazyWiedzy(app, BazaWiedzy, {
     modele: async () => {
-        const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(4000) });
-        return ((await r.json()).models ?? []).map((m) => m.name).filter((n) => !/embed/i.test(n));
+        const d = await pobierzOllamaTagsCached();
+        return ((d?.models ?? []).map((m) => m.name)).filter((n) => !/embed/i.test(n));
     },
 });
 
@@ -18188,7 +18860,7 @@ app.post('/api/mcp/execute', async (req, res) => {
                 } catch { return false; }
             };
             const [ollama, comfy] = await Promise.all([
-                zywy(`${OLLAMA_BASE}/api/tags`), zywy(`${COMFY_BASE}/object_info`, 2500),
+                zywy(`${OLLAMA_BASE}/api/ps`, 1500), zywy(`${COMFY_BASE}/object_info`, 2500),
             ]);
             let modeleLlm = [];
             try {
@@ -18742,8 +19414,7 @@ app.post('/api/mechanic/model', async (req, res) => {
     // Model-widmo sprawdzamy PRZED zapisem — inaczej Mechanik padłby dopiero
     // przy pierwszym zadaniu, w tle, gdzie Suweren tego nie zobaczy.
     try {
-        const r = await fetch(`${OLLAMA_BASE}/api/tags`);
-        const d = await r.json();
+        const d = await pobierzOllamaTagsCached({ wymus: true });
         const sa = (d.models || []).map(m => m.name);
         if (!sa.includes(model)) {
             return res.status(422).json({
@@ -19265,6 +19936,7 @@ process.on('uncaughtException', (e) => zapiszBladMostu('nieobsłużony wyjątek'
 
 const httpServer = app.listen(PORT, () => {
     SilnikKlonu.zapewnij({ aiDir: AI_DIR, base: VOICE_BASE }).catch(() => {});
+    void biometriaWczytaj(ANTIGRAVITY_DIR).catch(() => {});
     void Tunel.autostart().catch((e) => console.warn('[Tunel] autostart:', e.message));   // 🔁 tunel wstaje sam, gdy Suweren go zostawił włączony
     console.log(`================================================`);
     console.log(` 🔌 Wiesław nasłuchuje na porcie ${PORT}`);
@@ -19329,11 +20001,17 @@ const httpServer = app.listen(PORT, () => {
     console.log(` 🔴  WS   /api/recorder                     (Katedra → plik .webm na dysku)`);
     console.log(` 🎥  GET  /api/studio/status | POST /api/studio/rtmp-key`);
     console.log(` 🏢  GET  /api/business/list                (Twoje Biznesy: karty + bilans GRV)`);
+    console.log(" 💍  POST /api/biometrics/pulse          (odbiór BPM/SpO2/baterii z PEAQ Ring)");
+    console.log(" 💍  GET  /api/biometrics/status         (stan biometrii, koherencja 0.00G, tempo)");
+    console.log(" 💍  POST /api/biometrics/przekuj-grv    (przekucie Oddechu i Pulsu w GRV)");
     console.log(` 🏢  POST /api/business/create | PATCH/DELETE /api/business/:id`);
     console.log(` 💰  POST /api/business/sluzba              (Służba → Oddech → GRV z pieczęcią)`);
     console.log(` 📜  GET  /api/business/ledger              (Live Orders: księga zdarzeń)`);
     console.log(` ☎️   GET  /api/business/telefonia           (czy przewód Twilio jest DROŻNY)`);
     console.log(` ☎️   POST /api/business/dial                (domyślnie PRÓBA; realne = proba:false + potwierdzenie:true)`);
+    console.log(` 🛍️   GET  /api/business/shopify/status     (status połączenia ze sklepem Shopify)`);
+    console.log(` 🛍️   GET  /api/business/shopify/products   (pobiera produkty ze sklepu Shopify)`);
+    console.log(` 🛍️   POST /api/business/shopify/webhook    (odbiera webhook zamówienia do księgi)`);
     console.log(` 🎙️  GET  /api/voice/profiles | POST | DELETE /api/voice/profiles/:id`);
     console.log(` 🔌  GET  /api/voice/mcp                    (przewody Voice/Audio: podpiety vs sterownik)`);
     console.log(` 🗣️  POST /api/voice/speak                  (klon lokalny | Kokoro | ElevenLabs)`);

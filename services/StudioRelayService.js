@@ -19,6 +19,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
+import QuantumForgeService from './QuantumForgeService.js';
 import { WebSocketServer } from 'ws';
 
 // ─── Ścieżki ──────────────────────────────────────────────────────────────────
@@ -290,7 +291,16 @@ function transcodeToMp4(webmPath) {
     ], { windowsHide: true });
 
     proc.on('close', (code) => {
-        if (code === 0) console.log(`[Studio·REC] ✅ MP4 gotowy: ${mp4Path}`);
+        if (code === 0) {
+            console.log(`[Studio·REC] ✅ MP4 gotowy: ${mp4Path}`);
+            QuantumForgeService.autoMintMedia({
+                name: path.basename(mp4Path),
+                type: 'VIDEO',
+                filePath: mp4Path,
+                stabilityClass: 'STABLE',
+                metadata: { source: 'StudioRelayService-MP4', webmSource: webmPath },
+            }).catch(e => console.warn('[Studio·REC] Auto-mint MP4 error:', e.message));
+        }
         else console.warn(`[Studio·REC] ⚠️ Konwersja MP4 nie wyszła (kod ${code}). Plik .webm i tak jest bezpieczny.`);
     });
     proc.on('error', (err) => console.warn(`[Studio·REC] ⚠️ Konwersja MP4: ${err.message}`));
@@ -331,6 +341,18 @@ async function handleRecorderConnection(ws, params) {
             state.lastFile = filePath;
             console.log(`[Studio·REC] ⏹️ Zapisano ${fileName} (${(bytes / 1048576).toFixed(1)} MB)`);
             send(ws, { type: 'saved', file: filePath, fileName, bytes, mp4: wantMp4 });
+            // ⚛️ Pieczęć Suwerena — automatyczna tokenizacja nagrania w Graviton Registry
+            QuantumForgeService.autoMintMedia({
+                name: fileName,
+                type: 'VIDEO',
+                filePath,
+                stabilityClass: 'FLUID',
+                metadata: {
+                    bytes,
+                    source: 'StudioRelayService',
+                    title: params.get('title') || 'Studio Recording',
+                },
+            }).catch(e => console.warn('[Studio·REC] Auto-mint media error:', e.message));
             if (wantMp4 && bytes > 0) transcodeToMp4(filePath);
             try { if (ws.readyState === ws.OPEN) ws.close(1000, 'saved'); } catch { /* noop */ }
         });

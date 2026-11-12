@@ -173,6 +173,29 @@ export const QuantumForgeView: React.FC<{
             // ── Krok 6: Lokalny zapis (backward compat) ────────────────────
             mintGravitonNode(name, finalContent, assetType, stability, globalMode);
 
+            // ── Krok 6.2: ⚛️ Pieczęć Suwerena w Rejestrze Graviton ─────────────
+            try {
+                await fetch('http://localhost:3001/api/forge/mint', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name,
+                        type: assetType,
+                        stabilityClass: stability,
+                        content: finalContent,
+                        filePath: droppedFile?.name,
+                        metadata: {
+                            mode: globalMode,
+                            walletAddress: wallet.address,
+                            tripletIds: mintData.ids,
+                        },
+                    }),
+                });
+                setJwLogs(prev => [...prev, '[WIESŁAW] ✓ Nadano Pieczęć Suwerena (Anti-Scalp Proof-of-Origin).']);
+            } catch (errForge) {
+                console.warn('[Forge] Ostrzeżenie pieczęci:', errForge);
+            }
+
             // ── Krok 6.5: 📤 Share to Hub — wystaw asset w Marketplace (GRV) ──
             if (shareToHub) {
                 try {

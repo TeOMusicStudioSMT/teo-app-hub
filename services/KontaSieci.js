@@ -71,16 +71,46 @@ export const INSTRUKCJE = {
  */
 function kontaSkarbca(siec, cfg) {
     const bledy = new Map();
+
+    /** Czyści duplikaty starych tokenów (grupując po nazwie i zachowując najnowszy wg daty polaczono). */
+    async function wyczyscDuplikaty() {
+        let oczyszczono = false;
+        await cfg.zapiszSekrety(siec, (s) => {
+            const suroweKonta = Array.isArray(s.KONTA) ? s.KONTA : [];
+            if (suroweKonta.length <= 1) return;
+            const poNazwie = new Map();
+            for (const k of suroweKonta) {
+                const klucz = (k.nazwa || k.id || '').trim().toLowerCase();
+                const istniejace = poNazwie.get(klucz);
+                if (!istniejace || (new Date(k.polaczono || 0).getTime() >= new Date(istniejace.polaczono || 0).getTime())) {
+                    poNazwie.set(klucz, k);
+                }
+            }
+            const unikalne = Array.from(poNazwie.values());
+            if (unikalne.length < suroweKonta.length) {
+                s.KONTA = unikalne;
+                oczyszczono = true;
+            }
+            if (!s.KONTA.some((k) => k.id === s.DOMYSLNY)) {
+                s.DOMYSLNY = s.KONTA[s.KONTA.length - 1]?.id ?? s.KONTA[0]?.id ?? null;
+                oczyszczono = true;
+            }
+        });
+        return oczyszczono;
+    }
+
     async function lista() {
+        await wyczyscDuplikaty().catch(() => {});
         const s = await cfg.sekrety(siec).catch(() => ({}));
         const konta = Array.isArray(s?.KONTA) ? s.KONTA : [];
         return { domyslny: s?.DOMYSLNY ?? konta[0]?.id ?? null, konta: konta.map(({ id, nazwa, strona, polaczono }) => ({ id, nazwa, strona: strona ?? null, polaczono, blad: bledy.get(id) ?? null })) };
     }
     async function zapiszKonto(konto) {
         await cfg.zapiszSekrety(siec, (s) => {
-            const konta = (Array.isArray(s.KONTA) ? s.KONTA : []).filter((k) => k.id !== konto.id);
+            // Czyść stare tokeny o tym samym id ALBO tej samej nazwie konta
+            const konta = (Array.isArray(s.KONTA) ? s.KONTA : []).filter((k) => k.id !== konto.id && (!konto.nazwa || k.nazwa !== konto.nazwa));
             s.KONTA = [...konta, { ...konto, polaczono: new Date().toISOString() }];
-            if (!s.KONTA.some((k) => k.id === s.DOMYSLNY)) s.DOMYSLNY = s.KONTA[0]?.id ?? null;
+            if (!s.KONTA.some((k) => k.id === s.DOMYSLNY)) s.DOMYSLNY = s.KONTA[s.KONTA.length - 1]?.id ?? s.KONTA[0]?.id ?? null;
         });
         bledy.delete(konto.id);
     }
@@ -92,11 +122,28 @@ function kontaSkarbca(siec, cfg) {
         return lista();
     }
     async function rozlacz(id = null) {
+        const celId = typeof id === 'object' && id !== null ? (id.kontoId || id.id || null) : id;
         await cfg.zapiszSekrety(siec, (s) => {
-            s.KONTA = id ? (s.KONTA ?? []).filter((k) => k.id !== id) : [];
+            s.KONTA = celId ? (s.KONTA ?? []).filter((k) => k.id !== celId) : [];
             if (!s.KONTA.some((k) => k.id === s.DOMYSLNY)) s.DOMYSLNY = s.KONTA[0]?.id ?? null;
         });
+        if (celId) bledy.delete(celId);
+        else bledy.clear();
         return lista();
+    }
+    async function zapiszBladPolaczenia(err) {
+        const msg = String(err?.message || err);
+        await cfg.zapiszSekrety(siec, (s) => {
+            s.OSTATNI_BLAD = {
+                komunikat: msg,
+                kiedy: new Date().toISOString()
+            };
+        }).catch(() => {});
+    }
+    async function wyczyscBladPolaczenia() {
+        await cfg.zapiszSekrety(siec, (s) => {
+            delete s.OSTATNI_BLAD;
+        }).catch(() => {});
     }
     async function konto(id = null) {
         const s = await cfg.sekrety(siec);
@@ -105,7 +152,7 @@ function kontaSkarbca(siec, cfg) {
         if (!k) throw new Error(id ? 'To konto nie jest połączone z Katedrą.' : `${siec === 'tiktok' ? 'TikTok' : 'Instagram'} niepołączony — najpierw „Połącz”.`);
         return { s, k };
     }
-    return { lista, zapiszKonto, ustawDomyslne, rozlacz, konto, bledy };
+    return { lista, zapiszKonto, ustawDomyslne, rozlacz, wyczyscDuplikaty, konto, bledy, zapiszBladPolaczenia, wyczyscBladPolaczenia };
 }
 
 /**
@@ -222,23 +269,59 @@ export function utworzKontoTikTok(o) {
 
     async function token(body) {
         const r = await cfg.fetch(`${API}/v2/oauth/token/`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body).toString() });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || !d.access_token) throw new Error(`TikTok token: ${d.error ?? r.status} ${d.error_description ?? ''}`.trim());
+        const text = await r.text();
+        let d = {};
+        try { d = JSON.parse(text); } catch {}
+        if (!r.ok || !d.access_token) {
+            const errCode = typeof d.error === 'string' ? d.error : (d.error?.code || d.error_code || d.code || r.status);
+            const errDesc = typeof d.error_description === 'string' ? d.error_description : (d.error?.message || d.message || text || '');
+            throw new Error(`TikTok token (${errCode}): ${errDesc}`.trim());
+        }
         return d;
     }
 
     async function przyjmijZwrot({ code, state, error, error_description } = {}) {
-        if (error) throw new Error(error === 'access_denied' ? 'Odmówiono zgody na ekranie TikTok.' : `TikTok zwrócił błąd: ${error} ${error_description ?? ''}`.trim());
+        if (error) {
+            const errMsg = error === 'access_denied'
+                ? 'Odmówiono zgody na ekranie TikTok.'
+                : `TikTok zwrócił błąd autoryzacji: ${error} ${error_description ?? ''}`.trim();
+            await K.zapiszBladPolaczenia(errMsg).catch(() => {});
+            throw new Error(errMsg);
+        }
         const { weryfikator } = st.zuzyj(state, 'TikTok');
-        if (!code) throw new Error('TikTok nie oddał kodu.');
+        if (!code) {
+            const err = new Error('TikTok nie oddał kodu autoryzacji.');
+            await K.zapiszBladPolaczenia(err.message).catch(() => {});
+            throw err;
+        }
         const k = klient(await cfg.sekrety('tiktok'));
-        const d = await token({ client_key: k.key, client_secret: k.secret, code: String(code), grant_type: 'authorization_code', redirect_uri: zwrot(), code_verifier: weryfikator });
-        if (!d.refresh_token) throw new Error('TikTok nie dał tokenu odświeżania.');
+        if (!k) {
+            const err = new Error('Brak Client key lub Client secret w konfiguracji Katedry.');
+            await K.zapiszBladPolaczenia(err.message).catch(() => {});
+            throw err;
+        }
+        let d;
+        try {
+            d = await token({ client_key: k.key, client_secret: k.secret, code: String(code), grant_type: 'authorization_code', redirect_uri: zwrot(), code_verifier: weryfikator });
+        } catch (tokErr) {
+            await K.zapiszBladPolaczenia(tokErr.message).catch(() => {});
+            throw tokErr;
+        }
+        if (!d.refresh_token) {
+            const err = new Error('TikTok nie zwrócił tokenu odświeżania.');
+            await K.zapiszBladPolaczenia(err.message).catch(() => {});
+            throw err;
+        }
         const zakresy = String(d.scope ?? '').split(',').map((x) => x.trim());
-        if (!zakresy.includes('video.upload')) throw new Error('Zgoda bez „video.upload” — aplikacja TikTok musi mieć Content Posting API i ten zakres.');
+        if (!zakresy.includes('video.upload')) {
+            const err = new Error('Zgoda bez „video.upload” — aplikacja TikTok musi mieć Content Posting API i ten zakres.');
+            await K.zapiszBladPolaczenia(err.message).catch(() => {});
+            throw err;
+        }
         const u = await uzytkownik(d.access_token).catch(() => null);
         const konto = { id: d.open_id, nazwa: u?.display_name || `TikTok ${String(d.open_id).slice(0, 6)}`, token: d.refresh_token };
         await K.zapiszKonto(konto);
+        await K.wyczyscBladPolaczenia().catch(() => {});
         return { ok: true, konto: { id: konto.id, nazwa: konto.nazwa } };
     }
 
@@ -304,14 +387,25 @@ export function utworzKontoTikTok(o) {
         const s = await cfg.sekrety('tiktok').catch(() => ({}));
         const { domyslny, konta } = await K.lista();
         const kl = !!klient(s);
+        const ostBlad = s?.OSTATNI_BLAD ?? null;
+        let powod = null;
+        if (!kl) {
+            powod = 'niepodłączone: brak aplikacji TikTok (Client key / secret z developers.tiktok.com)';
+        } else if (ostBlad) {
+            powod = `Błąd połączenia TikTok: ${ostBlad.komunikat}`;
+        } else if (!konta.length) {
+            powod = 'niepodłączone: aplikacja jest, ale żadne konto nie dało zgody — „Połącz z TikTok”';
+        }
+
         return {
             siec: 'tiktok', klient: kl, klucze: cfg.skarbiec ? 'skarbiec' : 'impresariat', polaczony: konta.length > 0, konta, domyslny, zwrot: zwrot(), zakresy: ZAKRESY_TIKTOK, tryb: 'szkic',
-            powod: !kl ? 'niepodłączone: brak aplikacji TikTok (Client key / secret z developers.tiktok.com)' : !konta.length ? 'niepodłączone: aplikacja jest, ale żadne konto nie dało zgody — „Połącz z TikTok”' : null,
+            powod,
+            ostatniBlad: ostBlad,
             instrukcja: INSTRUKCJE.tiktok.map((x) => x.replace('{zwrot}', zwrot())),
         };
     }
 
-    return { stan, zapiszKlienta, adresZgody, przyjmijZwrot, tokenDostepu, wyslijSzkic, stanWysylki, konta: K.lista, ustawDomyslne: K.ustawDomyslne, rozlacz: K.rozlacz };
+    return { stan, zapiszKlienta, adresZgody, przyjmijZwrot, tokenDostepu, wyslijSzkic, stanWysylki, konta: K.lista, ustawDomyslne: K.ustawDomyslne, rozlacz: K.rozlacz, wyczyscDuplikaty: K.wyczyscDuplikaty, zapiszBladPolaczenia: K.zapiszBladPolaczenia, wyczyscBladPolaczenia: K.wyczyscBladPolaczenia };
 }
 
 // ═══════════════════════════════════ Instagram ═══════════════════════════════════

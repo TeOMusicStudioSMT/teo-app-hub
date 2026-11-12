@@ -65,6 +65,7 @@ import { WiesioCore } from './RdzenWiesi';
 import { DziennikFrame } from './DziennikFrame';
 import { WidokCore } from './WidokCore';
 import { KwantowyStolNarad } from './KwantowyStolNarad';
+import { StolMobilny } from './StolMobilny';
 import { TerminalZero } from './TerminalZero';
 import { ArchiwumAkaszy } from './ArchiwumAkaszy';
 import { KlaudiuszTerminal } from './KlaudiuszTerminal'; // ← NOWOŚĆ: Alchemik Estetyki
@@ -143,7 +144,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
 
   // 🌟 System 0.00G Moduły
   const [showSystem, setShowSystem] = useState<boolean>(false);
-  const [systemTab, setSystemTab] = useState<'crew' | 'inkubator' | 'story' | 'mockup' | 'studio' | 'dziennik' | 'market' | 'lustro' | 'widok' | 'narada' | 'terminal' | 'archiwum' | 'klaudiusz' | 'autobus' | 'wydawnictwo' | 'rafineria'>('crew');
+  const [systemTab, setSystemTab] = useState<'crew' | 'inkubator' | 'story' | 'mockup' | 'studio' | 'dziennik' | 'market' | 'lustro' | 'widok' | 'narada' | 'stol-mobilny' | 'terminal' | 'archiwum' | 'klaudiusz' | 'autobus' | 'wydawnictwo' | 'rafineria'>('crew');
 
   // 🎬🎵 Przylot z Music V2 (?openTeledysk=1&audioFile=...&title=...) → od razu na Teledysk
   const [teledyskPrefill, setTeledyskPrefill] = useState<{ audioFile?: string; title?: string }>({});
@@ -339,13 +340,26 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
     };
 
     refreshStats();
-    const interval = setInterval(refreshStats, 5000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      refreshStats();
+    }, 5000);
+
+    const handleVis = () => {
+      if (!document.hidden) refreshStats();
+    };
+    document.addEventListener('visibilitychange', handleVis);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVis);
+    };
   }, []);
 
   // 💓 Puls serca
   useEffect(() => {
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       setHeartbeat(prev => !prev);
     }, HEARTBEAT_INTERVAL);
     return () => clearInterval(interval);
@@ -354,6 +368,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
   // 🔑 Puls kluczy w trójkącie
   useEffect(() => {
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       setKeyPulse(prev => (prev + 1) % 3);
     }, 2000);
     return () => clearInterval(interval);
@@ -383,6 +398,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
 
     let idx = 0;
     const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       const visionText = visions[idx % visions.length];
       setGemmaVision(visionText);
 
@@ -1437,6 +1453,7 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
                 { id: 'lustro', label: '🪞 Lustro', color: '#d946ef' },
                 { id: 'widok', label: '👁️ W.I.D.O.K.', color: '#0ea5e9' },
                 { id: 'narada', label: '🔮 STÓŁ NARAD', color: '#c026d3' },
+                { id: 'stol-mobilny', label: '📱 STÓŁ MOBILNY', color: '#06b6d4' },
                 { id: 'klaudiusz', label: '⚗️ KLAUDIUSZ', color: '#f0c060' },
                 { id: 'autobus',     label: '🚌 AUTOBUS',        color: '#93c5fd' }, // ← Magistrala
                 { id: 'terminal',    label: '⚡ Terminal 0.00G',  color: '#3b82f6' },
@@ -1490,6 +1507,11 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
               {systemTab === 'dziennik' && <DziennikFrame />}
               {systemTab === 'widok' && <WidokCore />}
               {systemTab === 'narada' && <KwantowyStolNarad />}
+              {systemTab === 'stol-mobilny' && (
+                <div className="p-4 max-w-4xl mx-auto">
+                  <StolMobilny />
+                </div>
+              )}
               {systemTab === 'terminal'  && <TerminalZero />}
               {systemTab === 'archiwum'  && <ArchiwumAkaszy />}
               {systemTab === 'autobus'   && <AutobusDashboard />}
@@ -1505,10 +1527,12 @@ const TeODash: React.FC<TeODashProps> = ({ onClose }) => {
                 <KlaudiuszTerminal
                   bridgeUrl="http://127.0.0.1:3001"
                   katedraContext={`
-                    Ostatnia sesja: BoB zintegrował Klaudiusza. 
-                    Most Wiesława (V2) aktywny na porcie 3001. 
-                    Dostępne narzędzia: KATEDRA_TOOLS (list_files, read_file, write_file, save_component, ollama_chat).
-                    Lokalne modele czekają na rozkazy.
+                    Ostatnia sesja: Flash BoB odblokował pełny dostęp Kwantowego Terminala.
+                    Most Wiesława aktywny na porcie 3001.
+                    Dostępne narzędzia KATEDRA_TOOLS: list_files, read_file, write_file, zlota_rybka_memory, list_components, save_component, ollama_chat, ollama_list, read_project_structure.
+                    Zasięg narzędzi: pełny katalog TeO_Genesis (w tym services/, components/special/, _OtakOs_Wymiar/).
+                    Pamięć Złotej Rybki: podpięta z services/Zlotarybka.js (recenzje planów GDD, niejawne założenia, stan audytów).
+                    Lokalne modele i agenci czekają na rozkazy Suwerena.
                   `}
                 />
               )}

@@ -59,7 +59,7 @@ export const NeuralMap: React.FC<{ lang?: 'pl' | 'en' | 'it' }> = ({ lang = 'pl'
       finally { wToku = false; }
     };
     probe();
-    const iv = setInterval(probe, 4000);
+    const iv = setInterval(probe, 15000);
     return () => { alive = false; clearInterval(iv); };
   }, []);
 

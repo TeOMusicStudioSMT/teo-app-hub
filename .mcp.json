@@ -10,17 +10,6 @@
         "OTAKOS_MOST": "http://127.0.0.1:3001"
       }
     },
-    "wix": {
-      "type": "stdio",
-      "command": "cmd",
-      "args": [
-        "/c",
-        "npx",
-        "-y",
-        "@wix/mcp-remote",
-        "https://mcp.wix.com/sse"
-      ]
-    },
     "katedra-suno": {
       "type": "stdio",
       "command": "node",

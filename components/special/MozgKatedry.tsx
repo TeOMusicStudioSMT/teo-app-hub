@@ -108,7 +108,7 @@ const MozgKatedry: React.FC = () => {
           <span>🏋️ Lokalny ciężki (Adamus)</span>
           <select value={s.mozg.lokalnyCiezki ?? ''} onChange={(e) => void zrob('lokalny ciężki', () => ustawMozg({ lokalnyCiezki: e.target.value }))} style={pole}>{opcje(s.mozg.lokalnyCiezki ?? '', s.mozg.domyslny)}</select>
           <span>☁️ Chmura lekka</span>
-          <input defaultValue={s.mozg.chmuraLekki ?? ''} placeholder="np. claude-haiku-4-5" onBlur={(e) => e.target.value !== (s.mozg.chmuraLekki ?? '') && void zrob('chmura lekka', () => ustawMozg({ chmuraLekki: e.target.value }))} style={pole} />
+          <input defaultValue={s.mozg.chmuraLekki ?? ''} placeholder="np. claude-haiku-5-5" onBlur={(e) => e.target.value !== (s.mozg.chmuraLekki ?? '') && void zrob('chmura lekka', () => ustawMozg({ chmuraLekki: e.target.value }))} style={pole} />
           <span>☁️ Chmura ciężka</span>
           <input defaultValue={s.mozg.chmuraCiezki ?? ''} placeholder="np. claude-opus-5-5" onBlur={(e) => e.target.value !== (s.mozg.chmuraCiezki ?? '') && void zrob('chmura ciężka', () => ustawMozg({ chmuraCiezki: e.target.value }))} style={pole} />
           <span>💬 Tryb czatów Huba</span>

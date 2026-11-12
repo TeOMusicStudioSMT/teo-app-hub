@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📱 Stół Mobilny — Przekaźnik Pierścienia PEAQ (0.00G)</title>
+    <style>
+        :root {
+            --bg: #030712;
+            --card: #0f172a;
+            --border: rgba(6, 182, 212, 0.25);
+            --cyan: #06b6d4;
+            --rose: #f43f5e;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body {
+            background: var(--bg);
+            color: #f1f5f9;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px;
+        }
+        .header {
+            width: 100%;
+            max-width: 480px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            margin-bottom: 16px;
+        }
+        .title { font-size: 14px; font-weight: 700; color: var(--cyan); letter-spacing: 1px; font-family: monospace; }
+        .subtitle { font-size: 10px; color: #94a3b8; font-family: monospace; }
+        .container {
+            width: 100%;
+            max-width: 480px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-family: monospace;
+            background: rgba(6, 182, 212, 0.1);
+            color: var(--cyan);
+            border: 1px solid var(--border);
+            margin-bottom: 8px;
+        }
+        .pulse-val {
+            font-size: 56px;
+            font-weight: 900;
+            color: var(--rose);
+            font-family: monospace;
+            line-height: 1;
+            margin: 8px 0;
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 4px;
+        }
+        .pulse-val span { font-size: 16px; font-weight: 400; color: #fda4af; }
+        .metrics-grid {
+            display: grid;
+            grid-template-cols: 1fr 1fr;
+            grid-template-columns: 1fr 1fr;
+            width: 100%;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .metric-box {
+            background: rgba(3, 7, 18, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 12px;
+            padding: 10px;
+        }
+        .metric-label { font-size: 10px; color: #94a3b8; font-family: monospace; text-transform: uppercase; }
+        .metric-val { font-size: 18px; font-weight: 700; color: #f8fafc; font-family: monospace; margin-top: 2px; }
+        .btn {
+            width: 100%;
+            padding: 14px 20px;
+            border-radius: 14px;
+            border: none;
+            font-size: 13px;
+            font-weight: 700;
+            font-family: monospace;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #0891b2, #0284c7);
+            color: #ffffff;
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
+        }
+        .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
+        .btn-sec {
+            background: rgba(30, 41, 59, 0.6);
+            color: #cbd5e1;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .log-box {
+            width: 100%;
+            height: 120px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 10px;
+            color: #94a3b8;
+            overflow-y: auto;
+            text-align: left;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 4px;
+        }
+        .log-line { border-bottom: 1px solid rgba(255, 255, 255, 0.03); padding-bottom: 2px; }
+        @keyframes heartbeat {
+            0% { transform: scale(1); }
+            14% { transform: scale(1.18); }
+            28% { transform: scale(1); }
+            42% { transform: scale(1.15); }
+            70% { transform: scale(1); }
+        }
+        .heart-icon { display: inline-block; animation: heartbeat 1s infinite ease-in-out; font-size: 28px; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div>
+            <div class="title">📱 STÓŁ MOBILNY</div>
+            <div class="subtitle">Przekaźnik Pierścienia PEAQ PSR 100 (0.00G)</div>
+        </div>
+        <div style="font-size: 20px;">💍</div>
+    </div>
+
+    <div class="container">
+        <!-- Karta Główna Biometrii -->
+        <div class="card">
+            <div class="status-badge" id="statusBadge">
+                <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#f43f5e;" id="statusDot"></span>
+                <span id="statusText">GOTOWY DO PAROWANIA BLE</span>
+            </div>
+
+            <div class="heart-icon" id="heartIcon">❤️</div>
+
+            <div class="pulse-val">
+                <span id="bpmVal">--</span>
+                <span>BPM</span>
+            </div>
+
+            <div style="font-size: 11px; color: #94a3b8; font-family: monospace;" id="coherenceText">
+                Rezonans Suwerena: --
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-box">
+                    <div class="metric-label">🫁 SpO2</div>
+                    <div class="metric-val" id="spo2Val">--%</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">🔋 Bateria</div>
+                    <div class="metric-val" id="batteryVal">--%</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">⚖️ Koherencja</div>
+                    <div class="metric-val" id="coherenceVal">--%</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">📡 Most do Katedry</div>
+                    <div class="metric-val" id="relayStatusVal" style="color: #10b981; font-size: 14px;">AKTYWNY</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Przyciski akcji -->
+        <button class="btn btn-primary" id="btnPair">
+            💍 Sparuj Pierścień PEAQ na Telefonie
+        </button>
+
+        <button class="btn btn-sec" id="btnImpulse">
+            ⚡ Wyślij Impuls Pomiarowy PPG (OEM)
+        </button>
+
+        <!-- Dziennik zdarzeń na żywo -->
+        <div class="card" style="padding: 12px;">
+            <div style="width: 100%; display: flex; justify-content: space-between; font-size: 10px; font-family: monospace; color: #94a3b8; margin-bottom: 6px;">
+                <span>DZIENNIK PRZEKAŹNIKA MOBILNEGO</span>
+                <span id="pktCount">0 ramek</span>
+            </div>
+            <div class="log-box" id="logBox">
+                <div class="log-line">Czekam na sparowanie pierścienia PEAQ PSR 100...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // UUIDs
+        const UUIDS = {
+            OEM_FEEA: '0000feea-0000-1000-8000-00805f9b34fb',
+            OEM_FEE2: '0000fee2-0000-1000-8000-00805f9b34fb',
+            OEM_FEE3: '0000fee3-0000-1000-8000-00805f9b34fb',
+            BATTERY: '0000180f-0000-1000-8000-00805f9b34fb',
+            BATTERY_LEVEL: '00002a19-0000-1000-8000-00805f9b34fb',
+            HEART_RATE: '0000180d-0000-1000-8000-00805f9b34fb',
+            HRM_CHAR: '00002a37-0000-1000-8000-00805f9b34fb',
+            NORDIC_CUSTOM: '6e40fff0-b5a3-f393-e0a9-e50e24dcca9e',
+            HEALTH_DE00: '0000de00-0000-1000-8000-00805f9b34fb'
+        };
+
+        let currentDevice = null;
+        let gattServer = null;
+        let fee2Char = null;
+        let fee3Char = null;
+        let batteryChar = null;
+        let keepAliveTimer = null;
+        let packetCount = 0;
+
+        let state = {
+            bpm: 0,
+            spo2: 98,
+            battery: 100,
+            coherence: 0
+        };
+
+        function addLog(msg) {
+            const time = new Date().toLocaleTimeString();
+            const logBox = document.getElementById('logBox');
+            const div = document.createElement('div');
+            div.className = 'log-line';
+            div.textContent = `[${time}] ${msg}`;
+            logBox.prepend(div);
+        }
+
+        function calculateCoherence(bpm) {
+            if (!bpm || bpm <= 30) return 0;
+            const delta = Math.abs(bpm - 68);
+            let k = 1.0 - (delta / 50.0);
+            if (k < 0.2) k = 0.2;
+            if (k > 1.0) k = 1.0;
+            return +(k.toFixed(2));
+        }
+
+        // Wysyłanie do Mostu Katedry (lokalnie lub przez Tunel)
+        async function relayToBridge(bpm, spo2, battery) {
+            try {
+                const payload = {
+                    bpm,
+                    spo2,
+                    battery,
+                    deviceName: currentDevice ? currentDevice.name : 'PEAQ Smart Ring (Stół Mobilny)',
+                    source: 'STÓŁ_MOBILNY',
+                    ringSize: 10
+                };
+                await fetch('/api/biometrics/pulse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (e) {
+                // cicho
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('bpmVal').textContent = state.bpm > 0 ? state.bpm : '--';
+            document.getElementById('spo2Val').textContent = state.bpm > 0 ? state.spo2 + '%' : '--%';
+            document.getElementById('batteryVal').textContent = state.battery + '%';
+            document.getElementById('coherenceVal').textContent = state.bpm > 0 ? Math.round(state.coherence * 100) + '%' : '--%';
+            
+            const dur = state.bpm > 0 ? (60 / state.bpm).toFixed(2) : 1;
+            document.getElementById('heartIcon').style.animationDuration = `${dur}s`;
+
+            if (state.bpm > 0) {
+                document.getElementById('coherenceText').textContent = `Rezonans 0.00G: ${Math.round(state.coherence * 100)}% (Transmisja do Katedry)`;
+            }
+        }
+
+        // Parser pakietów OEM (0000fee2 / 0000fee3)
+        function handlePacket(source, dataView) {
+            packetCount++;
+            document.getElementById('pktCount').textContent = `${packetCount} ramek`;
+
+            const bytes = new Uint8Array(dataView.buffer, dataView.byteOffset, dataView.byteLength);
+            const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+            addLog(`📦 [${source}] HEX: ${hex}`);
+
+            let extractedBpm = 0;
+            let extractedSpo2 = 0;
+
+            for (let i = 0; i < bytes.length; i++) {
+                const b = bytes[i];
+                if (b >= 45 && b <= 190 && extractedBpm === 0) {
+                    extractedBpm = b;
+                } else if (b >= 93 && b <= 100 && extractedSpo2 === 0) {
+                    extractedSpo2 = b;
+                }
+            }
+
+            if (extractedBpm >= 45) {
+                state.bpm = extractedBpm;
+                state.spo2 = extractedSpo2 || 98;
+                state.coherence = calculateCoherence(extractedBpm);
+                updateUI();
+                relayToBridge(state.bpm, state.spo2, state.battery);
+            }
+        }
+
+        // Impuls inicjujący
+        async function sendActivation() {
+            addLog('⚡ Wysyłam impuls aktywacji PPG do PSR 100...');
+            const cmds = [
+                new Uint8Array([0xaa, 0x14, 0x01, 0xbf]),
+                new Uint8Array([0xaa, 0x01, 0x01, 0x00]),
+                new Uint8Array([0x01, 0x00])
+            ];
+            const target = fee2Char || fee3Char;
+            if (target) {
+                for (const cmd of cmds) {
+                    try {
+                        if (target.writeValueWithoutResponse) await target.writeValueWithoutResponse(cmd);
+                        else if (target.writeValue) await target.writeValue(cmd);
+                    } catch {}
+                }
+            }
+            if (fee3Char && fee3Char.properties && fee3Char.properties.read) {
+                try {
+                    const initVal = await fee3Char.readValue();
+                    handlePacket('FEE3-INIT', initVal);
+                } catch {}
+            }
+        }
+
+        // Keep-Alive 8s
+        function startKeepAlive() {
+            if (keepAliveTimer) clearInterval(keepAliveTimer);
+            keepAliveTimer = setInterval(async () => {
+                if (!gattServer || !gattServer.connected) return;
+                try {
+                    if (batteryChar && batteryChar.properties.read) {
+                        const val = await batteryChar.readValue();
+                        state.battery = val.getUint8(0);
+                        updateUI();
+                    }
+                    if (fee3Char && fee3Char.properties.read) {
+                        const val = await fee3Char.readValue();
+                        handlePacket('FEE3-PING', val);
+                    }
+                    if (fee2Char) {
+                        const ping = new Uint8Array([0xaa, 0x00, 0x00, 0xaa]);
+                        if (fee2Char.writeValueWithoutResponse) await fee2Char.writeValueWithoutResponse(ping);
+                    }
+                    addLog('💓 [Keep-Alive 8s] Pakiety podtrzymania wysłane.');
+                } catch (e) {
+                    addLog(`⚠️ Błąd keep-alive: ${e.message}`);
+                }
+            }, 8000);
+        }
+
+        // Połączenie BLE
+        async function pairBle() {
+            if (!navigator.bluetooth) {
+                alert('Przeglądarka w telefonie nie obsługuje Web Bluetooth (użyj Chrome na Androidzie).');
+                return;
+            }
+
+            try {
+                addLog('🔍 Otwieram wybór urządzenia BLE z filtrem PSR / PEAQ...');
+                document.getElementById('statusText').textContent = 'SZUKAM PIERŚCIENIA...';
+
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [
+                        { namePrefix: 'PSR' },
+                        { namePrefix: 'PEAQ' },
+                        { namePrefix: 'psr' },
+                        { namePrefix: 'peaq' }
+                    ],
+                    optionalServices: [
+                        'battery_service',
+                        'heart_rate',
+                        'device_information',
+                        UUIDS.OEM_FEEA,
+                        UUIDS.BATTERY,
+                        UUIDS.HEART_RATE,
+                        UUIDS.NORDIC_CUSTOM,
+                        UUIDS.HEALTH_DE00
+                    ]
+                });
+
+                currentDevice = device;
+                addLog(`✅ Wybrano: ${device.name}`);
+
+                device.addEventListener('gattserverdisconnected', () => {
+                    addLog('⚠️ Rozłączono pierścień.');
+                    document.getElementById('statusDot').style.background = '#f43f5e';
+                    document.getElementById('statusText').textContent = 'ROZŁĄCZONY';
+                    if (keepAliveTimer) clearInterval(keepAliveTimer);
+                });
+
+                addLog('⚡ Łączę z serwerem GATT...');
+                gattServer = await device.gatt.connect();
+
+                document.getElementById('statusDot').style.background = '#10b981';
+                document.getElementById('statusText').textContent = 'POŁĄCZONY (STÓŁ MOBILNY)';
+                addLog('🎉 Połączono z pierścieniem PEAQ PSR 100!');
+
+                // Skanowanie usług
+                const services = await gattServer.getPrimaryServices().catch(() => []);
+                for (const s of services) {
+                    const chars = await s.getCharacteristics().catch(() => []);
+                    for (const c of chars) {
+                        const u = c.uuid.toLowerCase();
+                        if (u.includes('2a19') || u.includes('180f')) {
+                            batteryChar = c;
+                            const bVal = await c.readValue().catch(() => null);
+                            if (bVal) state.battery = bVal.getUint8(0);
+                            if (c.properties.notify) {
+                                await c.startNotifications().catch(() => {});
+                                c.addEventListener('characteristicvaluechanged', (e) => {
+                                    state.battery = e.target.value.getUint8(0);
+                                    updateUI();
+                                });
+                            }
+                        }
+                        if (u.includes('fee2')) {
+                            fee2Char = c;
+                            if (c.properties.notify) {
+                                await c.startNotifications().catch(() => {});
+                                c.addEventListener('characteristicvaluechanged', (e) => handlePacket('FEE2', e.target.value));
+                            }
+                        }
+                        if (u.includes('fee3')) {
+                            fee3Char = c;
+                            if (c.properties.notify) {
+                                await c.startNotifications().catch(() => {});
+                                c.addEventListener('characteristicvaluechanged', (e) => handlePacket('FEE3', e.target.value));
+                            }
+                        }
+                    }
+                }
+
+                updateUI();
+                startKeepAlive();
+                await sendActivation();
+
+            } catch (err) {
+                addLog(`❌ Błąd: ${err.message}`);
+                document.getElementById('statusText').textContent = 'BŁĄD POŁĄCZENIA';
+            }
+        }
+
+        document.getElementById('btnPair').addEventListener('click', pairBle);
+        document.getElementById('btnImpulse').addEventListener('click', sendActivation);
+    </script>
+</body>
+</html>

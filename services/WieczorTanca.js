@@ -15,6 +15,7 @@
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
+import QuantumForgeService from './QuantumForgeService.js';
 import { utworzMagazyn, bezpNazwa } from './OdcinkiStudia.js';
 import { rangaOceny } from './Choreografie.js';
 
@@ -158,12 +159,12 @@ export function utworzWieczorTanca(o) {
             klipy.push(plik);
         }
         if (klipy.length < 2) throw new Error('Wieczór to co najmniej dwie części.');
-        // 🔒 blokada MIĘDZY PROCESAMI (2026-10-21: most Katedry i most-próbnik skleiły ten sam wieczór naraz do jednego
         // 🛍️ wstawka reklamowa 0.00G Style (services/ZebrraFashion.js) między częściami, gdy tancerz ma kolekcję w Fashion
         const ileCzesci = klipy.length;
         let reklama = null;
         if (cfg.wstawka) reklama = await cfg.wstawka(w.tancerz, { jezyk: w.jezyk }).catch((e) => { console.warn('[Wieczór Tańca] wstawka:', e.message); return null; });
         if (reklama) for (let i = klipy.length - 1; i > 0; i--) klipy.splice(i, 0, reklama);
+        // 🔒 blokada MIĘDZY PROCESAMI (2026-10-21: most Katedry i most-próbnik skleiły ten sam wieczór naraz do jednego
         // pliku — powstał uszkodzony film, który poszedł na YouTube). Plik `sklejanie.lock` w katalogu wieczoru,
         // starszy niż 30 min = po padniętym procesie, zdejmowany.
         const zamek = path.join(path.dirname(M.plikO(id)), 'sklejanie.lock');
@@ -186,6 +187,19 @@ export function utworzWieczorTanca(o) {
             await fs.rename(roboczy, cel);
             for (const k of CZESCI) s.czesci[k] = { ...s.czesci[k], wFilmie: !!w.czesci[k].wFilmie };
             Object.assign(s, { plik: cel, sklejono: czas(), sekundy: (await cfg.opisz(cel).catch(() => null))?.sekundy ?? null, stan: 'sklejony', pominiete: pomin.filter((k) => CZESCI.includes(k)) });
+            // ⚛️ Pieczęć Suwerena — automatyczna tokenizacja zmontowanego filmu w Graviton Registry
+            QuantumForgeService.autoMintMedia({
+                name: path.basename(cel),
+                type: 'VIDEO',
+                filePath: cel,
+                stabilityClass: 'FLUID',
+                metadata: {
+                    wieczorId: id,
+                    tancerz: w.tancerz,
+                    czesci: klipy.length,
+                    source: 'WieczorTanca',
+                },
+            }).catch(e => console.warn('[WieczorTanca] Auto-mint video error:', e.message));
             if (cfg.publikuj) {
                 try {
                     const p = await cfg.publikuj({ plik: cel, nazwa: `${NAZWA} — ${w.tancerz} · „${w.choreografia.utwor}”`, jezyk: w.jezyk, kontekst: kontekstKronikarza({ ...w, czesci: s.czesci }) + (reklama ? `\nThe film contains short ad breaks for the 0.00G Style collection of ${w.tancerz} (the brand's own products).` : ''), zrodlo: { projekt: PROJEKT, wieczor: id, ...(reklama ? { reklama: true } : {}) } });
