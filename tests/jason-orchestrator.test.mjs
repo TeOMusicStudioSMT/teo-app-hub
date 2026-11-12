@@ -6,6 +6,10 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import express from 'express';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import ffmpegPath from 'ffmpeg-static';
+import { czystyTekst, naglowekWav, wymiaryJpeg, folderWydania } from '../services/JasonOrchestrator.js';
 import { utworzJasona, zamontujTrasyJasona, oczyscZlecenie, argumentyUtworu, klipyZWyniku, znajdzWorkspace, stanyKlipow, dopasujGlos, czasUtworu, STACJE, ALBUM } from '../services/JasonOrchestrator.js';
 
 const tekst = (o) => ({ content: [{ type: 'text', text: JSON.stringify(o) }] });
@@ -210,4 +214,101 @@ test('stara kampania sprzed zmiany (stanęła na rate_limited przy auto-pobraniu
         assert.ok(k.klipy.every((c) => c.odsluch && !c.bladPobrania && !c.plik));
         assert.deepEqual((await J.zrodloIzby.czekajace())[0].akcje.map((a) => a.id), ['pobierz-1', 'pobierz-2', 'odrzuc']);
     } finally { await fs.rm(tmp, { recursive: true, force: true }); }
+});
+
+test('🚀 paczka Spotify: master.wav 44,1/16/stereo, okładka 3000×3000, czysty tekst, metadane (prawdziwy ffmpeg, trasy HTTP)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jason-sp-'));
+    const uruchom = promisify(execFile);
+    const muzyka = path.join(tmp, 'muzyka');
+    const suno = atrapaSuno(tmp);
+    // prawdziwe pliki: mp3 zamiast atrapy „mp3”, okładka PNG 64×48 (niekwadratowa → przycięcie)
+    suno.zapiszUtwory = async (_w, gotowe) => Promise.all(gotowe.map(async (u) => {
+        const plik = `Suno MCP/${u.tytul} [${u.id.slice(0, 8)}].mp3`;
+        await fs.mkdir(path.join(muzyka, 'Suno MCP'), { recursive: true });
+        await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2:sample_rate=48000', '-ac', '1', path.join(muzyka, plik)]);
+        return { ...u, plik, nowy: true };
+    }));
+    const otwarte = [];
+    const J = utworzJasona({ katalog: tmp, suno, przerwaPobraniaMs: 5, katalogMuzyki: muzyka, ffmpeg: ffmpegPath, uruchom, autor: async () => 'Mistrz Testowy', otworz: async (p) => otwarte.push(p),
+        okladka: async () => { const p = path.join(tmp, 'flux.png'); await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=64x48', '-frames:v', '1', p]); return p; } });
+    const app = express(); app.use(express.json());
+    zamontujTrasyJasona(app, J);
+    const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
+    const post = (s, b) => fetch(baza + s, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b ?? {}) }).then((r) => r.json());
+    try {
+        const { id } = await J.wykonaj({});
+        await J._czekaj(id);
+        assert.equal((await post(`/api/jason/kampanie/${id}/przygotuj-spotify`)).success, false, 'przed pobraniem — odmowa');
+        await J.rozstrzygnij(id, 'pobierz-1', {});
+        // Izba: przyjęta bez paczki czeka z przyciskiem Spotify
+        assert.deepEqual((await J.zrodloIzby.czekajace())[0].akcje.map((a) => a.id), ['spotify', 'bez-spotify']);
+        const przed = ile(suno, 'audio-download');
+        const d = await post(`/api/jason/kampanie/${id}/przygotuj-spotify`);
+        assert.equal(d.success, true, d.message);
+        const sp = d.kampania.spotify;
+        assert.equal(sp.folder, 'Spotify_Releases/Zero Gravity Heart (0.00G Sessions)/01_Velvet Booth for Two (82 BPM Intro)');
+        assert.deepEqual(sp.pliki, ['original.mp3', 'master.wav', 'cover_3000x3000.jpg', 'lyrics_clean.txt', 'spotify_metadata.json']);
+        const kat = path.join(muzyka, ...sp.folder.split('/'));
+        assert.deepEqual(naglowekWav(await fs.readFile(path.join(kat, 'master.wav'))), { pcm: true, kanaly: 2, hz: 44100, bity: 16 });
+        assert.deepEqual(wymiaryJpeg(await fs.readFile(path.join(kat, 'cover_3000x3000.jpg'))), { wys: 3000, szer: 3000 });
+        // bez `cfg.pobierz` → master z MP3, powiedziane wprost; Suno o WAV niepytane
+        assert.equal(sp.master.zrodlo, 'mp3');
+        assert.match(sp.uwagi.join(' '), /powstał z pobranego MP3/);
+        assert.equal(ile(suno, 'audio-download'), przed);
+        const tekstCzysty = await fs.readFile(path.join(kat, 'lyrics_clean.txt'), 'utf8');
+        assert.doesNotMatch(tekstCzysty, /[\[\]]|\(Kael:\)|\(Elara:\)/);
+        assert.match(tekstCzysty, /^Neon hums in amber light/);
+        assert.match(tekstCzysty, /Stay right here\.\.\. Nothing left to fear\.\.\. Zero gravity heart\.\.\.\n$/);
+        const meta = JSON.parse(await fs.readFile(path.join(kat, 'spotify_metadata.json'), 'utf8'));
+        assert.equal(meta.primary_artists_text, 'Elara, Kael');
+        assert.equal(meta.album, ALBUM); assert.equal(meta.genre, 'R&B/Soul'); assert.equal(meta.language, 'EN'); assert.equal(meta.bpm, 82);
+        assert.deepEqual(meta.credits, { songwriter: 'Mistrz Testowy', producer: 'TeO Music Studio', label: 'TeO Music Studio' });
+        assert.ok(Math.abs(meta.duration_seconds - 2) < 0.3);
+        // po paczce znika z Izby; folder otwiera maszyna; dystrybutor tylko https
+        assert.equal((await J.zrodloIzby.czekajace()).length, 0);
+        assert.equal((await post(`/api/jason/kampanie/${id}/otworz-folder`)).success, true);
+        assert.deepEqual(otwarte, [kat]);
+        const put = (b) => fetch(`${baza}/api/jason/ustawienia`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.json());
+        assert.equal((await put({ dystrybutor: 'javascript:alert(1)' })).success, false);
+        assert.equal((await put({ dystrybutor: 'https://dystrybutor.example/panel' })).ustawienia.dystrybutor, 'https://dystrybutor.example/panel');
+    } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
+});
+
+test('🚀 paczka Spotify: bezstratny WAV z Suno, gdy nie kosztuje; `requires_credit` = NIE potwierdzamy, master z MP3', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jason-wav-'));
+    const uruchom = promisify(execFile);
+    const muzyka = path.join(tmp, 'muzyka');
+    const wav = path.join(tmp, 'suno.wav');
+    await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1:sample_rate=48000', '-c:a', 'pcm_s24le', wav]);
+    for (const platny of [false, true]) {
+        const suno = atrapaSuno(tmp);
+        const stare = suno.wywolaj.bind(suno);
+        suno.wywolaj = async (nazwa, args, opcje) => {
+            if (nazwa === 'audio-download' && args.format === 'wav') { suno.wywolania.push({ nazwa, args, opcje }); return { wynik: tekst(platny ? { status: 'requires_credit' } : { status: 'ok', url: 'https://cdn.example/x.wav' }), utwory: [] }; }
+            return stare(nazwa, args, opcje);
+        };
+        suno.zapiszUtwory = async (_w, gotowe) => Promise.all(gotowe.map(async (u) => {
+            const plik = `Suno MCP/x [${u.id.slice(0, 8)}].mp3`;
+            await fs.mkdir(path.join(muzyka, 'Suno MCP'), { recursive: true });
+            await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', path.join(muzyka, plik)]);
+            return { ...u, plik, nowy: true };
+        }));
+        let pobran = 0;
+        const J = utworzJasona({ katalog: path.join(tmp, platny ? 'b' : 'a'), suno, przerwaPobraniaMs: 5, katalogMuzyki: muzyka, ffmpeg: ffmpegPath, uruchom, pobierz: async () => { pobran++; return fs.readFile(wav); } });
+        const { id } = await J.wykonaj({ okladka: false });
+        await J._czekaj(id);
+        await J.rozstrzygnij(id, 'pobierz-1', {});
+        const k = await J.przygotujSpotify(id);
+        assert.equal(k.spotify.master.zrodlo, platny ? 'mp3' : 'wav-suno');
+        assert.equal(pobran, platny ? 0 : 1);
+        assert.ok(suno.wywolania.filter((w) => w.nazwa === 'audio-download' && w.args.format === 'wav').every((w) => !w.args.confirm), 'WAV nigdy z confirm');
+        assert.equal(k.spotify.master.hz, 44100); assert.equal(k.spotify.master.bity, 16);
+        assert.match(k.spotify.uwagi.join(' '), /Bez okładki/);
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+});
+
+test('czyste: tekst bez tagów, folder wydania', () => {
+    assert.equal(czystyTekst('[Verse 1 - Kael: deep]\nLine one [ad-lib]\n\n[Chorus]\n(Elara:) Two (ooh)'), 'Line one\n\nTwo (ooh)');
+    assert.equal(folderWydania({ album: 'A: B?', stacja: { nr: 3, tytul: 'T/x.' } }), 'Spotify_Releases/A B/03_T x');
 });

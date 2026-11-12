@@ -272,7 +272,7 @@ import { utworzAutopilotFormatow } from './services/AutopilotFormatow.js';
 import { utworzWywiady, prowadzacyZObsady } from './services/WywiadAktorow.js';
 import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
-import { utworzSunoMcp, zamontujTrasySuno } from './services/SunoMcp.js';
+import { utworzSunoMcp, zamontujTrasySuno, fetchH2 as pobierzH2 } from './services/SunoMcp.js';
 import { utworzJasona, zamontujTrasyJasona } from './services/JasonOrchestrator.js';
 import { utworzZlotaRybke, zamontujTrasyRybki } from './services/ZlotaRybka.js';
 import { utworzIzbe, zamontujTrasyIzby } from './services/IzbaZgod.js';
@@ -9059,6 +9059,11 @@ zamontujTrasySuno(app, SunoMcp);
 // POST /api/jason/wykonaj-kampanie {album?, stacja?: 1 | {tytul, opis | lyrics+styl}, artysci?, okladka?: {prompt} | false}
 // — ze Stołu Narad (Hub, StoL) i z TeO Music Studio; maszyna albo sparowany telefon. ✓/✕ pakietu: Izba Akceptacji.
 const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
+    // 🚀 paczka Spotify: ffmpeg mostu, katalog muzyki, autor z księgi GRV, otwarcie folderu w Eksploratorze
+    katalogMuzyki: MUSIC_DIR, ffmpeg: ffmpegPath, uruchom: execFileAsync,
+    autor: async () => { const w = await wlascicielKsiegi(); return typeof w === 'string' ? w : w?.nazwa ?? null; },
+    pobierz: async (adres) => { const r = await pobierzH2(adres, { signal: AbortSignal.timeout(5 * 60_000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return Buffer.from(await r.arrayBuffer()); },
+    otworz: async (sciezka) => { spawn(process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open', [sciezka], { detached: true, stdio: 'ignore' }).unref(); },
     wiesc: (tresc) => Jajo.wiesc({ tresc, rodzaj: 'jason', skad: 'Jason' }),
     decyzja: (d) => jajoPatrzy(() => Jajo.decyzja(d)),
     okladka: async ({ prompt }) => {

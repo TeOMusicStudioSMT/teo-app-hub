@@ -3,6 +3,8 @@
  * Most robi wszystko kodem (services/JasonOrchestrator.js): Suno audio-create → okładka Palety → pakiet do odsłuchu.
  * NIC nie jest pobierane samo (limit pobrań komercyjnych Suno) — tu Suweren odsłuchuje wersje w Suno i pobiera JEDNĄ.
  * To samo ✓ jest w Izbie Akceptacji w StoL (źródło `jason`).
+ * Po pobraniu: „🚀 Przygotuj i wyślij na Spotify” = paczka wydawnicza na dysku (master.wav, okładka 3000×3000, tekst, metadane)
+ * + karta z otwarciem folderu i panelu dystrybutora. Katedra niczego do Spotify nie wysyła — wgrywa Suweren u dystrybutora.
  */
 import React, { useCallback, useEffect, useState } from 'react';
 
@@ -11,6 +13,7 @@ type Kampania = {
     id: string; album: string; stan: string; blad?: string; uwagi?: string[];
     stacja: { nr: number; tytul: string }; klipy: Klip[]; glos?: { nazwa?: string } | null;
     okladka?: { plik?: string; blad?: string } | null; etapy?: Record<string, { stan: string }>; wybrana?: { wersja: number; plik: string };
+    spotify?: { folder: string; pliki: string[]; uwagi: string[]; okladka?: { plik: string } | null; master: { hz: number; bity: number; kanaly: number; zrodlo: string; sekundy: number; bajtow: number } } | null;
 };
 const czas = (s?: number | null) => (s && s > 0 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '?:??');
 
@@ -20,6 +23,8 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     const [trwa, setTrwa] = useState(false);
     const [glos, setGlos] = useState('');
     const [glosy, setGlosy] = useState<{ id: string; name: string }[]>([]);
+    const [dystrybutor, setDystrybutor] = useState<string | null>(null);
+    const [adres, setAdres] = useState('');
 
     const api = useCallback(async (sciezka: string, cialo?: unknown) => {
         const r = await fetch(`${bridgeUrl}${sciezka}`, cialo === undefined ? undefined : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cialo) });
@@ -31,7 +36,8 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     // start: ostatnia otwarta kampania (pracuje / czeka na wybór wersji / stanęła) + persony głosowe konta Suno
     useEffect(() => {
         let zywy = true;
-        api('/api/jason/kampanie').then((d) => { const o = (d.kampanie ?? []).find((x: Kampania) => ['robi', 'do_akceptacji', 'blad'].includes(x.stan)); if (zywy && o) setK(o); }).catch(() => {});
+        api('/api/jason/kampanie').then((d) => { const o = (d.kampanie ?? []).find((x: Kampania) => x.stan !== 'odrzucona'); if (zywy && o) setK(o); }).catch(() => {});
+        api('/api/jason/ustawienia').then((d) => { if (zywy && d.success) setDystrybutor(d.ustawienia?.dystrybutor ?? null); }).catch(() => {});
         api('/api/jason/glosy').then((d) => { if (zywy && d.success) setGlosy(d.glosy ?? []); }).catch(() => {});
         return () => { zywy = false; };
     }, [api]);
@@ -58,11 +64,23 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
         void wykonaj(`/api/jason/kampanie/${k!.id}/pobierz`, { wersja: nr }, `Pobieram wersję ${nr}…`);
     };
 
+    const zapiszDystrybutora = async () => {
+        try {
+            const r = await fetch(`${bridgeUrl}/api/jason/ustawienia`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dystrybutor: adres }) });
+            const d = await r.json();
+            if (d.success) { setDystrybutor(d.ustawienia?.dystrybutor ?? null); setAdres(''); setInfo(''); } else setInfo(`⚠ ${d.message}`);
+        } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
+    };
+    const otworzFolder = async () => {
+        try { const d = await api(`/api/jason/kampanie/${k!.id}/otworz-folder`, {}); setInfo(d.success ? '' : `⚠ ${d.message}`); } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
+    };
+    const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
+
     const pracuje = k?.stan === 'robi';
     const opis = !k ? '' : pracuje ? `Jason pracuje: ${Object.entries(k.etapy ?? {}).map(([n, e]) => `${n} ${e.stan}`).join(' → ') || 'start'}…`
         : k.stan === 'blad' ? `⚠ ${k.blad}`
         : k.stan === 'do_akceptacji' ? 'Gotowe do odsłuchu. Nic nie pobrano — odsłuchaj w Suno i pobierz jedną wersję:'
-        : k.stan === 'przyjeta' ? `✓ Wersja ${k.wybrana?.wersja} pobrana: _OtakOs_Muzyka/${k.wybrana?.plik}`
+        : k.stan === 'przyjeta' ? `✓ Wersja ${k.wybrana?.wersja} pobrana: _OtakOs_Muzyka/${k.wybrana?.plik}${k.spotify ? ' · paczka Spotify gotowa' : ''}`
         : `Kampania ${k.stan}.`;
 
     return (
@@ -101,6 +119,39 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                         <button onClick={() => wykonaj(`/api/jason/kampanie/${k.id}/odrzuc`, {}, 'Odrzucam…')} disabled={trwa} className="underline">✕ odrzuć bez pobierania</button>
                     </div>
                     {(k.uwagi ?? []).map((u, i) => <div key={i} className="text-amber-200/80">ℹ {u}</div>)}
+                </div>
+            )}
+            {k && k.stan === 'przyjeta' && !k.spotify && (
+                <button onClick={() => wykonaj(`/api/jason/kampanie/${k.id}/przygotuj-spotify`, {}, 'Składam paczkę wydawniczą (master.wav, okładka, tekst, metadane)…')} disabled={trwa}
+                    title="Składa folder wydawniczy na dysku. Nic nie kosztuje i nic nie wychodzi z Katedry — do Spotify wgrywasz paczkę sam w panelu dystrybutora."
+                    className="mt-2 rounded-lg bg-emerald-600 px-3 py-1.5 font-bold tracking-wider text-white hover:bg-emerald-500 disabled:opacity-50">🚀 Przygotuj i wyślij na Spotify</button>
+            )}
+            {k && k.stan === 'przyjeta' && k.spotify && (
+                <div className="mt-2 rounded-lg border border-emerald-500/40 bg-emerald-950/30 p-2.5 text-emerald-100">
+                    <div className="flex flex-wrap items-start gap-3">
+                        {k.spotify.okladka && <img src={`${bridgeUrl}/api/jason/kampanie/${k.id}/spotify/okladka`} alt="okładka 3000×3000" className="h-24 w-24 rounded-md object-cover" />}
+                        <div className="min-w-0 flex-1">
+                            <div className="font-bold">🚀 Karta wydawnicza · {k.stacja.tytul}</div>
+                            <div className="break-all text-emerald-200/80">📂 _OtakOs_Muzyka/{k.spotify.folder}</div>
+                            <div className="mt-1 text-emerald-200/90">
+                                master.wav — {k.spotify.master.hz / 1000} kHz / {k.spotify.master.bity} bit / {k.spotify.master.kanaly === 2 ? 'stereo' : `${k.spotify.master.kanaly} kan.`} · {czas(k.spotify.master.sekundy)} · {mb(k.spotify.master.bajtow)} · {k.spotify.master.zrodlo === 'wav-suno' ? 'z bezstratnego WAV Suno' : 'z MP3'}
+                            </div>
+                            <div className="text-emerald-200/70">{k.spotify.pliki.join(' · ')}</div>
+                        </div>
+                    </div>
+                    {k.spotify.uwagi.map((u, i) => <div key={i} className="mt-1 text-amber-200/80">ℹ {u}</div>)}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <button onClick={otworzFolder} className="rounded bg-emerald-600 px-2.5 py-1 font-bold text-white hover:bg-emerald-500">📂 Otwórz folder</button>
+                        {dystrybutor
+                            ? <a href={dystrybutor} target="_blank" rel="noreferrer" className="rounded bg-violet-600 px-2.5 py-1 font-bold text-white hover:bg-violet-500">🌐 Panel dystrybutora</a>
+                            : <>
+                                <input value={adres} onChange={(e) => setAdres(e.target.value)} placeholder="https://… adres panelu Twojego dystrybutora" className="min-w-[14rem] flex-1 rounded border border-violet-500/40 bg-slate-950 px-2 py-1 text-violet-100" />
+                                <button onClick={zapiszDystrybutora} disabled={!adres.trim()} className="rounded bg-violet-600 px-2.5 py-1 font-bold text-white hover:bg-violet-500 disabled:opacity-50">zapisz</button>
+                            </>}
+                        {dystrybutor && <button onClick={() => { setAdres(dystrybutor); setDystrybutor(null); }} className="underline text-emerald-200/70">zmień adres</button>}
+                        <button onClick={() => wykonaj(`/api/jason/kampanie/${k.id}/przygotuj-spotify`, {}, 'Składam paczkę od nowa…')} disabled={trwa} className="underline text-emerald-200/70">↻ złóż od nowa</button>
+                    </div>
+                    <div className="mt-1 text-emerald-200/60">Spotify przyjmuje utwory tylko od dystrybutora — Katedra niczego nie wysyła sama; paczkę wgrywasz w jego panelu.</div>
                 </div>
             )}
             {k && k.stan === 'blad' && (

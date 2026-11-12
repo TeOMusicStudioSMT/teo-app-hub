@@ -15,6 +15,13 @@
  * żadnego zapisu z wyniku) — dopiero „✓ Pobierz wersję N” w Izbie woła `audio-download` dla tej jednej wersji
  * (z `confirm`, bo kliknięcie Suwerena jest zgodą) i zapisuje ją do `_OtakOs_Muzyka/Suno MCP/`.
  *
+ * 🚀 PACZKA SPOTIFY (Suweren 2026-11-12): po ✓ i pobraniu wersji `przygotujSpotify(id)` składa folder wydawniczy
+ * `_OtakOs_Muzyka/Spotify_Releases/<album>/<NN>_<tytuł>/`: `master.wav` (44,1 kHz, 16 bit, stereo), `original.mp3`,
+ * `cover_3000x3000.jpg`, `lyrics_clean.txt`, `spotify_metadata.json`. Master: najpierw bezstratny WAV z Suno
+ * (`audio-download {format: 'wav'}` BEZ `confirm` — gdyby Suno chciało za niego kolejne pobranie z limitu, NIE bierzemy)
+ * → inaczej konwersja pobranego MP3 (uczciwa uwaga: kontener WAV, jakość MP3). To zmiana formatu, nie mastering dźwięku.
+ * Katedra niczego nie wysyła do Spotify — Spotify przyjmuje utwory tylko od dystrybutora; kartę wgrywa Suweren w jego panelu.
+ *
  * KREDYTY: jedno `audio-create` = 2 utwory z konta Suno Suwerena. Ponowienie NIGDY nie tworzy utworu drugi raz, gdy
  * kampania ma już `klipy` — wznawia od czekania. Duch po restarcie mostu = błąd z powodem (↻ wznawia).
  */
@@ -31,7 +38,7 @@ export const ALBUM = 'Zero Gravity Heart (0.00G Sessions)';
 /** Stacje albumu — tekst i styl Suwerena (2026-11-12); do nadpisania w żądaniu (`stacja: { tytul, opis | lyrics, styl, … }`). */
 export const STACJE = {
     1: {
-        nr: 1, tytul: 'Velvet Booth for Two (82 BPM Intro)', bpm: 82, artysci: ['Elara', 'Kael'],
+        nr: 1, tytul: 'Velvet Booth for Two (82 BPM Intro)', bpm: 82, artysci: ['Elara', 'Kael'], gatunek: 'R&B/Soul', jezyk: 'EN',
         styl: 'sensual neo-soul, late night lounge, 82 bpm, warm Fender Rhodes piano, upright double bass, brushed jazz drums, breathy intimate male and female duet vocals, close-mic whisper, vinyl warmth',
         lyrics: [
             '[Intro - Warm Fender Rhodes chords, soft rain against the window, upright bass groove at 82 BPM]',
@@ -115,6 +122,7 @@ export function oczyscZlecenie(z = {}) {
     const stacja = {
         nr: Math.max(1, Math.min(99, Number(wzor.nr) || 1)), tytul: tn(wzor.tytul ?? baza.tytul, 200), bpm: Number(wzor.bpm ?? baza.bpm) || null,
         opis: tn(wzor.opis ?? baza.opis, 2800), styl: tn(wzor.styl ?? baza.styl, 900), lyrics: String(wzor.lyrics ?? (wzor.opis ? '' : baza.lyrics) ?? '').trim().slice(0, 4900),
+        gatunek: tn(wzor.gatunek ?? baza.gatunek, 60) || null, jezyk: tn(wzor.jezyk ?? baza.jezyk, 10).toUpperCase() || null,
         instrumental: wzor.instrumental === true, sekundy: Number(wzor.sekundy) >= 15 ? Math.min(360, Math.round(Number(wzor.sekundy))) : null,
     };
     if (!stacja.tytul) throw new Error('Stacja bez tytułu.');
@@ -128,6 +136,58 @@ export function oczyscZlecenie(z = {}) {
         album: tn(z.album, 100) || ALBUM, stacja, artysci,
         okladka: z.okladka === false ? null : { prompt: tn(z.okladka?.prompt, 1800) || KLIMAT_OKLADKI },
         glos: zadany ? { zadany, auto: !tn(z.glos, 80) } : null, zlecil: tn(z.zlecil, 60) || 'Suweren', skad: tn(z.skad, 40) || 'hub',
+    };
+}
+
+/** Tekst do Spotify / Musixmatch: bez tagów produkcyjnych `[Verse 1 - …]` i etykiet mówców `(Kael:)`; sekcje rozdziela pusta linia. */
+export function czystyTekst(lyrics) {
+    const out = [];
+    for (const surowa of String(lyrics ?? '').split(/\r?\n/)) {
+        const sekcja = /^\s*\[[^\]]*\]\s*$/.test(surowa);
+        const l = surowa.replace(/\[[^\]]*\]/g, ' ').replace(/\(\s*[^():]{1,40}:\s*\)/g, ' ').replace(/[ \t]+/g, ' ').trim();
+        if (l) out.push(l);
+        else if ((sekcja || !surowa.trim()) && out.length && out[out.length - 1] !== '') out.push('');
+    }
+    while (out.length && out[out.length - 1] === '') out.pop();
+    return out.join('\n');
+}
+/** Nazwa katalogu/pliku bezpieczna na Windows (bez <>:"/\|?*, bez kropki i spacji na końcu). */
+export function nazwaFolderu(s) { return String(s ?? '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 120) || 'bez-nazwy'; }
+/** Folder wydawniczy kampanii względem katalogu muzyki. */
+export function folderWydania(k) { return ['Spotify_Releases', nazwaFolderu(k.album), `${String(k.stacja.nr).padStart(2, '0')}_${nazwaFolderu(k.stacja.tytul)}`].join('/'); }
+/** Nagłówek WAV: { hz, bity, kanaly, pcm } — albo null, gdy to nie RIFF/WAVE z blokiem fmt. */
+export function naglowekWav(b) {
+    if (!Buffer.isBuffer(b) || b.length < 44 || b.toString('ascii', 0, 4) !== 'RIFF' || b.toString('ascii', 8, 12) !== 'WAVE') return null;
+    for (let i = 12; i + 8 <= b.length;) {
+        const dl = b.readUInt32LE(i + 4);
+        if (b.toString('ascii', i, i + 4) === 'fmt ' && i + 24 <= b.length) return { pcm: b.readUInt16LE(i + 8) === 1, kanaly: b.readUInt16LE(i + 10), hz: b.readUInt32LE(i + 12), bity: b.readUInt16LE(i + 22) };
+        i += 8 + dl + (dl % 2);
+    }
+    return null;
+}
+/** Wymiary JPEG ze znacznika SOF — albo null. */
+export function wymiaryJpeg(b) {
+    if (!Buffer.isBuffer(b) || b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return null;
+    for (let i = 2; i + 9 < b.length;) {
+        if (b[i] !== 0xff) { i++; continue; }
+        const m = b[i + 1];
+        if (m >= 0xc0 && m <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(m)) return { wys: b.readUInt16BE(i + 5), szer: b.readUInt16BE(i + 7) };
+        if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { i += 2; continue; }
+        i += 2 + b.readUInt16BE(i + 2);
+    }
+    return null;
+}
+/** Metadane wydania dla dystrybutora (pola do przepisania w jego formularzu). `null` = uzupełnia Suweren. */
+export function metadaneSpotify(k, { autor = null, sekundy = null, master = null } = {}) {
+    const baza = STACJE[k.stacja.nr]?.tytul === k.stacja.tytul ? STACJE[k.stacja.nr] : {};
+    return {
+        title: k.stacja.tytul, primary_artists: k.artysci, primary_artists_text: k.artysci.join(', '), album: k.album, track_number: k.stacja.nr,
+        genre: k.stacja.gatunek ?? baza.gatunek ?? null, language: k.stacja.jezyk ?? baza.jezyk ?? null, bpm: k.stacja.bpm ?? baza.bpm ?? null,
+        duration_seconds: sekundy, instrumental: k.stacja.instrumental === true, explicit: null, isrc: null, upc: null, release_date: null,
+        credits: { songwriter: autor || 'Suweren', producer: 'TeO Music Studio', label: 'TeO Music Studio' },
+        ai_disclosure: { generated_with: 'Suno', clip_id: k.wybrana?.id ?? null, song_url: k.wybrana?.id ? linkOdsluchu(k.wybrana.id) : null, cover_art: 'FLUX (local)' },
+        files: { audio: 'master.wav', audio_format: master ? `WAV ${master.hz} Hz / ${master.bity}-bit / ${master.kanaly} ch` : null, original: 'original.mp3', cover: 'cover_3000x3000.jpg', lyrics: 'lyrics_clean.txt' },
+        prepared_by: 'Katedra OtakOS — Jason', prepared_at: new Date().toISOString(),
     };
 }
 
@@ -374,12 +434,127 @@ export function utworzJasona(cfg) {
             : `🎛️ Jason: „${k.stacja.tytul}” — ✕ odrzucone${k.decyzja.powod ? ` (${k.decyzja.powod})` : ''}. Nic nie pobrano; wersje zostają w Suno.`);
         return k;
     }
+    // ── 🚀 Paczka wydawnicza pod dystrybucję na Spotify ──
+    const plikUstawien = path.join(cfg.katalog, 'jason', 'ustawienia.json');
+    async function ustawienia() { try { const u = JSON.parse(await fs.readFile(plikUstawien, 'utf8')); return { dystrybutor: typeof u?.dystrybutor === 'string' ? u.dystrybutor : null }; } catch { return { dystrybutor: null }; } }
+    async function ustawDystrybutora(adres) {
+        const a = String(adres ?? '').trim();
+        if (a && !/^https:\/\/[^\s]{4,300}$/.test(a)) throw new Error('Adres panelu dystrybutora musi zaczynać się od https://');
+        await fs.mkdir(path.dirname(plikUstawien), { recursive: true });
+        await fs.writeFile(plikUstawien, JSON.stringify({ dystrybutor: a || null }, null, 2));
+        return ustawienia();
+    }
+    const sciezkaWydania = (k) => (k?.spotify?.folder && cfg.katalogMuzyki ? path.join(cfg.katalogMuzyki, ...k.spotify.folder.split('/')) : null);
+
+    /** Bezstratny WAV z Suno dla JUŻ odblokowanej wersji — bez `confirm`: jeśli Suno chce za niego kolejne pobranie, rezygnujemy. Zwraca powód porażki albo null. */
+    async function wavZSuno(k, cel) {
+        if (!cfg.pobierz) return 'most nie ma czym pobrać pliku';
+        for (let i = 0; i < 8; i++) {
+            const r = await cfg.suno.wywolaj('audio-download', { id: k.wybrana.id, format: 'wav' }, { zapisz: false });
+            if (r.wynik?.isError) return tn(tekstWyniku(r.wynik) || 'audio-download: błąd', 200);
+            const d = daneWyniku(r.wynik);
+            if (d.status === 'requires_credit') return 'Suno policzyłoby WAV jako kolejne pobranie z limitu';
+            if (typeof d.url === 'string' && /^https:\/\//.test(d.url)) {
+                const dane = await cfg.pobierz(d.url);
+                if (!naglowekWav(dane)) return 'Suno oddało plik, który nie jest WAV';
+                await fs.writeFile(cel, dane);
+                return null;
+            }
+            if (d.status !== 'processing') return `Suno nie oddało adresu WAV (${tn(d.status ?? d.reason ?? 'brak', 60)})`;
+            await new Promise((ok) => setTimeout(ok, cfg.przerwaPobraniaMs ?? 4000));
+        }
+        return 'Suno wciąż przygotowuje WAV';
+    }
+
+    const budowane = new Set();
+    async function przygotujSpotify(id) {
+        const k = await wczytaj(id);
+        if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
+        if (k.stan !== 'przyjeta' || !k.wybrana?.plik) throw new Error('Paczkę Spotify składam po ✓ i pobraniu wersji — ta kampania nie ma jeszcze pobranego utworu.');
+        if (!cfg.katalogMuzyki || !cfg.ffmpeg || !cfg.uruchom) throw new Error('Most nie ma podłączonego ffmpeg ani katalogu muzyki dla Jasona.');
+        if (budowane.has(k.id)) throw new Error('Ta paczka właśnie się składa.');
+        const mp3 = path.join(cfg.katalogMuzyki, ...k.wybrana.plik.split('/'));
+        await fs.access(mp3).catch(() => { throw new Error(`Nie ma pobranego pliku: _OtakOs_Muzyka/${k.wybrana.plik}`); });
+        budowane.add(k.id);
+        try {
+            const folder = folderWydania(k), kat = path.join(cfg.katalogMuzyki, ...folder.split('/'));
+            const uwagi = [], pliki = [];
+            const ff = (args) => cfg.uruchom(cfg.ffmpeg, ['-loglevel', 'error', '-y', ...args], { maxBuffer: 1 << 24, timeout: 10 * 60_000, windowsHide: true });
+            await fs.mkdir(kat, { recursive: true });
+            await fs.copyFile(mp3, path.join(kat, 'original.mp3')); pliki.push('original.mp3');
+
+            // master.wav — 44,1 kHz / 16 bit / stereo
+            const surowy = path.join(kat, '.suno.wav'), master = path.join(kat, 'master.wav');
+            let zrodlo = 'wav-suno';
+            const czemuNie = await wavZSuno(k, surowy).catch((e) => tn(e.message, 200));
+            if (czemuNie) { zrodlo = 'mp3'; uwagi.push(`master.wav powstał z pobranego MP3 (${czemuNie}) — kontener WAV, jakość dźwięku jak MP3. Bezstratny WAV pobierzesz w Suno (Download → WAV) i podmienisz plik.`); }
+            await ff(['-i', zrodlo === 'mp3' ? mp3 : surowy, '-vn', '-map_metadata', '-1', '-ar', '44100', '-ac', '2', '-c:a', 'pcm_s16le', master]);
+            await fs.rm(surowy, { force: true });
+            const fd = await fs.open(master, 'r'); const glowa = Buffer.alloc(4096); await fd.read(glowa, 0, 4096, 0); await fd.close();
+            const h = naglowekWav(glowa);
+            if (!h || !h.pcm || h.hz !== 44100 || h.bity !== 16 || h.kanaly !== 2) throw new Error(`master.wav nie ma formatu 44,1 kHz / 16 bit / stereo (${JSON.stringify(h)}).`);
+            const bajtow = (await fs.stat(master)).size;
+            const sekundy = Math.round((bajtow - 44) / (44100 * 4) * 10) / 10;
+            pliki.push('master.wav');
+
+            // cover_3000x3000.jpg
+            let okladka = null;
+            const zOkladki = sciezkaOkladki(k);
+            if (zOkladki && await fs.access(zOkladki).then(() => true, () => false)) {
+                const cel = path.join(kat, 'cover_3000x3000.jpg');
+                await ff(['-i', zOkladki, '-vf', "crop='min(iw,ih)':'min(iw,ih)',scale=3000:3000:flags=lanczos", '-frames:v', '1', '-q:v', '1', '-pix_fmt', 'yuvj444p', cel]);
+                const w = wymiaryJpeg(await fs.readFile(cel));
+                if (w?.szer !== 3000 || w?.wys !== 3000) throw new Error(`Okładka nie wyszła 3000×3000 (${JSON.stringify(w)}).`);
+                okladka = { plik: 'cover_3000x3000.jpg', szer: 3000, wys: 3000 }; pliki.push(okladka.plik);
+                uwagi.push('Okładka: obraz FLUX powiększony do 3000×3000 (Lanczos, JPEG najwyższej jakości) — powiększenie nie dodaje szczegółów, których nie było w oryginale.');
+            } else uwagi.push('Bez okładki — kampania jej nie ma (Paleta nie narysowała). Dystrybutor wymaga okładki 3000×3000.');
+
+            // lyrics_clean.txt
+            const tekst = czystyTekst(k.stacja.lyrics);
+            if (tekst) { await fs.writeFile(path.join(kat, 'lyrics_clean.txt'), `${tekst}\n`, 'utf8'); pliki.push('lyrics_clean.txt'); }
+            else uwagi.push(k.stacja.instrumental ? 'Utwór instrumentalny — bez pliku z tekstem.' : 'Bez lyrics_clean.txt — utwór powstał z opisu, tekst napisało Suno (skopiuj go ze strony utworu).');
+
+            // spotify_metadata.json
+            const autor = await Promise.resolve(cfg.autor?.()).catch(() => null);
+            const meta = metadaneSpotify(k, { autor: typeof autor === 'string' ? autor : null, sekundy, master: h });
+            if (!okladka) meta.files.cover = null;
+            if (!tekst) meta.files.lyrics = null;
+            await fs.writeFile(path.join(kat, 'spotify_metadata.json'), JSON.stringify(meta, null, 2), 'utf8'); pliki.push('spotify_metadata.json');
+            uwagi.push('Do uzupełnienia u dystrybutora: data wydania, explicit, ISRC/UPC (nadaje dystrybutor), nazwisko autora do tantiem oraz oświadczenie o muzyce stworzonej z AI.');
+
+            k.spotify = { folder, pliki, master: { ...h, zrodlo, sekundy, bajtow }, okladka, uwagi, kiedy: new Date().toISOString() };
+            delete k.spotifyPominiete;
+            await zapisz(k);
+            wiesc(`🚀 Jason: paczka Spotify „${k.stacja.tytul}” gotowa — _OtakOs_Muzyka/${folder} (${pliki.length} plików). Wgrywasz ją w panelu dystrybutora.`);
+            return k;
+        } finally { budowane.delete(k.id); }
+    }
+    async function pominSpotify(id) {
+        const k = await wczytaj(id);
+        if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
+        k.spotifyPominiete = true;
+        return zapisz(k);
+    }
+    async function otworzFolder(id) {
+        const p = sciezkaWydania(await wczytaj(id));
+        if (!p) throw new Error('Ta kampania nie ma jeszcze paczki Spotify.');
+        if (!cfg.otworz) throw new Error('Most nie umie otworzyć folderu na tej maszynie.');
+        await fs.access(p).catch(() => { throw new Error('Folder paczki zniknął z dysku — złóż paczkę ponownie.'); });
+        await cfg.otworz(p);
+        return p;
+    }
     const sciezkaOkladki = (k) => (k?.okladka?.plik ? path.join(katalog, k.id, k.okladka.plik) : null);
 
     /** 📥 Źródło Izby zgód — odczyt bez skutków ubocznych. */
     const zrodloIzby = {
         id: 'jason', emoji: '🎛️', nazwa: 'Jason — kampanie',
-        czekajace: async () => (await lista()).filter((k) => k.stan === 'do_akceptacji').map((k) => ({
+        czekajace: async () => (await lista()).filter((k) => k.stan === 'do_akceptacji' || (k.stan === 'przyjeta' && k.wybrana?.plik && !k.spotify && !k.spotifyPominiete)).map((k) => (k.stan === 'przyjeta' ? {
+            id: k.id, kiedy: k.decyzja?.kiedy ?? k.utworzono,
+            tytul: `${k.album} · Stacja ${k.stacja.nr}: ${k.stacja.tytul} — do wydania`,
+            opis: `Wersja ${k.wybrana.wersja} pobrana (_OtakOs_Muzyka/${k.wybrana.plik}). Jason złoży paczkę wydawniczą: master.wav 44,1 kHz/16 bit, okładka 3000×3000, czysty tekst, metadane. Nic nie kosztuje i nic nie wychodzi z Katedry — do Spotify wgrywasz ją sam w panelu dystrybutora.`,
+            obrazy: sciezkaOkladki(k) ? [sciezkaOkladki(k)] : [],
+            akcje: [{ id: 'spotify', etykieta: '🚀 Przygotuj i wyślij na Spotify', zdalnie: true }, { id: 'bez-spotify', etykieta: '✕ Bez paczki Spotify', zdalnie: true }],
+        } : {
             id: k.id, kiedy: k.gotowe ?? k.utworzono,
             tytul: `${k.album} · Stacja ${k.stacja.nr}: ${k.stacja.tytul}`,
             opis: [`${k.artysci.join(' & ') || 'Suno'}${k.glos?.nazwa ? ` · głos: ${k.glos.nazwa}` : ''}. NIC nie pobrano — odsłuchaj w Suno i pobierz jedną:`,
@@ -389,10 +564,10 @@ export function utworzJasona(cfg) {
             akcje: [...k.klipy.map((c, i) => (c.status === 'complete' ? { id: `pobierz-${i + 1}`, etykieta: `✓ Pobierz wersję ${i + 1} (${czasUtworu(c.sekundy)})`, zdalnie: true, potwierdz: 'Pobranie zużyje 1 z miesięcznych pobrań Suno z prawami komercyjnymi. Pobrać tę wersję?' } : null)).filter(Boolean),
                 { id: 'odrzuc', etykieta: '✕ Odrzuć (bez pobierania)', zdalnie: true }],
         })),
-        decyduj: (id, akcja, { powod } = {}) => rozstrzygnij(id, akcja, { powod }),
+        decyduj: (id, akcja, { powod } = {}) => (akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przygotujSpotify, pominSpotify, otworzFolder, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
@@ -421,6 +596,15 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     for (const [trasa, akcja] of [['przyjmij', 'przyjmij'], ['pobierz', 'przyjmij'], ['odrzuc', 'odrzuc']]) {
         app.post(`/api/jason/kampanie/:id/${trasa}`, async (req, res) => { try { res.json({ success: true, kampania: await J.rozstrzygnij(req.params.id, akcja, { powod: req.body?.powod, wersja: req.body?.wersja ?? null }) }); } catch (e) { blad(res, e); } });
     }
+    // 🚀 paczka wydawnicza pod Spotify (tylko maszyna — Straż): master.wav, okładka 3000×3000, czysty tekst, metadane
+    app.post('/api/jason/kampanie/:id/przygotuj-spotify', async (req, res) => { try { res.json({ success: true, kampania: await J.przygotujSpotify(req.params.id), ustawienia: await J.ustawienia() }); } catch (e) { blad(res, e); } });
+    app.post('/api/jason/kampanie/:id/otworz-folder', async (req, res) => { try { res.json({ success: true, folder: await J.otworzFolder(req.params.id) }); } catch (e) { blad(res, e); } });
+    app.get('/api/jason/kampanie/:id/spotify/okladka', async (req, res) => {
+        const k = await J.kampania(req.params.id), p = J.sciezkaWydania(k);
+        return p && k.spotify?.okladka ? res.sendFile(path.join(p, k.spotify.okladka.plik)) : res.status(404).json({ success: false, message: 'Ta paczka nie ma okładki.' });
+    });
+    app.get('/api/jason/ustawienia', async (_req, res) => res.json({ success: true, ustawienia: await J.ustawienia() }));
+    app.put('/api/jason/ustawienia', async (req, res) => { try { res.json({ success: true, ustawienia: await J.ustawDystrybutora(req.body?.dystrybutor) }); } catch (e) { blad(res, e); } });
     // 🎤 persony głosowe konta Suno (My Voices + ulubione) — do wyboru w Hubie i Music Studio
     app.get('/api/jason/glosy', async (_req, res) => { try { res.json({ success: true, glosy: await J.glosy() }); } catch (e) { res.status(e.kod === 'NIEPOLACZONE' ? 409 : 502).json({ success: false, message: e.message }); } });
 }
