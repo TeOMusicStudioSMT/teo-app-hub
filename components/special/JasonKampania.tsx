@@ -18,7 +18,7 @@ type Kampania = {
     spotify?: { folder: string; pliki: string[]; uwagi: string[]; okladka?: { plik: string } | null; master: { hz: number; bity: number; kanaly: number; zrodlo: string; sekundy: number; bajtow: number } } | null;
 };
 type KadrSceny = { plik?: string; stan?: string; blad?: string; wersja?: number };
-type Scena = { nr: number; sekcja: string; zrodlo?: string | null; od: number; do: number; kto: string[]; wersy: string[]; opis: string; obraz: string; prompt169: string; prompt916: string; kadry?: Record<string, KadrSceny> };
+type Scena = { nr: number; sekcja: string; zrodlo?: string | null; od: number; do: number; kto: string[]; plan?: string; energia?: string; instrumental?: boolean; wersy: string[]; opis: string; obraz: string; prompt169: string; prompt916: string; kadry?: Record<string, KadrSceny> };
 type Storyboard = { sceny: Scena[]; bpm?: number | null; sekundy?: number | null };
 type Stacja = { nr: number; tytul: string; artysci?: string[]; glos?: string | null };
 const czas = (s?: number | null) => (s && s > 0 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '?:??');
@@ -85,9 +85,16 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
         } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
         setTrwa(false);
     };
+    const ulozOdNowa = async () => {
+        if (!window.confirm('Ułożyć storyboard od nowa?\n\nUjęcia zostaną policzone ponownie z tekstu, a karty ujęć na Tablicy TeO Story wymienione na nowe. Narysowane klatki zostają w paczce, ale storyboard przestaje je pokazywać.')) return;
+        setTrwa(true); setInfo('Układam opowieść od nowa…');
+        try { const d = await api(`/api/jason/kampanie/${k!.id}/teo-story`, { odNowa: true }); if (d.success) { setK(d.kampania); setSb(d.storyboard); setInfo((d.uwagi ?? []).join(' ')); } else setInfo(`⚠ ${d.message}`); }
+        catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
+        setTrwa(false);
+    };
     const klatka = async (scena: number | 'wszystkie', format: '16:9' | '9:16') => {
         if (!window.confirm(scena === 'wszystkie'
-            ? `Narysować klatki wszystkich 5 scen w formacie ${format}?\n\nPaleta (FLUX) zajmie kartę na kilka minut; okładka utworu jest wzorem postaci.`
+            ? `Narysować klatki wszystkich ${sb?.sceny.length ?? ''} ujęć w formacie ${format}?\n\nPaleta (FLUX) zajmie kartę na kilkanaście minut (około minuty na klatkę).`
             : `Narysować klatkę sceny ${scena} w formacie ${format}?\n\nPaleta (FLUX) zajmie kartę na około minutę.`)) return;
         try { const d = await api(`/api/jason/kampanie/${k!.id}/storyboard/kadr`, { scena, format }); if (d.success) { setSb(d.storyboard); setInfo(''); } else setInfo(`⚠ ${d.message}`); }
         catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
@@ -251,7 +258,7 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                     {k.spotify.uwagi.map((u, i) => <div key={i} className="mt-1 text-amber-200/80">ℹ {u}</div>)}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                         <button onClick={otworzFolder} className="rounded bg-emerald-600 px-2.5 py-1 font-bold text-white hover:bg-emerald-500">📂 Otwórz folder</button>
-                        <button onClick={projektujTeledysk} disabled={trwa} title="Storyboard 5 scen w paczce (storyboard_000g.json) + projekt teledysku w TeO Story Studio: utwór, okładka jako klatka bazowa, tekst, sceny na Tablicy. Nic nie kosztuje."
+                        <button onClick={projektujTeledysk} disabled={trwa} title="Storyboard 10–14 ujęć w paczce (storyboard_000g.json) + projekt teledysku w TeO Story Studio: utwór, okładka jako klatka bazowa, tekst, sceny na Tablicy. Nic nie kosztuje."
                             className="rounded bg-fuchsia-600 px-2.5 py-1 font-bold text-white hover:bg-fuchsia-500 disabled:opacity-50">🎬 Projektuj Teledysk w TeO Story</button>
                         {dystrybutor
                             ? <a href={dystrybutor} target="_blank" rel="noreferrer" className="rounded bg-violet-600 px-2.5 py-1 font-bold text-white hover:bg-violet-500">{distrokid ? '🌐 Otwórz DistroKid (Upload)' : '🌐 Panel dystrybutora'}</a>
@@ -269,16 +276,18 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                     {sb && (
                         <div className="mt-2 rounded-lg border border-fuchsia-500/40 bg-fuchsia-950/20 p-2 text-fuchsia-100">
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-bold">🎬 Storyboard 0.00G · 5 scen{sb.bpm ? ` · ${sb.bpm} BPM` : ''} · {czas(sb.sekundy)}</span>
+                                <span className="font-bold">🎬 Storyboard 0.00G · {sb.sceny.length} ujęć{sb.bpm ? ` · ${sb.bpm} BPM` : ''} · {czas(sb.sekundy)}</span>
                                 {k.teoStory?.url && <button onClick={() => otworzStory(k.teoStory?.url)} className="underline">otwórz projekt „{k.teoStory.serial}”</button>}
                                 <button onClick={() => klatka('wszystkie', '16:9')} disabled={trwa} className="underline">🎨 wszystkie klatki 16:9</button>
                                 <button onClick={() => klatka('wszystkie', '9:16')} disabled={trwa} className="underline">🎨 wszystkie 9:16</button>
+                                <button onClick={ulozOdNowa} disabled={trwa || rysujeKlatki} className="underline">↻ ułóż od nowa</button>
                             </div>
                             {sb.sceny.map((sc) => (
                                 <div key={sc.nr} className="mt-1.5 rounded bg-slate-950/50 p-2">
-                                    <div className="font-bold">{sc.nr}. {sc.sekcja}{sc.zrodlo && sc.zrodlo !== sc.sekcja ? ` (z: ${sc.zrodlo})` : ''} · {czas(sc.od)}–{czas(sc.do)} · {sc.kto.join(' + ')}</div>
+                                    <div className="font-bold">{sc.nr}. {czas(sc.od)}–{czas(sc.do)} · {sc.sekcja} · {sc.kto.length ? sc.kto.join(' + ') : sc.instrumental ? 'bez słów' : 'bez ludzi w kadrze'}</div>
                                     <div className="text-fuchsia-200/90">{sc.opis}</div>
                                     <div className="text-fuchsia-200/70">{sc.obraz}</div>
+                                    {sc.energia && <div className="text-sky-200/70">✨ {sc.energia}</div>}
                                     {sc.wersy.length > 0 && <div className="italic text-fuchsia-200/60">♪ {sc.wersy.slice(0, 2).join(' / ')}{sc.wersy.length > 2 ? ' …' : ''}</div>}
                                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                         <button onClick={() => kopiuj(sc.prompt169, `prompt sceny ${sc.nr} · 16:9`)} title={sc.prompt169} className="rounded border border-fuchsia-400/50 px-2 py-0.5 hover:bg-fuchsia-800/40">📋 Kopiuj prompt sceny (16:9)</button>
@@ -302,7 +311,7 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                                     </div>
                                 </div>
                             ))}
-                            <div className="mt-1 text-fuchsia-200/60">Sceny liczy kod z tekstu stacji (bez modelu). Prompty są po angielsku, w kadrze nie ma napisów. Plik: storyboard_000g.json w paczce.</div>
+                            <div className="mt-1 text-fuchsia-200/60">Ujęcia liczy kod z tekstu stacji (bez modelu): każde ma inną kompozycję i widzialny ruch energii. Klatki rysują się bez okładki jako wzoru — postacie trzyma opis słowny, więc twarze mogą się różnić między klatkami. Plik: storyboard_000g.json w paczce.</div>
                         </div>
                     )}
                     <div className="mt-1 text-emerald-200/60">Spotify przyjmuje utwory tylko od dystrybutora — Katedra niczego nie wysyła sama; paczkę wgrywasz w jego panelu.</div>

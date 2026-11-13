@@ -9083,6 +9083,13 @@ const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
             return { serial, sciezka: projekt.sciezka, odcinekId: odc?.id ?? null, karty, nowy: projekt.nowy };
         },
         kadrGotowy: ({ karta, plik }) => produkcjaZmien(ANTIGRAVITY_DIR, karta, { zwrot: plik }),
+        // storyboard policzony od nowa → stare karty ujęć z Tablicy znikają, wchodzą nowe (tylko karty założone przez Jasona)
+        wymienKarty: async ({ serial, stare, sceny }) => {
+            for (const id of stare ?? []) await produkcjaUsun(ANTIGRAVITY_DIR, id).catch(() => null);
+            const karty = [];
+            for (const sc of sceny ?? []) karty.push((await produkcjaDodaj(ANTIGRAVITY_DIR, { projekt: serial, etap: 'KADR', ...sc })).id);
+            return karty;
+        },
     },
     otworz: async (sciezka) => { spawn(process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open', [sciezka], { detached: true, stdio: 'ignore' }).unref(); },
     wiesc: (tresc) => Jajo.wiesc({ tresc, rodzaj: 'jason', skad: 'Jason' }),

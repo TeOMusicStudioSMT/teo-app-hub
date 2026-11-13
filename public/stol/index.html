@@ -350,7 +350,7 @@
         } catch (e) { info.textContent = `⚠ Stacja niezapisana: ${e.message}`; }
         btn.disabled = false;
     });
-    // 🎬 teledysk stacji: przyjęta kampania z paczką → storyboard 5 scen (kod mostu, bez kosztu) + projekt TeO Story
+    // 🎬 teledysk stacji: przyjęta kampania z paczką → storyboard 10–14 ujęć (kod mostu, bez kosztu) + projekt TeO Story
     document.getElementById('teledysk-btn').addEventListener('click', async () => {
         const info = document.getElementById('jason-info'), btn = document.getElementById('teledysk-btn'), pole = document.getElementById('teledysk-sceny');
         btn.disabled = true; info.textContent = 'Szukam paczki wydawniczej tej stacji…';
@@ -367,7 +367,7 @@
             for (const sc of d.storyboard.sceny) {
                 const el = document.createElement('div');
                 el.style.cssText = 'background:rgba(0,0,0,0.35); border-radius:8px; padding:8px; font-size:11px;';
-                el.innerHTML = `<b>${sc.nr}. ${esc(sc.sekcja)} · ${mmss(sc.od)}–${mmss(sc.do)} · ${esc(sc.kto.join(' + '))}</b><div style="color:var(--mut); margin:4px 0;">${esc(sc.opis)} ${esc(sc.obraz)}</div>`;
+                el.innerHTML = `<b>${sc.nr}. ${mmss(sc.od)}–${mmss(sc.do)} · ${esc(sc.sekcja)} · ${esc(sc.kto.length ? sc.kto.join(' + ') : sc.instrumental ? 'bez słów' : 'bez ludzi w kadrze')}</b><div style="color:var(--mut); margin:4px 0;">${esc(sc.opis)} ${esc(sc.obraz)}</div>`;
                 for (const [etykieta, tekst] of [['📋 Kopiuj prompt sceny (16:9)', sc.prompt169], ['📋 9:16 Canvas', sc.prompt916]]) {
                     const b = document.createElement('button');
                     b.className = 'btn'; b.textContent = etykieta;

@@ -18,9 +18,10 @@
  * 🎨 OKŁADKA OD NOWA: `przerysujOkladke(id)` działa także dla przyjętej kampanii (FLUX w tle, stara zostaje do udanej
  * zamiany) i od razu podmienia `cover_3000x3000.jpg` w paczce Spotify. 🎤 Stacje niosą własną personę (Stacja 2 = Elara).
  *
- * 🎬 TELEDYSK (Suweren 2026-11-13): `teoStory(id)` = storyboard 0.00G (`storyboard_000g.json` w paczce, 5 scen z tekstu —
+ * 🎬 TELEDYSK (Suweren 2026-11-13): `teoStory(id)` = storyboard 0.00G (`storyboard_000g.json` w paczce, 10–14 ujęć z tekstu —
  * services/StoryboardTeledysku.js, bez modelu) + projekt w TeO Story Studio (`cfg.story.zaloz`: projekt Reżysera, fakty,
- * odcinek, `teledysk.json` z master.wav, 5 kart KADR na Tablicy). `kadrSceny` rysuje klatki Paletą (FLUX, okładka wzorem).
+ * odcinek, `teledysk.json` z master.wav, karty KADR na Tablicy). `kadrSceny` rysuje klatki Paletą (FLUX) BEZ okładki jako
+ * wzoru — okładka narzucała każdej klatce swoją kompozycję (pierwsze klatki wyszły jak pięć kopii okładki).
  *
  * ➕ STACJE: wbudowane `STACJE` 1–10 (pełne LP „Zero Gravity Heart”, sztafeta głosów Kael ↔ Elara) + własne z interfejsu
  * (`dodajStacje` → `_OtakOs_Wymiar/jason/stacje.json`, numer nadaje kod) — nowy utwór bez edycji tego pliku.
@@ -38,7 +39,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import { zbudujStoryboard, FORMATY as FORMATY_KADRU } from './StoryboardTeledysku.js';
+import { zbudujStoryboard, FORMATY as FORMATY_KADRU, WERSJA_STORYBOARDU } from './StoryboardTeledysku.js';
 
 // Suweren 2026-11-12: dawny prompt („StarLight Diner… neon”) dał bełkotliwy szyld i kanapę na chodniku PRZED barem → czyste wnętrze, żadnych napisów.
 export const KLIMAT_OKLADKI = 'Cinematic cozy interior photograph inside a late-night retro diner, a woman and a man sitting across from each other in a deep red velvet booth inside the room, '
@@ -973,7 +974,13 @@ export function utworzJasona(cfg) {
         if (duch) await zapiszStoryboard(k, sb);
         return sb;
     }
-    /** 🎬 Storyboard 5 scen + projekt teledysku w TeO Story (raz; ponowne wywołanie tylko go otwiera). `odNowa` liczy sceny od zera. */
+    /** Ujęcia storyboardu → karty KADR Tablicy TeO Story (prompty obu formatów w notatkach). */
+    const kartySceny = (k, sb) => sb.sceny.map((sc) => ({
+        tytul: `${String(sc.nr).padStart(2, '0')} · ${sc.sekcja} — ${k.stacja.tytul}`.slice(0, 120),
+        opis: `${czasUtworu(sc.od)}–${czasUtworu(sc.do)} · ${sc.opis} ${sc.obraz}. ${sc.energia ?? ''}${sc.wersy.length ? `\nWersy: ${sc.wersy.join(' / ')}` : ''}`,
+        notatki: `16:9 (YouTube): ${sc.prompt169}\n\n9:16 (Spotify Canvas, pętla 8 s): ${sc.prompt916}`,
+    }));
+    /** 🎬 Storyboard (10–14 ujęć) + projekt teledysku w TeO Story (raz; ponowne wywołanie tylko go otwiera). `odNowa` liczy ujęcia od zera. */
     async function teoStory(id, { odNowa = false } = {}) {
         const k = await wczytaj(id);
         if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
@@ -981,6 +988,8 @@ export function utworzJasona(cfg) {
         const kat = sciezkaWydania(k);
         await fs.access(kat).catch(() => { throw new Error('Folder paczki zniknął z dysku — złóż paczkę ponownie.'); });
         let sb = odNowa ? null : await czytajStoryboard(k);
+        if (sb && !(Number(sb.wersja) >= WERSJA_STORYBOARDU)) sb = null;   // stary układ (5 scen przy stoliku) → nowa opowieść
+        const nowyUklad = !sb;
         if (!sb) {
             if ([...rysowaneKadry].some((x) => x.startsWith(`${k.id}:`))) throw new Error('Paleta właśnie rysuje klatki tego storyboardu — poczekaj, aż skończy.');
             sb = await zapiszStoryboard(k, zbudujStoryboard(k, { sekundy: k.spotify.master?.sekundy ?? null }));
@@ -1004,14 +1013,21 @@ export function utworzJasona(cfg) {
                         streszczenie: sb.sceny.map((sc) => `${sc.nr}. ${sc.sekcja} (${czasUtworu(sc.od)}–${czasUtworu(sc.do)}): ${sc.opis} ${sc.obraz}.`).join('\n') },
                     teledysk: { utwor: k.stacja.tytul, audio: (await jest('master.wav')) ?? (await jest('original.mp3')), sekundy: sb.sekundy, styl: k.stacja.styl ?? '', prompt: sb.klimat,
                         lyrics: czystyTekst(k.stacja.lyrics), artysci: k.artysci, bpm: sb.bpm, firstFrame: await jest('cover_3000x3000.jpg'), storyboard: path.join(kat, PLIK_STORYBOARDU), kampania: k.id },
-                    sceny: sb.sceny.map((sc) => ({ tytul: `${sc.nr} · ${sc.sekcja} — ${k.stacja.tytul}`.slice(0, 120), opis: `${sc.opis} ${sc.obraz}.${sc.wersy.length ? `\nWersy: ${sc.wersy.join(' / ')}` : ''}`,
-                        notatki: `16:9 (YouTube): ${sc.prompt169}\n\n9:16 (Spotify Canvas, pętla 8 s): ${sc.prompt916}` })),
+                    sceny: kartySceny(k, sb),
                 });
                 k.teoStory = { serial: p.serial, odcinekId: p.odcinekId ?? null, karty: p.karty ?? [], kiedy: new Date().toISOString() };
                 sb.projekt = { serial: p.serial };
                 await zapiszStoryboard(k, sb);
-                wiesc(`🎬 Jason: projekt teledysku „${p.serial}” czeka w TeO Story Studio — 5 scen na Tablicy, utwór podpięty pod montaż.`);
+                wiesc(`🎬 Jason: projekt teledysku „${p.serial}” czeka w TeO Story Studio — ${sb.sceny.length} ujęć na Tablicy, utwór podpięty pod montaż.`);
             }
+        }
+        else if (nowyUklad && cfg.story?.wymienKarty) {
+            // projekt już jest, a ujęcia policzono od nowa → karty na Tablicy mają odpowiadać nowym ujęciom
+            try {
+                k.teoStory.karty = await cfg.story.wymienKarty({ serial: k.teoStory.serial, stare: k.teoStory.karty ?? [], sceny: kartySceny(k, sb) });
+                sb.projekt = { serial: k.teoStory.serial };
+                await zapiszStoryboard(k, sb);
+            } catch (e) { uwagi.push(`Karty na Tablicy TeO Story zostały stare (${tn(e.message, 160)}).`); }
         }
         k.teoStory = { ...(k.teoStory ?? {}), storyboard: PLIK_STORYBOARDU, scen: sb.sceny.length, url: k.teoStory?.serial ? `/apps/story/?serial=${encodeURIComponent(k.teoStory.serial)}` : null };
         await zapisz(k);
@@ -1026,7 +1042,7 @@ export function utworzJasona(cfg) {
     }
     const plikKadru = (nr, format) => `storyboard/scena-${nr}-${format.replace(':', 'x')}.png`;
     /** 🎨 Klatka sceny od Palety (FLUX w tle, okładka paczki jako wzór postaci). `scena`: 1–5 albo 'wszystkie'; `format`: '16:9' | '9:16'. */
-    async function kadrSceny(id, { scena = 'wszystkie', format = '16:9' } = {}) {
+    async function kadrSceny(id, { scena = 'wszystkie', format = '16:9', wzor = false } = {}) {
         const k = await wczytaj(id);
         if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
         if (!cfg.kadr) throw new Error('Katedra nie ma podłączonej Palety (FLUX).');
@@ -1040,20 +1056,21 @@ export function utworzJasona(cfg) {
         if (!nowe.length) throw new Error('Te klatki właśnie się rysują.');
         for (const sc of nowe) { rysowaneKadry.add(`${k.id}:${sc.nr}:${format}`); sc.kadry = { ...(sc.kadry ?? {}), [format]: { ...(sc.kadry?.[format]?.plik ? { plik: sc.kadry[format].plik } : {}), stan: 'rysuje' } }; }
         await zapiszStoryboard(k, sb);
-        for (const sc of nowe) kolejka = kolejka.then(() => rysujKadr(k.id, sc.nr, format)).catch(() => {});
+        for (const sc of nowe) kolejka = kolejka.then(() => rysujKadr(k.id, sc.nr, format, wzor === true)).catch(() => {});
         return sb;
     }
-    async function rysujKadr(id, nr, format) {
+    async function rysujKadr(id, nr, format, zWzorem = false) {
         const klucz = `${id}:${nr}:${format}`;
         try {
             const k = await wczytaj(id), sb = k && await czytajStoryboard(k), sc = sb?.sceny.find((x) => x.nr === nr);
             if (!sc) return;
             const kat = sciezkaWydania(k), poprzedni = sc.kadry?.[format]?.plik;
             try {
+                // Okładka jako wzór tylko na wyraźne życzenie: FLUX przenosi z wzoru całą kompozycję (2026-11-13: pięć klatek = pięć okładek).
                 const wzor = path.join(kat, 'cover_3000x3000.jpg');
                 const f = FORMATY_KADRU[format];
                 const w = await cfg.kadr({ prompt: `${format === '9:16' ? 'Vertical 9:16 composition. ' : 'Widescreen 16:9 composition. '}${sc.promptKadru}`, szer: f.szer, wys: f.wys,
-                    referencje: (await fs.access(wzor).then(() => true, () => false)) ? [wzor] : [], scena: sc, kampania: k });
+                    referencje: zWzorem && (await fs.access(wzor).then(() => true, () => false)) ? [wzor] : [], scena: sc, kampania: k });
                 const zrodlo = typeof w === 'string' ? w : w?.sciezka ?? w?.plik;
                 if (!zrodlo) throw new Error('Paleta nie oddała pliku.');
                 const rel = plikKadru(nr, format), cel = path.join(kat, ...rel.split('/'));
@@ -1067,7 +1084,7 @@ export function utworzJasona(cfg) {
             await zapiszStoryboard(k, sb);
         } finally { rysowaneKadry.delete(klucz); }
     }
-    const sciezkaKadru = (k, plik) => (/^scena-[1-9]-(16x9|9x16)\.png$/.test(String(plik)) && sciezkaWydania(k) ? path.join(sciezkaWydania(k), 'storyboard', plik) : null);
+    const sciezkaKadru = (k, plik) => (/^scena-\d{1,2}-(16x9|9x16)\.png$/.test(String(plik)) && sciezkaWydania(k) ? path.join(sciezkaWydania(k), 'storyboard', plik) : null);
 
     async function pominSpotify(id) {
         const k = await wczytaj(id);
@@ -1146,8 +1163,8 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
         const d = await dostep(req, res); if (!d) return;
         try { res.json({ success: true, storyboard: await J.storyboard(req.params.id) }); } catch (e) { blad(res, e); }
     });
-    // 🎨 klatki scen od Palety (FLUX — tylko maszyna): {scena: 1–5 | 'wszystkie', format: '16:9' | '9:16'}
-    app.post('/api/jason/kampanie/:id/storyboard/kadr', async (req, res) => { try { res.json({ success: true, storyboard: await J.kadrSceny(req.params.id, { scena: req.body?.scena ?? 'wszystkie', format: req.body?.format ?? '16:9' }) }); } catch (e) { blad(res, e); } });
+    // 🎨 klatki ujęć od Palety (FLUX — tylko maszyna): {scena: numer | 'wszystkie', format: '16:9' | '9:16', wzor?: true = okładka jako wzór}
+    app.post('/api/jason/kampanie/:id/storyboard/kadr', async (req, res) => { try { res.json({ success: true, storyboard: await J.kadrSceny(req.params.id, { scena: req.body?.scena ?? 'wszystkie', format: req.body?.format ?? '16:9', wzor: req.body?.wzor === true }) }); } catch (e) { blad(res, e); } });
     app.get('/api/jason/kampanie/:id/storyboard/kadr/:plik', async (req, res) => {
         const p = J.sciezkaKadru(await J.kampania(req.params.id), req.params.plik);
         return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Nie ma takiej klatki.' });
