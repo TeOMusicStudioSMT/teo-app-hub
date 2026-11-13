@@ -229,7 +229,8 @@ export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy', '/api
  */
 export const WZOR_KSIEGI_DLA_SPAROWANYCH = /^\/api\/zywa-ksiega(\/k-\d{8}-[0-9a-f]{6}(\/(zdjecie|nagranie|rysunek|stado|plik\/(zdjecie\.jpg|ilustracja\.png|nagranie\.mp4)))?)?$/;
 /** 🎛️ Podgląd jednej kampanii Jasona z telefonu (stan po zleceniu ze Stołu Narad) — tylko odczyt. */
-export const WZOR_JASONA_DLA_SPAROWANYCH = /^\/api\/jason\/kampanie\/j-[0-9a-f]{8}$/;
+// odczyt kampanii + 🎬 storyboard teledysku (liczy go kod, bez kosztu); klatki FLUX i pobrania zostają przy maszynie
+export const WZOR_JASONA_DLA_SPAROWANYCH = /^\/api\/jason\/kampanie\/j-[0-9a-f]{8}(\/(teo-story|storyboard))?$/;
 export const czyDlaSparowanych = (sciezka) => SCIEZKI_DLA_SPAROWANYCH.has(sciezka) || WZOR_KSIEGI_DLA_SPAROWANYCH.test(sciezka) || WZOR_JASONA_DLA_SPAROWANYCH.test(sciezka);
 
 /**

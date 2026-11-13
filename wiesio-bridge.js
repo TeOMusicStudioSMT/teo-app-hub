@@ -9063,6 +9063,27 @@ const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
     katalogMuzyki: MUSIC_DIR, ffmpeg: ffmpegPath, uruchom: execFileAsync,
     autor: async () => { const w = await wlascicielKsiegi(); return typeof w === 'string' ? w : w?.nazwa ?? null; },
     pobierz: async (adres) => { const r = await pobierzH2(adres, { signal: AbortSignal.timeout(5 * 60_000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return Buffer.from(await r.arrayBuffer()); },
+    // 🎬 teledysk: klatki scen od Palety (okładka paczki jako wzór postaci) i projekt w TeO Story Studio
+    kadr: async ({ prompt, szer, wys, referencje }) => {
+        const przed = await stanWideoZBudzeniem('Klatka storyboardu Jasona');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        await Karta.przedRenderem('klatką storyboardu Jasona').catch(() => {});
+        return Assety3D.kadrFilmu({ prompt, szer, wys, referencje, prefiks: 'katedra/jason/storyboard' });
+    },
+    story: {
+        // projekt Reżysera + fakty kanoniczne + odcinek w planie + teledysk.json (montaż podkłada utwór) + karty scen na Tablicy
+        zaloz: async ({ nazwa, notatka, fakty, odcinek, teledysk, sceny }) => {
+            const projekt = await utworzProjekt(ANTIGRAVITY_DIR, nazwa, notatka);
+            const serial = projekt.nazwa;
+            for (const f of fakty ?? []) await dodajFakt(ANTIGRAVITY_DIR, serial, f, 'jason').catch(() => null);
+            const odc = await dodajOdcinek(ANTIGRAVITY_DIR, serial, { ...odcinek, status: 'plan', agent: 'klatka' }).catch(() => null);
+            await fs.writeFile(path.join(projekt.sciezka, 'teledysk.json'), JSON.stringify({ ...teledysk, serial, odcinekId: odc?.id ?? null, data: new Date().toISOString() }, null, 2), 'utf8');
+            const karty = [];
+            for (const sc of sceny ?? []) karty.push((await produkcjaDodaj(ANTIGRAVITY_DIR, { projekt: serial, etap: 'KADR', ...sc })).id);
+            return { serial, sciezka: projekt.sciezka, odcinekId: odc?.id ?? null, karty, nowy: projekt.nowy };
+        },
+        kadrGotowy: ({ karta, plik }) => produkcjaZmien(ANTIGRAVITY_DIR, karta, { zwrot: plik }),
+    },
     otworz: async (sciezka) => { spawn(process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open', [sciezka], { detached: true, stdio: 'ignore' }).unref(); },
     wiesc: (tresc) => Jajo.wiesc({ tresc, rodzaj: 'jason', skad: 'Jason' }),
     decyzja: (d) => jajoPatrzy(() => Jajo.decyzja(d)),

@@ -9,6 +9,8 @@ import express from 'express';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import ffmpegPath from 'ffmpeg-static';
+import { zbudujStoryboard, sekcjeTekstu, przydzialScen, czasyScen, motywyZWersow, KLIMAT_TELEDYSKU } from '../services/StoryboardTeledysku.js';
+import { czyDlaSparowanych } from '../services/StrazMostu.js';
 import { oczyscStacje, artystaZGlosu } from '../services/JasonOrchestrator.js';
 import { czystyTekst, naglowekWav, wymiaryJpeg, folderWydania } from '../services/JasonOrchestrator.js';
 import { utworzJasona, zamontujTrasyJasona, oczyscZlecenie, argumentyUtworu, klipyZWyniku, znajdzWorkspace, stanyKlipow, dopasujGlos, czasUtworu, STACJE, ALBUM } from '../services/JasonOrchestrator.js';
@@ -529,4 +531,125 @@ test('💿 pełne LP: stacje 6–10 w dalszej sztafecie Elara ↔ Kael (tytuły,
         assert.equal(k.stan, 'do_akceptacji'); assert.equal(k.glos.nazwa, 'ELARA (S.M.T)');
         assert.equal(suno.wywolania.find((w) => w.nazwa === 'audio-create').args.voice_id, 'v-elara');
     } finally { await fs.rm(tmp, { recursive: true, force: true }); }
+});
+
+test('🎬 storyboard 0.00G: 5 scen z tekstu każdej z 10 stacji, czasy w taktach, prompty 16:9 i 9:16 bez napisów', () => {
+    for (const st of Object.values(STACJE)) {
+        const sb = zbudujStoryboard({ album: ALBUM, stacja: st, artysci: st.artysci, glos: st.glos ? { nazwa: st.glos } : null }, { sekundy: 200 });
+        assert.deepEqual(sb.sceny.map((x) => x.sekcja), ['Intro', 'Verse 1', 'Chorus', 'Verse 2', 'Outro'], st.tytul);
+        assert.equal(sb.firstFrame, 'cover_3000x3000.jpg'); assert.equal(sb.audio.master, 'master.wav'); assert.equal(sb.bpm, st.bpm);
+        assert.equal(sb.sceny[0].od, 0); assert.equal(sb.sceny[4].do, 200);
+        const takt = 240 / st.bpm;
+        sb.sceny.forEach((sc, i) => {
+            assert.ok(sc.do > sc.od && sc.sekundy > 5, `${st.tytul} scena ${sc.nr}`);
+            if (i) assert.equal(sc.od, sb.sceny[i - 1].do);
+            if (i) assert.ok(Math.abs(sc.od / takt - Math.round(sc.od / takt)) < 0.06, `granica sceny ${sc.nr} na takcie`);
+            assert.match(sc.prompt169, /^Cinematic music video shot, 16:9 widescreen\./);
+            assert.match(sc.prompt916, /^Vertical 9:16 video, seamless 8-second loop/);
+            for (const p of [sc.prompt169, sc.prompt916, sc.promptKadru]) {
+                assert.ok(p.includes(KLIMAT_TELEDYSKU)); assert.match(p, /no text, no letters, no captions, no subtitles/);
+                assert.match(p, /red velvet booth/); assert.match(p, /float weightless/); assert.match(p, /\bElara\b/); assert.match(p, /\bKael\b/);
+            }
+        });
+        assert.ok(sb.sceny[1].wersy.length && sb.sceny[2].wersy.length, 'zwrotka i refren niosą wersy');
+    }
+    // dopasowanie do tekstu: Stacja 8 = świeca i cienie, Stacja 7 = deszcz, Stacja 10 kończy świtem… a Stacja 1 śpiewają na zmianę
+    const sb = (nr) => { const st = STACJE[nr]; return zbudujStoryboard({ album: ALBUM, stacja: st, artysci: st.artysci, glos: st.glos ? { nazwa: st.glos } : null }, { sekundy: 194 }); };
+    assert.match(sb(8).sceny[1].obraz, /candle flame/); assert.match(sb(8).sceny[1].obraz, /shadows on the wall/);
+    assert.match(sb(7).sceny[1].obraz, /Raindrops crawling down the window/);
+    assert.match(sb(10).sceny[1].obraz, /light of dawn/);
+    const s1 = sb(1);
+    assert.deepEqual(s1.sceny.map((x) => x.kto), [['Elara', 'Kael'], ['Kael'], ['Elara', 'Kael'], ['Elara'], ['Elara', 'Kael']]);
+    assert.match(s1.sceny[1].prompt169, /Focus on Kael/); assert.match(s1.sceny[3].prompt169, /Focus on Elara/);
+    assert.doesNotMatch(s1.sceny[4].wersy.join(' '), /\(Kael:\)/);
+    // Stacja 5 nie ma drugiej zwrotki → czwarta scena wraca do refrenu, ale z własnym obrazem
+    const s5 = sb(5);
+    assert.equal(s5.sceny[3].zrodlo, 'Chorus'); assert.notEqual(s5.sceny[3].obraz, s5.sceny[2].obraz);
+    // czyste funkcje
+    const sek = sekcjeTekstu('[Intro - Rhodes at 82 BPM]\n[Verse 1 - Kael: deep baritone]\nLine A\n[Bridge - guitar solo]\n[Outro]\n(Kael:) Stay');
+    assert.deepEqual(sek.map((x) => [x.rodzaj, x.kto, x.wersy.length]), [['intro', '', 0], ['verse', 'Kael', 1], ['bridge', '', 0], ['outro', '', 1]]);
+    assert.deepEqual(przydzialScen(sek), [0, 1, -1, 2, 3]);
+    assert.deepEqual(czasyScen(100, 0).map((x) => x.od), [0, 10, 36, 58, 82]);
+    assert.deepEqual(motywyZWersow(['Steam is rising from a porcelain cup', 'silver rain']).length, 2);
+    assert.deepEqual(motywyZWersow(['la la la']), []);
+});
+
+test('🎬 most Jason → TeO Story: storyboard w paczce, projekt raz, klatki FLUX z okładką jako wzorem, Straż (trasy HTTP)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jason-tv-'));
+    const uruchom = promisify(execFile);
+    const muzyka = path.join(tmp, 'muzyka');
+    const suno = atrapaSuno(tmp);
+    suno.zapiszUtwory = async (_w, gotowe) => Promise.all(gotowe.map(async (u) => {
+        const plik = `Suno MCP/x [${u.id.slice(0, 8)}].mp3`;
+        await fs.mkdir(path.join(muzyka, 'Suno MCP'), { recursive: true });
+        await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=24', path.join(muzyka, plik)]);
+        return { ...u, plik, nowy: true };
+    }));
+    const png = async (nazwa, kolor = 'red') => { const p = path.join(tmp, nazwa); await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `color=c=${kolor}:s=64x64`, '-frames:v', '1', p]); return p; };
+    const zalozone = [], gotoweKarty = [], rysowane = []; let pada = false;
+    const J = utworzJasona({ katalog: tmp, suno, przerwaPobraniaMs: 5, katalogMuzyki: muzyka, ffmpeg: ffmpegPath, uruchom, okladka: () => png('flux.png'),
+        kadr: async (o) => { rysowane.push(o); if (pada) throw new Error('ComfyUI śpi'); return png(`kadr-${rysowane.length}.png`, 'blue'); },
+        story: { zaloz: async (z) => { zalozone.push(z); return { serial: z.nazwa, odcinekId: 'odc-1', karty: z.sceny.map((_, i) => `kd-${i + 1}`) }; }, kadrGotowy: async (x) => { gotoweKarty.push(x); } } });
+    const app = express(); app.use(express.json());
+    zamontujTrasyJasona(app, J);
+    const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
+    const zadaj = (m, s, b) => fetch(baza + s, { method: m, headers: { 'Content-Type': 'application/json' }, ...(b ? { body: JSON.stringify(b) } : {}) }).then((r) => r.json());
+    try {
+        const { id } = await J.wykonaj({ stacja: 2 });
+        await J._czekaj(id);
+        await J.rozstrzygnij(id, 'pobierz-1', {});
+        assert.equal((await zadaj('POST', `/api/jason/kampanie/${id}/teo-story`)).success, false, 'bez paczki — odmowa');
+        await J.przygotujSpotify(id);
+        const kat = J.sciezkaWydania(await J.kampania(id));
+
+        const d = await zadaj('POST', `/api/jason/kampanie/${id}/teo-story`);
+        assert.equal(d.success, true, d.message);
+        assert.equal(d.storyboard.sceny.length, 5); assert.equal(d.storyboard.stacja.tytul, 'Closer Than Gravity (Elara Solo)');
+        assert.equal(d.storyboard.sekundy, 24); assert.equal(d.storyboard.bpm, 82);
+        assert.deepEqual(JSON.parse(await fs.readFile(path.join(kat, 'storyboard_000g.json'), 'utf8')).sceny.map((x) => x.sekcja), ['Intro', 'Verse 1', 'Chorus', 'Verse 2', 'Outro']);
+        assert.ok(d.kampania.spotify.pliki.includes('storyboard_000g.json'));
+        assert.equal(d.kampania.teoStory.serial, 'Teledysk — Closer Than Gravity (Elara Solo)');
+        assert.equal(d.kampania.teoStory.url, `/apps/story/?serial=${encodeURIComponent('Teledysk — Closer Than Gravity (Elara Solo)')}`);
+        // projekt dostał: utwór (master.wav z paczki), okładkę jako firstFrame, czysty tekst, 5 scen z promptami w obu formatach
+        const z = zalozone[0];
+        assert.equal(z.teledysk.audio, path.join(kat, 'master.wav')); assert.equal(z.teledysk.firstFrame, path.join(kat, 'cover_3000x3000.jpg'));
+        assert.equal(z.teledysk.bpm, 82); assert.deepEqual(z.teledysk.artysci, ['Elara']); assert.match(z.teledysk.lyrics, /^Raindrops tracing silver lines/);
+        assert.equal(z.sceny.length, 5); assert.match(z.sceny[2].notatki, /16:9 \(YouTube\)[\s\S]*9:16 \(Spotify Canvas, pętla 8 s\)/);
+        assert.ok(z.fakty.some((f) => /nie ma żadnych napisów/.test(f)));
+        // drugi raz = to samo, bez drugiego projektu; odNowa liczy sceny, projektu nie dubluje
+        assert.equal((await zadaj('POST', `/api/jason/kampanie/${id}/teo-story`)).kampania.teoStory.serial, d.kampania.teoStory.serial);
+        await zadaj('POST', `/api/jason/kampanie/${id}/teo-story`, { odNowa: true });
+        assert.equal(zalozone.length, 1);
+
+        // 🎨 klatka sceny 3 w 16:9: okładka paczki jako wzór, plik w paczce, karta Tablicy dostaje ścieżkę
+        const r = await zadaj('POST', `/api/jason/kampanie/${id}/storyboard/kadr`, { scena: 3, format: '16:9' });
+        assert.equal(r.storyboard.sceny[2].kadry['16:9'].stan, 'rysuje');
+        await J._czekajKolejki();
+        let sb = (await zadaj('GET', `/api/jason/kampanie/${id}/storyboard`)).storyboard;
+        assert.equal(sb.sceny[2].kadry['16:9'].plik, 'storyboard/scena-3-16x9.png');
+        assert.deepEqual([rysowane[0].szer, rysowane[0].wys, rysowane[0].referencje], [1280, 720, [path.join(kat, 'cover_3000x3000.jpg')]]);
+        assert.match(rysowane[0].prompt, /^Widescreen 16:9 composition\. Cinematic film still\./);
+        assert.deepEqual(gotoweKarty, [{ karta: 'kd-3', plik: path.join(kat, 'storyboard', 'scena-3-16x9.png') }]);
+        assert.equal((await fetch(`${baza}/api/jason/kampanie/${id}/storyboard/kadr/scena-3-16x9.png`)).status, 200);
+        assert.equal((await fetch(`${baza}/api/jason/kampanie/${id}/storyboard/kadr/..%2Fmaster.wav`)).status, 404);
+        // wszystkie w 9:16 → 5 pionowych; FLUX padł → poprzednia klatka zostaje + powód
+        await zadaj('POST', `/api/jason/kampanie/${id}/storyboard/kadr`, { scena: 'wszystkie', format: '9:16' });
+        await J._czekajKolejki();
+        sb = await J.storyboard(id);
+        assert.deepEqual(sb.sceny.map((x) => x.kadry['9:16'].plik), [1, 2, 3, 4, 5].map((n) => `storyboard/scena-${n}-9x16.png`));
+        assert.deepEqual([rysowane[1].szer, rysowane[1].wys], [720, 1280]);
+        pada = true;
+        await J.kadrSceny(id, { scena: 3, format: '16:9' });
+        await J._czekajKolejki();
+        sb = await J.storyboard(id);
+        assert.deepEqual(sb.sceny[2].kadry['16:9'], { plik: 'storyboard/scena-3-16x9.png', blad: 'ComfyUI śpi' });
+        assert.equal((await zadaj('POST', `/api/jason/kampanie/${id}/storyboard/kadr`, { scena: 9 })).success, false);
+        assert.equal((await zadaj('POST', `/api/jason/kampanie/${id}/storyboard/kadr`, { scena: 1, format: '4:3' })).success, false);
+
+        // Straż: telefon może storyboard i projekt, klatek FLUX i pobrań nie
+        assert.equal(czyDlaSparowanych(`/api/jason/kampanie/${id}/teo-story`), true);
+        assert.equal(czyDlaSparowanych(`/api/jason/kampanie/${id}/storyboard`), true);
+        assert.equal(czyDlaSparowanych(`/api/jason/kampanie/${id}/storyboard/kadr`), false);
+        assert.equal(czyDlaSparowanych(`/api/jason/kampanie/${id}/pobierz`), false);
+    } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
 });

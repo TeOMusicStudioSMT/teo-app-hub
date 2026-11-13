@@ -205,6 +205,9 @@
             <div id="jason-info" style="flex:1; font-size:11px; color:var(--mut);">Suno (kredyty konta, 2 wersje) → okładka Palety → odsłuch w Izbie Akceptacji; pobierasz jedną wybraną wersję.</div>
             <button id="jason-btn" class="btn" style="background:var(--purple); color:#fff;">WYKONAJ</button>
         </div>
+        <!-- 🎬 teledysk: storyboard 0.00G z paczki wydawniczej stacji + projekt w TeO Story -->
+        <button id="teledysk-btn" class="btn" style="margin-top:8px; width:100%; background:transparent; border:1px solid var(--purple); color:var(--purple);">🎬 Projektuj Teledysk w TeO Story</button>
+        <div id="teledysk-sceny" style="display:none; margin-top:8px; flex-direction:column; gap:6px;"></div>
         <!-- ➕ nowa stacja: wpis na liście w moście, nic nie kosztuje -->
         <div id="stacja-form" style="display:none; margin-top:8px; flex-direction:column; gap:6px;">
             <input type="text" id="st-tytul" placeholder="Tytuł utworu">
@@ -345,6 +348,37 @@
             document.getElementById('stacja-nowa-btn').textContent = '+ Nowa stacja';
             info.textContent = `✓ Dodano Stację ${d.stacja.nr}: ${d.stacja.tytul}. „WYKONAJ” stworzy utwór.`;
         } catch (e) { info.textContent = `⚠ Stacja niezapisana: ${e.message}`; }
+        btn.disabled = false;
+    });
+    // 🎬 teledysk stacji: przyjęta kampania z paczką → storyboard 5 scen (kod mostu, bez kosztu) + projekt TeO Story
+    document.getElementById('teledysk-btn').addEventListener('click', async () => {
+        const info = document.getElementById('jason-info'), btn = document.getElementById('teledysk-btn'), pole = document.getElementById('teledysk-sceny');
+        btn.disabled = true; info.textContent = 'Szukam paczki wydawniczej tej stacji…';
+        try {
+            const nr = Number(selStacji.value) || 1;
+            const l = await api('/api/jason/kampanie').then((r) => r.json());
+            const k = ((l && l.kampanie) || []).find((x) => x.stan === 'przyjeta' && x.spotify && x.stacja && x.stacja.nr === nr);
+            if (!k) throw new Error(`Stacja ${nr} nie ma jeszcze paczki wydawniczej (najpierw pobierz wersję i „Przygotuj i wyślij na Spotify”).`);
+            const r = await api(`/api/jason/kampanie/${k.id}/teo-story`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+            const d = await r.json().catch(() => null);
+            if (!d || !d.success) throw new Error((d && d.message) || `HTTP ${r.status}`);
+            const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+            pole.innerHTML = ''; pole.style.display = 'flex';
+            for (const sc of d.storyboard.sceny) {
+                const el = document.createElement('div');
+                el.style.cssText = 'background:rgba(0,0,0,0.35); border-radius:8px; padding:8px; font-size:11px;';
+                el.innerHTML = `<b>${sc.nr}. ${esc(sc.sekcja)} · ${mmss(sc.od)}–${mmss(sc.do)} · ${esc(sc.kto.join(' + '))}</b><div style="color:var(--mut); margin:4px 0;">${esc(sc.opis)} ${esc(sc.obraz)}</div>`;
+                for (const [etykieta, tekst] of [['📋 Kopiuj prompt sceny (16:9)', sc.prompt169], ['📋 9:16 Canvas', sc.prompt916]]) {
+                    const b = document.createElement('button');
+                    b.className = 'btn'; b.textContent = etykieta;
+                    b.style.cssText = 'margin:2px 6px 0 0; padding:4px 8px; font-size:11px; background:transparent; border:1px solid var(--purple); color:var(--purple);';
+                    b.addEventListener('click', async () => { try { await navigator.clipboard.writeText(tekst); b.textContent = '✓ skopiowano'; } catch (e) { b.textContent = '⚠ schowek zablokowany'; } setTimeout(() => { b.textContent = etykieta; }, 2000); });
+                    el.appendChild(b);
+                }
+                pole.appendChild(el);
+            }
+            info.textContent = d.kampania.teoStory && d.kampania.teoStory.serial ? `🎬 Projekt „${d.kampania.teoStory.serial}” czeka w TeO Story Studio przy Katedrze. Klatki scen rysuje Paleta w Hubie.` : '🎬 Storyboard zapisany w paczce (storyboard_000g.json).';
+        } catch (e) { info.textContent = `⚠ ${e.message}`; }
         btn.disabled = false;
     });
     document.getElementById('jason-btn').addEventListener('click', async () => {

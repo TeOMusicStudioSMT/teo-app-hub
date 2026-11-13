@@ -18,6 +18,10 @@
  * 🎨 OKŁADKA OD NOWA: `przerysujOkladke(id)` działa także dla przyjętej kampanii (FLUX w tle, stara zostaje do udanej
  * zamiany) i od razu podmienia `cover_3000x3000.jpg` w paczce Spotify. 🎤 Stacje niosą własną personę (Stacja 2 = Elara).
  *
+ * 🎬 TELEDYSK (Suweren 2026-11-13): `teoStory(id)` = storyboard 0.00G (`storyboard_000g.json` w paczce, 5 scen z tekstu —
+ * services/StoryboardTeledysku.js, bez modelu) + projekt w TeO Story Studio (`cfg.story.zaloz`: projekt Reżysera, fakty,
+ * odcinek, `teledysk.json` z master.wav, 5 kart KADR na Tablicy). `kadrSceny` rysuje klatki Paletą (FLUX, okładka wzorem).
+ *
  * ➕ STACJE: wbudowane `STACJE` 1–10 (pełne LP „Zero Gravity Heart”, sztafeta głosów Kael ↔ Elara) + własne z interfejsu
  * (`dodajStacje` → `_OtakOs_Wymiar/jason/stacje.json`, numer nadaje kod) — nowy utwór bez edycji tego pliku.
  *
@@ -34,6 +38,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
+import { zbudujStoryboard, FORMATY as FORMATY_KADRU } from './StoryboardTeledysku.js';
 
 // Suweren 2026-11-12: dawny prompt („StarLight Diner… neon”) dał bełkotliwy szyld i kanapę na chodniku PRZED barem → czyste wnętrze, żadnych napisów.
 export const KLIMAT_OKLADKI = 'Cinematic cozy interior photograph inside a late-night retro diner, a woman and a man sitting across from each other in a deep red velvet booth inside the room, '
@@ -947,6 +952,123 @@ export function utworzJasona(cfg) {
             return k;
         } finally { budowane.delete(k.id); }
     }
+    // ── 🎬 Teledysk: storyboard 0.00G w paczce wydawniczej + projekt w TeO Story Studio ──
+    const PLIK_STORYBOARDU = 'storyboard_000g.json';
+    const rysowaneKadry = new Set();   // `${id}:${scena}:${format}` — żywe rysowanie klatek
+    async function zapiszStoryboard(k, sb) {
+        const cel = path.join(sciezkaWydania(k), PLIK_STORYBOARDU), tmp = `${cel}.${process.pid}.tmp`;
+        await fs.writeFile(tmp, JSON.stringify(sb, null, 2), 'utf8');
+        await fs.rename(tmp, cel).catch(async () => { await fs.copyFile(tmp, cel); await fs.rm(tmp, { force: true }); });
+        return sb;
+    }
+    async function czytajStoryboard(k) {
+        const kat = sciezkaWydania(k);
+        if (!kat) return null;
+        let sb; try { sb = JSON.parse(await fs.readFile(path.join(kat, PLIK_STORYBOARDU), 'utf8')); } catch { return null; }
+        if (!Array.isArray(sb?.sceny)) return null;
+        let duch = false;   // 👻 „rysuje” bez żywej pracy (restart mostu) = błąd z powodem
+        for (const sc of sb.sceny) for (const [f, v] of Object.entries(sc.kadry ?? {})) {
+            if (v?.stan === 'rysuje' && !rysowaneKadry.has(`${k.id}:${sc.nr}:${f}`)) { sc.kadry[f] = { ...(v.plik ? { plik: v.plik } : {}), blad: 'Rysowanie przerwane (restart mostu) — zleć klatkę jeszcze raz.' }; duch = true; }
+        }
+        if (duch) await zapiszStoryboard(k, sb);
+        return sb;
+    }
+    /** 🎬 Storyboard 5 scen + projekt teledysku w TeO Story (raz; ponowne wywołanie tylko go otwiera). `odNowa` liczy sceny od zera. */
+    async function teoStory(id, { odNowa = false } = {}) {
+        const k = await wczytaj(id);
+        if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
+        if (k.stan !== 'przyjeta' || !k.spotify || !sciezkaWydania(k)) throw new Error('Teledysk projektuję z gotowej paczki wydawniczej — najpierw „🚀 Przygotuj i wyślij na Spotify”.');
+        const kat = sciezkaWydania(k);
+        await fs.access(kat).catch(() => { throw new Error('Folder paczki zniknął z dysku — złóż paczkę ponownie.'); });
+        let sb = odNowa ? null : await czytajStoryboard(k);
+        if (!sb) {
+            if ([...rysowaneKadry].some((x) => x.startsWith(`${k.id}:`))) throw new Error('Paleta właśnie rysuje klatki tego storyboardu — poczekaj, aż skończy.');
+            sb = await zapiszStoryboard(k, zbudujStoryboard(k, { sekundy: k.spotify.master?.sekundy ?? null }));
+        }
+        if (!k.spotify.pliki.includes(PLIK_STORYBOARDU)) k.spotify.pliki.push(PLIK_STORYBOARDU);
+        const uwagi = [];
+        if (!k.teoStory?.serial) {
+            if (!cfg.story) uwagi.push('Most nie ma podłączonego TeO Story Studio — storyboard jest w paczce, projektu nie założyłem.');
+            else {
+                const jest = async (n) => (await fs.access(path.join(kat, n)).then(() => true, () => false)) ? path.join(kat, n) : null;
+                const p = await cfg.story.zaloz({
+                    nazwa: `Teledysk — ${k.stacja.tytul}`,
+                    notatka: `Teledysk do utworu „${k.stacja.tytul}” (${k.album}) — most Jasona, storyboard 0.00G.`,
+                    fakty: [
+                        `To teledysk do utworu „${k.stacja.tytul}” z albumu „${k.album}”: ${k.artysci.join(' i ')}, ${sb.bpm ?? '?'} BPM, ${czasUtworu(sb.sekundy)}.`,
+                        `Świat: ${sb.klimat}.`,
+                        ...Object.values(sb.postacie ?? {}).map((o) => `Postać: ${o}.`),
+                        'Na ekranie nie ma żadnych napisów, liter ani szyldów. Klatka bazowa (firstFrame) to okładka utworu.',
+                    ],
+                    odcinek: { tytul: `Teledysk — ${k.stacja.tytul}`.slice(0, 120), czasMinut: Math.round(((sb.sekundy ?? 180) / 60) * 100) / 100, styl: tn(k.stacja.styl, 300),
+                        streszczenie: sb.sceny.map((sc) => `${sc.nr}. ${sc.sekcja} (${czasUtworu(sc.od)}–${czasUtworu(sc.do)}): ${sc.opis} ${sc.obraz}.`).join('\n') },
+                    teledysk: { utwor: k.stacja.tytul, audio: (await jest('master.wav')) ?? (await jest('original.mp3')), sekundy: sb.sekundy, styl: k.stacja.styl ?? '', prompt: sb.klimat,
+                        lyrics: czystyTekst(k.stacja.lyrics), artysci: k.artysci, bpm: sb.bpm, firstFrame: await jest('cover_3000x3000.jpg'), storyboard: path.join(kat, PLIK_STORYBOARDU), kampania: k.id },
+                    sceny: sb.sceny.map((sc) => ({ tytul: `${sc.nr} · ${sc.sekcja} — ${k.stacja.tytul}`.slice(0, 120), opis: `${sc.opis} ${sc.obraz}.${sc.wersy.length ? `\nWersy: ${sc.wersy.join(' / ')}` : ''}`,
+                        notatki: `16:9 (YouTube): ${sc.prompt169}\n\n9:16 (Spotify Canvas, pętla 8 s): ${sc.prompt916}` })),
+                });
+                k.teoStory = { serial: p.serial, odcinekId: p.odcinekId ?? null, karty: p.karty ?? [], kiedy: new Date().toISOString() };
+                sb.projekt = { serial: p.serial };
+                await zapiszStoryboard(k, sb);
+                wiesc(`🎬 Jason: projekt teledysku „${p.serial}” czeka w TeO Story Studio — 5 scen na Tablicy, utwór podpięty pod montaż.`);
+            }
+        }
+        k.teoStory = { ...(k.teoStory ?? {}), storyboard: PLIK_STORYBOARDU, scen: sb.sceny.length, url: k.teoStory?.serial ? `/apps/story/?serial=${encodeURIComponent(k.teoStory.serial)}` : null };
+        await zapisz(k);
+        return { kampania: k, storyboard: sb, uwagi };
+    }
+    async function storyboard(id) {
+        const k = await wczytaj(id);
+        if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
+        const sb = await czytajStoryboard(k);
+        if (!sb) throw Object.assign(new Error('Ta kampania nie ma jeszcze storyboardu — „🎬 Projektuj Teledysk w TeO Story”.'), { kod: 404 });
+        return sb;
+    }
+    const plikKadru = (nr, format) => `storyboard/scena-${nr}-${format.replace(':', 'x')}.png`;
+    /** 🎨 Klatka sceny od Palety (FLUX w tle, okładka paczki jako wzór postaci). `scena`: 1–5 albo 'wszystkie'; `format`: '16:9' | '9:16'. */
+    async function kadrSceny(id, { scena = 'wszystkie', format = '16:9' } = {}) {
+        const k = await wczytaj(id);
+        if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
+        if (!cfg.kadr) throw new Error('Katedra nie ma podłączonej Palety (FLUX).');
+        if (!FORMATY_KADRU[format]) throw new Error(`Nie znam formatu „${format}”. Znane: ${Object.keys(FORMATY_KADRU).join(', ')}.`);
+        const sb = await czytajStoryboard(k);
+        if (!sb) throw new Error('Najpierw storyboard — „🎬 Projektuj Teledysk w TeO Story”.');
+        const numery = scena === 'wszystkie' ? sb.sceny.map((sc) => sc.nr) : [Number(scena)];
+        const sceny = numery.map((n) => sb.sceny.find((sc) => sc.nr === n));
+        if (sceny.some((sc) => !sc)) throw new Error(`Storyboard ma sceny 1–${sb.sceny.length}.`);
+        const nowe = sceny.filter((sc) => !rysowaneKadry.has(`${k.id}:${sc.nr}:${format}`));
+        if (!nowe.length) throw new Error('Te klatki właśnie się rysują.');
+        for (const sc of nowe) { rysowaneKadry.add(`${k.id}:${sc.nr}:${format}`); sc.kadry = { ...(sc.kadry ?? {}), [format]: { ...(sc.kadry?.[format]?.plik ? { plik: sc.kadry[format].plik } : {}), stan: 'rysuje' } }; }
+        await zapiszStoryboard(k, sb);
+        for (const sc of nowe) kolejka = kolejka.then(() => rysujKadr(k.id, sc.nr, format)).catch(() => {});
+        return sb;
+    }
+    async function rysujKadr(id, nr, format) {
+        const klucz = `${id}:${nr}:${format}`;
+        try {
+            const k = await wczytaj(id), sb = k && await czytajStoryboard(k), sc = sb?.sceny.find((x) => x.nr === nr);
+            if (!sc) return;
+            const kat = sciezkaWydania(k), poprzedni = sc.kadry?.[format]?.plik;
+            try {
+                const wzor = path.join(kat, 'cover_3000x3000.jpg');
+                const f = FORMATY_KADRU[format];
+                const w = await cfg.kadr({ prompt: `${format === '9:16' ? 'Vertical 9:16 composition. ' : 'Widescreen 16:9 composition. '}${sc.promptKadru}`, szer: f.szer, wys: f.wys,
+                    referencje: (await fs.access(wzor).then(() => true, () => false)) ? [wzor] : [], scena: sc, kampania: k });
+                const zrodlo = typeof w === 'string' ? w : w?.sciezka ?? w?.plik;
+                if (!zrodlo) throw new Error('Paleta nie oddała pliku.');
+                const rel = plikKadru(nr, format), cel = path.join(kat, ...rel.split('/'));
+                await fs.mkdir(path.dirname(cel), { recursive: true });
+                await fs.copyFile(zrodlo, cel);
+                sc.kadry[format] = { plik: rel, wersja: (Number(sc.kadry?.[format]?.wersja) || 0) + 1, kiedy: new Date().toISOString() };
+                // klatka 16:9 trafia też na kartę sceny na Tablicy TeO Story (pole „zwrot”)
+                if (format === '16:9' && k.teoStory?.karty?.[nr - 1]) await Promise.resolve(cfg.story?.kadrGotowy?.({ karta: k.teoStory.karty[nr - 1], plik: cel })).catch(() => {});
+            } catch (e) { sc.kadry[format] = { ...(poprzedni ? { plik: poprzedni } : {}), blad: tn(e.message, 300) }; }
+            rysowaneKadry.delete(klucz);
+            await zapiszStoryboard(k, sb);
+        } finally { rysowaneKadry.delete(klucz); }
+    }
+    const sciezkaKadru = (k, plik) => (/^scena-[1-9]-(16x9|9x16)\.png$/.test(String(plik)) && sciezkaWydania(k) ? path.join(sciezkaWydania(k), 'storyboard', plik) : null);
+
     async function pominSpotify(id) {
         const k = await wczytaj(id);
         if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
@@ -986,7 +1108,7 @@ export function utworzJasona(cfg) {
         decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
@@ -1015,6 +1137,21 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     for (const [trasa, akcja] of [['przyjmij', 'przyjmij'], ['pobierz', 'przyjmij'], ['odrzuc', 'odrzuc']]) {
         app.post(`/api/jason/kampanie/:id/${trasa}`, async (req, res) => { try { res.json({ success: true, kampania: await J.rozstrzygnij(req.params.id, akcja, { powod: req.body?.powod, wersja: req.body?.wersja ?? null }) }); } catch (e) { blad(res, e); } });
     }
+    // 🎬 teledysk: storyboard 0.00G w paczce + projekt w TeO Story Studio (nic nie kosztuje — maszyna albo sparowany telefon)
+    app.post('/api/jason/kampanie/:id/teo-story', async (req, res) => {
+        const d = await dostep(req, res); if (!d) return;
+        try { res.json({ success: true, ...(await J.teoStory(req.params.id, { odNowa: req.body?.odNowa === true })) }); } catch (e) { blad(res, e); }
+    });
+    app.get('/api/jason/kampanie/:id/storyboard', async (req, res) => {
+        const d = await dostep(req, res); if (!d) return;
+        try { res.json({ success: true, storyboard: await J.storyboard(req.params.id) }); } catch (e) { blad(res, e); }
+    });
+    // 🎨 klatki scen od Palety (FLUX — tylko maszyna): {scena: 1–5 | 'wszystkie', format: '16:9' | '9:16'}
+    app.post('/api/jason/kampanie/:id/storyboard/kadr', async (req, res) => { try { res.json({ success: true, storyboard: await J.kadrSceny(req.params.id, { scena: req.body?.scena ?? 'wszystkie', format: req.body?.format ?? '16:9' }) }); } catch (e) { blad(res, e); } });
+    app.get('/api/jason/kampanie/:id/storyboard/kadr/:plik', async (req, res) => {
+        const p = J.sciezkaKadru(await J.kampania(req.params.id), req.params.plik);
+        return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Nie ma takiej klatki.' });
+    });
     // 🎨 nowa okładka (FLUX w tle) — też dla przyjętej kampanii; paczka Spotify dostaje ją od razu. {prompt?} = własny opis
     app.post('/api/jason/kampanie/:id/przerysuj-okladke', async (req, res) => { try { res.json({ success: true, kampania: await J.przerysujOkladke(req.params.id, { prompt: req.body?.prompt }) }); } catch (e) { blad(res, e); } });
     // 🚀 paczka wydawnicza pod Spotify (tylko maszyna — Straż): master.wav, okładka 3000×3000, czysty tekst, metadane
