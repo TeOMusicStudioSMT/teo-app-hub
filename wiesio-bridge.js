@@ -274,6 +274,7 @@ import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzSunoMcp, zamontujTrasySuno, fetchH2 as pobierzH2 } from './services/SunoMcp.js';
 import { utworzJasona, zamontujTrasyJasona } from './services/JasonOrchestrator.js';
+import { CZCIONKI as CZCIONKI_NAPISOW } from './services/PowitanieDnia.js';
 import { utworzZlotaRybke, zamontujTrasyRybki } from './services/ZlotaRybka.js';
 import { utworzIzbe, zamontujTrasyIzby } from './services/IzbaZgod.js';
 import { utworzWarsztat, zamontujTrasyWarsztatu } from './services/WarsztatStada.js';
@@ -9083,6 +9084,14 @@ const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
             return { serial, sciezka: projekt.sciezka, odcinekId: odc?.id ?? null, karty, nowy: projekt.nowy };
         },
         kadrGotowy: ({ karta, plik }) => produkcjaZmien(ANTIGRAVITY_DIR, karta, { zwrot: plik }),
+        // 🎞️ gotowy Opodysk trafia też do montaży projektu → Montażownia TeO Story i „📺 do publikacji” (Kronikarz → ✓ w Izbie)
+        filmGotowy: async ({ serial, plik }) => {
+            const projekt = await utworzProjekt(ANTIGRAVITY_DIR, serial);
+            const cel = path.join(projekt.sciezka, 'montaz', `opodysk_${projekt.slug}.mp4`);
+            await fs.mkdir(path.dirname(cel), { recursive: true });
+            await fs.copyFile(plik, cel);
+            return cel;
+        },
         // storyboard policzony od nowa → stare karty ujęć z Tablicy znikają, wchodzą nowe (tylko karty założone przez Jasona)
         wymienKarty: async ({ serial, stare, sceny }) => {
             for (const id of stare ?? []) await produkcjaUsun(ANTIGRAVITY_DIR, id).catch(() => null);
@@ -9091,6 +9100,8 @@ const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
             return karty;
         },
     },
+    czcionki: CZCIONKI_NAPISOW,   // napis opowieści w Opodysku (te same czcionki co Powitanie Dnia)
+    pokaz: async (plik) => { if (process.platform === 'win32') spawn('explorer.exe', [`/select,${plik}`], { detached: true, stdio: 'ignore' }).unref(); else spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [path.dirname(plik)], { detached: true, stdio: 'ignore' }).unref(); },
     otworz: async (sciezka) => { spawn(process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open', [sciezka], { detached: true, stdio: 'ignore' }).unref(); },
     wiesc: (tresc) => Jajo.wiesc({ tresc, rodzaj: 'jason', skad: 'Jason' }),
     decyzja: (d) => jajoPatrzy(() => Jajo.decyzja(d)),

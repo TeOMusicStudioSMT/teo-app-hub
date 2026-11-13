@@ -23,6 +23,11 @@
  * odcinek, `teledysk.json` z master.wav, karty KADR na Tablicy). `kadrSceny` rysuje klatki Paletą (FLUX) BEZ okładki jako
  * wzoru — okładka narzucała każdej klatce swoją kompozycję (pierwsze klatki wyszły jak pięć kopii okładki).
  *
+ * 🎞️ OPODYSK (Opowieść + Teledysk): `opodysk(id, {napisy})` dorysowuje brakujące klatki 16:9 i składa ffmpegiem film na
+ * długość utworu (services/Opodysk.js: Ken Burns, xfade, napis opowieści, master.wav → AAC 320k, H.264 1080p) →
+ * `opodysk_youtube_16x9.mp4` w paczce. `opodyski()` = katalog dla Teatru w TeO Story i Biblioteki Żywych Ksiąg;
+ * `gablota*` = półka odzieży TeO Wear / 0.00G Merch (pozycje dodaje Suweren).
+ *
  * ➕ STACJE: wbudowane `STACJE` 1–10 (pełne LP „Zero Gravity Heart”, sztafeta głosów Kael ↔ Elara) + własne z interfejsu
  * (`dodajStacje` → `_OtakOs_Wymiar/jason/stacje.json`, numer nadaje kod) — nowy utwór bez edycji tego pliku.
  *
@@ -40,6 +45,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { zbudujStoryboard, FORMATY as FORMATY_KADRU, WERSJA_STORYBOARDU } from './StoryboardTeledysku.js';
+import { zlozOpodysk, PLIK_OPODYSKU } from './Opodysk.js';
 
 // Suweren 2026-11-12: dawny prompt („StarLight Diner… neon”) dał bełkotliwy szyld i kanapę na chodniku PRZED barem → czyste wnętrze, żadnych napisów.
 export const KLIMAT_OKLADKI = 'Cinematic cozy interior photograph inside a late-night retro diner, a woman and a man sitting across from each other in a deep red velvet booth inside the room, '
@@ -521,6 +527,7 @@ export function utworzJasona(cfg) {
     const katalog = path.join(cfg.katalog, 'jason', 'kampanie');
     const wRobocie = new Map();          // id → Promise (żywa praca)
     const rysowane = new Map();          // id → Promise (🎨 przerysowanie okładki)
+    const krecone = new Set();           // id kampanii, której Opodysk właśnie się kręci
     let kolejka = Promise.resolve();     // jedna kampania naraz (konto Suno, FLUX)
     const wiesc = (t) => { try { Promise.resolve(cfg.wiesc?.(t)).catch(() => {}); } catch { /* kanał opcjonalny */ } };
     const plik = (id) => path.join(katalog, `${id}.json`);
@@ -539,6 +546,10 @@ export function utworzJasona(cfg) {
         let k; try { k = JSON.parse(await fs.readFile(plik(id), 'utf8')); } catch { return null; }
         if (k.stan === 'robi' && !wRobocie.has(k.id)) {   // 👻 duch po restarcie mostu
             k.stan = 'blad'; k.blad = 'Praca przerwana (restart mostu). ↻ wznowi od miejsca przerwania — utwór nie zostanie stworzony drugi raz.';
+            await zapisz(k);
+        }
+        if (['klatki', 'montaz'].includes(k.opodysk?.stan) && !krecone.has(k.id)) {   // 👻 kręcenie Opodysku przerwane restartem
+            k.opodysk = { ...k.opodysk, stan: 'blad', blad: 'Kręcenie przerwane (restart mostu) — 🎞️ nakręć jeszcze raz; narysowane klatki zostały.' };
             await zapisz(k);
         }
         if (k.okladka?.rysuje && !rysowane.has(k.id)) {   // 👻 rysowanie okładki przerwane restartem
@@ -792,18 +803,34 @@ export function utworzJasona(cfg) {
     }
     // ── 🚀 Paczka wydawnicza pod dystrybucję na Spotify ──
     const plikUstawien = path.join(cfg.katalog, 'jason', 'ustawienia.json');
+    async function czytajUstawienia() { try { const u = JSON.parse(await fs.readFile(plikUstawien, 'utf8')); return u && typeof u === 'object' ? u : {}; } catch { return {}; } }
     async function ustawienia() {
-        let wlasny = null;
-        try { const u = JSON.parse(await fs.readFile(plikUstawien, 'utf8')); if (typeof u?.dystrybutor === 'string' && u.dystrybutor) wlasny = u.dystrybutor; } catch { /* brak pliku = domyślny */ }
-        return { dystrybutor: wlasny ?? DYSTRYBUTOR_DOMYSLNY, domyslny: !wlasny };
+        const u = await czytajUstawienia();
+        const wlasny = typeof u.dystrybutor === 'string' && u.dystrybutor ? u.dystrybutor : null;
+        return { dystrybutor: wlasny ?? DYSTRYBUTOR_DOMYSLNY, domyslny: !wlasny, spotify: { album: u.spotify?.album ?? null, utwory: u.spotify?.utwory ?? {} } };
     }
-    async function ustawDystrybutora(adres) {
-        const a = String(adres ?? '').trim();
-        if (a && !/^https:\/\/[^\s]{4,300}$/.test(a)) throw new Error('Adres panelu dystrybutora musi zaczynać się od https://');
+    /** Zmiana ustawień: `dystrybutor` (https, pusty = DistroKid), `spotifyAlbum`, `spotifyUtwor {nr, url}` — adresy open.spotify.com wkleja Suweren, gdy album wyjdzie. */
+    async function ustaw(z = {}) {
+        const u = await czytajUstawienia();
+        if ('dystrybutor' in z) {
+            const a = String(z.dystrybutor ?? '').trim();
+            if (a && !/^https:\/\/[^\s]{4,300}$/.test(a)) throw new Error('Adres panelu dystrybutora musi zaczynać się od https://');
+            u.dystrybutor = a || null;
+        }
+        const sp = (x, co) => { const a = String(x ?? '').trim(); if (a && !/^https:\/\/open\.spotify\.com\/[^\s]{4,300}$/.test(a)) throw new Error(`Adres ${co} musi zaczynać się od https://open.spotify.com/`); return a || null; };
+        if ('spotifyAlbum' in z) u.spotify = { ...(u.spotify ?? {}), album: sp(z.spotifyAlbum, 'albumu') };
+        if (z.spotifyUtwor) {
+            const nr = Number(z.spotifyUtwor.nr);
+            if (!(nr >= 1 && nr <= 99)) throw new Error('Podaj numer stacji (1–99).');
+            const a = sp(z.spotifyUtwor.url, 'utworu'), utwory = { ...(u.spotify?.utwory ?? {}) };
+            if (a) utwory[nr] = a; else delete utwory[nr];
+            u.spotify = { ...(u.spotify ?? {}), utwory };
+        }
         await fs.mkdir(path.dirname(plikUstawien), { recursive: true });
-        await fs.writeFile(plikUstawien, JSON.stringify({ dystrybutor: a || null }, null, 2));
+        await fs.writeFile(plikUstawien, JSON.stringify(u, null, 2));
         return ustawienia();
     }
+    const ustawDystrybutora = (adres) => ustaw({ dystrybutor: adres });
     const sciezkaWydania = (k) => (k?.spotify?.folder && cfg.katalogMuzyki ? path.join(cfg.katalogMuzyki, ...k.spotify.folder.split('/')) : null);
 
     /** Bezstratny WAV z Suno dla JUŻ odblokowanej wersji — bez `confirm`: jeśli Suno chce za niego kolejne pobranie, rezygnujemy. Zwraca powód porażki albo null. */
@@ -1084,6 +1111,117 @@ export function utworzJasona(cfg) {
             await zapiszStoryboard(k, sb);
         } finally { rysowaneKadry.delete(klucz); }
     }
+    // ── 🎞️ OPODYSK: brakujące klatki 16:9 → montaż ffmpeg na długość utworu → opodysk_youtube_16x9.mp4 w paczce ──
+    const jestPlik = (p) => fs.access(p).then(() => true, () => false);
+    const maKlatke = async (kat, sc) => { const p = sc.kadry?.['16:9']?.plik; return !!p && jestPlik(path.join(kat, ...p.split('/'))); };
+    async function czcionkaNapisow() { for (const p of cfg.czcionki ?? []) if (p && await jestPlik(p)) return p; return null; }
+    /** 🎞️ Start kręcenia (wraca od razu; praca na kolejce Jasona). `napisy: false` = film bez napisu opowieści. */
+    async function opodysk(id, { napisy = true } = {}) {
+        const k = await wczytaj(id);
+        if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
+        if (!cfg.ffmpeg || !cfg.uruchom) throw new Error('Most nie ma podłączonego ffmpeg dla Jasona.');
+        const sb = await czytajStoryboard(k);
+        if (!sb) throw new Error('Opodysk kręcę ze storyboardu — najpierw „🎬 Projektuj Teledysk w TeO Story”.');
+        if (krecone.has(k.id)) throw new Error('Ten Opodysk właśnie się kręci.');
+        if ([...rysowaneKadry].some((x) => x.startsWith(`${k.id}:`))) throw new Error('Paleta właśnie rysuje klatki tego storyboardu — nakręć, gdy skończy.');
+        const kat = sciezkaWydania(k);
+        if (!(await jestPlik(path.join(kat, 'master.wav')))) throw new Error('W paczce nie ma master.wav — złóż paczkę ponownie.');
+        const brak = [];
+        for (const sc of sb.sceny) if (!(await maKlatke(kat, sc))) brak.push(sc.nr);
+        if (brak.length && !cfg.kadr) throw new Error(`Ujęcia ${brak.join(', ')} nie mają klatek 16:9, a Katedra nie ma podłączonej Palety (FLUX).`);
+        krecone.add(k.id);   // przed zapisem — odczyt nie weźmie jej za ducha
+        k.opodysk = { ...(k.opodysk?.plik ? { plik: k.opodysk.plik, sekundy: k.opodysk.sekundy, bajtow: k.opodysk.bajtow, wersja: k.opodysk.wersja } : {}),
+            stan: brak.length ? 'klatki' : 'montaz', napisy: napisy !== false, brakowaloKlatek: brak.length, etap: brak.length ? `dorysowuję ${brak.length} klatek` : 'montaż',
+            postep: { zrobione: 0, razem: brak.length + sb.sceny.length + 1 }, start: new Date().toISOString() };
+        await zapisz(k);
+        kolejka = kolejka.then(() => krecOpodysk(k.id, napisy !== false)).catch(() => {}).finally(() => krecone.delete(k.id));
+        return k;
+    }
+    async function krecOpodysk(id, napisy) {
+        let k = await wczytaj(id);
+        const kat = sciezkaWydania(k), praca = path.join(kat, '.opodysk');
+        const stan = async (zm) => { k = await wczytaj(id); k.opodysk = { ...k.opodysk, ...zm }; await zapisz(k); };
+        try {
+            const razem = k.opodysk.postep.razem;
+            let zrobione = 0;
+            // 1. brakujące klatki 16:9 — po kolei, Paletą (bez okładki jako wzoru)
+            for (const sc of (await czytajStoryboard(k)).sceny) {
+                if (await maKlatke(kat, sc)) continue;
+                rysowaneKadry.add(`${id}:${sc.nr}:16:9`);
+                const s2 = await czytajStoryboard(k), x = s2.sceny.find((y) => y.nr === sc.nr);
+                x.kadry = { ...(x.kadry ?? {}), '16:9': { stan: 'rysuje' } };
+                await zapiszStoryboard(k, s2);
+                await rysujKadr(id, sc.nr, '16:9');
+                zrobione++;
+                await stan({ postep: { zrobione, razem }, etap: `klatka ujęcia ${sc.nr}` });
+            }
+            const sb = await czytajStoryboard(k);
+            for (const sc of sb.sceny) if (!(await maKlatke(kat, sc))) throw new Error(`Ujęcie ${sc.nr} nie ma klatki 16:9 (${sc.kadry?.['16:9']?.blad ?? 'Paleta jej nie narysowała'}) — film nie powstał.`);
+            // 2. montaż
+            await stan({ stan: 'montaz', etap: 'montaż' });
+            await fs.rm(praca, { recursive: true, force: true });
+            const w = await zlozOpodysk({ sb, kat, praca, ffmpeg: cfg.ffmpeg, uruchom: cfg.uruchom, czcionka: napisy ? await czcionkaNapisow() : null, napisy,
+                postep: (a, _b, e) => stan({ postep: { zrobione: zrobione + a, razem }, etap: e }) });
+            await fs.rm(praca, { recursive: true, force: true });
+            k = await wczytaj(id);
+            if (!k.spotify.pliki.includes(PLIK_OPODYSKU)) k.spotify.pliki.push(PLIK_OPODYSKU);
+            const uwagi = ['Klatki FLUX mają 1280×720 — do 1920×1080 są powiększone, szczegółów z tego nie przybywa. To ruch po nieruchomych klatkach, nie wideo generowane ujęcie po ujęciu.'];
+            if (napisy && !w.napisy) uwagi.push('Bez napisów — most nie znalazł czcionki.');
+            // kopia do montaży projektu TeO Story → Montażownia i „📺 do publikacji” (Kronikarz → ✓ → Impresariat)
+            let montaz = null;
+            if (k.teoStory?.serial && cfg.story?.filmGotowy) montaz = await Promise.resolve(cfg.story.filmGotowy({ serial: k.teoStory.serial, plik: path.join(kat, PLIK_OPODYSKU), tytul: k.stacja.tytul })).catch(() => null);
+            k.opodysk = { stan: 'gotowy', ...w, wersja: (Number(k.opodysk?.wersja) || 0) + 1, brakowaloKlatek: k.opodysk?.brakowaloKlatek ?? 0, montaz: montaz ?? null, uwagi, kiedy: new Date().toISOString() };
+            await zapisz(k);
+            wiesc(`🎞️ Jason: Opodysk „${k.stacja.tytul}” gotowy — ${czasUtworu(w.sekundy)}, ${w.ujec} ujęć, _OtakOs_Muzyka/${k.spotify.folder}/${PLIK_OPODYSKU}.`);
+        } catch (e) {
+            await fs.rm(praca, { recursive: true, force: true }).catch(() => {});
+            k = await wczytaj(id);
+            k.opodysk = { ...(k.opodysk ?? {}), stan: 'blad', blad: tn(e.stderr || e.message, 400) };
+            await zapisz(k);
+            wiesc(`🎞️ Jason: Opodysk „${k.stacja.tytul}” nie powstał (${tn(e.message, 160)}).`);
+        }
+    }
+    const sciezkaOpodysku = (k) => (k?.opodysk?.plik && sciezkaWydania(k) ? path.join(sciezkaWydania(k), k.opodysk.plik) : null);
+    const sciezkaAudio = (k) => (sciezkaWydania(k) ? path.join(sciezkaWydania(k), 'original.mp3') : null);
+    async function pokazOpodysk(id) {
+        const p = sciezkaOpodysku(await wczytaj(id));
+        if (!p || !(await jestPlik(p))) throw new Error('Ta kampania nie ma jeszcze Opodysku.');
+        if (!cfg.pokaz && !cfg.otworz) throw new Error('Most nie umie pokazać pliku na tej maszynie.');
+        await (cfg.pokaz ? cfg.pokaz(p) : cfg.otworz(path.dirname(p)));
+        return p;
+    }
+    /** 🎭 Katalog muzycznych opowieści albumu — dla Teatru Opodysku w TeO Story i Biblioteki Żywych Ksiąg (najnowsza przyjęta kampania każdej stacji z paczką). */
+    async function opodyski() {
+        const u = await ustawienia(), widziane = new Set(), utwory = [];
+        for (const k of await lista()) {
+            if (k.stan !== 'przyjeta' || !k.spotify || widziane.has(k.stacja.nr)) continue;
+            widziane.add(k.stacja.nr);
+            const b = `/api/jason/kampanie/${k.id}`;
+            utwory.push({ id: k.id, nr: k.stacja.nr, tytul: k.stacja.tytul, album: k.album, artysci: k.artysci, glos: k.glos?.nazwa ?? null, bpm: k.stacja.bpm ?? null, sekundy: k.spotify.master?.sekundy ?? null,
+                okladka: k.spotify.okladka ? `${b}/spotify/okladka?v=${k.okladka?.wersja ?? 1}` : null, audio: `${b}/audio`,
+                storyboard: k.teoStory?.storyboard ? { scen: k.teoStory.scen ?? null, url: `${b}/storyboard` } : null, serial: k.teoStory?.serial ?? null,
+                opodysk: k.opodysk?.plik ? { url: `${b}/opodysk/wideo?v=${k.opodysk.wersja ?? 1}`, sekundy: k.opodysk.sekundy ?? null, stan: k.opodysk.stan } : null,
+                spotify: u.spotify.utwory[k.stacja.nr] ?? null, suno: k.wybrana?.id ? linkOdsluchu(k.wybrana.id) : null });
+        }
+        utwory.sort((a, b) => a.nr - b.nr);
+        return { album: utwory[0]?.album ?? ALBUM, spotifyAlbum: u.spotify.album, utwory };
+    }
+    // ── 👕 Gablota TeO Wear / 0.00G Merch — pozycje dodaje Suweren (żadnych wymyślonych produktów) ──
+    const plikGabloty = path.join(cfg.katalog, 'jason', 'gablota.json');
+    async function gablota() { try { const d = JSON.parse(await fs.readFile(plikGabloty, 'utf8')); return Array.isArray(d?.pozycje) ? d.pozycje : []; } catch { return []; } }
+    const oczyscPozycje = (z = {}) => {
+        const nazwa = tn(z.nazwa, 80);
+        if (!nazwa) throw new Error('Pozycja kolekcji potrzebuje nazwy.');
+        const https = (x, co) => { const a = String(x ?? '').trim(); if (a && !/^https:\/\/[^\s]{4,400}$/.test(a)) throw new Error(`${co} musi zaczynać się od https://`); return a; };
+        const obraz = /^stacja:\d{1,2}$/.test(String(z.obraz ?? '').trim()) ? String(z.obraz).trim() : https(z.obraz, 'Adres obrazu');   // `stacja:3` = okładka stacji jako motyw
+        return { nazwa, opis: tn(z.opis, 400), motyw: tn(z.motyw, 80), cena: tn(z.cena, 30), link: https(z.link, 'Link do sklepu'), obraz };
+    };
+    let kolejkaGabloty = Promise.resolve();
+    const zmienGablote = (fn) => { const p = kolejkaGabloty.then(async () => { const l = await fn(await gablota()); await fs.mkdir(path.dirname(plikGabloty), { recursive: true }); await fs.writeFile(plikGabloty, JSON.stringify({ pozycje: l }, null, 2)); return l; }); kolejkaGabloty = p.catch(() => {}); return p; };
+    const dodajDoGabloty = (z) => { const p = oczyscPozycje(z); return zmienGablote((l) => [...l, { id: `g-${crypto.randomBytes(3).toString('hex')}`, ...p, dodano: new Date().toISOString() }]); };
+    const zmienWGablocie = (id, z) => { const p = oczyscPozycje(z); return zmienGablote((l) => { if (!l.some((x) => x.id === id)) throw Object.assign(new Error('Nie ma takiej pozycji.'), { kod: 404 }); return l.map((x) => (x.id === id ? { ...x, ...p } : x)); }); };
+    const usunZGabloty = (id) => zmienGablote((l) => { if (!l.some((x) => x.id === id)) throw Object.assign(new Error('Nie ma takiej pozycji.'), { kod: 404 }); return l.filter((x) => x.id !== id); });
+
     const sciezkaKadru = (k, plik) => (/^scena-\d{1,2}-(16x9|9x16)\.png$/.test(String(plik)) && sciezkaWydania(k) ? path.join(sciezkaWydania(k), 'storyboard', plik) : null);
 
     async function pominSpotify(id) {
@@ -1125,7 +1263,7 @@ export function utworzJasona(cfg) {
         decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
@@ -1188,7 +1326,24 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
         return tekst ? res.json({ success: true, tekst, tytul: k.stacja.tytul }) : res.status(404).json({ success: false, message: 'Ta kampania nie ma tekstu (utwór z opisu albo instrumentalny).' });
     });
     app.get('/api/jason/ustawienia', async (_req, res) => res.json({ success: true, ustawienia: await J.ustawienia() }));
-    app.put('/api/jason/ustawienia', async (req, res) => { try { res.json({ success: true, ustawienia: await J.ustawDystrybutora(req.body?.dystrybutor) }); } catch (e) { blad(res, e); } });
+    app.put('/api/jason/ustawienia', async (req, res) => { try { res.json({ success: true, ustawienia: await J.ustaw(req.body ?? {}) }); } catch (e) { blad(res, e); } });
+    // 🎞️ Opodysk: {napisy?: false} — dorysowanie brakujących klatek 16:9 i montaż ffmpeg w tle (tylko maszyna: GPU i długi ffmpeg)
+    app.post('/api/jason/kampanie/:id/opodysk', async (req, res) => { try { res.json({ success: true, kampania: await J.opodysk(req.params.id, { napisy: req.body?.napisy !== false }) }); } catch (e) { blad(res, e); } });
+    app.post('/api/jason/kampanie/:id/opodysk/pokaz', async (req, res) => { try { res.json({ success: true, plik: await J.pokazOpodysk(req.params.id) }); } catch (e) { blad(res, e); } });
+    app.get('/api/jason/kampanie/:id/opodysk/wideo', async (req, res) => {
+        const p = J.sciezkaOpodysku(await J.kampania(req.params.id));
+        return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Ta kampania nie ma jeszcze Opodysku.' });
+    });
+    app.get('/api/jason/kampanie/:id/audio', async (req, res) => {
+        const p = J.sciezkaAudio(await J.kampania(req.params.id));
+        return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Ta kampania nie ma paczki z utworem.' });
+    });
+    // 🎭 katalog muzycznych opowieści (Teatr Opodysku w TeO Story, Biblioteka Żywych Ksiąg) i 👕 gablota TeO Wear
+    app.get('/api/jason/opodyski', async (_req, res) => { try { res.json({ success: true, ...(await J.opodyski()) }); } catch (e) { blad(res, e); } });
+    app.get('/api/jason/gablota', async (_req, res) => res.json({ success: true, pozycje: await J.gablota() }));
+    app.post('/api/jason/gablota', async (req, res) => { try { res.json({ success: true, pozycje: await J.dodajDoGabloty(req.body ?? {}) }); } catch (e) { blad(res, e); } });
+    app.put('/api/jason/gablota/:id', async (req, res) => { try { res.json({ success: true, pozycje: await J.zmienWGablocie(req.params.id, req.body ?? {}) }); } catch (e) { blad(res, e); } });
+    app.delete('/api/jason/gablota/:id', async (req, res) => { try { res.json({ success: true, pozycje: await J.usunZGabloty(req.params.id) }); } catch (e) { blad(res, e); } });
     // 🎤 persony głosowe konta Suno (My Voices + ulubione) — do wyboru w Hubie i Music Studio
     // ➕ nowa stacja z interfejsu (nic nie kosztuje — to tylko wpis na liście); maszyna albo sparowany telefon
     app.get('/api/jason/stacje', async (req, res) => { const d = await dostep(req, res); if (!d) return; res.json({ success: true, stacje: await J.stacje() }); });

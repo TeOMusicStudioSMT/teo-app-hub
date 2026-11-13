@@ -221,7 +221,8 @@ export function ujeciaZSekcji(sekcje, cel) {
 /** Granice ujęć w sekundach: udział = liczba wersów (instrumentalne krócej), dociągnięte do pełnych taktów 4/4. */
 export function czasyUjec(ujecia, sekundy, bpm) {
     const calosc = Math.max(10, Number(sekundy) || 180);
-    const takt = Number(bpm) > 0 ? 240 / Number(bpm) : 0;
+    let takt = Number(bpm) > 0 ? 240 / Number(bpm) : 0;
+    if (takt && calosc / ujecia.length < 2 * takt) takt = 0;   // ujęcia krótsze niż dwa takty — siatka taktów by je pomieszała
     const wagi = ujecia.map((x) => (x.instrumental ? (x.przeplyw ? 1.5 : 1.7) : Math.max(1.6, x.wersy.length)));
     const suma = wagi.reduce((a, b) => a + b, 0);
     const granice = [0];

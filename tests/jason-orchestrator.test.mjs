@@ -11,6 +11,7 @@ import { promisify } from 'util';
 import ffmpegPath from 'ffmpeg-static';
 import { zbudujStoryboard, sekcjeTekstu, ujeciaZSekcji, czasyUjec, ileUjec, KLIMAT_TELEDYSKU, ENERGIE, WERSJA_STORYBOARDU } from '../services/StoryboardTeledysku.js';
 import { czyDlaSparowanych } from '../services/StrazMostu.js';
+import { planMontazu, napisyKlipu, ruchUjecia, zawin, dlugoscPliku, FPS, PLIK_OPODYSKU } from '../services/Opodysk.js';
 import { oczyscStacje, artystaZGlosu } from '../services/JasonOrchestrator.js';
 import { czystyTekst, naglowekWav, wymiaryJpeg, folderWydania } from '../services/JasonOrchestrator.js';
 import { utworzJasona, zamontujTrasyJasona, oczyscZlecenie, argumentyUtworu, klipyZWyniku, znajdzWorkspace, stanyKlipow, dopasujGlos, czasUtworu, STACJE, ALBUM } from '../services/JasonOrchestrator.js';
@@ -274,13 +275,17 @@ test('🚀 paczka Spotify: master.wav 44,1/16/stereo, okładka 3000×3000, czyst
         assert.deepEqual(otwarte, [kat]);
         const put = (b) => fetch(`${baza}/api/jason/ustawienia`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then((r) => r.json());
         // domyślnie DistroKid (formularz nowego wydania), dopóki Suweren nie wpisze innego
-        assert.deepEqual((await fetch(`${baza}/api/jason/ustawienia`).then((r) => r.json())).ustawienia, { dystrybutor: 'https://distrokid.com/new/', domyslny: true });
+        assert.deepEqual((await fetch(`${baza}/api/jason/ustawienia`).then((r) => r.json())).ustawienia, { dystrybutor: 'https://distrokid.com/new/', domyslny: true, spotify: { album: null, utwory: {} } });
         // 📋 czysty tekst do schowka = plik z paczki
         const t = await fetch(`${baza}/api/jason/kampanie/${id}/tekst`).then((r) => r.json());
         assert.equal(t.tytul, 'Velvet Booth for Two (82 BPM Intro)');
         assert.equal(`${t.tekst}\n`, tekstCzysty);
         assert.equal((await put({ dystrybutor: 'javascript:alert(1)' })).success, false);
-        assert.deepEqual((await put({ dystrybutor: 'https://dystrybutor.example/panel' })).ustawienia, { dystrybutor: 'https://dystrybutor.example/panel', domyslny: false });
+        assert.deepEqual((await put({ dystrybutor: 'https://dystrybutor.example/panel' })).ustawienia, { dystrybutor: 'https://dystrybutor.example/panel', domyslny: false, spotify: { album: null, utwory: {} } });
+        // adresy Spotify wkleja Suweren, gdy album wyjdzie; zmiana jednego pola nie kasuje reszty
+        assert.equal((await put({ spotifyAlbum: 'https://example.com/album' })).success, false);
+        assert.equal((await put({ spotifyAlbum: 'https://open.spotify.com/album/abc' })).ustawienia.dystrybutor, 'https://dystrybutor.example/panel');
+        assert.deepEqual((await put({ spotifyUtwor: { nr: 3, url: 'https://open.spotify.com/track/xyz' } })).ustawienia.spotify, { album: 'https://open.spotify.com/album/abc', utwory: { 3: 'https://open.spotify.com/track/xyz' } });
         assert.equal((await put({ dystrybutor: '' })).ustawienia.dystrybutor, 'https://distrokid.com/new/', 'pusty adres = powrót do DistroKid');
     } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
 });
@@ -702,5 +707,111 @@ test('🎬 most Jason → TeO Story: storyboard w paczce, projekt raz, klatki FL
         assert.equal(czyDlaSparowanych(`/api/jason/kampanie/${id}/storyboard`), true);
         assert.equal(czyDlaSparowanych(`/api/jason/kampanie/${id}/storyboard/kadr`), false);
         assert.equal(czyDlaSparowanych(`/api/jason/kampanie/${id}/pobierz`), false);
+    } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
+});
+
+test('🎞️ Opodysk: plan montażu co do klatki, napisy w czasie ujęcia, ruch kamery nigdy dwa razy ten sam (czyste)', () => {
+    const sceny = [{ nr: 1, od: 0, plan: 'Plan ogólny z drugiej strony ulicy', wersy: [] }, { nr: 2, od: 10.2, plan: 'Detal: zegar', wersy: ['Line one', 'Line two'] }, { nr: 3, od: 24.9, plan: 'Makro: filiżanka', wersy: [] }];
+    const p = planMontazu(sceny, 40.5);
+    assert.equal(p.razem, 1215); assert.equal(p.przejscieKlatek, 30);
+    assert.deepEqual(p.klipy.map((k) => [k.od, k.klatek]), [[0, 321], [291, 471], [732, 483]]);
+    // suma klipów − nakładki przejść = długość filmu; środek przejścia wypada na granicy ujęć
+    assert.equal(p.klipy.reduce((a, k) => a + k.klatek, 0) - 2 * p.przejscieKlatek, 1215);
+    assert.deepEqual(p.klipy.map((k) => k.offset), [0, 291 / FPS, 732 / FPS]);
+    const n = napisyKlipu(sceny[1], p.klipy[1]);
+    assert.equal(n.length, 2); assert.ok(n[0].od >= 0.5 && n[0].do < n[1].od && n[1].do <= p.klipy[1].klatek / FPS);
+    assert.deepEqual(napisyKlipu(sceny[0], p.klipy[0]), [], 'ujęcie bez słów = bez napisu');
+    assert.deepEqual(zawin('In a velvet booth for two, zero point zero, me and you and the quiet rain outside'), ['In a velvet booth for two, zero point zero, me', 'and you and the quiet rain outside']);
+    const ruchy = []; for (const [i, sc] of sceny.entries()) ruchy.push(ruchUjecia(sc, i, ruchy[i - 1] ?? null));
+    assert.deepEqual(ruchy, ['odjazd', 'najazd', 'w-prawo']);
+    assert.throws(() => planMontazu([{ nr: 1, od: 0 }, { nr: 2, od: 0.01 }], 5), /złe czasy/);
+});
+
+test('🎞️ Opodysk: brakujące klatki dorysowane, film na długość master.wav (H.264 1080p + AAC), katalog dla Teatru, gablota (prawdziwy ffmpeg, trasy HTTP)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jason-op-'));
+    const uruchom = promisify(execFile);
+    const muzyka = path.join(tmp, 'muzyka');
+    const suno = atrapaSuno(tmp);
+    suno.zapiszUtwory = async (_w, gotowe) => Promise.all(gotowe.map(async (u) => {
+        const plik = `Suno MCP/x [${u.id.slice(0, 8)}].mp3`;
+        await fs.mkdir(path.join(muzyka, 'Suno MCP'), { recursive: true });
+        await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', path.join(muzyka, plik)]);
+        return { ...u, plik, nowy: true };
+    }));
+    const png = async (nazwa, kolor) => { const p = path.join(tmp, nazwa); await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `color=c=${kolor}:s=320x180`, '-frames:v', '1', p]); return p; };
+    const czcionka = ['C:/Windows/Fonts/arial.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/Library/Fonts/Arial.ttf'];
+    const narysowane = [], doMontazu = []; let pada = false;
+    const J = utworzJasona({ katalog: tmp, suno, przerwaPobraniaMs: 5, katalogMuzyki: muzyka, ffmpeg: ffmpegPath, uruchom, czcionki: czcionka, okladka: () => png('flux.png', 'red'),
+        kadr: async (o) => { if (pada) throw new Error('ComfyUI śpi'); narysowane.push(o.scena.nr); return png(`k-${narysowane.length}.png`, ['blue', 'green', 'purple', 'orange'][narysowane.length % 4]); },
+        story: { zaloz: async (z) => ({ serial: z.nazwa, karty: z.sceny.map((_, i) => `kd-${i + 1}`) }), filmGotowy: async (x) => { doMontazu.push(x); return 'montaz/opodysk.mp4'; } } });
+    const app = express(); app.use(express.json());
+    zamontujTrasyJasona(app, J);
+    const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
+    const zadaj = (m, s, b) => fetch(baza + s, { method: m, headers: { 'Content-Type': 'application/json' }, ...(b ? { body: JSON.stringify(b) } : {}) }).then((r) => r.json());
+    try {
+        const { id } = await J.wykonaj({ stacja: 2 });
+        await J._czekaj(id);
+        await J.rozstrzygnij(id, 'pobierz-1', {});
+        await J.przygotujSpotify(id);
+        assert.equal((await zadaj('POST', `/api/jason/kampanie/${id}/opodysk`)).success, false, 'bez storyboardu — odmowa');
+        const { storyboard } = await J.teoStory(id);
+        const N = storyboard.sceny.length, kat = J.sciezkaWydania(await J.kampania(id));
+        // dwie klatki już są — Jason dorysuje tylko brakujące
+        await J.kadrSceny(id, { scena: 1 }); await J.kadrSceny(id, { scena: 4 });
+        await J._czekajKolejki();
+        assert.deepEqual(narysowane, [1, 4]);
+
+        // Paleta padła przy dorysowywaniu → film NIE powstaje, powód wprost
+        pada = true;
+        await zadaj('POST', `/api/jason/kampanie/${id}/opodysk`);
+        await J._czekajKolejki();
+        let k = await J.kampania(id);
+        assert.equal(k.opodysk.stan, 'blad'); assert.match(k.opodysk.blad, /nie ma klatki 16:9 \(ComfyUI śpi\)/);
+        assert.equal((await fetch(`${baza}/api/jason/kampanie/${id}/opodysk/wideo`)).status, 404);
+        pada = false;
+
+        const start = await zadaj('POST', `/api/jason/kampanie/${id}/opodysk`, { napisy: true });
+        assert.equal(start.success, true, start.message);
+        assert.equal(start.kampania.opodysk.stan, 'klatki'); assert.equal(start.kampania.opodysk.brakowaloKlatek, N - 2);
+        assert.equal((await zadaj('POST', `/api/jason/kampanie/${id}/opodysk`)).success, false, 'drugi start w trakcie — odmowa');
+        await J._czekajKolejki();
+        k = await J.kampania(id);
+        assert.equal(k.opodysk.stan, 'gotowy', k.opodysk.blad);
+        assert.equal(k.opodysk.plik, 'opodysk_youtube_16x9.mp4'); assert.equal(k.opodysk.plik, PLIK_OPODYSKU);
+        assert.equal(k.opodysk.ujec, N); assert.equal(k.opodysk.wersja, 1);
+        assert.equal(new Set(narysowane).size, N, 'każde ujęcie ma własną klatkę');
+        assert.ok(k.spotify.pliki.includes(PLIK_OPODYSKU));
+        assert.ok(k.opodysk.ruchy.every((r, i) => r !== k.opodysk.ruchy[i - 1]), 'ruch kamery nie powtarza się pod rząd');
+        // film ma długość master.wav, H.264 1920×1080 i dźwięk AAC
+        const film = path.join(kat, PLIK_OPODYSKU);
+        const [dlFilmu, dlMastera] = [await dlugoscPliku(ffmpegPath, uruchom, film), await dlugoscPliku(ffmpegPath, uruchom, path.join(kat, 'master.wav'))];
+        assert.ok(Math.abs(dlFilmu - dlMastera) < 0.15, `film ${dlFilmu} s, master ${dlMastera} s`);
+        let info = ''; try { await uruchom(ffmpegPath, ['-hide_banner', '-i', film]); } catch (e) { info = e.stderr; }
+        assert.match(info, /Video: h264[^\n]*1920x1080/); assert.match(info, /Audio: aac/);
+        assert.equal(await fs.access(path.join(kat, '.opodysk')).then(() => true, () => false), false, 'katalog roboczy posprzątany');
+        assert.deepEqual(doMontazu, [{ serial: k.teoStory.serial, plik: film, tytul: k.stacja.tytul }]);
+        assert.equal(k.opodysk.montaz, 'montaz/opodysk.mp4');
+        // odtwarzacz: wideo z Range, pokaż plik
+        const r = await fetch(`${baza}/api/jason/kampanie/${id}/opodysk/wideo`, { headers: { Range: 'bytes=0-99' } });
+        assert.equal(r.status, 206);
+        assert.equal((await fetch(`${baza}/api/jason/kampanie/${id}/audio`)).status, 200);
+
+        // 🎭 katalog dla Teatru i Biblioteki
+        const kt = await zadaj('GET', '/api/jason/opodyski');
+        assert.equal(kt.album, ALBUM); assert.equal(kt.utwory.length, 1);
+        const u = kt.utwory[0];
+        assert.equal(u.nr, 2); assert.equal(u.tytul, 'Closer Than Gravity (Elara Solo)'); assert.equal(u.storyboard.scen, N);
+        assert.match(u.opodysk.url, new RegExp(`^/api/jason/kampanie/${id}/opodysk/wideo\\?v=1$`)); assert.match(u.okladka, /spotify\/okladka/); assert.equal(u.spotify, null);
+        await zadaj('PUT', '/api/jason/ustawienia', { spotifyUtwor: { nr: 2, url: 'https://open.spotify.com/track/abc' } });
+        assert.equal((await zadaj('GET', '/api/jason/opodyski')).utwory[0].spotify, 'https://open.spotify.com/track/abc');
+
+        // 👕 gablota: pusta na start, pozycje dodaje Suweren; okładka stacji jako motyw
+        assert.deepEqual((await zadaj('GET', '/api/jason/gablota')).pozycje, []);
+        assert.equal((await zadaj('POST', '/api/jason/gablota', { opis: 'bez nazwy' })).success, false);
+        assert.equal((await zadaj('POST', '/api/jason/gablota', { nazwa: 'X', link: 'javascript:alert(1)' })).success, false);
+        const g = (await zadaj('POST', '/api/jason/gablota', { nazwa: 'Bluza StarLight Diner', motyw: 'Velvet Booth for Two', obraz: 'stacja:1', cena: '69 EUR', link: 'https://sklep.example/bluza' })).pozycje;
+        assert.equal(g.length, 1); assert.equal(g[0].obraz, 'stacja:1');
+        assert.equal((await zadaj('PUT', `/api/jason/gablota/${g[0].id}`, { nazwa: 'Bluza 0.00G', cena: '79 EUR' })).pozycje[0].nazwa, 'Bluza 0.00G');
+        assert.deepEqual((await zadaj('DELETE', `/api/jason/gablota/${g[0].id}`)).pozycje, []);
     } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
 });

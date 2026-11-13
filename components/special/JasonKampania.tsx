@@ -15,6 +15,7 @@ type Kampania = {
     stacja: { nr: number; tytul: string }; klipy: Klip[]; glos?: { nazwa?: string } | null;
     okladka?: { plik?: string; blad?: string; rysuje?: boolean; wersja?: number } | null; etapy?: Record<string, { stan: string }>; wybrana?: { wersja: number; plik: string };
     teoStory?: { serial?: string; url?: string | null } | null;
+    opodysk?: { stan: string; etap?: string; blad?: string; plik?: string; sekundy?: number; bajtow?: number; ujec?: number; wersja?: number; napisy?: boolean; brakowaloKlatek?: number; montaz?: string | null; uwagi?: string[]; postep?: { zrobione: number; razem: number } } | null;
     spotify?: { folder: string; pliki: string[]; uwagi: string[]; okladka?: { plik: string } | null; master: { hz: number; bity: number; kanaly: number; zrodlo: string; sekundy: number; bajtow: number } } | null;
 };
 type KadrSceny = { plik?: string; stan?: string; blad?: string; wersja?: number };
@@ -34,6 +35,7 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     const [stacje, setStacje] = useState<Stacja[]>([]);
     const [nowa, setNowa] = useState(false);
     const [sb, setSb] = useState<Storyboard | null>(null);
+    const [napisyOpowiesci, setNapisyOpowiesci] = useState(true);
     const PUSTA = { tytul: '', glos: '', artysci: '', styl: '', tekst: '' };
     const [f, setF] = useState(PUSTA);
     const [adres, setAdres] = useState('');
@@ -56,10 +58,11 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
 
     // podgląd pracy co 10 s, dopóki Jason pracuje
     useEffect(() => {
-        if (k?.stan !== 'robi' && !k?.okladka?.rysuje) return;
+        const kreci = k?.opodysk?.stan === 'klatki' || k?.opodysk?.stan === 'montaz';
+        if (k?.stan !== 'robi' && !k?.okladka?.rysuje && !kreci) return;
         const t = setInterval(() => { api(`/api/jason/kampanie/${k.id}`).then((d) => { if (d.kampania) setK(d.kampania); }).catch(() => {}); }, 10000);
         return () => clearInterval(t);
-    }, [k?.id, k?.stan, k?.okladka?.rysuje, api]);
+    }, [k?.id, k?.stan, k?.okladka?.rysuje, k?.opodysk?.stan, api]);
 
     // 🎬 storyboard teledysku: wczytaj, gdy kampania go ma; odświeżaj, dopóki Paleta rysuje klatki
     useEffect(() => {
@@ -84,6 +87,18 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
             else setInfo(`⚠ ${d.message}`);
         } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
         setTrwa(false);
+    };
+    // 🎞️ Opodysk: brakujące klatki 16:9 dorysowuje Paleta, potem ffmpeg składa film na długość utworu
+    const krecenie = k?.opodysk?.stan === 'klatki' || k?.opodysk?.stan === 'montaz';
+    const nakrecOpodysk = () => {
+        const brak = sb ? sb.sceny.filter((sc) => !sc.kadry?.['16:9']?.plik).length : 0;
+        if (!window.confirm(brak
+            ? `Nakręcić Opodysk?\n\n${brak} z ${sb?.sceny.length} ujęć nie ma jeszcze klatki 16:9 — Paleta (FLUX) najpierw je dorysuje (około minuty na klatkę, karta zajęta), potem ffmpeg złoży film (2–4 minuty).`
+            : 'Nakręcić Opodysk?\n\nWszystkie klatki są — ffmpeg złoży film na długość utworu (2–4 minuty, bez karty graficznej).')) return;
+        void wykonaj(`/api/jason/kampanie/${k!.id}/opodysk`, { napisy: napisyOpowiesci }, 'Jason bierze się za Opodysk…');
+    };
+    const pokazOpodysk = async () => {
+        try { const d = await api(`/api/jason/kampanie/${k!.id}/opodysk/pokaz`, {}); setInfo(d.success ? '' : `⚠ ${d.message}`); } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
     };
     const ulozOdNowa = async () => {
         if (!window.confirm('Ułożyć storyboard od nowa?\n\nUjęcia zostaną policzone ponownie z tekstu, a karty ujęć na Tablicy TeO Story wymienione na nowe. Narysowane klatki zostają w paczce, ale storyboard przestaje je pokazywać.')) return;
@@ -311,6 +326,34 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                                     </div>
                                 </div>
                             ))}
+                            <div className="mt-2 rounded-lg border border-amber-400/40 bg-amber-950/20 p-2 text-amber-100">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button onClick={nakrecOpodysk} disabled={trwa || krecenie || rysujeKlatki}
+                                        title="Opowieść + Teledysk: ujęcia storyboardu z ruchem kamery i miękkimi przejściami, pod spodem master.wav. Plik opodysk_youtube_16x9.mp4 w paczce."
+                                        className="rounded bg-amber-500 px-2.5 py-1 font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50">🎞️ Nakręć Opodysk (MP4 na długość utworu)</button>
+                                    <label className="flex cursor-pointer items-center gap-1"><input type="checkbox" checked={napisyOpowiesci} onChange={(e) => setNapisyOpowiesci(e.target.checked)} disabled={krecenie} /> Napisy opowieści</label>
+                                    {(() => { const brak = sb.sceny.filter((sc) => !sc.kadry?.['16:9']?.plik).length; return brak ? <span className="text-amber-200/80">brakuje {brak} z {sb.sceny.length} klatek 16:9 — Jason dorysuje je przed montażem</span> : <span className="text-emerald-300/90">✓ komplet {sb.sceny.length} klatek 16:9</span>; })()}
+                                </div>
+                                {krecenie && k.opodysk && (
+                                    <div className="mt-1.5">
+                                        <div>{k.opodysk.stan === 'klatki' ? '🎨 Paleta dorysowuje klatki' : '🎞️ ffmpeg składa film'} · {k.opodysk.etap} · {k.opodysk.postep?.zrobione ?? 0}/{k.opodysk.postep?.razem ?? '?'}</div>
+                                        <div className="mt-1 h-1.5 overflow-hidden rounded bg-slate-900"><div className="h-full bg-amber-400 transition-all" style={{ width: `${Math.round(100 * (k.opodysk.postep?.zrobione ?? 0) / Math.max(1, k.opodysk.postep?.razem ?? 1))}%` }} /></div>
+                                    </div>
+                                )}
+                                {k.opodysk?.stan === 'blad' && <div className="mt-1 text-amber-300">⚠ {k.opodysk.blad}</div>}
+                                {k.opodysk?.plik && !krecenie && (
+                                    <div className="mt-2">
+                                        <video key={k.opodysk.wersja} controls preload="metadata" src={`${bridgeUrl}/api/jason/kampanie/${k.id}/opodysk/wideo?v=${k.opodysk.wersja ?? 1}`} className="w-full max-w-2xl rounded-lg bg-black" />
+                                        <div className="mt-1 text-amber-100/90">{k.opodysk.plik} · {czas(k.opodysk.sekundy)} · {k.opodysk.ujec} ujęć · {mb(k.opodysk.bajtow ?? 0)} · H.264 1920×1080 + AAC 320 kb/s{k.opodysk.napisy ? ' · z napisami opowieści' : ' · bez napisów'}</div>
+                                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                            <button onClick={pokazOpodysk} className="rounded bg-emerald-600 px-2.5 py-1 font-bold text-white hover:bg-emerald-500">📂 Pokaż plik MP4</button>
+                                            <a href="https://studio.youtube.com/" target="_blank" rel="noreferrer" className="rounded bg-red-600 px-2.5 py-1 font-bold text-white hover:bg-red-500">▶️ Otwórz YouTube Studio (Upload)</a>
+                                            {k.opodysk.montaz && <span className="text-amber-200/70">Kopia leży też w montażach projektu TeO Story — stamtąd „📺 do publikacji” pójdzie przez Kronikarza i ✓.</span>}
+                                        </div>
+                                        {(k.opodysk.uwagi ?? []).map((u, i) => <div key={i} className="mt-1 text-amber-200/70">ℹ {u}</div>)}
+                                    </div>
+                                )}
+                            </div>
                             <div className="mt-1 text-fuchsia-200/60">Ujęcia liczy kod z tekstu stacji (bez modelu): każde ma inną kompozycję i widzialny ruch energii. Klatki rysują się bez okładki jako wzoru — postacie trzyma opis słowny, więc twarze mogą się różnić między klatkami. Plik: storyboard_000g.json w paczce.</div>
                         </div>
                     )}
