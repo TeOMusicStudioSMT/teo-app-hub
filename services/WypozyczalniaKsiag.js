@@ -101,7 +101,7 @@ export function sprawdzPrzekladStrony(zrodlo, odp) {
 /**
  * @param {{ katalog: string, stripe?: object|null, adres?: () => Promise<string|null>, teraz?: () => number }} o
  */
-export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () => null, obrazLokalny = () => null, teraz = () => Date.now(), pisz = null, rysuj = null, muzykaLokalna = () => null }) {
+export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () => null, obrazLokalny = () => null, teraz = () => Date.now(), pisz = null, rysuj = null, muzykaLokalna = () => null, naStale = async () => false }) {
     const KAT = path.join(katalog, 'katalog.json'), KS = path.join(katalog, 'ksiegi'), WYP = path.join(katalog, 'wypozyczenia.json');
     let kolejka = Promise.resolve();
     const poKolei = (fn) => { const p = kolejka.then(fn); kolejka = p.catch(() => {}); return p; };
@@ -258,12 +258,16 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return { ksiega: w.ksiega, do: new Date(Date.parse(w.od) + GODZIN_WYPOZYCZENIA * 3600e3).toISOString(), powrot: dozwolonyPowrot(s.powrot) };
     }
 
-    /** Pełna księga do czytania: demo bez niczego, wypożyczenie = opłacona sesja tej księgi w ciągu 48 h. */
-    async function czytaj_(id, { sesja = null } = {}) {
+    /**
+     * Pełna księga do czytania: demo bez niczego, wypożyczenie = opłacona sesja tej księgi w ciągu 48 h,
+     * 🌟 NA STAŁE = trzy różne opłacone wypożyczenia tej księgi (`sesje`, sprawdza services/KsiegaWielowymiarowa.js u Stripe).
+     */
+    async function czytaj_(id, { sesja = null, sesje = [] } = {}) {
         const k = (await katalogPelny()).find((x) => x.id === id && x.wystawiona);
         if (!k) throw Object.assign(new Error('Tej księgi nie ma w wypożyczalni.'), { kod: 404 });
-        let doKiedy = null;
-        if (k.tier !== 'demo') {
+        let doKiedy = null, staly = false;
+        if (k.tier !== 'demo' && Array.isArray(sesje) && sesje.length >= 3) staly = await Promise.resolve(naStale(id, sesje)).catch(() => false);
+        if (k.tier !== 'demo' && !staly) {
             if (!sesja) throw Object.assign(new Error('Ta księga jest do wypożyczenia — najpierw płatność.'), { kod: 402 });
             const o = await odbierz(sesja);
             if (o.ksiega !== id) throw Object.assign(new Error('To wypożyczenie dotyczy innej księgi.'), { kod: 403 });
@@ -273,7 +277,7 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         const p = plikKsiegi(id);
         const book = p ? await czytaj(p, null) : null;
         if (!book) throw Object.assign(new Error('Księgi nie ma na dysku Katedry.'), { kod: 404 });
-        return { ksiega: book, dostepDo: doKiedy };
+        return { ksiega: book, dostepDo: doKiedy, naStale: staly };
     }
 
     // ── 🌍 Przekład, 🎨 ilustracje Palety, 🎵 podkład — prace w tle (jedna naraz na księgę), stan w pamięci ──
@@ -427,13 +431,13 @@ export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10, federacj
     app.get('/wizytowka/teostory/:id/audio/:plik', async (req, res) => {
         cors(res);
         try {
-            await W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null });
+            await W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null, sesje: String(req.query.sesje ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8) });
             const p = W.plikDzwieku(req.params.id, req.params.plik);
             return p ? res.sendFile(p) : res.status(404).end();
         } catch (e) { return res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }); }
     });
     app.get('/wizytowka/teostory/:id/okladka', async (req, res) => { const p = await W.plikOkladki(req.params.id); return p ? res.sendFile(p) : res.status(404).end(); });
-    app.get('/wizytowka/teostory/:id/czytaj', (req, res) => { cors(res); odp(res, W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null })); });
+    app.get('/wizytowka/teostory/:id/czytaj', (req, res) => { cors(res); odp(res, W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null, sesje: String(req.query.sesje ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8) })); });
     app.options('/wizytowka/teostory/:id/wypozycz', (_req, res) => { cors(res); res.sendStatus(204); });
     app.post('/wizytowka/teostory/:id/wypozycz', (req, res) => {
         cors(res);

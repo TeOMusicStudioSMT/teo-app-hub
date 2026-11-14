@@ -274,6 +274,7 @@ import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzSunoMcp, zamontujTrasySuno, fetchH2 as pobierzH2 } from './services/SunoMcp.js';
 import { utworzJasona, zamontujTrasyJasona } from './services/JasonOrchestrator.js';
+import { utworzKsiegeWielowymiarowa, zamontujTrasyKsiegiWielowymiarowej } from './services/KsiegaWielowymiarowa.js';
 import { CZCIONKI as CZCIONKI_NAPISOW } from './services/PowitanieDnia.js';
 import { utworzZlotaRybke, zamontujTrasyRybki } from './services/ZlotaRybka.js';
 import { utworzIzbe, zamontujTrasyIzby } from './services/IzbaZgod.js';
@@ -9567,6 +9568,7 @@ const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 
         return Assety3D.kadrFilmu({ prompt, szer, wys, prefiks: 'katedra/teostory/ilustracja' });
     },
     muzykaLokalna: (u) => { const rel = String(u ?? '').replace(/^\/?(music|_OtakOs_Muzyka)\//, ''); const p = path.resolve(MUSIC_DIR, rel); return p.startsWith(path.resolve(MUSIC_DIR) + path.sep) && fsSync.existsSync(p) ? p : null; },
+    naStale: (id, sesje) => KsiegaWielowymiarowa.naStale(id, sesje),   // 🌟 trzy opłacone wypożyczenia = księga na stałe
     obrazLokalny: (u) => SilnikKsiag.plikZAdresu(u) ?? Manuskrypt.plikZAdresu(u) ?? Jason.plikZAdresu(u),   // obrazy (i dźwięk Manuskryptu) kopiowane przy publikacji (gość nie widzi /api)
     adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
 // 📚🏛️ Federacja Wydawnicza (services/FederacjaKsiag.js): księgi innych Katedr w katalogu teostory.studio — zgłoszenie podpisane
@@ -9578,6 +9580,18 @@ const FederacjaKsiag = utworzFederacje({ katalog: path.join(ANTIGRAVITY_DIR, 'te
     plikKsiegi: (id) => { const p = path.join(ANTIGRAVITY_DIR, 'teostory', 'ksiegi', `${id}.json`); return /^[a-z0-9][a-z0-9-]{2,63}$/.test(id) && fsSync.existsSync(p) ? p : null; },
     wydawca: process.env.OTAKOS_TEOSTORY_WYDAWCA || 'https://katedra.otakos.wtf', szyna: Szyna });
 zamontujTrasyFederacji(app, FederacjaKsiag);
+// 🌿🌌 Żywa Księga Wielowymiarowa: dzienne wpisy głównej osi, 3 wypożyczenia = na stałe, gałęzie z innych Katedr (✓ w Izbie)
+const KsiegaWielowymiarowa = utworzKsiegeWielowymiarowa({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), wypozyczalnia: Wypozyczalnia, stripe: Stripe,
+    pisz: async (system, prompt) => (await piszModelem(TrybKatedry.modelDla((await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()), system, prompt, { json: true })).tekst,
+    rysuj: async ({ prompt, szer, wys }) => {
+        const przed = await stanWideoZBudzeniem('Ilustracja żywego wpisu');
+        if (!przed.comfy) throw new Error(przed.braki.join(' | '));
+        await Karta.przedRenderem('ilustracją żywego wpisu').catch(() => {});
+        return Assety3D.kadrFilmu({ prompt, szer, wys, prefiks: 'katedra/teostory/wpis' });
+    },
+    nick: async () => (await Wizytowka.profil()).nick || null, podpisz: (t) => Wizytowka.podpiszTekst(t), katedra: (n) => PaczkiGier.katedraZRejestru(n),
+    wiesc: (tresc) => Jajo.wiesc({ tresc, rodzaj: 'teostory', skad: 'Żywa Księga' }) });
+zamontujTrasyKsiegiWielowymiarowej(app, KsiegaWielowymiarowa);
 // 🎧 Spotify — profile artystów Katedry (Elara, Kael) przez Web API, klucze ze Skarbca (services/SpotifyArtysci.js)
 zamontujTrasySpotify(app, utworzSpotify({ klucze: async () => ({ client_id: await sekretPrzewodu('spotify', 'client_id'), client_secret: await sekretPrzewodu('spotify', 'client_secret') }) }));
 zamontujTrasyWypozyczalni(app, Wypozyczalnia, { federacja: () => FederacjaKsiag.pozycjePubliczne(), nick: async () => (await Wizytowka.profil()).nick || null });
@@ -16154,6 +16168,7 @@ const Warsztat = utworzWarsztat({ katalog: path.join(ANTIGRAVITY_DIR, 'warsztat-
     jajo: { decyzja: (o) => Jajo.decyzja(o), wiesc: (o) => Jajo.wiesc(o) } });
 zamontujTrasyWarsztatu(app, Warsztat);
 Izba.zarejestruj(Warsztat.zrodloIzby);
+Izba.zarejestruj(KsiegaWielowymiarowa.zrodloIzby);   // 🌌 gałęzie Żywych Ksiąg z innych Katedr — ✓/✕ także z telefonu
 Izba.zarejestruj(Jason.zrodloIzby);   // 🎛️ pakiety kampanii Jasona (utwór Suno + okładka) — ✓/✕ także z telefonu
 // 👕🔭 Zwiadowca kanałów dystrybucji (services/ZwiadowcaDystrybucji.js): POD/marketplace/sklepy twórców dla merchu Teterhii i Mini —
 // tylko kanały z linkiem z wyników wyszukiwania; „podłącz” = propozycja w Izbie zgód. Nic nie zakłada i nie płaci.
