@@ -1326,9 +1326,11 @@ export function utworzJasona(cfg) {
         return { akty: sb.sceny.length, dopisane: n, kampania: await wczytaj(id) };
     }
     /** Żywa Księga z Opodysku w Wypożyczalni — NIEWYSTAWIONA (widać ją w Dzienniku Żywych Wpisów; do portalu trafia dopiero po „wystaw”). */
-    async function zlozKsiege(id, { tier = 'demo', cenaEur = 0, wystaw = false } = {}) {
+    async function zlozKsiege(id, { tier: tierWej = null, cenaEur: cenaWej = null, wystaw = false } = {}) {
         const k = await wczytaj(id);
         if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
+        // bez wskazania poziomu księga zachowuje swój (ponowne złożenie nie zamienia płatnej w darmową)
+        const tier = tierWej ?? k.ksiega?.tier ?? 'demo', cenaEur = cenaWej ?? (tier === 'demo' ? 0 : k.ksiega?.cenaEur ?? 1.99);
         if (k.stan !== 'przyjeta' || !k.spotify) throw new Error('Księgę składam z gotowej paczki wydawniczej.');
         if (!cfg.wypozyczalnia?.publikuj) throw new Error('Most nie ma podłączonej Wypożyczalni teostory.studio.');
         const { strony, sb } = await stronyKsiegi(k);
@@ -1361,7 +1363,7 @@ export function utworzJasona(cfg) {
             const akty = [];
             if (sb) for (const sc of sb.sceny) {
                 const ma = await maKlatke(kat, sc), obraz = ma ? await jpg(path.join(kat, ...sc.kadry['16:9'].plik.split('/')), `akt-${sc.nr}.jpg`, 1280).catch(() => null) : null;
-                akty.push({ nr: sc.nr, sekcja: sc.sekcja, od: sc.od, do: sc.do, plan: sc.plan, opis: sc.obraz, wersy: sc.wersy ?? [], obraz });
+                akty.push({ nr: sc.nr, sekcja: sc.sekcja, od: sc.od, do: sc.do, plan: sc.plan, opis: (typeof k.narracja?.[sc.nr] === 'string' && k.narracja[sc.nr].trim()) || sc.obraz, wersy: sc.wersy ?? [], obraz });   // bogata narracja literacka, gdy jest
             }
             const tekst = sekcjeTekstu(k.stacja.lyrics ?? '').filter((s) => s.wersy.length).map((s) => ({ nazwa: s.nazwa, wersy: s.wersy }));
             if (!akty.length && !tekst.length) throw new Error(`„${k.stacja.tytul}” nie ma tekstu ani storyboardu — nie ma z czego złożyć manuskryptu.`);
@@ -1372,7 +1374,7 @@ export function utworzJasona(cfg) {
             await fs.rename(tmp, cel).catch(async () => { await fs.copyFile(tmp, cel); await fs.rm(tmp, { force: true }); });
             const k2 = await wczytaj(id);
             if (!k2.spotify.pliki.includes(PLIK_MANUSKRYPTU)) k2.spotify.pliki.push(PLIK_MANUSKRYPTU);
-            k2.manuskrypt = { plik: PLIK_MANUSKRYPTU, aktow: akty.length, zKlatkami: akty.filter((a) => a.obraz).length, bajtow: (await fs.stat(cel)).size, wersja: (Number(k.manuskrypt?.wersja) || 0) + 1, kiedy: new Date().toISOString() };
+            k2.manuskrypt = { zNarracja: !!k2.narracja && Object.keys(k2.narracja).length > 0, plik: PLIK_MANUSKRYPTU, aktow: akty.length, zKlatkami: akty.filter((a) => a.obraz).length, bajtow: (await fs.stat(cel)).size, wersja: (Number(k.manuskrypt?.wersja) || 0) + 1, kiedy: new Date().toISOString() };
             await zapisz(k2);
             wiesc(`📄 Jason: Manuskrypt PDF „${k.stacja.tytul}” gotowy (${akty.length} aktów) — _OtakOs_Muzyka/${k.spotify.folder}/${PLIK_MANUSKRYPTU}.`);
             return k2;
@@ -1422,7 +1424,7 @@ export function utworzJasona(cfg) {
                     const tier = s.stacja.nr === 1 ? 'demo' : 'rental_48h';
                     let k = await zlozKsiege(s.id, { tier, cenaEur: cena, wystaw: true });
                     let pdf = !!k.manuskrypt?.plik;
-                    if (!pdf && cfg.pdf) { try { k = await zlozManuskrypt(s.id); pdf = true; } catch (e) { uwagi.push(`Stacja ${s.stacja.nr}: manuskrypt PDF nie powstał (${tn(e.message, 160)}).`); } }
+                    if ((!pdf || (k.narracja && !k.manuskrypt?.zNarracja)) && cfg.pdf) { try { k = await zlozManuskrypt(s.id); pdf = true; } catch (e) { uwagi.push(`Stacja ${s.stacja.nr}: manuskrypt PDF nie powstał (${tn(e.message, 160)}).`); } }
                     if (!k.pergamin?.pdf && !k.pergamin?.svg) uwagi.push(`Stacja ${s.stacja.nr}: brak Rolowanego Pergaminu — wydrukuj go w Teatrze Opodysku (silnik partytury działa w przeglądarce).`);
                     if (!k.spotifyLive && !spotifyLive(k, await ustawienia())) uwagi.push(`Stacja ${s.stacja.nr}: brak adresu Spotify — odznaka „LIVE ON SPOTIFY” pojawi się po wklejeniu adresu albumu lub utworu.`);
                     zrobione.push({ nr: s.stacja.nr, id: k.ksiega.id, tytul: s.stacja.tytul, tier, cenaEur: tier === 'demo' ? 0 : cena, stron: k.ksiega.stron, manuskrypt: pdf, pergamin: !!(k.pergamin?.pdf || k.pergamin?.svg), spotify: !!k.ksiega.spotify });
