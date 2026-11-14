@@ -62,6 +62,8 @@ export function sprawdzKsiege(book, { tier = 'rental_48h', cenaEur = DOMYSLNA_CE
         opis: tekst(strony.find((s) => s?.narrativeText)?.narrativeText, 280),
         narrator: tekst(book.narrator ?? book.modelsUsed?.narrator, 80) || null,
         kwestii: liczKwestie(book), jezyk,
+        // 🎭 Opodysk (spektakl muzyczny Jasona): portal pokazuje go jako spektakl, nie „prolog”, i nie dogrywa własnego podkładu
+        ...(book.sourceType === 'opodysk' ? { rodzaj: 'opodysk' } : {}),
         jezyki: [...new Set([jezyk, ...Object.keys(przeklady)].filter(Boolean))],
         // tytuł, podtytuł i opis w każdym języku przekładu — karta w portalu mówi językiem strony
         przeklady: Object.fromEntries(Object.entries(przeklady).map(([j, p]) => [j, { tytul: tekst(p.title, 200) || tytul, podtytul: tekst(p.subtitle, 200), opis: tekst(p.pages?.find((s) => s?.narrativeText)?.narrativeText, 280) }])),

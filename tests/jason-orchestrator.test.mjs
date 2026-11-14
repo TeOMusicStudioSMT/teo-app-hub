@@ -11,6 +11,7 @@ import { promisify } from 'util';
 import ffmpegPath from 'ffmpeg-static';
 import { zbudujStoryboard, sekcjeTekstu, ujeciaZSekcji, czasyUjec, ileUjec, KLIMAT_TELEDYSKU, ENERGIE, WERSJA_STORYBOARDU } from '../services/StoryboardTeledysku.js';
 import { czyDlaSparowanych } from '../services/StrazMostu.js';
+import { utworzWypozyczalnie } from '../services/WypozyczalniaKsiag.js';
 import { planMontazu, napisyKlipu, ruchUjecia, zawin, dlugoscPliku, FPS, PLIK_OPODYSKU } from '../services/Opodysk.js';
 import { oczyscStacje, artystaZGlosu } from '../services/JasonOrchestrator.js';
 import { czystyTekst, naglowekWav, wymiaryJpeg, folderWydania } from '../services/JasonOrchestrator.js';
@@ -743,7 +744,10 @@ test('🎞️ Opodysk: brakujące klatki dorysowane, film na długość master.w
     const narysowane = [], doMontazu = []; let pada = false;
     const J = utworzJasona({ katalog: tmp, suno, przerwaPobraniaMs: 5, katalogMuzyki: muzyka, ffmpeg: ffmpegPath, uruchom, czcionki: czcionka, okladka: () => png('flux.png', 'red'),
         kadr: async (o) => { if (pada) throw new Error('ComfyUI śpi'); narysowane.push(o.scena.nr); return png(`k-${narysowane.length}.png`, ['blue', 'green', 'purple', 'orange'][narysowane.length % 4]); },
-        story: { zaloz: async (z) => ({ serial: z.nazwa, karty: z.sceny.map((_, i) => `kd-${i + 1}`) }), filmGotowy: async (x) => { doMontazu.push(x); return 'montaz/opodysk.mp4'; } } });
+        story: { zaloz: async (z) => ({ serial: z.nazwa, karty: z.sceny.map((_, i) => `kd-${i + 1}`) }), filmGotowy: async (x) => { doMontazu.push(x); return 'montaz/opodysk.mp4'; } },
+        wypozyczalnia: { publikuj: (x) => W.publikuj(x) } });
+    // PRAWDZIWA Wypożyczalnia teostory.studio (bez Stripe) — kopiuje klatki i nagrania aktów z paczki Jasona
+    const W = utworzWypozyczalnie({ katalog: path.join(tmp, 'teostory'), obrazLokalny: (u) => J.plikZAdresu(u) });
     const app = express(); app.use(express.json());
     zamontujTrasyJasona(app, J);
     const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
@@ -795,6 +799,31 @@ test('🎞️ Opodysk: brakujące klatki dorysowane, film na długość master.w
         const r = await fetch(`${baza}/api/jason/kampanie/${id}/opodysk/wideo`, { headers: { Range: 'bytes=0-99' } });
         assert.equal(r.status, 206);
         assert.equal((await fetch(`${baza}/api/jason/kampanie/${id}/audio`)).status, 200);
+
+        // 📚 Opodysk jako Żywa Księga w Wypożyczalni: akt = strona z klatką, wersami i fragmentem utworu
+        assert.equal((await zadaj('POST', `/api/jason/kampanie/${id}/wypozyczalnia`, { tier: 'vip_full' })).success, false);
+        assert.equal((await zadaj('POST', `/api/jason/kampanie/${id}/wypozyczalnia`, { tier: 'rental_48h', cenaEur: 0.1 })).success, false);
+        const wyd = await zadaj('POST', `/api/jason/kampanie/${id}/wypozyczalnia`, { cenaEur: 2.99 });
+        assert.equal(wyd.success, true, wyd.message);
+        assert.deepEqual({ tier: wyd.kampania.wypozyczalnia.tier, cena: wyd.kampania.wypozyczalnia.cenaEur, aktow: wyd.kampania.wypozyczalnia.aktow }, { tier: 'rental_48h', cena: 2.99, aktow: N }, 'Stacja 2 domyślnie do wypożyczenia');
+        const wpis = (await W.katalogPubliczny()).find((x) => x.id === wyd.kampania.wypozyczalnia.id);
+        assert.equal(wpis.rodzaj, 'opodysk'); assert.equal(wpis.tytul, 'Closer Than Gravity (Elara Solo)'); assert.equal(wpis.stron, N); assert.equal(wpis.cenaEur, 2.99); assert.equal(wpis.jezyk, 'en');
+        assert.match(wpis.okladka, /^\/wizytowka\/teostory\//);
+        const ksiega = JSON.parse(await fs.readFile(path.join(tmp, 'teostory', 'ksiegi', `${wpis.id}.json`), 'utf8'));
+        assert.equal(ksiega.pages.length, N); assert.equal(ksiega.sourceType, 'opodysk');
+        // strony niosą SKOPIOWANE klatki i nagrania (gość nie widzi /api mostu), każda ma narrację
+        assert.ok(ksiega.pages.every((s) => /^\/wizytowka\/teostory\/[a-z0-9-]+\/obraz\/obraz-\d+\.png$/.test(s.imageUrl) && /\/audio\/audio-\d+\.mp3$/.test(s.audioUrl) && s.narrativeText.length > 3));
+        assert.match(ksiega.pages[0].chapterTitle, /^Act 1 · Intro/);
+        assert.ok(ksiega.pages.some((s) => /Raindrops tracing silver lines upon the glass/.test(s.narrativeText)), 'wersy jako narracja aktu');
+        // fragmenty utworu: razem tyle, co master.wav (akt po akcie płynie cały utwór)
+        let suma = 0;
+        for (let i = 1; i <= N; i++) suma += await dlugoscPliku(ffmpegPath, uruchom, W.plikDzwieku(wpis.id, `audio-${i}.mp3`));
+        assert.ok(Math.abs(suma - dlMastera) < 0.08 * N, `akty ${suma.toFixed(2)} s, master ${dlMastera} s`);
+        // adres spoza klatek i aktów nie wskazuje żadnego pliku (master.wav nie wychodzi tą drogą)
+        assert.equal(J.plikZAdresu(`/api/jason/kampanie/${id}/audio`), null);
+        assert.equal(J.plikZAdresu(`/api/jason/kampanie/${id}/storyboard/kadr/../master.wav`), null);
+        // spektakl albumu: jedna stacja to za mało
+        assert.match((await zadaj('POST', '/api/jason/opodyski/album', {})).message, /co najmniej dwóch stacji/);
 
         // 🎭 katalog dla Teatru i Biblioteki
         const kt = await zadaj('GET', '/api/jason/opodyski');

@@ -9100,6 +9100,8 @@ const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
             return karty;
         },
     },
+    // 📚 Opodysk → Żywa Księga w Wypożyczalni teostory.studio (Wypożyczalnia powstaje niżej — wołana dopiero przy wydaniu)
+    wypozyczalnia: { publikuj: (x) => Wypozyczalnia.publikuj(x) },
     czcionki: CZCIONKI_NAPISOW,   // napis opowieści w Opodysku (te same czcionki co Powitanie Dnia)
     pokaz: async (plik) => { if (process.platform === 'win32') spawn('explorer.exe', [`/select,${plik}`], { detached: true, stdio: 'ignore' }).unref(); else spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [path.dirname(plik)], { detached: true, stdio: 'ignore' }).unref(); },
     otworz: async (sciezka) => { spawn(process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open', [sciezka], { detached: true, stdio: 'ignore' }).unref(); },
@@ -9565,7 +9567,7 @@ const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 
         return Assety3D.kadrFilmu({ prompt, szer, wys, prefiks: 'katedra/teostory/ilustracja' });
     },
     muzykaLokalna: (u) => { const rel = String(u ?? '').replace(/^\/?(music|_OtakOs_Muzyka)\//, ''); const p = path.resolve(MUSIC_DIR, rel); return p.startsWith(path.resolve(MUSIC_DIR) + path.sep) && fsSync.existsSync(p) ? p : null; },
-    obrazLokalny: (u) => SilnikKsiag.plikZAdresu(u) ?? Manuskrypt.plikZAdresu(u),   // obrazy (i dźwięk Manuskryptu) kopiowane przy publikacji (gość nie widzi /api)
+    obrazLokalny: (u) => SilnikKsiag.plikZAdresu(u) ?? Manuskrypt.plikZAdresu(u) ?? Jason.plikZAdresu(u),   // obrazy (i dźwięk Manuskryptu) kopiowane przy publikacji (gość nie widzi /api)
     adres: async () => { const t = await Tunel.stanTunelu(); return t.stan === 'dziala' && t.adres ? String(t.adres).replace(/\/+$/, '') : null; } });
 // 📚🏛️ Federacja Wydawnicza (services/FederacjaKsiag.js): księgi innych Katedr w katalogu teostory.studio — zgłoszenie podpisane
 // kluczem wizytówki autora, sprawdzane kluczem z rejestru otakos.wtf, ✓ w Izbie zgód; czytanie i płatność idą do Katedry autora.

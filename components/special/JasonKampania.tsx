@@ -15,6 +15,7 @@ type Kampania = {
     stacja: { nr: number; tytul: string }; klipy: Klip[]; glos?: { nazwa?: string } | null;
     okladka?: { plik?: string; blad?: string; rysuje?: boolean; wersja?: number } | null; etapy?: Record<string, { stan: string }>; wybrana?: { wersja: number; plik: string };
     teoStory?: { serial?: string; url?: string | null } | null;
+    wypozyczalnia?: { id: string; tier: string; cenaEur: number; aktow?: number; wystawiona?: boolean } | null;
     opodysk?: { stan: string; etap?: string; blad?: string; plik?: string; sekundy?: number; bajtow?: number; ujec?: number; wersja?: number; napisy?: boolean; brakowaloKlatek?: number; montaz?: string | null; uwagi?: string[]; postep?: { zrobione: number; razem: number } } | null;
     spotify?: { folder: string; pliki: string[]; uwagi: string[]; okladka?: { plik: string } | null; master: { hz: number; bity: number; kanaly: number; zrodlo: string; sekundy: number; bajtow: number } } | null;
 };
@@ -36,6 +37,8 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     const [nowa, setNowa] = useState(false);
     const [sb, setSb] = useState<Storyboard | null>(null);
     const [napisyOpowiesci, setNapisyOpowiesci] = useState(true);
+    const [tierWydania, setTierWydania] = useState('');   // '' = domyślnie: Stacja 1 za darmo, reszta 48 h
+    const [cenaWydania, setCenaWydania] = useState('1.99');
     const PUSTA = { tytul: '', glos: '', artysci: '', styl: '', tekst: '' };
     const [f, setF] = useState(PUSTA);
     const [adres, setAdres] = useState('');
@@ -83,7 +86,7 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
         setTrwa(true); setInfo('Układam storyboard 0.00G i zakładam projekt w TeO Story…');
         try {
             const d = await api(`/api/jason/kampanie/${k!.id}/teo-story`, {});
-            if (d.success) { setK(d.kampania); setSb(d.storyboard); setInfo((d.uwagi ?? []).join(' ')); otworzStory(d.kampania?.teoStory?.url); }
+            if (d.success) { setK(d.kampania); setSb(d.storyboard); setInfo((d.uwagi ?? []).join(' ')); otworzStory(`/apps/story/?teatr=${d.kampania.id}`); }
             else setInfo(`⚠ ${d.message}`);
         } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
         setTrwa(false);
@@ -96,6 +99,14 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
             ? `Nakręcić Opodysk?\n\n${brak} z ${sb?.sceny.length} ujęć nie ma jeszcze klatki 16:9 — Paleta (FLUX) najpierw je dorysuje (około minuty na klatkę, karta zajęta), potem ffmpeg złoży film (2–4 minuty).`
             : 'Nakręcić Opodysk?\n\nWszystkie klatki są — ffmpeg złoży film na długość utworu (2–4 minuty, bez karty graficznej).')) return;
         void wykonaj(`/api/jason/kampanie/${k!.id}/opodysk`, { napisy: napisyOpowiesci }, 'Jason bierze się za Opodysk…');
+    };
+    // 📚 spektakl do Wypożyczalni teostory.studio — publikacja wystawia pozycję PUBLICZNIE (gdy tunel Katedry działa)
+    const wystawSpektakl = () => {
+        const tier = tierWydania || (k!.stacja.nr === 1 ? 'demo' : 'rental_48h');
+        if (!window.confirm(tier === 'demo'
+            ? `Wystawić „${k!.stacja.tytul}” w teostory.studio ZA DARMO?\n\nSpektakl (klatki, wersy i cały utwór w ${sb?.sceny.length} aktach) będzie publicznie dostępny dla każdego gościa portalu.`
+            : `Wystawić „${k!.stacja.tytul}” w teostory.studio do wypożyczenia za ${cenaWydania} € / 48 h?\n\nPozycja pojawi się publicznie w katalogu portalu; treść dostaje gość po opłaceniu (Stripe).`)) return;
+        void wykonaj(`/api/jason/kampanie/${k!.id}/wypozyczalnia`, { tier, cenaEur: Number(cenaWydania) }, 'Tnę utwór na akty i wydaję spektakl do Wypożyczalni…');
     };
     const pokazOpodysk = async () => {
         try { const d = await api(`/api/jason/kampanie/${k!.id}/opodysk/pokaz`, {}); setInfo(d.success ? '' : `⚠ ${d.message}`); } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
@@ -292,7 +303,8 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                         <div className="mt-2 rounded-lg border border-fuchsia-500/40 bg-fuchsia-950/20 p-2 text-fuchsia-100">
                             <div className="flex flex-wrap items-center gap-2">
                                 <span className="font-bold">🎬 Storyboard 0.00G · {sb.sceny.length} ujęć{sb.bpm ? ` · ${sb.bpm} BPM` : ''} · {czas(sb.sekundy)}</span>
-                                {k.teoStory?.url && <button onClick={() => otworzStory(k.teoStory?.url)} className="underline">otwórz projekt „{k.teoStory.serial}”</button>}
+                                <button onClick={() => otworzStory(`/apps/story/?teatr=${k.id}`)} className="rounded bg-fuchsia-600 px-2 py-0.5 font-bold text-white hover:bg-fuchsia-500">🎭 Teatr Opodysku</button>
+                                {k.teoStory?.serial && <button onClick={() => otworzStory(`/apps/story/?serial=${encodeURIComponent(k.teoStory!.serial!)}`)} className="underline" title="Projekt teledysku u Reżysera: kanon, odcinek, karty ujęć na Tablicy">projekt u Reżysera</button>}
                                 <button onClick={() => klatka('wszystkie', '16:9')} disabled={trwa} className="underline">🎨 wszystkie klatki 16:9</button>
                                 <button onClick={() => klatka('wszystkie', '9:16')} disabled={trwa} className="underline">🎨 wszystkie 9:16</button>
                                 <button onClick={ulozOdNowa} disabled={trwa || rysujeKlatki} className="underline">↻ ułóż od nowa</button>
@@ -341,6 +353,17 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                                     </div>
                                 )}
                                 {k.opodysk?.stan === 'blad' && <div className="mt-1 text-amber-300">⚠ {k.opodysk.blad}</div>}
+                                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-amber-400/20 pt-2">
+                                    <button onClick={wystawSpektakl} disabled={trwa || krecenie} title="Opodysk jako Żywa Księga czytnika: akt = strona z klatką, wersami i fragmentem utworu. Trafia do katalogu Wypożyczalni teostory.studio."
+                                        className="rounded bg-sky-600 px-2.5 py-1 font-bold text-white hover:bg-sky-500 disabled:opacity-50">📚 Wystaw spektakl w teostory.studio</button>
+                                    <select value={tierWydania} onChange={(e) => setTierWydania(e.target.value)} className="rounded border border-amber-400/40 bg-slate-950 px-2 py-1 text-amber-100">
+                                        <option value="">{k.stacja.nr === 1 ? 'domyślnie: darmowy prolog' : 'domyślnie: wypożyczenie 48 h'}</option>
+                                        <option value="demo">za darmo (prolog)</option>
+                                        <option value="rental_48h">wypożyczenie 48 h</option>
+                                    </select>
+                                    {(tierWydania || (k.stacja.nr === 1 ? 'demo' : 'rental_48h')) === 'rental_48h' && <label className="flex items-center gap-1">€ <input value={cenaWydania} onChange={(e) => setCenaWydania(e.target.value)} className="w-16 rounded border border-amber-400/40 bg-slate-950 px-1.5 py-1 text-amber-100" /></label>}
+                                    {k.wypozyczalnia && <span className="text-emerald-300/90">✓ w Wypożyczalni: {k.wypozyczalnia.tier === 'demo' ? 'za darmo' : `${Number(k.wypozyczalnia.cenaEur).toFixed(2)} € / 48 h`} · {k.wypozyczalnia.aktow} aktów{k.wypozyczalnia.wystawiona === false ? ' · wycofany' : ''}</span>}
+                                </div>
                                 {k.opodysk?.plik && !krecenie && (
                                     <div className="mt-2">
                                         <video key={k.opodysk.wersja} controls preload="metadata" src={`${bridgeUrl}/api/jason/kampanie/${k.id}/opodysk/wideo?v=${k.opodysk.wersja ?? 1}`} className="w-full max-w-2xl rounded-lg bg-black" />

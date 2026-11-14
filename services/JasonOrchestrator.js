@@ -28,6 +28,11 @@
  * `opodysk_youtube_16x9.mp4` w paczce. `opodyski()` = katalog dla Teatru w TeO Story i Biblioteki Żywych Ksiąg;
  * `gablota*` = półka odzieży TeO Wear / 0.00G Merch (pozycje dodaje Suweren).
  *
+ * 📚 WYPOŻYCZALNIA teostory.studio: `wydajDoWypozyczalni(id, {tier, cenaEur})` zamienia Opodysk w Żywą Księgę czytnika —
+ * akt = strona (klatka 16:9, wersy jako narracja, fragment utworu wycięty z master.wav jako nagranie strony) — i publikuje
+ * ją przez `cfg.wypozyczalnia.publikuj`. Portal gra strony po kolei, więc utwór płynie akt po akcie. Stacja 1 domyślnie
+ * `demo` (darmowy prolog), pozostałe `rental_48h`. `wydajAlbum` = cały album jako jeden spektakl (wszystkie gotowe stacje).
+ *
  * ➕ STACJE: wbudowane `STACJE` 1–10 (pełne LP „Zero Gravity Heart”, sztafeta głosów Kael ↔ Elara) + własne z interfejsu
  * (`dodajStacje` → `_OtakOs_Wymiar/jason/stacje.json`, numer nadaje kod) — nowy utwór bez edycji tego pliku.
  *
@@ -42,6 +47,7 @@
  * kampania ma już `klipy` — wznawia od czekania. Duch po restarcie mostu = błąd z powodem (↻ wznawia).
  */
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { zbudujStoryboard, FORMATY as FORMATY_KADRU, WERSJA_STORYBOARDU } from './StoryboardTeledysku.js';
@@ -1201,7 +1207,7 @@ export function utworzJasona(cfg) {
                 okladka: k.spotify.okladka ? `${b}/spotify/okladka?v=${k.okladka?.wersja ?? 1}` : null, audio: `${b}/audio`,
                 storyboard: k.teoStory?.storyboard ? { scen: k.teoStory.scen ?? null, url: `${b}/storyboard` } : null, serial: k.teoStory?.serial ?? null,
                 opodysk: k.opodysk?.plik ? { url: `${b}/opodysk/wideo?v=${k.opodysk.wersja ?? 1}`, sekundy: k.opodysk.sekundy ?? null, stan: k.opodysk.stan } : null,
-                spotify: u.spotify.utwory[k.stacja.nr] ?? null, suno: k.wybrana?.id ? linkOdsluchu(k.wybrana.id) : null });
+                wypozyczalnia: k.wypozyczalnia ?? null, spotify: u.spotify.utwory[k.stacja.nr] ?? null, suno: k.wybrana?.id ? linkOdsluchu(k.wybrana.id) : null });
         }
         utwory.sort((a, b) => a.nr - b.nr);
         return { album: utwory[0]?.album ?? ALBUM, spotifyAlbum: u.spotify.album, utwory };
@@ -1221,6 +1227,81 @@ export function utworzJasona(cfg) {
     const dodajDoGabloty = (z) => { const p = oczyscPozycje(z); return zmienGablote((l) => [...l, { id: `g-${crypto.randomBytes(3).toString('hex')}`, ...p, dodano: new Date().toISOString() }]); };
     const zmienWGablocie = (id, z) => { const p = oczyscPozycje(z); return zmienGablote((l) => { if (!l.some((x) => x.id === id)) throw Object.assign(new Error('Nie ma takiej pozycji.'), { kod: 404 }); return l.map((x) => (x.id === id ? { ...x, ...p } : x)); }); };
     const usunZGabloty = (id) => zmienGablote((l) => { if (!l.some((x) => x.id === id)) throw Object.assign(new Error('Nie ma takiej pozycji.'), { kod: 404 }); return l.filter((x) => x.id !== id); });
+
+    // ── 📚 Opodysk jako Żywa Księga w Wypożyczalni teostory.studio ──
+    const plikAktu = (nr) => `teatr/akt-${String(nr).padStart(2, '0')}.mp3`;
+    /** Strony księgi z aktów storyboardu: klatka, wersy (ujęcie bez słów → opis obrazu), fragment utworu jako nagranie strony. */
+    async function stronyOpodysku(k, { przedrostek = '' } = {}) {
+        const sb = await czytajStoryboard(k), kat = sciezkaWydania(k);
+        if (!sb) throw new Error(`„${k.stacja.tytul}” nie ma storyboardu — najpierw „🎬 Projektuj Teledysk w TeO Story”.`);
+        const brak = [];
+        for (const sc of sb.sceny) if (!(await maKlatke(kat, sc))) brak.push(sc.nr);
+        if (brak.length) throw new Error(`„${k.stacja.tytul}”: ujęcia ${brak.join(', ')} nie mają klatek 16:9 — „🎞️ Nakręć Opodysk” dorysuje je i wtedy wystawisz spektakl.`);
+        const master = path.join(kat, 'master.wav');
+        if (!(await jestPlik(master))) throw new Error(`„${k.stacja.tytul}”: w paczce nie ma master.wav.`);
+        await fs.mkdir(path.join(kat, 'teatr'), { recursive: true });
+        const strony = [];
+        for (const sc of sb.sceny) {
+            const rel = plikAktu(sc.nr), cel = path.join(kat, ...rel.split('/'));
+            // fragment utworu dla aktu — cięty dokładnie (po dekodowaniu), mp3 192 kb/s
+            await cfg.uruchom(cfg.ffmpeg, ['-loglevel', 'error', '-y', '-i', master, '-ss', String(sc.od), '-t', String(Math.round((sc.do - sc.od) * 1000) / 1000), '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', cel], { maxBuffer: 1 << 24, timeout: 5 * 60_000, windowsHide: true });
+            strony.push({ chapterTitle: `${przedrostek}Act ${sc.nr} · ${sc.sekcja}`, imageCaption: sc.sekcja, narrativeText: sc.wersy.length ? sc.wersy.join('\n') : sc.obraz, dialogueLines: [],
+                imageUrl: `/api/jason/kampanie/${k.id}/storyboard/kadr/${sc.kadry['16:9'].plik.split('/').pop()}`, audioUrl: `/api/jason/kampanie/${k.id}/${rel}` });
+        }
+        return { strony, sb };
+    }
+    const sprawdzWydanie = (tier, cenaEur) => {
+        if (!cfg.wypozyczalnia?.publikuj) throw new Error('Most nie ma podłączonej Wypożyczalni teostory.studio.');
+        if (!cfg.ffmpeg || !cfg.uruchom) throw new Error('Most nie ma podłączonego ffmpeg dla Jasona.');
+        if (!['demo', 'rental_48h'].includes(tier)) throw new Error('Poziom: demo (za darmo) albo rental_48h (wypożyczenie na 48 h).');
+        const cena = Math.round(Number(cenaEur) * 100) / 100;
+        if (tier === 'rental_48h' && !(cena >= 0.5 && cena <= 100)) throw new Error('Cena wypożyczenia: 0,50–100 €.');
+        return cena;
+    };
+    /** 📚 Wydanie jednego Opodysku do Wypożyczalni. Bez `tier`: Stacja 1 = darmowy prolog, pozostałe = wypożyczenie 48 h. */
+    async function wydajDoWypozyczalni(id, { tier = null, cenaEur = 1.99 } = {}) {
+        const k = await wczytaj(id);
+        if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
+        const poziom = tier ?? (k.stacja.nr === 1 ? 'demo' : 'rental_48h');
+        const cena = sprawdzWydanie(poziom, cenaEur);
+        if (k.stan !== 'przyjeta' || !k.spotify) throw new Error('Spektakl wydaję z gotowej paczki wydawniczej.');
+        const { strony, sb } = await stronyOpodysku(k);
+        const book = { id: `opodysk-${String(k.stacja.nr).padStart(2, '0')}-${nazwaFolderu(k.stacja.tytul).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)}`,
+            title: k.stacja.tytul, subtitle: `${k.artysci.join(' & ')} · ${k.album}`, author: k.artysci.join(' & '), narrator: k.artysci.join(' & '), language: 'en', sourceType: 'opodysk',
+            opodysk: { album: k.album, stacja: k.stacja.nr, bpm: sb.bpm ?? null, sekundy: sb.sekundy ?? null, aktow: sb.sceny.length }, characters: [], pages: strony };
+        const wpis = await cfg.wypozyczalnia.publikuj({ book, rentalTier: poziom, cenaEur: cena });
+        k.wypozyczalnia = { id: wpis.id, tier: poziom, cenaEur: poziom === 'demo' ? 0 : cena, aktow: strony.length, wystawiona: wpis.wystawiona !== false, kiedy: new Date().toISOString() };
+        await zapisz(k);
+        wiesc(`📚 Jason: spektakl Opodysku „${k.stacja.tytul}” jest w Wypożyczalni teostory.studio (${poziom === 'demo' ? 'za darmo' : `${cena.toFixed(2)} € / 48 h`}, ${strony.length} aktów).`);
+        return k;
+    }
+    /** 🎭 Cały album jako jeden spektakl: wszystkie stacje z paczką muszą mieć komplet klatek (inaczej odmowa z listą braków). */
+    async function wydajAlbum({ tier = 'rental_48h', cenaEur = 4.99 } = {}) {
+        const cena = sprawdzWydanie(tier, cenaEur);
+        const widziane = new Set(), ks = [];
+        for (const k of await lista()) { if (k.stan !== 'przyjeta' || !k.spotify || widziane.has(k.stacja.nr)) continue; widziane.add(k.stacja.nr); ks.push(k); }
+        ks.sort((a, b) => a.stacja.nr - b.stacja.nr);
+        if (ks.length < 2) throw new Error('Spektakl albumu potrzebuje co najmniej dwóch stacji z paczką wydawniczą.');
+        const pages = [], bledy = [];
+        for (const k of ks) { try { pages.push(...(await stronyOpodysku(k, { przedrostek: `${String(k.stacja.nr).padStart(2, '0')} ${k.stacja.tytul} — ` })).strony); } catch (e) { bledy.push(e.message); } }
+        if (bledy.length) throw new Error(`Album nie jest gotowy do wystawienia: ${bledy.join(' | ')}`);
+        const album = ks[0].album, artysci = [...new Set(ks.flatMap((k) => k.artysci))];
+        const book = { id: 'opodysk-album-zero-gravity-heart', title: `${album.replace(/\s*\(.*\)\s*$/, '')} — 0.00G Musical Theatre`, subtitle: `${artysci.join(' & ')} · ${ks.length} songs`, author: artysci.join(' & '), narrator: artysci.join(' & '),
+            language: 'en', sourceType: 'opodysk', opodysk: { album, stacji: ks.length, aktow: pages.length }, characters: [], pages };
+        const wpis = await cfg.wypozyczalnia.publikuj({ book, rentalTier: tier, cenaEur: cena });
+        wiesc(`📚 Jason: spektakl albumu „${book.title}” jest w Wypożyczalni teostory.studio (${ks.length} utworów, ${pages.length} aktów).`);
+        return { id: wpis.id, tytul: book.title, stacji: ks.length, aktow: pages.length, tier, cenaEur: tier === 'demo' ? 0 : cena, wystawiona: wpis.wystawiona !== false };
+    }
+    /** Adres mostu → plik w paczce (Wypożyczalnia kopiuje klatki i nagrania aktów do księgi przy publikacji). Tylko klatki i akty. */
+    function plikZAdresu(adres) {
+        const m = /^\/api\/jason\/kampanie\/(j-[0-9a-f]{8})\/(?:storyboard\/kadr\/(scena-\d{1,2}-16x9\.png)|teatr\/(akt-\d{2}\.mp3))$/.exec(String(adres ?? ''));
+        if (!m || !cfg.katalogMuzyki) return null;
+        let k; try { k = JSON.parse(fsSync.readFileSync(plik(m[1]), 'utf8')); } catch { return null; }
+        const kat = sciezkaWydania(k);
+        if (!kat) return null;
+        const p = m[2] ? path.join(kat, 'storyboard', m[2]) : path.join(kat, 'teatr', m[3]);
+        return fsSync.existsSync(p) ? p : null;
+    }
 
     const sciezkaKadru = (k, plik) => (/^scena-\d{1,2}-(16x9|9x16)\.png$/.test(String(plik)) && sciezkaWydania(k) ? path.join(sciezkaWydania(k), 'storyboard', plik) : null);
 
@@ -1263,7 +1344,7 @@ export function utworzJasona(cfg) {
         decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
@@ -1338,6 +1419,9 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
         const p = J.sciezkaAudio(await J.kampania(req.params.id));
         return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Ta kampania nie ma paczki z utworem.' });
     });
+    // 📚 Opodysk do Wypożyczalni teostory.studio (tylko maszyna): {tier?: 'demo' | 'rental_48h', cenaEur?} — publikacja wystawia pozycję publicznie
+    app.post('/api/jason/kampanie/:id/wypozyczalnia', async (req, res) => { try { res.json({ success: true, kampania: await J.wydajDoWypozyczalni(req.params.id, { tier: req.body?.tier ?? null, cenaEur: req.body?.cenaEur ?? 1.99 }) }); } catch (e) { blad(res, e); } });
+    app.post('/api/jason/opodyski/album', async (req, res) => { try { res.json({ success: true, spektakl: await J.wydajAlbum({ tier: req.body?.tier ?? 'rental_48h', cenaEur: req.body?.cenaEur ?? 4.99 }) }); } catch (e) { blad(res, e); } });
     // 🎭 katalog muzycznych opowieści (Teatr Opodysku w TeO Story, Biblioteka Żywych Ksiąg) i 👕 gablota TeO Wear
     app.get('/api/jason/opodyski', async (_req, res) => { try { res.json({ success: true, ...(await J.opodyski()) }); } catch (e) { blad(res, e); } });
     app.get('/api/jason/gablota', async (_req, res) => res.json({ success: true, pozycje: await J.gablota() }));
