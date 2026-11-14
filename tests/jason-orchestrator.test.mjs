@@ -905,7 +905,7 @@ test('🖨️ druk: HTML manuskryptu escapuje i niesie akty, SVG pergaminu odrzu
     const h = htmlManuskryptu({ tytul: 'Velvet <Booth>', album: 'Zero Gravity Heart', artysci: ['Elara', 'Kael'], bpm: 82, sekundy: 193.6, okladka: 'okladka.jpg',
         tekst: [{ nazwa: 'Verse 1', wersy: ['Two cups & a "table"'] }], akty: [{ nr: 1, sekcja: 'Intro', od: 0, do: 12, plan: 'Wide shot', opis: 'Rain on glass.\nSecond line.', wersy: ['a', 'b'], obraz: 'akt-1.jpg' }, { nr: 2, sekcja: 'Chorus', wersy: [] }] });
     assert.match(h, /Velvet &lt;Booth&gt;/); assert.doesNotMatch(h, /<Booth>/); assert.match(h, /Two cups &amp; a &quot;table&quot;/);
-    assert.equal((h.match(/class="strona akt"/g) ?? []).length, 2); assert.match(h, /AKT 1/); assert.match(h, /src="akt-1\.jpg"/); assert.match(h, /<p>Second line\.<\/p>/);
+    assert.equal((h.match(/class="strona akt"/g) ?? []).length, 2); assert.match(h, /HACT 1/); assert.doesNotMatch(h, />AKT 1</); assert.match(h, /src="akt-1\.jpg"/); assert.match(h, /<p>Second line\.<\/p>/);
     assert.equal(esc('<a href="x">&</a>'), '&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;');
     const ok = '<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1200" viewBox="0 0 4000 1200"><rect width="10" height="10"/></svg>';
     assert.deepEqual(sprawdzSvg(ok), { szer: 4000, wys: 1200 }); assert.match(htmlPergaminu(ok, 4000, 1200), /size: 4000px 1200px/);

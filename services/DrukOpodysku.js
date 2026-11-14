@@ -32,7 +32,7 @@ export function htmlManuskryptu(d) {
     if (sekcjeTekstu) strony.push(strona(`<h3>Tekst utworu</h3><div class="szpalty">${sekcjeTekstu}</div>`, 'tekst'));
     for (const a of d.akty ?? []) {
         strony.push(strona(`${a.obraz ? `<div class="kadr"><img src="${esc(a.obraz)}" alt=""></div>` : '<div class="kadr pusty"></div>'}
-            <div class="naglowek"><span class="nrakt">AKT ${esc(a.nr)}</span><span class="sekcja-akt">${esc(a.sekcja)}</span>${a.od != null ? `<span class="czas">${esc(sek(a.od))}–${esc(sek(a.do))}</span>` : ''}</div>
+            <div class="naglowek"><span class="nrakt">HACT ${esc(a.nr)}</span><span class="sekcja-akt">${esc(a.sekcja)}</span>${a.od != null ? `<span class="czas">${esc(sek(a.od))}–${esc(sek(a.do))}</span>` : ''}</div>
             ${a.plan ? `<div class="plan">${esc(a.plan)}</div>` : ''}${a.opis ? `<div class="opis">${akapity(a.opis)}</div>` : ''}
             ${a.wersy?.length ? `<blockquote>${a.wersy.map((w) => `<div>${esc(w)}</div>`).join('')}</blockquote>` : ''}`, 'akt'));
     }
