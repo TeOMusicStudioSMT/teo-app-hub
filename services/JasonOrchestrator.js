@@ -1258,7 +1258,7 @@ export function utworzJasona(cfg) {
                 const kadr = sc.kadry?.['16:9'], ma = await maKlatke(kat, sc);
                 const lit = typeof k.narracja?.[sc.nr] === 'string' && k.narracja[sc.nr].trim() ? k.narracja[sc.nr].trim() : null, lek = k.lektor?.[sc.nr];
                 // 🎙️ prawdziwy głos ElevenLabs tylko wtedy, gdy nagranie czyta DOKŁADNIE ten tekst, który widać na stronie
-                const glos = lit && lek?.plik && String(lek.tekst ?? '').trim() === lit ? `/api/elevenlabs/plik/opodysk/${k.id}/${lek.plik}` : null;
+                const bz = (t) => String(t ?? '').replace(/\s+/g, ' ').trim(), glos = lit && lek?.plik && bz(lek.tekst) === bz(lit) ? `/api/elevenlabs/plik/opodysk/${k.id}/${lek.plik}` : null;
                 strony.push({ chapterTitle: `Akt ${sc.nr} · ${sc.sekcja}`, imageCaption: sc.sekcja, dialogueLines: [],
                     narrativeText: lit ?? [sc.obraz, sc.wersy.length ? sc.wersy.map((w) => `♪ ${w}`).join('\n') : ''].filter(Boolean).join('\n\n'),
                     ...(glos ? { audioUrl: glos } : {}),
