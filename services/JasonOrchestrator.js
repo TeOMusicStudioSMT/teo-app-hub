@@ -1220,6 +1220,24 @@ export function utworzJasona(cfg) {
             return k;
         } finally { nagrywana = null; }
     }
+    // ── 🎙️ głos lektora sceny i atmosfera tła (ElevenLabs; pliki leżą w `voices/` paczki — archiwum, 0 kredytów przy powtórce) ──
+    async function ustawLektora(id, nr, w) {
+        const k = await wczytaj(id), n = Number(nr);
+        if (!Number.isInteger(n) || n < 1 || n > 99) throw new Error('Lektor potrzebuje numeru sceny.');
+        k.lektor = { ...(k.lektor ?? {}) };
+        if (w?.plik) k.lektor[n] = { plik: String(w.plik), rola: String(w.rola ?? 'kronikarz'), tekst: tn(w.tekst, 2000), glosy: w.glosy ?? null, kiedy: new Date().toISOString() }; else delete k.lektor[n];
+        await zapisz(k);
+        return k.lektor;
+    }
+    async function ustawAtmosfere(id, w) {
+        const k = await wczytaj(id);
+        k.atmosfera = w?.plik ? { plik: String(w.plik), opis: tn(w.opis, 450), sekundy: Number(w.sekundy) || null, petla: w.petla !== false, kiedy: new Date().toISOString() } : null;
+        await zapisz(k);
+        return k.atmosfera;
+    }
+    const glosyKampanii = (k) => { const b = `/api/elevenlabs/plik/opodysk/${k.id}`; return {
+        lektor: Object.fromEntries(Object.entries(k.lektor ?? {}).map(([nr, l]) => [nr, { url: `${b}/${l.plik}`, rola: l.rola, tekst: l.tekst, glosy: l.glosy ?? null }])),
+        atmosfera: k.atmosfera?.plik ? { url: `${b}/${k.atmosfera.plik}`, opis: k.atmosfera.opis, sekundy: k.atmosfera.sekundy, petla: k.atmosfera.petla } : null }; };
     const sciezkaPartytury = (k) => (k?.partytura?.plik && sciezkaWydania(k) ? path.join(sciezkaWydania(k), k.partytura.plik) : null);
     const sciezkaAudio = (k) => (sciezkaWydania(k) ? path.join(sciezkaWydania(k), 'original.mp3') : null);
     async function pokazOpodysk(id) {
@@ -1241,6 +1259,7 @@ export function utworzJasona(cfg) {
                 storyboard: k.teoStory?.storyboard ? { scen: k.teoStory.scen ?? null, url: `${b}/storyboard` } : null, serial: k.teoStory?.serial ?? null,
                 opodysk: k.opodysk?.plik ? { url: `${b}/opodysk/wideo?v=${k.opodysk.wersja ?? 1}`, sekundy: k.opodysk.sekundy ?? null, stan: k.opodysk.stan } : null,
                 partytura: k.partytura?.plik ? { url: `${b}/opodysk/partytura/wideo?v=${k.partytura.wersja ?? 1}`, sekundy: k.partytura.sekundy ?? null } : null,
+                ...glosyKampanii(k),
                 wypozyczalnia: k.wypozyczalnia ?? null, spotify: u.spotify.utwory[k.stacja.nr] ?? null, suno: k.wybrana?.id ? linkOdsluchu(k.wybrana.id) : null });
         }
         utwory.sort((a, b) => a.nr - b.nr);
@@ -1378,7 +1397,7 @@ export function utworzJasona(cfg) {
         decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, ustawLektora, ustawAtmosfere, glosyKampanii, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */

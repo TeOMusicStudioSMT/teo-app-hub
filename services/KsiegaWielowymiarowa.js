@@ -140,6 +140,16 @@ export function utworzKsiegeWielowymiarowa({ katalog, wypozyczalnia: W, stripe =
         await zapiszJson(plikWpisow(id), d);
         return wpis;
     });
+    /** 🎙️ Nagranie lektora do wpisu (ElevenLabs z archiwum mostu): kopia jako załącznik `<wpis>.mp3`; `null` zdejmuje nagranie. */
+    const ustawAudio = (id, wid, zrodlo) => poKolei(async () => {
+        await ksiega(id);
+        const d = await stan(id), w = d.wpisy.find((x) => x.id === wid);
+        if (!w) throw blad('Nie ma takiego wpisu.', 404);
+        if (zrodlo) { await fs.mkdir(path.join(KAT, id), { recursive: true }); await fs.copyFile(zrodlo, path.join(KAT, id, `${wid}.mp3`)); w.audio = `${wid}.mp3`; }
+        else { if (w.audio) await fs.rm(path.join(KAT, id, w.audio), { force: true }); w.audio = null; }
+        await zapiszJson(plikWpisow(id), d);
+        return adresy(id, w);
+    });
     const usunWpis = (id, wid) => poKolei(async () => {
         const d = await stan(id), w = d.wpisy.find((x) => x.id === wid);
         if (!w) throw blad('Nie ma takiego wpisu.', 404);
@@ -279,7 +289,7 @@ export function utworzKsiegeWielowymiarowa({ katalog, wypozyczalnia: W, stripe =
         return g;
     }
 
-    return { dodajWpis, usunWpis, pelne, publiczne, liczniki, czytelnik, naStale, plikZalacznika, przyjmijZgloszenie, rozstrzygnijGalaz, zrodloIzby, drukuj, moje, wyslij };
+    return { dodajWpis, ustawAudio, usunWpis, pelne, publiczne, liczniki, czytelnik, naStale, plikZalacznika, przyjmijZgloszenie, rozstrzygnijGalaz, zrodloIzby, drukuj, moje, wyslij };
 }
 
 /** Strona „Drukarnia gałęzi” — otwierana z portalu w Katedrze czytelnika (nawigacja do 127.0.0.1; sama niczego nie drukuje bez kliknięcia). */

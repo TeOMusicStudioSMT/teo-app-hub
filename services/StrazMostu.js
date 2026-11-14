@@ -119,7 +119,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/skladnica', // 📦 Składnica: wspólne assety (zapis, import z dysku, kosz) — tylko przy Katedrze
     '/api/gielda-mocy',   // ⚡ Giełda mocy: oferta tej Katedry ustawia się tylko przy niej
     '/api/vault/status', '/api/vault/set', '/api/vault/sekret/', '/api/vault/resetuj',   // 🔐 Skarbiec 0.00G — tylko przy Katedrze
-    '/api/stripe', '/api/sklep-mini', '/api/books', '/api/zywe-wpisy', '/api/galezie-ksiag', '/api/zywe-ksiegi', '/api/manuskrypt', '/api/stol-produktowy', '/api/sklep-linki', '/api/printful',   // 💳🐾 płatności Stripe i Sklep Mini (zgody na kredyty Meshy, wystawianie) — tylko przy Katedrze
+    '/api/stripe', '/api/sklep-mini', '/api/books', '/api/elevenlabs', '/api/zywe-wpisy', '/api/galezie-ksiag', '/api/zywe-ksiegi', '/api/manuskrypt', '/api/stol-produktowy', '/api/sklep-linki', '/api/printful',   // 💳🐾 płatności Stripe i Sklep Mini (zgody na kredyty Meshy, wystawianie) — tylko przy Katedrze
     '/api/kibel/most', '/api/modele/chmura',   // 🔗 klucze Kibla dla mostu i modele z konta dostawcy — tylko przy Katedrze
     '/api/jev',   // ⚖️ Jev (TypeSafe) = rachunek za tokeny — tylko przy Katedrze
     '/api/koherencja',   // 🫀 Koherencja Katedry — nazwy modeli i błędy mostu, tylko przy maszynie

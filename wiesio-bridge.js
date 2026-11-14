@@ -274,6 +274,7 @@ import GAME_SHOW, { utworzGameShow } from './services/TeoGameShow.js';
 import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzSunoMcp, zamontujTrasySuno, fetchH2 as pobierzH2 } from './services/SunoMcp.js';
 import { utworzJasona, zamontujTrasyJasona } from './services/JasonOrchestrator.js';
+import { utworzElevenLabs, zamontujTrasyElevenLabs } from './services/ElevenLabs.js';
 import { utworzKsiegeWielowymiarowa, zamontujTrasyKsiegiWielowymiarowej } from './services/KsiegaWielowymiarowa.js';
 import { CZCIONKI as CZCIONKI_NAPISOW } from './services/PowitanieDnia.js';
 import { utworzZlotaRybke, zamontujTrasyRybki } from './services/ZlotaRybka.js';
@@ -9592,6 +9593,31 @@ const KsiegaWielowymiarowa = utworzKsiegeWielowymiarowa({ katalog: path.join(ANT
     nick: async () => (await Wizytowka.profil()).nick || null, podpisz: (t) => Wizytowka.podpiszTekst(t), katedra: (n) => PaczkiGier.katedraZRejestru(n),
     wiesc: (tresc) => Jajo.wiesc({ tresc, rodzaj: 'teostory', skad: 'Żywa Księga' }) });
 zamontujTrasyKsiegiWielowymiarowej(app, KsiegaWielowymiarowa);
+// 🎙️ ElevenLabs — Voice Cast 0.00G (services/ElevenLabs.js, Suweren 2026-11-14): klucz ze Skarbca, każde nagranie raz —
+// potem z dysku (`voices/<sha>.mp3` w paczce Opodysku / katalogu księgi), generowanie tylko ze zgodą z wyceny.
+const ElevenLabs = utworzElevenLabs({ katalog: path.join(ANTIGRAVITY_DIR, 'elevenlabs'), klucz: () => sekretPrzewodu('elevenlabs', 'api_key'), ffmpeg: ffmpegPath, uruchom: execFileAsync,
+    miejsca: {
+        opodysk: async (id) => { const kat = Jason.sciezkaWydania(await Jason.kampania(id)); if (!kat) throw new Error('Ta kampania nie ma paczki wydawniczej — głosy sceny leżą w paczce.'); return path.join(kat, 'voices'); },
+        wpis: async (id) => { if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(String(id))) throw new Error('Nie ma takiej księgi.'); return path.join(ANTIGRAVITY_DIR, 'teostory', 'wpisy', id, 'voices'); },
+    } });
+zamontujTrasyElevenLabs(app, ElevenLabs, {
+    poMowie: async ({ miejsce, cel, wynik, zlecenie }) => {
+        if (miejsce?.rodzaj === 'opodysk' && cel.scena) { await Jason.ustawLektora(miejsce.id, cel.scena, { plik: wynik.nazwa, rola: zlecenie.rola ?? 'kronikarz', tekst: zlecenie.tekst ?? (zlecenie.segmenty ?? []).map((x) => x.tekst).join(' '), glosy: wynik.glosy }); return { scena: Number(cel.scena) }; }
+        if (miejsce?.rodzaj === 'wpis' && cel.wpis) return { wpis: await KsiegaWielowymiarowa.ustawAudio(miejsce.id, String(cel.wpis), wynik.plik) };
+        return null;
+    },
+    poEfekcie: async ({ miejsce, cel, wynik }) => (miejsce?.rodzaj === 'opodysk' && cel.atmosfera ? { atmosfera: await Jason.ustawAtmosfere(miejsce.id, { plik: wynik.nazwa, opis: wynik.opis, sekundy: wynik.sekundy, petla: wynik.petla }) } : null),
+});
+app.delete('/api/elevenlabs/cel', async (req, res) => {   // zdjęcie lektora sceny / atmosfery / nagrania wpisu — plik zostaje w archiwum (0 kredytów przy powrocie)
+    try {
+        const { miejsce, cel } = req.body ?? {};
+        if (miejsce?.rodzaj === 'opodysk' && cel?.scena) await Jason.ustawLektora(miejsce.id, cel.scena, null);
+        else if (miejsce?.rodzaj === 'opodysk' && cel?.atmosfera) await Jason.ustawAtmosfere(miejsce.id, null);
+        else if (miejsce?.rodzaj === 'wpis' && cel?.wpis) await KsiegaWielowymiarowa.ustawAudio(miejsce.id, String(cel.wpis), null);
+        else throw new Error('Nie wiem, co zdjąć.');
+        res.json({ success: true });
+    } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
 // 🎧 Spotify — profile artystów Katedry (Elara, Kael) przez Web API, klucze ze Skarbca (services/SpotifyArtysci.js)
 zamontujTrasySpotify(app, utworzSpotify({ klucze: async () => ({ client_id: await sekretPrzewodu('spotify', 'client_id'), client_secret: await sekretPrzewodu('spotify', 'client_secret') }) }));
 zamontujTrasyWypozyczalni(app, Wypozyczalnia, { federacja: () => FederacjaKsiag.pozycjePubliczne(), nick: async () => (await Wizytowka.profil()).nick || null });
