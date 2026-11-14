@@ -50,7 +50,11 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { zbudujStoryboard, FORMATY as FORMATY_KADRU, WERSJA_STORYBOARDU } from './StoryboardTeledysku.js';
+import { zbudujStoryboard, sekcjeTekstu, FORMATY as FORMATY_KADRU, WERSJA_STORYBOARDU } from './StoryboardTeledysku.js';
+import { htmlManuskryptu, htmlPergaminu, sprawdzSvg } from './DrukOpodysku.js';
+
+export const PLIK_MANUSKRYPTU = 'manuskrypt_000g.pdf';
+export const PLIKI_PERGAMINU = { svg: 'pergamin_000g.svg', png: 'pergamin_000g.png', pdf: 'pergamin_000g.pdf' };
 import { zlozOpodysk, PLIK_OPODYSKU, dlugoscPliku } from './Opodysk.js';
 import { nagranieDoMp4 } from './OdcinkiStudia.js';
 
@@ -1238,6 +1242,136 @@ export function utworzJasona(cfg) {
     const glosyKampanii = (k) => { const b = `/api/elevenlabs/plik/opodysk/${k.id}`; return {
         lektor: Object.fromEntries(Object.entries(k.lektor ?? {}).map(([nr, l]) => [nr, { url: `${b}/${l.plik}`, rola: l.rola, tekst: l.tekst, glosy: l.glosy ?? null }])),
         atmosfera: k.atmosfera?.plik ? { url: `${b}/${k.atmosfera.plik}`, opis: k.atmosfera.opis, sekundy: k.atmosfera.sekundy, petla: k.atmosfera.petla } : null }; };
+    // ── 📖 Żywa Księga i Manuskrypt PDF z Opodysku (Suweren 2026-11-14) ──
+    const slugKsiegi = (t) => nazwaFolderu(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    /** Strony księgi: najpierw cały tekst utworu, potem po stronie na akt (opis akcji + wersy + klatka FLUX); bez storyboardu — sekcje tekstu. */
+    async function stronyKsiegi(k) {
+        const sb = await czytajStoryboard(k), kat = sciezkaWydania(k), strony = [], tekst = czystyTekst(k.stacja.lyrics ?? '');
+        if (tekst.length >= 10) strony.push({ chapterTitle: 'Tekst utworu', imageCaption: k.stacja.tytul, narrativeText: tekst, dialogueLines: [] });
+        if (sb) {
+            for (const sc of sb.sceny) {
+                const kadr = sc.kadry?.['16:9'], ma = await maKlatke(kat, sc);
+                strony.push({ chapterTitle: `Akt ${sc.nr} · ${sc.sekcja}`, imageCaption: sc.sekcja, dialogueLines: [],
+                    narrativeText: [sc.obraz, sc.wersy.length ? sc.wersy.map((w) => `♪ ${w}`).join('\n') : ''].filter(Boolean).join('\n\n'),
+                    ...(ma ? { imageUrl: `/api/jason/kampanie/${k.id}/storyboard/kadr/${kadr.plik.split('/').pop()}` } : {}) });
+            }
+        } else for (const sec of sekcjeTekstu(k.stacja.lyrics ?? '')) if (sec.wersy.length) strony.push({ chapterTitle: sec.nazwa, imageCaption: sec.nazwa, narrativeText: sec.wersy.join('\n'), dialogueLines: [] });
+        if (!strony.length) throw new Error(`„${k.stacja.tytul}” nie ma tekstu ani storyboardu — nie ma z czego złożyć księgi.`);
+        return { strony, sb };
+    }
+    /** Żywa Księga z Opodysku w Wypożyczalni — NIEWYSTAWIONA (widać ją w Dzienniku Żywych Wpisów; do portalu trafia dopiero po „wystaw”). */
+    async function zlozKsiege(id) {
+        const k = await wczytaj(id);
+        if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
+        if (k.stan !== 'przyjeta' || !k.spotify) throw new Error('Księgę składam z gotowej paczki wydawniczej.');
+        if (!cfg.wypozyczalnia?.publikuj) throw new Error('Most nie ma podłączonej Wypożyczalni teostory.studio.');
+        const { strony, sb } = await stronyKsiegi(k);
+        const book = { id: `zk-opodysk-${String(k.stacja.nr).padStart(2, '0')}-${slugKsiegi(k.stacja.tytul)}`, title: k.stacja.tytul, subtitle: `${k.artysci.join(' & ')} · ${k.album}`,
+            author: k.artysci.join(' & '), narrator: k.artysci.join(' & '), language: 'en', sourceType: 'zywa-ksiega', characters: [], pages: strony };
+        const wpis = await cfg.wypozyczalnia.publikuj({ book, rentalTier: 'demo', cenaEur: 0, wystaw: false });
+        const k2 = await wczytaj(id);
+        k2.ksiega = { id: wpis.id, stron: strony.length, zKlatkami: strony.filter((s) => s.imageUrl).length, zStoryboardu: !!sb, wystawiona: wpis.wystawiona !== false, kiedy: new Date().toISOString() };
+        await zapisz(k2);
+        wiesc(`📖 Jason: Żywa Księga „${k.stacja.tytul}” złożona (${strony.length} stron${sb ? '' : ', z sekcji tekstu — bez storyboardu'}) — jest na liście Żywych Wpisów.`);
+        return k2;
+    }
+    /** Manuskrypt PDF (A5) w paczce stacji: okładka, tekst utworu, akt po akcie z klatką FLUX. Chrome (puppeteer) składa PDF; obrazy idą jako lekkie JPEG. */
+    async function zlozManuskrypt(id) {
+        const k = await wczytaj(id);
+        if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
+        const kat = sciezkaWydania(k);
+        if (!kat || k.stan !== 'przyjeta' || !k.spotify) throw new Error('Manuskrypt składam z gotowej paczki wydawniczej.');
+        if (!cfg.pdf) throw new Error('Most nie ma podłączonego puppeteera (Chrome) — PDF nie powstanie.');
+        if (!cfg.ffmpeg || !cfg.uruchom) throw new Error('Most nie ma podłączonego ffmpeg dla Jasona.');
+        const sb = await czytajStoryboard(k), praca = path.join(kat, '.manuskrypt');
+        await fs.rm(praca, { recursive: true, force: true }); await fs.mkdir(praca, { recursive: true });
+        try {
+            const jpg = async (zrodlo, cel, szer) => { await cfg.uruchom(cfg.ffmpeg, ['-loglevel', 'error', '-y', '-i', zrodlo, '-vf', `scale=${szer}:-2`, '-q:v', '3', path.join(praca, cel)], { windowsHide: true, timeout: 120_000, maxBuffer: 1 << 24 }); return cel; };
+            const okl = path.join(kat, 'cover_3000x3000.jpg'), okladka = await jestPlik(okl) ? await jpg(okl, 'okladka.jpg', 1100).catch(() => null) : null;
+            const akty = [];
+            if (sb) for (const sc of sb.sceny) {
+                const ma = await maKlatke(kat, sc), obraz = ma ? await jpg(path.join(kat, ...sc.kadry['16:9'].plik.split('/')), `akt-${sc.nr}.jpg`, 1280).catch(() => null) : null;
+                akty.push({ nr: sc.nr, sekcja: sc.sekcja, od: sc.od, do: sc.do, plan: sc.plan, opis: sc.obraz, wersy: sc.wersy ?? [], obraz });
+            }
+            const tekst = sekcjeTekstu(k.stacja.lyrics ?? '').filter((s) => s.wersy.length).map((s) => ({ nazwa: s.nazwa, wersy: s.wersy }));
+            if (!akty.length && !tekst.length) throw new Error(`„${k.stacja.tytul}” nie ma tekstu ani storyboardu — nie ma z czego złożyć manuskryptu.`);
+            await fs.writeFile(path.join(praca, 'index.html'), htmlManuskryptu({ tytul: k.stacja.tytul, album: k.album, artysci: k.artysci, bpm: k.stacja.bpm ?? sb?.bpm ?? null, sekundy: k.spotify.master?.sekundy ?? sb?.sekundy ?? null,
+                okladka, tekst, akty, autor: k.spotify.autor ?? null }), 'utf8');
+            const cel = path.join(kat, PLIK_MANUSKRYPTU), tmp = `${cel}.tmp.pdf`;
+            await cfg.pdf({ plikHtml: path.join(praca, 'index.html'), wyjscie: tmp });
+            await fs.rename(tmp, cel).catch(async () => { await fs.copyFile(tmp, cel); await fs.rm(tmp, { force: true }); });
+            const k2 = await wczytaj(id);
+            if (!k2.spotify.pliki.includes(PLIK_MANUSKRYPTU)) k2.spotify.pliki.push(PLIK_MANUSKRYPTU);
+            k2.manuskrypt = { plik: PLIK_MANUSKRYPTU, aktow: akty.length, zKlatkami: akty.filter((a) => a.obraz).length, bajtow: (await fs.stat(cel)).size, wersja: (Number(k.manuskrypt?.wersja) || 0) + 1, kiedy: new Date().toISOString() };
+            await zapisz(k2);
+            wiesc(`📄 Jason: Manuskrypt PDF „${k.stacja.tytul}” gotowy (${akty.length} aktów) — _OtakOs_Muzyka/${k.spotify.folder}/${PLIK_MANUSKRYPTU}.`);
+            return k2;
+        } finally { await fs.rm(praca, { recursive: true, force: true }).catch(() => {}); }
+    }
+    let skladana = null;
+    /** Przycisk „📖 Złóż Żywą Księgę i Manuskrypt PDF z utworu”: księga zawsze, PDF gdy Chrome jest; jedno naraz. */
+    async function zlozKsiegeIManuskrypt(id) {
+        if (skladana) throw new Error('Most właśnie składa inną księgę — poczekaj chwilę.');
+        skladana = id;
+        try {
+            let k = await zlozKsiege(id);
+            const uwagi = [];
+            try { k = await zlozManuskrypt(id); } catch (e) { uwagi.push(`Manuskrypt PDF nie powstał: ${tn(e.message, 240)}`); }
+            return { kampania: k, uwagi };
+        } finally { skladana = null; }
+    }
+    /** Księgi ze wszystkich stacji z paczką (lista wyboru w Żywych Wpisach). Bez PDF — manuskrypt osobno z karty stacji. */
+    async function zlozWszystkieKsiegi() {
+        const widziane = new Set(), zrobione = [], bledy = [];
+        for (const k of await lista()) {
+            if (k.stan !== 'przyjeta' || !k.spotify || widziane.has(k.stacja.nr)) continue;
+            widziane.add(k.stacja.nr);
+            try { const x = await zlozKsiege(k.id); zrobione.push({ nr: k.stacja.nr, id: x.ksiega.id, stron: x.ksiega.stron }); } catch (e) { bledy.push(`Stacja ${k.stacja.nr}: ${tn(e.message, 200)}`); }
+        }
+        return { zrobione, bledy };
+    }
+    const sciezkaManuskryptu = (k) => (k?.manuskrypt?.plik && sciezkaWydania(k) ? path.join(sciezkaWydania(k), k.manuskrypt.plik) : null);
+
+    // ── 📜 Rolowany Pergamin (TeOfon Scroll): SVG zbudowany w przeglądarce silnikiem partytury → paczka (svg, png, pdf) ──
+    /** Treść kodu optycznego stacji. Format `teofon://` jest NASZ — specyfikacji urządzenia TeOfon (TeO Lab) w Katedrze nie ma. */
+    function kodPergaminu(k) {
+        const tresc = `teofon://opodysk-000g/${k.id}?stacja=${k.stacja.nr}&bpm=${k.stacja.bpm ?? ''}&sek=${Math.round(k.spotify?.master?.sekundy ?? 0)}&tytul=${encodeURIComponent(tn(k.stacja.tytul, 60))}`;
+        return { tresc, ...(cfg.qr ? cfg.qr(tresc) : { rozmiar: 0, wiersze: [] }) };
+    }
+    let drukowany = null;
+    async function zapiszPergamin(id, { svg, png = null } = {}) {
+        const k = await wczytaj(id), kat = k && sciezkaWydania(k);
+        if (!kat || !k.spotify) throw new Error('Pergamin zapisuję w paczce wydawniczej — najpierw „🚀 Przygotuj i wyślij na Spotify”.');
+        const { szer, wys } = sprawdzSvg(svg);
+        if (drukowany) throw new Error('Most właśnie drukuje inny pergamin — poczekaj chwilę.');
+        drukowany = id;
+        const praca = path.join(kat, '.pergamin');
+        try {
+            await fs.mkdir(praca, { recursive: true });
+            const pliki = {};
+            await fs.writeFile(path.join(kat, PLIKI_PERGAMINU.svg), svg, 'utf8'); pliki.svg = PLIKI_PERGAMINU.svg;
+            const m = /^data:image\/png;base64,(.+)$/i.exec(String(png ?? ''));
+            if (m) { const b = Buffer.from(m[1], 'base64'); if (b.length > 60 * 1024 * 1024) throw new Error('PNG za duży (limit 60 MB).'); await fs.writeFile(path.join(kat, PLIKI_PERGAMINU.png), b); pliki.png = PLIKI_PERGAMINU.png; }
+            let uwaga = null;
+            if (cfg.pdf) {
+                await fs.writeFile(path.join(praca, 'index.html'), htmlPergaminu(svg, szer, wys), 'utf8');
+                const tmp = path.join(kat, `${PLIKI_PERGAMINU.pdf}.tmp.pdf`);
+                try { await cfg.pdf({ plikHtml: path.join(praca, 'index.html'), wyjscie: tmp }); await fs.rename(tmp, path.join(kat, PLIKI_PERGAMINU.pdf)); pliki.pdf = PLIKI_PERGAMINU.pdf; }
+                catch (e) { await fs.rm(tmp, { force: true }).catch(() => {}); uwaga = `PDF nie powstał: ${tn(e.message, 240)}`; }
+            } else uwaga = 'Most nie ma puppeteera (Chrome) — PDF nie powstał; SVG i PNG są w paczce.';
+            const k2 = await wczytaj(id);
+            for (const p of Object.values(pliki)) if (!k2.spotify.pliki.includes(p)) k2.spotify.pliki.push(p);
+            k2.pergamin = { ...pliki, szer, wys, wersja: (Number(k.pergamin?.wersja) || 0) + 1, uwaga, kiedy: new Date().toISOString() };
+            await zapisz(k2);
+            wiesc(`📜 Jason: Rolowany Pergamin „${k.stacja.tytul}” zapisany (${Math.round(szer)}×${Math.round(wys)} px${pliki.pdf ? ', z PDF' : ''}).`);
+            return k2;
+        } finally { drukowany = null; await fs.rm(praca, { recursive: true, force: true }).catch(() => {}); }
+    }
+    const sciezkaPergaminu = (k, rodzaj) => (k?.pergamin?.[rodzaj] && PLIKI_PERGAMINU[rodzaj] && sciezkaWydania(k) ? path.join(sciezkaWydania(k), k.pergamin[rodzaj]) : null);
+    const adresyDruku = (k) => { const b = `/api/jason/kampanie/${k.id}`; return {
+        ksiega: k.ksiega ? { id: k.ksiega.id, stron: k.ksiega.stron, wystawiona: !!k.ksiega.wystawiona } : null,
+        manuskrypt: k.manuskrypt?.plik ? { url: `${b}/manuskrypt?v=${k.manuskrypt.wersja ?? 1}`, aktow: k.manuskrypt.aktow ?? null, bajtow: k.manuskrypt.bajtow ?? null } : null,
+        pergamin: k.pergamin ? { ...Object.fromEntries(['svg', 'png', 'pdf'].filter((r) => k.pergamin[r]).map((r) => [r, `${b}/pergamin/${r}?v=${k.pergamin.wersja ?? 1}`])), szer: k.pergamin.szer ?? null, wys: k.pergamin.wys ?? null, uwaga: k.pergamin.uwaga ?? null } : null }; };
     const sciezkaPartytury = (k) => (k?.partytura?.plik && sciezkaWydania(k) ? path.join(sciezkaWydania(k), k.partytura.plik) : null);
     const sciezkaAudio = (k) => (sciezkaWydania(k) ? path.join(sciezkaWydania(k), 'original.mp3') : null);
     async function pokazOpodysk(id) {
@@ -1259,7 +1393,7 @@ export function utworzJasona(cfg) {
                 storyboard: k.teoStory?.storyboard ? { scen: k.teoStory.scen ?? null, url: `${b}/storyboard` } : null, serial: k.teoStory?.serial ?? null,
                 opodysk: k.opodysk?.plik ? { url: `${b}/opodysk/wideo?v=${k.opodysk.wersja ?? 1}`, sekundy: k.opodysk.sekundy ?? null, stan: k.opodysk.stan } : null,
                 partytura: k.partytura?.plik ? { url: `${b}/opodysk/partytura/wideo?v=${k.partytura.wersja ?? 1}`, sekundy: k.partytura.sekundy ?? null } : null,
-                ...glosyKampanii(k),
+                ...glosyKampanii(k), ...adresyDruku(k),
                 wypozyczalnia: k.wypozyczalnia ?? null, spotify: u.spotify.utwory[k.stacja.nr] ?? null, suno: k.wybrana?.id ? linkOdsluchu(k.wybrana.id) : null });
         }
         utwory.sort((a, b) => a.nr - b.nr);
@@ -1397,7 +1531,7 @@ export function utworzJasona(cfg) {
         decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, ustawLektora, ustawAtmosfere, glosyKampanii, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, ustawLektora, ustawAtmosfere, glosyKampanii, zlozKsiege, zlozManuskrypt, zlozKsiegeIManuskrypt, zlozWszystkieKsiegi, sciezkaManuskryptu, kodPergaminu, zapiszPergamin, sciezkaPergaminu, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
@@ -1475,6 +1609,20 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     app.get('/api/jason/kampanie/:id/opodysk/partytura/wideo', async (req, res) => {
         const p = J.sciezkaPartytury(await J.kampania(req.params.id));
         return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Ta kampania nie ma jeszcze nagrania z partyturą.' });
+    });
+    // 📖 Żywa Księga + Manuskrypt PDF z Opodysku (tylko maszyna): księga zawsze, PDF gdy Chrome jest; `/ksiegi` = wszystkie stacje do listy Żywych Wpisów
+    app.post('/api/jason/kampanie/:id/ksiega', async (req, res) => { try { res.json({ success: true, ...(await J.zlozKsiegeIManuskrypt(req.params.id)) }); } catch (e) { blad(res, e); } });
+    app.post('/api/jason/opodyski/ksiegi', async (_req, res) => { try { res.json({ success: true, ...(await J.zlozWszystkieKsiegi()) }); } catch (e) { blad(res, e); } });
+    app.get('/api/jason/kampanie/:id/manuskrypt', async (req, res) => {
+        const p = J.sciezkaManuskryptu(await J.kampania(req.params.id));
+        return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Ta kampania nie ma jeszcze manuskryptu PDF.' });
+    });
+    // 📜 Rolowany Pergamin: kod QR stacji (moduły do SVG), zapis wstęgi z przeglądarki, pliki do pobrania
+    app.get('/api/jason/kampanie/:id/pergamin/kod', async (req, res) => { try { const k = await J.kampania(req.params.id); if (!k?.spotify) throw new Error('Pergamin potrzebuje paczki wydawniczej stacji.'); res.json({ success: true, ...J.kodPergaminu(k) }); } catch (e) { blad(res, e); } });
+    app.post('/api/jason/kampanie/:id/pergamin', async (req, res) => { try { const k = await J.zapiszPergamin(req.params.id, req.body ?? {}); res.json({ success: true, pergamin: k.pergamin }); } catch (e) { blad(res, e); } });
+    app.get('/api/jason/kampanie/:id/pergamin/:rodzaj', async (req, res) => {
+        const p = ['svg', 'png', 'pdf'].includes(req.params.rodzaj) ? J.sciezkaPergaminu(await J.kampania(req.params.id), req.params.rodzaj) : null;
+        return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Ta kampania nie ma jeszcze takiego pliku pergaminu.' });
     });
     app.get('/api/jason/kampanie/:id/audio', async (req, res) => {
         const p = J.sciezkaAudio(await J.kampania(req.params.id));

@@ -15,6 +15,9 @@ import { utworzWypozyczalnie } from '../services/WypozyczalniaKsiag.js';
 import { planMontazu, napisyKlipu, ruchUjecia, zawin, dlugoscPliku, FPS, PLIK_OPODYSKU } from '../services/Opodysk.js';
 import { oczyscStacje, artystaZGlosu } from '../services/JasonOrchestrator.js';
 import { PLIK_PARTYTURY } from '../services/JasonOrchestrator.js';
+import { PLIK_MANUSKRYPTU, PLIKI_PERGAMINU } from '../services/JasonOrchestrator.js';
+import { htmlManuskryptu, htmlPergaminu, sprawdzSvg, macierzQr, htmlDoPdf, esc } from '../services/DrukOpodysku.js';
+import QRCode from 'qrcode';
 import { czystyTekst, naglowekWav, wymiaryJpeg, folderWydania } from '../services/JasonOrchestrator.js';
 import { utworzJasona, zamontujTrasyJasona, oczyscZlecenie, argumentyUtworu, klipyZWyniku, znajdzWorkspace, stanyKlipow, dopasujGlos, czasUtworu, STACJE, ALBUM } from '../services/JasonOrchestrator.js';
 
@@ -895,5 +898,94 @@ test('🎼 Opodysk z partyturą 0.00G: nagranie Teatru (webm) → mp4 w paczce, 
         assert.equal((await fetch(`${baza}/api/jason/kampanie/${id}/opodysk/partytura/wideo`)).status, 200);
         assert.equal((await wyslij(id, pelne)).partytura.wersja, 2, 'ponowne nagranie podmienia plik');
         assert.equal(czyDlaSparowanych('POST', `/api/jason/kampanie/${id}/opodysk/partytura`), false, 'nagranie tylko przy maszynie');
+    } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
+});
+
+test('🖨️ druk: HTML manuskryptu escapuje i niesie akty, SVG pergaminu odrzuca skrypty, QR to prawdziwa macierz', () => {
+    const h = htmlManuskryptu({ tytul: 'Velvet <Booth>', album: 'Zero Gravity Heart', artysci: ['Elara', 'Kael'], bpm: 82, sekundy: 193.6, okladka: 'okladka.jpg',
+        tekst: [{ nazwa: 'Verse 1', wersy: ['Two cups & a "table"'] }], akty: [{ nr: 1, sekcja: 'Intro', od: 0, do: 12, plan: 'Wide shot', opis: 'Rain on glass.\nSecond line.', wersy: ['a', 'b'], obraz: 'akt-1.jpg' }, { nr: 2, sekcja: 'Chorus', wersy: [] }] });
+    assert.match(h, /Velvet &lt;Booth&gt;/); assert.doesNotMatch(h, /<Booth>/); assert.match(h, /Two cups &amp; a &quot;table&quot;/);
+    assert.equal((h.match(/class="strona akt"/g) ?? []).length, 2); assert.match(h, /AKT 1/); assert.match(h, /src="akt-1\.jpg"/); assert.match(h, /<p>Second line\.<\/p>/);
+    assert.equal(esc('<a href="x">&</a>'), '&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;');
+    const ok = '<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1200" viewBox="0 0 4000 1200"><rect width="10" height="10"/></svg>';
+    assert.deepEqual(sprawdzSvg(ok), { szer: 4000, wys: 1200 }); assert.match(htmlPergaminu(ok, 4000, 1200), /size: 4000px 1200px/);
+    for (const zle of ['<svg width="4000" height="1200"><script>alert(1)</script></svg>', '<svg width="4000" height="1200"><rect onload="x()"/></svg>', '<svg width="4000" height="1200"><image href="http://x/y.png"/></svg>', '<svg width="99999" height="1200"></svg>', '<svg></svg>', 'nie svg'])
+        assert.throws(() => sprawdzSvg(zle), undefined, zle);
+    const q = macierzQr(QRCode, 'teofon://opodysk-000g/j-1?stacja=1'), n = q.rozmiar;
+    assert.ok(n >= 21 && q.wiersze.length === n && q.wiersze.every((w) => w.length === n && /^[01]+$/.test(w)));
+    assert.ok(/^1111111/.test(q.wiersze[0]) && /1111111$/.test(q.wiersze[0]), 'wzorzec narożnikowy QR');
+});
+
+test('📖📜 Żywa Księga + Manuskrypt PDF z Opodysku, kod QR i zapis Rolowanego Pergaminu (prawdziwy ffmpeg, Chrome i Wypożyczalnia, trasy HTTP)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jason-druk-'));
+    const uruchom = promisify(execFile);
+    const muzyka = path.join(tmp, 'muzyka');
+    const suno = atrapaSuno(tmp);
+    suno.zapiszUtwory = async (_w, gotowe) => Promise.all(gotowe.map(async (u) => {
+        const plik = `Suno MCP/x [${u.id.slice(0, 8)}].mp3`;
+        await fs.mkdir(path.join(muzyka, 'Suno MCP'), { recursive: true });
+        await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', path.join(muzyka, plik)]);
+        return { ...u, plik, nowy: true };
+    }));
+    const png = async (nazwa, kolor = 'red') => { const p = path.join(tmp, nazwa); await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `color=c=${kolor}:s=320x180`, '-frames:v', '1', p]); return p; };
+    let puppeteer = null; try { puppeteer = (await import('puppeteer')).default; await (await puppeteer.launch({ headless: true, args: ['--no-sandbox'] })).close(); } catch { puppeteer = null; }
+    let n = 0;
+    const J = utworzJasona({ katalog: tmp, suno, przerwaPobraniaMs: 5, katalogMuzyki: muzyka, ffmpeg: ffmpegPath, uruchom, okladka: () => png('flux.png', 'red'),
+        kadr: async () => png(`k-${++n}.png`, ['blue', 'green', 'purple', 'orange'][n % 4]), story: { zaloz: async (z) => ({ serial: z.nazwa, karty: z.sceny.map((_, i) => `kd-${i + 1}`) }) },
+        pdf: puppeteer ? (o) => htmlDoPdf(puppeteer, o) : null, qr: (t) => macierzQr(QRCode, t), wypozyczalnia: { publikuj: (x) => W.publikuj(x) } });
+    const W = utworzWypozyczalnie({ katalog: path.join(tmp, 'teostory'), obrazLokalny: (u) => J.plikZAdresu(u) });
+    const app = express(); app.use(express.json({ limit: '100mb' }));
+    zamontujTrasyJasona(app, J, { raw: express.raw });
+    const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
+    const zadaj = async (m, s, b) => { const r = await fetch(baza + s, { method: m, headers: { 'Content-Type': 'application/json' }, ...(b ? { body: JSON.stringify(b) } : {}) }); return { status: r.status, ...(await r.json()) }; };
+    try {
+        const { id } = await J.wykonaj({ stacja: 2 });
+        await J._czekaj(id);
+        await J.rozstrzygnij(id, 'pobierz-1', {});
+        await J.przygotujSpotify(id);
+        const kat = J.sciezkaWydania(await J.kampania(id));
+
+        // bez storyboardu: księga z sekcji tekstu (bez klatek), NIE wystawiona publicznie
+        let r = await zadaj('POST', `/api/jason/kampanie/${id}/ksiega`);
+        assert.equal(r.success, true, r.message);
+        assert.equal(r.kampania.ksiega.zStoryboardu, false); assert.ok(r.kampania.ksiega.stron >= 2);
+        const wpis = (await W.katalogPelny()).find((x) => x.id === r.kampania.ksiega.id);
+        assert.ok(wpis, 'księga leży w Wypożyczalni'); assert.equal(wpis.wystawiona, false, 'NIE wystawiona publicznie');
+        assert.equal((await W.katalogPubliczny()).some((x) => x.id === wpis.id), false);
+
+        // ze storyboardem i klatkami: tekst utworu + akt po akcie z ilustracją
+        const { storyboard } = await J.teoStory(id); const N = storyboard.sceny.length;
+        for (let i = 1; i <= N; i++) { await J.kadrSceny(id, { scena: i }); await J._czekajKolejki(); }
+        r = await zadaj('POST', `/api/jason/kampanie/${id}/ksiega`);
+        assert.equal(r.success, true, r.message);
+        assert.equal(r.kampania.ksiega.zStoryboardu, true); assert.equal(r.kampania.ksiega.stron, N + 1); assert.equal(r.kampania.ksiega.zKlatkami, N);
+        const ksiega = JSON.parse(await fs.readFile(path.join(tmp, 'teostory', 'ksiegi', `${wpis.id}.json`), 'utf8'));
+        assert.equal(ksiega.pages[0].chapterTitle, 'Tekst utworu'); assert.match(ksiega.pages[1].chapterTitle, /^Akt 1 · /); assert.ok(ksiega.pages.some((x) => /♪/.test(x.narrativeText)), 'wersy aktów jako ♪');
+        assert.ok(ksiega.pages.slice(1).every((p) => /obraz-\d+\.png$/.test(p.imageUrl ?? '')), 'klatki przeniesione do księgi');
+        if (puppeteer) {
+            assert.ok(r.kampania.manuskrypt, (r.uwagi ?? []).join(' ')); assert.equal(r.kampania.manuskrypt.plik, PLIK_MANUSKRYPTU); assert.equal(r.kampania.manuskrypt.aktow, N); assert.equal(r.kampania.manuskrypt.zKlatkami, N);
+            const pdf = await fs.readFile(path.join(kat, PLIK_MANUSKRYPTU));
+            assert.equal(pdf.subarray(0, 5).toString(), '%PDF-'); assert.ok(pdf.length > 30_000, `PDF ma ${pdf.length} B`);
+            const g = await fetch(`${baza}/api/jason/kampanie/${id}/manuskrypt`); assert.equal(g.status, 200); assert.match(g.headers.get('content-type'), /pdf/);
+            assert.equal(await fs.access(path.join(kat, '.manuskrypt')).then(() => true, () => false), false, 'katalog roboczy posprzątany');
+            assert.ok((await J.kampania(id)).spotify.pliki.includes(PLIK_MANUSKRYPTU));
+        } else assert.match((r.uwagi ?? []).join(' '), /puppeteer/);
+
+        // kod QR stacji i Rolowany Pergamin
+        const kod = await zadaj('GET', `/api/jason/kampanie/${id}/pergamin/kod`);
+        assert.equal(kod.success, true); assert.match(kod.tresc, /^teofon:\/\/opodysk-000g\/j-[0-9a-f]{8}\?stacja=2&bpm=/); assert.equal(kod.wiersze.length, kod.rozmiar);
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="6000" height="1200" viewBox="0 0 6000 1200"><rect width="6000" height="1200" fill="#e8dcc0"/><text x="40" y="80" font-size="40">AKT 1</text></svg>';
+        const pngB64 = `data:image/png;base64,${(await fs.readFile(await png('p.png', 'yellow'))).toString('base64')}`;
+        assert.equal((await zadaj('POST', `/api/jason/kampanie/${id}/pergamin`, { svg: '<svg width="6000" height="1200"><script>1</script></svg>' })).success, false, 'skrypt w SVG odrzucony');
+        r = await zadaj('POST', `/api/jason/kampanie/${id}/pergamin`, { svg, png: pngB64 });
+        assert.equal(r.success, true, r.message); assert.equal(r.pergamin.svg, PLIKI_PERGAMINU.svg); assert.equal(r.pergamin.png, PLIKI_PERGAMINU.png); assert.equal(r.pergamin.szer, 6000);
+        assert.equal((await fetch(`${baza}/api/jason/kampanie/${id}/pergamin/svg`)).status, 200); assert.equal((await fetch(`${baza}/api/jason/kampanie/${id}/pergamin/png`)).status, 200);
+        if (puppeteer) { assert.equal(r.pergamin.pdf, PLIKI_PERGAMINU.pdf); const pdf = await fs.readFile(path.join(kat, PLIKI_PERGAMINU.pdf)); assert.equal(pdf.subarray(0, 5).toString(), '%PDF-'); }
+        assert.equal((await fetch(`${baza}/api/jason/kampanie/${id}/pergamin/exe`)).status, 404);
+        const kart = (await J.opodyski()).utwory.find((u) => u.id === id);
+        assert.ok(kart.ksiega.id && kart.pergamin.svg && (!puppeteer || kart.manuskrypt.url));
+        // wszystkie stacje z paczką trafiają do listy Żywych Wpisów (tu: jedna)
+        const w = await zadaj('POST', '/api/jason/opodyski/ksiegi');
+        assert.equal(w.success, true); assert.equal(w.bledy.length, 0, w.bledy.join(' ')); assert.equal(w.zrobione.length, 1);
     } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
 });

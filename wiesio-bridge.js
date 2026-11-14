@@ -275,6 +275,7 @@ import { utworzAlbumSuno } from './services/AlbumSuno.js';
 import { utworzSunoMcp, zamontujTrasySuno, fetchH2 as pobierzH2 } from './services/SunoMcp.js';
 import { utworzJasona, zamontujTrasyJasona } from './services/JasonOrchestrator.js';
 import { utworzElevenLabs, zamontujTrasyElevenLabs } from './services/ElevenLabs.js';
+import { htmlDoPdf as druk_htmlDoPdf, macierzQr as druk_macierzQr } from './services/DrukOpodysku.js';
 import { utworzKsiegeWielowymiarowa, zamontujTrasyKsiegiWielowymiarowej } from './services/KsiegaWielowymiarowa.js';
 import { CZCIONKI as CZCIONKI_NAPISOW } from './services/PowitanieDnia.js';
 import { utworzZlotaRybke, zamontujTrasyRybki } from './services/ZlotaRybka.js';
@@ -9064,6 +9065,8 @@ zamontujTrasySuno(app, SunoMcp);
 const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
     // 🚀 paczka Spotify: ffmpeg mostu, katalog muzyki, autor z księgi GRV, otwarcie folderu w Eksploratorze
     katalogMuzyki: MUSIC_DIR, ffmpeg: ffmpegPath, uruchom: execFileAsync,
+    // 📄📜 PDF z HTML (Chrome z puppeteera ładowany dopiero przy użyciu) i kod QR stacji — Manuskrypt i Rolowany Pergamin
+    pdf: async (o) => druk_htmlDoPdf((await import('puppeteer')).default, o), qr: (t) => druk_macierzQr(QRCode, t),
     autor: async () => { const w = await wlascicielKsiegi(); return typeof w === 'string' ? w : w?.nazwa ?? null; },
     pobierz: async (adres) => { const r = await pobierzH2(adres, { signal: AbortSignal.timeout(5 * 60_000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return Buffer.from(await r.arrayBuffer()); },
     // 🎬 teledysk: klatki scen od Palety (okładka paczki jako wzór postaci) i projekt w TeO Story Studio

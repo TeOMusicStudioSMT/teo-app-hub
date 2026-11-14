@@ -173,7 +173,7 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return fsSync.existsSync(p) ? p : null;
     }
 
-    function publikuj({ book, rentalTier = 'rental_48h', cenaEur = DOMYSLNA_CENA_EUR, pieczec = null } = {}) {
+    function publikuj({ book, rentalTier = 'rental_48h', cenaEur = DOMYSLNA_CENA_EUR, pieczec = null, wystaw = true } = {}) {
         return poKolei(async () => {
             const wpis = sprawdzKsiege(book, { tier: rentalTier, cenaEur });
             const id = idKsiegi(book.id || book.title);
@@ -183,7 +183,7 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
             const k = await czytaj(KAT, { ksiegi: [] });
             const stary = k.ksiegi.find((x) => x.id === id);
             const nowy = { id, ...wpis, okladka: await okladka(id, book), pieczec: pieczec ? tekst(pieczec, 120) : null,
-                wystawiona: stary?.wystawiona ?? true, opublikowano: stary?.opublikowano ?? new Date(teraz()).toISOString(), zmieniono: new Date(teraz()).toISOString() };
+                wystawiona: stary?.wystawiona ?? wystaw !== false, opublikowano: stary?.opublikowano ?? new Date(teraz()).toISOString(), zmieniono: new Date(teraz()).toISOString() };
             k.ksiegi = [nowy, ...k.ksiegi.filter((x) => x.id !== id)].slice(0, 500);
             await zapisz(KAT, k);
             return nowy;

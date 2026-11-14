@@ -17,6 +17,8 @@ type Kampania = {
     teoStory?: { serial?: string; url?: string | null } | null;
     wypozyczalnia?: { id: string; tier: string; cenaEur: number; aktow?: number; wystawiona?: boolean } | null;
     partytura?: { plik: string; sekundy?: number | null; bajtow?: number; wersja?: number } | null;
+    ksiega?: { id: string; stron: number; wystawiona?: boolean } | null;
+    manuskrypt?: { plik: string; aktow?: number; bajtow?: number; wersja?: number } | null;
     opodysk?: { stan: string; etap?: string; blad?: string; plik?: string; sekundy?: number; bajtow?: number; ujec?: number; wersja?: number; napisy?: boolean; brakowaloKlatek?: number; montaz?: string | null; uwagi?: string[]; postep?: { zrobione: number; razem: number } } | null;
     spotify?: { folder: string; pliki: string[]; uwagi: string[]; okladka?: { plik: string } | null; master: { hz: number; bity: number; kanaly: number; zrodlo: string; sekundy: number; bajtow: number } } | null;
 };
@@ -102,6 +104,11 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
         void wykonaj(`/api/jason/kampanie/${k!.id}/opodysk`, { napisy: napisyOpowiesci }, 'Jason bierze się za Opodysk…');
     };
     // 📚 spektakl do Wypożyczalni teostory.studio — publikacja wystawia pozycję PUBLICZNIE (gdy tunel Katedry działa)
+    // 📖 Żywa Księga + Manuskrypt PDF z utworu: księga (niewystawiona, na liście Żywych Wpisów) i manuskrypt_000g.pdf w paczce stacji
+    const zlozKsiege = () => {
+        if (!window.confirm(`Złożyć Żywą Księgę i Manuskrypt PDF z „${k!.stacja.tytul}”?\n\nKsięga trafi do Wypożyczalni jako NIEWYSTAWIONA (widać ją w Dzienniku Żywych Wpisów w TeO Story), a manuskrypt_000g.pdf do paczki stacji. PDF składa Chrome mostu — kilkanaście sekund.`)) return;
+        void wykonaj(`/api/jason/kampanie/${k!.id}/ksiega`, {}, 'Jason składa Żywą Księgę i manuskrypt PDF…');
+    };
     const wystawSpektakl = () => {
         const tier = tierWydania || (k!.stacja.nr === 1 ? 'demo' : 'rental_48h');
         if (!window.confirm(tier === 'demo'
@@ -132,7 +139,7 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
         try {
             const d = await api(sciezka, cialo);
             if (d.kampania) setK(d.kampania);
-            setInfo(d.success ? '' : `⚠ ${d.message}`);
+            setInfo(d.success ? (d.uwagi ?? []).join(' ') : `⚠ ${d.message}`);
         } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
         setTrwa(false);
     };
@@ -366,6 +373,12 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                                     </select>
                                     {(tierWydania || (k.stacja.nr === 1 ? 'demo' : 'rental_48h')) === 'rental_48h' && <label className="flex items-center gap-1">€ <input value={cenaWydania} onChange={(e) => setCenaWydania(e.target.value)} className="w-16 rounded border border-amber-400/40 bg-slate-950 px-1.5 py-1 text-amber-100" /></label>}
                                     {k.wypozyczalnia && <span className="text-emerald-300/90">✓ w Wypożyczalni: {k.wypozyczalnia.tier === 'demo' ? 'za darmo' : `${Number(k.wypozyczalnia.cenaEur).toFixed(2)} € / 48 h`} · {k.wypozyczalnia.aktow} aktów{k.wypozyczalnia.wystawiona === false ? ' · wycofany' : ''}</span>}
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-amber-400/20 pt-2">
+                                    <button onClick={zlozKsiege} disabled={trwa || krecenie} title="Tekst utworu + akty storyboardu z klatkami FLUX jako ilustracjami → Żywa Księga na liście Żywych Wpisów i manuskrypt_000g.pdf (A5, do druku)"
+                                        className="rounded bg-amber-500 px-2.5 py-1 font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50">📖 Złóż Żywą Księgę i Manuskrypt PDF z utworu</button>
+                                    {k.ksiega && <span className="text-emerald-300/90">✓ księga {k.ksiega.id} · {k.ksiega.stron} stron{k.ksiega.wystawiona ? '' : ' · 🔒 niewystawiona'}</span>}
+                                    {k.manuskrypt?.plik && <a href={`${bridgeUrl}/api/jason/kampanie/${k.id}/manuskrypt?v=${k.manuskrypt.wersja ?? 1}`} target="_blank" rel="noreferrer" className="rounded border border-emerald-500/60 px-2 py-0.5 text-emerald-200 hover:bg-emerald-900/40">📄 manuskrypt PDF{k.manuskrypt.bajtow ? ` · ${(k.manuskrypt.bajtow / 1048576).toFixed(1)} MB` : ''}</a>}
                                 </div>
                                 {k.opodysk?.plik && !krecenie && (
                                     <div className="mt-2">
