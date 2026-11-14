@@ -4,9 +4,11 @@
  * Tylko ODCZYT publicznych profili: nazwa, obserwujący, popularność, gatunki, zdjęcie, link. Nic nie publikuje —
  * muzyka trafia na Spotify przez dystrybutora (paczka DistroKid w kolejce Impresariatu).
  */
+/** Album „Zero Gravity Heart (0.00G Sessions)” — adres podał Suweren (2026-11-14). */
+export const ALBUM_SPOTIFY = { id: '323Vwh5KWdlT4rBjkzu1DM', url: 'https://open.spotify.com/album/323Vwh5KWdlT4rBjkzu1DM' };
 export const ARTYSCI = [
     // id bywa przepisane z literówką (I/1/l, J) — gdy Spotify odda 404, szukamy po nazwie i znaku rozpoznawczym (utwór)
-    { klucz: 'elara', id: '1v1bnmU5f1TbCIA26D53z5', nazwa: 'ELARA', utwor: 'Raindrops' },
+    { klucz: 'elara', id: '1v1bnmU5f1TbCJA26D53z5', nazwa: 'ELARA', utwor: 'Raindrops' },   // id potwierdzone przez Suwerena 2026-11-14 (wcześniej literówka CIA)
     { klucz: 'kael', id: '5MsSriliBvzqoMuwKmmtMr', nazwa: 'KAEL', utwor: null },
 ];
 
@@ -68,10 +70,26 @@ export function utworzSpotify({ klucze, fetch: f = fetch, teraz = () => Date.now
             return { klucz, id, blad: `HTTP ${r.status}${art.nazwa ? ` (wyszukanie „${art.nazwa}” nic pewnego nie dało)` : ''}` };
         }));
     }
-    return { artysci };
+    /** Utwory albumu (odczyt publiczny): numer, nazwa, adres — do przypięcia każdej stacji Opodysku do jej utworu. */
+    async function albumUtwory(id) {
+        if (!/^[A-Za-z0-9]{10,40}$/.test(String(id))) throw Object.assign(new Error('Zły identyfikator albumu.'), { kod: 400 });
+        const t = await dostep(), wyniki = [];
+        for (let od = 0; od < 100; od += 50) {
+            const { r, d } = await pobierz(t, `https://api.spotify.com/v1/albums/${id}/tracks?limit=50&offset=${od}&market=DE`);
+            if (!r.ok) throw Object.assign(new Error(`Spotify nie oddał utworów albumu (HTTP ${r.status}).`), { kod: 502 });
+            wyniki.push(...(d.items ?? []));
+            if (!d.next) break;
+        }
+        return wyniki.map((x) => ({ nr: x.track_number, nazwa: x.name, url: x.external_urls?.spotify ?? `https://open.spotify.com/track/${x.id}` }));
+    }
+    return { artysci, albumUtwory };
 }
 
 export function zamontujTrasySpotify(app, S) {
+    app.get('/api/impresario/spotify/album/:id', async (req, res) => {
+        try { res.json({ success: true, utwory: await S.albumUtwory(req.params.id) }); }
+        catch (e) { res.status(typeof e.kod === 'number' ? e.kod : 502).json({ success: false, message: e.message }); }
+    });
     app.get('/api/impresario/spotify/artysci', async (_req, res) => {
         try { res.json({ success: true, artysci: await S.artysci() }); }
         catch (e) { res.status(typeof e.kod === 'number' ? e.kod : 502).json({ success: false, message: e.message }); }
