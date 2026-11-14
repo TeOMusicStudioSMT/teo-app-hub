@@ -9607,6 +9607,7 @@ const ElevenLabs = utworzElevenLabs({ katalog: path.join(ANTIGRAVITY_DIR, 'eleve
     } });
 zamontujTrasyElevenLabs(app, ElevenLabs, {
     poMowie: async ({ miejsce, cel, wynik, zlecenie }) => {
+        if (miejsce?.rodzaj === 'opodysk' && cel.scena && cel.wers != null) { await Jason.ustawGlosWersa(miejsce.id, cel.scena, cel.wers, { plik: wynik.nazwa, rola: zlecenie.rola ?? 'elara', tekst: zlecenie.tekst ?? '' }); return { wers: true }; }
         if (miejsce?.rodzaj === 'opodysk' && cel.scena) { await Jason.ustawLektora(miejsce.id, cel.scena, { plik: wynik.nazwa, rola: zlecenie.rola ?? 'kronikarz', tekst: zlecenie.tekst ?? (zlecenie.segmenty ?? []).map((x) => x.tekst).join(' '), glosy: wynik.glosy }); return { scena: Number(cel.scena) }; }
         if (miejsce?.rodzaj === 'wpis' && cel.wpis) return { wpis: await KsiegaWielowymiarowa.ustawAudio(miejsce.id, String(cel.wpis), wynik.plik) };
         return null;

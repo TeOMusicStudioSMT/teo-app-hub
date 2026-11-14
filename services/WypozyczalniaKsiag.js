@@ -95,6 +95,9 @@ export function przekladyKsiegi(book) {
     return Object.fromEntries(Object.entries(t).filter(([j, p]) => JEZYKI_KSIAG[j] && Array.isArray(p?.pages) && p.pages.length === (book.pages ?? []).length));
 }
 
+/** Skrót treści do przekładu (strony bez obrazów/nagrań): przekład „stary” po zmianie tekstu źródła nie jedzie dalej. */
+export const skrotZrodla = (book) => crypto.createHash('sha1').update(JSON.stringify((book?.pages ?? []).map((s) => ({ c: s?.chapterTitle ?? '', i: s?.imageCaption ?? '', n: s?.narrativeText ?? '', l: (s?.dialogueLines ?? []).map((l) => String(l?.text ?? '')) })))).digest('hex').slice(0, 16);
+
 /** Strona → kawałek do przekładu (bez obrazów i nagrań). */
 export const stronaDoPrzekladu = (s) => ({ chapterTitle: s?.chapterTitle ?? '', imageCaption: s?.imageCaption ?? '', narrativeText: s?.narrativeText ?? '', lines: (s?.dialogueLines ?? []).map((l) => String(l?.text ?? '')) });
 /** Sprawdza przekład strony od modelu: te same pola, tyle samo kwestii, długość w granicach rozsądku. Rzuca z powodem. */
@@ -220,6 +223,12 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
             const id = idKsiegi(book.id || book.title);
             await fs.mkdir(KS, { recursive: true });
             book = await przeniesObrazy(id, book);
+            // 🌍 przekłady (i ich nagrania) przeżywają ponowne złożenie księgi, o ile tekst źródła się nie zmienił
+            const stara = await czytaj(path.join(KS, `${id}.json`), null);
+            if (stara?.translations && typeof stara.translations === 'object') {
+                const zachowane = Object.fromEntries(Object.entries(stara.translations).filter(([, p]) => p?.zrodloHash && p.zrodloHash === skrotZrodla(book) && Array.isArray(p.pages) && p.pages.length === (book.pages ?? []).length));
+                if (Object.keys(zachowane).length) book = { ...book, translations: zachowane };
+            }
             await zapisz(path.join(KS, `${id}.json`), book);
             const k = await czytaj(KAT, { ksiegi: [] });
             const stary = k.ksiegi.find((x) => x.id === id);
@@ -390,10 +399,37 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
                 praca.postep++;
             }
             await zapiszKsiege(id, async (b) => ({ ...b, translations: { ...(b.translations ?? {}), [jezyk]: {
-                title: glowa.chapterTitle || b.title, subtitle: glowa.imageCaption, przelozono: new Date(teraz()).toISOString(), automatycznie: true,
+                title: glowa.chapterTitle || b.title, subtitle: glowa.imageCaption, przelozono: new Date(teraz()).toISOString(), automatycznie: true, zrodloHash: skrotZrodla(b),
                 pages: strony.map((s) => ({ chapterTitle: s.chapterTitle, imageCaption: s.imageCaption, narrativeText: s.narrativeText, dialogueLines: s.lines.map((text) => ({ text })) })),
             } } }));
         });
+    }
+
+    /**
+     * 🎙️ Nagranie do strony księgi (oryginał albo przekład `jezyk`) albo do jej wersu (`wers`): plik mp3 z dysku Katedry → `audio-N.mp3` księgi.
+     * Strona i wers muszą istnieć; w przekładzie wersów jest tyle samo co w oryginale.
+     */
+    async function dodajAudioStrony(id, { jezyk = null, strona, wers = null, plik }) {
+        if (!plik || !/\.mp3$/i.test(String(plik))) throw new Error('Nagranie strony to plik mp3.');
+        const kat = path.join(KS, id);
+        let n = 0;
+        for (const f of await fs.readdir(kat).catch(() => [])) { const m = /^audio-(\d+)\.mp3$/.exec(f); if (m) n = Math.max(n, Number(m[1])); }
+        const nazwa = `audio-${n + 1}.mp3`;
+        await fs.copyFile(plik, path.join(kat, nazwa));
+        const adres = `/wizytowka/teostory/${id}/audio/${nazwa}`, i = Number(strona), w = wers == null ? null : Number(wers);
+        await zapiszKsiege(id, async (b) => {
+            const cel = jezyk ? b.translations?.[jezyk]?.pages : b.pages;
+            if (!Array.isArray(cel) || !Number.isInteger(i) || !cel[i]) throw Object.assign(new Error('Nie ma takiej strony (albo przekładu).'), { kod: 404 });
+            const kopia = [...cel];
+            if (w == null) kopia[i] = { ...kopia[i], audioUrl: adres };
+            else {
+                const linie = [...(kopia[i].dialogueLines ?? [])];
+                if (!linie[w]) throw Object.assign(new Error('Nie ma takiego wersu.'), { kod: 404 });
+                linie[w] = { ...linie[w], audioUrl: adres }; kopia[i] = { ...kopia[i], dialogueLines: linie };
+            }
+            return jezyk ? { ...b, translations: { ...b.translations, [jezyk]: { ...b.translations[jezyk], pages: kopia } } } : { ...b, pages: kopia };
+        });
+        return adres;
     }
 
     /** 🎨 Ilustracje Palety: każda strona bez obrazu (albo wszystkie z `nadpisz`) dostaje malowany kadr FLUX z opisu sceny. */
@@ -435,7 +471,7 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return zapiszKsiege(id, async (b) => ({ ...b, musicUrl: `/wizytowka/teostory/${id}/audio/muzyka.mp3`, music: { title: tekst(tytul, 120) || path.basename(lok, '.mp3'), author: tekst(autor, 120) || null } })).then((b) => ({ musicUrl: b.musicUrl, music: b.music }));
     }
 
-    return { plikObrazu, plikDzwieku, plikMedia, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, oferta, ustawSpotify, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
+    return { plikZAdresu: (u) => obrazLokalny(u), plikObrazu, plikDzwieku, plikMedia, dodajAudioStrony, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, oferta, ustawSpotify, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
         wypozyczenia: async () => (await czytaj(WYP, { wypozyczenia: [] })).wypozyczenia };
 }
 
@@ -449,6 +485,12 @@ export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10, federacj
     app.get('/api/books/catalog', (_req, res) => odp(res, W.katalogPelny().then((ksiegi) => ({ ksiegi }))));
     app.post('/api/books/publish', (req, res) => odp(res, W.publikuj(req.body ?? {}).then((wpis) => ({ wpis }))));
     app.post('/api/books/:id/wystaw', (req, res) => odp(res, W.wystaw(req.params.id).then((wpis) => ({ wpis }))));
+    // 🎙️ nagranie (mp3 z dysku Katedry, np. głos ElevenLabs z paczki stacji) do strony / wersu księgi albo jej przekładu
+    app.post('/api/books/:id/audio-strony', (req, res) => odp(res, (async () => {
+        const p = W.plikZAdresu(String(req.body?.adres ?? ''));
+        if (!p) throw Object.assign(new Error('Nie znam tego nagrania w Katedrze.'), { kod: 400 });
+        return { adres: await W.dodajAudioStrony(req.params.id, { jezyk: req.body?.jezyk ?? null, strona: req.body?.strona, wers: req.body?.wers ?? null, plik: p }) };
+    })()));
     app.post('/api/books/:id/wycofaj', (req, res) => odp(res, W.wycofaj(req.params.id).then((wpis) => ({ wpis }))));
     app.post('/api/books/rent', (req, res) => odp(res, W.wypozycz(String(req.body?.id ?? ''), { powrot: req.body?.powrot })));
     app.get('/api/books/rentals', (_req, res) => odp(res, W.wypozyczenia().then((wypozyczenia) => ({ wypozyczenia }))));

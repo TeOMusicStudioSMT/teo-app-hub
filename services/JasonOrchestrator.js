@@ -1249,24 +1249,54 @@ export function utworzJasona(cfg) {
         atmosfera: k.atmosfera?.plik ? { url: `${b}/${k.atmosfera.plik}`, opis: k.atmosfera.opis, sekundy: k.atmosfera.sekundy, petla: k.atmosfera.petla } : null }; };
     // ── 📖 Żywa Księga i Manuskrypt PDF z Opodysku (Suweren 2026-11-14) ──
     const slugKsiegi = (t) => nazwaFolderu(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
-    /** Strony księgi: najpierw cały tekst utworu, potem po stronie na akt (opis akcji + wersy + klatka FLUX); bez storyboardu — sekcje tekstu. */
+    /** Kto śpiewa sekcję (z etykiet tekstu: „[Verse 1 - Kael: …]”, „[Chorus - Elara & Kael: …]”) → głosy księgi: ['kael'] / ['elara'] / ['elara','kael'] (duet = naprzemiennie). */
+    const GLOSY_WOKALNE = { elara: 'Elara', kael: 'Kael' };
+    function spiewajacyZSekcji(lyrics) {
+        const m = new Map();
+        for (const sec of sekcjeTekstu(lyrics ?? '')) {
+            const kto = String(sec.kto ?? '').toLowerCase(), g = ['elara', 'kael'].filter((x) => kto.includes(x));
+            if (g.length) m.set(String(sec.nazwa).toLowerCase(), g);
+        }
+        return m;
+    }
+    /**
+     * Strony księgi: po stronie na akt (narracja Kronikarza + klatka FLUX + wersy śpiewane głosem Elary / Kaela jako kwestie), a na KOŃCU
+     * „Akt N+1 · Tekst utworu” (cały tekst piosenki) — spektakl zaczyna się od Aktu 1, nie od surowego tekstu. Bez storyboardu — sekcje tekstu.
+     */
     async function stronyKsiegi(k) {
         const sb = await czytajStoryboard(k), kat = sciezkaWydania(k), strony = [], tekst = czystyTekst(k.stacja.lyrics ?? '');
-        if (tekst.length >= 10) strony.push({ chapterTitle: 'Tekst utworu', imageCaption: k.stacja.tytul, narrativeText: tekst, dialogueLines: [] });
+        const bz = (t) => String(t ?? '').replace(/\s+/g, ' ').trim();
+        const plikGlosu = (w) => `/api/elevenlabs/plik/opodysk/${k.id}/${w.plik}`;
         if (sb) {
+            const kto = spiewajacyZSekcji(k.stacja.lyrics);
             for (const sc of sb.sceny) {
                 const kadr = sc.kadry?.['16:9'], ma = await maKlatke(kat, sc);
                 const lit = typeof k.narracja?.[sc.nr] === 'string' && k.narracja[sc.nr].trim() ? k.narracja[sc.nr].trim() : null, lek = k.lektor?.[sc.nr];
                 // 🎙️ prawdziwy głos ElevenLabs tylko wtedy, gdy nagranie czyta DOKŁADNIE ten tekst, który widać na stronie
-                const bz = (t) => String(t ?? '').replace(/\s+/g, ' ').trim(), glos = lit && lek?.plik && bz(lek.tekst) === bz(lit) ? `/api/elevenlabs/plik/opodysk/${k.id}/${lek.plik}` : null;
-                strony.push({ chapterTitle: `Akt ${sc.nr} · ${sc.sekcja}`, imageCaption: sc.sekcja, dialogueLines: [],
+                const glos = lit && lek?.plik && bz(lek.tekst) === bz(lit) ? plikGlosu(lek) : null;
+                const spiew = kto.get(String(sc.sekcja).split(' · ')[0].toLowerCase()) ?? null;
+                // wersy jako kwestie wokalistów (tylko przy narracji literackiej; bez niej zostają ♪ w tekście, jak dotąd)
+                const kwestie = lit ? (sc.wersy ?? []).map((w, ix) => { const g = spiew ? spiew[ix % spiew.length] : 'narrator', lw = k.lektorWersy?.[sc.nr]?.[ix];
+                    return { speaker: g, speakerLabel: GLOSY_WOKALNE[g] ?? 'Kronikarz', text: w, ...(lw?.plik && bz(lw.tekst) === bz(w) ? { audioUrl: plikGlosu(lw) } : {}) }; }) : [];
+                strony.push({ chapterTitle: `Akt ${sc.nr} · ${sc.sekcja}`, imageCaption: sc.sekcja, dialogueLines: kwestie,
                     narrativeText: lit ?? [sc.obraz, sc.wersy.length ? sc.wersy.map((w) => `♪ ${w}`).join('\n') : ''].filter(Boolean).join('\n\n'),
                     ...(glos ? { audioUrl: glos } : {}),
                     ...(ma ? { imageUrl: `/api/jason/kampanie/${k.id}/storyboard/kadr/${kadr.plik.split('/').pop()}` } : {}) });
             }
         } else for (const sec of sekcjeTekstu(k.stacja.lyrics ?? '')) if (sec.wersy.length) strony.push({ chapterTitle: sec.nazwa, imageCaption: sec.nazwa, narrativeText: sec.wersy.join('\n'), dialogueLines: [] });
+        if (tekst.length >= 10) strony.push({ chapterTitle: `Akt ${strony.length + 1} · Tekst utworu`, imageCaption: k.stacja.tytul, narrativeText: tekst, dialogueLines: [] });
         if (!strony.length) throw new Error(`„${k.stacja.tytul}” nie ma tekstu ani storyboardu — nie ma z czego złożyć księgi.`);
         return { strony, sb };
+    }
+    /** 🎙️ Głos wersu (Elara / Kael): plik ElevenLabs przypięty do wersu aktu; trafia do księgi tylko, gdy czyta dokładnie ten wers. */
+    async function ustawGlosWersa(id, nr, ix, w) {
+        const k = await wczytaj(id), n = Number(nr), i = Number(ix);
+        if (!Number.isInteger(n) || n < 1 || n > 99 || !Number.isInteger(i) || i < 0 || i > 60) throw new Error('Głos wersu potrzebuje numeru aktu i wersu.');
+        k.lektorWersy = { ...(k.lektorWersy ?? {}) };
+        k.lektorWersy[n] = { ...(k.lektorWersy[n] ?? {}) };
+        if (w?.plik) k.lektorWersy[n][i] = { plik: String(w.plik), rola: String(w.rola ?? 'elara'), tekst: tn(w.tekst, 600), kiedy: new Date().toISOString() }; else delete k.lektorWersy[n][i];
+        await zapisz(k);
+        return k.lektorWersy;
     }
     /** 🎭 Dane do żywej Fuzji i skanera TeOfonu w portalu: tempo, długość, akty z kadrami (bez storyboardu portal liczy bloki po 8 taktów). */
     async function opodyskMeta(k, sb) {
@@ -1335,7 +1365,9 @@ export function utworzJasona(cfg) {
         if (!cfg.wypozyczalnia?.publikuj) throw new Error('Most nie ma podłączonej Wypożyczalni teostory.studio.');
         const { strony, sb } = await stronyKsiegi(k);
         const book = { id: `zk-opodysk-${String(k.stacja.nr).padStart(2, '0')}-${slugKsiegi(k.stacja.tytul)}`, title: k.stacja.tytul, subtitle: `${k.artysci.join(' & ')} · ${k.album}`,
-            author: k.artysci.join(' & '), narrator: k.artysci.join(' & '), language: 'en', sourceType: 'zywa-ksiega', characters: [], pages: strony };
+            author: k.artysci.join(' & '), narrator: 'Kronikarz', language: 'en', sourceType: 'zywa-ksiega', pages: strony,
+            // 🎭 obsada głosów księgi: narracja = Kronikarz (George), wersy śpiewane = Elara i Kael (Voice Cast 0.00G)
+            characters: ['elara', 'kael'].filter((g) => k.artysci.some((a) => String(a).toLowerCase().includes(g))).map((g) => ({ id: g, name: GLOSY_WOKALNE[g], role: 'wokal' })) };
         const live = spotifyLive(k, await ustawienia());
         if (live) book.spotify = { url: live.url };
         book.opodysk = await opodyskMeta(k, sb);
@@ -1679,7 +1711,7 @@ export function utworzJasona(cfg) {
         decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, ustawLektora, ustawAtmosfere, glosyKampanii, zlozKsiege, zlozManuskrypt, zlozKsiegeIManuskrypt, zlozWszystkieKsiegi, wystawWszystkie, wzbogacNarracje, podepnijTeledysk, zapiszCanvas, sciezkaCanvasu, synchronizujSpotify, spotifyLive, sciezkaManuskryptu, kodPergaminu, zapiszPergamin, sciezkaPergaminu, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, ustawLektora, ustawAtmosfere, glosyKampanii, zlozKsiege, zlozManuskrypt, zlozKsiegeIManuskrypt, zlozWszystkieKsiegi, wystawWszystkie, wzbogacNarracje, podepnijTeledysk, ustawGlosWersa, zapiszCanvas, sciezkaCanvasu, synchronizujSpotify, spotifyLive, sciezkaManuskryptu, kodPergaminu, zapiszPergamin, sciezkaPergaminu, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */

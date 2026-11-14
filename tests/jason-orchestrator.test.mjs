@@ -961,8 +961,8 @@ test('📖📜 Żywa Księga + Manuskrypt PDF z Opodysku, kod QR i zapis Rolowan
         assert.equal(r.success, true, r.message);
         assert.equal(r.kampania.ksiega.zStoryboardu, true); assert.equal(r.kampania.ksiega.stron, N + 1); assert.equal(r.kampania.ksiega.zKlatkami, N);
         const ksiega = JSON.parse(await fs.readFile(path.join(tmp, 'teostory', 'ksiegi', `${wpis.id}.json`), 'utf8'));
-        assert.equal(ksiega.pages[0].chapterTitle, 'Tekst utworu'); assert.match(ksiega.pages[1].chapterTitle, /^Akt 1 · /); assert.ok(ksiega.pages.some((x) => /♪/.test(x.narrativeText)), 'wersy aktów jako ♪');
-        assert.ok(ksiega.pages.slice(1).every((p) => /obraz-\d+\.png$/.test(p.imageUrl ?? '')), 'klatki przeniesione do księgi');
+        assert.match(ksiega.pages[0].chapterTitle, /^Akt 1 · /, 'spektakl zaczyna się od Aktu 1'); assert.match(ksiega.pages.at(-1).chapterTitle, /^Akt \d+ · Tekst utworu$/, 'tekst piosenki na końcu'); assert.ok(ksiega.pages.some((x) => /♪/.test(x.narrativeText)), 'wersy aktów jako ♪');
+        assert.ok(ksiega.pages.slice(0, -1).every((p) => /obraz-\d+\.png$/.test(p.imageUrl ?? '')), 'klatki przeniesione do księgi');
         if (puppeteer) {
             assert.ok(r.kampania.manuskrypt, (r.uwagi ?? []).join(' ')); assert.equal(r.kampania.manuskrypt.plik, PLIK_MANUSKRYPTU); assert.equal(r.kampania.manuskrypt.aktow, N); assert.equal(r.kampania.manuskrypt.zKlatkami, N);
             const pdf = await fs.readFile(path.join(kat, PLIK_MANUSKRYPTU));

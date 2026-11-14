@@ -177,3 +177,27 @@ test('🎭 media Opodysku: pliki jadą do księgi, demo czyta za darmo, wypożyc
         assert.equal(SCIEZKA_TEOSTORY.test('/wizytowka/teostory/opo-demo-1/media/obcy.exe'), false);
     } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
 });
+
+test('🌍🎙️ przekład przeżywa ponowne złożenie księgi (ten sam tekst), znika po zmianie źródła; nagranie strony i wersu w przekładzie', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'teostory-pr2-'));
+    const pisz = async (_s, prompt) => { const k = JSON.parse(prompt.split('\n\n')[0]); return JSON.stringify({ chapterTitle: k.chapterTitle && `PL ${k.chapterTitle}`, imageCaption: k.imageCaption && `PL ${k.imageCaption}`, narrativeText: k.narrativeText && `PL ${k.narrativeText}`, lines: k.lines.map((l) => `PL ${l}`) }); };
+    const W = utworzWypozyczalnie({ katalog: path.join(tmp, 'teostory'), pisz });
+    const mp3 = path.join(tmp, 'g.mp3'); await fs.writeFile(mp3, 'GLOS-PL');
+    const nowa = (tekst) => ({ id: 'opo-pr', title: 'Opodysk', language: 'en', pages: [{ chapterTitle: 'Akt 1', narrativeText: tekst, dialogueLines: [{ speaker: 'elara', speakerLabel: 'Elara', text: 'Hold me close' }] }] });
+    await W.publikuj({ book: nowa('The diner glows like a lantern at night.'), rentalTier: 'demo' });
+    await W.przeloz('opo-pr', 'pl'); const p = await czekaj(W, 'opo-pr'); assert.equal(p.stan, 'gotowe', p.blad);
+    await W.dodajAudioStrony('opo-pr', { jezyk: 'pl', strona: 0, plik: mp3 });
+    await W.dodajAudioStrony('opo-pr', { jezyk: 'pl', strona: 0, wers: 0, plik: mp3 });
+    await assert.rejects(() => W.dodajAudioStrony('opo-pr', { jezyk: 'pl', strona: 5, plik: mp3 }), /Nie ma takiej strony/);
+    await assert.rejects(() => W.dodajAudioStrony('opo-pr', { jezyk: 'pl', strona: 0, plik: path.join(tmp, 'x.exe') }), /mp3/);
+    let k = (await W.czytaj('opo-pr')).ksiega;
+    assert.match(k.translations.pl.pages[0].audioUrl, /\/audio\/audio-\d+\.mp3$/); assert.match(k.translations.pl.pages[0].dialogueLines[0].audioUrl, /\/audio\/audio-\d+\.mp3$/);
+    assert.equal(k.pages[0].audioUrl, undefined, 'oryginał bez zmian');
+    assert.ok(W.plikDzwieku('opo-pr', k.translations.pl.pages[0].audioUrl.split('/').pop()), 'plik leży w księdze');
+    // to samo źródło → przekład i nagrania zostają; zmiana tekstu → przekład znika (nie jedzie nieaktualny)
+    await W.publikuj({ book: nowa('The diner glows like a lantern at night.'), rentalTier: 'demo' });
+    k = (await W.czytaj('opo-pr')).ksiega; assert.ok(k.translations?.pl?.pages[0].audioUrl, 'przekład z nagraniem przetrwał');
+    await W.publikuj({ book: nowa('A different story entirely.'), rentalTier: 'demo' });
+    k = (await W.czytaj('opo-pr')).ksiega; assert.equal(k.translations, undefined, 'nieaktualny przekład odpada');
+    await fs.rm(tmp, { recursive: true, force: true });
+});
