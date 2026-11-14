@@ -9566,7 +9566,12 @@ app.get('/wizytowka/marka-logo', cors({ origin: '*' }), async (_req, res) => { c
 const Wypozyczalnia = utworzWypozyczalnie({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe,
     // 🌍 tłumacz ksiąg (model Kronikarza, JSON) i 🎨 Paleta (FLUX) — te same co Silnik Żywych Ksiąg
     // model: OTAKOS_KSIEGI_TLUMACZ_MODEL (np. gemma4:12B — lepiej tłumaczy niż małe modele) → przydział Kronikarza
-    pisz: async (system, prompt) => (await piszModelem(TrybKatedry.modelDla(process.env.OTAKOS_KSIEGI_TLUMACZ_MODEL || (await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()), system, prompt, { json: true })).tekst,
+    pisz: async (system, prompt) => {
+        // tłumacz: najpierw większy model (gemma4:12B albo OTAKOS_KSIEGI_TLUMACZ_MODEL), gdy go nie ma / padnie — przydział Kronikarza
+        const preferowany = process.env.OTAKOS_KSIEGI_TLUMACZ_MODEL || 'gemma4:12B', zapas = (await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny();
+        try { return (await piszModelem(TrybKatedry.modelDla(preferowany), system, prompt, { json: true })).tekst; }
+        catch (e) { if (preferowany === zapas) throw e; return (await piszModelem(TrybKatedry.modelDla(zapas), system, prompt, { json: true })).tekst; }
+    },
     rysuj: async ({ prompt, szer, wys }) => {
         const przed = await stanWideoZBudzeniem('Ilustracje ksiąg teostory');
         if (!przed.comfy) throw new Error(przed.braki.join(' | '));

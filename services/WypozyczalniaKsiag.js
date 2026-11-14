@@ -105,9 +105,11 @@ export function sprawdzPrzekladStrony(zrodlo, odp) {
     let d = odp;
     if (typeof d === 'string') { const m = /\{[\s\S]*\}/.exec(d.replace(/<think>[\s\S]*?<\/think>/g, '')); if (!m) throw new Error('brak JSON-a'); d = JSON.parse(m[0]); }
     if (!d || typeof d !== 'object') throw new Error('brak obiektu');
-    const lines = Array.isArray(d.lines) ? d.lines.map((x) => String(x ?? '').trim()) : [];
+    // strona bez kwestii: model czasem dorzuca „kwestie” (zdania narracji) — ignorujemy je zamiast odrzucać cały przekład
+    const lines = zrodlo.lines.length === 0 ? [] : Array.isArray(d.lines) ? d.lines.map((x) => String(x ?? '').trim()) : [];
     if (lines.length !== zrodlo.lines.length) throw new Error(`kwestii ${lines.length} zamiast ${zrodlo.lines.length}`);
-    const pole = (k) => String(d[k] ?? '').trim();
+    // etykiety (np. „Akt 6 · Verse 2”) bez odpowiedzi modelu zostają jak w źródle; narracja musi być przetłumaczona
+    const pole = (k) => { const v = String(d[k] ?? '').trim(); return !v && (k === 'chapterTitle' || k === 'imageCaption') ? String(zrodlo[k] ?? '').trim() : v; };
     for (const k of ['chapterTitle', 'imageCaption', 'narrativeText']) if (zrodlo[k].trim() && !pole(k)) throw new Error(`puste pole ${k}`);
     const dl = (a, b) => !a.trim() || (b.length >= a.length * 0.35 && b.length <= a.length * 2.8 + 20);
     if (!dl(zrodlo.narrativeText, pole('narrativeText'))) throw new Error('narracja o podejrzanej długości');

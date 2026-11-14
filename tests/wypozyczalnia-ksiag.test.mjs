@@ -201,3 +201,11 @@ test('🌍🎙️ przekład przeżywa ponowne złożenie księgi (ten sam tekst)
     k = (await W.czytaj('opo-pr')).ksiega; assert.equal(k.translations, undefined, 'nieaktualny przekład odpada');
     await fs.rm(tmp, { recursive: true, force: true });
 });
+
+test('przekład: strona bez kwestii ignoruje „kwestie” dorzucone przez model, pusta etykieta wraca z oryginału, brak narracji nadal odpada', () => {
+    const zrodlo = { chapterTitle: 'Akt 6 · Verse 2', imageCaption: 'Verse 2', narrativeText: 'The diner glows like a lantern at night.', lines: [] };
+    const w = sprawdzPrzekladStrony(zrodlo, { chapterTitle: '', imageCaption: 'Strofa 2', narrativeText: 'Bar świeci jak latarnia nocą.', lines: ['Bar świeci', 'jak latarnia'] });
+    assert.deepEqual(w.lines, []); assert.equal(w.chapterTitle, 'Akt 6 · Verse 2'); assert.equal(w.imageCaption, 'Strofa 2');
+    assert.throws(() => sprawdzPrzekladStrony(zrodlo, { chapterTitle: 'x', imageCaption: 'y', narrativeText: '', lines: [] }), /puste pole narrativeText/);
+    assert.throws(() => sprawdzPrzekladStrony({ ...zrodlo, lines: ['Hold me close'] }, { chapterTitle: 'x', imageCaption: 'y', narrativeText: 'Bar świeci jak latarnia nocą.', lines: [] }), /kwestii 0 zamiast 1/);
+});
