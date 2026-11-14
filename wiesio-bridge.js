@@ -9114,7 +9114,7 @@ const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
         await Karta.przedRenderem('okładką kampanii Jasona').catch(() => {});
         return Assety3D.kadrFilmu({ prompt, szer: 1024, wys: 1024, prefiks: 'katedra/jason/okladka' });
     } });
-zamontujTrasyJasona(app, Jason, { dostep: dostepStada });
+zamontujTrasyJasona(app, Jason, { dostep: dostepStada, raw: express.raw });
 app.get('/api/suno-album', (_req, res) => ytOdp(res, AlbumSuno.stan().then((album) => ({ album })), 500));
 app.put('/api/suno-album', (req, res) => ytOdp(res, AlbumSuno.ustaw(req.body?.album || null).then((album) => ({ album }))));
 app.post('/api/suno-album/synchronizuj', (_req, res) => ytOdp(res, AlbumSuno.synchronizuj().then((album) => ({ album }))));

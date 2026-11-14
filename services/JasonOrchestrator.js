@@ -51,7 +51,11 @@ import fsSync from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { zbudujStoryboard, FORMATY as FORMATY_KADRU, WERSJA_STORYBOARDU } from './StoryboardTeledysku.js';
-import { zlozOpodysk, PLIK_OPODYSKU } from './Opodysk.js';
+import { zlozOpodysk, PLIK_OPODYSKU, dlugoscPliku } from './Opodysk.js';
+import { nagranieDoMp4 } from './OdcinkiStudia.js';
+
+/** 🎼 Opodysk z wtopioną partyturą 0.00G — nagranie Teatru Opodysku (tryb Fuzji) z przeglądarki */
+export const PLIK_PARTYTURY = 'opodysk_partytura_16x9.mp4';
 
 // Suweren 2026-11-12: dawny prompt („StarLight Diner… neon”) dał bełkotliwy szyld i kanapę na chodniku PRZED barem → czyste wnętrze, żadnych napisów.
 export const KLIMAT_OKLADKI = 'Cinematic cozy interior photograph inside a late-night retro diner, a woman and a man sitting across from each other in a deep red velvet booth inside the room, '
@@ -1188,6 +1192,35 @@ export function utworzJasona(cfg) {
         }
     }
     const sciezkaOpodysku = (k) => (k?.opodysk?.plik && sciezkaWydania(k) ? path.join(sciezkaWydania(k), k.opodysk.plik) : null);
+    /**
+     * 🎼 Opodysk z partyturą: Teatr Opodysku (TeO Story, tryb Fuzji) nagrywa płótno partytury z dźwiękiem utworu w czasie
+     * rzeczywistym i przysyła webm → ffmpeg H.264 + AAC → `opodysk_partytura_16x9.mp4` w paczce wydawniczej. Jedno naraz.
+     */
+    let nagrywana = null;
+    async function zapiszPartyture(id, bufor, typ) {
+        let k = await wczytaj(id);
+        const kat = sciezkaWydania(k);
+        if (!kat || !k.spotify) throw Object.assign(new Error('Ta kampania nie ma paczki wydawniczej — najpierw „🚀 Przygotuj i wyślij na Spotify”.'), { status: 409 });
+        if (nagrywana) throw Object.assign(new Error('Most właśnie przelicza inne nagranie partytury — poczekaj chwilę.'), { status: 409 });
+        nagrywana = id;
+        try {
+            const cel = path.join(kat, PLIK_PARTYTURY), roboczy = path.join(kat, '.partytura', 'partytura.mp4');
+            await nagranieDoMp4({ bufor, typ, praca: path.join(kat, '.partytura'), cel: roboczy, ffmpeg: cfg.ffmpeg, minBajtow: 20_000 });
+            const sekundy = await dlugoscPliku(cfg.ffmpeg, cfg.uruchom, roboczy);
+            const wzor = k.spotify.master?.sekundy ?? null;
+            if (wzor && sekundy && sekundy < wzor * 0.9) { await fs.rm(path.join(kat, '.partytura'), { recursive: true, force: true }); throw Object.assign(new Error(`Nagranie trwa ${czasUtworu(sekundy)}, a utwór ${czasUtworu(wzor)} — przerwane w połowie, nie zapisuję.`), { status: 422 }); }
+            await fs.rename(roboczy, cel).catch(async () => { await fs.copyFile(roboczy, cel); });
+            await fs.rm(path.join(kat, '.partytura'), { recursive: true, force: true }).catch(() => {});
+            const bajtow = (await fs.stat(cel)).size;
+            k = await wczytaj(id);
+            if (!k.spotify.pliki.includes(PLIK_PARTYTURY)) k.spotify.pliki.push(PLIK_PARTYTURY);
+            k.partytura = { plik: PLIK_PARTYTURY, sekundy: sekundy ?? null, bajtow, wersja: (Number(k.partytura?.wersja) || 0) + 1, kiedy: new Date().toISOString() };
+            await zapisz(k);
+            wiesc(`🎼 Jason: Opodysk z partyturą 0.00G „${k.stacja.tytul}” zapisany — ${czasUtworu(sekundy)}, _OtakOs_Muzyka/${k.spotify.folder}/${PLIK_PARTYTURY}.`);
+            return k;
+        } finally { nagrywana = null; }
+    }
+    const sciezkaPartytury = (k) => (k?.partytura?.plik && sciezkaWydania(k) ? path.join(sciezkaWydania(k), k.partytura.plik) : null);
     const sciezkaAudio = (k) => (sciezkaWydania(k) ? path.join(sciezkaWydania(k), 'original.mp3') : null);
     async function pokazOpodysk(id) {
         const p = sciezkaOpodysku(await wczytaj(id));
@@ -1207,6 +1240,7 @@ export function utworzJasona(cfg) {
                 okladka: k.spotify.okladka ? `${b}/spotify/okladka?v=${k.okladka?.wersja ?? 1}` : null, audio: `${b}/audio`,
                 storyboard: k.teoStory?.storyboard ? { scen: k.teoStory.scen ?? null, url: `${b}/storyboard` } : null, serial: k.teoStory?.serial ?? null,
                 opodysk: k.opodysk?.plik ? { url: `${b}/opodysk/wideo?v=${k.opodysk.wersja ?? 1}`, sekundy: k.opodysk.sekundy ?? null, stan: k.opodysk.stan } : null,
+                partytura: k.partytura?.plik ? { url: `${b}/opodysk/partytura/wideo?v=${k.partytura.wersja ?? 1}`, sekundy: k.partytura.sekundy ?? null } : null,
                 wypozyczalnia: k.wypozyczalnia ?? null, spotify: u.spotify.utwory[k.stacja.nr] ?? null, suno: k.wybrana?.id ? linkOdsluchu(k.wybrana.id) : null });
         }
         utwory.sort((a, b) => a.nr - b.nr);
@@ -1245,7 +1279,7 @@ export function utworzJasona(cfg) {
             const rel = plikAktu(sc.nr), cel = path.join(kat, ...rel.split('/'));
             // fragment utworu dla aktu — cięty dokładnie (po dekodowaniu), mp3 192 kb/s
             await cfg.uruchom(cfg.ffmpeg, ['-loglevel', 'error', '-y', '-i', master, '-ss', String(sc.od), '-t', String(Math.round((sc.do - sc.od) * 1000) / 1000), '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', cel], { maxBuffer: 1 << 24, timeout: 5 * 60_000, windowsHide: true });
-            strony.push({ chapterTitle: `${przedrostek}Act ${sc.nr} · ${sc.sekcja}`, imageCaption: sc.sekcja, narrativeText: sc.wersy.length ? sc.wersy.join('\n') : sc.obraz, dialogueLines: [],
+            strony.push({ chapterTitle: `${przedrostek}Act ${sc.nr} · ${sc.sekcja}`, imageCaption: sc.sekcja, narrativeText: sc.wersy.length ? sc.wersy.join('\n') : sc.obraz, dialogueLines: [], bpm: sb.bpm ?? null,
                 imageUrl: `/api/jason/kampanie/${k.id}/storyboard/kadr/${sc.kadry['16:9'].plik.split('/').pop()}`, audioUrl: `/api/jason/kampanie/${k.id}/${rel}` });
         }
         return { strony, sb };
@@ -1344,11 +1378,11 @@ export function utworzJasona(cfg) {
         decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
-export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie: null }) } = {}) {
+export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie: null }), raw = null } = {}) {
     const blad = (res, e) => res.status(e.kod === 404 ? 404 : e.kod === 'JUZ_JEST' ? 409 : 400).json({ success: false, message: e.message, kod: e.kod ?? null, ...(e.kampania ? { kampania: e.kampania } : {}) });
     app.post('/api/jason/wykonaj-kampanie', async (req, res) => {
         const d = await dostep(req, res); if (!d) return;
@@ -1414,6 +1448,14 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     app.get('/api/jason/kampanie/:id/opodysk/wideo', async (req, res) => {
         const p = J.sciezkaOpodysku(await J.kampania(req.params.id));
         return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Ta kampania nie ma jeszcze Opodysku.' });
+    });
+    // 🎼 Opodysk z partyturą 0.00G: surowe nagranie płótna Teatru (video/webm) → mp4 w paczce; tylko maszyna (Straż /api/jason/)
+    if (raw) app.post('/api/jason/kampanie/:id/opodysk/partytura', raw({ type: ['video/*', 'application/octet-stream'], limit: '1500mb' }), async (req, res) => {
+        try { const k = await J.zapiszPartyture(req.params.id, req.body, String(req.headers['content-type'] || 'video/webm')); res.json({ success: true, partytura: k.partytura }); } catch (e) { blad(res, e); }
+    });
+    app.get('/api/jason/kampanie/:id/opodysk/partytura/wideo', async (req, res) => {
+        const p = J.sciezkaPartytury(await J.kampania(req.params.id));
+        return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Ta kampania nie ma jeszcze nagrania z partyturą.' });
     });
     app.get('/api/jason/kampanie/:id/audio', async (req, res) => {
         const p = J.sciezkaAudio(await J.kampania(req.params.id));

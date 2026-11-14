@@ -16,6 +16,7 @@ type Kampania = {
     okladka?: { plik?: string; blad?: string; rysuje?: boolean; wersja?: number } | null; etapy?: Record<string, { stan: string }>; wybrana?: { wersja: number; plik: string };
     teoStory?: { serial?: string; url?: string | null } | null;
     wypozyczalnia?: { id: string; tier: string; cenaEur: number; aktow?: number; wystawiona?: boolean } | null;
+    partytura?: { plik: string; sekundy?: number | null; bajtow?: number; wersja?: number } | null;
     opodysk?: { stan: string; etap?: string; blad?: string; plik?: string; sekundy?: number; bajtow?: number; ujec?: number; wersja?: number; napisy?: boolean; brakowaloKlatek?: number; montaz?: string | null; uwagi?: string[]; postep?: { zrobione: number; razem: number } } | null;
     spotify?: { folder: string; pliki: string[]; uwagi: string[]; okladka?: { plik: string } | null; master: { hz: number; bity: number; kanaly: number; zrodlo: string; sekundy: number; bajtow: number } } | null;
 };
@@ -304,6 +305,8 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                             <div className="flex flex-wrap items-center gap-2">
                                 <span className="font-bold">🎬 Storyboard 0.00G · {sb.sceny.length} ujęć{sb.bpm ? ` · ${sb.bpm} BPM` : ''} · {czas(sb.sekundy)}</span>
                                 <button onClick={() => otworzStory(`/apps/story/?teatr=${k.id}`)} className="rounded bg-fuchsia-600 px-2 py-0.5 font-bold text-white hover:bg-fuchsia-500">🎭 Teatr Opodysku</button>
+                                <button onClick={() => otworzStory(`/apps/story/?teatr=${k.id}&widok=fuzja`)} title="Kadry opowieści pod świetlistą partyturą 0.00G (nuty i GRAVITY liczone z dźwięku). W Teatrze: „🎥 Nagraj MP4 z partyturą” — nagranie w czasie utworu, plik opodysk_partytura_16x9.mp4 w paczce."
+                                    className="rounded border border-amber-400/70 px-2 py-0.5 font-bold text-amber-100 hover:bg-amber-900/40">🎼 Fuzja z partyturą 0.00G{k.partytura?.plik ? ' · MP4 ✓' : ''}</button>
                                 {k.teoStory?.serial && <button onClick={() => otworzStory(`/apps/story/?serial=${encodeURIComponent(k.teoStory!.serial!)}`)} className="underline" title="Projekt teledysku u Reżysera: kanon, odcinek, karty ujęć na Tablicy">projekt u Reżysera</button>}
                                 <button onClick={() => klatka('wszystkie', '16:9')} disabled={trwa} className="underline">🎨 wszystkie klatki 16:9</button>
                                 <button onClick={() => klatka('wszystkie', '9:16')} disabled={trwa} className="underline">🎨 wszystkie 9:16</button>

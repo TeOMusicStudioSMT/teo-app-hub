@@ -14,6 +14,7 @@ import { czyDlaSparowanych } from '../services/StrazMostu.js';
 import { utworzWypozyczalnie } from '../services/WypozyczalniaKsiag.js';
 import { planMontazu, napisyKlipu, ruchUjecia, zawin, dlugoscPliku, FPS, PLIK_OPODYSKU } from '../services/Opodysk.js';
 import { oczyscStacje, artystaZGlosu } from '../services/JasonOrchestrator.js';
+import { PLIK_PARTYTURY } from '../services/JasonOrchestrator.js';
 import { czystyTekst, naglowekWav, wymiaryJpeg, folderWydania } from '../services/JasonOrchestrator.js';
 import { utworzJasona, zamontujTrasyJasona, oczyscZlecenie, argumentyUtworu, klipyZWyniku, znajdzWorkspace, stanyKlipow, dopasujGlos, czasUtworu, STACJE, ALBUM } from '../services/JasonOrchestrator.js';
 
@@ -842,5 +843,57 @@ test('🎞️ Opodysk: brakujące klatki dorysowane, film na długość master.w
         assert.equal(g.length, 1); assert.equal(g[0].obraz, 'stacja:1');
         assert.equal((await zadaj('PUT', `/api/jason/gablota/${g[0].id}`, { nazwa: 'Bluza 0.00G', cena: '79 EUR' })).pozycje[0].nazwa, 'Bluza 0.00G');
         assert.deepEqual((await zadaj('DELETE', `/api/jason/gablota/${g[0].id}`)).pozycje, []);
+    } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
+});
+
+test('🎼 Opodysk z partyturą 0.00G: nagranie Teatru (webm) → mp4 w paczce, urwane nagranie i brak paczki odrzucone (prawdziwy ffmpeg, trasy HTTP)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jason-part-'));
+    const uruchom = promisify(execFile);
+    const muzyka = path.join(tmp, 'muzyka');
+    const suno = atrapaSuno(tmp);
+    suno.zapiszUtwory = async (_w, gotowe) => Promise.all(gotowe.map(async (u) => {
+        const plik = `Suno MCP/x [${u.id.slice(0, 8)}].mp3`;
+        await fs.mkdir(path.join(muzyka, 'Suno MCP'), { recursive: true });
+        await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=8', path.join(muzyka, plik)]);
+        return { ...u, plik, nowy: true };
+    }));
+    const J = utworzJasona({ katalog: tmp, suno, przerwaPobraniaMs: 5, katalogMuzyki: muzyka, ffmpeg: ffmpegPath, uruchom,
+        okladka: async () => { const o = path.join(tmp, 'flux.png'); await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=64x64', '-frames:v', '1', o]); return o; } });
+    const app = express(); app.use(express.json());
+    zamontujTrasyJasona(app, J, { raw: express.raw });
+    const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
+    // nagranie takie, jakie daje MediaRecorder: webm VP8 + Opus, nieparzysta wysokość
+    const webm = async (sek) => { const w = path.join(tmp, `n-${sek}.webm`); await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `testsrc=size=322x181:rate=30:duration=${sek}`, '-f', 'lavfi', '-i', `sine=frequency=330:duration=${sek}`, '-c:v', 'libvpx', '-b:v', '600k', '-c:a', 'libopus', w]); return fs.readFile(w); };
+    const wyslij = async (id, bufor) => { const r = await fetch(`${baza}/api/jason/kampanie/${id}/opodysk/partytura`, { method: 'POST', headers: { 'Content-Type': 'video/webm;codecs=vp8,opus' }, body: bufor }); return { status: r.status, ...(await r.json()) }; };
+    try {
+        const { id } = await J.wykonaj({ stacja: 2 });
+        await J._czekaj(id);
+        await J.rozstrzygnij(id, 'pobierz-1', {});
+        const pelne = await webm(8);
+        let w = await wyslij(id, pelne);
+        assert.equal(w.status, 400, 'bez paczki wydawniczej — odmowa'); assert.match(w.message, /paczki wydawniczej/);
+        await J.przygotujSpotify(id);
+        const kat = J.sciezkaWydania(await J.kampania(id));
+        assert.equal((await fetch(`${baza}/api/jason/kampanie/${id}/opodysk/partytura/wideo`)).status, 404);
+
+        w = await wyslij(id, await webm(3));
+        assert.equal(w.status, 400, 'nagranie urwane w połowie nie nadpisuje niczego'); assert.match(w.message, /przerwane w połowie/);
+        assert.equal(await fs.access(path.join(kat, PLIK_PARTYTURY)).then(() => true, () => false), false);
+
+        w = await wyslij(id, pelne);
+        assert.equal(w.success, true, w.message);
+        assert.equal(w.partytura.plik, 'opodysk_partytura_16x9.mp4'); assert.equal(w.partytura.wersja, 1);
+        const film = path.join(kat, PLIK_PARTYTURY);
+        assert.ok(Math.abs(await dlugoscPliku(ffmpegPath, uruchom, film) - 8) < 0.4);
+        let info = ''; try { await uruchom(ffmpegPath, ['-hide_banner', '-i', film]); } catch (e) { info = e.stderr; }
+        assert.match(info, /Video: h264/); assert.match(info, /322x180|320x180|322x182/); assert.match(info, /Audio: aac/);
+        const k = await J.kampania(id);
+        assert.ok(k.spotify.pliki.includes(PLIK_PARTYTURY));
+        assert.equal(await fs.access(path.join(kat, '.partytura')).then(() => true, () => false), false, 'katalog roboczy posprzątany');
+        const kart = (await J.opodyski()).utwory.find((u) => u.id === id);
+        assert.match(kart.partytura.url, /\/opodysk\/partytura\/wideo\?v=1$/);
+        assert.equal((await fetch(`${baza}/api/jason/kampanie/${id}/opodysk/partytura/wideo`)).status, 200);
+        assert.equal((await wyslij(id, pelne)).partytura.wersja, 2, 'ponowne nagranie podmienia plik');
+        assert.equal(czyDlaSparowanych('POST', `/api/jason/kampanie/${id}/opodysk/partytura`), false, 'nagranie tylko przy maszynie');
     } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
 });
