@@ -150,3 +150,30 @@ test('powrót do księgi: wygasłe opłacone wypożyczenie tej księgi = 1,49 �
     assert.equal((await W.wypozycz('teterhia', { poprzednia: 'cs_falszywa' })).cenaEur, 2.99, 'nieopłacona sesja nie daje rabatu');
     assert.ok(SW.test('/wizytowka/teostory/teterhia/oferta') && ST.test('/wizytowka/teostory/teterhia/audio/muzyka.mp3') && !ST.test('/wizytowka/teostory/teterhia/audio/inne.mp3'));
 });
+
+test('🎭 media Opodysku: pliki jadą do księgi, demo czyta za darmo, wypożyczenie bez sesji = 402, zła nazwa = 404, Straż wpuszcza tylko białą listę', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'wyp-media-'));
+    const zrodlo = path.join(tmp, 'zrodlo'); await fs.mkdir(zrodlo, { recursive: true });
+    await fs.writeFile(path.join(zrodlo, 'a.mp3'), 'AUDIO-1234'); await fs.writeFile(path.join(zrodlo, 'b.pdf'), '%PDF-test');
+    const W = utworzWypozyczalnie({ katalog: path.join(tmp, 'teostory') });
+    const app = express(); app.use(express.json()); zamontujTrasyWypozyczalni(app, W);
+    const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
+    const ksiega = (id, tier) => ({ id, title: `Księga ${id}`, author: 'A', pages: [{ chapterTitle: 'x', narrativeText: 'Dłuższy tekst narracji strony, żeby przeszło.', dialogueLines: [] }],
+        opodysk: { bpm: 90, sekundy: 120, akty: [{ nr: 1, nazwa: 'Intro', od: 0, do: 30, wersy: [], obraz: null }] } });
+    try {
+        await W.publikuj({ book: ksiega('opo-demo-1', 'demo'), rentalTier: 'demo', cenaEur: 0, media: { 'piesn.mp3': path.join(zrodlo, 'a.mp3'), 'pergamin.pdf': path.join(zrodlo, 'b.pdf'), 'obcy.exe': path.join(zrodlo, 'a.mp3') } });
+        await W.publikuj({ book: ksiega('opo-platna-1', 'rental_48h'), rentalTier: 'rental_48h', cenaEur: 1.99, media: { 'piesn.mp3': path.join(zrodlo, 'a.mp3') } });
+        const kat = await (await fetch(`${baza}/wizytowka/teostory`)).json();
+        assert.deepEqual(kat.ksiegi.find((x) => x.id === 'opo-demo-1').opodysk.media.sort(), ['pergamin.pdf', 'piesn.mp3'], 'lista mediów w katalogu, bez nieznanej nazwy');
+        const m = await fetch(`${baza}/wizytowka/teostory/opo-demo-1/media/piesn.mp3`);
+        assert.equal(m.status, 200); assert.equal(await m.text(), 'AUDIO-1234');
+        assert.equal((await fetch(`${baza}/wizytowka/teostory/opo-demo-1/media/obcy.exe`)).status, 404);
+        assert.equal((await fetch(`${baza}/wizytowka/teostory/opo-demo-1/media/canvas-fuzja.mp4`)).status, 404, 'brak pliku');
+        assert.equal((await fetch(`${baza}/wizytowka/teostory/opo-platna-1/media/piesn.mp3`)).status, 402, 'płatna księga bez sesji');
+        const czyt = await (await fetch(`${baza}/wizytowka/teostory/opo-demo-1/czytaj`)).json();
+        assert.equal(czyt.ksiega.opodysk.bpm, 90); assert.equal(czyt.ksiega.opodysk.media.length, 2);
+        assert.ok(SCIEZKA_TEOSTORY.test('/wizytowka/teostory/opo-demo-1/media/teledysk.mp4') && SCIEZKA_TEOSTORY.test('/wizytowka/teostory/opo-demo-1/media/canvas-fuzja.mp4'));
+        assert.equal(SCIEZKA_TEOSTORY.test('/wizytowka/teostory/opo-demo-1/media/../../x.mp3'), false);
+        assert.equal(SCIEZKA_TEOSTORY.test('/wizytowka/teostory/opo-demo-1/media/obcy.exe'), false);
+    } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
+});

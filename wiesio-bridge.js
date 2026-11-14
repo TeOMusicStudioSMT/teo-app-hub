@@ -9107,6 +9107,8 @@ const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
     },
     // 📚 Opodysk → Żywa Księga w Wypożyczalni teostory.studio (Wypożyczalnia powstaje niżej — wołana dopiero przy wydaniu)
     wypozyczalnia: { publikuj: (x) => Wypozyczalnia.publikuj(x), wystaw: (id) => Wypozyczalnia.wystaw(id), ustawSpotify: (id, adres) => Wypozyczalnia.ustawSpotify(id, adres) },
+    pisz: async (system, prompt) => (await piszModelem(TrybKatedry.modelDla((await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()), system, prompt)).tekst,   // ✍️ bogata narracja aktów (Kronikarz)
+    katalogProdukcji: path.join(ANTIGRAVITY_DIR, 'produkcje'),
     czcionki: CZCIONKI_NAPISOW,   // napis opowieści w Opodysku (te same czcionki co Powitanie Dnia)
     pokaz: async (plik) => { if (process.platform === 'win32') spawn('explorer.exe', [`/select,${plik}`], { detached: true, stdio: 'ignore' }).unref(); else spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [path.dirname(plik)], { detached: true, stdio: 'ignore' }).unref(); },
     otworz: async (sciezka) => { spawn(process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open', [sciezka], { detached: true, stdio: 'ignore' }).unref(); },

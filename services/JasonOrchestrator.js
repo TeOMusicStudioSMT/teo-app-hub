@@ -57,7 +57,7 @@ export const PLIK_MANUSKRYPTU = 'manuskrypt_000g.pdf';
 export const PLIKI_PERGAMINU = { svg: 'pergamin_000g.svg', png: 'pergamin_000g.png', pdf: 'pergamin_000g.pdf' };
 import { zlozOpodysk, PLIK_OPODYSKU, dlugoscPliku } from './Opodysk.js';
 import { nagranieDoMp4 } from './OdcinkiStudia.js';
-import { spotifyZAdresu } from './WypozyczalniaKsiag.js';
+import { spotifyZAdresu, MEDIA_KSIEGI } from './WypozyczalniaKsiag.js';
 
 /** 🎼 Opodysk z wtopioną partyturą 0.00G — nagranie Teatru Opodysku (tryb Fuzji) z przeglądarki */
 export const PLIK_PARTYTURY = 'opodysk_partytura_16x9.mp4';
@@ -1256,13 +1256,74 @@ export function utworzJasona(cfg) {
         if (sb) {
             for (const sc of sb.sceny) {
                 const kadr = sc.kadry?.['16:9'], ma = await maKlatke(kat, sc);
+                const lit = typeof k.narracja?.[sc.nr] === 'string' && k.narracja[sc.nr].trim() ? k.narracja[sc.nr].trim() : null, lek = k.lektor?.[sc.nr];
+                // 🎙️ prawdziwy głos ElevenLabs tylko wtedy, gdy nagranie czyta DOKŁADNIE ten tekst, który widać na stronie
+                const glos = lit && lek?.plik && String(lek.tekst ?? '').trim() === lit ? `/api/elevenlabs/plik/opodysk/${k.id}/${lek.plik}` : null;
                 strony.push({ chapterTitle: `Akt ${sc.nr} · ${sc.sekcja}`, imageCaption: sc.sekcja, dialogueLines: [],
-                    narrativeText: [sc.obraz, sc.wersy.length ? sc.wersy.map((w) => `♪ ${w}`).join('\n') : ''].filter(Boolean).join('\n\n'),
+                    narrativeText: lit ?? [sc.obraz, sc.wersy.length ? sc.wersy.map((w) => `♪ ${w}`).join('\n') : ''].filter(Boolean).join('\n\n'),
+                    ...(glos ? { audioUrl: glos } : {}),
                     ...(ma ? { imageUrl: `/api/jason/kampanie/${k.id}/storyboard/kadr/${kadr.plik.split('/').pop()}` } : {}) });
             }
         } else for (const sec of sekcjeTekstu(k.stacja.lyrics ?? '')) if (sec.wersy.length) strony.push({ chapterTitle: sec.nazwa, imageCaption: sec.nazwa, narrativeText: sec.wersy.join('\n'), dialogueLines: [] });
         if (!strony.length) throw new Error(`„${k.stacja.tytul}” nie ma tekstu ani storyboardu — nie ma z czego złożyć księgi.`);
         return { strony, sb };
+    }
+    /** 🎭 Dane do żywej Fuzji i skanera TeOfonu w portalu: tempo, długość, akty z kadrami (bez storyboardu portal liczy bloki po 8 taktów). */
+    async function opodyskMeta(k, sb) {
+        const kat = sciezkaWydania(k), b = `/api/jason/kampanie/${k.id}`, okl = k.spotify.okladka ? `${b}/spotify/okladka` : null, akty = [];
+        if (sb) for (const sc of sb.sceny) { const ma = await maKlatke(kat, sc); akty.push({ nr: sc.nr, nazwa: sc.sekcja, od: sc.od, do: sc.do, wersy: sc.wersy ?? [], obraz: ma ? `${b}/storyboard/kadr/${sc.kadry['16:9'].plik.split('/').pop()}` : okl }); }
+        return { album: k.album, tytul: k.stacja.tytul, artysci: k.artysci, bpm: k.stacja.bpm ?? sb?.bpm ?? null, sekundy: k.spotify.master?.sekundy ?? sb?.sekundy ?? null, okladka: okl, akty };
+    }
+    /** Pliki paczki stacji, które jadą do księgi (tylko istniejące): utwór, Canvas Fuzja, pergamin PDF, manuskrypt PDF, teledysk (z Tablicy albo Opodysk). */
+    async function mediaOpodysku(k) {
+        const kat = sciezkaWydania(k), m = {};
+        const dodaj = async (nazwa, p) => { if (p && await jestPlik(p)) m[nazwa] = p; };
+        await dodaj('piesn.mp3', path.join(kat, 'original.mp3'));
+        await dodaj('canvas-fuzja.mp4', path.join(kat, 'spotify_canvas_9x16_8s_fuzja.mp4'));
+        await dodaj('pergamin.pdf', path.join(kat, PLIKI_PERGAMINU.pdf));
+        await dodaj('manuskrypt.pdf', path.join(kat, PLIK_MANUSKRYPTU));
+        await dodaj('teledysk.mp4', (k.teledysk?.plik ? path.join(kat, k.teledysk.plik) : null) ?? sciezkaOpodysku(k));
+        return m;
+    }
+    /** 🎬 Teledysk z Tablicy Produkcji (Reżyser) podpięty do Opodysku: plik z katalogu produkcji kopiowany do paczki stacji. */
+    async function podepnijTeledysk(id, zrodlo) {
+        const k = await wczytaj(id), kat = k && sciezkaWydania(k);
+        if (!kat || !k.spotify) throw new Error('Teledysk podpinam do paczki wydawniczej stacji.');
+        if (!cfg.katalogProdukcji) throw new Error('Most nie zna katalogu produkcji.');
+        const baza = path.resolve(cfg.katalogProdukcji), p = path.resolve(path.isAbsolute(zrodlo) ? zrodlo : path.join(baza, String(zrodlo ?? '')));
+        if (p !== baza && !p.startsWith(baza + path.sep)) throw Object.assign(new Error('Teledysk musi leżeć w katalogu produkcji Katedry.'), { status: 400 });
+        if (!/\.mp4$/i.test(p) || !(await jestPlik(p))) throw Object.assign(new Error('Nie ma takiego pliku mp4 w produkcji.'), { status: 404 });
+        const nazwa = 'teledysk_tablica_16x9.mp4';
+        await fs.copyFile(p, path.join(kat, nazwa));
+        const k2 = await wczytaj(id);
+        k2.teledysk = { plik: nazwa, zrodlo: path.relative(baza, p).split(path.sep).join('/'), kiedy: new Date().toISOString() };
+        if (!k2.spotify.pliki.includes(nazwa)) k2.spotify.pliki.push(nazwa);
+        await zapisz(k2);
+        wiesc(`🎬 Jason: teledysk z Tablicy Produkcji podpięty do „${k.stacja.tytul}” (${k2.teledysk.zrodlo}).`);
+        return k2;
+    }
+    /**
+     * ✍️ Bogata narracja Żywej Księgi: dla każdego aktu storyboardu (z Tablicy Produkcji / Reżysera) model Kronikarza pisze 2 akapity literackie.
+     * Opiera się TYLKO na tym, co jest w storyboardzie i tekście utworu (nic nie zmyśla w fabule); wynik w `k.narracja[nr]`, ponowne wołanie nie nadpisuje, chyba że `odNowa`.
+     */
+    async function wzbogacNarracje(id, { odNowa = false } = {}) {
+        if (!cfg.pisz) throw new Error('Most nie ma podłączonego modelu pisarskiego (Kronikarz).');
+        let k = await wczytaj(id);
+        const sb = k && await czytajStoryboard(k);
+        if (!sb) throw new Error('Narracja powstaje ze storyboardu — najpierw „🎬 Projektuj Teledysk w TeO Story”.');
+        const system = 'You are the Chronicler of a musical-theatre storybook (cinematic, intimate, warm). Write EXACTLY two short literary paragraphs in English (about 90-130 words total) narrating one act of a music video-story. Third person, present tense, sensory and concrete. Use ONLY the facts given (setting, people, mood, lyric line); do not invent plot events, names or places. Quote at most one short phrase of the lyric. No headings, no markdown, no lists, no stage directions.';
+        let n = 0;
+        for (const sc of sb.sceny) {
+            k = await wczytaj(id);
+            if (!odNowa && typeof k.narracja?.[sc.nr] === 'string' && k.narracja[sc.nr].trim()) continue;
+            const prompt = `Song: „${k.stacja.tytul}” by ${k.artysci.join(' & ')}, album „${k.album}”, ${k.stacja.bpm ?? sb.bpm ?? '?'} BPM.\nAct ${sc.nr} · ${sc.sekcja} (${sc.plan ?? 'scene'}).\nOn screen: ${sc.obraz}\n${sc.kto?.length ? `Who appears: ${sc.kto.join(', ')}.\n` : ''}${sc.wersy?.length ? `Lyric in this act: ${sc.wersy.join(' / ')}\n` : 'This act is instrumental.\n'}Write the two paragraphs now.`;
+            const odp = String(await cfg.pisz(system, prompt) ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').replace(/[*#_`]/g, '').replace(/\r/g, '').trim();
+            const akapity = odp.split(/\n{2,}/).map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+            if (akapity.length < 1 || odp.length < 80 || odp.length > 1800) throw new Error(`Akt ${sc.nr}: model oddał nieużyteczny tekst (${odp.length} znaków) — nic nie zapisuję dla tego aktu.`);
+            k = await wczytaj(id); k.narracja = { ...(k.narracja ?? {}), [sc.nr]: akapity.join('\n\n') }; await zapisz(k); n++;
+        }
+        wiesc(`✍️ Jason: narracja literacka „${k.stacja.tytul}” — ${n} aktów dopisanych modelem Kronikarza.`);
+        return { akty: sb.sceny.length, dopisane: n, kampania: await wczytaj(id) };
     }
     /** Żywa Księga z Opodysku w Wypożyczalni — NIEWYSTAWIONA (widać ją w Dzienniku Żywych Wpisów; do portalu trafia dopiero po „wystaw”). */
     async function zlozKsiege(id, { tier = 'demo', cenaEur = 0, wystaw = false } = {}) {
@@ -1275,7 +1336,8 @@ export function utworzJasona(cfg) {
             author: k.artysci.join(' & '), narrator: k.artysci.join(' & '), language: 'en', sourceType: 'zywa-ksiega', characters: [], pages: strony };
         const live = spotifyLive(k, await ustawienia());
         if (live) book.spotify = { url: live.url };
-        let wpis = await cfg.wypozyczalnia.publikuj({ book, rentalTier: tier, cenaEur: tier === 'demo' ? 0 : cenaEur, wystaw });
+        book.opodysk = await opodyskMeta(k, sb);
+        let wpis = await cfg.wypozyczalnia.publikuj({ book, rentalTier: tier, cenaEur: tier === 'demo' ? 0 : cenaEur, wystaw, media: await mediaOpodysku(k) });
         if (wystaw && wpis.wystawiona === false && cfg.wypozyczalnia.wystaw) wpis = await cfg.wypozyczalnia.wystaw(wpis.id);
         const k2 = await wczytaj(id);
         k2.ksiega = { id: wpis.id, stron: strony.length, zKlatkami: strony.filter((s) => s.imageUrl).length, zStoryboardu: !!sb, tier: wpis.tier ?? tier, cenaEur: wpis.cenaEur ?? 0, spotify: !!live, wystawiona: wpis.wystawiona !== false, kiedy: new Date().toISOString() };
@@ -1565,12 +1627,12 @@ export function utworzJasona(cfg) {
     }
     /** Adres mostu → plik w paczce (Wypożyczalnia kopiuje klatki i nagrania aktów do księgi przy publikacji). Tylko klatki i akty. */
     function plikZAdresu(adres) {
-        const m = /^\/api\/jason\/kampanie\/(j-[0-9a-f]{8})\/(?:storyboard\/kadr\/(scena-\d{1,2}-16x9\.png)|teatr\/(akt-\d{2}\.mp3))$/.exec(String(adres ?? ''));
+        const m = /^\/api\/jason\/kampanie\/(j-[0-9a-f]{8})\/(?:storyboard\/kadr\/(scena-\d{1,2}-16x9\.png)|teatr\/(akt-\d{2}\.mp3)|(spotify\/okladka))$/.exec(String(adres ?? '')) ?? /^\/api\/elevenlabs\/plik\/opodysk\/(j-[0-9a-f]{8})\/([0-9a-f]{8,64}\.mp3)$/.exec(String(adres ?? ''));
         if (!m || !cfg.katalogMuzyki) return null;
         let k; try { k = JSON.parse(fsSync.readFileSync(plik(m[1]), 'utf8')); } catch { return null; }
         const kat = sciezkaWydania(k);
         if (!kat) return null;
-        const p = m[2] ? path.join(kat, 'storyboard', m[2]) : path.join(kat, 'teatr', m[3]);
+        const p = m[4] ? path.join(kat, 'cover_3000x3000.jpg') : /^[0-9a-f]{8,64}\.mp3$/.test(String(m[2])) ? path.join(kat, 'voices', m[2]) : m[2] ? path.join(kat, 'storyboard', m[2]) : path.join(kat, 'teatr', m[3]);
         return fsSync.existsSync(p) ? p : null;
     }
 
@@ -1615,7 +1677,7 @@ export function utworzJasona(cfg) {
         decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, ustawLektora, ustawAtmosfere, glosyKampanii, zlozKsiege, zlozManuskrypt, zlozKsiegeIManuskrypt, zlozWszystkieKsiegi, wystawWszystkie, zapiszCanvas, sciezkaCanvasu, synchronizujSpotify, spotifyLive, sciezkaManuskryptu, kodPergaminu, zapiszPergamin, sciezkaPergaminu, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, ustawLektora, ustawAtmosfere, glosyKampanii, zlozKsiege, zlozManuskrypt, zlozKsiegeIManuskrypt, zlozWszystkieKsiegi, wystawWszystkie, wzbogacNarracje, podepnijTeledysk, zapiszCanvas, sciezkaCanvasu, synchronizujSpotify, spotifyLive, sciezkaManuskryptu, kodPergaminu, zapiszPergamin, sciezkaPergaminu, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
@@ -1696,6 +1758,9 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     });
     // 📖 Żywa Księga + Manuskrypt PDF z Opodysku (tylko maszyna): księga zawsze, PDF gdy Chrome jest; `/ksiegi` = wszystkie stacje do listy Żywych Wpisów
     app.post('/api/jason/kampanie/:id/ksiega', async (req, res) => { try { res.json({ success: true, ...(await J.zlozKsiegeIManuskrypt(req.params.id)) }); } catch (e) { blad(res, e); } });
+    // ✍️ bogata narracja aktów (model Kronikarza, tylko z faktów storyboardu) i 🎬 teledysk z Tablicy Produkcji podpięty do Opodysku
+    app.post('/api/jason/kampanie/:id/narracja', async (req, res) => { try { const w = await J.wzbogacNarracje(req.params.id, { odNowa: req.body?.odNowa === true }); res.json({ success: true, akty: w.akty, dopisane: w.dopisane, narracja: w.kampania.narracja ?? {} }); } catch (e) { blad(res, e); } });
+    app.post('/api/jason/kampanie/:id/teledysk', async (req, res) => { try { const k = await J.podepnijTeledysk(req.params.id, req.body?.plik); res.json({ success: true, teledysk: k.teledysk }); } catch (e) { blad(res, e); } });
     app.post('/api/jason/opodyski/ksiegi', async (_req, res) => { try { res.json({ success: true, ...(await J.zlozWszystkieKsiegi()) }); } catch (e) { blad(res, e); } });
     // 🏛️ Wystaw wszystkie Żywe Księgi Opodysku w Wypożyczalni (publiczne!): Stacja 1 = darmowy Prolog, reszta wypożyczenie 48 h za `cenaEur`
     app.post('/api/jason/opodyski/wystaw', async (req, res) => { try { res.json({ success: true, ...(await J.wystawWszystkie({ cenaEur: req.body?.cenaEur ?? 1.99 })) }); } catch (e) { blad(res, e); } });

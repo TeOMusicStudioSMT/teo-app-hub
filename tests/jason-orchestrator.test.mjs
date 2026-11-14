@@ -1064,6 +1064,13 @@ test('📱🟢🏛️ Spotify Canvas 8 s 9:16 (prawdziwy ffmpeg), adres albumu �
         const pub = await W.katalogPubliczny();
         assert.equal(pub.length, 2); assert.ok(pub.every((x) => /^https:\/\/open\.spotify\.com\/embed\/(album|track)\//.test(x.spotify?.embed)));
         assert.equal(pub.find((x) => x.tier === 'demo').cenaEur, 0);
+        // 🎭 Opodysk w księdze: pieśń, Canvas Fuzja (gdy jest), dane do Fuzji i TeOfonu; media tylko z bramką dostępu
+        const demo = pub.find((x) => x.tier === 'demo');
+        assert.ok(demo.opodysk.media.includes('piesn.mp3'), `media: ${JSON.stringify(demo.opodysk)}`);
+        assert.ok(W.plikMedia(demo.id, 'piesn.mp3'), 'pieśń leży w księdze');
+        const czyt = await W.czytaj(demo.id);
+        assert.equal(czyt.ksiega.opodysk.bpm, 82); assert.ok(czyt.ksiega.opodysk.sekundy > 0); assert.match(czyt.ksiega.opodysk.tytul, /Velvet Booth/);
+        await assert.rejects(W.czytaj(pub.find((x) => x.tier === 'rental_48h').id), /płatność/i);
 
         // zmiana adresu po wystawieniu dociąga się do katalogu; zdjęcie adresów zdejmuje odznakę
         await zadaj('PUT', '/api/jason/ustawienia', { spotifyUtwor: { nr: 2, url: '' } });

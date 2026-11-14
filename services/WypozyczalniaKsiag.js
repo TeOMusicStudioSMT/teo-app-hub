@@ -40,6 +40,9 @@ export function dozwolonyPowrot(u, originy = ORIGINY) {
     try { const x = new URL(String(u)); return x.protocol === 'https:' && originy.includes(x.origin) ? x.origin + x.pathname : null; } catch { return null; }
 }
 
+/** 🎭 Pliki Opodysku dołączone do księgi (utwór, Canvas, pergamin, manuskrypt, teledysk) — te same nazwy co w trasie `/media/:plik`. */
+export const MEDIA_KSIEGI = ['piesn.mp3', 'canvas-fuzja.mp4', 'pergamin.pdf', 'manuskrypt.pdf', 'teledysk.mp4'];
+
 /** 🟢 Adres open.spotify.com (utwór, album, playlista) → {url, embed} do odznaki „LIVE ON SPOTIFY” i ramki odtwarzacza; inny adres = null. */
 export function spotifyZAdresu(adres) {
     const a = typeof adres === 'string' ? adres : adres?.url;
@@ -64,8 +67,10 @@ export function sprawdzKsiege(book, { tier = 'rental_48h', cenaEur = DOMYSLNA_CE
     const jezyk = JEZYKI_KSIAG[String(book.language ?? '').slice(0, 2)] ? String(book.language).slice(0, 2) : null;
     const przeklady = przekladyKsiegi(book);
     const spotify = spotifyZAdresu(book.spotify);
+    const media = (Array.isArray(book.opodysk?.media) ? book.opodysk.media : []).map((m) => (typeof m === 'string' ? m : m?.nazwa)).filter((n) => MEDIA_KSIEGI.includes(n));
     return {
         ...(spotify ? { spotify } : {}),
+        ...(media.length ? { opodysk: { media } } : {}),
         tytul, podtytul: tekst(book.subtitle, 200), autor: tekst(book.author, 120), stron: strony.length, tier,
         cenaEur: tier === 'demo' ? 0 : cena, bajtow,
         opis: tekst(strony.find((s) => s?.narrativeText)?.narrativeText, 280),
@@ -135,15 +140,19 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         let n = 0;
         const swoje = (url) => typeof url === 'string' && url.startsWith(`/wizytowka/teostory/${id}/`);
         for (const f of await fs.readdir(kat).catch(() => [])) { const m = /^obraz-(\d+)\./.exec(f); if (m) n = Math.max(n, Number(m[1])); }
+        const juz = new Map();   // ten sam adres (np. okładka stacji w wielu aktach) = jeden plik
         const przenies = async (url) => {
             if (swoje(url)) return url;
             if (typeof url !== 'string' || !url) return url;
+            if (juz.has(url)) return juz.get(url);
             const lok = obrazLokalny(url);
             const m = /^data:image\/(png|jpe?g|webp);base64,(.+)$/.exec(url);
             if (!lok && !m) return /^https:\/\//.test(url) ? url : undefined;
             const nazwa = `obraz-${++n}.${lok ? path.extname(lok).slice(1) || 'png' : m[1].replace('jpeg', 'jpg')}`;
             if (lok) await fs.copyFile(lok, path.join(kat, nazwa)); else await fs.writeFile(path.join(kat, nazwa), Buffer.from(m[2], 'base64'));
-            return `/wizytowka/teostory/${id}/obraz/${nazwa}`;
+            const adres = `/wizytowka/teostory/${id}/obraz/${nazwa}`;
+            juz.set(url, adres);
+            return adres;
         };
         // 🎙️ dźwięk strony (Własny Manuskrypt: lektor Głosek) → audio-N.mp3; obcy adres https zostaje, reszta znika
         let a = 0;
@@ -169,7 +178,9 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         }
         const characters = [];
         for (const c of book.characters ?? []) characters.push({ ...c, avatarCutoutUrl: await przenies(c?.avatarCutoutUrl) });
-        return { ...book, id, pages, characters, musicUrl };
+        // 🎭 Opodysk: kadry aktów i okładka też jadą do Wypożyczalni (portal rysuje z nich Fuzję i skaner TeOfonu)
+        const opodysk = book.opodysk && typeof book.opodysk === 'object' ? { ...book.opodysk, okladka: await przenies(book.opodysk.okladka) ?? null, akty: await Promise.all((Array.isArray(book.opodysk.akty) ? book.opodysk.akty : []).map(async (a) => ({ ...a, obraz: (await przenies(a?.obraz)) ?? null }))) } : undefined;
+        return { ...book, id, pages, characters, musicUrl, ...(opodysk ? { opodysk } : {}) };
     }
     function plikDzwieku(id, nazwa) {
         if (!ID.test(String(id)) || !/^(audio-\d{1,4}|muzyka)\.mp3$/.test(String(nazwa))) return null;
@@ -182,8 +193,29 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return fsSync.existsSync(p) ? p : null;
     }
 
-    function publikuj({ book, rentalTier = 'rental_48h', cenaEur = DOMYSLNA_CENA_EUR, pieczec = null, wystaw = true } = {}) {
+    /** Pliki Opodysku → `ksiegi/<id>/media/<nazwa>`; plik o tym samym rozmiarze zostaje (teledysk ma ~100 MB). Zwraca listę {nazwa, bajtow}. */
+    async function wstawMedia(id, media) {
+        const kat = path.join(KS, id, 'media'), lista = [];
+        await fs.mkdir(kat, { recursive: true });
+        for (const [nazwa, zrodlo] of Object.entries(media ?? {})) {
+            if (!MEDIA_KSIEGI.includes(nazwa) || !zrodlo) continue;
+            const st = await fs.stat(zrodlo).catch(() => null);
+            if (!st?.isFile()) continue;
+            const cel = path.join(kat, nazwa), jest = await fs.stat(cel).catch(() => null);
+            if (!jest || jest.size !== st.size) await fs.copyFile(zrodlo, cel);
+            lista.push({ nazwa, bajtow: st.size });
+        }
+        return lista;
+    }
+    function plikMedia(id, nazwa) {
+        if (!ID.test(String(id)) || !MEDIA_KSIEGI.includes(String(nazwa))) return null;
+        const p = path.join(KS, id, 'media', nazwa);
+        return fsSync.existsSync(p) ? p : null;
+    }
+    function publikuj({ book, rentalTier = 'rental_48h', cenaEur = DOMYSLNA_CENA_EUR, pieczec = null, wystaw = true, media = null } = {}) {
         return poKolei(async () => {
+            const idPre = idKsiegi(book.id || book.title);
+            if (media && book.opodysk) { await fs.mkdir(KS, { recursive: true }); book = { ...book, opodysk: { ...book.opodysk, media: await wstawMedia(idPre, media) } }; }
             const wpis = sprawdzKsiege(book, { tier: rentalTier, cenaEur });
             const id = idKsiegi(book.id || book.title);
             await fs.mkdir(KS, { recursive: true });
@@ -403,7 +435,7 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return zapiszKsiege(id, async (b) => ({ ...b, musicUrl: `/wizytowka/teostory/${id}/audio/muzyka.mp3`, music: { title: tekst(tytul, 120) || path.basename(lok, '.mp3'), author: tekst(autor, 120) || null } })).then((b) => ({ musicUrl: b.musicUrl, music: b.music }));
     }
 
-    return { plikObrazu, plikDzwieku, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, oferta, ustawSpotify, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
+    return { plikObrazu, plikDzwieku, plikMedia, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, oferta, ustawSpotify, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
         wypozyczenia: async () => (await czytaj(WYP, { wypozyczenia: [] })).wypozyczenia };
 }
 
@@ -452,6 +484,15 @@ export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10, federacj
         try {
             await W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null, sesje: String(req.query.sesje ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8) });
             const p = W.plikDzwieku(req.params.id, req.params.plik);
+            return p ? res.sendFile(p) : res.status(404).end();
+        } catch (e) { return res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }); }
+    });
+    // 🎭 pliki Opodysku (utwór, Canvas Fuzja, pergamin PDF, manuskrypt PDF, teledysk): ta sama bramka co audiobook — demo za darmo, wypożyczenie = opłacona sesja
+    app.get('/wizytowka/teostory/:id/media/:plik', async (req, res) => {
+        cors(res);
+        try {
+            await W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null, sesje: String(req.query.sesje ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8) });
+            const p = W.plikMedia(req.params.id, req.params.plik);
             return p ? res.sendFile(p) : res.status(404).end();
         } catch (e) { return res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }); }
     });

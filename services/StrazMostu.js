@@ -155,7 +155,7 @@ export const SCIEZKA_PLACU = /^\/wizytowka\/plac\/[a-z0-9-]{2,48}(\/wyjdz)?$/;
 export const SCIEZKA_ZAKUPU = /^\/wizytowka\/sklep\/pk-[0-9a-f]{8}\/kup$/;
 /** 📚 Wypożyczalnia Żywych Ksiąg (services/WypozyczalniaKsiag.js): portal teostory.studio — katalog, okładka, czytanie, odbiór (GET), wypożyczenie (POST). */
 // 🌿 + żywe wpisy księgi: liczniki (`/zywe`), oś wpisów (`/wpisy`), załączniki wpisów (`/wpis/w-….png|jpg|mp3`)
-export const SCIEZKA_TEOSTORY = /^\/wizytowka\/teostory(\/odbior|\/zywe|\/[a-z0-9][a-z0-9-]{2,63}\/(okladka|czytaj|wpisy|wpis\/w-[0-9a-f]{8}\.(png|jpg|mp3)|obraz\/obraz-\d{1,3}\.(png|jpg|webp)|audio\/(audio-\d{1,4}|muzyka)\.mp3))?$/;
+export const SCIEZKA_TEOSTORY = /^\/wizytowka\/teostory(\/odbior|\/zywe|\/[a-z0-9][a-z0-9-]{2,63}\/(okladka|czytaj|wpisy|wpis\/w-[0-9a-f]{8}\.(png|jpg|mp3)|obraz\/obraz-\d{1,3}\.(png|jpg|webp)|audio\/(audio-\d{1,4}|muzyka)\.mp3|media\/(piesn\.mp3|canvas-fuzja\.mp4|pergamin\.pdf|manuskrypt\.pdf|teledysk\.mp4)))?$/;
 export const SCIEZKA_ZGLOSZENIA_KSIEGI = /^\/wizytowka\/teostory\/zgloszenie$/;   // 📚🏛️ federacja: zgłoszenie księgi innej Katedry (podpis z rejestru)
 /** 🌌 Gałąź Żywej Księgi z innej Katedry (services/KsiegaWielowymiarowa.js): podpis kluczem z rejestru, ✓ Suwerena w Izbie. */
 export const SCIEZKA_GALEZI_KSIEGI = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/galaz$/;
