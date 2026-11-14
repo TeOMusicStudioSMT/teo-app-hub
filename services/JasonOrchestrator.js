@@ -57,9 +57,13 @@ export const PLIK_MANUSKRYPTU = 'manuskrypt_000g.pdf';
 export const PLIKI_PERGAMINU = { svg: 'pergamin_000g.svg', png: 'pergamin_000g.png', pdf: 'pergamin_000g.pdf' };
 import { zlozOpodysk, PLIK_OPODYSKU, dlugoscPliku } from './Opodysk.js';
 import { nagranieDoMp4 } from './OdcinkiStudia.js';
+import { spotifyZAdresu } from './WypozyczalniaKsiag.js';
 
 /** 🎼 Opodysk z wtopioną partyturą 0.00G — nagranie Teatru Opodysku (tryb Fuzji) z przeglądarki */
 export const PLIK_PARTYTURY = 'opodysk_partytura_16x9.mp4';
+/** 📱 Spotify Canvas: pętla 8 s, 9:16 (1080×1920), H.264 bez dźwięku — wgrywasz w Spotify for Artists → Add Canvas. */
+export const PLIK_CANVAS = 'spotify_canvas_9x16_8s.mp4';
+export const WARIANTY_CANVAS = ['fuzja', 'teofon'];
 
 // Suweren 2026-11-12: dawny prompt („StarLight Diner… neon”) dał bełkotliwy szyld i kanapę na chodniku PRZED barem → czyste wnętrze, żadnych napisów.
 export const KLIMAT_OKLADKI = 'Cinematic cozy interior photograph inside a late-night retro diner, a woman and a man sitting across from each other in a deep red velvet booth inside the room, '
@@ -842,6 +846,7 @@ export function utworzJasona(cfg) {
         }
         await fs.mkdir(path.dirname(plikUstawien), { recursive: true });
         await fs.writeFile(plikUstawien, JSON.stringify(u, null, 2));
+        if ('spotifyAlbum' in z || z.spotifyUtwor) await synchronizujSpotify().catch(() => {});
         return ustawienia();
     }
     const ustawDystrybutora = (adres) => ustaw({ dystrybutor: adres });
@@ -1260,7 +1265,7 @@ export function utworzJasona(cfg) {
         return { strony, sb };
     }
     /** Żywa Księga z Opodysku w Wypożyczalni — NIEWYSTAWIONA (widać ją w Dzienniku Żywych Wpisów; do portalu trafia dopiero po „wystaw”). */
-    async function zlozKsiege(id) {
+    async function zlozKsiege(id, { tier = 'demo', cenaEur = 0, wystaw = false } = {}) {
         const k = await wczytaj(id);
         if (!k) throw Object.assign(new Error('Nie ma takiej kampanii.'), { kod: 404 });
         if (k.stan !== 'przyjeta' || !k.spotify) throw new Error('Księgę składam z gotowej paczki wydawniczej.');
@@ -1268,9 +1273,12 @@ export function utworzJasona(cfg) {
         const { strony, sb } = await stronyKsiegi(k);
         const book = { id: `zk-opodysk-${String(k.stacja.nr).padStart(2, '0')}-${slugKsiegi(k.stacja.tytul)}`, title: k.stacja.tytul, subtitle: `${k.artysci.join(' & ')} · ${k.album}`,
             author: k.artysci.join(' & '), narrator: k.artysci.join(' & '), language: 'en', sourceType: 'zywa-ksiega', characters: [], pages: strony };
-        const wpis = await cfg.wypozyczalnia.publikuj({ book, rentalTier: 'demo', cenaEur: 0, wystaw: false });
+        const live = spotifyLive(k, await ustawienia());
+        if (live) book.spotify = { url: live.url };
+        let wpis = await cfg.wypozyczalnia.publikuj({ book, rentalTier: tier, cenaEur: tier === 'demo' ? 0 : cenaEur, wystaw });
+        if (wystaw && wpis.wystawiona === false && cfg.wypozyczalnia.wystaw) wpis = await cfg.wypozyczalnia.wystaw(wpis.id);
         const k2 = await wczytaj(id);
-        k2.ksiega = { id: wpis.id, stron: strony.length, zKlatkami: strony.filter((s) => s.imageUrl).length, zStoryboardu: !!sb, wystawiona: wpis.wystawiona !== false, kiedy: new Date().toISOString() };
+        k2.ksiega = { id: wpis.id, stron: strony.length, zKlatkami: strony.filter((s) => s.imageUrl).length, zStoryboardu: !!sb, tier: wpis.tier ?? tier, cenaEur: wpis.cenaEur ?? 0, spotify: !!live, wystawiona: wpis.wystawiona !== false, kiedy: new Date().toISOString() };
         await zapisz(k2);
         wiesc(`📖 Jason: Żywa Księga „${k.stacja.tytul}” złożona (${strony.length} stron${sb ? '' : ', z sekcji tekstu — bez storyboardu'}) — jest na liście Żywych Wpisów.`);
         return k2;
@@ -1330,6 +1338,38 @@ export function utworzJasona(cfg) {
         }
         return { zrobione, bledy };
     }
+    let wystawiana = false;
+    /**
+     * 🏛️ „Wystaw wszystkie Żywe Księgi Opodysku” (Suweren 2026-11-14): jedna kolekcja — Stacja 1 jako darmowy Prolog (demo), pozostałe wypożyczenie 48 h za `cenaEur`.
+     * Każda księga dostaje odznakę Spotify (adres stacji albo albumu) i — gdy jest Chrome — manuskrypt PDF w paczce. Rolowany pergamin składa przeglądarka
+     * (silnik partytury), więc stacje bez niego trafiają do `uwagi`; do Wypożyczalni PDF ani pergamin nie jadą (to pliki paczki stacji).
+     */
+    async function wystawWszystkie({ cenaEur = 1.99 } = {}) {
+        const cena = Math.round(Number(cenaEur) * 100) / 100;
+        if (!(cena >= 0.5 && cena <= 100)) throw new Error('Cena wypożyczenia: 0,50–100 €.');
+        if (!cfg.wypozyczalnia?.wystaw) throw new Error('Most nie ma podłączonej Wypożyczalni teostory.studio.');
+        if (wystawiana || skladana) throw new Error('Most właśnie składa księgi — poczekaj chwilę.');
+        wystawiana = true;
+        try {
+            const widziane = new Set(), zrobione = [], bledy = [], uwagi = [], ks = [];
+            for (const k of await lista()) { if (k.stan !== 'przyjeta' || !k.spotify || widziane.has(k.stacja.nr)) continue; widziane.add(k.stacja.nr); ks.push(k); }
+            ks.sort((a, b) => a.stacja.nr - b.stacja.nr);
+            if (!ks.length) throw new Error('Żadna stacja nie ma paczki wydawniczej — nie ma czego wystawić.');
+            for (const s of ks) {
+                try {
+                    const tier = s.stacja.nr === 1 ? 'demo' : 'rental_48h';
+                    let k = await zlozKsiege(s.id, { tier, cenaEur: cena, wystaw: true });
+                    let pdf = !!k.manuskrypt?.plik;
+                    if (!pdf && cfg.pdf) { try { k = await zlozManuskrypt(s.id); pdf = true; } catch (e) { uwagi.push(`Stacja ${s.stacja.nr}: manuskrypt PDF nie powstał (${tn(e.message, 160)}).`); } }
+                    if (!k.pergamin?.pdf && !k.pergamin?.svg) uwagi.push(`Stacja ${s.stacja.nr}: brak Rolowanego Pergaminu — wydrukuj go w Teatrze Opodysku (silnik partytury działa w przeglądarce).`);
+                    if (!k.spotifyLive && !spotifyLive(k, await ustawienia())) uwagi.push(`Stacja ${s.stacja.nr}: brak adresu Spotify — odznaka „LIVE ON SPOTIFY” pojawi się po wklejeniu adresu albumu lub utworu.`);
+                    zrobione.push({ nr: s.stacja.nr, id: k.ksiega.id, tytul: s.stacja.tytul, tier, cenaEur: tier === 'demo' ? 0 : cena, stron: k.ksiega.stron, manuskrypt: pdf, pergamin: !!(k.pergamin?.pdf || k.pergamin?.svg), spotify: !!k.ksiega.spotify });
+                } catch (e) { bledy.push(`Stacja ${s.stacja.nr}: ${tn(e.message, 200)}`); }
+            }
+            if (zrobione.length) wiesc(`🏛️ Jason: ${zrobione.length} Żywych Ksiąg Opodysku jest w Wypożyczalni teostory.studio (Stacja 1 za darmo, reszta ${cena.toFixed(2)} € / 48 h).`);
+            return { zrobione, bledy, uwagi };
+        } finally { wystawiana = false; }
+    }
     const sciezkaManuskryptu = (k) => (k?.manuskrypt?.plik && sciezkaWydania(k) ? path.join(sciezkaWydania(k), k.manuskrypt.plik) : null);
 
     // ── 📜 Rolowany Pergamin (TeOfon Scroll): SVG zbudowany w przeglądarce silnikiem partytury → paczka (svg, png, pdf) ──
@@ -1373,6 +1413,49 @@ export function utworzJasona(cfg) {
         manuskrypt: k.manuskrypt?.plik ? { url: `${b}/manuskrypt?v=${k.manuskrypt.wersja ?? 1}`, aktow: k.manuskrypt.aktow ?? null, bajtow: k.manuskrypt.bajtow ?? null } : null,
         pergamin: k.pergamin ? { ...Object.fromEntries(['svg', 'png', 'pdf'].filter((r) => k.pergamin[r]).map((r) => [r, `${b}/pergamin/${r}?v=${k.pergamin.wersja ?? 1}`])), szer: k.pergamin.szer ?? null, wys: k.pergamin.wys ?? null, uwaga: k.pergamin.uwaga ?? null } : null }; };
     const sciezkaPartytury = (k) => (k?.partytura?.plik && sciezkaWydania(k) ? path.join(sciezkaWydania(k), k.partytura.plik) : null);
+    // ── 📱 Spotify Canvas (Suweren 2026-11-14): Teatr nagrywa 8 s płótna 9:16 (pętla domknięta przenikaniem końca w początek), most robi z tego mp4 ──
+    let renderowanyCanvas = null;
+    /** webm z przeglądarki → `spotify_canvas_9x16_8s.mp4`: 1080×1920, 30 kl/s, H.264, bez dźwięku, DOKŁADNIE 8,0 s (sprawdzane po kodowaniu). */
+    async function zapiszCanvas(id, bufor, { wariant = 'fuzja', od = null, trwaloMs = null } = {}) {
+        let k = await wczytaj(id);
+        const kat = k && sciezkaWydania(k);
+        if (!kat || !k.spotify) throw Object.assign(new Error('Canvas zapisuję w paczce wydawniczej — najpierw „🚀 Przygotuj i wyślij na Spotify”.'), { status: 409 });
+        if (!WARIANTY_CANVAS.includes(wariant)) throw Object.assign(new Error('Wariant Canvas: fuzja albo teofon.'), { status: 400 });
+        if (!cfg.ffmpeg || !cfg.uruchom) throw Object.assign(new Error('Most nie ma podłączonego ffmpeg dla Jasona.'), { status: 409 });
+        if (!Buffer.isBuffer(bufor) || bufor.length < 20_000) throw Object.assign(new Error('Nagranie Canvas jest puste albo za małe.'), { status: 400 });
+        if (trwaloMs != null && trwaloMs < 7500) throw Object.assign(new Error(`Nagranie trwało ${(trwaloMs / 1000).toFixed(1)} s — Canvas ma 8 s; nie zapisuję urwanego.`), { status: 422 });
+        if (renderowanyCanvas) throw Object.assign(new Error('Most właśnie przelicza inny Canvas — poczekaj chwilę.'), { status: 409 });
+        renderowanyCanvas = id;
+        const praca = path.join(kat, '.canvas');
+        try {
+            await fs.rm(praca, { recursive: true, force: true }); await fs.mkdir(praca, { recursive: true });
+            const we = path.join(praca, 'we.webm'), wy = path.join(praca, 'canvas.mp4');
+            await fs.writeFile(we, bufor);
+            await cfg.uruchom(cfg.ffmpeg, ['-loglevel', 'error', '-y', '-i', we, '-vf', 'fps=30,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,tpad=stop_mode=clone:stop_duration=2,trim=duration=8,setpts=PTS-STARTPTS',
+                '-an', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30', '-movflags', '+faststart', wy], { windowsHide: true, timeout: 5 * 60_000, maxBuffer: 1 << 24 });
+            const sekundy = await dlugoscPliku(cfg.ffmpeg, cfg.uruchom, wy);
+            if (!(sekundy > 7.9 && sekundy < 8.1)) throw Object.assign(new Error(`Po przeliczeniu Canvas trwa ${sekundy ?? '?'} s, a ma 8,0 — nie zapisuję.`), { status: 422 });
+            const cel = path.join(kat, PLIK_CANVAS);
+            await fs.rename(wy, cel).catch(async () => { await fs.copyFile(wy, cel); });
+            const bajtow = (await fs.stat(cel)).size;
+            k = await wczytaj(id);
+            if (!k.spotify.pliki.includes(PLIK_CANVAS)) k.spotify.pliki.push(PLIK_CANVAS);
+            k.canvas = { plik: PLIK_CANVAS, wariant, od: Number.isFinite(Number(od)) ? Math.round(Number(od) * 100) / 100 : null, sekundy: 8, bajtow, wersja: (Number(k.canvas?.wersja) || 0) + 1, kiedy: new Date().toISOString() };
+            await zapisz(k);
+            wiesc(`📱 Jason: Spotify Canvas „${k.stacja.tytul}” (${wariant === 'teofon' ? 'skaner pergaminu' : 'fuzja partytury'}, 8 s · 9:16) gotowy — _OtakOs_Muzyka/${k.spotify.folder}/${PLIK_CANVAS}. Wgrywasz w Spotify for Artists → Add Canvas.`);
+            return k;
+        } finally { renderowanyCanvas = null; await fs.rm(praca, { recursive: true, force: true }).catch(() => {}); }
+    }
+    const sciezkaCanvasu = (k) => (k?.canvas?.plik && sciezkaWydania(k) ? path.join(sciezkaWydania(k), k.canvas.plik) : null);
+    /** 🟢 Adres Spotify stacji: jej własny, a gdy go nie ma — adres całego albumu (jedno pole dla wszystkich dziesięciu). */
+    const spotifyLive = (k, u) => { const wlasny = u.spotify?.utwory?.[k.stacja.nr] ?? null, url = wlasny ?? u.spotify?.album ?? null, sp = spotifyZAdresu(url); return sp ? { ...sp, zrodlo: wlasny ? 'utwor' : 'album' } : null; };
+    /** Odznaka Spotify w katalogu Wypożyczalni dla każdej stacji, która ma już księgę (po wklejeniu / zmianie adresu). Błąd nie psuje zapisu ustawień. */
+    async function synchronizujSpotify() {
+        if (!cfg.wypozyczalnia?.ustawSpotify) return 0;
+        const u = await ustawienia(); let n = 0;
+        for (const k of await lista()) { if (!k.ksiega?.id || k.stan !== 'przyjeta') continue; const sp = spotifyLive(k, u); if (await cfg.wypozyczalnia.ustawSpotify(k.ksiega.id, sp?.url ?? null).catch(() => null)) n++; }
+        return n;
+    }
     const sciezkaAudio = (k) => (sciezkaWydania(k) ? path.join(sciezkaWydania(k), 'original.mp3') : null);
     async function pokazOpodysk(id) {
         const p = sciezkaOpodysku(await wczytaj(id));
@@ -1394,6 +1477,7 @@ export function utworzJasona(cfg) {
                 opodysk: k.opodysk?.plik ? { url: `${b}/opodysk/wideo?v=${k.opodysk.wersja ?? 1}`, sekundy: k.opodysk.sekundy ?? null, stan: k.opodysk.stan } : null,
                 partytura: k.partytura?.plik ? { url: `${b}/opodysk/partytura/wideo?v=${k.partytura.wersja ?? 1}`, sekundy: k.partytura.sekundy ?? null } : null,
                 ...glosyKampanii(k), ...adresyDruku(k),
+                canvas: k.canvas?.plik ? { url: `${b}/canvas/wideo?v=${k.canvas.wersja ?? 1}`, sekundy: k.canvas.sekundy ?? 8, wariant: k.canvas.wariant ?? null, od: k.canvas.od ?? null } : null, spotifyLive: spotifyLive(k, u),
                 wypozyczalnia: k.wypozyczalnia ?? null, spotify: u.spotify.utwory[k.stacja.nr] ?? null, suno: k.wybrana?.id ? linkOdsluchu(k.wybrana.id) : null });
         }
         utwory.sort((a, b) => a.nr - b.nr);
@@ -1531,7 +1615,7 @@ export function utworzJasona(cfg) {
         decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, ustawLektora, ustawAtmosfere, glosyKampanii, zlozKsiege, zlozManuskrypt, zlozKsiegeIManuskrypt, zlozWszystkieKsiegi, sciezkaManuskryptu, kodPergaminu, zapiszPergamin, sciezkaPergaminu, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, ustawLektora, ustawAtmosfere, glosyKampanii, zlozKsiege, zlozManuskrypt, zlozKsiegeIManuskrypt, zlozWszystkieKsiegi, wystawWszystkie, zapiszCanvas, sciezkaCanvasu, synchronizujSpotify, spotifyLive, sciezkaManuskryptu, kodPergaminu, zapiszPergamin, sciezkaPergaminu, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
@@ -1613,6 +1697,16 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     // 📖 Żywa Księga + Manuskrypt PDF z Opodysku (tylko maszyna): księga zawsze, PDF gdy Chrome jest; `/ksiegi` = wszystkie stacje do listy Żywych Wpisów
     app.post('/api/jason/kampanie/:id/ksiega', async (req, res) => { try { res.json({ success: true, ...(await J.zlozKsiegeIManuskrypt(req.params.id)) }); } catch (e) { blad(res, e); } });
     app.post('/api/jason/opodyski/ksiegi', async (_req, res) => { try { res.json({ success: true, ...(await J.zlozWszystkieKsiegi()) }); } catch (e) { blad(res, e); } });
+    // 🏛️ Wystaw wszystkie Żywe Księgi Opodysku w Wypożyczalni (publiczne!): Stacja 1 = darmowy Prolog, reszta wypożyczenie 48 h za `cenaEur`
+    app.post('/api/jason/opodyski/wystaw', async (req, res) => { try { res.json({ success: true, ...(await J.wystawWszystkie({ cenaEur: req.body?.cenaEur ?? 1.99 })) }); } catch (e) { blad(res, e); } });
+    // 📱 Spotify Canvas 8 s · 9:16: surowe nagranie płótna (video/webm) → mp4 w paczce; `?wariant=fuzja|teofon&od=<sek>&ms=<czas nagrania>`
+    if (raw) app.post('/api/jason/kampanie/:id/canvas', raw({ type: ['video/*', 'application/octet-stream'], limit: '400mb' }), async (req, res) => {
+        try { const k = await J.zapiszCanvas(req.params.id, req.body, { wariant: String(req.query.wariant ?? 'fuzja'), od: req.query.od ?? null, trwaloMs: req.query.ms != null ? Number(req.query.ms) : null }); res.json({ success: true, canvas: k.canvas }); } catch (e) { blad(res, e); }
+    });
+    app.get('/api/jason/kampanie/:id/canvas/wideo', async (req, res) => {
+        const p = J.sciezkaCanvasu(await J.kampania(req.params.id));
+        return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Ta kampania nie ma jeszcze Spotify Canvas.' });
+    });
     app.get('/api/jason/kampanie/:id/manuskrypt', async (req, res) => {
         const p = J.sciezkaManuskryptu(await J.kampania(req.params.id));
         return p && await fs.access(p).then(() => true, () => false) ? res.sendFile(p) : res.status(404).json({ success: false, message: 'Ta kampania nie ma jeszcze manuskryptu PDF.' });

@@ -14,7 +14,8 @@ import { czyDlaSparowanych } from '../services/StrazMostu.js';
 import { utworzWypozyczalnie } from '../services/WypozyczalniaKsiag.js';
 import { planMontazu, napisyKlipu, ruchUjecia, zawin, dlugoscPliku, FPS, PLIK_OPODYSKU } from '../services/Opodysk.js';
 import { oczyscStacje, artystaZGlosu } from '../services/JasonOrchestrator.js';
-import { PLIK_PARTYTURY } from '../services/JasonOrchestrator.js';
+import { PLIK_PARTYTURY, PLIK_CANVAS } from '../services/JasonOrchestrator.js';
+import { spotifyZAdresu } from '../services/WypozyczalniaKsiag.js';
 import { PLIK_MANUSKRYPTU, PLIKI_PERGAMINU } from '../services/JasonOrchestrator.js';
 import { htmlManuskryptu, htmlPergaminu, sprawdzSvg, macierzQr, htmlDoPdf, esc } from '../services/DrukOpodysku.js';
 import QRCode from 'qrcode';
@@ -987,5 +988,87 @@ test('📖📜 Żywa Księga + Manuskrypt PDF z Opodysku, kod QR i zapis Rolowan
         // wszystkie stacje z paczką trafiają do listy Żywych Wpisów (tu: jedna)
         const w = await zadaj('POST', '/api/jason/opodyski/ksiegi');
         assert.equal(w.success, true); assert.equal(w.bledy.length, 0, w.bledy.join(' ')); assert.equal(w.zrobione.length, 1);
+    } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
+});
+
+test('🟢 adres Spotify → odznaka i ramka; zły adres odpada (czyste)', () => {
+    assert.deepEqual(spotifyZAdresu('https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy?si=abc'), { url: 'https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy', embed: 'https://open.spotify.com/embed/album/4aawyAB9vmqN3uQ7FjRGTy' });
+    assert.equal(spotifyZAdresu('https://open.spotify.com/intl-pl/track/3n3Ppam7vgaVa1iaRUc9Lp').embed, 'https://open.spotify.com/embed/track/3n3Ppam7vgaVa1iaRUc9Lp');
+    for (const zly of ['http://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy', 'https://evil.example/open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy', 'https://open.spotify.com/artist/4aawyAB9vmqN3uQ7FjRGTy', 'https://open.spotify.com/album/x', '', null, 42]) assert.equal(spotifyZAdresu(zly), null, String(zly));
+});
+
+test('📱🟢🏛️ Spotify Canvas 8 s 9:16 (prawdziwy ffmpeg), adres albumu → odznaka w stacjach i katalogu Wypożyczalni, „wystaw wszystkie” (trasy HTTP)', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jason-canvas-'));
+    const uruchom = promisify(execFile);
+    const muzyka = path.join(tmp, 'muzyka');
+    const suno = atrapaSuno(tmp);
+    suno.zapiszUtwory = async (_w, gotowe) => Promise.all(gotowe.map(async (u) => {
+        const plik = `Suno MCP/x [${u.id.slice(0, 8)}].mp3`;
+        await fs.mkdir(path.join(muzyka, 'Suno MCP'), { recursive: true });
+        await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=8', path.join(muzyka, plik)]);
+        return { ...u, plik, nowy: true };
+    }));
+    const W = utworzWypozyczalnie({ katalog: path.join(tmp, 'teostory') });
+    const J = utworzJasona({ katalog: tmp, suno, przerwaPobraniaMs: 5, katalogMuzyki: muzyka, ffmpeg: ffmpegPath, uruchom,
+        okladka: async () => { const o = path.join(tmp, 'flux.png'); await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=64x64', '-frames:v', '1', o]); return o; },
+        wypozyczalnia: { publikuj: (x) => W.publikuj(x), wystaw: (id) => W.wystaw(id), ustawSpotify: (id, a) => W.ustawSpotify(id, a) } });
+    const app = express(); app.use(express.json());
+    zamontujTrasyJasona(app, J, { raw: express.raw });
+    const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
+    const zadaj = async (m, s, b) => { const r = await fetch(baza + s, { method: m, headers: { 'Content-Type': 'application/json' }, ...(b ? { body: JSON.stringify(b) } : {}) }); return { status: r.status, ...(await r.json()) }; };
+    const webm = async (sek, rozm = '360x640') => { const w = path.join(tmp, `c-${sek}.webm`); await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `testsrc=size=${rozm}:rate=30:duration=${sek}`, '-c:v', 'libvpx', '-b:v', '1M', w]); return fs.readFile(w); };
+    const wyslij = async (id, bufor, q = '?wariant=fuzja&od=61.5&ms=8010') => { const r = await fetch(`${baza}/api/jason/kampanie/${id}/canvas${q}`, { method: 'POST', headers: { 'Content-Type': 'video/webm' }, body: bufor }); return { status: r.status, ...(await r.json()) }; };
+    try {
+        const stacje = [];
+        for (const nr of [1, 2]) { const { id } = await J.wykonaj({ stacja: nr, okladka: false }); await J._czekaj(id); await J.rozstrzygnij(id, 'pobierz-1', {}); await J.przygotujSpotify(id); stacje.push(id); }
+        const [id1, id2] = stacje;
+        const kat = J.sciezkaWydania(await J.kampania(id1));
+
+        // ── Canvas ──
+        assert.equal((await fetch(`${baza}/api/jason/kampanie/${id1}/canvas/wideo`)).status, 404);
+        const pelne = await webm(8.3);
+        assert.equal((await wyslij(id1, pelne, '?wariant=hologram&ms=8010')).success, false, 'nieznany wariant');
+        assert.match((await wyslij(id1, pelne, '?wariant=fuzja&ms=3000')).message, /Canvas ma 8 s/, 'urwane nagranie odrzucone');
+        assert.equal((await wyslij(id1, Buffer.from('nie wideo'))).success, false, 'puste/śmieci odrzucone');
+        const w = await wyslij(id1, pelne);
+        assert.equal(w.success, true, w.message);
+        assert.equal(w.canvas.plik, PLIK_CANVAS); assert.equal(w.canvas.plik, 'spotify_canvas_9x16_8s.mp4'); assert.equal(w.canvas.wariant, 'fuzja'); assert.equal(w.canvas.od, 61.5); assert.equal(w.canvas.wersja, 1);
+        const film = path.join(kat, PLIK_CANVAS), sek = await dlugoscPliku(ffmpegPath, uruchom, film);
+        assert.ok(sek > 7.9 && sek < 8.1, `Canvas trwa ${sek} s`);
+        let info = ''; try { await uruchom(ffmpegPath, ['-hide_banner', '-i', film]); } catch (e) { info = e.stderr; }
+        assert.match(info, /Video: h264/); assert.match(info, /1080x1920/); assert.doesNotMatch(info, /Audio:/, 'Canvas jest bez dźwięku'); assert.match(info, /30 fps/);
+        assert.ok((await J.kampania(id1)).spotify.pliki.includes(PLIK_CANVAS));
+        assert.equal(await fs.access(path.join(kat, '.canvas')).then(() => true, () => false), false, 'katalog roboczy posprzątany');
+        assert.equal((await fetch(`${baza}/api/jason/kampanie/${id1}/canvas/wideo`)).status, 200);
+        assert.equal((await wyslij(id1, pelne, '?wariant=teofon&od=10&ms=8010')).canvas.wersja, 2, 'ponowny Canvas podmienia plik');
+        assert.equal(czyDlaSparowanych('POST', `/api/jason/kampanie/${id1}/canvas`), false, 'Canvas tylko przy maszynie');
+        assert.equal((await J.opodyski()).utwory.find((u) => u.id === id1).canvas.wariant, 'teofon');
+
+        // ── adres Spotify: jedno pole dla albumu, własny adres stacji wygrywa ──
+        assert.equal((await zadaj('PUT', '/api/jason/ustawienia', { spotifyAlbum: 'https://evil.example/album/x' })).success, false);
+        await zadaj('PUT', '/api/jason/ustawienia', { spotifyAlbum: 'https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy' });
+        let kat0 = await zadaj('GET', '/api/jason/opodyski');
+        for (const u of kat0.utwory) { assert.equal(u.spotifyLive.zrodlo, 'album'); assert.equal(u.spotifyLive.embed, 'https://open.spotify.com/embed/album/4aawyAB9vmqN3uQ7FjRGTy'); }
+        await zadaj('PUT', '/api/jason/ustawienia', { spotifyUtwor: { nr: 2, url: 'https://open.spotify.com/track/3n3Ppam7vgaVa1iaRUc9Lp' } });
+        kat0 = await zadaj('GET', '/api/jason/opodyski');
+        const u2 = kat0.utwory.find((u) => u.nr === 2); assert.equal(u2.spotifyLive.zrodlo, 'utwor'); assert.equal(u2.spotifyLive.embed, 'https://open.spotify.com/embed/track/3n3Ppam7vgaVa1iaRUc9Lp');
+
+        // ── „wystaw wszystkie”: Stacja 1 = darmowy Prolog, reszta 48 h; odznaka Spotify w katalogu publicznym ──
+        assert.equal((await zadaj('POST', '/api/jason/opodyski/wystaw', { cenaEur: 0.1 })).success, false, 'cena poza zakresem');
+        assert.equal((await W.katalogPubliczny()).length, 0, 'przed wystawieniem nic nie jest publiczne');
+        const wy = await zadaj('POST', '/api/jason/opodyski/wystaw', { cenaEur: 2.5 });
+        assert.equal(wy.success, true, wy.message); assert.equal(wy.bledy.length, 0, wy.bledy.join(' ')); assert.equal(wy.zrobione.length, 2);
+        assert.equal(wy.zrobione[0].tier, 'demo'); assert.equal(wy.zrobione[0].cenaEur, 0); assert.equal(wy.zrobione[1].tier, 'rental_48h'); assert.equal(wy.zrobione[1].cenaEur, 2.5);
+        assert.ok(wy.zrobione.every((z) => z.spotify), 'obie księgi z odznaką Spotify');
+        assert.ok(wy.uwagi.some((x) => /Rolowanego Pergaminu/.test(x)), 'brak pergaminu zgłoszony wprost, nie udawany');
+        const pub = await W.katalogPubliczny();
+        assert.equal(pub.length, 2); assert.ok(pub.every((x) => /^https:\/\/open\.spotify\.com\/embed\/(album|track)\//.test(x.spotify?.embed)));
+        assert.equal(pub.find((x) => x.tier === 'demo').cenaEur, 0);
+
+        // zmiana adresu po wystawieniu dociąga się do katalogu; zdjęcie adresów zdejmuje odznakę
+        await zadaj('PUT', '/api/jason/ustawienia', { spotifyUtwor: { nr: 2, url: '' } });
+        assert.match((await W.katalogPubliczny()).find((x) => x.tier === 'rental_48h').spotify.embed, /embed\/album\//);
+        await zadaj('PUT', '/api/jason/ustawienia', { spotifyAlbum: '' });
+        assert.ok((await W.katalogPubliczny()).every((x) => !x.spotify), 'bez adresu nie ma odznaki');
     } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
 });

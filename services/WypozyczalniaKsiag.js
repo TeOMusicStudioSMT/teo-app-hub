@@ -40,6 +40,13 @@ export function dozwolonyPowrot(u, originy = ORIGINY) {
     try { const x = new URL(String(u)); return x.protocol === 'https:' && originy.includes(x.origin) ? x.origin + x.pathname : null; } catch { return null; }
 }
 
+/** 🟢 Adres open.spotify.com (utwór, album, playlista) → {url, embed} do odznaki „LIVE ON SPOTIFY” i ramki odtwarzacza; inny adres = null. */
+export function spotifyZAdresu(adres) {
+    const a = typeof adres === 'string' ? adres : adres?.url;
+    const m = /^https:\/\/open\.spotify\.com\/(?:intl-[a-z]{2,5}\/)?(track|album|playlist)\/([A-Za-z0-9]{10,40})(?:[/?#][^\s]*)?$/.exec(String(a ?? '').trim());
+    return m ? { url: `https://open.spotify.com/${m[1]}/${m[2]}`, embed: `https://open.spotify.com/embed/${m[1]}/${m[2]}` } : null;
+}
+
 /** Sprawdza księgę silnika i robi wpis katalogu. Rzuca z powodem. */
 export function sprawdzKsiege(book, { tier = 'rental_48h', cenaEur = DOMYSLNA_CENA_EUR } = {}) {
     if (!book || typeof book !== 'object') throw new Error('Brak księgi (pole „book”).');
@@ -56,7 +63,9 @@ export function sprawdzKsiege(book, { tier = 'rental_48h', cenaEur = DOMYSLNA_CE
     if (bajtow > MAX_BAJTOW_KSIEGI) throw new Error(`Księga za duża (${Math.round(bajtow / 1e6)} MB > ${MAX_BAJTOW_KSIEGI / 1e6} MB) — obrazy jako adresy, nie dataURL.`);
     const jezyk = JEZYKI_KSIAG[String(book.language ?? '').slice(0, 2)] ? String(book.language).slice(0, 2) : null;
     const przeklady = przekladyKsiegi(book);
+    const spotify = spotifyZAdresu(book.spotify);
     return {
+        ...(spotify ? { spotify } : {}),
         tytul, podtytul: tekst(book.subtitle, 200), autor: tekst(book.author, 120), stron: strony.length, tier,
         cenaEur: tier === 'demo' ? 0 : cena, bajtow,
         opis: tekst(strony.find((s) => s?.narrativeText)?.narrativeText, 280),
@@ -194,6 +203,16 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         const x = k.ksiegi.find((q) => q.id === id);
         if (!x) throw Object.assign(new Error('Nie ma takiej księgi.'), { kod: 404 });
         x.wystawiona = !!tak; await zapisz(KAT, k); return x;
+    });
+    /** 🟢 Odznaka Spotify na istniejącym wpisie katalogu (Suweren wkleił adres albumu/utworu po publikacji księgi); null zdejmuje. */
+    const ustawSpotify = (id, adres) => poKolei(async () => {
+        const k = await czytaj(KAT, { ksiegi: [] });
+        const x = k.ksiegi.find((q) => q.id === id);
+        if (!x) return null;
+        const sp = spotifyZAdresu(adres);
+        if (sp) x.spotify = sp; else delete x.spotify;
+        await zapisz(KAT, k);
+        return x;
     });
     const katalogPelny = async () => (await czytaj(KAT, { ksiegi: [] })).ksiegi;
     /** Publiczny katalog: tylko wystawione, bez ścieżek z dysku. */
@@ -384,7 +403,7 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return zapiszKsiege(id, async (b) => ({ ...b, musicUrl: `/wizytowka/teostory/${id}/audio/muzyka.mp3`, music: { title: tekst(tytul, 120) || path.basename(lok, '.mp3'), author: tekst(autor, 120) || null } })).then((b) => ({ musicUrl: b.musicUrl, music: b.music }));
     }
 
-    return { plikObrazu, plikDzwieku, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, oferta, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
+    return { plikObrazu, plikDzwieku, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, oferta, ustawSpotify, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
         wypozyczenia: async () => (await czytaj(WYP, { wypozyczenia: [] })).wypozyczenia };
 }
 

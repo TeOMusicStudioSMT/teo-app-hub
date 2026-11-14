@@ -19,6 +19,7 @@ type Kampania = {
     partytura?: { plik: string; sekundy?: number | null; bajtow?: number; wersja?: number } | null;
     ksiega?: { id: string; stron: number; wystawiona?: boolean } | null;
     manuskrypt?: { plik: string; aktow?: number; bajtow?: number; wersja?: number } | null;
+    canvas?: { plik: string; wariant?: string | null; od?: number | null; sekundy?: number; bajtow?: number; wersja?: number } | null;
     opodysk?: { stan: string; etap?: string; blad?: string; plik?: string; sekundy?: number; bajtow?: number; ujec?: number; wersja?: number; napisy?: boolean; brakowaloKlatek?: number; montaz?: string | null; uwagi?: string[]; postep?: { zrobione: number; razem: number } } | null;
     spotify?: { folder: string; pliki: string[]; uwagi: string[]; okladka?: { plik: string } | null; master: { hz: number; bity: number; kanaly: number; zrodlo: string; sekundy: number; bajtow: number } } | null;
 };
@@ -378,6 +379,8 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
                                     <button onClick={zlozKsiege} disabled={trwa || krecenie} title="Tekst utworu + akty storyboardu z klatkami FLUX jako ilustracjami → Żywa Księga na liście Żywych Wpisów i manuskrypt_000g.pdf (A5, do druku)"
                                         className="rounded bg-amber-500 px-2.5 py-1 font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50">📖 Złóż Żywą Księgę i Manuskrypt PDF z utworu</button>
                                     {k.ksiega && <span className="text-emerald-300/90">✓ księga {k.ksiega.id} · {k.ksiega.stron} stron{k.ksiega.wystawiona ? '' : ' · 🔒 niewystawiona'}</span>}
+                                    <button onClick={() => otworzStory(`/apps/story/?teatr=${k.id}&panel=canvas`)} title="Nagrywa w Teatrze 8 s kulminacji utworu (9:16, 1080×1920, bez dźwięku) — Fuzja Partytury albo pionowy skaner Pergaminu TeOfonu; most zapisuje spotify_canvas_9x16_8s.mp4 w paczce stacji" className="rounded border border-sky-400/70 px-2 py-0.5 font-bold text-sky-100 hover:bg-sky-900/40">📱 Spotify Canvas (8s · 9:16)</button>
+                                    {k.canvas?.plik && <a href={`${bridgeUrl}/api/jason/kampanie/${k.id}/canvas/wideo?v=${k.canvas.wersja ?? 1}`} target="_blank" rel="noreferrer" className="rounded border border-emerald-500/60 px-2 py-0.5 text-emerald-200 hover:bg-emerald-900/40">▶ Canvas 8 s{k.canvas.wariant ? ` · ${k.canvas.wariant === 'teofon' ? 'TeOfon' : 'Fuzja'}` : ''}{k.canvas.bajtow ? ` · ${(k.canvas.bajtow / 1048576).toFixed(1)} MB` : ''}</a>}
                                     {k.manuskrypt?.plik && <a href={`${bridgeUrl}/api/jason/kampanie/${k.id}/manuskrypt?v=${k.manuskrypt.wersja ?? 1}`} target="_blank" rel="noreferrer" className="rounded border border-emerald-500/60 px-2 py-0.5 text-emerald-200 hover:bg-emerald-900/40">📄 manuskrypt PDF{k.manuskrypt.bajtow ? ` · ${(k.manuskrypt.bajtow / 1048576).toFixed(1)} MB` : ''}</a>}
                                 </div>
                                 {k.opodysk?.plik && !krecenie && (
