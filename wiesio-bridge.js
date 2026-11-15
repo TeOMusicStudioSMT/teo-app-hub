@@ -9106,7 +9106,7 @@ const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
         },
     },
     // 📚 Opodysk → Żywa Księga w Wypożyczalni teostory.studio (Wypożyczalnia powstaje niżej — wołana dopiero przy wydaniu)
-    wypozyczalnia: { publikuj: (x) => Wypozyczalnia.publikuj(x), wystaw: (id) => Wypozyczalnia.wystaw(id), ustawSpotify: (id, adres) => Wypozyczalnia.ustawSpotify(id, adres) },
+    wypozyczalnia: { publikuj: (x) => Wypozyczalnia.publikuj(x), wystaw: (id) => Wypozyczalnia.wystaw(id), katalog: () => Wypozyczalnia.katalogPelny(), wycofaj: (id) => Wypozyczalnia.wycofaj(id), ustawSpotify: (id, adres) => Wypozyczalnia.ustawSpotify(id, adres) },
     pisz: async (system, prompt) => (await piszModelem(TrybKatedry.modelDla((await ModeleAgentow.modelDla('kronikarz').catch(() => null)) || Mozg.domyslny()), system, prompt)).tekst,   // ✍️ bogata narracja aktów (Kronikarz)
     katalogProdukcji: path.join(ANTIGRAVITY_DIR, 'produkcje'),
     czcionki: CZCIONKI_NAPISOW,   // napis opowieści w Opodysku (te same czcionki co Powitanie Dnia)

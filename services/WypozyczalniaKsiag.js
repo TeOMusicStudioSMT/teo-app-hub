@@ -41,7 +41,7 @@ export function dozwolonyPowrot(u, originy = ORIGINY) {
 }
 
 /** 🎭 Pliki Opodysku dołączone do księgi (utwór, Canvas, pergamin, manuskrypt, teledysk) — te same nazwy co w trasie `/media/:plik`. */
-export const MEDIA_KSIEGI = ['piesn.mp3', 'canvas-fuzja.mp4', 'pergamin.pdf', 'manuskrypt.pdf', 'teledysk.mp4'];
+export const MEDIA_KSIEGI = ['piesn.mp3', 'tlo.mp3', 'canvas-fuzja.mp4', 'pergamin.pdf', 'manuskrypt.pdf', 'teledysk.mp4'];
 
 /** 🟢 Adres open.spotify.com (utwór, album, playlista) → {url, embed} do odznaki „LIVE ON SPOTIFY” i ramki odtwarzacza; inny adres = null. */
 export function spotifyZAdresu(adres) {
@@ -73,14 +73,14 @@ export function sprawdzKsiege(book, { tier = 'rental_48h', cenaEur = DOMYSLNA_CE
         ...(media.length ? { opodysk: { media } } : {}),
         tytul, podtytul: tekst(book.subtitle, 200), autor: tekst(book.author, 120), stron: strony.length, tier,
         cenaEur: tier === 'demo' ? 0 : cena, bajtow,
-        opis: tekst(strony.find((s) => s?.narrativeText)?.narrativeText, 280),
+        opis: tekst(book.description, 280) || tekst(strony.find((s) => s?.narrativeText)?.narrativeText, 280),
         narrator: tekst(book.narrator ?? book.modelsUsed?.narrator, 80) || null,
         kwestii: liczKwestie(book), jezyk,
         // 🎭 Opodysk (spektakl muzyczny Jasona): portal pokazuje go jako spektakl, nie „prolog”, i nie dogrywa własnego podkładu
         ...(book.sourceType === 'opodysk' ? { rodzaj: 'opodysk' } : {}),
         jezyki: [...new Set([jezyk, ...Object.keys(przeklady)].filter(Boolean))],
         // tytuł, podtytuł i opis w każdym języku przekładu — karta w portalu mówi językiem strony
-        przeklady: Object.fromEntries(Object.entries(przeklady).map(([j, p]) => [j, { tytul: tekst(p.title, 200) || tytul, podtytul: tekst(p.subtitle, 200), opis: tekst(p.pages?.find((s) => s?.narrativeText)?.narrativeText, 280) }])),
+        przeklady: Object.fromEntries(Object.entries(przeklady).map(([j, p]) => [j, { tytul: tekst(p.title, 200) || tytul, podtytul: tekst(p.subtitle, 200), opis: tekst(p.description, 280) || tekst(p.pages?.find((s) => s?.narrativeText)?.narrativeText, 280) }])),
         muzyka: typeof book.musicUrl === 'string' && !!book.musicUrl ? { tytul: tekst(book.music?.title, 120) || null, autor: tekst(book.music?.author, 120) || null } : null,
     };
 }
@@ -365,6 +365,24 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return nowa;
     });
 
+    /** Opis karty (`book.description`) → przekład jednym zapytaniem; pusty wynik = brak (karta użyje tekstu pierwszej strony). */
+    async function przelozOpisKarty(opis, jezyk) {
+        if (!pisz || !opis) return '';
+        const cel = JEZYKI_KSIAG[jezyk];
+        const system = `You translate a two-sentence blurb of an illustrated audio storybook into ${cel}. Natural, enticing ${cel}; keep names unchanged. Answer with JSON {"chapterTitle":"","imageCaption":"","narrativeText":"<translation>","lines":[]}.`;
+        try { const o = await pisz(system, JSON.stringify({ chapterTitle: '', imageCaption: '', narrativeText: opis, lines: [] })); const d = typeof o === 'string' ? JSON.parse(/\{[\s\S]*\}/.exec(o.replace(/<think>[\s\S]*?<\/think>/g, ''))?.[0] ?? 'null') : o; return tekst(d?.narrativeText, 300); } catch { return ''; }
+    }
+    /** Dopisuje przekład opisu karty do już istniejącego przekładu księgi (po zmianie opisu — bez tłumaczenia całych stron). */
+    async function przelozOpis(id, jezyk) {
+        let wynik = '';
+        await zapiszKsiege(id, async (b) => {
+            if (!b.translations?.[jezyk]) throw Object.assign(new Error(`Księga nie ma przekładu ${jezyk}.`), { kod: 404 });
+            wynik = await przelozOpisKarty(b.description, jezyk);
+            return wynik ? { ...b, translations: { ...b.translations, [jezyk]: { ...b.translations[jezyk], description: wynik } } } : b;
+        });
+        return wynik;
+    }
+
     /** 🌍 Przekład księgi na język z listy: strona po stronie modelem Katedry, każda sprawdzona (jedna poprawka z powodem). */
     async function przeloz(id, jezyk) {
         if (!pisz) throw new Error('Tłumacz ksiąg niedostępny (brak modelu).');
@@ -400,8 +418,9 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
                 strony.push(wynik);
                 praca.postep++;
             }
+            const opisPrzekl = await przelozOpisKarty(book.description, jezyk);
             await zapiszKsiege(id, async (b) => ({ ...b, translations: { ...(b.translations ?? {}), [jezyk]: {
-                title: glowa.chapterTitle || b.title, subtitle: glowa.imageCaption, przelozono: new Date(teraz()).toISOString(), automatycznie: true, zrodloHash: skrotZrodla(b),
+                ...(opisPrzekl ? { description: opisPrzekl } : {}), title: glowa.chapterTitle || b.title, subtitle: glowa.imageCaption, przelozono: new Date(teraz()).toISOString(), automatycznie: true, zrodloHash: skrotZrodla(b),
                 pages: strony.map((s) => ({ chapterTitle: s.chapterTitle, imageCaption: s.imageCaption, narrativeText: s.narrativeText, dialogueLines: s.lines.map((text) => ({ text })) })),
             } } }));
         });
@@ -473,7 +492,7 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return zapiszKsiege(id, async (b) => ({ ...b, musicUrl: `/wizytowka/teostory/${id}/audio/muzyka.mp3`, music: { title: tekst(tytul, 120) || path.basename(lok, '.mp3'), author: tekst(autor, 120) || null } })).then((b) => ({ musicUrl: b.musicUrl, music: b.music }));
     }
 
-    return { plikZAdresu: (u) => obrazLokalny(u), plikObrazu, plikDzwieku, plikMedia, dodajAudioStrony, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, oferta, ustawSpotify, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
+    return { przelozOpis, plikZAdresu: (u) => obrazLokalny(u), plikObrazu, plikDzwieku, plikMedia, dodajAudioStrony, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, oferta, ustawSpotify, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
         wypozyczenia: async () => (await czytaj(WYP, { wypozyczenia: [] })).wypozyczenia };
 }
 
@@ -487,6 +506,7 @@ export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10, federacj
     app.get('/api/books/catalog', (_req, res) => odp(res, W.katalogPelny().then((ksiegi) => ({ ksiegi }))));
     app.post('/api/books/publish', (req, res) => odp(res, W.publikuj(req.body ?? {}).then((wpis) => ({ wpis }))));
     app.post('/api/books/:id/wystaw', (req, res) => odp(res, W.wystaw(req.params.id).then((wpis) => ({ wpis }))));
+    app.post('/api/books/:id/przeloz-opis', (req, res) => odp(res, W.przelozOpis(req.params.id, String(req.body?.jezyk ?? '')).then((opis) => ({ opis }))));
     // 🎙️ nagranie (mp3 z dysku Katedry, np. głos ElevenLabs z paczki stacji) do strony / wersu księgi albo jej przekładu
     app.post('/api/books/:id/audio-strony', (req, res) => odp(res, (async () => {
         const p = W.plikZAdresu(String(req.body?.adres ?? ''));

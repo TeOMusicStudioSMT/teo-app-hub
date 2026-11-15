@@ -209,3 +209,15 @@ test('przekład: strona bez kwestii ignoruje „kwestie” dorzucone przez model
     assert.throws(() => sprawdzPrzekladStrony(zrodlo, { chapterTitle: 'x', imageCaption: 'y', narrativeText: '', lines: [] }), /puste pole narrativeText/);
     assert.throws(() => sprawdzPrzekladStrony({ ...zrodlo, lines: ['Hold me close'] }, { chapterTitle: 'x', imageCaption: 'y', narrativeText: 'Bar świeci jak latarnia nocą.', lines: [] }), /kwestii 0 zamiast 1/);
 });
+
+test('📝 opis karty: własny `description` zamiast wstępu pierwszej strony, przekład opisu dopisywany do istniejącego przekładu', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'teostory-op-'));
+    const pisz = async (_s, prompt) => { const k = JSON.parse(prompt.split('\n\n')[0]); return JSON.stringify({ chapterTitle: k.chapterTitle && `PL ${k.chapterTitle}`, imageCaption: k.imageCaption && `PL ${k.imageCaption}`, narrativeText: k.narrativeText && `PL ${k.narrativeText}`, lines: k.lines.map((l) => `PL ${l}`) }); };
+    const W = utworzWypozyczalnie({ katalog: path.join(tmp, 'teostory'), pisz });
+    const wpis = await W.publikuj({ book: { id: 'opo-opis', title: 'Opis', language: 'en', description: 'Two voices meet in a rainy diner at night.', pages: [{ chapterTitle: 'Akt 1', narrativeText: 'The diner glows like a warm lantern at the edge of the night.', dialogueLines: [] }] }, rentalTier: 'demo' });
+    assert.equal(wpis.opis, 'Two voices meet in a rainy diner at night.', 'opis karty z description, nie z pierwszej strony');
+    await W.przeloz('opo-opis', 'pl'); const p = await czekaj(W, 'opo-opis'); assert.equal(p.stan, 'gotowe', p.blad);
+    assert.equal((await W.katalogPubliczny())[0].przeklady.pl.opis, 'PL Two voices meet in a rainy diner at night.');
+    await assert.rejects(() => W.przelozOpis('opo-opis', 'de'), /nie ma przekładu de/);
+    await fs.rm(tmp, { recursive: true, force: true });
+});

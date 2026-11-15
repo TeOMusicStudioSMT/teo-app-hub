@@ -1011,7 +1011,7 @@ test('📱🟢🏛️ Spotify Canvas 8 s 9:16 (prawdziwy ffmpeg), adres albumu �
     const W = utworzWypozyczalnie({ katalog: path.join(tmp, 'teostory') });
     const J = utworzJasona({ katalog: tmp, suno, przerwaPobraniaMs: 5, katalogMuzyki: muzyka, ffmpeg: ffmpegPath, uruchom,
         okladka: async () => { const o = path.join(tmp, 'flux.png'); await uruchom(ffmpegPath, ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=64x64', '-frames:v', '1', o]); return o; },
-        wypozyczalnia: { publikuj: (x) => W.publikuj(x), wystaw: (id) => W.wystaw(id), ustawSpotify: (id, a) => W.ustawSpotify(id, a) } });
+        wypozyczalnia: { publikuj: (x) => W.publikuj(x), wystaw: (id) => W.wystaw(id), katalog: () => W.katalogPelny(), wycofaj: (id) => W.wycofaj(id), ustawSpotify: (id, a) => W.ustawSpotify(id, a) } });
     const app = express(); app.use(express.json());
     zamontujTrasyJasona(app, J, { raw: express.raw });
     const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
@@ -1056,13 +1056,16 @@ test('📱🟢🏛️ Spotify Canvas 8 s 9:16 (prawdziwy ffmpeg), adres albumu �
         // ── „wystaw wszystkie”: Stacja 1 = darmowy Prolog, reszta 48 h; odznaka Spotify w katalogu publicznym ──
         assert.equal((await zadaj('POST', '/api/jason/opodyski/wystaw', { cenaEur: 0.1 })).success, false, 'cena poza zakresem');
         assert.equal((await W.katalogPubliczny()).length, 0, 'przed wystawieniem nic nie jest publiczne');
+        // stary duplikat tej samej stacji (spektakl `opodysk-02-…`) jest wystawiony → po wystawieniu księgi wypada z katalogu
+        await W.publikuj({ book: { id: 'opodysk-02-stary-dubel', title: 'Stary dubel', pages: [{ chapterTitle: 'x', narrativeText: 'Dłuższy tekst narracji strony.', dialogueLines: [] }] }, rentalTier: 'rental_48h', cenaEur: 2.99 });
+        assert.equal((await W.katalogPubliczny()).length, 1);
         const wy = await zadaj('POST', '/api/jason/opodyski/wystaw', { cenaEur: 2.5 });
         assert.equal(wy.success, true, wy.message); assert.equal(wy.bledy.length, 0, wy.bledy.join(' ')); assert.equal(wy.zrobione.length, 2);
         assert.equal(wy.zrobione[0].tier, 'demo'); assert.equal(wy.zrobione[0].cenaEur, 0); assert.equal(wy.zrobione[1].tier, 'rental_48h'); assert.equal(wy.zrobione[1].cenaEur, 2.5);
         assert.ok(wy.zrobione.every((z) => z.spotify), 'obie księgi z odznaką Spotify');
         assert.ok(wy.uwagi.some((x) => /Rolowanego Pergaminu/.test(x)), 'brak pergaminu zgłoszony wprost, nie udawany');
         const pub = await W.katalogPubliczny();
-        assert.equal(pub.length, 2); assert.ok(pub.every((x) => /^https:\/\/open\.spotify\.com\/embed\/(album|track)\//.test(x.spotify?.embed)));
+        assert.equal(pub.length, 2, 'dubel wycofany, jedna karta na stację'); assert.ok(pub.every((x) => /^https:\/\/open\.spotify\.com\/embed\/(album|track)\//.test(x.spotify?.embed)));
         assert.equal(pub.find((x) => x.tier === 'demo').cenaEur, 0);
         // 🎭 Opodysk w księdze: pieśń, Canvas Fuzja (gdy jest), dane do Fuzji i TeOfonu; media tylko z bramką dostępu
         const demo = pub.find((x) => x.tier === 'demo');

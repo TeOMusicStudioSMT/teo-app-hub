@@ -42,7 +42,7 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     const [sb, setSb] = useState<Storyboard | null>(null);
     const [napisyOpowiesci, setNapisyOpowiesci] = useState(true);
     const [tierWydania, setTierWydania] = useState('');   // '' = domyślnie: Stacja 1 za darmo, reszta 48 h
-    const [cenaWydania, setCenaWydania] = useState('1.99');
+    const [cenaWydania, setCenaWydania] = useState('2.99');
     const PUSTA = { tytul: '', glos: '', artysci: '', styl: '', tekst: '' };
     const [f, setF] = useState(PUSTA);
     const [adres, setAdres] = useState('');
