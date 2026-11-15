@@ -126,6 +126,22 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
     const poKolei = (fn) => { const p = kolejka.then(fn); kolejka = p.catch(() => {}); return p; };
     async function czytaj(p, zap) { try { return JSON.parse(await fs.readFile(p, 'utf8')); } catch { return zap; } }
     async function zapisz(p, o) { await fs.mkdir(path.dirname(p), { recursive: true }); const t = `${p}.${process.pid}.tmp`; await fs.writeFile(t, JSON.stringify(o, null, 2)); await fs.rename(t, p); }
+    // 👑 Klucz Suwerena Katedry: sekret w `teostory/klucz-suwerena.json` (tworzony przy pierwszym użyciu). Kto go zna, czyta wszystkie księgi bez płatności —
+    // czytelnik z zewnątrz klucza nie ma, więc bramka Stripe zostaje. Klucz NIE jest wartością zgadywalną („1”): 24 losowe bajty.
+    const PLIK_KLUCZA = path.join(katalog, 'klucz-suwerena.json');
+    async function kluczSuwerena() {
+        const d = await czytaj(PLIK_KLUCZA, null);
+        if (typeof d?.klucz === 'string' && /^[0-9a-f]{48}$/.test(d.klucz)) return d.klucz;
+        const klucz = crypto.randomBytes(24).toString('hex');
+        await fs.mkdir(katalog, { recursive: true }); await zapisz(PLIK_KLUCZA, { klucz, utworzono: new Date(teraz()).toISOString() });
+        return klucz;
+    }
+    async function czySuweren(podany) {
+        const p = typeof podany === 'string' ? podany : '';
+        if (!/^[0-9a-f]{48}$/.test(p)) return false;
+        const k = await kluczSuwerena();
+        return crypto.timingSafeEqual(Buffer.from(p), Buffer.from(k));
+    }
     const plikKsiegi = (id) => (ID.test(String(id)) ? path.join(KS, `${id}.json`) : null);
 
     /** Okładka: pierwszy obraz strony z adresem http(s) — dataURL zapisujemy jako plik obok księgi. */
@@ -324,12 +340,13 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
      * Pełna księga do czytania: demo bez niczego, wypożyczenie = opłacona sesja tej księgi w ciągu 48 h,
      * 🌟 NA STAŁE = trzy różne opłacone wypożyczenia tej księgi (`sesje`, sprawdza services/KsiegaWielowymiarowa.js u Stripe).
      */
-    async function czytaj_(id, { sesja = null, sesje = [] } = {}) {
+    async function czytaj_(id, { sesja = null, sesje = [], suweren = null } = {}) {
         const k = (await katalogPelny()).find((x) => x.id === id && x.wystawiona);
         if (!k) throw Object.assign(new Error('Tej księgi nie ma w wypożyczalni.'), { kod: 404 });
         let doKiedy = null, staly = false;
-        if (k.tier !== 'demo' && Array.isArray(sesje) && sesje.length >= 3) staly = await Promise.resolve(naStale(id, sesje)).catch(() => false);
-        if (k.tier !== 'demo' && !staly) {
+        const wlasciciel = suweren ? await czySuweren(String(suweren)) : false;   // 👑 właściciel Katedry: pełny dostęp bez płatności
+        if (k.tier !== 'demo' && !wlasciciel && Array.isArray(sesje) && sesje.length >= 3) staly = await Promise.resolve(naStale(id, sesje)).catch(() => false);
+        if (k.tier !== 'demo' && !staly && !wlasciciel) {
             if (!sesja) throw Object.assign(new Error('Ta księga jest do wypożyczenia — najpierw płatność.'), { kod: 402 });
             const o = await odbierz(sesja);
             if (o.ksiega !== id) throw Object.assign(new Error('To wypożyczenie dotyczy innej księgi.'), { kod: 403 });
@@ -492,7 +509,7 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         return zapiszKsiege(id, async (b) => ({ ...b, musicUrl: `/wizytowka/teostory/${id}/audio/muzyka.mp3`, music: { title: tekst(tytul, 120) || path.basename(lok, '.mp3'), author: tekst(autor, 120) || null } })).then((b) => ({ musicUrl: b.musicUrl, music: b.music }));
     }
 
-    return { przelozOpis, plikZAdresu: (u) => obrazLokalny(u), plikObrazu, plikDzwieku, plikMedia, dodajAudioStrony, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, oferta, ustawSpotify, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
+    return { kluczSuwerena, czySuweren, przelozOpis, plikZAdresu: (u) => obrazLokalny(u), plikObrazu, plikDzwieku, plikMedia, dodajAudioStrony, publikuj, przeloz, ilustruj, ustawMuzyke, stanPracy, oferta, ustawSpotify, wystaw: (id) => ustawWystawienie(id, true), wycofaj: (id) => ustawWystawienie(id, false), katalogPelny, katalogPubliczny, plikOkladki, wypozycz, odbierz, czytaj: czytaj_,
         wypozyczenia: async () => (await czytaj(WYP, { wypozyczenia: [] })).wypozyczenia };
 }
 
@@ -546,7 +563,7 @@ export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10, federacj
     app.get('/wizytowka/teostory/:id/audio/:plik', async (req, res) => {
         cors(res);
         try {
-            await W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null, sesje: String(req.query.sesje ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8) });
+            await W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null, suweren: req.query.suweren ? String(req.query.suweren).slice(0, 64) : null, sesje: String(req.query.sesje ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8) });
             const p = W.plikDzwieku(req.params.id, req.params.plik);
             return p ? res.sendFile(p) : res.status(404).end();
         } catch (e) { return res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }); }
@@ -555,13 +572,24 @@ export function zamontujTrasyWypozyczalni(app, W, { limitNaMinute = 10, federacj
     app.get('/wizytowka/teostory/:id/media/:plik', async (req, res) => {
         cors(res);
         try {
-            await W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null, sesje: String(req.query.sesje ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8) });
+            await W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null, suweren: req.query.suweren ? String(req.query.suweren).slice(0, 64) : null, sesje: String(req.query.sesje ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8) });
             const p = W.plikMedia(req.params.id, req.params.plik);
             return p ? res.sendFile(p) : res.status(404).end();
         } catch (e) { return res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }); }
     });
+    // 👑 sprawdzenie klucza Suwerena przez portal (≤ 10 prób/min z adresu; klucz ma 192 bity)
+    app.get('/wizytowka/teostory/suweren', async (req, res) => {
+        cors(res);
+        const ip = req.ip || '?', t = Date.now(), l = (proby.get(`s:${ip}`) ?? []).filter((x) => t - x < 60_000);
+        if (l.length >= 10) return res.status(429).json({ success: false, message: 'Za dużo prób — spróbuj za minutę.' });
+        proby.set(`s:${ip}`, [...l, t]);
+        const ok = await W.czySuweren(String(req.query.klucz ?? '').slice(0, 64));
+        return ok ? res.json({ success: true }) : res.status(403).json({ success: false, message: 'To nie jest klucz tej Katedry.' });
+    });
+    // klucz i gotowy adres portalu — tylko maszyna (Straż: /api/books)
+    app.get('/api/books/klucz-suwerena', async (_req, res) => { const klucz = await W.kluczSuwerena(); res.json({ success: true, klucz, adres: `https://teostory.studio/?suweren=${klucz}` }); });
     app.get('/wizytowka/teostory/:id/okladka', async (req, res) => { const p = await W.plikOkladki(req.params.id); return p ? res.sendFile(p) : res.status(404).end(); });
-    app.get('/wizytowka/teostory/:id/czytaj', (req, res) => { cors(res); odp(res, W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null, sesje: String(req.query.sesje ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8) })); });
+    app.get('/wizytowka/teostory/:id/czytaj', (req, res) => { cors(res); odp(res, W.czytaj(req.params.id, { sesja: req.query.sesja ? String(req.query.sesja) : null, suweren: req.query.suweren ? String(req.query.suweren).slice(0, 64) : null, sesje: String(req.query.sesje ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8) })); });
     app.options('/wizytowka/teostory/:id/wypozycz', (_req, res) => { cors(res); res.sendStatus(204); });
     app.post('/wizytowka/teostory/:id/wypozycz', (req, res) => {
         cors(res);

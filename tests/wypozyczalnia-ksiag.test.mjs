@@ -221,3 +221,24 @@ test('📝 opis karty: własny `description` zamiast wstępu pierwszej strony, p
     await assert.rejects(() => W.przelozOpis('opo-opis', 'de'), /nie ma przekładu de/);
     await fs.rm(tmp, { recursive: true, force: true });
 });
+
+test('👑 Klucz Suwerena: płatna księga i jej media otwierają się kluczem właściciela, zgadywalne wartości i obcy klucz nie, bramka Stripe zostaje', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'teostory-su-'));
+    const zrodlo = path.join(tmp, 'a.mp3'); await fs.writeFile(zrodlo, 'AUDIO-SU');
+    const W = utworzWypozyczalnie({ katalog: path.join(tmp, 'teostory') });
+    const app = express(); app.use(express.json()); zamontujTrasyWypozyczalni(app, W);
+    const srv = app.listen(0); const baza = `http://127.0.0.1:${srv.address().port}`;
+    try {
+        await W.publikuj({ book: { id: 'opo-su', title: 'Płatna', pages: [{ chapterTitle: 'Akt 1', narrativeText: 'Dłuższy tekst narracji strony, żeby przeszło.', dialogueLines: [] }], opodysk: { bpm: 90, sekundy: 60, akty: [] } }, rentalTier: 'rental_48h', cenaEur: 2.99, media: { 'piesn.mp3': zrodlo } });
+        const klucz = (await (await fetch(`${baza}/api/books/klucz-suwerena`)).json()).klucz;
+        assert.match(klucz, /^[0-9a-f]{48}$/); assert.equal((await W.kluczSuwerena()), klucz, 'klucz stały między wywołaniami');
+        assert.equal((await fetch(`${baza}/wizytowka/teostory/opo-su/czytaj`)).status, 402, 'bez klucza: płatność');
+        for (const zly of ['1', 'true', 'a'.repeat(48), klucz.slice(0, 47) + (klucz.at(-1) === '0' ? '1' : '0')]) assert.equal((await fetch(`${baza}/wizytowka/teostory/opo-su/czytaj?suweren=${zly}`)).status, 402, `zły klucz „${zly.slice(0, 8)}…”`);
+        const ok = await fetch(`${baza}/wizytowka/teostory/opo-su/czytaj?suweren=${klucz}`); assert.equal(ok.status, 200); assert.equal((await ok.json()).dostepDo, null);
+        const m = await fetch(`${baza}/wizytowka/teostory/opo-su/media/piesn.mp3?suweren=${klucz}`); assert.equal(m.status, 200); assert.equal(await m.text(), 'AUDIO-SU');
+        assert.equal((await fetch(`${baza}/wizytowka/teostory/opo-su/media/piesn.mp3`)).status, 402);
+        assert.equal((await fetch(`${baza}/wizytowka/teostory/suweren?klucz=${klucz}`)).status, 200);
+        assert.equal((await fetch(`${baza}/wizytowka/teostory/suweren?klucz=1`)).status, 403);
+        assert.ok(SCIEZKA_TEOSTORY.test('/wizytowka/teostory/suweren'));
+    } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
+});
