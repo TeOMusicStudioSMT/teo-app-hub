@@ -14,7 +14,17 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
-import { dozwolonyPowrot } from './WypozyczalniaKsiag.js';
+import { dozwolonyPowrot, sprawdzKsiege } from './WypozyczalniaKsiag.js';
+
+/**
+ * 📚 Tier 4 (Katedra Venue) — „Publikacja w Wypożyczalni teostory.studio”.
+ * Klient NIE pisze wprost do katalogu Suwerena: zgłasza księgę, a ta czeka w 📥 Izbie zgód.
+ * Tak samo Katedra przyjmuje każdą cudzą treść (gałęzie ksiąg, Federacja, dystrybucja) — obca
+ * księga w katalogu to nazwisko i domena Suwerena, więc ostatnie słowo należy do niego.
+ * Zgłoszenie jest MAŁE: obrazy jako adresy, nie dataURL (stąd 2 MB zamiast 40 MB publikacji z Huba).
+ */
+export const MAX_BAJTOW_ZGLOSZENIA = 2_000_000;
+export const MAX_ZGLOSZEN_NA_KLUCZ = 3;
 
 // 🔑 Klucz Dostępu GRV — `GRV-HACT-XXXX-XXXX`. Powstaje w chwili potwierdzonej płatności (`payment_status: paid`),
 // pokazywany kupującemu RAZ (ekran sukcesu + link powrotny). Rejestr `jukebox/klucze.json` trzyma wyłącznie
@@ -77,8 +87,9 @@ const indeks = (id) => TIERY.findIndex((t) => t.id === id);
 export const MIN_EUR = 0.5, MAX_EUR = 999;
 const blad = (m, kod = 400) => Object.assign(new Error(m), { kod });
 
-export function utworzJukebox({ katalog, stripe = null, adres = async () => null, czySuweren = async () => false, teraz = () => Date.now() }) {
+export function utworzJukebox({ katalog, stripe = null, adres = async () => null, czySuweren = async () => false, publikujKsiege = null, teraz = () => Date.now() }) {
     const KAT = path.join(katalog, 'jukebox'), PLIK_CENNIKA = path.join(KAT, 'cennik.json'), PLIK_ZAKUPOW = path.join(KAT, 'zakupy.json'), PLIK_KLUCZY = path.join(KAT, 'klucze.json');
+    const PLIK_ZGLOSZEN = path.join(KAT, 'zgloszenia.json'), KAT_ZGLOSZEN = path.join(KAT, 'zgloszenia');
     const json = async (p, d) => { try { return JSON.parse(await fs.readFile(p, 'utf8')); } catch { return d; } };
     const pisz = async (p, o) => { await fs.mkdir(path.dirname(p), { recursive: true }); const t = `${p}.${process.pid}.tmp`; await fs.writeFile(t, JSON.stringify(o, null, 2)); await fs.rename(t, p); };
     let kolej = Promise.resolve();
@@ -175,6 +186,11 @@ export function utworzJukebox({ katalog, stripe = null, adres = async () => null
 
     /** 🎙 Ile mowy zostało temu Kluczowi w tym miesiącu. `null` = Katedra nie zna klucza. */
     async function lektorStan(wejscie) {
+        // 👑 Suweren wchodzi własnym kluczem Katedry — to jego karta graficzna, więc bez licznika i bez bezpiecznika doby.
+        if (wejscie && (await czySuweren(String(wejscie)))) {
+            return { tier: 'venue', suweren: true, lektor: true, miesiac: miesiacLektora(teraz()), limit: LIMITY_LEKTORA.venue, zuzyte: 0, zostalo: LIMITY_LEKTORA.venue,
+                katedra: { dzien: dzienLektora(teraz()), limit: LIMIT_DZIENNY_KATEDRY, zuzyte: 0, zostalo: LIMIT_DZIENNY_KATEDRY } };
+        }
         const w = await sprawdzKlucz(wejscie);
         if (!w) return null;
         const h = hashKlucza(normalizujKlucz(wejscie)), m = miesiacLektora(teraz());
@@ -199,25 +215,86 @@ export function utworzJukebox({ katalog, stripe = null, adres = async () => null
         await pisz(PLIK_KLUCZY, d);
     });
 
+    /** 📚 Zgłoszenie księgi przez posiadacza Klucza Venue. Nie publikuje — stawia w kolejce do ✓ Suwerena. */
+    async function zglosKsiege(wejscie, { book = null, rentalTier = 'rental_48h', cenaEur = 1.99 } = {}) {
+        const w = await sprawdzKlucz(wejscie);
+        if (!w) throw blad('Nie znam takiego Klucza Dostępu.', 404);
+        if (!maFunkcje(w.tier, 'wypozyczalnia')) throw blad(`Publikacja w Wypożyczalni należy do poziomu ${TIERY.find((t) => t.funkcje.includes('wypozyczalnia'))?.nazwa ?? 'Katedra Venue'} — Twój to ${w.tier}.`, 403);
+        const bajtow = Buffer.byteLength(JSON.stringify(book ?? {}));
+        if (bajtow > MAX_BAJTOW_ZGLOSZENIA) throw blad(`Zgłoszenie za duże (${Math.round(bajtow / 1e5) / 10} MB > ${MAX_BAJTOW_ZGLOSZENIA / 1e6} MB) — obrazy wyślij jako adresy, nie dataURL.`, 413);
+        const karta = sprawdzKsiege(book, { tier: rentalTier, cenaEur });   // ta sama walidacja co publikacja z Huba — rzuca z powodem
+        const odcisk = await odciskKlucza(wejscie);
+        return poKolei(async () => {
+            const d = await json(PLIK_ZGLOSZEN, { zgloszenia: [] });
+            const czeka = d.zgloszenia.filter((x) => x.odcisk === odcisk && x.stan === 'do_zgody').length;
+            if (czeka >= MAX_ZGLOSZEN_NA_KLUCZ) throw blad(`Masz już ${czeka} księgi czekające na zgodę Suwerena — poczekaj na decyzję.`, 409);
+            const id = `zk-${crypto.randomBytes(6).toString('hex')}`;
+            await fs.mkdir(KAT_ZGLOSZEN, { recursive: true });
+            await pisz(path.join(KAT_ZGLOSZEN, `${id}.json`), { book, rentalTier, cenaEur });
+            const wpis = { id, odcisk, tier: w.tier, tytul: karta.tytul, autor: karta.autor, stron: karta.stron, kwestii: karta.kwestii, jezyk: karta.jezyk, rentalTier, cenaEur: karta.cenaEur, bajtow, stan: 'do_zgody', kiedy: new Date(teraz()).toISOString() };
+            d.zgloszenia = [wpis, ...d.zgloszenia].slice(0, 2000);
+            await pisz(PLIK_ZGLOSZEN, d);
+            return { id: wpis.id, stan: wpis.stan, tytul: wpis.tytul, stron: wpis.stron };
+        });
+    }
+    const zgloszeniaKsiag = async () => (await json(PLIK_ZGLOSZEN, { zgloszenia: [] })).zgloszenia;
+    /** ✓ Suwerena publikuje księgę w Wypożyczalni; ✕ odrzuca i kasuje treść. */
+    async function decydujKsiege(id, akcja, { powod = null } = {}) {
+        const dane = await json(path.join(KAT_ZGLOSZEN, `${String(id).replace(/[^a-z0-9-]/g, '')}.json`), null);
+        const przyjmij = akcja === 'przyjmij';
+        if (przyjmij && !publikujKsiege) throw blad('Most nie umie teraz publikować ksiąg.', 503);
+        if (przyjmij && !dane?.book) throw blad('Treść tego zgłoszenia zniknęła — odrzuć je.', 410);
+        const ksiega = przyjmij ? await publikujKsiege({ book: dane.book, rentalTier: dane.rentalTier, cenaEur: dane.cenaEur, wystaw: true }) : null;
+        return poKolei(async () => {
+            const d = await json(PLIK_ZGLOSZEN, { zgloszenia: [] });
+            const wpis = d.zgloszenia.find((x) => x.id === id && x.stan === 'do_zgody');
+            if (!wpis) throw blad('Nie ma takiego zgłoszenia.', 404);
+            wpis.stan = przyjmij ? 'przyjete' : 'odrzucone';
+            wpis.rozstrzygniete = new Date(teraz()).toISOString();
+            if (powod) wpis.powod = String(powod).slice(0, 300);
+            if (ksiega?.id) wpis.ksiega = ksiega.id;
+            await pisz(PLIK_ZGLOSZEN, d);
+            await fs.rm(path.join(KAT_ZGLOSZEN, `${id}.json`), { force: true });   // treść zostaje w katalogu Wypożyczalni albo znika
+            return { id, stan: wpis.stan, ...(wpis.ksiega ? { ksiega: wpis.ksiega } : {}) };
+        });
+    }
+    /**
+     * 📥 Źródło Izby zgód. „✓ opublikuj” tylko przy Katedrze (`zdalnie: false`) — obcej księgi nie ocenia
+     * się na ekranie telefonu; „✕ odrzuć” wolno zdalnie, bo odmowa niczego nie wystawia światu.
+     */
+    const zrodloIzby = {
+        id: 'jukebox-ksiegi', emoji: '📚', nazwa: 'Księgi od posiadaczy Klucza Venue',
+        czekajace: async () => (await zgloszeniaKsiag()).filter((x) => x.stan === 'do_zgody').map((x) => ({
+            id: x.id, tytul: x.tytul, kiedy: x.kiedy,
+            opis: [x.autor ? `autor: ${x.autor}` : null, `${x.stron} stron`, x.kwestii ? `${x.kwestii} kwestii` : null, x.jezyk, x.rentalTier === 'demo' ? 'demo (za darmo)' : `${x.cenaEur} €`, `${Math.round(x.bajtow / 1000)} kB`, `klucz ${String(x.odcisk).slice(0, 8)}…`].filter(Boolean).join(' · '),
+            akcje: [{ id: 'przyjmij', etykieta: '✓ opublikuj', zdalnie: false, potwierdz: `„${x.tytul}” pojawi się publicznie w Wypożyczalni teostory.studio.` }, { id: 'odrzuc', etykieta: '✕ odrzuć', zdalnie: true }],
+        })),
+        decyduj: (id, akcja, o = {}) => decydujKsiege(id, akcja, o),
+    };
+
     /** Krótki odcisk klucza — nazwa katalogu na nagrania tego klienta. Z odcisku nie da się odtworzyć klucza. */
-    const odciskKlucza = async (wejscie) => { const k = normalizujKlucz(wejscie); return k ? hashKlucza(k).slice(0, 16) : null; };
+    const odciskKlucza = async (wejscie) => {
+        const k = normalizujKlucz(wejscie);
+        if (k) return hashKlucza(k).slice(0, 16);
+        return wejscie && (await czySuweren(String(wejscie))) ? hashKlucza(`suweren:${wejscie}`).slice(0, 16) : null;   // 👑 własny kąt Suwerena na nagrania
+    };
 
     const zakupy = async () => (await json(PLIK_ZAKUPOW, { zakupy: [] })).zakupy;
     /** Rejestr kluczy BEZ hashy — do podglądu Suwerena (ile kluczy, jakie tiery, kiedy). */
     const klucze = async () => (await json(PLIK_KLUCZY, { klucze: [] })).klucze.map(({ hash, ...r }) => r);   // eslint-disable-line no-unused-vars
-    return { oferta, kup, odbierz, dostep, cennik, ustawCennik, zakupy, sprawdzKlucz, klucze, lektorStan, lektorZuzyj, odciskKlucza };
+    return { oferta, kup, odbierz, dostep, cennik, ustawCennik, zakupy, sprawdzKlucz, klucze, lektorStan, lektorZuzyj, odciskKlucza, zglosKsiege, zgloszeniaKsiag, decydujKsiege, zrodloIzby };
 }
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /** Trasy: publiczne `/wizytowka/jukebox*` (Straż `SCIEZKA_JUKEBOX`) i Hub `/api/jukebox*` (tylko maszyna). */
-export function zamontujTrasyJukeboxa(app, J, { limitNaMinute = 10, lektor = null, maxZnakowLektora = 1200, limitLektoraNaMinute = 4 } = {}) {
+export function zamontujTrasyJukeboxa(app, J, { limitNaMinute = 10, lektor = null, maxZnakowLektora = 1200, limitLektoraNaMinute = 4, limitPublikacjiNaMinute = 3 } = {}) {
     const odp = (res, p) => p.then((d) => res.json({ success: true, ...d })).catch((e) => res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }));
     const cors = (res) => { res.set('Access-Control-Allow-Origin', '*'); res.set('Access-Control-Allow-Headers', 'Content-Type'); res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); };
     const proby = new Map();
     const limit = (req, klucz, n) => { const ip = `${klucz}:${req.ip || '?'}`, t = Date.now(), l = (proby.get(ip) ?? []).filter((x) => t - x < 60_000); if (l.length >= n) return false; proby.set(ip, [...l, t]); return true; };
     // Hub (Straż `/api/jukebox`: tylko maszyna)
-    app.get('/api/jukebox', (_req, res) => odp(res, (async () => ({ ...(await J.oferta()), zakupy: await J.zakupy(), klucze: await J.klucze() }))()));
+    app.get('/api/jukebox', (_req, res) => odp(res, (async () => ({ ...(await J.oferta()), zakupy: await J.zakupy(), klucze: await J.klucze(), zgloszenia: await J.zgloszeniaKsiag() }))()));
     app.put('/api/jukebox/cennik', (req, res) => odp(res, J.ustawCennik(req.body ?? {}).then((cennik) => ({ cennik }))));
     // Publiczne
     app.get('/wizytowka/jukebox', (_req, res) => { cors(res); odp(res, J.oferta()); });
@@ -242,6 +319,12 @@ export function zamontujTrasyJukeboxa(app, J, { limitNaMinute = 10, lektor = nul
             const { tier: _t, ...lek } = (await J.lektorStan(k)) ?? {};   // eslint-disable-line no-unused-vars
             return { tier: w.tier, kiedy: w.kiedy, lektor: lek };
         })());
+    });
+    // 📚 Tier 4: zgłoszenie księgi do Wypożyczalni. Nie publikuje — stawia w kolejce do ✓ Suwerena (Izba zgód).
+    app.post('/wizytowka/jukebox/publikuj', (req, res) => {
+        cors(res);
+        if (!limit(req, 'pub', limitPublikacjiNaMinute)) return res.status(429).json({ success: false, message: 'Za dużo zgłoszeń — spróbuj za minutę.' });
+        return odp(res, J.zglosKsiege(String(req.body?.klucz ?? req.body?.key ?? '').slice(0, 64), { book: req.body?.book, rentalTier: req.body?.rentalTier, cenaEur: req.body?.cenaEur }));
     });
     /**
      * 🎙 Lektor Katedry dla klienta z Kluczem GRV. Zwraca gotowe mp3.

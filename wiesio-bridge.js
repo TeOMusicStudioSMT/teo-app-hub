@@ -558,6 +558,13 @@ app.use(cors({
     maxAge:          86400,  // preflight cache 24h
 }));
 
+// 🛡 Publiczne trasy Jukeboxa mają własny, mały sufit ciała — SPRAWDZANY PRZED parserem, więc obcy
+// nie zmusi mostu do zbuforowania setek megabajtów. Hub i maszyna dalej mają limit 2000 MB poniżej.
+app.use((req, res, next) => {
+    if (req.method !== 'POST' || !req.path.startsWith('/wizytowka/jukebox/')) return next();
+    if (Number(req.headers['content-length'] ?? 0) > 2_500_000) return res.status(413).json({ success: false, message: 'Zgłoszenie za duże — obrazy wyślij jako adresy, nie dataURL.' });
+    return next();
+});
 // Zwiększamy limit dla dużych plików video (Base64)
 app.use(express.json({ limit: '2000mb' }));
 app.use(express.urlencoded({ limit: '2000mb', extended: true }));
@@ -9635,7 +9642,8 @@ app.delete('/api/elevenlabs/cel', async (req, res) => {   // zdjęcie lektora sc
 // 🎧 Spotify — profile artystów Katedry (Elara, Kael) przez Web API, klucze ze Skarbca (services/SpotifyArtysci.js)
 zamontujTrasySpotify(app, utworzSpotify({ klucze: async () => ({ client_id: await sekretPrzewodu('spotify', 'client_id'), client_secret: await sekretPrzewodu('spotify', 'client_secret') }) }));
 // 📻 TeOfon Studio & Jukebox 0.00G — Tiery GRV, Stripe Checkout, 👑 Klucz Suwerena (services/JukeboxTiery.js)
-const Jukebox = utworzJukebox({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe, adres: adresTunelu, czySuweren: (k) => Wypozyczalnia.czySuweren(k) });
+const Jukebox = utworzJukebox({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe, adres: adresTunelu, czySuweren: (k) => Wypozyczalnia.czySuweren(k),
+    publikujKsiege: (dane) => Wypozyczalnia.publikuj(dane) });   // 📚 Tier 4: księgę wystawia dopiero ✓ Suwerena w Izbie zgód
 zamontujTrasyJukeboxa(app, Jukebox, {
     /**
      * 🎙 Lektor Katedry dla klienta z Kluczem GRV.
@@ -16221,6 +16229,7 @@ const Warsztat = utworzWarsztat({ katalog: path.join(ANTIGRAVITY_DIR, 'warsztat-
     nagroda: (o) => nagrodaZaPrace(o),
     jajo: { decyzja: (o) => Jajo.decyzja(o), wiesc: (o) => Jajo.wiesc(o) } });
 zamontujTrasyWarsztatu(app, Warsztat);
+Izba.zarejestruj(Jukebox.zrodloIzby);   // 📚 księgi zgłoszone Kluczem Venue — publikuje dopiero ✓ Suwerena
 Izba.zarejestruj(Warsztat.zrodloIzby);
 Izba.zarejestruj(KsiegaWielowymiarowa.zrodloIzby);   // 🌌 gałęzie Żywych Ksiąg z innych Katedr — ✓/✕ także z telefonu
 Izba.zarejestruj(Jason.zrodloIzby);   // 🎛️ pakiety kampanii Jasona (utwór Suno + okładka) — ✓/✕ także z telefonu

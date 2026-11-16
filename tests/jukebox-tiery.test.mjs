@@ -227,8 +227,73 @@ test('🎙 Lektor Katedry: tylko tier z funkcją, licznik znaków na kluczu, arc
     } finally { d.srv.close(); await fs.rm(d.katalog, { recursive: true, force: true }); }
 });
 
+test('📚 Tier 4: księga zgłoszona Kluczem Venue czeka na ✓ Suwerena, a nie ląduje wprost w katalogu', async () => {
+    const opublikowane = [];
+    const publikujKsiege = async (d) => { opublikowane.push(d); return { id: `ksiega-${opublikowane.length}` }; };
+    const katalogTmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jukebox-pub-')), stripe = atrapaStripe();
+    const J = utworzJukebox({ katalog: katalogTmp, stripe, adres: async () => 'https://katedra.test', czySuweren: async (k) => k === KLUCZ_SU, publikujKsiege });
+    const app = express(); app.use(express.json({ limit: '10mb' })); zamontujTrasyJukeboxa(app, J, { limitPublikacjiNaMinute: 50 });
+    const srv = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+    const b = `http://127.0.0.1:${srv.address().port}`;
+    try {
+        await J.ustawCennik({ puls: 4.99, hact: 9.99, venue: 24.99 });
+        const dajKlucz = async (tier) => {
+            await post(`${b}/wizytowka/jukebox/kup`, { tier, powrot: 'https://teostory.studio/jukebox' });
+            const id = [...stripe.sesje.values()].find((s) => s.pakiet === `jukebox-${tier}` && !s.oplacona).id;
+            stripe.sesje.get(id).oplacona = true;
+            const r = await fetch(`${b}/wizytowka/jukebox/odbior?sesja=${id}`, { redirect: 'manual' });
+            return new URL(r.headers.get('location')).searchParams.get('key');
+        };
+        const ksiega = { title: 'Nocny Kontuar', author: 'Ktoś Obcy', language: 'pl', pages: [{ narrativeText: 'Neon brzęczy w bursztynowym świetle.' }, { narrativeText: 'Zegar stanął na jedenastej jedenaście.' }] };
+        const zglos = (klucz, book = ksiega, extra = {}) => post(`${b}/wizytowka/jukebox/publikuj`, { klucz, book, cenaEur: 2.99, ...extra });
+
+        // HACT nie ma publikacji — to funkcja Tieru 4
+        const kluczHact = await dajKlucz('hact');
+        const h = await zglos(kluczHact);
+        assert.equal(h.s, 403); assert.match(h.d.message, /Katedra Venue/);
+        assert.equal(opublikowane.length, 0);
+
+        // Venue zgłasza — i NIC jeszcze nie trafia do katalogu
+        const kluczVenue = await dajKlucz('venue');
+        const z = await zglos(kluczVenue);
+        assert.equal(z.s, 200); assert.equal(z.d.stan, 'do_zgody'); assert.equal(z.d.tytul, 'Nocny Kontuar');
+        assert.equal(opublikowane.length, 0, 'zgłoszenie samo niczego nie publikuje');
+
+        // widać je w Izbie zgód, z „✓ opublikuj” tylko przy Katedrze
+        const czeka = await J.zrodloIzby.czekajace();
+        assert.equal(czeka.length, 1); assert.equal(czeka[0].tytul, 'Nocny Kontuar');
+        assert.match(czeka[0].opis, /autor: Ktoś Obcy · 2 stron/);
+        assert.equal(czeka[0].akcje.find((a) => a.id === 'przyjmij').zdalnie, false, 'obcej księgi nie ocenia się z telefonu');
+        assert.equal(czeka[0].akcje.find((a) => a.id === 'odrzuc').zdalnie, true);
+
+        // śmieci odpadają na wejściu, tą samą walidacją co publikacja z Huba
+        assert.equal((await zglos(kluczVenue, { title: 'Pusta', pages: [] })).s, 400);
+        assert.equal((await zglos('GRV-VENUE-2345-6789')).s, 404);
+
+        // ✕ odrzucenie: treść znika, katalog nietknięty
+        const odrzucone = await J.decydujKsiege(z.d.id, 'odrzuc', { powod: 'nie ten klimat' });
+        assert.equal(odrzucone.stan, 'odrzucone'); assert.equal(opublikowane.length, 0);
+        assert.equal((await J.zrodloIzby.czekajace()).length, 0);
+        await assert.rejects(() => J.decydujKsiege(z.d.id, 'przyjmij'), /zniknęła|Nie ma takiego/, 'rozstrzygniętego zgłoszenia nie da się wskrzesić');
+
+        // ✓ przyjęcie: dopiero teraz księga idzie do Wypożyczalni, wystawiona
+        const z2 = await zglos(kluczVenue);
+        const przyjete = await J.decydujKsiege(z2.d.id, 'przyjmij');
+        assert.equal(przyjete.stan, 'przyjete'); assert.equal(przyjete.ksiega, 'ksiega-1');
+        assert.equal(opublikowane.length, 1);
+        assert.equal(opublikowane[0].wystaw, true); assert.equal(opublikowane[0].cenaEur, 2.99);
+        assert.equal(opublikowane[0].book.title, 'Nocny Kontuar');
+        assert.equal((await J.zrodloIzby.czekajace()).length, 0);
+
+        // limit kolejki: trzy czekające zgłoszenia na klucz, czwarte odbite
+        for (let i = 0; i < 3; i++) assert.equal((await zglos(kluczVenue)).s, 200, `zgłoszenie ${i + 1}`);
+        const czwarte = await zglos(kluczVenue);
+        assert.equal(czwarte.s, 409); assert.match(czwarte.d.message, /czekające na zgodę/);
+    } finally { srv.close(); await fs.rm(katalogTmp, { recursive: true, force: true }); }
+});
+
 test('Straż: publiczne /wizytowka/jukebox*, Hub /api/jukebox tylko maszyna', () => {
-    for (const p of ['/wizytowka/jukebox', '/wizytowka/jukebox/kup', '/wizytowka/jukebox/dostep', '/wizytowka/jukebox/odbior', '/wizytowka/jukebox/klucz', '/wizytowka/jukebox/lektor']) assert.ok(SCIEZKA_JUKEBOX.test(p), p);
+    for (const p of ['/wizytowka/jukebox', '/wizytowka/jukebox/kup', '/wizytowka/jukebox/dostep', '/wizytowka/jukebox/odbior', '/wizytowka/jukebox/klucz', '/wizytowka/jukebox/lektor', '/wizytowka/jukebox/publikuj']) assert.ok(SCIEZKA_JUKEBOX.test(p), p);
     for (const p of ['/wizytowka/jukebox/cennik', '/wizytowka/jukebox/../api', '/wizytowka/jukeboxx']) assert.ok(!SCIEZKA_JUKEBOX.test(p), p);
     assert.ok(SCIEZKI_TYLKO_LOKALNE.includes('/api/jukebox'));
 });

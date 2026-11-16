@@ -160,7 +160,7 @@ export const SCIEZKA_ZGLOSZENIA_KSIEGI = /^\/wizytowka\/teostory\/zgloszenie$/; 
 /** 🌌 Gałąź Żywej Księgi z innej Katedry (services/KsiegaWielowymiarowa.js): podpis kluczem z rejestru, ✓ Suwerena w Izbie. */
 export const SCIEZKA_GALEZI_KSIEGI = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/galaz$/;
 /** 📻 TeOfon Studio & Jukebox 0.00G (services/JukeboxTiery.js): oferta tierów, zakup przez Stripe, odbiór i dostęp — publicznie, ceny liczy most. */
-export const SCIEZKA_JUKEBOX = /^\/wizytowka\/jukebox(\/(kup|dostep|odbior|klucz|lektor))?$/;
+export const SCIEZKA_JUKEBOX = /^\/wizytowka\/jukebox(\/(kup|dostep|odbior|klucz|lektor|publikuj))?$/;
 export const SCIEZKA_WYPOZYCZENIA = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/(wypozycz|oferta)$/;
 /** Okładka wystawionego pakietu, odbiór i pobranie opłaconego (sprawdzane w Stripe). */
 export const SCIEZKA_SKLEPU = /^\/wizytowka\/sklep\/(pk-[0-9a-f]{8}\/okladka\.png|odbior|pobierz)$/;
