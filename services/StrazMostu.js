@@ -119,7 +119,7 @@ export const SCIEZKI_TYLKO_LOKALNE = [
     '/api/skladnica', // 📦 Składnica: wspólne assety (zapis, import z dysku, kosz) — tylko przy Katedrze
     '/api/gielda-mocy',   // ⚡ Giełda mocy: oferta tej Katedry ustawia się tylko przy niej
     '/api/vault/status', '/api/vault/set', '/api/vault/sekret/', '/api/vault/resetuj',   // 🔐 Skarbiec 0.00G — tylko przy Katedrze
-    '/api/stripe', '/api/sklep-mini', '/api/books', '/api/elevenlabs', '/api/zywe-wpisy', '/api/galezie-ksiag', '/api/zywe-ksiegi', '/api/manuskrypt', '/api/stol-produktowy', '/api/sklep-linki', '/api/printful',   // 💳🐾 płatności Stripe i Sklep Mini (zgody na kredyty Meshy, wystawianie) — tylko przy Katedrze
+    '/api/stripe', '/api/sklep-mini', '/api/jukebox', '/api/books', '/api/elevenlabs', '/api/zywe-wpisy', '/api/galezie-ksiag', '/api/zywe-ksiegi', '/api/manuskrypt', '/api/stol-produktowy', '/api/sklep-linki', '/api/printful',   // 💳🐾 płatności Stripe i Sklep Mini (zgody na kredyty Meshy, wystawianie) — tylko przy Katedrze
     '/api/kibel/most', '/api/modele/chmura',   // 🔗 klucze Kibla dla mostu i modele z konta dostawcy — tylko przy Katedrze
     '/api/jev',   // ⚖️ Jev (TypeSafe) = rachunek za tokeny — tylko przy Katedrze
     '/api/koherencja',   // 🫀 Koherencja Katedry — nazwy modeli i błędy mostu, tylko przy maszynie
@@ -159,6 +159,8 @@ export const SCIEZKA_TEOSTORY = /^\/wizytowka\/teostory(\/odbior|\/zywe|\/suwere
 export const SCIEZKA_ZGLOSZENIA_KSIEGI = /^\/wizytowka\/teostory\/zgloszenie$/;   // 📚🏛️ federacja: zgłoszenie księgi innej Katedry (podpis z rejestru)
 /** 🌌 Gałąź Żywej Księgi z innej Katedry (services/KsiegaWielowymiarowa.js): podpis kluczem z rejestru, ✓ Suwerena w Izbie. */
 export const SCIEZKA_GALEZI_KSIEGI = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/galaz$/;
+/** 📻 TeOfon Studio & Jukebox 0.00G (services/JukeboxTiery.js): oferta tierów, zakup przez Stripe, odbiór i dostęp — publicznie, ceny liczy most. */
+export const SCIEZKA_JUKEBOX = /^\/wizytowka\/jukebox(\/(kup|dostep|odbior))?$/;
 export const SCIEZKA_WYPOZYCZENIA = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/(wypozycz|oferta)$/;
 /** Okładka wystawionego pakietu, odbiór i pobranie opłaconego (sprawdzane w Stripe). */
 export const SCIEZKA_SKLEPU = /^\/wizytowka\/sklep\/(pk-[0-9a-f]{8}\/okladka\.png|odbior|pobierz)$/;
@@ -188,6 +190,7 @@ export function czyWizytowka(req) {
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_PLATNOSCI.test(String(req.path || ''))) return true;
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_ZAKUPU.test(String(req.path || ''))) return true;
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_WYPOZYCZENIA.test(String(req.path || ''))) return true;
+    if (['GET', 'HEAD', 'POST', 'OPTIONS'].includes(req.method) && SCIEZKA_JUKEBOX.test(String(req.path || ''))) return true;
     if (req.method === 'POST' && SCIEZKA_ZGLOSZENIA_KSIEGI.test(String(req.path || ''))) return true;
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_GALEZI_KSIEGI.test(String(req.path || ''))) return true;
     if ((req.method === 'GET' || req.method === 'HEAD') && SCIEZKA_KODU_TANCA.test(String(req.path || ''))) return true;

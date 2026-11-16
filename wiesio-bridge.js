@@ -16,6 +16,7 @@ import { utworzMerch, CENNIK_MERCHU, KSZTALTY, DRUKARKI } from './services/Merch
 import { utworzStripe } from './services/Stripe.js';
 import { utworzSklepMini, zamontujTrasySklepu, BUDZET_PRODUKCJI as SKLEP_BUDZET } from './services/SklepMini.js';
 import { utworzWypozyczalnie, zamontujTrasyWypozyczalni } from './services/WypozyczalniaKsiag.js';
+import { utworzJukebox, zamontujTrasyJukeboxa } from './services/JukeboxTiery.js';
 import { utworzSpotify, zamontujTrasySpotify } from './services/SpotifyArtysci.js';
 import { utworzSilnikKsiag, zamontujTrasySilnikaKsiag } from './services/SilnikKsiag.js';
 import { utworzManuskrypt, zamontujTrasyManuskryptu } from './services/WlasnyManuskrypt.js';
@@ -9631,6 +9632,9 @@ app.delete('/api/elevenlabs/cel', async (req, res) => {   // zdjęcie lektora sc
 });
 // 🎧 Spotify — profile artystów Katedry (Elara, Kael) przez Web API, klucze ze Skarbca (services/SpotifyArtysci.js)
 zamontujTrasySpotify(app, utworzSpotify({ klucze: async () => ({ client_id: await sekretPrzewodu('spotify', 'client_id'), client_secret: await sekretPrzewodu('spotify', 'client_secret') }) }));
+// 📻 TeOfon Studio & Jukebox 0.00G — Tiery GRV, Stripe Checkout, 👑 Klucz Suwerena (services/JukeboxTiery.js)
+const Jukebox = utworzJukebox({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe, adres: adresTunelu, czySuweren: (k) => Wypozyczalnia.czySuweren(k) });
+zamontujTrasyJukeboxa(app, Jukebox);
 zamontujTrasyWypozyczalni(app, Wypozyczalnia, { federacja: () => FederacjaKsiag.pozycjePubliczne(), nick: async () => (await Wizytowka.profil()).nick || null });
 if (process.env.OTAKOS_SKLEP_MINI !== '0') setTimeout(() => SklepMini.startPetli(), 120_000).unref?.();
 // 💃🥊 Ring taneczny (services/RingTaneczny.js): pojedynki Mini-TeOgochi między Katedrami — walkę liczą gracze
