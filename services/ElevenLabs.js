@@ -27,6 +27,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { oczyscStart } from './CzystyStart.js';
+import { WYMOWA_DOMYSLNA, zastosujWymowe, odciskWymowy } from './WymowaGlosow.js';
 
 const API = 'https://api.elevenlabs.io';
 export const GLOSY_BIBLIOTEKI = [
@@ -68,6 +69,11 @@ export const LOKALNY = 'vs:';
 export const czyLokalny = (id) => String(id ?? '').startsWith(LOKALNY);
 /** Preset „Obsada Lokalna” (rola → nazwa profilu VoiceStudio). Echo celowo bez przypisania. */
 export const PRESET_LOKALNY = { kronikarz: 'Kalen', kael: 'KAEL', elara: 'ELARA', iskra: 'KIRA', suweren: 'TeO G.' };
+/** 📚 Presety obsady KSIĘGI (mówca → profil VoiceStudio po nazwie; aliasy: TeOgochi → TeOgashi, Ada Thorne → Aria Thorne). Klucz mówcy = id/imię z księgi bez ogonków. */
+export const PRESETY_KSIEG = {
+    teterhia: { narrator: 'Kalen', mira: 'ELARA', kater: 'TeOgashi', pip: 'KIRA', velka: 'Aria Thorne', knirscher: 'KAEL' },
+};
+const ALIASY_PROFILI = { teogochi: 'teogashi', 'ada-thorne': 'aria-thorne' };
 /** Język nagrania lokalnego z tekstu (gdy zlecenie nie podało): znaki polskie → pl, niemieckie słowa → de, inaczej en. */
 export function wykryjJezyk(t) {
     const s = String(t ?? '');
@@ -151,7 +157,7 @@ export function rolaMowcy(nazwa, mapa = {}) {
 
 export function utworzElevenLabs(cfg) {
     const KAT = cfg.katalog, pob = cfg.fetch ?? fetch, teraz = cfg.teraz ?? (() => Date.now());
-    const plikObsady = path.join(KAT, 'obsada.json'), plikZuzycia = path.join(KAT, 'zuzycie.json');
+    const plikObsady = path.join(KAT, 'obsada.json'), plikZuzycia = path.join(KAT, 'zuzycie.json'), plikWymowy = path.join(KAT, 'wymowa.json');
     const json = async (p, d) => { try { return JSON.parse(await fs.readFile(p, 'utf8')); } catch { return d; } };
     const pisz = async (p, o) => { await fs.mkdir(path.dirname(p), { recursive: true }); const t = `${p}.${process.pid}.tmp`; await fs.writeFile(t, JSON.stringify(o, null, 2)); await fs.rename(t, p); };
     let kolej = Promise.resolve();
@@ -235,12 +241,14 @@ export function utworzElevenLabs(cfg) {
         } else seg = rola === 'auto' ? rozdzielRole(tekst) : [{ rola: ROLE[rola] ? rola : 'kronikarz', tekst: czysc(tekst) }];
         seg = seg.filter((s) => s.tekst.length >= 2);
         if (!seg.length) throw blad('Nie ma tekstu do udźwiękowienia.');
+        const obKsiegi = (await json(path.join(kat, 'obsada-ksiegi.json'), {})).glosy ?? {}, slownik = await slownikWymowy();
         if (seg.reduce((n, s) => n + s.tekst.length, 0) > MAX_TEKSTU) throw blad(`Za długi tekst na jedno nagranie (limit ${MAX_TEKSTU} znaków) — podziel na sceny.`);
         const fragmenty = [];
         for (const s of seg) for (const t of kawalki(s.tekst)) {
-            const glos = u.obsada[s.rola], lokalny = czyLokalny(glos.id), jez = ['pl', 'en', 'de'].includes(jezyk) ? jezyk : wykryjJezyk(t);
-            const nazwa = `${skrotMowy({ tekst: t, glos: glos.id, model: lokalny ? `vs-${jez}` : mdl })}.mp3`, p = path.join(kat, nazwa);
-            fragmenty.push({ rola: s.rola, postac: s.postac ?? null, glos: glos.id, glosNazwa: glos.nazwa, tekst: t, znakow: t.length, nazwa, plik: p, lokalny, jezyk: jez, wArchiwum: await jest(p) });
+            const glos = glosKsiegi(obKsiegi, s) ?? u.obsada[s.rola], lokalny = czyLokalny(glos.id), jez = ['pl', 'en', 'de'].includes(jezyk) ? jezyk : wykryjJezyk(t);
+            const wym = lokalny ? zastosujWymowe(t, jez, slownik) : { tekst: t, uzyte: [] };   // 🔤 zapis fonetyczny tylko w tekście do syntezy
+            const nazwa = `${skrotMowy({ tekst: t, glos: glos.id, model: lokalny ? `vs-${jez}${odciskWymowy(wym.uzyte) ? `-${odciskWymowy(wym.uzyte)}` : ''}` : mdl })}.mp3`, p = path.join(kat, nazwa);
+            fragmenty.push({ rola: s.rola, postac: s.postac ?? null, glos: glos.id, glosNazwa: glos.nazwa, tekst: t, tekstMowy: wym.tekst, znakow: t.length, nazwa, plik: p, lokalny, jezyk: jez, wArchiwum: await jest(p) });
         }
         const brak = fragmenty.filter((f) => !f.wArchiwum), chmura = brak.filter((f) => !f.lokalny), znakow = chmura.reduce((n, f) => n + f.znakow, 0);   // lokalne = 0 kredytów
         const nazwa = fragmenty.length === 1 ? fragmenty[0].nazwa : `scena-${sha(fragmenty.map((f) => f.nazwa).join('|')).slice(0, 20)}.mp3`;
@@ -268,7 +276,7 @@ export function utworzElevenLabs(cfg) {
             const czekaj = ostatniaLok + pauzaMs - Date.now(); if (czekaj > 0) await spij(czekaj);
             const tmpDir = path.join(path.dirname(f.plik), '.lokalne'); let wav = null;
             try {
-                const r = await cfg.voicestudio.mow({ tekst: f.tekst, glos: f.glos.slice(LOKALNY.length), format: 'wav', katalogDocelowy: tmpDir, nazwa: 'vs', jezyk: f.jezyk });
+                const r = await cfg.voicestudio.mow({ tekst: f.tekstMowy ?? f.tekst, glos: f.glos.slice(LOKALNY.length), format: 'wav', katalogDocelowy: tmpDir, nazwa: 'vs', jezyk: f.jezyk });
                 wav = r.sciezka;
                 if (r.podejrzane) throw blad(`VoiceStudio oddał podejrzane nagranie (${(r.uwagi ?? []).join('; ')}) — nic nie zapisuję.`, 'PODEJRZANE', 502);
                 await fs.mkdir(path.dirname(f.plik), { recursive: true });
@@ -348,6 +356,49 @@ export function utworzElevenLabs(cfg) {
         return { plik: pl.plik, nazwa: pl.nazwa, zArchiwum: true, opis: pl.opis, sekundy: pl.sekundy, petla: pl.petla, koszt: null };
     }
 
+    // ── 🔤 słownik wymowy (domyślny + `wymowa.json` Katedry) ──
+    const slownikWymowy = async () => ({ ...WYMOWA_DOMYSLNA, ...(await json(plikWymowy, {})) });
+    const ustawWymowe = (z, na) => poKolei(async () => {
+        const d = await json(plikWymowy, {}), klucz = String(z ?? '').trim();
+        if (!klucz || klucz.length > 60) throw blad('Podaj słowo (do 60 znaków).');
+        if (na === null) delete d[klucz]; else { if (!na || typeof na !== 'object') throw blad('Zapis to obiekt {"*": "…"} albo {"de": "…", "pl": "…"}.'); d[klucz] = Object.fromEntries(Object.entries(na).filter(([j, v]) => ['*', 'pl', 'en', 'de'].includes(j) && typeof v === 'string' && v.length <= 60)); }
+        await pisz(plikWymowy, d); return { ...WYMOWA_DOMYSLNA, ...d };
+    });
+
+    // ── 📚 obsada KSIĘGI: mówca → głos, ważniejsza od obsady ról (`obsada-ksiegi.json` w katalogu księgi) ──
+    const plikObsadyKsiegi = async (m) => path.join(await katalogMiejsca(m), 'obsada-ksiegi.json');
+    function glosKsiegi(glosy, s) {
+        const kandydaci = [norm(s.postac), s.rola].filter(Boolean);
+        for (const c of kandydaci) if (glosy[c]) return glosy[c];
+        const czesci = norm(s.postac).split('-');
+        for (const [k, g] of Object.entries(glosy)) if (czesci.includes(k)) return g;   // „der-opal-kater” → klucz „kater”
+        return null;
+    }
+    const obsadaKsiegi = async (m) => (await json(await plikObsadyKsiegi(m), {})).glosy ?? {};
+    const ustawObsadeKsiegi = (m, glosy) => poKolei(async () => {
+        const czyste = {};
+        for (const [k, g] of Object.entries(glosy ?? {})) {
+            const klucz = norm(k); if (!klucz || !g?.id) continue;
+            await sprawdzGlos(g.id); czyste[klucz] = { id: String(g.id), nazwa: String(g.nazwa ?? g.id).slice(0, 60) };
+        }
+        await pisz(await plikObsadyKsiegi(m), { glosy: czyste, zapisano: new Date(teraz()).toISOString() });
+        return czyste;
+    });
+    /** Preset księgi (np. `teterhia`): nazwy profili → id z żywego VoiceStudio; brakujące zwracane w `brakuje`. */
+    async function ustawPresetKsiegi(m, preset) {
+        const def = PRESETY_KSIEG[String(preset ?? '').toLowerCase()];
+        if (!def) throw blad(`Nieznany preset księgi. Do wyboru: ${Object.keys(PRESETY_KSIEG).join(', ')}.`);
+        const l = await lokalne();
+        if (!l.zywe) throw blad(`VoiceStudio nie odpowiada — nie przypiszę obsady księgi (${l.powod ?? 'brak połączenia'}).`, 'BEZ_VOICESTUDIO', 424);
+        const glosy = {}, brakuje = [];
+        for (const [mowca, nazwa] of Object.entries(def)) {
+            const n = ALIASY_PROFILI[norm(nazwa)] ?? norm(nazwa), p = l.profile.find((x) => norm(x.nazwa) === n);
+            if (!p) { brakuje.push(`${mowca}: profil „${nazwa}”`); continue; }
+            glosy[mowca] = { id: p.id, nazwa: `🏠 ${p.nazwa}` };
+        }
+        return { glosy: await ustawObsadeKsiegi(m, glosy), brakuje };
+    }
+
     // ── 🏠 profile VoiceStudio (żywe, bez kosztu) ──
     async function lokalne() {
         if (!cfg.voicestudio) return { zywe: false, profile: [], powod: 'Most nie ma podłączonego VoiceStudio.' };
@@ -391,7 +442,7 @@ export function utworzElevenLabs(cfg) {
         return { polaczony: true, saldo: konto.saldo, glosyKonta: konto.glosyKonta, uwagi: konto.uwagi, ...wspolne };
     }
 
-    return { stan, ustaw, ustawLokalna, lokalne, sprawdzGlos, plan, wycena, mow, wycenaEfektu, efekt, plik, katalogMiejsca, ustawienia };
+    return { stan, ustaw, ustawLokalna, lokalne, obsadaKsiegi, ustawObsadeKsiegi, ustawPresetKsiegi, slownikWymowy, ustawWymowe, sprawdzGlos, plan, wycena, mow, wycenaEfektu, efekt, plik, katalogMiejsca, ustawienia };
 }
 
 /**
@@ -404,6 +455,11 @@ export function zamontujTrasyElevenLabs(app, E, { poMowie = null, poEfekcie = nu
     app.get('/api/elevenlabs', async (_req, res) => { try { res.json({ success: true, ...(await E.stan()) }); } catch (e) { zle(res, e); } });
     app.get('/api/elevenlabs/voicestudio', async (_req, res) => { try { res.json({ success: true, ...(await E.lokalne()) }); } catch (e) { zle(res, e); } });
     app.post('/api/elevenlabs/obsada/lokalna', async (_req, res) => { try { res.json({ success: true, ...(await E.ustawLokalna()) }); } catch (e) { zle(res, e); } });
+    app.get('/api/elevenlabs/ksiega/:id/obsada', async (req, res) => { try { res.json({ success: true, glosy: await E.obsadaKsiegi({ rodzaj: 'ksiega', id: req.params.id }) }); } catch (e) { zle(res, e); } });
+    app.put('/api/elevenlabs/ksiega/:id/obsada', async (req, res) => { try { res.json({ success: true, glosy: await E.ustawObsadeKsiegi({ rodzaj: 'ksiega', id: req.params.id }, req.body?.glosy ?? {}) }); } catch (e) { zle(res, e); } });
+    app.post('/api/elevenlabs/ksiega/:id/obsada/preset', async (req, res) => { try { res.json({ success: true, ...(await E.ustawPresetKsiegi({ rodzaj: 'ksiega', id: req.params.id }, req.body?.preset)) }); } catch (e) { zle(res, e); } });
+    app.get('/api/elevenlabs/wymowa', async (_req, res) => { try { res.json({ success: true, slownik: await E.slownikWymowy() }); } catch (e) { zle(res, e); } });
+    app.put('/api/elevenlabs/wymowa', async (req, res) => { try { res.json({ success: true, slownik: await E.ustawWymowe(req.body?.slowo, req.body?.zapis ?? null) }); } catch (e) { zle(res, e); } });
     app.put('/api/elevenlabs/obsada', async (req, res) => { try { res.json({ success: true, ...(await E.ustaw(req.body ?? {})) }); } catch (e) { zle(res, e); } });
     app.post('/api/elevenlabs/wycena', async (req, res) => { try { const pl = await E.plan(req.body ?? {}); res.json({ success: true, wycena: pl.wycena, ...(pl.wycena.wArchiwum ? { url: adres(req.body.miejsce, pl.nazwa) } : {}) }); } catch (e) { zle(res, e); } });
     app.post('/api/elevenlabs/mow', async (req, res) => {

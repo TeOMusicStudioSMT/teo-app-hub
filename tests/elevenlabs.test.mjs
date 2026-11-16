@@ -212,3 +212,39 @@ test('🏠 VoiceStudio: obsada lokalna jednym kliknięciem, 0 kredytów, trzask 
     await assert.rejects(() => martwy.ustawLokalna(), /VoiceStudio nie odpowiada/);
     await fs.rm(dir, { recursive: true, force: true });
 });
+
+test('🔤📚 wymowa nazw własnych (tylko w tekście do syntezy) i preset obsady księgi (6 mówców, aliasy profili)', async () => {
+    const { zastosujWymowe, odciskWymowy } = await import('../services/WymowaGlosow.js');
+    const z = zastosujWymowe('Teterhia ist schön. In teterhia, nicht Teterhiafoo.', 'de');
+    assert.equal(z.tekst, 'Teterija ist schön. In teterija, nicht Teterhiafoo.', 'całe słowa, wielkość pierwszej litery zachowana');
+    assert.deepEqual(zastosujWymowe('Nic tu nie ma.', 'pl').uzyte, []); assert.equal(odciskWymowy([]), '');
+    assert.equal(zastosujWymowe('Teterhia', 'en', { Teterhia: { en: 'Teh-teh-ree-ya' } }).tekst, 'Teh-teh-ree-ya');
+
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'el-ksiega-'));
+    const wyslane = [];
+    const profile = [['p1', 'Kalen'], ['p2', 'ELARA'], ['p3', 'TeOgashi'], ['p4', 'KIRA'], ['p5', 'Aria Thorne'], ['p6', 'KAEL']].map(([id, nazwa]) => ({ id, nazwa }));
+    const voicestudio = {
+        stan: async () => ({ zywe: true }), profile: async () => profile,
+        mow: async ({ tekst, glos, katalogDocelowy }) => {
+            wyslane.push({ tekst, glos }); await fs.mkdir(katalogDocelowy, { recursive: true });
+            const wyj = path.join(katalogDocelowy, `vs_${wyslane.length}.wav`);
+            await uruchom(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=f=220:d=0.6', wyj]);
+            return { sciezka: wyj, bajtow: 1, glos, znakow: tekst.length, sekundy: 0.6, uwagi: [], podejrzane: false };
+        },
+    };
+    const E = utworzElevenLabs({ katalog: dir, klucz: async () => '', ffmpeg: ffmpegPath, uruchom, voicestudio, pauzaLokalnaMs: 0, miejsca: {} });
+    const m = { rodzaj: 'ksiega', id: 'teterhia-test' };
+    const p = await E.ustawPresetKsiegi(m, 'teterhia');
+    assert.deepEqual(p.brakuje, []); assert.deepEqual(Object.keys(p.glosy).sort(), ['kater', 'knirscher', 'mira', 'narrator', 'pip', 'velka']);
+    assert.equal(p.glosy.kater.id, 'vs:p3', 'alias TeOgochi → profil TeOgashi'); assert.equal(p.glosy.velka.id, 'vs:p5');
+    await assert.rejects(() => E.ustawPresetKsiegi(m, 'nie-ma'), /Nieznany preset/);
+
+    const segmenty = [['narrator', 'Teterhia ist eine Welt, die nur im Lied lebt.'], ['Mira', 'Hallo? Ist hier jemand?'], ['Der Opal-Kater', 'Jemand ist immer hier.'], ['pip', 'Piep!'], ['Velka', 'Ich bin der Sturm.'], ['Der Knirscher', 'Knirsch, knirsch.']].map(([postac, tekst]) => ({ postac, tekst }));
+    await E.mow({ miejsce: m, segmenty, jezyk: 'de' });
+    assert.deepEqual(wyslane.map((x) => x.glos), ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'], 'każdy mówca swoim głosem z obsady księgi');
+    assert.ok(wyslane[0].tekst.startsWith('Teterija ist'), 'do syntezy poszedł zapis fonetyczny');
+    // inna księga bez obsady = obsada ról (nie dostaje głosów Teterhii)
+    const w2 = await E.wycena({ miejsce: { rodzaj: 'ksiega', id: 'inna-ksiega' }, segmenty: [{ postac: 'Mira', tekst: 'Hallo da.' }] });
+    assert.ok(!w2.glosy.some((g) => g.includes('ELARA')), 'preset dotyczy tylko swojej księgi');
+    await fs.rm(dir, { recursive: true, force: true });
+});
