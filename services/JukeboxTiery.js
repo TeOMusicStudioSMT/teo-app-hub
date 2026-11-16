@@ -32,6 +32,14 @@ export const MAX_ZGLOSZEN_NA_KLUCZ = 3;
  * do wypłacenia — a tożsamość i numer konta autora trzyma Stripe, nie `klucze.json`.
  */
 export const PROWIZJA_KATEDRY_PROC = 0;
+/**
+ * 🤝 Czy Katedra prowadzi wypłaty dla autorów (Stripe Connect). Domyślnie NIE — i to nie jest
+ * zapomniany przełącznik, tylko stan faktyczny: dopóki Connect nie działa na prawdziwym koncie,
+ * obietnica płatnej publikacji byłaby ślepą uliczką (klient idzie po konto wypłat, którego nie da
+ * się założyć). Przy `false` księgi wchodzą jako demo i Katedra mówi wprost, dlaczego.
+ * Włącz dopiero, gdy `GET /api/stripe/connect` odpowie `dostepny: true`.
+ */
+export const WYPLATY_AUTOROW = false;
 
 // 🔑 Klucz Dostępu GRV — `GRV-HACT-XXXX-XXXX`. Powstaje w chwili potwierdzonej płatności (`payment_status: paid`),
 // pokazywany kupującemu RAZ (ekran sukcesu + link powrotny). Rejestr `jukebox/klucze.json` trzyma wyłącznie
@@ -94,7 +102,7 @@ const indeks = (id) => TIERY.findIndex((t) => t.id === id);
 export const MIN_EUR = 0.5, MAX_EUR = 999;
 const blad = (m, kod = 400) => Object.assign(new Error(m), { kod });
 
-export function utworzJukebox({ katalog, stripe = null, adres = async () => null, czySuweren = async () => false, publikujKsiege = null, teraz = () => Date.now() }) {
+export function utworzJukebox({ katalog, stripe = null, adres = async () => null, czySuweren = async () => false, publikujKsiege = null, wyplatyAutorow = WYPLATY_AUTOROW, teraz = () => Date.now() }) {
     const KAT = path.join(katalog, 'jukebox'), PLIK_CENNIKA = path.join(KAT, 'cennik.json'), PLIK_ZAKUPOW = path.join(KAT, 'zakupy.json'), PLIK_KLUCZY = path.join(KAT, 'klucze.json');
     const PLIK_ZGLOSZEN = path.join(KAT, 'zgloszenia.json'), KAT_ZGLOSZEN = path.join(KAT, 'zgloszenia');
     const json = async (p, d) => { try { return JSON.parse(await fs.readFile(p, 'utf8')); } catch { return d; } };
@@ -235,6 +243,7 @@ export function utworzJukebox({ katalog, stripe = null, adres = async () => null
         // inaczej Katedra inkasowałaby cudzą pracę i była jej winna wypłatę.
         let konto = null;
         if (rentalTier !== 'demo') {
+            if (!wyplatyAutorow) throw blad('Tą drogą księgi wchodzą dziś tylko za darmo (demo) — Katedra nie uruchomiła jeszcze wypłat dla autorów, a cudzych pieniędzy nie trzyma. Chcesz sprzedawać od zaraz: postaw własną Katedrę OtakOS i zgłoś księgę Federacją, wtedy wypożyczenie płaci Twój Stripe.', 409);
             const wyp = await stanWyplat(wejscie);
             if (!wyp?.przyjmujeWplaty) throw blad('Żeby sprzedawać, najpierw podłącz konto wypłat — Katedra nie trzyma cudzych pieniędzy. Załóż je przez „konto wypłat” swoim Kluczem Dostępu; dane podajesz Stripe’owi, nie Katedrze. Bez tego księga wchodzi za darmo (demo).', 409);
             konto = wyp.konto;
@@ -302,7 +311,7 @@ export function utworzJukebox({ katalog, stripe = null, adres = async () => null
         const w = await sprawdzKlucz(wejscie);
         if (!w) throw blad('Nie znam takiego Klucza Dostępu.', 404);
         if (!maFunkcje(w.tier, 'wypozyczalnia')) throw blad(`Konto wypłat należy do poziomu ${TIERY.find((t) => t.funkcje.includes('wypozyczalnia'))?.nazwa ?? 'Katedra Venue'} — Twój to ${w.tier}.`, 403);
-        if (!stripe?.kontoAutora) throw blad('Ta Katedra nie prowadzi wypłat dla autorów.', 503);
+        if (!wyplatyAutorow || !stripe?.kontoAutora) throw blad('Ta Katedra nie prowadzi jeszcze wypłat dla autorów — księgi wchodzą za darmo (demo). Chcesz sprzedawać: własna Katedra OtakOS i zgłoszenie Federacją.', 503);
         const h = hashKlucza(normalizujKlucz(wejscie));
         let konto = (await json(PLIK_KLUCZY, { klucze: [] })).klucze.find((x) => x.hash === h)?.konto ?? null;
         if (!konto) {

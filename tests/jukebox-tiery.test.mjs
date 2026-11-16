@@ -236,7 +236,7 @@ test('📚 Tier 4: księga zgłoszona Kluczem Venue czeka na ✓ Suwerena, a nie
     const opublikowane = [];
     const publikujKsiege = async (d) => { opublikowane.push(d); return { id: `ksiega-${opublikowane.length}` }; };
     const katalogTmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jukebox-pub-')), stripe = atrapaStripe();
-    const J = utworzJukebox({ katalog: katalogTmp, stripe, adres: async () => 'https://katedra.test', czySuweren: async (k) => k === KLUCZ_SU, publikujKsiege });
+    const J = utworzJukebox({ katalog: katalogTmp, stripe, adres: async () => 'https://katedra.test', czySuweren: async (k) => k === KLUCZ_SU, publikujKsiege, wyplatyAutorow: true });
     const app = express(); app.use(express.json({ limit: '10mb' })); zamontujTrasyJukeboxa(app, J, { limitPublikacjiNaMinute: 50 });
     const srv = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
     const b = `http://127.0.0.1:${srv.address().port}`;
@@ -322,6 +322,34 @@ test('📚 Tier 4: księga zgłoszona Kluczem Venue czeka na ✓ Suwerena, a nie
         const czwarte = await zglos(kluczVenue);
         assert.equal(czwarte.s, 409); assert.match(czwarte.d.message, /czekające na zgodę/);
     } finally { srv.close(); await fs.rm(katalogTmp, { recursive: true, force: true }); }
+
+    // 🤝 DOMYŚLNIE wypłaty są wyłączone: płatna księga odbija się od razu, bez wysyłania klienta po konto,
+    // którego nie da się założyć. Katedra mówi, dlaczego, i gdzie sprzedawać od zaraz.
+    const kat2 = await fs.mkdtemp(path.join(os.tmpdir(), 'jukebox-bezwyplat-')), stripe2 = atrapaStripe();
+    const J2 = utworzJukebox({ katalog: kat2, stripe: stripe2, adres: async () => 'https://katedra.test', czySuweren: async () => false, publikujKsiege });
+    const app2 = express(); app2.use(express.json({ limit: '10mb' })); zamontujTrasyJukeboxa(app2, J2, { limitPublikacjiNaMinute: 50 });
+    const srv2 = await new Promise((r) => { const s = app2.listen(0, '127.0.0.1', () => r(s)); });
+    const b2 = `http://127.0.0.1:${srv2.address().port}`;
+    try {
+        await J2.ustawCennik({ venue: 24.99 });
+        await post(`${b2}/wizytowka/jukebox/kup`, { tier: 'venue', powrot: 'https://teostory.studio/jukebox' });
+        const sid = [...stripe2.sesje.values()].find((s) => s.pakiet === 'jukebox-venue').id;
+        stripe2.sesje.get(sid).oplacona = true;
+        const kl = new URL((await fetch(`${b2}/wizytowka/jukebox/odbior?sesja=${sid}`, { redirect: 'manual' })).headers.get('location')).searchParams.get('key');
+        const ksiega2 = { title: 'Nocny Kontuar', language: 'pl', pages: [{ narrativeText: 'Neon brzęczy w bursztynowym świetle.' }] };
+
+        const pl2 = await post(`${b2}/wizytowka/jukebox/publikuj`, { klucz: kl, book: ksiega2, rentalTier: 'rental_48h', cenaEur: 2.99 });
+        assert.equal(pl2.s, 409); assert.match(pl2.d.message, /tylko za darmo \(demo\)/);
+        assert.match(pl2.d.message, /własną Katedrę|Federacj/, 'mówi, gdzie sprzedawać od zaraz');
+        assert.equal(stripe2.konta.size, 0, 'nikt nie jest wysyłany po konto, którego nie da się założyć');
+
+        const kt2 = await post(`${b2}/wizytowka/jukebox/konto`, { klucz: kl });
+        assert.equal(kt2.s, 503); assert.match(kt2.d.message, /nie prowadzi jeszcze wypłat/);
+        assert.equal(stripe2.konta.size, 0);
+
+        // darmowa droga działa normalnie
+        assert.equal((await post(`${b2}/wizytowka/jukebox/publikuj`, { klucz: kl, book: ksiega2 })).s, 200);
+    } finally { srv2.close(); await fs.rm(kat2, { recursive: true, force: true }); }
 });
 
 test('Straż: publiczne /wizytowka/jukebox*, Hub /api/jukebox tylko maszyna', () => {
