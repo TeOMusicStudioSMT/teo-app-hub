@@ -166,3 +166,49 @@ test('wieczny cache, zgoda przed wydatkiem, obsada, scena wielogłosowa, efekt t
         assert.equal(SCIEZKI_TYLKO_LOKALNE.some((x) => '/api/elevenlabs/mow'.startsWith(x)), true, 'kredyty wydaje tylko maszyna Suwerena');
     } finally { srv.close(); await fs.rm(tmp, { recursive: true, force: true }); }
 });
+
+test('🏠 VoiceStudio: obsada lokalna jednym kliknięciem, 0 kredytów, trzask na starcie obcięty, pauza i kolejność', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'el-lok-'));
+    const wywolania = [];
+    // atrapa VoiceStudio: 0,05 s trzasku (głośny impuls) + 0,3 s ciszy + 1 s „mowy” (sinus) — prawdziwy WAV z ffmpeg
+    const voicestudio = {
+        stan: async () => ({ zywe: true, baza: 'http://127.0.0.1:3900' }),
+        profile: async () => [{ id: 'a1', nazwa: 'Kalen' }, { id: 'b2', nazwa: 'KAEL' }, { id: 'c3', nazwa: 'ELARA' }, { id: 'd4', nazwa: 'KIRA' }, { id: 'e5', nazwa: 'TeO G.' }],
+        mow: async ({ tekst, glos, katalogDocelowy, jezyk }) => {
+            wywolania.push({ tekst, glos, jezyk, kiedy: Date.now() });
+            await fs.mkdir(katalogDocelowy, { recursive: true });
+            const wyj = path.join(katalogDocelowy, `vs_${wywolania.length}.wav`);
+            await uruchom(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=f=900:d=0.05', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono:d=0.3', '-f', 'lavfi', '-i', 'sine=f=220:d=1', '-filter_complex', '[0:a]aresample=44100,volume=3[a];[1:a]aresample=44100[b];[2:a]aresample=44100[c];[a][b][c]concat=n=3:v=0:a=1[o]', '-map', '[o]', wyj]);
+            return { sciezka: wyj, bajtow: 1, glos, znakow: tekst.length, sekundy: 1.35, uwagi: [], podejrzane: false };
+        },
+    };
+    const E = utworzElevenLabs({ katalog: dir, klucz: async () => '', ffmpeg: ffmpegPath, uruchom, voicestudio, pauzaLokalnaMs: 300, miejsca: {} });
+    const wynik = await E.ustawLokalna();
+    assert.deepEqual(wynik.ustawione, { kronikarz: 'Kalen', kael: 'KAEL', elara: 'ELARA', iskra: 'KIRA', suweren: 'TeO G.' });
+    assert.equal(wynik.obsada.kronikarz.id, 'vs:a1'); assert.equal(wynik.obsada.echo.wlasny, false, 'Echo bez przypisania');
+
+    const wycena = await E.wycena({ miejsce: { rodzaj: 'ksiega', id: 'test-lokalny' }, tekst: 'At the end the Sovereign showed his hands.', rola: 'kronikarz' });
+    assert.equal(wycena.kredytow, 0); assert.equal(wycena.lokalnych, 1);
+
+    const segmenty = [{ rola: 'kronikarz', tekst: 'Pierwsze zdanie narracji łączy.' }, { rola: 'elara', tekst: 'Drugie zdanie Elary.' }, { rola: 'kael', tekst: 'Trzecie zdanie Kaela.' }];
+    const w = await E.mow({ miejsce: { rodzaj: 'ksiega', id: 'test-lokalny' }, segmenty });   // BEZ zgody — nic nie kosztuje
+    assert.equal(w.koszt, null); assert.equal(wywolania.length, 3);
+    assert.deepEqual(wywolania.map((x) => x.glos), ['a1', 'c3', 'b2']); assert.equal(wywolania[0].jezyk, 'pl', 'język z tekstu');
+    assert.ok(wywolania[1].kiedy - wywolania[0].kiedy >= 280 && wywolania[2].kiedy - wywolania[1].kiedy >= 280, 'pauza między nagraniami lokalnymi');
+    assert.deepEqual((await fs.readdir(path.join(dir, 'ksiegi', 'test-lokalny', 'voices'))).filter((n) => !n.startsWith('.')).length, 4, '3 fragmenty + scena sklejona');
+    // powtórka = z archiwum, bez nowych wywołań
+    const jeszcze = await E.mow({ miejsce: { rodzaj: 'ksiega', id: 'test-lokalny' }, segmenty });
+    assert.equal(jeszcze.zArchiwum, true); assert.equal(wywolania.length, 3);
+
+    // filtr czystego startu: pierwsze nagranie nie zaczyna się trzaskiem (impuls 900 Hz głośniejszy niż mowa) — sprawdzamy poziom pierwszych 60 ms
+    const mp3 = path.join(dir, 'ksiegi', 'test-lokalny', 'voices', (await fs.readdir(path.join(dir, 'ksiegi', 'test-lokalny', 'voices'))).find((n) => /^[a-f0-9]{24}\.mp3$/.test(n)));
+    const { dlugoscS } = await import('../services/CzystyStart.js');
+    const dl = await dlugoscS({ ffmpeg: ffmpegPath, uruchom, plik: mp3 });
+    assert.ok(dl > 0.9 && dl < 1.2, `trzask (0,05 s) i cisza (0,3 s) przed mową obcięte: źródło 1,35 s → ${dl} s`);
+
+    // nieistniejący profil i martwy VoiceStudio
+    await assert.rejects(() => E.ustaw({ rola: 'kael', glos: { id: 'vs:nie-ma' } }), /nie zna profilu/);
+    const martwy = utworzElevenLabs({ katalog: dir, klucz: async () => '', ffmpeg: ffmpegPath, uruchom, voicestudio: { stan: async () => ({ zywe: false, braki: ['VoiceStudio nie odpowiada'] }), profile: async () => [], mow: async () => { throw new Error('nie powinno być wołane'); } }, miejsca: {} });
+    await assert.rejects(() => martwy.ustawLokalna(), /VoiceStudio nie odpowiada/);
+    await fs.rm(dir, { recursive: true, force: true });
+});

@@ -9605,7 +9605,7 @@ const KsiegaWielowymiarowa = utworzKsiegeWielowymiarowa({ katalog: path.join(ANT
 zamontujTrasyKsiegiWielowymiarowej(app, KsiegaWielowymiarowa);
 // 🎙️ ElevenLabs — Voice Cast 0.00G (services/ElevenLabs.js, Suweren 2026-11-14): klucz ze Skarbca, każde nagranie raz —
 // potem z dysku (`voices/<sha>.mp3` w paczce Opodysku / katalogu księgi), generowanie tylko ze zgodą z wyceny.
-const ElevenLabs = utworzElevenLabs({ katalog: path.join(ANTIGRAVITY_DIR, 'elevenlabs'), klucz: () => sekretPrzewodu('elevenlabs', 'api_key'), ffmpeg: ffmpegPath, uruchom: execFileAsync,
+const ElevenLabs = utworzElevenLabs({ katalog: path.join(ANTIGRAVITY_DIR, 'elevenlabs'), klucz: () => sekretPrzewodu('elevenlabs', 'api_key'), ffmpeg: ffmpegPath, uruchom: execFileAsync, voicestudio: GlosStudio,
     miejsca: {
         opodysk: async (id) => { const kat = Jason.sciezkaWydania(await Jason.kampania(id)); if (!kat) throw new Error('Ta kampania nie ma paczki wydawniczej — głosy sceny leżą w paczce.'); return path.join(kat, 'voices'); },
         wpis: async (id) => { if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(String(id))) throw new Error('Nie ma takiej księgi.'); return path.join(ANTIGRAVITY_DIR, 'teostory', 'wpisy', id, 'voices'); },

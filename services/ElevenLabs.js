@@ -26,6 +26,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
+import { oczyscStart } from './CzystyStart.js';
 
 const API = 'https://api.elevenlabs.io';
 export const GLOSY_BIBLIOTEKI = [
@@ -58,7 +59,22 @@ export const ROLE = {
     postac3: { nazwa: 'Postać 3', opis: 'trzeci mówca dialogu', domyslny: 'pFZP5JQG7iQjIQuC4Bku' },
     postac4: { nazwa: 'Postać 4', opis: 'czwarty mówca dialogu', domyslny: 'onwK4e9ZLuTAKqWW03F9' },
     szept: { nazwa: 'Szept', opis: 'cichy głos w tle sceny', domyslny: 'SAz9YHcvj6GT2YYXdXww' },
+    iskra: { nazwa: 'Iskra', opis: 'płomień ciekawości — narratorka i bohaterka Żywych Ksiąg', domyslny: 'cgSgspJ2msm6clMCkdW9' },
+    echo: { nazwa: 'Echo', opis: 'fala spokoju — drugi głos Żywych Ksiąg', domyslny: 'SAz9YHcvj6GT2YYXdXww' },
+    suweren: { nazwa: 'Suweren TeO', opis: 'głos Suwerena Katedry', domyslny: 'CwhRBWXzGAHq8TQ4Fs17' },
 };
+/** 🏠 Głos lokalny = `vs:<id profilu VoiceStudio>` — 0 kredytów, nagranie liczy karta Suwerena. */
+export const LOKALNY = 'vs:';
+export const czyLokalny = (id) => String(id ?? '').startsWith(LOKALNY);
+/** Preset „Obsada Lokalna” (rola → nazwa profilu VoiceStudio). Echo celowo bez przypisania. */
+export const PRESET_LOKALNY = { kronikarz: 'Kalen', kael: 'KAEL', elara: 'ELARA', iskra: 'KIRA', suweren: 'TeO G.' };
+/** Język nagrania lokalnego z tekstu (gdy zlecenie nie podało): znaki polskie → pl, niemieckie słowa → de, inaczej en. */
+export function wykryjJezyk(t) {
+    const s = String(t ?? '');
+    if (/[ąćęłńóśźż]/i.test(s)) return 'pl';
+    if (/[äöüß]|\b(der|die|das|und|nicht|ist|ein|eine|mit)\b/i.test(s)) return 'de';
+    return 'en';
+}
 const POSTACIE = ['postac1', 'postac2', 'postac3', 'postac4'];
 /** `mnoznik` = kredyty za znak wg cennika ElevenLabs znanego autorowi (do wyceny; prawda jest w nagłówku `character-cost`). */
 export const MODELE = {
@@ -125,6 +141,9 @@ export function rolaMowcy(nazwa, mapa = {}) {
     if (!n || /narrat|kronik|chronist|lektor|erzahl/.test(n)) return 'kronikarz';
     if (n.includes('elara')) return 'elara';
     if (n.includes('kael')) return 'kael';
+    if (n === 'iskra' || n.startsWith('iskra-')) return 'iskra';
+    if (n === 'echo') return 'echo';
+    if (n === 'suweren' || n === 'suweren-teo' || n === 'teo') return 'suweren';
     if (/szept|whisper|fluster/.test(n)) return 'szept';
     if (!mapa[n]) mapa[n] = POSTACIE[Object.keys(mapa).length % POSTACIE.length];
     return mapa[n];
@@ -168,6 +187,12 @@ export function utworzElevenLabs(cfg) {
     }
     /** Czy głos istnieje dla tego klucza — BEZ kosztu: żądanie z celowo nieistniejącym modelem odpada przed syntezą. */
     async function sprawdzGlos(id) {
+        if (czyLokalny(id)) {   // 🏠 profil VoiceStudio: musi istnieć na liście żywego VoiceStudio
+            const l = await lokalne();
+            if (!l.zywe) throw blad(`VoiceStudio nie odpowiada (${l.powod ?? 'brak połączenia'}) — nie sprawdzę profilu.`, 'BEZ_VOICESTUDIO', 424);
+            if (!l.profile.some((p) => p.id === id)) throw blad('VoiceStudio nie zna profilu o tym ID.', 'ZLY_GLOS', 404);
+            return true;
+        }
         if (!/^[A-Za-z0-9]{10,40}$/.test(String(id))) throw blad('ID głosu ElevenLabs to 20 liter i cyfr (z adresu albo karty głosu).', 'ZLY_GLOS');
         const r = await pob(`${API}/v1/text-to-speech/${id}`, { method: 'POST', headers: { 'xi-api-key': await klucz(), 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'x', model_id: 'katedra_sprawdza_glos' }), signal: AbortSignal.timeout(30_000) });
         if (r.ok) { await r.arrayBuffer().catch(() => {}); return true; }   // nie powinno się zdarzyć (model nie istnieje)
@@ -200,7 +225,7 @@ export function utworzElevenLabs(cfg) {
     const plik = async (m, nazwa) => (/^[a-z0-9-]{8,60}\.mp3$/.test(String(nazwa)) ? path.join(await katalogMiejsca(m), nazwa) : null);
 
     // ── plan: tekst → fragmenty z głosem i plikiem w archiwum ──
-    async function plan({ miejsce, tekst, rola = 'kronikarz', segmenty = null, model = null }) {
+    async function plan({ miejsce, tekst, rola = 'kronikarz', segmenty = null, model = null, jezyk = null }) {
         const u = await ustawienia(), mdl = MODELE[model] ? model : u.model, kat = await katalogMiejsca(miejsce);
         let seg;
         if (Array.isArray(segmenty) && segmenty.length) {
@@ -213,13 +238,14 @@ export function utworzElevenLabs(cfg) {
         if (seg.reduce((n, s) => n + s.tekst.length, 0) > MAX_TEKSTU) throw blad(`Za długi tekst na jedno nagranie (limit ${MAX_TEKSTU} znaków) — podziel na sceny.`);
         const fragmenty = [];
         for (const s of seg) for (const t of kawalki(s.tekst)) {
-            const glos = u.obsada[s.rola], nazwa = `${skrotMowy({ tekst: t, glos: glos.id, model: mdl })}.mp3`, p = path.join(kat, nazwa);
-            fragmenty.push({ rola: s.rola, postac: s.postac ?? null, glos: glos.id, glosNazwa: glos.nazwa, tekst: t, znakow: t.length, nazwa, plik: p, wArchiwum: await jest(p) });
+            const glos = u.obsada[s.rola], lokalny = czyLokalny(glos.id), jez = ['pl', 'en', 'de'].includes(jezyk) ? jezyk : wykryjJezyk(t);
+            const nazwa = `${skrotMowy({ tekst: t, glos: glos.id, model: lokalny ? `vs-${jez}` : mdl })}.mp3`, p = path.join(kat, nazwa);
+            fragmenty.push({ rola: s.rola, postac: s.postac ?? null, glos: glos.id, glosNazwa: glos.nazwa, tekst: t, znakow: t.length, nazwa, plik: p, lokalny, jezyk: jez, wArchiwum: await jest(p) });
         }
-        const brak = fragmenty.filter((f) => !f.wArchiwum), znakow = brak.reduce((n, f) => n + f.znakow, 0);
+        const brak = fragmenty.filter((f) => !f.wArchiwum), chmura = brak.filter((f) => !f.lokalny), znakow = chmura.reduce((n, f) => n + f.znakow, 0);   // lokalne = 0 kredytów
         const nazwa = fragmenty.length === 1 ? fragmenty[0].nazwa : `scena-${sha(fragmenty.map((f) => f.nazwa).join('|')).slice(0, 20)}.mp3`;
         return { kat, model: mdl, fragmenty, nazwa, plik: path.join(kat, nazwa),
-            wycena: { znakow, kredytow: Math.ceil(znakow * MODELE[mdl].mnoznik), fragmentow: fragmenty.length, doNagrania: brak.length, wArchiwum: brak.length === 0, model: mdl,
+            wycena: { znakow, kredytow: Math.ceil(znakow * MODELE[mdl].mnoznik), fragmentow: fragmenty.length, doNagrania: brak.length, lokalnych: brak.length - chmura.length, wArchiwum: brak.length === 0, model: mdl,
                 glosy: [...new Set(fragmenty.map((f) => `${ROLE[f.rola].nazwa.split(' (')[0]}: ${f.glosNazwa}`))] } };
     }
     const wycena = async (z) => (await plan(z)).wycena;
@@ -232,11 +258,37 @@ export function utworzElevenLabs(cfg) {
             await pisz(plikZuzycia, d);
         });
     }
-    /** Jedno nagranie fragmentu — z archiwum albo (raz) z ElevenLabs. */
+    // ── 🏠 VoiceStudio: sekwencyjnie, z pauzą między nagraniami (VRAM karty), każde nagranie przez filtr czystego startu ──
+    let kolejLok = Promise.resolve(), ostatniaLok = 0;
+    const pauzaMs = cfg.pauzaLokalnaMs ?? 2000, spij = (ms) => new Promise((r) => setTimeout(r, ms));
+    function nagrajLokalnie(f, miejsce) {
+        const praca = kolejLok.then(async () => {
+            if (await jest(f.plik)) return { zArchiwum: true };   // ktoś nagrał to samo, gdy czekaliśmy w kolejce
+            if (!cfg.voicestudio) throw blad('Most nie ma podłączonego VoiceStudio.', 'BEZ_VOICESTUDIO', 424);
+            const czekaj = ostatniaLok + pauzaMs - Date.now(); if (czekaj > 0) await spij(czekaj);
+            const tmpDir = path.join(path.dirname(f.plik), '.lokalne'); let wav = null;
+            try {
+                const r = await cfg.voicestudio.mow({ tekst: f.tekst, glos: f.glos.slice(LOKALNY.length), format: 'wav', katalogDocelowy: tmpDir, nazwa: 'vs', jezyk: f.jezyk });
+                wav = r.sciezka;
+                if (r.podejrzane) throw blad(`VoiceStudio oddał podejrzane nagranie (${(r.uwagi ?? []).join('; ')}) — nic nie zapisuję.`, 'PODEJRZANE', 502);
+                await fs.mkdir(path.dirname(f.plik), { recursive: true });
+                const tmp = `${f.plik}.${process.pid}.tmp.mp3`;
+                await oczyscStart({ ffmpeg: cfg.ffmpeg, uruchom: cfg.uruchom, wej: wav, wyj: tmp });
+                await fs.rename(tmp, f.plik);
+            } catch (e) { throw e.kod ? e : blad(e.message, 'VOICESTUDIO', 502); }
+            finally { if (wav) await fs.rm(wav, { force: true }).catch(() => {}); ostatniaLok = Date.now(); }
+            await zanotuj({ rodzaj: 'mowa-lokalna', miejsce: `${miejsce?.rodzaj}:${miejsce?.id}`, rola: f.rola, glos: f.glosNazwa, model: 'voicestudio', znakow: 0, koszt: 0, plik: f.nazwa });
+            return { zArchiwum: false, koszt: 0 };
+        });
+        kolejLok = praca.catch(() => {});
+        return praca;
+    }
+    /** Jedno nagranie fragmentu — z archiwum albo (raz) z ElevenLabs / VoiceStudio. */
     function nagraj(f, model, miejsce) {
         if (wToku.has(f.plik)) return wToku.get(f.plik);
         const p = (async () => {
             if (await jest(f.plik)) return { zArchiwum: true };
+            if (f.lokalny) return nagrajLokalnie(f, miejsce);
             const r = await wyslij(`/v1/text-to-speech/${f.glos}?output_format=mp3_44100_128`, { text: f.tekst, model_id: model });
             const buf = Buffer.from(await r.arrayBuffer());
             if (buf.length < 400) throw blad('ElevenLabs oddało puste nagranie — nic nie zapisuję.', 'PUSTE', 502);
@@ -252,7 +304,7 @@ export function utworzElevenLabs(cfg) {
     /** Mowa: wszystko z archiwum = 0 kredytów i bez pytania; cokolwiek do nagrania wymaga `zgoda: true`. */
     async function mow(z = {}) {
         const pl = await plan(z);
-        if (!pl.wycena.wArchiwum && z.zgoda !== true) throw blad(`To nagranie nie leży jeszcze w archiwum: ${pl.wycena.znakow} znaków ≈ ${pl.wycena.kredytow} kredytów ElevenLabs. Potrzebna zgoda Suwerena (przycisk z wyceną).`, 'BEZ_ZGODY', 402, { wycena: pl.wycena });
+        if (!pl.wycena.wArchiwum && pl.wycena.kredytow > 0 && z.zgoda !== true) throw blad(`To nagranie nie leży jeszcze w archiwum: ${pl.wycena.znakow} znaków ≈ ${pl.wycena.kredytow} kredytów ElevenLabs. Potrzebna zgoda Suwerena (przycisk z wyceną).`, 'BEZ_ZGODY', 402, { wycena: pl.wycena });
         let nagrano = 0, koszt = 0, znakow = 0;
         for (const f of pl.fragmenty) { const w = await nagraj(f, pl.model, z.miejsce); if (!w.zArchiwum) { nagrano += 1; znakow += f.znakow; koszt += w.koszt ?? 0; } }
         if (pl.fragmenty.length > 1 && !(await jest(pl.plik))) {   // scena wielogłosowa = fragmenty sklejone lokalnie (ffmpeg, 0 kredytów)
@@ -296,11 +348,36 @@ export function utworzElevenLabs(cfg) {
         return { plik: pl.plik, nazwa: pl.nazwa, zArchiwum: true, opis: pl.opis, sekundy: pl.sekundy, petla: pl.petla, koszt: null };
     }
 
+    // ── 🏠 profile VoiceStudio (żywe, bez kosztu) ──
+    async function lokalne() {
+        if (!cfg.voicestudio) return { zywe: false, profile: [], powod: 'Most nie ma podłączonego VoiceStudio.' };
+        try {
+            const st = await cfg.voicestudio.stan?.();
+            if (st && st.zywe === false) return { zywe: false, profile: [], baza: st.baza ?? null, powod: (st.braki ?? [])[0] ?? 'VoiceStudio nie odpowiada.' };
+            const profile = await cfg.voicestudio.profile();
+            return { zywe: true, baza: st?.baza ?? null, profile: profile.map((p) => ({ id: `${LOKALNY}${p.id}`, nazwa: p.nazwa, opis: p.opis ?? '' })) };
+        } catch (e) { return { zywe: false, profile: [], powod: e.message }; }
+    }
+    /** 🏠 Jedno kliknięcie: Kronikarz = Kalen, Kael = KAEL, Elara = ELARA, Iskra = KIRA, Suweren = TeO G. (po nazwie profilu, bez wielkości liter). */
+    const ustawLokalna = () => poKolei(async () => {
+        const l = await lokalne();
+        if (!l.zywe) throw blad(`VoiceStudio nie odpowiada — nie przypiszę obsady lokalnej (${l.powod ?? 'brak połączenia'}).`, 'BEZ_VOICESTUDIO', 424);
+        const d = await json(plikObsady, {}); d.obsada = d.obsada ?? {};
+        const ustawione = {}, brakuje = [];
+        for (const [rola, nazwa] of Object.entries(PRESET_LOKALNY)) {
+            const p = l.profile.find((x) => norm(x.nazwa) === norm(nazwa));
+            if (!p) { brakuje.push(`${ROLE[rola].nazwa}: profil „${nazwa}”`); continue; }
+            d.obsada[rola] = { id: p.id, nazwa: `🏠 ${p.nazwa}` }; ustawione[rola] = p.nazwa;
+        }
+        await pisz(plikObsady, d);
+        return { ...(await ustawienia()), ustawione, brakuje };
+    });
+
     // ── stan dla panelu ──
     let konto = { kiedy: 0, saldo: null, glosyKonta: null, uwagi: [] };
     async function stan() {
         const k = String((await cfg.klucz().catch(() => null)) ?? '').trim(), u = await ustawienia();
-        const wspolne = { role: Object.fromEntries(Object.entries(ROLE).map(([r, o]) => [r, { nazwa: o.nazwa, opis: o.opis }])), obsada: u.obsada, model: u.model, modele: MODELE, glosyBiblioteki: GLOSY_BIBLIOTEKI,
+        const wspolne = { voicestudio: await lokalne(), preset: PRESET_LOKALNY, role: Object.fromEntries(Object.entries(ROLE).map(([r, o]) => [r, { nazwa: o.nazwa, opis: o.opis }])), obsada: u.obsada, model: u.model, modele: MODELE, glosyBiblioteki: GLOSY_BIBLIOTEKI,
             zuzycie: await json(plikZuzycia, { znakow: 0, kredytowZNaglowka: 0, wywolan: 0, sekundEfektow: 0, ostatnie: [] }) };
         if (!k) return { polaczony: false, powod: 'Brak klucza ElevenLabs w Skarbcu 0.00G (elevenlabs.api_key).', saldo: null, glosyKonta: null, uwagi: [], ...wspolne };
         if (teraz() - konto.kiedy > 5 * 60_000) {   // saldo i głosy konta — tylko gdy klucz ma te uprawnienia (odczyt, 0 kredytów)
@@ -314,7 +391,7 @@ export function utworzElevenLabs(cfg) {
         return { polaczony: true, saldo: konto.saldo, glosyKonta: konto.glosyKonta, uwagi: konto.uwagi, ...wspolne };
     }
 
-    return { stan, ustaw, sprawdzGlos, plan, wycena, mow, wycenaEfektu, efekt, plik, katalogMiejsca, ustawienia };
+    return { stan, ustaw, ustawLokalna, lokalne, sprawdzGlos, plan, wycena, mow, wycenaEfektu, efekt, plik, katalogMiejsca, ustawienia };
 }
 
 /**
@@ -325,6 +402,8 @@ export function zamontujTrasyElevenLabs(app, E, { poMowie = null, poEfekcie = nu
     const zle = (res, e) => res.status(e.status && e.status >= 400 ? e.status : 400).json({ success: false, message: e.message, kod: e.kod ?? null, ...(e.wycena ? { wycena: e.wycena } : {}) });
     const adres = (m, nazwa) => `/api/elevenlabs/plik/${encodeURIComponent(m.rodzaj)}/${encodeURIComponent(m.id)}/${nazwa}`;
     app.get('/api/elevenlabs', async (_req, res) => { try { res.json({ success: true, ...(await E.stan()) }); } catch (e) { zle(res, e); } });
+    app.get('/api/elevenlabs/voicestudio', async (_req, res) => { try { res.json({ success: true, ...(await E.lokalne()) }); } catch (e) { zle(res, e); } });
+    app.post('/api/elevenlabs/obsada/lokalna', async (_req, res) => { try { res.json({ success: true, ...(await E.ustawLokalna()) }); } catch (e) { zle(res, e); } });
     app.put('/api/elevenlabs/obsada', async (req, res) => { try { res.json({ success: true, ...(await E.ustaw(req.body ?? {})) }); } catch (e) { zle(res, e); } });
     app.post('/api/elevenlabs/wycena', async (req, res) => { try { const pl = await E.plan(req.body ?? {}); res.json({ success: true, wycena: pl.wycena, ...(pl.wycena.wArchiwum ? { url: adres(req.body.miejsce, pl.nazwa) } : {}) }); } catch (e) { zle(res, e); } });
     app.post('/api/elevenlabs/mow', async (req, res) => {
