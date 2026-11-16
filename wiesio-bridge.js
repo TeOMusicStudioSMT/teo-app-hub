@@ -9610,6 +9610,8 @@ const ElevenLabs = utworzElevenLabs({ katalog: path.join(ANTIGRAVITY_DIR, 'eleve
     miejsca: {
         opodysk: async (id) => { const kat = Jason.sciezkaWydania(await Jason.kampania(id)); if (!kat) throw new Error('Ta kampania nie ma paczki wydawniczej — głosy sceny leżą w paczce.'); return path.join(kat, 'voices'); },
         wpis: async (id) => { if (!/^[a-z0-9][a-z0-9-]{2,80}$/.test(String(id))) throw new Error('Nie ma takiej księgi.'); return path.join(ANTIGRAVITY_DIR, 'teostory', 'wpisy', id, 'voices'); },
+        // 🎙 Nagrania Lektora Katedry dla klienta z Kluczem GRV — katalog nazwany ODCISKIEM klucza (zero danych osobowych).
+        klucz: async (id) => { if (!/^[0-9a-f]{16}$/.test(String(id))) throw new Error('Zły odcisk Klucza Dostępu.'); return path.join(ANTIGRAVITY_DIR, 'teostory', 'jukebox', 'lektor', id); },
     } });
 zamontujTrasyElevenLabs(app, ElevenLabs, {
     poMowie: async ({ miejsce, cel, wynik, zlecenie }) => {
@@ -9634,7 +9636,18 @@ app.delete('/api/elevenlabs/cel', async (req, res) => {   // zdjęcie lektora sc
 zamontujTrasySpotify(app, utworzSpotify({ klucze: async () => ({ client_id: await sekretPrzewodu('spotify', 'client_id'), client_secret: await sekretPrzewodu('spotify', 'client_secret') }) }));
 // 📻 TeOfon Studio & Jukebox 0.00G — Tiery GRV, Stripe Checkout, 👑 Klucz Suwerena (services/JukeboxTiery.js)
 const Jukebox = utworzJukebox({ katalog: path.join(ANTIGRAVITY_DIR, 'teostory'), stripe: Stripe, adres: adresTunelu, czySuweren: (k) => Wypozyczalnia.czySuweren(k) });
-zamontujTrasyJukeboxa(app, Jukebox);
+zamontujTrasyJukeboxa(app, Jukebox, {
+    /**
+     * 🎙 Lektor Katedry dla klienta z Kluczem GRV.
+     * UCZCIWIE o pieniądzach: NIE podajemy `zgoda`, więc gdyby obsada wskazywała głos ElevenLabs,
+     * `mow` odmówi (402 BEZ_ZGODY) zamiast wydać kredyty Suwerena. Przez tę trasę przechodzą
+     * wyłącznie głosy lokalne (VoiceStudio, 0 kredytów) — limit znaków chroni kartę graficzną.
+     */
+    lektor: async ({ tekst, rola, klucz }) => {
+        const w = await ElevenLabs.mow({ miejsce: { rodzaj: 'klucz', id: klucz }, tekst, rola });
+        return { plik: w.plik, nazwa: w.nazwa, znakow: w.znakow };
+    },
+});
 zamontujTrasyWypozyczalni(app, Wypozyczalnia, { federacja: () => FederacjaKsiag.pozycjePubliczne(), nick: async () => (await Wizytowka.profil()).nick || null });
 if (process.env.OTAKOS_SKLEP_MINI !== '0') setTimeout(() => SklepMini.startPetli(), 120_000).unref?.();
 // 💃🥊 Ring taneczny (services/RingTaneczny.js): pojedynki Mini-TeOgochi między Katedrami — walkę liczą gracze

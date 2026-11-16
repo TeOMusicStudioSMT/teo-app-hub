@@ -5,7 +5,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import express from 'express';
-import { utworzJukebox, zamontujTrasyJukeboxa, TIERY, PLATNE } from '../services/JukeboxTiery.js';
+import { utworzJukebox, zamontujTrasyJukeboxa, normalizujKlucz, KLUCZ_GRV, LIMITY_LEKTORA, LIMIT_DZIENNY_KATEDRY, TIERY, PLATNE } from '../services/JukeboxTiery.js';
 import { SCIEZKA_JUKEBOX, SCIEZKI_TYLKO_LOKALNE } from '../services/StrazMostu.js';
 
 const KLUCZ_SU = 'a'.repeat(48);
@@ -17,10 +17,10 @@ function atrapaStripe() {
         sprawdzSesje: async (id) => { const s = sesje.get(id); if (!s) throw new Error('To nie jest identyfikator płatności Stripe.'); return s; },
     };
 }
-async function start({ tunel = 'https://katedra.test' } = {}) {
+async function start({ tunel = 'https://katedra.test', lektor = null, limitLektoraNaMinute = 4 } = {}) {
     const katalog = await fs.mkdtemp(path.join(os.tmpdir(), 'jukebox-')), stripe = atrapaStripe();
     const J = utworzJukebox({ katalog, stripe, adres: async () => tunel, czySuweren: async (k) => k === KLUCZ_SU });
-    const app = express(); app.use(express.json()); zamontujTrasyJukeboxa(app, J);
+    const app = express(); app.use(express.json()); zamontujTrasyJukeboxa(app, J, { lektor, limitLektoraNaMinute });
     const srv = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
     return { J, stripe, katalog, srv, b: `http://127.0.0.1:${srv.address().port}` };
 }
@@ -56,8 +56,14 @@ test('Stripe Checkout: cena z cennika w centach, odbiór opłaconej sesji, pozio
         // opłacona → przekierowanie na portal z ?app=jukebox, zakup zapisany raz, poziom skumulowany
         stripe.sesje.get(id).oplacona = true;
         const r = await fetch(`${b}/wizytowka/jukebox/odbior?sesja=${id}`, { redirect: 'manual' });
-        assert.equal(r.status, 302); assert.equal(r.headers.get('location'), `https://teostory.studio/jukebox?app=jukebox&tier=hact&sesja=${id}`);
-        await fetch(`${b}/wizytowka/jukebox/odbior?sesja=${id}`, { redirect: 'manual' });
+        assert.equal(r.status, 302);
+        const adres = new URL(r.headers.get('location'));
+        assert.equal(`${adres.origin}${adres.pathname}`, 'https://teostory.studio/jukebox');
+        assert.equal(adres.searchParams.get('tier'), 'hact'); assert.equal(adres.searchParams.get('sesja'), id);
+        assert.match(adres.searchParams.get('key'), /^GRV-HACT-/, '🔑 klucz wydany przy opłaconej sesji');
+        // druga wizyta tej samej sesji: zakup zapisany raz, klucza NIE ma drugi raz (Katedra zna tylko jego hash)
+        const r2 = await fetch(`${b}/wizytowka/jukebox/odbior?sesja=${id}`, { redirect: 'manual' });
+        assert.equal(new URL(r2.headers.get('location')).searchParams.get('key'), null);
         assert.equal((await J.zakupy()).length, 1, 'zakup zapisany raz');
         const d = await (await fetch(`${b}/wizytowka/jukebox/dostep?sesje=${id},cs_test_nie_ma_takiej_sesji_xxxxx`)).json();
         assert.equal(d.maks, 'hact'); assert.equal(d.zrodlo, 'stripe'); assert.deepEqual(d.sesje, [{ sesja: id, tier: 'hact' }]);
@@ -84,8 +90,145 @@ test('👑 Klucz Suwerena: wszystkie 4 tiery bez płacenia; zły klucz i „1”
     finally { bez.srv.close(); await fs.rm(bez.katalog, { recursive: true, force: true }); }
 });
 
+test('🔑 Klucz Dostępu GRV: wydany po płatności, odblokowuje tier na innym urządzeniu, rejestr bez danych osobowych', async () => {
+    const { J, stripe, b, srv, katalog } = await start();
+    try {
+        await J.ustawCennik({ puls: 4.5, hact: 12, venue: 49 });
+        // postać kanoniczna: małe litery, spacje i brak myślników nie przeszkadzają; znaki mylące (0 O 1 I L) nie należą do alfabetu
+        assert.equal(normalizujKlucz('grvhact23ab45c'), null, 'za krótki');
+        assert.equal(normalizujKlucz('grvhact23ab45cd'), 'GRV-HACT-23AB-45CD', 'bez myślników, małymi literami — też klucz');
+        assert.equal(normalizujKlucz(' grv hact 23ab 45cd '), 'GRV-HACT-23AB-45CD');
+        assert.equal(normalizujKlucz('GRV-HACT-23AB-45CD'), 'GRV-HACT-23AB-45CD');
+        for (const zly of ['GRV-ISKRA-23AB-45CD', 'GRV-HACT-23AB-45C0', 'GRV-HACT-23AB-45CL', 'GRV-HACT-23AB-45CI', '1', 'GRV-HACT-23AB-45CD-EF'])
+            assert.equal(normalizujKlucz(zly), null, `„${zly}” nie jest kluczem`);
+
+        await post(`${b}/wizytowka/jukebox/kup`, { tier: 'hact', powrot: 'https://teostory.studio/jukebox' });
+        const id = [...stripe.sesje.keys()][0];
+        // nieopłacona sesja klucza nie daje
+        assert.equal((await fetch(`${b}/wizytowka/jukebox/odbior?sesja=${id}`, { redirect: 'manual' })).status, 402);
+        assert.deepEqual(await J.klucze(), []);
+        stripe.sesje.get(id).oplacona = true;
+        const r = await fetch(`${b}/wizytowka/jukebox/odbior?sesja=${id}`, { redirect: 'manual' });
+        const klucz = new URL(r.headers.get('location')).searchParams.get('key');
+        assert.ok(KLUCZ_GRV.test(klucz), `klucz w kształcie GRV-HACT-XXXX-XXXX, dostałem „${klucz}”`);
+
+        // INNE urządzenie: sama znajomość klucza (bez sesji w przeglądarce) odblokowuje wykupiony tier
+        const d = await (await fetch(`${b}/wizytowka/jukebox/dostep?klucz=${encodeURIComponent(klucz)}`)).json();
+        assert.equal(d.maks, 'hact'); assert.equal(d.zrodlo, 'klucz'); assert.deepEqual(d.sesje, []);
+        assert.equal((await (await fetch(`${b}/wizytowka/jukebox/dostep?klucz=${encodeURIComponent(klucz.toLowerCase().replace(/-/g, ''))}`)).json()).maks, 'hact', 'klucz przepisany z ekranu telefonu');
+        const k = await (await fetch(`${b}/wizytowka/jukebox/klucz?key=${encodeURIComponent(klucz)}`)).json();
+        assert.equal(k.success, true); assert.equal(k.tier, 'hact');
+
+        // zmyślony klucz nie działa — ani w `dostep`, ani w sprawdzeniu
+        const obcy = klucz.slice(0, -1) + (klucz.endsWith('2') ? '3' : '2');
+        assert.equal((await (await fetch(`${b}/wizytowka/jukebox/dostep?klucz=${encodeURIComponent(obcy)}`)).json()).maks, 'iskra');
+        for (const zly of [obcy, '1', 'GRV-VENUE-2345-6789', '']) assert.equal((await fetch(`${b}/wizytowka/jukebox/klucz?key=${encodeURIComponent(zly)}`)).status, 404, `„${zly}”`);
+
+        // 👑 Suweren wygrywa z kluczem; klucz nie obniża wyższego zakupu z sesji
+        assert.equal((await (await fetch(`${b}/wizytowka/jukebox/dostep?klucz=${encodeURIComponent(klucz)}&suweren=${KLUCZ_SU}`)).json()).zrodlo, 'suweren');
+        await post(`${b}/wizytowka/jukebox/kup`, { tier: 'venue' });
+        const idV = [...stripe.sesje.values()].find((s) => s.pakiet === 'jukebox-venue').id;
+        stripe.sesje.get(idV).oplacona = true;
+        const dv = await (await fetch(`${b}/wizytowka/jukebox/dostep?sesje=${idV}&klucz=${encodeURIComponent(klucz)}`)).json();
+        assert.equal(dv.maks, 'venue'); assert.equal(dv.zrodlo, 'stripe');
+
+        // REJESTR: tylko hash, tier, data i sesja — żadnych danych osobowych, nigdy jawnego klucza
+        const rejestr = JSON.parse(await fs.readFile(path.join(katalog, 'jukebox', 'klucze.json'), 'utf8'));
+        assert.equal(rejestr.klucze.length, 1, 'klucz powstaje TYLKO przy odbiorze płatności — sprawdzanie dostępu kluczy nie bije');
+        for (const w of rejestr.klucze) {
+            assert.deepEqual(Object.keys(w).sort(), ['hash', 'kiedy', 'sesja', 'tier', 'wazny']);
+            assert.match(w.hash, /^[0-9a-f]{64}$/);
+        }
+        assert.ok(!(await fs.readFile(path.join(katalog, 'jukebox', 'klucze.json'), 'utf8')).includes(klucz), 'jawny klucz NIE leży na dysku');
+        assert.ok((await J.klucze()).every((w) => !('hash' in w)), 'podgląd Suwerena bez hashy');
+    } finally { srv.close(); await fs.rm(katalog, { recursive: true, force: true }); }
+});
+
+test('🎙 Lektor Katedry: tylko tier z funkcją, licznik znaków na kluczu, archiwum za darmo', async () => {
+    const zlecenia = [];
+    let katalogNagran = null;
+    // atrapa silnika głosu: zapisuje plik i oddaje tyle znaków, ile naprawdę „nagrała” (0 = było już w archiwum)
+    const lektor = async ({ tekst, rola, klucz }) => {
+        const plik = path.join(katalogNagran, `${klucz}-${zlecenia.length}.mp3`);
+        await fs.writeFile(plik, 'ID3-atrapa-nagrania');
+        const zArchiwum = zlecenia.some((z) => z.tekst === tekst);
+        zlecenia.push({ tekst, rola, klucz });
+        return { plik, nazwa: path.basename(plik), znakow: zArchiwum ? 0 : tekst.length };
+    };
+    const { J, stripe, b, srv, katalog } = await start({ lektor, limitLektoraNaMinute: 50 });
+    katalogNagran = katalog;
+    try {
+        await J.ustawCennik({ puls: 4.99, hact: 9.99, venue: 24.99 });
+        const dajKlucz = async (tier) => {
+            await post(`${b}/wizytowka/jukebox/kup`, { tier, powrot: 'https://teostory.studio/jukebox' });
+            const id = [...stripe.sesje.values()].find((s) => s.pakiet === `jukebox-${tier}` && !s.oplacona).id;
+            stripe.sesje.get(id).oplacona = true;
+            const r = await fetch(`${b}/wizytowka/jukebox/odbior?sesja=${id}`, { redirect: 'manual' });
+            return new URL(r.headers.get('location')).searchParams.get('key');
+        };
+        const kluczPuls = await dajKlucz('puls'), kluczHact = await dajKlucz('hact');
+        const mow = (klucz, tekst) => fetch(`${b}/wizytowka/jukebox/lektor`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ klucz, tekst }) });
+
+        // Puls nie ma lektorów — Katedra odmawia, nie przeglądarka
+        const bezTieru = await mow(kluczPuls, 'Neon brzęczy w bursztynowym świetle.');
+        assert.equal(bezTieru.status, 403); assert.match((await bezTieru.json()).message, /HACT Studio/);
+        assert.equal(zlecenia.length, 0, 'silnik głosu nie został w ogóle zawołany');
+
+        // HACT nagrywa i zużywa dokładnie tyle znaków, ile ma tekst
+        const tekst = 'Zegar stanął na jedenastej jedenaście.';
+        const ok = await mow(kluczHact, tekst);
+        assert.equal(ok.status, 200); assert.equal(ok.headers.get('content-type'), 'audio/mpeg');
+        assert.equal(await ok.text(), 'ID3-atrapa-nagrania');
+        assert.equal(zlecenia.length, 1); assert.equal(zlecenia[0].klucz.length, 16, 'silnik dostaje ODCISK klucza, nie klucz');
+        assert.ok(!zlecenia[0].klucz.includes('GRV'), 'jawny klucz nie wychodzi do silnika');
+        let st = await J.lektorStan(kluczHact);
+        assert.equal(st.limit, LIMITY_LEKTORA.hact); assert.equal(st.zuzyte, tekst.length); assert.equal(st.zostalo, LIMITY_LEKTORA.hact - tekst.length);
+        assert.equal(Number(ok.headers.get('X-Lektor-Zostalo')), st.zostalo);
+
+        // to samo nagranie drugi raz = z archiwum, licznik stoi (klient nie płaci dwa razy za to samo)
+        assert.equal((await mow(kluczHact, tekst)).status, 200);
+        assert.equal((await J.lektorStan(kluczHact)).zuzyte, tekst.length, 'archiwum nie zużywa limitu');
+
+        // tekst dłuższy niż limit jednego nagrania
+        assert.equal((await mow(kluczHact, 'a'.repeat(1300))).status, 413);
+        // nieznany klucz i pusty tekst
+        assert.equal((await mow('GRV-HACT-2345-6789', 'cokolwiek')).status, 404);
+        assert.equal((await mow(kluczHact, ' ')).status, 400);
+
+        // wyczerpany miesiąc → 402 z liczbami, silnik nie rusza
+        await J.lektorZuzyj(kluczHact, LIMITY_LEKTORA.hact);
+        st = await J.lektorStan(kluczHact); assert.equal(st.zostalo, 0);
+        const ile = zlecenia.length;
+        const pusto = await mow(kluczHact, 'Jeszcze jedno zdanie.');
+        assert.equal(pusto.status, 402); assert.match((await pusto.json()).message, /zostało Ci 0 znaków/);
+        assert.equal(zlecenia.length, ile, 'po wyczerpaniu limitu karta graficzna stoi');
+
+        // 🛡 bezpiecznik doby: Venue ma jeszcze zapas miesięczny, ale karta graficzna Katedry na dziś skończyła
+        const kluczVenue = await dajKlucz('venue');
+        await J.lektorZuzyj(kluczVenue, LIMIT_DZIENNY_KATEDRY);
+        const stV = await J.lektorStan(kluczVenue);
+        assert.ok(stV.zostalo > 0, 'Venue ma jeszcze miesiąc');
+        assert.equal(stV.katedra.zostalo, 0, 'doba Katedry wyczerpana');
+        const doba = await mow(kluczVenue, 'Jeszcze jedno zdanie na dziś.');
+        assert.equal(doba.status, 503); assert.match((await doba.json()).message, /karta graficzna|Wróć jutro/);
+
+        // klucz niesie stan lektora, dalej bez danych osobowych
+        const kj = await (await fetch(`${b}/wizytowka/jukebox/klucz?key=${encodeURIComponent(kluczHact)}`)).json();
+        assert.equal(kj.tier, 'hact'); assert.equal(kj.lektor.limit, LIMITY_LEKTORA.hact); assert.equal(kj.lektor.lektor, true);
+        for (const w of await J.klucze()) assert.deepEqual(Object.keys(w).filter((x) => !['tier', 'sesja', 'kiedy', 'wazny', 'znakow'].includes(x)), []);
+    } finally { srv.close(); await fs.rm(katalog, { recursive: true, force: true }); }
+
+    // dławik nagrań: karta graficzna Katedry jest jedna, więc seria żądań z jednego adresu dostaje 429
+    const d = await start({ lektor: async () => { throw new Error('nie powinno dojść do silnika'); }, limitLektoraNaMinute: 2 });
+    try {
+        const strzal = () => fetch(`${d.b}/wizytowka/jukebox/lektor`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ klucz: 'GRV-HACT-2345-6789', tekst: 'proba' }) });
+        assert.equal((await strzal()).status, 404); assert.equal((await strzal()).status, 404);
+        assert.equal((await strzal()).status, 429, 'trzecie żądanie w minucie odbite');
+    } finally { d.srv.close(); await fs.rm(d.katalog, { recursive: true, force: true }); }
+});
+
 test('Straż: publiczne /wizytowka/jukebox*, Hub /api/jukebox tylko maszyna', () => {
-    for (const p of ['/wizytowka/jukebox', '/wizytowka/jukebox/kup', '/wizytowka/jukebox/dostep', '/wizytowka/jukebox/odbior']) assert.ok(SCIEZKA_JUKEBOX.test(p), p);
+    for (const p of ['/wizytowka/jukebox', '/wizytowka/jukebox/kup', '/wizytowka/jukebox/dostep', '/wizytowka/jukebox/odbior', '/wizytowka/jukebox/klucz', '/wizytowka/jukebox/lektor']) assert.ok(SCIEZKA_JUKEBOX.test(p), p);
     for (const p of ['/wizytowka/jukebox/cennik', '/wizytowka/jukebox/../api', '/wizytowka/jukeboxx']) assert.ok(!SCIEZKA_JUKEBOX.test(p), p);
     assert.ok(SCIEZKI_TYLKO_LOKALNE.includes('/api/jukebox'));
 });
