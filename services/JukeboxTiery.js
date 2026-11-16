@@ -74,7 +74,7 @@ export const NAZWY_FUNKCJI = {
     szafa: 'Odtwarzacz szafy grającej (album Opodysków, kolejka)', 'proba-pergaminu': '1 próbny pergamin z własnego pliku',
     'wlasny-plik': 'Konwersja własnych utworów do partytury 0.00G i zwojów TeOfonu', canvas: 'Pętla Spotify Canvas 9:16 (8 s)',
     'wideo-16x9': 'Pełny eksport wideo 16:9 MP4', opodysk: '12-aktowe Opodyski', manuskrypt: 'Manuskrypty PDF', lektor: 'Lektorzy Katedry (głosy 0.00G)',
-    wypozyczalnia: 'Publikacja w Wypożyczalni teostory.studio', venue: 'Licencja dla lokali, tabletów Smart Display i fizycznych TeOfonów',
+    wypozyczalnia: 'Publikacja w Wypożyczalni teostory.studio (darmowa, za zgodą Katedry)', venue: 'Licencja dla lokali, tabletów Smart Display i fizycznych TeOfonów',
 };
 export const TIERY = [
     { id: 'iskra', kod: '0.01', nazwa: 'Iskra', rola: 'Free / Jukebox Viewer', funkcje: ['szafa', 'proba-pergaminu'] },
@@ -216,10 +216,15 @@ export function utworzJukebox({ katalog, stripe = null, adres = async () => null
     });
 
     /** 📚 Zgłoszenie księgi przez posiadacza Klucza Venue. Nie publikuje — stawia w kolejce do ✓ Suwerena. */
-    async function zglosKsiege(wejscie, { book = null, rentalTier = 'rental_48h', cenaEur = 1.99 } = {}) {
+    async function zglosKsiege(wejscie, { book = null, rentalTier = 'demo', cenaEur = 0 } = {}) {
         const w = await sprawdzKlucz(wejscie);
         if (!w) throw blad('Nie znam takiego Klucza Dostępu.', 404);
         if (!maFunkcje(w.tier, 'wypozyczalnia')) throw blad(`Publikacja w Wypożyczalni należy do poziomu ${TIERY.find((t) => t.funkcje.includes('wypozyczalnia'))?.nazwa ?? 'Katedra Venue'} — Twój to ${w.tier}.`, 403);
+        // 💶 Tylko DEMO. Wypożyczenie płatnej księgi szłoby przez Stripe Katedry, więc Suweren inkasowałby
+        // cudzą pracę i był jej winien wypłatę — a Katedra celowo nie trzyma ani cudzych treści, ani cudzych
+        // pieniędzy (`FederacjaKsiag`: „Wydawca nie trzyma treści księgi ani pieniędzy”). Kto chce SPRZEDAWAĆ,
+        // stawia własną Katedrę i zgłasza się Federacją — tam wypożyczenie płaci jego Stripe, nie Suwerena.
+        if (rentalTier !== 'demo') throw blad('Tą drogą księgi wchodzą tylko za darmo (demo) — wypożyczenie płatne szłoby przez Stripe tej Katedry. Chcesz sprzedawać: postaw własną Katedrę OtakOS i zgłoś księgę Federacją, wtedy płatność trafia prosto do Ciebie.', 409);
         const bajtow = Buffer.byteLength(JSON.stringify(book ?? {}));
         if (bajtow > MAX_BAJTOW_ZGLOSZENIA) throw blad(`Zgłoszenie za duże (${Math.round(bajtow / 1e5) / 10} MB > ${MAX_BAJTOW_ZGLOSZENIA / 1e6} MB) — obrazy wyślij jako adresy, nie dataURL.`, 413);
         const karta = sprawdzKsiege(book, { tier: rentalTier, cenaEur });   // ta sama walidacja co publikacja z Huba — rzuca z powodem
@@ -230,7 +235,7 @@ export function utworzJukebox({ katalog, stripe = null, adres = async () => null
             if (czeka >= MAX_ZGLOSZEN_NA_KLUCZ) throw blad(`Masz już ${czeka} księgi czekające na zgodę Suwerena — poczekaj na decyzję.`, 409);
             const id = `zk-${crypto.randomBytes(6).toString('hex')}`;
             await fs.mkdir(KAT_ZGLOSZEN, { recursive: true });
-            await pisz(path.join(KAT_ZGLOSZEN, `${id}.json`), { book, rentalTier, cenaEur });
+            await pisz(path.join(KAT_ZGLOSZEN, `${id}.json`), { book, rentalTier, cenaEur: karta.cenaEur });   // cena po walidacji (demo = 0), nie ta z przeglądarki
             const wpis = { id, odcisk, tier: w.tier, tytul: karta.tytul, autor: karta.autor, stron: karta.stron, kwestii: karta.kwestii, jezyk: karta.jezyk, rentalTier, cenaEur: karta.cenaEur, bajtow, stan: 'do_zgody', kiedy: new Date(teraz()).toISOString() };
             d.zgloszenia = [wpis, ...d.zgloszenia].slice(0, 2000);
             await pisz(PLIK_ZGLOSZEN, d);

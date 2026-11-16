@@ -245,7 +245,7 @@ test('📚 Tier 4: księga zgłoszona Kluczem Venue czeka na ✓ Suwerena, a nie
             return new URL(r.headers.get('location')).searchParams.get('key');
         };
         const ksiega = { title: 'Nocny Kontuar', author: 'Ktoś Obcy', language: 'pl', pages: [{ narrativeText: 'Neon brzęczy w bursztynowym świetle.' }, { narrativeText: 'Zegar stanął na jedenastej jedenaście.' }] };
-        const zglos = (klucz, book = ksiega, extra = {}) => post(`${b}/wizytowka/jukebox/publikuj`, { klucz, book, cenaEur: 2.99, ...extra });
+        const zglos = (klucz, book = ksiega, extra = {}) => post(`${b}/wizytowka/jukebox/publikuj`, { klucz, book, ...extra });
 
         // HACT nie ma publikacji — to funkcja Tieru 4
         const kluczHact = await dajKlucz('hact');
@@ -266,6 +266,12 @@ test('📚 Tier 4: księga zgłoszona Kluczem Venue czeka na ✓ Suwerena, a nie
         assert.equal(czeka[0].akcje.find((a) => a.id === 'przyjmij').zdalnie, false, 'obcej księgi nie ocenia się z telefonu');
         assert.equal(czeka[0].akcje.find((a) => a.id === 'odrzuc').zdalnie, true);
 
+        // 💶 płatna księga tą drogą NIE wchodzi — Stripe wypożyczenia szedłby przez Katedrę, nie przez autora
+        const platna = await zglos(kluczVenue, ksiega, { rentalTier: 'rental_48h', cenaEur: 2.99 });
+        assert.equal(platna.s, 409); assert.match(platna.d.message, /tylko za darmo \(demo\)/);
+        assert.match(platna.d.message, /własną Katedrę|Federacj/, 'mówi, gdzie sprzedawać');
+        assert.equal(opublikowane.length, 0);
+
         // śmieci odpadają na wejściu, tą samą walidacją co publikacja z Huba
         assert.equal((await zglos(kluczVenue, { title: 'Pusta', pages: [] })).s, 400);
         assert.equal((await zglos('GRV-VENUE-2345-6789')).s, 404);
@@ -281,7 +287,7 @@ test('📚 Tier 4: księga zgłoszona Kluczem Venue czeka na ✓ Suwerena, a nie
         const przyjete = await J.decydujKsiege(z2.d.id, 'przyjmij');
         assert.equal(przyjete.stan, 'przyjete'); assert.equal(przyjete.ksiega, 'ksiega-1');
         assert.equal(opublikowane.length, 1);
-        assert.equal(opublikowane[0].wystaw, true); assert.equal(opublikowane[0].cenaEur, 2.99);
+        assert.equal(opublikowane[0].wystaw, true); assert.equal(opublikowane[0].rentalTier, 'demo'); assert.equal(opublikowane[0].cenaEur, 0);
         assert.equal(opublikowane[0].book.title, 'Nocny Kontuar');
         assert.equal((await J.zrodloIzby.czekajace()).length, 0);
 
