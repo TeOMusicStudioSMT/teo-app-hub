@@ -233,7 +233,11 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         const p = path.join(KS, id, 'media', nazwa);
         return fsSync.existsSync(p) ? p : null;
     }
-    function publikuj({ book, rentalTier = 'rental_48h', cenaEur = DOMYSLNA_CENA_EUR, pieczec = null, wystaw = true, media = null } = {}) {
+    /**
+     * `autorKonto` (Stripe Connect `acct_…`) = księga NIE jest Suwerena: wypożyczenie płaci prosto autorowi,
+     * Katedrze zostaje prowizja. Pieniądze nie przechodzą przez Katedrę, więc nie ma nikomu nic do wypłacenia.
+     */
+    function publikuj({ book, rentalTier = 'rental_48h', cenaEur = DOMYSLNA_CENA_EUR, pieczec = null, wystaw = true, media = null, autorKonto = null, prowizjaProc = 0 } = {}) {
         return poKolei(async () => {
             const idPre = idKsiegi(book.id || book.title);
             if (media && book.opodysk) { await fs.mkdir(KS, { recursive: true }); book = { ...book, opodysk: { ...book.opodysk, media: await wstawMedia(idPre, media) } }; }
@@ -250,7 +254,9 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
             await zapisz(path.join(KS, `${id}.json`), book);
             const k = await czytaj(KAT, { ksiegi: [] });
             const stary = k.ksiegi.find((x) => x.id === id);
+            const konto = /^acct_[A-Za-z0-9]{8,64}$/.test(String(autorKonto ?? '')) ? String(autorKonto) : (autorKonto === null ? stary?.autorKonto ?? null : null);
             const nowy = { id, ...wpis, okladka: await okladka(id, book), pieczec: pieczec ? tekst(pieczec, 120) : null,
+                ...(konto ? { autorKonto: konto, prowizjaProc: Math.max(0, Math.min(Number(prowizjaProc) || Number(stary?.prowizjaProc) || 0, 90)) } : {}),
                 wystawiona: stary?.wystawiona ?? wystaw !== false, opublikowano: stary?.opublikowano ?? new Date(teraz()).toISOString(), zmieniono: new Date(teraz()).toISOString() };
             k.ksiegi = [nowy, ...k.ksiegi.filter((x) => x.id !== id)].slice(0, 500);
             await zapisz(KAT, k);
@@ -309,8 +315,10 @@ export function utworzWypozyczalnie({ katalog, stripe = null, adres = async () =
         const c = await cenaDla(k, poprzednia);
         const s = await stripe.sesjaZakupu({ pakiet: { id: k.id, nazwa: `📚 ${k.tytul} — ${c.powrot ? 'powrót do księgi' : 'wypożyczenie'} ${GODZIN_WYPOZYCZENIA} h`, opis: k.opis || k.podtytul || 'Żywa Księga teostory.studio' },
             kwotaCentow: Math.round(c.cena * 100), waluta: 'eur', powrot: await adres(), anuluj: dozwolonyPowrot(powrot),
-            sukces: '/wizytowka/teostory/odbior', rodzaj: 'ksiega-48h', metadane: { powrot: dozwolonyPowrot(powrot) ?? '', ...(c.powrot ? { powrotZ: String(poprzednia).slice(0, 80) } : {}) } });
-        return { url: s.url, cenaEur: c.cena, powrotDoKsiegi: c.powrot, ...(c.powod ? { powod: c.powod } : {}) };
+            sukces: '/wizytowka/teostory/odbior', rodzaj: 'ksiega-48h', metadane: { powrot: dozwolonyPowrot(powrot) ?? '', ...(c.powrot ? { powrotZ: String(poprzednia).slice(0, 80) } : {}) },
+            // 🤝 cudza księga: wpłata idzie na konto autora, Katedra bierze tylko umówioną prowizję
+            ...(k.autorKonto ? { naKonto: k.autorKonto, prowizjaCentow: Math.round(c.cena * 100 * (Number(k.prowizjaProc) || 0) / 100) } : {}) });
+        return { url: s.url, cenaEur: c.cena, powrotDoKsiegi: c.powrot, ...(k.autorKonto ? { autorowi: true } : {}), ...(c.powod ? { powod: c.powod } : {}) };
     }
     /** Podgląd ceny bez zakładania płatności (portal pokazuje „1,49 € — Wiederkehr” zanim czytelnik kliknie). */
     async function oferta(id, { poprzednia = null } = {}) {

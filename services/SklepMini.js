@@ -609,6 +609,8 @@ export function zamontujTrasySklepu(app, { sklep, stripe, adres, maxPobran = 5, 
     app.get('/api/stripe', (_req, res) => odp(res, stripe.stan()));
     app.post('/api/stripe/darowizny', (req, res) => odp(res, req.body?.wlacz === false ? stripe.wylaczDarowizny() : stripe.wlaczDarowizny(req.body ?? {}).then((darowizny) => ({ darowizny }))));
     app.get('/api/stripe/sprzedaz', (_req, res) => odp(res, stripe.sprzedaz().then((sprzedaz) => ({ sprzedaz }))));
+    // 🤝 Czy konto Suwerena ma włączony Stripe Connect (wypłaty prosto do autorów) — tylko odczyt, nic nie zakłada.
+    app.get('/api/stripe/connect', (_req, res) => odp(res, stripe.stanConnect ? stripe.stanConnect() : Promise.resolve({ dostepny: false, powod: 'ten most nie zna Connect' })));
 }
 
 export default { utworzSklepMini, zamontujTrasySklepu, planZasobow, rodzinyBryl, odczytajPropozycjeMini, odczytajWarianty, rzadkoscZTekstu, CENY, RZADKOSCI, BUDZET_PRODUKCJI };

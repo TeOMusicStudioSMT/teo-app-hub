@@ -15,6 +15,11 @@ function atrapaStripe() {
         zalozone, sesje,
         sesjaZakupu: async (z) => { const id = `cs_test_${sesje.size + 1}${'x'.repeat(20)}`; sesje.set(id, { id, oplacona: false, pakiet: z.pakiet.id, rodzaj: z.rodzaj, powrot: z.metadane.powrot || null, kwota: z.kwotaCentow / 100, waluta: z.waluta, tryb: 'test' }); zalozone.push(z); return { id, url: `https://checkout.stripe.com/c/pay/${id}` }; },
         sprawdzSesje: async (id) => { const s = sesje.get(id); if (!s) throw new Error('To nie jest identyfikator płatności Stripe.'); return s; },
+        // 🤝 Connect: konta autorów. `gotowe` udaje, że Stripe skończył weryfikację.
+        konta: new Map(), gotowe: new Set(),
+        kontoAutora: async function () { const id = `acct_${'a'.repeat(8)}${this.konta.size}`; this.konta.set(id, true); return { konto: id }; },
+        linkOnboardingu: async (konto, { powrot }) => ({ url: `https://connect.stripe.com/setup/${konto}?w=${encodeURIComponent(powrot)}`, wazneDo: null }),
+        stanKontaAutora: async function (konto) { const ok = this.gotowe.has(konto); return { konto, przyjmujeWplaty: ok, wyplaty: ok, zakonczone: ok, brakuje: ok ? [] : ['external_account'] }; },
     };
 }
 async function start({ tunel = 'https://katedra.test', lektor = null, limitLektoraNaMinute = 4 } = {}) {
@@ -266,11 +271,32 @@ test('📚 Tier 4: księga zgłoszona Kluczem Venue czeka na ✓ Suwerena, a nie
         assert.equal(czeka[0].akcje.find((a) => a.id === 'przyjmij').zdalnie, false, 'obcej księgi nie ocenia się z telefonu');
         assert.equal(czeka[0].akcje.find((a) => a.id === 'odrzuc').zdalnie, true);
 
-        // 💶 płatna księga tą drogą NIE wchodzi — Stripe wypożyczenia szedłby przez Katedrę, nie przez autora
+        // 💶 płatna księga BEZ konta wypłat nie wchodzi — Katedra nie trzyma cudzych pieniędzy
         const platna = await zglos(kluczVenue, ksiega, { rentalTier: 'rental_48h', cenaEur: 2.99 });
-        assert.equal(platna.s, 409); assert.match(platna.d.message, /tylko za darmo \(demo\)/);
-        assert.match(platna.d.message, /własną Katedrę|Federacj/, 'mówi, gdzie sprzedawać');
+        assert.equal(platna.s, 409); assert.match(platna.d.message, /konto wypłat/);
         assert.equal(opublikowane.length, 0);
+
+        // 🤝 autor zakłada konto Connect: Katedra dostaje link, a z danych — tylko `acct_…`
+        const kt = await post(`${b}/wizytowka/jukebox/konto`, { klucz: kluczVenue, powrot: 'https://teostory.studio/jukebox' });
+        assert.equal(kt.s, 200); assert.match(kt.d.konto, /^acct_/); assert.equal(kt.d.przyjmujeWplaty, false);
+        assert.match(kt.d.url, /^https:\/\/connect\.stripe\.com\//, 'autor dostaje link do rejestracji u Stripe');
+        const zapis = JSON.parse(await fs.readFile(path.join(katalogTmp, 'jukebox', 'klucze.json'), 'utf8'));
+        const wpisKlucza = zapis.klucze.find((x) => x.konto);
+        assert.deepEqual(Object.keys(wpisKlucza).sort(), ['hash', 'kiedy', 'konto', 'sesja', 'tier', 'wazny'], 'w rejestrze tylko acct_ — zero danych osobowych');
+
+        // dopóki Stripe nie skończył weryfikacji, płatna księga dalej nie wchodzi
+        assert.equal((await zglos(kluczVenue, ksiega, { rentalTier: 'rental_48h', cenaEur: 2.99 })).s, 409);
+        stripe.gotowe.add(kt.d.konto);
+
+        // po weryfikacji: płatna księga przechodzi, a ✓ publikuje ją z kontem autora
+        const zp = await zglos(kluczVenue, ksiega, { rentalTier: 'rental_48h', cenaEur: 2.99 });
+        assert.equal(zp.s, 200);
+        const przyjetaPlatna = await J.decydujKsiege(zp.d.id, 'przyjmij');
+        assert.equal(przyjetaPlatna.stan, 'przyjete');
+        assert.equal(opublikowane.length, 1);
+        assert.equal(opublikowane[0].autorKonto, kt.d.konto, 'wypożyczenie zapłaci autorowi, nie Katedrze');
+        assert.equal(opublikowane[0].rentalTier, 'rental_48h'); assert.equal(opublikowane[0].cenaEur, 2.99);
+        opublikowane.length = 0;
 
         // śmieci odpadają na wejściu, tą samą walidacją co publikacja z Huba
         assert.equal((await zglos(kluczVenue, { title: 'Pusta', pages: [] })).s, 400);

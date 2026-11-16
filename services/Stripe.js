@@ -22,6 +22,9 @@ export const WALUTY = ['usd', 'eur', 'pln'];
 export const LINK_STRIPE = /^https:\/\/(buy|donate)\.stripe\.com\/[A-Za-z0-9_/-]{4,200}$/;
 export const CHECKOUT_STRIPE = /^https:\/\/checkout\.stripe\.com\/[A-Za-z0-9_/#%.=?&-]{4,2000}$/;
 const SESJA = /^cs_(test|live)_[A-Za-z0-9]{10,200}$/;
+/** 🤝 Konto Connect autora (Express) — jedyne, co Katedra o nim wie. Tożsamość i numer konta trzyma Stripe. */
+export const KONTO_CONNECT = /^acct_[A-Za-z0-9]{8,64}$/;
+export const LINK_ONBOARDINGU = /^https:\/\/connect\.stripe\.com\/[A-Za-z0-9_/#%.=?&-]{4,2000}$/;
 
 /** Tryb klucza z przedrostka (nic nie wysyłamy, żeby to wiedzieć). */
 export function trybKlucza(k) {
@@ -127,15 +130,20 @@ export function utworzStripe({ klucz, katalog, fetch: f = globalThis.fetch, tera
      * 🛒 Sesja zakupu pakietu. Cenę podaje WOŁAJĄCY z mostu (rzadkość → cena), nie przeglądarka.
      * `powrot` = baza adresu Katedry w sieci (tunel), `anuluj` = strona, z której przyszedł kupujący.
      */
-    async function sesjaZakupu({ pakiet, kwotaCentow, waluta = 'usd', powrot, anuluj, sukces = '/wizytowka/sklep/odbior', rodzaj = 'pakiet-mini', metadane = {} }) {
+    async function sesjaZakupu({ pakiet, kwotaCentow, waluta = 'usd', powrot, anuluj, sukces = '/wizytowka/sklep/odbior', rodzaj = 'pakiet-mini', metadane = {}, naKonto = null, prowizjaCentow = 0 }) {
         if (!/^https:\/\/[^/]+/.test(String(powrot))) throw new Error('Katedra nie ma adresu w sieci (tunel wyłączony) — zakup niemożliwy.');
         const baza = String(powrot).replace(/\/+$/, '');
+        // 🤝 Connect: wpłata ląduje na koncie autora, Katedrze zostaje tylko prowizja. Pieniądze NIE przechodzą
+        // przez Katedrę i nie ma nikomu nic do wypłacenia — tożsamość i konto autora trzyma Stripe, nie Katedra.
+        if (naKonto && !KONTO_CONNECT.test(String(naKonto))) throw new Error('To nie jest identyfikator konta Stripe Connect.');
+        const prowizja = Math.max(0, Math.min(Math.round(Number(prowizjaCentow) || 0), kwotaCentow));
         const s = await wolaj('POST', '/checkout/sessions', {
             mode: 'payment',
             line_items: [{ quantity: 1, price_data: { currency: waluta, unit_amount: kwotaCentow, product_data: { name: String(pakiet.nazwa).slice(0, 120), description: String(pakiet.opis || 'Pakiet Mini-TeOgochi').slice(0, 300) } } }],
             success_url: `${baza}${sukces}?sesja={CHECKOUT_SESSION_ID}`,
             cancel_url: /^https:\/\//.test(String(anuluj)) ? String(anuluj).slice(0, 500) : `${baza}/api/wizytowka`,
             metadata: { ...metadane, pakiet: pakiet.id, rodzaj },
+            ...(naKonto ? { payment_intent_data: { transfer_data: { destination: naKonto }, ...(prowizja ? { application_fee_amount: prowizja } : {}) } } : {}),
         });
         if (!CHECKOUT_STRIPE.test(String(s.url))) throw new Error('Stripe nie oddał adresu płatności.');
         return { id: s.id, url: s.url };
@@ -178,7 +186,36 @@ export function utworzStripe({ klucz, katalog, fetch: f = globalThis.fetch, tera
         });
     }
 
-    return { stan, wlaczDarowizny, wylaczDarowizny, publiczne, sesjaZakupu, sprawdzSesje, pobranie, sprzedaz: async () => (await czytaj()).sprzedaz };
+    // ── 🤝 Stripe Connect: wypłaty prosto do autora, z pominięciem Katedry ──
+    /** Czy konto Suwerena ma włączony Connect. Tylko odczyt — nic nie zakłada. */
+    async function stanConnect() {
+        try { const d = await wolaj('GET', '/accounts?limit=1'); return { dostepny: true, kont: Array.isArray(d.data) ? d.data.length : 0 }; }
+        catch (e) { return { dostepny: false, powod: String(e.message).slice(0, 300) }; }
+    }
+    /** Zakłada konto Express autora. Katedra NIE podaje tu żadnych danych osobowych — zbiera je Stripe przy onboardingu. */
+    async function kontoAutora() {
+        const d = await wolaj('POST', '/accounts', { type: 'express' });
+        if (!KONTO_CONNECT.test(String(d.id))) throw new Error('Stripe nie oddał identyfikatora konta.');
+        return { konto: d.id };
+    }
+    /** Jednorazowy link, pod którym autor podaje Stripe'owi swoje dane i numer konta. */
+    async function linkOnboardingu(konto, { powrot, odswiez = null }) {
+        if (!KONTO_CONNECT.test(String(konto))) throw new Error('To nie jest identyfikator konta Stripe Connect.');
+        if (!/^https:\/\/[^/]+/.test(String(powrot))) throw new Error('Potrzebny adres powrotu (https).');
+        const d = await wolaj('POST', '/account_links', { account: konto, type: 'account_onboarding', return_url: String(powrot).slice(0, 500), refresh_url: String(odswiez || powrot).slice(0, 500) });
+        if (!LINK_ONBOARDINGU.test(String(d.url))) throw new Error('Stripe nie oddał adresu rejestracji.');
+        return { url: d.url, wazneDo: d.expires_at ?? null };
+    }
+    /** Czy konto autora może już przyjmować wpłaty (Stripe skończył weryfikację). */
+    async function stanKontaAutora(konto) {
+        if (!KONTO_CONNECT.test(String(konto))) throw new Error('To nie jest identyfikator konta Stripe Connect.');
+        const d = await wolaj('GET', `/accounts/${encodeURIComponent(konto)}`);
+        return { konto, przyjmujeWplaty: d.charges_enabled === true, wyplaty: d.payouts_enabled === true, zakonczone: d.details_submitted === true,
+            brakuje: (d.requirements?.currently_due ?? []).slice(0, 12) };
+    }
+
+    return { stan, wlaczDarowizny, wylaczDarowizny, publiczne, sesjaZakupu, sprawdzSesje, pobranie, sprzedaz: async () => (await czytaj()).sprzedaz,
+        stanConnect, kontoAutora, linkOnboardingu, stanKontaAutora };
 }
 
 export default { utworzStripe, trybKlucza, formularz, centy, LINK_STRIPE, CHECKOUT_STRIPE, WALUTY };

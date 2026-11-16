@@ -25,6 +25,13 @@ import { dozwolonyPowrot, sprawdzKsiege } from './WypozyczalniaKsiag.js';
  */
 export const MAX_BAJTOW_ZGLOSZENIA = 2_000_000;
 export const MAX_ZGLOSZEN_NA_KLUCZ = 3;
+/**
+ * 💶 Udział Katedry w wypożyczeniu CUDZEJ księgi, w procentach. Liczbę ustala Suweren — tutaj.
+ * 0 = autor dostaje całość (po opłatach Stripe), Katedra nic nie bierze. Prowizja schodzi u Stripe
+ * (`application_fee_amount`), więc pieniądze nigdy nie przechodzą przez Katedrę i nie ma nikomu nic
+ * do wypłacenia — a tożsamość i numer konta autora trzyma Stripe, nie `klucze.json`.
+ */
+export const PROWIZJA_KATEDRY_PROC = 0;
 
 // 🔑 Klucz Dostępu GRV — `GRV-HACT-XXXX-XXXX`. Powstaje w chwili potwierdzonej płatności (`payment_status: paid`),
 // pokazywany kupującemu RAZ (ekran sukcesu + link powrotny). Rejestr `jukebox/klucze.json` trzyma wyłącznie
@@ -224,7 +231,14 @@ export function utworzJukebox({ katalog, stripe = null, adres = async () => null
         // cudzą pracę i był jej winien wypłatę — a Katedra celowo nie trzyma ani cudzych treści, ani cudzych
         // pieniędzy (`FederacjaKsiag`: „Wydawca nie trzyma treści księgi ani pieniędzy”). Kto chce SPRZEDAWAĆ,
         // stawia własną Katedrę i zgłasza się Federacją — tam wypożyczenie płaci jego Stripe, nie Suwerena.
-        if (rentalTier !== 'demo') throw blad('Tą drogą księgi wchodzą tylko za darmo (demo) — wypożyczenie płatne szłoby przez Stripe tej Katedry. Chcesz sprzedawać: postaw własną Katedrę OtakOS i zgłoś księgę Federacją, wtedy płatność trafia prosto do Ciebie.', 409);
+        // 💶 Płatna księga = wpłata musi mieć dokąd pójść. Bez gotowego konta Connect autora zostaje demo:
+        // inaczej Katedra inkasowałaby cudzą pracę i była jej winna wypłatę.
+        let konto = null;
+        if (rentalTier !== 'demo') {
+            const wyp = await stanWyplat(wejscie);
+            if (!wyp?.przyjmujeWplaty) throw blad('Żeby sprzedawać, najpierw podłącz konto wypłat — Katedra nie trzyma cudzych pieniędzy. Załóż je przez „konto wypłat” swoim Kluczem Dostępu; dane podajesz Stripe’owi, nie Katedrze. Bez tego księga wchodzi za darmo (demo).', 409);
+            konto = wyp.konto;
+        }
         const bajtow = Buffer.byteLength(JSON.stringify(book ?? {}));
         if (bajtow > MAX_BAJTOW_ZGLOSZENIA) throw blad(`Zgłoszenie za duże (${Math.round(bajtow / 1e5) / 10} MB > ${MAX_BAJTOW_ZGLOSZENIA / 1e6} MB) — obrazy wyślij jako adresy, nie dataURL.`, 413);
         const karta = sprawdzKsiege(book, { tier: rentalTier, cenaEur });   // ta sama walidacja co publikacja z Huba — rzuca z powodem
@@ -235,8 +249,8 @@ export function utworzJukebox({ katalog, stripe = null, adres = async () => null
             if (czeka >= MAX_ZGLOSZEN_NA_KLUCZ) throw blad(`Masz już ${czeka} księgi czekające na zgodę Suwerena — poczekaj na decyzję.`, 409);
             const id = `zk-${crypto.randomBytes(6).toString('hex')}`;
             await fs.mkdir(KAT_ZGLOSZEN, { recursive: true });
-            await pisz(path.join(KAT_ZGLOSZEN, `${id}.json`), { book, rentalTier, cenaEur: karta.cenaEur });   // cena po walidacji (demo = 0), nie ta z przeglądarki
-            const wpis = { id, odcisk, tier: w.tier, tytul: karta.tytul, autor: karta.autor, stron: karta.stron, kwestii: karta.kwestii, jezyk: karta.jezyk, rentalTier, cenaEur: karta.cenaEur, bajtow, stan: 'do_zgody', kiedy: new Date(teraz()).toISOString() };
+            await pisz(path.join(KAT_ZGLOSZEN, `${id}.json`), { book, rentalTier, cenaEur: karta.cenaEur, konto });   // cena po walidacji (demo = 0), nie ta z przeglądarki
+            const wpis = { id, odcisk, tier: w.tier, tytul: karta.tytul, autor: karta.autor, stron: karta.stron, kwestii: karta.kwestii, jezyk: karta.jezyk, rentalTier, cenaEur: karta.cenaEur, bajtow, ...(konto ? { konto } : {}), stan: 'do_zgody', kiedy: new Date(teraz()).toISOString() };
             d.zgloszenia = [wpis, ...d.zgloszenia].slice(0, 2000);
             await pisz(PLIK_ZGLOSZEN, d);
             return { id: wpis.id, stan: wpis.stan, tytul: wpis.tytul, stron: wpis.stron };
@@ -249,7 +263,7 @@ export function utworzJukebox({ katalog, stripe = null, adres = async () => null
         const przyjmij = akcja === 'przyjmij';
         if (przyjmij && !publikujKsiege) throw blad('Most nie umie teraz publikować ksiąg.', 503);
         if (przyjmij && !dane?.book) throw blad('Treść tego zgłoszenia zniknęła — odrzuć je.', 410);
-        const ksiega = przyjmij ? await publikujKsiege({ book: dane.book, rentalTier: dane.rentalTier, cenaEur: dane.cenaEur, wystaw: true }) : null;
+        const ksiega = przyjmij ? await publikujKsiege({ book: dane.book, rentalTier: dane.rentalTier, cenaEur: dane.cenaEur, wystaw: true, autorKonto: dane.konto ?? null, prowizjaProc: PROWIZJA_KATEDRY_PROC }) : null;
         return poKolei(async () => {
             const d = await json(PLIK_ZGLOSZEN, { zgloszenia: [] });
             const wpis = d.zgloszenia.find((x) => x.id === id && x.stan === 'do_zgody');
@@ -271,11 +285,46 @@ export function utworzJukebox({ katalog, stripe = null, adres = async () => null
         id: 'jukebox-ksiegi', emoji: '📚', nazwa: 'Księgi od posiadaczy Klucza Venue',
         czekajace: async () => (await zgloszeniaKsiag()).filter((x) => x.stan === 'do_zgody').map((x) => ({
             id: x.id, tytul: x.tytul, kiedy: x.kiedy,
-            opis: [x.autor ? `autor: ${x.autor}` : null, `${x.stron} stron`, x.kwestii ? `${x.kwestii} kwestii` : null, x.jezyk, x.rentalTier === 'demo' ? 'demo (za darmo)' : `${x.cenaEur} €`, `${Math.round(x.bajtow / 1000)} kB`, `klucz ${String(x.odcisk).slice(0, 8)}…`].filter(Boolean).join(' · '),
+            opis: [x.autor ? `autor: ${x.autor}` : null, `${x.stron} stron`, x.kwestii ? `${x.kwestii} kwestii` : null, x.jezyk,
+                x.rentalTier === 'demo' ? 'demo (za darmo)' : `${x.cenaEur} € → konto autora${PROWIZJA_KATEDRY_PROC ? `, Katedrze ${PROWIZJA_KATEDRY_PROC}%` : ', Katedra nic nie bierze'}`,
+                `${Math.round(x.bajtow / 1000)} kB`, `klucz ${String(x.odcisk).slice(0, 8)}…`].filter(Boolean).join(' · '),
             akcje: [{ id: 'przyjmij', etykieta: '✓ opublikuj', zdalnie: false, potwierdz: `„${x.tytul}” pojawi się publicznie w Wypożyczalni teostory.studio.` }, { id: 'odrzuc', etykieta: '✕ odrzuć', zdalnie: true }],
         })),
         decyduj: (id, akcja, o = {}) => decydujKsiege(id, akcja, o),
     };
+
+    /**
+     * 🤝 Konto wypłat autora (Stripe Connect Express) przypięte do Klucza GRV.
+     * W `klucze.json` ląduje WYŁĄCZNIE `acct_…` — imienia, adresu ani numeru konta Katedra nie widzi,
+     * bo zbiera je Stripe przy swoim onboardingu. Zwraca link, pod którym autor kończy rejestrację.
+     */
+    async function kontoAutora(wejscie, { powrot }) {
+        const w = await sprawdzKlucz(wejscie);
+        if (!w) throw blad('Nie znam takiego Klucza Dostępu.', 404);
+        if (!maFunkcje(w.tier, 'wypozyczalnia')) throw blad(`Konto wypłat należy do poziomu ${TIERY.find((t) => t.funkcje.includes('wypozyczalnia'))?.nazwa ?? 'Katedra Venue'} — Twój to ${w.tier}.`, 403);
+        if (!stripe?.kontoAutora) throw blad('Ta Katedra nie prowadzi wypłat dla autorów.', 503);
+        const h = hashKlucza(normalizujKlucz(wejscie));
+        let konto = (await json(PLIK_KLUCZY, { klucze: [] })).klucze.find((x) => x.hash === h)?.konto ?? null;
+        if (!konto) {
+            konto = (await stripe.kontoAutora()).konto;
+            await poKolei(async () => {
+                const d = await json(PLIK_KLUCZY, { klucze: [] });
+                const wpis = d.klucze.find((x) => x.hash === h);
+                if (wpis && !wpis.konto) { wpis.konto = konto; await pisz(PLIK_KLUCZY, d); }
+            });
+        }
+        const st = await stripe.stanKontaAutora(konto).catch(() => ({ konto, przyjmujeWplaty: false, zakonczone: false, brakuje: [] }));
+        return { ...st, ...(st.przyjmujeWplaty ? {} : await stripe.linkOnboardingu(konto, { powrot })) };
+    }
+    /** Stan konta wypłat dla klucza — bez zakładania czegokolwiek. */
+    async function stanWyplat(wejscie) {
+        const w = await sprawdzKlucz(wejscie);
+        if (!w) return null;
+        const h = hashKlucza(normalizujKlucz(wejscie));
+        const konto = (await json(PLIK_KLUCZY, { klucze: [] })).klucze.find((x) => x.hash === h)?.konto ?? null;
+        if (!konto || !stripe?.stanKontaAutora) return { tier: w.tier, konto: null, przyjmujeWplaty: false };
+        return { tier: w.tier, ...(await stripe.stanKontaAutora(konto).catch(() => ({ konto, przyjmujeWplaty: false }))) };
+    }
 
     /** Krótki odcisk klucza — nazwa katalogu na nagrania tego klienta. Z odcisku nie da się odtworzyć klucza. */
     const odciskKlucza = async (wejscie) => {
@@ -287,7 +336,7 @@ export function utworzJukebox({ katalog, stripe = null, adres = async () => null
     const zakupy = async () => (await json(PLIK_ZAKUPOW, { zakupy: [] })).zakupy;
     /** Rejestr kluczy BEZ hashy — do podglądu Suwerena (ile kluczy, jakie tiery, kiedy). */
     const klucze = async () => (await json(PLIK_KLUCZY, { klucze: [] })).klucze.map(({ hash, ...r }) => r);   // eslint-disable-line no-unused-vars
-    return { oferta, kup, odbierz, dostep, cennik, ustawCennik, zakupy, sprawdzKlucz, klucze, lektorStan, lektorZuzyj, odciskKlucza, zglosKsiege, zgloszeniaKsiag, decydujKsiege, zrodloIzby };
+    return { oferta, kup, odbierz, dostep, cennik, ustawCennik, zakupy, sprawdzKlucz, klucze, lektorStan, lektorZuzyj, odciskKlucza, zglosKsiege, zgloszeniaKsiag, decydujKsiege, zrodloIzby, kontoAutora, stanWyplat };
 }
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -324,6 +373,17 @@ export function zamontujTrasyJukeboxa(app, J, { limitNaMinute = 10, lektor = nul
             const { tier: _t, ...lek } = (await J.lektorStan(k)) ?? {};   // eslint-disable-line no-unused-vars
             return { tier: w.tier, kiedy: w.kiedy, lektor: lek };
         })());
+    });
+    // 🤝 Konto wypłat autora (Stripe Connect). Katedra zapisuje sam `acct_…`; dane osobowe zbiera Stripe.
+    app.post('/wizytowka/jukebox/konto', (req, res) => {
+        cors(res);
+        if (!limit(req, 'kt', limitNaMinute)) return res.status(429).json({ success: false, message: 'Za dużo prób — spróbuj za minutę.' });
+        return odp(res, J.kontoAutora(String(req.body?.klucz ?? req.body?.key ?? '').slice(0, 64), { powrot: dozwolonyPowrot(req.body?.powrot) ?? 'https://teostory.studio/jukebox' }));
+    });
+    app.get('/wizytowka/jukebox/konto', (req, res) => {
+        cors(res);
+        if (!limit(req, 'kt', limitNaMinute * 3)) return res.status(429).json({ success: false, message: 'Za dużo zapytań — spróbuj za minutę.' });
+        return odp(res, (async () => (await J.stanWyplat(String(req.query.key ?? req.query.klucz ?? '').slice(0, 64))) ?? (() => { throw blad('Nie znam takiego Klucza Dostępu.', 404); })())());
     });
     // 📚 Tier 4: zgłoszenie księgi do Wypożyczalni. Nie publikuje — stawia w kolejce do ✓ Suwerena (Izba zgód).
     app.post('/wizytowka/jukebox/publikuj', (req, res) => {
