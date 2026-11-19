@@ -272,9 +272,16 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
      * czegoś, czego nie ma kto wyprodukować. Jedna linijka do zmiany, gdy producenci będą.
      */
     const TYLKO_AOP = true;
+    /**
+     * 🖼 Adres zdjęcia produktu. Arkusz bestsellerów długo nie miał kolumny obrazu, więc
+     * zaimportowane produkty stały w sklepie BEZ ZDJĘĆ i nie dało się ich wystawić (2026-11-19).
+     * Zdjęcia idą tą samą drogą co podglądy TeO ShoP: plik w repozytorium portalu, adres w CSV.
+     */
+    const ADRES_ZDJEC = (process.env.TEO_SKLEP_IMG_URL || 'https://teostory.studio/sklep-img').replace(/\/+$/, '');
+    const KOLUMNY_BS = [...KOLUMNY_CSV, 'Image Src', 'Image Position', 'Image Alt Text'];
     async function zapiszCsvBestsellery() {
-        const linie = [wierszCsv(KOLUMNY_CSV)];
-        let produktow = 0, pominietych = 0;
+        const linie = [wierszCsv(KOLUMNY_BS)];
+        let produktow = 0, pominietych = 0, zeZdjeciem = 0;
         for (const d of await fs.readdir(katalog, { withFileTypes: true }).catch(() => [])) {
             if (!d.isDirectory() || !POSTAC.test(d.name)) continue;
             const m = await czytajM(path.join(katalog, d.name, FOLDER_BS, 'produkty.json'));
@@ -284,14 +291,20 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
                 const handle = `${d.name}-${p.klucz}`;
                 const opis = `<p>${String(m.imie ?? d.name)} from the 0.00G Style universe — ${p.nazwaPrintful}, printed on demand.</p><p>Wearable Stories · Katedra OtakOS</p>`;
                 const pojedynczy = p.opcja === 'Title' && p.warianty.length === 1;
+                // zdjęcie tylko wtedy, gdy NAPRAWDĘ leży w paczce — pusty adres zostawia produkt bez obrazu,
+                // zmyślony adres daje w Shopify czerwony błąd importu przy każdym wierszu
+                const plikZdjecia = ['MOCKUP-1.jpg', 'ZDJECIE-SKLEP.jpg'].find((f) => fsSync.existsSync(path.join(katalog, d.name, FOLDER_BS, p.klucz, f)));
+                const zdjecie = plikZdjecia ? `${ADRES_ZDJEC}/bestsellery/${handle}.jpg` : '';
+                if (zdjecie) zeZdjeciem++;
                 p.warianty.forEach((w, i) => linie.push(wierszCsv([handle, i ? '' : p.tytul, i ? '' : opis, i ? '' : '0.00G Style', i ? '' : p.typ, i ? '' : `0.00G Style, Printful, ${m.imie ?? d.name}, ${p.typ}${p.aop ? ', All-Over Print' : ''}`, i ? '' : 'FALSE',
-                    pojedynczy ? 'Title' : (p.opcja === 'Title' ? 'Size' : p.opcja), pojedynczy ? 'Default Title' : w.wartosc, w.sku, Number(w.cenaEur).toFixed(2), 'TRUE', 'TRUE', 'continue', 'manual', i ? '' : 'FALSE', i ? '' : 'draft'])));
+                    pojedynczy ? 'Title' : (p.opcja === 'Title' ? 'Size' : p.opcja), pojedynczy ? 'Default Title' : w.wartosc, w.sku, Number(w.cenaEur).toFixed(2), 'TRUE', 'TRUE', 'continue', 'manual', i ? '' : 'FALSE', i ? '' : 'draft',
+                    i ? '' : zdjecie, i || !zdjecie ? '' : '1', i || !zdjecie ? '' : `${p.tytul}`])));
             }
         }
         if (!produktow) return null;
         await fs.mkdir(katalog, { recursive: true });
         await fs.writeFile(path.join(katalog, 'shopify-import-bestsellery.csv'), `﻿${linie.join('\n')}\n`, 'utf8');
-        return { plik: 'shopify-import-bestsellery.csv', produktow, wariantow: linie.length - 1, pominietychBezAop: pominietych };
+        return { plik: 'shopify-import-bestsellery.csv', produktow, wariantow: linie.length - 1, pominietychBezAop: pominietych, zeZdjeciem };
     }
 
     async function synchronizuj() {
