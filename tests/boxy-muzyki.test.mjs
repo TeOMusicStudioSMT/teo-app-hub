@@ -70,7 +70,8 @@ test('Box z dysku: spis, rendycje mp3, Range i brak ścieżek z dysku na zewnąt
 
         // master zostaje nietknięty, rendycja leży w katalogu wydań
         assert.ok(await fs.access(path.join(muzyka, 'proba-albumu', '1. Pierwsza (Orion SMT).wav')).then(() => true, () => false));
-        assert.ok(await fs.access(path.join(wydania, 'boxy', 'proba', '01.mp3')).then(() => true, () => false));
+        const rendycje = await fs.readdir(path.join(wydania, 'boxy', 'proba'));
+        assert.equal(rendycje.length, 1); assert.match(rendycje[0], /^[0-9a-f]{16}\.mp3$/, 'rendycja nazwana od pliku źródłowego, nie od numeru');
 
         // czego nie ma
         assert.equal((await fetch(`${b}/wizytowka/jukebox/box/nie-ma-takiego`)).status, 404);
@@ -81,6 +82,32 @@ test('Box z dysku: spis, rendycje mp3, Range i brak ścieżek z dysku na zewnąt
         assert.equal(p.zrobione, 2);
         assert.equal((await (await fetch(`${b}/wizytowka/jukebox/boxy`)).json()).boxy[0].gotowych, 2);
     } finally { srv.close(); await fs.rm(muzyka, { recursive: true, force: true }); await fs.rm(wydania, { recursive: true, force: true }); }
+});
+
+test('kolejność albumu i pomijanie dubli — rendycja przeżywa przestawienie', async () => {
+    const { muzyka, wydania } = await album();
+    const kat = path.join(muzyka, 'proba-albumu');
+    await fs.copyFile(path.join(kat, '1. Pierwsza (Orion SMT).wav'), path.join(kat, '1. Pierwsza (Orion SMT)1.wav'));   // dubel jak „Connect 1”
+    const B = utworzBoxy({ katalogMuzyki: muzyka, katalogWydan: wydania, ffmpeg: ffmpegPath, uruchom });
+    const zapisz = (b) => fs.writeFile(path.join(wydania, 'boxy.json'), JSON.stringify({ boxy: [{ id: 'proba', nazwa: 'Próba', katalog: 'proba-albumu', ...b }] }));
+    try {
+        await zapisz({});
+        assert.equal((await B.utworyPubliczne('proba')).utwory.length, 3, 'bez mapy widać też dubel');
+
+        // dubel zdjęty, kolejność odwrócona względem alfabetu
+        await zapisz({ pomin: ['1. Pierwsza (Orion SMT)1.wav'], kolejnosc: ['druga.wav', '1. Pierwsza (Orion SMT).wav'] });
+        const u = (await B.utworyPubliczne('proba')).utwory;
+        assert.equal(u.length, 2, 'dubel zniknął');
+        assert.deepEqual(u.map((x) => x.tytul), ['druga', 'Pierwsza'], 'kolejność z mapy, nie z alfabetu');
+        assert.deepEqual(u.map((x) => x.nr), [1, 2]);
+
+        // rendycja robiona dla utworu nr 1 zostaje tym samym plikiem po przestawieniu kolejności
+        await B.plikUtworu('proba', 1);
+        const po = await fs.readdir(path.join(wydania, 'boxy', 'proba'));
+        await zapisz({ pomin: ['1. Pierwsza (Orion SMT)1.wav'], kolejnosc: ['1. Pierwsza (Orion SMT).wav', 'druga.wav'] });
+        assert.deepEqual(await fs.readdir(path.join(wydania, 'boxy', 'proba')), po, 'przestawienie nie unieważnia rendycji');
+        assert.equal((await B.spis())[0].gotowych, 1, 'ta sama rendycja dalej się liczy — teraz dla nr 2');
+    } finally { await fs.rm(muzyka, { recursive: true, force: true }); await fs.rm(wydania, { recursive: true, force: true }); }
 });
 
 test('Straż: Boxy publiczne tylko do odczytu', () => {

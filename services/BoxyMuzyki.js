@@ -68,21 +68,32 @@ export function utworzBoxy({ katalogMuzyki, katalogWydan, ffmpeg = null, uruchom
         };
         await wejdz(kat, 0);
         // numer bierzemy z nazwy pliku, a gdy jej brak — z nazwy podkatalogu („3. The Graviton Streams”)
-        const lista = znalezione.map((z, i) => {
+        let lista = znalezione.map((z, i) => {
             const zPliku = zNazwyPliku(z.nazwa, 0);
             const zKatalogu = /^\s*(\d{1,2})\s*[.\-_)]/.exec(z.katalog);
             const nr = zPliku.nr || (zKatalogu ? Number(zKatalogu[1]) : i + 1);
             return { ...zPliku, nr, plik: z.plik, nazwaPliku: z.nazwa };
         });
-        lista.sort((a, b) => a.nr - b.nr || a.tytul.localeCompare(b.tytul));
+        // `pomin` zdejmuje z Boxu pliki, które są na dysku, ale nie należą do albumu (dublety, wersje robocze)
+        const pomin = (box.pomin ?? []).map(String);
+        if (pomin.length) lista = lista.filter((u) => !pomin.includes(u.nazwaPliku));
+        // `kolejnosc` = prawdziwa kolejność albumu (nazwy plików po kolei). Czego w niej nie ma — ląduje na końcu.
+        const kolejnosc = (box.kolejnosc ?? []).map(String);
+        if (kolejnosc.length) lista.sort((a, b) => {
+            const ia = kolejnosc.indexOf(a.nazwaPliku), ib = kolejnosc.indexOf(b.nazwaPliku);
+            return (ia < 0 ? 1e6 : ia) - (ib < 0 ? 1e6 : ib) || a.tytul.localeCompare(b.tytul);
+        });
+        else lista.sort((a, b) => a.nr - b.nr || a.tytul.localeCompare(b.tytul));
         return lista.map((u, i) => ({ ...u, nr: i + 1 }));   // numeracja ciągła, bez dziur po duplikatach
     }
 
-    const plikRendycji = (boxId, nr) => path.join(KAT, boxId, `${String(nr).padStart(2, '0')}.mp3`);
+    // Nazwa rendycji idzie od PLIKU ŹRÓDŁOWEGO, nie od numeru w albumie — dzięki temu zmiana kolejności
+    // albo usunięcie dubla nie unieważnia tego, co już przepisane.
+    const plikRendycji = (boxId, u) => path.join(KAT, boxId, `${crypto.createHash('sha1').update(String(u.nazwaPliku)).digest('hex').slice(0, 16)}.mp3`);
 
     /** Rendycja mp3 — raz na utwór, po kolei (ffmpeg zjada rdzenie, a Katedra ma swoje zajęcia). */
     const przygotuj = (box, u) => poKolei(async () => {
-        const cel = plikRendycji(box.id, u.nr);
+        const cel = plikRendycji(box.id, u);
         if (await fs.access(cel).then(() => true, () => false)) return cel;
         if (!ffmpeg || !uruchom) throw Object.assign(new Error('Most nie ma ffmpeg — Boxu nie da się przygotować.'), { kod: 503 });
         await fs.mkdir(path.dirname(cel), { recursive: true });
@@ -98,7 +109,7 @@ export function utworzBoxy({ katalogMuzyki, katalogWydan, ffmpeg = null, uruchom
         for (const b of await mapa()) {
             const u = await utwory(b).catch(() => []);
             let gotowych = 0;
-            for (const x of u) if (await fs.access(plikRendycji(b.id, x.nr)).then(() => true, () => false)) gotowych += 1;
+            for (const x of u) if (await fs.access(plikRendycji(b.id, x)).then(() => true, () => false)) gotowych += 1;
             out.push({ id: b.id, nazwa: b.nazwa ?? b.id, artysci: b.artysci ?? null, opis: b.opis ?? null, utworow: u.length, gotowych });
         }
         return out;
