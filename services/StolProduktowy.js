@@ -296,7 +296,11 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
                 const plikZdjecia = ['MOCKUP-1.jpg', 'ZDJECIE-SKLEP.jpg'].find((f) => fsSync.existsSync(path.join(katalog, d.name, FOLDER_BS, p.klucz, f)));
                 const zdjecie = plikZdjecia ? `${ADRES_ZDJEC}/bestsellery/${handle}.jpg` : '';
                 if (zdjecie) zeZdjeciem++;
-                p.warianty.forEach((w, i) => linie.push(wierszCsv([handle, i ? '' : p.tytul, i ? '' : opis, i ? '' : '0.00G Style', i ? '' : p.typ, i ? '' : `0.00G Style, Printful, ${m.imie ?? d.name}, ${p.typ}${p.aop ? ', All-Over Print' : ''}`, i ? '' : 'FALSE',
+                // `Published: TRUE` = produkt NALEŻY do kanału „Sklep online". Przy FALSE import tworzy go poza
+                // kanałem i nawet po ustawieniu statusu na „aktywny" witryna oddaje 404 (2026-11-19: 91 produktów
+                // stało aktywnych i niewidocznych, trzeba było dopisywać je do kanału ręcznie, partiami po 50).
+                // Widoczności pilnuje `Status: draft` poniżej — ono chowa produkt niezależnie od kanału.
+                p.warianty.forEach((w, i) => linie.push(wierszCsv([handle, i ? '' : p.tytul, i ? '' : opis, i ? '' : '0.00G Style', i ? '' : p.typ, i ? '' : `0.00G Style, Printful, ${m.imie ?? d.name}, ${p.typ}${p.aop ? ', All-Over Print' : ''}`, i ? '' : 'TRUE',
                     pojedynczy ? 'Title' : (p.opcja === 'Title' ? 'Size' : p.opcja), pojedynczy ? 'Default Title' : w.wartosc, w.sku, Number(w.cenaEur).toFixed(2), 'TRUE', 'TRUE', 'continue', 'manual', i ? '' : 'FALSE', i ? '' : 'draft',
                     i ? '' : zdjecie, i || !zdjecie ? '' : '1', i || !zdjecie ? '' : `${p.tytul}`])));
             }
