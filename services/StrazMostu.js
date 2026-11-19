@@ -160,7 +160,9 @@ export const SCIEZKA_ZGLOSZENIA_KSIEGI = /^\/wizytowka\/teostory\/zgloszenie$/; 
 /** 🌌 Gałąź Żywej Księgi z innej Katedry (services/KsiegaWielowymiarowa.js): podpis kluczem z rejestru, ✓ Suwerena w Izbie. */
 export const SCIEZKA_GALEZI_KSIEGI = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/galaz$/;
 /** 📻 TeOfon Studio & Jukebox 0.00G (services/JukeboxTiery.js): oferta tierów, zakup przez Stripe, odbiór i dostęp — publicznie, ceny liczy most. */
-export const SCIEZKA_JUKEBOX = /^\/wizytowka\/jukebox(\/(kup|dostep|odbior|klucz|lektor|publikuj|konto))?$/;
+export const SCIEZKA_JUKEBOX = /^\/wizytowka\/jukebox(\/(kup|dostep|odbior|klucz|lektor|publikuj|konto|boxy))?$/;
+/** 📻🎁 Boxy Muzyki: spis utworów i same pliki mp3 — publiczne, tylko odczyt (`/wizytowka/jukebox/box/<box>[/<nr>.mp3]`). */
+export const SCIEZKA_BOXU = /^\/wizytowka\/jukebox\/box\/[a-z0-9][a-z0-9-]{1,48}(\/\d{1,3}\.mp3)?$/;
 export const SCIEZKA_WYPOZYCZENIA = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/(wypozycz|oferta)$/;
 /** Okładka wystawionego pakietu, odbiór i pobranie opłaconego (sprawdzane w Stripe). */
 export const SCIEZKA_SKLEPU = /^\/wizytowka\/sklep\/(pk-[0-9a-f]{8}\/okladka\.png|odbior|pobierz)$/;
@@ -191,6 +193,8 @@ export function czyWizytowka(req) {
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_ZAKUPU.test(String(req.path || ''))) return true;
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_WYPOZYCZENIA.test(String(req.path || ''))) return true;
     if (['GET', 'HEAD', 'POST', 'OPTIONS'].includes(req.method) && SCIEZKA_JUKEBOX.test(String(req.path || ''))) return true;
+    // 📻🎁 Boxy Muzyki — spis i mp3 albumów Suwerena: tylko odczyt, żadnego zapisu przez tę ścieżkę.
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) && SCIEZKA_BOXU.test(String(req.path || ''))) return true;
     if (req.method === 'POST' && SCIEZKA_ZGLOSZENIA_KSIEGI.test(String(req.path || ''))) return true;
     if ((req.method === 'POST' || req.method === 'OPTIONS') && SCIEZKA_GALEZI_KSIEGI.test(String(req.path || ''))) return true;
     if ((req.method === 'GET' || req.method === 'HEAD') && SCIEZKA_KODU_TANCA.test(String(req.path || ''))) return true;

@@ -17,6 +17,7 @@ import { utworzStripe } from './services/Stripe.js';
 import { utworzSklepMini, zamontujTrasySklepu, BUDZET_PRODUKCJI as SKLEP_BUDZET } from './services/SklepMini.js';
 import { utworzWypozyczalnie, zamontujTrasyWypozyczalni } from './services/WypozyczalniaKsiag.js';
 import { utworzJukebox, zamontujTrasyJukeboxa } from './services/JukeboxTiery.js';
+import { utworzBoxy, zamontujTrasyBoxow } from './services/BoxyMuzyki.js';
 import { utworzSpotify, zamontujTrasySpotify } from './services/SpotifyArtysci.js';
 import { utworzSilnikKsiag, zamontujTrasySilnikaKsiag } from './services/SilnikKsiag.js';
 import { utworzManuskrypt, zamontujTrasyManuskryptu } from './services/WlasnyManuskrypt.js';
@@ -9656,6 +9657,11 @@ zamontujTrasyJukeboxa(app, Jukebox, {
         return { plik: w.plik, nazwa: w.nazwa, znakow: w.znakow };
     },
 });
+// 📻🎁 Boxy Muzyki (services/BoxyMuzyki.js): albumy Suwerena z `_OtakOs_Muzyka/OtakOS RADIO Album's`
+// jako stacje Jukeboxa. Mastery .wav zostają na dysku; światu idą rendycje mp3 192 kb/s, robione raz na utwór.
+const Boxy = utworzBoxy({ katalogMuzyki: path.join(ANTIGRAVITY_DIR, '..', '_OtakOs_Muzyka', "OtakOS RADIO Album's"),
+    katalogWydan: path.join(ANTIGRAVITY_DIR, 'teostory', 'jukebox'), ffmpeg: ffmpegPath, uruchom: execFileAsync });
+zamontujTrasyBoxow(app, Boxy);
 zamontujTrasyWypozyczalni(app, Wypozyczalnia, { federacja: () => FederacjaKsiag.pozycjePubliczne(), nick: async () => (await Wizytowka.profil()).nick || null });
 if (process.env.OTAKOS_SKLEP_MINI !== '0') setTimeout(() => SklepMini.startPetli(), 120_000).unref?.();
 // 💃🥊 Ring taneczny (services/RingTaneczny.js): pojedynki Mini-TeOgochi między Katedrami — walkę liczą gracze
