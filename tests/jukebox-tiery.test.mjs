@@ -5,7 +5,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import express from 'express';
-import { utworzJukebox, zamontujTrasyJukeboxa, normalizujKlucz, KLUCZ_GRV, LIMITY_LEKTORA, LIMIT_DZIENNY_KATEDRY, TIERY, PLATNE } from '../services/JukeboxTiery.js';
+import { utworzJukebox, zamontujTrasyJukeboxa, normalizujKlucz, KLUCZ_GRV, LIMITY_LEKTORA, LIMIT_DZIENNY_KATEDRY, PROWIZJA_KATEDRY_PROC, TIERY, PLATNE } from '../services/JukeboxTiery.js';
 import { SCIEZKA_JUKEBOX, SCIEZKI_TYLKO_LOKALNE } from '../services/StrazMostu.js';
 
 const KLUCZ_SU = 'a'.repeat(48);
@@ -295,6 +295,7 @@ test('📚 Tier 4: księga zgłoszona Kluczem Venue czeka na ✓ Suwerena, a nie
         assert.equal(przyjetaPlatna.stan, 'przyjete');
         assert.equal(opublikowane.length, 1);
         assert.equal(opublikowane[0].autorKonto, kt.d.konto, 'wypożyczenie zapłaci autorowi, nie Katedrze');
+        assert.equal(opublikowane[0].prowizjaProc, PROWIZJA_KATEDRY_PROC, 'udział Katedry jedzie z nastawy, nie z przeglądarki');
         assert.equal(opublikowane[0].rentalTier, 'rental_48h'); assert.equal(opublikowane[0].cenaEur, 2.99);
         opublikowane.length = 0;
 

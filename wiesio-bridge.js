@@ -16529,7 +16529,9 @@ const Manuskrypt = utworzManuskrypt({ katalog: path.join(ANTIGRAVITY_DIR, 'manus
 zamontujTrasyManuskryptu(app, Manuskrypt);
 // 👗🦓 Zebrra Fashion (services/ZebrraFashion.js) — potok 0.00G Style, kroki 4–6: looki postaci w kolekcji (FLUX z wzorami:
 // obraz postaci + makieta Fashion), program z prowadzącym (Głosy Stada), wstawka reklamowa dla Wieczoru Tańca.
-const katalogFashion = [process.env.OTAKOS_FASHION_DIR, path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio')].filter(Boolean).find((d) => fsSync.existsSync(path.join(d, 'public', 'nadruki'))) ?? path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio');
+// `TEO_FASHION_STUDIO` = katalog studia — TA SAMA zmienna, którą czyta Szwalnia (`TeO_Fashion_Studio/kolekcje.ts`),
+// żeby jeden wpis w środowisku ustawiał obie strony. `OTAKOS_FASHION_DIR` zostaje jako stara nazwa (zgodność wstecz).
+const katalogFashion = [process.env.TEO_FASHION_STUDIO, process.env.OTAKOS_FASHION_DIR, path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio')].filter(Boolean).find((d) => fsSync.existsSync(path.join(d, 'public', 'nadruki'))) ?? path.resolve(process.cwd(), '..', 'TeO_Fashion_Studio');
 // 🛍️ Stół Produktowy (services/StolProduktowy.js): gotowe produkty TeO Fashion Studio → _OtakOs_Wymiar/sklep-shopify/<postać>/<model>/
 // 1-DO-SKLEPU-SHOPIFY (makiety + tekst do wklejenia) i 2-DO-DRUKARNI-300DPI (pliki stref + wymiary) + shopify-import.csv (produkty fizyczne).
 const StolProduktowy = utworzStolProduktowy({ katalogFashion, katalog: path.join(ANTIGRAVITY_DIR, 'sklep-shopify') });

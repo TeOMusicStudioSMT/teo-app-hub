@@ -31,7 +31,7 @@ export const MAX_ZGLOSZEN_NA_KLUCZ = 3;
  * (`application_fee_amount`), więc pieniądze nigdy nie przechodzą przez Katedrę i nie ma nikomu nic
  * do wypłacenia — a tożsamość i numer konta autora trzyma Stripe, nie `klucze.json`.
  */
-export const PROWIZJA_KATEDRY_PROC = 0;
+export const PROWIZJA_KATEDRY_PROC = 12;
 /**
  * 🤝 Czy Katedra prowadzi wypłaty dla autorów (Stripe Connect). Domyślnie NIE — i to nie jest
  * zapomniany przełącznik, tylko stan faktyczny: dopóki Connect nie działa na prawdziwym koncie,
