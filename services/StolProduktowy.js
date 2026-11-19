@@ -262,14 +262,24 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
         const brand = (await fs.readdir(path.join(katalog, 'brand')).catch(() => [])).filter((f) => f.endsWith('.png'));
         return { bestsellery: out, brand };
     }
-    /** CSV bestsellerów: osobny plik (produkty fizyczne, szkice, SKU = klucz do synchronizacji z Printful). */
+    /**
+     * CSV bestsellerów: osobny plik (produkty fizyczne, szkice, SKU = klucz do synchronizacji z Printful).
+     *
+     * ⚠️ TYLKO All-Over Print (Suweren 2026-11-19: „tych produktów z zapasami jeszcze nie mamy — to są
+     * projekty na przyszłość, jak marka będzie na tyle rozwinięta, że będziemy mogli z własnymi
+     * producentami… więc na razie tylko AOP"). Naklejki, plakaty, magnesy, etui i czapka zostają
+     * w manifestach i na dysku — nie trafiają tylko do arkusza importu, żeby nie wystawiać w sklepie
+     * czegoś, czego nie ma kto wyprodukować. Jedna linijka do zmiany, gdy producenci będą.
+     */
+    const TYLKO_AOP = true;
     async function zapiszCsvBestsellery() {
         const linie = [wierszCsv(KOLUMNY_CSV)];
-        let produktow = 0;
+        let produktow = 0, pominietych = 0;
         for (const d of await fs.readdir(katalog, { withFileTypes: true }).catch(() => [])) {
             if (!d.isDirectory() || !POSTAC.test(d.name)) continue;
             const m = await czytajM(path.join(katalog, d.name, FOLDER_BS, 'produkty.json'));
             for (const p of m?.produkty ?? []) {
+                if (TYLKO_AOP && !p.aop) { pominietych++; continue; }
                 produktow++;
                 const handle = `${d.name}-${p.klucz}`;
                 const opis = `<p>${String(m.imie ?? d.name)} from the 0.00G Style universe — ${p.nazwaPrintful}, printed on demand.</p><p>Wearable Stories · Katedra OtakOS</p>`;
@@ -281,7 +291,7 @@ export function utworzStolProduktowy({ katalogFashion, katalog, teraz = () => Da
         if (!produktow) return null;
         await fs.mkdir(katalog, { recursive: true });
         await fs.writeFile(path.join(katalog, 'shopify-import-bestsellery.csv'), `﻿${linie.join('\n')}\n`, 'utf8');
-        return { plik: 'shopify-import-bestsellery.csv', produktow, wariantow: linie.length - 1 };
+        return { plik: 'shopify-import-bestsellery.csv', produktow, wariantow: linie.length - 1, pominietychBezAop: pominietych };
     }
 
     async function synchronizuj() {
