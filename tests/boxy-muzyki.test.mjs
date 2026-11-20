@@ -122,6 +122,22 @@ test('Straż: Boxy publiczne tylko do odczytu', () => {
         '/wizytowka/jukebox/box/proba/wydania/1', '/wizytowka/jukebox/box/proba/1/canvas.mp4/x']) assert.ok(!SCIEZKA_BOXU.test(p), p);
 });
 
+// 🛡️ Zmierzona długość musi zgadzać się z plikiem. Na żywo (2026-11-20) Box 02 „Solar Puso” miał zapisane
+// 201,4 s przy utworze 358,5 s — pergamin wyszedł na 56% długości, a Canvas wybrał „kulminację” z pierwszej połowy.
+test('tempo Boxu: długość niezgodna z plikiem odrzucona', async () => {
+    const { muzyka, wydania } = await album();
+    await fs.writeFile(path.join(wydania, 'boxy.json'), JSON.stringify({ boxy: [{ id: 'proba', nazwa: 'Próba', katalog: 'proba-albumu' }] }));
+    const B = utworzBoxy({ katalogMuzyki: muzyka, katalogWydan: wydania, ffmpeg: ffmpegPath, uruchom });
+    const W = utworzWydaniaBoxow({ boxy: B, katalogWydan: path.join(wydania, 'paczki'), ffmpeg: ffmpegPath, uruchom });
+    try {
+        // utwory w atrapie albumu mają 1 s
+        await assert.rejects(() => W.ustawTempo('proba', 1, { bpm: 128, sekundy: 201.4 }), /nie zgadza się z plikiem/);
+        const ok = await W.ustawTempo('proba', 1, { bpm: 128, sekundy: 1.4 });
+        assert.equal(ok.bpm, 128);
+        assert.equal((await W.stan('proba')).utwory[0].sekundy, 1.4, 'zgodna długość przechodzi (tolerancja 2 s)');
+    } finally { await fs.rm(muzyka, { recursive: true, force: true }); await fs.rm(wydania, { recursive: true, force: true }); }
+});
+
 // 🌍 Paczka wydawnicza utworu w portalu: Canvas i pergamin są publiczne (i tak jadą na Spotify i do druku),
 // a sterowanie zostaje pod `/api/jukebox`. Pokazujemy TYLKO to, co naprawdę leży na dysku.
 test('paczka Boxu dla świata: spis, pliki i to, czego nie ma', async () => {

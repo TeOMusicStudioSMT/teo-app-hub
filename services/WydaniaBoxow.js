@@ -86,6 +86,16 @@ export function utworzWydaniaBoxow({ boxy, katalogWydan, ffmpeg = null, uruchom 
         const b = liczba(bpm), s = liczba(sekundy);
         if (!(b > 30 && b < 300)) throw blad('Tempo poza zakresem 30–300 BPM.');
         if (!(s > 1 && s < 3600)) throw blad('Długość utworu poza zakresem 1 s – 1 h.');
+        // 🛡️ Długość MUSI zgadzać się z plikiem (Suweren 2026-11-20: Box 02 / „Solar Puso” zapisał 201,4 s przy
+        // utworze 358,5 s — partytura i pergamin wyszły na 56% długości, a Canvas wybrał „kulminację” z pierwszej
+        // połowy). Przeglądarka bywa w błędzie, plik nie: ffmpeg mówi prawdę, więc tu się rozstrzyga.
+        if (ffmpeg && uruchom) {
+            const plik = await boxy.plikUtworu(box.id, u.nr).catch(() => null);
+            const rzecz = plik ? await dlugoscPliku(ffmpeg, uruchom, plik).catch(() => null) : null;
+            if (rzecz && Math.abs(rzecz - s) > 2) {
+                throw blad(`Zmierzona długość (${s.toFixed(1)} s) nie zgadza się z plikiem (${rzecz.toFixed(1)} s). Przeładuj kartę i zmierz jeszcze raz — na złej długości partytura, pergamin i Canvas wyjdą przycięte.`, 409);
+            }
+        }
         const d = await czytaj(box.id, u.odcisk);
         await zapisz(box.id, u.odcisk, { ...d, tytul: u.tytul, bpm: Math.round(b * 100) / 100, sekundy: Math.round(s * 100) / 100, kiedy: new Date().toISOString() });
         return { bpm: Math.round(b * 100) / 100, sekundy: Math.round(s * 100) / 100 };
