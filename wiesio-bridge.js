@@ -18,6 +18,7 @@ import { utworzSklepMini, zamontujTrasySklepu, BUDZET_PRODUKCJI as SKLEP_BUDZET 
 import { utworzWypozyczalnie, zamontujTrasyWypozyczalni } from './services/WypozyczalniaKsiag.js';
 import { utworzJukebox, zamontujTrasyJukeboxa } from './services/JukeboxTiery.js';
 import { utworzBoxy, zamontujTrasyBoxow } from './services/BoxyMuzyki.js';
+import { utworzWydaniaBoxow, zamontujTrasyWydanBoxow } from './services/WydaniaBoxow.js';
 import { utworzSpotify, zamontujTrasySpotify } from './services/SpotifyArtysci.js';
 import { utworzSilnikKsiag, zamontujTrasySilnikaKsiag } from './services/SilnikKsiag.js';
 import { utworzManuskrypt, zamontujTrasyManuskryptu } from './services/WlasnyManuskrypt.js';
@@ -9659,9 +9660,16 @@ zamontujTrasyJukeboxa(app, Jukebox, {
 });
 // 📻🎁 Boxy Muzyki (services/BoxyMuzyki.js): albumy Suwerena z `_OtakOs_Muzyka/OtakOS RADIO Album's`
 // jako stacje Jukeboxa. Mastery .wav zostają na dysku; światu idą rendycje mp3 192 kb/s, robione raz na utwór.
+const KATALOG_WYDAN_BOXOW = path.join(ANTIGRAVITY_DIR, 'teostory', 'jukebox');
 const Boxy = utworzBoxy({ katalogMuzyki: path.join(ANTIGRAVITY_DIR, '..', '_OtakOs_Muzyka', "OtakOS RADIO Album's"),
-    katalogWydan: path.join(ANTIGRAVITY_DIR, 'teostory', 'jukebox'), ffmpeg: ffmpegPath, uruchom: execFileAsync });
+    katalogWydan: KATALOG_WYDAN_BOXOW, ffmpeg: ffmpegPath, uruchom: execFileAsync });
 zamontujTrasyBoxow(app, Boxy);
+// 📻📦 Paczka wydawnicza utworu Boxu (services/WydaniaBoxow.js): Spotify Canvas i Rolowany Pergamin dla albumów,
+// które nie przeszły przez linię Jasona — wszystko, co wychodzi z samego dźwięku, bez storyboardu i bez karty.
+const WydaniaBoxow = utworzWydaniaBoxow({ boxy: Boxy, katalogWydan: KATALOG_WYDAN_BOXOW, ffmpeg: ffmpegPath, uruchom: execFileAsync,
+    pdf: async (o) => druk_htmlDoPdf((await import('puppeteer')).default, o), qr: (t) => druk_macierzQr(QRCode, t),
+    wiesc: (tresc) => Jajo.wiesc({ tresc, rodzaj: 'box', skad: 'Boxy Muzyki' }) });
+zamontujTrasyWydanBoxow(app, WydaniaBoxow, { raw: express.raw });
 zamontujTrasyWypozyczalni(app, Wypozyczalnia, { federacja: () => FederacjaKsiag.pozycjePubliczne(), nick: async () => (await Wizytowka.profil()).nick || null });
 if (process.env.OTAKOS_SKLEP_MINI !== '0') setTimeout(() => SklepMini.startPetli(), 120_000).unref?.();
 // 💃🥊 Ring taneczny (services/RingTaneczny.js): pojedynki Mini-TeOgochi między Katedrami — walkę liczą gracze

@@ -127,6 +127,15 @@ export function utworzBoxy({ katalogMuzyki, katalogWydan, ffmpeg = null, uruchom
         return { id: b.id, nazwa: b.nazwa ?? b.id, artysci: b.artysci ?? null,
             utwory: u.map((x) => ({ nr: x.nr, tytul: x.tytul, artysta: x.artysta ?? b.artysci ?? null, url: `/wizytowka/jukebox/box/${encodeURIComponent(b.id)}/${x.nr}.mp3` })) };
     }
+    /**
+     * Utwory Boxu z ODCISKIEM pliku źródłowego — klucz paczki wydawniczej (Canvas, pergamin).
+     * Ten sam odcisk, co nazwa rendycji mp3, więc zmiana kolejności w albumie nie gubi tego,
+     * co już złożone. Tylko dla maszyny Suwerena: nazwy plików z dysku zostają w środku.
+     */
+    async function utworyZOdciskiem(id) {
+        const b = await box(id);
+        return { box: b, utwory: (await utwory(b)).map((x) => ({ nr: x.nr, tytul: x.tytul, artysta: x.artysta ?? b.artysci ?? null, odcisk: odcisk(x.nazwaPliku) })) };
+    }
     /** Ścieżka gotowego mp3 — przygotowuje rendycję, jeśli jej jeszcze nie ma. */
     async function plikUtworu(id, nr) {
         const b = await box(id);
@@ -143,7 +152,7 @@ export function utworzBoxy({ katalogMuzyki, katalogWydan, ffmpeg = null, uruchom
         return { id: b.id, utworow: u.length, zrobione };
     }
     const odcisk = (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 16);
-    return { mapa, spis, utworyPubliczne, plikUtworu, przygotujBox, odcisk };
+    return { mapa, spis, utworyPubliczne, utworyZOdciskiem, plikUtworu, przygotujBox, odcisk };
 }
 
 /** Wysyła mp3 z obsługą `Range` — bez tego przeglądarka nie przewinie utworu. */
