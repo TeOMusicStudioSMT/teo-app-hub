@@ -10,6 +10,7 @@ import { promisify } from 'util';
 import ffmpegPath from 'ffmpeg-static';
 import { utworzBoxy, zamontujTrasyBoxow, zNazwyPliku } from '../services/BoxyMuzyki.js';
 import { SCIEZKA_BOXU, SCIEZKA_JUKEBOX } from '../services/StrazMostu.js';
+import { utworzWydaniaBoxow, zamontujTrasyWydanBoxow, PLIK_CANVAS, PLIKI_PERGAMINU } from '../services/WydaniaBoxow.js';
 
 const uruchom = promisify(execFile);
 
@@ -112,6 +113,58 @@ test('kolejność albumu i pomijanie dubli — rendycja przeżywa przestawienie'
 
 test('Straż: Boxy publiczne tylko do odczytu', () => {
     for (const p of ['/wizytowka/jukebox/boxy']) assert.ok(SCIEZKA_JUKEBOX.test(p), p);
-    for (const p of ['/wizytowka/jukebox/box/box-02-solar-pulse', '/wizytowka/jukebox/box/box-03-hidengirl/7.mp3']) assert.ok(SCIEZKA_BOXU.test(p), p);
-    for (const p of ['/wizytowka/jukebox/box/../../api', '/wizytowka/jukebox/box/BOX/1.mp3', '/wizytowka/jukebox/box/proba/1.wav', '/api/jukebox/boxy']) assert.ok(!SCIEZKA_BOXU.test(p), p);
+    for (const p of ['/wizytowka/jukebox/box/box-02-solar-pulse', '/wizytowka/jukebox/box/box-03-hidengirl/7.mp3',
+        '/wizytowka/jukebox/box/box-02-solar-pulse/wydania', '/wizytowka/jukebox/box/box-03-hidengirl/7/canvas.mp4',
+        '/wizytowka/jukebox/box/box-03-hidengirl/7/pergamin.svg', '/wizytowka/jukebox/box/box-03-hidengirl/14/pergamin.pdf',
+        '/wizytowka/jukebox/box/box-02-solar-pulse/1/pergamin.png']) assert.ok(SCIEZKA_BOXU.test(p), p);
+    for (const p of ['/wizytowka/jukebox/box/../../api', '/wizytowka/jukebox/box/BOX/1.mp3', '/wizytowka/jukebox/box/proba/1.wav', '/api/jukebox/boxy',
+        '/wizytowka/jukebox/box/proba/1/canvas.mp3', '/wizytowka/jukebox/box/proba/1/pergamin.exe', '/wizytowka/jukebox/box/proba/1/../../api',
+        '/wizytowka/jukebox/box/proba/wydania/1', '/wizytowka/jukebox/box/proba/1/canvas.mp4/x']) assert.ok(!SCIEZKA_BOXU.test(p), p);
+});
+
+// 🌍 Paczka wydawnicza utworu w portalu: Canvas i pergamin są publiczne (i tak jadą na Spotify i do druku),
+// a sterowanie zostaje pod `/api/jukebox`. Pokazujemy TYLKO to, co naprawdę leży na dysku.
+test('paczka Boxu dla świata: spis, pliki i to, czego nie ma', async () => {
+    const { muzyka, wydania } = await album();
+    await fs.writeFile(path.join(wydania, 'boxy.json'), JSON.stringify({ boxy: [{ id: 'proba', nazwa: 'Próba', katalog: 'proba-albumu', artysci: 'TeO' }] }));
+    const B = utworzBoxy({ katalogMuzyki: muzyka, katalogWydan: wydania, ffmpeg: ffmpegPath, uruchom });
+    const katWydan = path.join(wydania, 'paczki');
+    const W = utworzWydaniaBoxow({ boxy: B, katalogWydan: katWydan, ffmpeg: ffmpegPath, uruchom });
+    const app = express(); zamontujTrasyBoxow(app, B); zamontujTrasyWydanBoxow(app, W);
+    const srv = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+    const b = `http://127.0.0.1:${srv.address().port}`;
+    try {
+        // utwór nr 1 dostaje Canvas i pergamin (SVG + PDF), utwór nr 2 — nic
+        const { utwory } = await B.utworyZOdciskiem('proba');
+        const kat = path.join(katWydan, 'proba', 'wydania', utwory[0].odcisk);
+        await fs.mkdir(kat, { recursive: true });
+        await fs.writeFile(path.join(kat, PLIK_CANVAS), 'udaje-mp4');
+        await fs.writeFile(path.join(kat, PLIKI_PERGAMINU.svg), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+        await fs.writeFile(path.join(kat, PLIKI_PERGAMINU.pdf), '%PDF-1.4 udaje');
+        await fs.writeFile(`${kat}.json`, JSON.stringify({ bpm: 128, sekundy: 42, canvas: { wariant: 'fuzja', od: 30, wersja: 2 }, pergamin: { szer: 9278, wys: 1200 } }));
+
+        const d = await (await fetch(`${b}/wizytowka/jukebox/box/proba/wydania`)).json();
+        assert.equal(d.success, true); assert.equal(d.utwory.length, 2);
+        assert.equal(d.utwory[0].bpm, 128); assert.equal(d.utwory[0].sekundy, 42);
+        assert.equal(d.utwory[0].canvas.url, '/wizytowka/jukebox/box/proba/1/canvas.mp4?v=2');
+        assert.equal(d.utwory[0].canvas.wariant, 'fuzja'); assert.equal(d.utwory[0].canvas.od, 30);
+        assert.equal(d.utwory[0].pergamin.svg, '/wizytowka/jukebox/box/proba/1/pergamin.svg?v=1');
+        assert.equal(d.utwory[0].pergamin.pdf, '/wizytowka/jukebox/box/proba/1/pergamin.pdf?v=1');
+        assert.equal(d.utwory[0].pergamin.png, undefined, 'PNG-a nie ma na dysku — nie obiecujemy go');
+        assert.equal(d.utwory[1].canvas, null); assert.equal(d.utwory[1].pergamin, null);
+        assert.ok(!JSON.stringify(d).includes(muzyka) && !JSON.stringify(d).includes(katWydan), 'ścieżki z dysku nie wychodzą');
+
+        const c = await fetch(`${b}/wizytowka/jukebox/box/proba/1/canvas.mp4`);
+        assert.equal(c.status, 200); assert.equal(c.headers.get('content-type'), 'video/mp4');
+        assert.equal(c.headers.get('access-control-allow-origin'), '*', 'portal na innej domenie musi to przeczytać');
+        assert.equal(await c.text(), 'udaje-mp4');
+        assert.match((await fetch(`${b}/wizytowka/jukebox/box/proba/1/pergamin.svg`)).headers.get('content-type'), /image\/svg/);
+
+        // czego nie ma i czego nie wolno
+        assert.equal((await fetch(`${b}/wizytowka/jukebox/box/proba/2/canvas.mp4`)).status, 404, 'utwór bez Canvasu');
+        assert.equal((await fetch(`${b}/wizytowka/jukebox/box/proba/1/pergamin.png`)).status, 404);
+        assert.equal((await fetch(`${b}/wizytowka/jukebox/box/proba/1/pergamin.exe`)).status, 404);
+        assert.equal((await fetch(`${b}/wizytowka/jukebox/box/nie-ma/wydania`)).status, 404);
+        assert.equal((await fetch(`${b}/wizytowka/jukebox/box/proba/9/canvas.mp4`)).status, 404);
+    } finally { srv.close(); await fs.rm(muzyka, { recursive: true, force: true }); await fs.rm(wydania, { recursive: true, force: true }); }
 });

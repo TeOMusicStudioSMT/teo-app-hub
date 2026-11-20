@@ -165,6 +165,29 @@ export function utworzWydaniaBoxow({ boxy, katalogWydan, ffmpeg = null, uruchom 
         } finally { drukowany = null; await fs.rm(praca, { recursive: true, force: true }).catch(() => {}); }
     }
 
+    /**
+     * 🌍 Paczki Boxu dla świata (portal teostory.studio). Oddajemy tylko to, co NAPRAWDĘ leży na dysku —
+     * opis w JSON-ie mógłby zostać po przeniesionym pliku, a karta w Jukeboxie pokazałaby wtedy martwy link.
+     * Sterowanie (zapis, tempo) zostaje przy maszynie Suwerena, pod `/api/jukebox`.
+     */
+    async function publiczne(boxId) {
+        const { box, utwory } = await boxy.utworyZOdciskiem(String(boxId));
+        const out = [];
+        for (const u of utwory) {
+            const d = await czytaj(box.id, u.odcisk);
+            const kat = katalogUtworu(box.id, u.odcisk);
+            const jest = (n) => fsSync.existsSync(path.join(kat, n));
+            const b = `/wizytowka/jukebox/box/${encodeURIComponent(box.id)}/${u.nr}`;
+            const perg = Object.keys(PLIKI_PERGAMINU).filter((r) => jest(PLIKI_PERGAMINU[r]));
+            out.push({
+                nr: u.nr, tytul: u.tytul, bpm: liczba(d.bpm), sekundy: liczba(d.sekundy),
+                canvas: jest(PLIK_CANVAS) ? { url: `${b}/canvas.mp4?v=${d.canvas?.wersja ?? 1}`, sekundy: 8, wariant: d.canvas?.wariant ?? null, od: liczba(d.canvas?.od) } : null,
+                pergamin: perg.length ? { ...Object.fromEntries(perg.map((r) => [r, `${b}/pergamin.${r}?v=${d.pergamin?.wersja ?? 1}`])), szer: liczba(d.pergamin?.szer), wys: liczba(d.pergamin?.wys) } : null,
+            });
+        }
+        return { id: box.id, nazwa: box.nazwa ?? box.id, artysci: box.artysci ?? null, utwory: out };
+    }
+
     /** Ścieżka gotowego pliku paczki — tylko z białej listy `RODZAJE`. */
     async function sciezka(boxId, nr, rodzaj) {
         const nazwa = RODZAJE[String(rodzaj)];
@@ -175,7 +198,7 @@ export function utworzWydaniaBoxow({ boxy, katalogWydan, ffmpeg = null, uruchom 
         return p;
     }
 
-    return { stan, utwor, ustawTempo, zapiszCanvas, zapiszPergamin, kod, sciezka };
+    return { stan, publiczne, utwor, ustawTempo, zapiszCanvas, zapiszPergamin, kod, sciezka };
 }
 
 /** Trasy Huba (Straż: `/api/jukebox` tylko przy maszynie Suwerena). `raw` dla nagrania Canvas. */
@@ -198,6 +221,25 @@ export function zamontujTrasyWydanBoxow(app, W, { raw = null } = {}) {
             if (!['svg', 'png', 'pdf'].includes(r)) return res.status(404).json({ success: false, message: 'Nie znam takiego pliku pergaminu.' });
             return res.type(r === 'svg' ? 'image/svg+xml' : r === 'png' ? 'png' : 'pdf').sendFile(await W.sciezka(req.params.box, req.params.nr, r));
         } catch (e) { return res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }); }
+    });
+
+    // 🌍 Paczki Boxów dla portalu teostory.studio — publicznie, TYLKO odczyt (Straż: `SCIEZKA_BOXU`).
+    // Canvas i pergamin i tak jadą na Spotify oraz do druku, więc nie ma czego chować; zapis i tempo
+    // zostają wyżej, pod `/api/jukebox`, czyli przy maszynie Suwerena.
+    const swiat = (res) => { res.set('Access-Control-Allow-Origin', '*'); res.set('Cache-Control', 'public, max-age=300'); };
+    const plikSwiata = async (req, res, rodzaj, typ) => {
+        try {
+            const p = await W.sciezka(req.params.box, req.params.nr, rodzaj);
+            swiat(res);
+            return res.type(typ).sendFile(p);
+        } catch (e) { return res.status(typeof e.kod === 'number' ? e.kod : 400).json({ success: false, message: e.message }); }
+    };
+    app.get('/wizytowka/jukebox/box/:box/wydania', (req, res) => { swiat(res); return odp(res, W.publiczne(req.params.box)); });
+    app.get('/wizytowka/jukebox/box/:box/:nr/canvas.mp4', (req, res) => plikSwiata(req, res, 'canvas', 'mp4'));
+    app.get('/wizytowka/jukebox/box/:box/:nr/pergamin.:rodzaj', (req, res) => {
+        const r = String(req.params.rodzaj);
+        if (!['svg', 'png', 'pdf'].includes(r)) return res.status(404).json({ success: false, message: 'Nie znam takiego pliku pergaminu.' });
+        return plikSwiata(req, res, r, r === 'svg' ? 'image/svg+xml' : r === 'png' ? 'png' : 'pdf');
     });
 }
 

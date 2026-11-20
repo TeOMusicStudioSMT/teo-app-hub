@@ -161,8 +161,17 @@ export const SCIEZKA_ZGLOSZENIA_KSIEGI = /^\/wizytowka\/teostory\/zgloszenie$/; 
 export const SCIEZKA_GALEZI_KSIEGI = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/galaz$/;
 /** 📻 TeOfon Studio & Jukebox 0.00G (services/JukeboxTiery.js): oferta tierów, zakup przez Stripe, odbiór i dostęp — publicznie, ceny liczy most. */
 export const SCIEZKA_JUKEBOX = /^\/wizytowka\/jukebox(\/(kup|dostep|odbior|klucz|lektor|publikuj|konto|boxy))?$/;
-/** 📻🎁 Boxy Muzyki: spis utworów i same pliki mp3 — publiczne, tylko odczyt (`/wizytowka/jukebox/box/<box>[/<nr>.mp3]`). */
-export const SCIEZKA_BOXU = /^\/wizytowka\/jukebox\/box\/[a-z0-9][a-z0-9-]{1,48}(\/\d{1,3}\.mp3)?$/;
+/**
+ * 📻🎁 Boxy Muzyki: spis utworów, pliki mp3 oraz PACZKA WYDAWNICZA utworu — publiczne, tylko odczyt.
+ *   `/wizytowka/jukebox/box/<box>`                    — spis utworów
+ *   `/wizytowka/jukebox/box/<box>/<nr>.mp3`           — dźwięk
+ *   `/wizytowka/jukebox/box/<box>/wydania`            — co ma Canvas, a co pergamin
+ *   `/wizytowka/jukebox/box/<box>/<nr>/canvas.mp4`    — Spotify Canvas
+ *   `/wizytowka/jukebox/box/<box>/<nr>/pergamin.svg|png|pdf` — Rolowany Pergamin
+ * Te pliki i tak idą na Spotify i do druku, więc nie ma czego chować; sterowanie (zapis, tempo)
+ * zostaje przy maszynie Suwerena, pod `/api/jukebox`.
+ */
+export const SCIEZKA_BOXU = /^\/wizytowka\/jukebox\/box\/[a-z0-9][a-z0-9-]{1,48}(\/(wydania|\d{1,3}\.mp3|\d{1,3}\/(canvas\.mp4|pergamin\.(svg|png|pdf))))?$/;
 export const SCIEZKA_WYPOZYCZENIA = /^\/wizytowka\/teostory\/[a-z0-9][a-z0-9-]{2,63}\/(wypozycz|oferta)$/;
 /** Okładka wystawionego pakietu, odbiór i pobranie opłaconego (sprawdzane w Stripe). */
 export const SCIEZKA_SKLEPU = /^\/wizytowka\/sklep\/(pk-[0-9a-f]{8}\/okladka\.png|odbior|pobierz)$/;
