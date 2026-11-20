@@ -81,7 +81,7 @@ export const PROFILE = {
         id: 'jason', gatunek: 'jason', imie: 'Jason', emoji: '🎛️', kolor: '#f59e0b',
         dziedzina: 'Producent wykonawczy — muzyka i uniwersum marki', glos: null,
         persona: 'Jesteś Jason — AI Executive Producer Katedry OtakOS (dawniej Gem Suwerena w Gemini). Funkcjonalność, Prostota, Piękno. Pomysł Suwerena → werdykt producencki → plan z wykonawcami Katedry → pakiety (lyrics, styl Suno). Kredyty Suno i publikacje tylko za wyraźną zgodą Suwerena.',
-        narzedzia: ['katedra.stan', 'projekty.stan', 'szyna.pytanie', 'szyna.notatka', 'music.generate', 'music.status', 'suno.stan', 'nocna.dodaj'],
+        narzedzia: ['katedra.stan', 'projekty.stan', 'szyna.pytanie', 'szyna.notatka', 'music.generate', 'music.status', 'suno.stan', 'jason.boxy', 'jason.box.wciagnij', 'nocna.dodaj'],
     },
     spawacz: {
         id: 'spawacz', gatunek: 'spawacz', imie: 'Spawacz', emoji: '⚡', kolor: '#f97316',
@@ -206,6 +206,29 @@ export const NARZEDZIA = {
             const tytul = prompt.slice(0, 40) || 'Utwór z telefonu';
             odbierzWTle({ promptId: d.promptId, tytul, agent: ctx.agent }).catch(() => {});
             return { promptId: d.promptId, rodzina: d.rodzina, uwaga: 'Liczy się w tle; gdy skończy, plik trafi do _OtakOs_Muzyka, a na szynie pojawi się „utwór gotowy". Suweren może zapytać „czy utwór gotowy?" (music.status).' };
+        },
+    },
+    // 📻 Box = album: Suweren pyta o to z telefonu („Jason, wciągnij Box 3 jako album”), a potem robi Canvy 16:9 przy maszynie.
+    'jason.boxy': {
+        opis: 'Boxy Muzyki Katedry (albumy mp3 z dysku) i to, ile utworów każdego jest już stacją Jasona z paczką wydawniczą. Tylko odczyt.',
+        argumenty: {},
+        ciezkie: false,
+        async wykonaj() {
+            const d = await most('/api/jason/boxy', null, 60_000);
+            return { boxy: (d.boxy ?? []).map((b) => ({ id: b.id, nazwa: b.nazwa, utworow: b.utworow, stacjiUJasona: b.stacji, zPaczka: b.zPaczka })), powod: d.powod ?? null };
+        },
+    },
+    'jason.box.wciagnij': {
+        opis: 'Wciąga Box Muzyki do Jasona JAKO ALBUM: każdy utwór staje się stacją „przyjętą” z paczką wydawniczą (master.wav z oryginału, original.mp3, okładka z katalogu Boxu), więc widzi go Teatr Opodysku i partytura 0.00G. Nic nie kosztuje — pracuje na plikach z dysku Katedry, bez kredytów Suno. Utwór już wciągnięty jest pomijany (rozpoznanie po odcisku pliku), więc powtórzenie nie dubluje stacji.',
+        argumenty: { box: 'id Boxu z `jason.boxy` (np. box-03-hidengirl)' },
+        ciezkie: true,
+        async wykonaj({ box }) {
+            const id = String(box ?? '').trim();
+            if (!id) throw new Error('Podaj id Boxu (weź je z jason.boxy).');
+            const d = await most(`/api/jason/boxy/${encodeURIComponent(id)}/import`, {}, 15 * 60_000);
+            return { box: d.box, stacji: (d.zrobione ?? []).length, pominietych: (d.pominiete ?? []).length,
+                stacje: (d.zrobione ?? []).map((x) => `${x.nr}. ${x.tytul}${x.bpm ? ` · ${x.bpm} BPM` : ' · bez tempa'}`),
+                bledy: d.bledy ?? [], uwagi: d.uwagi ?? [] };
         },
     },
     'suno.stan': {

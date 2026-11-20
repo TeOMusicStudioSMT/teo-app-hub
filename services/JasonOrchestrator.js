@@ -471,6 +471,32 @@ export function oczyscZlecenie(z = {}) {
     };
 }
 
+/**
+ * 📻➡️🎛️ Stacja Jasona z utworu Boxu Muzyki. Box = ALBUM (Suweren 2026-11-20), więc numeracja zostaje
+ * boxowa (1…N tego Boxu), a nie dopisywana do albumu Suno — dwie stacje nr 1 z różnych albumów to nie dubel.
+ * Utwór z Boxu NIE MA tekstu ani stylu: nie zmyślamy ich, zostają puste i mówimy o tym wprost w uwagach paczki.
+ */
+export function stacjaZUtworuBoxu({ box, u, bpm = null, sekundy = null } = {}) {
+    const tytul = tn(u?.tytul, 200);
+    if (!tytul) throw new Error('Utwór Boxu bez tytułu.');
+    const b = Number(bpm);
+    return {
+        nr: Math.max(1, Math.min(999, Number(u.nr) || 1)), tytul, bpm: b >= 40 && b <= 240 ? Math.round(b) : null,
+        opis: tn(`Utwór z Boxu „${box?.nazwa ?? box?.id ?? ''}” — master z Katedry, nie z Suno.`, 2800),
+        styl: '', lyrics: '', gatunek: null, jezyk: null, instrumental: false,
+        sekundy: Number(sekundy) >= 1 ? Math.round(Number(sekundy)) : null,
+    };
+}
+/** Nazwa albumu dla importu Boxu — z niej bierze się folder wydawniczy każdej stacji. */
+export function albumBoxu(box) { return tn(box?.nazwa, 100) || tn(box?.id, 100) || 'Box'; }
+/** Klucz stacji w albumie: Boxy to osobne albumy, więc sam numer nie wystarcza do rozpoznania dubla. */
+export const kluczStacji = (k) => `${String(k?.album ?? '').toLowerCase()}|${Number(k?.stacja?.nr) || 0}`;
+/** Obraz z katalogu Boxu na okładkę — tylko znane nazwy albo jedyny obraz w katalogu. */
+export function okladkaZPlikow(nazwy = []) {
+    const obrazy = nazwy.filter((n) => /\.(jpe?g|png|webp)$/i.test(String(n)));
+    return obrazy.find((n) => /^(cover|folder|okladka|okładka|front|album|artwork)\./i.test(n)) ?? (obrazy.length === 1 ? obrazy[0] : null);
+}
+
 /** Tekst do Spotify / Musixmatch: bez tagów produkcyjnych `[Verse 1 - …]` i etykiet mówców `(Kael:)`; sekcje rozdziela pusta linia. */
 export function czystyTekst(lyrics) {
     const out = [];
@@ -999,6 +1025,157 @@ export function utworzJasona(cfg) {
             return k;
         } finally { budowane.delete(k.id); }
     }
+    // ── 📻 BOX JAKO ALBUM: utwory Boxu Muzyki stają się stacjami Jasona ──
+    /**
+     * Suweren 2026-11-20: „opcje wyboru boxa=albumu… i tam mogę lokalnie zrobić całe Canvy 16:9 i opodyski do nich”.
+     * Boxy 02/03 to albumy mp3 podawane prosto z dysku — Teatr Opodysku ich nie widział, bo bierze WYŁĄCZNIE
+     * kampanie Jasona ze stanem „przyjęta” i gotową paczką wydawniczą. Import składa jedno i drugie z faktów:
+     *
+     *   • każdy utwór Boxu = jedna stacja (numeracja boxowa, album = nazwa Boxu, więc własny folder wydania),
+     *   • `master.wav` przepisany z ORYGINAŁU z dysku (44,1 kHz / 16 bit / stereo) — nie z rendycji mp3,
+     *   • `original.mp3` = rendycja Boxu (ta sama, którą gra Jukebox), bo z niej gra Teatr,
+     *   • okładka z katalogu Boxu, gdy tam leży (cover/folder/okładka…); inaczej „🎨 Przerysuj okładkę” Paletą,
+     *   • tempo i długość z paczki „Opodysk Boxów”, jeśli były zmierzone — bez nich partytura nie powstanie.
+     *
+     * Czego NIE udajemy: utwór z Boxu nie ma tekstu ani storyboardu. Partytura 0.00G, Canvas i pergamin ruszają
+     * od razu (liczą się z dźwięku), a Opodysk 16:9 z klatkami FLUX potrzebuje storyboardu — ten rodzi się z tekstu.
+     * Import jest powtarzalny: stacja jest rozpoznawana po ODCISKU pliku źródłowego, więc drugi przebieg niczego
+     * nie dubluje, a przestawienie kolejności w albumie nie zrywa powiązania.
+     */
+    const importowaneBoxy = new Set();
+    const uslugaBoxow = () => (typeof cfg.boxy === 'function' ? cfg.boxy() : cfg.boxy) ?? null;
+    const uslugaWydanBoxow = () => (typeof cfg.wydaniaBoxow === 'function' ? cfg.wydaniaBoxow() : cfg.wydaniaBoxow) ?? null;
+
+    /** Boxy, które można wciągnąć, i ile stacji każdy ma już u Jasona. */
+    async function boxyDoImportu() {
+        const B = uslugaBoxow();
+        if (!B?.spis) return { boxy: [], powod: 'Most nie ma podłączonych Boxów Muzyki.' };
+        const kam = (await lista()).filter((x) => x.zBoxu?.box);
+        const boxy = (await B.spis()).map((b) => {
+            const moje = kam.filter((x) => x.zBoxu.box === b.id);
+            return { id: b.id, nazwa: b.nazwa, artysci: b.artysci ?? null, utworow: b.utworow, album: albumBoxu(b),
+                stacji: moje.length, zPaczka: moje.filter((x) => x.spotify).length };
+        });
+        return { boxy };
+    }
+
+    async function importujBox(boxId, { nadpisz = false } = {}) {
+        const B = uslugaBoxow();
+        if (!B?.utworyZOdciskiem || !B?.zrodloUtworu) throw new Error('Most nie ma podłączonych Boxów Muzyki.');
+        if (!cfg.katalogMuzyki || !cfg.ffmpeg || !cfg.uruchom) throw new Error('Most nie ma podłączonego ffmpeg ani katalogu muzyki dla Jasona.');
+        const id = String(boxId);
+        if (importowaneBoxy.has(id)) throw new Error('Ten Box właśnie się wciąga.');
+        importowaneBoxy.add(id);
+        try {
+            const { box, utwory } = await B.utworyZOdciskiem(id);
+            if (!utwory.length) throw Object.assign(new Error('Ten Box nie ma utworów.'), { kod: 409 });
+            const album = albumBoxu(box);
+            const juz = new Map((await lista()).filter((k) => k.zBoxu?.box === box.id).map((k) => [k.zBoxu.odcisk, k]));
+            // tempo i długość ze „Opodysku Boxów” — tam, gdzie Suweren zmierzył je w przeglądarce
+            const zmierzone = new Map();
+            try { for (const u of (await uslugaWydanBoxow()?.stan(box.id))?.utwory ?? []) zmierzone.set(u.odcisk, u); } catch { /* paczek może nie być */ }
+            const zrobione = [], pominiete = [], bledy = [];
+            for (const u of utwory) {
+                const stara = juz.get(u.odcisk);
+                if (stara && !nadpisz) { pominiete.push({ nr: u.nr, tytul: u.tytul, id: stara.id, powod: 'jest już stacją Jasona' }); continue; }
+                try { zrobione.push(await stacjaZBoxu(box, album, u, zmierzone.get(u.odcisk) ?? null, stara)); }
+                catch (e) { bledy.push(`Utwór ${u.nr} „${u.tytul}”: ${tn(e.message, 200)}`); }
+            }
+            const uwagi = [];
+            const bezTempa = zrobione.filter((x) => !x.bpm).length;
+            if (bezTempa) uwagi.push(`${bezTempa} stacji nie ma tempa — zmierz je w „Opodysku Boxów” (TeO Story), inaczej partytura 0.00G i Canvas nie powstaną.`);
+            if (zrobione.some((x) => !x.okladka)) uwagi.push('Stacje bez okładki: w katalogu Boxu nie było obrazu. Narysuj ją Paletą („🎨 Przerysuj okładkę” na karcie stacji) — dystrybutor wymaga 3000×3000.');
+            if (zrobione.length) uwagi.push('Tekstu i storyboardu te stacje nie mają: Teatr Opodysku, partytura 0.00G 16:9, Canvas i pergamin działają od razu, a Opodysk z klatkami FLUX potrzebuje storyboardu (ten powstaje z tekstu utworu).');
+            if (zrobione.length) wiesc(`📻 Jason: Box „${box.nazwa}” wciągnięty jako album — ${zrobione.length} ${zrobione.length === 1 ? 'stacja' : 'stacji'} z paczką wydawniczą${pominiete.length ? `, ${pominiete.length} już było` : ''}. Teatr Opodysku i partytura 0.00G ruszają od razu.`);
+            return { box: { id: box.id, nazwa: box.nazwa, album }, zrobione, pominiete, bledy, uwagi };
+        } finally { importowaneBoxy.delete(id); }
+    }
+
+    /** Jedna stacja z utworu Boxu: kampania „przyjęta” + paczka wydawnicza. Rzuca, gdy czegoś naprawdę nie ma. */
+    async function stacjaZBoxu(box, album, u, pomiar, stara) {
+        const B = uslugaBoxow();
+        const z = await B.zrodloUtworu(box.id, u.nr);
+        const k = stara ?? {
+            id: `j-${crypto.randomBytes(4).toString('hex')}`, utworzono: new Date().toISOString(),
+            zlecil: 'Suweren', skad: 'box', etapy: {}, klipy: [], okladka: null,
+        };
+        k.album = album;
+        k.stacja = stacjaZUtworuBoxu({ box, u, bpm: pomiar?.bpm ?? stara?.stacja?.bpm ?? null, sekundy: pomiar?.sekundy ?? null });
+        k.artysci = [tn(u.artysta ?? box.artysci, 60)].filter(Boolean);
+        k.glos = null;
+        k.stan = 'przyjeta';
+        k.decyzja = { akcja: 'przyjmij', kiedy: new Date().toISOString(), kto: 'Suweren', powod: 'Utwór z Boxu Muzyki — master leży na dysku Katedry, nie ma czego wybierać z Suno.' };
+        k.zBoxu = { box: box.id, nazwaBoxu: box.nazwa ?? box.id, nr: u.nr, odcisk: u.odcisk, nazwaPliku: z.nazwaPliku };
+        // mp3 Boxu (rendycja, ta sama, którą gra Jukebox) — `wybrana.plik` liczy się od katalogu muzyki
+        const mp3 = await B.plikUtworu(box.id, u.nr);
+        k.wybrana = { plik: path.relative(cfg.katalogMuzyki, mp3).split(path.sep).join('/'), zBoxu: true };
+        await zapisz(k);
+
+        // okładka z katalogu Boxu → katalog kampanii (dalej żyje jak każda inna: `coverWydania`, „🎨 Przerysuj”)
+        if (!k.okladka?.plik) {
+            const obraz = await obrazBoxu(z);
+            if (obraz) {
+                const kat = path.join(katalog, k.id);
+                await fs.mkdir(kat, { recursive: true });
+                const nazwa = `okladka-boxu${path.extname(obraz).toLowerCase()}`;
+                await fs.copyFile(obraz, path.join(kat, nazwa));
+                k.okladka = { plik: nazwa, wersja: 1, zBoxu: path.basename(obraz), prompt: null };
+                await zapisz(k);
+            }
+        }
+        await paczkaZBoxu(k, z, mp3);
+        return { id: k.id, nr: k.stacja.nr, tytul: k.stacja.tytul, bpm: k.stacja.bpm, sekundy: k.spotify.master?.sekundy ?? null,
+            folder: k.spotify.folder, okladka: !!k.spotify.okladka, nadpisana: !!stara };
+    }
+    /** Obraz na okładkę: katalog utworu, a gdy tam nic — korzeń Boxu. */
+    async function obrazBoxu(z) {
+        for (const kat of [z.katalog, z.katalogBoxu]) {
+            const nazwy = (await fs.readdir(kat, { withFileTypes: true }).catch(() => [])).filter((w) => w.isFile()).map((w) => w.name);
+            const n = okladkaZPlikow(nazwy);
+            if (n) return path.join(kat, n);
+        }
+        return null;
+    }
+
+    /** Paczka wydawnicza stacji z Boxu — ten sam układ folderu, co paczka Spotify kampanii Suno. */
+    async function paczkaZBoxu(k, z, mp3) {
+        const folder = folderWydania(k), kat = path.join(cfg.katalogMuzyki, ...folder.split('/'));
+        const ff = (args) => cfg.uruchom(cfg.ffmpeg, ['-loglevel', 'error', '-y', ...args], { maxBuffer: 1 << 24, timeout: 10 * 60_000, windowsHide: true });
+        const uwagi = [], pliki = [];
+        await fs.mkdir(kat, { recursive: true });
+        await fs.copyFile(mp3, path.join(kat, 'original.mp3')); pliki.push('original.mp3');
+
+        const master = path.join(kat, 'master.wav');
+        await ff(['-i', z.plik, '-vn', '-map_metadata', '-1', '-ar', '44100', '-ac', '2', '-c:a', 'pcm_s16le', master]);
+        const fd = await fs.open(master, 'r'); const glowa = Buffer.alloc(4096); await fd.read(glowa, 0, 4096, 0); await fd.close();
+        const h = naglowekWav(glowa);
+        if (!h || !h.pcm || h.hz !== 44100 || h.bity !== 16 || h.kanaly !== 2) throw new Error(`master.wav nie ma formatu 44,1 kHz / 16 bit / stereo (${JSON.stringify(h)}).`);
+        const bajtow = (await fs.stat(master)).size;
+        const sekundy = Math.round((bajtow - 44) / (44100 * 4) * 10) / 10;
+        pliki.push('master.wav');
+        const wav = /[.]wav$/i.test(z.nazwaPliku);
+        uwagi.push(`master.wav przepisany z pliku Boxu „${z.nazwaPliku}” (44,1 kHz / 16 bit / stereo). To zmiana formatu, nie mastering dźwięku.`);
+        if (!wav) uwagi.push('Plik źródłowy w Boxie nie jest WAV-em — kontener jest bezstratny, ale jakość dźwięku zostaje taka, jak w oryginale.');
+
+        const okladka = await coverWydania(k, kat);
+        if (okladka) { pliki.push(okladka.plik); uwagi.push(k.okladka?.zBoxu ? `Okładka z katalogu Boxu („${k.okladka.zBoxu}”) powiększona do 3000×3000 — powiększenie nie dodaje szczegółów, których nie było w oryginale.` : UWAGA_COVER); }
+        else uwagi.push('Bez okładki — w katalogu Boxu nie było obrazu. Narysuj ją Paletą („🎨 Przerysuj okładkę”); dystrybutor wymaga 3000×3000.');
+
+        uwagi.push('Bez lyrics_clean.txt — utwór przyszedł z Boxu, tekstu Katedra nie zna. Wklej go na karcie stacji, jeśli ma trafić do Spotify, Musixmatch i storyboardu.');
+
+        const autor = await Promise.resolve(cfg.autor?.()).catch(() => null);
+        const meta = metadaneSpotify(k, { autor: typeof autor === 'string' ? autor : null, sekundy, master: h });
+        if (!okladka) meta.files.cover = null;
+        meta.files.lyrics = null;
+        await fs.writeFile(path.join(kat, 'spotify_metadata.json'), JSON.stringify(meta, null, 2), 'utf8'); pliki.push('spotify_metadata.json');
+        uwagi.push('Do uzupełnienia u dystrybutora: data wydania, explicit, ISRC/UPC (nadaje dystrybutor), nazwisko autora do tantiem oraz oświadczenie o muzyce stworzonej z AI.');
+
+        k.spotify = { folder, pliki, master: { ...h, zrodlo: wav ? 'wav-boxu' : 'audio-boxu', sekundy, bajtow }, okladka, uwagi, kiedy: new Date().toISOString() };
+        delete k.spotifyPominiete;
+        await zapisz(k);
+        return k;
+    }
+
     // ── 🎬 Teledysk: storyboard 0.00G w paczce wydawniczej + projekt w TeO Story Studio ──
     const PLIK_STORYBOARDU = 'storyboard_000g.json';
     const rysowaneKadry = new Set();   // `${id}:${scena}:${format}` — żywe rysowanie klatek
@@ -1454,8 +1631,9 @@ export function utworzJasona(cfg) {
     async function zlozWszystkieKsiegi() {
         const widziane = new Set(), zrobione = [], bledy = [];
         for (const k of await lista()) {
-            if (k.stan !== 'przyjeta' || !k.spotify || widziane.has(k.stacja.nr)) continue;
-            widziane.add(k.stacja.nr);
+            // stacje z Boxów pomijamy: nie mają tekstu ani storyboardu, więc księga wyszłaby pusta (pojedynczo wolno)
+            if (k.stan !== 'przyjeta' || !k.spotify || k.zBoxu || widziane.has(kluczStacji(k))) continue;
+            widziane.add(kluczStacji(k));
             try { const x = await zlozKsiege(k.id); zrobione.push({ nr: k.stacja.nr, id: x.ksiega.id, stron: x.ksiega.stron }); } catch (e) { bledy.push(`Stacja ${k.stacja.nr}: ${tn(e.message, 200)}`); }
         }
         return { zrobione, bledy };
@@ -1474,7 +1652,8 @@ export function utworzJasona(cfg) {
         wystawiana = true;
         try {
             const widziane = new Set(), zrobione = [], bledy = [], uwagi = [], ks = [];
-            for (const k of await lista()) { if (k.stan !== 'przyjeta' || !k.spotify || widziane.has(k.stacja.nr)) continue; widziane.add(k.stacja.nr); ks.push(k); }
+            // wystawiamy album Opodysków Jasona; stacje wciągnięte z Boxów (bez tekstu i storyboardu) zostają poza kolekcją
+            for (const k of await lista()) { if (k.stan !== 'przyjeta' || !k.spotify || k.zBoxu || widziane.has(kluczStacji(k))) continue; widziane.add(kluczStacji(k)); ks.push(k); }
             ks.sort((a, b) => a.stacja.nr - b.stacja.nr);
             if (!ks.length) throw new Error('Żadna stacja nie ma paczki wydawniczej — nie ma czego wystawić.');
             for (const s of ks) {
@@ -1570,7 +1749,13 @@ export function utworzJasona(cfg) {
     }
     const sciezkaCanvasu = (k) => (k?.canvas?.plik && sciezkaWydania(k) ? path.join(sciezkaWydania(k), k.canvas.plik) : null);
     /** 🟢 Adres Spotify stacji: jej własny, a gdy go nie ma — adres całego albumu (jedno pole dla wszystkich dziesięciu). */
-    const spotifyLive = (k, u) => { const wlasny = u.spotify?.utwory?.[k.stacja.nr] ?? null, url = wlasny ?? u.spotify?.album ?? null, sp = spotifyZAdresu(url); return sp ? { ...sp, zrodlo: wlasny ? 'utwor' : 'album' } : null; };
+    // Stacja wciągnięta z Boxu NIE dziedziczy adresu albumu Suno — to inny album; odznaka „LIVE ON SPOTIFY”
+    // pojawi się u niej dopiero, gdy dostanie własny adres (dziś Katedra żadnego dla Boxów nie zna).
+    const spotifyLive = (k, u) => {
+        if (k.zBoxu) return null;
+        const wlasny = u.spotify?.utwory?.[k.stacja.nr] ?? null, url = wlasny ?? u.spotify?.album ?? null, sp = spotifyZAdresu(url);
+        return sp ? { ...sp, zrodlo: wlasny ? 'utwor' : 'album' } : null;
+    };
     /** Odznaka Spotify w katalogu Wypożyczalni dla każdej stacji, która ma już księgę (po wklejeniu / zmianie adresu). Błąd nie psuje zapisu ustawień. */
     async function synchronizujSpotify() {
         if (!cfg.wypozyczalnia?.ustawSpotify) return 0;
@@ -1586,12 +1771,18 @@ export function utworzJasona(cfg) {
         await (cfg.pokaz ? cfg.pokaz(p) : cfg.otworz(path.dirname(p)));
         return p;
     }
-    /** 🎭 Katalog muzycznych opowieści albumu — dla Teatru Opodysku w TeO Story i Biblioteki Żywych Ksiąg (najnowsza przyjęta kampania każdej stacji z paczką). */
+    /**
+     * 🎭 Katalog muzycznych opowieści — dla Teatru Opodysku w TeO Story i Biblioteki Żywych Ksiąg
+     * (najnowsza przyjęta kampania każdej stacji z paczką).
+     * Klucz dubla to ALBUM + numer, nie sam numer: od kiedy Box można wciągnąć jako album
+     * (`importujBox`), Stacja 1 „Solar Pulse” i Stacja 1 „Zero Gravity Heart” to dwie różne stacje —
+     * przy samym numerze druga z nich po cichu znikała z Teatru.
+     */
     async function opodyski() {
         const u = await ustawienia(), widziane = new Set(), utwory = [];
         for (const k of await lista()) {
-            if (k.stan !== 'przyjeta' || !k.spotify || widziane.has(k.stacja.nr)) continue;
-            widziane.add(k.stacja.nr);
+            if (k.stan !== 'przyjeta' || !k.spotify || widziane.has(kluczStacji(k))) continue;
+            widziane.add(kluczStacji(k));
             const b = `/api/jason/kampanie/${k.id}`;
             utwory.push({ id: k.id, nr: k.stacja.nr, tytul: k.stacja.tytul, album: k.album, artysci: k.artysci, glos: k.glos?.nazwa ?? null, bpm: k.stacja.bpm ?? null, sekundy: k.spotify.master?.sekundy ?? null,
                 okladka: k.spotify.okladka ? `${b}/spotify/okladka?v=${k.okladka?.wersja ?? 1}` : null, audio: `${b}/audio`,
@@ -1600,10 +1791,12 @@ export function utworzJasona(cfg) {
                 partytura: k.partytura?.plik ? { url: `${b}/opodysk/partytura/wideo?v=${k.partytura.wersja ?? 1}`, sekundy: k.partytura.sekundy ?? null } : null,
                 ...glosyKampanii(k), ...adresyDruku(k),
                 canvas: k.canvas?.plik ? { url: `${b}/canvas/wideo?v=${k.canvas.wersja ?? 1}`, sekundy: k.canvas.sekundy ?? 8, wariant: k.canvas.wariant ?? null, od: k.canvas.od ?? null } : null, spotifyLive: spotifyLive(k, u),
-                wypozyczalnia: k.wypozyczalnia ?? null, spotify: u.spotify.utwory[k.stacja.nr] ?? null, suno: k.wybrana?.id ? linkOdsluchu(k.wybrana.id) : null });
+                wypozyczalnia: k.wypozyczalnia ?? null, spotify: k.zBoxu ? null : u.spotify.utwory[k.stacja.nr] ?? null, suno: k.wybrana?.id ? linkOdsluchu(k.wybrana.id) : null,
+                zBoxu: k.zBoxu ? { box: k.zBoxu.box, nazwa: k.zBoxu.nazwaBoxu ?? k.zBoxu.box, nr: k.zBoxu.nr } : null });
         }
-        utwory.sort((a, b) => a.nr - b.nr);
-        return { album: utwory[0]?.album ?? ALBUM, spotifyAlbum: u.spotify.album, utwory };
+        utwory.sort((a, b) => (a.album === b.album ? a.nr - b.nr : String(a.album).localeCompare(String(b.album))));
+        // `album` = album Suno (ten, dla którego liczą się adresy Spotify ustawień); stacje z Boxów niosą swój własny w `album`/`zBoxu`
+        return { album: utwory.find((x) => !x.zBoxu)?.album ?? utwory[0]?.album ?? ALBUM, spotifyAlbum: u.spotify.album, utwory };
     }
     // ── 👕 Gablota TeO Wear / 0.00G Merch — pozycje dodaje Suweren (żadnych wymyślonych produktów) ──
     const plikGabloty = path.join(cfg.katalog, 'jason', 'gablota.json');
@@ -1740,7 +1933,7 @@ export function utworzJasona(cfg) {
         decyduj: (id, akcja, { powod } = {}) => (akcja === 'okladka' ? przerysujOkladke(id) : akcja === 'spotify' ? przygotujSpotify(id) : akcja === 'bez-spotify' ? pominSpotify(id) : rozstrzygnij(id, akcja, { powod })),
     };
 
-    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, ustawLektora, ustawAtmosfere, glosyKampanii, zlozKsiege, zlozManuskrypt, zlozKsiegeIManuskrypt, zlozWszystkieKsiegi, wystawWszystkie, wzbogacNarracje, podepnijTeledysk, ustawGlosWersa, opisKarty, wycofajDubleStacji, zapiszCanvas, sciezkaCanvasu, synchronizujSpotify, spotifyLive, sciezkaManuskryptu, kodPergaminu, zapiszPergamin, sciezkaPergaminu, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
+    return { wykonaj, ponow, rozstrzygnij, przerysujOkladke, importujBox, boxyDoImportu, _czekajOkladki: (id) => rysowane.get(id) ?? Promise.resolve(), przygotujSpotify, pominSpotify, otworzFolder, teoStory, storyboard, kadrSceny, sciezkaKadru, opodysk, pokazOpodysk, sciezkaOpodysku, zapiszPartyture, sciezkaPartytury, ustawLektora, ustawAtmosfere, glosyKampanii, zlozKsiege, zlozManuskrypt, zlozKsiegeIManuskrypt, zlozWszystkieKsiegi, wystawWszystkie, wzbogacNarracje, podepnijTeledysk, ustawGlosWersa, opisKarty, wycofajDubleStacji, zapiszCanvas, sciezkaCanvasu, synchronizujSpotify, spotifyLive, sciezkaManuskryptu, kodPergaminu, zapiszPergamin, sciezkaPergaminu, wydajDoWypozyczalni, wydajAlbum, plikZAdresu, sciezkaAudio, opodyski, ustaw, gablota, dodajDoGabloty, zmienWGablocie, usunZGabloty, _czekajKolejki: () => kolejka, stacje, dodajStacje, usunStacje, sciezkaWydania, ustawienia, ustawDystrybutora, lista, kampania: wczytaj, glosy: listaGlosow, sciezkaOkladki, zrodloIzby, _czekaj: (id) => wRobocie.get(id) ?? Promise.resolve() };
 }
 
 /** Trasy. `dostep(req, res)` = maszyna albo sparowany telefon (Stół Narad w StoL); Straż wpuszcza z telefonu tylko start i odczyt. */
@@ -1749,6 +1942,15 @@ export function zamontujTrasyJasona(app, J, { dostep = async () => ({ urzadzenie
     app.post('/api/jason/wykonaj-kampanie', async (req, res) => {
         const d = await dostep(req, res); if (!d) return;
         try { res.json({ success: true, kampania: await J.wykonaj({ ...(req.body ?? {}), zlecil: d.urzadzenie ?? req.body?.zlecil, skad: d.urzadzenie ? 'telefon' : req.body?.skad }) }); } catch (e) { blad(res, e); }
+    });
+    // 📻 Boxy Muzyki jako albumy Jasona: spis z licznikiem stacji i „wciągnij”. Telefon (StoL) też może — to praca na dysku Katedry, bez kredytów.
+    app.get('/api/jason/boxy', async (req, res) => {
+        const d = await dostep(req, res); if (!d) return;
+        try { res.json({ success: true, ...(await J.boxyDoImportu()) }); } catch (e) { blad(res, e); }
+    });
+    app.post('/api/jason/boxy/:box/import', async (req, res) => {
+        const d = await dostep(req, res); if (!d) return;
+        try { res.json({ success: true, ...(await J.importujBox(req.params.box, { nadpisz: req.body?.nadpisz === true })) }); } catch (e) { blad(res, e); }
     });
     app.get('/api/jason/kampanie', async (req, res) => {
         const d = await dostep(req, res); if (!d) return;

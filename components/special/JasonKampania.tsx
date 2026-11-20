@@ -22,7 +22,10 @@ type Kampania = {
     canvas?: { plik: string; wariant?: string | null; od?: number | null; sekundy?: number; bajtow?: number; wersja?: number } | null;
     opodysk?: { stan: string; etap?: string; blad?: string; plik?: string; sekundy?: number; bajtow?: number; ujec?: number; wersja?: number; napisy?: boolean; brakowaloKlatek?: number; montaz?: string | null; uwagi?: string[]; postep?: { zrobione: number; razem: number } } | null;
     spotify?: { folder: string; pliki: string[]; uwagi: string[]; okladka?: { plik: string } | null; master: { hz: number; bity: number; kanaly: number; zrodlo: string; sekundy: number; bajtow: number } } | null;
+    zBoxu?: { box: string; nazwaBoxu?: string; nr: number; odcisk: string } | null;
 };
+// 📻 Box Muzyki jako album Jasona (`/api/jason/boxy`): ile utworów ma na dysku i ile z nich jest już stacją z paczką.
+type BoxJasona = { id: string; nazwa: string; artysci?: string | null; utworow: number; album: string; stacji: number; zPaczka: number };
 type KadrSceny = { plik?: string; stan?: string; blad?: string; wersja?: number };
 type Scena = { nr: number; sekcja: string; zrodlo?: string | null; od: number; do: number; kto: string[]; plan?: string; energia?: string; instrumental?: boolean; wersy: string[]; opis: string; obraz: string; prompt169: string; prompt916: string; kadry?: Record<string, KadrSceny> };
 type Storyboard = { sceny: Scena[]; bpm?: number | null; sekundy?: number | null };
@@ -38,6 +41,10 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     const [dystrybutor, setDystrybutor] = useState<string | null>(null);
     const [nr, setNr] = useState(1);
     const [stacje, setStacje] = useState<Stacja[]>([]);
+    const [kampanie, setKampanie] = useState<Kampania[]>([]);
+    // 📻 album: '' = „Zero Gravity Heart” z Suno, inaczej id Boxu Muzyki wciągniętego jako album
+    const [boxy, setBoxy] = useState<BoxJasona[]>([]);
+    const [album, setAlbum] = useState('');
     const [nowa, setNowa] = useState(false);
     const [sb, setSb] = useState<Storyboard | null>(null);
     const [napisyOpowiesci, setNapisyOpowiesci] = useState(true);
@@ -57,7 +64,8 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     // start: ostatnia otwarta kampania (pracuje / czeka na wybór wersji / stanęła) + persony głosowe konta Suno
     useEffect(() => {
         let zywy = true;
-        api('/api/jason/kampanie').then((d) => { const o = (d.kampanie ?? []).find((x: Kampania) => x.stan !== 'odrzucona'); if (!zywy) return; setStacje(d.stacje ?? []); if (o) { setK(o); setNr(o.stacja.nr); } }).catch(() => {});
+        api('/api/jason/kampanie').then((d) => { const o = (d.kampanie ?? []).find((x: Kampania) => x.stan !== 'odrzucona' && !x.zBoxu); if (!zywy) return; setStacje(d.stacje ?? []); setKampanie(d.kampanie ?? []); if (o) { setK(o); setNr(o.stacja.nr); } }).catch(() => {});
+        api('/api/jason/boxy').then((d) => { if (zywy && d.success) setBoxy(d.boxy ?? []); }).catch(() => {});   // starszy most Boxów nie zna — zostaje sam album Suno
         api('/api/jason/ustawienia').then((d) => { if (zywy && d.success) setDystrybutor(d.ustawienia?.dystrybutor ?? null); }).catch(() => {});
         api('/api/jason/glosy').then((d) => { if (zywy && d.success) setGlosy(d.glosy ?? []); }).catch(() => {});
         return () => { zywy = false; };
@@ -172,12 +180,52 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     };
     const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
 
-    // 🎚️ zmiana stacji: pokaż jej ostatnią nieodrzuconą kampanię (albo pusty panel gotowy do zlecenia)
-    const wybierzStacje = (n: number) => {
+    // 🎚️ zmiana stacji: pokaż jej ostatnią nieodrzuconą kampanię TEGO albumu (albo pusty panel gotowy do zlecenia).
+    // Numer stacji powtarza się między albumami (Stacja 1 jest i w „Zero Gravity Heart”, i w każdym Boxie), więc
+    // szukamy po numerze ORAZ albumie — inaczej wybór Stacji 1 Boxu pokazywałby kampanię Suno.
+    const zAlbumu = (x: Kampania, idBoxu: string) => (idBoxu ? x.zBoxu?.box === idBoxu : !x.zBoxu);
+    const wybierzStacje = (n: number, idBoxu = album) => {
         setNr(n); setGlos(''); setInfo(''); setK(null);
-        api('/api/jason/kampanie').then((d) => setK((d.kampanie ?? []).find((x: Kampania) => x.stan !== 'odrzucona' && x.stacja.nr === n) ?? null)).catch(() => {});
+        api('/api/jason/kampanie').then((d) => {
+            setKampanie(d.kampanie ?? []);
+            setK((d.kampanie ?? []).find((x: Kampania) => x.stan !== 'odrzucona' && x.stacja.nr === n && zAlbumu(x, idBoxu)) ?? null);
+        }).catch(() => {});
     };
-    const stacja = stacje.find((x) => x.nr === nr);
+    const boxAkt = boxy.find((b) => b.id === album) ?? null;
+    /** Stacje bieżącego albumu: Box pokazuje to, co naprawdę wciągnięte (nie listę plików z dysku). */
+    const stacjeAlbumu: Stacja[] = boxAkt
+        ? kampanie.filter((x) => x.stan !== 'odrzucona' && x.zBoxu?.box === boxAkt.id).map((x) => ({ nr: x.stacja.nr, tytul: x.stacja.tytul })).sort((a, b) => a.nr - b.nr)
+        : stacje;
+    const wybierzAlbum = (id: string) => {
+        setAlbum(id); setGlos(''); setInfo(''); setK(null);
+        api('/api/jason/kampanie').then((d) => {
+            const l: Kampania[] = d.kampanie ?? [];
+            setKampanie(l); setStacje(d.stacje ?? []);
+            const moje = l.filter((x) => x.stan !== 'odrzucona' && zAlbumu(x, id)).sort((a, b) => a.stacja.nr - b.stacja.nr);
+            if (moje[0]) { setK(moje[0]); setNr(moje[0].stacja.nr); } else setNr(1);
+        }).catch(() => {});
+    };
+    /**
+     * 📻➡️🎛️ „Wciągnij Box jako album”: każdy utwór Boxu dostaje stację „przyjętą” z paczką wydawniczą
+     * (master.wav przepisany z oryginału, original.mp3 z rendycji Boxu, okładka z katalogu Boxu).
+     * Dopiero wtedy widzi go Teatr Opodysku i partytura 0.00G 16:9. Nie wydaje kredytów Suno ani kroków FLUX.
+     */
+    const wciagnijBox = async (b: BoxJasona) => {
+        const brak = Math.max(0, b.utworow - b.stacji);
+        if (!window.confirm(`Wciągnąć Box „${b.nazwa}” jako album Jasona?\n\n${brak ? `${brak} z ${b.utworow} utworów dostanie stację z paczką wydawniczą.` : `Wszystkie ${b.utworow} utworów już są stacjami — przebiegnę tylko po brakujących.`}\n\nNie kosztuje nic: ffmpeg przepisuje master.wav z plików Boxu, bez kredytów Suno i bez karty graficznej. Przy 10–14 utworach to kilka minut.`)) return;
+        setTrwa(true); setInfo(`Wciągam Box „${b.nazwa}” jako album…`);
+        try {
+            const d = await api(`/api/jason/boxy/${encodeURIComponent(b.id)}/import`, {});
+            if (!d.success) { setInfo(`⚠ ${d.message}`); setTrwa(false); return; }
+            const zr = d.zrobione ?? [], pom = d.pominiete ?? [];
+            setInfo([`✓ ${b.nazwa}: ${zr.length} ${zr.length === 1 ? 'stacja' : 'stacji'}`, pom.length ? `${pom.length} już było` : '', ...(d.bledy ?? []), ...(d.uwagi ?? [])].filter(Boolean).join(' · '));
+            const sp = await api('/api/jason/boxy').catch(() => null);
+            if (sp?.success) setBoxy(sp.boxy ?? []);
+            wybierzAlbum(b.id);
+        } catch (e: any) { setInfo(`⚠ ${e?.message || e}`); }
+        setTrwa(false);
+    };
+    const stacja = stacjeAlbumu.find((x) => x.nr === nr);
     // ➕ nowa stacja: wpis na liście w moście (_OtakOs_Wymiar/jason/stacje.json) — nic nie kosztuje, utworu jeszcze nie tworzy
     const zapiszStacje = async () => {
         setTrwa(true);
@@ -203,26 +251,45 @@ export const JasonKampania: React.FC<{ bridgeUrl?: string; kompakt?: boolean; sk
     return (
         <div className={`rounded-xl border border-violet-500/40 bg-violet-950/30 font-mono text-violet-200 ${kompakt ? 'mt-2 p-2 text-[11px]' : 'mt-3 px-4 py-2.5 text-xs'}`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="flex flex-wrap items-center gap-2">🎛️ Jason · „Zero Gravity Heart (0.00G Sessions)” ·
-                    {stacje.length > 1
-                        ? <select value={nr} onChange={(e) => wybierzStacje(Number(e.target.value))} disabled={trwa || pracuje} className="rounded-lg border border-violet-500/40 bg-slate-950 px-2 py-1 text-violet-100">
-                            {stacje.map((x) => <option key={x.nr} value={x.nr}>Stacja {x.nr}: {x.tytul}</option>)}
+                <span className="flex flex-wrap items-center gap-2">🎛️ Jason ·
+                    {/* 📻 Album: „Zero Gravity Heart” z Suno albo Box Muzyki wciągnięty jako album (Suweren 2026-11-20) */}
+                    {boxy.length > 0
+                        ? <select value={album} onChange={(e) => wybierzAlbum(e.target.value)} disabled={trwa || pracuje} title="Album: utwory z Suno albo Box Muzyki wciągnięty jako album" className="rounded-lg border border-violet-500/40 bg-slate-950 px-2 py-1 font-bold text-violet-100">
+                            <option value="">🎛️ Zero Gravity Heart (0.00G Sessions)</option>
+                            {boxy.map((b) => <option key={b.id} value={b.id}>📻 {b.nazwa} ({b.stacji}/{b.utworow})</option>)}
                         </select>
-                        : <span>Stacja {nr}: {stacja?.tytul ?? k?.stacja.tytul ?? 'Velvet Booth for Two (82 BPM Intro)'}</span>}
-                    <button onClick={() => setNowa((x) => !x)} disabled={trwa || pracuje} title="Dopisz kolejny utwór albumu bez edycji kodu" className="rounded-lg border border-violet-400/50 px-2 py-1 text-violet-100 hover:bg-violet-800/40 disabled:opacity-50">{nowa ? '✕ zwiń' : '+ Nowa stacja'}</button>
+                        : <span>„Zero Gravity Heart (0.00G Sessions)”</span>} ·
+                    {stacjeAlbumu.length > 1
+                        ? <select value={nr} onChange={(e) => wybierzStacje(Number(e.target.value))} disabled={trwa || pracuje} className="rounded-lg border border-violet-500/40 bg-slate-950 px-2 py-1 text-violet-100">
+                            {stacjeAlbumu.map((x) => <option key={x.nr} value={x.nr}>Stacja {x.nr}: {x.tytul}</option>)}
+                        </select>
+                        : <span>{stacjeAlbumu.length === 1 || !boxAkt ? `Stacja ${nr}: ${stacja?.tytul ?? k?.stacja.tytul ?? 'Velvet Booth for Two (82 BPM Intro)'}` : 'Box jeszcze bez stacji'}</span>}
+                    {!boxAkt && <button onClick={() => setNowa((x) => !x)} disabled={trwa || pracuje} title="Dopisz kolejny utwór albumu bez edycji kodu" className="rounded-lg border border-violet-400/50 px-2 py-1 text-violet-100 hover:bg-violet-800/40 disabled:opacity-50">{nowa ? '✕ zwiń' : '+ Nowa stacja'}</button>}
                 </span>
                 <div className="flex shrink-0 items-center gap-2">
-                    <select value={glos} onChange={(e) => setGlos(e.target.value)} disabled={trwa || pracuje}
-                        title="Persona głosowa z My Voices w Suno. Suno przyjmuje JEDEN głos na utwór — w duecie zaśpiewa on obie partie."
-                        className="rounded-lg border border-violet-500/40 bg-slate-950 px-2 py-1.5 text-violet-100">
-                        <option value="">{stacja?.glos ? `🎤 ${stacja.glos} (persona stacji)` : (stacja?.artysci?.length ?? 2) > 1 ? '🎤 duet bez persony' : '🎤 głos artysty stacji'}</option>
-                        {glosy.map((g) => <option key={g.id} value={g.id}>🎤 {g.name}</option>)}
-                    </select>
-                    <button onClick={zlec} disabled={trwa || pracuje}
-                        title="Suno audio-create (2 wersje z kredytów konta) → okładka Palety → odsłuch. Pobrania nie będzie, dopóki nie wybierzesz wersji."
-                        className="rounded-lg bg-violet-600 px-3 py-1.5 font-bold tracking-wider text-white hover:bg-violet-500 disabled:opacity-50">
-                        {pracuje ? 'JASON PRACUJE…' : 'WYKONAJ KAMPANIĘ'}
-                    </button>
+                    {boxAkt
+                        // 📻 Box: utwory są już na dysku, więc nie ma czego zlecać Suno — wciągamy je jako stacje z paczką
+                        ? <>
+                            <span className="text-violet-300/70">{boxAkt.zPaczka}/{boxAkt.utworow} z paczką wydawniczą</span>
+                            <button onClick={() => void wciagnijBox(boxAkt)} disabled={trwa || pracuje}
+                                title="Każdy utwór Boxu dostaje stację „przyjętą” z paczką wydawniczą (master.wav z oryginału, original.mp3, okładka z katalogu Boxu). Bez kredytów Suno — pracuje ffmpeg na plikach z dysku."
+                                className="rounded-lg bg-violet-600 px-3 py-1.5 font-bold tracking-wider text-white hover:bg-violet-500 disabled:opacity-50">
+                                {boxAkt.stacji >= boxAkt.utworow ? '↻ UZUPEŁNIJ STACJE' : '📻 WCIĄGNIJ BOX JAKO ALBUM'}
+                            </button>
+                        </>
+                        : <>
+                            <select value={glos} onChange={(e) => setGlos(e.target.value)} disabled={trwa || pracuje}
+                                title="Persona głosowa z My Voices w Suno. Suno przyjmuje JEDEN głos na utwór — w duecie zaśpiewa on obie partie."
+                                className="rounded-lg border border-violet-500/40 bg-slate-950 px-2 py-1.5 text-violet-100">
+                                <option value="">{stacja?.glos ? `🎤 ${stacja.glos} (persona stacji)` : (stacja?.artysci?.length ?? 2) > 1 ? '🎤 duet bez persony' : '🎤 głos artysty stacji'}</option>
+                                {glosy.map((g) => <option key={g.id} value={g.id}>🎤 {g.name}</option>)}
+                            </select>
+                            <button onClick={zlec} disabled={trwa || pracuje}
+                                title="Suno audio-create (2 wersje z kredytów konta) → okładka Palety → odsłuch. Pobrania nie będzie, dopóki nie wybierzesz wersji."
+                                className="rounded-lg bg-violet-600 px-3 py-1.5 font-bold tracking-wider text-white hover:bg-violet-500 disabled:opacity-50">
+                                {pracuje ? 'JASON PRACUJE…' : 'WYKONAJ KAMPANIĘ'}
+                            </button>
+                        </>}
                 </div>
             </div>
             {nowa && (

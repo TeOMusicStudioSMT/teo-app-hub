@@ -9078,6 +9078,8 @@ const Jason = utworzJasona({ katalog: ANTIGRAVITY_DIR, suno: SunoMcp,
     // 📄📜 PDF z HTML (Chrome z puppeteera ładowany dopiero przy użyciu) i kod QR stacji — Manuskrypt i Rolowany Pergamin
     pdf: async (o) => druk_htmlDoPdf((await import('puppeteer')).default, o), qr: (t) => druk_macierzQr(QRCode, t),
     autor: async () => { const w = await wlascicielKsiegi(); return typeof w === 'string' ? w : w?.nazwa ?? null; },
+    // 📻 Boxy Muzyki jako albumy Jasona (`importujBox`) — leniwo, bo Boxy powstają niżej w tym pliku
+    boxy: () => Boxy, wydaniaBoxow: () => WydaniaBoxow,
     pobierz: async (adres) => { const r = await pobierzH2(adres, { signal: AbortSignal.timeout(5 * 60_000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return Buffer.from(await r.arrayBuffer()); },
     // 🎬 teledysk: klatki scen od Palety (okładka paczki jako wzór postaci) i projekt w TeO Story Studio
     kadr: async ({ prompt, szer, wys, referencje }) => {

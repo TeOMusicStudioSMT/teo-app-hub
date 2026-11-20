@@ -136,6 +136,19 @@ export function utworzBoxy({ katalogMuzyki, katalogWydan, ffmpeg = null, uruchom
         const b = await box(id);
         return { box: b, utwory: (await utwory(b)).map((x) => ({ nr: x.nr, tytul: x.tytul, artysta: x.artysta ?? b.artysci ?? null, odcisk: odcisk(x.nazwaPliku) })) };
     }
+    /**
+     * 🎛️ Źródło utworu dla maszyny Suwerena: master z dysku (zwykle .wav), nazwa pliku i odcisk.
+     * Tym żyje import Boxu do Jasona (`JasonOrchestrator.importujBox`) — paczka wydawnicza składa
+     * `master.wav` z ORYGINAŁU, nie z rendycji mp3, więc nie tracimy jakości po drodze.
+     * NIGDY nie oddajemy tego publicznie: ścieżki z dysku zostają w Katedrze.
+     */
+    async function zrodloUtworu(id, nr) {
+        const b = await box(id);
+        const u = (await utwory(b)).find((x) => x.nr === Number(nr));
+        if (!u) throw Object.assign(new Error('Nie ma takiego utworu w Boxie.'), { kod: 404 });
+        return { box: b, nr: u.nr, tytul: u.tytul, artysta: u.artysta ?? b.artysci ?? null, odcisk: odcisk(u.nazwaPliku),
+            plik: u.plik, nazwaPliku: u.nazwaPliku, katalog: path.dirname(u.plik), katalogBoxu: path.resolve(katalogMuzyki, b.katalog) };
+    }
     /** Ścieżka gotowego mp3 — przygotowuje rendycję, jeśli jej jeszcze nie ma. */
     async function plikUtworu(id, nr) {
         const b = await box(id);
@@ -152,7 +165,7 @@ export function utworzBoxy({ katalogMuzyki, katalogWydan, ffmpeg = null, uruchom
         return { id: b.id, utworow: u.length, zrobione };
     }
     const odcisk = (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 16);
-    return { mapa, spis, utworyPubliczne, utworyZOdciskiem, plikUtworu, przygotujBox, odcisk };
+    return { mapa, spis, utworyPubliczne, utworyZOdciskiem, zrodloUtworu, plikUtworu, przygotujBox, odcisk };
 }
 
 /** Wysyła mp3 z obsługą `Range` — bez tego przeglądarka nie przewinie utworu. */

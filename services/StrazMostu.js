@@ -239,6 +239,7 @@ export function czyZwrotYouTube(req) {
 
 export const SCIEZKI_DLA_SPAROWANYCH = new Set(['/api/stado/projekt/nowy', '/api/system/free',
     '/api/jason/wykonaj-kampanie', '/api/jason/kampanie', '/api/jason/stacje', '/api/jason/glosy',   // ➕ nowa stacja i lista person ze strony Stołu w StoL
+    '/api/jason/boxy',   // 📻 Box = album: spis Boxów ze Stołu Narad w StoL (samo wciągnięcie — niżej, bo jest w ścieżce id Boxu)
       // 🎛️ Jason ze Stołu Narad w StoL — trasy same żądają tokenu parowania (dostepStada)
     '/api/mistrz/wiesci',   // 📯 powiadomienia StoL (Suweren 2026-10-30): telefon tylko CZYTA kanał Mistrza — trasa żąda tokenu parowania
 ]);
@@ -251,7 +252,13 @@ export const WZOR_KSIEGI_DLA_SPAROWANYCH = /^\/api\/zywa-ksiega(\/k-\d{8}-[0-9a-
 /** 🎛️ Podgląd jednej kampanii Jasona z telefonu (stan po zleceniu ze Stołu Narad) — tylko odczyt. */
 // odczyt kampanii + 🎬 storyboard teledysku (liczy go kod, bez kosztu); klatki FLUX i pobrania zostają przy maszynie
 export const WZOR_JASONA_DLA_SPAROWANYCH = /^\/api\/jason\/kampanie\/j-[0-9a-f]{8}(\/(teo-story|storyboard))?$/;
-export const czyDlaSparowanych = (sciezka) => SCIEZKI_DLA_SPAROWANYCH.has(sciezka) || WZOR_KSIEGI_DLA_SPAROWANYCH.test(sciezka) || WZOR_JASONA_DLA_SPAROWANYCH.test(sciezka);
+/**
+ * 📻 Box jako album Jasona ze sparowanego telefonu (Suweren 2026-11-20). Wciągnięcie pracuje tylko na plikach
+ * z dysku Katedry — ffmpeg przepisuje master.wav i mp3 — więc NIE wydaje ani kredytu Suno, ani kroku FLUX.
+ * Dlatego wolno je zlecić z StoL i Delegatem; wszystko, co kosztuje (klatki, pobrania, publikacje), zostaje przy maszynie.
+ */
+export const WZOR_IMPORTU_BOXU_DLA_SPAROWANYCH = /^\/api\/jason\/boxy\/[a-z0-9][a-z0-9-]{1,48}\/import$/;
+export const czyDlaSparowanych = (sciezka) => SCIEZKI_DLA_SPAROWANYCH.has(sciezka) || WZOR_KSIEGI_DLA_SPAROWANYCH.test(sciezka) || WZOR_JASONA_DLA_SPAROWANYCH.test(sciezka) || WZOR_IMPORTU_BOXU_DLA_SPAROWANYCH.test(sciezka);
 
 /**
  * Publiczne strony Suwerena, które w JEGO przeglądarce czytają żywe dane z mostu
